@@ -44,27 +44,30 @@ Engineering Drawing Retrieval & Classification System powered by Open-Source Mul
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│                        CAD Vision v2.0                                  │
+│                        CAD Vision v4.0                                  │
 ├───────────────────────────────────────────────────────────────────────┤
 │                                                                        │
 │   ┌──────────────────┐    ┌──────────────┐    ┌────────────────────┐  │
-│   │  Streamlit UI     │    │  Ollama VLM  │    │  ChromaDB          │  │
-│   │  (4페이지)        │───▶│  qwen3-vl:8b │    │  벡터 DB 68,647건  │  │
-│   │  :8501            │    │  :11434      │    │  (이미지+텍스트)    │  │
+│   │  Streamlit UI     │    │  Ollama LLM   │    │  ChromaDB          │  │
+│   │  (4페이지+DXF)    │───▶│  Qwen3.5:9b   │    │  벡터 DB 3채널     │  │
+│   │  :8501            │    │  (RAM 자동선택)│    │  Image+Text+GNN    │  │
 │   └──────┬───────────┘    └──────┬───────┘    └────────┬───────────┘  │
 │          │                       │                      │              │
 │   ┌──────▼───────────────────────▼──────────────────────▼───────────┐ │
 │   │                    Python ML Pipeline                             │ │
 │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────────┐  │ │
-│   │  │ CLIP     │  │ E5-small │  │PaddleOCR │  │ YOLOv8-cls     │  │ │
-│   │  │ViT-B/32 │  │ 384차원  │  │ Korean   │  │ 81카테고리     │  │ │
-│   │  │Fine-tune │  │ 다국어   │  │ 텍스트   │  │ 정확도 93.87%  │  │ │
+│   │  │ OpenCLIP │  │ E5-small │  │PaddleOCR │  │ YOLO-cls v2    │  │ │
+│   │  │ViT-L/14 │  │ 384차원  │  │ Korean   │  │ 81카테고리     │  │ │
+│   │  │ 768차원  │  │ 다국어   │  │ 텍스트   │  │ 정확도 93.87%  │  │ │
 │   │  └──────────┘  └──────────┘  └──────────┘  └────────────────┘  │ │
-│   │  ┌──────────┐  ┌────────────────────┐  ┌────────────────────┐  │ │
-│   │  │ YOLOv8   │  │ AnalysisContext    │  │ Hallucination      │  │ │
-│   │  │ -det     │  │ YOLO+OCR→LLM 주입 │  │ Detector           │  │ │
-│   │  │ 영역탐지 │  │ 텍스트전용 모드    │  │ 환각 검증          │  │ │
-│   │  └──────────┘  └────────────────────┘  └────────────────────┘  │ │
+│   │  ┌──────────┐  ┌──────────┐  ┌────────────────────────────┐    │ │
+│   │  │ YOLO-det │  │GNN (GIN) │  │ AnalysisContext             │    │ │
+│   │  │ 영역탐지 │  │DXF 구조  │  │ YOLO+OCR→LLM 주입          │    │ │
+│   │  │ mAP=0.55 │  │R@5=0.765 │  │ + HallucinationDetector    │    │ │
+│   │  └──────────┘  └──────────┘  └────────────────────────────┘    │ │
+│   │  ┌────────────────────────────────────────────────────────┐    │ │
+│   │  │ DXF Renderer (ezdxf+matplotlib) → PNG 자동 변환        │    │ │
+│   │  └────────────────────────────────────────────────────────┘    │ │
 │   └────────────────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────────────┘
 ```
@@ -73,16 +76,18 @@ Engineering Drawing Retrieval & Classification System powered by Open-Source Mul
 
 | 구분 | 기술 | 역할 |
 |---|---|---|
-| 멀티모달 LLM | Ollama + qwen3-vl:8b | 도면 분석, 설명 생성, Q&A |
-| 이미지 임베딩 | OpenAI CLIP (ViT-B/32) | 도면 이미지 → 512차원 벡터 |
+| 멀티모달 LLM | Ollama + Qwen3.5 (RAM 자동선택) | 도면 분석, 설명 생성, Q&A (>=48GB→27b, >=16GB→9b, <16GB→4b) |
+| 이미지 임베딩 | OpenCLIP ViT-L/14 | 도면 이미지 → 768차원 벡터 (datacomp_xl_s13b_b90k) |
 | 텍스트 임베딩 | intfloat/multilingual-e5-small | OCR 텍스트 → 384차원 벡터 |
+| GNN 임베딩 | GIN Encoder (자체 학습) | DXF 구조 → 256차원 벡터 (R@5=0.765) |
 | OCR | PaddleOCR (Korean) | 도면 내 부품번호, 치수, 재질 추출 |
-| 도면 분류 | YOLOv8-cls v2 (자체 학습) | 81 카테고리 자동 분류 (정확도 93.87%) |
-| 객체 탐지 | YOLOv8-det (자체 학습) | 표제란, 부품표, 치수 영역 탐지 (mAP50=0.552) |
-| 벡터 DB | ChromaDB | 68,647건 임베딩 저장 및 유사도 검색 |
-| 프론트엔드 | Streamlit | 4페이지 웹 UI (CAD Vision 다크 테마) |
+| 도면 분류 | YOLO-cls v2 (자체 학습) | 81 카테고리 자동 분류 (정확도 93.87%) |
+| 객체 탐지 | YOLO-det (자체 학습) | 표제란, 부품표, 치수 영역 탐지 (mAP50=0.552) |
+| DXF 렌더링 | ezdxf + matplotlib | DXF 업로드 → PNG 자동 변환 + 메타데이터 추출 |
+| 벡터 DB | ChromaDB (3채널) | image 61,475 + text 68,649 + gnn 61,451건 |
+| 프론트엔드 | Streamlit | 4페이지 + DXF 검색 탭 (CAD Vision 다크 테마) |
 | 컨테이너 | Docker + docker-compose | 2-서비스 배포 (app + ollama), 비루트 사용자 |
-| 테스트 | pytest | **358개** 테스트 케이스 |
+| 테스트 | pytest | **412개** 테스트 케이스 |
 
 ### 개발 여정 (Phase A → K)
 
@@ -306,14 +311,14 @@ Docker 컨테이너 배포 후 두 가지 런타임 문제가 발생했다:
 
 ### 최종 결과물
 
-**CAD Vision v2.0** — AI 기반 산업 도면 검색 및 분류 시스템
+**CAD Vision v4.0** — AI 기반 산업 도면 검색 및 분류 시스템
 
 ```
 docker-compose (2 서비스)
 ┌───────────────────────────┐     ┌────────────────────────┐
 │  app (cad-vision-app)      │────▶│  ollama                │
 │  Streamlit :8501           │     │  (cad-vision-ollama)   │
-│  Python 3.11 + ML Models   │     │  qwen3-vl:8b (6.1GB)  │
+│  Python 3.11 + ML Models   │     │  Qwen3.5:9b (6.6GB)   │
 │  CLIP + E5 + PaddleOCR     │     │  :11434                │
 └──────────┬────────────────┘     └────────────┬───────────┘
            │                                    │
@@ -335,17 +340,18 @@ docker-compose (2 서비스)
 
 | 항목 | 수치 |
 |---|---|
-| 등록 도면 수 | **68,647건** (81 카테고리) |
-| 벡터 DB 크기 | **441MB** (이미지 512d + 텍스트 384d) |
+| 등록 도면 수 | **68,649건** (81 카테고리) |
+| 벡터 DB | **3채널** — Image 61,475 + Text 68,649 + GNN 61,451건 |
+| 검색 채널 | Image(OpenCLIP 768d) + Text(E5 384d) + GNN(GIN 256d) |
+| GNN 구조 검색 | **R@5=0.765** (DXF 그래프 유사도, 54,722 DXF 학습) |
 | 검색 응답 시간 | **0.104초** (목표 3초의 29배) |
-| 도면 분류 정확도 | **93.87%** (YOLOv8-cls v2, 81 카테고리 Top-1) |
-| 객체 탐지 성능 | **mAP50=0.552** (YOLOv8-det, 표제란/부품표/치수) |
-| LLM 분석 시간 | **<20초** (텍스트 전용 모드, 기존 60-90초 대비) |
-| 환각 검증 | **4필드 대조** (부품번호, 재질, 카테고리, 치수) |
-| 테스트 케이스 | **358개** 전부 통과 |
+| 도면 분류 정확도 | **93.87%** (YOLO-cls v2, 81 카테고리 Top-1) |
+| 객체 탐지 성능 | **mAP50=0.552** (YOLO-det, 표제란/부품표/치수) |
+| LLM | **Qwen3.5** (RAM 자동선택: 27b/9b/4b) |
+| LLM 분석 시간 | **<20초** (텍스트 전용 모드) |
+| DXF 지원 | DXF 업로드 → PNG 자동 변환 + 구조 검색 |
+| 테스트 케이스 | **412개** 전부 통과 |
 | 보안 테스트 | **60개** (SSRF, 프롬프트 인젝션, 레이트 리미팅 등) |
-| Docker 빌드 | **~50초** (모델 프리로드 포함) |
-| 비개발자 실행 | **원클릭** (`docker-start.sh`) |
 | ML 학습 데이터셋 | **72,730장** (9개 소스, 34GB) |
 
 ### 프로젝트 구조
@@ -355,28 +361,31 @@ drawing-llm/
 ├── app/
 │   └── streamlit_app.py          # Streamlit 4페이지 UI (CAD Vision 테마)
 ├── core/
-│   ├── embeddings.py             # CLIP + E5 임베딩 엔진
-│   ├── vector_store.py           # ChromaDB 듀얼 컬렉션 (이미지/텍스트)
-│   ├── llm.py                    # Ollama VLM + AnalysisContext + HallucinationDetector
+│   ├── embeddings.py             # OpenCLIP ViT-L/14 + E5 임베딩 엔진
+│   ├── vector_store.py           # ChromaDB 3채널 (이미지/텍스트/GNN)
+│   ├── gnn.py                    # GIN Encoder + DXFGraphBuilder (DXF 구조 임베딩)
+│   ├── dxf_renderer.py           # DXF → PNG 렌더링 + 메타데이터 추출
+│   ├── llm.py                    # Ollama Qwen3.5 + AnalysisContext + HallucinationDetector
 │   ├── ocr.py                    # PaddleOCR 한국어 OCR (부품번호/재질/치수 패턴)
-│   ├── classifier.py             # YOLOv8-cls 도면 분류기 (73 카테고리, 96.6%)
-│   ├── detector.py               # YOLOv8-det 객체 탐지기 (표제란/부품표/치수)
-│   ├── pipeline.py               # 등록/검색/분석 파이프라인 (컨텍스트 주입)
+│   ├── classifier.py             # YOLO-cls v2 도면 분류기 (81 카테고리, 93.87%)
+│   ├── detector.py               # YOLO-det 객체 탐지기 (표제란/부품표/치수)
+│   ├── pipeline.py               # 등록/검색/분석 파이프라인 (3채널 + DXF)
 │   ├── evaluation.py             # IR 지표 평가 (Recall, MRR, mAP)
 │   ├── weight_tuner.py           # 하이브리드 검색 가중치 Grid Search
 │   └── benchmark.py              # 성능 벤치마크 (YOLO/OCR/LLM 속도, 메모리)
 ├── config/
 │   └── settings.py               # pydantic_settings 기반 환경 설정 (보안 + 경로 매핑)
 ├── models/
-│   ├── yolo_cls_best.pt          # YOLOv8-cls 학습 모델 (73 카테고리)
-│   └── yolo_det_best.pt          # YOLOv8-det 학습 모델 (영역 탐지)
+│   ├── yolo_cls_v2_best.pt       # YOLO-cls v2 학습 모델 (81 카테고리, 93.87%)
+│   ├── yolo_det_best.pt          # YOLO-det 학습 모델 (영역 탐지)
+│   └── gnn_encoder.pt            # GIN Encoder (DXF 구조 임베딩, R@5=0.765)
 ├── data/
 │   ├── sample_drawings/          # 도면 이미지 (61,473건)
-│   ├── vector_store/             # ChromaDB 영속 데이터 (441MB)
+│   ├── vector_store/             # ChromaDB 영속 데이터 (3채널: image+text+gnn)
 │   ├── category_keywords.json    # 카테고리별 검색 키워드
 │   ├── metadata/                 # 평가/튜닝 결과 JSON
 │   └── ground_truth_misumi.json  # 142개 평가 쿼리
-├── tests/                        # pytest 358개 테스트
+├── tests/                        # pytest 412개 테스트
 │   ├── test_embeddings.py        # 임베딩 테스트
 │   ├── test_llm.py               # LLM 기본 테스트
 │   ├── test_llm_context.py       # 컨텍스트 주입 + 환각 검증 테스트
@@ -417,7 +426,7 @@ cd "/Volumes/Corsair EX300U Media/00_work_out/01_complete/me/01_CAD/drawing-llm"
 1. Docker 실행 상태 확인
 2. 데이터 디렉토리 생성
 3. 컨테이너 빌드 및 시작 (`docker compose up -d --build`)
-4. AI 모델(qwen3-vl:8b) 확인, 미설치 시 자동 다운로드 (~5GB)
+4. AI 모델(Qwen3.5, RAM 기반 자동 선택) 확인, 미설치 시 자동 다운로드 (~6.6GB)
 5. 앱 헬스체크 후 브라우저 자동 오픈
 
 **관리 명령어:**
@@ -448,13 +457,13 @@ pip install -r requirements.txt
 
 # Ollama 서버 + 모델
 ollama serve &
-ollama pull qwen3-vl:8b
+ollama pull qwen3.5:9b
 
 # 앱 실행
 streamlit run app/streamlit_app.py
 
 # 테스트 실행
-pytest tests/ -v                    # 전체 358개 테스트
+pytest tests/ -v                    # 전체 412개 테스트
 pytest tests/test_llm.py -v         # LLM 기본 테스트
 pytest tests/test_llm_context.py -v # 컨텍스트 주입 + 환각 검증
 pytest tests/test_classifier.py -v  # YOLOv8-cls 분류기
@@ -464,35 +473,25 @@ pytest tests/test_security.py -v    # 보안 테스트
 ### 도면 처리 파이프라인
 
 ```
-[등록]
-도면 이미지 ──┬──→ PaddleOCR ──→ 텍스트 추출 (부품번호, 재질, 치수) ──→ E5 임베딩 ──→ ChromaDB
-              │                                                                        (텍스트)
-              ├──→ CLIP ViT-B/32 (Fine-tuned) ──→ 이미지 임베딩 ──→ ChromaDB (이미지)
-              │
-              ├──→ YOLOv8-cls v2 ──→ 81 카테고리 자동 분류 (93.87%)
-              │
-              └──→ YOLOv8-det ──→ 표제란/부품표/치수 영역 탐지
-                                        │
-                     ┌──────────────────┘
-                     ▼
-              AnalysisContext (YOLO+OCR 결과 구조화)
-                     │
-                     ▼
-              Ollama qwen3-vl:8b ──→ 컨텍스트 기반 도면 설명 생성
-                     │
-                     ▼
-              HallucinationDetector ──→ LLM 응답 vs OCR 사실 대조 검증
+[등록 — PNG/JPG]
+도면 이미지 ──┬──→ PaddleOCR ──→ 텍스트 추출 ──→ E5 임베딩 ──→ ChromaDB (텍스트, 0.6)
+              ├──→ OpenCLIP ViT-L/14 ──→ 768d 임베딩 ──→ ChromaDB (이미지, 0.1)
+              ├──→ YOLO-cls v2 ──→ 81 카테고리 자동 분류 (93.87%)
+              └──→ YOLO-det ──→ 표제란/부품표/치수 영역 탐지
 
-[검색]
-사용자 쿼리 ──→ E5 임베딩 ──→ 텍스트 벡터 검색 ──┐
-                    (text_weight=0.85)            ├──→ 유사도 순 결과 반환
-              ──→ CLIP 임베딩 ──→ 이미지 벡터 검색 ──┘
-                    (image_weight=0.15)
+[등록 — DXF]
+DXF 파일 ──┬──→ DXFRenderer ──→ PNG 변환 + 메타데이터 추출 ──→ 위 PNG 파이프라인
+           └──→ DXFGraphBuilder ──→ GIN Encoder ──→ 256d 임베딩 ──→ ChromaDB (GNN, 0.3)
+
+[검색 — 3채널 하이브리드]
+사용자 쿼리 ──→ E5 임베딩 ──→ 텍스트 검색 (0.6) ──┐
+              ──→ OpenCLIP ──→ 이미지 검색 (0.1) ──┼──→ 가중합 → 유사도 순 결과
+DXF 업로드  ──→ GIN Encoder ──→ GNN 검색 (0.3)  ──┘
 
 [분석]
-도면 업로드 ──→ YOLO-cls/det + OCR ──→ AnalysisContext ──→ Ollama (컨텍스트 주입)
+도면 업로드 ──→ YOLO-cls/det + OCR ──→ AnalysisContext ──→ Qwen3.5 (컨텍스트 주입)
                                                           ──→ 부품 설명 / 분류 / Q&A
-                                                          ──→ 환각 검증 결과
+                                                          ──→ HallucinationDetector 검증
 ```
 
 ---
@@ -504,28 +503,43 @@ pytest tests/test_security.py -v    # 보안 테스트
 데이터셋 72,730장을 81 카테고리로 재구성하고 전체 ML 파이프라인을 업그레이드했다:
 
 - **YOLOv8-cls v2**: 73→81 카테고리 확장, Test Top-1=93.87%, Top-5=98.04% (best epoch 70/90)
-- **CLIP Fine-tuning**: 도면 특화 학습으로 카테고리 Recall@5 i2t=73.2%, t2i=94.7% 달성 (사전학습 대비 16x 향상)
-- **하이브리드 검색**: image_weight=0.0→0.15, text_weight=1.0→0.85로 CLIP 임베딩 활성화
-- **OCR 3-전략 개선**: (1) 파일명 부품번호 추출, (2) 암배경 반전(cv2.bitwise_not+Otsu), (3) 카테고리-재질 매핑(75종)
+- **CLIP Fine-tuning**: 도면 특화 학습으로 Recall@5 i2t=73.2%, t2i=94.7% 달성
+- **OCR 3-전략 개선**: (1) 파일명 부품번호 추출, (2) 암배경 반전, (3) 카테고리-재질 매핑(75종)
 - **메타데이터 일괄 갱신**: 68,647건 records.json — 부품번호 60,456건, 재질 60,721건 보강
-- 모델 파일: `yolo_cls_v2_best.pt` (10MB), `clip_finetuned.pt` (577MB)
 
-### 현재 한계
+#### Phase N: v4.0 대규모 업그레이드 (4단계)
 
-1. **검색 정확도**: CLIP Fine-tuning 후 카테고리 Recall@5=73.2%(i2t)/94.7%(t2i)로 개선되었으나, 정확 매칭 R@5=13.4%로 여전히 한계 — VLM 생성 설명 텍스트로 재임베딩 필요
-2. **CLIP 배치 한계**: batch_size=64 InfoNCE 학습으로 도면 특화 임베딩 개선되었으나, 선화 도면 간 시각적 유사성이 높아 더 큰 배치 또는 multi-positive contrastive loss 필요
-3. **YOLOv8-det 정밀도**: mAP50=0.552로 개선 여지 있음 — 학습 데이터 증강 및 모델 크기 증가(n→s→m) 검토
-4. **FastAPI 분리**: 현재 Streamlit 직접 호출 방식 → REST API 계층 분리로 확장성 확보 필요
+전체 ML 스택을 최신 모델로 교체하고, GNN 구조 검색 + DXF 네이티브 지원을 추가했다:
 
-### 개선 방향
+**Phase 1 — YOLO26 + Qwen3.5 (RAM 자동 선택)**
+- ultralytics >=8.4.0 (YOLO26 호환), 코드 내 "YOLOv8" → 버전 무관 "YOLO" 명칭 전환
+- `_auto_select_ollama_model()`: psutil로 RAM 확인 → >=48GB→27b, >=16GB→9b, <16GB→4b
+- 사이드바에 활성 Ollama 모델명 표시
 
-| 개선 항목 | 방법 | 기대 효과 |
-|---|---|---|
-| 텍스트 품질 향상 | VLM으로 도면 설명 텍스트 생성 → 재임베딩 | 정확 매칭 R@5 → 0.50+ |
-| CLIP 학습 개선 | 더 큰 배치 또는 multi-positive contrastive loss | 이미지 검색 R@5 → 0.30+ |
-| 탐지 모델 강화 | YOLOv8s/m + 학습 데이터 증강 | mAP50 → 0.70+ |
-| GPU 가속 | NVIDIA GPU 환경에서 VLM 속도 개선 | 분석 시간 5초 이내 |
-| FastAPI 백엔드 | Streamlit ↔ FastAPI ↔ ML 계층 분리 | 멀티 클라이언트 지원 |
+**Phase 2 — OpenCLIP ViT-L/14 (512→768-dim)**
+- CLIP ViT-B/32 → OpenCLIP ViT-L/14 (datacomp_xl_s13b_b90k) 업그레이드
+- 이미지 임베딩 차원: 512 → 768 (표현력 향상)
+- ChromaDB image 컬렉션 재생성 (61,475건)
+
+**Phase 3 — GNN 구조 검색 (DXF → Graph → GIN Encoder)**
+- `DXFGraphBuilder`: DXF 엔티티 → PyG 그래프 (14-dim 노드 피처, k-NN+geometric 엣지)
+- `GINEncoder`: 4-layer GIN + BatchNorm → 256-dim L2-normalized 임베딩
+- SupCon Loss 학습: 54,722 DXF, 72 카테고리, **R@1=0.614, R@5=0.765, R@10=0.827**
+- ChromaDB 3채널 하이브리드 검색: Image(0.1) + Text(0.6) + GNN(0.3)
+
+**Phase 4 — DXF 네이티브 지원**
+- `DXFRenderer`: ezdxf + matplotlib로 DXF → PNG 렌더링 + 메타데이터 추출
+- 파이프라인: DXF 업로드 → 자동 PNG 변환 → 기존 등록/검색 플로우 연결
+- Streamlit: DXF 업로더 + DXF 구조 검색 탭 추가
+
+### 현재 한계 및 개선 방향
+
+| 개선 항목 | 현재 | 방법 | 기대 효과 |
+|---|---|---|---|
+| REST API | Streamlit only | FastAPI 계층 분리 | 멀티 클라이언트 지원 |
+| 탐지 모델 | mAP50=0.552 | 학습 데이터 증강 | mAP50 → 0.70+ |
+| Docker | 로컬 중심 | docker-compose 완성 | 원클릭 배포 |
+| 데이터 규모 | 68,649건 | 증분 임베딩 | 신규 등록 즉시 반영 |
 
 ### 이 프로젝트에서 배운 것
 
@@ -552,4 +566,4 @@ MIT License
 
 ---
 
-*Developed by Yeong | 2026 — v2.2 (Phase M: 81카테고리 YOLOv8-cls v2 + CLIP Fine-tuning + OCR 개선 + 68,647건 메타데이터 갱신)*
+*Developed by Yeong | 2026 — v4.0 (Phase N: YOLO26 + Qwen3.5 자동선택 + OpenCLIP ViT-L/14 768d + GNN R@5=0.765 + DXF 네이티브 + 3채널 하이브리드 검색 + 412 tests)*

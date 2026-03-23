@@ -7,6 +7,26 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 
 
+def _auto_select_ollama_model() -> str:
+    """시스템 RAM 기반 Qwen3.5 모델 자동 선택.
+
+    - >= 48GB: qwen3.5:27b
+    - >= 16GB: qwen3.5:9b
+    - <  16GB: qwen3.5:4b
+    """
+    try:
+        import psutil
+        total_gb = psutil.virtual_memory().total / (1024 ** 3)
+        if total_gb >= 48:
+            return "qwen3.5:27b"
+        elif total_gb >= 16:
+            return "qwen3.5:9b"
+        else:
+            return "qwen3.5:4b"
+    except Exception:
+        return "qwen3.5:9b"
+
+
 class Settings(BaseSettings):
     """애플리케이션 전역 설정"""
 
@@ -17,28 +37,31 @@ class Settings(BaseSettings):
 
     # === Ollama ===
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3-vl:8b"
+    ollama_model: str = Field(default_factory=_auto_select_ollama_model)
+    ollama_timeout: float = 300.0  # LLM 타임아웃 (초), 이미지 분석 시 충분한 여유
 
     # === 임베딩 모델 ===
-    clip_model: str = "ViT-B/32"
-    clip_finetuned_path: str = "./models/clip_finetuned.pt"  # Fine-tuned CLIP 체크포인트
+    clip_model: str = "ViT-L-14"  # OpenCLIP 모델 아키텍처 (768-dim)
+    clip_pretrained: str = "datacomp_xl_s13b_b90k"  # OpenCLIP pretrained 체크포인트
+    clip_finetuned_path: str = ""  # Fine-tuned OpenCLIP 체크포인트 (빈 문자열이면 pretrained)
     text_embedding_model: str = "intfloat/multilingual-e5-small"
 
     # === 벡터 DB ===
     chroma_collection_name: str = "drawings"
+    sqlite_db_path: str = "./data/vector_store/records.db"
 
     # === 검색 ===
     search_top_k: int = 10
-    image_weight: float = 0.15  # Fine-tuned CLIP으로 이미지 검색 활성화
-    text_weight: float = 0.85
+    image_weight: float = 0.10  # 3채널: image(0.1) + text(0.6) + gnn(0.3) = 1.0
+    text_weight: float = 0.60
 
-    # === YOLOv8-cls 분류기 ===
+    # === YOLO 분류기 ===
     yolo_cls_model_path: str = "./models/yolo_cls_v2_best.pt"
     yolo_cls_confidence_threshold: float = 0.5
     yolo_cls_enabled: bool = True
     yolo_cls_device: str = ""  # 빈 문자열이면 자동 선택
 
-    # === YOLOv8-det 객체탐지기 ===
+    # === YOLO 객체탐지기 ===
     yolo_det_model_path: str = "./models/yolo_det_best.pt"
     yolo_det_confidence_threshold: float = 0.3  # det는 recall 우선 → cls(0.5)보다 낮게
     yolo_det_enabled: bool = True
@@ -53,9 +76,34 @@ class Settings(BaseSettings):
     llm_num_predict_metadata: int = 1024     # metadata 토큰
     llm_num_predict_qa: int = 2048           # Q&A 토큰
 
+    # === GNN 구조 검색 ===
+    gnn_model_path: str = "./models/gnn_encoder.pt"
+    gnn_enabled: bool = True
+    gnn_embedding_dim: int = 256
+    gnn_weight: float = 0.3   # GNN v2 학습 완료 (R@5=0.765)
+    gnn_k_neighbors: int = 8
+    gnn_device: str = ""       # 빈 문자열이면 자동 선택
+
+    # === 유사도면 알림 ===
+    similarity_alert_threshold: float = 0.85  # 등록 시 유사도면 알림 임계값
+
+    # === Reranker (Cross-Encoder 2차 정렬) ===
+    reranker_enabled: bool = True
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_weight: float = 0.7   # blended = 0.7×reranker + 0.3×hybrid
+    reranker_top_k_multiplier: int = 3  # 1차에서 top_k×3 → rerank → top_k
+
+    # === OCR 병렬화 ===
+    ocr_workers: int = 4   # 배치 OCR 워커 수 (0이면 순차)
+    ocr_batch_size: int = 32
+
+    # === REST API (FastAPI) ===
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+
     # === 보안: 모델 무결성 검증 ===
-    yolo_cls_sha256: str = ""   # YOLOv8-cls 모델 SHA256 (빈 문자열이면 스킵)
-    yolo_det_sha256: str = ""   # YOLOv8-det 모델 SHA256 (빈 문자열이면 스킵)
+    yolo_cls_sha256: str = ""   # YOLO-cls 모델 SHA256 (빈 문자열이면 스킵)
+    yolo_det_sha256: str = ""   # YOLO-det 모델 SHA256 (빈 문자열이면 스킵)
 
     # === 보안: LLM 레이트 리미팅 ===
     llm_rate_limit_rpm: int = 30   # 분당 최대 LLM 호출 횟수 (0이면 무제한)
@@ -76,7 +124,7 @@ class Settings(BaseSettings):
 
     # === 파일 처리 ===
     max_file_size_mb: int = 50
-    supported_formats: list[str] = ["png", "jpg", "jpeg", "pdf", "tiff", "tif"]
+    supported_formats: list[str] = ["png", "jpg", "jpeg", "pdf", "tiff", "tif", "dxf"]
 
     class Config:
         env_file = ".env"

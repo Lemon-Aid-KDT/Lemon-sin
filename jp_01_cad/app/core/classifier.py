@@ -1,12 +1,12 @@
 """
-YOLOv8-cls 기반 도면 자동분류 모듈
+YOLO-cls 기반 도면 자동분류 모듈
 
-사전 학습된 YOLOv8-cls 모델로 73카테고리 CAD 도면을 ~50ms 내 분류한다.
+사전 학습된 YOLO-cls 모델로 73카테고리 CAD 도면을 ~50ms 내 분류한다.
 Ollama LLM 분류(5~30초)를 대체하여 등록/대시보드/검색 시 고속 분류를 제공한다.
 
 주요 클래스:
   - ClassificationResult: 분류 결과 데이터
-  - DrawingClassifier: YOLOv8-cls 추론 래퍼
+  - DrawingClassifier: YOLO-cls 추론 래퍼
 """
 
 import hashlib
@@ -18,7 +18,7 @@ from loguru import logger
 
 @dataclass
 class ClassificationResult:
-    """YOLOv8-cls 분류 결과"""
+    """YOLO-cls 분류 결과"""
 
     category: str = ""                              # 최상위 예측 카테고리
     confidence: float = 0.0                         # 최상위 예측 신뢰도 (0.0~1.0)
@@ -30,7 +30,7 @@ class ClassificationResult:
 
 
 class DrawingClassifier:
-    """YOLOv8-cls 기반 도면 분류기
+    """YOLO-cls 기반 도면 분류기
 
     기존 ImageEmbedder와 동일한 지연 로딩 패턴을 따른다:
       - __init__에서 설정만 저장
@@ -52,7 +52,7 @@ class DrawingClassifier:
     ):
         """
         Args:
-            model_path: YOLOv8-cls 학습 완료 모델 (.pt) 경로
+            model_path: YOLO-cls 학습 완료 모델 (.pt) 경로
             confidence_threshold: 이 값 미만이면 needs_review=True
             device: 연산 디바이스 ("", "cpu", "cuda", "mps"). 빈 문자열이면 자동 선택.
             expected_sha256: 모델 파일의 기대 SHA256 해시 (빈 문자열이면 검증 스킵)
@@ -101,7 +101,7 @@ class DrawingClassifier:
         logger.info(f"모델 SHA256 체크섬 검증 통과: {actual[:16]}...")
 
     def _init_model(self):
-        """YOLOv8-cls 모델 지연 로딩
+        """YOLO-cls 모델 지연 로딩
 
         ultralytics는 classify() 최초 호출 시점에만 import/로딩된다.
         GPU OOM 발생 시 CPU로 자동 폴백한다.
@@ -111,7 +111,7 @@ class DrawingClassifier:
 
         if not self.model_path.exists():
             raise FileNotFoundError(
-                f"YOLOv8-cls 모델 파일 없음: {self.model_path}\n"
+                f"YOLO-cls 모델 파일 없음: {self.model_path}\n"
                 f"  → python scripts/train_yolo_cls.py --data ./data/cls_dataset\n"
                 f"  → cp runs/classify/train/weights/best.pt {self.model_path}"
             )
@@ -122,31 +122,31 @@ class DrawingClassifier:
         try:
             from ultralytics import YOLO
 
-            logger.info(f"YOLOv8-cls 모델 로딩: {self.model_path}")
+            logger.info(f"YOLO-cls 모델 로딩: {self.model_path}")
             self._model = YOLO(str(self.model_path), task="classify")
 
             # 디바이스 설정 (빈 문자열이면 ultralytics 자동 선택)
             if self._device:
-                logger.info(f"YOLOv8-cls 디바이스: {self._device}")
+                logger.info(f"YOLO-cls 디바이스: {self._device}")
 
             logger.info(
-                f"YOLOv8-cls 모델 로딩 완료 "
+                f"YOLO-cls 모델 로딩 완료 "
                 f"(클래스: {len(self._model.names)}개)"
             )
         except ImportError:
             raise RuntimeError(
-                "ultralytics 미설치: pip install ultralytics>=8.1.0"
+                "ultralytics 미설치: pip install ultralytics>=8.4.0"
             )
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "CUDA" in str(e):
-                logger.error(f"GPU 메모리 부족으로 YOLOv8-cls 로딩 실패, CPU로 재시도: {e}")
+                logger.error(f"GPU 메모리 부족으로 YOLO-cls 로딩 실패, CPU로 재시도: {e}")
                 from ultralytics import YOLO
 
                 self._device = "cpu"
                 self._model = YOLO(str(self.model_path), task="classify")
-                logger.info("YOLOv8-cls 모델 CPU 로딩 완료 (GPU 메모리 부족)")
+                logger.info("YOLO-cls 모델 CPU 로딩 완료 (GPU 메모리 부족)")
             else:
-                raise RuntimeError(f"YOLOv8-cls 모델 로딩 실패: {e}") from e
+                raise RuntimeError(f"YOLO-cls 모델 로딩 실패: {e}") from e
 
     # ─────────────────────────────────────────────
     # 분류 추론
@@ -178,7 +178,7 @@ class DrawingClassifier:
             raise FileNotFoundError(f"이미지 파일 없음: {image_path}")
 
         try:
-            # YOLOv8 predict (verbose=False로 콘솔 출력 억제)
+            # YOLO predict (verbose=False로 콘솔 출력 억제)
             predict_kwargs = {"source": str(image_path), "verbose": False}
             if self._device:
                 predict_kwargs["device"] = self._device
@@ -186,7 +186,7 @@ class DrawingClassifier:
             results = self._model.predict(**predict_kwargs)
 
             if not results or len(results) == 0:
-                logger.warning(f"YOLOv8-cls 결과 없음: {image_path.name}")
+                logger.warning(f"YOLO-cls 결과 없음: {image_path.name}")
                 return ClassificationResult(
                     model_name=self.model_path.name,
                     needs_review=True,
@@ -220,7 +220,7 @@ class DrawingClassifier:
         except FileNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"YOLOv8-cls 추론 실패 ({image_path.name}): {e}")
+            logger.error(f"YOLO-cls 추론 실패 ({image_path.name}): {e}")
             return ClassificationResult(
                 model_name=self.model_path.name,
                 needs_review=True,
@@ -326,6 +326,6 @@ class DrawingClassifier:
         try:
             self._init_model()
             n = len(self._model.names)
-            return True, f"YOLOv8-cls 정상 ({n}클래스, {self.model_path.name})"
+            return True, f"YOLO-cls 정상 ({n}클래스, {self.model_path.name})"
         except Exception as e:
-            return False, f"YOLOv8-cls 로딩 실패: {e}"
+            return False, f"YOLO-cls 로딩 실패: {e}"

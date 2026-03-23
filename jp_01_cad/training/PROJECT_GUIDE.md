@@ -140,7 +140,7 @@ ollama list                     # 설치된 모델 확인
 
 | 모델 | 크기 | 유형 | 용도 |
 |---|---|---|---|
-| **qwen3-vl:8b** | 6.1GB | VLM (Vision) | 메인 도면 분석 (설명, Q&A) |
+| **qwen3.5:9b** | 6.1GB | VLM (Vision) | 메인 도면 분석 (설명, Q&A) |
 | **qwen3.5:9b** | 6.6GB | VLM (Vision 내장) | 보조 분석, 한국어 설명 |
 | **translategemma** | 3.3GB | VLM (Gemma3 Vision) | 경량 고속 분류/요약, 번역 |
 | **translategemma:12b** | 8.1GB | VLM (Gemma3 Vision) | 정밀 분류/요약 (대형 버전) |
@@ -218,14 +218,14 @@ ollama list                     # 설치된 모델 확인
 #### A-2. Streamlit 웹 UI 실행 확인 ✅
 
 - [x] 누락 패키지 설치: clip, easyocr, pydantic-settings
-- [x] Ollama 모델명 통일: `llava:7b` → `qwen3-vl:8b` (`settings.py`, `pipeline.py`)
+- [x] Ollama 모델명 통일: `llava:7b` → `qwen3.5:9b` (`settings.py`, `pipeline.py`)
 - [x] DrawingPipeline 전체 초기화 테스트 PASS
 - [x] Streamlit 앱 실행 확인 (HTTP 200 OK)
 
 #### A-3. P0/P1/P2 스크립트 호환성 수정 ✅
 
 - [x] 7개 스크립트 `BASE_DIR` 수정: `Path(__file__).parent.parent` → `Path(__file__).parent.parent / "main" / "drawing-llm"`
-- [x] `verify_p0.py` 모델명 수정: `llava:7b` → `qwen3-vl:8b`, thinking 모델 응답 처리 추가
+- [x] `verify_p0.py` 모델명 수정: `llava:7b` → `qwen3.5:9b`, thinking 모델 응답 처리 추가
 - [x] 3개 모듈 `core/`로 복사: `evaluation.py`, `benchmark.py`, `weight_tuner.py`
 - [x] P0 검증: 9/10 통과 (경고 1건: 샘플 데이터 미등록 — 정상)
 - [x] P1/P2 전체 스크립트 구문 검사 + 모듈 임포트: ALL PASS
@@ -428,7 +428,7 @@ Ollama에 설치된 VLM 모델들의 도면 이미지 분석 성능을 비교. M
 
 | 모델 | Vision | Describe 속도 | Classify 정확도 | Korean 품질 |
 |---|---|---|---|---|
-| **qwen3-vl:8b** | ✅ | 97.2s/img | 2/6 (33%) | 일부 누락(0 chars) |
+| **qwen3.5:9b** | ✅ | 97.2s/img | 2/6 (33%) | 일부 누락(0 chars) |
 | glm-4.7-flash | ❌ TIMEOUT | N/A | N/A | N/A |
 
 **2차 추가 모델 테스트 (glm-ocr, qwen3.5, translategemma):**
@@ -437,7 +437,7 @@ Ollama에 설치된 VLM 모델들의 도면 이미지 분석 성능을 비교. M
 
 | 모델 | 크기 | Vision | 역할 | Classify | Korean | 속도 |
 |---|---|---|---|---|---|---|
-| **qwen3-vl:8b** | 6.1GB | ✅ VL 전용 | 도면 분석 (메인) | 2/6 (33%) | 상세하나 빈응답 가능 | 63.5s/task |
+| **qwen3.5:9b** | 6.1GB | ✅ VL 전용 | 도면 분석 (메인) | 2/6 (33%) | 상세하나 빈응답 가능 | 63.5s/task |
 | **qwen3.5:9b** | 6.6GB | ✅ 내장 | 도면 분석 (보조) | △ (thinking 모델) | ✅ 고품질 | 58~89s |
 | **translategemma** | 3.3GB | ✅ Gemma3 | 경량 분석 + 번역 | △ (1/2) | ✅ 자연스러움 | ⚡ 2~9s |
 | **glm-ocr** | 2.2GB | ✅ OCR 전용 | 도면 텍스트 추출 | ❌ (텍스트만 반환) | ❌ (텍스트만 반환) | ⚡ 0.3~7s |
@@ -446,7 +446,7 @@ Ollama에 설치된 VLM 모델들의 도면 이미지 분석 성능을 비교. M
 
 **모델별 상세 분석:**
 
-**qwen3-vl:8b (메인 VLM)**
+**qwen3.5:9b (메인 VLM)**
 - 도면 설명이 가장 상세 (평균 4,878 chars). 치수, 특징, 용도까지 체계적 분석
 - Thinking 모델 특성으로 `num_predict` 부족 시 빈 응답 → 최소 4096 이상 설정 필요
 - 분류 정확도 낮음: DXF→PNG 도면의 시각적 특성이 부족하여 Shafts→screw, Gears→shaft 등 오분류
@@ -485,7 +485,7 @@ Ollama에 설치된 VLM 모델들의 도면 이미지 분석 성능을 비교. M
 │     → 대량 도면 배치 처리 시 1차 분류                            │
 │     → 실시간 검색 결과 미리보기 설명 생성                         │
 │                                                              │
-│  3. 상세 도면 분석 ─── qwen3-vl:8b (6.1GB, ~60s)            │
+│  3. 상세 도면 분석 ─── qwen3.5:9b (6.1GB, ~60s)            │
 │     → 개별 도면 상세 분석, Q&A 대화                             │
 │     → 가장 정확한 설명 생성 (포트폴리오 시연용)                    │
 │                                                              │
@@ -497,7 +497,7 @@ Ollama에 설치된 VLM 모델들의 도면 이미지 분석 성능을 비교. M
 ```
 
 **이 접근법을 선택한 이유:**
-1. **단일 모델 한계 극복**: qwen3-vl:8b만으로는 속도(63.5s/task), 분류 정확도(33%), 한국어 빈응답 문제가 있음
+1. **단일 모델 한계 극복**: qwen3.5:9b만으로는 속도(63.5s/task), 분류 정확도(33%), 한국어 빈응답 문제가 있음
 2. **역할 분담으로 효율화**: OCR(glm-ocr) → 1차 분류(translategemma) → 상세 분석(qwen3-vl) 파이프라인 구성 시, 6만건 배치 처리가 현실적 시간 내 가능
 3. **비용 최소화**: 모든 모델이 Ollama 로컬 실행으로 API 비용 없음. M4 Pro 24GB에서 3.3~6.6GB 모델 교대 로드 가능
 4. **검색 성능 개선 기대**: 현재 OCR(EasyOCR)이 추출하는 텍스트가 치수/기호 위주라 검색 성능이 낮음(Recall@5=0.146). glm-ocr + translategemma로 의미 있는 텍스트(부품 설명)를 생성하여 텍스트 임베딩 품질 향상 가능
@@ -810,7 +810,7 @@ streamlit run app/streamlit_app.py
 python -c "
 import sys; sys.path.insert(0, '.')
 from core.llm import DrawingLLM
-llm = DrawingLLM(model='qwen3-vl:8b', timeout=180.0)
+llm = DrawingLLM(model='qwen3.5:9b', timeout=180.0)
 print(llm.describe_drawing('도면이미지.png'))
 "
 
@@ -832,8 +832,8 @@ python B2_YOLO_학습/train_yolo.py --epochs 100                 # YOLO 학습
 | `main/drawing-llm/core/llm.py` | 보안: 프롬프트 인젝션 방어, 이미지 검증. 기능: thinking 모델 대응, num_predict 증가 |
 | `main/drawing-llm/core/vector_store.py` | 버그: list/ndarray 호환, 빈 metadata 방어 |
 | `cad_me/cad_crawling_pipeline.py` | 버그: 중복 파싱 제거, 경로 수정. 호환: albumentations API 업데이트 |
-| `main/drawing-llm/config/settings.py` | 모델명 변경: llava:7b → qwen3-vl:8b |
-| `main/drawing-llm/core/pipeline.py` | 모델명 변경: llava:7b → qwen3-vl:8b |
+| `main/drawing-llm/config/settings.py` | 모델명 변경: llava:7b → qwen3.5:9b |
+| `main/drawing-llm/core/pipeline.py` | 모델명 변경: llava:7b → qwen3.5:9b |
 | `main/drawing-llm/core/evaluation.py` | P1에서 core/로 복사 (검색 평가 모듈) |
 | `main/drawing-llm/core/benchmark.py` | P2에서 core/로 복사 (벤치마크 모듈) |
 | `main/drawing-llm/core/weight_tuner.py` | P2에서 core/로 복사 (가중치 튜닝 모듈) |
@@ -1020,4 +1020,4 @@ mv chroma_recovered.sqlite3 chroma.sqlite3
 
 ---
 
-*마지막 업데이트: 2026-03-11 (Phase F 완료: YOLOv8-cls v2 81cat 93.87%, CLIP Fine-tuning, OCR 3-전략 개선, 68,647건 메타데이터 갱신)*
+*마지막 업데이트: 2026-03-19 (Phase N 완료: v4.0 — YOLO26 + Qwen3.5 자동선택 + OpenCLIP ViT-L/14 768d + GNN R@5=0.765 + DXF 네이티브 + 3채널 하이브리드 검색 + 412 tests)*

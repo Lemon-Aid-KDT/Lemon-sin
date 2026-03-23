@@ -1,5 +1,5 @@
 """
-YOLOv8-cls DrawingClassifier 단위 테스트
+YOLO-cls DrawingClassifier 단위 테스트
 
 mock 기반으로 ultralytics 없이 분류기의 로직을 검증한다.
 """
@@ -306,7 +306,7 @@ class TestSettingsYolo:
         from config.settings import Settings
 
         s = Settings()
-        assert s.yolo_cls_model_path == "./models/yolo_cls_best.pt"
+        assert s.yolo_cls_model_path == "./models/yolo_cls_v2_best.pt"
         assert s.yolo_cls_confidence_threshold == 0.5
         assert s.yolo_cls_enabled is True
         assert s.yolo_cls_device == ""

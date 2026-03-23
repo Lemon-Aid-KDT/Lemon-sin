@@ -25,6 +25,10 @@ from core.llm import DrawingLLM, AnalysisContext
 from core.classifier import DrawingClassifier, ClassificationResult
 from core.detector import DrawingDetector, DetectionResult
 from core.ocr import RegionOCRResult
+from core.gnn import GNNEmbedder
+from core.dxf_renderer import DXFRenderer
+from core.reranker import CrossEncoderReranker
+from core.record_store import RecordStore
 
 # ─────────────────────────────────────────────
 # 카테고리 → 대표 재질 매핑 (C-1 전략)
@@ -138,15 +142,19 @@ class DrawingRecord:
     category: str = ""
     description: str = ""
     metadata: dict = field(default_factory=dict)
-    # YOLOv8-cls 분류 결과 (기본값이 있어 기존 records.json과 하위 호환)
+    # YOLO-cls 분류 결과 (기본값이 있어 기존 records.json과 하위 호환)
     yolo_confidence: float = 0.0
     yolo_needs_review: bool = False
     yolo_top_k: list = field(default_factory=list)  # [(카테고리, 신뢰도), ...]
-    # YOLOv8-det 영역 탐지 결과 (Phase 3, 하위 호환)
+    # YOLO-det 영역 탐지 결과 (Phase 3, 하위 호환)
     detected_regions: list = field(default_factory=list)    # [{"class", "bbox", "confidence"}, ...]
     title_block_data: dict = field(default_factory=dict)    # 파싱된 표제란 (도번, 재질, 척도 등)
     parts_table_data: dict = field(default_factory=dict)    # 파싱된 부품표 (BOM)
     detection_enhanced: bool = False                        # 탐지 기반 OCR 적용 여부
+    dxf_path: str = ""                                      # 연관 DXF 파일 경로 (GNN용)
+    similar_drawings: list = field(default_factory=list)     # 유사도면 알림 [{drawing_id, score, file_name}]
+    registered_at: str = ""                                  # ISO timestamp (등록 시각)
+    revision: int = 1                                        # 동일 부품번호 내 버전
 
 
 class DrawingPipeline:
@@ -157,8 +165,9 @@ class DrawingPipeline:
         upload_dir: str = "./data/sample_drawings",
         vector_store_dir: str = "./data/vector_store",
         ollama_url: str = "http://localhost:11434",
-        ollama_model: str = "qwen3-vl:8b",
-        clip_model: str = "ViT-B/32",
+        ollama_model: str = "qwen3.5:9b",
+        clip_model: str = "ViT-L-14",
+        clip_pretrained: str = "datacomp_xl_s13b_b90k",
         clip_finetuned_path: str = "",
         ocr_lang: str = "korean",
         ocr_fast_mode: bool = False,
@@ -175,16 +184,29 @@ class DrawingPipeline:
         llm_rate_limit_rpm: int = 0,
         image_weight: float = 0.15,
         text_weight: float = 0.85,
+        gnn_model: str = "",
+        gnn_embedding_dim: int = 256,
+        gnn_weight: float = 0.0,
+        gnn_device: str = "",
+        gnn_k_neighbors: int = 8,
+        reranker_enabled: bool = False,
+        reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        reranker_weight: float = 0.7,
+        reranker_top_k_multiplier: int = 3,
+        use_sqlite: bool = True,
+        sqlite_db_path: str = "",
     ):
         self.upload_dir = Path(upload_dir)
         self._image_weight = image_weight
         self._text_weight = text_weight
+        self._gnn_weight = gnn_weight
         self.upload_dir.mkdir(parents=True, exist_ok=True)
 
         # 컴포넌트 초기화 (지연 로딩)
         self._ocr = DrawingOCR(lang=ocr_lang, fast_mode=ocr_fast_mode)
         self._image_embedder = ImageEmbedder(
             model_name=clip_model,
+            pretrained=clip_pretrained,
             finetuned_path=clip_finetuned_path,
         )
         self._text_embedder = TextEmbedder()
@@ -194,7 +216,7 @@ class DrawingPipeline:
             rate_limit_rpm=llm_rate_limit_rpm,
         )
 
-        # YOLOv8-cls 분류기 (모델 경로가 있으면 초기화)
+        # YOLO-cls 분류기 (모델 경로가 있으면 초기화)
         self._classifier: DrawingClassifier | None = None
         if yolo_cls_model and Path(yolo_cls_model).exists():
             try:
@@ -204,13 +226,13 @@ class DrawingPipeline:
                     device=yolo_cls_device,
                     expected_sha256=yolo_cls_sha256,
                 )
-                logger.info(f"YOLOv8-cls 분류기 설정 완료: {yolo_cls_model}")
+                logger.info(f"YOLO-cls 분류기 설정 완료: {yolo_cls_model}")
             except Exception as e:
-                logger.warning(f"YOLOv8-cls 분류기 초기화 실패 (비활성): {e}")
+                logger.warning(f"YOLO-cls 분류기 초기화 실패 (비활성): {e}")
                 self._classifier = None
         else:
             if yolo_cls_model:
-                logger.warning(f"YOLOv8-cls 모델 파일 없음 (비활성): {yolo_cls_model}")
+                logger.warning(f"YOLO-cls 모델 파일 없음 (비활성): {yolo_cls_model}")
 
         # 카테고리 키워드 로드 (검색 임베딩 보강용)
         self._category_keywords: dict[str, str] = {}
@@ -229,7 +251,7 @@ class DrawingPipeline:
             else:
                 logger.warning(f"카테고리 키워드 파일 없음: {kw_path}")
 
-        # YOLOv8-det 탐지기 (모델 경로가 있으면 초기화)
+        # YOLO-det 탐지기 (모델 경로가 있으면 초기화)
         self._detector: DrawingDetector | None = None
         if yolo_det_model and Path(yolo_det_model).exists():
             try:
@@ -240,20 +262,100 @@ class DrawingPipeline:
                     device=yolo_det_device,
                     expected_sha256=yolo_det_sha256,
                 )
-                logger.info(f"YOLOv8-det 탐지기 설정 완료: {yolo_det_model}")
+                logger.info(f"YOLO-det 탐지기 설정 완료: {yolo_det_model}")
             except Exception as e:
-                logger.warning(f"YOLOv8-det 탐지기 초기화 실패 (비활성): {e}")
+                logger.warning(f"YOLO-det 탐지기 초기화 실패 (비활성): {e}")
                 self._detector = None
         else:
             if yolo_det_model:
-                logger.warning(f"YOLOv8-det 모델 파일 없음 (비활성): {yolo_det_model}")
+                logger.warning(f"YOLO-det 모델 파일 없음 (비활성): {yolo_det_model}")
 
-        # 도면 레코드 저장 (간이 인메모리 DB, 추후 SQLite로 교체)
+        # GNN 구조 임베더 (DXF 구조 유사도 검색)
+        self._gnn_embedder: GNNEmbedder | None = None
+        if gnn_model and Path(gnn_model).exists():
+            try:
+                self._gnn_embedder = GNNEmbedder(
+                    model_path=gnn_model,
+                    embedding_dim=gnn_embedding_dim,
+                    device=gnn_device,
+                    k_neighbors=gnn_k_neighbors,
+                )
+                logger.info(f"GNN 임베더 설정 완료: {gnn_model}")
+            except Exception as e:
+                logger.warning(f"GNN 임베더 초기화 실패 (비활성): {e}")
+                self._gnn_embedder = None
+        else:
+            if gnn_model:
+                logger.warning(f"GNN 모델 파일 없음 (비활성): {gnn_model}")
+
+        # Reranker (Cross-Encoder 2차 정렬)
+        self._reranker: CrossEncoderReranker | None = None
+        self._reranker_top_k_mult = reranker_top_k_multiplier
+        if reranker_enabled:
+            try:
+                self._reranker = CrossEncoderReranker(
+                    model_name=reranker_model,
+                    reranker_weight=reranker_weight,
+                )
+                logger.info(f"Reranker 설정 완료: {reranker_model}")
+            except Exception as e:
+                logger.warning(f"Reranker 초기화 실패 (비활성): {e}")
+                self._reranker = None
+
+        # 도면 레코드 저장
         self._records: dict[str, DrawingRecord] = {}
         self._records_file = Path(vector_store_dir) / "records.json"
-        self._load_records()
+        self._use_sqlite = use_sqlite
+        self._record_store: RecordStore | None = None
+
+        # SQLite 모드: records.db가 존재하거나, 명시적으로 use_sqlite=True인 경우
+        _sqlite_path = sqlite_db_path or str(Path(vector_store_dir) / "records.db")
+        if self._use_sqlite:
+            try:
+                self._record_store = RecordStore(db_path=_sqlite_path)
+                # DB에 레코드가 없고 records.json이 있으면 자동 마이그레이션
+                if self._record_store.count() == 0 and self._records_file.exists():
+                    logger.info("SQLite DB가 비어있음 — records.json에서 자동 마이그레이션")
+                    self._load_records_json()
+                    self._migrate_records_to_sqlite()
+                else:
+                    self._load_records_sqlite()
+                logger.info(f"SQLite 레코드 저장소 활성: {_sqlite_path}")
+            except Exception as e:
+                logger.warning(f"SQLite 초기화 실패, JSON 폴백: {e}")
+                self._use_sqlite = False
+                self._record_store = None
+                self._load_records_json()
+        else:
+            self._load_records_json()
+
+        # 버전 관리 인덱스 (part_number → [drawing_id, ...])
+        self._version_index: dict[str, list[str]] = {}
+        self._build_version_index()
 
         logger.info("DrawingPipeline 초기화 완료")
+
+    # ─────────────────────────────────────────────
+    # 버전 관리
+    # ─────────────────────────────────────────────
+
+    def _build_version_index(self) -> None:
+        """part_number → [drawing_id, ...] 인덱스를 빌드한다."""
+        self._version_index = {}
+        for did, rec in self._records.items():
+            pns = rec.part_numbers if isinstance(rec, DrawingRecord) else (rec.get("part_numbers") or [])
+            for pn in pns:
+                if pn:
+                    self._version_index.setdefault(pn, []).append(did)
+        # 등록 시간순 정렬
+        for pn in self._version_index:
+            self._version_index[pn].sort(
+                key=lambda d: (
+                    self._records[d].registered_at
+                    if isinstance(self._records.get(d), DrawingRecord)
+                    else self._records.get(d, {}).get("registered_at", "")
+                )
+            )
 
     # ─────────────────────────────────────────────
     # 텍스트 보강
@@ -482,6 +584,20 @@ class DrawingPipeline:
         else:
             stored_path = str(image_path)
 
+        # 1.5. DXF → PNG 변환 (DXF 파일이면 자동 렌더링)
+        dxf_stored_path = ""
+        if image_path.suffix.lower() == ".dxf":
+            try:
+                renderer = DXFRenderer()
+                png_path = Path(stored_path).with_suffix(".png")
+                renderer.render_to_png(Path(stored_path), png_path)
+                dxf_stored_path = stored_path  # 원본 DXF 경로 보존
+                stored_path = str(png_path)    # 이후 OCR/임베딩은 PNG로
+                logger.info(f"DXF → PNG 변환 완료: {png_path.name}")
+            except Exception as e:
+                logger.error(f"DXF → PNG 변환 실패: {e}")
+                raise
+
         # 2. OCR 텍스트 추출
         try:
             ocr_result: OCRResult = self._ocr.extract(stored_path)
@@ -489,7 +605,7 @@ class DrawingPipeline:
             logger.warning(f"OCR 실패 (계속 진행): {e}")
             ocr_result = OCRResult(full_text="")
 
-        # 2.5. YOLOv8-det 영역 탐지 + 영역별 OCR (탐지기 활성 시)
+        # 2.5. YOLO-det 영역 탐지 + 영역별 OCR (탐지기 활성 시)
         detected_regions = []
         title_block_data = {}
         parts_table_data = {}
@@ -548,7 +664,7 @@ class DrawingPipeline:
             except Exception as e:
                 logger.warning(f"영역 탐지/OCR 실패 (기본 OCR 결과 유지): {e}")
 
-        # 2.7. YOLOv8-cls 자동분류 (카테고리 미지정 시)
+        # 2.7. YOLO-cls 자동분류 (카테고리 미지정 시)
         yolo_confidence = 0.0
         yolo_needs_review = False
         yolo_top_k = []
@@ -560,12 +676,12 @@ class DrawingPipeline:
                 yolo_needs_review = yolo_result.needs_review
                 yolo_top_k = yolo_result.top_k
                 logger.info(
-                    f"YOLOv8-cls 자동분류: {category} "
+                    f"YOLO-cls 자동분류: {category} "
                     f"(신뢰도: {yolo_confidence:.2%}, "
                     f"검토필요: {yolo_needs_review})"
                 )
             except Exception as e:
-                logger.warning(f"YOLOv8-cls 분류 실패 (계속 진행): {e}")
+                logger.warning(f"YOLO-cls 분류 실패 (계속 진행): {e}")
 
         # 2.8. 파일명 기반 부품번호 2차 보충 (OCR + 영역 OCR 모두 실패 시)
         if not ocr_result.part_numbers:
@@ -599,6 +715,18 @@ class DrawingPipeline:
             except Exception as e:
                 logger.warning(f"텍스트 임베딩 실패 (계속 진행): {e}")
 
+        # 4.5. GNN 구조 임베딩 (DXF 파일이 있고 GNN 임베더가 활성인 경우)
+        gnn_embedding = None
+        effective_dxf_path = dxf_stored_path or (
+            str(image_path) if image_path.suffix.lower() == ".dxf" else ""
+        )
+        if effective_dxf_path and self._gnn_embedder:
+            try:
+                gnn_embedding = self._gnn_embedder.embed_dxf(effective_dxf_path)
+                logger.info("GNN 구조 임베딩 생성 완료")
+            except Exception as e:
+                logger.warning(f"GNN 임베딩 실패 (계속 진행): {e}")
+
         # 5. 메타데이터 구성
         metadata = {
             "file_path": stored_path,
@@ -613,6 +741,7 @@ class DrawingPipeline:
             drawing_id=drawing_id,
             image_embedding=image_embedding,
             text_embedding=text_embedding,
+            gnn_embedding=gnn_embedding,
             metadata=metadata,
         )
 
@@ -631,6 +760,23 @@ class DrawingPipeline:
                 logger.warning(f"LLM 설명 생성 실패 (계속 진행): {e}")
 
         # 레코드 저장
+        import datetime as _dt
+        _registered_at = _dt.datetime.now().isoformat()
+
+        # 같은 part_number의 기존 버전 확인 → revision 증가
+        _revision = 1
+        for pn in (ocr_result.part_numbers or []):
+            if pn in self._version_index:
+                existing_ids = self._version_index[pn]
+                max_rev = max(
+                    (self._records[d].revision if isinstance(self._records.get(d), DrawingRecord)
+                     else self._records.get(d, {}).get("revision", 1))
+                    for d in existing_ids
+                    if d in self._records
+                ) if existing_ids else 0
+                _revision = max_rev + 1
+                break
+
         record = DrawingRecord(
             drawing_id=drawing_id,
             file_path=stored_path,
@@ -649,9 +795,51 @@ class DrawingPipeline:
             title_block_data=title_block_data,
             parts_table_data=parts_table_data,
             detection_enhanced=detection_enhanced,
+            dxf_path=dxf_stored_path,
+            registered_at=_registered_at,
+            revision=_revision,
         )
         self._records[drawing_id] = record
-        self._save_records()
+        self._save_records(single_record=record)
+
+        # 버전 인덱스 갱신
+        for pn in (ocr_result.part_numbers or []):
+            if pn:
+                self._version_index.setdefault(pn, []).append(drawing_id)
+
+        # ── 유사도면 알림: 등록 직후 유사 도면 자동 검색 ──
+        try:
+            from config.settings import settings as _settings
+            threshold = _settings.similarity_alert_threshold
+            if threshold > 0:
+                similar_results = self._vector_store.hybrid_search(
+                    image_embedding=image_embedding,
+                    text_embedding=text_embedding,
+                    gnn_embedding=gnn_embedding,
+                    top_k=6,
+                    image_weight=self._image_weight,
+                    text_weight=self._text_weight,
+                    gnn_weight=self._gnn_weight,
+                )
+                similar_list = []
+                for sr in similar_results:
+                    if sr.drawing_id != drawing_id and sr.score >= threshold:
+                        similar_list.append({
+                            "drawing_id": sr.drawing_id,
+                            "score": round(sr.score, 4),
+                            "file_name": sr.metadata.get("file_name", ""),
+                            "file_path": sr.metadata.get("file_path", ""),
+                        })
+                record.similar_drawings = similar_list
+                if similar_list:
+                    logger.info(
+                        f"유사도면 알림: {len(similar_list)}건 "
+                        f"(threshold={threshold})"
+                    )
+                    # 유사도면 정보 업데이트 저장
+                    self._save_records(single_record=record)
+        except Exception as e:
+            logger.warning(f"유사도면 검색 실패 (계속 진행): {e}")
 
         logger.info(f"도면 등록 완료: {drawing_id} ({image_path.name})")
         return record
@@ -674,7 +862,7 @@ class DrawingPipeline:
             list[DrawingRecord]: 등록된 레코드 목록
         """
         directory = Path(directory)
-        extensions = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".pdf"}
+        extensions = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".pdf", ".dxf"}
         image_files = [f for f in directory.iterdir() if f.suffix.lower() in extensions]
 
         logger.info(f"배치 등록 시작: {len(image_files)}건 ({directory})")
@@ -727,15 +915,21 @@ class DrawingPipeline:
         # 카테고리 필터 구성
         where_filter = {"category": category} if category else None
 
-        # 하이브리드 검색 (중복 파일 대비 여유분 요청)
+        # 하이브리드 검색 (reranker 사용 시 더 넓게 요청)
+        fetch_k = top_k * (self._reranker_top_k_mult if self._reranker else 3)
         results = self._vector_store.hybrid_search(
             image_embedding=clip_text_embedding,
             text_embedding=text_embedding,
-            top_k=top_k * 3,
+            top_k=fetch_k,
             image_weight=self._image_weight,
             text_weight=self._text_weight,
+            gnn_weight=self._gnn_weight,
             where_filter=where_filter,
         )
+
+        # Reranker 2차 정렬 (활성화 시)
+        if self._reranker and results:
+            results = self._reranker.rerank(query, results, top_k=len(results))
 
         # 동일 파일 중복 제거 (최고 점수 우선)
         seen_files: set[str] = set()
@@ -833,6 +1027,55 @@ class DrawingPipeline:
         logger.info(f"부품번호 검색 결과: {len(results)}건")
         return results
 
+    def search_by_dxf(
+        self,
+        dxf_path: str | Path,
+        top_k: int = 5,
+        category: str = "",
+    ) -> list[SearchResult]:
+        """
+        DXF 파일로 구조적으로 유사한 도면을 검색한다.
+
+        Args:
+            dxf_path: 쿼리 DXF 파일 경로
+            top_k: 반환 결과 수
+            category: 카테고리 필터 (빈 문자열이면 전체 검색)
+
+        Returns:
+            list[SearchResult]: 유사도 순 검색 결과
+        """
+        if not self._gnn_embedder:
+            logger.warning("GNN 임베더가 비활성 상태입니다. DXF 구조 검색을 수행할 수 없습니다.")
+            return []
+
+        logger.info(f"DXF 구조 검색: {Path(dxf_path).name} (카테고리: {category or '전체'})")
+
+        try:
+            gnn_embedding = self._gnn_embedder.embed_dxf(dxf_path)
+        except Exception as e:
+            logger.error(f"DXF 임베딩 실패: {e}")
+            return []
+
+        where_filter = {"category": category} if category else None
+
+        results = self._vector_store.search_by_gnn(
+            gnn_embedding, top_k=top_k * 3, where_filter=where_filter,
+        )
+
+        # 동일 파일 중복 제거
+        seen_files: set[str] = set()
+        deduped: list[SearchResult] = []
+        for r in results:
+            fname = r.metadata.get("file_name", r.drawing_id)
+            if fname not in seen_files:
+                seen_files.add(fname)
+                deduped.append(r)
+            if len(deduped) >= top_k:
+                break
+
+        logger.info(f"DXF 검색 결과: {len(deduped)}건")
+        return deduped
+
     # ─────────────────────────────────────────────
     # 도면 분석
     # ─────────────────────────────────────────────
@@ -856,20 +1099,20 @@ class DrawingPipeline:
         """도면 분류
 
         카테고리 목록 지정 시 → Ollama LLM (기존 유지)
-        미지정 시 → YOLOv8 우선, 실패 시 LLM 폴백
+        미지정 시 → YOLO 우선, 실패 시 LLM 폴백
         """
         # 카테고리 지정 시 LLM 분류 (유연한 카테고리 처리)
         if categories:
             return self._llm.classify_drawing(image_path, categories)
 
-        # YOLOv8-cls 빠른 분류 (미지정 시)
+        # YOLO-cls 빠른 분류 (미지정 시)
         if self._classifier:
             try:
                 result = self._classifier.classify(image_path)
                 if result.category:
                     return result.category
             except Exception as e:
-                logger.warning(f"YOLOv8-cls 분류 실패, LLM 폴백: {e}")
+                logger.warning(f"YOLO-cls 분류 실패, LLM 폴백: {e}")
 
         # LLM 폴백
         return self._llm.classify_drawing(image_path, categories)
@@ -877,7 +1120,7 @@ class DrawingPipeline:
     def classify_with_detail(
         self, image_path: str | Path
     ) -> ClassificationResult | None:
-        """YOLOv8-cls 상세 분류 결과 반환 (Top-K 포함)
+        """YOLO-cls 상세 분류 결과 반환 (Top-K 포함)
 
         Returns:
             ClassificationResult 또는 분류기 미설정 시 None
@@ -887,7 +1130,7 @@ class DrawingPipeline:
         try:
             return self._classifier.classify(image_path)
         except Exception as e:
-            logger.warning(f"YOLOv8-cls 상세 분류 실패: {e}")
+            logger.warning(f"YOLO-cls 상세 분류 실패: {e}")
             return None
 
     def ask(self, image_path: str | Path, question: str, drawing_id: str = "") -> str:
@@ -920,9 +1163,17 @@ class DrawingPipeline:
         self._vector_store.delete_drawing(drawing_id)
 
         # 레코드에서 삭제
+        deleted = False
         if drawing_id in self._records:
             del self._records[drawing_id]
-            self._save_records()
+            deleted = True
+
+        if self._use_sqlite and self._record_store is not None:
+            deleted = self._record_store.delete(drawing_id) or deleted
+        elif deleted:
+            self._save_records_json()
+
+        if deleted:
             logger.info(f"도면 삭제 완료: {drawing_id}")
             return True
 
@@ -946,7 +1197,7 @@ class DrawingPipeline:
             "ollama_healthy": self._llm.check_health_sync(),
         }
 
-        # YOLOv8-cls 분류기 상태
+        # YOLO-cls 분류기 상태
         if self._classifier:
             healthy, msg = self._classifier.check_health()
             stats["yolo_classifier"] = {
@@ -959,11 +1210,11 @@ class DrawingPipeline:
             stats["yolo_classifier"] = {
                 "enabled": False,
                 "healthy": False,
-                "message": "YOLOv8-cls 분류기 미설정",
+                "message": "YOLO-cls 분류기 미설정",
                 "num_classes": 0,
             }
 
-        # YOLOv8-det 탐지기 상태
+        # YOLO-det 탐지기 상태
         if self._detector:
             det_healthy, det_msg = self._detector.check_health()
             stats["yolo_detector"] = {
@@ -976,44 +1227,52 @@ class DrawingPipeline:
             stats["yolo_detector"] = {
                 "enabled": False,
                 "healthy": False,
-                "message": "YOLOv8-det 탐지기 미설정",
+                "message": "YOLO-det 탐지기 미설정",
                 "num_classes": 0,
             }
 
+        # GNN 임베더 상태
+        stats["gnn_embedder"] = {
+            "enabled": self._gnn_embedder is not None,
+            "weight": self._gnn_weight,
+        }
+
         return stats
 
-    def _save_records(self):
-        """레코드를 JSON 파일로 저장 (원자적 쓰기: 임시 파일 → rename)"""
+    def _save_records(self, single_record: DrawingRecord | None = None):
+        """레코드를 저장한다.
+
+        SQLite 모드에서는 개별 레코드만 저장하고,
+        JSON 폴백 모드에서는 전체를 덤프한다.
+        """
+        if self._use_sqlite and self._record_store is not None:
+            if single_record is not None:
+                self._record_store.add(
+                    single_record.drawing_id,
+                    self._record_to_dict(single_record),
+                )
+            else:
+                # 전체 저장 (드물게 필요한 경우)
+                for rid, record in self._records.items():
+                    self._record_store.add(rid, self._record_to_dict(record))
+            return
+
+        # JSON 폴백 (기존 로직)
+        self._save_records_json()
+
+    def _save_records_json(self):
+        """레코드를 JSON 파일로 저장 (원자적 쓰기: 임시 파일 -> rename)"""
         data = {}
         for rid, record in self._records.items():
-            data[rid] = {
-                "drawing_id": record.drawing_id,
-                "file_path": record.file_path,
-                "file_name": record.file_name,
-                "ocr_text": record.ocr_text,
-                "part_numbers": record.part_numbers,
-                "dimensions": record.dimensions,
-                "materials": record.materials,
-                "category": record.category,
-                "description": record.description,
-                "yolo_confidence": record.yolo_confidence,
-                "yolo_needs_review": record.yolo_needs_review,
-                "yolo_top_k": record.yolo_top_k,
-                "detected_regions": record.detected_regions,
-                "title_block_data": record.title_block_data,
-                "parts_table_data": record.parts_table_data,
-                "detection_enhanced": record.detection_enhanced,
-            }
+            data[rid] = self._record_to_dict(record)
         try:
             self._records_file.parent.mkdir(parents=True, exist_ok=True)
-            # 원자적 쓰기: 임시 파일에 먼저 쓰고 rename (PID별 고유 파일)
             tmp_file = self._records_file.with_suffix(f".json.{os.getpid()}.tmp")
             with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             tmp_file.replace(self._records_file)
         except Exception as e:
             logger.error(f"레코드 저장 실패 (기존 파일 보존): {e}")
-            # 임시 파일 정리
             tmp_file = self._records_file.with_suffix(f".json.{os.getpid()}.tmp")
             if tmp_file.exists():
                 try:
@@ -1021,8 +1280,34 @@ class DrawingPipeline:
                 except OSError:
                     pass
 
-    def _load_records(self):
-        """저장된 레코드 로드"""
+    @staticmethod
+    def _record_to_dict(record: "DrawingRecord") -> dict:
+        """DrawingRecord를 딕트로 변환한다."""
+        return {
+            "drawing_id": record.drawing_id,
+            "file_path": record.file_path,
+            "file_name": record.file_name,
+            "ocr_text": record.ocr_text,
+            "part_numbers": record.part_numbers,
+            "dimensions": record.dimensions,
+            "materials": record.materials,
+            "category": record.category,
+            "description": record.description,
+            "yolo_confidence": record.yolo_confidence,
+            "yolo_needs_review": record.yolo_needs_review,
+            "yolo_top_k": record.yolo_top_k,
+            "detected_regions": record.detected_regions,
+            "title_block_data": record.title_block_data,
+            "parts_table_data": record.parts_table_data,
+            "detection_enhanced": record.detection_enhanced,
+            "dxf_path": record.dxf_path,
+            "similar_drawings": getattr(record, "similar_drawings", []),
+            "registered_at": record.registered_at,
+            "revision": record.revision,
+        }
+
+    def _load_records_json(self):
+        """records.json에서 레코드를 로드한다."""
         if not self._records_file.exists():
             return
         try:
@@ -1034,7 +1319,122 @@ class DrawingPipeline:
                 rdata.setdefault("title_block_data", {})
                 rdata.setdefault("parts_table_data", {})
                 rdata.setdefault("detection_enhanced", False)
+                rdata.setdefault("dxf_path", "")
+                rdata.setdefault("registered_at", "")
+                rdata.setdefault("revision", 1)
                 self._records[rid] = DrawingRecord(**rdata)
             logger.info(f"기존 레코드 {len(self._records)}건 로드 완료")
         except Exception as e:
             logger.warning(f"레코드 로드 실패: {e}")
+
+    def _load_records_sqlite(self):
+        """SQLite에서 레코드를 인메모리 캐시로 로드한다."""
+        if self._record_store is None:
+            return
+        all_data = self._record_store.get_all()
+        for rid, rdata in all_data.items():
+            rdata.setdefault("detected_regions", [])
+            rdata.setdefault("title_block_data", {})
+            rdata.setdefault("parts_table_data", {})
+            rdata.setdefault("detection_enhanced", False)
+            rdata.setdefault("dxf_path", "")
+            rdata.setdefault("registered_at", "")
+            rdata.setdefault("revision", 1)
+            rdata.setdefault("similar_drawings", [])
+            # DrawingRecord에 없는 키 제거
+            valid_keys = {f.name for f in DrawingRecord.__dataclass_fields__.values()}
+            filtered = {k: v for k, v in rdata.items() if k in valid_keys}
+            self._records[rid] = DrawingRecord(**filtered)
+        logger.info(f"SQLite 레코드 {len(self._records)}건 로드 완료")
+
+    def _migrate_records_to_sqlite(self):
+        """인메모리 _records를 SQLite로 마이그레이션한다."""
+        if self._record_store is None:
+            return
+        records_dict: dict[str, dict] = {}
+        for rid, record in self._records.items():
+            records_dict[rid] = self._record_to_dict(record)
+        count = self._record_store.add_batch(records_dict, batch_size=1000)
+        logger.info(f"records.json -> SQLite 자동 마이그레이션 완료: {count}건")
+
+    # ─────────────────────────────────────────────
+    # 버전 관리 API
+    # ─────────────────────────────────────────────
+
+    def get_versions(self, part_number: str) -> list[DrawingRecord]:
+        """특정 부품번호의 전 버전을 반환한다."""
+        drawing_ids = self._version_index.get(part_number, [])
+        results = []
+        for did in drawing_ids:
+            rec = self._records.get(did)
+            if rec is not None:
+                results.append(rec)
+        return results
+
+    def get_version_history(self) -> dict[str, int]:
+        """모든 부품번호의 버전 수를 반환한다. {part_number: count}"""
+        return {pn: len(ids) for pn, ids in self._version_index.items()}
+
+    # ─────────────────────────────────────────────
+    # Tier-3 도구: 치수 비교 / BOM 추출 / DXF 비교
+    # ─────────────────────────────────────────────
+
+    def compare_dimensions(self, drawing_id_1: str, drawing_id_2: str) -> dict:
+        """두 도면의 치수를 비교한다."""
+        from core.dimension_parser import parse_dimensions, compare_dimensions as _cmp
+
+        rec1 = self._records.get(drawing_id_1)
+        rec2 = self._records.get(drawing_id_2)
+        if not rec1 or not rec2:
+            return {"error": "도면을 찾을 수 없습니다."}
+
+        dims_a = parse_dimensions(rec1.ocr_text)
+        dims_b = parse_dimensions(rec2.ocr_text)
+        diff = _cmp(dims_a, dims_b)
+        return {
+            "matched": [
+                {"a": vars(a), "b": vars(b)} for a, b in diff.matched
+            ],
+            "changed": [
+                {"a": vars(a), "b": vars(b), "diff": d}
+                for a, b, d in diff.changed
+            ],
+            "only_in_a": [vars(d) for d in diff.only_in_a],
+            "only_in_b": [vars(d) for d in diff.only_in_b],
+            "similarity": diff.similarity,
+        }
+
+    def extract_bom(self, drawing_id: str, use_llm: bool = False) -> dict:
+        """도면에서 BOM을 추출한다."""
+        from core.bom_extractor import BOMExtractor
+
+        rec = self._records.get(drawing_id)
+        if not rec:
+            return {"error": "도면을 찾을 수 없습니다."}
+
+        extractor = BOMExtractor(
+            ollama_base_url=self._llm._base_url if use_llm else "",
+            ollama_model=self._llm._model if use_llm else "",
+        )
+        bom_result = extractor.extract_from_text(
+            text=rec.ocr_text,
+            use_llm=use_llm,
+        )
+        return {
+            "entries": [vars(e) for e in bom_result.entries],
+            "confidence": bom_result.confidence,
+            "source": bom_result.source,
+        }
+
+    def compare_dxf(self, dxf_path_a: str, dxf_path_b: str) -> dict:
+        """두 DXF 파일을 비교한다."""
+        from core.dxf_diff import compare_dxf as _compare_dxf
+
+        result = _compare_dxf(dxf_path_a, dxf_path_b)
+        return {
+            "matched_count": result.matched_count,
+            "only_in_a_count": result.only_in_a_count,
+            "only_in_b_count": result.only_in_b_count,
+            "layer_diff": result.layer_diff,
+            "summary": result.summary,
+        }

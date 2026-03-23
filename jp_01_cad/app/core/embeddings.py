@@ -1,7 +1,7 @@
 """
 도면 임베딩 생성 모듈
 
-- 이미지 임베딩: CLIP 모델로 도면 이미지를 벡터화
+- 이미지 임베딩: OpenCLIP (ViT-L/14, 768-dim) 모델로 도면 이미지를 벡터화
 - 텍스트 임베딩: SentenceTransformer로 검색 쿼리 및 OCR 텍스트를 벡터화
 """
 
@@ -14,25 +14,33 @@ from PIL import Image
 
 
 class ImageEmbedder:
-    """CLIP 기반 이미지 임베딩 생성기"""
+    """OpenCLIP 기반 이미지 임베딩 생성기
+
+    OpenCLIP은 SigLIP sigmoid loss를 지원하여 작은 배치에서도
+    효과적인 fine-tuning이 가능하다 (InfoNCE의 배치 크기 제약 해소).
+    """
 
     def __init__(
         self,
-        model_name: str = "ViT-B/32",
+        model_name: str = "ViT-L-14",
+        pretrained: str = "datacomp_xl_s13b_b90k",
         device: str | None = None,
         finetuned_path: str = "",
     ):
         """
         Args:
-            model_name: CLIP 모델명 (ViT-B/32, ViT-L/14 등)
+            model_name: OpenCLIP 모델 아키텍처 (ViT-L-14, ViT-B-32 등)
+            pretrained: 사전학습 체크포인트 (datacomp_xl_s13b_b90k, openai 등)
             device: 연산 디바이스 (None이면 자동 선택)
-            finetuned_path: Fine-tuned CLIP 체크포인트 경로 (빈 문자열이면 pre-trained)
+            finetuned_path: Fine-tuned 체크포인트 경로 (빈 문자열이면 pre-trained)
         """
         self.model_name = model_name
+        self.pretrained = pretrained
         self.device = device or self._select_device()
         self.finetuned_path = finetuned_path
         self._model = None
         self._preprocess = None
+        self._tokenizer = None
 
     @staticmethod
     def _select_device() -> str:
@@ -44,54 +52,64 @@ class ImageEmbedder:
         return "cpu"
 
     def _init_model(self):
-        """CLIP 모델 지연 로딩 (fine-tuned weights 지원)"""
+        """OpenCLIP 모델 지연 로딩 (fine-tuned weights 지원)"""
         if self._model is not None:
             return
 
         try:
-            import clip
+            import open_clip
 
-            logger.info(f"CLIP 모델 로딩: {self.model_name} on {self.device}")
-            self._model, self._preprocess = clip.load(
-                self.model_name, device=self.device
+            logger.info(
+                f"OpenCLIP 모델 로딩: {self.model_name} "
+                f"(pretrained={self.pretrained}) on {self.device}"
             )
+            self._model, _, self._preprocess = open_clip.create_model_and_transforms(
+                self.model_name,
+                pretrained=self.pretrained,
+                device=self.device,
+            )
+            self._tokenizer = open_clip.get_tokenizer(self.model_name)
 
             # Fine-tuned 체크포인트 로딩 (있으면)
             if self.finetuned_path and Path(self.finetuned_path).exists():
-                logger.info(f"Fine-tuned CLIP 가중치 로딩: {self.finetuned_path}")
+                logger.info(f"Fine-tuned OpenCLIP 가중치 로딩: {self.finetuned_path}")
                 checkpoint = torch.load(
                     self.finetuned_path, map_location="cpu"
                 )
                 state_dict = checkpoint.get("model_state_dict", checkpoint)
-                # float32 변환 (MPS 호환)
-                self._model = self._model.float()
                 self._model.load_state_dict(state_dict)
                 self._model = self._model.to(self.device)
-                logger.info("Fine-tuned CLIP 가중치 로딩 완료")
+                logger.info("Fine-tuned OpenCLIP 가중치 로딩 완료")
             elif self.finetuned_path:
                 logger.warning(
-                    f"Fine-tuned CLIP 체크포인트 없음 (pre-trained 사용): "
+                    f"Fine-tuned OpenCLIP 체크포인트 없음 (pre-trained 사용): "
                     f"{self.finetuned_path}"
                 )
 
             self._model.eval()
-            logger.info("CLIP 모델 로딩 완료")
+            logger.info("OpenCLIP 모델 로딩 완료")
         except ImportError:
-            raise RuntimeError("CLIP 미설치: pip install git+https://github.com/openai/CLIP.git")
+            raise RuntimeError(
+                "OpenCLIP 미설치: pip install open-clip-torch>=2.26.0"
+            )
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "CUDA" in str(e):
-                logger.error(f"GPU 메모리 부족으로 CLIP 로딩 실패, CPU로 재시도: {e}")
+                logger.error(f"GPU 메모리 부족으로 OpenCLIP 로딩 실패, CPU로 재시도: {e}")
+                import open_clip
+
                 self.device = "cpu"
-                self._model, self._preprocess = clip.load(self.model_name, device="cpu")
+                self._model, _, self._preprocess = open_clip.create_model_and_transforms(
+                    self.model_name, pretrained=self.pretrained, device="cpu",
+                )
+                self._tokenizer = open_clip.get_tokenizer(self.model_name)
                 if self.finetuned_path and Path(self.finetuned_path).exists():
                     checkpoint = torch.load(self.finetuned_path, map_location="cpu")
                     state_dict = checkpoint.get("model_state_dict", checkpoint)
-                    self._model = self._model.float()
                     self._model.load_state_dict(state_dict)
                 self._model.eval()
-                logger.info("CLIP 모델 CPU 로딩 완료 (GPU 메모리 부족)")
+                logger.info("OpenCLIP 모델 CPU 로딩 완료 (GPU 메모리 부족)")
             else:
-                raise RuntimeError(f"CLIP 모델 로딩 실패: {e}") from e
+                raise RuntimeError(f"OpenCLIP 모델 로딩 실패: {e}") from e
 
     def embed_image(self, image_path: str | Path) -> np.ndarray:
         """
@@ -101,7 +119,7 @@ class ImageEmbedder:
             image_path: 이미지 파일 경로
 
         Returns:
-            np.ndarray: 정규화된 임베딩 벡터 (512차원 for ViT-B/32)
+            np.ndarray: 정규화된 임베딩 벡터 (768차원 for ViT-L-14)
         """
         self._init_model()
         image = Image.open(image_path).convert("RGB")
@@ -167,19 +185,18 @@ class ImageEmbedder:
 
     def embed_text(self, text: str) -> np.ndarray:
         """
-        CLIP 텍스트 인코더로 텍스트를 벡터화한다.
+        OpenCLIP 텍스트 인코더로 텍스트를 벡터화한다.
         이미지-텍스트 크로스모달 검색에 사용한다.
 
         Args:
             text: 검색 쿼리 텍스트
 
         Returns:
-            np.ndarray: 정규화된 텍스트 임베딩 벡터
+            np.ndarray: 정규화된 텍스트 임베딩 벡터 (768차원 for ViT-L-14)
         """
         self._init_model()
-        import clip
 
-        text_token = clip.tokenize([text], truncate=True).to(self.device)
+        text_token = self._tokenizer([text]).to(self.device)
 
         with torch.no_grad():
             embedding = self._model.encode_text(text_token)

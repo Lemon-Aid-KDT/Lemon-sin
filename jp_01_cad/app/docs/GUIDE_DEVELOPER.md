@@ -47,7 +47,7 @@ streamlit run app/streamlit_app.py
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│                    CAD Vision v2.0                                  │
+│                    CAD Vision v4.0                                  │
 ├───────────────────────────────────────────────────────────────────┤
 │                                                                    │
 │   ┌──────────────┐    ┌──────────────┐    ┌────────────────────┐  │
@@ -59,11 +59,11 @@ streamlit run app/streamlit_app.py
 │   ┌──────▼───────────────────▼──────────────────────▼───────────┐ │
 │   │              Python ML Pipeline                               │ │
 │   │  ┌────────┐  ┌─────────┐  ┌──────────┐  ┌───────────────┐  │ │
-│   │  │ CLIP   │  │E5-small │  │PaddleOCR │  │ YOLOv8-cls    │  │ │
-│   │  │ViT-B/32│  │ 384d    │  │ Korean   │  │ 81cat 93.87%  │  │ │
+│   │  │OpenCLIP│  │E5-small │  │PaddleOCR │  │ YOLO-cls    │  │ │
+│   │  │ViT-L/14│  │ 384d    │  │ Korean   │  │ 81cat 93.87%  │  │ │
 │   │  └────────┘  └─────────┘  └──────────┘  └───────────────┘  │ │
 │   │  ┌──────────┐  ┌────────────────────┐  ┌────────────────┐  │ │
-│   │  │YOLOv8-det│  │AnalysisContext     │  │Hallucination   │  │ │
+│   │  │YOLO-det│  │AnalysisContext     │  │Hallucination   │  │ │
 │   │  │영역 탐지 │  │YOLO+OCR→LLM 주입  │  │Detector        │  │ │
 │   │  └──────────┘  └────────────────────┘  └────────────────┘  │ │
 │   └────────────────────────────────────────────────────────────┘  │
@@ -73,13 +73,13 @@ streamlit run app/streamlit_app.py
 | 컴포넌트 | 역할 | 포트 |
 |---|---|---|
 | **Streamlit** | 웹 UI (4페이지: 대시보드, 등록, 검색, 분석) | 8501 |
-| **Ollama** | VLM 서버 (qwen3-vl:8b, 도면 분석 + 컨텍스트 주입) | 11434 |
+| **Ollama** | VLM 서버 (qwen3.5:9b, 도면 분석 + 컨텍스트 주입) | 11434 |
 | **ChromaDB** | 벡터 데이터베이스 (임베딩 저장/검색, 68,647건) | 내장 |
-| **CLIP** | 이미지 임베딩 (ViT-B/32, 512차원) | — |
+| **OpenCLIP** | 이미지 임베딩 (ViT-L/14, 768차원) | — |
 | **E5-small** | 텍스트 임베딩 (multilingual-e5-small, 384차원) | — |
 | **PaddleOCR** | 한국어 OCR (도면 텍스트 추출, 패턴 매칭) | — |
-| **YOLOv8-cls v2** | 도면 분류 (81 카테고리, 정확도 93.87%) | — |
-| **YOLOv8-det** | 객체 탐지 (표제란, 부품표, 치수 영역, mAP50=0.552) | — |
+| **YOLO-cls v2** | 도면 분류 (81 카테고리, 정확도 93.87%) | — |
+| **YOLO-det** | 객체 탐지 (표제란, 부품표, 치수 영역, mAP50=0.552) | — |
 
 ---
 
@@ -166,7 +166,7 @@ brew install ollama
 ollama serve &
 
 # VLM 모델 다운로드 (~5GB, 최초 1회)
-ollama pull qwen3-vl:8b
+ollama pull qwen3.5:9b
 
 # 모델 확인
 ollama list
@@ -198,7 +198,7 @@ cd "/Volumes/Corsair EX300U Media/00_work_out/01_complete/me/01_CAD/drawing-llm"
 docker compose up -d --build
 
 # Ollama 모델 다운로드 (최초 1회, ~5GB)
-docker compose exec ollama ollama pull qwen3-vl:8b
+docker compose exec ollama ollama pull qwen3.5:9b
 
 # 접속 → http://localhost:8501
 ```
@@ -214,7 +214,7 @@ docker-compose (2 서비스)
 │  app (cad-vision-app)  │────▶│  ollama                │
 │  Streamlit :8501       │     │  (cad-vision-ollama)   │
 │  Python 3.11-slim      │     │  :11434                │
-│  CLIP + E5 프리로드     │     │  qwen3-vl:8b           │
+│  CLIP + E5 프리로드     │     │  qwen3.5:9b           │
 └──────────┬────────────┘     └────────────┬───────────┘
            │                                │
     ./data/ (bind mount)          ollama_data (named volume)
@@ -267,7 +267,7 @@ docker image prune                 # 미사용 이미지 정리
 # docker-compose.yml 에서 직접 변경
 environment:
   - OLLAMA_BASE_URL=http://ollama:11434   # Docker 내부 네트워크
-  - OLLAMA_MODEL=qwen3-vl:8b
+  - OLLAMA_MODEL=qwen3.5:9b
   - SEARCH_TOP_K=20                        # 검색 결과 수 변경
 ```
 
@@ -321,18 +321,18 @@ drawing-llm/
 │   ├── embeddings.py             # CLIP + E5 임베딩 엔진
 │   ├── llm.py                    # Ollama VLM + AnalysisContext + HallucinationDetector
 │   ├── ocr.py                    # PaddleOCR 한국어 OCR (패턴 매칭)
-│   ├── classifier.py             # YOLOv8-cls 도면 분류기 (73cat, 96.6%)
-│   ├── detector.py               # YOLOv8-det 객체 탐지기 (영역 탐지)
+│   ├── classifier.py             # YOLO-cls 도면 분류기 (81cat, 93.87%)
+│   ├── detector.py               # YOLO-det 객체 탐지기 (영역 탐지)
 │   ├── pipeline.py               # 등록/검색/분석 파이프라인 (컨텍스트 주입)
 │   ├── vector_store.py           # ChromaDB 벡터 DB 래퍼
 │   ├── benchmark.py              # 성능 벤치마크 (YOLO/OCR/LLM)
 │   ├── evaluation.py             # 검색 품질 평가
 │   └── weight_tuner.py           # 하이브리드 검색 가중치 튜닝
 ├── models/
-│   ├── yolo_cls_v2_best.pt       # YOLOv8-cls v2 학습 모델 (81cls, 10MB)
-│   ├── yolo_cls_best.pt          # YOLOv8-cls v1 학습 모델 (73cls, legacy)
+│   ├── yolo_cls_v2_best.pt       # YOLO-cls v2 학습 모델 (81cls, 10MB)
+│   ├── yolo_cls_best.pt          # YOLO-cls v1 학습 모델 (73cls, legacy)
 │   ├── clip_finetuned.pt         # CLIP Fine-tuned 모델 (577MB)
-│   └── yolo_det_best.pt          # YOLOv8-det 학습 모델
+│   └── yolo_det_best.pt          # YOLO-det 학습 모델
 ├── data/
 │   ├── sample_drawings/          # 도면 이미지 파일 (68,647건)
 │   ├── vector_store/             # ChromaDB 영속 데이터 (441MB)
@@ -342,13 +342,13 @@ drawing-llm/
 ├── scripts/
 │   ├── docker-start.sh           # 비개발자용 원클릭 실행
 │   └── preload_models.py         # Docker 빌드 시 모델 다운로드
-├── tests/                        # pytest 358개 테스트
+├── tests/                        # pytest 412개 테스트
 │   ├── conftest.py               # pytest 픽스처 (모의 객체, sample_analysis_context)
 │   ├── test_embeddings.py        # 임베딩 테스트
 │   ├── test_llm.py               # LLM 기본 테스트
 │   ├── test_llm_context.py       # 컨텍스트 주입 + 환각 검증 테스트
-│   ├── test_classifier.py        # YOLOv8-cls 분류기 테스트
-│   ├── test_detector.py          # YOLOv8-det 탐지기 테스트
+│   ├── test_classifier.py        # YOLO-cls 분류기 테스트
+│   ├── test_detector.py          # YOLO-det 탐지기 테스트
 │   ├── test_ocr.py               # OCR 테스트
 │   ├── test_pipeline.py          # 파이프라인 통합 테스트
 │   ├── test_security.py          # 보안 테스트 (SSRF, 인젝션, 레이트리밋)
@@ -373,10 +373,10 @@ drawing-llm/
 | 변수명 | 기본값 | 설명 |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama 서버 주소 (Docker: `http://ollama:11434`) |
-| `OLLAMA_MODEL` | `qwen3-vl:8b` | VLM 모델명 |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | VLM 모델명 |
 | `CHROMA_PERSIST_DIR` | `./data/vector_store` | ChromaDB 데이터 경로 |
 | `CHROMA_COLLECTION_NAME` | `drawings` | 컬렉션 이름 |
-| `CLIP_MODEL` | `ViT-B/32` | CLIP 모델 변형 |
+| `CLIP_MODEL` | `ViT-L/14` | CLIP 모델 변형 |
 | `TEXT_EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | 텍스트 임베딩 모델 |
 | `SEARCH_TOP_K` | `10` | 검색 결과 최대 수 |
 | `IMAGE_WEIGHT` | `0.15` | 하이브리드 검색 이미지 가중치 (CLIP Fine-tuning 후 활성화) |
@@ -387,14 +387,14 @@ drawing-llm/
 | `DRAWING_PATH_REMAP_FROM` | (빈 문자열) | 도면 경로 치환 원본 접두사 (Docker 경로 매핑용) |
 | `DRAWING_PATH_REMAP_TO` | (빈 문자열) | 도면 경로 치환 대상 접두사 (Docker 경로 매핑용) |
 
-#### YOLOv8 설정
+#### YOLO 설정
 
 | 변수명 | 기본값 | 설명 |
 |---|---|---|
-| `YOLO_CLS_MODEL_PATH` | `./models/yolo_cls_v2_best.pt` | YOLOv8-cls v2 모델 경로 |
+| `YOLO_CLS_MODEL_PATH` | `./models/yolo_cls_v2_best.pt` | YOLO-cls v2 모델 경로 |
 | `YOLO_CLS_CONFIDENCE_THRESHOLD` | `0.5` | 분류 신뢰도 임계값 |
 | `YOLO_CLS_ENABLED` | `True` | 분류기 활성화 여부 |
-| `YOLO_DET_MODEL_PATH` | `./models/yolo_det_best.pt` | YOLOv8-det 모델 경로 |
+| `YOLO_DET_MODEL_PATH` | `./models/yolo_det_best.pt` | YOLO-det 모델 경로 |
 | `YOLO_DET_CONFIDENCE_THRESHOLD` | `0.3` | 탐지 신뢰도 임계값 (recall 우선) |
 | `YOLO_DET_ENABLED` | `True` | 탐지기 활성화 여부 |
 | `YOLO_DET_IOU_THRESHOLD` | `0.5` | NMS IoU 임계값 |
@@ -414,8 +414,8 @@ drawing-llm/
 
 | 변수명 | 기본값 | 설명 |
 |---|---|---|
-| `YOLO_CLS_SHA256` | (빈 문자열) | YOLOv8-cls 모델 SHA256 해시 (빈 문자열이면 스킵) |
-| `YOLO_DET_SHA256` | (빈 문자열) | YOLOv8-det 모델 SHA256 해시 (빈 문자열이면 스킵) |
+| `YOLO_CLS_SHA256` | (빈 문자열) | YOLO-cls 모델 SHA256 해시 (빈 문자열이면 스킵) |
+| `YOLO_DET_SHA256` | (빈 문자열) | YOLO-det 모델 SHA256 해시 (빈 문자열이면 스킵) |
 | `LLM_RATE_LIMIT_RPM` | `30` | 분당 최대 LLM 호출 횟수 (0이면 무제한) |
 | `LOG_ROTATION` | `50 MB` | 로그 파일 회전 크기 |
 | `LOG_RETENTION` | `7 days` | 로그 보관 기간 |
@@ -438,7 +438,7 @@ drawing-llm/
 pytest tests/ -v
 ```
 
-**현재 상태: 358개 테스트 통과**
+**현재 상태: 412개 테스트 통과**
 
 ### 7-2. 개별 모듈 테스트
 
@@ -446,8 +446,8 @@ pytest tests/ -v
 pytest tests/test_embeddings.py -v     # 임베딩
 pytest tests/test_llm.py -v            # LLM 기본
 pytest tests/test_llm_context.py -v    # 컨텍스트 주입 + 환각 검증
-pytest tests/test_classifier.py -v     # YOLOv8-cls 분류기
-pytest tests/test_detector.py -v       # YOLOv8-det 탐지기
+pytest tests/test_classifier.py -v     # YOLO-cls 분류기
+pytest tests/test_detector.py -v       # YOLO-det 탐지기
 pytest tests/test_ocr.py -v            # OCR
 pytest tests/test_pipeline.py -v       # 파이프라인 통합
 pytest tests/test_security.py -v       # 보안 (SSRF, 인젝션, 레이트리밋)
@@ -474,14 +474,14 @@ pytest tests/ --cov=core --cov=config --cov-report=term-missing
 
 ### `core/embeddings.py` — 임베딩 엔진
 
-- **CLIP**: 이미지 → 512차원 벡터 (ViT-B/32)
+- **OpenCLIP**: 이미지 → 768차원 벡터 (ViT-L/14)
 - **E5-small**: 텍스트 → 384차원 벡터 (multilingual-e5-small)
 - 두 임베딩을 ChromaDB 별도 컬렉션에 저장
 
 ### `core/vector_store.py` — 벡터 DB
 
 - ChromaDB `PersistentClient` 사용 (v1.0+)
-- 이미지/텍스트 컬렉션 분리 관리
+- 3채널 컬렉션 (이미지/텍스트/GNN) 분리 관리
 - 하이브리드 검색: `image_weight * 이미지유사도 + text_weight * 텍스트유사도`
 
 ### `core/llm.py` — VLM 인터페이스 + 컨텍스트 주입
@@ -495,7 +495,7 @@ pytest tests/ --cov=core --cov=config --cov-report=term-missing
 
 ### `core/classifier.py` — 도면 분류기
 
-- **YOLOv8-cls v2** 기반 이미지 분류 (81 카테고리)
+- **YOLO-cls v2** 기반 이미지 분류 (81 카테고리)
 - 정확도: Top-1 **93.87%**, Top-5 **98.04%**
 - SHA256 모델 무결성 검증
 - 디바이스 자동 선택 (MPS → CUDA → CPU)
@@ -503,7 +503,7 @@ pytest tests/ --cov=core --cov=config --cov-report=term-missing
 
 ### `core/detector.py` — 객체 탐지기
 
-- **YOLOv8-det** 기반 영역 탐지 (표제란, 부품표, 치수 영역)
+- **YOLO-det** 기반 영역 탐지 (표제란, 부품표, 치수 영역)
 - **mAP50=0.552**, NMS IoU 임계값 0.5
 - 탐지 결과를 AnalysisContext에 구조화
 - 탐지된 영역에서 PaddleOCR로 구조화 텍스트 추출
@@ -512,8 +512,8 @@ pytest tests/ --cov=core --cov=config --cov-report=term-missing
 
 ```
 이미지 ──┬──→ OCR(텍스트 추출) ──→ 임베딩(CLIP+E5) ──→ ChromaDB 저장
-         ├──→ YOLOv8-cls(분류) ──┐
-         └──→ YOLOv8-det(탐지) ──┤
+         ├──→ YOLO-cls(분류) ──┐
+         └──→ YOLO-det(탐지) ──┤
                                   ▼
                         AnalysisContext 구성
                                   │
@@ -611,10 +611,10 @@ docker compose exec app curl -sf http://ollama:11434
 
 # 2. 모델 설치 확인
 docker compose exec ollama ollama list
-# qwen3-vl:8b 가 목록에 있어야 함
+# qwen3.5:9b 가 목록에 있어야 함
 
 # 3. 모델 미설치 시 다운로드
-docker compose exec ollama ollama pull qwen3-vl:8b
+docker compose exec ollama ollama pull qwen3.5:9b
 
 # 4. Ollama 로그에서 상세 원인 확인
 docker compose logs ollama --tail 50
@@ -819,12 +819,12 @@ docker compose up -d --build                           # 빌드 + 시작
 docker compose down                                    # 중지
 docker compose exec app bash                           # 앱 셸 접속
 docker compose exec ollama ollama list                 # 모델 목록
-docker compose exec ollama ollama pull qwen3-vl:8b    # 모델 다운로드
+docker compose exec ollama ollama pull qwen3.5:9b    # 모델 다운로드
 
 # === Ollama ===
 ollama list                                            # 로컬 모델 목록
-ollama pull qwen3-vl:8b                               # 모델 다운로드
-ollama rm qwen3-vl:8b                                 # 모델 삭제
+ollama pull qwen3.5:9b                               # 모델 다운로드
+ollama rm qwen3.5:9b                                 # 모델 삭제
 curl http://localhost:11434/api/tags                   # API로 모델 확인
 
 # === 데이터 ===
@@ -848,3 +848,7 @@ print('샘플 경로:', d[k]['file_path'])
 ls "/Volumes/Corsair EX300U Media/"                    # 드라이브 마운트 확인
 df -h "/Volumes/Corsair EX300U Media/"                 # 드라이브 남은 공간
 ```
+
+---
+
+> **v4.0 업데이트 (2026-03-19)**: OpenCLIP ViT-L/14, GNN 구조 검색, DXF 네이티브, Qwen3.5 자동선택, 3채널 하이브리드 검색

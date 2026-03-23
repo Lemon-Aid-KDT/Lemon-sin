@@ -1,5 +1,5 @@
 """
-YOLOv8-det 기반 도면 영역 탐지 모듈
+YOLO-det 기반 도면 영역 탐지 모듈
 
 도면 이미지에서 표제란(title_block), 치수 영역(dimension_area), 부품표(parts_table)를
 자동 탐지하여 영역별 OCR 파이프라인의 기반을 제공한다.
@@ -7,7 +7,7 @@ YOLOv8-det 기반 도면 영역 탐지 모듈
 주요 클래스:
   - DetectedRegion: 단일 탐지 영역 데이터
   - DetectionResult: 전체 탐지 결과
-  - DrawingDetector: YOLOv8-det 추론 래퍼
+  - DrawingDetector: YOLO-det 추론 래퍼
 """
 
 import hashlib
@@ -58,7 +58,7 @@ class DetectionResult:
 
 
 class DrawingDetector:
-    """YOLOv8-det 기반 도면 영역 탐지기
+    """YOLO-det 기반 도면 영역 탐지기
 
     DrawingClassifier와 동일한 지연 로딩 패턴을 따른다:
       - __init__에서 설정만 저장
@@ -82,7 +82,7 @@ class DrawingDetector:
     ):
         """
         Args:
-            model_path: YOLOv8-det 학습 완료 모델 (.pt) 경로
+            model_path: YOLO-det 학습 완료 모델 (.pt) 경로
             confidence_threshold: 이 값 미만의 탐지 결과는 제외
             iou_threshold: NMS(Non-Maximum Suppression) IoU 임계값
             device: 연산 디바이스 ("", "cpu", "cuda", "mps"). 빈 문자열이면 자동 선택.
@@ -130,7 +130,7 @@ class DrawingDetector:
         logger.info(f"모델 SHA256 체크섬 검증 통과: {actual[:16]}...")
 
     def _init_model(self):
-        """YOLOv8-det 모델 지연 로딩
+        """YOLO-det 모델 지연 로딩
 
         ultralytics는 detect() 최초 호출 시점에만 import/로딩된다.
         GPU OOM 발생 시 CPU로 자동 폴백한다.
@@ -140,7 +140,7 @@ class DrawingDetector:
 
         if not self.model_path.exists():
             raise FileNotFoundError(
-                f"YOLOv8-det 모델 파일 없음: {self.model_path}\n"
+                f"YOLO-det 모델 파일 없음: {self.model_path}\n"
                 f"  → python scripts/train_yolo_det.py --data ./data/det_dataset\n"
                 f"  → cp runs/detect/train/weights/best.pt {self.model_path}"
             )
@@ -151,32 +151,32 @@ class DrawingDetector:
         try:
             from ultralytics import YOLO
 
-            logger.info(f"YOLOv8-det 모델 로딩: {self.model_path}")
+            logger.info(f"YOLO-det 모델 로딩: {self.model_path}")
             self._model = YOLO(str(self.model_path), task="detect")
 
             if self._device:
-                logger.info(f"YOLOv8-det 디바이스: {self._device}")
+                logger.info(f"YOLO-det 디바이스: {self._device}")
 
             logger.info(
-                f"YOLOv8-det 모델 로딩 완료 "
+                f"YOLO-det 모델 로딩 완료 "
                 f"(클래스: {len(self._model.names)}개)"
             )
         except ImportError:
             raise RuntimeError(
-                "ultralytics 미설치: pip install ultralytics>=8.1.0"
+                "ultralytics 미설치: pip install ultralytics>=8.4.0"
             )
         except RuntimeError as e:
             if "out of memory" in str(e).lower() or "CUDA" in str(e):
                 logger.error(
-                    f"GPU 메모리 부족으로 YOLOv8-det 로딩 실패, CPU로 재시도: {e}"
+                    f"GPU 메모리 부족으로 YOLO-det 로딩 실패, CPU로 재시도: {e}"
                 )
                 from ultralytics import YOLO
 
                 self._device = "cpu"
                 self._model = YOLO(str(self.model_path), task="detect")
-                logger.info("YOLOv8-det 모델 CPU 로딩 완료 (GPU 메모리 부족)")
+                logger.info("YOLO-det 모델 CPU 로딩 완료 (GPU 메모리 부족)")
             else:
-                raise RuntimeError(f"YOLOv8-det 모델 로딩 실패: {e}") from e
+                raise RuntimeError(f"YOLO-det 모델 로딩 실패: {e}") from e
 
     # ─────────────────────────────────────────────
     # 탐지 추론
@@ -203,6 +203,9 @@ class DrawingDetector:
             raise FileNotFoundError(f"이미지 파일 없음: {image_path}")
 
         try:
+            # Note: YOLO26 end-to-end 모델은 NMS가 내장되어 있어 'iou' 파라미터가
+            # 무시될 수 있음. YOLOv8 모델이나 YOLO26 end2end=False 모드에서만 유효.
+            # 출력 형식(result.boxes.*)은 ultralytics가 통일하므로 호환성 문제 없음.
             predict_kwargs = {
                 "source": str(image_path),
                 "verbose": False,
@@ -215,7 +218,7 @@ class DrawingDetector:
             results = self._model.predict(**predict_kwargs)
 
             if not results or len(results) == 0:
-                logger.warning(f"YOLOv8-det 결과 없음: {image_path.name}")
+                logger.warning(f"YOLO-det 결과 없음: {image_path.name}")
                 return DetectionResult(model_name=self.model_path.name)
 
             result = results[0]
@@ -251,7 +254,7 @@ class DrawingDetector:
                     ))
 
             logger.info(
-                f"YOLOv8-det 탐지 완료: {image_path.name} "
+                f"YOLO-det 탐지 완료: {image_path.name} "
                 f"({len(regions)}개 영역)"
             )
 
@@ -264,7 +267,7 @@ class DrawingDetector:
         except FileNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"YOLOv8-det 추론 실패 ({image_path.name}): {e}")
+            logger.error(f"YOLO-det 추론 실패 ({image_path.name}): {e}")
             return DetectionResult(model_name=self.model_path.name)
 
     def detect_batch(
@@ -426,6 +429,6 @@ class DrawingDetector:
         try:
             self._init_model()
             n = len(self._model.names)
-            return True, f"YOLOv8-det 정상 ({n}클래스, {self.model_path.name})"
+            return True, f"YOLO-det 정상 ({n}클래스, {self.model_path.name})"
         except Exception as e:
-            return False, f"YOLOv8-det 로딩 실패: {e}"
+            return False, f"YOLO-det 로딩 실패: {e}"

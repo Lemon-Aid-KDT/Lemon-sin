@@ -41,6 +41,23 @@ class OCRResult:
     detection_enhanced: bool = False  # 탐지 기반 OCR 사용 여부
 
 
+# ─── 배치 OCR 워커 (ProcessPoolExecutor용) ───
+
+_worker_ocr: "DrawingOCR | None" = None
+
+
+def _ocr_worker_init(lang: str, use_gpu: bool, fast_mode: bool) -> None:
+    """워커 프로세스 초기화: 프로세스당 OCR 인스턴스 1개 생성."""
+    global _worker_ocr
+    _worker_ocr = DrawingOCR(lang=lang, use_gpu=use_gpu, fast_mode=fast_mode)
+
+
+def _ocr_worker_extract(image_path: str) -> "OCRResult":
+    """워커 프로세스에서 OCR 실행."""
+    assert _worker_ocr is not None, "워커 미초기화"
+    return _worker_ocr.extract(image_path)
+
+
 class DrawingOCR:
     """도면 특화 OCR 엔진"""
 
@@ -430,6 +447,61 @@ class DrawingOCR:
                 found.append(keyword)
 
         return list(set(found))
+
+    # ─────────────────────────────────────────────
+    # 배치 OCR (병렬 처리)
+    # ─────────────────────────────────────────────
+
+    def extract_batch(
+        self,
+        image_paths: list[str | Path],
+        workers: int = 4,
+    ) -> list[OCRResult]:
+        """여러 이미지를 병렬로 OCR 처리.
+
+        Args:
+            image_paths: 이미지 경로 리스트
+            workers: 병렬 워커 수 (0이면 순차 처리)
+
+        Returns:
+            OCRResult 리스트 (입력 순서 유지)
+        """
+        if not image_paths:
+            return []
+
+        if workers <= 0 or len(image_paths) <= 2:
+            # 순차 처리
+            return [self.extract(p) for p in image_paths]
+
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        # 워커별 독립 OCR 처리 (PaddleOCR는 프로세스당 1 인스턴스)
+        results: list[tuple[int, OCRResult]] = []
+
+        with ProcessPoolExecutor(
+            max_workers=min(workers, len(image_paths)),
+            initializer=_ocr_worker_init,
+            initargs=(self.lang, self.use_gpu, self.fast_mode),
+        ) as executor:
+            futures = {
+                executor.submit(_ocr_worker_extract, str(p)): i
+                for i, p in enumerate(image_paths)
+            }
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    result = future.result()
+                    results.append((idx, result))
+                except Exception as e:
+                    logger.warning(f"배치 OCR 실패 [{idx}]: {e}")
+                    results.append((idx, OCRResult(
+                        full_text="", text_blocks=[], part_numbers=[],
+                        dimensions=[], materials=[],
+                    )))
+
+        # 원래 순서대로 정렬
+        results.sort(key=lambda x: x[0])
+        return [r for _, r in results]
 
     # ─────────────────────────────────────────────
     # Phase 3: 영역별 OCR

@@ -755,7 +755,7 @@ CATEGORY_MAP = {
 
 
 def _get_category_map() -> dict[str, str]:
-    """YOLOv8-cls 클래스명을 포함한 동적 카테고리 맵 생성
+    """YOLO-cls 클래스명을 포함한 동적 카테고리 맵 생성
 
     YOLO 모델이 로드되면 73클래스를 자동으로 추가한다.
     기존 CATEGORY_MAP을 기반으로 하되 YOLO 클래스를 병합한다.
@@ -780,25 +780,13 @@ def _get_category_map() -> dict[str, str]:
 
 @st.cache_resource
 def get_pipeline():
-    """파이프라인 싱글턴 (Streamlit 세션 간 공유)"""
-    return DrawingPipeline(
-        upload_dir=str(settings.upload_dir),
-        vector_store_dir=str(settings.chroma_persist_dir),
-        ollama_url=settings.ollama_base_url,
-        ollama_model=settings.ollama_model,
-        clip_finetuned_path=settings.clip_finetuned_path,
-        yolo_cls_model=settings.yolo_cls_model_path if settings.yolo_cls_enabled else "",
-        yolo_cls_confidence=settings.yolo_cls_confidence_threshold,
-        yolo_cls_device=settings.yolo_cls_device,
-        category_keywords_path=settings.category_keywords_path,
-        # 보안: 모델 무결성 검증 + LLM 레이트 리미팅
-        yolo_cls_sha256=settings.yolo_cls_sha256,
-        yolo_det_sha256=settings.yolo_det_sha256,
-        llm_rate_limit_rpm=settings.llm_rate_limit_rpm,
-        # 하이브리드 검색 가중치
-        image_weight=settings.image_weight,
-        text_weight=settings.text_weight,
-    )
+    """파이프라인 싱글턴 (Streamlit 세션 간 공유).
+
+    core.dependencies.get_pipeline()에 위임하여
+    FastAPI와 동일한 인스턴스를 공유한다.
+    """
+    from core.dependencies import get_pipeline as _get_pipeline
+    return _get_pipeline()
 
 
 # ─────────────────────────────────────────────
@@ -830,7 +818,7 @@ def render_sidebar():
 
         page = st.radio(
             "메뉴",
-            ["대시보드", "도면 등록", "도면 검색", "도면 분석"],
+            ["대시보드", "도면 등록", "도면 검색", "도면 분석", "도구"],
             label_visibility="collapsed",
         )
 
@@ -848,16 +836,48 @@ def render_sidebar():
 
                 if stats["ollama_healthy"]:
                     st.markdown(
-                        '<span class="status-badge online">● Ollama 연결됨</span>',
+                        f'<span class="status-badge online">● Ollama ({settings.ollama_model})</span>',
                         unsafe_allow_html=True,
                     )
+                    # 모델 선택 드롭다운
+                    try:
+                        from core.llm import DrawingLLM
+                        _llm_tmp = DrawingLLM(
+                            base_url=settings.ollama_base_url,
+                            model=settings.ollama_model,
+                        )
+                        available_models = _llm_tmp.get_available_models()
+                        if available_models:
+                            model_names = [m["name"] for m in available_models]
+                            model_labels = [f'{m["name"]} ({m["size"]})' for m in available_models]
+                            current_idx = 0
+                            for idx, name in enumerate(model_names):
+                                if name == settings.ollama_model:
+                                    current_idx = idx
+                                    break
+                            selected_label = st.selectbox(
+                                "LLM 모델",
+                                model_labels,
+                                index=current_idx,
+                                key="ollama_model_select",
+                            )
+                            selected_model = model_names[model_labels.index(selected_label)]
+                            if selected_model != st.session_state.get("_active_ollama_model", settings.ollama_model):
+                                st.session_state["_active_ollama_model"] = selected_model
+                                settings.ollama_model = selected_model
+                                # pipeline의 LLM 모델도 교체
+                                if hasattr(pipeline, '_llm') and pipeline._llm is not None:
+                                    pipeline._llm.model = selected_model
+                                st.toast(f"모델 변경: {selected_model}")
+                    except Exception:
+                        pass  # 모델 목록 조회 실패 시 무시
                 else:
                     st.markdown(
                         '<span class="status-badge offline">● Ollama 미연결</span>',
                         unsafe_allow_html=True,
                     )
 
-                # YOLOv8-cls 상태
+                # YOLO-cls 상태
                 yolo_info = stats.get("yolo_classifier", {})
                 if yolo_info.get("enabled"):
                     if yolo_info.get("healthy"):
@@ -1114,8 +1134,8 @@ def page_register():
 
     uploaded_file = st.file_uploader(
         "도면 이미지 업로드",
-        type=["png", "jpg", "jpeg", "tiff", "tif"],
-        help="지원 형식: PNG, JPG, TIFF (최대 50MB)",
+        type=["png", "jpg", "jpeg", "tiff", "tif", "dxf"],
+        help="지원 형식: PNG, JPG, TIFF, DXF (최대 50MB)",
     )
 
     col1, col2 = st.columns(2)
@@ -1123,7 +1143,7 @@ def page_register():
     # 카테고리 옵션: 기본 + YOLO 클래스
     reg_categories = ["", "engine", "chassis", "body", "electrical", "transmission", "other"]
     reg_labels = {
-        "": "YOLOv8 자동 분류",
+        "": "YOLO 자동 분류",
         "engine": "엔진",
         "chassis": "섀시",
         "body": "차체",
@@ -1159,11 +1179,16 @@ def page_register():
 
                 col_img, col_info = st.columns([1, 2])
                 with col_img:
-                    st.image(str(temp_path), width=400)
+                    display_path = temp_path
+                    if temp_path.suffix.lower() == ".dxf":
+                        png_candidate = temp_path.with_suffix(".png")
+                        if png_candidate.exists():
+                            display_path = png_candidate
+                    st.image(str(display_path), width=400)
                 with col_info:
                     st.markdown(f"**파일명:** {record.file_name}")
 
-                    # YOLOv8-cls 자동분류 결과 표시
+                    # YOLO-cls 자동분류 결과 표시
                     if record.yolo_confidence > 0:
                         review_mark = " (검토 필요)" if record.yolo_needs_review else ""
                         st.markdown(
@@ -1212,7 +1237,7 @@ def page_register():
             st.markdown('</div>', unsafe_allow_html=True)
             return
 
-        supported = {".png", ".jpg", ".jpeg", ".tiff", ".tif"}
+        supported = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".dxf"}
         image_files = sorted([
             f for f in batch_path.iterdir()
             if f.is_file() and f.suffix.lower() in supported
@@ -1270,8 +1295,8 @@ def page_search():
         unsafe_allow_html=True,
     )
 
-    tab_text, tab_image, tab_part = st.tabs(
-        ["자연어 검색", "이미지 검색", "부품번호 검색"]
+    tab_text, tab_image, tab_part, tab_dxf = st.tabs(
+        ["자연어 검색", "이미지 검색", "부품번호 검색", "DXF 구조 검색"]
     )
 
     # 자연어 검색
@@ -1301,6 +1326,8 @@ def page_search():
         if query and search_clicked:
             with st.spinner("검색 중..."):
                 try:
+                    st.session_state["_last_search_query"] = query
+                    st.session_state["_last_search_type"] = "text"
                     pipeline = get_pipeline()
                     results = pipeline.search_by_text(
                         query, top_k=top_k, category=selected_cat,
@@ -1495,6 +1522,69 @@ def page_search():
                 unsafe_allow_html=True,
             )
 
+    # DXF 구조 검색
+    with tab_dxf:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        dxf_file = st.file_uploader(
+            "DXF 파일 업로드",
+            type=["dxf"],
+            key="search_dxf",
+        )
+
+        col_cat_dxf, col_topk_dxf = st.columns(2)
+        with col_cat_dxf:
+            cat_map_dxf = _get_category_map()
+            selected_cat_dxf = st.selectbox(
+                "카테고리 필터",
+                list(cat_map_dxf.keys()),
+                format_func=lambda x: cat_map_dxf.get(x, x),
+                key="dxf_search_cat",
+            )
+        with col_topk_dxf:
+            top_k_dxf = st.slider("검색 결과 수", 1, 20, 5, key="top_k_dxf")
+
+        if dxf_file and st.button("구조 유사 도면 검색", key="dxf_search", type="primary"):
+            safe_name = _sanitize_filename(dxf_file.name)
+            temp_path = Path(tempfile.gettempdir()) / f"drawingllm_dxf_{uuid.uuid4().hex[:8]}_{safe_name}"
+            with open(temp_path, "wb") as f:
+                f.write(dxf_file.getbuffer())
+
+            with st.spinner("DXF 구조 분석 및 검색 중..."):
+                try:
+                    pipeline = get_pipeline()
+                    results = pipeline.search_by_dxf(
+                        temp_path,
+                        top_k=top_k_dxf,
+                        category=selected_cat_dxf,
+                    )
+                    if results:
+                        st.success(f"{len(results)}건의 구조적으로 유사한 도면을 찾았습니다.")
+                        _display_search_results(results, pipeline)
+                    else:
+                        st.markdown(
+                            f'<div class="empty-state">'
+                            f'<div class="icon">{_icon("search", 48)}</div>'
+                            f'<h3>검색 결과 없음</h3>'
+                            f'<p>GNN 모델이 로드되지 않았거나 유사 도면이 없습니다.</p>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                except Exception as e:
+                    st.error(f"DXF 검색 실패: {e}")
+
+            temp_path.unlink(missing_ok=True)
+
+        elif not dxf_file:
+            st.markdown(
+                f'<div class="empty-state">'
+                f'<div class="icon">{_icon("drafting", 48)}</div>'
+                f'<h3>DXF 파일을 업로드하세요</h3>'
+                f'<p>DXF 파일의 기하학적 구조를 분석하여 유사한 도면을 GNN으로 검색합니다.</p>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
 
 def _display_search_results(results: list, pipeline):
     """검색 결과 표시 (유사도 바 포함, 동일 파일 중복 제거)"""
@@ -1568,6 +1658,49 @@ def _display_search_results(results: list, pipeline):
                     st.markdown("**AI 설명:**")
                     st.markdown(record.description[:300])
 
+            # ── 피드백 버튼 ──
+            col_up, col_down, col_spacer = st.columns([1, 1, 4])
+            with col_up:
+                if st.button("\U0001f44d", key=f"up_{result.drawing_id}_{i}"):
+                    try:
+                        from core.feedback_store import FeedbackStore
+                        _fb = _get_feedback_store_cached()
+                        _fb.add_feedback(
+                            query_text=st.session_state.get("_last_search_query", ""),
+                            query_type=st.session_state.get("_last_search_type", "text"),
+                            drawing_id=result.drawing_id,
+                            score=score,
+                            relevance=1,
+                            category=cat,
+                        )
+                        st.success("감사합니다!")
+                    except Exception:
+                        st.warning("피드백 저장 실패")
+            with col_down:
+                if st.button("\U0001f44e", key=f"down_{result.drawing_id}_{i}"):
+                    try:
+                        from core.feedback_store import FeedbackStore
+                        _fb = _get_feedback_store_cached()
+                        _fb.add_feedback(
+                            query_text=st.session_state.get("_last_search_query", ""),
+                            query_type=st.session_state.get("_last_search_type", "text"),
+                            drawing_id=result.drawing_id,
+                            score=score,
+                            relevance=0,
+                            category=cat,
+                        )
+                        st.info("피드백이 저장되었습니다.")
+                    except Exception:
+                        st.warning("피드백 저장 실패")
+
+
+def _get_feedback_store_cached():
+    """FeedbackStore 싱글톤 (Streamlit 세션 캐시)."""
+    if "_feedback_store" not in st.session_state:
+        from core.feedback_store import FeedbackStore
+        st.session_state["_feedback_store"] = FeedbackStore()
+    return st.session_state["_feedback_store"]
+
 
 # ─────────────────────────────────────────────
 # ─────────────────────────────────────────────
@@ -1587,8 +1720,8 @@ def _show_llm_error_guide(error_msg: str):
     elif "설치되어 있지 않습니다" in error_msg or "not found" in msg:
         st.info(
             "**모델 미설치**\n\n"
-            "- Docker: `docker compose exec ollama ollama pull qwen3-vl:8b`\n"
-            "- 로컬: `ollama pull qwen3-vl:8b`\n"
+            f"- Docker: `docker compose exec ollama ollama pull {settings.ollama_model}`\n"
+            f"- 로컬: `ollama pull {settings.ollama_model}`\n"
             "- 설치된 모델 확인: `ollama list`"
         )
     elif "시간 초과" in error_msg or "timeout" in msg:
@@ -1678,25 +1811,51 @@ def page_analyze():
     with tab_desc:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.button("설명 생성 시작", key="gen_desc", type="primary"):
-            with st.spinner("AI가 도면을 분석하고 있습니다..."):
-                try:
-                    description = pipeline.describe(temp_path)
-                    if description.startswith("[오류]"):
-                        st.warning(description)
-                        _show_llm_error_guide(description)
-                    else:
-                        st.markdown(description)
-                except Exception as e:
-                    st.error(f"설명 생성 실패: {e}")
-                    _show_llm_error_guide(str(e))
+            try:
+                # 스트리밍 응답: 토큰 단위로 즉시 표시
+                llm = pipeline._llm
+                if llm is None:
+                    st.warning("[오류] LLM이 초기화되지 않았습니다.")
+                else:
+                    # 프롬프트: describe_drawing과 동일 (컨텍스트 없는 버전)
+                    prompt = """You are an expert mechanical engineer analyzing an engineering drawing.
+Please describe this technical drawing in detail, including:
+
+1. **Part Type**: What type of component or assembly is shown?
+2. **Key Features**: Main geometric features, holes, slots, chamfers, etc.
+3. **Dimensions**: Notable dimensions or tolerances if visible.
+4. **Material**: Material specification if indicated.
+5. **Application**: Likely application or industry use.
+6. **Drawing Standard**: Drawing projection method (1st/3rd angle), scale, etc.
+
+Provide your analysis in both English and Korean (한국어).
+Be specific and technical in your description."""
+
+                    num_predict = settings.llm_num_predict_describe
+
+                    output_area = st.empty()
+                    full_text = ""
+                    with st.spinner("AI가 도면을 분석하고 있습니다..."):
+                        for token in llm._generate_stream(prompt, str(temp_path), num_predict):
+                            if token.startswith("[오류]"):
+                                st.warning(token)
+                                _show_llm_error_guide(token)
+                                break
+                            full_text += token
+                            output_area.markdown(full_text + "▌")
+                    if full_text:
+                        output_area.markdown(full_text)
+            except Exception as e:
+                st.error(f"설명 생성 실패: {e}")
+                _show_llm_error_guide(str(e))
 
     with tab_class:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        # ── YOLOv8 빠른 분류 ──
+        # ── YOLO 빠른 분류 ──
         if pipeline._classifier:
-            if st.button("YOLOv8 빠른 분류 (~50ms)", key="yolo_cls", type="primary"):
-                with st.spinner("YOLOv8-cls 분류 중..."):
+            if st.button("YOLO 빠른 분류 (~50ms)", key="yolo_cls", type="primary"):
+                with st.spinner("YOLO-cls 분류 중..."):
                     try:
                         yolo_result = pipeline.classify_with_detail(temp_path)
                         if yolo_result and yolo_result.category:
@@ -1715,7 +1874,7 @@ def page_analyze():
                         else:
                             st.info("분류 결과가 없습니다.")
                     except Exception as e:
-                        st.error(f"YOLOv8 분류 실패: {e}")
+                        st.error(f"YOLO 분류 실패: {e}")
 
             st.divider()
 
@@ -1758,20 +1917,36 @@ def page_analyze():
                 st.markdown(question)
 
             with st.chat_message("assistant", avatar="assistant"):
-                with st.spinner("답변 생성 중..."):
-                    try:
-                        answer = pipeline.ask(temp_path, question)
-                        if answer.startswith("[오류]"):
-                            st.warning(answer)
-                            _show_llm_error_guide(answer)
-                        else:
-                            st.markdown(answer)
-                        st.session_state.qa_history.append({"role": "assistant", "content": answer})
-                    except Exception as e:
-                        err_msg = f"답변 생성 실패: {e}"
-                        st.error(err_msg)
-                        _show_llm_error_guide(str(e))
-                        st.session_state.qa_history.append({"role": "assistant", "content": err_msg})
+                try:
+                    llm = pipeline._llm
+                    if llm is None:
+                        st.warning("[오류] LLM이 초기화되지 않았습니다.")
+                    else:
+                        prompt = (
+                            f"You are an expert mechanical engineer. "
+                            f"Answer the following question about this engineering drawing. "
+                            f"Answer in the same language as the question.\n\n"
+                            f"Question: {question}"
+                        )
+                        output_area = st.empty()
+                        full_text = ""
+                        with st.spinner("답변 생성 중..."):
+                            for token in llm._generate_stream(prompt, str(temp_path), settings.llm_num_predict_qa):
+                                if token.startswith("[오류]"):
+                                    st.warning(token)
+                                    _show_llm_error_guide(token)
+                                    full_text = token
+                                    break
+                                full_text += token
+                                output_area.markdown(full_text + "▌")
+                        if full_text and not full_text.startswith("[오류]"):
+                            output_area.markdown(full_text)
+                        st.session_state.qa_history.append({"role": "assistant", "content": full_text})
+                except Exception as e:
+                    err_msg = f"답변 생성 실패: {e}"
+                    st.error(err_msg)
+                    _show_llm_error_guide(str(e))
+                    st.session_state.qa_history.append({"role": "assistant", "content": err_msg})
 
         if st.session_state.qa_history:
             if st.button("대화 초기화", key="clear_qa"):
@@ -1779,6 +1954,306 @@ def page_analyze():
                 st.rerun()
 
     temp_path.unlink(missing_ok=True)
+
+
+# ─────────────────────────────────────────────
+# 페이지: 도구 (Tier-3)
+# ─────────────────────────────────────────────
+
+def page_tools():
+    st.markdown(
+        f'<div class="page-header">'
+        f'<h1>{_icon("build", 28)} 도구</h1>'
+        f'<p>BOM 추출, 치수 비교, DXF 비교, 버전 이력 등 고급 기능을 제공합니다.</p>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    tab_bom, tab_dim, tab_dxf_diff, tab_version, tab_feedback = st.tabs(
+        ["BOM 추출", "치수 비교", "DXF 비교", "버전 이력", "피드백 통계"]
+    )
+
+    try:
+        pipeline = get_pipeline()
+    except Exception as e:
+        st.error(f"파이프라인 초기화 실패: {e}")
+        return
+
+    all_records = pipeline.get_all_records()
+    record_options = {
+        f"{r.drawing_id} — {r.file_name}": r.drawing_id
+        for r in all_records
+    }
+
+    # ── BOM 추출 ──
+    with tab_bom:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if not record_options:
+            st.info("등록된 도면이 없습니다. 먼저 도면을 등록하세요.")
+        else:
+            selected_bom = st.selectbox(
+                "도면 선택",
+                list(record_options.keys()),
+                key="bom_drawing",
+            )
+            use_llm_bom = st.checkbox("LLM 폴백 사용", key="bom_use_llm")
+            if st.button("BOM 추출", key="btn_bom", type="primary"):
+                drawing_id = record_options[selected_bom]
+                with st.spinner("BOM 추출 중..."):
+                    try:
+                        result = pipeline.extract_bom(drawing_id, use_llm=use_llm_bom)
+                        if result.get("error"):
+                            st.error(result["error"])
+                        elif result.get("entries"):
+                            st.success(
+                                f"BOM {len(result['entries'])}건 추출 "
+                                f"(신뢰도: {result['confidence']:.0%}, "
+                                f"소스: {result['source']})"
+                            )
+                            import pandas as pd
+                            df = pd.DataFrame(result["entries"])
+                            st.dataframe(df, use_container_width=True)
+                        else:
+                            st.warning("BOM을 추출할 수 없습니다. OCR 텍스트에 테이블 구조가 없을 수 있습니다.")
+                    except Exception as e:
+                        st.error(f"BOM 추출 실패: {e}")
+
+    # ── 치수 비교 ──
+    with tab_dim:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if len(record_options) < 2:
+            st.info("치수 비교를 위해 최소 2개의 도면이 필요합니다.")
+        else:
+            col1, col2 = st.columns(2)
+            keys_list = list(record_options.keys())
+            with col1:
+                sel_a = st.selectbox("도면 A", keys_list, key="dim_a")
+            with col2:
+                sel_b = st.selectbox(
+                    "도면 B",
+                    keys_list,
+                    index=min(1, len(keys_list) - 1),
+                    key="dim_b",
+                )
+            if st.button("치수 비교", key="btn_dim", type="primary"):
+                id_a = record_options[sel_a]
+                id_b = record_options[sel_b]
+                with st.spinner("치수 비교 중..."):
+                    try:
+                        result = pipeline.compare_dimensions(id_a, id_b)
+                        if result.get("error"):
+                            st.error(result["error"])
+                        else:
+                            sim = result.get("similarity", 0.0)
+                            st.metric("치수 유사도", f"{sim:.1%}")
+
+                            matched = result.get("matched", [])
+                            changed = result.get("changed", [])
+                            only_a = result.get("only_in_a", [])
+                            only_b = result.get("only_in_b", [])
+
+                            if matched:
+                                st.markdown(f"**일치 ({len(matched)}건)**")
+                                import pandas as pd
+                                df_m = pd.DataFrame([
+                                    {
+                                        "타입": m["a"].get("dim_type", ""),
+                                        "값_A": m["a"].get("value", ""),
+                                        "값_B": m["b"].get("value", ""),
+                                        "단위": m["a"].get("unit", ""),
+                                    }
+                                    for m in matched
+                                ])
+                                st.dataframe(df_m, use_container_width=True)
+
+                            if changed:
+                                st.markdown(f"**변경 ({len(changed)}건)**")
+                                import pandas as pd
+                                df_c = pd.DataFrame([
+                                    {
+                                        "타입": c["a"].get("dim_type", ""),
+                                        "값_A": c["a"].get("value", ""),
+                                        "값_B": c["b"].get("value", ""),
+                                        "차이": c.get("diff", 0),
+                                    }
+                                    for c in changed
+                                ])
+                                st.dataframe(df_c, use_container_width=True)
+
+                            if only_a:
+                                st.markdown(f"**A에만 존재 ({len(only_a)}건)**")
+                                import pandas as pd
+                                st.dataframe(pd.DataFrame(only_a), use_container_width=True)
+
+                            if only_b:
+                                st.markdown(f"**B에만 존재 ({len(only_b)}건)**")
+                                import pandas as pd
+                                st.dataframe(pd.DataFrame(only_b), use_container_width=True)
+
+                            if not matched and not changed and not only_a and not only_b:
+                                st.info("비교할 치수가 없습니다.")
+                    except Exception as e:
+                        st.error(f"치수 비교 실패: {e}")
+
+    # ── DXF 비교 ──
+    with tab_dxf_diff:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            dxf_a = st.file_uploader("DXF 파일 A", type=["dxf"], key="dxf_diff_a")
+        with col_b:
+            dxf_b = st.file_uploader("DXF 파일 B", type=["dxf"], key="dxf_diff_b")
+
+        if dxf_a and dxf_b:
+            if st.button("DXF 비교", key="btn_dxf_diff", type="primary"):
+                import tempfile as _tmpf
+                tmp_a = Path(_tmpf.mktemp(suffix=".dxf", prefix="drawingllm_diff_"))
+                tmp_b = Path(_tmpf.mktemp(suffix=".dxf", prefix="drawingllm_diff_"))
+                try:
+                    tmp_a.write_bytes(dxf_a.read())
+                    tmp_b.write_bytes(dxf_b.read())
+                    with st.spinner("DXF 비교 중..."):
+                        result = pipeline.compare_dxf(str(tmp_a), str(tmp_b))
+                        col_m, col_oa, col_ob = st.columns(3)
+                        col_m.metric("일치 엔티티", result.get("matched_count", 0))
+                        col_oa.metric("A에만 존재", result.get("only_in_a_count", 0))
+                        col_ob.metric("B에만 존재", result.get("only_in_b_count", 0))
+
+                        layer_diff = result.get("layer_diff", {})
+                        if layer_diff:
+                            st.markdown("**레이어 차이**")
+                            import pandas as pd
+                            layer_data = []
+                            for k, v in layer_diff.items():
+                                if isinstance(v, (list, set)):
+                                    for item in v:
+                                        layer_data.append({"구분": k, "레이어": item})
+                                else:
+                                    layer_data.append({"구분": k, "레이어": str(v)})
+                            if layer_data:
+                                st.dataframe(pd.DataFrame(layer_data), use_container_width=True)
+
+                        summary = result.get("summary", {})
+                        if summary:
+                            st.markdown("**요약**")
+                            for k, v in summary.items():
+                                st.write(f"- **{k}**: {v}")
+                except Exception as e:
+                    st.error(f"DXF 비교 실패: {e}")
+                finally:
+                    tmp_a.unlink(missing_ok=True)
+                    tmp_b.unlink(missing_ok=True)
+        else:
+            st.info("두 DXF 파일을 업로드하면 구조 차이를 비교합니다.")
+
+    # ── 버전 이력 ──
+    with tab_version:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        version_history = pipeline.get_version_history()
+        if not version_history:
+            st.info("버전 정보가 있는 부품번호가 없습니다.")
+        else:
+            # 부품번호 선택 (버전이 2개 이상인 것 먼저 표시)
+            sorted_pns = sorted(
+                version_history.keys(),
+                key=lambda pn: (-version_history[pn], pn),
+            )
+            pn_labels = [f"{pn} ({version_history[pn]}건)" for pn in sorted_pns]
+
+            pn_input = st.text_input(
+                "부품번호 검색",
+                placeholder="부품번호를 입력하세요...",
+                key="version_pn_input",
+            )
+
+            if pn_input:
+                filtered = [pn for pn in sorted_pns if pn_input.upper() in pn.upper()]
+            else:
+                filtered = sorted_pns[:50]  # 상위 50개
+
+            if filtered:
+                selected_pn = st.selectbox(
+                    "부품번호 선택",
+                    filtered,
+                    format_func=lambda pn: f"{pn} ({version_history.get(pn, 0)}건)",
+                    key="version_pn_select",
+                )
+                if selected_pn:
+                    versions = pipeline.get_versions(selected_pn)
+                    if versions:
+                        st.markdown(f"**{selected_pn}** — {len(versions)}개 버전")
+                        import pandas as pd
+                        df = pd.DataFrame([
+                            {
+                                "버전": v.revision,
+                                "Drawing ID": v.drawing_id,
+                                "파일명": v.file_name,
+                                "카테고리": v.category,
+                                "등록 시각": v.registered_at or "—",
+                            }
+                            for v in versions
+                        ])
+                        st.dataframe(df, use_container_width=True)
+                    else:
+                        st.info("해당 부품번호의 도면이 없습니다.")
+            else:
+                st.info("검색 결과가 없습니다.")
+
+    # ── 피드백 통계 ──
+    with tab_feedback:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        try:
+            fb_store = _get_feedback_store_cached()
+            stats = fb_store.get_feedback_stats()
+
+            col_total, col_pos, col_neg = st.columns(3)
+            col_total.metric("전체 피드백", stats["total"])
+            col_pos.metric("관련 (👍)", stats["relevant"])
+            col_neg.metric("무관 (👎)", stats["irrelevant"])
+
+            if stats["total"] > 0 and (stats["relevant"] + stats["irrelevant"]) > 0:
+                precision = stats["relevant"] / (stats["relevant"] + stats["irrelevant"])
+                st.metric("검색 만족도", f"{precision:.1%}")
+
+            # 카테고리별 통계
+            by_cat = stats.get("by_category", {})
+            if by_cat:
+                st.markdown("**카테고리별 피드백**")
+                import pandas as pd
+                cat_data = []
+                for cat_name, cat_stats in by_cat.items():
+                    cat_data.append({
+                        "카테고리": cat_name,
+                        "전체": cat_stats["total"],
+                        "관련": cat_stats["relevant"],
+                        "무관": cat_stats["irrelevant"],
+                    })
+                st.dataframe(pd.DataFrame(cat_data), use_container_width=True)
+
+            # 최근 피드백
+            recent = fb_store.get_recent(limit=20)
+            if recent:
+                st.markdown("**최근 피드백**")
+                import pandas as pd
+                df_recent = pd.DataFrame(recent)
+                display_cols = ["created_at", "query_text", "drawing_id", "relevance", "score"]
+                available_cols = [c for c in display_cols if c in df_recent.columns]
+                st.dataframe(df_recent[available_cols], use_container_width=True)
+
+            # 내보내기 버튼
+            col_exp_jsonl, col_exp_csv = st.columns(2)
+            with col_exp_jsonl:
+                if st.button("학습 데이터 내보내기 (JSONL)", key="export_jsonl"):
+                    path = fb_store.export_training_pairs()
+                    st.success(f"내보내기 완료: {path}")
+            with col_exp_csv:
+                if st.button("전체 피드백 내보내기 (CSV)", key="export_csv"):
+                    path = fb_store.export_csv()
+                    st.success(f"내보내기 완료: {path}")
+
+        except Exception as e:
+            st.error(f"피드백 통계 로딩 실패: {e}")
 
 
 # ─────────────────────────────────────────────
@@ -1796,6 +2271,8 @@ def main():
         page_search()
     elif page == "도면 분석":
         page_analyze()
+    elif page == "도구":
+        page_tools()
 
 
 if __name__ == "__main__":

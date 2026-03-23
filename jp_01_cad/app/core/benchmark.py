@@ -207,20 +207,22 @@ class Benchmarker:
         logger.info("[벤치마크] 모델 로딩 시간 측정")
         results = {}
 
-        # CLIP
+        # OpenCLIP
         try:
-            import clip
+            import open_clip
             import torch
 
             gc.collect()
             start = time.time()
-            model, preprocess = clip.load("ViT-B/32", device="cpu")
+            model, _, preprocess = open_clip.create_model_and_transforms(
+                "ViT-L-14", pretrained="datacomp_xl_s13b_b90k", device="cpu",
+            )
             elapsed = time.time() - start
-            results["clip_vit_b32"] = {"time_sec": round(elapsed, 3), "status": "ok"}
+            results["openclip_vit_l14"] = {"time_sec": round(elapsed, 3), "status": "ok"}
             del model, preprocess
             gc.collect()
         except Exception as e:
-            results["clip_vit_b32"] = {"time_sec": 0, "status": f"error: {e}"}
+            results["openclip_vit_l14"] = {"time_sec": 0, "status": f"error: {e}"}
 
         # SentenceTransformer
         try:
@@ -281,8 +283,8 @@ class Benchmarker:
 
         # 이미지 임베딩 (단건)
         from core.embeddings import ImageEmbedder, TextEmbedder
-        img_embedder = ImageEmbedder(model_name="ViT-B/32")
-        img_timing = TimingResult(name="clip_image_single")
+        img_embedder = ImageEmbedder(model_name="ViT-L-14")
+        img_timing = TimingResult(name="openclip_image_single")
 
         for img_path in images[:n_images]:
             start = time.time()
@@ -474,16 +476,18 @@ class Benchmarker:
         baseline = self._get_rss_mb()
         snapshots.append({"label": "baseline", "rss_mb": round(baseline, 1), "delta_mb": 0})
 
-        # CLIP 로드
+        # OpenCLIP 로드
         try:
-            import clip
+            import open_clip
             import torch
             gc.collect()
             before = self._get_rss_mb()
-            model, preprocess = clip.load("ViT-B/32", device="cpu")
+            model, _, preprocess = open_clip.create_model_and_transforms(
+                "ViT-L-14", pretrained="datacomp_xl_s13b_b90k", device="cpu",
+            )
             after = self._get_rss_mb()
             snapshots.append({
-                "label": "clip_vit_b32",
+                "label": "openclip_vit_l14",
                 "rss_mb": round(after, 1),
                 "delta_mb": round(after - before, 1),
             })

@@ -1,7 +1,7 @@
 """
 멀티모달 LLM 인터페이스 모듈
 
-Ollama API를 통해 LLaVA, Qwen2-VL 등 Vision-Language Model과 통신한다.
+Ollama API를 통해 Qwen3.5 등 Vision-Language Model과 통신한다.
 도면 이미지를 입력받아 자연어 설명, 분류, Q&A 기능을 제공한다.
 
 Phase 4: YOLO/OCR 컨텍스트 주입, 환각 탐지, 텍스트 전용 모드 지원.
@@ -33,12 +33,12 @@ class AnalysisContext:
     구조화하여 LLM이 사실 기반으로 응답하도록 유도한다.
     """
 
-    # YOLOv8-cls 분류 결과
+    # YOLO-cls 분류 결과
     yolo_category: str = ""
     yolo_confidence: float = 0.0
     yolo_top_k: list = field(default_factory=list)  # [(category, confidence), ...]
 
-    # YOLOv8-det 영역 탐지 결과
+    # YOLO-det 영역 탐지 결과
     detected_regions: list = field(default_factory=list)  # ["title_block", ...]
     title_block_data: dict = field(default_factory=dict)
     parts_table_data: dict = field(default_factory=dict)
@@ -340,20 +340,21 @@ class DrawingLLM:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "llava:7b",
-        timeout: float = 120.0,
+        model: str = "qwen3.5:9b",
+        timeout: float = 300.0,
         rate_limit_rpm: int = 0,
     ):
         """
         Args:
             base_url: Ollama 서버 주소
-            model: 사용할 모델명 (llava:7b, llava:13b, qwen2-vl 등)
+            model: 사용할 모델명 (qwen3.5:4b, qwen3.5:9b, qwen3.5:27b 등)
             timeout: API 요청 타임아웃 (초)
             rate_limit_rpm: 분당 최대 호출 횟수 (0이면 무제한)
         """
         self.base_url = self._validate_base_url(base_url)
         self.model = model
         self.timeout = timeout
+        self._max_image_pixels = 1024  # 이미지 리사이즈 최대 크기 (px)
         # Phase 4: 마지막 환각 검증 결과 (describe/answer 호출 후 접근 가능)
         self._last_validation: ValidationResult | None = None
 
@@ -460,7 +461,7 @@ class DrawingLLM:
                 return False, "Ollama 서버에 연결할 수 없습니다."
             data = response.json()
             models = [m.get("name", "") for m in data.get("models", [])]
-            # 정확한 이름 또는 태그 없이 매칭 (예: "qwen3-vl:8b" or "qwen3-vl")
+            # 정확한 이름 또는 태그 없이 매칭 (예: "qwen3.5:9b" or "qwen3.5")
             model_base = self.model.split(":")[0]
             for m in models:
                 if m == self.model or m.startswith(f"{self.model}:") or m.startswith(f"{model_base}:"):
@@ -508,8 +509,20 @@ class DrawingLLM:
             raise ValueError(f"파일 크기 초과: {file_size / 1024 / 1024:.1f}MB (최대 50MB)")
 
         try:
-            with open(image_path, "rb") as f:
-                return base64.b64encode(f.read()).decode("utf-8")
+            # 이미지 리사이즈 (큰 이미지 → 전송 시간 단축)
+            from PIL import Image as PILImage
+            img = PILImage.open(image_path)
+            max_px = self._max_image_pixels
+            if max(img.size) > max_px:
+                ratio = max_px / max(img.size)
+                new_size = (int(img.width * ratio), int(img.height * ratio))
+                img = img.resize(new_size, PILImage.LANCZOS)
+                logger.debug(f"이미지 리사이즈: {img.size} → {new_size}")
+            import io
+            buf = io.BytesIO()
+            fmt = "PNG" if image_path.suffix.lower() == ".png" else "JPEG"
+            img.save(buf, format=fmt, quality=85)
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
         except OSError as e:
             raise FileNotFoundError(f"이미지 파일 읽기 실패 ({image_path}): {e}") from e
 
@@ -613,6 +626,95 @@ class DrawingLLM:
 
         # 모든 재시도 실패
         return f"[오류] LLM 호출 실패 ({self.MAX_RETRIES + 1}회 시도): {last_error}"
+
+    def _generate_stream(
+        self,
+        prompt: str,
+        image_path: str | Path | None = None,
+        num_predict: int | None = None,
+    ):
+        """Ollama API 스트리밍 호출. yield로 토큰 단위 반환.
+
+        Args:
+            prompt: 프롬프트 텍스트
+            image_path: 이미지 파일 경로
+            num_predict: 최대 생성 토큰 수
+
+        Yields:
+            str: 생성된 토큰 (부분 텍스트)
+        """
+        self._check_rate_limit()
+
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": num_predict or 2048,
+            },
+        }
+
+        if image_path is not None:
+            payload["images"] = [self._encode_image(Path(image_path))]
+            if num_predict is None:
+                payload["options"]["num_predict"] = 8192
+
+        try:
+            with httpx.stream(
+                "POST",
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=self.timeout,
+            ) as response:
+                if response.status_code != 200:
+                    yield f"[오류] Ollama HTTP {response.status_code}"
+                    return
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        import json as _json
+                        chunk = _json.loads(line)
+                        token = chunk.get("response", "")
+                        if token:
+                            yield token
+                        if chunk.get("done", False):
+                            return
+                    except (ValueError, KeyError):
+                        continue
+        except httpx.ConnectError:
+            yield f"[오류] Ollama 서버({self.base_url})에 연결할 수 없습니다."
+        except httpx.TimeoutException:
+            yield "[오류] 모델 응답 시간 초과."
+        except Exception as e:
+            yield f"[오류] 스트리밍 실패: {e}"
+
+    def get_available_models(self) -> list[dict]:
+        """Ollama에 설치된 모델 목록을 반환한다.
+
+        Returns:
+            list[dict]: [{"name": "qwen3.5:9b", "size": "6.6 GB", ...}, ...]
+        """
+        try:
+            response = httpx.get(
+                f"{self.base_url}/api/tags",
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                models = []
+                for m in data.get("models", []):
+                    size_gb = m.get("size", 0) / (1024**3)
+                    models.append({
+                        "name": m.get("name", ""),
+                        "size": f"{size_gb:.1f}GB",
+                        "modified": m.get("modified_at", ""),
+                    })
+                return models
+        except Exception as e:
+            logger.warning(f"Ollama 모델 목록 조회 실패: {e}")
+        return []
 
     def _should_use_text_only(self, context: AnalysisContext | None) -> bool:
         """컨텍스트가 충분히 풍부하면 이미지 없이 텍스트만으로 분석 가능한지 판단한다.

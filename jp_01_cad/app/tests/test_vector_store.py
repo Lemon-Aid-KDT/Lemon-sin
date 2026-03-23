@@ -25,11 +25,16 @@ def mock_vs(tmp_path):
         txt_col.count.return_value = 10
         txt_col.name = "drawings_text"
 
-        mock_client.get_or_create_collection.side_effect = [img_col, txt_col]
+        gnn_col = MagicMock()
+        gnn_col.count.return_value = 10
+        gnn_col.name = "drawings_gnn"
+
+        mock_client.get_or_create_collection.side_effect = [img_col, txt_col, gnn_col]
 
         vs = VectorStore(persist_dir=str(tmp_path / "vs"))
         vs._image_collection = img_col
         vs._text_collection = txt_col
+        vs._gnn_collection = gnn_col
         return vs
 
 
@@ -38,7 +43,7 @@ class TestAddDrawing:
 
     def test_add_with_both_embeddings(self, mock_vs):
         """이미지 + 텍스트 임베딩 모두 등록"""
-        img_emb = np.random.randn(512).astype(np.float32)
+        img_emb = np.random.randn(768).astype(np.float32)
         txt_emb = np.random.randn(384).astype(np.float32)
 
         mock_vs.add_drawing(
@@ -53,7 +58,7 @@ class TestAddDrawing:
 
     def test_add_image_only(self, mock_vs):
         """이미지 임베딩만 등록"""
-        img_emb = np.random.randn(512).astype(np.float32)
+        img_emb = np.random.randn(768).astype(np.float32)
         mock_vs.add_drawing(drawing_id="test02", image_embedding=img_emb)
         mock_vs._image_collection.upsert.assert_called_once()
         mock_vs._text_collection.upsert.assert_not_called()
@@ -67,7 +72,7 @@ class TestAddDrawing:
 
     def test_add_empty_metadata(self, mock_vs):
         """빈 메타데이터 처리"""
-        img_emb = np.random.randn(512).astype(np.float32)
+        img_emb = np.random.randn(768).astype(np.float32)
         mock_vs.add_drawing(drawing_id="test04", image_embedding=img_emb, metadata={})
         # 빈 dict → _placeholder 추가됨
         call_args = mock_vs._image_collection.upsert.call_args
@@ -80,7 +85,7 @@ class TestAddDrawing:
         with pytest.raises(RuntimeError):
             mock_vs.add_drawing(
                 drawing_id="test05",
-                image_embedding=np.random.randn(512).astype(np.float32),
+                image_embedding=np.random.randn(768).astype(np.float32),
             )
 
     def test_add_text_error_continues(self, mock_vs):
@@ -89,7 +94,7 @@ class TestAddDrawing:
         # 예외 발생 안 함
         mock_vs.add_drawing(
             drawing_id="test06",
-            image_embedding=np.random.randn(512).astype(np.float32),
+            image_embedding=np.random.randn(768).astype(np.float32),
             text_embedding=np.random.randn(384).astype(np.float32),
         )
         mock_vs._image_collection.upsert.assert_called_once()
@@ -108,7 +113,7 @@ class TestSearch:
                 {"file_path": "/data/d2.png"},
             ]],
         }
-        results = mock_vs.search_by_image(np.random.randn(512).astype(np.float32))
+        results = mock_vs.search_by_image(np.random.randn(768).astype(np.float32))
         assert len(results) == 2
         assert results[0].score > results[1].score
 
@@ -125,13 +130,13 @@ class TestSearch:
     def test_search_empty_collection(self, mock_vs):
         """빈 컬렉션 검색 → 빈 결과"""
         mock_vs._image_collection.count.return_value = 0
-        results = mock_vs.search_by_image(np.random.randn(512).astype(np.float32))
+        results = mock_vs.search_by_image(np.random.randn(768).astype(np.float32))
         assert results == []
 
     def test_search_query_error_returns_empty(self, mock_vs):
         """검색 쿼리 오류 → 빈 결과 반환"""
         mock_vs._image_collection.query.side_effect = RuntimeError("Query failed")
-        results = mock_vs.search_by_image(np.random.randn(512).astype(np.float32))
+        results = mock_vs.search_by_image(np.random.randn(768).astype(np.float32))
         assert results == []
 
 
@@ -152,7 +157,7 @@ class TestHybridSearch:
         }
 
         results = mock_vs.hybrid_search(
-            image_embedding=np.random.randn(512).astype(np.float32),
+            image_embedding=np.random.randn(768).astype(np.float32),
             text_embedding=np.random.randn(384).astype(np.float32),
             top_k=5,
         )
@@ -168,7 +173,7 @@ class TestHybridSearch:
             "metadatas": [[{"file_path": "/d1.png"}]],
         }
         results = mock_vs.hybrid_search(
-            image_embedding=np.random.randn(512).astype(np.float32),
+            image_embedding=np.random.randn(768).astype(np.float32),
         )
         assert len(results) == 1
 
@@ -181,7 +186,7 @@ class TestHybridSearch:
             "metadatas": [[{"file_path": "/d1.png"}]],
         }
         results = mock_vs.hybrid_search(
-            image_embedding=np.random.randn(512).astype(np.float32),
+            image_embedding=np.random.randn(768).astype(np.float32),
             text_embedding=np.random.randn(384).astype(np.float32),
         )
         assert len(results) >= 1
@@ -198,7 +203,7 @@ class TestWhereFilter:
             "metadatas": [[{"file_path": "/d1.png", "category": "Shafts"}]],
         }
         results = mock_vs.search_by_image(
-            np.random.randn(512).astype(np.float32),
+            np.random.randn(768).astype(np.float32),
             where_filter={"category": "Shafts"},
         )
         assert len(results) == 1
@@ -228,7 +233,7 @@ class TestWhereFilter:
             "distances": [[0.1]],
             "metadatas": [[{"file_path": "/d1.png"}]],
         }
-        mock_vs.search_by_image(np.random.randn(512).astype(np.float32))
+        mock_vs.search_by_image(np.random.randn(768).astype(np.float32))
         call_kwargs = mock_vs._image_collection.query.call_args[1]
         assert "where" not in call_kwargs
 
@@ -245,7 +250,7 @@ class TestWhereFilter:
             "metadatas": [[{"file_path": "/d1.png", "category": "Bearings_with_Holder"}]],
         }
         results = mock_vs.hybrid_search(
-            image_embedding=np.random.randn(512).astype(np.float32),
+            image_embedding=np.random.randn(768).astype(np.float32),
             text_embedding=np.random.randn(384).astype(np.float32),
             where_filter={"category": "Bearings_with_Holder"},
         )
@@ -269,7 +274,7 @@ class TestWhereFilter:
             "metadatas": [[{"file_path": "/d1.png"}]],
         }
         mock_vs.hybrid_search(
-            image_embedding=np.random.randn(512).astype(np.float32),
+            image_embedding=np.random.randn(768).astype(np.float32),
             text_embedding=np.random.randn(384).astype(np.float32),
         )
         img_kwargs = mock_vs._image_collection.query.call_args[1]
@@ -335,3 +340,144 @@ class TestParseResults:
         results = VectorStore._parse_results(raw)
         assert len(results) == 1
         assert results[0].metadata == {}
+
+
+class TestGNNCollection:
+    """GNN 컬렉션 테스트"""
+
+    def test_add_with_gnn_embedding(self, mock_vs):
+        """GNN 임베딩 등록"""
+        gnn_emb = np.random.randn(256).astype(np.float32)
+        mock_vs.add_drawing(
+            drawing_id="gnn01",
+            gnn_embedding=gnn_emb,
+            metadata={"file_path": "/data/test.dxf"},
+        )
+        mock_vs._gnn_collection.upsert.assert_called_once()
+        mock_vs._image_collection.upsert.assert_not_called()
+        mock_vs._text_collection.upsert.assert_not_called()
+
+    def test_add_all_three_embeddings(self, mock_vs):
+        """이미지 + 텍스트 + GNN 임베딩 모두 등록"""
+        mock_vs.add_drawing(
+            drawing_id="gnn02",
+            image_embedding=np.random.randn(768).astype(np.float32),
+            text_embedding=np.random.randn(384).astype(np.float32),
+            gnn_embedding=np.random.randn(256).astype(np.float32),
+        )
+        mock_vs._image_collection.upsert.assert_called_once()
+        mock_vs._text_collection.upsert.assert_called_once()
+        mock_vs._gnn_collection.upsert.assert_called_once()
+
+    def test_gnn_error_continues(self, mock_vs):
+        """GNN 임베딩 저장 실패 시 경고만"""
+        mock_vs._gnn_collection.upsert.side_effect = RuntimeError("DB error")
+        mock_vs.add_drawing(
+            drawing_id="gnn03",
+            image_embedding=np.random.randn(768).astype(np.float32),
+            gnn_embedding=np.random.randn(256).astype(np.float32),
+        )
+        mock_vs._image_collection.upsert.assert_called_once()
+
+    def test_search_by_gnn(self, mock_vs):
+        """GNN 검색"""
+        mock_vs._gnn_collection.query.return_value = {
+            "ids": [["id1", "id2"]],
+            "distances": [[0.1, 0.3]],
+            "metadatas": [[
+                {"file_path": "/data/d1.dxf"},
+                {"file_path": "/data/d2.dxf"},
+            ]],
+        }
+        results = mock_vs.search_by_gnn(np.random.randn(256).astype(np.float32))
+        assert len(results) == 2
+        assert results[0].score > results[1].score
+
+    def test_search_by_gnn_empty_collection(self, mock_vs):
+        """빈 GNN 컬렉션 검색"""
+        mock_vs._gnn_collection.count.return_value = 0
+        results = mock_vs.search_by_gnn(np.random.randn(256).astype(np.float32))
+        assert results == []
+
+    def test_delete_includes_gnn(self, mock_vs):
+        """삭제 시 GNN 컬렉션도 포함"""
+        mock_vs.delete_drawing("gnn04")
+        mock_vs._gnn_collection.delete.assert_called_once_with(ids=["gnn04"])
+
+    def test_get_stats_includes_gnn(self, mock_vs):
+        """통계에 GNN 컬렉션 포함"""
+        stats = mock_vs.get_stats()
+        assert "gnn_collection_count" in stats
+        assert stats["gnn_collection_count"] == 10
+
+
+class TestHybridSearch3Channel:
+    """3채널 하이브리드 검색 테스트"""
+
+    def test_hybrid_with_gnn(self, mock_vs):
+        """이미지 + 텍스트 + GNN 3채널 결합"""
+        mock_vs._image_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.1]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        mock_vs._text_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.2]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        mock_vs._gnn_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.15]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        results = mock_vs.hybrid_search(
+            image_embedding=np.random.randn(768).astype(np.float32),
+            text_embedding=np.random.randn(384).astype(np.float32),
+            gnn_embedding=np.random.randn(256).astype(np.float32),
+            image_weight=0.1,
+            text_weight=0.6,
+            gnn_weight=0.3,
+        )
+        assert len(results) == 1
+        assert results[0].score > 0
+
+    def test_hybrid_gnn_weight_zero_skips(self, mock_vs):
+        """gnn_weight=0이면 GNN 채널 스킵"""
+        mock_vs._image_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.1]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        mock_vs._text_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.2]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        mock_vs.hybrid_search(
+            image_embedding=np.random.randn(768).astype(np.float32),
+            text_embedding=np.random.randn(384).astype(np.float32),
+            gnn_embedding=np.random.randn(256).astype(np.float32),
+            gnn_weight=0.0,
+        )
+        mock_vs._gnn_collection.query.assert_not_called()
+
+    def test_hybrid_backward_compatible(self, mock_vs):
+        """기존 2채널 호출과 하위 호환"""
+        mock_vs._image_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.1]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        mock_vs._text_collection.query.return_value = {
+            "ids": [["id1"]],
+            "distances": [[0.2]],
+            "metadatas": [[{"file_path": "/d1.png"}]],
+        }
+        # gnn_embedding 미전달 (기존 호출 패턴)
+        results = mock_vs.hybrid_search(
+            image_embedding=np.random.randn(768).astype(np.float32),
+            text_embedding=np.random.randn(384).astype(np.float32),
+        )
+        assert len(results) >= 1
+        mock_vs._gnn_collection.query.assert_not_called()

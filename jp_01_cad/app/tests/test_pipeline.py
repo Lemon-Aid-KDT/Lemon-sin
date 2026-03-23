@@ -91,26 +91,28 @@ class TestSaveRecords:
     """레코드 저장 테스트"""
 
     def test_atomic_write(self, mock_pipeline, sample_image):
-        """원자적 쓰기 (임시 파일 → rename)"""
+        """등록 후 레코드가 영속 저장됨 (SQLite 또는 JSON)"""
         mock_pipeline.register_drawing(sample_image, use_llm=False)
 
-        records_file = mock_pipeline._records_file
-        assert records_file.exists()
-
-        # 파일 내용 검증
-        data = json.loads(records_file.read_text(encoding="utf-8"))
-        assert len(data) == 1
+        if mock_pipeline._use_sqlite and mock_pipeline._record_store is not None:
+            # SQLite 모드: DB 파일 존재 + 레코드 1건
+            assert Path(mock_pipeline._record_store._db_path).exists()
+            assert mock_pipeline._record_store.count() == 1
+        else:
+            # JSON 모드: records.json 파일 존재 + 1건
+            records_file = mock_pipeline._records_file
+            assert records_file.exists()
+            data = json.loads(records_file.read_text(encoding="utf-8"))
+            assert len(data) == 1
 
     def test_save_preserves_on_error(self, mock_pipeline, sample_image, tmp_path):
-        """저장 실패 시 기존 파일 보존"""
+        """저장 실패 시 기존 데이터 보존"""
         mock_pipeline.register_drawing(sample_image, use_llm=False)
 
-        # 기존 파일 백업
-        original_content = mock_pipeline._records_file.read_text(encoding="utf-8")
-
-        # 쓰기 실패 시뮬레이션: records_file을 읽기 전용 디렉토리로 설정하면 복잡하므로
-        # 여기서는 원자적 쓰기 패턴이 적용되었는지만 검증
-        assert mock_pipeline._records_file.exists()
+        if mock_pipeline._use_sqlite and mock_pipeline._record_store is not None:
+            assert mock_pipeline._record_store.count() == 1
+        else:
+            assert mock_pipeline._records_file.exists()
 
 
 class TestBatchRegister:
@@ -584,7 +586,7 @@ class TestRegisterWithDetection:
         assert record.detected_regions == []
 
     def test_register_saves_detection_fields(self, mock_pipeline, sample_image, mock_detector):
-        """탐지 필드가 records.json에 저장됨"""
+        """탐지 필드가 영속 저장소에 저장됨 (SQLite 또는 JSON)"""
         from core.ocr import RegionOCRResult
         mock_pipeline._detector = mock_detector
         mock_pipeline._ocr.extract_region.return_value = RegionOCRResult(
@@ -594,15 +596,19 @@ class TestRegisterWithDetection:
 
         record = mock_pipeline.register_drawing(sample_image, use_llm=False)
 
-        # records.json에서 다시 로드
-        records_file = mock_pipeline._records_file
-        assert records_file.exists()
-
-        import json
-        data = json.loads(records_file.read_text(encoding="utf-8"))
-        saved = list(data.values())[0]
-        assert "detected_regions" in saved
-        assert "detection_enhanced" in saved
+        if mock_pipeline._use_sqlite and mock_pipeline._record_store is not None:
+            saved = mock_pipeline._record_store.get(record.drawing_id)
+            assert saved is not None
+            assert "detected_regions" in saved
+            assert "detection_enhanced" in saved
+        else:
+            records_file = mock_pipeline._records_file
+            assert records_file.exists()
+            import json
+            data = json.loads(records_file.read_text(encoding="utf-8"))
+            saved = list(data.values())[0]
+            assert "detected_regions" in saved
+            assert "detection_enhanced" in saved
 
 
 class TestGetStatsWithDetector:

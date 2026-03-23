@@ -1,6 +1,7 @@
 # ============================================================
-#  CAD Vision — Dockerfile
-#  Python 3.11 + Streamlit + ML Models (CLIP, E5, PaddleOCR)
+#  CAD Vision v4.0 — Dockerfile
+#  Python 3.11 + Streamlit + FastAPI + ML Models
+#  (OpenCLIP ViT-L/14, E5, GNN, PaddleOCR, YOLO, Reranker)
 #
 #  보안 강화:
 #    - 비루트 사용자(appuser)로 실행
@@ -21,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxrender1 \
         git \
         curl \
+        supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -28,11 +30,7 @@ WORKDIR /app
 # --- Python 의존성 (캐시 레이어) ---
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip "setuptools<81" wheel \
-    && pip install --no-cache-dir --no-build-isolation \
-       clip@git+https://github.com/openai/CLIP.git@a1d071733d7111c9c014f024669f959182114e33 \
-    && sed '/^clip @/d' requirements.txt > requirements_noclip.txt \
-    && pip install --no-cache-dir -r requirements_noclip.txt \
-    && rm requirements_noclip.txt
+    && pip install --no-cache-dir -r requirements.txt
 
 # --- 모델 프리로드 (빌드 시 다운로드 → 런타임 대기 제거) ---
 COPY scripts/preload_models.py scripts/preload_models.py
@@ -42,7 +40,7 @@ RUN python scripts/preload_models.py
 COPY . .
 
 # --- 데이터/모델/로그 디렉토리 (볼륨 마운트 포인트) ---
-RUN mkdir -p /app/models /app/data/sample_drawings /app/data/vector_store /app/logs
+RUN mkdir -p /app/models /app/data/sample_drawings /app/data/vector_store /app/data/feedback /app/logs
 
 # --- 비루트 사용자 생성 (보안: 컨테이너 내 최소 권한) ---
 RUN groupadd --gid 1000 appuser \
@@ -59,20 +57,24 @@ ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 
-# 경로를 환경 변수로 설정 (하드코딩 제거 → .env 또는 docker-compose.yml에서 오버라이드 가능)
+# 경로를 환경 변수로 설정 (docker-compose.yml에서 오버라이드 가능)
 ENV UPLOAD_DIR=/app/data/sample_drawings
 ENV CHROMA_PERSIST_DIR=/app/data/vector_store
-ENV YOLO_CLS_MODEL_PATH=/app/models/yolo_cls_best.pt
+ENV YOLO_CLS_MODEL_PATH=/app/models/yolo_cls_v2_best.pt
 ENV YOLO_DET_MODEL_PATH=/app/models/yolo_det_best.pt
+ENV GNN_MODEL_PATH=/app/models/gnn_encoder.pt
+ENV SQLITE_DB_PATH=/app/data/vector_store/records.db
+ENV FEEDBACK_DB_PATH=/app/data/feedback/feedback.db
 ENV LOG_FILE=/app/logs/drawingllm.log
 
-EXPOSE 8501
+EXPOSE 8501 8000
 
-# --- 헬스체크 ---
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+# --- supervisord 설정 ---
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# --- 실행 ---
-CMD ["streamlit", "run", "app/streamlit_app.py", \
-     "--server.port=8501", \
-     "--server.address=0.0.0.0"]
+# --- 헬스체크 (Streamlit + FastAPI) ---
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health && curl -f http://localhost:8000/api/v1/stats || exit 1
+
+# --- 실행 (supervisord로 Streamlit + FastAPI 동시 실행) ---
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

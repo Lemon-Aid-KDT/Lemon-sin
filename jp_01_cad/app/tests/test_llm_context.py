@@ -44,7 +44,7 @@ def sample_context():
 @pytest.fixture
 def llm():
     """DrawingLLM 인스턴스"""
-    return DrawingLLM(base_url="http://localhost:11434", model="qwen3-vl:8b")
+    return DrawingLLM(base_url="http://localhost:11434", model="qwen3.5:9b")
 
 
 # ─────────────────────────────────────────────

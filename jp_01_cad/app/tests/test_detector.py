@@ -1,5 +1,5 @@
 """
-YOLOv8-det DrawingDetector 단위 테스트
+YOLO-det DrawingDetector 단위 테스트
 
 mock 기반으로 ultralytics 없이 탐지기의 로직을 검증한다.
 """
@@ -472,7 +472,7 @@ class TestPipelineDetectorIntegration:
 # ─────────────────────────────────────────────
 
 class TestSettingsDetector:
-    """config/settings.py의 YOLOv8-det 설정 필드 검증"""
+    """config/settings.py의 YOLO-det 설정 필드 검증"""
 
     def test_settings_has_det_fields(self):
         """Settings 클래스에 det 관련 필드가 존재"""

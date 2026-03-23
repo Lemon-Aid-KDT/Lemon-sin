@@ -46,17 +46,35 @@ def tmp_records_file(tmp_path):
 
 
 # ─────────────────────────────────────────────
+# DXF Fixtures
+# ─────────────────────────────────────────────
+
+@pytest.fixture
+def sample_dxf(tmp_path):
+    """테스트용 간단한 DXF 파일 생성"""
+    import ezdxf
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    msp.add_line((0, 0), (10, 0))
+    msp.add_line((10, 0), (10, 5))
+    msp.add_circle((5, 5), radius=3)
+    dxf_path = tmp_path / "test.dxf"
+    doc.saveas(str(dxf_path))
+    return dxf_path
+
+
+# ─────────────────────────────────────────────
 # Mock Embedder Fixtures
 # ─────────────────────────────────────────────
 
 @pytest.fixture
 def mock_image_embedder():
-    """CLIP 이미지 임베더 mock (512차원 벡터 반환)"""
+    """OpenCLIP 이미지 임베더 mock (768차원 벡터 반환)"""
     embedder = MagicMock()
-    embedder.embed_image.return_value = np.random.randn(512).astype(np.float32)
-    embedder.embed_text.return_value = np.random.randn(512).astype(np.float32)
+    embedder.embed_image.return_value = np.random.randn(768).astype(np.float32)
+    embedder.embed_text.return_value = np.random.randn(768).astype(np.float32)
     embedder.embed_images_batch.return_value = [
-        np.random.randn(512).astype(np.float32) for _ in range(3)
+        np.random.randn(768).astype(np.float32) for _ in range(3)
     ]
     return embedder
 
@@ -114,7 +132,7 @@ def mock_ollama_response():
     """정상 Ollama API 응답"""
     return {
         "response": "This is a test response.",
-        "model": "qwen3-vl:8b",
+        "model": "qwen3.5:9b",
         "done": True,
     }
 
@@ -125,7 +143,7 @@ def mock_ollama_response():
 
 @pytest.fixture
 def mock_classifier():
-    """YOLOv8-cls 분류기 mock"""
+    """YOLO-cls 분류기 mock"""
     from core.classifier import ClassificationResult
 
     classifier = MagicMock()
@@ -160,7 +178,7 @@ def mock_classifier():
     ]
     classifier.class_names = ["Shafts", "Gears", "Linear_Bushings", "Pulleys_and_Idlers"]
     classifier.num_classes = 4
-    classifier.check_health.return_value = (True, "YOLOv8-cls 정상 (4클래스, yolo_cls_best.pt)")
+    classifier.check_health.return_value = (True, "YOLO-cls 정상 (4클래스, yolo_cls_best.pt)")
     classifier.model_path = Path("models/yolo_cls_best.pt")
     return classifier
 
@@ -171,7 +189,7 @@ def mock_classifier():
 
 @pytest.fixture
 def mock_detector():
-    """YOLOv8-det 탐지기 mock"""
+    """YOLO-det 탐지기 mock"""
     from core.detector import DetectionResult, DetectedRegion
 
     detector = MagicMock()
@@ -202,10 +220,25 @@ def mock_detector():
     # Properties
     detector.class_names = ["title_block", "dimension_area", "parts_table"]
     detector.num_classes = 3
-    detector.check_health.return_value = (True, "YOLOv8-det 정상 (3클래스, yolo_det_best.pt)")
+    detector.check_health.return_value = (True, "YOLO-det 정상 (3클래스, yolo_det_best.pt)")
     detector.model_path = Path("models/yolo_det_best.pt")
 
     return detector
+
+
+# ─────────────────────────────────────────────
+# Mock GNN Embedder Fixtures
+# ─────────────────────────────────────────────
+
+@pytest.fixture
+def mock_gnn_embedder():
+    """GNN 구조 임베더 mock (256차원 벡터 반환)"""
+    embedder = MagicMock()
+    embedder.embed_dxf.return_value = np.random.randn(256).astype(np.float32)
+    embedder.embed_dxf_batch.return_value = [
+        np.random.randn(256).astype(np.float32) for _ in range(3)
+    ]
+    return embedder
 
 
 # ─────────────────────────────────────────────

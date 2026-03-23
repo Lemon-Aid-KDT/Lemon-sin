@@ -29,7 +29,7 @@ from core.llm import DrawingLLM, AnalysisContext
 
 
 class TestModelChecksumClassifier:
-    """YOLOv8-cls 모델 SHA256 검증 테스트"""
+    """YOLO-cls 모델 SHA256 검증 테스트"""
 
     def test_checksum_skip_when_empty(self, tmp_path):
         """SHA256 미설정 시 검증 스킵"""
@@ -105,7 +105,7 @@ class TestModelChecksumClassifier:
 
 
 class TestModelChecksumDetector:
-    """YOLOv8-det 모델 SHA256 검증 테스트"""
+    """YOLO-det 모델 SHA256 검증 테스트"""
 
     def test_checksum_skip_when_empty(self, tmp_path):
         """SHA256 미설정 시 검증 스킵"""

@@ -1,4 +1,4 @@
-# CAD Vision v2.0 — 사용자 가이드
+# CAD Vision v4.0 — 사용자 가이드
 
 > 이 문서는 **비개발자**를 위한 CAD Vision 설치 및 사용 가이드입니다.
 > 프로그래밍 지식 없이도 이 가이드만 따라하면 시스템을 실행할 수 있습니다.
@@ -112,7 +112,7 @@ cd "/Volumes/Corsair EX300U Media/00_work_out/01_complete/me/01_CAD/drawing-llm"
 > cd "E:\00_work_out\01_complete\me\01_CAD\drawing-llm"
 > docker compose up -d --build
 > # Ollama가 시작될 때까지 30초 정도 대기 후 실행
-> docker compose exec ollama ollama pull qwen3-vl:8b
+> docker compose exec ollama ollama pull qwen3.5:9b
 > # 브라우저 열기
 > Start-Process "http://localhost:8501"
 > ```
@@ -133,8 +133,8 @@ cd "/Volumes/Corsair EX300U Media/00_work_out/01_complete/me/01_CAD/drawing-llm"
   ✓ data/ 디렉토리 준비 완료
 [3/5] 컨테이너 빌드 & 시작 중... (최초 실행 시 5~10분 소요)
   ✓ 컨테이너 시작됨
-[4/5] AI 모델 (qwen3-vl:8b) 확인 중...
-  ⏳ qwen3-vl:8b 모델 다운로드 중... (약 5GB, 최초 1회)
+[4/5] AI 모델 확인 중... (RAM 기반 자동 선택)
+  ⏳ qwen3.5:9b 모델 다운로드 중... (약 6.6GB, 최초 1회)
   ✓ 모델 다운로드 완료
 [5/5] CAD Vision 앱 시작 대기...
   ✓ 앱 준비 완료
@@ -273,7 +273,7 @@ docker compose down
 
 **A.** 최초 설치 시에는 다음 항목을 다운로드하므로 **10~15분** 소요될 수 있습니다:
 - Python 앱 이미지 + 라이브러리 (~2GB)
-- AI 모델 파일 (~5GB)
+- AI 모델 파일 (~6.6GB)
 
 인터넷 속도에 따라 차이가 있으며, **2회차부터는 1~2분**이면 실행됩니다.
 
@@ -329,7 +329,7 @@ docker compose restart ollama
 
 3. 화면에 표시된 **오류 메시지**를 확인하세요:
    - "연결할 수 없습니다" → Ollama 서버가 꺼져 있음
-   - "설치되어 있지 않습니다" → AI 모델 미설치 (`docker compose exec ollama ollama pull qwen3-vl:8b`)
+   - "설치되어 있지 않습니다" → AI 모델 미설치 (`docker compose exec ollama ollama pull qwen3.5:9b`). 참고: Ollama 모델은 시스템 RAM에 따라 자동 선택됩니다 (48GB 이상: 27b, 16GB 이상: 9b, 16GB 미만: 4b)
    - "시간 초과" → 모델 로딩 중, 1~2분 대기 후 재시도
    - "out of memory" → Docker Desktop 메모리 설정 확인 (최소 8GB 권장)
 
@@ -447,3 +447,7 @@ docker compose down
 docker compose ps
 docker compose logs --tail 30
 ```
+
+---
+
+v4.0 업데이트 (2026-03-19): Qwen3.5 자동선택, OpenCLIP ViT-L/14, GNN DXF 구조 검색, DXF 파일 업로드 지원

@@ -50,6 +50,12 @@ class VectorStore:
                 name=f"{collection_name}_text",
                 metadata={"hnsw:space": "cosine"},
             )
+
+            # GNN 구조 임베딩용 컬렉션
+            self._gnn_collection = self._client.get_or_create_collection(
+                name=f"{collection_name}_gnn",
+                metadata={"hnsw:space": "cosine"},
+            )
         except Exception as e:
             logger.error(f"ChromaDB 초기화 실패 (경로: {self.persist_dir}): {e}")
             raise RuntimeError(
@@ -60,7 +66,8 @@ class VectorStore:
         logger.info(
             f"VectorStore 초기화 완료: "
             f"이미지 {self._image_collection.count()}건, "
-            f"텍스트 {self._text_collection.count()}건"
+            f"텍스트 {self._text_collection.count()}건, "
+            f"GNN {self._gnn_collection.count()}건"
         )
 
     def add_drawing(
@@ -68,6 +75,7 @@ class VectorStore:
         drawing_id: str,
         image_embedding: np.ndarray | None = None,
         text_embedding: np.ndarray | None = None,
+        gnn_embedding: np.ndarray | None = None,
         metadata: dict | None = None,
     ):
         """
@@ -77,6 +85,7 @@ class VectorStore:
             drawing_id: 도면 고유 ID
             image_embedding: CLIP 이미지 임베딩 벡터
             text_embedding: 텍스트 임베딩 벡터
+            gnn_embedding: GNN 구조 임베딩 벡터
             metadata: 도면 메타데이터 (file_path, category, part_numbers 등)
         """
         meta = metadata or {}
@@ -108,6 +117,17 @@ class VectorStore:
                 )
             except Exception as e:
                 logger.warning(f"텍스트 임베딩 저장 실패 ({drawing_id}), 이미지만 저장됨: {e}")
+
+        if gnn_embedding is not None:
+            try:
+                emb = gnn_embedding.tolist() if hasattr(gnn_embedding, "tolist") else list(gnn_embedding)
+                self._gnn_collection.upsert(
+                    ids=[drawing_id],
+                    embeddings=[emb],
+                    metadatas=[safe_meta],
+                )
+            except Exception as e:
+                logger.warning(f"GNN 임베딩 저장 실패 ({drawing_id}), 다른 채널은 보존됨: {e}")
 
         logger.debug(f"도면 등록: {drawing_id}")
 
@@ -177,25 +197,62 @@ class VectorStore:
             logger.error(f"텍스트 검색 실패: {e}")
             return []
 
+    def search_by_gnn(
+        self, query_embedding: np.ndarray, top_k: int = 10,
+        where_filter: dict | None = None,
+    ) -> list[SearchResult]:
+        """
+        GNN 구조 임베딩으로 유사 도면을 검색한다.
+
+        Args:
+            query_embedding: GNN 구조 임베딩 벡터
+            top_k: 반환 결과 수
+            where_filter: ChromaDB where 절
+
+        Returns:
+            list[SearchResult]: 유사도 순 검색 결과
+        """
+        if self._gnn_collection.count() == 0:
+            logger.warning("GNN 컬렉션이 비어있습니다.")
+            return []
+
+        try:
+            emb = query_embedding.tolist() if hasattr(query_embedding, "tolist") else list(query_embedding)
+            query_kwargs: dict = {
+                "query_embeddings": [emb],
+                "n_results": min(top_k, self._gnn_collection.count()),
+            }
+            if where_filter:
+                query_kwargs["where"] = where_filter
+            results = self._gnn_collection.query(**query_kwargs)
+            return self._parse_results(results)
+        except Exception as e:
+            logger.error(f"GNN 검색 실패: {e}")
+            return []
+
     def hybrid_search(
         self,
         image_embedding: np.ndarray | None = None,
         text_embedding: np.ndarray | None = None,
+        gnn_embedding: np.ndarray | None = None,
         top_k: int = 10,
         image_weight: float = 0.5,
         text_weight: float = 0.5,
+        gnn_weight: float = 0.0,
         where_filter: dict | None = None,
     ) -> list[SearchResult]:
         """
-        이미지 + 텍스트 하이브리드 검색을 수행한다.
-        두 검색 결과의 점수를 가중 결합하여 최종 순위를 결정한다.
+        이미지 + 텍스트 + GNN 하이브리드 검색을 수행한다.
+        각 채널 검색 결과의 점수를 가중 결합하여 최종 순위를 결정한다.
 
         Args:
             image_embedding: 이미지 쿼리 임베딩
             text_embedding: 텍스트 쿼리 임베딩
+            gnn_embedding: GNN 구조 쿼리 임베딩
             top_k: 반환 결과 수
             image_weight: 이미지 검색 가중치
             text_weight: 텍스트 검색 가중치
+            gnn_weight: GNN 구조 검색 가중치
             where_filter: ChromaDB where 절 (예: {"category": "Shafts"})
 
         Returns:
@@ -203,43 +260,54 @@ class VectorStore:
         """
         score_map: dict[str, dict] = {}
 
-        # 이미지 검색 결과 수집 (실패 시 텍스트 결과만 사용)
+        def _init_entry(drawing_id: str, r) -> None:
+            if drawing_id not in score_map:
+                score_map[drawing_id] = {
+                    "file_path": r.file_path,
+                    "metadata": r.metadata,
+                    "image_score": 0.0,
+                    "text_score": 0.0,
+                    "gnn_score": 0.0,
+                }
+
+        # 이미지 검색 결과 수집 (실패 시 다른 채널만 사용)
         if image_embedding is not None:
             try:
                 image_results = self.search_by_image(
                     image_embedding, top_k=top_k * 2, where_filter=where_filter,
                 )
             except Exception as e:
-                logger.warning(f"하이브리드 검색 중 이미지 채널 실패 (텍스트만 사용): {e}")
+                logger.warning(f"하이브리드 검색 중 이미지 채널 실패: {e}")
                 image_results = []
             for r in image_results:
-                if r.drawing_id not in score_map:
-                    score_map[r.drawing_id] = {
-                        "file_path": r.file_path,
-                        "metadata": r.metadata,
-                        "image_score": 0.0,
-                        "text_score": 0.0,
-                    }
+                _init_entry(r.drawing_id, r)
                 score_map[r.drawing_id]["image_score"] = r.score
 
-        # 텍스트 검색 결과 수집 (실패 시 이미지 결과만 사용)
+        # 텍스트 검색 결과 수집 (실패 시 다른 채널만 사용)
         if text_embedding is not None:
             try:
                 text_results = self.search_by_text(
                     text_embedding, top_k=top_k * 2, where_filter=where_filter,
                 )
             except Exception as e:
-                logger.warning(f"하이브리드 검색 중 텍스트 채널 실패 (이미지만 사용): {e}")
+                logger.warning(f"하이브리드 검색 중 텍스트 채널 실패: {e}")
                 text_results = []
             for r in text_results:
-                if r.drawing_id not in score_map:
-                    score_map[r.drawing_id] = {
-                        "file_path": r.file_path,
-                        "metadata": r.metadata,
-                        "image_score": 0.0,
-                        "text_score": 0.0,
-                    }
+                _init_entry(r.drawing_id, r)
                 score_map[r.drawing_id]["text_score"] = r.score
+
+        # GNN 구조 검색 결과 수집 (실패 시 다른 채널만 사용)
+        if gnn_embedding is not None and gnn_weight > 0:
+            try:
+                gnn_results = self.search_by_gnn(
+                    gnn_embedding, top_k=top_k * 2, where_filter=where_filter,
+                )
+            except Exception as e:
+                logger.warning(f"하이브리드 검색 중 GNN 채널 실패: {e}")
+                gnn_results = []
+            for r in gnn_results:
+                _init_entry(r.drawing_id, r)
+                score_map[r.drawing_id]["gnn_score"] = r.score
 
         # 가중 결합
         combined_results = []
@@ -247,6 +315,7 @@ class VectorStore:
             combined_score = (
                 image_weight * data["image_score"]
                 + text_weight * data["text_score"]
+                + gnn_weight * data["gnn_score"]
             )
             combined_results.append(SearchResult(
                 drawing_id=drawing_id,
@@ -291,6 +360,7 @@ class VectorStore:
         return {
             "image_collection_count": self._image_collection.count(),
             "text_collection_count": self._text_collection.count(),
+            "gnn_collection_count": self._gnn_collection.count(),
             "persist_dir": str(self.persist_dir),
         }
 
@@ -304,6 +374,10 @@ class VectorStore:
             self._text_collection.delete(ids=[drawing_id])
         except Exception as e:
             logger.warning(f"텍스트 컬렉션에서 삭제 실패 ({drawing_id}): {e}")
+        try:
+            self._gnn_collection.delete(ids=[drawing_id])
+        except Exception as e:
+            logger.warning(f"GNN 컬렉션에서 삭제 실패 ({drawing_id}): {e}")
         logger.debug(f"도면 삭제: {drawing_id}")
 
     def reset(self):
@@ -311,14 +385,20 @@ class VectorStore:
         try:
             img_name = self._image_collection.name
             txt_name = self._text_collection.name
+            gnn_name = self._gnn_collection.name
             self._client.delete_collection(img_name)
             self._client.delete_collection(txt_name)
+            self._client.delete_collection(gnn_name)
             self._image_collection = self._client.get_or_create_collection(
                 name=img_name,
                 metadata={"hnsw:space": "cosine"},
             )
             self._text_collection = self._client.get_or_create_collection(
                 name=txt_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            self._gnn_collection = self._client.get_or_create_collection(
+                name=gnn_name,
                 metadata={"hnsw:space": "cosine"},
             )
             logger.warning("벡터 DB 초기화 완료")
