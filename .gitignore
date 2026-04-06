@@ -51,3 +51,8 @@ training/quality_report/valid_*.txt
 # === Env ===
 .env
 .env.local
+
+# React frontend
+node_modules/
+.next/
+.env.local

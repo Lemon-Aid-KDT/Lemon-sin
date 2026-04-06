@@ -1,0 +1,199 @@
+@import "tailwindcss";
+
+/* ── 에이투지체 (A2G) 한글 폰트 ── */
+@font-face {
+  font-family: 'A2G';
+  src: url('/fonts/A2G-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'A2G';
+  src: url('/fonts/A2G-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'A2G';
+  src: url('/fonts/A2G-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ═══════════════════════════════════════════
+   CAD Vision — Engineering Terminal Theme
+   Dark / Light mode via CSS variables
+   ═══════════════════════════════════════════ */
+
+/* ── Dark Theme (default) ── */
+:root,
+[data-theme="dark"] {
+  --bg: #0e0e0e;
+  --s1: #131313;
+  --s2: #1a1a1a;
+  --s3: #262626;
+  --outline: #484847;
+  --primary: #5eb4ff;
+  --primary-dark: #2aa7ff;
+  --secondary: #ff8a00;
+  --secondary-dark: #cc6f00;
+  --tertiary: #bca2ff;
+  --error: #ff716c;
+  --error-dark: #cc5a58;
+  --success: #4ade80;
+  --txt-1: #ffffff;
+  --txt-2: #adaaaa;
+  --txt-3: #767575;
+  --grid-opacity: 0.05;
+  --viewer-bg: #000000;
+  --viewer-overlay: rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}
+
+/* ── Light Theme ── */
+[data-theme="light"] {
+  --bg: #f4f5f7;
+  --s1: #ffffff;
+  --s2: #eef0f3;
+  --s3: #dfe2e6;
+  --outline: #c4c7cc;
+  --primary: #2a7fd4;
+  --primary-dark: #1a5fa0;
+  --secondary: #d97706;
+  --secondary-dark: #b45309;
+  --tertiary: #7c5cbf;
+  --error: #dc2626;
+  --error-dark: #b91c1c;
+  --success: #16a34a;
+  --txt-1: #1a1a1a;
+  --txt-2: #4a4a4a;
+  --txt-3: #8a8a8a;
+  --grid-opacity: 0.04;
+  --viewer-bg: #e8e8e8;
+  --viewer-overlay: rgba(255, 255, 255, 0.7);
+  color-scheme: light;
+}
+
+/* ── Tailwind v4 Design Tokens ── */
+@theme inline {
+  /* Surface Hierarchy */
+  --color-background: var(--bg);
+  --color-surface-1: var(--s1);
+  --color-surface-2: var(--s2);
+  --color-surface-3: var(--s3);
+  --color-outline: var(--outline);
+
+  /* Accent Colors */
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+  --color-secondary-dark: var(--secondary-dark);
+  --color-tertiary: var(--tertiary);
+  --color-error: var(--error);
+  --color-error-dark: var(--error-dark);
+  --color-success: var(--success);
+
+  /* Text Colors */
+  --color-text-primary: var(--txt-1);
+  --color-text-secondary: var(--txt-2);
+  --color-text-tertiary: var(--txt-3);
+
+  /* Viewer */
+  --color-viewer-bg: var(--viewer-bg);
+  --color-viewer-overlay: var(--viewer-overlay);
+
+  /* Fonts */
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ko: 'A2G', 'Pretendard', sans-serif;
+}
+
+/* ── Global Reset ── */
+body {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Minimum Font Size Enforcement ──
+   Remap tiny Tailwind sizes to readable minimums:
+   text-[9px]  → 11px
+   text-[10px] → 12px
+   text-[11px] → 12px
+   text-xs (12px) stays as-is
+*/
+*[class*="text-[9px]"]  { font-size: 11px !important; }
+*[class*="text-[10px]"] { font-size: 12px !important; }
+*[class*="text-[11px]"] { font-size: 12px !important; }
+
+/* ── Blueprint Grid Background ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--color-outline) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: var(--grid-opacity);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Headings ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-background); }
+::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-outline); }
+
+/* ── DXF SVG Viewer: dark background with light strokes ── */
+[data-theme="dark"] .dxf-svg-container svg,
+:root .dxf-svg-container svg {
+  background: transparent !important;
+}
+[data-theme="dark"] .dxf-svg-container svg *,
+:root .dxf-svg-container svg * {
+  stroke: #cccccc !important;
+}
+[data-theme="dark"] .dxf-svg-container svg text,
+:root .dxf-svg-container svg text {
+  fill: #cccccc !important;
+}
+/* Light mode: keep original white bg + dark strokes */
+[data-theme="light"] .dxf-svg-container svg {
+  background: #ffffff !important;
+}
+[data-theme="light"] .dxf-svg-container svg * {
+  stroke: #222222 !important;
+}
+[data-theme="light"] .dxf-svg-container svg text {
+  fill: #222222 !important;
+}
+
+/* DXF image in DrawingViewer: invert for dark mode */
+[data-theme="dark"] .dxf-invert img,
+:root .dxf-invert img {
+  filter: invert(0.85) hue-rotate(180deg) contrast(1.1);
+}
+
+/* ── Animations ── */
+@keyframes scan {
+  from { top: 0%; }
+  to { top: 100%; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 4px var(--color-primary); }
+  50% { box-shadow: 0 0 12px var(--color-primary); }
+}
