@@ -1,0 +1,32 @@
+# pre-commit 설정
+# 사용법:
+#   pip install pre-commit
+#   pre-commit install
+# 이후 git commit 시 자동 실행
+#
+# 수동 실행:
+#   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+      - id: detect-private-key
+
+  # PROJECT_GUIDE.md → guide.html 자동 동기화
+  - repo: local
+    hooks:
+      - id: sync-guide
+        name: sync guide.html with PROJECT_GUIDE.md
+        entry: python scripts/sync_guide.py
+        language: system
+        files: '^(PROJECT_GUIDE\.md|guide\.html|scripts/sync_guide\.py)$'
+        pass_filenames: false
+        # 동기화로 guide.html이 바뀌면 그 변경분도 자동 stage
+        stages: [commit]
