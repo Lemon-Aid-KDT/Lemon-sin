@@ -1320,11 +1320,15 @@ Lemon_Aid/
 │  └─ workflows/
 │     ├─ ci-backend.yml
 │     ├─ ci-mobile.yml
-│     └─ ci-docs.yml
+│     ├─ ci-docs.yml
+│     └─ sync-guide.yml             # §17 PG.md → guide.html 자동 동기화
+│
+├─ 📁 scripts/                      # 운영·자동화 스크립트
+│  └─ sync_guide.py                 # §17 PG.md ↔ guide.html 동기화 (6중 검증)
 │
 ├─ 🔧 docker-compose.yml             # timescale + redis
 ├─ 🔧 .gitignore
-├─ 🔧 .pre-commit-config.yaml
+├─ 🔧 .pre-commit-config.yaml        # §17 로컬 commit 자동 동기화 + 위험 패턴 차단
 └─ 🔧 .editorconfig
 ```
 
@@ -1349,6 +1353,9 @@ Lemon_Aid/
 | backend/src/utils/regex_filter.py | 의료법 표현 검수 |
 | backend/src/db/init.sql | TimescaleDB 확장 자동 설치 |
 | data/kdris_2020.csv | 30종 영양소 권장 섭취량 |
+| scripts/sync_guide.py | §17 PG.md → guide.html 자동 동기화 + 6중 검증 |
+| .pre-commit-config.yaml | §17 로컬 commit 시 자동 동기화 훅 |
+| .github/workflows/sync-guide.yml | §17 push 시 서버 동기화·자동 커밋, PR 시 검증 |
 
 ---SPLIT---
 
@@ -1587,6 +1594,9 @@ CREATE POLICY user_isolation ON profiles
 - 일일 스탠드업: 10분 (어제·오늘·블로커)
 - 같은 파일 동시 작업 X, 시작 시 채팅에 한 줄 공지
 - 모든 코드 변경은 PROJECT_GUIDE.md 변경과 동기화
+- **한 곳을 바꾸면 다른 곳도 같이 바뀐다 — §17.10 변경 파급 효과 표를 항상 본다**
+
+> **중요**: 새 API 1개 추가는 단순히 `backend/src/api/foo.py` 한 파일이 아니다. §5.3 API 표, §10 호출 흐름, §13 파일 구조, §14 데이터 모델, §16.5 CODEOWNERS — 최소 5곳이 같이 바뀌어야 한다. PR 템플릿의 "📋 변경 파급 효과 점검" 체크리스트가 이를 강제한다.
 
 ### 15.3 바이브 코딩 툴 사용 원칙
 
@@ -1686,7 +1696,6 @@ CREATE POLICY user_isolation ON profiles
 ## 어떻게 검증했나요
 - [ ] 단위 테스트 추가/통과
 - [ ] 로컬에서 동작 확인 (스크린샷 또는 로그)
-- [ ] PROJECT_GUIDE.md 갱신 (필요 시)
 - [ ] CI 통과
 
 ## 영향 범위
@@ -1695,6 +1704,18 @@ CREATE POLICY user_isolation ON profiles
 - [ ] ai
 - [ ] data
 - [ ] docs / infra
+
+## 📋 변경 파급 효과 점검 (§17.10 표 참조)
+이 변경으로 같이 갱신해야 할 곳을 모두 체크했나요?
+- [ ] PROJECT_GUIDE.md 본문 갱신 (해당 섹션)
+- [ ] §13 파일 구조 (새 파일/폴더 추가 시)
+- [ ] §14 데이터 모델 (스키마/테이블 변경 시)
+- [ ] §10 호출 흐름 다이어그램 (API/Agent 추가 시)
+- [ ] §15.1 팀원 분담 / §16.5 CODEOWNERS (담당 영역 변경 시)
+- [ ] §부록 A.7 pubspec.yaml 또는 requirements.txt (의존성 추가 시)
+- [ ] §부록 A.2 .env 템플릿 + §16.8 시크릿 (환경변수 추가 시)
+- [ ] guide.html (자동 동기화 — pre-commit이 처리, 검증만)
+- [ ] 해당 없음 (코드 수정 없는 docs-only PR)
 
 ## 리뷰어가 봐야 할 곳
 <!-- 핵심 파일·라인 안내 -->
@@ -1920,11 +1941,11 @@ python scripts/sync_guide.py --check
 | 검증 | 실패 시 |
 |------|---------|
 | PG.md 안에 스크립트 닫는 태그 텍스트 | 거부 (HTML 깨짐 방지) |
-| 표·인라인 코드 안에 ` ``` `(SPLIT 마커 직접 표기) | 거부 |
+| 표나 인라인 코드 안에 SPLIT 마커 (대시 3개 + SPLIT + 대시 3개) 직접 표기 | 거부 |
 | guide.html에 NULL 바이트 | 자동 제거 |
 | 동기화 후 SPLIT 카운트 양쪽 일치 | 거부 |
 | guide.html의 닫는 스크립트 태그가 정확히 3개 | 거부 |
-| guide.html이 `</html>`로 끝남 | 거부 |
+| guide.html이 닫는 html 태그로 끝남 | 거부 |
 
 ### 17.7 GitHub Actions 동작 시나리오
 
@@ -1951,6 +1972,47 @@ python scripts/sync_guide.py --check
 >
 > guide.html을 직접 편집하면 다음 PG.md 변경 시 덮어써진다.
 > 마크다운만 단일 진실로 유지하면 두 파일이 항상 같은 내용을 보장한다.
+
+### 17.10 ⚠️ 변경 = 파급 효과 (반드시 같이 갱신)
+
+기획서의 한 곳을 바꾸면 **다른 여러 페이지가 동시에 영향을 받는다.** 부분 수정만 하고 끝내면 페이지끼리 모순이 생기고, 5명이 서로 다른 가정으로 작업하게 된다. 다음 표를 보고 **연쇄적으로 갱신할 위치를 항상 의식하라.**
+
+| 무엇을 바꿨나 | 같이 갱신해야 할 위치 |
+|---------------|---------------------|
+| **새 API 엔드포인트 추가** | §5.3 API 표 + §10 호출 흐름 다이어그램 + §13 파일구조 (`backend/src/api/<name>.py`) + §14 데이터 모델 (요청·응답 스키마) + §16.5 CODEOWNERS |
+| **새 Agent 또는 Tool 추가** | §3.1 Agent 표 + §3.3 Tool 표 + §7.3 Agent별 흐름 + §10 시퀀스 다이어그램 + §13 파일구조 (`backend/src/agents/`, `llm/tools.py`) |
+| **새 화면 추가** | §3.5 주요 화면 표 + §3.4 인증·온보딩 흐름 다이어그램 (해당 시) + §13 파일구조 (`mobile/lib/screens/`) + §15 팀원 분담 (담당) + §16.5 CODEOWNERS |
+| **새 DB 테이블/컬럼** | §6.2 핵심 테이블 + §14 데이터 모델 스키마 + §6.3 보안 (민감정보면 AES-256 표) + Alembic 마이그레이션 |
+| **새 외부 라이브러리/SDK** | §4·§5·§6 기술 스택 표 + §12 사용 툴 + §부록 A.7 (pubspec.yaml) 또는 requirements.txt + §17 자동 검증 추가 시 sync_guide.py |
+| **새 환경 변수** | §부록 A.2 (.env 템플릿) + §16.8 시크릿 관리 + §13 파일구조 (`.env.example`) + §21.3 (배포 환경 변수 표) |
+| **새 GitHub Actions 워크플로** | §13 파일구조 (`.github/workflows/`) + §16.9 CI 워크플로 표 + §16.10 main 보호 규칙 (status checks) + §부록 A.8 |
+| **새 데이터 출처** | §9 데이터·외부 API + §20.7 (앱 내 출처 명시) + §13 (`data/`) + §22 참고 자료 |
+| **새 의료법 표현 케이스** | §20.1·20.2 표현 가이드 + `backend/src/utils/regex_filter.py` 단위 테스트 + §3.10 에러 화면 |
+| **일정 변경** | §1.7 일정 개요 + §11.3 주차별 매핑 + §부록 A.9 D1~D5 액션 카드 |
+| **팀원 역할 변경** | §15.1 역할 분담 + §16.5 CODEOWNERS + §부록 A.9 액션 카드 |
+| **알고리즘 산식 변경** | §8 핵심 알고리즘 + §10 호출 흐름 + 단위 테스트 (50+개) + 검증 예시값 |
+| **새 페이지 신설** | PG.md에 SPLIT 마커 (대시 3개 + SPLIT + 대시 3개) 추가 + guide.html 사이드바 toc-item + page-N 매핑 + 후속 페이지 번호 시프트 |
+
+#### 변경 → 영향 → 갱신 흐름
+
+```mermaid
+flowchart LR
+    A[한 곳 수정] --> B{영향 범위 점검}
+    B -->|17.10 표 확인| C[연쇄 위치 모두 갱신]
+    C --> D[git commit]
+    D --> E[pre-commit 자동 동기화]
+    E --> F[PR 생성]
+    F --> G{PR 템플릿 체크}
+    G -->|"문서·구조도·다이어그램 모두 갱신?"| H[리뷰어 확인]
+    H -->|YES| I[머지]
+    H -->|NO| C
+```
+
+#### 황금 원칙 3가지
+
+1. **"코드만 바뀌고 문서가 안 바뀐 PR"은 머지하지 않는다** — 다음 사람이 잘못된 가정으로 작업한다.
+2. **"한 페이지만 바뀌고 나머지가 그대로"는 위험 신호다** — 17.10 표를 다시 본다.
+3. **확신이 없으면 채팅에 "§N 바꾸려는데 어디 같이 봐야 할까?" 물어본다** — 5분 질문이 5시간 디버깅을 막는다.
 
 ---SPLIT---
 
