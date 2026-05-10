@@ -473,16 +473,16 @@
             <div class="toc-subgroup-body">
               <div class="toc-item" data-target="page-8"><span class="toc-num">07</span><span>AI · 인공지능 스택</span></div>
               <div class="toc-item" data-target="page-9"><span class="toc-num">08</span><span>핵심 알고리즘</span></div>
-              <div class="toc-item" data-target="page-11"><span class="toc-num">10</span><span>AI 호출 흐름</span></div>
+              <div class="toc-item" data-target="page-10"><span class="toc-num">09</span><span>AI 호출 흐름</span></div>
             </div>
           </div>
-          <div class="toc-subgroup" data-subgroup="data" data-open="false">
+          <div class="toc-subgroup" data-subgroup="data" data-open="true">
             <button type="button" class="toc-subgroup-header">
-              <span class="toc-caret">▸</span><span>데이터 · 모델</span>
+              <span class="toc-caret">▾</span><span>데이터 · 모델</span>
             </button>
             <div class="toc-subgroup-body">
-              <div class="toc-item" data-target="page-10"><span class="toc-num">09</span><span>데이터 · 외부 API</span></div>
-              <div class="toc-item" data-target="page-15"><span class="toc-num">14</span><span>데이터 모델</span></div>
+              <div class="toc-item" data-target="page-11"><span class="toc-num">10</span><span>데이터 · 외부 API</span></div>
+              <div class="toc-item" data-target="page-12"><span class="toc-num">11</span><span>데이터 모델</span></div>
             </div>
           </div>
         </div>
@@ -493,9 +493,9 @@
           <span class="toc-caret">▸</span><span class="toc-group-label">실행</span>
         </button>
         <div class="toc-group-body">
-          <div class="toc-item" data-target="page-12"><span class="toc-num">11</span><span>작업 파이프라인</span></div>
-          <div class="toc-item" data-target="page-13"><span class="toc-num">12</span><span>사용 툴 정리</span></div>
-          <div class="toc-item" data-target="page-14"><span class="toc-num">13</span><span>파일 구조</span></div>
+          <div class="toc-item" data-target="page-13"><span class="toc-num">12</span><span>작업 파이프라인</span></div>
+          <div class="toc-item" data-target="page-14"><span class="toc-num">13</span><span>사용 툴 정리</span></div>
+          <div class="toc-item" data-target="page-15"><span class="toc-num">14</span><span>파일 구조</span></div>
         </div>
       </div>
 
@@ -507,8 +507,8 @@
           <div class="toc-item" data-target="page-16"><span class="toc-num">15</span><span>팀원 분담</span></div>
           <div class="toc-item" data-target="page-17"><span class="toc-num">16</span><span>GitHub 협업 규칙</span></div>
           <div class="toc-item" data-target="page-18"><span class="toc-num">17</span><span>기획서 자동 동기화</span></div>
-          <div class="toc-item" data-target="page-20"><span class="toc-num">19</span><span>리스크 · 대응</span></div>
-          <div class="toc-item" data-target="page-21"><span class="toc-num">20</span><span>컴플라이언스</span></div>
+          <div class="toc-item" data-target="page-19"><span class="toc-num">18</span><span>리스크 · 대응</span></div>
+          <div class="toc-item" data-target="page-20"><span class="toc-num">19</span><span>컴플라이언스</span></div>
         </div>
       </div>
 
@@ -517,7 +517,7 @@
           <span class="toc-caret">▸</span><span class="toc-group-label">시연 · 배포</span>
         </button>
         <div class="toc-group-body">
-          <div class="toc-item" data-target="page-19"><span class="toc-num">18</span><span>시연 시나리오</span></div>
+          <div class="toc-item" data-target="page-21"><span class="toc-num">20</span><span>시연 시나리오</span></div>
           <div class="toc-item" data-target="page-22"><span class="toc-num">21</span><span>앱 배포 · 시연</span></div>
         </div>
       </div>
@@ -693,7 +693,7 @@
 
 ### 1.7 일정 개요 (8주 MVP)
 
-상세 주차별 매핑은 §11.3 참조.
+상세 주차별 매핑은 §12.3 참조.
 
 | 단계 | 기간 | 핵심 |
 |------|------|------|
@@ -782,7 +782,7 @@ flowchart LR
 | 챗봇 Agent | 결과 설명 + 사용자 요청 기반 실행 | 자연어 질문, 분석 결과, Agent 요약 기억 | 자연어 답변 + (선택) Tool Call |
 | 평가 Agent | 식단관리 점수 + 개선 피드백 | 분석 Agent 결과 + 개인화 Agent 기준 | 점수, 부족 영양소, 과다 위험, 좋은 선택, 개선 필요 |
 
-> 각 Agent의 코드 책임 매핑은 §13 파일 구조의 `backend/src/agents/` 참조.
+> 각 Agent의 코드 책임 매핑은 §14 파일 구조의 `backend/src/agents/` 참조.
 
 ### 3.2 Agent 간 데이터 전달 포맷
 
@@ -1402,49 +1402,9 @@ RDI = KDRIs 룩업 (나이·성별·BMI·만성질환 보정)
 
 ---SPLIT---
 
-## 9. 데이터 활용 & 외부 API
+## 9. AI 호출 흐름
 
-### 9.1 공공 데이터 (모두 무료/저비용)
-
-| 데이터 | 출처 | 용도 |
-|--------|------|------|
-| KDRIs 2020 | 한국영양학회 / 보건복지부 | 30종 영양소 권장 섭취량, BMI별 칼로리 조정 |
-| 식품영양성분 Open API | 식약처 | 음식별 영양소 매칭 |
-| 건강기능식품 원료 DB | 식약처 | 영양제 성분 매칭, 기능성 표현 |
-| 국가표준식품성분표 | 농촌진흥청 국립농업과학원 | 식품 영양소 보강 |
-| AI Hub 한국 음식 이미지 | NIA | 음식 인식 모델 학습 (Phase 3, 비상업 학술) |
-
-### 9.2 시연용 병원성 데이터
-
-| 데이터 | 출처 | 용도 |
-|--------|------|------|
-| Kaggle 만성질환 데이터셋 | Kaggle | 시연용 검사값·질환·복약 데이터 |
-
-실제 병원 연동은 불가능하므로 MVP에서는 Kaggle 데이터를 사용한다. 다만 레몬헬스케어가 LDB로 병원 연동 데이터를 활용할 수 있다는 강점을 고려해, 실제 서비스 적용 시 병원 데이터가 들어갈 자리를 시연용으로 대체하는 역할을 한다.
-
-### 9.3 건강 데이터 연동
-
-| 플랫폼 | 데이터 | 우선순위 | 권한 셋업 |
-|--------|--------|---------|----------|
-| Apple HealthKit (iOS) | 걸음수, 체중, 심박 | 우선 연동 | Info.plist에 NSHealthShareUsageDescription 사유 명시, App Store 심사 정당화 |
-| Google Health Connect (Android) | 걸음수, 체중, 심박 | 우선 연동 | Play Console에서 Health Connect 데이터 타입 신청 (승인 5~10영업일) |
-| 혈압 | (양 OS 모두) | 가능하면 자동, 안 되면 수동 입력 | — |
-
-### 9.4 외부 API
-
-| API | 용도 | 비고 |
-|-----|------|------|
-| Anthropic Claude API | 4개 Agent 추론 | 주력 LLM, 모델 ID는 환경변수 |
-| Google Cloud Vision API | 영양제·음식 OCR | 첫 1,000건/월 무료 |
-| Naver CLOVA OCR (백업) | 한국어 라벨 폴백 | Adapter 패턴 |
-| OpenAI API (백업) | LLM 폴백 | Claude 장애 대비 |
-| AWS SES 또는 NCP Outbound Mailer | 이메일 인증 발송 | 운영 환경 |
-
----SPLIT---
-
-## 10. AI 호출 흐름
-
-### 10.1 영양제 사진에서 결과까지
+### 9.1 영양제 사진에서 결과까지
 
 ```mermaid
 sequenceDiagram
@@ -1481,7 +1441,7 @@ sequenceDiagram
 
 합계: 캐시 미스 2.5~6초 / 캐시 히트 1초 미만
 
-### 10.2 챗봇으로 알림 등록 (Tool Use)
+### 9.2 챗봇으로 알림 등록 (Tool Use)
 
 ```mermaid
 sequenceDiagram
@@ -1506,7 +1466,7 @@ sequenceDiagram
 - LLM 응답은 항상 Pydantic 검증 + 의료법 표현 검수 후 사용자 미리보기
 - AI는 결과를 바로 저장하지 않는다, 항상 사용자 승인 후 실행
 
-### 10.3 시스템 프롬프트 예시 (분석 Agent)
+### 9.3 시스템 프롬프트 예시 (분석 Agent)
 
 ```
 당신은 영양제 라벨 분석 전문가입니다.
@@ -1524,9 +1484,265 @@ sequenceDiagram
 
 ---SPLIT---
 
-## 11. 작업 파이프라인
+## 10. 데이터 활용 & 외부 API
 
-### 11.1 단계별 흐름 (한눈에)
+### 10.1 공공 데이터 (모두 무료/저비용)
+
+| 데이터 | 출처 | 용도 |
+|--------|------|------|
+| KDRIs 2020 | 한국영양학회 / 보건복지부 | 30종 영양소 권장 섭취량, BMI별 칼로리 조정 |
+| 식품영양성분 Open API | 식약처 | 음식별 영양소 매칭 |
+| 건강기능식품 원료 DB | 식약처 | 영양제 성분 매칭, 기능성 표현 |
+| 국가표준식품성분표 | 농촌진흥청 국립농업과학원 | 식품 영양소 보강 |
+| AI Hub 한국 음식 이미지 | NIA | 음식 인식 모델 학습 (Phase 3, 비상업 학술) |
+
+### 10.2 시연용 병원성 데이터
+
+| 데이터 | 출처 | 용도 |
+|--------|------|------|
+| Kaggle 만성질환 데이터셋 | Kaggle | 시연용 검사값·질환·복약 데이터 |
+
+실제 병원 연동은 불가능하므로 MVP에서는 Kaggle 데이터를 사용한다. 다만 레몬헬스케어가 LDB로 병원 연동 데이터를 활용할 수 있다는 강점을 고려해, 실제 서비스 적용 시 병원 데이터가 들어갈 자리를 시연용으로 대체하는 역할을 한다.
+
+### 10.3 건강 데이터 연동
+
+| 플랫폼 | 데이터 | 우선순위 | 권한 셋업 |
+|--------|--------|---------|----------|
+| Apple HealthKit (iOS) | 걸음수, 체중, 심박 | 우선 연동 | Info.plist에 NSHealthShareUsageDescription 사유 명시, App Store 심사 정당화 |
+| Google Health Connect (Android) | 걸음수, 체중, 심박 | 우선 연동 | Play Console에서 Health Connect 데이터 타입 신청 (승인 5~10영업일) |
+| 혈압 | (양 OS 모두) | 가능하면 자동, 안 되면 수동 입력 | — |
+
+### 10.4 외부 API
+
+| API | 용도 | 비고 |
+|-----|------|------|
+| Anthropic Claude API | 4개 Agent 추론 | 주력 LLM, 모델 ID는 환경변수 |
+| Google Cloud Vision API | 영양제·음식 OCR | 첫 1,000건/월 무료 |
+| Naver CLOVA OCR (백업) | 한국어 라벨 폴백 | Adapter 패턴 |
+| OpenAI API (백업) | LLM 폴백 | Claude 장애 대비 |
+| AWS SES 또는 NCP Outbound Mailer | 이메일 인증 발송 | 운영 환경 |
+
+---SPLIT---
+
+## 11. 데이터 모델
+
+모든 사용자 데이터는 user_id로 격리되어 PostgreSQL에 저장. 시계열은 TimescaleDB Hypertable, 캐시는 Redis.
+
+### 11.1 사용자 (User · Profile)
+
+```
+type User = {
+  id: int (PK);
+  email: string (unique);
+  password_hash: string;
+  display_name: string;
+  email_verified_at: timestamp?;
+  created_at: timestamp;
+  last_login_at: timestamp;
+  deleted_at: timestamp?;     # 30일 grace
+}
+
+type Profile = {
+  id: int (PK);
+  user_id: int (FK);
+  age: int;
+  gender: 'M' | 'F';
+  height_cm: float;
+  weight_kg: float;
+  chronic_diseases: string[];   # AES-256
+  medications: string[];        # AES-256
+  goals: string[];
+}
+
+type Consent = {
+  id: int (PK);
+  user_id: int (FK);
+  type: 'privacy' | 'ai_usage' | 'health_data' | 'notifications';
+  accepted_at: timestamp;
+  revoked_at: timestamp?;
+}
+
+type EmailVerification = {
+  id: int (PK);
+  user_id: int (FK);
+  token: string;
+  expires_at: timestamp;
+  verified_at: timestamp?;
+}
+```
+
+### 11.2 영양제 · 식단
+
+```
+type Supplement = {
+  id: int (PK);
+  product_name_ko: string;
+  product_name_en: string;
+  manufacturer: string;
+  serving_size: string;
+}
+
+type SupplementIngredient = {
+  id: int (PK);
+  supplement_id: int (FK);
+  name_ko: string;
+  name_en: string;
+  amount: float;
+  unit: 'mg' | 'mcg' | 'IU';
+  daily_value_pct: float?;
+}
+
+type UserSupplement = {
+  id: int (PK);
+  user_id: int (FK);
+  supplement_id: int (FK);
+  dose: float;
+  frequency_per_day: int;
+  taken_times: string[];
+  started_at: date;
+}
+
+type Food = {
+  id: int (PK);
+  name_ko: string;
+  name_en: string;
+  nutrients_per_100g: jsonb;
+  source: '식약처' | '농진청';
+}
+
+type Meal = {
+  id: int (PK);
+  user_id: int (FK);
+  date: date;
+  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  foods: jsonb;
+  photo_url: string?;
+}
+```
+
+### 11.3 분석 · 점수 · 알림
+
+```
+type Diagnosis = {
+  id: int (PK);
+  user_id: int (FK);
+  date: date;
+  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  deficiencies: jsonb;          # AES-256
+  excesses: jsonb;
+  warnings: jsonb;              # AES-256
+  goal_analysis: jsonb;
+}
+
+type DailyScore = {
+  id: int (PK);
+  user_id: int (FK);
+  date: date;
+  score: int;                   # 0~100
+  breakdown: jsonb;
+  agent_comment: string;
+}
+
+type Reminder = {
+  id: int (PK);
+  user_id: int (FK);
+  type: 'medication' | 'meal' | 'supplement';
+  name: string;
+  time: string;
+  recurrence: 'daily' | 'weekly' | 'once';
+  weekdays: int[]?;
+  active: boolean;
+}
+
+type CalendarEvent = {
+  id: int (PK);
+  user_id: int (FK);
+  date: date;
+  time: string;
+  title: string;
+  hospital: string?;
+  note: string?;
+  added_to_system_calendar: boolean;
+}
+
+type RaffleTicket = {
+  id: int (PK);
+  user_id: int (FK);
+  earned_at: timestamp;
+  count: int;
+  reason: 'daily' | 'weekly_streak' | 'monthly_complete';
+  idempotency_key: string;
+}
+
+type AgentMemory = {
+  id: int (PK);
+  user_id: int (FK);
+  summary: jsonb;
+  updated_at: timestamp;
+}
+
+type AgentRun = {
+  id: int (PK);
+  request_id: string;
+  user_id: int (FK);
+  agent_name: 'analysis' | 'personalization' | 'chat' | 'evaluation';
+  status: 'success' | 'fail' | 'fallback';
+  latency_ms: int;
+  cost_usd: float;
+  created_at: timestamp;
+}
+
+type AuditLog = {
+  id: int (PK);
+  user_id: int (FK);
+  actor: 'user' | 'admin' | 'system';
+  action: string;
+  target: string;
+  created_at: timestamp;
+}
+```
+
+### 11.4 시계열 (TimescaleDB Hypertable)
+
+```
+type StepCount = {
+  user_id: int (FK);
+  ts: timestamp;
+  count: int;
+}
+
+type WeightLog = {
+  user_id: int (FK);
+  ts: timestamp;
+  kg: float;
+}
+
+type HeartRateSample = {
+  user_id: int (FK);
+  ts: timestamp;
+  bpm: int;
+}
+```
+
+### 11.5 보안 · 권한
+
+```
+PostgreSQL Row Level Security (RLS) 적용
+
+CREATE POLICY user_isolation ON profiles
+  FOR ALL
+  USING (user_id = current_setting('app.user_id')::int);
+
+# 모든 테이블 동일 패턴 적용
+# 컬럼 단위 AES-256: chronic_diseases, medications, deficiencies, warnings
+# TLS 1.3 강제, 백업 GPG 암호화
+```
+
+---SPLIT---
+
+## 12. 작업 파이프라인
+
+### 12.1 단계별 흐름 (한눈에)
 
 ```mermaid
 flowchart TB
@@ -1542,7 +1758,7 @@ flowchart TB
     S8 --> S9[9. 시연 · 발표 · 회고]
 ```
 
-### 11.2 단계별 상세
+### 12.2 단계별 상세
 
 #### 1단계 — 아이디어 수립
 - 목적: 만성질환자의 어떤 불편을 해결할지 한 문장으로
@@ -1553,7 +1769,7 @@ flowchart TB
 #### 2단계 — 차별화 전략 수립
 - 목적: 4개 Agent 협력 + 응모권 참여 UX + 의료기관 연계 가능성
 - 활동: Agent 책임 분담, 응모권 규칙 합의, LDB 연계 인터페이스 설계
-- 산출물: §3 핵심 기능 명세, §7 AI 스택, §10 호출 흐름
+- 산출물: §3 핵심 기능 명세, §7 AI 스택, §9 호출 흐름
 - 체크포인트: 경쟁사가 못 따라하는 자산 명확?
 
 #### 3단계 — 디자인 (UX → UI)
@@ -1598,7 +1814,7 @@ flowchart TB
 - 산출물: 슬라이드, 시연 영상, 회고 문서
 - 체크포인트: 청중에게 30초 안에 차별화 설명 가능?
 
-### 11.3 일정 매핑 (8주)
+### 12.3 일정 매핑 (8주)
 
 | 주차 | 단계 | 주요 작업 |
 |------|------|-----------|
@@ -1611,7 +1827,7 @@ flowchart TB
 | W7 | 7 | 통합 QA + 의료자문위 검토 + TestFlight 첫 빌드 업로드 |
 | W8 | 8·9 | 배포 + 데모 데이터 + 시연 리허설 + 슬라이드 |
 
-### 11.4 단계 간 의존성과 위험 신호
+### 12.4 단계 간 의존성과 위험 신호
 
 - 3단계 1주 이상 지연 → 4단계는 와이어프레임 PNG로 시작, UI 다듬기는 W6로
 - 5단계 막힘 → 시계열 데이터는 v2로 미루고 PostgreSQL 단독 운영
@@ -1623,11 +1839,11 @@ flowchart TB
 
 ---SPLIT---
 
-## 12. 사용 툴 정리
+## 13. 사용 툴 정리
 
 본 프로젝트에 실제로 사용하는 도구·서비스·라이브러리를 한 곳에 모아 정리.
 
-### 12.1 디자인 도구
+### 13.1 디자인 도구
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
@@ -1636,7 +1852,7 @@ flowchart TB
 | Pretendard | 한글 본문/제목 단일 폰트 | jsDelivr CDN, 무료 오픈 폰트 |
 | Material Symbols | 아이콘 세트 | Flutter 기본 |
 
-### 12.2 AI · LLM 도구
+### 13.2 AI · LLM 도구
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
@@ -1646,7 +1862,7 @@ flowchart TB
 | Google Cloud Vision API | 영양제·음식 OCR | DOCUMENT_TEXT_DETECTION |
 | Naver CLOVA OCR | OCR 폴백 | 한국어 SOTA |
 
-### 12.3 프론트엔드 (Flutter)
+### 13.3 프론트엔드 (Flutter)
 
 | 라이브러리 | 용도 | 비고 |
 |-----------|------|------|
@@ -1663,7 +1879,7 @@ flowchart TB
 | freezed | 불변 데이터 클래스 | 모델 정의 |
 | json_serializable | JSON 직렬화 | API 응답 파싱 |
 
-### 12.4 백엔드 · 데이터
+### 13.4 백엔드 · 데이터
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
@@ -1684,7 +1900,7 @@ flowchart TB
 | passlib + bcrypt | 비밀번호 해싱 | 표준 |
 | pytest + pytest-cov + httpx + pytest-asyncio | 테스트 | 50+ 단위 테스트 |
 
-### 12.5 개발 환경
+### 13.5 개발 환경
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
@@ -1696,7 +1912,7 @@ flowchart TB
 | Docker + Docker Compose | 로컬 환경 | timescale + redis |
 | Postman / Insomnia | API 테스트 | Swagger와 함께 |
 
-### 12.6 협업 · 운영
+### 13.6 협업 · 운영
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
@@ -1711,7 +1927,7 @@ flowchart TB
 | OBS Studio (선택) | 시연 영상 녹화 | 백업 |
 | QR Generator | 발표 시 라이브 URL → QR | 청중 즉시 접속 |
 
-### 12.7 향후 도입 검토
+### 13.7 향후 도입 검토
 
 | 도구 | 시점 | 용도 |
 |------|------|------|
@@ -1722,7 +1938,7 @@ flowchart TB
 
 ---SPLIT---
 
-## 13. 파일 구조
+## 14. 파일 구조
 
 전체 디렉터리 트리. 5명이 git clone 직후 빌드·실행 가능한 구조.
 
@@ -1941,222 +2157,6 @@ Lemon_Aid/
 
 ---SPLIT---
 
-## 14. 데이터 모델
-
-모든 사용자 데이터는 user_id로 격리되어 PostgreSQL에 저장. 시계열은 TimescaleDB Hypertable, 캐시는 Redis.
-
-### 14.1 사용자 (User · Profile)
-
-```
-type User = {
-  id: int (PK);
-  email: string (unique);
-  password_hash: string;
-  display_name: string;
-  email_verified_at: timestamp?;
-  created_at: timestamp;
-  last_login_at: timestamp;
-  deleted_at: timestamp?;     # 30일 grace
-}
-
-type Profile = {
-  id: int (PK);
-  user_id: int (FK);
-  age: int;
-  gender: 'M' | 'F';
-  height_cm: float;
-  weight_kg: float;
-  chronic_diseases: string[];   # AES-256
-  medications: string[];        # AES-256
-  goals: string[];
-}
-
-type Consent = {
-  id: int (PK);
-  user_id: int (FK);
-  type: 'privacy' | 'ai_usage' | 'health_data' | 'notifications';
-  accepted_at: timestamp;
-  revoked_at: timestamp?;
-}
-
-type EmailVerification = {
-  id: int (PK);
-  user_id: int (FK);
-  token: string;
-  expires_at: timestamp;
-  verified_at: timestamp?;
-}
-```
-
-### 14.2 영양제 · 식단
-
-```
-type Supplement = {
-  id: int (PK);
-  product_name_ko: string;
-  product_name_en: string;
-  manufacturer: string;
-  serving_size: string;
-}
-
-type SupplementIngredient = {
-  id: int (PK);
-  supplement_id: int (FK);
-  name_ko: string;
-  name_en: string;
-  amount: float;
-  unit: 'mg' | 'mcg' | 'IU';
-  daily_value_pct: float?;
-}
-
-type UserSupplement = {
-  id: int (PK);
-  user_id: int (FK);
-  supplement_id: int (FK);
-  dose: float;
-  frequency_per_day: int;
-  taken_times: string[];
-  started_at: date;
-}
-
-type Food = {
-  id: int (PK);
-  name_ko: string;
-  name_en: string;
-  nutrients_per_100g: jsonb;
-  source: '식약처' | '농진청';
-}
-
-type Meal = {
-  id: int (PK);
-  user_id: int (FK);
-  date: date;
-  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
-  foods: jsonb;
-  photo_url: string?;
-}
-```
-
-### 14.3 분석 · 점수 · 알림
-
-```
-type Diagnosis = {
-  id: int (PK);
-  user_id: int (FK);
-  date: date;
-  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
-  deficiencies: jsonb;          # AES-256
-  excesses: jsonb;
-  warnings: jsonb;              # AES-256
-  goal_analysis: jsonb;
-}
-
-type DailyScore = {
-  id: int (PK);
-  user_id: int (FK);
-  date: date;
-  score: int;                   # 0~100
-  breakdown: jsonb;
-  agent_comment: string;
-}
-
-type Reminder = {
-  id: int (PK);
-  user_id: int (FK);
-  type: 'medication' | 'meal' | 'supplement';
-  name: string;
-  time: string;
-  recurrence: 'daily' | 'weekly' | 'once';
-  weekdays: int[]?;
-  active: boolean;
-}
-
-type CalendarEvent = {
-  id: int (PK);
-  user_id: int (FK);
-  date: date;
-  time: string;
-  title: string;
-  hospital: string?;
-  note: string?;
-  added_to_system_calendar: boolean;
-}
-
-type RaffleTicket = {
-  id: int (PK);
-  user_id: int (FK);
-  earned_at: timestamp;
-  count: int;
-  reason: 'daily' | 'weekly_streak' | 'monthly_complete';
-  idempotency_key: string;
-}
-
-type AgentMemory = {
-  id: int (PK);
-  user_id: int (FK);
-  summary: jsonb;
-  updated_at: timestamp;
-}
-
-type AgentRun = {
-  id: int (PK);
-  request_id: string;
-  user_id: int (FK);
-  agent_name: 'analysis' | 'personalization' | 'chat' | 'evaluation';
-  status: 'success' | 'fail' | 'fallback';
-  latency_ms: int;
-  cost_usd: float;
-  created_at: timestamp;
-}
-
-type AuditLog = {
-  id: int (PK);
-  user_id: int (FK);
-  actor: 'user' | 'admin' | 'system';
-  action: string;
-  target: string;
-  created_at: timestamp;
-}
-```
-
-### 14.4 시계열 (TimescaleDB Hypertable)
-
-```
-type StepCount = {
-  user_id: int (FK);
-  ts: timestamp;
-  count: int;
-}
-
-type WeightLog = {
-  user_id: int (FK);
-  ts: timestamp;
-  kg: float;
-}
-
-type HeartRateSample = {
-  user_id: int (FK);
-  ts: timestamp;
-  bpm: int;
-}
-```
-
-### 14.5 보안 · 권한
-
-```
-PostgreSQL Row Level Security (RLS) 적용
-
-CREATE POLICY user_isolation ON profiles
-  FOR ALL
-  USING (user_id = current_setting('app.user_id')::int);
-
-# 모든 테이블 동일 패턴 적용
-# 컬럼 단위 AES-256: chronic_diseases, medications, deficiencies, warnings
-# TLS 1.3 강제, 백업 GPG 암호화
-```
-
----SPLIT---
-
 ## 15. 팀원 작업 분담
 
 팀원 5명. 각자 본인에게 맞는 바이브 코딩 툴(Claude Code, Codex, Cursor, Cline 등)을 자유롭게 사용한다. 단일 진실 = `PROJECT_GUIDE.md`.
@@ -2178,7 +2178,7 @@ CREATE POLICY user_isolation ON profiles
 - 모든 코드 변경은 PROJECT_GUIDE.md 변경과 동기화
 - **한 곳을 바꾸면 다른 곳도 같이 바뀐다 — §17.10 변경 파급 효과 표를 항상 본다**
 
-> **중요**: 새 API 1개 추가는 단순히 `backend/src/api/foo.py` 한 파일이 아니다. §5.3 API 표, §10 호출 흐름, §13 파일 구조, §14 데이터 모델, §16.5 CODEOWNERS — 최소 5곳이 같이 바뀌어야 한다. PR 템플릿의 "📋 변경 파급 효과 점검" 체크리스트가 이를 강제한다.
+> **중요**: 새 API 1개 추가는 단순히 `backend/src/api/foo.py` 한 파일이 아니다. §5.3 API 표, §9 호출 흐름, §14 파일 구조, §11 데이터 모델, §16.5 CODEOWNERS — 최소 5곳이 같이 바뀌어야 한다. PR 템플릿의 "📋 변경 파급 효과 점검" 체크리스트가 이를 강제한다.
 
 ### 15.3 바이브 코딩 툴 사용 원칙
 
@@ -2290,9 +2290,9 @@ CREATE POLICY user_isolation ON profiles
 ## 📋 변경 파급 효과 점검 (§17.10 표 참조)
 이 변경으로 같이 갱신해야 할 곳을 모두 체크했나요?
 - [ ] PROJECT_GUIDE.md 본문 갱신 (해당 섹션)
-- [ ] §13 파일 구조 (새 파일/폴더 추가 시)
-- [ ] §14 데이터 모델 (스키마/테이블 변경 시)
-- [ ] §10 호출 흐름 다이어그램 (API/Agent 추가 시)
+- [ ] §14 파일 구조 (새 파일/폴더 추가 시)
+- [ ] §11 데이터 모델 (스키마/테이블 변경 시)
+- [ ] §9 호출 흐름 다이어그램 (API/Agent 추가 시)
 - [ ] §15.1 팀원 분담 / §16.5 CODEOWNERS (담당 영역 변경 시)
 - [ ] §부록 A.7 pubspec.yaml 또는 requirements.txt (의존성 추가 시)
 - [ ] §부록 A.2 .env 템플릿 + §16.8 시크릿 (환경변수 추가 시)
@@ -2561,18 +2561,18 @@ python scripts/sync_guide.py --check
 
 | 무엇을 바꿨나 | 같이 갱신해야 할 위치 |
 |---------------|---------------------|
-| **새 API 엔드포인트 추가** | §5.3 API 표 + §10 호출 흐름 다이어그램 + §13 파일구조 (`backend/src/api/<name>.py`) + §14 데이터 모델 (요청·응답 스키마) + §16.5 CODEOWNERS |
-| **새 Agent 또는 Tool 추가** | §3.1 Agent 표 + §3.3 Tool 표 + §7.3 Agent별 흐름 + §10 시퀀스 다이어그램 + §13 파일구조 (`backend/src/agents/`, `llm/tools.py`) |
-| **새 화면 추가** | §3.5 주요 화면 표 + §3.4 인증·온보딩 흐름 다이어그램 (해당 시) + §13 파일구조 (`mobile/lib/screens/`) + §15 팀원 분담 (담당) + §16.5 CODEOWNERS |
-| **새 DB 테이블/컬럼** | §6.2 핵심 테이블 + §14 데이터 모델 스키마 + §6.3 보안 (민감정보면 AES-256 표) + Alembic 마이그레이션 |
-| **새 외부 라이브러리/SDK** | §4·§5·§6 기술 스택 표 + §12 사용 툴 + §부록 A.7 (pubspec.yaml) 또는 requirements.txt + §17 자동 검증 추가 시 sync_guide.py |
-| **새 환경 변수** | §부록 A.2 (.env 템플릿) + §16.8 시크릿 관리 + §13 파일구조 (`.env.example`) + §21.3 (배포 환경 변수 표) |
-| **새 GitHub Actions 워크플로** | §13 파일구조 (`.github/workflows/`) + §16.9 CI 워크플로 표 + §16.10 main 보호 규칙 (status checks) + §부록 A.8 |
-| **새 데이터 출처** | §9 데이터·외부 API + §20.7 (앱 내 출처 명시) + §13 (`data/`) + §22 참고 자료 |
-| **새 의료법 표현 케이스** | §20.1·20.2 표현 가이드 + `backend/src/utils/regex_filter.py` 단위 테스트 + §3.10 에러 화면 |
-| **일정 변경** | §1.7 일정 개요 + §11.3 주차별 매핑 + §부록 A.9 D1~D5 액션 카드 |
+| **새 API 엔드포인트 추가** | §5.3 API 표 + §9 호출 흐름 다이어그램 + §14 파일구조 (`backend/src/api/<name>.py`) + §11 데이터 모델 (요청·응답 스키마) + §16.5 CODEOWNERS |
+| **새 Agent 또는 Tool 추가** | §3.1 Agent 표 + §3.3 Tool 표 + §7.3 Agent별 흐름 + §9 시퀀스 다이어그램 + §14 파일구조 (`backend/src/agents/`, `llm/tools.py`) |
+| **새 화면 추가** | §3.5 주요 화면 표 + §3.4 인증·온보딩 흐름 다이어그램 (해당 시) + §14 파일구조 (`mobile/lib/screens/`) + §15 팀원 분담 (담당) + §16.5 CODEOWNERS |
+| **새 DB 테이블/컬럼** | §6.2 핵심 테이블 + §11 데이터 모델 스키마 + §6.3 보안 (민감정보면 AES-256 표) + Alembic 마이그레이션 |
+| **새 외부 라이브러리/SDK** | §4·§5·§6 기술 스택 표 + §13 사용 툴 + §부록 A.7 (pubspec.yaml) 또는 requirements.txt + §17 자동 검증 추가 시 sync_guide.py |
+| **새 환경 변수** | §부록 A.2 (.env 템플릿) + §16.8 시크릿 관리 + §14 파일구조 (`.env.example`) + §21.3 (배포 환경 변수 표) |
+| **새 GitHub Actions 워크플로** | §14 파일구조 (`.github/workflows/`) + §16.9 CI 워크플로 표 + §16.10 main 보호 규칙 (status checks) + §부록 A.8 |
+| **새 데이터 출처** | §10 데이터·외부 API + §19.7 (앱 내 출처 명시) + §14 (`data/`) + §22 참고 자료 |
+| **새 의료법 표현 케이스** | §19.1·20.2 표현 가이드 + `backend/src/utils/regex_filter.py` 단위 테스트 + §3.10 에러 화면 |
+| **일정 변경** | §1.7 일정 개요 + §12.3 주차별 매핑 + §부록 A.9 D1~D5 액션 카드 |
 | **팀원 역할 변경** | §15.1 역할 분담 + §16.5 CODEOWNERS + §부록 A.9 액션 카드 |
-| **알고리즘 산식 변경** | §8 핵심 알고리즘 + §10 호출 흐름 + 단위 테스트 (50+개) + 검증 예시값 |
+| **알고리즘 산식 변경** | §8 핵심 알고리즘 + §9 호출 흐름 + 단위 테스트 (50+개) + 검증 예시값 |
 | **새 페이지 신설** | PG.md에 SPLIT 마커 (대시 3개 + SPLIT + 대시 3개) 추가 + guide.html 사이드바 toc-item + page-N 매핑 + 후속 페이지 번호 시프트 |
 
 #### 변경 → 영향 → 갱신 흐름
@@ -2598,9 +2598,154 @@ flowchart LR
 
 ---SPLIT---
 
-## 18. 시연 시나리오
+## 18. 리스크 & 대응
 
-### 18.1 시나리오 1 — 김건강 (만성질환자, 핵심 어필)
+### 18.1 8대 리스크 (R1~R8)
+
+| ID | 리스크 | 영향도 | 대응 |
+|----|--------|-------|------|
+| R1 | 만성질환자 디지털 친화도 ↓ | 중 | 큰 글씨·3탭 이내·쉬운 말 카피 |
+| R2 | 의료법·약사법 위반 | 매우 높음 | 면책 표준 문구 3종 / 금지 표현 사전+사후 검수 / 의료자문위 검토 |
+| R3 | 경쟁자 진입 (필라이즈 후속) | 중 | 의료기관 연계(LDB) + 만성질환 v4 가중 |
+| R4 | 만성질환 데이터 부족 | 중 | Kaggle 시연, 향후 LDB 인터페이스 설계서 |
+| R5 | OCR 정확도 미달 (<85%) | 중 | Cloud Vision + CLOVA 백업 / 사용자 수정 입력 |
+| R6 | 산출식 임상 한계 | 중 | Phase 3에 Hall 동적 모델 검토 |
+| R7 | 개인정보 유출 | 매우 높음 | AES-256 / RLS / TLS 1.3 / 감사 로그 / 즉시 삭제 (D 담당) |
+| R8 | DTx 오인 | 낮음 | "치료" 표현 X, "관리·참고"로 통일 |
+
+### 18.2 운영 리스크
+
+| 리스크 | 대응 |
+|--------|------|
+| LLM 응답 시간 | Streaming + 로딩 스켈레톤 + 캐시 3단계 |
+| LLM 응답 부정확 | 항상 미리보기 후 사용자 수정 |
+| LLM 비용 폭주 | 캐싱 + 분당 5회/일당 50회 + max_tokens |
+| API 키 노출 | 모바일 빌드물에 키 X, 백엔드 환경변수만 |
+| Cloud Vision 무료 한도 초과 | 캐싱 50%+ 절감 + CLOVA 폴백 |
+| Health Connect 신청 미승인 | W1 즉시 신청, 미승인 시 mock 데이터 |
+| TestFlight 외부 심사 24~48시간 | W7 첫 빌드 사전 업로드, 내부 테스터 폴백 |
+| 8주 일정 타이트 | 4 Agent 중 분석·평가에 집중, 챗봇·개인화는 단순화 가능 |
+
+### 18.3 비상 대응 시나리오
+
+| 상황 | 대응 |
+|------|------|
+| 자해/자살 의도 감지 | 109/1577-0199 안내, 다이어트 권고 즉시 비표시 |
+| 식이장애 의심 | 한국섭식장애협회 안내 |
+| 심각 건강 이상 | 1339 응급의료, 일반 권고 일시 중단 |
+| 데이터 유출 | 1시간 차단 → 24시간 신고 → 72시간 분석 → 1개월 보고 |
+
+> 원칙: AI Agent 4개 중 1~2개가 빠져도 코어(영양제 분석 + 5종 출력)는 살아남는다. 발표는 무조건 성립한다.
+
+---SPLIT---
+
+## 19. 컴플라이언스 & 안전선
+
+본 서비스는 진단·치료 서비스가 아니라 웰니스 기반 건강관리 보조 서비스로 정의한다. 의료법·약사법·건강기능식품법·개인정보보호법 5개 법령을 준수.
+
+### 19.1 표현 가이드 — 절대 금지 vs 허용
+
+#### 절대 금지 (의료법·약사법)
+
+1. "OO질환입니다" — 진단
+2. "OO약을 드세요" — 처방
+3. 특정 의료기관 알선
+4. 의사·약사 오인 표현
+5. 치료 효과 단정 보장
+6. 특정 의약품 추천·이름 명시
+7. 의약품의 건기식화 광고
+
+#### 허용
+
+1. KDRIs 권장량 안내
+2. 일반 식이·운동 권고
+3. 영양소 결핍 가능성 (질병명 X)
+4. "전문가와 상담을 권장합니다"
+5. 일반인 대상 영양·운동·체중 정보
+6. 식약처 기능성 인정 원료 안내
+7. 영양제 라벨 단순 표시
+8. "약사와 상의" 안내
+
+### 19.2 표현 가이드 — 위반 → 대체
+
+| 위반 | 대체 |
+|---------|---------|
+| "당신은 빈혈입니다" | "철분 섭취량이 권장량보다 낮습니다" |
+| "비타민 D가 결핍되었습니다" | "비타민 D 섭취가 권장량의 35% 수준입니다" |
+| "당뇨 위험군입니다" | "혈당 관련 영양소 관리에 주의가 필요할 수 있습니다" |
+| "OO 비타민C를 드세요" | "비타민 C 섭취량을 늘리는 것이 권장됩니다" |
+| "이대로면 비만이 됩니다" | "현재 추세 시 1개월 후 체중이 약 1.2 kg 증가할 수 있습니다" |
+| "운동 부족으로 병이 옵니다" | "권장 걸음수의 60% 수준으로 활동하고 계십니다" |
+
+### 19.3 면책 고지 표준 문구 3종
+
+#### 메인 (모든 권고 화면 하단)
+
+> "본 서비스에서 제공하는 정보는 일반적인 건강 관리를 위한 참고 자료이며, 의사·약사·영양사의 전문적 진단이나 처방을 대체하지 않습니다. 증상이 있거나 만성질환을 앓고 계신 경우, 반드시 전문가와 상담하시기 바랍니다."
+
+#### 영양제
+
+> "영양제는 의약품이 아니며, 질병의 예방이나 치료를 보장하지 않습니다. 약을 복용 중이신 경우, 영양제와의 상호작용에 대해 의료진과 상담하세요."
+
+#### 체중 예측
+
+> "체중 변화 예측은 평균적인 수치를 바탕으로 산출되며, 개인의 대사·체질·생활습관에 따라 결과가 달라질 수 있습니다. 급격한 체중 변화는 건강에 해로울 수 있으니 의료진과 상담하세요."
+
+### 19.4 자동 검수 장치 (4단계)
+
+```mermaid
+flowchart LR
+    A[1. LLM 시스템 프롬프트<br/>금지어 명시] --> B[2. Pydantic 스키마 검증]
+    B --> C[3. 정규식 사후 필터<br/>최대 3회 재생성]
+    C --> D[4. 사용자 미리보기<br/>승인 후 저장]
+```
+
+### 19.5 개인정보보호법 — 민감정보 처리
+
+| 분류 | 항목 | 동의 |
+|------|------|------|
+| 민감정보 (별도 동의 필수) | 만성질환·복약·검진기록·걸음수·심박수 | 항목별 체크 |
+| 일반정보 | 이름·이메일·나이·성별·키·몸무게·식단/영양제 사진 | 통합 동의 |
+
+처리 원칙:
+- 별도 동의 UI (필수/선택 구분 + 사용 목적 표시)
+- 가명정보 처리
+- 데이터 주체 5권리 (열람 / 정정·삭제 / 처리정지 / 동의 철회 / 탈퇴 즉시 삭제 + 백업 90일 폐기)
+- AES-256 + TLS 1.3 + 감사 로그
+
+### 19.6 DTx 해당 여부
+
+결론: 비의료 건강관리서비스, 식약처 허가 불필요.
+
+3가지 DTx 요건 모두 X:
+- 임상 근거 X (KDRIs 기반 일반 권고)
+- 질병 치료 목적 X (관리·참고)
+- 특정 질환자 프로토콜 X (일반인 대상)
+
+가드: "치료" 표현 X, "관리·참고" 통일.
+
+### 19.7 데이터 출처 명시 (앱 내 필수)
+
+- 한국영양학회 KDRIs 2020 (보건복지부)
+- 식약처 식품영양성분 Open API
+- 식약처 건강기능식품 원료 DB
+- 농촌진흥청 국가표준식품성분표
+- AI Hub 음식 이미지 (NIA, 비상업 학술)
+
+### 19.8 Phase별 컴플라이언스 체크리스트
+
+| Phase | 체크 |
+|-------|------|
+| Phase 0~1 | 표준 디스클레이머 / LLM 시스템 프롬프트 + 금지어 검출 |
+| Phase 2 | 별도 동의 UI / 디스클레이머 / AES-256 / TLS 1.3 / PHI 감사 로그 |
+| Phase 3 | 의료자문위 / 식약처 표현 검수 / DTx 사전 검토 / 위급 신호 감지 |
+| Phase 4 | 법무 검수 진단·처방 0건 / 출처 페이지 / App Privacy 라벨 / Data Safety / 개인정보처리방침 |
+
+---SPLIT---
+
+## 20. 시연 시나리오
+
+### 20.1 시나리오 1 — 김건강 (만성질환자, 핵심 어필)
 
 ```
 [상황]
@@ -2627,7 +2772,7 @@ flowchart LR
 7. 응모권 화면: "오늘 사진 4장 등록 완료, 응모권 1개 추가"
 ```
 
-### 18.2 시나리오 2 — 박직장 (예방 단계)
+### 20.2 시나리오 2 — 박직장 (예방 단계)
 
 ```
 [상황]
@@ -2645,7 +2790,7 @@ flowchart LR
 6. 응모권 + 점수 화면
 ```
 
-### 18.3 시나리오 3 — 챗봇 알림 등록 (Tool Use 어필)
+### 20.3 시나리오 3 — 챗봇 알림 등록 (Tool Use 어필)
 
 ```
 1. "매일 아침 8시 혈압약, 저녁 8시 종합비타민 알림 맞춰줘"
@@ -2657,7 +2802,7 @@ flowchart LR
    → 영양제 섭취 기록 추가 + 응모권 카운트
 ```
 
-### 18.4 시연 안전장치
+### 20.4 시연 안전장치
 
 | 리스크 | 대응 |
 |--------|------|
@@ -2667,151 +2812,6 @@ flowchart LR
 | 백엔드 장애 | 발표 PC에서 로컬 docker-compose 직접 시연 |
 | TestFlight 외부 그룹 심사 미통과 | 내부 테스터(최대 100명) 그룹 폴백 |
 | 청중 참여 | QR 코드 → TestFlight 링크 + 베타 가입 |
-
----SPLIT---
-
-## 19. 리스크 & 대응
-
-### 19.1 8대 리스크 (R1~R8)
-
-| ID | 리스크 | 영향도 | 대응 |
-|----|--------|-------|------|
-| R1 | 만성질환자 디지털 친화도 ↓ | 중 | 큰 글씨·3탭 이내·쉬운 말 카피 |
-| R2 | 의료법·약사법 위반 | 매우 높음 | 면책 표준 문구 3종 / 금지 표현 사전+사후 검수 / 의료자문위 검토 |
-| R3 | 경쟁자 진입 (필라이즈 후속) | 중 | 의료기관 연계(LDB) + 만성질환 v4 가중 |
-| R4 | 만성질환 데이터 부족 | 중 | Kaggle 시연, 향후 LDB 인터페이스 설계서 |
-| R5 | OCR 정확도 미달 (<85%) | 중 | Cloud Vision + CLOVA 백업 / 사용자 수정 입력 |
-| R6 | 산출식 임상 한계 | 중 | Phase 3에 Hall 동적 모델 검토 |
-| R7 | 개인정보 유출 | 매우 높음 | AES-256 / RLS / TLS 1.3 / 감사 로그 / 즉시 삭제 (D 담당) |
-| R8 | DTx 오인 | 낮음 | "치료" 표현 X, "관리·참고"로 통일 |
-
-### 19.2 운영 리스크
-
-| 리스크 | 대응 |
-|--------|------|
-| LLM 응답 시간 | Streaming + 로딩 스켈레톤 + 캐시 3단계 |
-| LLM 응답 부정확 | 항상 미리보기 후 사용자 수정 |
-| LLM 비용 폭주 | 캐싱 + 분당 5회/일당 50회 + max_tokens |
-| API 키 노출 | 모바일 빌드물에 키 X, 백엔드 환경변수만 |
-| Cloud Vision 무료 한도 초과 | 캐싱 50%+ 절감 + CLOVA 폴백 |
-| Health Connect 신청 미승인 | W1 즉시 신청, 미승인 시 mock 데이터 |
-| TestFlight 외부 심사 24~48시간 | W7 첫 빌드 사전 업로드, 내부 테스터 폴백 |
-| 8주 일정 타이트 | 4 Agent 중 분석·평가에 집중, 챗봇·개인화는 단순화 가능 |
-
-### 19.3 비상 대응 시나리오
-
-| 상황 | 대응 |
-|------|------|
-| 자해/자살 의도 감지 | 109/1577-0199 안내, 다이어트 권고 즉시 비표시 |
-| 식이장애 의심 | 한국섭식장애협회 안내 |
-| 심각 건강 이상 | 1339 응급의료, 일반 권고 일시 중단 |
-| 데이터 유출 | 1시간 차단 → 24시간 신고 → 72시간 분석 → 1개월 보고 |
-
-> 원칙: AI Agent 4개 중 1~2개가 빠져도 코어(영양제 분석 + 5종 출력)는 살아남는다. 발표는 무조건 성립한다.
-
----SPLIT---
-
-## 20. 컴플라이언스 & 안전선
-
-본 서비스는 진단·치료 서비스가 아니라 웰니스 기반 건강관리 보조 서비스로 정의한다. 의료법·약사법·건강기능식품법·개인정보보호법 5개 법령을 준수.
-
-### 20.1 표현 가이드 — 절대 금지 vs 허용
-
-#### 절대 금지 (의료법·약사법)
-
-1. "OO질환입니다" — 진단
-2. "OO약을 드세요" — 처방
-3. 특정 의료기관 알선
-4. 의사·약사 오인 표현
-5. 치료 효과 단정 보장
-6. 특정 의약품 추천·이름 명시
-7. 의약품의 건기식화 광고
-
-#### 허용
-
-1. KDRIs 권장량 안내
-2. 일반 식이·운동 권고
-3. 영양소 결핍 가능성 (질병명 X)
-4. "전문가와 상담을 권장합니다"
-5. 일반인 대상 영양·운동·체중 정보
-6. 식약처 기능성 인정 원료 안내
-7. 영양제 라벨 단순 표시
-8. "약사와 상의" 안내
-
-### 20.2 표현 가이드 — 위반 → 대체
-
-| 위반 | 대체 |
-|---------|---------|
-| "당신은 빈혈입니다" | "철분 섭취량이 권장량보다 낮습니다" |
-| "비타민 D가 결핍되었습니다" | "비타민 D 섭취가 권장량의 35% 수준입니다" |
-| "당뇨 위험군입니다" | "혈당 관련 영양소 관리에 주의가 필요할 수 있습니다" |
-| "OO 비타민C를 드세요" | "비타민 C 섭취량을 늘리는 것이 권장됩니다" |
-| "이대로면 비만이 됩니다" | "현재 추세 시 1개월 후 체중이 약 1.2 kg 증가할 수 있습니다" |
-| "운동 부족으로 병이 옵니다" | "권장 걸음수의 60% 수준으로 활동하고 계십니다" |
-
-### 20.3 면책 고지 표준 문구 3종
-
-#### 메인 (모든 권고 화면 하단)
-
-> "본 서비스에서 제공하는 정보는 일반적인 건강 관리를 위한 참고 자료이며, 의사·약사·영양사의 전문적 진단이나 처방을 대체하지 않습니다. 증상이 있거나 만성질환을 앓고 계신 경우, 반드시 전문가와 상담하시기 바랍니다."
-
-#### 영양제
-
-> "영양제는 의약품이 아니며, 질병의 예방이나 치료를 보장하지 않습니다. 약을 복용 중이신 경우, 영양제와의 상호작용에 대해 의료진과 상담하세요."
-
-#### 체중 예측
-
-> "체중 변화 예측은 평균적인 수치를 바탕으로 산출되며, 개인의 대사·체질·생활습관에 따라 결과가 달라질 수 있습니다. 급격한 체중 변화는 건강에 해로울 수 있으니 의료진과 상담하세요."
-
-### 20.4 자동 검수 장치 (4단계)
-
-```mermaid
-flowchart LR
-    A[1. LLM 시스템 프롬프트<br/>금지어 명시] --> B[2. Pydantic 스키마 검증]
-    B --> C[3. 정규식 사후 필터<br/>최대 3회 재생성]
-    C --> D[4. 사용자 미리보기<br/>승인 후 저장]
-```
-
-### 20.5 개인정보보호법 — 민감정보 처리
-
-| 분류 | 항목 | 동의 |
-|------|------|------|
-| 민감정보 (별도 동의 필수) | 만성질환·복약·검진기록·걸음수·심박수 | 항목별 체크 |
-| 일반정보 | 이름·이메일·나이·성별·키·몸무게·식단/영양제 사진 | 통합 동의 |
-
-처리 원칙:
-- 별도 동의 UI (필수/선택 구분 + 사용 목적 표시)
-- 가명정보 처리
-- 데이터 주체 5권리 (열람 / 정정·삭제 / 처리정지 / 동의 철회 / 탈퇴 즉시 삭제 + 백업 90일 폐기)
-- AES-256 + TLS 1.3 + 감사 로그
-
-### 20.6 DTx 해당 여부
-
-결론: 비의료 건강관리서비스, 식약처 허가 불필요.
-
-3가지 DTx 요건 모두 X:
-- 임상 근거 X (KDRIs 기반 일반 권고)
-- 질병 치료 목적 X (관리·참고)
-- 특정 질환자 프로토콜 X (일반인 대상)
-
-가드: "치료" 표현 X, "관리·참고" 통일.
-
-### 20.7 데이터 출처 명시 (앱 내 필수)
-
-- 한국영양학회 KDRIs 2020 (보건복지부)
-- 식약처 식품영양성분 Open API
-- 식약처 건강기능식품 원료 DB
-- 농촌진흥청 국가표준식품성분표
-- AI Hub 음식 이미지 (NIA, 비상업 학술)
-
-### 20.8 Phase별 컴플라이언스 체크리스트
-
-| Phase | 체크 |
-|-------|------|
-| Phase 0~1 | 표준 디스클레이머 / LLM 시스템 프롬프트 + 금지어 검출 |
-| Phase 2 | 별도 동의 UI / 디스클레이머 / AES-256 / TLS 1.3 / PHI 감사 로그 |
-| Phase 3 | 의료자문위 / 식약처 표현 검수 / DTx 사전 검토 / 위급 신호 감지 |
-| Phase 4 | 법무 검수 진단·처방 0건 / 출처 페이지 / App Privacy 라벨 / Data Safety / 개인정보처리방침 |
 
 ---SPLIT---
 
@@ -3282,10 +3282,10 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Health Connect 신청
 | API 키 받는 법 모름 | Anthropic Console / Google Cloud Console / 채팅에 멘토 호출 |
 | 다른 팀원 코드와 충돌 | §16 GitHub 규칙 + 채팅에서 동기 콜 |
 | 알고리즘 산식이 헷갈림 | §8 핵심 알고리즘 / 가이드 PPT 예시값과 비교 |
-| 의료법 표현이 걱정 | §20.2 위반→대체 표 / E에게 검토 요청 |
-| 4개 Agent 흐름이 헷갈림 | §3.1 / §7.3 / §10 호출 흐름 |
+| 의료법 표현이 걱정 | §19.2 위반→대체 표 / E에게 검토 요청 |
+| 4개 Agent 흐름이 헷갈림 | §3.1 / §7.3 / §9 호출 흐름 |
 | LLM 비용이 무서움 | §7.6 가드레일 / 캐시 적중률 점검 |
-| 발표 직전인데 백엔드 죽음 | §18.4 / §21.5 시연 안전장치 |
+| 발표 직전인데 백엔드 죽음 | §20.4 / §21.5 시연 안전장치 |
 | guide.html이 PG.md와 다르게 보임 | §17 기획서 자동 동기화 |
 
 ---
