@@ -1,0 +1,114 @@
+# ============================================================
+# Lemon Aid — .gitignore
+# 환경 변수 / 빌드 산출물 / OS / 에디터 캐시 모두 차단
+# ============================================================
+
+# ── 환경 변수 (절대 커밋 금지) ─────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# 단, 템플릿은 OK
+!.env.example
+
+# ── API 키 / 인증 정보 ─────────────────────────
+*.pem
+*.key
+service-account*.json
+google-credentials*.json
+
+# ── Python (백엔드) ────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+.tox/
+
+# ── Flutter / Dart (모바일) ────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+*.iml
+.flutter-versions
+
+# ── Node (만약 도구 도입 시) ────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Docker / 데이터 볼륨 ───────────────────────
+*.sqlite
+*.sqlite3
+postgres-data/
+redis-data/
+lemon-pg-data/
+lemon-redis-data/
+
+# ── 업로드된 사용자 사진·임시 파일 ──────────────
+uploads/
+tmp/
+temp/
+
+# ── OS ─────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── 에디터 / IDE ───────────────────────────────
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+.windsurfrules
+.aiderignore
+
+# ── 로그 ───────────────────────────────────────
+*.log
+logs/
+
+# ── 백업 ───────────────────────────────────────
+*.bak
+*.backup
+*.orig
+
+# ── 시스템·민감 정보 (혹시 모를 누출 차단) ──────
+*.pid
+secrets/
+.secrets/
+private/
