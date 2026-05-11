@@ -21,6 +21,12 @@ import re
 import sys
 from pathlib import Path
 
+# Windows cp949 터미널에서 유니코드 출력 깨짐 방지
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 MD_PATH = ROOT / "PROJECT_GUIDE.md"
 HTML_PATH = ROOT / "guide.html"
@@ -47,8 +53,8 @@ def ok(msg: str) -> None:
 def load_md() -> str:
     if not MD_PATH.exists():
         fail(f"PROJECT_GUIDE.md 없음: {MD_PATH}")
-    text = MD_PATH.read_text(encoding="utf-8")
-    return text
+    # CRLF → LF 정규화 (Windows 환경 대응)
+    return MD_PATH.read_bytes().decode("utf-8").replace("\r\n", "\n")
 
 
 def load_html() -> str:
@@ -58,8 +64,8 @@ def load_html() -> str:
     if b"\x00" in raw:
         info("guide.html에 NULL 바이트 발견 → 자동 제거")
         raw = raw.replace(b"\x00", b"")
-        HTML_PATH.write_bytes(raw)
-    return raw.decode("utf-8")
+    # CRLF → LF 정규화 (Windows 환경 대응)
+    return raw.decode("utf-8").replace("\r\n", "\n")
 
 
 def validate_md(md: str) -> None:
@@ -146,6 +152,7 @@ def main() -> int:
             "scripts/sync_guide.py 를 실행하고 다시 commit 해주세요."
         )
 
+    # LF로 통일하여 저장 (CRLF 재유입 방지)
     HTML_PATH.write_bytes(new_html.encode("utf-8"))
     ok(f"guide.html 동기화 완료 ({len(new_html):,} bytes)")
     return 0
