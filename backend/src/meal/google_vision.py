@@ -46,7 +46,11 @@ class _GcvObjectHintRaw(BaseModel):
 
     name: str = Field(..., min_length=1)
     score: float = Field(default=_DEFAULT_LABEL_CONFIDENCE, ge=0.0, le=1.0)
-    bbox_xyxy: list[float] | None = Field(default=None)
+    bbox_xyxy: list[float] | None = Field(
+        default=None,
+        min_length=_BBOX_COORD_COUNT,
+        max_length=_BBOX_COORD_COUNT,
+    )
 
 
 class _GcvHintsRaw(BaseModel):
