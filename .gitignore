@@ -113,3 +113,13 @@ _archive/
 secrets/
 .secrets/
 private/
+
+# ── Meal vision / YOLO 학습 부산물 ─────────────
+models/
+ml/outputs/
+ml/data/raw/
+ml/data/processed/
+ml/notebooks/.ipynb_checkpoints/
+*.pt
+runs/
+wandb/
