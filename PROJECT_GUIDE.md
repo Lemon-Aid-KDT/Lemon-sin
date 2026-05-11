@@ -29,7 +29,7 @@
 | 발주처 | (주)레몬헬스케어 |
 | 수행 주체 | 경북대학교 AI/빅데이터 전문가 양성 과정 — Lemon Aid 팀 (5명) |
 | 수행 기간 | 2026.04.28 ~ (8주 MVP) |
-| 결과물 | 모바일 앱 프로토타입 + 백엔드 API + 4개 Agent 동작 데모 + LDB 연계 인터페이스 설계서 |
+| 결과물 | 모바일 앱 프로토타입 + 백엔드 API + 분석 알고리즘·3개 Agent 통합 흐름 데모 + LDB 연계 인터페이스 설계서 |
 
 ### 1.2 발주 배경
 
@@ -104,7 +104,7 @@
 | 의료기관 네트워크 연계 가능성 | LDB 130여 의료기관 (참조 인터페이스 설계) | X |
 | 만성질환 v4 가중 알고리즘 | 당뇨/고혈압/심혈관/관절/호흡기 가중 (×1.3) | X |
 | 검증된 사용자 베이스 | 770만+ (청구의신 자산) | △ |
-| 5종 출력 + Agent 통합 해석 | 사진 1장으로 5종 + 4개 Agent 협력 | △ (단편) |
+| 5종 출력 + Agent 통합 해석 | 사진 1장으로 5종 + 분석 알고리즘·3개 Agent 통합 흐름 | △ (단편) |
 | 사진 기록 응모권 UX | 점수가 아닌 참여 기반, 부담 0 | X |
 
 > 출처 메모: 필라이즈 MAU·투자 유치 수치는 시리즈 B 보도자료 기준(2024년 발표). 정확한 인용은 §23 참고 자료 참조.
@@ -115,9 +115,9 @@
 
 | 단계 | 기간 | 핵심 |
 |------|------|------|
-| Phase 0 — 기획·환경 | W1~W2 | Kaggle 데이터셋 선정 / Figma 와이어프레임 / 환경 셋업 |
-| Phase 1 — 코어 구현 | W3~W4 | 음식·영양제 OCR / 분석 Agent / 알고리즘 단위 |
-| Phase 2 — Agent 통합 | W5~W6 | 평가·개인화·챗봇 Agent / 알림·캘린더 / 응모권 |
+| Phase 0 — 기획·환경 | W1~W2 | 병원 데이터 연동 질문 정리 / Figma 와이어프레임 / 환경 셋업 |
+| Phase 1 — 코어 구현 | W3~W4 | 음식·영양제 OCR / 분석 알고리즘 / 알고리즘 단위 |
+| Phase 2 — Agent 통합 | W5~W6 | 평가·개인화·챗봇 3개 Agent / 알림·캘린더 / 응모권 |
 | Phase 3 — QA·시연 | W7~W8 | 통합 QA / 의료자문위 / 배포 / 시연 리허설 |
 
 ---SPLIT---
@@ -162,11 +162,11 @@
 | 활동점수 v1~v4 | 산출식 명확 | 그룹 비교용 코호트 DB |
 | 권장 영양소 (KDRIs) | 19~49세 기준 | 50대+, 만성질환자 보정 |
 | 체중 예측 | 7-step 결정론 | 사용자 적응형 보정 (Phase 3) |
-| 부족 영양소 추천 | 알고리즘 미정의 | 식단 → 영양소 매핑 + 결핍 진단 |
+| 부족 영양소 추천 | 알고리즘 미정의 | 식단 → 영양소 매핑 + 결핍 판단 |
 | 목적별 분석 (눈/간/피로) | 정의 없음 | 식약처 기능성 인정 원료 매트릭스 |
 | 식단 입력 처리 | 미정의 | 텍스트/이미지 → 영양소 변환 |
-| 영양제 분석 | 미정의 | OCR + LLM 파싱 + 식약처 DB 매칭 |
-| Agent 협력 구조 | 미정의 | 4개 Agent 분담 + 요약 기억 |
+| 영양제 분석 | 미정의 | 영양제 CSV DB 우선 + API 보조, OCR/라벨링 결과 매칭 |
+| Agent 협력 구조 | 미정의 | 분석 알고리즘 + 개인화·평가·챗봇 3개 Agent 통합 흐름 |
 
 > 5개 출력 중 4개의 핵심 가치 영역(부족 영양소·목적별 분석·식단·영양제)이 우리가 직접 알고리즘을 설계해야 하는 영역이다. 이것이 사실상 본 프로젝트의 진짜 도전 영역이다.
 
@@ -174,63 +174,62 @@
 
 ## 3. 핵심 기능 명세
 
-### 3.1 4개 Agent 구조
+### 3.1 분석 알고리즘 + 3개 Agent 통합 구조
 
-단일 LLM 호출이 아니라 4개 Agent가 협력해 만성질환자의 영양·복약 관리를 해석한다.
+단일 LLM 호출이 아니라, 분석 알고리즘이 이미지·자연어·파일 입력을 먼저 구조화하고 개인화·평가·챗봇 3개 Agent가 하나의 통합 흐름으로 만성질환자의 영양·복약 관리를 해석한다.
 
 ```mermaid
 flowchart LR
     U[👤 사용자] --> O[🎯 Orchestrator]
-    O --> A1[🔍 분석 Agent<br/>OCR + 영양소 산출]
-    O --> A2[🩺 개인화 Agent<br/>만성질환·복약 기준]
-    A1 --> A3[📊 평가 Agent<br/>점수 + 부족·과다 분석]
-    A2 --> A3
-    A3 --> A4[💬 챗봇 Agent<br/>설명 + 알림/캘린더]
-    A4 --> U
+    O --> P[🔍 분석 알고리즘<br/>OCR + 라벨링 + 영양소 산출]
+    P --> A1[🩺 개인화 Agent<br/>만성질환·복약 기준]
+    P --> A2[📊 평가 Agent<br/>점수 + 부족·과다 분석]
+    A1 --> A2
+    A2 --> A3[💬 챗봇 Agent<br/>설명 + 알림/캘린더]
+    A3 --> U
     M[(🧠 Agent Memory<br/>요약 기억)] -.공유.-> A1
     M -.공유.-> A2
     M -.공유.-> A3
-    M -.공유.-> A4
 ```
 
-| Agent | 책임 | 입력 | 출력 |
+| 구성 | 책임 | 입력 | 출력 |
 |-------|------|------|------|
-| 분석 Agent | 음식·영양제 사진 인식 + 영양소 산출 | 사진, 사용자 수정 입력 | 음식명·섭취량·영양소·영양제 성분/함량 (Pydantic) |
-| 개인화 Agent | 만성질환·검사값·복약 기준 제공 | 사용자 프로필, Kaggle 병원성 데이터 | 질환별 주의 영양소, 권장 기준, 약물 주의 |
+| 분석 알고리즘 | 음식·영양제 사진 인식, OCR, CSV DB/API 매칭, 영양소 산출 | 사진, 자연어 입력, 파일, 사용자 수정 입력 | 음식명·섭취량·영양소·영양제 성분/함량 (Pydantic) |
+| 개인화 Agent | 만성질환·검사값·복약 기준 제공 | 사용자 프로필, 멘토 확인 전 시연용 데이터 | 질환별 주의 영양소, 권장 기준, 약물 주의 |
 | 챗봇 Agent | 결과 설명 + 사용자 요청 기반 실행 | 자연어 질문, 분석 결과, Agent 요약 기억 | 자연어 답변 + (선택) Tool Call |
-| 평가 Agent | 식단관리 점수 + 개선 피드백 | 분석 Agent 결과 + 개인화 Agent 기준 | 점수, 부족 영양소, 과다 위험, 좋은 선택, 개선 필요 |
+| 평가 Agent | 식단관리 점수 + 개선 피드백 | 분석 알고리즘 결과 + 개인화 Agent 기준 | 점수, 부족 영양소, 과다 위험, 좋은 선택, 개선 필요 |
 
-> 각 Agent의 코드 책임 매핑은 §14 파일 구조의 `backend/src/agents/` 참조.
+> 분석 알고리즘은 `backend/src/algorithms/`, `ocr/`, `supplements/`가 담당하고, 3개 Agent의 코드 책임 매핑은 §14 파일 구조의 `backend/src/agents/` 참조.
 
 ### 3.2 Agent 간 데이터 전달 포맷
 
-모든 Agent는 다음 Pydantic 모델로 통신한다. 오케스트레이터가 직렬/병렬 호출을 결정한다.
+3개 Agent는 다음 Pydantic 모델로 통신한다. 오케스트레이터가 분석 알고리즘 결과를 받아 직렬/병렬 호출을 결정한다.
 
 ```
 class AgentInput(BaseModel):
     user_id: int
     request_id: str            # 한 사용자 요청 단위로 동일
-    payload: dict              # Agent별 입력 (파일/텍스트/숫자)
+    payload: dict              # 분석 결과, 파일/텍스트/숫자, Agent별 입력
     context: AgentMemorySnap   # 최근 검사값/만성질환/복약 요약
 
 class AgentOutput(BaseModel):
     request_id: str
-    agent_name: Literal['analysis','personalization','chat','evaluation']
+    agent_name: Literal['personalization','chat','evaluation']
     result: BaseModel          # Agent별 전용 결과 모델
     used_tools: list[str]      # Tool Use 호출 이름 목록
     latency_ms: int
     cost_usd: float            # 비용 추적
 ```
 
-오케스트레이터는 각 호출을 `agent_runs` 테이블에 로깅하여 비용·지연·실패율을 추적한다. Agent 요약 기억(`agent_memory`) 갱신은 평가 Agent가 끝난 직후 `backend/src/agents/memory.py` 모듈이 담당한다.
+오케스트레이터는 각 Agent 호출을 `agent_runs` 테이블에 로깅하여 비용·지연·실패율을 추적한다. Agent 요약 기억(`agent_memory`) 갱신은 평가 Agent가 끝난 직후 `backend/src/agents/memory.py` 모듈이 담당한다.
 
 ### 3.3 Tool 정의 (LLM Tool Use 함수 목록)
 
-`backend/src/llm/tools.py`에 정의되며 챗봇 Agent와 분석 Agent가 호출한다.
+`backend/src/llm/tools.py`에 정의되며 챗봇 Agent와 분석 알고리즘 흐름이 호출한다.
 
-| Tool 이름 | 호출 Agent | 인자 | 효과 |
+| Tool 이름 | 호출 주체 | 인자 | 효과 |
 |-----------|-----------|------|------|
-| extract_supplement_facts | 분석 | { ocr_text } | OCR 텍스트를 SupplementParseResult Pydantic으로 강제 파싱 |
+| extract_supplement_facts | 분석 알고리즘 | { ocr_text } | OCR 텍스트를 SupplementParseResult Pydantic으로 강제 파싱 |
 | add_reminder | 챗봇 | { type, name, time, recurrence, weekdays? } | DB INSERT 후 flutter_local_notifications에 등록 |
 | add_calendar_event | 챗봇 | { date, time, title, hospital?, note? } | DB INSERT 후 add_2_calendar로 시스템 캘린더 반영 |
 | log_supplement_intake | 챗봇 | { supplement_id, taken_at } | 영양제 섭취 기록 + 응모권 카운트 |
@@ -243,8 +242,8 @@ class AgentOutput(BaseModel):
 ```mermaid
 flowchart TD
     S[Splash] --> L{로그인?}
-    L -- No --> SU[회원가입<br/>이메일+비번]
-    SU --> EV[이메일 인증<br/>SMTP/SES 발송]
+    L -- No --> SU[회원가입/로그인<br/>이메일·구글·카카오·간편 로그인]
+    SU --> EV[이메일 또는 소셜 인증]
     EV --> CN[개인정보 동의<br/>필수/선택 분리]
     CN --> P1[기본정보<br/>나이·성별·키·몸무게]
     P1 --> P2[만성질환 다중선택<br/>당뇨/고혈압/심혈관/관절/호흡기/없음]
@@ -256,15 +255,15 @@ flowchart TD
     L -- Yes --> H
 ```
 
-이메일 인증 메일 발송은 백엔드의 `backend/src/services/email.py` 모듈에서 SMTP(개발) 또는 AWS SES/NCP Cloud Outbound Mailer(운영)로 처리. 환경변수 `EMAIL_PROVIDER`로 분기.
+이메일 인증 메일 발송은 백엔드의 `backend/src/services/email.py` 모듈에서 SMTP(개발) 또는 AWS SES/NCP Cloud Outbound Mailer(운영)로 처리한다. 구글·카카오 등 간편 로그인은 소셜 인증 결과를 받아 동일한 프로필 등록 흐름으로 진입한다.
 
 ### 3.5 주요 화면
 
 | 화면 | 핵심 인터랙션 | 담당 Agent |
 |------|--------------|-----------|
 | 온보딩 / 프로필 | 만성질환·복약·기본정보 입력 (§3.4 흐름) | 개인화 |
-| 카메라 (음식·영양제) | 사진 촬영, AI 인식, 사용자 수정 | 분석 |
-| 5종 출력 대시보드 | 부족 영양소 / 권장 섭취량 / 체중 예측 / 활동 권고 / 목적별 분석 | 분석+개인화+평가 |
+| 카메라 (음식·영양제) | 사진 촬영, AI 인식, 사용자 수정 | 분석 알고리즘 |
+| 5종 출력 대시보드 | 요약 + 상하 스크롤 세부내용, 부족 영양소 / 권장 섭취량 / 체중 예측 / 활동 권고 / 목적별 분석 | 분석 알고리즘+개인화+평가 |
 | 챗봇 화면 | 자연어 대화, 설명, 알림/캘린더 등록 | 챗봇 |
 | 식단관리 점수 | 끼니별·하루별 점수 + 개선 피드백 | 평가 |
 | 응모권 현황 | 사진 기록 참여 일수 + 누적 응모권 | (Agent X, 규칙 기반) |
@@ -278,11 +277,12 @@ sequenceDiagram
     participant U as 사용자
     participant App as Flutter
     participant API as FastAPI
+    participant AL as 분석 알고리즘
     participant AG as Agents
-    U->>App: 사진 촬영
-    App->>API: multipart upload
-    API->>AG: 분석 Agent (OCR+LLM)
-    AG-->>API: 영양소 JSON
+    U->>App: 사진 촬영 또는 자연어 입력
+    App->>API: multipart upload 또는 text input
+    API->>AL: OCR+라벨링+영양소 산출
+    AL-->>API: 영양소 JSON
     API->>AG: 개인화 Agent (DB 조회)
     AG-->>API: 질환별 주의 기준
     API->>AG: 평가 Agent
@@ -303,9 +303,9 @@ sequenceDiagram
 ### 3.7 영양제 분석 보완 흐름
 
 1. 영양제 제품명·라벨·성분표 촬영
-2. 분석 Agent: 제품명·성분명·함량·1회 섭취량·권장 횟수 OCR 분석
+2. 분석 알고리즘: 제품명·성분명·카테고리·함량·1회 섭취량·권장 횟수 OCR 분석
 3. 사용자가 실제 섭취량·빈도·복용 시간 수정
-4. 분석 Agent: 영양제 성분을 영양소 단위로 환산하고 음식 영양소와 합산
+4. 분석 알고리즘: 영양제 성분을 표준명으로 정리하고 영양소 단위로 환산한 뒤 음식 영양소와 합산
 5. 개인화 Agent: 권장 기준·질환·검사값·복약 정보 참고
 6. 평가 Agent: 부족·과다·중복·주의 성분 설명
 7. 챗봇 Agent: 눈건강·간기능·피로회복 등 목적별 관리 방향 제시 (특정 제품 추천 X)
@@ -322,8 +322,8 @@ sequenceDiagram
 
 예시 보상: 1등 1명 2박 3일 숙박권 / 2등 3명 국내 호텔 숙박권 / 3등 10명 건강식품 5만원권.
 
-부정 사용 방지:
-- 같은 사진 SHA-256 중복은 카운트 X
+캐싱:
+- SHA-256 해시는 결과 캐싱 키로 사용하되, 같은 사진 재분석 자체는 차단하지 않음
 - 하루 최대 1개 + 계정당 월 8개 상한
 - 응모권 발급은 서버 측 멱등키(`user_id + date`)로 강제
 
@@ -341,9 +341,9 @@ Agent는 전체 원본 데이터를 모두 저장하지 않고, 개인화에 필
 |-----------|-------------|------|
 | 네트워크 오프라인 | "인터넷 연결을 확인해 주세요" 토스트 | [수동 입력] [재시도] |
 | OCR 실패 (저정확도) | 미리보기에 "라벨이 흐릿해요" 배너 | [다시 촬영] [수동 입력] |
-| LLM 타임아웃 (12초) | "분석에 시간이 걸리고 있어요" 스피너 | [기본 분석으로 진행] |
+| LLM 타임아웃 (12초) | "분석에 시간이 걸리고 있어요" 스피너 | [다시 불러오기] [기본 분석으로 진행] |
 | 의료법 표현 차단 (재시도 3회 실패) | "분석 결과를 만들 수 없어요. 수동으로 입력해 주세요" | [수동 입력] |
-| Cloud Vision 한도 초과 | 자동으로 CLOVA 폴백, 사용자 알림 없음 | (서버 측 처리) |
+| OCR/이미지 인식 후보 실패 | 분석을 다시 불러오거나 수동 입력으로 전환 | [다시 불러오기] [수동 입력] |
 | 알림 권한 거부 | "챗봇이 등록한 알림이 동작하지 않아요" 배너 | [설정으로 이동] |
 
 ### 3.11 오프라인 정책
@@ -370,8 +370,8 @@ Agent는 전체 원본 데이터를 모두 저장하지 않고, 개인화에 필
 | 상태 관리 | Riverpod 2.x | Provider 대비 컴파일 타임 안전성, 테스트 용이 | 사용자 프로필·분석 결과·Agent 응답 캐시 전역 관리 |
 | API 통신 | Dio + Retrofit | 인터셉터·재시도·타임아웃 일관 처리. Retrofit으로 백엔드 API 클래스 자동 생성 | 백엔드 FastAPI 호출 (영양제 분석·식단·챗봇 메시지) |
 | 라우팅 | go_router | 선언적 라우팅, 딥링크 지원 | 7화면 전환 |
-| 이미지 캡처 | image_picker + camera | 카메라 직접 호출 + 갤러리 선택, 품질·해상도 제어 | 영양제 라벨·음식 사진 캡처 |
-| 헬스 데이터 | health 패키지 11.x | HealthKit(iOS) + Health Connect(Android) 동시 래핑, 50+ 데이터 타입 지원. iOS는 Info.plist에 NSHealthShareUsageDescription, Android는 Play Console에서 Health Connect 데이터 타입 신청 필요(승인 5~10영업일) | 걸음수·심박·체중·활동에너지 온디바이스 수집 |
+| 이미지 캡처 | image_picker + camera | 카메라 직접 호출 + 갤러리 다중 선택, 품질·해상도 제어, 최대 15장 재촬영 흐름 | 영양제 라벨·음식 사진 캡처 |
+| 헬스 데이터 | health 패키지 11.x | iOS HealthKit 우선 연동. Android Health Connect는 검토 예정이며 Play Console 데이터 타입 신청·승인 리스크를 확인 | 걸음수·심박·체중·활동에너지 온디바이스 수집 |
 | 차트 | fl_chart | 시계열·바·도넛 모두 지원, 한글 라벨 안정적 | 체중 예측·활동 점수·영양소 충족률 시각화 |
 | 로컬 저장 | Isar / Hive | 빠른 NoSQL, 오프라인 우선 | 분석 결과 캐시, 오프라인 큐(`pending_uploads`), 응모권 카운트 |
 | 푸시 알림 | flutter_local_notifications | 로컬 알림으로 서버 푸시 없이 동작. iOS는 권한 요청, Android 13+는 POST_NOTIFICATIONS 런타임 권한 | 챗봇이 등록한 복약·식단 알림 트리거 |
@@ -421,7 +421,7 @@ Agent는 전체 원본 데이터를 모두 저장하지 않고, 개인화에 필
 | 언어 | Python 3.11+ | 팀 익숙도, 데이터·AI 라이브러리 풍부, Type Hint 성숙 | 모든 비즈니스 로직과 알고리즘 |
 | 프레임워크 | FastAPI 0.110+ | Pydantic 기반 자동 OpenAPI/Swagger, async/await가 OCR/LLM I/O 바운드에 강점, Uvicorn workers로 병렬 | REST API 서빙, 인증, AI 호출 오케스트레이션 |
 | 검증 | Pydantic v2 | LLM 응답·외부 API 응답 강제 검증 | Claude 응답 스키마 강제, 요청 바디 검증 |
-| 인증 | JWT + python-jose | Stateless 인증, 모바일 친화 | 사용자 로그인 토큰, idToken 검증 |
+| 인증 | JWT + python-jose | Stateless 인증, 모바일 친화 | 이메일·구글·카카오·간편 로그인 토큰, idToken 검증 |
 | 비동기 작업 | asyncio + asyncio.gather | 영양제 사진 여러 장 병렬 OCR, LLM 호출 동시성 | run_full_analysis에서 영양제 N장 동시 처리 |
 | 백그라운드 작업 | FastAPI BackgroundTasks | Agent 메모리 갱신·이메일 발송·통계 집계 | 응답 후 비차단 처리 |
 | 메일 발송 | aiosmtplib (개발) / boto3 SES 또는 NCP API (운영) | 환경변수 EMAIL_PROVIDER로 분기 | 회원가입 이메일 인증 |
@@ -432,14 +432,14 @@ Agent는 전체 원본 데이터를 모두 저장하지 않고, 개인화에 필
 
 ```
 backend/src/
-├─ algorithms/          # v1~v4 활동점수, 7-step 체중예측, BMR/TDEE, 결핍 진단, 목적별
-├─ ocr/                 # Cloud Vision OCR + CLOVA 폴백
+├─ algorithms/          # v1~v4 활동점수, 7-step 체중예측, BMR/TDEE, 결핍 판단, 목적별
+├─ ocr/                 # OCR/이미지 인식 후보 어댑터
 ├─ llm/                 # Claude/OpenAI 클라이언트, 시스템 프롬프트, Tool 정의, 스키마
 ├─ nutrition/           # KDRIs 룩업 + 영양소 합산
 ├─ prediction/          # 체중 예측 보정·시계열 분석
 ├─ activity/            # 걸음수·심박 → 활동점수 산출
 ├─ supplements/         # 영양제 파서 + 식약처 DB 매처
-├─ agents/              # 4개 Agent + 오케스트레이터 + agent_runs 로깅 + memory.py
+├─ agents/              # 개인화·평가·챗봇 3개 Agent + 오케스트레이터 + agent_runs 로깅 + memory.py
 ├─ services/            # email.py(메일 발송), storage.py(이미지 저장)
 ├─ api/                 # FastAPI 라우터
 ├─ models/              # SQLAlchemy ORM
@@ -455,10 +455,11 @@ backend/src/
 |------------|--------|------|
 | /api/v1/auth/signup | POST | 회원가입 (이메일+비밀번호), 인증 메일 발송 |
 | /api/v1/auth/verify-email | GET | 이메일 인증 토큰 검증 |
-| /api/v1/auth/login | POST | 로그인 → access + refresh JWT |
+| /api/v1/auth/login | POST | 이메일 로그인 → access + refresh JWT |
+| /api/v1/auth/social | POST | 구글·카카오 등 간편 로그인 → access + refresh JWT |
 | /api/v1/auth/refresh | POST | 토큰 갱신 |
 | /api/v1/auth/logout | POST | 로그아웃 (refresh 무효화) |
-| /api/v1/auth/account | DELETE | 탈퇴 (30일 grace 후 완전 삭제) |
+| /api/v1/auth/account | DELETE | 탈퇴/전체 삭제 요청 (3개월 복구 가능 기간 후 완전 삭제) |
 | /api/v1/profile | GET / PUT | 사용자 프로필·만성질환·복약 |
 | /api/v1/profile/consent | POST | 동의 항목 별도 저장·철회 |
 | /api/v1/supplements/analyze | POST (multipart) | 영양제 사진 → 분석 결과 |
@@ -470,7 +471,7 @@ backend/src/
 | /api/v1/chat/message | POST | 챗봇 메시지 → 응답 + (선택) 액션 |
 | /api/v1/reminders | GET / POST / DELETE | 복약·식단 알림 CRUD |
 | /api/v1/calendar/events | GET / POST / DELETE | 진료 일정 CRUD |
-| /api/v1/health/sync | POST | HealthKit/Health Connect 데이터 동기화 |
+| /api/v1/health/sync | POST | HealthKit 우선 동기화, Health Connect는 검토 |
 | /api/v1/score/daily | GET | 식단관리 점수 조회 |
 | /api/v1/raffle/status | GET | 응모권 누적 현황 |
 | /api/v1/agent/memory | GET | Agent 요약 기억 조회 (디버깅·투명성용) |
@@ -482,7 +483,7 @@ backend/src/
 flowchart TD
     R[FastAPI 라우터] --> J[JWT 검증]
     J --> O[Agent 오케스트레이터]
-    O --> AN[분석 Agent<br/>OCR + LLM]
+    O --> AN[분석 알고리즘<br/>OCR + 라벨링]
     O --> PE[개인화 Agent<br/>DB 조회]
     AN --> AL[알고리즘 모듈<br/>v4 / 7-step / KDRIs]
     PE --> AL
@@ -501,9 +502,9 @@ flowchart TD
 | 분류 | 기술 | 선정 이유 | 앱에서의 역할 |
 |------|------|-----------|---------------|
 | 메인 DB | PostgreSQL 16 | JSON/JSONB(영양제 동적 스키마), GIN 인덱스(식품 풀텍스트 검색), 컬럼 단위 AES-256 암호화로 의료 데이터 보안 | 사용자·영양제·음식·진단·식단 기록 영속 |
-| 시계열 확장 | TimescaleDB 2.x (`timescale/timescaledb:latest-pg16` 이미지) | Hypertable로 걸음수·체중·심박 효율 처리, 자동 다운샘플링·압축. 첫 부팅 시 init.sql에서 `CREATE EXTENSION IF NOT EXISTS timescaledb;` 자동 실행 | HealthKit/Health Connect에서 들어오는 시계열 데이터 |
-| 캐시 / 큐 | Redis 7 | OCR 결과 캐싱(SHA-256 해시 키, 동일 영양제는 동일 결과), KDRIs 룩업 캐싱, Cloud Vision API rate limiting, 세션 | 영양제 분석 캐시(TTL 30일), 챗봇 컨텍스트 캐시 |
-| 파일 스토리지 | S3 호환 (MVP는 NCP Object Storage 또는 로컬 디스크) | 영양제·음식 원본 사진 저장. DB에는 URL만 | photo_url 필드의 실체 |
+| 시계열 확장 | TimescaleDB 2.x (`timescale/timescaledb:latest-pg16` 이미지) | Hypertable로 걸음수·체중·심박 효율 처리, 자동 다운샘플링·압축. 첫 부팅 시 init.sql에서 `CREATE EXTENSION IF NOT EXISTS timescaledb;` 자동 실행 | HealthKit 우선, Health Connect 검토 시계열 데이터 |
+| 캐시 / 큐 | Redis 7 | OCR 결과 캐싱(SHA-256 해시 키), KDRIs 룩업 캐싱, 이미지/API rate limiting, 세션. 동일 사진 재분석은 차단하지 않음 | 영양제 분석 캐시(TTL 30일), 챗봇 컨텍스트 캐시 |
+| 파일 스토리지 | S3 호환 (MVP는 NCP Object Storage 또는 로컬 디스크) | 사용자 동의 후 영양제·음식 원본 사진 저장. 처방·검사표 이미지는 멘토 확인 후 검토 | photo_url 필드의 실체 |
 | 마이그레이션 | Alembic (async) | SQLAlchemy 기반, 버전 관리 | 스키마 변경 추적 |
 | 컨테이너 | Docker Compose | 로컬 개발 환경 통일 | timescale + redis 한 번에 부팅 |
 
@@ -514,12 +515,12 @@ users                    # 사용자 (uid, email, email_verified_at, name, creat
 profiles                 # 프로필 (user_id, age, gender, height, weight,
                          #         chronic_diseases[] AES-256, medications[] AES-256, goals[])
 consents                 # 동의 이력 (user_id, type, accepted_at, revoked_at)
-supplements              # 영양제 마스터 (id, product_name_ko/en, manufacturer)
-supplement_ingredients   # 영양제 성분 (supplement_id, name_ko/en, amount, unit)
+supplements              # 영양제 CSV 기반 마스터 (id, product_name_ko/en, manufacturer, category)
+supplement_ingredients   # 영양제 성분 (supplement_id, name_ko/en, standard_name, amount, unit)
 user_supplements         # 사용자 복용 (user_id, supplement_id, dose, frequency)
 foods                    # 식품 마스터 (식약처 + 농진청 데이터 임포트)
 meals                    # 끼니 기록 (user_id, date, meal_type, foods[], photo_url)
-diagnoses                # 분석 결과 (user_id, date, meal_type, deficiencies[] AES-256,
+analysis_results         # 분석 결과 (user_id, date, meal_type, deficiencies[] AES-256,
                          #            excesses[], warnings[] AES-256, goal_analysis)
                          # ※ 끼니별 단위. 점수는 daily_scores에 단일 저장.
 daily_scores             # 하루 점수 (user_id, date, score, breakdown, agent_comment)
@@ -541,18 +542,18 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 
 | 항목 | 적용 |
 |------|------|
-| 민감정보 컬럼 암호화 | `chronic_diseases`, `medications`, `diagnoses.deficiencies`, `diagnoses.warnings` AES-256 |
+| 민감정보 컬럼 암호화 | `chronic_diseases`, `medications`, `analysis_results.deficiencies`, `analysis_results.warnings` AES-256 |
 | 전송 구간 | TLS 1.3 강제 |
 | Row Level Security | PostgreSQL RLS로 본인 user_id 데이터만 접근 |
 | 감사 로그 | 의료 정보(PHI) 조회·수정 모두 audit_logs 테이블 기록 |
 | 백업 암호화 | pg_dump 결과 GPG 암호화 후 보관 |
-| 삭제 / 동의 철회 | 사용자 탈퇴 시 30일 grace period 후 완전 삭제, 백업 90일 내 폐기 |
+| 삭제 / 동의 철회 | 사용자 탈퇴·삭제 요청 시 전체 삭제 처리, 3개월 복구 가능 기간 후 완전 삭제 |
 
 > 보안 셋업 책임자: D(백엔드) — JWT, RLS, AES-256 컬럼 암호화 모두 D 담당. 컴플라이언스 검토는 E(데이터·도메인) 협업.
 
 ### 6.4 캐싱 전략 (3단계)
 
-1. **Redis L1**: OCR 결과(영양제 사진 SHA-256 → 분석 JSON), TTL 30일
+1. **Redis L1**: OCR 결과(영양제 사진 SHA-256 → 분석 JSON), TTL 30일. 동일 사진 재분석 차단은 하지 않음
 2. **Redis L2**: KDRIs 룩업·식약처 기능성 인정 원료, TTL 영구 (수동 무효화)
 3. **PostgreSQL**: 사용자별 분석 결과 영속, Agent 요약 기억
 
@@ -562,37 +563,38 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 
 ## 7. AI · 인공지능 스택
 
-본 프로젝트의 AI 보조 기능을 구현하기 위한 모든 기술을 한 곳에 정리한 섹션. 사용자의 주도권을 해치지 않는 선에서, 음식·영양제 인식·개인화 판단·챗봇 설명·식단 평가를 4개 Agent가 분담한다.
+본 프로젝트의 AI 보조 기능을 구현하기 위한 모든 기술을 한 곳에 정리한 섹션. 사용자의 주도권을 해치지 않는 선에서, 음식·영양제 인식은 분석 알고리즘이 담당하고 개인화 판단·챗봇 설명·식단 평가는 3개 Agent가 통합 흐름으로 분담한다.
 
 ### 7.1 모델 (LLM Provider)
 
 | 모델 | 용도 | 선정 이유 |
 |------|------|-----------|
-| Anthropic Claude (모델 ID는 `CLAUDE_MODEL_ID` 환경변수, 기본값은 최신 Sonnet) | 4개 Agent 모두의 추론 엔진 — OCR 텍스트 구조화, 개인화 판단, 챗봇 응답, 평가 코멘트 | OCR 비정형 텍스트 → JSON 구조화에 강점, 한국어 우수, 200K 컨텍스트, Tool Use가 Pydantic 스키마와 직접 통합, 의료 표현 안전성 |
+| Anthropic Claude (모델 ID는 `CLAUDE_MODEL_ID` 환경변수, 기본값은 최신 Sonnet) | 분석 결과 구조화 보조 + 3개 Agent 추론 엔진 — 개인화 판단, 챗봇 응답, 평가 코멘트 | 비정형 텍스트 → JSON 구조화에 강점, 한국어 우수, 200K 컨텍스트, Tool Use가 Pydantic 스키마와 직접 통합, 의료 표현 안전성 |
 | OpenAI GPT (백업) | Claude 장애 시 폴백 | OpenAI SDK 동일 패턴, Adapter 패턴으로 교체 |
 | text-embedding-3-small (선택) | 식품·영양제 유사도 검색 | 사용자 입력 "비타민C" → 마스터 DB 매칭 |
 
-### 7.2 OCR
+### 7.2 이미지 인식·OCR 후보
 
 | 도구 | 용도 | 선정 이유 |
 |------|------|-----------|
-| Google Cloud Vision API | 영양제 라벨·음식 메뉴판 OCR | DOCUMENT_TEXT_DETECTION이 영양제 라벨 정확도 92~98%, 첫 1,000건/월 무료, 한국어+영어 동시 지원 |
+| Google Cloud Vision API | 영양제 라벨·음식 메뉴판 OCR 후보 | DOCUMENT_TEXT_DETECTION 기반 OCR 후보. 실제 적용 전 비용과 정확도를 비교 |
+| YOLOv8 | 음식 사진 객체 인식 후보 | 음식 사진 인식 가능성 검토 및 논문 조사 대상 |
 | Naver CLOVA OCR (백업) | 한국어 라벨 폴백 | 한국어 SOTA, Cloud Vision 장애 또는 저정확도 케이스 대응 |
 
-### 7.3 4개 Agent별 역할 · 동작
+### 7.3 분석 알고리즘과 3개 Agent 역할 · 동작
 
-모든 Agent는 Claude 단일 모델로 동작. 각 Agent는 전용 시스템 프롬프트와 Tool Use 스키마가 다를 뿐. 코드 위치는 `backend/src/agents/<agent_name>_agent.py`.
+분석은 Agent가 아니라 알고리즘·OCR·CSV DB/API 매칭 파이프라인으로 처리한다. 개인화·챗봇·평가 3개 Agent는 Claude 단일 모델을 쓰되, 전용 시스템 프롬프트와 Tool Use 스키마가 다르다. 코드 위치는 `backend/src/agents/<agent_name>_agent.py`.
 
-#### 7.3.1 분석 Agent (`analysis_agent.py`)
+#### 7.3.1 분석 알고리즘
 
 | 항목 | 내용 |
 |------|------|
 | 책임 | 음식·영양제 사진 → 영양소 산출 |
-| 입력 | 사진(multipart), 사용자 수정 입력 |
+| 입력 | 사진(multipart), 자연어 입력, 파일, 사용자 수정 입력 |
 | 출력 | MealAnalysisResult / SupplementParseResult Pydantic 스키마 |
-| 흐름 | OCR → Claude Tool Use(extract_supplement_facts) → 식약처 DB 매칭 → 영양소 환산 |
-| Tool 호출 | extract_supplement_facts |
-| 기법 | Tool Use, Structured Output (JSON Schema) |
+| 흐름 | 이미지 검증·전처리 → OCR/인식 후보 적용 → 영양제 CSV DB 우선 매칭 + API 보조 → 제품명·성분명·카테고리 표준화 → 영양소 환산 |
+| Tool 호출 | extract_supplement_facts (구조화 보조) |
+| 기법 | Structured Output (JSON Schema), 규칙 기반 단위 변환 |
 | 사용자 효과 | 영양제 라벨 한 장으로 30~60초 안에 성분 자동 정리 |
 
 #### 7.3.2 개인화 Agent (`personalization_agent.py`)
@@ -600,7 +602,7 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 | 항목 | 내용 |
 |------|------|
 | 책임 | 사용자 만성질환·검사값·복약 정보를 해석 기준으로 변환 |
-| 입력 | 사용자 프로필 (DB), Kaggle 검사값, 복약 정보 |
+| 입력 | 사용자 프로필 (DB), 시연용 검사값, 복약 정보 |
 | 출력 | PersonalizationContext (질환별 주의 영양소, 권장 기준, 약물 주의) |
 | 흐름 | DB 조회 → Claude로 "이 사용자가 주의할 영양소·약물 상호작용" 요약 → 캐시 |
 | 기법 | Few-shot Prompting + Context Summarization |
@@ -623,9 +625,9 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 | 항목 | 내용 |
 |------|------|
 | 책임 | 끼니별/하루별 식단관리 점수 + 부족·과다·주의 분석 |
-| 입력 | 분석 Agent 결과 + 개인화 Agent 기준 |
+| 입력 | 분석 알고리즘 결과 + 개인화 Agent 기준 |
 | 출력 | EvaluationResult (점수, 부족 영양소, 과다 위험, 좋은 선택, 개선 필요) |
-| 흐름 | 영양소 합산 → KDRIs/UL 비교 → Claude로 자연어 코멘트 생성 → BackgroundTask로 agent_memory 갱신 |
+| 흐름 | 영양소 합산 → KDRIs/UL 비교 → "주의 가능성", "권장량 대비", "전문가 상담 권장" 형식으로 자연어 코멘트 생성 → BackgroundTask로 agent_memory 갱신 |
 | 기법 | Structured Output + Few-shot |
 | 사용자 효과 | "점심은 단백질이 부족했어요. 저녁에 닭가슴살 어떠세요?" |
 
@@ -633,8 +635,8 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 
 | 기법 | 적용 Agent | 앱에서의 역할 | 사용자 효과 |
 |------|-----------|--------------|--------------|
-| Tool Use / Function Calling | 분석, 챗봇 | LLM 출력을 우리 함수(extract_supplement_facts, add_reminder)로 직접 매핑. 텍스트가 아닌 앱 액션 실행 | "비타민D 매일 9시 알림"으로 즉시 등록 |
-| Structured Output (JSON Schema) | 분석, 평가 | 응답을 정해진 Pydantic 스키마로 강제, 누락·오타 자동 거부 | 영양제 분석이 빈칸·오타 없이 항상 동일 형식 |
+| Tool Use / Function Calling | 분석 알고리즘, 챗봇 | LLM 출력을 우리 함수(extract_supplement_facts, add_reminder)로 직접 매핑. 텍스트가 아닌 앱 액션 실행 | "비타민D 매일 9시 알림"으로 즉시 등록 |
+| Structured Output (JSON Schema) | 분석 알고리즘, 평가 | 응답을 정해진 Pydantic 스키마로 강제, 누락·오타 자동 거부 | 영양제 분석이 빈칸·오타 없이 항상 동일 형식 |
 | Few-shot Prompting | 개인화, 평가 | 시스템 프롬프트에 만성질환자 사례 2~3개를 박아 톤·구체성 학습 | "단백질 부족"이 아니라 "당뇨가 있으니 닭가슴살·두부 추천"처럼 구체적 |
 | Chain-of-Thought | 챗봇 | "복약 안내 → 부작용 주의 → 전문가 상담 권유"처럼 단계 사고 지시 | 복잡한 영양제 질문도 빠짐없이 답변 |
 | Context Summarization | 개인화 | Agent 요약 기억 사용, 매번 전체 데이터 안 보냄 | 비용·지연 ↓, 같은 사용자에게 일관된 답변 |
@@ -646,11 +648,11 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 | 알고리즘 | 적용 기능 | 앱에서의 역할 | 사용자 효과 |
 |----------|-----------|--------------|--------------|
 | KDRIs 룩업 테이블 | 권장 섭취량 | 나이·성별·BMI 키로 30종 영양소 RDI를 즉시 반환 (LLM 불필요) | 화면 진입 즉시 권장량 표시 |
-| 결핍 진단 비율 분류 | 부족 영양소 추천 | 실제/RDI 비율로 5단계(결핍/낮음/적정/과다/위험) 분류 | "비타민D 35%" 같은 객관적 수치 |
+| 결핍 판단 비율 분류 | 부족 영양소 추천 | 실제/RDI 비율로 5단계(결핍/낮음/적정/과다/위험) 분류 | "비타민D 35%" 같은 객관적 수치 |
 | v1~v4 활동점수 | 운동 권고 | 결정론 공식, 만성질환 가중 ×1.3까지 | "당신의 7,000보는 일반인의 9,000보 가치" |
 | 7-step 체중 예측 | 체중 변화 | Mifflin-St Jeor BMR + 활동계수 + 7,700 kcal/kg | 1주/1개월/3개월 후 체중 미리보기 |
 | 충돌 감지 규칙 | 영양제 중복·과다 경고 | 같은 성분이 합산되어 UL(상한) 초과 시 경고 | 종합비타민과 단일 비타민 동시 복용 시 경고 |
-| 응모권 누적 규칙 | 사진 기록 참여 | 일별 기록 카운트, 1/7/30일 조건 충족 시 자동 발급. SHA-256 중복 사진 차단 | 점수 부담 없이 참여만으로 응모권 |
+| 응모권 누적 규칙 | 사진 기록 참여 | 일별 기록 카운트, 1/7/30일 조건 충족 시 자동 발급. SHA-256은 캐싱에 사용하고 동일 사진 재분석은 차단하지 않음 | 점수 부담 없이 참여만으로 응모권 |
 
 ### 7.6 비용 · 성능 가드레일
 
@@ -660,9 +662,9 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 | 비용 산식 | 분석 1건 = OCR $0.0015 + LLM 입력 ~3K 토큰 + 출력 ~1K 토큰 ≈ $0.024 |
 | PoC 비용 가정 | 베타 5명 × 분석 5회/주 × 4주 = 100건 → 약 $2.4 + 챗봇 일평균 3회 ≈ 월 $10 |
 | 정식 비용 가정 | MAU 1만 × 평균 5분석 + 3챗봇 → 약 $1,200/월 (캐시 적중률 50% 가정) |
-| 캐싱 3단계 | Redis(OCR 30일) / Redis(KDRIs 영구) / PostgreSQL(사용자별 분석 결과) |
+| 캐싱 3단계 | Redis(OCR 30일) / Redis(KDRIs 영구) / PostgreSQL(사용자별 분석 결과). 동일 사진 재분석 차단은 하지 않음 |
 | 레이트 리밋 | 사용자당 분당 5회, 일당 50회 |
-| 타임아웃 | OCR 8초, LLM 12초, 합산 응답 6초 이내 (캐시 미스 기준) |
+| 타임아웃 | OCR 8초, LLM 12초, 합산 응답 6초 이내 (캐시 미스 기준). 제한 초과 시 다시 불러오기 또는 수동 입력 폴백 |
 | max_tokens | 분석 1024 / 평가 800 / 챗봇 600 / 개인화 400 |
 | 장애 대응 | LLM 실패 시 친절한 에러 + 수동 입력 폴백 (§3.10) |
 
@@ -678,7 +680,7 @@ heart_rate_samples       # 심박 (user_id, ts, bpm)
 
 ## 8. 핵심 알고리즘
 
-회사 가이드 8개(BMI·v1~v4·BMR·TDEE·7-step) + 우리가 직접 설계한 4개(영양제 OCR·식단 변환·결핍 진단·목적별 분석).
+회사 가이드 8개(BMI·v1~v4·BMR·TDEE·7-step) + 우리가 직접 설계한 4개(영양제 OCR·식단 변환·결핍 판단·목적별 분석).
 
 ### 8.1 알고리즘 지도
 
@@ -696,7 +698,7 @@ flowchart TB
     MEAL[식단 사진/텍스트] --> NM[음식 영양소 합산]
     OCR --> SUM[총 섭취 영양소]
     NM --> SUM
-    SUM --> DEF[결핍 진단 5단계]
+    SUM --> DEF[결핍 판단 5단계]
     P --> DEF
 
     GOAL[사용자 목적] --> GM[목적별 매트릭스]
@@ -759,26 +761,30 @@ v4 = min(100, v3 × 만성질환가중)
 
 검증 예시 (50세 여성 160cm/68kg, 6,500보, 1,500kcal, 30일): BMR 1,269 → TDEE 1,745 → 일일 −245 → 누적 −7,350 → 이론 −0.955 → 보정 −0.81 → **67.19 kg**
 
-### 8.5 영양제 OCR → LLM → 식약처 매칭 파이프라인
+### 8.5 영양제 OCR → CSV DB/API 매칭 파이프라인
 
 ```
-1. 이미지 검증·전처리 (5MB↓, JPEG, 회전 보정)
+1. 이미지 검증·전처리 (용량 제한, 회전 보정, 흐림 감지, 해상도 제한)
+   - 카메라: 최대 15장까지 다시 촬영 가능
+   - 갤러리: 다중 선택 가능
+   - 실패 시 은행 앱 신분증 촬영처럼 다시 촬영 또는 수동 입력
 2. SHA-256 해시 → Redis 캐시 조회 (TTL 30일)
    ├─ 히트 → 즉시 반환
    └─ 미스 ↓
-3. Google Cloud Vision DOCUMENT_TEXT_DETECTION → raw 텍스트
+3. OCR/이미지 인식 후보 적용 → raw 텍스트 또는 음식 후보
 4. Claude Tool Use (extract_supplement_facts, Pydantic 스키마 강제)
    → {product_name, serving_size,
        ingredients[{name_ko, name_en, amount, unit, daily_value_pct}]}
-5. 식약처 건강기능식품 원료 DB 매칭
-   - 성분명 정규화 ("비타민 C" = "Vitamin C" = "ascorbic acid")
-   - DB 미매칭 시 LLM이 영어 성분명을 한국어로 변환 + "비공식 매칭" 라벨
-   - 식약처 기능성 인정 정보 보강
+5. 영양제 CSV DB 우선 매칭 + 외부 API 보조 연결
+   - 제품명·성분명·카테고리 분류
+   - 표준명이 있으면 표준화 ("비타민 C" = "Vitamin C" = "ascorbic acid")
+   - mg, μg, IU 등 단위 변환
+   - DB/API 미매칭 시 사용자 수정 가능
 6. PostgreSQL INSERT + Redis SET (TTL 30일)
 7. JSON 응답
 ```
 
-### 8.6 결핍 진단 로직
+### 8.6 결핍 판단 로직
 
 ```
 실제 섭취량 = Σ(음식 영양소) + Σ(영양제 영양소)
@@ -831,7 +837,7 @@ sequenceDiagram
     participant App as Flutter
     participant API as FastAPI
     participant R as Redis
-    participant V as Cloud Vision
+    participant V as OCR/인식 후보
     participant C as Claude
     participant DB as PostgreSQL
 
@@ -842,11 +848,11 @@ sequenceDiagram
     alt 캐시 히트
         R-->>API: 분석 JSON
     else 캐시 미스
-        API->>V: DOCUMENT_TEXT_DETECTION
+        API->>V: OCR/이미지 인식
         V-->>API: raw 텍스트
         API->>C: Tool Use extract_supplement_facts
         C-->>API: Pydantic JSON
-        API->>DB: 식약처 DB 매칭
+        API->>DB: CSV DB 우선 매칭 + API 보조
         DB-->>API: 정규화 결과
         API->>DB: INSERT 분석 결과
         API->>R: SET (TTL 30일)
@@ -884,7 +890,7 @@ sequenceDiagram
 - LLM 응답은 항상 Pydantic 검증 + 의료법 표현 검수 후 사용자 미리보기
 - AI는 결과를 바로 저장하지 않는다, 항상 사용자 승인 후 실행
 
-### 9.3 시스템 프롬프트 예시 (분석 Agent)
+### 9.3 시스템 프롬프트 예시 (분석 구조화 보조)
 
 ```
 당신은 영양제 라벨 분석 전문가입니다.
@@ -910,32 +916,36 @@ sequenceDiagram
 |--------|------|------|
 | KDRIs 2020 | 한국영양학회 / 보건복지부 | 30종 영양소 권장 섭취량, BMI별 칼로리 조정 |
 | 식품영양성분 Open API | 식약처 | 음식별 영양소 매칭 |
-| 건강기능식품 원료 DB | 식약처 | 영양제 성분 매칭, 기능성 표현 |
+| 영양제 CSV DB | 팀 구축 | 제품명·성분명·카테고리 라벨링 우선 기준 |
+| 건강기능식품 원료 DB | 식약처 | 영양제 성분 매칭 보조, 기능성 표현 |
 | 국가표준식품성분표 | 농촌진흥청 국립농업과학원 | 식품 영양소 보강 |
 | AI Hub 한국 음식 이미지 | NIA | 음식 인식 모델 학습 (Phase 3, 비상업 학술) |
 
-### 10.2 시연용 병원성 데이터
+### 10.2 향후 병원 데이터 연동 검토
 
-| 데이터 | 출처 | 용도 |
-|--------|------|------|
-| Kaggle 만성질환 데이터셋 | Kaggle | 시연용 검사값·질환·복약 데이터 |
+병원 데이터 연동 기반은 멘토에게 전체 질문지로 남긴다. 이 항목은 MVP 확정 구현으로 쓰지 않는다.
 
-실제 병원 연동은 불가능하므로 MVP에서는 Kaggle 데이터를 사용한다. 다만 레몬헬스케어가 LDB로 병원 연동 데이터를 활용할 수 있다는 강점을 고려해, 실제 서비스 적용 시 병원 데이터가 들어갈 자리를 시연용으로 대체하는 역할을 한다.
+검토 질문:
+- 향후 검사값·진단명 태그·복약 정보·진료 요약 중 어떤 데이터를 가정할지
+- 실제 병원 데이터 없이 시연용 대체 데이터를 둘지
+- 민감정보 동의와 저장 범위를 어디까지 둘지
+- 처방·검사표 이미지를 허락받은 뒤 추후 포함할지
 
 ### 10.3 건강 데이터 연동
 
 | 플랫폼 | 데이터 | 우선순위 | 권한 셋업 |
 |--------|--------|---------|----------|
 | Apple HealthKit (iOS) | 걸음수, 체중, 심박 | 우선 연동 | Info.plist에 NSHealthShareUsageDescription 사유 명시, App Store 심사 정당화 |
-| Google Health Connect (Android) | 걸음수, 체중, 심박 | 우선 연동 | Play Console에서 Health Connect 데이터 타입 신청 (승인 5~10영업일) |
+| Google Health Connect (Android) | 걸음수, 체중, 심박 | 검토 예정 | Play Console에서 Health Connect 데이터 타입 신청 (승인 5~10영업일) |
 | 혈압 | (양 OS 모두) | 가능하면 자동, 안 되면 수동 입력 | — |
 
 ### 10.4 외부 API
 
 | API | 용도 | 비고 |
 |-----|------|------|
-| Anthropic Claude API | 4개 Agent 추론 | 주력 LLM, 모델 ID는 환경변수 |
-| Google Cloud Vision API | 영양제·음식 OCR | 첫 1,000건/월 무료 |
+| Anthropic Claude API | 분석 결과 구조화 보조 + 3개 Agent 추론 | 주력 LLM, 모델 ID는 환경변수 |
+| Google Cloud Vision API | 영양제·음식 OCR 후보 | 비용·정확도 비교 후 적용 |
+| YOLOv8 | 음식 사진 인식 후보 | 논문 조사와 기술 검토 대상 |
 | Naver CLOVA OCR (백업) | 한국어 라벨 폴백 | Adapter 패턴 |
 | OpenAI API (백업) | LLM 폴백 | Claude 장애 대비 |
 | AWS SES 또는 NCP Outbound Mailer | 이메일 인증 발송 | 운영 환경 |
@@ -952,12 +962,14 @@ sequenceDiagram
 type User = {
   id: int (PK);
   email: string (unique);
-  password_hash: string;
+  password_hash: string?;
+  social_provider: 'google' | 'kakao' | 'email'?;
+  social_subject: string?;
   display_name: string;
   email_verified_at: timestamp?;
   created_at: timestamp;
   last_login_at: timestamp;
-  deleted_at: timestamp?;     # 30일 grace
+  deleted_at: timestamp?;     # 3개월 복구 가능 기간 후 완전 삭제
 }
 
 type Profile = {
@@ -975,7 +987,7 @@ type Profile = {
 type Consent = {
   id: int (PK);
   user_id: int (FK);
-  type: 'privacy' | 'ai_usage' | 'health_data' | 'notifications';
+  type: 'privacy' | 'ai_usage' | 'health_data' | 'image_storage' | 'notifications';
   accepted_at: timestamp;
   revoked_at: timestamp?;
 }
@@ -1028,6 +1040,13 @@ type Food = {
   source: '식약처' | '농진청';
 }
 
+type SupplementCsvImport = {
+  id: int (PK);
+  source_file: string;
+  imported_at: timestamp;
+  row_count: int;
+}
+
 type Meal = {
   id: int (PK);
   user_id: int (FK);
@@ -1041,7 +1060,7 @@ type Meal = {
 ### 11.3 분석 · 점수 · 알림
 
 ```
-type Diagnosis = {
+type AnalysisResult = {
   id: int (PK);
   user_id: int (FK);
   date: date;
@@ -1103,7 +1122,7 @@ type AgentRun = {
   id: int (PK);
   request_id: string;
   user_id: int (FK);
-  agent_name: 'analysis' | 'personalization' | 'chat' | 'evaluation';
+  agent_name: 'personalization' | 'chat' | 'evaluation';
   status: 'success' | 'fail' | 'fallback';
   latency_ms: int;
   cost_usd: float;
@@ -1168,7 +1187,7 @@ flowchart TB
     S2 --> S3[3. 디자인 UX → UI]
     S3 --> S4[4. 프론트엔드 Flutter]
     S3 --> S5[5. 백엔드 / DB FastAPI]
-    S3 --> S6[6. AI 통합 4개 Agent]
+    S3 --> S6[6. AI 통합 분석 알고리즘 + 3개 Agent]
     S4 --> S7[7. 통합 · QA 의료자문위]
     S5 --> S7
     S6 --> S7
@@ -1185,8 +1204,8 @@ flowchart TB
 - 체크포인트: 30초 안에 컨셉 설명 가능?
 
 #### 2단계 — 차별화 전략 수립
-- 목적: 4개 Agent 협력 + 응모권 참여 UX + 의료기관 연계 가능성
-- 활동: Agent 책임 분담, 응모권 규칙 합의, LDB 연계 인터페이스 설계
+- 목적: 분석 알고리즘 + 3개 Agent 통합 흐름, 응모권 참여 UX, 의료기관 연계 가능성 질문 정리
+- 활동: 분석 알고리즘과 Agent 책임 분담, 응모권 규칙 합의, LDB 연계 질문 정리
 - 산출물: §3 핵심 기능 명세, §7 AI 스택, §9 호출 흐름
 - 체크포인트: 경쟁사가 못 따라하는 자산 명확?
 
@@ -1209,8 +1228,8 @@ flowchart TB
 - 체크포인트: 가이드 예시 케이스 통과?
 
 #### 6단계 — AI 통합 (4·5와 병렬)
-- 목적: §7 AI 스택을 4개 Agent로 실동작
-- 활동: Claude SDK 래퍼, 4개 Agent 프롬프트, Tool 정의, OCR 어댑터, 의료법 검수, 미리보기
+- 목적: §7 AI 스택을 분석 알고리즘 + 3개 Agent로 실동작
+- 활동: Claude SDK 래퍼, 3개 Agent 프롬프트, Tool 정의, OCR/이미지 인식 후보 어댑터, 의료법 검수, 미리보기
 - 산출물: backend/src/llm/, agents/
 - 체크포인트: 같은 입력 → 캐시 적중? 금지 표현 0건?
 
@@ -1236,11 +1255,11 @@ flowchart TB
 
 | 주차 | 단계 | 주요 작업 |
 |------|------|-----------|
-| W1 | 1·2 | 아이디어/차별화 합의, 본 가이드 작성, Health Connect 데이터 타입 신청 제출 |
+| W1 | 1·2 | 아이디어/차별화 합의, 본 가이드 작성, Android Health Connect 검토 |
 | W2 | 3 | Figma + 디자인 토큰 + 7화면 와이어프레임, 환경 셋업 시작 |
 | W3 | 4·5 | Flutter 환경 + 백엔드 환경 + 알고리즘 단위 + Alembic init |
-| W4 | 4·5·6 | 카메라·OCR·Claude 분석 Agent 통합 |
-| W5 | 4·5·6 | 5종 출력 대시보드 + 평가 Agent + KDRIs 결핍 진단 |
+| W4 | 4·5·6 | 카메라·OCR·분석 알고리즘 통합 |
+| W5 | 4·5·6 | 5종 출력 대시보드 + 평가 Agent + KDRIs 결핍 판단 |
 | W6 | 4·6 | 챗봇 Agent + Tool Use 알림/캘린더 + 응모권 |
 | W7 | 7 | 통합 QA + 의료자문위 검토 + TestFlight 첫 빌드 업로드 |
 | W8 | 8·9 | 배포 + 데모 데이터 + 시연 리허설 + 슬라이드 |
@@ -1249,11 +1268,11 @@ flowchart TB
 
 - 3단계 1주 이상 지연 → 4단계는 와이어프레임 PNG로 시작, UI 다듬기는 W6로
 - 5단계 막힘 → 시계열 데이터는 v2로 미루고 PostgreSQL 단독 운영
-- 6단계 막힘 → 챗봇 Agent를 분석 Agent와 통합, 알림 등록은 수동 폼으로 폴백
+- 6단계 막힘 → 챗봇 Agent 실행 기능은 수동 폼으로 폴백
 - 7단계 TestFlight 외부 그룹 심사 미통과 → 내부 테스터(최대 100명) 그룹으로 폴백
 - 8단계 막힘 → 발표 PC에서 로컬 백엔드 + 시뮬레이터 직접 시연
 
-> 원칙: AI 4개 중 1~2개가 빠져도 코어(영양제 분석 + 5종 출력)는 살아남는다. 그래서 발표는 무조건 성립한다.
+> 원칙: 3개 Agent 중 일부가 단순화되어도 코어(영양제 분석 알고리즘 + 5종 출력)는 살아남는다. 그래서 발표는 무조건 성립한다.
 
 ---SPLIT---
 
@@ -1274,10 +1293,11 @@ flowchart TB
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
-| Anthropic Claude (개발 보조) | 본 가이드 작성, 4개 Agent 프롬프트 설계, 코드 보조 | Cowork (데스크톱) 환경 |
-| Anthropic Claude (런타임) | 4개 Agent 추론 | 모델 ID는 환경변수 |
+| Anthropic Claude (개발 보조) | 본 가이드 작성, 3개 Agent 프롬프트 설계, 코드 보조 | Cowork (데스크톱) 환경 |
+| Anthropic Claude (런타임) | 분석 구조화 보조 + 3개 Agent 추론 | 모델 ID는 환경변수 |
 | OpenAI API | LLM 폴백 | Claude 장애 시 Adapter 교체 |
-| Google Cloud Vision API | 영양제·음식 OCR | DOCUMENT_TEXT_DETECTION |
+| Google Cloud Vision API | 영양제·음식 OCR 후보 | 비용·정확도 비교 |
+| YOLOv8 | 음식 사진 인식 후보 | 논문 조사와 기술 검토 |
 | Naver CLOVA OCR | OCR 폴백 | 한국어 SOTA |
 
 ### 13.3 프론트엔드 (Flutter)
@@ -1289,7 +1309,7 @@ flowchart TB
 | go_router | 라우팅 | 7화면 전환 |
 | Dio + Retrofit | HTTP 클라이언트 | 인터셉터·재시도 |
 | image_picker / camera | 카메라·갤러리 | 영양제·음식 촬영 |
-| health | HealthKit + Health Connect | 단일 패키지로 양 OS |
+| health | HealthKit 우선, Health Connect 검토 | iOS 기준 연동 예정 |
 | Isar / Hive | 로컬 NoSQL | 캐시·오프라인 큐 |
 | fl_chart | 차트 | 체중 예측·점수 시각화 |
 | flutter_local_notifications | 로컬 알림 | 복약·식단 리마인더 |
@@ -1311,7 +1331,7 @@ flowchart TB
 | TimescaleDB 2.x | 시계열 확장 | Hypertable |
 | Redis 7 | 캐시·rate limit | OCR/LLM 캐싱 |
 | anthropic SDK | Claude API | 공식 Python SDK |
-| google-cloud-vision SDK | OCR | 공식 Python SDK |
+| google-cloud-vision SDK | OCR 후보 | 공식 Python SDK |
 | aiosmtplib / boto3 SES | 이메일 발송 | EMAIL_PROVIDER 분기 |
 | httpx | HTTP 클라이언트 | async 지원 |
 | python-jose | JWT | Stateless 인증 |
@@ -1459,12 +1479,13 @@ Lemon_Aid/
 │  │  │  ├─ activity.py             # v1~v4
 │  │  │  ├─ weight_prediction.py    # 7-step
 │  │  │  ├─ kdris.py                # KDRIs 룩업
-│  │  │  ├─ deficiency.py           # 결핍 진단
+│  │  │  ├─ deficiency.py           # 결핍 판단
 │  │  │  └─ goal_matrix.py          # 목적별 분석
 │  │  │
 │  │  ├─ ocr/
 │  │  │  ├─ vision_adapter.py       # Cloud Vision
-│  │  │  └─ clova_adapter.py        # 백업
+│  │  │  ├─ clova_adapter.py        # 백업 후보
+│  │  │  └─ yolo_adapter.py         # 음식 사진 인식 후보
 │  │  │
 │  │  ├─ llm/
 │  │  │  ├─ claude_client.py
@@ -1474,16 +1495,15 @@ Lemon_Aid/
 │  │  │  └─ tools.py                # Tool Use 함수 정의 모음
 │  │  │
 │  │  ├─ agents/
-│  │  │  ├─ analysis_agent.py
 │  │  │  ├─ personalization_agent.py
 │  │  │  ├─ chat_agent.py
 │  │  │  ├─ evaluation_agent.py
-│  │  │  ├─ orchestrator.py         # 4 Agent 분기 + agent_runs 로깅
+│  │  │  ├─ orchestrator.py         # 분석 알고리즘 + 3 Agent 분기 + agent_runs 로깅
 │  │  │  └─ memory.py               # agent_memory 갱신 로직
 │  │  │
 │  │  ├─ supplements/
 │  │  │  ├─ parser.py
-│  │  │  └─ matcher.py              # 식약처 DB 매칭
+│  │  │  └─ matcher.py              # 영양제 CSV DB 우선 매칭 + API 보조
 │  │  │
 │  │  ├─ services/                  # 외부 서비스 어댑터
 │  │  │  ├─ email.py                # SMTP / SES / NCP
@@ -1560,7 +1580,7 @@ Lemon_Aid/
 | mobile/android/app/src/main/AndroidManifest.xml | Health Connect 권한 |
 | backend/src/main.py | FastAPI 진입점 |
 | backend/src/config.py | 환경변수 로딩 |
-| backend/src/agents/orchestrator.py | 4 Agent 분기 + agent_runs 로깅 |
+| backend/src/agents/orchestrator.py | 분석 알고리즘 + 3 Agent 분기 + agent_runs 로깅 |
 | backend/src/agents/memory.py | agent_memory 갱신 |
 | backend/src/llm/prompts.py | 시스템 프롬프트 + 버전 태그 |
 | backend/src/llm/schemas.py | Pydantic 출력 스키마 |
@@ -1585,9 +1605,9 @@ Lemon_Aid/
 |------|----------|-----------------|
 | A. 프론트 리드 | Flutter 라우팅·디자인 토큰·화면 통합·health 패키지 | mobile/lib/app.dart, screens/, utils/tokens.dart |
 | B. UI/UX | 만성질환자 친화 UI·미리보기·챗봇 UI·응모권 화면·에러 화면 | mobile/lib/widgets/, screens/chat_screen.dart, screens/raffle_screen.dart |
-| C. AI 엔지니어 | Claude API·4개 Agent·프롬프트·Tool 정의·OCR·의료법 검수 | backend/src/llm/, agents/, ocr/, utils/regex_filter.py |
+| C. AI 엔지니어 | Claude API·3개 Agent·프롬프트·Tool 정의·OCR/이미지 인식 후보·의료법 검수 | backend/src/llm/, agents/, ocr/, utils/regex_filter.py |
 | D. 백엔드 | FastAPI·알고리즘·DB·인증·캐싱·**보안(JWT·RLS·AES-256)**·이메일 발송 | backend/src/algorithms/, api/, models/, schemas/, db/, cache/, services/email.py |
-| E. 데이터·도메인 | KDRIs/식약처/농진청 데이터 임포트·Kaggle 시연 데이터·의료자문위 협업·컴플라이언스 검토 | data/, docs/, backend/src/algorithms/kdris.py, goal_matrix.py |
+| E. 데이터·도메인 | KDRIs/식약처/농진청 데이터 임포트·영양제 CSV DB·병원 데이터 질문지·의료자문위 협업·컴플라이언스 검토 | data/, docs/, backend/src/algorithms/kdris.py, goal_matrix.py |
 
 ### 15.2 협업 기본 원칙 (상세 규칙은 §16)
 
@@ -1858,8 +1878,8 @@ GitHub Settings → Branches → Branch protection rules → `main`:
 
 ```
 v0.1.0  Phase 0 종료 (W2)
-v0.2.0  Phase 1 종료 (W4)  — 영양제 OCR + 분석 Agent 동작
-v0.3.0  Phase 2 종료 (W6)  — 4 Agent 통합
+v0.2.0  Phase 1 종료 (W4)  — 영양제 OCR + 분석 알고리즘 동작
+v0.3.0  Phase 2 종료 (W6)  — 3 Agent 통합
 v1.0.0  Phase 3 종료 (W8)  — 시연 가능 MVP
 ```
 
@@ -2025,8 +2045,8 @@ flowchart LR
 | R1 | 만성질환자 디지털 친화도 ↓ | 중 | 큰 글씨·3탭 이내·쉬운 말 카피 |
 | R2 | 의료법·약사법 위반 | 매우 높음 | 면책 표준 문구 3종 / 금지 표현 사전+사후 검수 / 의료자문위 검토 |
 | R3 | 경쟁자 진입 (필라이즈 후속) | 중 | 의료기관 연계(LDB) + 만성질환 v4 가중 |
-| R4 | 만성질환 데이터 부족 | 중 | Kaggle 시연, 향후 LDB 인터페이스 설계서 |
-| R5 | OCR 정확도 미달 (<85%) | 중 | Cloud Vision + CLOVA 백업 / 사용자 수정 입력 |
+| R4 | 만성질환 데이터 부족 | 중 | 멘토 질문지로 데이터 범위 확정, 향후 LDB 인터페이스 설계서 |
+| R5 | OCR 정확도 미달 (<85%) | 중 | OCR/이미지 인식 후보 비교 / 사용자 수정 입력 |
 | R6 | 산출식 임상 한계 | 중 | Phase 3에 Hall 동적 모델 검토 |
 | R7 | 개인정보 유출 | 매우 높음 | AES-256 / RLS / TLS 1.3 / 감사 로그 / 즉시 삭제 (D 담당) |
 | R8 | DTx 오인 | 낮음 | "치료" 표현 X, "관리·참고"로 통일 |
@@ -2039,10 +2059,10 @@ flowchart LR
 | LLM 응답 부정확 | 항상 미리보기 후 사용자 수정 |
 | LLM 비용 폭주 | 캐싱 + 분당 5회/일당 50회 + max_tokens |
 | API 키 노출 | 모바일 빌드물에 키 X, 백엔드 환경변수만 |
-| Cloud Vision 무료 한도 초과 | 캐싱 50%+ 절감 + CLOVA 폴백 |
-| Health Connect 신청 미승인 | W1 즉시 신청, 미승인 시 mock 데이터 |
+| OCR/이미지 인식 후보 비용 초과 | 캐싱 50%+ 절감 + 후보 기술 비교 |
+| Health Connect 검토 지연 | iOS HealthKit 우선 진행, Android는 수동/mock 데이터 검토 |
 | TestFlight 외부 심사 24~48시간 | W7 첫 빌드 사전 업로드, 내부 테스터 폴백 |
-| 8주 일정 타이트 | 4 Agent 중 분석·평가에 집중, 챗봇·개인화는 단순화 가능 |
+| 8주 일정 타이트 | 분석 알고리즘·평가에 집중, 챗봇·개인화는 단순화 가능 |
 
 ### 18.3 비상 대응 시나리오
 
@@ -2053,7 +2073,7 @@ flowchart LR
 | 심각 건강 이상 | 1339 응급의료, 일반 권고 일시 중단 |
 | 데이터 유출 | 1시간 차단 → 24시간 신고 → 72시간 분석 → 1개월 보고 |
 
-> 원칙: AI Agent 4개 중 1~2개가 빠져도 코어(영양제 분석 + 5종 출력)는 살아남는다. 발표는 무조건 성립한다.
+> 원칙: 3개 Agent 중 일부가 단순화되어도 코어(영양제 분석 알고리즘 + 5종 출력)는 살아남는다. 발표는 무조건 성립한다.
 
 ---SPLIT---
 
@@ -2083,6 +2103,7 @@ flowchart LR
 6. 식약처 기능성 인정 원료 안내
 7. 영양제 라벨 단순 표시
 8. "약사와 상의" 안내
+9. "주의 가능성", "권장량 대비", "전문가 상담 권장" 형식
 
 ### 19.2 표현 가이드 — 위반 → 대체
 
@@ -2096,6 +2117,8 @@ flowchart LR
 | "운동 부족으로 병이 옵니다" | "권장 걸음수의 60% 수준으로 활동하고 계십니다" |
 
 ### 19.3 면책 고지 표준 문구 3종
+
+다음 문구는 초안이며, 세부 문안은 추후 확정한다.
 
 #### 메인 (모든 권고 화면 하단)
 
@@ -2118,17 +2141,20 @@ flowchart LR
     C --> D[4. 사용자 미리보기<br/>승인 후 저장]
 ```
 
+Agent와 LLM 응답에는 주의·권장 표현과 필요한 출처를 함께 표시한다. 사진 분석 화면에는 출처를 직접 노출하지 않고, 챗봇 대화 안에서 출처를 표시한다.
+
 ### 19.5 개인정보보호법 — 민감정보 처리
 
 | 분류 | 항목 | 동의 |
 |------|------|------|
-| 민감정보 (별도 동의 필수) | 만성질환·복약·검진기록·걸음수·심박수 | 항목별 체크 |
-| 일반정보 | 이름·이메일·나이·성별·키·몸무게·식단/영양제 사진 | 통합 동의 |
+| 민감정보 또는 엄격 처리 대상 (별도 동의 필수) | 만성질환·복약·검진기록·걸음수·심박수·건강 관련 이미지 | 항목별 체크 |
+| 일반정보 | 이름·이메일·나이·성별·키·몸무게 | 통합 동의 |
 
 처리 원칙:
 - 별도 동의 UI (필수/선택 구분 + 사용 목적 표시)
+- 건강 관련 이미지는 영양제·음식 사진도 엄격한 저장·삭제 기준으로 처리
 - 가명정보 처리
-- 데이터 주체 5권리 (열람 / 정정·삭제 / 처리정지 / 동의 철회 / 탈퇴 즉시 삭제 + 백업 90일 폐기)
+- 데이터 주체 5권리 (열람 / 정정·삭제 / 처리정지 / 동의 철회 / 전체 삭제 요청 + 3개월 복구 가능 기간 후 완전 삭제)
 - AES-256 + TLS 1.3 + 감사 로그
 
 ### 19.6 DTx 해당 여부
@@ -2142,9 +2168,12 @@ flowchart LR
 
 가드: "치료" 표현 X, "관리·참고" 통일.
 
-### 19.7 데이터 출처 명시 (앱 내 필수)
+### 19.7 데이터 출처 명시
+
+사진 분석 결과 화면에는 출처를 직접 표시하지 않는다. 챗봇/LLM 대화 안에서 필요한 경우 다음 출처를 표시한다.
 
 - 한국영양학회 KDRIs 2020 (보건복지부)
+- 영양제 CSV DB
 - 식약처 식품영양성분 Open API
 - 식약처 건강기능식품 원료 DB
 - 농촌진흥청 국가표준식품성분표
@@ -2157,7 +2186,7 @@ flowchart LR
 | Phase 0~1 | 표준 디스클레이머 / LLM 시스템 프롬프트 + 금지어 검출 |
 | Phase 2 | 별도 동의 UI / 디스클레이머 / AES-256 / TLS 1.3 / PHI 감사 로그 |
 | Phase 3 | 의료자문위 / 식약처 표현 검수 / DTx 사전 검토 / 위급 신호 감지 |
-| Phase 4 | 법무 검수 진단·처방 0건 / 출처 페이지 / App Privacy 라벨 / Data Safety / 개인정보처리방침 |
+| Phase 4 | 법무 검수 진단·처방 0건 / 챗봇 출처 표시 / App Privacy 라벨 / Data Safety / 개인정보처리방침 |
 
 ---SPLIT---
 
@@ -2173,7 +2202,7 @@ flowchart LR
 [시연 흐름]
 1. 앱 진입 → 김건강 프로필 자동 로드 (만성질환·복약 표시)
 2. 카메라 → 영양제 4종 라벨 차례로 촬영
-   → 분석 Agent가 약 30~60초 안에 4종 모두 분석
+   → 분석 알고리즘이 약 30~60초 안에 4종 모두 분석
    ※ 발표 전 캐시 워밍 완료 시 30초 이내
 3. 5종 출력 대시보드 진입
    - 부족: "비타민D 35%" / 과다: "비타민B6 1.4배 (UL 근접)"
@@ -2198,7 +2227,7 @@ flowchart LR
 영양제 2종, 평일 5,000보 미만.
 
 [시연 흐름]
-1. 점심 사진 촬영 → 분석 Agent: "김치찌개·공깃밥·계란말이"
+1. 점심 사진 촬영 → 분석 알고리즘: "김치찌개·공깃밥·계란말이"
 2. 5종 출력: "탄수화물 충분, 단백질 부족, 식이섬유 부족"
 3. 체중 예측: "지금 추세 시 3개월 후 85 kg" → 경고
 4. 챗봇: "다이어트하려면 어떻게 해야 돼?"
@@ -2372,8 +2401,8 @@ flowchart LR
 
 | 항목 | 결과물 |
 |------|--------|
-| 검증된 알고리즘 | v1~v4 활동점수 / 7-step 체중 예측 / KDRIs 결핍 진단 / 영양제 OCR-LLM 파이프라인 |
-| 재사용 가능한 코드 | FastAPI 모듈 / Pydantic 스키마 / 4개 Agent 시스템 프롬프트 / Flutter 화면 위젯 |
+| 검증된 알고리즘 | v1~v4 활동점수 / 7-step 체중 예측 / KDRIs 결핍 판단 / 영양제 OCR-LLM 파이프라인 |
+| 재사용 가능한 코드 | FastAPI 모듈 / Pydantic 스키마 / 3개 Agent 시스템 프롬프트 / Flutter 화면 위젯 |
 | 컴플라이언스 가드 | 의료법 표현 검수 함수 / 면책 표준 문구 3종 / 민감정보 동의 UI |
 | LDB 통합 인터페이스 설계 | 향후 건강의신과 LDB 의료기관 데이터를 연결할 출발점 |
 | 정성 사용성 결과 | 내부 테스터 5명 + 멘토·자문위 3명 의견서 |
@@ -2520,7 +2549,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 - backend/src/agents/orchestrator.py + memory.py 빈 셸
 - backend/src/algorithms/bmi.py + 단위 테스트
 - backend/src/services/email.py SMTP 발송 PoC
-- Health Connect 데이터 타입 신청 제출
+- Android Health Connect 연동 검토
 
 ### A.6 D1 코드 시그니처 (5명 공통 합의, 변경 시 PR 필수)
 
@@ -2642,7 +2671,7 @@ D5: insight_card.dart, raffle_screen.dart UI
 
 ```
 D1: backend/src/llm/claude_client.py 빈 시그니처 (§A.6) + 기본 호출 테스트
-D2: backend/src/llm/prompts.py 4개 Agent 시스템 프롬프트 v0
+D2: backend/src/llm/prompts.py 3개 Agent 시스템 프롬프트 v0
 D3: backend/src/llm/tools.py 5개 Tool 정의 (§3.3)
 D4: backend/src/llm/schemas.py Pydantic 출력 스키마
 D5: backend/src/utils/regex_filter.py 의료법 검수 + 단위 테스트
@@ -2665,7 +2694,7 @@ D1: data/kdris_2020.csv 임포트 스크립트 작성
 D2: backend/src/algorithms/kdris.py 룩업 함수 + 단위 테스트
 D3: 식약처 식품영양성분 Open API PoC (FastAPI 어댑터)
 D4: data/goal_matrix.json 작성 (눈/간/피로 §8.7 표 그대로)
-D5: docs/medical_review.md 의료자문위 질문 초안 + Health Connect 신청 진행
+D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connect 검토 진행
 ```
 
 ### A.10 팀 공유 채팅 메시지 템플릿
@@ -2682,7 +2711,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Health Connect 신청
 - B (UI/UX): Figma 와이어프레임
 - C (AI 엔지니어): claude_client.py 빈 시그니처
 - D (백엔드): docker-compose + alembic init
-- E (데이터·도메인): KDRIs CSV 임포트 + Health Connect 신청
+- E (데이터·도메인): KDRIs CSV 임포트 + 영양제 CSV DB + Health Connect 검토
 
 질문/블로커는 채팅 즉시. 매일 18시 스탠드업 10분.
 
@@ -2701,7 +2730,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Health Connect 신청
 | 다른 팀원 코드와 충돌 | §16 GitHub 규칙 + 채팅에서 동기 콜 |
 | 알고리즘 산식이 헷갈림 | §8 핵심 알고리즘 / 가이드 PPT 예시값과 비교 |
 | 의료법 표현이 걱정 | §19.2 위반→대체 표 / E에게 검토 요청 |
-| 4개 Agent 흐름이 헷갈림 | §3.1 / §7.3 / §9 호출 흐름 |
+| 분석 알고리즘 + 3개 Agent 흐름이 헷갈림 | §3.1 / §7.3 / §9 호출 흐름 |
 | LLM 비용이 무서움 | §7.6 가드레일 / 캐시 적중률 점검 |
 | 발표 직전인데 백엔드 죽음 | §20.4 / §21.5 시연 안전장치 |
 | guide.html이 PG.md와 다르게 보임 | §17 기획서 자동 동기화 |
