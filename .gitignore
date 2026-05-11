@@ -106,6 +106,7 @@ logs/
 *.bak
 *.backup
 *.orig
+_archive/
 
 # ── 시스템·민감 정보 (혹시 모를 누출 차단) ──────
 *.pid
