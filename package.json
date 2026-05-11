@@ -1,0 +1,24 @@
+{
+  "name": "lemon_aid",
+  "version": "1.0.0",
+  "description": "> **만성질환자의 병원 기록과 생활 데이터를 기억하는 AI 영양·복약 관리 Agent**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lemon-Aid-KDT/Lemon-sin.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Lemon-Aid-KDT/Lemon-sin/issues"
+  },
+  "homepage": "https://github.com/Lemon-Aid-KDT/Lemon-sin#readme"
+}

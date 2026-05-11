@@ -112,3 +112,9 @@ logs/
 secrets/
 .secrets/
 private/
+
+# ── Claude Code 로컬 설정 ──────────────────────
+.claude/
+
+# ── 대형 에셋 번들 (Git LFS 대신 외부 보관) ────
+character/*.zip
