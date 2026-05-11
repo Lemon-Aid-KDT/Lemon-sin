@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lemon Aid 멘토 첫 미팅 제안서</title>
+  <style>
+    :root {
+      --ink: #17201d;
+      --muted: #5d6a65;
+      --line: #d9e3de;
+      --paper: #fbfaf4;
+      --soft: #f2f7ee;
+      --lemon: #f2cc45;
+      --leaf: #2e7d57;
+      --mint: #cfead8;
+      --blue: #3b6ea8;
+      --coral: #e56b4f;
+      --white: #ffffff;
+      --shadow: 0 18px 45px rgba(23, 32, 29, 0.11);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #e9eee9;
+      color: var(--ink);
+      font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      padding: 24px;
+    }
+
+    @page {
+      size: A4 landscape;
+      margin: 0;
+    }
+
+    .page {
+      position: relative;
+      width: 297mm;
+      height: 210mm;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(207, 234, 216, 0.78), rgba(251, 250, 244, 0.9) 42%, rgba(242, 204, 69, 0.18)),
+        var(--paper);
+      box-shadow: var(--shadow);
+      page-break-after: always;
+      padding: 18mm 20mm;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 9mm;
+      border: 1px solid rgba(46, 125, 87, 0.2);
+      pointer-events: none;
+    }
+
+    .page::after {
+      content: attr(data-page);
+      position: absolute;
+      right: 20mm;
+      bottom: 12mm;
+      color: rgba(23, 32, 29, 0.36);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 9mm;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--leaf);
+    }
+
+    .brand-mark {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: conic-gradient(from 20deg, var(--lemon), var(--lemon) 42%, var(--leaf) 43%, var(--leaf) 58%, var(--lemon) 59%);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 9mm;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 230mm;
+      font-size: 41px;
+      line-height: 1.14;
+      font-weight: 900;
+      color: var(--ink);
+    }
+
+    h2 {
+      font-size: 29px;
+      line-height: 1.2;
+      font-weight: 900;
+      color: var(--ink);
+    }
+
+    h3 {
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    p,
+    li {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--muted);
+      word-break: keep-all;
+    }
+
+    strong {
+      color: var(--ink);
+      font-weight: 900;
+    }
+
+    .kicker {
+      color: var(--leaf);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .subtitle {
+      max-width: 210mm;
+      font-size: 18px;
+      line-height: 1.65;
+      color: var(--muted);
+      word-break: keep-all;
+    }
+
+    .hero {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14mm;
+      align-items: center;
+    }
+
+    .hero-card,
+    .card,
+    .callout,
+    .metric,
+    .node,
+    .mini-card {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(46, 125, 87, 0.16);
+      border-radius: var(--radius);
+      box-shadow: 0 12px 28px rgba(23, 32, 29, 0.07);
+    }
+
+    .hero-card {
+      padding: 11mm;
+      display: flex;
+      flex-direction: column;
+      gap: 8mm;
+      border-left: 9px solid var(--lemon);
+    }
+
+    .tagline {
+      font-size: 24px;
+      line-height: 1.42;
+      font-weight: 900;
+      word-break: keep-all;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4mm;
+    }
+
+    .meta-item {
+      border-top: 1px solid var(--line);
+      padding-top: 4mm;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .meta-item strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 1mm;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7mm;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 5mm;
+    }
+
+    .card {
+      padding: 6mm;
+      min-height: 34mm;
+      display: flex;
+      flex-direction: column;
+      gap: 3mm;
+    }
+
+    .card.accent {
+      background: var(--ink);
+      color: var(--white);
+    }
+
+    .card.accent p,
+    .card.accent h3 {
+      color: var(--white);
+    }
+
+    .card.accent strong {
+      color: var(--lemon);
+    }
+
+    .eyebrow {
+      width: fit-content;
+      padding: 2mm 3mm;
+      background: rgba(242, 204, 69, 0.38);
+      color: #745c00;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 19px;
+      display: flex;
+      flex-direction: column;
+      gap: 2mm;
+    }
+
+    .statement {
+      padding: 8mm;
+      background: var(--ink);
+      color: var(--white);
+      border-radius: var(--radius);
+      font-size: 23px;
+      line-height: 1.45;
+      font-weight: 900;
+      word-break: keep-all;
+      box-shadow: var(--shadow);
+    }
+
+    .statement span {
+      color: var(--lemon);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      align-items: stretch;
+      gap: 3mm;
+      margin-top: 3mm;
+    }
+
+    .flow.mvp {
+      grid-template-columns: repeat(7, 1fr);
+    }
+
+    .node {
+      position: relative;
+      min-height: 42mm;
+      padding: 5mm 4mm;
+      display: flex;
+      flex-direction: column;
+      gap: 3mm;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .node:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -3.6mm;
+      width: 4.2mm;
+      height: 4.2mm;
+      border-top: 2px solid var(--leaf);
+      border-right: 2px solid var(--leaf);
+      transform: translateY(-50%) rotate(45deg);
+      background: transparent;
+    }
+
+    .node .step {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      margin: 0 auto;
+      background: var(--lemon);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .node h3 {
+      color: var(--leaf);
+      font-size: 14px;
+    }
+
+    .node p {
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+
+    .loop-note {
+      margin-top: 6mm;
+      padding: 5mm 6mm;
+      border-radius: var(--radius);
+      background: rgba(46, 125, 87, 0.09);
+      border: 1px dashed rgba(46, 125, 87, 0.4);
+      font-size: 13px;
+      color: var(--leaf);
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .value-row {
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      gap: 6mm;
+      align-items: stretch;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4mm;
+    }
+
+    .metric {
+      padding: 5mm;
+      min-height: 32mm;
+    }
+
+    .metric .num {
+      font-size: 25px;
+      font-weight: 900;
+      color: var(--leaf);
+      margin-bottom: 2mm;
+    }
+
+    .metric p {
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 12px 28px rgba(23, 32, 29, 0.07);
+    }
+
+    .table th,
+    .table td {
+      padding: 4mm;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .table th {
+      background: rgba(46, 125, 87, 0.12);
+      color: var(--leaf);
+      font-weight: 900;
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3mm;
+    }
+
+    .pill {
+      padding: 2.5mm 4mm;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+      color: var(--leaf);
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    .output-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 3.5mm;
+    }
+
+    .output {
+      position: relative;
+      min-height: 62mm;
+      padding: 5mm 4mm;
+      border-radius: var(--radius);
+      color: var(--white);
+      background: var(--leaf);
+      display: flex;
+      flex-direction: column;
+      gap: 3mm;
+      overflow: hidden;
+    }
+
+    .output:nth-child(2) {
+      background: var(--blue);
+    }
+
+    .output:nth-child(3) {
+      background: #5b6f31;
+    }
+
+    .output:nth-child(4) {
+      background: #835c2e;
+    }
+
+    .output:nth-child(5) {
+      background: var(--coral);
+    }
+
+    .output .label {
+      font-size: 24px;
+      font-weight: 900;
+      color: rgba(255, 255, 255, 0.2);
+      position: absolute;
+      right: 4mm;
+      top: 2mm;
+    }
+
+    .output h3,
+    .output p,
+    .output strong {
+      position: relative;
+      color: var(--white);
+    }
+
+    .output p {
+      font-size: 11.8px;
+      line-height: 1.55;
+      opacity: 0.92;
+    }
+
+    .footer-note {
+      margin-top: auto;
+      font-size: 11px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .safety {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5mm;
+    }
+
+    .do-dont {
+      padding: 6mm;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+    }
+
+    .do-dont h3 {
+      margin-bottom: 4mm;
+    }
+
+    .do-dont.good {
+      border-top: 5px solid var(--leaf);
+    }
+
+    .do-dont.bad {
+      border-top: 5px solid var(--coral);
+    }
+
+    @media print {
+      body {
+        display: block;
+        background: white;
+        padding: 0;
+      }
+
+      .page {
+        box-shadow: none;
+        margin: 0;
+      }
+    }
+
+    @media screen {
+      .page {
+        max-width: min(100%, 1188px);
+        height: auto;
+        aspect-ratio: 297 / 210;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="page" data-page="01 / 11">
+    <div class="topbar">
+      <div class="brand"><span class="brand-mark"></span>Lemon Aid</div>
+      <div>Mentor First Meeting</div>
+    </div>
+    <div class="content hero">
+      <div>
+        <p class="kicker">AI 헬스케어 / 건강관리 플랫폼</p>
+        <h1>만성질환자를 위한<br><strong>AI 영양·복약 관리 서비스</strong></h1>
+        <p class="subtitle">음식과 영양제를 사진으로 기록하고, 사용자의 건강 상태와 복약 상황을 고려해 <strong>부족·과다 가능성과 실천 방향</strong>을 알려주는 건강관리 보조 서비스입니다.</p>
+      </div>
+      <div class="hero-card">
+        <div class="eyebrow">FIRST MESSAGE</div>
+        <p class="tagline">사진 한 장으로 시작해,<br><strong>내 건강 상태에 맞는 관리 방향</strong>으로 이어진다.</p>
+        <div class="meta-grid">
+          <div class="meta-item"><strong>대상</strong>만성질환 관리 또는 예방적 건강관리가 필요한 사용자</div>
+          <div class="meta-item"><strong>방식</strong>음식·영양제 기록을 영양소 단위로 통합</div>
+          <div class="meta-item"><strong>결과</strong>5종 출력과 챗봇 설명으로 이해 가능한 피드백</div>
+          <div class="meta-item"><strong>원칙</strong>진단·처방이 아닌 건강관리 참고 정보</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="02 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>기획 배경</div></div>
+    <div class="content">
+      <p class="kicker">WHY NOW</p>
+      <h2>건강 정보는 많지만, <strong>내 상황에 맞게 연결된 해석</strong>은 부족합니다.</h2>
+      <div class="two-col">
+        <div class="card accent">
+          <div class="eyebrow">현재 상황</div>
+          <h3>사용자는 여러 데이터를 따로 관리합니다.</h3>
+          <p>식단은 음식 앱에, 영양제는 제품 정보나 메모에, 복약은 알림 앱에, 활동량은 헬스 앱에 흩어져 있습니다.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">핵심 문제</div>
+          <h3>단순 기록만으로는 판단이 어렵습니다.</h3>
+          <p>만성질환 관리를 위해서는 <strong>무엇을 먹었는가</strong>보다 <strong>내 건강 상태와 복약 상황에서 무엇을 주의해야 하는가</strong>가 중요합니다.</p>
+        </div>
+      </div>
+      <div class="statement">Lemon Aid는 음식과 영양제 기록을 출발점으로 삼아, <span>개인화된 건강관리 방향</span>을 보여주는 서비스입니다.</div>
+    </div>
+  </section>
+
+  <section class="page" data-page="03 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>문제 정의</div></div>
+    <div class="content">
+      <p class="kicker">USER PAINS</p>
+      <h2>만성질환자와 건강관리 사용자는 <strong>다섯 가지 불편</strong>을 겪습니다.</h2>
+      <div class="three-col">
+        <div class="card"><span class="eyebrow">01</span><h3>데이터 분산</h3><p>음식, 영양제, 복약, 활동량, 건강검진 정보가 서로 다른 곳에 흩어져 있습니다.</p></div>
+        <div class="card"><span class="eyebrow">02</span><h3>통합 섭취량 파악 어려움</h3><p>음식과 영양제를 따로 관리해 하루 전체 영양소 섭취량을 알기 어렵습니다.</p></div>
+        <div class="card"><span class="eyebrow">03</span><h3>중복·과다 가능성 확인 어려움</h3><p>여러 영양제를 함께 복용할 때 같은 성분이 중복되는지 확인하기 어렵습니다.</p></div>
+        <div class="card"><span class="eyebrow">04</span><h3>개인화 부족</h3><p>일반 권장량만으로는 만성질환, 복약, 건강 목적을 반영하기 어렵습니다.</p></div>
+        <div class="card"><span class="eyebrow">05</span><h3>실천 방향 부족</h3><p>정보는 많지만 오늘 무엇을 줄이고 보완해야 하는지 이해하기 어렵습니다.</p></div>
+        <div class="card accent"><span class="eyebrow">FOCUS</span><h3>우리가 풀 문제</h3><p><strong>흩어진 기록</strong>을 하나의 건강관리 흐름으로 연결합니다.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="04 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>서비스 목적</div></div>
+    <div class="content">
+      <p class="kicker">SERVICE PURPOSE</p>
+      <h2>사용자가 복잡한 건강 정보를 직접 해석하지 않아도, <strong>오늘의 관리 방향</strong>을 이해하게 합니다.</h2>
+      <div class="value-row">
+        <div class="statement">핵심은<br><span>기록 → 통합 → 해석 → 실천</span>입니다.</div>
+        <div class="metrics">
+          <div class="metric"><div class="num">01</div><p><strong>쉽게 기록</strong><br>음식과 영양제를 사진 기반으로 입력합니다.</p></div>
+          <div class="metric"><div class="num">02</div><p><strong>영양소로 정리</strong><br>음식과 영양제를 같은 기준에서 합산합니다.</p></div>
+          <div class="metric"><div class="num">03</div><p><strong>개인화 반영</strong><br>만성질환, 복약 정보, 건강 목적을 참고합니다.</p></div>
+          <div class="metric"><div class="num">04</div><p><strong>실천 피드백</strong><br>부족·과다 가능성과 활동 권고를 제공합니다.</p></div>
+          <div class="metric"><div class="num">05</div><p><strong>쉬운 설명</strong><br>챗봇이 결과를 이해 가능한 문장으로 풀어줍니다.</p></div>
+          <div class="metric"><div class="num">06</div><p><strong>안전한 표현</strong><br>진단·처방이 아닌 참고 정보로 안내합니다.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="05 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>서비스 파이프라인</div></div>
+    <div class="content">
+      <p class="kicker">SERVICE PIPELINE</p>
+      <h2>사용자 경험은 <strong>입력에서 지속 관리까지</strong> 하나의 흐름으로 이어집니다.</h2>
+      <div class="flow">
+        <div class="node"><span class="step">1</span><h3>사용자 입력</h3><p>음식 사진<br>영양제 라벨<br>프로필·활동 데이터</p></div>
+        <div class="node"><span class="step">2</span><h3>데이터 구조화</h3><p>음식명, 섭취량,<br>성분, 함량을<br>분석 가능한 형태로 정리</p></div>
+        <div class="node"><span class="step">3</span><h3>개인화 기준</h3><p>나이, 성별, 체중,<br>만성질환, 복약,<br>건강 목적 반영</p></div>
+        <div class="node"><span class="step">4</span><h3>AI 분석</h3><p>음식+영양제<br>섭취량 합산<br>권장 기준 비교</p></div>
+        <div class="node"><span class="step">5</span><h3>5종 결과</h3><p>부족 영양소<br>권장 섭취량<br>체중·활동·목적 분석</p></div>
+        <div class="node"><span class="step">6</span><h3>지속 관리</h3><p>챗봇 설명<br>알림 등록<br>반복 기록 유도</p></div>
+      </div>
+      <div class="loop-note">지속 기록은 다시 개인화 기준으로 돌아가며, 시간이 지날수록 사용자에게 맞는 건강관리 맥락을 축적합니다.</div>
+    </div>
+  </section>
+
+  <section class="page" data-page="06 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>핵심 기능</div></div>
+    <div class="content">
+      <p class="kicker">FEATURES</p>
+      <h2>기능은 많아 보이지만, 사용자가 느끼는 가치는 <strong>명확한 네 가지</strong>입니다.</h2>
+      <table class="table">
+        <thead>
+          <tr><th>핵심 기능</th><th>사용자에게 보이는 가치</th><th>첫 미팅에서 강조할 포인트</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>음식·영양제 사진 기록</strong></td><td>긴 입력 없이 사진으로 기록을 시작합니다.</td><td>사용 부담을 낮추는 첫 진입점</td></tr>
+          <tr><td><strong>영양소·성분 분석</strong></td><td>음식과 영양제를 하나의 섭취 데이터로 정리합니다.</td><td>두 과제를 하나의 서비스 흐름으로 연결</td></tr>
+          <tr><td><strong>부족·과다 가능성 안내</strong></td><td>권장 기준 대비 낮거나 높은 영양소를 쉽게 확인합니다.</td><td>결과는 확정 진단이 아닌 참고 정보</td></tr>
+          <tr><td><strong>챗봇 설명·알림</strong></td><td>분석 결과를 쉬운 말로 이해하고 반복 관리로 이어갑니다.</td><td>일회성 분석을 지속 관리로 확장</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="page" data-page="07 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>과제 이해</div></div>
+    <div class="content">
+      <p class="kicker">ASSIGNMENT TO SERVICE</p>
+      <h2>멘토 과제는 두 축이지만, 서비스에서는 <strong>하나의 개인화 건강관리 흐름</strong>으로 연결됩니다.</h2>
+      <div class="two-col">
+        <div class="card">
+          <span class="eyebrow">과제 축 1</span>
+          <h3>영양제 분석</h3>
+          <p>복용 중인 영양제의 <strong>성분, 함량, 섭취량, 부족 영양소, 목적별 분석</strong>을 제공합니다.</p>
+          <p>서비스 해석: 영양제 라벨을 분석해 사용자의 전체 영양소 섭취 데이터에 반영합니다.</p>
+        </div>
+        <div class="card">
+          <span class="eyebrow">과제 축 2</span>
+          <h3>음식·식단 분석</h3>
+          <p>음식 섭취 영양소와 활동 정보를 바탕으로 <strong>체중 변화, 활동 권고, 부족 영양소</strong>를 제공합니다.</p>
+          <p>서비스 해석: 음식 기록과 활동 데이터를 연결해 식단관리 피드백으로 제공합니다.</p>
+        </div>
+      </div>
+      <div class="statement">영양제와 음식은 모두 <span>사용자의 섭취 데이터</span>입니다. 이를 건강 상태에 맞게 해석해야 Lemon Aid의 MVP가 됩니다.</div>
+    </div>
+  </section>
+
+  <section class="page" data-page="08 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>MVP 범위</div></div>
+    <div class="content">
+      <p class="kicker">MVP GOAL</p>
+      <h2>MVP는 모든 기능의 완성이 아니라, <strong>과제가 서비스로 발전하는 흐름</strong>을 보여주는 것입니다.</h2>
+      <div class="pill-row">
+        <span class="pill">영양제 라벨 사진 분석</span>
+        <span class="pill">음식 사진 또는 텍스트 분석</span>
+        <span class="pill">사용자 기본 프로필</span>
+        <span class="pill">시연용 만성질환·복약 정보</span>
+        <span class="pill">5종 결과 대시보드</span>
+        <span class="pill">챗봇 설명·알림</span>
+      </div>
+      <div class="two-col">
+        <div class="card accent"><h3>MVP가 보여줄 것</h3><p><strong>사진 또는 텍스트 입력</strong>을 분석 가능한 데이터로 바꾸고, 음식과 영양제를 영양소 단위로 합산해 5종 결과로 보여줍니다.</p></div>
+        <div class="card"><h3>개인화의 표현 방식</h3><p>실제 병원 연동 없이도 <strong>시연용 만성질환·복약 정보</strong>를 반영해 개인화 흐름을 설명합니다.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="09 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>MVP 구현 파이프라인</div></div>
+    <div class="content">
+      <p class="kicker">IMPLEMENTATION PIPELINE</p>
+      <h2>구현은 <strong>입력 → 표준화 → 합산 → 개인화 → 출력</strong>의 단계로 정리합니다.</h2>
+      <div class="flow mvp">
+        <div class="node"><span class="step">1</span><h3>입력 정의</h3><p>영양제 사진<br>음식 사진·텍스트<br>프로필·활동</p></div>
+        <div class="node"><span class="step">2</span><h3>인식·추출</h3><p>제품명, 성분명,<br>함량, 음식명,<br>섭취량 후보 추출</p></div>
+        <div class="node"><span class="step">3</span><h3>표준 매칭</h3><p>건강기능식품<br>식품영양성분<br>데이터와 연결</p></div>
+        <div class="node"><span class="step">4</span><h3>섭취량 합산</h3><p>음식 영양소와<br>영양제 영양소를<br>하루 기준으로 합산</p></div>
+        <div class="node"><span class="step">5</span><h3>개인화 분석</h3><p>프로필, 건강 목적,<br>시연용 질환·복약<br>정보 반영</p></div>
+        <div class="node"><span class="step">6</span><h3>5종 출력</h3><p>부족, 권장량,<br>체중, 활동,<br>목적별 분석</p></div>
+        <div class="node"><span class="step">7</span><h3>검증</h3><p>인식 정확도<br>이해 가능성<br>안전 표현 확인</p></div>
+      </div>
+      <div class="loop-note">결과는 바로 확정하지 않고 사용자가 확인·수정할 수 있는 후보로 제공해 OCR과 AI 추출의 불확실성을 줄입니다.</div>
+    </div>
+  </section>
+
+  <section class="page" data-page="10 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>5종 출력</div></div>
+    <div class="content">
+      <p class="kicker">FIVE OUTPUTS</p>
+      <h2>멘토 과제의 결과는 <strong>사용자가 이해할 수 있는 5종 출력</strong>으로 정리합니다.</h2>
+      <div class="output-grid">
+        <div class="output"><span class="label">01</span><h3>부족 영양소</h3><p><strong>권장량 대비 낮은 영양소</strong>를 안내합니다.</p><p>"비타민D가 권장량 대비 낮은 편입니다."</p></div>
+        <div class="output"><span class="label">02</span><h3>권장 섭취량</h3><p>사용자 기준에 맞춘 <strong>섭취 참고 기준</strong>을 제시합니다.</p><p>"현재 입력 정보 기준 권장량은 다음과 같습니다."</p></div>
+        <div class="output"><span class="label">03</span><h3>체중 변화 예측</h3><p>식단과 활동 기준의 <strong>참고 예측</strong>을 보여줍니다.</p><p>"현재 기록이 유지된다고 가정한 참고 예측입니다."</p></div>
+        <div class="output"><span class="label">04</span><h3>활동 권고</h3><p>걸음수와 활동량 기반의 <strong>실천 제안</strong>을 제공합니다.</p><p>"20분 걷기를 추가하면 도움이 될 수 있습니다."</p></div>
+        <div class="output"><span class="label">05</span><h3>목적별 분석</h3><p>눈, 간, 피로, 체중 등 <strong>목적별 관리 방향</strong>을 정리합니다.</p><p>"간 건강 목적 성분은 충분한 편으로 보입니다."</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="11 / 11">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>기대효과와 안전 원칙</div></div>
+    <div class="content">
+      <p class="kicker">TAKEAWAY</p>
+      <h2>Lemon Aid는 과제를 기능으로 끝내지 않고, <strong>서비스 참조 모델</strong>로 발전시킵니다.</h2>
+      <div class="three-col">
+        <div class="card"><h3>사용자</h3><p>흩어진 건강 정보를 한 흐름으로 이해하고, 오늘의 실천 방향을 확인할 수 있습니다.</p></div>
+        <div class="card"><h3>레몬헬스케어</h3><p>건강의신과 병원 데이터 연계 가능성을 검토할 수 있는 참조 서비스 모델을 확보할 수 있습니다.</p></div>
+        <div class="card"><h3>Lemon Aid 팀</h3><p>8주 안에 시연 가능한 AI 헬스케어 MVP를 만들고, 후속 확장 방향을 제안할 수 있습니다.</p></div>
+      </div>
+      <div class="safety">
+        <div class="do-dont good">
+          <h3>표현 원칙</h3>
+          <ul class="list">
+            <li><strong>권장량 대비 낮음</strong></li>
+            <li><strong>주의가 필요할 수 있음</strong></li>
+            <li><strong>전문가 상담 권장</strong></li>
+          </ul>
+        </div>
+        <div class="do-dont bad">
+          <h3>피해야 할 표현</h3>
+          <ul class="list">
+            <li>질환을 확정하는 표현</li>
+            <li>치료 효과를 보장하는 표현</li>
+            <li>복용량 변경을 지시하는 표현</li>
+          </ul>
+        </div>
+      </div>
+      <p class="footer-note">본 자료는 첫 멘토 미팅용 요약본입니다. 세부 기술, 데이터 출처, 안전 검토 기준은 후속 문서에서 분리해 설명합니다.</p>
+    </div>
+  </section>
+</body>
+</html>
