@@ -530,6 +530,7 @@ agent_memory             # Agent 요약 기억 (user_id, summary_json, updated_a
 agent_runs               # Agent 호출 로그 (request_id, agent_name, latency_ms, cost_usd, status)
 audit_logs               # PHI 접근·수정 감사 로그 (user_id, actor, action, target, created_at)
 email_verifications      # 이메일 인증 토큰 (user_id, token, expires_at, verified_at)
+refresh_tokens           # JWT refresh 토큰 (user_id, token, expires_at, revoked, created_at)
 
 # 시계열 (TimescaleDB Hypertable)
 step_counts              # 걸음수 (user_id, ts, count)
@@ -1225,7 +1226,8 @@ Lemon_Aid/
 │  │  ├─ config.py                  # 환경변수 로딩 (CLAUDE_MODEL_ID, EMAIL_PROVIDER 등)
 │  │  │
 │  │  ├─ api/
-│  │  │  ├─ auth.py
+│  │  │  ├─ __init__.py             # api_router 등록
+│  │  │  ├─ auth.py                 # signup / login / refresh / logout ✅ 구현완료
 │  │  │  ├─ profile.py
 │  │  │  ├─ supplements.py
 │  │  │  ├─ meals.py
@@ -1274,12 +1276,17 @@ Lemon_Aid/
 │  │  │  └─ storage.py              # 이미지 파일 저장
 │  │  │
 │  │  ├─ models/                    # SQLAlchemy ORM
+│  │  │  ├─ __init__.py
+│  │  │  └─ user.py                 # User, RefreshToken ✅ 구현완료
 │  │  ├─ schemas/                   # Pydantic 요청·응답
+│  │  │  └─ auth.py                 # SignupRequest / LoginRequest / TokenResponse ✅ 구현완료
 │  │  ├─ db/
-│  │  │  ├─ session.py
-│  │  │  └─ init.sql                # CREATE EXTENSION timescaledb
+│  │  │  ├─ base.py                 # DeclarativeBase + TimestampMixin ✅ 구현완료
+│  │  │  ├─ session.py              # async engine + get_db dependency ✅ 구현완료
+│  │  │  └─ init.sql                # CREATE EXTENSION timescaledb + users/refresh_tokens DDL ✅ 구현완료
 │  │  ├─ cache/                     # Redis 래퍼
 │  │  └─ utils/
+│  │     ├─ security.py             # bcrypt 해싱 + JWT 생성/검증 ✅ 구현완료
 │  │     ├─ hash.py                 # SHA-256
 │  │     ├─ regex_filter.py         # 의료법 표현 사후 검수
 │  │     └─ logger.py
@@ -1403,6 +1410,15 @@ type EmailVerification = {
   token: string;
   expires_at: timestamp;
   verified_at: timestamp?;
+}
+
+type RefreshToken = {
+  id: int (PK);
+  user_id: int (FK);
+  token: string (unique);
+  expires_at: timestamp;
+  revoked: boolean;
+  created_at: timestamp;
 }
 ```
 
@@ -1826,6 +1842,7 @@ GitHub 사용자명은 팀 합의 후 채워 넣는다. 예시:
 | GOOGLE_APPLICATION_CREDENTIALS | GCP 서비스 어카운트 JSON, 1Password 또는 운영 서버 마운트 | Cloud Vision OCR |
 | MFDS_API_KEY | GitHub Secrets + 환경변수 | 식약처 |
 | JWT_SECRET / ENCRYPTION_KEY | 운영 서버 환경변수 (Secrets에는 staging만) | 인증·암호화 |
+| POSTGRES_USER / PASSWORD / DB / HOST / PORT | .env (로컬) / GitHub Secrets (CI) | DB 연결 |
 | Firebase / Vercel 키 | (해당 시) GitHub Secrets | CI 배포 |
 | TestFlight / Play Console 자격증명 | Apple / Google 별도 보관 | 수동 배포 |
 
