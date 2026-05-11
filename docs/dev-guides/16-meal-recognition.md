@@ -1,12 +1,14 @@
-# dev-guides/16 — 식단 인식 (이미지 + 텍스트)
+# dev-guides/16 — 식단 인식 (Google Cloud Vision + YOLOv8)
 
-> **Phase**: 3 | **선행 작업**: [`08-llm-supplement-parsing.md`](./08-llm-supplement-parsing.md) | **예상 소요**: 4~5시간
+> **Phase**: 3 | **선행 작업**: [`06-deficient-nutrient-diagnosis.md`](./06-deficient-nutrient-diagnosis.md), [`08-llm-supplement-parsing.md`](./08-llm-supplement-parsing.md) | **예상 소요**: MVP 1일, YOLO fine-tuning 3~5일
 
 ---
 
 ## 🎯 작업 목표
 
-사용자가 식사 사진 또는 텍스트("점심: 김치찌개, 공기밥, 계란말이")를 입력하면 음식·양·영양소를 인식하여 영양 분석에 통합한다. LLM Vision + 농진청 식품성분 DB 매칭 기반.
+사용자가 식사 사진 또는 텍스트("점심: 김치찌개, 공기밥, 계란말이")를 입력하면 음식 후보·추정량·영양소를 구조화하여 영양 분석에 통합한다.
+
+이미지 입력은 **Google Cloud Vision + YOLOv8** 조합으로 처리한다. MVP에서는 실제 YOLO 학습 없이 수동 mock 예측으로 파이프라인과 데이터 계약을 먼저 고정하고, Beta 단계에서 AI Hub 음식 이미지 데이터셋으로 YOLOv8을 fine-tuning한다.
 
 ---
 
@@ -17,692 +19,307 @@ backend/
 ├── src/
 │   ├── meal/
 │   │   ├── __init__.py
-│   │   ├── base.py                # MealRecognizerAdapter ABC
-│   │   ├── claude_vision.py       # Claude Vision 인식 (주력)
-│   │   ├── text_parser.py         # 텍스트 입력 파싱
-│   │   ├── prompts.py             # 시스템 프롬프트
-│   │   └── exceptions.py
+│   │   ├── base.py                  # 공통 DTO + Adapter Protocol
+│   │   ├── exceptions.py
+│   │   ├── google_vision.py         # OCR/label hint Adapter
+│   │   ├── yolo_v8.py               # YOLOv8 Adapter + Mock Adapter
+│   │   ├── fusion.py                # YOLO + GCV 결과 병합
+│   │   ├── portion_estimator.py     # g 단위 추정
+│   │   ├── text_parser.py           # 텍스트 입력 정규화
+│   │   └── pipeline.py              # 이미지/텍스트 식단 파이프라인
 │   └── nutrition/
-│       └── rda_matcher.py         # 농진청 식품성분 DB 매칭
+│       └── rda_matcher.py           # 농진청 식품성분표 매칭
+├── data/
+│   ├── meal_vision/
+│   │   ├── mock_predictions.json    # MVP용 수동 mock
+│   │   ├── classes.yaml             # YOLO 클래스 정의
+│   │   ├── dataset.yaml             # fine-tuning 데이터셋 설정
+│   │   └── README.md                # 데이터 획득·전처리 가이드
+│   └── rda/
+│       ├── korean_foods.csv         # 농진청 식품성분표 최소 시드
+│       └── food_aliases.json        # 음식명 alias / 클래스 매핑
 └── tests/
     ├── unit/meal/
-    │   ├── test_claude_vision.py  # 모킹
+    │   ├── test_google_vision.py
+    │   ├── test_yolo_v8.py
+    │   ├── test_fusion.py
+    │   ├── test_portion_estimator.py
     │   ├── test_text_parser.py
+    │   └── test_pipeline.py
+    ├── unit/nutrition/
     │   └── test_rda_matcher.py
-    ├── integration/meal/
-    │   └── test_meal_pipeline.py
-    └── e2e/meal/
-        └── test_meal_e2e.py
+    └── integration/meal/
+        └── test_meal_image_pipeline.py
 ```
 
 ---
 
 ## 📐 설계 명세
 
-### 두 가지 입력 방식
+### 입력 방식
 
 ```
-[방식 A: 이미지 입력]
-  사진 → Claude Vision (Tool Use) → 음식 리스트 + 양 추정
+[방식 A: 이미지 입력 - MVP]
+  사진 → image_hash → mock_predictions.json
+  → YOLODetection[] mock → Fusion → PortionEstimator
   → 농진청 DB 매칭 → NutrientIntake 변환
+
+[방식 A: 이미지 입력 - Beta]
+  사진 → Google Cloud Vision(label/text/object hints)
+      → YOLOv8(food bbox/class/confidence)
+      → Fusion(YOLO primary, GCV auxiliary)
+      → PortionEstimator
+      → 농진청 DB 매칭 → NutrientIntake 변환
 
 [방식 B: 텍스트 입력]
   "점심: 김치찌개, 공기밥, 계란말이 1개"
-  → Claude (Tool Use) → 구조화된 음식 리스트
+  → TextParser(정규화)
+  → Phase 2 LLM Adapter 또는 규칙 기반 parser
   → 농진청 DB 매칭 → NutrientIntake 변환
 ```
 
-### 농진청 식품성분 DB
+### 역할 분리
 
-```csv
-food_code,name_ko,name_en,category,unit_size_g,kcal_per_unit,protein_g,fat_g,carb_g,...
-F001,공기밥,Steamed Rice,곡류,210,310,5.6,0.6,68.5,...
-F002,김치찌개,Kimchi Stew,찌개류,300,180,12.4,8.2,15.3,...
-F003,계란말이,Egg Roll,난류,80,160,11.0,12.4,1.8,...
-```
+| 컴포넌트 | 책임 | MVP 구현 | Beta 구현 |
+|---------|------|----------|-----------|
+| `GoogleVisionMealHintAdapter` | OCR 텍스트, label hint, object hint 추출 | mock response | 실제 Cloud Vision 호출 |
+| `YoloV8MealDetector` | 음식 bbox/class/confidence 탐지 | `MockYoloV8MealDetector` | `ultralytics.YOLO` |
+| `MealFusionEngine` | YOLO 결과와 GCV hint 병합 | deterministic merge | 동일 |
+| `PortionEstimator` | 추정 g, 양 표현, confidence 산출 | 1인분 기본값 | bbox/접시 크기 기반 보정 |
+| `RdaMatcher` | 음식명/class → 농진청 food_code 매칭 | 최소 CSV 100종 | 전체 RDA/농진청 데이터 |
 
-영양소별로 칼로리·단백질·탄수화물·지방 + 비타민·미네랄까지.
+### 결과 신뢰도 정책
 
-### Tool Use 스키마
+- YOLO confidence `>= 0.70`: 자동 후보로 표시.
+- YOLO confidence `0.40 ~ 0.69`: `needs_user_review=True`.
+- YOLO confidence `< 0.40`: 자동 확정하지 않고 GCV label/OCR hint와 함께 후보로만 보관.
+- GCV는 음식 확정의 주 엔진이 아니다. OCR/label hint로 alias 보강만 한다.
+- 추정량은 사용자 수정 가능해야 하며, UI에는 "사진 기반 추정값입니다" 수준의 표현만 노출한다.
+
+---
+
+## 📊 데이터 요구사항
+
+### 사용할 후보 데이터셋
+
+사용 예정 데이터셋 구성:
+
+| 구분 | 클래스 수 | 이미지 수 | 형식 |
+|------|----------:|----------:|------|
+| 특수외식메뉴 | 200 | 81,140 | jpg / json |
+| 일반외식·배달메뉴 | 300 | 80,590 | jpg / json |
+| 끼니대체메뉴 (빵, 떡, 죽 및 스프류 포함) | 200 | 61,300 | jpg / json |
+| 음료 및 차류 | 100 | 9,057 | jpg / json |
+| **합계** | **800** | **232,087** | jpg / json |
+
+### MVP 데이터
+
+MVP는 모델 학습을 하지 않고 mock 기반으로 진행한다.
+
+필요 데이터:
+
+- `tests/fixtures/meal_images/` 샘플 이미지 10~20장.
+- `data/meal_vision/mock_predictions.json` 10~20장 분량.
+- `data/rda/korean_foods.csv` 최소 100개 음식.
+- `data/rda/food_aliases.json` 최소 100개 음식의 alias.
+
+MVP mock 예측 예시:
 
 ```json
 {
-  "name": "extract_meal_items",
-  "description": "식사에서 음식과 양을 추출",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "meal_type": {
-        "type": "string",
-        "enum": ["breakfast", "lunch", "dinner", "snack"]
+  "sample_kimchi_stew_rice.jpg": {
+    "detections": [
+      {
+        "class_id": 12,
+        "class_name_ko": "김치찌개",
+        "confidence": 0.86,
+        "bbox_xyxy": [120, 180, 520, 620]
       },
-      "items": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "name_ko": { "type": "string" },
-            "estimated_amount": { "type": "string", "description": "예: '1공기', '반접시', '약 100g'" },
-            "estimated_grams": { "type": "number" }
-          },
-          "required": ["name_ko", "estimated_grams"]
-        }
+      {
+        "class_id": 3,
+        "class_name_ko": "공기밥",
+        "confidence": 0.91,
+        "bbox_xyxy": [560, 210, 780, 460]
       }
-    },
-    "required": ["items"]
+    ],
+    "gcv_hints": {
+      "labels": ["food", "rice", "stew"],
+      "ocr_text": ""
+    }
   }
 }
 ```
+
+### Beta fine-tuning 데이터
+
+Beta 목표:
+
+- 우선순위 50개 음식 클래스.
+- 클래스당 최소 300장 이상.
+- 총 15,000~25,000장.
+- train/val/test = 70/15/15.
+- bbox annotation을 YOLO format으로 변환.
+
+전체 800클래스/232,087장은 최종 확장용으로 둔다. 처음부터 800클래스를 학습하면 클래스 불균형, annotation 품질, 혼동 클래스 관리 때문에 일정 리스크가 크다.
+
+### 클래스 우선순위
+
+1. MVP mock: 15~20개 대표 음식.
+2. Beta v1: 50개 음식.
+3. Beta v2: 100~150개 음식.
+4. 장기: 전체 800개 클래스.
+
+우선 포함 음식 예시:
+
+- 밥류: 공기밥, 잡곡밥, 볶음밥, 비빔밥, 김밥
+- 국/찌개: 김치찌개, 된장찌개, 미역국, 순두부찌개
+- 면류: 라면, 칼국수, 냉면, 짜장면
+- 단백질/반찬: 계란말이, 불고기, 제육볶음, 닭가슴살, 두부
+- 분식/간편식: 떡볶이, 만두, 샌드위치
+- 음료: 아메리카노, 라떼, 주스
 
 ---
 
 ## 🔧 구현 명세
 
-### 1. `src/meal/exceptions.py`
+### 1. `src/meal/base.py`
 
-```python
-"""식단 인식 예외."""
+핵심 DTO:
 
-class MealRecognitionError(Exception):
-    """식단 인식 실패."""
+- `BoundingBox`: `x_min`, `y_min`, `x_max`, `y_max`.
+- `MealDetection`: YOLO/GCV의 원시 후보.
+- `RecognizedMealItem`: 최종 음식 항목.
+- `RecognizedMeal`: 식사 전체.
 
+필수 필드:
 
-class MealApiError(MealRecognitionError):
-    """API 호출 실패."""
+- 음식명: `name_ko`
+- 매칭 코드: `food_code | None`
+- 추정량: `estimated_grams`, `estimated_amount`
+- 신뢰도: `confidence`, `portion_confidence`
+- 검토 필요 여부: `needs_user_review`
+- 출처: `sources` (`["yolo_v8", "google_vision"]` 등)
 
+### 2. `src/meal/google_vision.py`
 
-class MealParseError(MealRecognitionError):
-    """LLM 응답 파싱 실패."""
-```
+Google Cloud Vision은 다음만 담당한다.
 
-### 2. `src/meal/base.py`
+- `label_detection`: 음식/접시/그릇 등 label hint.
+- `text_detection`: 메뉴판, 영수증, 포장 라벨 등 OCR 텍스트.
+- `localized_object_detection`: 일반 객체 hint.
 
-```python
-"""식단 인식 Adapter 추상."""
+주의:
 
-from __future__ import annotations
+- GCV label을 최종 음식명으로 직접 확정하지 않는다.
+- Service Account JSON은 커밋 금지.
+- 실 API 테스트는 `GOOGLE_APPLICATION_CREDENTIALS` 없으면 skip.
 
-from abc import ABC, abstractmethod
-from pydantic import BaseModel, ConfigDict, Field
+### 3. `src/meal/yolo_v8.py`
 
+MVP:
 
-class RecognizedMealItem(BaseModel):
-    """인식된 음식 한 개.
+- `MockYoloV8MealDetector`가 `mock_predictions.json`을 읽어 detection 반환.
+- 실제 `ultralytics` 의존성은 MVP 필수 아님.
 
-    Attributes:
-        name_ko: 한국어 음식명.
-        estimated_amount: 양 표현 (예: "1공기").
-        estimated_grams: 추정 중량 (g).
-    """
+Beta:
 
-    model_config = ConfigDict(frozen=True)
+- `YoloV8MealDetector`가 `ultralytics.YOLO(model_path)`를 래핑.
+- 모델 파일은 `models/meal/yolov8-food.pt` 같은 경로를 사용하되 Git에는 커밋하지 않는다.
 
-    name_ko: str = Field(..., min_length=1)
-    estimated_amount: str
-    estimated_grams: float = Field(..., gt=0)
+### 4. `src/meal/fusion.py`
 
+병합 규칙:
 
-class RecognizedMeal(BaseModel):
-    """인식된 식사 전체.
+- YOLO class가 `food_aliases.json`에 있으면 primary candidate.
+- GCV OCR에 음식명이 있으면 alias confidence를 보강.
+- YOLO와 GCV가 충돌하면 YOLO를 우선하되 `needs_user_review=True`.
+- 같은 음식이 여러 bbox로 탐지되면 confidence가 높은 항목을 대표로 두고 나머지는 `alternatives`에 보관.
 
-    Attributes:
-        meal_type: breakfast/lunch/dinner/snack.
-        items: 음식 리스트.
-        engine: 사용된 엔진.
-        raw_input: 원본 입력 (텍스트 또는 이미지 해시).
-    """
+### 5. `src/meal/portion_estimator.py`
 
-    model_config = ConfigDict(frozen=True)
+MVP 추정:
 
-    meal_type: str = Field(..., pattern=r"^(breakfast|lunch|dinner|snack)$")
-    items: list[RecognizedMealItem]
-    engine: str
-    raw_input: str = ""
+- 음식별 `default_serving_g` 사용.
+- bbox 면적이 이미지 면적의 큰 비중을 차지하면 `1.2x`, 작으면 `0.7x` 보정.
 
+Beta 추정:
 
-class MealRecognizerAdapter(ABC):
-    """식단 인식 추상."""
-
-    @abstractmethod
-    async def recognize_from_image(self, image_bytes: bytes) -> RecognizedMeal:
-        """이미지에서 식단 인식."""
-        ...
-
-    @abstractmethod
-    async def recognize_from_text(self, text: str) -> RecognizedMeal:
-        """텍스트에서 식단 추출."""
-        ...
-
-    @property
-    @abstractmethod
-    def engine_name(self) -> str:
-        ...
-```
-
-### 3. `src/meal/prompts.py`
-
-```python
-"""식단 인식 시스템 프롬프트."""
-
-from __future__ import annotations
-
-from typing import Final
-
-
-MEAL_RECOGNITION_SYSTEM: Final[str] = """\
-당신은 한국 음식 사진과 식단 텍스트를 분석하여 음식명과 양을 추출하는 어시스턴트입니다.
-
-## 작업
-사용자의 식사 사진 또는 텍스트 설명에서 다음을 추출하세요:
-1. 식사 종류 (아침/점심/저녁/간식)
-2. 각 음식의 한국어 이름
-3. 양 (양 표현 + g 단위 추정)
-
-## 추정 규칙
-- 한국 표준 1인분 기준으로 g 추정
-- 공기밥 1개 = 약 210g, 국 1그릇 = 약 250g, 찌개 1그릇 = 약 300g
-- 사진의 그릇 크기·시각적 양으로 보정
-- 명확하지 않으면 1인분 기본값 사용
-
-## 절대 금지
-- 의료적 권고 ("이 음식은 당뇨에 좋습니다" 등)
-- 칼로리·영양소 계산 (백엔드에서 별도 처리)
-- 음식명 추측·창작 (사진/텍스트에 명확히 보이는 것만)
-
-## 응답 형식
-반드시 `extract_meal_items` 도구를 호출하세요.
-도구 호출 외 텍스트 포함 금지.
-"""
-
-
-MEAL_TOOL_SCHEMA: Final[dict] = {
-    "name": "extract_meal_items",
-    "description": "식사 사진/텍스트에서 음식과 양 추출",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "meal_type": {
-                "type": "string",
-                "enum": ["breakfast", "lunch", "dinner", "snack"],
-            },
-            "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name_ko": {"type": "string"},
-                        "estimated_amount": {"type": "string"},
-                        "estimated_grams": {"type": "number"},
-                    },
-                    "required": ["name_ko", "estimated_grams"],
-                },
-            },
-        },
-        "required": ["items"],
-    },
-}
-```
-
-### 4. `src/meal/claude_vision.py`
-
-```python
-"""Claude Vision 식단 인식."""
-
-from __future__ import annotations
-
-import base64
-import logging
-from typing import Final
-
-from anthropic import AsyncAnthropic
-from pydantic import ValidationError
-
-from src.meal.base import MealRecognizerAdapter, RecognizedMeal, RecognizedMealItem
-from src.meal.exceptions import MealApiError, MealParseError
-from src.meal.prompts import MEAL_RECOGNITION_SYSTEM, MEAL_TOOL_SCHEMA
-
-
-logger = logging.getLogger(__name__)
-
-
-DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
-MAX_TOKENS: Final[int] = 1500
-
-
-class ClaudeVisionMealAdapter(MealRecognizerAdapter):
-    """Claude Vision 기반 식단 인식.
-
-    - 이미지: Vision 멀티모달 (base64 image + text)
-    - 텍스트: 일반 텍스트 입력 + Tool Use
-    """
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = DEFAULT_MODEL,
-        client: AsyncAnthropic | None = None,
-    ) -> None:
-        self._client = client or AsyncAnthropic(api_key=api_key)
-        self._model = model
-
-    @property
-    def engine_name(self) -> str:
-        return f"claude_vision:{self._model}"
-
-    async def recognize_from_image(self, image_bytes: bytes) -> RecognizedMeal:
-        """이미지에서 식단 인식."""
-        image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-
-        try:
-            response = await self._client.messages.create(
-                model=self._model,
-                max_tokens=MAX_TOKENS,
-                system=MEAL_RECOGNITION_SYSTEM,
-                tools=[MEAL_TOOL_SCHEMA],
-                tool_choice={"type": "tool", "name": "extract_meal_items"},
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": image_b64,
-                            },
-                        },
-                        {"type": "text", "text": "이 식사 사진을 분석해주세요."},
-                    ],
-                }],
-            )
-        except Exception as e:
-            raise MealApiError(f"Claude Vision API failed: {e}") from e
-
-        return self._parse_tool_response(response, raw_input="<image>")
-
-    async def recognize_from_text(self, text: str) -> RecognizedMeal:
-        """텍스트에서 식단 추출."""
-        try:
-            response = await self._client.messages.create(
-                model=self._model,
-                max_tokens=MAX_TOKENS,
-                system=MEAL_RECOGNITION_SYSTEM,
-                tools=[MEAL_TOOL_SCHEMA],
-                tool_choice={"type": "tool", "name": "extract_meal_items"},
-                messages=[{
-                    "role": "user",
-                    "content": f"다음 식단 설명을 분석해주세요:\n\n{text}",
-                }],
-            )
-        except Exception as e:
-            raise MealApiError(f"Claude API failed: {e}") from e
-
-        return self._parse_tool_response(response, raw_input=text)
-
-    def _parse_tool_response(self, response, raw_input: str) -> RecognizedMeal:
-        """Tool Use 응답 파싱."""
-        tool_block = next(
-            (b for b in response.content if b.type == "tool_use"),
-            None,
-        )
-        if tool_block is None:
-            raise MealParseError("No tool_use in response")
-
-        tool_input = tool_block.input
-        try:
-            return RecognizedMeal(
-                meal_type=tool_input.get("meal_type", "lunch"),
-                items=[
-                    RecognizedMealItem(
-                        name_ko=item["name_ko"],
-                        estimated_amount=item.get("estimated_amount", ""),
-                        estimated_grams=item["estimated_grams"],
-                    )
-                    for item in tool_input.get("items", [])
-                ],
-                engine=self.engine_name,
-                raw_input=raw_input[:200],  # 최대 200자만
-            )
-        except (KeyError, ValidationError) as e:
-            raise MealParseError(f"Schema validation failed: {e}") from e
-```
-
-### 5. `src/meal/text_parser.py`
-
-```python
-"""텍스트 입력 사전 파싱 (LLM 호출 전 검증).
-
-LLM 비용 절감을 위해 단순 케이스는 정규식으로 처리.
-복잡한 케이스만 LLM 호출.
-"""
-
-from __future__ import annotations
-
-import re
-from typing import Final
-
-
-SIMPLE_FOOD_PATTERN: Final[re.Pattern] = re.compile(
-    r"^([가-힣]+)\s*(\d+)\s*(공기|그릇|개|조각|컵)?$"
-)
-
-
-def is_simple_meal_text(text: str) -> bool:
-    """단순 형식 (음식명 + 양) 인지 확인.
-
-    Args:
-        text: 입력 텍스트.
-
-    Returns:
-        단순 형식이면 True.
-
-    Examples:
-        >>> is_simple_meal_text("공기밥 1개")
-        True
-        >>> is_simple_meal_text("점심에 김치찌개랑 공기밥, 그리고 계란말이를 먹었어")
-        False
-    """
-    return bool(SIMPLE_FOOD_PATTERN.match(text.strip()))
-
-
-def normalize_meal_text(text: str) -> str:
-    """입력 텍스트 정규화.
-
-    - 공백 정규화
-    - 특수문자 제거
-    """
-    text = re.sub(r"\s+", " ", text)
-    text = text.strip()
-    return text
-```
+- 접시/그릇 bbox가 탐지되면 상대 면적으로 보정.
+- 사용자 수정값을 저장해 개인화는 Phase 4 이후로 미룬다.
 
 ### 6. `src/nutrition/rda_matcher.py`
 
-```python
-"""농진청 식품성분 DB 매칭."""
+농진청 식품성분표와 매칭한다.
 
-from __future__ import annotations
-
-import csv
-import logging
-from functools import lru_cache
-from pathlib import Path
-from typing import Final
-
-from pydantic import BaseModel, ConfigDict
-
-from src.meal.base import RecognizedMealItem
-from src.models.schemas.nutrition import NutrientIntake
-
-
-logger = logging.getLogger(__name__)
-
-
-KOREAN_FOODS_PATH: Final[Path] = Path("data/rda/korean_foods.csv")
-
-
-class FoodNutrient(BaseModel):
-    """식품 1g당 영양소 함량."""
-
-    model_config = ConfigDict(frozen=True)
-
-    food_code: str
-    name_ko: str
-    kcal_per_g: float
-    nutrients_per_g: dict[str, float]  # {"vitamin_c_mg": 0.05, "calcium_mg": 0.10, ...}
-
-
-@lru_cache(maxsize=1)
-def load_foods_db() -> dict[str, FoodNutrient]:
-    """농진청 DB 로드.
-
-    Returns:
-        {정규화된 음식명 → FoodNutrient}.
-    """
-    if not KOREAN_FOODS_PATH.exists():
-        logger.warning("Korean foods CSV not found")
-        return {}
-
-    db: dict[str, FoodNutrient] = {}
-    with KOREAN_FOODS_PATH.open("r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            name = _normalize(row["name_ko"])
-            unit_size = float(row["unit_size_g"])
-            kcal_total = float(row["kcal_per_unit"])
-
-            # 1g당 환산
-            nutrients_per_g: dict[str, float] = {}
-            for col, value in row.items():
-                if col in ("food_code", "name_ko", "name_en", "category",
-                           "unit_size_g", "kcal_per_unit"):
-                    continue
-                if value and unit_size > 0:
-                    nutrients_per_g[col] = float(value) / unit_size
-
-            db[name] = FoodNutrient(
-                food_code=row["food_code"],
-                name_ko=row["name_ko"],
-                kcal_per_g=kcal_total / unit_size if unit_size > 0 else 0,
-                nutrients_per_g=nutrients_per_g,
-            )
-    return db
-
-
-def _normalize(name: str) -> str:
-    """음식명 정규화."""
-    return "".join(c for c in name.lower() if c.isalnum())
-
-
-def match_food(item: RecognizedMealItem) -> FoodNutrient | None:
-    """인식된 음식을 농진청 DB와 매칭.
-
-    Args:
-        item: 인식된 음식.
-
-    Returns:
-        매칭된 FoodNutrient, 없으면 None.
-    """
-    db = load_foods_db()
-    normalized = _normalize(item.name_ko)
-    return db.get(normalized)
-
-
-def to_nutrient_intakes(meal_items: list[RecognizedMealItem]) -> list[NutrientIntake]:
-    """인식된 식사 → NutrientIntake 리스트.
-
-    매칭 실패 항목은 결과에서 제외 (warning 로그).
-    """
-    intakes: list[NutrientIntake] = []
-    for item in meal_items:
-        food = match_food(item)
-        if food is None:
-            logger.warning("Food not in DB: %s", item.name_ko)
-            continue
-
-        # 음식의 추정 g × 1g당 영양소 = 섭취 영양소
-        for nutrient_code, per_g in food.nutrients_per_g.items():
-            amount = per_g * item.estimated_grams
-            if amount <= 0:
-                continue
-            # nutrient_code는 이미 표준 단위 포함 (e.g., "vitamin_c_mg")
-            unit = nutrient_code.rsplit("_", 1)[-1]
-            intakes.append(NutrientIntake(
-                code=nutrient_code,
-                amount=round(amount, 3),
-                unit=unit,
-                source="meal",
-            ))
-    return intakes
-```
+- `food_aliases.json`: YOLO class name → RDA food_code 후보.
+- `korean_foods.csv`: food_code별 1회 제공량과 영양소.
+- 매칭 실패 시 항목을 버리지 않고 `needs_user_review=True`로 반환한다.
 
 ---
 
-## 🧪 테스트 (4-Tier)
+## 🧪 테스트 전략
 
-### Tier 1: 단위 테스트
+### Unit
 
-#### `test_claude_vision.py`
+- `test_yolo_v8.py`: mock JSON 로딩, bbox 파싱, confidence 필터.
+- `test_google_vision.py`: GCV response mock 파싱, OCR/label hint 추출.
+- `test_fusion.py`: YOLO/GCV 병합, 충돌 시 review flag.
+- `test_portion_estimator.py`: 기본 1인분, bbox 기반 보정.
+- `test_rda_matcher.py`: alias → food_code, g scaling.
+- `test_pipeline.py`: 이미지 hash → mock → fusion → RDA 결과.
 
-| 테스트 | 검증 |
-|-------|------|
-| `test_recognize_image_with_tool_use` | Tool Use 응답 파싱 정상 |
-| `test_recognize_text_basic` | 텍스트 입력 처리 |
-| `test_no_tool_use_raises` | tool_use 누락 → MealParseError |
-| `test_api_error_raises` | API 에러 → MealApiError |
-| `test_invalid_grams_raises` | grams=0 → ValidationError |
+### Integration
 
-#### `test_text_parser.py`
+- `test_meal_image_pipeline.py`: 샘플 이미지 1장과 mock prediction으로 `RecognizedMeal` 생성.
+- 실 GCV 테스트는 credential 없으면 skip.
+- 실 YOLO 테스트는 model path 없으면 skip.
 
-| 테스트 | 검증 |
-|-------|------|
-| `test_simple_meal_recognized` | "공기밥 1개" → True |
-| `test_complex_text_not_simple` | 긴 문장 → False |
-| `test_normalize_whitespace` | "공기밥  1개" → "공기밥 1개" |
+### 목표 지표
 
-#### `test_rda_matcher.py`
+MVP:
 
-| 테스트 | 검증 |
-|-------|------|
-| `test_match_steamed_rice` | "공기밥" 매칭 |
-| `test_no_match_returns_none` | 알 수 없는 음식 |
-| `test_to_nutrient_intakes_scales_by_grams` | 200g vs 100g → 2배 |
-| `test_to_nutrient_intakes_skips_unmatched` | 매칭 실패는 제외 |
+- mock 기반 pipeline 테스트 100% 통과.
+- 음식 후보/추정량/검토 필요 플래그가 일관된 스키마로 반환.
 
-### Tier 2: 통합 테스트 (모킹)
+Beta:
 
-```python
-"""식단 인식 + 농진청 매칭 통합."""
-
-class TestMealPipeline:
-    @pytest.mark.asyncio
-    async def test_text_to_intakes(self, mock_claude):
-        recognizer = ClaudeVisionMealAdapter(api_key="test", client=mock_claude)
-        meal = await recognizer.recognize_from_text("공기밥 1개, 김치찌개 1그릇")
-
-        intakes = to_nutrient_intakes(meal.items)
-        # 공기밥의 탄수화물 + 김치찌개의 영양소가 포함되어야
-        codes = [i.code for i in intakes]
-        assert any("carbs" in c or "carb" in c for c in codes) or len(intakes) > 0
-```
-
-### Tier 3: 실 API 테스트 (선택)
-
-```python
-@pytest.mark.skipif(
-    not os.getenv("ANTHROPIC_API_KEY"), reason="No API key"
-)
-@pytest.mark.integration
-class TestClaudeVisionReal:
-    @pytest.mark.asyncio
-    async def test_real_meal_image(self):
-        with open("tests/fixtures/sample_meal.jpg", "rb") as f:
-            image = f.read()
-
-        recognizer = ClaudeVisionMealAdapter(
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-        )
-        meal = await recognizer.recognize_from_image(image)
-
-        assert len(meal.items) > 0
-        for item in meal.items:
-            assert item.estimated_grams > 0
-            assert item.name_ko
-```
-
-### Tier 4: E2E 테스트
-
-```python
-"""사진 → 인식 → 매칭 → 영양 분석 통합."""
-
-@pytest.mark.e2e
-class TestMealE2E:
-    @pytest.mark.asyncio
-    async def test_meal_image_to_diagnosis(self):
-        """식사 사진 → NutrientIntake → 부족 영양소 진단."""
-        with open("tests/fixtures/sample_meal.jpg", "rb") as f:
-            image = f.read()
-
-        # 1. 인식
-        recognizer = ClaudeVisionMealAdapter(api_key=...)
-        meal = await recognizer.recognize_from_image(image)
-
-        # 2. 영양소 변환
-        intakes = to_nutrient_intakes(meal.items)
-        assert len(intakes) > 0
-
-        # 3. 진단 (06번 모듈)
-        from src.nutrition.diagnosis import diagnose
-        from src.models.schemas.nutrition import UserKDRIsContext
-        user = UserKDRIsContext(age=30, sex="male")
-        result = diagnose(intakes, user)
-
-        # 4. 결과 검증
-        assert len(result.diagnoses) > 0
-```
+- YOLO `mAP@50 >= 0.75`.
+- Top-3 음식 후보 정확도 `>= 0.85`.
+- 음식 항목 F1 `>= 0.70`.
+- 중량 추정 평균 오차 `<= 30%`.
 
 ---
 
 ## ✅ Definition of Done
 
-- [ ] `data/rda/korean_foods.csv` — 최소 50종 (밥·국·찌개·반찬·과일)
-- [ ] `src/meal/exceptions.py`, `base.py`, `prompts.py`
-- [ ] `src/meal/claude_vision.py` — 이미지·텍스트 인식
-- [ ] `src/meal/text_parser.py` — 단순 케이스 사전 처리
-- [ ] `src/nutrition/rda_matcher.py` — 농진청 매칭
-- [ ] 모든 함수 Google-style docstring
-- [ ] 모든 함수 타입 힌트
-- [ ] 단위 테스트 (각 모듈) 25+
-- [ ] 통합 테스트 (인식 + 매칭)
-- [ ] (선택) 실 API 테스트
-- [ ] E2E 테스트 (사진 → 진단)
-- [ ] **시스템 프롬프트의 의료 표현 가이드 검증**
-- [ ] `mypy src/meal src/nutrition --strict` 통과
-
----
-
-## 💡 구현 팁
-
-### 양 추정의 한계
-
-학생 프로젝트에서 양 추정은 ±20% 정확도가 현실적. UI에서:
-- 인식 결과를 사용자가 **수정 가능**
-- "확실하지 않음" 표시 (estimated_grams의 신뢰도)
-- 자주 먹는 음식은 학습 (Phase 4+)
-
-### 비용 최적화
-
-```
-이미지 1장: ~$0.01 (Claude Vision)
-텍스트만:    ~$0.001
-
-→ 텍스트 입력 우선 권장. 이미지는 백업.
-```
-
-### 농진청 DB 시드
-
-최소 50종으로 시작 (학생 팀이 점진적 확장):
-- 밥류: 공기밥, 잡곡밥, 비빔밥
-- 국·찌개: 김치찌개, 된장국, 미역국
-- 반찬: 김치, 시금치나물, 멸치볶음
-- 단백질: 계란말이, 닭가슴살, 두부
-- 면류: 라면, 짜장면, 칼국수
-- 과일: 사과, 바나나, 귤
-- ... (점진적 추가)
+- [ ] `docs/dev-guides/16`가 GCV + YOLOv8 구조로 갱신됨.
+- [ ] MVP는 수동 mock 기반으로 동작.
+- [ ] `data/meal_vision/mock_predictions.json` 작성.
+- [ ] `data/meal_vision/classes.yaml`, `dataset.yaml`, `README.md` 작성.
+- [ ] `data/rda/korean_foods.csv` 최소 100종 작성.
+- [ ] `data/rda/food_aliases.json` 최소 100종 작성.
+- [ ] `src/meal/base.py`, `exceptions.py`, `google_vision.py`, `yolo_v8.py`, `fusion.py`, `portion_estimator.py`, `text_parser.py`, `pipeline.py` 작성.
+- [ ] `src/nutrition/rda_matcher.py` 작성.
+- [ ] 단위 테스트 25개 이상.
+- [ ] 통합 테스트 3개 이상.
+- [ ] `black`, `ruff`, `mypy`, `pytest` 통과.
+- [ ] 사용자 노출 문구에 진단/처방/치료/보장 표현 없음.
 
 ---
 
 ## 🚫 이 작업에서 하지 말 것
 
-- ❌ "이 음식은 당뇨에 안 좋다" 같은 의료 권고
-- ❌ 칼로리·영양소 직접 계산 (DB 매칭만)
-- ❌ FastAPI 라우터 통합 (별도 작업)
-- ❌ 모바일 식단 입력 화면 (가이드 20)
+- ❌ MVP에서 전체 800클래스 YOLO 학습부터 시작.
+- ❌ GCV label만으로 음식명을 확정.
+- ❌ 사진 기반 추정량을 확정값처럼 표현.
+- ❌ "당뇨에 나쁜 음식", "치료 식단" 같은 의료 판단.
+- ❌ 모바일 식단 입력 화면 구현. 이는 [`20-mobile-meal-input-screen.md`](./20-mobile-meal-input-screen.md) 범위.
+- ❌ FastAPI 라우터 통합. 별도 API 작업에서 처리.
 
 ---
 
 ## 🔗 관련 문서
 
-- [`/docs/09-data-catalog.md`](../09-data-catalog.md) — 농진청 데이터
-- 이전: [`15-goal-based-analysis.md`](./15-goal-based-analysis.md)
-- 다음: [`17-feedback-and-notifications.md`](./17-feedback-and-notifications.md)
+- [`06-deficient-nutrient-diagnosis.md`](./06-deficient-nutrient-diagnosis.md) — NutrientIntake, 영양 상태 평가
+- [`08-llm-supplement-parsing.md`](./08-llm-supplement-parsing.md) — LLM Adapter 패턴
+- [`20-mobile-meal-input-screen.md`](./20-mobile-meal-input-screen.md) — 모바일 식단 입력 UI
