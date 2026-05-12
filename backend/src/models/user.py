@@ -20,6 +20,9 @@ class User(Base, TimestampMixin):
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    profile: Mapped["Profile | None"] = relationship(  # noqa: F821
+        back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class RefreshToken(Base):
