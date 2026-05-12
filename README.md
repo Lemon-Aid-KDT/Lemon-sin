@@ -90,17 +90,14 @@ lemon-aid/
 ├─ README.md                  # 이 문서
 ├─ PROJECT_GUIDE.md           # 단일 진실 (모든 바이브 코딩 툴 공통 참조)
 ├─ guide.html                 # 브라우저 뷰어 (다크모드, PDF, Mermaid)
-└─ .gitignore
-```
-
-W1~W2 환경 셋업 후 추가될 폴더(상세 §13):
-```
-├─ mobile/                    # Flutter 앱
-├─ backend/                   # FastAPI
-├─ data/                      # KDRIs / 식약처 정적 데이터
-├─ docs/                      # 의료자문위·페르소나·컴플라이언스 문서
 ├─ .github/                   # CI / CODEOWNERS / PR 템플릿
-└─ docker-compose.yml
+├─ data/                      # 루트 데이터 placeholder
+├─ yeong-Vision-Nutrition/    # 실제 구현 루트
+│  ├─ backend/                # FastAPI 구현
+│  ├─ data/                   # KDRIs / MFDS / reference fixtures
+│  ├─ docs/                   # 구현 문서와 이전 버전 산출물
+│  └─ mobile/                 # 모바일 트랙
+└─ .gitignore
 ```
 
 ---

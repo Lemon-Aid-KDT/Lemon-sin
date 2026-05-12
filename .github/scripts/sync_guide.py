@@ -4,8 +4,8 @@ sync_guide.py — PROJECT_GUIDE.md 본문을 guide.html 안의 <script id="md-so
 블록에 주입하여 두 파일을 자동 동기화한다.
 
 사용법:
-    python scripts/sync_guide.py            # 동기화 + 변경 시 종료 코드 0 / 변경 없으면 0
-    python scripts/sync_guide.py --check    # 검증만 (동기화 안 됨이면 종료 코드 1)
+    python .github/scripts/sync_guide.py            # 동기화 + 변경 시 종료 코드 0 / 변경 없으면 0
+    python .github/scripts/sync_guide.py --check    # 검증만 (동기화 안 됨이면 종료 코드 1)
 
 자동 검증:
     - PG.md 안에 </script> 가 있으면 거부 (HTML 깨짐 방지)
@@ -21,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 MD_PATH = ROOT / "PROJECT_GUIDE.md"
 HTML_PATH = ROOT / "guide.html"
 
@@ -143,7 +143,7 @@ def main() -> int:
     if args.check:
         fail(
             "guide.html이 PROJECT_GUIDE.md와 동기화돼 있지 않습니다. "
-            "scripts/sync_guide.py 를 실행하고 다시 commit 해주세요."
+            ".github/scripts/sync_guide.py 를 실행하고 다시 commit 해주세요."
         )
 
     HTML_PATH.write_bytes(new_html.encode("utf-8"))

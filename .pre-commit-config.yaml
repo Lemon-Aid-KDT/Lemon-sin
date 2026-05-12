@@ -24,9 +24,9 @@ repos:
     hooks:
       - id: sync-guide
         name: sync guide.html with PROJECT_GUIDE.md
-        entry: python scripts/sync_guide.py
+        entry: python .github/scripts/sync_guide.py
         language: system
-        files: '^(PROJECT_GUIDE\.md|guide\.html|scripts/sync_guide\.py)$'
+        files: '^(PROJECT_GUIDE\.md|guide\.html|\.github/scripts/sync_guide\.py)$'
         pass_filenames: false
         # 동기화로 guide.html이 바뀌면 그 변경분도 자동 stage
         stages: [commit]

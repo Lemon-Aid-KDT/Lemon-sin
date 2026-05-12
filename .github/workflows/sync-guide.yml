@@ -1,22 +1,22 @@
 name: Sync guide.html with PROJECT_GUIDE.md
 
-# main 또는 dev에 PROJECT_GUIDE.md / guide.html / 동기화 스크립트가 푸시되면
+# main, dev, yeong-tech에 PROJECT_GUIDE.md / guide.html / 동기화 스크립트가 푸시되면
 # 자동으로 guide.html을 PROJECT_GUIDE.md와 일치시키고 변경분을 추가 커밋한다.
 # PR에서는 검증만 수행하여 동기화가 안 됐으면 CI 실패시킨다.
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, yeong-tech]
     paths:
       - "PROJECT_GUIDE.md"
       - "guide.html"
-      - "scripts/sync_guide.py"
+      - ".github/scripts/sync_guide.py"
       - ".github/workflows/sync-guide.yml"
   pull_request:
     paths:
       - "PROJECT_GUIDE.md"
       - "guide.html"
-      - "scripts/sync_guide.py"
+      - ".github/scripts/sync_guide.py"
 
 jobs:
   sync:
@@ -39,12 +39,12 @@ jobs:
       - name: PR — 동기화 검증만
         if: github.event_name == 'pull_request'
         run: |
-          python scripts/sync_guide.py --check
+          python .github/scripts/sync_guide.py --check
 
       - name: Push — 자동 동기화 + 커밋
         if: github.event_name == 'push'
         run: |
-          python scripts/sync_guide.py
+          python .github/scripts/sync_guide.py
 
           if [[ -n "$(git status --porcelain guide.html)" ]]; then
             git config user.name "github-actions[bot]"

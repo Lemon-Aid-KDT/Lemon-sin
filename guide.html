@@ -586,6 +586,10 @@
 > Lemon Aid 팀 · 2026.05 · v1.2
 > 경북대학교 AI/빅데이터 전문가 양성 과정 — (주)레몬헬스케어 협업 프로젝트
 
+> 현재 루트 `PROJECT_GUIDE.md`와 `guide.html`은 팀 공통 진입 문서로 유지한다.
+> 실제 구현 루트는 `yeong-Vision-Nutrition/`이며, 과거 루트의 `backend/`, `docs/`, `mobile/`, `scripts/` scaffold는 중복을 줄이기 위해 제거했다.
+> 루트 가이드 동기화 도구는 `.github/scripts/sync_guide.py`에서 관리한다.
+
 ## 한 줄 요약
 
 **"사진 한 장으로 끝나는 만성질환 관리 — AI Agent가 내 병원 기록과 생활 데이터를 기억한다."**
@@ -2133,7 +2137,8 @@ flowchart TB
 
 ## 14. 파일 구조
 
-전체 디렉터리 트리. 5명이 git clone 직후 빌드·실행 가능한 구조.
+전체 디렉터리 트리. 루트는 팀 공통 가이드와 GitHub 운영 파일을 유지하고, 실제 구현 코드는 `yeong-Vision-Nutrition/` 하위에서 관리한다.
+아래 `mobile/`, `backend/`, `data/`, `docs/` 경로는 구현 루트인 `yeong-Vision-Nutrition/` 기준으로 해석한다.
 
 ```
 Lemon_Aid/
@@ -2326,7 +2331,7 @@ Lemon_Aid/
 │     ├─ ci-docs.yml
 │     └─ sync-guide.yml             # §17 PG.md → guide.html 자동 동기화
 │
-├─ 📁 scripts/                      # 운영·자동화 스크립트
+├─ 📁 .github/scripts/              # 운영·자동화 스크립트
 │  └─ sync_guide.py                 # §17 PG.md ↔ guide.html 동기화 (6중 검증)
 │
 ├─ 🔧 docker-compose.yml             # timescale + redis
@@ -2356,7 +2361,7 @@ Lemon_Aid/
 | backend/src/utils/regex_filter.py | 의료법 표현 검수 |
 | backend/src/db/init.sql | TimescaleDB 확장 자동 설치 |
 | data/kdris_2020.csv | 30종 영양소 권장 섭취량 |
-| scripts/sync_guide.py | §17 PG.md → guide.html 자동 동기화 + 6중 검증 |
+| .github/scripts/sync_guide.py | §17 PG.md → guide.html 자동 동기화 + 6중 검증 |
 | .pre-commit-config.yaml | §17 로컬 commit 시 자동 동기화 훅 |
 | .github/workflows/sync-guide.yml | §17 push 시 서버 동기화·자동 커밋, PR 시 검증 |
 
@@ -2671,7 +2676,7 @@ v1.0.0  Phase 3 종료 (W8)  — 시연 가능 MVP
 ```mermaid
 flowchart LR
     A[팀원이 PG.md 수정] --> B{git commit}
-    B -->|pre-commit 훅| C[scripts/sync_guide.py 실행]
+    B -->|pre-commit 훅| C[.github/scripts/sync_guide.py 실행]
     C --> D[guide.html 자동 갱신]
     D --> E[수정분 자동 stage]
     E --> F[commit 완료]
@@ -2685,7 +2690,7 @@ flowchart LR
 
 | 파일 | 역할 |
 |------|------|
-| `scripts/sync_guide.py` | PG.md 본문을 guide.html의 md-source 스크립트 블록에 주입. PG.md 안에 스크립트 닫는 태그 같은 위험 패턴이 있으면 거부 |
+| `.github/scripts/sync_guide.py` | PG.md 본문을 guide.html의 md-source 스크립트 블록에 주입. PG.md 안에 스크립트 닫는 태그 같은 위험 패턴이 있으면 거부 |
 | `.pre-commit-config.yaml` | 로컬 commit 시 자동 동기화 + 변경분 자동 stage |
 | `.github/workflows/sync-guide.yml` | push 시 서버에서 다시 동기화·자동 커밋 / PR 시 검증만 |
 
@@ -2715,10 +2720,10 @@ pre-commit install
 
 ```
 # 동기화 실행
-python scripts/sync_guide.py
+python .github/scripts/sync_guide.py
 
 # 동기화 안 된 상태인지 검증만
-python scripts/sync_guide.py --check
+python .github/scripts/sync_guide.py --check
 ```
 
 ### 17.6 자동 검증 항목
@@ -2751,7 +2756,7 @@ python scripts/sync_guide.py --check
 | commit이 거부됨 ("인라인 코드에 SPLIT 마커") | 표나 본문에 ` ``` `를 직접 적음 | "세 줄짜리 SPLIT 마커" 같은 풀어쓰기로 변경 |
 | GitHub Actions가 자동 커밋을 못 함 | `permissions: contents: write` 누락 | 워크플로 yaml에 권한 추가 (현재 설정됨) |
 | Actions가 무한 루프 | `[skip ci]` 빠짐 | 자동 커밋 메시지에 `[skip ci]` 포함 (현재 설정됨) |
-| 두 파일이 머지 충돌 | dev↔feat 머지 시 양쪽 동기화 어긋남 | PG.md만 수동 머지 → `python scripts/sync_guide.py` 한 번 → commit |
+| 두 파일이 머지 충돌 | dev↔feat 머지 시 양쪽 동기화 어긋남 | PG.md만 수동 머지 → `python .github/scripts/sync_guide.py` 한 번 → commit |
 
 ### 17.9 핵심 원칙
 
@@ -3416,7 +3421,7 @@ dev_dependencies:
 |----------|----------|
 | ci-backend.yml | `pip install -r requirements.txt -r requirements-dev.txt` → `ruff check .` → `black --check .` → `mypy src` → `pytest --cov` |
 | ci-mobile.yml | `flutter pub get` → `dart format --set-exit-if-changed .` → `flutter analyze` → `flutter test` |
-| ci-docs.yml | `markdownlint PROJECT_GUIDE.md README.md` → SPLIT 카운트 검증 → guide.html script 태그 균형 체크 + `python scripts/sync_guide.py --check` |
+| ci-docs.yml | `markdownlint PROJECT_GUIDE.md README.md` → SPLIT 카운트 검증 → guide.html script 태그 균형 체크 + `python .github/scripts/sync_guide.py --check` |
 
 ### A.9 5명별 D1 ~ D5 액션 카드
 
