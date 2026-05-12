@@ -7,10 +7,11 @@
 ## 처음 읽는 순서
 
 1. [01 Product Overview](./01-product-overview.md)
-2. [02 Product Spec](./02-product-spec.md)
-3. [09 Team Workflow](./09-team-workflow.md)
-4. 본인 담당 영역 문서
-5. [08 Compliance & Safety](./08-compliance-safety.md)
+2. [Domain Onboarding](../domain/domain-onboarding.md)
+3. [02 Product Spec](./02-product-spec.md)
+4. [09 Team Workflow](./09-team-workflow.md)
+5. 본인 담당 영역 문서
+6. [08 Compliance & Safety](./08-compliance-safety.md)
 
 ## 담당 영역별 문서
 
@@ -20,7 +21,7 @@
 | UI/UX | [02 Product Spec](./02-product-spec.md), [03 Frontend](./03-frontend.md), [08 Compliance & Safety](./08-compliance-safety.md) |
 | AI 엔지니어 | [06 AI Agents](./06-ai-agents.md), [07 Algorithms](./07-algorithms.md), [08 Compliance & Safety](./08-compliance-safety.md) |
 | 백엔드 | [04 Backend API](./04-backend-api.md), [05 Data Model](./05-data-model.md), [07 Algorithms](./07-algorithms.md) |
-| 데이터·도메인 | [07 Algorithms](./07-algorithms.md), [08 Compliance & Safety](./08-compliance-safety.md), [10 Demo & Release](./10-demo-release.md) |
+| 데이터·도메인 | [Domain Onboarding](../domain/domain-onboarding.md), [07 Algorithms](./07-algorithms.md), [08 Compliance & Safety](./08-compliance-safety.md) |
 
 ## 문서 목록
 
@@ -36,8 +37,8 @@
 | [08-compliance-safety.md](./08-compliance-safety.md) | 의료법·약사법 표현, 면책 문구, 개인정보, DTx, 출처 명시 |
 | [09-team-workflow.md](./09-team-workflow.md) | 작업 파이프라인, 툴, 파일 구조, 팀 분담, GitHub 규칙, 동기화 |
 | [10-demo-release.md](./10-demo-release.md) | 리스크, 시연 시나리오, 배포, 참고 자료, 최종 메시지 |
-| [research.md](./research.md) | 논문·보고서·특허·웹 자료의 사용 목적, 적용 위치, 후속 분석 체크리스트 |
-| [appendix-d1-start.md](./appendix-d1-start.md) | D1 즉시 시작 가이드 |
+
+관련 보조 문서는 [docs/ 인덱스](../README.md)에서 목적별 폴더를 확인합니다.
 
 ## 작업 규칙
 

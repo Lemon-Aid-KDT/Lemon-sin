@@ -7,7 +7,7 @@
   <style>
     :root {
       --ink: #17201d;
-      --muted: #5d6a65;
+      --muted: #46534e;
       --line: #d9e3de;
       --paper: #fbfaf4;
       --soft: #f2f7ee;
@@ -76,7 +76,7 @@
       position: absolute;
       right: 20mm;
       bottom: 12mm;
-      color: rgba(23, 32, 29, 0.36);
+      color: rgba(23, 32, 29, 0.58);
       font-size: 10px;
       font-weight: 800;
     }
@@ -90,7 +90,7 @@
       margin-bottom: 9mm;
       font-size: 11px;
       font-weight: 800;
-      color: var(--muted);
+      color: #3f4b47;
       text-transform: uppercase;
     }
 
@@ -481,7 +481,7 @@
     .output .label {
       font-size: 24px;
       font-weight: 900;
-      color: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.34);
       position: absolute;
       right: 4mm;
       top: 2mm;
@@ -532,6 +532,57 @@
       border-top: 5px solid var(--coral);
     }
 
+    .card.accent.contrast-fix .eyebrow {
+      background: #ffd84d;
+      color: #17201d;
+    }
+
+    .card.accent.contrast-fix strong {
+      color: #ffe56b;
+    }
+
+    .question-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4mm;
+    }
+
+    .question-card {
+      min-height: 27mm;
+      padding: 4.5mm 5mm;
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid rgba(46, 125, 87, 0.18);
+      border-left: 5px solid var(--leaf);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 24px rgba(23, 32, 29, 0.06);
+      display: flex;
+      gap: 4mm;
+      align-items: flex-start;
+    }
+
+    .question-card .qnum {
+      flex: 0 0 24px;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--lemon);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .question-card p {
+      font-size: 13px;
+      line-height: 1.55;
+      color: #313b37;
+    }
+
+    .question-card strong {
+      color: var(--leaf);
+    }
+
     @media print {
       body {
         display: block;
@@ -555,16 +606,85 @@
   </style>
 </head>
 <body>
-  <section class="page" data-page="01 / 11">
+  <section class="page" data-page="01 / 14">
     <div class="topbar">
       <div class="brand"><span class="brand-mark"></span>Lemon Aid</div>
       <div>Mentor First Meeting</div>
     </div>
     <div class="content hero">
       <div>
-        <p class="kicker">AI 헬스케어 / 건강관리 플랫폼</p>
-        <h1>만성질환자를 위한<br><strong>AI 영양·복약 관리 서비스</strong></h1>
-        <p class="subtitle">음식과 영양제를 사진으로 기록하고, 사용자의 건강 상태와 복약 상황을 고려해 <strong>부족·과다 가능성과 실천 방향</strong>을 알려주는 건강관리 보조 서비스입니다.</p>
+        <p class="kicker">ASSIGNMENT INTERPRETATION</p>
+        <h1>두 개의 출발점,<br><strong>하나의 도착지</strong></h1>
+        <p class="subtitle">멘토 과제는 영양제 분석과 음식·식단 분석으로 나뉘지만, 우리는 이를 <strong>만성질환자의 반복 관리 맥락에서 사용자 섭취 데이터를 개인화 건강관리로 연결하는 실증 과제</strong>로 해석했습니다.</p>
+      </div>
+      <div class="hero-card">
+        <div class="eyebrow">TASK MAP</div>
+        <p class="tagline">과제의 핵심은<br><strong>분석 기능이 아니라 연결된 해석</strong>입니다.</p>
+        <div class="meta-grid">
+          <div class="meta-item"><strong>과제 #1</strong>영양제 성분·함량·섭취량·목적별 분석</div>
+          <div class="meta-item"><strong>과제 #2</strong>음식 영양소·활동 정보·체중 변화·활동 권고</div>
+          <div class="meta-item"><strong>공통점</strong>모두 하루 섭취 데이터와 생활 맥락을 다룸</div>
+          <div class="meta-item"><strong>도착지</strong>사용자별 건강관리 방향을 설명하는 서비스</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="02 / 14">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>과제 해석</div></div>
+    <div class="content">
+      <p class="kicker">OUR POINT OF VIEW</p>
+      <h2>우리는 이 과제를 <strong>단순 AI 분석 기능</strong>으로 보지 않았습니다.</h2>
+      <div class="two-col">
+        <div class="card accent contrast-fix">
+          <div class="eyebrow">기능 과제로만 보면</div>
+          <h3>영양제 분석과 식단 분석은 별도 기능처럼 보입니다.</h3>
+          <p>각각 제품 라벨 인식, 음식 영양소 계산, 활동량 반영처럼 독립된 구현 항목으로 쪼개집니다.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">서비스 과제로 보면</div>
+          <h3>두 입력은 같은 사용자 섭취 데이터입니다.</h3>
+          <p>만성질환자는 음식·영양제·복약·활동을 함께 관리해야 하므로, 건강 목적·복약·활동 맥락에 맞게 해석해야 실제 사용자 가치가 생깁니다.</p>
+        </div>
+      </div>
+      <div class="statement">따라서 목표는 기능 나열이 아니라 <span>입력 → 통합 → 개인화 해석 → 실천 피드백</span>의 흐름을 증명하는 것입니다.</div>
+    </div>
+  </section>
+
+  <section class="page" data-page="03 / 14">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>만성질환 관리 관점</div></div>
+    <div class="content">
+      <p class="kicker">CHRONIC CARE CONTEXT</p>
+      <h2>만성질환 관리는 <strong>한 번의 분석이 아니라 반복 관리</strong>입니다.</h2>
+      <div class="two-col">
+        <div class="card accent contrast-fix">
+          <div class="eyebrow">만성질환이란</div>
+          <h3>장기간 생활습관, 복약, 검사값을 함께 관리해야 하는 건강 상태입니다.</h3>
+          <p>대표적으로 고혈압, 당뇨병, 이상지질혈증은 식단, 체중, 활동량, 복약 지속성과 연결됩니다.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">관리 항목</div>
+          <h3>사용자의 하루 기록은 서로 떨어져 있지 않습니다.</h3>
+          <div class="pill-row">
+            <span class="pill">식단</span>
+            <span class="pill">영양제</span>
+            <span class="pill">복약</span>
+            <span class="pill">활동</span>
+            <span class="pill">검사값</span>
+          </div>
+        </div>
+      </div>
+      <div class="statement">그래서 이 과제는 <span>섭취 데이터를 건강관리 맥락으로 해석하는 문제</span>입니다.</div>
+    </div>
+  </section>
+
+  <section class="page" data-page="04 / 14">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>서비스 제안</div></div>
+    <div class="content hero">
+      <div>
+        <p class="kicker">SERVICE FROM ASSIGNMENT</p>
+        <h1>그래서 만든 서비스가<br><strong>Lemon Aid</strong>입니다.</h1>
+        <p class="subtitle">고혈압·당뇨병·이상지질혈증처럼 지속 관리가 필요한 사용자를 우선 가정하고, 음식과 영양제 기록을 바탕으로 <strong>부족·과다 가능성과 실천 방향</strong>을 알려주는 건강관리 보조 서비스입니다.</p>
       </div>
       <div class="hero-card">
         <div class="eyebrow">FIRST MESSAGE</div>
@@ -579,44 +699,23 @@
     </div>
   </section>
 
-  <section class="page" data-page="02 / 11">
-    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>기획 배경</div></div>
-    <div class="content">
-      <p class="kicker">WHY NOW</p>
-      <h2>건강 정보는 많지만, <strong>내 상황에 맞게 연결된 해석</strong>은 부족합니다.</h2>
-      <div class="two-col">
-        <div class="card accent">
-          <div class="eyebrow">현재 상황</div>
-          <h3>사용자는 여러 데이터를 따로 관리합니다.</h3>
-          <p>식단은 음식 앱에, 영양제는 제품 정보나 메모에, 복약은 알림 앱에, 활동량은 헬스 앱에 흩어져 있습니다.</p>
-        </div>
-        <div class="card">
-          <div class="eyebrow">핵심 문제</div>
-          <h3>단순 기록만으로는 판단이 어렵습니다.</h3>
-          <p>만성질환 관리를 위해서는 <strong>무엇을 먹었는가</strong>보다 <strong>내 건강 상태와 복약 상황에서 무엇을 주의해야 하는가</strong>가 중요합니다.</p>
-        </div>
-      </div>
-      <div class="statement">Lemon Aid는 음식과 영양제 기록을 출발점으로 삼아, <span>개인화된 건강관리 방향</span>을 보여주는 서비스입니다.</div>
-    </div>
-  </section>
-
-  <section class="page" data-page="03 / 11">
+  <section class="page" data-page="05 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>문제 정의</div></div>
     <div class="content">
       <p class="kicker">USER PAINS</p>
-      <h2>만성질환자와 건강관리 사용자는 <strong>다섯 가지 불편</strong>을 겪습니다.</h2>
+      <h2>이 해석이 필요한 이유는, 사용자의 건강 기록이 <strong>서로 떨어져 있기 때문</strong>입니다.</h2>
       <div class="three-col">
         <div class="card"><span class="eyebrow">01</span><h3>데이터 분산</h3><p>음식, 영양제, 복약, 활동량, 건강검진 정보가 서로 다른 곳에 흩어져 있습니다.</p></div>
         <div class="card"><span class="eyebrow">02</span><h3>통합 섭취량 파악 어려움</h3><p>음식과 영양제를 따로 관리해 하루 전체 영양소 섭취량을 알기 어렵습니다.</p></div>
         <div class="card"><span class="eyebrow">03</span><h3>중복·과다 가능성 확인 어려움</h3><p>여러 영양제를 함께 복용할 때 같은 성분이 중복되는지 확인하기 어렵습니다.</p></div>
-        <div class="card"><span class="eyebrow">04</span><h3>개인화 부족</h3><p>일반 권장량만으로는 만성질환, 복약, 건강 목적을 반영하기 어렵습니다.</p></div>
+        <div class="card"><span class="eyebrow">04</span><h3>개인화 부족</h3><p>일반 권장량만으로는 만성질환자의 식단, 복약, 활동 맥락을 함께 반영하기 어렵습니다.</p></div>
         <div class="card"><span class="eyebrow">05</span><h3>실천 방향 부족</h3><p>정보는 많지만 오늘 무엇을 줄이고 보완해야 하는지 이해하기 어렵습니다.</p></div>
-        <div class="card accent"><span class="eyebrow">FOCUS</span><h3>우리가 풀 문제</h3><p><strong>흩어진 기록</strong>을 하나의 건강관리 흐름으로 연결합니다.</p></div>
+        <div class="card accent contrast-fix"><span class="eyebrow">FOCUS</span><h3>우리가 풀 문제</h3><p><strong>흩어진 기록</strong>을 하나의 건강관리 흐름으로 연결합니다.</p></div>
       </div>
     </div>
   </section>
 
-  <section class="page" data-page="04 / 11">
+  <section class="page" data-page="06 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>서비스 목적</div></div>
     <div class="content">
       <p class="kicker">SERVICE PURPOSE</p>
@@ -635,7 +734,7 @@
     </div>
   </section>
 
-  <section class="page" data-page="05 / 11">
+  <section class="page" data-page="07 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>서비스 파이프라인</div></div>
     <div class="content">
       <p class="kicker">SERVICE PIPELINE</p>
@@ -652,49 +751,27 @@
     </div>
   </section>
 
-  <section class="page" data-page="06 / 11">
+  <section class="page" data-page="08 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>핵심 기능</div></div>
     <div class="content">
-      <p class="kicker">FEATURES</p>
-      <h2>기능은 많아 보이지만, 사용자가 느끼는 가치는 <strong>명확한 네 가지</strong>입니다.</h2>
+      <p class="kicker">FEATURES MAPPED TO TASKS</p>
+      <h2>기능은 과제 요구사항을 흩어놓지 않고, <strong>하나의 서비스 가치</strong>로 묶습니다.</h2>
       <table class="table">
         <thead>
-          <tr><th>핵심 기능</th><th>사용자에게 보이는 가치</th><th>첫 미팅에서 강조할 포인트</th></tr>
+          <tr><th>핵심 기능</th><th>사용자에게 보이는 가치</th><th>과제와의 연결</th></tr>
         </thead>
         <tbody>
-          <tr><td><strong>음식·영양제 사진 기록</strong></td><td>긴 입력 없이 사진으로 기록을 시작합니다.</td><td>사용 부담을 낮추는 첫 진입점</td></tr>
-          <tr><td><strong>영양소·성분 분석</strong></td><td>음식과 영양제를 하나의 섭취 데이터로 정리합니다.</td><td>두 과제를 하나의 서비스 흐름으로 연결</td></tr>
-          <tr><td><strong>부족·과다 가능성 안내</strong></td><td>권장 기준 대비 낮거나 높은 영양소를 쉽게 확인합니다.</td><td>결과는 확정 진단이 아닌 참고 정보</td></tr>
+          <tr><td><strong>음식·영양제 사진 기록</strong></td><td>긴 입력 없이 사진으로 기록을 시작합니다.</td><td>두 과제의 공통 입력 진입점</td></tr>
+          <tr><td><strong>영양소·성분 분석</strong></td><td>음식과 영양제를 하나의 섭취 데이터로 정리합니다.</td><td>영양제 분석과 식단 분석을 합산</td></tr>
+          <tr><td><strong>부족·과다 가능성 안내</strong></td><td>권장 기준 대비 낮거나 높은 영양소를 쉽게 확인합니다.</td><td>부족 영양소·권장 섭취량 출력</td></tr>
+          <tr><td><strong>체중·활동·목적별 피드백</strong></td><td>기록 결과를 오늘의 실천 방향으로 바꿉니다.</td><td>체중 예측·활동 권고·목적별 분석</td></tr>
           <tr><td><strong>챗봇 설명·알림</strong></td><td>분석 결과를 쉬운 말로 이해하고 반복 관리로 이어갑니다.</td><td>일회성 분석을 지속 관리로 확장</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
-  <section class="page" data-page="07 / 11">
-    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>과제 이해</div></div>
-    <div class="content">
-      <p class="kicker">ASSIGNMENT TO SERVICE</p>
-      <h2>멘토 과제는 두 축이지만, 서비스에서는 <strong>하나의 개인화 건강관리 흐름</strong>으로 연결됩니다.</h2>
-      <div class="two-col">
-        <div class="card">
-          <span class="eyebrow">과제 축 1</span>
-          <h3>영양제 분석</h3>
-          <p>복용 중인 영양제의 <strong>성분, 함량, 섭취량, 부족 영양소, 목적별 분석</strong>을 제공합니다.</p>
-          <p>서비스 해석: 영양제 라벨을 분석해 사용자의 전체 영양소 섭취 데이터에 반영합니다.</p>
-        </div>
-        <div class="card">
-          <span class="eyebrow">과제 축 2</span>
-          <h3>음식·식단 분석</h3>
-          <p>음식 섭취 영양소와 활동 정보를 바탕으로 <strong>체중 변화, 활동 권고, 부족 영양소</strong>를 제공합니다.</p>
-          <p>서비스 해석: 음식 기록과 활동 데이터를 연결해 식단관리 피드백으로 제공합니다.</p>
-        </div>
-      </div>
-      <div class="statement">영양제와 음식은 모두 <span>사용자의 섭취 데이터</span>입니다. 이를 건강 상태에 맞게 해석해야 Lemon Aid의 MVP가 됩니다.</div>
-    </div>
-  </section>
-
-  <section class="page" data-page="08 / 11">
+  <section class="page" data-page="09 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>MVP 범위</div></div>
     <div class="content">
       <p class="kicker">MVP GOAL</p>
@@ -714,7 +791,7 @@
     </div>
   </section>
 
-  <section class="page" data-page="09 / 11">
+  <section class="page" data-page="10 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>MVP 구현 파이프라인</div></div>
     <div class="content">
       <p class="kicker">IMPLEMENTATION PIPELINE</p>
@@ -732,7 +809,7 @@
     </div>
   </section>
 
-  <section class="page" data-page="10 / 11">
+  <section class="page" data-page="11 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>5종 출력</div></div>
     <div class="content">
       <p class="kicker">FIVE OUTPUTS</p>
@@ -747,7 +824,7 @@
     </div>
   </section>
 
-  <section class="page" data-page="11 / 11">
+  <section class="page" data-page="12 / 14">
     <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>기대효과와 안전 원칙</div></div>
     <div class="content">
       <p class="kicker">TAKEAWAY</p>
@@ -776,6 +853,38 @@
         </div>
       </div>
       <p class="footer-note">본 자료는 첫 멘토 미팅용 요약본입니다. 세부 기술, 데이터 출처, 안전 검토 기준은 후속 문서에서 분리해 설명합니다.</p>
+    </div>
+  </section>
+
+  <section class="page" data-page="13 / 14">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>미팅 질문 1</div></div>
+    <div class="content">
+      <p class="kicker">QUESTIONS</p>
+      <h2>서비스 방향과 입력 범위를 <strong>먼저 확인하고 싶습니다.</strong></h2>
+      <div class="question-grid">
+        <div class="question-card"><span class="qnum">1</span><p><strong>UI/UX 방향</strong>은 기존 건강의신 경험을 최대한 유지하는 것이 좋을까요, 아니면 Lemon Aid를 독립 앱처럼 새롭게 설계하는 것이 좋을까요?</p></div>
+        <div class="question-card"><span class="qnum">2</span><p>MVP에서 <strong>영양제와 음식 사진</strong>만 다루는 것이 적절할까요, 아니면 추후 검사표·처방 관련 이미지까지 확장할 수 있음을 함께 보여줘도 될까요?</p></div>
+        <div class="question-card"><span class="qnum">3</span><p>기획 근거로 사용할 <strong>논문과 보고서</strong>는 어느 수준까지 검토하면 충분할까요?</p></div>
+        <div class="question-card"><span class="qnum">4</span><p><strong>영양제 데이터</strong>는 제품명 기준으로 매칭하는 것이 좋을까요, 성분명 기준으로 표준화하는 것이 좋을까요?</p></div>
+        <div class="question-card"><span class="qnum">5</span><p>음식 사진 분석 결과는 어떤 <strong>영양소 DB</strong>와 연결하는 방향이 가장 적절할까요?</p></div>
+        <div class="question-card"><span class="qnum">6</span><p>낮은 신뢰도의 분석 결과는 사용자에게 어떻게 보여주는 것이 좋을까요? 예를 들어 <strong>수정 필요</strong> 또는 <strong>참고용</strong>으로 표시해도 괜찮을까요?</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="14 / 14">
+    <div class="topbar"><div class="brand"><span class="brand-mark"></span>Lemon Aid</div><div>미팅 질문 2</div></div>
+    <div class="content">
+      <p class="kicker">QUESTIONS</p>
+      <h2>병원 데이터와 개인정보 기준은 <strong>구현 전 범위를 명확히 정해야 합니다.</strong></h2>
+      <div class="question-grid">
+        <div class="question-card"><span class="qnum">7</span><p>향후 병원 데이터 연동을 가정한다면 <strong>어떤 데이터</strong>를 어디까지 받을 수 있다고 보는 것이 현실적일까요?</p></div>
+        <div class="question-card"><span class="qnum">8</span><p>만성질환, 복약, 검진기록, 걸음수, 심박수 같은 <strong>민감정보</strong>는 항목별 동의로 받는 방향이 맞을까요?</p></div>
+        <div class="question-card"><span class="qnum">9</span><p>안전과 개인정보 관점에서 <strong>데이터 삭제 기간과 삭제 범위</strong>는 어느 정도로 잡는 것이 적절할까요?</p></div>
+        <div class="question-card"><span class="qnum">10</span><p>실제 병원 데이터가 없는 MVP에서는 어떤 <strong>대체 데이터</strong>를 사용하는 것이 가장 설득력 있을까요?</p></div>
+        <div class="question-card"><span class="qnum">11</span><p>질환, 복약, 검사값은 저장해 다음 분석에 재사용하는 것이 좋을까요, 아니면 <strong>시연 프로필</strong> 수준으로만 다루는 것이 좋을까요?</p></div>
+        <div class="question-card"><span class="qnum">12</span><p>향후 LDB/FHIR 연동 가능성은 개발자용 문서에 <strong>어느 수준까지</strong> 포함하는 것이 적절할까요?</p></div>
+      </div>
     </div>
   </section>
 </body>

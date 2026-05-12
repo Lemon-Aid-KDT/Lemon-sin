@@ -258,7 +258,7 @@ D5: insight_card.dart, raffle_screen.dart UI
 
 ```
 D1: backend/src/llm/claude_client.py 빈 시그니처 (§A.6) + 기본 호출 테스트
-D2: backend/src/llm/prompts.py 4개 Agent 시스템 프롬프트 v0
+D2: backend/src/llm/prompts.py 3개 Agent 시스템 프롬프트 v0
 D3: backend/src/llm/tools.py 5개 Tool 정의 (§3.3)
 D4: backend/src/llm/schemas.py Pydantic 출력 스키마
 D5: backend/src/utils/regex_filter.py 의료법 검수 + 단위 테스트
@@ -281,7 +281,7 @@ D1: data/kdris_2020.csv 임포트 스크립트 작성
 D2: backend/src/algorithms/kdris.py 룩업 함수 + 단위 테스트
 D3: 식약처 식품영양성분 Open API PoC (FastAPI 어댑터)
 D4: data/goal_matrix.json 작성 (눈/간/피로 §8.7 표 그대로)
-D5: docs/medical_review.md 의료자문위 질문 초안 + Health Connect 신청 진행
+D5: docs/reports/medical-review.md 의료자문위 질문 초안 + Health Connect 신청 진행
 ```
 
 ### A.10 팀 공유 채팅 메시지 템플릿
@@ -317,7 +317,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Health Connect 신청
 | 다른 팀원 코드와 충돌 | §16 GitHub 규칙 + 채팅에서 동기 콜 |
 | 알고리즘 산식이 헷갈림 | §8 핵심 알고리즘 / 가이드 PPT 예시값과 비교 |
 | 의료법 표현이 걱정 | §19.2 위반→대체 표 / E에게 검토 요청 |
-| 4개 Agent 흐름이 헷갈림 | §3.1 / §7.3 / §9 호출 흐름 |
+| 분석 알고리즘 + 3개 Agent 흐름이 헷갈림 | §3.1 / §7.3 / §9 호출 흐름 |
 | LLM 비용이 무서움 | §7.6 가드레일 / 캐시 적중률 점검 |
 | 발표 직전인데 백엔드 죽음 | §20.4 / §21.5 시연 안전장치 |
 | guide.html이 PG.md와 다르게 보임 | §17 기획서 자동 동기화 |

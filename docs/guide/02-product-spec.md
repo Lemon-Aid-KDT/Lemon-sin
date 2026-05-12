@@ -5,48 +5,47 @@
 
 ## 3. 핵심 기능 명세
 
-### 3.1 4개 Agent 구조
+### 3.1 분석 알고리즘 + 3개 Agent 통합 구조
 
-단일 LLM 호출이 아니라 4개 Agent가 협력해 만성질환자의 영양·복약 관리를 해석한다.
+단일 LLM 호출이 아니라, 분석 알고리즘이 이미지·자연어·파일 입력을 먼저 구조화하고 개인화·평가·챗봇 3개 Agent가 하나의 통합 흐름으로 만성질환자의 영양·복약 관리를 해석한다.
 
 ```mermaid
 flowchart LR
     U[👤 사용자] --> O[🎯 Orchestrator]
-    O --> A1[🔍 분석 Agent<br/>OCR + 영양소 산출]
-    O --> A2[🩺 개인화 Agent<br/>만성질환·복약 기준]
-    A1 --> A3[📊 평가 Agent<br/>점수 + 부족·과다 분석]
-    A2 --> A3
-    A3 --> A4[💬 챗봇 Agent<br/>설명 + 알림/캘린더]
-    A4 --> U
+    O --> P[🔍 분석 알고리즘<br/>OCR + 라벨링 + 영양소 산출]
+    P --> A1[🩺 개인화 Agent<br/>만성질환·복약 기준]
+    P --> A2[📊 평가 Agent<br/>점수 + 부족·과다 분석]
+    A1 --> A2
+    A2 --> A3[💬 챗봇 Agent<br/>설명 + 알림/캘린더]
+    A3 --> U
     M[(🧠 Agent Memory<br/>요약 기억)] -.공유.-> A1
     M -.공유.-> A2
     M -.공유.-> A3
-    M -.공유.-> A4
 ```
 
-| Agent | 책임 | 입력 | 출력 |
+| 구성 | 책임 | 입력 | 출력 |
 |-------|------|------|------|
-| 분석 Agent | 음식·영양제 사진 인식 + 영양소 산출 | 사진, 사용자 수정 입력 | 음식명·섭취량·영양소·영양제 성분/함량 (Pydantic) |
-| 개인화 Agent | 만성질환·검사값·복약 기준 제공 | 사용자 프로필, Kaggle 병원성 데이터 | 질환별 주의 영양소, 권장 기준, 약물 주의 |
+| 분석 알고리즘 | 음식·영양제 사진 인식, OCR, CSV DB/API 매칭, 영양소 산출 | 사진, 자연어 입력, 파일, 사용자 수정 입력 | 음식명·섭취량·영양소·영양제 성분/함량 (Pydantic) |
+| 개인화 Agent | 만성질환·검사값·복약 기준 제공 | 사용자 프로필, 멘토 확인 전 시연용 데이터 | 질환별 주의 영양소, 권장 기준, 약물 주의 |
 | 챗봇 Agent | 결과 설명 + 사용자 요청 기반 실행 | 자연어 질문, 분석 결과, Agent 요약 기억 | 자연어 답변 + (선택) Tool Call |
-| 평가 Agent | 식단관리 점수 + 개선 피드백 | 분석 Agent 결과 + 개인화 Agent 기준 | 점수, 부족 영양소, 과다 위험, 좋은 선택, 개선 필요 |
+| 평가 Agent | 식단관리 점수 + 개선 피드백 | 분석 알고리즘 결과 + 개인화 Agent 기준 | 점수, 부족 영양소, 과다 위험, 좋은 선택, 개선 필요 |
 
-> 각 Agent의 코드 책임 매핑은 §14 파일 구조의 `backend/src/agents/` 참조.
+> 분석 알고리즘은 `backend/src/algorithms/`, `ocr/`, `supplements/`가 담당하고, 3개 Agent의 코드 책임 매핑은 §14 파일 구조의 `backend/src/agents/` 참조.
 
 ### 3.2 Agent 간 데이터 전달 포맷
 
-모든 Agent는 다음 Pydantic 모델로 통신한다. 오케스트레이터가 직렬/병렬 호출을 결정한다.
+3개 Agent는 다음 Pydantic 모델로 통신한다. 오케스트레이터가 분석 알고리즘 결과를 받아 직렬/병렬 호출을 결정한다.
 
 ```
 class AgentInput(BaseModel):
     user_id: int
     request_id: str            # 한 사용자 요청 단위로 동일
-    payload: dict              # Agent별 입력 (파일/텍스트/숫자)
+    payload: dict              # 분석 결과, 파일/텍스트/숫자, Agent별 입력
     context: AgentMemorySnap   # 최근 검사값/만성질환/복약 요약
 
 class AgentOutput(BaseModel):
     request_id: str
-    agent_name: Literal['analysis','personalization','chat','evaluation']
+    agent_name: Literal['personalization','chat','evaluation']
     result: BaseModel          # Agent별 전용 결과 모델
     used_tools: list[str]      # Tool Use 호출 이름 목록
     latency_ms: int
@@ -57,11 +56,11 @@ class AgentOutput(BaseModel):
 
 ### 3.3 Tool 정의 (LLM Tool Use 함수 목록)
 
-`backend/src/llm/tools.py`에 정의되며 챗봇 Agent와 분석 Agent가 호출한다.
+`backend/src/llm/tools.py`에 정의되며 챗봇 Agent와 분석 알고리즘 흐름이 호출한다.
 
-| Tool 이름 | 호출 Agent | 인자 | 효과 |
+| Tool 이름 | 호출 주체 | 인자 | 효과 |
 |-----------|-----------|------|------|
-| extract_supplement_facts | 분석 | { ocr_text } | OCR 텍스트를 SupplementParseResult Pydantic으로 강제 파싱 |
+| extract_supplement_facts | 분석 알고리즘 | { ocr_text } | OCR 텍스트를 SupplementParseResult Pydantic으로 강제 파싱 |
 | add_reminder | 챗봇 | { type, name, time, recurrence, weekdays? } | DB INSERT 후 flutter_local_notifications에 등록 |
 | add_calendar_event | 챗봇 | { date, time, title, hospital?, note? } | DB INSERT 후 add_2_calendar로 시스템 캘린더 반영 |
 | log_supplement_intake | 챗봇 | { supplement_id, taken_at } | 영양제 섭취 기록 + 응모권 카운트 |
@@ -94,8 +93,8 @@ flowchart TD
 | 화면 | 핵심 인터랙션 | 담당 Agent |
 |------|--------------|-----------|
 | 온보딩 / 프로필 | 만성질환·복약·기본정보 입력 (§3.4 흐름) | 개인화 |
-| 카메라 (음식·영양제) | 사진 촬영, AI 인식, 사용자 수정 | 분석 |
-| 5종 출력 대시보드 | 부족 영양소 / 권장 섭취량 / 체중 예측 / 활동 권고 / 목적별 분석 | 분석+개인화+평가 |
+| 카메라 (음식·영양제) | 사진 촬영, AI 인식, 사용자 수정 | 분석 알고리즘 |
+| 5종 출력 대시보드 | 부족 영양소 / 권장 섭취량 / 체중 예측 / 활동 권고 / 목적별 분석 | 분석 알고리즘+개인화+평가 |
 | 챗봇 화면 | 자연어 대화, 설명, 알림/캘린더 등록 | 챗봇 |
 | 식단관리 점수 | 끼니별·하루별 점수 + 개선 피드백 | 평가 |
 | 응모권 현황 | 사진 기록 참여 일수 + 누적 응모권 | (Agent X, 규칙 기반) |
@@ -109,11 +108,12 @@ sequenceDiagram
     participant U as 사용자
     participant App as Flutter
     participant API as FastAPI
+    participant AL as 분석 알고리즘
     participant AG as Agents
-    U->>App: 사진 촬영
-    App->>API: multipart upload
-    API->>AG: 분석 Agent (OCR+LLM)
-    AG-->>API: 영양소 JSON
+    U->>App: 사진 촬영 또는 자연어 입력
+    App->>API: multipart upload 또는 text input
+    API->>AL: OCR+라벨링+영양소 산출
+    AL-->>API: 영양소 JSON
     API->>AG: 개인화 Agent (DB 조회)
     AG-->>API: 질환별 주의 기준
     API->>AG: 평가 Agent
@@ -134,9 +134,9 @@ sequenceDiagram
 ### 3.7 영양제 분석 보완 흐름
 
 1. 영양제 제품명·라벨·성분표 촬영
-2. 분석 Agent: 제품명·성분명·함량·1회 섭취량·권장 횟수 OCR 분석
+2. 분석 알고리즘: 제품명·성분명·함량·1회 섭취량·권장 횟수 OCR 분석
 3. 사용자가 실제 섭취량·빈도·복용 시간 수정
-4. 분석 Agent: 영양제 성분을 영양소 단위로 환산하고 음식 영양소와 합산
+4. 분석 알고리즘: 영양제 성분을 표준명으로 정리하고 영양소 단위로 환산한 뒤 음식 영양소와 합산
 5. 개인화 Agent: 권장 기준·질환·검사값·복약 정보 참고
 6. 평가 Agent: 부족·과다·중복·주의 성분 설명
 7. 챗봇 Agent: 눈건강·간기능·피로회복 등 목적별 관리 방향 제시 (특정 제품 추천 X)

@@ -13,7 +13,7 @@ flowchart TB
     S2 --> S3[3. 디자인 UX → UI]
     S3 --> S4[4. 프론트엔드 Flutter]
     S3 --> S5[5. 백엔드 / DB FastAPI]
-    S3 --> S6[6. AI 통합 4개 Agent]
+    S3 --> S6[6. AI 통합 분석 알고리즘 + 3개 Agent]
     S4 --> S7[7. 통합 · QA 의료자문위]
     S5 --> S7
     S6 --> S7
@@ -30,7 +30,7 @@ flowchart TB
 - 체크포인트: 30초 안에 컨셉 설명 가능?
 
 #### 2단계 — 차별화 전략 수립
-- 목적: 4개 Agent 협력 + 응모권 참여 UX + 의료기관 연계 가능성
+- 목적: 분석 알고리즘 + 3개 Agent 협력 + 응모권 참여 UX + 의료기관 연계 가능성
 - 활동: Agent 책임 분담, 응모권 규칙 합의, LDB 연계 인터페이스 설계
 - 산출물: §3 핵심 기능 명세, §7 AI 스택, §9 호출 흐름
 - 체크포인트: 경쟁사가 못 따라하는 자산 명확?
@@ -54,8 +54,8 @@ flowchart TB
 - 체크포인트: 가이드 예시 케이스 통과?
 
 #### 6단계 — AI 통합 (4·5와 병렬)
-- 목적: §7 AI 스택을 4개 Agent로 실동작
-- 활동: Claude SDK 래퍼, 4개 Agent 프롬프트, Tool 정의, OCR 어댑터, 의료법 검수, 미리보기
+- 목적: §7 AI 스택을 분석 알고리즘 + 3개 Agent로 실동작
+- 활동: Claude SDK 래퍼, 3개 Agent 프롬프트, Tool 정의, OCR 어댑터, 의료법 검수, 미리보기
 - 산출물: backend/src/llm/, agents/
 - 체크포인트: 같은 입력 → 캐시 적중? 금지 표현 0건?
 
@@ -84,7 +84,7 @@ flowchart TB
 | W1 | 1·2 | 아이디어/차별화 합의, 본 가이드 작성, Health Connect 데이터 타입 신청 제출 |
 | W2 | 3 | Figma + 디자인 토큰 + 7화면 와이어프레임, 환경 셋업 시작 |
 | W3 | 4·5 | Flutter 환경 + 백엔드 환경 + 알고리즘 단위 + Alembic init |
-| W4 | 4·5·6 | 카메라·OCR·Claude 분석 Agent 통합 |
+| W4 | 4·5·6 | 카메라·OCR·분석 알고리즘 통합 |
 | W5 | 4·5·6 | 5종 출력 대시보드 + 평가 Agent + KDRIs 결핍 진단 |
 | W6 | 4·6 | 챗봇 Agent + Tool Use 알림/캘린더 + 응모권 |
 | W7 | 7 | 통합 QA + 의료자문위 검토 + TestFlight 첫 빌드 업로드 |
@@ -94,7 +94,7 @@ flowchart TB
 
 - 3단계 1주 이상 지연 → 4단계는 와이어프레임 PNG로 시작, UI 다듬기는 W6로
 - 5단계 막힘 → 시계열 데이터는 v2로 미루고 PostgreSQL 단독 운영
-- 6단계 막힘 → 챗봇 Agent를 분석 Agent와 통합, 알림 등록은 수동 폼으로 폴백
+- 6단계 막힘 → 챗봇 Agent를 평가 흐름과 통합, 알림 등록은 수동 폼으로 폴백
 - 7단계 TestFlight 외부 그룹 심사 미통과 → 내부 테스터(최대 100명) 그룹으로 폴백
 - 8단계 막힘 → 발표 PC에서 로컬 백엔드 + 시뮬레이터 직접 시연
 
@@ -118,8 +118,8 @@ flowchart TB
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
-| Anthropic Claude (개발 보조) | 본 가이드 작성, 4개 Agent 프롬프트 설계, 코드 보조 | Cowork (데스크톱) 환경 |
-| Anthropic Claude (런타임) | 4개 Agent 추론 | 모델 ID는 환경변수 |
+| Anthropic Claude (개발 보조) | 본 가이드 작성, 3개 Agent 프롬프트 설계, 코드 보조 | Cowork (데스크톱) 환경 |
+| Anthropic Claude (런타임) | 3개 Agent 추론 + 분석 구조화 보조 | 모델 ID는 환경변수 |
 | OpenAI API | LLM 폴백 | Claude 장애 시 Adapter 교체 |
 | Google Cloud Vision API | 영양제·음식 OCR | DOCUMENT_TEXT_DETECTION |
 | Naver CLOVA OCR | OCR 폴백 | 한국어 SOTA |
@@ -363,10 +363,14 @@ Lemon_Aid/
 │  ├─ goal_matrix.json
 │  └─ README.md                     # 출처·라이선스
 │
-├─ 📁 docs/                         # 추가 문서
-│  ├─ persona.md
-│  ├─ medical_review.md
-│  └─ compliance.md
+├─ 📁 docs/                         # 목적별 문서 묶음
+│  ├─ guide/                        # 제품·개발 기준 가이드
+│  ├─ domain/                       # 팀 내부 도메인 학습 자료
+│  ├─ research/                     # 논문·API·외부 근거 정리
+│  ├─ reports/                      # 검토 보고서·의사결정 기록
+│  ├─ appendices/                   # 본문에서 분리한 실행 부록
+│  ├─ presentations/                # 멘토 미팅·발표 산출물
+│  └─ harness/                      # 문서 라우팅 규칙과 템플릿
 │
 ├─ 📁 .github/
 │  ├─ CODEOWNERS                    # §16 GitHub 협업 규칙 참조
@@ -427,7 +431,7 @@ Lemon_Aid/
 |------|----------|-----------------|
 | A. 프론트 리드 | Flutter 라우팅·디자인 토큰·화면 통합·health 패키지 | mobile/lib/app.dart, screens/, utils/tokens.dart |
 | B. UI/UX | 만성질환자 친화 UI·미리보기·챗봇 UI·응모권 화면·에러 화면 | mobile/lib/widgets/, screens/chat_screen.dart, screens/raffle_screen.dart |
-| C. AI 엔지니어 | Claude API·4개 Agent·프롬프트·Tool 정의·OCR·의료법 검수 | backend/src/llm/, agents/, ocr/, utils/regex_filter.py |
+| C. AI 엔지니어 | Claude API·3개 Agent·프롬프트·Tool 정의·OCR·의료법 검수 | backend/src/llm/, agents/, ocr/, utils/regex_filter.py |
 | D. 백엔드 | FastAPI·알고리즘·DB·인증·캐싱·**보안(JWT·RLS·AES-256)**·이메일 발송 | backend/src/algorithms/, api/, models/, schemas/, db/, cache/, services/email.py |
 | E. 데이터·도메인 | KDRIs/식약처/농진청 데이터 임포트·Kaggle 시연 데이터·의료자문위 협업·컴플라이언스 검토 | data/, docs/, backend/src/algorithms/kdris.py, goal_matrix.py |
 
@@ -699,8 +703,8 @@ GitHub Settings → Branches → Branch protection rules → `main`:
 
 ```
 v0.1.0  Phase 0 종료 (W2)
-v0.2.0  Phase 1 종료 (W4)  — 영양제 OCR + 분석 Agent 동작
-v0.3.0  Phase 2 종료 (W6)  — 4 Agent 통합
+v0.2.0  Phase 1 종료 (W4)  — 영양제 OCR + 분석 알고리즘 동작
+v0.3.0  Phase 2 종료 (W6)  — 3개 Agent 통합
 v1.0.0  Phase 3 종료 (W8)  — 시연 가능 MVP
 ```
 
@@ -712,7 +716,7 @@ v1.0.0  Phase 3 종료 (W8)  — 시연 가능 MVP
 2. `git filter-repo` 또는 `bfg`로 히스토리에서 제거 (push --force)
 3. 팀 채팅 공지 + 영향 범위 평가
 4. audit_logs / GitHub Audit log 조회 → 비정상 호출 확인
-5. 24시간 내 retrospective 메모 (`docs/incident-YYYY-MM-DD.md`)
+5. 24시간 내 retrospective 메모 (`docs/reports/incident-YYYY-MM-DD.md`)
 
 
 ## 17. 기획서 자동 동기화

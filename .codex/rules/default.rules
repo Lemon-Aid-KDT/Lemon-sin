@@ -1,0 +1,128 @@
+# Lemon Aid 명령 승인 정책입니다.
+# Codex가 sandbox 밖에서 실행하려는 명령에 적용합니다.
+
+prefix_rule(
+    pattern = ["git", "status"],
+    decision = "allow",
+    justification = "저장소 상태 조회는 읽기 전용이며 수정 전 확인에 필요합니다.",
+    match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["git", "branch"],
+    decision = "allow",
+    justification = "브랜치 확인과 목록 조회는 읽기 전용입니다. 브랜치 생성은 실제 명령과 사용자 요청에 따릅니다.",
+    match = ["git branch --show-current", "git branch --list"],
+)
+
+prefix_rule(
+    pattern = ["git", "diff"],
+    decision = "allow",
+    justification = "diff 확인은 읽기 전용이며 보고나 커밋 전 검토에 필요합니다.",
+    match = ["git diff", "git diff --stat"],
+)
+
+prefix_rule(
+    pattern = ["git", "ls-files"],
+    decision = "allow",
+    justification = "추적 파일 목록 조회는 읽기 전용입니다.",
+    match = ["git ls-files"],
+)
+
+prefix_rule(
+    pattern = ["rg"],
+    decision = "allow",
+    justification = "ripgrep 검색은 읽기 전용입니다.",
+    match = ["rg Agent docs"],
+)
+
+prefix_rule(
+    pattern = ["python", "scripts/sync_guide.py", "--check"],
+    decision = "allow",
+    justification = "가이드 동기화 검증은 비파괴 확인 명령입니다.",
+    match = ["python scripts/sync_guide.py --check"],
+)
+
+prefix_rule(
+    pattern = ["python", "scripts\\sync_guide.py", "--check"],
+    decision = "allow",
+    justification = "Windows 경로의 가이드 동기화 검증은 비파괴 확인 명령입니다.",
+    match = ["python scripts\\\\sync_guide.py --check"],
+)
+
+prefix_rule(
+    pattern = ["git", "commit"],
+    decision = "prompt",
+    justification = "커밋은 사용자와 범위와 메시지를 확인한 뒤 실행해야 합니다.",
+    match = ["git commit -m docs: update harness"],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "push는 원격 저장소에 영향을 주므로 사용자 확인이 필요합니다.",
+    match = ["git push origin changmin-plan"],
+)
+
+prefix_rule(
+    pattern = ["pip", "install"],
+    decision = "prompt",
+    justification = "의존성 설치는 환경을 바꾸고 네트워크 접근을 사용할 수 있습니다.",
+    match = ["pip install -r requirements.txt"],
+)
+
+prefix_rule(
+    pattern = ["npm", "install"],
+    decision = "prompt",
+    justification = "의존성 설치는 환경을 바꾸고 네트워크 접근을 사용할 수 있습니다.",
+    match = ["npm install"],
+)
+
+prefix_rule(
+    pattern = ["flutter", "pub", "get"],
+    decision = "prompt",
+    justification = "모바일 의존성 가져오기는 네트워크 접근과 로컬 캐시 변경을 수반합니다.",
+    match = ["flutter pub get"],
+)
+
+prefix_rule(
+    pattern = ["alembic", "upgrade"],
+    decision = "prompt",
+    justification = "DB migration은 데이터나 schema를 변경할 수 있습니다.",
+    match = ["alembic upgrade head"],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "up"],
+    decision = "prompt",
+    justification = "서비스 시작은 로컬 런타임 상태, 포트, volume에 영향을 줄 수 있습니다.",
+    match = ["docker compose up -d"],
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "worktree 변경을 자동으로 버리지 않습니다. 파괴적 reset은 사용자의 명시 요청이 필요합니다.",
+    match = ["git reset --hard"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "forbidden",
+    justification = "force push는 공유 히스토리를 재작성할 수 있습니다. 명시 승인된 복구 계획이 필요합니다.",
+    match = ["git push --force"],
+)
+
+prefix_rule(
+    pattern = ["rm"],
+    decision = "forbidden",
+    justification = "shell 삭제 대신 검토 가능한 타깃 변경을 사용합니다.",
+    match = ["rm -rf docs/harness"],
+)
+
+prefix_rule(
+    pattern = ["Remove-Item"],
+    decision = "forbidden",
+    justification = "shell 삭제 대신 검토 가능한 타깃 변경을 사용합니다.",
+    match = ["Remove-Item -Recurse docs\\harness"],
+)

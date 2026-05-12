@@ -25,6 +25,7 @@
 | 등급 | 의미 | 사용 가능 | 사용 금지 |
 |------|------|-----------|-----------|
 | A. 공식 기준 | KDRIs, 식약처, 농진청 등 공공·공식 데이터 | DB 저장, 알고리즘 기준, 사용자 화면 출처 | 공식 범위를 넘어 질환 치료 효과로 확장 |
+| A-2. 공식 건강정보 | 질병관리청 국가건강정보포털 등 공공 건강정보 | 팀 내부 학습용 질환 정의, 질환 기본 설명, 사용자 문구 안전선 참고 | 사용자 상태 진단, 치료·처방 판단, 질환별 식단 처방 규칙 |
 | B. 구현 참고 | 연구보고서, 특허, UI/UX 논문 | DB 구조·화면 흐름·알고리즘 설계 참고 | 특허/논문 알고리즘을 그대로 복제하거나 의료 판단 규칙으로 사용 |
 | C. 배경 근거 | 보건영양, 정밀영양 리뷰, 문제 정의 논문 | 기획 배경, 멘토 설명, 필요성 근거 | 사용자별 건강 권고의 직접 기준 |
 | D. 검토 필요 | 메타데이터 불완전 자료, 본문 미확인 PDF | 후속 분석 후보 | 구현·DB·LLM 프롬프트에 반영 |
@@ -43,6 +44,7 @@
 
 | 자료 | 등급 | DB | LLM/RAG | 이미지/OCR | 알고리즘 | UI/UX | 안전/검증 |
 |------|------|----|---------|------------|----------|-------|-----------|
+| 질병관리청 국가건강정보포털 질환 정의 자료 | A-2 | 문헌 메타데이터만 | 팀 학습·내부 설명 참고 | 해당 없음 | 직접 규칙화 금지 | 사용자 표현 안전선 참고 | 진단·치료 표현 방지 기준 |
 | 서울대학교 보건영양연구실 | C | 문헌 메타데이터만 | 배경 설명 참고 | 해당 없음 | 직접 사용 안 함 | 해당 없음 | 예방·관리 표현 근거 |
 | Precision nutrition for cardiometabolic diseases | C | 문헌 메타데이터만 | 개인화 필요성 설명 참고 | 해당 없음 | 직접 규칙화 금지 | 해당 없음 | 정밀영양 한계 설명 |
 | 빅데이터 기반 건강 식단 추천 시스템 연구 | B | 식품군·영양 DB 구조 참고 | 식단 설명 근거 후보 | 음식명 매칭 구조 간접 참고 | 식단 추천 구조 참고 | 후보/교체 흐름 참고 | 자동 추천 제한 근거 |
@@ -327,7 +329,7 @@ MVP에서 하지 않는 것:
 
 ### 8.12 내부 기준 문서: API 및 논문 근거 정리와 알고리즘 수정 방안
 
-- 로컬 파일: `C:\MyWorkspace\lemon_aid\changmin-plan\docs\17-api-paper-algorithm-rationale.html`
+- 로컬 파일: `C:\MyWorkspace\lemon_aid\changmin-plan\docs\research\17-api-paper-algorithm-rationale.html`
 - 등급: B. 구현 참고
 - 자료 성격: 내부 기술 설계 및 알고리즘 근거 문서
 - 핵심 내용: API, SDK, 공식 데이터, 논문 근거를 사용 이유·수정 사유·적용 방안 중심으로 정리한다.
@@ -340,7 +342,103 @@ MVP에서 하지 않는 것:
   - 안전/검증: 의료·영양 표현 완화 원칙 참고
 - 사용하면 안 되는 방식: 기존 HTML의 결론을 현재 MVP에 검토 없이 그대로 이식하지 않는다.
 - MVP 반영: `research.md` 분류 방식과 안전 기준
-- v2 이후 검토: `04-backend-api.md`, `06-ai-agents.md`, `07-algorithms.md` 보강
+- v2 이후 검토: `../guide/04-backend-api.md`, `../guide/06-ai-agents.md`, `../guide/07-algorithms.md` 보강
+
+### 8.13 질환 기본 정의 출처: 질병관리청 국가건강정보포털
+
+아래 자료는 팀 도메인 학습 문서에서 만성질환의 기본 정의를 설명하기 위한 공식 건강정보 출처다. 기존 조사 자료는 만성질환자와 영양소 섭취 관계, 식단 구성, 개인화 필요성을 설명하는 데 쓰고, 질환이 무엇인지에 대한 기본 정의는 이 공식 건강정보로 보강한다.
+
+#### 고혈압
+
+- 출처:
+  - 질병관리청 국가건강정보포털, 고혈압의 진단: <https://health.kdca.go.kr/healthinfo/biz/health/ntcnInfo/healthSourc/thtimtCntnts/thtimtCntntsView.do?thtimt_cntnts_sn=28>
+  - 질병관리청 국가건강정보포털, 노인 고혈압: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=6698>
+- 등급: A-2. 공식 건강정보
+- 팀 학습 자료에서 사용할 내용:
+  - 고혈압은 혈관 속 압력이 높은 상태다.
+  - 성인에서는 일반적으로 수축기 혈압 140 mmHg 이상 또는 이완기 혈압 90 mmHg 이상을 기준으로 설명한다.
+  - 나이가 들수록 흔하고, 심뇌혈관질환 위험요인으로 관리가 필요하다.
+  - 식단 학습에서는 나트륨, 체중, 활동량, 복약 맥락과 연결해 이해한다.
+- 연결되는 기존 조사 자료:
+  - `8.5 고령자의 만성질환과 영양소 섭취 관계 연구`
+- 사용하면 안 되는 방식:
+  - 사용자 혈압 상태를 진단하거나 식단만으로 혈압 개선을 보장하지 않는다.
+
+#### 당뇨병
+
+- 출처: 질병관리청 국가건강정보포털, 당뇨병: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5305>
+- 등급: A-2. 공식 건강정보
+- 팀 학습 자료에서 사용할 내용:
+  - 당뇨병은 혈액 속 포도당이 세포에서 에너지원으로 제대로 이용되지 못해 혈당이 비정상적으로 높아지는 질환이다.
+  - 인슐린 부족 또는 인슐린 저항성과 관련된다.
+  - 식단 학습에서는 탄수화물, 당류, 총 에너지, 식사 패턴과 연결해 이해한다.
+- 연결되는 기존 조사 자료:
+  - `8.5 고령자의 만성질환과 영양소 섭취 관계 연구`
+  - `8.2 Precision nutrition for cardiometabolic diseases`
+- 사용하면 안 되는 방식:
+  - 당뇨병 여부를 판정하거나 특정 식품·영양소가 당뇨병을 개선한다고 단정하지 않는다.
+
+#### 이상지질혈증
+
+- 출처: 질병관리청 국가건강정보포털, 이상지질혈증: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=6054>
+- 등급: A-2. 공식 건강정보
+- 팀 학습 자료에서 사용할 내용:
+  - 이상지질혈증은 LDL 콜레스테롤이나 중성지방이 높거나 HDL 콜레스테롤이 낮은 등 혈액 지질 농도에 이상이 있는 상태다.
+  - 죽상경화와 심혈관질환의 중요한 위험요인으로 설명할 수 있다.
+  - 식단 학습에서는 포화지방, 지방 섭취 균형, 탄수화물 과다, 음주, 체중 관리와 연결해 이해한다.
+- 연결되는 기존 조사 자료:
+  - `8.5 고령자의 만성질환과 영양소 섭취 관계 연구`
+- 사용하면 안 되는 방식:
+  - 지질 수치나 심혈관질환 위험도를 앱이 진단하는 근거로 쓰지 않는다.
+
+#### 뇌졸중
+
+- 출처: 질병관리청 국가건강정보포털, 뇌졸중: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5495>
+- 등급: A-2. 공식 건강정보
+- 팀 학습 자료에서 사용할 내용:
+  - 뇌졸중은 뇌혈관이 막히거나 터져 뇌 영역이 손상되고 신경학적 증상이 나타나는 질환이다.
+  - 고혈압, 당뇨병, 비만, 음주, 흡연 등 위험요인 관리가 중요하다.
+  - 식단 학습에서는 직접 식단 처방이 아니라 위험요인 관리의 넓은 맥락으로 연결한다.
+- 연결되는 기존 조사 자료:
+  - `8.5 고령자의 만성질환과 영양소 섭취 관계 연구`
+- 사용하면 안 되는 방식:
+  - 뇌졸중 예방·재발 방지 효과를 식단 분석 결과로 보장하지 않는다.
+
+#### 골다공증
+
+- 출처: 질병관리청 국가건강정보포털, 골다공증: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5833>
+- 등급: A-2. 공식 건강정보
+- 팀 학습 자료에서 사용할 내용:
+  - 골다공증은 뼈 강도가 약해져 쉽게 부러질 수 있는 질환이다.
+  - 고령자와 폐경 이후 여성에게 특히 중요하게 다룰 수 있다.
+  - 식단 학습에서는 칼슘, 비타민 D, 단백질, 신체활동과 연결해 이해한다.
+- 연결되는 기존 조사 자료:
+  - `8.5 고령자의 만성질환과 영양소 섭취 관계 연구`
+- 사용하면 안 되는 방식:
+  - 골다공증을 진단하거나 특정 식단·영양제가 골절을 예방한다고 단정하지 않는다.
+
+#### 빈혈
+
+- 출처: 질병관리청 국가건강정보포털, 빈혈: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=1104>
+- 등급: A-2. 공식 건강정보
+- 팀 학습 자료에서 사용할 내용:
+  - 빈혈은 적혈구와 혈색소, 산소 운반 기능과 관련해 이해할 수 있다.
+  - 혈색소와 적혈구 생성에는 음식에서 얻는 철분, 단백질, 비타민 등이 필요하다.
+  - 식단 학습에서는 철, 단백질, 비타민 섭취 상태를 확인하는 맥락으로 연결한다.
+- 연결되는 기존 조사 자료:
+  - `8.6 한국 노인의 영양성 빈혈 유병 여부에 따른 영양소 섭취 상태와 만성질환 관련성 연구`
+- 사용하면 안 되는 방식:
+  - 앱 화면에서 "빈혈입니다" 또는 "빈혈 위험입니다"처럼 판정하지 않는다.
+
+#### 심혈관대사질환
+
+- 출처: `8.2 Precision nutrition for cardiometabolic diseases`
+- 등급: C. 배경 근거
+- 팀 학습 자료에서 사용할 내용:
+  - 심혈관질환과 대사질환을 함께 보는 넓은 맥락으로 사용한다.
+  - 개인별 식이 반응 차이와 정밀영양 필요성을 설명하는 배경으로 쓴다.
+- 사용하면 안 되는 방식:
+  - 개별 질환 정의나 질환별 식단 처방 기준처럼 쓰지 않는다.
 
 ## 9. Lemon Aid 문서에 반영할 위치
 
@@ -352,13 +450,29 @@ MVP에서 하지 않는 것:
 | `06-ai-agents.md` | LLM은 판단자가 아니라 구조화·설명 보조자라는 원칙 |
 | `07-algorithms.md` | 공식 기준, 논문 근거, 프로젝트 가정, 멘토 확인 필요 구분 |
 | `08-compliance-safety.md` | 진단·치료 표현 금지, 참고·관리 중심 표현 근거 |
+| 팀 도메인 학습 문서 | 질환 종류와 정의, 만성질환자 영양·식단 기초, 자료별 학습 포인트 |
 | 멘토용 요약 기획서 | 조사 자료 요약, 멘토 질문, MVP 범위 결정 근거 |
 
-## 10. 후속 분석 체크리스트
+## 10. 팀 도메인 학습 문서 근거 매핑
+
+| 학습 내용 | 사용할 근거 |
+|-----------|-------------|
+| 질환 종류와 기본 정의 | `8.13 질환 기본 정의 출처: 질병관리청 국가건강정보포털` |
+| 고령자와 만성질환자의 영양소 섭취 관계 | `8.5 고령자의 만성질환과 영양소 섭취 관계 연구`, `8.6 한국 노인의 영양성 빈혈 유병 여부에 따른 영양소 섭취 상태와 만성질환 관련성 연구` |
+| 심혈관대사질환과 개인화 영양 필요성 | `8.2 Precision nutrition for cardiometabolic diseases` |
+| 균형식단, 식품군, 한식 식단 구성 | `8.3 빅데이터 기반 건강 식단 추천 시스템 연구`, `8.4 체중조절 개인 맞춤형 균형식단 추천 방법 및 장치`, `8.10 빅데이터기반건강식단추천시스템연구.pdf` |
+| 식단 관리 지표 | `8.3 빅데이터 기반 건강 식단 추천 시스템 연구`, `8.10 빅데이터기반건강식단추천시스템연구.pdf` |
+| AI/OCR 입력과 사용자 확인 흐름 | `8.7 인공지능 기반의 식단과 운동 코칭 기획 모델 모바일 애플리케이션 UI/UX디자인 연구`, `8.12 내부 기준 문서` |
+
+주의: 팀 도메인 학습 문서는 내부 이해를 위한 자료다. 질환 정의와 영양·식단 지식을 사용자 화면에 직접 노출하려면 별도 표현 검수와 `08-compliance-safety.md` 기준 확인이 필요하다.
+
+## 11. 후속 분석 체크리스트
 
 - [ ] 모든 자료를 A/B/C/D 등급 중 하나로 분류한다.
 - [ ] 각 자료의 "사용하면 안 되는 방식"을 유지한다.
 - [ ] 각 PDF 첫 페이지에서 제목, 저자, 발행처, 발행연도 확인
+- [ ] 팀 도메인 학습 문서의 질환 정의가 `8.13` 출처와 연결되는지 확인
+- [ ] 팀 도메인 학습 문서의 식품군·식단 지표가 `8.3`, `8.4`, `8.10` 출처와 연결되는지 확인
 - [ ] `빅데이터기반건강식단추천시스템연구.pdf`에서 알고리즘 입력/출력 구조 추출
 - [ ] `인공지능 기반의 식단과 운동 코칭 기획 모델.pdf`에서 UI/UX 평가 항목 추출
 - [ ] KoreaScience 자료의 제목·저자·초록 확인
@@ -367,7 +481,7 @@ MVP에서 하지 않는 것:
 - [ ] 멘토용 기획서에는 조사 자료를 1쪽 표로 압축
 - [ ] `08-compliance-safety.md` 기준으로 사용자 노출 문구를 점검
 
-## 11. 최종 출처 목록
+## 12. 최종 출처 목록
 
 - 서울대학교 보건영양연구실: <https://sites.google.com/view/snuphn/home>
 - PubMed, Precision nutrition for cardiometabolic diseases: <https://pubmed.ncbi.nlm.nih.gov/40307513/>
@@ -381,3 +495,10 @@ MVP에서 하지 않는 것:
 - ScienceON, DIKO0016085589: <https://scienceon.kisti.re.kr/srch/selectPORSrchArticle.do?cn=DIKO0016085589>
 - Google Books, 인공지능 기반의 식단과 운동 코칭 기획 모델: <https://books.google.com/books/about/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5_%EA%B8%B0%EB%B0%98%EC%9D%98_%EC%8B%9D%EB%8B%A8%EA%B3%BC_%EC%9A%B4%EB%8F%99.html?id=sbClzwEACAAJ>
 - 국회도서관, 인공지능 기반의 식단과 운동 코칭 기획 모델: <https://dl.nanet.go.kr/detail/KDMT12021000034845>
+- 질병관리청 국가건강정보포털, 고혈압의 진단: <https://health.kdca.go.kr/healthinfo/biz/health/ntcnInfo/healthSourc/thtimtCntnts/thtimtCntntsView.do?thtimt_cntnts_sn=28>
+- 질병관리청 국가건강정보포털, 노인 고혈압: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=6698>
+- 질병관리청 국가건강정보포털, 당뇨병: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5305>
+- 질병관리청 국가건강정보포털, 이상지질혈증: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=6054>
+- 질병관리청 국가건강정보포털, 뇌졸중: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5495>
+- 질병관리청 국가건강정보포털, 골다공증: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5833>
+- 질병관리청 국가건강정보포털, 빈혈: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=1104>

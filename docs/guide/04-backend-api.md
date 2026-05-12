@@ -30,7 +30,7 @@ backend/src/
 ├─ prediction/          # 체중 예측 보정·시계열 분석
 ├─ activity/            # 걸음수·심박 → 활동점수 산출
 ├─ supplements/         # 영양제 파서 + 식약처 DB 매처
-├─ agents/              # 4개 Agent + 오케스트레이터 + agent_runs 로깅 + memory.py
+├─ agents/              # 개인화·평가·챗봇 3개 Agent + 오케스트레이터 + agent_runs 로깅 + memory.py
 ├─ services/            # email.py(메일 발송), storage.py(이미지 저장)
 ├─ api/                 # FastAPI 라우터
 ├─ models/              # SQLAlchemy ORM
@@ -73,7 +73,7 @@ backend/src/
 flowchart TD
     R[FastAPI 라우터] --> J[JWT 검증]
     J --> O[Agent 오케스트레이터]
-    O --> AN[분석 Agent<br/>OCR + LLM]
+    O --> AN[분석 알고리즘<br/>OCR + 라벨링]
     O --> PE[개인화 Agent<br/>DB 조회]
     AN --> AL[알고리즘 모듈<br/>v4 / 7-step / KDRIs]
     PE --> AL
@@ -118,7 +118,7 @@ flowchart TD
 
 | API | 용도 | 비고 |
 |-----|------|------|
-| Anthropic Claude API | 4개 Agent 추론 | 주력 LLM, 모델 ID는 환경변수 |
+| Anthropic Claude API | 3개 Agent 추론 + 분석 구조화 보조 | 주력 LLM, 모델 ID는 환경변수 |
 | Google Cloud Vision API | 영양제·음식 OCR | 첫 1,000건/월 무료 |
 | Naver CLOVA OCR (백업) | 한국어 라벨 폴백 | Adapter 패턴 |
 | OpenAI API (백업) | LLM 폴백 | Claude 장애 대비 |
