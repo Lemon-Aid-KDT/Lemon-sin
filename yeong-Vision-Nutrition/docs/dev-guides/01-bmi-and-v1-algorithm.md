@@ -32,7 +32,17 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §3.1, §3.2](../07-core-algorithm.md)
+> 🔍 **출처**: [docs/07-core-algorithm.md §3.1, §3.2](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md)
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| BMI 분류 | A | WHO Expert Consultation의 아시아 BMI action point를 근거로 한국·아시아 기준을 유지한다. |
+| 8,000보 기준 | B | Paluch et al. 2022의 step count 메타분석과 Lee et al. 2019의 older women cohort 결과를 참고해 기본 목표로 유지한다. |
+| 성별·나이·BMI 계수 | C | 논문에서 직접 제시된 값이 아니므로 프로젝트 휴리스틱으로 표시하고 설정값으로 분리한다. |
+
+> 사용자 화면에서는 BMI와 활동점수를 건강 상태의 참고 지표로만 설명한다. 질병 진단, 치료 효과, 감량 보장 표현은 사용하지 않는다.
 
 ### BMI 분류 (한국·아시아 기준)
 

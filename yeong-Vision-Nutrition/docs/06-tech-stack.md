@@ -7,7 +7,7 @@
 
 ## 📋 한 줄 요약
 
-> **Flutter (모바일) + FastAPI (백엔드) + Google Cloud Vision (OCR) + Claude API (LLM) + PostgreSQL/TimescaleDB (DB)** 의 5개 핵심 스택을 중심으로, 학생 팀이 10주 안에 양대 스토어 배포 가능한 의료 헬스케어 앱을 구현할 수 있도록 설계된 하이브리드 아키텍처.
+> **Flutter (모바일) + FastAPI (백엔드) + Google Cloud Vision (OCR) + Ollama 로컬 LLM + PostgreSQL/TimescaleDB (DB)** 의 5개 핵심 스택을 중심으로, 환자 개인정보를 외부 LLM으로 보내지 않는 의료 헬스케어 앱을 구현할 수 있도록 설계된 하이브리드 아키텍처.
 
 ---
 
@@ -60,8 +60,8 @@
         │                  │                  │
         ▼                  ▼                  ▼
 ┌──────────────┐  ┌────────────────┐  ┌────────────────┐
-│ 🗄️ PostgreSQL │  │ 🌐 Google Cloud │  │ 🤖 Claude API  │
-│ + TimescaleDB │  │   Vision API    │  │   (Anthropic)   │
+│ 🗄️ PostgreSQL │  │ 🌐 Google Cloud │  │ 🤖 Ollama Local│
+│ + TimescaleDB │  │   Vision API    │  │   (localhost)   │
 │ + Redis       │  │   (OCR 텍스트   │  │   (텍스트→JSON │
 │              │  │   추출)         │  │   구조화)       │
 └──────────────┘  └────────────────┘  └────────────────┘
@@ -81,10 +81,10 @@
 
 | 원칙 | 의미 |
 |------|------|
-| **클라우드 우선** | OCR·LLM은 자체 호스팅하지 않고 API 활용 → 학생 팀 부담 ↓ |
+| **로컬 LLM 우선** | 환자 개인정보·민감 건강정보가 LLM 처리 과정에서 외부로 나가지 않도록 Ollama를 기본값으로 둔다 |
 | **온디바이스 헬스 데이터** | 걸음수·심박수는 HealthKit/Health Connect로 직접 수집 → 백엔드 부하 ↓ |
 | **백엔드 중심 비즈니스 로직** | 알고리즘은 모두 Python → 단위 테스트·디버깅 용이 |
-| **API 키 보호** | 모바일에서 외부 API 직접 호출 금지 → 모든 외부 호출은 백엔드 경유 |
+| **API 키·로컬 모델 보호** | 모바일에서 외부 API 직접 호출 금지, LLM 호출은 백엔드의 Adapter 경유 |
 | **수평 확장 가능 구조** | Stateless FastAPI + DB/Redis 분리 → 사용자 증가 시 수평 확장 |
 
 ---
@@ -98,7 +98,7 @@
 | **모바일** | Flutter | 3.24+ (stable) | iOS + Android 동시 배포 |
 | **백엔드** | FastAPI (Python 3.11+) | 0.110+ | REST API 서버 |
 | **OCR** | Google Cloud Vision API | v1 | 영양제 라벨 텍스트 추출 |
-| **LLM** | Claude API (Anthropic) | claude-sonnet-4-6 | 텍스트 → 영양 성분 JSON 구조화 |
+| **LLM** | Ollama Local API | qwen3.5 / gemma4 | 텍스트 → 영양 성분 JSON 구조화 |
 | **DB** | PostgreSQL + TimescaleDB | PG 16 / TS 2.x | 관계형 + 시계열 통합 |
 
 ### 2.2 부가 스택
@@ -126,8 +126,9 @@ asyncpg>=0.29
 alembic>=1.13              # DB 마이그레이션
 redis>=5.0
 httpx>=0.27                # 외부 API 호출
+PyJWT[crypto]>=2.10        # OAuth/OIDC access token 검증
 google-cloud-vision>=3.7
-anthropic>=0.25            # Claude API
+ollama>=0.6.0              # Ollama Local API
 pillow>=10.2               # 이미지 처리
 python-multipart>=0.0.9    # 파일 업로드
 pytest>=8.0
@@ -211,7 +212,7 @@ dev_dependencies:
 #### 선택 근거
 1. **팀이 Python에 익숙** — 학습 비용 0
 2. **FastAPI = Type Hint 기반 자동 문서화** — Pydantic 스키마 → Swagger UI 자동 생성
-3. **비동기 (async/await)** — OCR/LLM API 호출은 I/O 바운드라 비동기가 큰 이점
+3. **비동기 (async/await)** — OCR API와 로컬 Ollama 호출은 I/O 바운드라 비동기가 큰 이점
 4. **AI/ML 라이브러리 풍부** — pandas, numpy, scikit-learn 등 즉시 활용
 5. **알고리즘 검증 용이** — pytest + 단위 테스트 자연스러움
 
@@ -303,21 +304,23 @@ dev_dependencies:
 - **백업**: Naver CLOVA OCR (Cloud Vision 정확도 부족 시 폴백)
 - **자체 호스팅 옵션**: PaddleOCR (장기적 비용 절감 시)
 
-### 3.6 LLM — **Claude API (Anthropic)**
+### 3.6 LLM — **Ollama 로컬 LLM**
 
 #### 선택 근거
-1. **OCR 텍스트 → 구조화 JSON 변환에 강점** — 라벨 비정형 텍스트를 깔끔한 JSON 스키마로
-2. **한국어 처리 능력 우수**
-3. **긴 컨텍스트** — 200K 토큰까지 (영양제 라벨 + 한국어 영양소 매핑 동시 처리 가능)
-4. **Tool Use (Function Calling)** — Pydantic 스키마와 통합 용이
-5. **JSON Mode** — 응답 포맷 강제 가능
+1. **환자 개인정보 보호** — OCR 텍스트와 건강 관련 문장이 외부 LLM 서버로 전송되지 않음
+2. **로컬 API 단순성** — Ollama 설치 후 기본 API가 `http://localhost:11434/api`에서 제공됨
+3. **구조화 출력 지원** — `format`에 JSON 또는 JSON Schema를 전달해 Pydantic 검증과 연결 가능
+4. **모델 교체 용이** — `qwen3.5`, `gemma4`, 향후 `qwen3.6` 등 모델 태그만 교체
+5. **MacBook Pro M4 Pro 24GB 활용** — Apple Silicon에서 Metal GPU 가속을 활용할 수 있음
 
 #### 사용 예시 (의사 코드)
 
 ```python
-import anthropic
+from ollama import AsyncClient
 
-client = anthropic.Anthropic()
+from src.llm.schemas import ParsedSupplement
+
+client = AsyncClient(host="http://127.0.0.1:11434")
 
 # OCR 결과 텍스트
 ocr_text = """
@@ -327,38 +330,33 @@ Vitamin D3  25 mcg (1000 IU)  125% DV
 ...
 """
 
-response = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=1024,
+response = await client.chat(
+    model="qwen3.5:9b",
+    format=ParsedSupplement.model_json_schema(),
+    stream=False,
     messages=[{
         "role": "user",
-        "content": f"""Extract supplement facts from the following OCR text. 
-        Return JSON with schema:
-        {{
-          "supplements": [
-            {{"name": str, "amount": float, "unit": str, "daily_value_pct": float}}
-          ]
-        }}
-        
-        OCR text:
-        {ocr_text}
-        """
-    }]
+        "content": f"다음 OCR 텍스트를 영양 성분 JSON으로만 구조화하세요.\n\n{ocr_text}",
+    }],
+    options={"temperature": 0},
 )
 ```
 
 #### 대안 비교
 
-| 옵션 | 한국어 | 가격 | JSON 응답 | 결론 |
-|------|-------|------|----------|------|
-| **Claude (Anthropic)** ⭐ | 우수 | 적정 | ✅ Tool Use | ✅ 채택 |
-| GPT (OpenAI) | 우수 | 비슷 | ✅ Function Calling | 🔄 백업 |
-| Gemini (Google) | 우수 | 저렴 | ✅ JSON Mode | △ |
-| Qwen / LLaMA (오픈소스) | △ | 무료 (자체 호스팅) | △ | ❌ (인프라 부담) |
+| 옵션 | 개인정보 보호 | 로컬 실행 | JSON 응답 | 결론 |
+|------|---------------|-----------|----------|------|
+| **Ollama + Qwen 3.5** ⭐ | 높음 | 가능 | JSON Schema | ✅ 기본 |
+| **Ollama + Gemma 4** | 높음 | 가능 | JSON Schema | ✅ 대안 |
+| Ollama + Qwen 3.6 | 높음 | 24GB 장비에서는 모델 크기별 검증 필요 | JSON Schema | △ 향후 |
+| DeepSeek V4 Pro `:cloud` | 낮음 | 클라우드 | 지원 가능 | ❌ 식별 가능 환자 데이터 금지 |
+| Claude/OpenAI API | 낮음 | 외부 API | Tool/Function Calling | ❌ 기본 경로 제외 |
 
 #### 권고
-- **주력**: Claude (이번 프로젝트 작성에도 사용된 모델 — 한국어·구조화 모두 검증)
-- **백업**: GPT (Claude API 다운 시 자동 폴백)
+- **주력**: `qwen3.5:9b` 또는 `qwen3.5:latest`를 먼저 검증
+- **대안**: `gemma4:e4b` 또는 `gemma4:latest`를 같은 테스트셋으로 비교
+- **성능 실험**: `qwen3.5:27b`, `gemma4:26b`는 MacBook Pro M4 Pro 24GB에서 응답 시간·메모리 사용량 측정 후 제한 적용
+- **보류**: `deepseek-v4-pro:cloud`는 클라우드 모델이므로 민감정보 처리에 사용하지 않음
 
 ### 3.7 헬스 데이터 — **health 패키지 (Flutter)**
 
@@ -436,7 +434,7 @@ volumes:
 ### 4.1 시퀀스 다이어그램
 
 ```
-[사용자]    [Flutter App]    [FastAPI]    [Cloud Vision]    [Claude API]    [PostgreSQL]    [Redis]
+[사용자]    [Flutter App]    [FastAPI]    [Cloud Vision]    [Ollama Local]  [PostgreSQL]    [Redis]
    │             │              │              │                 │               │             │
    │ 사진 촬영   │              │              │                 │               │             │
    ├────────────►│              │              │                 │               │             │
@@ -484,7 +482,7 @@ volumes:
 | 3. 백엔드 업로드 | HTTPS multipart/form-data | 200~500ms |
 | 4. 이미지 해시 + 캐시 조회 | SHA-256 해시 → Redis 조회 | < 10ms |
 | 5. OCR (캐시 미스 시) | Google Cloud Vision DOCUMENT_TEXT_DETECTION | 800~1500ms |
-| 6. LLM 구조화 | Claude API (sonnet 모델) | 1000~3000ms |
+| 6. LLM 구조화 | Ollama 로컬 모델 (`qwen3.5`/`gemma4`) | 장비·모델별 측정 필요 |
 | 7. 식약처 DB 매칭 | PostgreSQL 풀텍스트 검색 | 50~200ms |
 | 8. 결과 저장·캐시 | PostgreSQL INSERT + Redis SET | < 50ms |
 | 9. 응답 반환 | JSON 직렬화 → HTTPS | 100~300ms |
@@ -500,21 +498,21 @@ volumes:
 | 항목 | 사용량 | 단가 | 월 비용 (USD) |
 |------|--------|------|------------|
 | **Google Cloud Vision API** | 1,500건/월 (100건 무료 차감) | $1.5/1k | **약 $0.75** |
-| **Claude API** | 5,000회 호출 (입력 1k + 출력 200 토큰) | sonnet 가격 | **약 $15~25** |
+| **Ollama 로컬 LLM** | 5,000회 호출 | MacBook 로컬 실행 | **$0** (전기·장비 비용 제외) |
 | **NCP 백엔드** | 1 vCPU, 2GB RAM 인스턴스 | 학생 크레딧 활용 | **$0** (크레딧 사용 시) |
 | **NCP DB Manager** | PostgreSQL 1GB | 학생 크레딧 | **$0** |
 | **NCP Object Storage** | 10GB 사진 저장 | $0.02/GB | **약 $0.20** |
 | **도메인** (선택) | .com 1년 | $12/년 | **약 $1** |
-| **합계** | | | **약 $17~27/월** |
+| **합계** | | | **약 $2~3/월** |
 
 ### 5.2 정식 출시 시 (월 1만 활성 사용자 가정)
 
 | 항목 | 월 비용 (USD) |
 |------|------------|
 | Cloud Vision API | $50~150 |
-| Claude API | $300~800 |
+| Ollama 로컬/사내 LLM 서버 | 장비·운영 방식에 따라 산정 |
 | 인프라 (NCP) | $200~500 |
-| 합계 | **약 $550~1,450/월 (≈ 70~190만원)** |
+| 합계 | **외부 LLM 비용 제외, 서버 운영비 별도 산정** |
 
 > 💡 **비용 절감 전략**:
 > 1. OCR 결과 캐싱 (동일 영양제 = 동일 결과) → API 호출 50%+ 절감
@@ -528,15 +526,15 @@ volumes:
 
 10주 학생 팀 + 발표 + 양대 스토어 배포라는 제약 조건에서 각 후보를 평가:
 
-| 평가 기준 (가중치) | Flutter | FastAPI | PostgreSQL | Cloud Vision | Claude | 합계 |
+| 평가 기준 (가중치) | Flutter | FastAPI | PostgreSQL | Cloud Vision | Ollama | 합계 |
 |-------------------|:-------:|:-------:|:----------:|:------------:|:------:|:----:|
 | **학습 곡선** (25%) | 8/10 | 9/10 | 8/10 | 9/10 | 9/10 | 8.6 |
 | **개발 속도** (20%) | 9/10 | 9/10 | 8/10 | 10/10 | 9/10 | 9.0 |
-| **비용 효율** (15%) | 10/10 | 10/10 | 10/10 | 8/10 | 7/10 | 9.0 |
+| **비용 효율** (15%) | 10/10 | 10/10 | 10/10 | 8/10 | 10/10 | 9.5 |
 | **확장성** (15%) | 8/10 | 9/10 | 10/10 | 9/10 | 9/10 | 9.0 |
 | **커뮤니티·문서** (10%) | 9/10 | 9/10 | 10/10 | 10/10 | 9/10 | 9.4 |
 | **유지보수성** (10%) | 8/10 | 9/10 | 10/10 | 10/10 | 9/10 | 9.2 |
-| **발표 어필** (5%) | 9/10 | 8/10 | 7/10 | 9/10 | 10/10 | 8.6 |
+| **발표 어필** (5%) | 9/10 | 8/10 | 7/10 | 9/10 | 9/10 | 8.4 |
 | **종합** | **8.7** | **9.0** | **8.9** | **9.2** | **8.8** | **8.9/10** |
 
 > 💡 모든 영역에서 평균 8.5 이상 — **균형 잡힌 스택**임이 정량적으로 검증됨.
@@ -560,10 +558,12 @@ volumes:
 - 공식 빠른 시작: https://cloud.google.com/vision/docs/quickstart-client-libraries
 - 한국어 강의: 인프런 *"GCP Vision API 활용"*
 
-### Claude API
-- 공식 문서: https://docs.claude.com/
-- Tool Use 가이드: https://docs.claude.com/en/docs/build-with-claude/tool-use
-- 프롬프트 엔지니어링: https://docs.claude.com/en/docs/build-with-claude/prompt-engineering/overview
+### Ollama
+- API Introduction: https://docs.ollama.com/api/introduction
+- Chat API: https://docs.ollama.com/api/chat
+- Structured Outputs: https://docs.ollama.com/capabilities/structured-outputs
+- Python Library: https://github.com/ollama/ollama-python
+- macOS requirements: https://docs.ollama.com/macos
 
 ### PostgreSQL + TimescaleDB
 - TimescaleDB 5분 시작: https://docs.tigerdata.com/getting-started/latest/
@@ -605,9 +605,9 @@ volumes:
 | FastAPI → Django | 알고리즘 코드는 재사용 가능, 라우터·미들웨어만 |
 | PostgreSQL → MySQL | SQL 미세 조정 (대부분 호환) |
 | Cloud Vision → CLOVA | OCR 호출 부분만 교체 (인터페이스 추상화로 쉽게) |
-| Claude → GPT | API 클라이언트만 교체 (프롬프트는 동일) |
+| Ollama 모델 교체 | `OLLAMA_MODEL` 설정만 교체하되, 테스트셋 기준 품질·속도 재측정 |
 
-> 💡 **설계 원칙**: 외부 API(OCR·LLM)는 **Adapter 패턴**으로 추상화 → 향후 교체 비용 ↓.
+> 💡 **설계 원칙**: OCR·LLM은 **Adapter 패턴**으로 추상화한다. LLM은 Ollama 로컬을 기본값으로 두고, 외부 LLM은 비식별·승인 환경에서만 선택적으로 연결한다.
 
 ```python
 # 예시: OCR Adapter 패턴

@@ -1,4 +1,4 @@
-# dev-guides/08 — LLM 영양제 파싱 (Claude + GPT 백업)
+# dev-guides/08 — LLM 영양제 파싱 (Ollama 로컬 LLM)
 
 > **Phase**: 2 | **선행 작업**: [`07-ocr-pipeline.md`](./07-ocr-pipeline.md) | **예상 소요**: 4~5시간
 
@@ -6,7 +6,7 @@
 
 ## 🎯 작업 목표
 
-OCR로 추출된 영양제 라벨 텍스트를 **Claude API의 Tool Use** 로 구조화된 영양소 정보(JSON)로 변환한다. 식약처 건기식 DB와 매칭하여 표준 영양소 코드로 정규화. OpenAI GPT를 백업으로 동일 인터페이스 제공.
+OCR로 추출된 영양제 라벨 텍스트를 **Ollama 로컬 LLM의 Structured Outputs(JSON Schema)** 로 구조화된 영양소 정보(JSON)로 변환한다. 환자 개인정보와 민감 건강정보 보호를 위해 Claude/OpenAI 같은 외부 LLM은 기본 경로에서 제외하고, 비식별 테스트 또는 승인된 환경에서만 선택 Adapter로 둔다.
 
 ---
 
@@ -18,20 +18,20 @@ backend/
 │   ├── llm/
 │   │   ├── __init__.py
 │   │   ├── base.py                # LLMAdapter ABC + DTO
-│   │   ├── claude.py              # Claude (Tool Use, 주력)
-│   │   ├── openai.py              # GPT (백업)
+│   │   ├── ollama.py              # Ollama Local API (주력)
+│   │   ├── external.py            # 선택: 비식별 테스트용 외부 LLM Adapter
 │   │   ├── prompts.py             # 시스템 프롬프트 (의료법 가이드 포함)
-│   │   ├── schemas.py             # Tool Use 입력 스키마
+│   │   ├── schemas.py             # Pydantic JSON Schema
 │   │   └── exceptions.py          # LLMError 등
 │   └── nutrition/
 │       └── mfds_matcher.py        # 식약처 DB 매칭
 └── tests/
     ├── unit/llm/
-    │   ├── test_claude.py         # 모킹
-    │   ├── test_openai.py         # 모킹
+    │   ├── test_ollama.py         # 모킹
+    │   ├── test_external_llm_disabled.py
     │   └── test_mfds_matcher.py
     ├── integration/llm/
-    │   └── test_real_claude.py    # 실제 API (skip if no key)
+    │   └── test_real_ollama.py    # 로컬 Ollama (skip if server unavailable)
     └── e2e/
         └── test_supplement_parse_e2e.py
 ```
@@ -40,49 +40,55 @@ backend/
 
 ## 📐 설계 명세
 
+> 🔍 **출처**: [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md), Ollama 공식 Structured Outputs / Chat API 문서.
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| Ollama Structured Outputs | A | Ollama 공식 문서의 `format` JSON Schema 방식을 사용하고 Pydantic으로 응답을 재검증한다. |
+| 영양제 라벨 파싱 | C | OCR/LLM 결과는 추출 보조값이다. 식약처 DB 매칭과 사용자 확인 전에는 섭취량 확정값으로 쓰지 않는다. |
+| 외부 LLM | 정책 제한 | 환자 개인정보와 민감 건강정보 보호를 위해 기본 경로에서는 비활성화한다. |
+
 ### 파싱 파이프라인
 
 ```
 OCR 텍스트 → LLMAdapter.parse_supplement(text) → ParsedSupplement
                                                         │
                                                         ▼
-                                          MfdsMatcher.match() → NutrientIntake[]
+                                          MfdsMatcher.match() → 사용자 확인 → NutrientIntake[]
 ```
 
-### Tool Use 스키마
+### Structured Outputs JSON Schema
 
 ```json
 {
-  "name": "extract_supplement_facts",
-  "description": "영양제 라벨에서 성분 정보를 구조화하여 추출",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "product_name": { "type": "string" },
-      "manufacturer": { "type": "string" },
-      "serving_size": {
-        "type": "object",
-        "properties": {
-          "amount": { "type": "number" },
-          "unit": { "type": "string", "enum": ["tablet", "capsule", "ml", "g"] }
-        }
-      },
-      "ingredients": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "name_ko": { "type": "string" },
-            "name_en": { "type": "string" },
-            "amount": { "type": "number" },
-            "unit": { "type": "string" }
-          },
-          "required": ["name_ko", "amount", "unit"]
-        }
+  "type": "object",
+  "properties": {
+    "product_name": { "type": "string" },
+    "manufacturer": { "type": "string" },
+    "serving_size": {
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "unit": { "type": "string", "enum": ["tablet", "capsule", "ml", "g"] }
       }
     },
-    "required": ["ingredients"]
-  }
+    "ingredients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name_ko": { "type": "string" },
+          "name_en": { "type": "string" },
+          "amount": { "type": "number" },
+          "unit": { "type": "string" }
+        },
+        "required": ["name_ko", "amount", "unit"]
+      }
+    }
+  },
+  "required": ["ingredients"]
 }
 ```
 
@@ -111,7 +117,7 @@ class LLMApiError(LLMError):
 
 
 class LLMParseError(LLMError):
-    """LLM 응답 파싱 실패 (Tool Use 누락 등)."""
+    """LLM 응답 파싱 실패 (JSON 형식 오류, 스키마 불일치 등)."""
 
 
 class LLMRefusalError(LLMError):
@@ -121,7 +127,7 @@ class LLMRefusalError(LLMError):
 ### 2. `src/llm/schemas.py`
 
 ```python
-"""LLM Tool Use 입출력 스키마."""
+"""LLM 구조화 출력 입출력 스키마."""
 
 from __future__ import annotations
 
@@ -174,7 +180,7 @@ class ParsedSupplement(BaseModel):
     serving_size: ParsedServingSize | None = None
     ingredients: list[ParsedIngredient]
     raw_text: str = ""
-    engine: str
+    engine: str = ""
 ```
 
 ### 3. `src/llm/prompts.py`
@@ -215,53 +221,9 @@ SUPPLEMENT_PARSING_SYSTEM: Final[str] = """\
 - 의약품으로 표현 (영양제는 식품)
 
 ## 응답 형식
-반드시 `extract_supplement_facts` 도구를 호출하세요.
-도구 호출 외의 텍스트는 포함하지 마세요.
+반드시 JSON Schema에 맞는 JSON만 반환하세요.
+설명 문장, 마크다운 코드블록, 진단·처방 표현은 포함하지 마세요.
 """
-
-
-SUPPLEMENT_TOOL_SCHEMA: Final[dict] = {
-    "name": "extract_supplement_facts",
-    "description": "영양제 라벨에서 성분 정보를 구조화하여 추출",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "product_name": {
-                "type": "string",
-                "description": "제품명 (라벨에 표시된 그대로)",
-            },
-            "manufacturer": {
-                "type": "string",
-                "description": "제조사 (있으면)",
-            },
-            "serving_size": {
-                "type": "object",
-                "properties": {
-                    "amount": {"type": "number"},
-                    "unit": {
-                        "type": "string",
-                        "enum": ["tablet", "capsule", "ml", "g"],
-                    },
-                },
-                "required": ["amount", "unit"],
-            },
-            "ingredients": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name_ko": {"type": "string"},
-                        "name_en": {"type": "string"},
-                        "amount": {"type": "number"},
-                        "unit": {"type": "string"},
-                    },
-                    "required": ["name_ko", "amount", "unit"],
-                },
-            },
-        },
-        "required": ["ingredients"],
-    },
-}
 ```
 
 ### 4. `src/llm/base.py`
@@ -280,7 +242,7 @@ class LLMAdapter(ABC):
     """LLM 엔진의 추상 인터페이스.
 
     Examples:
-        >>> llm: LLMAdapter = ClaudeAdapter(api_key="...")
+        >>> llm: LLMAdapter = OllamaAdapter(model="qwen3.5:9b")
         >>> parsed = await llm.parse_supplement("OCR 텍스트")
     """
 
@@ -308,214 +270,144 @@ class LLMAdapter(ABC):
         ...
 ```
 
-### 5. `src/llm/claude.py`
+### 5. `src/llm/ollama.py`
 
 ```python
-"""Anthropic Claude API 기반 LLM Adapter (주력)."""
+"""Ollama Local API 기반 LLM Adapter."""
 
 from __future__ import annotations
 
-import logging
-from typing import Any, Final
-
-from anthropic import AsyncAnthropic
-from anthropic.types import Message
-from pydantic import ValidationError
-
-from src.llm.base import LLMAdapter
-from src.llm.exceptions import LLMApiError, LLMParseError, LLMRefusalError
-from src.llm.prompts import SUPPLEMENT_PARSING_SYSTEM, SUPPLEMENT_TOOL_SCHEMA
-from src.llm.schemas import ParsedSupplement
-
-
-logger = logging.getLogger(__name__)
-
-
-DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
-MAX_TOKENS: Final[int] = 2048
-TIMEOUT_SEC: Final[float] = 30.0
-
-
-class ClaudeAdapter(LLMAdapter):
-    """Claude API 기반 LLM Adapter.
-
-    Tool Use 모드를 사용하여 구조화된 출력을 강제한다.
-
-    Reference:
-        docs/09-data-catalog.md §5.3
-    """
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = DEFAULT_MODEL,
-        client: AsyncAnthropic | None = None,
-    ) -> None:
-        """Adapter 초기화.
-
-        Args:
-            api_key: Anthropic API 키.
-            model: 사용할 모델 (기본: claude-sonnet-4-6).
-            client: 의존성 주입용 (테스트 모킹).
-        """
-        self._client = client or AsyncAnthropic(api_key=api_key)
-        self._model = model
-
-    @property
-    def engine_name(self) -> str:
-        return f"claude:{self._model}"
-
-    async def parse_supplement(self, ocr_text: str) -> ParsedSupplement:
-        """Tool Use로 구조화된 영양제 정보 추출."""
-        try:
-            response: Message = await self._client.messages.create(
-                model=self._model,
-                max_tokens=MAX_TOKENS,
-                system=SUPPLEMENT_PARSING_SYSTEM,
-                tools=[SUPPLEMENT_TOOL_SCHEMA],
-                tool_choice={"type": "tool", "name": "extract_supplement_facts"},
-                messages=[{"role": "user", "content": f"OCR 텍스트:\n\n{ocr_text}"}],
-                timeout=TIMEOUT_SEC,
-            )
-        except Exception as e:
-            raise LLMApiError(self.engine_name, str(e)) from e
-
-        if response.stop_reason == "refusal":
-            raise LLMRefusalError(f"Claude refused: {response.content}")
-
-        # Tool Use 블록 추출
-        tool_use_block = next(
-            (b for b in response.content if b.type == "tool_use"),
-            None,
-        )
-        if tool_use_block is None:
-            raise LLMParseError(
-                f"No tool_use in response. Stop reason: {response.stop_reason}"
-            )
-
-        tool_input: dict[str, Any] = tool_use_block.input  # type: ignore[assignment]
-        try:
-            parsed = ParsedSupplement(
-                product_name=tool_input.get("product_name"),
-                manufacturer=tool_input.get("manufacturer"),
-                serving_size=tool_input.get("serving_size"),  # type: ignore[arg-type]
-                ingredients=tool_input.get("ingredients", []),  # type: ignore[arg-type]
-                raw_text=ocr_text,
-                engine=self.engine_name,
-            )
-        except ValidationError as e:
-            raise LLMParseError(f"Schema validation failed: {e}") from e
-
-        logger.info(
-            "Claude parsed supplement: %d ingredients",
-            len(parsed.ingredients),
-        )
-        return parsed
-```
-
-### 6. `src/llm/openai.py` (백업)
-
-```python
-"""OpenAI GPT 기반 LLM Adapter (백업)."""
-
-from __future__ import annotations
-
-import json
 import logging
 from typing import Final
 
-import httpx
-from openai import AsyncOpenAI
+from ollama import AsyncClient, ResponseError
 from pydantic import ValidationError
 
 from src.llm.base import LLMAdapter
 from src.llm.exceptions import LLMApiError, LLMParseError
-from src.llm.prompts import SUPPLEMENT_PARSING_SYSTEM, SUPPLEMENT_TOOL_SCHEMA
+from src.llm.prompts import SUPPLEMENT_PARSING_SYSTEM
 from src.llm.schemas import ParsedSupplement
 
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MODEL: Final[str] = "gpt-4o-mini"
-TIMEOUT_SEC: Final[float] = 30.0
+DEFAULT_HOST: Final[str] = "http://127.0.0.1:11434"
+DEFAULT_MODEL: Final[str] = "qwen3.5:9b"
+DEFAULT_TIMEOUT_SEC: Final[float] = 60.0
 
 
-class OpenAIAdapter(LLMAdapter):
-    """OpenAI GPT 기반 LLM Adapter (백업).
+class OllamaAdapter(LLMAdapter):
+    """Ollama 로컬 LLM Adapter.
 
-    Function Calling 모드 사용. Claude의 Tool Use와 호환되도록
-    동일 스키마를 변환하여 사용.
+    환자 개인정보와 민감 건강정보가 외부 LLM 서버로 전송되지 않도록
+    FastAPI 백엔드에서 로컬 Ollama API만 호출한다.
 
     Reference:
-        docs/09-data-catalog.md §5.4
+        docs/12-local-llm-ollama-migration.md
     """
 
     def __init__(
         self,
-        api_key: str,
         model: str = DEFAULT_MODEL,
-        client: AsyncOpenAI | None = None,
+        host: str = DEFAULT_HOST,
+        timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+        client: AsyncClient | None = None,
     ) -> None:
-        self._client = client or AsyncOpenAI(api_key=api_key)
+        """Adapter 초기화.
+
+        Args:
+            model: 사용할 Ollama 모델 태그.
+            host: Ollama API host. 기본값은 로컬 루프백 주소.
+            timeout_sec: 요청 제한 시간.
+            client: 의존성 주입용 클라이언트. 테스트에서 mock으로 대체한다.
+        """
         self._model = model
+        self._host = host
+        self._timeout_sec = timeout_sec
+        self._client = client or AsyncClient(host=host, timeout=timeout_sec)
 
     @property
     def engine_name(self) -> str:
-        return f"openai:{self._model}"
+        return f"ollama:{self._model}"
 
     async def parse_supplement(self, ocr_text: str) -> ParsedSupplement:
-        """OpenAI Function Calling으로 추출."""
-        # Anthropic Tool Use → OpenAI Function 형식 변환
-        function_def = {
-            "type": "function",
-            "function": {
-                "name": SUPPLEMENT_TOOL_SCHEMA["name"],
-                "description": SUPPLEMENT_TOOL_SCHEMA["description"],
-                "parameters": SUPPLEMENT_TOOL_SCHEMA["input_schema"],
-            },
-        }
+        """OCR 텍스트를 구조화된 영양제 정보로 파싱한다.
 
+        Args:
+            ocr_text: OCR로 추출된 영양제 라벨 텍스트.
+
+        Returns:
+            ParsedSupplement: Pydantic 검증을 통과한 파싱 결과.
+
+        Raises:
+            LLMApiError: Ollama 서버 연결 또는 모델 호출 실패.
+            LLMParseError: JSON Schema 검증 실패.
+        """
         try:
-            response = await self._client.chat.completions.create(
+            response = await self._client.chat(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": SUPPLEMENT_PARSING_SYSTEM},
                     {"role": "user", "content": f"OCR 텍스트:\n\n{ocr_text}"},
                 ],
-                tools=[function_def],
-                tool_choice={
-                    "type": "function",
-                    "function": {"name": SUPPLEMENT_TOOL_SCHEMA["name"]},
-                },
-                timeout=TIMEOUT_SEC,
+                format=ParsedSupplement.model_json_schema(),
+                stream=False,
+                options={"temperature": 0},
             )
+        except ResponseError as e:
+            raise LLMApiError(self.engine_name, e.error) from e
         except Exception as e:
             raise LLMApiError(self.engine_name, str(e)) from e
 
-        message = response.choices[0].message
-        if not message.tool_calls:
-            raise LLMParseError("No tool_calls in OpenAI response")
-
-        tool_call = message.tool_calls[0]
         try:
-            tool_input = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError as e:
-            raise LLMParseError(f"Invalid JSON in arguments: {e}") from e
-
-        try:
-            parsed = ParsedSupplement(
-                product_name=tool_input.get("product_name"),
-                manufacturer=tool_input.get("manufacturer"),
-                serving_size=tool_input.get("serving_size"),
-                ingredients=tool_input.get("ingredients", []),
-                raw_text=ocr_text,
-                engine=self.engine_name,
+            parsed = ParsedSupplement.model_validate_json(
+                response.message.content,
+            )
+            parsed = parsed.model_copy(
+                update={"raw_text": ocr_text, "engine": self.engine_name},
             )
         except ValidationError as e:
             raise LLMParseError(f"Schema validation failed: {e}") from e
+        except ValueError as e:
+            raise LLMParseError(f"Invalid JSON response: {e}") from e
 
+        logger.info(
+            "Ollama parsed supplement with %d ingredients using %s",
+            len(parsed.ingredients),
+            self._model,
+        )
         return parsed
+```
+
+### 6. `src/llm/external.py` (선택, 기본 비활성화)
+
+```python
+"""비식별 테스트 또는 승인 환경 전용 외부 LLM Adapter 진입점."""
+
+from __future__ import annotations
+
+from src.llm.exceptions import LLMApiError
+
+
+class ExternalLLMDisabledError(LLMApiError):
+    """외부 LLM 호출이 정책상 비활성화된 경우."""
+
+
+def ensure_external_llm_allowed(allow_external_llm: bool) -> None:
+    """외부 LLM 사용 가능 여부를 검증한다.
+
+    Args:
+        allow_external_llm: `.env`의 `ALLOW_EXTERNAL_LLM` 값.
+
+    Raises:
+        ExternalLLMDisabledError: 외부 LLM이 허용되지 않은 경우.
+    """
+    if not allow_external_llm:
+        raise ExternalLLMDisabledError(
+            "external-llm",
+            "External LLM calls are disabled for identifiable patient data.",
+        )
 ```
 
 ### 7. `src/nutrition/mfds_matcher.py`
@@ -645,87 +537,80 @@ def to_nutrient_intakes(
 
 ### Tier 1: 단위 테스트
 
-#### `test_claude.py`
+#### `test_ollama.py`
 
 ```python
-"""ClaudeAdapter 단위 테스트 (실제 API X)."""
+"""OllamaAdapter 단위 테스트 (실제 Ollama 서버 X)."""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.llm.claude import ClaudeAdapter
-from src.llm.exceptions import LLMApiError, LLMParseError, LLMRefusalError
+from src.llm.ollama import OllamaAdapter
+from src.llm.exceptions import LLMApiError, LLMParseError
 
 
-def make_mock_tool_use_response(ingredients: list[dict]):
-    """Tool Use 응답 모킹."""
+def make_mock_json_response(content: str):
+    """Ollama JSON 응답 모킹."""
     response = MagicMock()
-    response.stop_reason = "tool_use"
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.input = {"ingredients": ingredients}
-    response.content = [tool_block]
+    response.message.content = content
     return response
 
 
-class TestClaudeAdapter:
+class TestOllamaAdapter:
     @pytest.mark.asyncio
     async def test_parse_supplement_success(self) -> None:
         client = AsyncMock()
-        client.messages.create.return_value = make_mock_tool_use_response([
-            {"name_ko": "비타민 C", "amount": 1000, "unit": "mg"},
-            {"name_ko": "비타민 D", "amount": 25, "unit": "ug"},
-        ])
+        client.chat.return_value = make_mock_json_response(
+            """
+            {
+              "ingredients": [
+                {"name_ko": "비타민 C", "amount": 1000, "unit": "mg"},
+                {"name_ko": "비타민 D", "amount": 25, "unit": "ug"}
+              ]
+            }
+            """
+        )
 
-        adapter = ClaudeAdapter(api_key="test", client=client)
+        adapter = OllamaAdapter(model="qwen3.5:9b", client=client)
         result = await adapter.parse_supplement("OCR 텍스트")
 
         assert len(result.ingredients) == 2
         assert result.ingredients[0].name_ko == "비타민 C"
-        assert result.engine.startswith("claude:")
+        assert result.engine.startswith("ollama:")
 
     @pytest.mark.asyncio
-    async def test_no_tool_use_raises(self) -> None:
+    async def test_invalid_json_raises(self) -> None:
         client = AsyncMock()
-        response = MagicMock()
-        response.stop_reason = "end_turn"
-        response.content = []  # tool_use 블록 없음
-        client.messages.create.return_value = response
+        client.chat.return_value = make_mock_json_response("not-json")
 
-        adapter = ClaudeAdapter(api_key="test", client=client)
+        adapter = OllamaAdapter(model="qwen3.5:9b", client=client)
         with pytest.raises(LLMParseError):
             await adapter.parse_supplement("text")
 
     @pytest.mark.asyncio
     async def test_api_error_raises(self) -> None:
         client = AsyncMock()
-        client.messages.create.side_effect = Exception("Quota exceeded")
+        client.chat.side_effect = Exception("Ollama unavailable")
 
-        adapter = ClaudeAdapter(api_key="test", client=client)
+        adapter = OllamaAdapter(model="qwen3.5:9b", client=client)
         with pytest.raises(LLMApiError):
-            await adapter.parse_supplement("text")
-
-    @pytest.mark.asyncio
-    async def test_refusal_raises(self) -> None:
-        client = AsyncMock()
-        response = MagicMock()
-        response.stop_reason = "refusal"
-        response.content = []
-        client.messages.create.return_value = response
-
-        adapter = ClaudeAdapter(api_key="test", client=client)
-        with pytest.raises(LLMRefusalError):
             await adapter.parse_supplement("text")
 
     @pytest.mark.asyncio
     async def test_invalid_schema_raises(self) -> None:
         client = AsyncMock()
         # amount가 음수 → ValidationError
-        client.messages.create.return_value = make_mock_tool_use_response([
-            {"name_ko": "비타민 C", "amount": -100, "unit": "mg"},
-        ])
+        client.chat.return_value = make_mock_json_response(
+            """
+            {
+              "ingredients": [
+                {"name_ko": "비타민 C", "amount": -100, "unit": "mg"}
+              ]
+            }
+            """
+        )
 
-        adapter = ClaudeAdapter(api_key="test", client=client)
+        adapter = OllamaAdapter(model="qwen3.5:9b", client=client)
         with pytest.raises(LLMParseError):
             await adapter.parse_supplement("text")
 ```
@@ -744,29 +629,33 @@ class TestClaudeAdapter:
 
 ### Tier 2: 통합 테스트
 
-#### `test_real_claude.py`
+#### `test_real_ollama.py`
 
 ```python
-"""실제 Claude API 호출 테스트.
+"""실제 로컬 Ollama 호출 테스트.
 
-조건: ANTHROPIC_API_KEY 환경변수 필요.
+조건: Ollama 서버 실행 + OLLAMA_MODEL 환경변수 또는 기본 모델 필요.
 """
 
 import os
 
 import pytest
 
+from src.llm.ollama import OllamaAdapter
 
-@pytest.mark.skipif(
-    not os.getenv("ANTHROPIC_API_KEY"),
-    reason="No Anthropic API key"
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_OLLAMA_TESTS") != "1",
+    reason="Set RUN_OLLAMA_TESTS=1 after starting local Ollama",
 )
+
+
 @pytest.mark.integration
-class TestClaudeReal:
+class TestOllamaReal:
     @pytest.mark.asyncio
     async def test_parse_typical_label(self):
-        adapter = ClaudeAdapter(
-            api_key=os.environ["ANTHROPIC_API_KEY"]
+        adapter = OllamaAdapter(
+            model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
         )
         ocr_text = """\
         종합비타민
@@ -784,11 +673,11 @@ class TestClaudeReal:
 
     @pytest.mark.asyncio
     async def test_no_medical_terms_in_response(self):
-        """Claude가 의료법 가이드를 준수하는지."""
-        adapter = ClaudeAdapter(api_key=os.environ["ANTHROPIC_API_KEY"])
+        """Ollama 구조화 결과가 의료법 금지 표현을 포함하지 않는지."""
+        adapter = OllamaAdapter(model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"))
         result = await adapter.parse_supplement("비타민 C 100mg")
 
-        # Tool Use 응답이라 의료 표현이 들어갈 가능성은 낮지만 검증
+        # 구조화 응답이라 의료 표현이 들어갈 가능성은 낮지만 검증
         for ing in result.ingredients:
             assert "진단" not in ing.name_ko
             assert "처방" not in ing.name_ko
@@ -815,7 +704,7 @@ class TestSupplementParseE2E:
         assert ocr_result.text  # 텍스트가 추출됨
 
         # 2. LLM 파싱
-        llm = ClaudeAdapter(api_key=os.environ["ANTHROPIC_API_KEY"])
+        llm = OllamaAdapter(model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"))
         parsed = await llm.parse_supplement(ocr_result.text)
         assert len(parsed.ingredients) > 0
 
@@ -835,7 +724,7 @@ class TestLLMPerformance:
     @pytest.mark.asyncio
     async def test_typical_label_under_3s(self):
         """일반 영양제 라벨 파싱 < 3초."""
-        adapter = ClaudeAdapter(api_key=os.environ["ANTHROPIC_API_KEY"])
+        adapter = OllamaAdapter(model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"))
 
         start = time.perf_counter()
         await adapter.parse_supplement(SAMPLE_LABEL_TEXT)
@@ -850,16 +739,16 @@ class TestLLMPerformance:
 
 - [ ] `src/llm/exceptions.py` — LLMError 계층
 - [ ] `src/llm/schemas.py` — ParsedSupplement 등 Pydantic 모델
-- [ ] `src/llm/prompts.py` — 시스템 프롬프트 + Tool Use 스키마
+- [ ] `src/llm/prompts.py` — 시스템 프롬프트
 - [ ] `src/llm/base.py` — LLMAdapter ABC
-- [ ] `src/llm/claude.py` — Claude (Tool Use) 구현
-- [ ] `src/llm/openai.py` — GPT (Function Calling) 백업
+- [ ] `src/llm/ollama.py` — Ollama Local API 구현
+- [ ] `src/llm/external.py` — 외부 LLM 기본 비활성화 가드
 - [ ] `src/nutrition/mfds_matcher.py` — 식약처 매칭
 - [ ] `data/mfds/functional_ingredients.csv` — 매핑 시드 (최소 30종)
 - [ ] 모든 함수 Google-style docstring
 - [ ] 모든 함수 타입 힌트
-- [ ] 단위 테스트 (Claude/OpenAI/Matcher 각 10+)
-- [ ] (선택) 실 API 통합 테스트
+- [ ] 단위 테스트 (Ollama/External guard/Matcher 각 10+)
+- [ ] 로컬 Ollama 통합 테스트 (`RUN_OLLAMA_TESTS=1`)
 - [ ] E2E 테스트 (OCR + LLM + 매칭)
 - [ ] 성능 테스트 (< 3초)
 - [ ] **시스템 프롬프트에 의료법 가이드 포함 검증**
@@ -869,34 +758,36 @@ class TestLLMPerformance:
 
 ## 💡 구현 팁
 
-### Tool Use vs JSON Mode 차이
+### Structured Outputs 적용 방식
 
 | 방식 | 장점 | 단점 |
 |------|------|------|
-| **Tool Use (권장)** | 스키마 강제, 응답 신뢰도 ↑ | 약간 느림 |
-| JSON Mode | 빠름 | 스키마 검증 약함, 추가 텍스트 섞일 수 있음 |
+| **JSON Schema format (권장)** | Pydantic 스키마를 그대로 재사용, 응답 검증 쉬움 | 모델별 응답 품질 재측정 필요 |
+| `format="json"` | 빠르게 JSON만 강제 | 필드 누락·타입 오류를 별도 검증해야 함 |
 
 ### 모델 선택
 
-- **claude-sonnet-4-6** (기본) — 균형, 대부분 충분
-- **claude-haiku-4-5** — 단순 라벨, 비용 절감
-- **claude-opus-4-7** — 복잡한 한국어 라벨, 최고 정확도
+- **qwen3.5:9b** 또는 **qwen3.5:latest** — 기본 후보
+- **gemma4:e4b** 또는 **gemma4:latest** — 대안 후보
+- **qwen3.5:27b**, **gemma4:26b** — MacBook Pro M4 Pro 24GB에서 성능 비교 후 제한 적용
+- **qwen3.6:27b** 이상 — 향후 더 큰 스펙 장비 또는 사내 서버 후보
+- **deepseek-v4-pro:cloud** — 클라우드 모델이므로 식별 가능 환자 데이터 처리 금지
 
 ### 시스템 프롬프트 안정성
 
-CLAUDE.md 처럼 시스템 프롬프트는 **자주 변경하지 마세요**. 캐싱 효과로 비용·속도 모두 이득.
+시스템 프롬프트는 **자주 변경하지 않는다**. 모델별 정확도 비교가 어려워지고, 금지 표현 검증 결과가 흔들릴 수 있다.
 
 ```python
-# Claude API의 Prompt Caching 활용
-response = await client.messages.create(
-    system=[
-        {
-            "type": "text",
-            "text": SUPPLEMENT_PARSING_SYSTEM,
-            "cache_control": {"type": "ephemeral"},  # ← 캐싱
-        }
+# Ollama 구조화 출력 호출
+response = await client.chat(
+    model=os.getenv("OLLAMA_MODEL", "qwen3.5:9b"),
+    messages=[
+        {"role": "system", "content": SUPPLEMENT_PARSING_SYSTEM},
+        {"role": "user", "content": f"OCR 텍스트:\n\n{ocr_text}"},
     ],
-    ...
+    format=ParsedSupplement.model_json_schema(),
+    stream=False,
+    options={"temperature": 0},
 )
 ```
 
@@ -920,7 +811,8 @@ ingredient_name_ko,ingredient_name_en,nutrient_code
 
 ## 🚫 이 작업에서 하지 말 것
 
-- ❌ Claude/OpenAI SDK 직접 호출 (Adapter 우회)
+- ❌ Ollama SDK 직접 호출 (Adapter 우회)
+- ❌ Claude/OpenAI/Ollama Cloud에 식별 가능 환자 데이터 전송
 - ❌ FastAPI 라우터 통합 (다음 가이드 09)
 - ❌ DB 저장 (다음 가이드 09)
 - ❌ 시스템 프롬프트에 사용자 데이터 직접 삽입 (Prompt Injection 위험)
@@ -933,6 +825,13 @@ ingredient_name_ko,ingredient_name_en,nutrient_code
 - [`/backend/CLAUDE.md`](../../backend/CLAUDE.md)
 - [`/data/CLAUDE.md`](../../data/CLAUDE.md)
 - [`/docs/09-data-catalog.md §5.3, §5.4`](../09-data-catalog.md)
+- [`/docs/12-local-llm-ollama-migration.md`](../12-local-llm-ollama-migration.md)
+- [`/docs/13-algorithm-literature-evidence.md`](../13-algorithm-literature-evidence.md)
 - [`/docs/10-compliance-checklist.md §10`](../10-compliance-checklist.md)
 - 이전: [`07-ocr-pipeline.md`](./07-ocr-pipeline.md)
 - 다음: [`09-supplement-registration-api.md`](./09-supplement-registration-api.md)
+
+## 📚 사용 근거
+
+- Ollama official documentation. Structured Outputs. https://docs.ollama.com/capabilities/structured-outputs
+- Ollama official documentation. Chat API. https://docs.ollama.com/api/chat

@@ -67,7 +67,7 @@ backend/
   "context_id": "supplement_uuid",  // 관련 객체 ID
   "metadata": {
     "ocr_engine": "google_vision_v1",
-    "llm_engine": "claude:claude-sonnet-4-6"
+    "llm_engine": "ollama:qwen3.5:9b"
   },
   "created_at": "2026-05-03T10:00:00Z"
 }

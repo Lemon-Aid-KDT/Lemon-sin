@@ -302,7 +302,7 @@ lemon-healthcare-project/
 ### 백엔드 코드
 - [ ] `src/nutrition/diagnosis.py` (부족 영양소 진단)
 - [ ] `src/ocr/` (Adapter 패턴 + 백업 폴백)
-- [ ] `src/llm/claude.py` + `openai.py` (Tool Use)
+- [ ] `src/llm/ollama.py` (Ollama Structured Outputs)
 - [ ] `src/api/v1/supplements.py` (등록 API)
 - [ ] FastAPI 서버 정상 기동
 
@@ -585,7 +585,7 @@ ___________________________ ((주)레몬헬스케어 책임자)
 학생 팀이 만든 것:
 - ✅ **만성질환자에 특화된** AI 헬스케어 플랫폼 (필라이즈와 차별)
 - ✅ **5종 출력 모두 동작** (부족 영양소, 권장 섭취량, 체중 예측, 운동 권고, 목적별 분석)
-- ✅ **Adapter 패턴 + 백업 폴백** (Claude → OpenAI, Cloud Vision → CLOVA)
+- ✅ **Adapter 패턴 + 백업 폴백** (Ollama qwen3.5 → gemma4, Cloud Vision → CLOVA)
 - ✅ **Hall 동적 모델** 으로 30~365일 장기 예측
 - ✅ **의료법 표현 가이드 자동 검증** (단어 0건 위반)
 - ✅ **모바일 앱** (iOS + Android, Flutter)

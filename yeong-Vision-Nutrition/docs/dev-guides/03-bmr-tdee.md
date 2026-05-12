@@ -24,7 +24,16 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §3.6, §3.7](../07-core-algorithm.md)
+> 🔍 **출처**: [docs/07-core-algorithm.md §3.6, §3.7](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md)
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| BMR / REE 공식 | A | Mifflin et al. 1990의 resting energy expenditure 예측식을 코드화한다. |
+| 걸음수 기반 활동계수 | C | Mifflin 공식의 일부가 아니라 프로젝트 활동량 추정 테이블이다. 설정값으로 분리하고 실제 체중 변화 로그로 보정한다. |
+
+> UI와 API 응답 필드명은 `estimated_bmr`, `estimated_tdee`처럼 예측값임을 드러내는 이름을 우선 사용한다.
 
 ### BMR — Mifflin-St Jeor 공식
 

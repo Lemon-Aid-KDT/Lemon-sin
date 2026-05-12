@@ -27,7 +27,16 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §3.3, §3.4, §3.5](../07-core-algorithm.md)
+> 🔍 **출처**: [docs/07-core-algorithm.md §3.3, §3.4, §3.5](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md)
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| HRmax 추정 | B | 회사 가이드 재현은 `220 - age`를 기본으로 유지한다. Tanaka et al. 2001의 `208 - 0.7 * age`는 옵션으로 추가한다. |
+| 심박 유지 30분 | C | 운동 질을 반영하는 프로젝트 기준이다. 의료 판단값으로 사용하지 않는다. |
+| 백분위 보너스 | C | 동기부여 UX 기준이다. 최소 표본, 동점 처리, 개인정보 보호 정책이 함께 필요하다. |
+| 만성질환 가중 | B/C | 신체활동 권고 방향은 HHS/CDC 근거가 있으나, 질환별 가산치는 프로젝트 우선순위 계수다. |
 
 ### v2 — 심박수 가중
 
@@ -122,7 +131,9 @@ SCORE_MAX: float = 100.0
 #### 구현해야 할 함수 시그니처
 
 ```python
-def calculate_target_hr_range(age: int) -> tuple[int, int]: ...
+def calculate_estimated_hr_max(age: int, method: str = "guide_220") -> float: ...
+
+def calculate_target_hr_range(age: int, method: str = "guide_220") -> tuple[int, int]: ...
 
 def calculate_hr_factor(target_hr_minutes: float | None) -> float: ...
 
@@ -146,6 +157,8 @@ def calculate_v4_score(v3_score: float, multiplier: float) -> float: ...
 - `Examples:` 섹션에는 가이드 예시 포함
 - 타입 힌트 100%
 - `min(SCORE_MAX, ...)` 형태로 100점 상한 강제
+- `calculate_estimated_hr_max`는 `guide_220`과 `tanaka_2001`만 허용하고, 그 외 method는 `ValueError` 발생
+- `calculate_target_hr_range` 테스트 기본값은 기존 가이드 재현을 위해 `guide_220` 기준 유지
 - `calculate_hr_factor`는 `None` 입력 시 `HR_FACTOR_DEFAULT_NO_WEARABLE` 반환
 - `calculate_percentile_bonus`는 표본 < 30 시 0 반환
 - `calculate_disease_multiplier`는 미정의 질환 코드 무시 (warning 로그)
@@ -161,6 +174,7 @@ def calculate_v4_score(v3_score: float, multiplier: float) -> float: ...
 | `test_target_hr_50yo` | age=50 | (85, 119) |
 | `test_target_hr_30yo` | age=30 | (95, 133) |
 | `test_target_hr_60yo` | age=60 | (80, 112) |
+| `test_estimated_hr_max_tanaka_50yo` | age=50, method="tanaka_2001" | 173.0 |
 | `test_hr_factor_no_wearable` | None | 0.7 |
 | `test_hr_factor_under_30min` | 20분 | ≈0.667 |
 | `test_hr_factor_exact_30min` | 30분 | 1.0 |

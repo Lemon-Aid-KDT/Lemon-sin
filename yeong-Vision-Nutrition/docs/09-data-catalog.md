@@ -7,7 +7,7 @@
 
 ## 📋 한 줄 요약
 
-> 본 프로젝트가 사용하는 **공공 영양 데이터 5종 + AI 데이터셋 1종 + 외부 API 4종 + 모바일 헬스 SDK 2종** 의 출처·라이선스·비용·인증절차·호출 예시·사용 제약을 통합 정리. 각 자원이 07번 알고리즘 어디에서 사용되는지 명확히 매핑.
+> 본 프로젝트가 사용하는 **공공 영양 데이터 5종 + AI 데이터셋 1종 + 외부 API 2종 + 로컬 LLM 1종 + 모바일 헬스 SDK 2종** 의 출처·라이선스·비용·인증절차·호출 예시·사용 제약을 통합 정리. 각 자원이 07번 알고리즘 어디에서 사용되는지 명확히 매핑.
 
 ---
 
@@ -41,15 +41,14 @@
 🟡 AI 학습용 데이터셋 (1종)
   ⑥ AI Hub 음식 이미지 데이터셋        — Phase 3 식단 인식
 
-🟣 외부 API (4종)
+🟣 OCR 외부 API (2종) + 로컬 LLM (1종)
   ⑦ Google Cloud Vision API           — OCR (주력)
   ⑧ Naver CLOVA OCR                   — OCR (백업)
-  ⑨ Anthropic Claude API              — LLM (주력)
-  ⑩ OpenAI GPT API                    — LLM (백업)
+  ⑨ Ollama Local API                  — LLM (주력, 로컬)
 
 🟢 모바일 헬스 SDK (2종)
-  ⑪ Apple HealthKit                   — iOS 헬스 데이터
-  ⑫ Google Health Connect             — Android 헬스 데이터
+  ⑩ Apple HealthKit                   — iOS 헬스 데이터
+  ⑪ Google Health Connect             — Android 헬스 데이터
 
 🔴 향후 통합 (2종, Year 2~3)
   • LDB-E 마이데이터 (레몬헬스케어)    — 의료기관 연계
@@ -65,16 +64,16 @@
 | 알고리즘 | 사용 데이터·API |
 |---------|----------------|
 | ② v1 권장걸음수 | (계산만, 외부 데이터 없음) |
-| ③ v2 심박수 가중 | ⑪ HealthKit / ⑫ Health Connect |
+| ③ v2 심박수 가중 | ⑩ HealthKit / ⑪ Health Connect |
 | ④ v3 백분위 보너스 | (자체 사용자 DB) |
 | ⑤ v4 만성질환 가중 | (사용자 입력) |
-| ⑥ BMR / ⑦ TDEE / ⑧ 7-step | ⑪⑫ (걸음수) |
+| ⑥ BMR / ⑦ TDEE / ⑧ 7-step | ⑩⑪ (걸음수) |
 | **권장 섭취량 룩업** | ① KDRIs |
 | **부족 영양소 진단 ⓒ** | ① KDRIs (RDI/UL) |
-| **식단 변환 ⓑ** | ② 식약처 API + ④ 농진청 + ⑥ AI Hub (Phase 3) + ⑨ Claude |
-| **영양제 OCR 파싱 ⓐ** | ⑦ Cloud Vision + ⑨ Claude + ③ 식약처 건기식 DB |
+| **식단 변환 ⓑ** | ② 식약처 API + ④ 농진청 + ⑥ AI Hub (Phase 3) + ⑨ Ollama |
+| **영양제 OCR 파싱 ⓐ** | ⑦ Cloud Vision + ⑨ Ollama + ③ 식약처 건기식 DB |
 | **목적별 분석 ⓓ** | ① KDRIs + ③ 식약처 (기능성 인정 원료) |
-| **식단 이미지 인식 (Phase 3)** | ⑥ AI Hub + ⑨ Claude (Vision) |
+| **식단 이미지 인식 (Phase 3)** | ⑥ AI Hub + ⑨ Ollama Vision 모델 후보 (`gemma4`, `qwen3.5`) |
 
 ---
 
@@ -452,65 +451,61 @@ print(text)
 
 ---
 
-### 5.3 Anthropic Claude API (LLM — 주력)
+### 5.3 Ollama Local API (LLM — 주력)
 
 #### 핵심 정보
 
 | 항목 | 내용 |
 |------|------|
-| **운영사** | Anthropic |
-| **URL** | https://docs.claude.com |
-| **모델** | claude-sonnet-4-6 (균형) / claude-haiku-4-5 (빠름) / claude-opus-4-7 (최고 성능) |
-| **라이선스** | 상용 API |
-| **인증** | Anthropic Console → API 키 |
-| **결제** | 선불 크레딧 |
+| **운영사** | Ollama |
+| **공식 문서** | https://docs.ollama.com/api/introduction |
+| **API 주소** | `http://127.0.0.1:11434/api` |
+| **모델 후보** | `qwen3.5:*`, `gemma4:*`, 향후 `qwen3.6:*` |
+| **라이선스** | 모델별 라이선스 확인 필요 |
+| **인증** | 로컬 호출은 API 키 없음 |
+| **결제** | 로컬 모델은 사용량 과금 없음 |
 
-#### 모델·가격 비교 (참고용)
+#### 모델 운영 기준
 
-| 모델 | 입력 가격 | 출력 가격 | 추천 사용처 |
-|------|---------|---------|----------|
-| claude-haiku-4-5 | 저렴 | 저렴 | 단순 파싱·캐싱 가능한 작업 |
-| **claude-sonnet-4-6** | 중간 | 중간 | ⭐ **본 프로젝트 주력** |
-| claude-opus-4-7 | 비쌈 | 비쌈 | 의료자문위 검토 시연용 |
+| 모델 | 공식 Ollama 태그 | 크기 참고 | 추천 사용처 |
+|------|------------------|-----------|-------------|
+| Qwen 3.5 | `qwen3.5:9b`, `qwen3.5:latest` | 약 6.6GB | 기본 텍스트 파싱 |
+| Qwen 3.5 27B | `qwen3.5:27b` | 약 17GB | 복잡한 한국어 라벨 성능 비교 |
+| Gemma 4 | `gemma4:e4b`, `gemma4:latest` | 약 9.6GB 이하 후보 | 구조화 출력·멀티모달 실험 |
+| Gemma 4 26B | `gemma4:26b` | 약 18GB | 성능 비교 |
+| Qwen 3.6 | `qwen3.6:27b`, `qwen3.6:35b` | 약 17GB~24GB | 향후 고사양 장비 또는 사내 서버 |
+| DeepSeek V4 Pro | `deepseek-v4-pro:cloud` | 클라우드 | 식별 가능 환자 데이터 금지 |
 
-> 정확한 가격은 Anthropic 공식 문서 확인 권장
+> MacBook Pro M4 Pro 24GB에서는 OS와 개발 도구 메모리까지 고려해야 하므로, 24GB로 표시되는 모델은 기본값으로 두지 않는다. 먼저 `qwen3.5:9b`와 `gemma4:e4b`를 100개 샘플로 비교한다.
 
-#### 호출 예시 (Tool Use)
+#### 호출 예시 (Structured Outputs)
 
 ```python
-from anthropic import Anthropic
+from ollama import Client
+from pydantic import BaseModel
 
-client = Anthropic()
+class Ingredient(BaseModel):
+    name_ko: str
+    amount: float
+    unit: str
 
-response = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=2048,
-    tools=[{
-        "name": "extract_supplement_facts",
-        "description": "영양제 라벨에서 성분을 추출",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "ingredients": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name_ko": {"type": "string"},
-                            "amount": {"type": "number"},
-                            "unit": {"type": "string"}
-                        }
-                    }
-                }
-            }
-        }
-    }],
-    tool_choice={"type": "tool", "name": "extract_supplement_facts"},
+class ParsedSupplement(BaseModel):
+    ingredients: list[Ingredient]
+
+client = Client(host="http://127.0.0.1:11434")
+
+response = client.chat(
+    model="qwen3.5:9b",
+    format=ParsedSupplement.model_json_schema(),
+    stream=False,
     messages=[{
         "role": "user",
         "content": "OCR 결과: Vitamin C 1000mg, Vitamin D3 25mcg ..."
-    }]
+    }],
+    options={"temperature": 0},
 )
+
+parsed = ParsedSupplement.model_validate_json(response.message.content)
 ```
 
 #### 본 프로젝트 활용
@@ -519,45 +514,46 @@ response = client.messages.create(
 알고리즘 ⓐ (영양제 OCR 파싱) — 텍스트 → JSON 구조화
 알고리즘 ⓑ (식단 텍스트 파싱) — "김치찌개 1그릇" → 구조화
 알고리즘 ⓓ (목적별 분석) — (선택) 자연어 권고 메시지 생성
-Phase 3 식단 이미지 인식 — Vision 모드 활용 가능
+Phase 3 식단 이미지 인식 — Vision 지원 모델 후보 검증 후 적용
 ```
 
-#### 인증 절차
+#### 준비 절차
 
 ```
-☐ https://console.anthropic.com 가입
-☐ API 키 발급 (.env에 저장)
-☐ 결제 정보 등록 (또는 무료 크레딧 확인)
-☐ 첫 호출 테스트
-☐ 사용량 알림 임계치 설정 ($X 도달 시 이메일)
+☐ Ollama 설치
+☐ `ollama pull qwen3.5:9b`
+☐ `ollama pull gemma4:e4b`
+☐ `curl http://127.0.0.1:11434/api/chat` 첫 호출 테스트
+☐ `ParsedSupplement` JSON Schema 검증 테스트
+☐ 100개 샘플 기준 정확도·응답 시간·메모리 사용량 측정
 ```
 
 #### 사용 제약
 
-- ⚠️ API 키는 절대 git/모바일 앱에 커밋 금지 (백엔드만)
-- ⚠️ 한 번 호출당 최대 200K 토큰 입력 (영양제 라벨엔 충분)
-- ⚠️ Rate Limit는 등급별로 다름
+- ⚠️ 로컬 API는 개발 머신 내부에서만 접근하도록 `127.0.0.1` 기준으로 둔다.
+- ⚠️ 원문 프롬프트와 OCR 텍스트 전문은 운영 로그에 저장하지 않는다.
+- ⚠️ Ollama Cloud 또는 `:cloud` 모델은 식별 가능 환자 데이터 처리에 사용하지 않는다.
+- ⚠️ 모델 변경 시 같은 테스트셋으로 정확도·금지 표현·응답 시간을 다시 검증한다.
 
 ---
 
-### 5.4 OpenAI GPT API (백업 LLM)
+### 5.4 외부 LLM API (비식별 테스트 또는 승인 환경 전용)
 
 #### 핵심 정보
 
 | 항목 | 내용 |
 |------|------|
-| **운영사** | OpenAI |
-| **URL** | https://platform.openai.com |
-| **모델** | gpt-4o, gpt-4-turbo 등 |
-| **라이선스** | 상용 API |
+| **대상** | Claude, OpenAI, Ollama Cloud 등 |
+| **기본 상태** | 비활성화 |
+| **사용 가능 조건** | 비식별 데이터, 별도 보안 검토, 법무·의료자문 승인 |
 
 #### 본 프로젝트 활용
 
 ```
-폴백 전략:
-- Claude API 다운 시 자동 전환
-- Adapter 패턴으로 인터페이스 동일
-- 동일 프롬프트 재사용 가능
+원칙:
+- 식별 가능 환자 데이터 처리에는 사용하지 않음
+- 벤치마크·데모용 비식별 샘플에 한해 선택 테스트 가능
+- Adapter 패턴은 유지하되 기본 Provider는 Ollama
 ```
 
 ---
@@ -735,7 +731,7 @@ Mi Band     ────► Mi Fitness     ────► Health Connect ──
 | 영양제·식단 사진 | 30일 (캐시) | 즉시 삭제 |
 | 사용자 프로필 | 회원 유지 동안 | 회원 탈퇴 시 즉시 삭제 |
 | 측정 데이터 (걸음수 등) | 5년 (트렌드 분석) | 회원 탈퇴 시 즉시 삭제 |
-| OCR/LLM 호출 로그 | 90일 (디버깅) | 익명화 후 보관 |
+| OCR/LLM 운영 로그 | 90일 (디버깅) | 프롬프트 전문 제외, 메타데이터만 익명화 후 보관 |
 | 의료 정보 (만성질환) | 회원 유지 동안 | 즉시 삭제 + 백업도 삭제 |
 
 ### 8.4 데이터 무결성·갱신 정책
@@ -758,25 +754,25 @@ Mi Band     ────► Mi Fitness     ────► Health Connect ──
 | 항목 | 사용량 | 단가 | 합계 |
 |------|--------|------|------|
 | Cloud Vision API | 500건 (대부분 무료 티어) | $1.5/1k | **$0** |
-| Claude API | 2,000회 호출 | sonnet | **약 $10~15** |
+| Ollama 로컬 LLM | 2,000회 호출 | 로컬 실행 | **$0** |
 | KDRIs / 식약처 / AI Hub | — | 무료 | **$0** |
 | Apple Developer | 연 $99 (학생 면제 가능) | — | **$0~99** |
 | Google Play Developer | 1회 $25 | — | **$25** |
 | 인프라 (NCP/AWS) | 학생 크레딧 | — | **$0** |
-| **합계 (6주)** | | | **약 $35~140** |
+| **합계 (6주)** | | | **약 $25~124** |
 
 ### 9.2 MVP 단계 (Phase 3~4, 베타 50명)
 
 | 항목 | 월 사용량 | 월 비용 |
 |------|---------|--------|
 | Cloud Vision API | 1,500건 | ~$0.75 |
-| Claude API | 5,000회 | ~$15~25 |
+| Ollama 로컬 LLM | 5,000회 | $0 |
 | 인프라 | 1 vCPU 인스턴스 | $0 (크레딧) |
-| **합계** | | **약 $17~27/월** |
+| **합계** | | **약 $2~3/월** |
 
 ### 9.3 정식 출시 (1만 MAU, 참고)
 
-월 비용은 약 **$550~1,450** (06번 문서 5.2 절 참조).
+외부 LLM 비용은 기본 산정에서 제외한다. 정식 출시 시에는 MacBook 로컬 실행이 아니라 사내 GPU 서버, 별도 추론 서버, 또는 승인된 비식별 클라우드 경로 중 하나를 선택해 운영비를 다시 산정한다.
 
 ---
 

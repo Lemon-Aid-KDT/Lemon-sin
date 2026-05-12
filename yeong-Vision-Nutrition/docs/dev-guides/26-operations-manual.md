@@ -92,8 +92,9 @@ redis-cli -u $REDIS_URL ping
 - [ ] 빈도가 급증한 에러 (>10/h) 우선순위
 - [ ] Critical 알림은 슬랙 즉시 알림 통합
 
-## 3. 외부 API 사용량
-- [ ] Anthropic 콘솔 → 어제 사용량 확인
+## 3. 외부 API·로컬 LLM 상태
+- [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
+- [ ] 기본 모델(`qwen3.5` 또는 `gemma4`) 로딩·응답 시간 확인
 - [ ] Google Cloud Vision 콘솔 → 어제 사용량
 - [ ] 한도 80% 초과 시 알람 발송 사전 설정
 
@@ -373,7 +374,7 @@ docker compose up -d --scale backend=5
 - **Write Heavy**: 샤딩 검토 (Phase 5+)
 
 ## API 비용 폭증 시
-- **Claude API**: 동시 요청 제한 + 캐싱 강화
+- **Ollama 로컬 LLM**: 동시 요청 제한, 모델 크기 조정, 큐 기반 처리
 - **Cloud Vision**: 이미지 전처리로 호출 횟수 ↓
 - **CLOVA 폴백**: 주력 API 신뢰도 확인 후 임계 조정
 
@@ -430,7 +431,7 @@ pytest tests/unit/nutrition/test_compliance.py
 ```
 
 ## 농진청 식품 DB 갱신
-- 신규 음식 50종 추가 시 LLM 인식 정확도 재테스트
+- 신규 음식 50종 추가 시 Ollama 모델별 LLM 인식 정확도 재테스트
 - E2E 테스트로 기존 사용자 데이터 영향 없음 확인
 ```
 

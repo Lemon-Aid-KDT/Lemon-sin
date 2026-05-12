@@ -29,7 +29,17 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §3.8](../07-core-algorithm.md)
+> 🔍 **출처**: [docs/07-core-algorithm.md §3.8](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md)
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| 7,700 kcal/kg | B | Wishnofsky 1958의 정적 에너지 등가 규칙을 단기 설명용으로 사용한다. |
+| 감량 `0.85`, 증량 `0.95` | C | 회사 가이드 예시 재현을 위한 프로젝트 보정계수다. 검증 전에는 효과 보장 표현 금지. |
+| 3개월 이상 예측 | B | Hall et al. 2011 동적 모델을 우선 후보로 둔다. |
+
+> 7-step 결과는 "예상 변화"이며 실제 체중은 수분, 나트륨, 생리주기, 약물, 질환 상태, 활동량 변화에 따라 달라질 수 있다.
 
 ### 7단계 흐름
 

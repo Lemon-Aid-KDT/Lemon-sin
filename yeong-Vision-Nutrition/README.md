@@ -23,7 +23,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)]()
 
 [![Cloud Vision](https://img.shields.io/badge/Google_Cloud_Vision-OCR-4285F4?logo=googlecloud&logoColor=white)]()
-[![Claude](https://img.shields.io/badge/Anthropic-Claude_API-D97757?logo=anthropic&logoColor=white)]()
+[![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?logo=ollama&logoColor=white)]()
 [![HealthKit](https://img.shields.io/badge/Apple-HealthKit-000000?logo=apple&logoColor=white)]()
 [![Health Connect](https://img.shields.io/badge/Google-Health_Connect-4285F4?logo=google&logoColor=white)]()
 
@@ -115,7 +115,7 @@
    ↓ (캐시 미스)
 👁 Google Cloud Vision OCR (~1초)
    ↓
-🤖 Claude API 구조화 (~2초)
+🤖 Ollama 로컬 LLM 구조화 (모델별 측정)
    ↓
 📚 식약처 DB 매칭 (~0.2초)
    ↓
@@ -144,7 +144,7 @@
 
 ### AI / 외부 API
 - **OCR**: Google Cloud Vision API (주력) · Naver CLOVA OCR (백업)
-- **LLM**: Anthropic Claude API (주력) · OpenAI GPT (백업)
+- **LLM**: Ollama 로컬 LLM (qwen3.5 / gemma4) · 외부 LLM은 비식별·승인 환경 전용
 - **데이터셋**: AI Hub 한국 음식 이미지 (Phase 3)
 
 ### 인프라 · DevOps
@@ -244,9 +244,14 @@ flutter run -d <device_id>     # adb devices로 확인
 DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 
+# 로컬 LLM
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3.5:9b
+ALLOW_EXTERNAL_LLM=false
+
 # 외부 API 키
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-ANTHROPIC_API_KEY=sk-ant-...
 MFDS_API_KEY=...                  # 식약처 식품영양성분 API
 CLOVA_OCR_API_KEY=...             # (선택) 백업 OCR
 
@@ -606,7 +611,7 @@ Phase:  │ 0 │     1     │       2        │     3      │  4   │
 
 ### 외부 도구·서비스
 - **Google Cloud Platform** — Cloud Vision API
-- **Anthropic** — Claude API
+- **Ollama** — Local LLM runtime
 - **Apple** — HealthKit
 - **Google** — Health Connect
 - **Naver Cloud** — CLOVA OCR

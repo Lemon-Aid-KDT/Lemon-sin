@@ -6,7 +6,7 @@
 
 ## 🎯 작업 목표
 
-기존 7-step 단순 예측을 NIH의 Hall 동적 모델로 고도화한다. 체중 변화에 따른 BMR 자기조정, 적응적 열역학, 신체구성(FFM/FM) 분리 추적으로 장기(3개월+) 예측 정확도 향상.
+기존 7-step 단순 예측을 NIH의 Hall 동적 모델로 고도화한다. 체중 변화에 따른 BMR 자기조정, 적응적 열역학, 신체구성(FFM/FM) 분리 추적으로 장기(3개월+) 예측의 구조적 한계를 보완한다.
 
 ---
 
@@ -33,7 +33,17 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §6.1](../07-core-algorithm.md), Hall et al. (2011) "Quantification of the effect of energy imbalance on bodyweight."
+> 🔍 **출처**: [docs/07-core-algorithm.md §6.1](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md), Hall et al. (2011) "Quantification of the effect of energy imbalance on bodyweight."
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| Hall 동적 체중 모델 | A/B | 장기 체중 변화에는 정적 7,700 kcal/kg 규칙보다 동적 모델을 우선 검토한다. |
+| Deurenberg 체지방률 추정 | A/B | 체지방률 미입력 시 초기 FM/FFM 추정값으로 사용한다. 개인 측정값이 있으면 측정값을 우선한다. |
+| Forbes body composition response | B | 감량·증량 시 FFM/FM 변화 비율을 단순 모델에 반영한다. |
+
+> 현재 구현 계획은 논문 전체 모델의 완전 재현이 아니라 학생 프로젝트용 단순화 버전이다. `Hall 논문 케이스 재현 테스트`를 통과하기 전까지는 "정확한 예측"이 아니라 "정적 모델보다 보수적인 장기 예측"으로 설명한다.
 
 ### Hall 모델의 핵심 아이디어
 
@@ -698,7 +708,7 @@ class TestHallPerformance:
 - 글리코겐 변화 (단기 변동의 큰 부분이지만 ±2kg 수준)
 - 운동 강도 vs PAEE 변환 정확화
 
-→ **목표**: 30~90일 범위에서 7-step보다 5~15% 정확도 향상.
+→ **목표**: 30~90일 범위에서 7-step보다 더 보수적인 장기 예측 제공. 실제 정확도 개선률은 베타 데이터 검증 전까지 수치로 주장하지 않는다.
 
 ### 일별 시뮬레이션 메모리
 
@@ -744,6 +754,13 @@ UI에서는:
 ## 🔗 관련 문서
 
 - [`/docs/07-core-algorithm.md §6.1`](../07-core-algorithm.md)
+- [`/docs/13-algorithm-literature-evidence.md`](../13-algorithm-literature-evidence.md)
 - [`/backend/CLAUDE.md`](../../backend/CLAUDE.md)
 - 이전: [`13-mobile-dashboard.md`](./13-mobile-dashboard.md)
 - 다음: [`15-goal-based-analysis.md`](./15-goal-based-analysis.md)
+
+## 📚 사용 근거
+
+- Hall KD, et al. Quantification of the effect of energy imbalance on bodyweight. The Lancet. 2011. https://stacks.cdc.gov/view/cdc/33652
+- Deurenberg P, Weststrate JA, Seidell JC. Body mass index as a measure of body fatness. British Journal of Nutrition. 1991. https://pubmed.ncbi.nlm.nih.gov/2043597/
+- Forbes GB. Body fat content influences the body composition response to nutrition and exercise. Annals of the New York Academy of Sciences. 2000. https://pubmed.ncbi.nlm.nih.gov/10865771/

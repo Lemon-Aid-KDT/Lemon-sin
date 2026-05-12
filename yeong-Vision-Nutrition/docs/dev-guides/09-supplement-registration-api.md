@@ -213,8 +213,7 @@ from src.cache.ocr_cache import OCRCache
 from src.config import Settings, get_settings
 from src.db.session import get_session
 from src.llm.base import LLMAdapter
-from src.llm.claude import ClaudeAdapter
-from src.llm.openai import OpenAIAdapter
+from src.llm.ollama import OllamaAdapter
 from src.models.db.user import User
 from src.ocr.base import OCRAdapter
 from src.ocr.clova import ClovaOCR
@@ -243,17 +242,22 @@ def get_ocr_pipeline(
 def get_primary_llm(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LLMAdapter:
-    """주력 LLM (Claude)."""
-    return ClaudeAdapter(api_key=settings.anthropic_api_key.get_secret_value())
+    """주력 LLM (Ollama Local)."""
+    return OllamaAdapter(
+        model=settings.ollama_model,
+        host=settings.ollama_base_url,
+    )
 
 
 def get_fallback_llm(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LLMAdapter | None:
-    """백업 LLM (GPT). 키 없으면 None."""
-    if not settings.openai_api_key:
-        return None
-    return OpenAIAdapter(api_key=settings.openai_api_key.get_secret_value())
+    """백업 LLM.
+
+    식별 가능 환자 데이터는 외부 LLM으로 보내지 않으므로 기본값은 None.
+    모델 전환은 `OLLAMA_MODEL` 변경으로 처리한다.
+    """
+    return None
 
 
 async def get_current_user(

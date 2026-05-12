@@ -95,6 +95,7 @@ desktop.ini
 *.swo
 *~
 .cursor/
+.omc/
 .windsurfrules
 .aiderignore
 

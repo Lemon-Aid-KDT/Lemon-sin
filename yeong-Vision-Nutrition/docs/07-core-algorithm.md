@@ -1,6 +1,6 @@
 # 07. 핵심 알고리즘 (Core Algorithms)
 
-> **문서 정보**  
+> **문서 정보**
 > 버전: v1.0 | 작성일: 2026-05-03 | 상태: 초안 | 작성자: 경북대학교 AI/빅데이터 전문가 양성 과정 — TBD팀
 
 ---
@@ -14,6 +14,7 @@
 ## 목차
 - [1. 알고리즘 전체 지도](#1-알고리즘-전체-지도)
 - [2. 공통 사양](#2-공통-사양)
+- [2.3 근거 수준 표기](#23-근거-수준-표기)
 - [3. 회사 정의 영역 — 표준 구현](#3-회사-정의-영역--표준-구현)
   - [3.1 BMI 분류](#31-bmi-분류)
   - [3.2 v1 — 권장 걸음수 + 기본점수](#32-v1--권장-걸음수--기본점수)
@@ -98,12 +99,29 @@ def validate_user_inputs(
 
 ---
 
+### 2.3 근거 수준 표기
+
+각 알고리즘은 구현 전 [`13-algorithm-literature-evidence.md`](./13-algorithm-literature-evidence.md)의 근거 검토를 따른다.
+
+| 수준 | 의미 | 구현 원칙 |
+|------|------|----------|
+| A | 논문·공식 기준에서 직접 확인되는 수식 또는 기준값 | 코드 상수화 가능. docstring에 출처를 남긴다. |
+| B | 방향성 근거는 있으나 프로젝트 계수까지 직접 검증되지는 않음 | 기본값으로 사용할 수 있으나 설정값으로 분리한다. |
+| C | 제품 UX 또는 팀 가정에 가까운 휴리스틱 | 자문 전에는 진단·치료 표현을 금지한다. |
+
+> 현재 문서의 회사 가이드 예시 테스트는 "계산 재현"을 위한 기준이다. 의료 효과, 감량 효과, 질환 개선 효과를 보장하는 검증으로 해석하지 않는다.
+
+---
+
 ## 3. 회사 정의 영역 — 표준 구현
 
 ### 3.1 BMI 분류
 
 #### 설명
 한국·아시아 BMI 기준 (서양 25 미만 정상과 다름).
+
+> **근거 수준: A**
+> WHO Expert Consultation은 아시아 인구에서 BMI 23.0, 27.5 등을 공중보건 action point로 제시했다. 현재 분류는 한국·아시아 사용자에게 맞춘 스크리닝 기준이며, 체지방률·근육량을 직접 측정하는 진단 도구는 아니다.
 
 | 분류 | BMI 범위 | 라벨 |
 |------|---------|------|
@@ -258,6 +276,9 @@ def test_v1_50f_obese1_7000steps():
 #### 설명
 v1 기본점수에 심박수 강도를 곱해 운동의 질까지 반영.
 
+> **근거 수준: B**
+> `220 - 나이`는 회사 가이드 예시와 기존 테스트 재현을 위한 기본 모드다. Tanaka et al. 2001은 건강한 성인의 HRmax 추정식으로 `208 - 0.7 × 나이`를 제안했으므로, Phase 2부터는 `hrmax_method="guide_220" | "tanaka_2001"` 설정을 분리한다.
+
 ```
 목표심박구간 = (220 − 나이) × [0.5 ~ 0.7]
 심박계수 = min(목표 심박 유지시간(분) ÷ 30, 1.0)
@@ -269,9 +290,22 @@ v2점수 = v1점수 × (0.7 + 0.3 × 심박계수)
 #### 의사 코드
 
 ```python
-def calculate_target_hr_range(age: int) -> tuple[int, int]:
-    """목표 심박구간 (50%~70% of HRmax)"""
-    hr_max = 220 - age
+def calculate_estimated_hr_max(age: int, method: str = "guide_220") -> float:
+    """HRmax 추정.
+
+    guide_220은 회사 가이드 예시 재현용 기본값이고,
+    tanaka_2001은 Tanaka et al. 2001 논문 근거 옵션이다.
+    """
+    if method == "tanaka_2001":
+        return 208 - 0.7 * age
+    return 220 - age
+
+def calculate_target_hr_range(
+    age: int,
+    method: str = "guide_220",
+) -> tuple[int, int]:
+    """목표 심박구간 (50%~70% of HRmax)."""
+    hr_max = calculate_estimated_hr_max(age, method)
     return (round(hr_max * 0.5), round(hr_max * 0.7))
 
 def calculate_hr_factor(
@@ -350,12 +384,12 @@ def calculate_percentile_bonus(
     """
     if len(group_v2_scores) < 30:
         return 0
-    
+
     # 사용자보다 높은 점수의 비율 계산
     higher_count = sum(1 for s in group_v2_scores if s > user_v2)
     percentile_rank = (higher_count / len(group_v2_scores)) * 100
     # percentile_rank가 작을수록 상위
-    
+
     if percentile_rank <= 10:
         return 10
     elif percentile_rank <= 20:
@@ -401,7 +435,10 @@ def test_v3_50f_example():
 ### 3.5 v4 — 만성질환 가중
 
 #### 설명
-만성질환자가 동일 활동을 했을 때 더 높은 건강 효과를 누린다는 임상적 근거 반영.
+만성질환자에게 신체활동의 중요도를 더 높게 반영하기 위한 프로젝트 가중치.
+
+> **근거 수준: B/C**
+> HHS/CDC는 만성질환자도 가능한 범위에서 신체활동을 권장하고 여러 건강상 이점을 제시한다. 다만 아래 질환별 `+0.10`, `+0.15` 값은 논문에서 직접 도출된 임상 효과 크기가 아니라 프로젝트 우선순위 계수다. 의료·법무 자문 전에는 사용자에게 "질환 개선 점수"처럼 표현하지 않는다.
 
 ```
 만성질환가중 = 1.0 + Σ(질환별 가산치)  [최대 1.3 상한]
@@ -474,6 +511,9 @@ def test_v4_unknown_disease_ignored():
 
 #### 설명
 기초대사량 (Basal Metabolic Rate). 완전 안정 상태에서의 하루 기본 소비 열량.
+
+> **근거 수준: A**
+> Mifflin et al. 1990의 resting energy expenditure 예측식을 구현한다. 개인별 오차가 있으므로 결과명은 "예상 BMR"로 표기한다.
 
 ```
 남성: BMR = 10×W + 6.25×H − 5×A + 5
@@ -582,6 +622,9 @@ def test_tdee_50f_example():
 #### 설명
 N일 후 체중 예측. 핵심 원리: **체중 변화(kg) = 누적 에너지 수지(kcal) ÷ 7,700** (지방 1kg ≈ 7,700 kcal).
 
+> **근거 수준: B/C**
+> 7,700 kcal/kg 규칙은 Wishnofsky 1958의 정적 규칙에서 온 단순 근사다. 장기 체중 변화는 Hall et al. 2011처럼 체중 변화에 따른 에너지 소비 조정과 체성분 변화를 반영해야 한다. 아래 `0.85`, `0.95` 보정계수는 회사 가이드 재현용 프로젝트 계수다.
+
 #### 7단계
 
 | Step | 내용 |
@@ -625,19 +668,19 @@ def predict_weight_n_days(
     """7-step 체중 예측"""
     # Step 1: BMR
     bmr = calculate_bmr(weight_kg, height_cm, age, sex)
-    
+
     # Step 2: TDEE
     tdee = calculate_tdee(bmr, daily_steps)
-    
+
     # Step 3: 일일 수지
     daily_balance = daily_intake_kcal - tdee
-    
+
     # Step 4: N일 누적
     cumulative = daily_balance * n_days
-    
+
     # Step 5: 이론 변화
     theoretical = cumulative / KCAL_PER_KG_FAT
-    
+
     # Step 6: 현실 보정
     if daily_balance < 0:
         corrected = theoretical * LOSS_CORRECTION
@@ -645,10 +688,10 @@ def predict_weight_n_days(
         corrected = theoretical * GAIN_CORRECTION
     else:
         corrected = theoretical
-    
+
     # Step 7: 예측 체중
     predicted = weight_kg + corrected
-    
+
     return WeightPrediction(
         bmr=bmr,
         tdee=tdee,
@@ -733,7 +776,7 @@ def test_weight_maintenance():
 2. OCR (Google Cloud Vision DOCUMENT_TEXT_DETECTION)
    → 라벨의 모든 텍스트 추출
 
-3. LLM 구조화 (Claude API + Tool Use)
+3. LLM 구조화 (Ollama 로컬 LLM + JSON Schema)
    → 비정형 텍스트 → 정형 JSON
 
 4. 식약처 DB 매칭
@@ -746,8 +789,10 @@ def test_weight_maintenance():
 #### 의사 코드
 
 ```python
+import json
+
 from pydantic import BaseModel
-from anthropic import Anthropic
+from ollama import AsyncClient
 from google.cloud import vision
 
 class SupplementIngredient(BaseModel):
@@ -769,7 +814,7 @@ async def parse_supplement_label(image_bytes: bytes) -> SupplementParseResult:
     cached = await redis.get(f"ocr:{image_hash}")
     if cached:
         return SupplementParseResult.model_validate_json(cached)
-    
+
     # Step 2: OCR
     vision_client = vision.ImageAnnotatorClient()
     response = vision_client.document_text_detection(
@@ -778,48 +823,42 @@ async def parse_supplement_label(image_bytes: bytes) -> SupplementParseResult:
     if response.error.message:
         raise OCRError(response.error.message)
     raw_text = response.full_text_annotation.text
-    
-    # Step 3: LLM 구조화
-    claude = Anthropic()
-    message = claude.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        tools=[{
-            "name": "extract_supplement_facts",
-            "input_schema": SupplementParseResult.model_json_schema()
-        }],
-        tool_choice={"type": "tool", "name": "extract_supplement_facts"},
+
+    # Step 3: LLM 구조화. 환자 개인정보 보호를 위해 로컬 Ollama만 호출한다.
+    ollama = AsyncClient(host="http://127.0.0.1:11434")
+    message = await ollama.chat(
+        model="qwen3.5:9b",
+        format=SupplementParseResult.model_json_schema(),
+        stream=False,
         messages=[{
             "role": "user",
             "content": f"""아래는 영양제 라벨의 OCR 결과입니다.
             성분명·용량·단위·1일권장량 비율을 추출해 주세요.
             한국어/영어 모두 지원하며, 한국어로 변환된 성분명을 우선합니다.
-            
+
             OCR 텍스트:
             ---
             {raw_text}
             ---
             """
-        }]
+        }],
+        options={"temperature": 0},
     )
-    
-    # Tool use 결과 추출
-    tool_use_block = next(
-        b for b in message.content if b.type == "tool_use"
-    )
-    parsed = SupplementParseResult.model_validate(tool_use_block.input)
+
+    # JSON Schema 검증
+    parsed = SupplementParseResult.model_validate_json(message.message.content)
     parsed.raw_ocr_text = raw_text
-    
+
     # Step 4: 식약처 DB 매칭 (별도 함수)
     parsed = await enrich_with_mfds_db(parsed)
-    
+
     # Step 5: 캐싱
     await redis.set(
         f"ocr:{image_hash}",
         parsed.model_dump_json(),
         ex=60 * 60 * 24 * 30  # 30일
     )
-    
+
     return parsed
 ```
 
@@ -830,7 +869,7 @@ async def parse_supplement_label(image_bytes: bytes) -> SupplementParseResult:
 async def test_parse_supplement_simple_label(mocker):
     """간단한 영양제 라벨 파싱"""
     mock_image = b"fake_image_bytes"
-    
+
     # Cloud Vision 응답 모킹
     mock_vision = mocker.patch.object(vision_client, "document_text_detection")
     mock_vision.return_value = MagicMock(
@@ -840,13 +879,12 @@ async def test_parse_supplement_simple_label(mocker):
         """),
         error=MagicMock(message="")
     )
-    
-    # Claude 응답 모킹
-    mock_claude = mocker.patch.object(Anthropic, "messages")
-    mock_claude.create.return_value = MagicMock(
-        content=[MagicMock(
-            type="tool_use",
-            input={
+
+    # Ollama 응답 모킹
+    mock_ollama = mocker.patch.object(AsyncClient, "chat")
+    mock_ollama.return_value = MagicMock(
+        message=MagicMock(
+            content=json.dumps({
                 "product_name": None,
                 "serving_size": None,
                 "ingredients": [
@@ -854,11 +892,12 @@ async def test_parse_supplement_simple_label(mocker):
                      "amount": 1000, "unit": "mg", "daily_value_pct": 1111},
                     {"name_ko": "비타민 D3", "name_en": "Vitamin D3",
                      "amount": 25, "unit": "μg", "daily_value_pct": 125},
-                ]
-            }
-        )]
+                ],
+                "raw_ocr_text": "",
+            })
+        )
     )
-    
+
     result = await parse_supplement_label(mock_image)
     assert len(result.ingredients) == 2
     assert result.ingredients[0].name_ko == "비타민 C"
@@ -879,7 +918,7 @@ async def test_parse_uses_cache_on_repeated_call(mocker):
 | Phase | 입력 | 처리 |
 |-------|------|------|
 | Phase 2 (MVP) | 텍스트 (예: "김치찌개 1그릇, 공깃밥 1그릇") | 식약처 식품영양성분 API 룩업 |
-| Phase 3 (고도화) | 이미지 | LLM Vision (Claude) 또는 AI Hub 한국 음식 모델 |
+| Phase 3 (고도화) | 이미지 | Ollama 로컬 Vision 모델 + AI Hub 한국 음식 데이터 기반 보정 |
 
 #### 의사 코드 (Phase 2)
 
@@ -899,7 +938,7 @@ class NutritionalContent(BaseModel):
 
 async def parse_meal_text(meal_description: str) -> list[FoodIntake]:
     """LLM으로 텍스트 식단 → 구조화"""
-    # "김치찌개 1그릇, 공깃밥 1그릇" → 
+    # "김치찌개 1그릇, 공깃밥 1그릇" →
     # [FoodIntake(food_name="김치찌개", amount=1, unit="그릇"), ...]
     ...
 
@@ -992,14 +1031,14 @@ def diagnose_nutrients(
 ) -> list[NutrientDiagnosis]:
     """30종 영양소 결핍 진단"""
     rdi_table = lookup_kdris(user_profile)  # 사용자 맞춤 KDRIs
-    
+
     diagnoses = []
     for nutrient_name in NUTRIENT_NAMES:
         rdi = rdi_table[nutrient_name]
         ul = rdi_table.get(f"{nutrient_name}_ul")
         actual = getattr(actual_intake, nutrient_name)
         ratio = actual / rdi if rdi > 0 else 0
-        
+
         # 상태 분류
         if ul and actual > ul:
             status = NutrientStatus.RISKY
@@ -1011,7 +1050,7 @@ def diagnose_nutrients(
             status = NutrientStatus.LOW
         else:
             status = NutrientStatus.ADEQUATE
-        
+
         diagnoses.append(NutrientDiagnosis(
             nutrient_name=nutrient_name,
             rdi=rdi, ul=ul, actual=actual,
@@ -1019,14 +1058,14 @@ def diagnose_nutrients(
             status=status,
             priority=0,  # 다음 단계에서 정렬
         ))
-    
+
     # 결핍 우선순위 (비율이 낮을수록 우선)
-    deficient = [d for d in diagnoses 
+    deficient = [d for d in diagnoses
                  if d.status in (NutrientStatus.DEFICIENT, NutrientStatus.LOW)]
     deficient.sort(key=lambda d: d.ratio)
     for i, d in enumerate(deficient):
         d.priority = i + 1
-    
+
     return diagnoses
 ```
 
@@ -1037,10 +1076,10 @@ def test_diagnose_deficient_vitamin_c():
     """비타민C 권장 100mg, 실제 30mg → DEFICIENT"""
     profile = UserProfile(age=30, sex="male", ...)
     actual = NutritionalContent(vitamin_c_mg=30, ...)
-    
+
     diagnoses = diagnose_nutrients(profile, actual)
     vit_c = next(d for d in diagnoses if d.nutrient_name == "vitamin_c_mg")
-    
+
     assert vit_c.status == NutrientStatus.DEFICIENT
     assert vit_c.ratio == pytest.approx(0.30, abs=0.01)
 
@@ -1048,10 +1087,10 @@ def test_diagnose_risky_when_above_ul():
     """비타민A UL 3000μg, 실제 5000 → RISKY"""
     profile = UserProfile(age=30, sex="male", ...)
     actual = NutritionalContent(vitamin_a_ug=5000, ...)
-    
+
     diagnoses = diagnose_nutrients(profile, actual)
     vit_a = next(d for d in diagnoses if d.nutrient_name == "vitamin_a_ug")
-    
+
     assert vit_a.status == NutrientStatus.RISKY
 ```
 
@@ -1063,9 +1102,12 @@ def test_diagnose_risky_when_above_ul():
 
 회사 가이드는 출력으로만 명시. 우리가 의학·식약처 기능성 인정 원료 기준으로 매트릭스 정의.
 
+> **근거 수준: B/C**
+> 사용자 화면에는 식품안전나라·식약처의 인정 기능성 문구를 우선 사용한다. AREDS2, 비타민 D, 오메가-3 논문은 배경 근거로만 사용하며, 질병 예방·치료 효과를 보장하는 표현으로 연결하지 않는다.
+
 | 목적 | 핵심 영양소 | KDRIs/식약처 권장량 | 근거 |
 |------|------------|--------------------|------|
-| **눈건강** | 루테인+지아잔틴 | 루테인 10~20 mg/일 (식약처) | AREDS2 — 황반변성 진행 억제 |
+| **눈건강** | 루테인+지아잔틴 | 루테인+지아잔틴 10~20 mg/일 (식품안전나라 원료별 정보 기준) | AREDS2 — 황반변성 진행 관련 연구, 식약처 인정 문구 우선 |
 | | 오메가-3 (DHA) | 1~2 g/일 | 망막 구성, 안구건조증 |
 | | 비타민A | 남 800 / 여 650 RAE | 야맹증 예방 |
 | **간기능** | 밀크씨슬 (실리마린) | ≥130 mg/일 | 식약처 "간 건강" 인정 |
@@ -1076,7 +1118,7 @@ def test_diagnose_risky_when_above_ul():
 | | 코엔자임Q10 | 90~100 mg (건기식) | 미토콘드리아 |
 | | 마그네슘 | 남 350 / 여 280 mg | ATP 생성 |
 
-> ⚠️ **주의**: 루테인은 흡연자에게 폐암 위험 가능성 → UI에 흡연자 분기 필요.
+> ⚠️ **주의**: 흡연자, 임산부·수유부, 특정 질환자는 원료별 주의사항에 따라 전문가 상담 분기를 둔다.
 
 #### 의사 코드
 
@@ -1088,7 +1130,7 @@ class HealthGoal(str, Enum):
 
 GOAL_NUTRIENT_MATRIX = {
     HealthGoal.EYE_HEALTH: [
-        ("lutein_zeaxanthin_mg", 10, 20, "AREDS2 황반변성 진행 억제"),
+        ("lutein_zeaxanthin_mg", 10, 20, "AREDS2 관련 연구, 식약처 인정 문구 우선"),
         ("omega3_dha_g", 1.0, 2.0, "망막 구성, 안구건조증"),
         ("vitamin_a_ug", None, None, "야맹증 예방 (KDRIs)"),
     ],
@@ -1121,35 +1163,35 @@ def analyze_health_goal(
     matrix = GOAL_NUTRIENT_MATRIX[goal]
     relevant_diags = []
     warnings = []
-    
-    # 흡연자 + 눈건강 → 루테인 경고
+
+    # 흡연자 + 눈건강 → 베타카로틴 포함 제품 주의 경고
     if goal == HealthGoal.EYE_HEALTH and user_profile.is_smoker:
         warnings.append(
-            "흡연자는 루테인 고용량 보충 시 폐암 위험 가능성. "
+            "흡연자는 베타카로틴 포함 눈 건강 제품 섭취 전 "
             "전문가와 상담을 권장합니다."
         )
-    
+
     # 매트릭스 영양소별 충족도 계산
     for nutrient_name, *_, evidence in matrix:
         diag = next((d for d in diagnoses if d.nutrient_name == nutrient_name), None)
         if diag:
             relevant_diags.append(diag)
-    
+
     if not relevant_diags:
         score = 0.0
     else:
         # 평균 비율을 0~100으로 변환 (1.0이 만점)
         avg_ratio = sum(min(d.ratio, 1.5) for d in relevant_diags) / len(relevant_diags)
         score = round(min(avg_ratio, 1.0) * 100, 1)
-    
+
     # 권고: 결핍된 영양소 우선
-    deficient = [d for d in relevant_diags 
+    deficient = [d for d in relevant_diags
                  if d.status in (NutrientStatus.DEFICIENT, NutrientStatus.LOW)]
     recommendations = [
         f"{d.nutrient_name} 보충 권장 (현재 {d.actual}, 권장 {d.rdi})"
         for d in deficient
     ]
-    
+
     return GoalAnalysisResult(
         goal=goal,
         score=score,
@@ -1163,10 +1205,10 @@ def analyze_health_goal(
 
 ```python
 def test_goal_eye_health_smoker_warning():
-    """흡연자 + 눈건강 → 루테인 경고"""
+    """흡연자 + 눈건강 → 베타카로틴 포함 제품 주의 경고"""
     profile = UserProfile(age=45, sex="male", is_smoker=True, ...)
     diagnoses = [...]
-    
+
     result = analyze_health_goal(HealthGoal.EYE_HEALTH, profile, diagnoses)
     assert any("흡연" in w for w in result.warnings)
 
@@ -1179,7 +1221,7 @@ def test_goal_score_when_all_deficient():
                           status=NutrientStatus.DEFICIENT, ul=None, priority=1),
         # ...
     ]
-    
+
     result = analyze_health_goal(HealthGoal.EYE_HEALTH, profile, diagnoses)
     assert result.score < 30
 ```
@@ -1214,13 +1256,13 @@ async def run_full_analysis(
     ])
     meal_nutrition = await calculate_meal_nutrition(meal_text)
     total_intake = sum_intake(meal_nutrition, sup_results)
-    
+
     # 2. 부족 영양소 진단
     diagnoses = diagnose_nutrients(user_profile, total_intake)
-    
+
     # 3. KDRIs 권장 섭취량
     rdi = lookup_kdris(user_profile)
-    
+
     # 4. 체중 예측 (1주/1개월/3개월)
     predictions = predict_weight_periods(
         weight_kg=user_profile.weight_kg,
@@ -1230,36 +1272,36 @@ async def run_full_analysis(
         daily_steps=daily_steps,
         daily_intake_kcal=daily_intake_kcal,
     )
-    
+
     # 5. 활동점수 v1~v4
     bmi = calculate_bmi(user_profile.weight_kg, user_profile.height_cm)
     bmi_cat = classify_bmi(bmi)
     rec_steps = calculate_recommended_steps(user_profile.sex, user_profile.age, bmi_cat)
     v1 = calculate_v1_score(daily_steps, rec_steps)
-    
+
     hr_factor = calculate_hr_factor(target_hr_minutes)
     v2 = calculate_v2_score(v1, hr_factor)
-    
+
     bonus = calculate_percentile_bonus(v2, group_v2_scores or [])
     v3 = calculate_v3_score(v2, bonus)
-    
+
     multiplier = calculate_disease_multiplier(user_profile.diseases)
     v4 = calculate_v4_score(v3, multiplier)
-    
+
     activity = ActivityRecommendation(
         recommended_steps=rec_steps,
         actual_steps=daily_steps,
         v1=v1, v2=v2, v3=v3, v4=v4,
     )
-    
+
     # 6. 목적별 분석
     goal_results = {
         goal: analyze_health_goal(goal, user_profile, diagnoses)
         for goal in HealthGoal
     }
-    
+
     return FullAnalysisResult(
-        deficient_nutrients=[d for d in diagnoses 
+        deficient_nutrients=[d for d in diagnoses
                              if d.status in (NutrientStatus.DEFICIENT, NutrientStatus.LOW)],
         recommended_intake=rdi,
         weight_predictions=predictions,
@@ -1305,7 +1347,7 @@ async def run_full_analysis(
 
 ### 7.2 한국인 특이값 보정 (Phase 3)
 
-회사 가이드 BMR 공식(Mifflin-St Jeor)은 **미국·유럽 성인 기준**. 동일 BMI에서 체지방률이 서양인보다 높은 아시아인 특성으로 BMR이 5~10% 과대추정될 수 있음.
+회사 가이드 BMR 공식(Mifflin-St Jeor)은 건강한 성인 표본에서 만든 REE 예측식이다. 한국인 사용자에게 일괄 보정계수를 적용하려면 실제 체성분·체중 변화 데이터로 검증해야 한다. 현재 문서에서는 "아시아인이라 무조건 몇 % 보정"처럼 확정하지 않고, Phase 3 검증 옵션으로 둔다.
 
 #### Phase 3 도입 옵션
 
@@ -1313,11 +1355,11 @@ async def run_full_analysis(
 |------|---------|------|
 | **Katch-McArdle 공식** | 체지방률 (선택) | 가장 정확 (체지방 측정 가능 시) |
 | **Cunningham 공식** | 제지방량 LBM | 운동선수·근육질에 우수 |
-| **한국인 보정 계수** | 없음 | 단순한 ×0.95 보정 |
+| **한국인 보정 계수** | 없음 | 자체 데이터 검증 후에만 적용 |
 
-### 7.3 Hall 동적 모델 (Phase 3 — 3개월 예측 정확도 향상)
+### 7.3 Hall 동적 모델 (Phase 3 — 장기 예측 고도화)
 
-7,700 kcal/kg 규칙은 단기(1~3개월) 예측에는 합리적이나, 장기 예측엔 한계.
+7,700 kcal/kg 규칙은 단기 데모와 계산 설명에는 직관적이나, 장기 예측엔 한계가 있다.
 
 - **Hall et al. 2011 (The Lancet)** 동적 모델 도입 검토
 - 적응성 열생성 + 체성분 변화 + BMR 변화 통합
@@ -1344,9 +1386,12 @@ async def run_full_analysis(
 
 | 버전 | 날짜 | 변경 사항 | 작성자 |
 |-----|------|---------|-------|
+| v1.1 | 2026-05-11 | 논문·공식 자료 근거 수준, v2 HRmax 옵션, v4/체중예측/목적별 분석 한계 반영 | TBD |
 | v1.0 | 2026-05-03 | 초안 작성. 회사 정의 8개 + 갭 4개 알고리즘, 50+ 단위 테스트 | TBD |
 
 ## 🔗 관련 문서
+
+- [13. 알고리즘 논문·공식 근거 검토](./13-algorithm-literature-evidence.md)
 
 - [01. 프로젝트 개요](./01-project-overview.md)
 - [06. 기술 스택](./06-tech-stack.md)

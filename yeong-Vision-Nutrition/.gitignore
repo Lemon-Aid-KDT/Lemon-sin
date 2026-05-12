@@ -11,6 +11,7 @@
 .env.*.local
 .env.production
 .env.development
+api-key/
 *.pem
 *.key
 *.crt
@@ -267,6 +268,7 @@ logs/
 tmp/
 temp/
 .cache/
+.omc/
 *.bak
 *.backup
 

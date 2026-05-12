@@ -596,7 +596,7 @@ GitHub Settings → Branches → Add rule:
 ### 10.1 절대 커밋하지 말아야 할 것
 
 ```
-❌ API 키 (Google Cloud Vision, OpenAI, Anthropic, ...)
+❌ API 키 (Google Cloud Vision, CLOVA OCR, Firebase, ...)
 ❌ 데이터베이스 비밀번호
 ❌ JWT secret key
 ❌ AWS/NCP 액세스 키
@@ -612,7 +612,8 @@ GitHub Settings → Branches → Add rule:
 ```
 backend/.env (gitignore 됨)
 GOOGLE_CLOUD_VISION_API_KEY=...
-ANTHROPIC_API_KEY=...
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3.5:9b
 DATABASE_URL=postgresql://...
 ```
 
@@ -620,7 +621,8 @@ DATABASE_URL=postgresql://...
 ```
 backend/.env.example
 GOOGLE_CLOUD_VISION_API_KEY=
-ANTHROPIC_API_KEY=
+OLLAMA_BASE_URL=
+OLLAMA_MODEL=
 DATABASE_URL=
 ```
 

@@ -130,11 +130,11 @@ presentation/
         │
    ┌────┼─────────┬──────────┐
    ▼    ▼         ▼          ▼
-  [PostgreSQL] [Redis]  [Cloud Vision]  [Claude API]
-                          ↓ Fallback     ↓ Fallback
-                        [CLOVA OCR]    [GPT API]
+  [PostgreSQL] [Redis]  [Cloud Vision]  [Ollama Local]
+                          ↓ Fallback     ↓ Model switch
+                        [CLOVA OCR]    [qwen3.5/gemma4]
 
-[하단 노트] "모든 외부 API는 Adapter 패턴으로 교체 가능"
+[하단 노트] "LLM은 환자 개인정보 보호를 위해 로컬 Ollama를 기본값으로 사용"
 ```
 
 ### Slide 17: 의료법 컴플라이언스 (⭐)

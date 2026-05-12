@@ -1,0 +1,130 @@
+"""Privacy, consent, deletion, and audit API schemas."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ConsentType(StrEnum):
+    """Supported user consent buckets.
+
+    Attributes:
+        SENSITIVE_HEALTH_ANALYSIS: Consent for storing and processing health analysis data.
+        HEALTH_DEVICE_DATA: Consent for future wearable or device data intake.
+        OCR_IMAGE_PROCESSING: Consent for future OCR image processing.
+        DATA_RETENTION: Consent for retaining user analysis history.
+    """
+
+    SENSITIVE_HEALTH_ANALYSIS = "sensitive_health_analysis"
+    HEALTH_DEVICE_DATA = "health_device_data"
+    OCR_IMAGE_PROCESSING = "ocr_image_processing"
+    DATA_RETENTION = "data_retention"
+
+
+class ConsentStatus(BaseModel):
+    """Current consent state for one consent bucket.
+
+    Attributes:
+        consent_type: Consent bucket.
+        policy_version: Active policy version.
+        title: Human-readable policy title.
+        required: Whether the policy gates a protected feature.
+        granted: Whether the active policy version is currently granted.
+        occurred_at: Timestamp of the latest consent event for this bucket.
+        revoked_at: Revocation timestamp when the latest event is a revocation.
+    """
+
+    consent_type: ConsentType
+    policy_version: str
+    title: str
+    required: bool
+    granted: bool
+    occurred_at: datetime | None
+    revoked_at: datetime | None
+
+
+class ConsentStateResponse(BaseModel):
+    """Current consent state response.
+
+    Attributes:
+        consents: Current consent states for all active policy buckets.
+    """
+
+    consents: list[ConsentStatus]
+
+
+class ConsentActionResponse(BaseModel):
+    """Consent grant or revocation response.
+
+    Attributes:
+        consent_type: Consent bucket.
+        policy_version: Policy version used for the action.
+        granted: New granted state.
+        occurred_at: Timestamp of the consent event.
+    """
+
+    consent_type: ConsentType
+    policy_version: str
+    granted: bool
+    occurred_at: datetime
+
+
+class DeletionRequestType(StrEnum):
+    """Supported deletion request scopes.
+
+    Attributes:
+        ALL_USER_DATA: Delete the current user's analysis results and consent records.
+    """
+
+    ALL_USER_DATA = "all_user_data"
+
+
+class DeletionRequestStatus(StrEnum):
+    """Deletion request processing status.
+
+    Attributes:
+        COMPLETED: Request was processed immediately.
+        FAILED: Request failed with a sanitized reason.
+    """
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DeletionRequestCreate(BaseModel):
+    """Deletion request creation payload.
+
+    Attributes:
+        request_type: Deletion scope requested by the current user.
+    """
+
+    request_type: DeletionRequestType = DeletionRequestType.ALL_USER_DATA
+
+
+class DeletionRequestResponse(BaseModel):
+    """Deletion request response.
+
+    Attributes:
+        id: Deletion request identifier.
+        request_type: Deletion scope.
+        status: Processing status.
+        requested_at: Time when the request was received.
+        completed_at: Completion time for immediately processed requests.
+        deleted_counts: Counts of deleted rows by resource type.
+        failure_reason: Sanitized failure reason when failed.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    request_type: DeletionRequestType
+    status: DeletionRequestStatus
+    requested_at: datetime
+    completed_at: datetime | None
+    deleted_counts: dict[str, Any]
+    failure_reason: str | None

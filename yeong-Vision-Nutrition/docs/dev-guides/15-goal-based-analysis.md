@@ -32,7 +32,17 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §4.4](../07-core-algorithm.md), 식약처 건강기능식품 인정 기능성
+> 🔍 **출처**: [docs/07-core-algorithm.md §4.4](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md), 식약처·식품안전나라 건강기능식품 인정 기능성
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| 식약처 인정 기능성 문구 | A | 사용자 화면 문구의 1차 기준으로 사용한다. |
+| AREDS2, 비타민 D, 오메가-3 등 논문 | B | 영양소-목적 매핑의 배경 근거로 사용하되 질병 예방·치료 주장으로 쓰지 않는다. 비타민 D와 감염 예방처럼 최신 근거가 혼재된 영역은 "면역 기능 유지에 필요" 수준으로 제한한다. |
+| 목적별 weight 값 | C | 개인 맞춤 UX 점수 산출용 프로젝트 가중치다. 자문 전에는 효과 순위처럼 표현하지 않는다. |
+
+> 기능성 원료는 "도움을 줄 수 있음" 수준의 문구로 제한한다. 사용자 질환, 약물, 임신·수유, 흡연 상태에 따라 주의 문구와 전문가 상담 안내를 표시한다.
 
 ### 7가지 목적 카테고리 (Phase 3 범위)
 
@@ -602,7 +612,7 @@ class TestComplianceValidation:
 
 ### 식약처 인정 기능성 표시 출처
 
-식약처 건강기능식품 데이터베이스 (https://www.foodsafetykorea.go.kr/portal/healthyfoodlife) 에서 인정된 표현만 사용. 직접 만든 표현은 의료법 위반 위험.
+식품안전나라 건강기능식품 원료별 정보에서 인정된 표현만 사용. 직접 만든 표현은 의료법·표시광고 규정 위반 위험이 있다.
 
 ### JSON 스키마 검증
 
@@ -635,6 +645,15 @@ class HealthGoal(BaseModel):
 ## 🔗 관련 문서
 
 - [`/docs/07-core-algorithm.md §4.4`](../07-core-algorithm.md)
+- [`/docs/13-algorithm-literature-evidence.md`](../13-algorithm-literature-evidence.md)
 - [`/docs/10-compliance-checklist.md §10`](../10-compliance-checklist.md)
 - 이전: [`14-hall-dynamic-model.md`](./14-hall-dynamic-model.md)
 - 다음: [`16-meal-recognition.md`](./16-meal-recognition.md)
+
+## 📚 사용 근거
+
+- 식품안전나라. 루테인/지아잔틴복합추출물 원료별 정보. https://www.foodsafetykorea.go.kr/portal/board/boardDetail.do?bbs_no=bbs987&menu_grp=MENU_NEW01&menu_no=2660&ntctxt_no=21540
+- AREDS2 Research Group. Lutein + zeaxanthin and omega-3 fatty acids for age-related macular degeneration. JAMA. 2013. https://pubmed.ncbi.nlm.nih.gov/23644932/
+- Martineau AR, et al. Vitamin D supplementation to prevent acute respiratory tract infections. BMJ. 2017. https://www.bmj.com/content/356/bmj.i6583.abstract
+- Jolliffe DA, et al. Vitamin D supplementation to prevent acute respiratory infections. The Lancet Diabetes & Endocrinology. 2025. https://pubmed.ncbi.nlm.nih.gov/39993397/
+- Bernasconi AA, et al. Effect of Omega-3 Dosage on Cardiovascular Outcomes. Mayo Clinic Proceedings. 2021. https://pubmed.ncbi.nlm.nih.gov/32951855/

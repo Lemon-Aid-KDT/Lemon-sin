@@ -241,11 +241,10 @@ flutter run
 
 ## 인계 시크릿 목록
 
-### 1. 외부 API 키
+### 1. 외부 API 키와 로컬 LLM 설정
 | 서비스 | 환경변수 | 인계 방법 | 비용 모델 |
 |--------|---------|---------|---------|
-| Anthropic Claude | `ANTHROPIC_API_KEY` | 1Password | 종량제 |
-| OpenAI (백업) | `OPENAI_API_KEY` | 1Password | 종량제 |
+| Ollama Local | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | `.env.example` + 운영 문서 | 로컬/서버 운영비 |
 | Google Cloud Vision | `GOOGLE_APPLICATION_CREDENTIALS` (JSON) | USB | 종량제 |
 | CLOVA OCR (백업) | `CLOVA_OCR_SECRET` | 1Password | 종량제 |
 | FCM | `firebase-adminsdk.json` | USB | 무료 |
@@ -284,7 +283,7 @@ flutter run
 ### Step 2: 발주처 측
 1. 시크릿 수신 확인
 2. 즉시 모든 시크릿 회전 (rotate):
-   - Claude API 키 재발급
+   - Ollama 모델·서버 접근권한 재확인
    - GCP 서비스 계정 키 재발급
    - DB 패스워드 변경
    - JWT 시크릿 키 재발급
@@ -427,7 +426,7 @@ alembic check  # 미반영 마이그레이션 0개 확인
 
 ### 비용 추산 (월간)
 - Cloud (서버·DB·네트워크): ₩300,000 ~ 500,000
-- Claude API: ₩1,500,000 (사용자 1만 명 기준)
+- Ollama 로컬/사내 LLM 서버: 운영 방식에 따라 별도 산정
 - Cloud Vision: ₩200,000
 - FCM/APNs: 무료 (한도 내)
 - 도메인·SSL: ₩30,000
@@ -567,7 +566,7 @@ alembic check  # 미반영 마이그레이션 0개 확인
 ## 외부 의존성 연락처
 
 ### 위급 시 연락
-- Anthropic Support: support@anthropic.com (영문)
+- Ollama Docs: https://docs.ollama.com/
 - Google Cloud Support: 콘솔에서 티켓
 - Naver Cloud (CLOVA): 1588-XXXX
 - Firebase: 콘솔 사용 가이드

@@ -33,7 +33,17 @@ backend/
 
 ## 📐 알고리즘 명세
 
-> 🔍 **출처**: [docs/07-core-algorithm.md §4.3](../07-core-algorithm.md)
+> 🔍 **출처**: [docs/07-core-algorithm.md §4.3](../07-core-algorithm.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md)
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| KDRIs reference value | A | 사용자의 성별·연령·임신/수유 상태에 맞는 KDRIs 값을 조회한다. |
+| EAR/RDA/AI/UL 해석 | A | DRI의 섭취 평가 개념을 참고한다. UL 초과는 위험 가능성 경고로 우선 표시한다. |
+| 35% / 70% / 130% 임계값 | C | 공식 진단 cutoff가 아니라 서비스 UX 분류 기준이다. |
+
+> 코드 내부 enum은 `DEFICIENT`를 유지하더라도, 사용자 화면 문구는 "심각한 결핍"보다 "섭취량이 매우 낮을 가능성"처럼 완화해서 표기한다.
 
 ### 진단 흐름
 

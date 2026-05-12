@@ -55,8 +55,8 @@ backend/
 │   ├── llm/                  # LLM Adapter
 │   │   ├── __init__.py
 │   │   ├── base.py           # LLMAdapter ABC
-│   │   ├── claude.py         # Anthropic Claude 구현
-│   │   └── openai.py         # OpenAI GPT 구현 (백업)
+│   │   ├── ollama.py         # Ollama Local API 구현
+│   │   └── external.py       # 비식별 테스트/승인 환경 전용 외부 LLM 가드
 │   │
 │   ├── api/                  # FastAPI 라우터
 │   │   ├── __init__.py
@@ -519,7 +519,8 @@ class Settings(BaseSettings):
     Attributes:
         environment: 실행 환경.
         database_url: PostgreSQL 연결 URL.
-        anthropic_api_key: Claude API 키 (SecretStr로 보호).
+        ollama_base_url: Ollama Local API 주소.
+        ollama_model: 기본 Ollama 모델 태그.
     """
 
     model_config = SettingsConfigDict(
@@ -533,8 +534,13 @@ class Settings(BaseSettings):
     database_url: str = Field(..., description="PostgreSQL 연결 URL")
     redis_url: str = Field(default="redis://localhost:6379/0")
 
+    # LLM은 환자 개인정보 보호를 위해 로컬 Ollama를 기본값으로 사용
+    llm_provider: Literal["ollama"] = "ollama"
+    ollama_base_url: str = Field(default="http://127.0.0.1:11434")
+    ollama_model: str = Field(default="qwen3.5:9b")
+    allow_external_llm: bool = Field(default=False)
+
     # API 키는 SecretStr로 (로그 출력 시 자동 마스킹)
-    anthropic_api_key: SecretStr = Field(...)
     google_application_credentials: str = Field(...)
     mfds_api_key: SecretStr = Field(...)
 

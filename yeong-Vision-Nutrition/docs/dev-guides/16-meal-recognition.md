@@ -6,7 +6,7 @@
 
 ## 🎯 작업 목표
 
-사용자가 식사 사진 또는 텍스트("점심: 김치찌개, 공기밥, 계란말이")를 입력하면 음식·양·영양소를 인식하여 영양 분석에 통합한다. LLM Vision + 농진청 식품성분 DB 매칭 기반.
+사용자가 식사 사진 또는 텍스트("점심: 김치찌개, 공기밥, 계란말이")를 입력하면 음식·양·영양소를 인식하여 영양 분석에 통합한다. 환자 개인정보 보호를 위해 Ollama 로컬 Vision/Text 모델 + 농진청 식품성분 DB 매칭 기반으로 구현한다.
 
 ---
 
@@ -18,7 +18,7 @@ backend/
 │   ├── meal/
 │   │   ├── __init__.py
 │   │   ├── base.py                # MealRecognizerAdapter ABC
-│   │   ├── claude_vision.py       # Claude Vision 인식 (주력)
+│   │   ├── ollama_meal.py         # Ollama Vision/Text 인식 (주력)
 │   │   ├── text_parser.py         # 텍스트 입력 파싱
 │   │   ├── prompts.py             # 시스템 프롬프트
 │   │   └── exceptions.py
@@ -26,7 +26,7 @@ backend/
 │       └── rda_matcher.py         # 농진청 식품성분 DB 매칭
 └── tests/
     ├── unit/meal/
-    │   ├── test_claude_vision.py  # 모킹
+    │   ├── test_ollama_meal.py    # 모킹
     │   ├── test_text_parser.py
     │   └── test_rda_matcher.py
     ├── integration/meal/
@@ -39,16 +39,28 @@ backend/
 
 ## 📐 설계 명세
 
+> 🔍 **출처**: [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md), Ollama 공식 Structured Outputs 문서, AI Hub 음식 이미지 데이터, 이미지 기반 식이평가 systematic review.
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| 이미지 기반 식단 인식 | B | Food-101, AI Hub 음식 이미지 데이터, systematic review를 근거로 기능 방향을 유지한다. |
+| 1장 이미지의 분량 추정 | C | 사진만으로 정확한 중량을 확정하지 않는다. 사용자 확인·수정 UI를 필수로 둔다. |
+| Ollama Structured Outputs | A | Ollama 공식 문서의 `format` JSON Schema 방식을 사용하고 Pydantic으로 재검증한다. |
+| 환자 개인정보 보호 | 필수 정책 | 기본 경로는 로컬 Ollama만 허용한다. 클라우드 LLM은 비식별 테스트 또는 승인된 환경에서만 사용한다. |
+
 ### 두 가지 입력 방식
 
 ```
 [방식 A: 이미지 입력]
-  사진 → Claude Vision (Tool Use) → 음식 리스트 + 양 추정
-  → 농진청 DB 매칭 → NutrientIntake 변환
+  사진 → Ollama Vision Structured Outputs → 음식 리스트 + 양 추정
+  → 사용자 확인/수정 → 농진청 DB 매칭 → NutrientIntake 변환
 
 [방식 B: 텍스트 입력]
   "점심: 김치찌개, 공기밥, 계란말이 1개"
-  → Claude (Tool Use) → 구조화된 음식 리스트
+  → Ollama Text Structured Outputs → 구조화된 음식 리스트
+  → 사용자 확인/수정
   → 농진청 DB 매칭 → NutrientIntake 변환
 ```
 
@@ -63,34 +75,31 @@ F003,계란말이,Egg Roll,난류,80,160,11.0,12.4,1.8,...
 
 영양소별로 칼로리·단백질·탄수화물·지방 + 비타민·미네랄까지.
 
-### Tool Use 스키마
+### Structured Outputs JSON Schema
 
 ```json
 {
-  "name": "extract_meal_items",
-  "description": "식사에서 음식과 양을 추출",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "meal_type": {
-        "type": "string",
-        "enum": ["breakfast", "lunch", "dinner", "snack"]
-      },
-      "items": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "name_ko": { "type": "string" },
-            "estimated_amount": { "type": "string", "description": "예: '1공기', '반접시', '약 100g'" },
-            "estimated_grams": { "type": "number" }
-          },
-          "required": ["name_ko", "estimated_grams"]
-        }
-      }
+  "type": "object",
+  "properties": {
+    "meal_type": {
+      "type": "string",
+      "enum": ["breakfast", "lunch", "dinner", "snack"]
     },
-    "required": ["items"]
-  }
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name_ko": { "type": "string" },
+          "estimated_amount": { "type": "string", "description": "예: '1공기', '반접시', '약 100g'" },
+          "estimated_grams": { "type": "number" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "required": ["name_ko", "estimated_grams", "confidence"]
+      }
+    }
+  },
+  "required": ["items"]
 }
 ```
 
@@ -133,6 +142,8 @@ class RecognizedMealItem(BaseModel):
         name_ko: 한국어 음식명.
         estimated_amount: 양 표현 (예: "1공기").
         estimated_grams: 추정 중량 (g).
+        confidence: 모델 자기확신도 (0~1). 사용자 확인 전 참고값.
+        user_confirmed: 사용자가 음식명·분량을 확인했는지 여부.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -140,6 +151,8 @@ class RecognizedMealItem(BaseModel):
     name_ko: str = Field(..., min_length=1)
     estimated_amount: str
     estimated_grams: float = Field(..., gt=0)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    user_confirmed: bool = False
 
 
 class RecognizedMeal(BaseModel):
@@ -156,7 +169,7 @@ class RecognizedMeal(BaseModel):
 
     meal_type: str = Field(..., pattern=r"^(breakfast|lunch|dinner|snack)$")
     items: list[RecognizedMealItem]
-    engine: str
+    engine: str = ""
     raw_input: str = ""
 
 
@@ -210,160 +223,140 @@ MEAL_RECOGNITION_SYSTEM: Final[str] = """\
 - 음식명 추측·창작 (사진/텍스트에 명확히 보이는 것만)
 
 ## 응답 형식
-반드시 `extract_meal_items` 도구를 호출하세요.
-도구 호출 외 텍스트 포함 금지.
+반드시 JSON Schema에 맞는 JSON만 반환하세요.
+설명 문장이나 마크다운 코드블록은 포함하지 마세요.
 """
 
 
-MEAL_TOOL_SCHEMA: Final[dict] = {
-    "name": "extract_meal_items",
-    "description": "식사 사진/텍스트에서 음식과 양 추출",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "meal_type": {
-                "type": "string",
-                "enum": ["breakfast", "lunch", "dinner", "snack"],
-            },
+MEAL_RESPONSE_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "meal_type": {
+            "type": "string",
+            "enum": ["breakfast", "lunch", "dinner", "snack"],
+        },
+        "items": {
+            "type": "array",
             "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name_ko": {"type": "string"},
-                        "estimated_amount": {"type": "string"},
-                        "estimated_grams": {"type": "number"},
-                    },
-                    "required": ["name_ko", "estimated_grams"],
+                "type": "object",
+                "properties": {
+                    "name_ko": {"type": "string"},
+                    "estimated_amount": {"type": "string"},
+                    "estimated_grams": {"type": "number"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                 },
+                "required": ["name_ko", "estimated_grams", "confidence"],
             },
         },
-        "required": ["items"],
     },
+    "required": ["items"],
 }
 ```
 
-### 4. `src/meal/claude_vision.py`
+### 4. `src/meal/ollama_meal.py`
 
 ```python
-"""Claude Vision 식단 인식."""
+"""Ollama Vision/Text 식단 인식."""
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import Final
 
-from anthropic import AsyncAnthropic
+from ollama import AsyncClient, ResponseError
 from pydantic import ValidationError
 
 from src.meal.base import MealRecognizerAdapter, RecognizedMeal, RecognizedMealItem
 from src.meal.exceptions import MealApiError, MealParseError
-from src.meal.prompts import MEAL_RECOGNITION_SYSTEM, MEAL_TOOL_SCHEMA
+from src.meal.prompts import MEAL_RECOGNITION_SYSTEM
 
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
-MAX_TOKENS: Final[int] = 1500
+DEFAULT_MODEL: Final[str] = "gemma4:e4b"
+DEFAULT_HOST: Final[str] = "http://127.0.0.1:11434"
 
 
-class ClaudeVisionMealAdapter(MealRecognizerAdapter):
-    """Claude Vision 기반 식단 인식.
+class OllamaMealAdapter(MealRecognizerAdapter):
+    """Ollama 로컬 Vision/Text 기반 식단 인식.
 
-    - 이미지: Vision 멀티모달 (base64 image + text)
-    - 텍스트: 일반 텍스트 입력 + Tool Use
+    - 이미지: Vision 모델 + Structured Outputs
+    - 텍스트: 일반 텍스트 입력 + Structured Outputs
     """
 
     def __init__(
         self,
-        api_key: str,
         model: str = DEFAULT_MODEL,
-        client: AsyncAnthropic | None = None,
+        host: str = DEFAULT_HOST,
+        client: AsyncClient | None = None,
     ) -> None:
-        self._client = client or AsyncAnthropic(api_key=api_key)
+        self._client = client or AsyncClient(host=host)
         self._model = model
 
     @property
     def engine_name(self) -> str:
-        return f"claude_vision:{self._model}"
+        return f"ollama_meal:{self._model}"
 
     async def recognize_from_image(self, image_bytes: bytes) -> RecognizedMeal:
         """이미지에서 식단 인식."""
-        image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-
         try:
-            response = await self._client.messages.create(
+            response = await self._client.chat(
                 model=self._model,
-                max_tokens=MAX_TOKENS,
-                system=MEAL_RECOGNITION_SYSTEM,
-                tools=[MEAL_TOOL_SCHEMA],
-                tool_choice={"type": "tool", "name": "extract_meal_items"},
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": image_b64,
-                            },
-                        },
-                        {"type": "text", "text": "이 식사 사진을 분석해주세요."},
-                    ],
-                }],
+                messages=[
+                    {"role": "system", "content": MEAL_RECOGNITION_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": "이 식사 사진을 분석해주세요.",
+                        "images": [image_bytes],
+                    },
+                ],
+                format=RecognizedMeal.model_json_schema(),
+                stream=False,
+                options={"temperature": 0},
             )
+        except ResponseError as e:
+            raise MealApiError(f"Ollama Vision failed: {e.error}") from e
         except Exception as e:
-            raise MealApiError(f"Claude Vision API failed: {e}") from e
+            raise MealApiError(f"Ollama Vision failed: {e}") from e
 
-        return self._parse_tool_response(response, raw_input="<image>")
+        return self._parse_json_response(response.message.content, raw_input="<image>")
 
     async def recognize_from_text(self, text: str) -> RecognizedMeal:
         """텍스트에서 식단 추출."""
         try:
-            response = await self._client.messages.create(
+            response = await self._client.chat(
                 model=self._model,
-                max_tokens=MAX_TOKENS,
-                system=MEAL_RECOGNITION_SYSTEM,
-                tools=[MEAL_TOOL_SCHEMA],
-                tool_choice={"type": "tool", "name": "extract_meal_items"},
-                messages=[{
-                    "role": "user",
-                    "content": f"다음 식단 설명을 분석해주세요:\n\n{text}",
-                }],
-            )
-        except Exception as e:
-            raise MealApiError(f"Claude API failed: {e}") from e
-
-        return self._parse_tool_response(response, raw_input=text)
-
-    def _parse_tool_response(self, response, raw_input: str) -> RecognizedMeal:
-        """Tool Use 응답 파싱."""
-        tool_block = next(
-            (b for b in response.content if b.type == "tool_use"),
-            None,
-        )
-        if tool_block is None:
-            raise MealParseError("No tool_use in response")
-
-        tool_input = tool_block.input
-        try:
-            return RecognizedMeal(
-                meal_type=tool_input.get("meal_type", "lunch"),
-                items=[
-                    RecognizedMealItem(
-                        name_ko=item["name_ko"],
-                        estimated_amount=item.get("estimated_amount", ""),
-                        estimated_grams=item["estimated_grams"],
-                    )
-                    for item in tool_input.get("items", [])
+                messages=[
+                    {"role": "system", "content": MEAL_RECOGNITION_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": f"다음 식단 설명을 분석해주세요:\n\n{text}",
+                    },
                 ],
-                engine=self.engine_name,
-                raw_input=raw_input[:200],  # 최대 200자만
+                format=RecognizedMeal.model_json_schema(),
+                stream=False,
+                options={"temperature": 0},
             )
-        except (KeyError, ValidationError) as e:
+        except ResponseError as e:
+            raise MealApiError(f"Ollama meal text parsing failed: {e.error}") from e
+        except Exception as e:
+            raise MealApiError(f"Ollama meal text parsing failed: {e}") from e
+
+        return self._parse_json_response(response.message.content, raw_input=text)
+
+    def _parse_json_response(self, response_text: str, raw_input: str) -> RecognizedMeal:
+        """Ollama JSON 응답 파싱."""
+
+        try:
+            parsed = RecognizedMeal.model_validate_json(response_text)
+            return parsed.model_copy(
+                update={
+                    "engine": self.engine_name,
+                    "raw_input": raw_input[:200],
+                },
+            )
+        except (ValueError, ValidationError) as e:
             raise MealParseError(f"Schema validation failed: {e}") from e
 ```
 
@@ -372,7 +365,7 @@ class ClaudeVisionMealAdapter(MealRecognizerAdapter):
 ```python
 """텍스트 입력 사전 파싱 (LLM 호출 전 검증).
 
-LLM 비용 절감을 위해 단순 케이스는 정규식으로 처리.
+LLM 호출 지연을 줄이기 위해 단순 케이스는 정규식으로 처리.
 복잡한 케이스만 LLM 호출.
 """
 
@@ -542,13 +535,13 @@ def to_nutrient_intakes(meal_items: list[RecognizedMealItem]) -> list[NutrientIn
 
 ### Tier 1: 단위 테스트
 
-#### `test_claude_vision.py`
+#### `test_ollama_meal.py`
 
 | 테스트 | 검증 |
 |-------|------|
-| `test_recognize_image_with_tool_use` | Tool Use 응답 파싱 정상 |
+| `test_recognize_image_with_schema` | JSON Schema 응답 파싱 정상 |
 | `test_recognize_text_basic` | 텍스트 입력 처리 |
-| `test_no_tool_use_raises` | tool_use 누락 → MealParseError |
+| `test_invalid_json_raises` | JSON 형식 오류 → MealParseError |
 | `test_api_error_raises` | API 에러 → MealApiError |
 | `test_invalid_grams_raises` | grams=0 → ValidationError |
 
@@ -576,8 +569,8 @@ def to_nutrient_intakes(meal_items: list[RecognizedMealItem]) -> list[NutrientIn
 
 class TestMealPipeline:
     @pytest.mark.asyncio
-    async def test_text_to_intakes(self, mock_claude):
-        recognizer = ClaudeVisionMealAdapter(api_key="test", client=mock_claude)
+    async def test_text_to_intakes(self, mock_ollama):
+        recognizer = OllamaMealAdapter(client=mock_ollama)
         meal = await recognizer.recognize_from_text("공기밥 1개, 김치찌개 1그릇")
 
         intakes = to_nutrient_intakes(meal.items)
@@ -589,19 +582,18 @@ class TestMealPipeline:
 ### Tier 3: 실 API 테스트 (선택)
 
 ```python
-@pytest.mark.skipif(
-    not os.getenv("ANTHROPIC_API_KEY"), reason="No API key"
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_OLLAMA_TESTS") != "1",
+    reason="Set RUN_OLLAMA_TESTS=1 after starting local Ollama",
 )
 @pytest.mark.integration
-class TestClaudeVisionReal:
+class TestOllamaMealReal:
     @pytest.mark.asyncio
     async def test_real_meal_image(self):
         with open("tests/fixtures/sample_meal.jpg", "rb") as f:
             image = f.read()
 
-        recognizer = ClaudeVisionMealAdapter(
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-        )
+        recognizer = OllamaMealAdapter(model=os.getenv("OLLAMA_MODEL", "gemma4:e4b"))
         meal = await recognizer.recognize_from_image(image)
 
         assert len(meal.items) > 0
@@ -624,7 +616,7 @@ class TestMealE2E:
             image = f.read()
 
         # 1. 인식
-        recognizer = ClaudeVisionMealAdapter(api_key=...)
+        recognizer = OllamaMealAdapter(model=os.getenv("OLLAMA_MODEL", "gemma4:e4b"))
         meal = await recognizer.recognize_from_image(image)
 
         # 2. 영양소 변환
@@ -647,7 +639,7 @@ class TestMealE2E:
 
 - [ ] `data/rda/korean_foods.csv` — 최소 50종 (밥·국·찌개·반찬·과일)
 - [ ] `src/meal/exceptions.py`, `base.py`, `prompts.py`
-- [ ] `src/meal/claude_vision.py` — 이미지·텍스트 인식
+- [ ] `src/meal/ollama_meal.py` — 이미지·텍스트 인식
 - [ ] `src/meal/text_parser.py` — 단순 케이스 사전 처리
 - [ ] `src/nutrition/rda_matcher.py` — 농진청 매칭
 - [ ] 모든 함수 Google-style docstring
@@ -665,16 +657,16 @@ class TestMealE2E:
 
 ### 양 추정의 한계
 
-학생 프로젝트에서 양 추정은 ±20% 정확도가 현실적. UI에서:
+학생 프로젝트에서 양 추정 정확도는 실제 데이터로 검증하기 전까지 수치로 주장하지 않는다. UI에서:
 - 인식 결과를 사용자가 **수정 가능**
-- "확실하지 않음" 표시 (estimated_grams의 신뢰도)
+- "확실하지 않음" 표시 (`confidence`와 사용자 확인 상태)
 - 자주 먹는 음식은 학습 (Phase 4+)
 
-### 비용 최적화
+### 지연 시간 최적화
 
 ```
-이미지 1장: ~$0.01 (Claude Vision)
-텍스트만:    ~$0.001
+이미지 1장: Ollama Vision 모델별 로컬 응답 시간 측정
+텍스트만:    Ollama Text 모델별 로컬 응답 시간 측정
 
 → 텍스트 입력 우선 권장. 이미지는 백업.
 ```
@@ -704,5 +696,16 @@ class TestMealE2E:
 ## 🔗 관련 문서
 
 - [`/docs/09-data-catalog.md`](../09-data-catalog.md) — 농진청 데이터
+- [`/docs/13-algorithm-literature-evidence.md`](../13-algorithm-literature-evidence.md)
 - 이전: [`15-goal-based-analysis.md`](./15-goal-based-analysis.md)
 - 다음: [`17-feedback-and-notifications.md`](./17-feedback-and-notifications.md)
+
+## 📚 사용 근거
+
+- AI Hub. 음식 이미지 및 영양정보 텍스트 데이터. https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=74
+- AI Hub. 한국 이미지(음식) 데이터. https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=&currMenu=&dataSetSn=79&topMenu=
+- Bossard L, Guillaumin M, Van Gool L. Food-101. ECCV. 2014. https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/
+- Dalakleidi K, et al. Applying Image-Based Food-Recognition Systems on Dietary Assessment. Advances in Nutrition. 2022. https://pubmed.ncbi.nlm.nih.gov/35803496/
+- Lo FPW, et al. Image-Based Food Classification and Volume Estimation for Dietary Assessment. IEEE Journal of Biomedical and Health Informatics. 2020. https://pubmed.ncbi.nlm.nih.gov/32365038/
+- Ollama official documentation. Structured Outputs. https://docs.ollama.com/capabilities/structured-outputs
+- Ollama official documentation. Chat API. https://docs.ollama.com/api/chat

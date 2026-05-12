@@ -175,7 +175,7 @@ retrospective/
 #### After (W10 종료 시)
 - FastAPI로 완전한 백엔드 구축 가능
 - Adapter 패턴 + 의존성 주입 능숙
-- Claude/OpenAI Tool Use 깊이 이해
+- Ollama Structured Outputs와 로컬 LLM 운영 이해
 - Alembic 마이그레이션 자유롭게 활용
 - Redis 캐싱 + 4-Tier 테스트 작성
 - 의료법 컴플라이언스 인식
@@ -185,14 +185,14 @@ retrospective/
    하루씩 시뮬레이션하는 단순한 패턴이라는 걸 알고 나서는 재밌었다."
 
 #### Most Proud
-- "OCR·LLM 백업 폴백이 실제로 작동하는 걸 봤을 때 — 
+- "OCR·로컬 LLM 모델 전환이 실제로 작동하는 걸 봤을 때 —
    설계가 코드로 검증된 순간."
 
 #### Skills Acquired (이력서용)
 - Python 3.12+, FastAPI, Pydantic v2
 - PostgreSQL + SQLAlchemy 2.0 (async)
 - Redis caching
-- Anthropic Claude API (Tool Use, Vision)
+- Ollama Local API (Structured Outputs, Vision)
 - Adapter pattern, Dependency Injection
 - Pytest (단위·통합·E2E)
 - mypy strict mode
@@ -333,9 +333,9 @@ retrospective/
 "진단", "처방" 단어 하나도 의료법 위반 가능.
 컴플라이언스는 사후 검증이 아닌 코드 레벨 자동화.
 
-### 4. 외부 API에 lock-in 되지 말라
-Adapter 패턴 + 백업 폴백.
-Claude API 가격이 10배 오르면? 다른 LLM으로 바꿀 수 있어야.
+### 4. 특정 모델에 lock-in 되지 말라
+Adapter 패턴 + 로컬 모델 전환.
+qwen3.5 성능이 부족하면 gemma4, qwen3.6, 사내 GPU 서버로 바꿀 수 있어야 한다.
 
 ### 5. 인수인계도 프로젝트의 일부
 마지막 1주에 몰아서 하지 말고, 처음부터 문서화.
@@ -347,7 +347,7 @@ Claude API 가격이 10배 오르면? 다른 LLM으로 바꿀 수 있어야.
 - **백엔드**: FastAPI + Pydantic v2 (Type-safe + 빠름)
 - **모바일**: Flutter + Riverpod (코드 양 ↓)
 - **테스트**: pytest + mocktail
-- **외부 API**: Claude (한국어 강함) + OpenAI 백업
+- **LLM**: Ollama 로컬 모델(qwen3.5/gemma4) + Adapter 기반 모델 전환
 
 ### 시간 관리
 - W1-W2: 기획·합의 (코딩 X)
@@ -375,7 +375,7 @@ Claude API 가격이 10배 오르면? 다른 LLM으로 바꿀 수 있어야.
 - Hall et al. 2011 (체중 모델 논문)
 
 ### 기술
-- Anthropic Claude 공식 docs (Tool Use, Vision)
+- Ollama 공식 docs (API, Structured Outputs, Vision)
 - FastAPI tutorial
 - Riverpod 공식 가이드
 - Effective Dart

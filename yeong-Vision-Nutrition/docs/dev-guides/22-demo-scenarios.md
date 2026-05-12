@@ -125,7 +125,7 @@ demo/
 - 성분: 비타민C 1000mg, 비타민D 25μg, 칼슘 600mg, ...
 
 🎙 강조 포인트:
-✅ Cloud Vision OCR + Claude LLM Tool Use 백업 폴백 동작
+✅ Cloud Vision OCR + Ollama 로컬 LLM 구조화 출력 동작
 ✅ 식약처 인정 원료 DB 매칭 — 표준 영양소 코드 변환
 ✅ 단위 자동 환산 (IU → μg)
 
@@ -242,7 +242,7 @@ v4는 만성질환자용 보정으로, 김건강 님 같은 분께
 → 사용자가 양 수정 가능 + 음식 추가/삭제
 
 🎙 강조 포인트:
-✅ Claude Vision으로 사진도 인식 가능 (텍스트가 더 저렴해서 기본값)
+✅ Ollama Vision 모델로 사진도 인식 가능 (텍스트 입력이 더 빠르므로 기본값)
 ✅ 농진청 식품성분 DB 매칭 → 영양소 자동 합산
 ✅ 사용자 수정 UI — LLM이 100% 정확하지 않다는 정직한 인정
 
@@ -467,7 +467,7 @@ if __name__ == "__main__":
 - [ ] PostgreSQL + Redis Docker 컨테이너 가동
 - [ ] 시연 데이터 시드 적재 완료 (persona_a, persona_b)
 - [ ] Google Cloud Vision API 키 유효성 확인
-- [ ] Anthropic API 키 + 잔액 확인 (≥ $5)
+- [ ] Ollama 서버 실행 및 `qwen3.5`/`gemma4` 모델 확인
 - [ ] FCM 서비스 계정 인증 정상
 
 ## 디바이스

@@ -198,8 +198,8 @@ make deploy-prod
 # 로그에서 어떤 API가 실패하는지
 docker logs --tail 200 backend-prod 2>&1 | grep -E "OCR|LLM|FCM" | tail -20
 
-# 외부 상태 페이지 확인:
-# - Anthropic: https://status.anthropic.com/
+# 로컬 LLM과 외부 상태 페이지 확인:
+# - Ollama: `ollama list`, `curl http://127.0.0.1:11434/api/tags`
 # - Google Cloud: https://status.cloud.google.com/
 # - Naver Cloud: https://status.ncloud.com/
 ```
@@ -236,7 +236,7 @@ from src.ocr.pipeline import OCRPipeline
 
 | API | 상태 페이지 | 평균 다운타임 |
 |------|------------|---------|
-| Anthropic | status.anthropic.com | < 15분/월 |
+| Ollama Local | 로컬 서버 상태 확인 | 장비·프로세스 상태에 따름 |
 | Google Cloud Vision | status.cloud.google.com | < 5분/월 |
 | Naver CLOVA | status.ncloud.com | 가변 |
 | Firebase FCM | status.firebase.google.com | < 10분/월 |
@@ -274,7 +274,7 @@ docker exec redis-prod redis-cli FLUSHDB  # 캐시·세션 삭제
 ### Step 2: 시크릿 즉시 회전
 ```bash
 # ALL secrets immediately rotate
-# - Anthropic API key (콘솔에서 재발급)
+# - Ollama 접근 설정과 모델 무결성 재확인
 # - Google Cloud key (서비스 계정 키 재발급)
 # - DB password (강력한 새 패스워드)
 # - JWT signing key (새로 생성)

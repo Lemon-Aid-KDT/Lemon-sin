@@ -1,0 +1,26 @@
+"""API v1 라우터 집계."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from src.api.v1 import (
+    activity,
+    analysis_results,
+    dashboard,
+    health,
+    nutrition,
+    predictions,
+    privacy,
+    supplements,
+)
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(activity.router)
+api_router.include_router(predictions.router)
+api_router.include_router(nutrition.router)
+api_router.include_router(analysis_results.router)
+api_router.include_router(privacy.router)
+api_router.include_router(supplements.router)
+api_router.include_router(health.router)
+api_router.include_router(dashboard.router)

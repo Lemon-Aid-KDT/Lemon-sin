@@ -39,7 +39,17 @@ data/
 
 ## 📐 데이터 명세
 
-> 🔍 **출처**: [docs/09-data-catalog.md §3.1](../09-data-catalog.md), [data/CLAUDE.md](../../data/CLAUDE.md)
+> 🔍 **출처**: [docs/09-data-catalog.md §3.1](../09-data-catalog.md), [data/CLAUDE.md](../../data/CLAUDE.md), [docs/13-algorithm-literature-evidence.md](../13-algorithm-literature-evidence.md)
+
+### 근거 보강
+
+| 항목 | 근거 수준 | 적용 방식 |
+|------|----------|----------|
+| KDRIs 2020 | A | 보건복지부·한국영양학회 자료를 기준 데이터로 사용한다. |
+| RDA/AI/EAR/UL 해석 | A | National Academies DRI 정의를 참고해 필드 의미와 사용 범위를 명확히 한다. |
+| 질환자 개인 처방 | 범위 밖 | KDRIs는 건강한 집단의 섭취 기준이므로 치료 용량 또는 개인 진단 기준으로 사용하지 않는다. |
+
+> CSV에는 원자료 출처 URL, 버전, 디지털화 담당자, 검수 일자를 `kdris_metadata.json`에 함께 기록한다.
 
 ### KDRIs CSV 스키마
 
