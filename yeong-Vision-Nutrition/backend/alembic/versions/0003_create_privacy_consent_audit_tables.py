@@ -1,6 +1,6 @@
 """Create privacy, consent, deletion, and audit tables.
 
-Revision ID: 0003_create_privacy_consent_audit
+Revision ID: 0003_privacy_consent_audit
 Revises: 0002_create_analysis_results
 Create Date: 2026-05-11 00:00:00.000000
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "0003_create_privacy_consent_audit"
+revision: str = "0003_privacy_consent_audit"
 down_revision: str | Sequence[str] | None = "0002_create_analysis_results"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

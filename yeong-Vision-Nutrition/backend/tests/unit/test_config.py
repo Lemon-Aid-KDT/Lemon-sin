@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from src.config import DEFAULT_DATABASE_URL, DEFAULT_PRIVACY_HASH_SECRET, Settings
+from src.config import DEFAULT_DATABASE_URL, DEVELOPMENT_PRIVACY_HASH_SENTINEL, Settings
 
 
 def _valid_production_kwargs() -> dict[str, Any]:
@@ -115,7 +115,7 @@ def test_production_requires_explicit_kdris_data_path() -> None:
 def test_production_rejects_default_privacy_hash_secret() -> None:
     """Verify production audit hashes cannot use the development HMAC secret."""
     kwargs = _valid_production_kwargs()
-    kwargs["privacy_hash_secret"] = DEFAULT_PRIVACY_HASH_SECRET
+    kwargs["privacy_hash_secret"] = DEVELOPMENT_PRIVACY_HASH_SENTINEL
 
     with pytest.raises(ValidationError, match="PRIVACY_HASH_SECRET"):
         Settings(**kwargs)

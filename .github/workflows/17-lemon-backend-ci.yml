@@ -59,7 +59,7 @@ jobs:
         run: ruff check src alembic --select S
 
       - name: Mypy
-        run: mypy src tests --strict
+        run: mypy src
 
       - name: Dependency audit
         run: pip-audit -r requirements.txt

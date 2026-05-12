@@ -14,7 +14,7 @@ DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 DEFAULT_JWT_ALGORITHMS = ["RS256"]
 DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
-DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"
+DEVELOPMENT_PRIVACY_HASH_SENTINEL = "development-insecure-privacy-hash-sentinel"
 JWT_CORE_REQUIRED_CLAIMS = {"aud", "exp", "iat", "iss", "sub"}
 WILDCARD_VALUES = {"*"}
 ASYMMETRIC_JWT_ALGORITHMS = {
@@ -212,7 +212,7 @@ class Settings(BaseSettings):
     jwt_jwks_cache_ttl_seconds: int = Field(default=300, ge=1, le=86400)
     jwt_jwks_timeout_seconds: int = Field(default=5, ge=1, le=30)
     oidc_discovery_url: str | None = Field(default=None)
-    privacy_hash_secret: SecretStr = Field(default=SecretStr(DEFAULT_PRIVACY_HASH_SECRET))
+    privacy_hash_secret: SecretStr = Field(default=SecretStr(DEVELOPMENT_PRIVACY_HASH_SENTINEL))
 
     llm_provider: Literal["ollama"] = "ollama"
     ollama_base_url: str = Field(default="http://127.0.0.1:11434")
@@ -315,7 +315,8 @@ class Settings(BaseSettings):
                     "JWT_EXPECTED_TOKEN_TYPE or JWT_TOKEN_USE_CLAIM with allowed values is required in production.",
                 ),
                 (
-                    not privacy_hash_secret or privacy_hash_secret == DEFAULT_PRIVACY_HASH_SECRET,
+                    not privacy_hash_secret
+                    or privacy_hash_secret == DEVELOPMENT_PRIVACY_HASH_SENTINEL,
                     "PRIVACY_HASH_SECRET must be set to a non-default value in production.",
                 ),
                 (
