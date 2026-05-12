@@ -87,7 +87,7 @@ Phase:  │ 0 │     1     │       2        │     3      │  4   │
 | API 설계 | FastAPI 라우터, Pydantic 스키마 |
 | DB 설계 | PostgreSQL + TimescaleDB 스키마, Alembic 마이그레이션 |
 | 캐싱 | Redis 통합 |
-| 인증 | JWT, 권한 관리 |
+| 인증 | OAuth/OIDC Bearer JWT 검증, 스코프 권한 관리 |
 | 단위 테스트 | pytest 50+ |
 
 #### 📱 Mobile Engineer (ME)

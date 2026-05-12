@@ -548,10 +548,14 @@ DB 모델:
 | 테이블 | 목적 |
 |---|---|
 | `users` | 사용자 프로필, 성별, 생년월일, 키, 기본 체중 |
-| `user_consents` | 건강 데이터, 식단·영양제 이미지, 선택적 의료 데이터 동의 |
-| `health_samples` | 걸음수, 심박수, 체중 기록 |
-| `supplements` | 사용자 등록 영양제 |
-| `supplement_ingredients` | 영양제별 성분 |
+| `consent_records` | 건강 데이터, 식단·영양제 이미지, 선택적 의료 데이터 동의 이벤트 |
+| `health_sync_batches` | 모바일 헬스 데이터 sync 요청 단위의 수락/거절 결과 |
+| `health_daily_summaries` | 걸음수, 심박수, 체중, 활동에너지 일별 요약 |
+| `supplement_products` | 식약처/운영 source 기반 영양제 reference 마스터 |
+| `supplement_product_ingredients` | 영양제 reference 성분·함량·단위 |
+| `supplement_analysis_runs` | 영양제 OCR/LLM preview snapshot |
+| `user_supplements` | 사용자 확인 영양제 복용 데이터 |
+| `user_supplement_ingredients` | 사용자 확인 영양제 성분 데이터 |
 | `meal_records` | 식단 기록 |
 | `meal_items` | 식단별 음식 항목 |
 | `nutrition_analysis_results` | 영양 분석 결과 스냅샷 |
@@ -573,24 +577,35 @@ DB 모델:
 
 ## 8. API 목록 초안
 
-| 영역 | Method | Path | 우선순위 |
-|---|---|---|---|
-| 상태 | `GET` | `/health` | P0 |
-| 활동 | `POST` | `/api/v1/activity/score` | P1 |
-| 체중 | `POST` | `/api/v1/predictions/weight` | P1 |
-| 영양 기준 | `GET` | `/api/v1/nutrition/kdris` | P1 |
-| 영양 분석 | `POST` | `/api/v1/nutrition/analyze` | P1 |
-| 영양제 | `POST` | `/api/v1/supplements/register` | P1 |
-| 영양제 | `GET` | `/api/v1/supplements` | P2 |
-| 영양제 | `DELETE` | `/api/v1/supplements/{id}` | P2 |
-| 헬스 데이터 | `POST` | `/api/v1/health/sync` | P1 |
-| 식단 | `POST` | `/api/v1/meals/recognize/text` | P2 |
-| 식단 | `POST` | `/api/v1/meals/recognize/image` | P3 |
-| 식단 | `POST` | `/api/v1/meals` | P2 |
-| 목적 | `GET` | `/api/v1/goals` | P2 |
-| 목적 | `POST` | `/api/v1/goals/{goal_code}/analyze` | P2 |
-| 피드백 | `POST` | `/api/v1/feedback` | P3 |
-| 기기 | `POST` | `/api/v1/devices` | P3 |
+| 영역 | Method | Path | 우선순위 | Scope |
+|---|---|---|---|---|
+| 상태 | `GET` | `/health` | P0 | - |
+| 활동 | `POST` | `/api/v1/activity/score` | P1 | - |
+| 체중 | `POST` | `/api/v1/predictions/weight` | P1 | - |
+| 영양 기준 | `GET` | `/api/v1/nutrition/kdris` | P1 | - |
+| 영양 분석 | `POST` | `/api/v1/nutrition/analyze` | P1 | - |
+| 분석 결과 | `POST` | `/api/v1/analysis-results/*` | P0 | `analysis:write` |
+| 분석 결과 | `GET` | `/api/v1/analysis-results` | P0 | `analysis:read` |
+| 영양제 | `POST` | `/api/v1/supplements/analyze` | P1-2 이미지 intake 구현 | `supplement:write` |
+| 영양제 | `POST` | `/api/v1/supplements` | P1-0 계약 / P1-4 구현 | `supplement:write` |
+| 영양제 | `GET` | `/api/v1/supplements` | P1-0 계약 / P1-4 구현 | `supplement:read` |
+| 영양제 | `GET` | `/api/v1/supplements/{supplement_id}` | P1-0 계약 / P1-4 구현 | `supplement:read` |
+| 영양제 | `DELETE` | `/api/v1/supplements/{supplement_id}` | P1-0 계약 / P1-4 구현 | `supplement:delete` |
+| 헬스 데이터 | `POST` | `/api/v1/health/sync` | P1-0 계약 / P1-6 구현 | `health:write` |
+| 대시보드 | `GET` | `/api/v1/dashboard/summary` | P1-0 계약 / P1-5 구현 | `dashboard:read` |
+| 식단 | `POST` | `/api/v1/meals/recognize/text` | P2 | TBD |
+| 식단 | `POST` | `/api/v1/meals/recognize/image` | P3 | TBD |
+| 식단 | `POST` | `/api/v1/meals` | P2 | TBD |
+| 목적 | `GET` | `/api/v1/goals` | P2 | TBD |
+| 목적 | `POST` | `/api/v1/goals/{goal_code}/analyze` | P2 | TBD |
+| 피드백 | `POST` | `/api/v1/feedback` | P3 | TBD |
+| 기기 | `POST` | `/api/v1/devices` | P3 | TBD |
+
+P1-0에서 영양제·헬스 데이터·대시보드 endpoint는 OpenAPI 계약과 보안 스코프를 먼저 동결한다. 실제 OCR, LLM, DB 저장 구현 전까지는 `501 p1_contract_stub`을 반환한다.
+
+P1-1에서 영양제·헬스 데이터 저장 기반을 먼저 구현한다. Alembic head는 `0004_create_p1_supplement_health`이며, 사용자 소유 데이터는 `owner_subject` 기준으로 격리한다. 삭제 요청 경로는 `analysis_results`, `consent_records`, `supplement_analysis_runs`, `user_supplements`, `user_supplement_ingredients`, `health_sync_batches`, `health_daily_summaries`를 함께 처리한다.
+
+P1-2에서 `/api/v1/supplements/analyze`는 P1-0 stub이 아니라 이미지 intake 구현 상태다. JPEG/PNG/WebP만 허용하고, 원본 이미지·파일명·EXIF·OCR 원문은 저장하지 않으며, `supplement_analysis_runs`에 `image_sha256`, MIME, byte size, intake metadata, preview TTL을 저장한다. 실제 OCR/LLM 후보 추출은 P1-3 이후 단계에서 붙인다.
 
 ## 9. 마일스톤 계획
 

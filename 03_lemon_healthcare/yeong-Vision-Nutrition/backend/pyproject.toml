@@ -1,0 +1,84 @@
+[project]
+name = "lemon-healthcare-backend"
+version = "0.1.0"
+description = "Lemon Healthcare AI - Backend API"
+requires-python = ">=3.11"
+authors = [{ name = "TBD Team" }]
+license = { text = "MIT" }
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "W",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "RET",
+    "ARG",
+    "PTH",
+    "ERA",
+    "PL",
+    "RUF",
+]
+ignore = [
+    "E501",
+    "PLR0913",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = """
+    -v
+    --cov=src
+    --cov-report=term-missing
+    --cov-report=html
+    --cov-fail-under=80
+    --strict-markers
+"""
+asyncio_mode = "auto"
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true

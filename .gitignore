@@ -37,6 +37,7 @@ etc/
 
 # === PDF (keep .md versions) ===
 *.pdf
+!03_lemon_healthcare/yeong-Vision-Nutrition/docs/previous-version/*.pdf
 
 # === Training image data ===
 training/preprocessed_dataset/train/
@@ -51,6 +52,21 @@ training/quality_report/valid_*.txt
 # === Env ===
 .env
 .env.local
+
+# === Local agent/runtime state ===
+.codex/
+.omc/
+.omx/
+.claude/
+**/.omx/
+**/.claude/
+
+# === Office lock files ===
+~$*
+
+# === Generated temporary workspaces ===
+tmp/
+**/tmp/
 
 # React frontend
 node_modules/

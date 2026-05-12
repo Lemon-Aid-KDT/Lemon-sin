@@ -126,6 +126,7 @@ asyncpg>=0.29
 alembic>=1.13              # DB 마이그레이션
 redis>=5.0
 httpx>=0.27                # 외부 API 호출
+PyJWT[crypto]>=2.10        # OAuth/OIDC access token 검증
 google-cloud-vision>=3.7
 ollama>=0.6.0              # Ollama Local API
 pillow>=10.2               # 이미지 처리
