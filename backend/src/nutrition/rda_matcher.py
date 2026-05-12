@@ -26,7 +26,14 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 from src.meal.base import RecognizedMealItem
 from src.meal.exceptions import MealParseError
@@ -99,6 +106,37 @@ class FoodNutritionProfile(BaseModel):
     highlights: list[str] = Field(default_factory=list)
     cautions: list[str] = Field(default_factory=list)
     needs_user_review: bool = False
+
+
+class AmountNutritionEstimate(BaseModel):
+    """사용자 입력량 기반 영양소 재계산 결과 DTO.
+
+    `FoodNutritionProfile`의 100g 기준 영양소를 사용자가 입력한 g 또는
+    인분으로 환산한 결과를 담는다. 본 DTO는 100g 프로필을 대체하지 않으며,
+    UI에서 사용자가 직접 양을 입력한 경우에만 추가로 노출되는 보조값이다.
+
+    Attributes:
+        food_code: 매칭된 농진청 food_code. 매칭 실패 시 None.
+        name_ko_canonical: CSV 기준 표준 한국어 이름.
+        amount_g: 영양소 계산에 실제 사용된 양 (g).
+        serving_count: 사용자가 입력한 인분 수 (g 단위 입력 시 None).
+        nutrients_for_amount: 영양소 이름 → `amount_g` 기준 값.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    food_code: str | None = None
+    name_ko_canonical: str = Field(..., min_length=1)
+    amount_g: float = Field(..., gt=0)
+    serving_count: float | None = Field(default=None)
+    nutrients_for_amount: dict[str, float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_serving_count(self) -> AmountNutritionEstimate:
+        """serving_count가 명시되면 양수여야 한다."""
+        if self.serving_count is not None and self.serving_count <= 0:
+            raise ValueError(f"serving_count must be > 0 when provided, got {self.serving_count}")
+        return self
 
 
 _FOODS_CSV_ADAPTER: TypeAdapter[list[_FoodRow]] = TypeAdapter(list[_FoodRow])
@@ -203,6 +241,68 @@ class RdaMatcher:
     def match_recognized_item(self, item: RecognizedMealItem) -> FoodNutritionProfile:
         """`RecognizedMealItem.name_ko`로 직접 매칭한다 (편의 메서드)."""
         return self.match(item.name_ko)
+
+    def estimate_for_amount(
+        self,
+        profile: FoodNutritionProfile,
+        *,
+        amount_g: float | None = None,
+        serving_count: float | None = None,
+    ) -> AmountNutritionEstimate:
+        """사용자 입력 g 또는 인분에 대해 영양소를 재계산한다.
+
+        둘 중 하나만 지정해야 한다. 양쪽이 동시에 None이거나 동시에
+        지정되면 `ValueError`. g/인분/profile.default_serving_g는 모두
+        양수여야 한다. `model_copy(update=...)`로 외부 입력이 DTO 제약을
+        우회하는 경로를 막기 위해 모든 양수 조건은 본 메서드에서 명시
+        검증한다.
+
+        공식 (dev-guide 16 §"사용자 입력량 계산"):
+            - g 입력: `nutrient_for_amount = nutrient_per_100g * amount_g / 100`.
+            - 인분 입력: `amount_g = default_serving_g * serving_count` 후 동일.
+
+        Args:
+            profile: 기준 100g 영양 프로필.
+            amount_g: 사용자가 입력한 g.
+            serving_count: 사용자가 입력한 인분 수.
+
+        Returns:
+            `AmountNutritionEstimate`.
+
+        Raises:
+            ValueError: 입력 조합이 부적절하거나 양수 제약 위반.
+        """
+        if amount_g is None and serving_count is None:
+            raise ValueError("either amount_g or serving_count must be provided")
+        if amount_g is not None and serving_count is not None:
+            raise ValueError("provide either amount_g or serving_count, not both")
+
+        if amount_g is not None:
+            if amount_g <= 0:
+                raise ValueError(f"amount_g must be > 0, got {amount_g}")
+            actual_g = amount_g
+            recorded_serving: float | None = None
+        else:
+            # serving_count is not None (위 분기 보장).
+            assert serving_count is not None
+            if serving_count <= 0:
+                raise ValueError(f"serving_count must be > 0, got {serving_count}")
+            if profile.default_serving_g <= 0:
+                raise ValueError("profile.default_serving_g must be > 0 to use serving_count")
+            actual_g = profile.default_serving_g * serving_count
+            recorded_serving = serving_count
+
+        factor = actual_g / _BASE_AMOUNT_G
+        nutrients_for_amount = {
+            name: value * factor for name, value in profile.nutrients_per_100g.items()
+        }
+        return AmountNutritionEstimate(
+            food_code=profile.food_code,
+            name_ko_canonical=profile.name_ko_canonical,
+            amount_g=actual_g,
+            serving_count=recorded_serving,
+            nutrients_for_amount=nutrients_for_amount,
+        )
 
 
 def _load_aliases(path: Path) -> dict[str, str]:

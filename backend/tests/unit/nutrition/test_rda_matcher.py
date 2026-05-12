@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from src.meal.base import BoundingBox, MealDetection, RecognizedMealItem
 from src.meal.exceptions import MealParseError
 from src.nutrition.rda_matcher import (
+    AmountNutritionEstimate,
     FoodNutritionProfile,
     RdaMatcher,
 )
@@ -511,3 +512,198 @@ class TestMockDataUsage:
             source="yolo_v8",
         )
         assert det.class_name_ko == "공기밥"
+
+
+# ── A3.3: AmountNutritionEstimate + estimate_for_amount ──────────────────
+
+
+SAMPLE_PROTEIN_PER_100G = 20.0
+SAMPLE_KCAL_PER_100G = 200.0
+SAMPLE_SODIUM_PER_100G = 400.0
+SAMPLE_UNIT_SIZE_G = 200.0
+
+
+def _sample_profile() -> FoodNutritionProfile:
+    """테스트용 단순 100g 프로필."""
+    return FoodNutritionProfile(
+        food_code="F999",
+        name_ko_canonical="샘플",
+        default_serving_g=SAMPLE_UNIT_SIZE_G,
+        nutrients_per_100g={
+            "kcal": SAMPLE_KCAL_PER_100G,
+            "protein_g": SAMPLE_PROTEIN_PER_100G,
+            "sodium_mg": SAMPLE_SODIUM_PER_100G,
+        },
+    )
+
+
+class TestAmountNutritionEstimateDTO:
+    """AmountNutritionEstimate DTO 제약."""
+
+    def test_minimal_valid(self) -> None:
+        est = AmountNutritionEstimate(
+            food_code="F001",
+            name_ko_canonical="공기밥",
+            amount_g=210.0,
+        )
+        assert est.amount_g == GONGGI_BAP_UNIT_SIZE_G
+        assert est.serving_count is None
+        assert est.nutrients_for_amount == {}
+
+    def test_amount_g_zero_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            AmountNutritionEstimate(
+                food_code="F001",
+                name_ko_canonical="공기밥",
+                amount_g=0,
+            )
+
+    def test_amount_g_negative_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            AmountNutritionEstimate(
+                food_code="F001",
+                name_ko_canonical="공기밥",
+                amount_g=-1.0,
+            )
+
+    def test_serving_count_zero_raises(self) -> None:
+        """serving_count는 명시되면 양수여야 함."""
+        with pytest.raises(ValidationError):
+            AmountNutritionEstimate(
+                food_code="F001",
+                name_ko_canonical="공기밥",
+                amount_g=100.0,
+                serving_count=0,
+            )
+
+    def test_serving_count_negative_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            AmountNutritionEstimate(
+                food_code="F001",
+                name_ko_canonical="공기밥",
+                amount_g=100.0,
+                serving_count=-1.0,
+            )
+
+    def test_serving_count_none_allowed(self) -> None:
+        """serving_count=None은 정상."""
+        est = AmountNutritionEstimate(
+            food_code="F001",
+            name_ko_canonical="공기밥",
+            amount_g=100.0,
+            serving_count=None,
+        )
+        assert est.serving_count is None
+
+    def test_frozen(self) -> None:
+        est = AmountNutritionEstimate(
+            food_code=None,
+            name_ko_canonical="x",
+            amount_g=100.0,
+        )
+        with pytest.raises(ValidationError):
+            est.amount_g = 200.0  # type: ignore[misc]
+
+
+class TestEstimateForAmountByGrams:
+    """g 입력 경로."""
+
+    def test_basic_scaling(self) -> None:
+        """nutrient_for_amount = nutrient_per_100g * amount_g / 100."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        est = matcher.estimate_for_amount(_sample_profile(), amount_g=50.0)
+        # 50g → 1/2 of per-100g
+        expected_kcal = SAMPLE_KCAL_PER_100G * 50.0 / 100.0
+        expected_protein = SAMPLE_PROTEIN_PER_100G * 50.0 / 100.0
+        assert est.nutrients_for_amount["kcal"] == pytest.approx(expected_kcal)
+        assert est.nutrients_for_amount["protein_g"] == pytest.approx(expected_protein)
+
+    def test_amount_g_recorded(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        est = matcher.estimate_for_amount(_sample_profile(), amount_g=150.0)
+        assert est.amount_g == pytest.approx(150.0)
+
+    def test_serving_count_none_when_using_grams(self) -> None:
+        """g 입력 시 serving_count는 None으로 기록."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        est = matcher.estimate_for_amount(_sample_profile(), amount_g=50.0)
+        assert est.serving_count is None
+
+    def test_food_code_propagated(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        est = matcher.estimate_for_amount(_sample_profile(), amount_g=100.0)
+        assert est.food_code == "F999"
+        assert est.name_ko_canonical == "샘플"
+
+
+class TestEstimateForAmountByServing:
+    """인분 입력 경로."""
+
+    def test_serving_count_converted_to_grams(self) -> None:
+        """amount_g = default_serving_g * serving_count."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        # default_serving_g=200, serving_count=2 → 400g
+        est = matcher.estimate_for_amount(_sample_profile(), serving_count=2.0)
+        assert est.amount_g == pytest.approx(400.0)
+
+    def test_serving_count_recorded(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        est = matcher.estimate_for_amount(_sample_profile(), serving_count=1.5)
+        assert est.serving_count == pytest.approx(1.5)
+
+    def test_nutrients_scaled_for_converted_grams(self) -> None:
+        """인분→g 환산 후 nutrients가 scaled."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        # 2인분 x 200g = 400g → x4 of per-100g
+        est = matcher.estimate_for_amount(_sample_profile(), serving_count=2.0)
+        expected_kcal = SAMPLE_KCAL_PER_100G * 400.0 / 100.0
+        assert est.nutrients_for_amount["kcal"] == pytest.approx(expected_kcal)
+
+
+class TestEstimateForAmountValidation:
+    """입력 조합·양수 제약 검증."""
+
+    def test_neither_raises(self) -> None:
+        """g와 인분 모두 None → ValueError."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        with pytest.raises(ValueError, match=r"amount_g.*serving_count"):
+            matcher.estimate_for_amount(_sample_profile())
+
+    def test_both_raises(self) -> None:
+        """g와 인분 모두 명시 → ValueError."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        with pytest.raises(ValueError, match="not both"):
+            matcher.estimate_for_amount(_sample_profile(), amount_g=100.0, serving_count=1.0)
+
+    def test_amount_g_zero_raises(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        with pytest.raises(ValueError, match="amount_g"):
+            matcher.estimate_for_amount(_sample_profile(), amount_g=0)
+
+    def test_amount_g_negative_raises(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        with pytest.raises(ValueError, match="amount_g"):
+            matcher.estimate_for_amount(_sample_profile(), amount_g=-1.0)
+
+    def test_serving_count_zero_raises(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        with pytest.raises(ValueError, match="serving_count"):
+            matcher.estimate_for_amount(_sample_profile(), serving_count=0)
+
+    def test_serving_count_negative_raises(self) -> None:
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        with pytest.raises(ValueError, match="serving_count"):
+            matcher.estimate_for_amount(_sample_profile(), serving_count=-2.0)
+
+
+class TestEstimateForAmountWithStubProfile:
+    """매칭 실패한 stub 프로필에 대한 scaling 처리."""
+
+    def test_stub_profile_returns_empty_nutrients(self) -> None:
+        """nutrients_per_100g가 비면 nutrients_for_amount도 빈 dict."""
+        matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
+        stub = matcher.match("???")  # stub
+        est = matcher.estimate_for_amount(stub, amount_g=100.0)
+        assert est.nutrients_for_amount == {}
+        assert est.food_code is None
+        assert est.amount_g == pytest.approx(100.0)
