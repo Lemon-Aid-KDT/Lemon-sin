@@ -6,7 +6,7 @@
 
 ## 🎯 작업 목표
 
-사용자가 식사 사진 또는 텍스트("점심: 김치찌개, 공기밥, 계란말이")를 입력하면 음식 후보·추정량·영양소를 구조화하여 영양 분석에 통합한다.
+사용자가 식사 사진 또는 텍스트("점심: 김치찌개, 공기밥, 계란말이")를 입력하면 음식 후보와 100g 기준 영양 프로필을 구조화한다. 사용자가 g 또는 인분을 직접 입력한 경우에만 해당 양 기준 영양소 계산으로 확장한다.
 
 이미지 입력은 **Google Cloud Vision + YOLOv8** 조합으로 처리한다. MVP에서는 실제 YOLO 학습 없이 수동 mock 예측으로 파이프라인과 데이터 계약을 먼저 고정하고, Beta 단계에서 AI Hub 음식 이미지 데이터셋으로 YOLOv8을 fine-tuning한다.
 
@@ -61,21 +61,23 @@ backend/
 ```
 [방식 A: 이미지 입력 - MVP]
   사진 → image_hash → mock_predictions.json
-  → YOLODetection[] mock → Fusion → PortionEstimator
-  → 농진청 DB 매칭 → NutrientIntake 변환
+  → YOLODetection[] mock → Fusion
+  → 농진청 DB 매칭 → 100g 기준 영양 프로필
+  → 사용자가 g/인분을 입력한 경우에만 해당 양 기준 영양소 재계산
 
 [방식 A: 이미지 입력 - Beta]
   사진 → Google Cloud Vision(label/text/object hints)
       → YOLOv8(food bbox/class/confidence)
       → Fusion(YOLO primary, GCV auxiliary)
-      → PortionEstimator
-      → 농진청 DB 매칭 → NutrientIntake 변환
+      → 농진청 DB 매칭 → 100g 기준 영양 프로필
+      → 사용자가 g/인분을 입력한 경우에만 해당 양 기준 영양소 재계산
 
 [방식 B: 텍스트 입력]
   "점심: 김치찌개, 공기밥, 계란말이 1개"
   → TextParser(정규화)
   → Phase 2 LLM Adapter 또는 규칙 기반 parser
-  → 농진청 DB 매칭 → NutrientIntake 변환
+  → 농진청 DB 매칭 → 100g 기준 영양 프로필
+  → 사용자가 g/인분을 입력한 경우에만 해당 양 기준 영양소 재계산
 ```
 
 ### 역할 분리
@@ -85,8 +87,8 @@ backend/
 | `GoogleVisionMealHintAdapter` | OCR 텍스트, label hint, object hint 추출 | mock response | 실제 Cloud Vision 호출 |
 | `YoloV8MealDetector` | 음식 bbox/class/confidence 탐지 | `MockYoloV8MealDetector` | `ultralytics.YOLO` |
 | `MealFusionEngine` | YOLO 결과와 GCV hint 병합 | deterministic merge | 동일 |
-| `PortionEstimator` | 추정 g, 양 표현, confidence 산출 | 1인분 기본값 | bbox/접시 크기 기반 보정 |
-| `RdaMatcher` | 음식명/class → 농진청 food_code 매칭 | 최소 CSV 100종 | 전체 RDA/농진청 데이터 |
+| `PortionEstimator` | 시각적 양 추정 보조값 산출 | MVP 기본 영양 계산에는 사용하지 않음 | 사용자가 원할 때 보조 추정 또는 UI 참고값 |
+| `RdaMatcher` | 음식명/class → 농진청 food_code 매칭 + 100g 기준 영양 프로필 생성 | 최소 CSV 100종 | 전체 RDA/농진청 데이터 |
 
 ### 결과 신뢰도 정책
 
@@ -94,7 +96,7 @@ backend/
 - YOLO confidence `0.40 ~ 0.69`: `needs_user_review=True`.
 - YOLO confidence `< 0.40`: 자동 확정하지 않고 GCV label/OCR hint와 함께 후보로만 보관.
 - GCV는 음식 확정의 주 엔진이 아니다. OCR/label hint로 alias 보강만 한다.
-- 추정량은 사용자 수정 가능해야 하며, UI에는 "사진 기반 추정값입니다" 수준의 표현만 노출한다.
+- 사진 기반 양 추정은 보조 정보로만 취급하며, 기본 영양 표시는 100g 기준으로 제공한다.
 
 ---
 
@@ -195,7 +197,7 @@ Beta 목표:
 
 - 음식명: `name_ko`
 - 매칭 코드: `food_code | None`
-- 추정량: `estimated_grams`, `estimated_amount`
+- 보조 추정량: `estimated_grams`, `estimated_amount` (기본 영양 계산에는 사용하지 않음)
 - 신뢰도: `confidence`, `portion_confidence`
 - 검토 필요 여부: `needs_user_review`
 - 출처: `sources` (`["yolo_v8", "google_vision"]` 등)
@@ -237,23 +239,30 @@ Beta:
 
 ### 5. `src/meal/portion_estimator.py`
 
-MVP 추정:
+MVP 원칙:
 
-- 음식별 `default_serving_g` 사용.
-- bbox 면적이 이미지 면적의 큰 비중을 차지하면 `1.2x`, 작으면 `0.7x` 보정.
+- 이미지에서 음식의 실제 섭취량(g)을 정확히 판별한다고 단정하지 않는다.
+- 기본 영양 정보는 `PortionEstimator` 결과가 아니라 `RdaMatcher`의 100g 기준 영양 프로필을 사용한다.
+- `PortionEstimator`는 UI 참고용/미래 확장용 보조값으로 유지한다.
 
-Beta 추정:
+선택/미래 추정:
 
 - 접시/그릇 bbox가 탐지되면 상대 면적으로 보정.
-- 사용자 수정값을 저장해 개인화는 Phase 4 이후로 미룬다.
+- 사용자가 직접 g 또는 인분을 입력하면 그 입력값을 기준으로 영양소를 재계산한다.
+- 사용자 수정값 저장과 개인화는 Phase 4 이후로 미룬다.
 
 ### 6. `src/nutrition/rda_matcher.py`
 
-농진청 식품성분표와 매칭한다.
+농진청 식품성분표와 매칭하고 100g 기준 영양 프로필을 만든다.
 
 - `food_aliases.json`: YOLO class name → RDA food_code 후보.
 - `korean_foods.csv`: food_code별 1회 제공량과 영양소.
+- `nutrient_per_100g = nutrient_per_unit / unit_size_g * 100` 방식으로 정규화.
+- 기본 표시값은 100g 기준 영양 프로필이다.
+- 사용자가 g를 직접 입력하면 `nutrient_for_amount = nutrient_per_100g * amount_g / 100`으로 계산한다.
+- 사용자가 인분 수를 입력하면 `amount_g = unit_size_g * serving_count`로 환산한 뒤 계산한다.
 - 매칭 실패 시 항목을 버리지 않고 `needs_user_review=True`로 반환한다.
+- `sugar_g`처럼 CSV에 없는 영양소는 특징 문구로 생성하지 않는다.
 
 ---
 
@@ -265,8 +274,8 @@ Beta 추정:
 - `test_google_vision.py`: GCV response mock 파싱, OCR/label hint 추출.
 - `test_fusion.py`: YOLO/GCV 병합, 충돌 시 review flag.
 - `test_portion_estimator.py`: 기본 1인분, bbox 기반 보정.
-- `test_rda_matcher.py`: alias → food_code, g scaling.
-- `test_pipeline.py`: 이미지 hash → mock → fusion → RDA 결과.
+- `test_rda_matcher.py`: alias → food_code, 100g 기준 영양소 정규화, 사용자 입력 g/인분 기준 scaling.
+- `test_pipeline.py`: 이미지 hash → mock → fusion → 100g nutrition profile 연결 가능성.
 
 ### Integration
 
@@ -279,7 +288,7 @@ Beta 추정:
 MVP:
 
 - mock 기반 pipeline 테스트 100% 통과.
-- 음식 후보/추정량/검토 필요 플래그가 일관된 스키마로 반환.
+- 음식 후보/100g 기준 영양 프로필/검토 필요 플래그가 일관된 스키마로 반환.
 
 Beta:
 
