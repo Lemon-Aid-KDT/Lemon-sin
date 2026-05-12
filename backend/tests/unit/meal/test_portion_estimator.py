@@ -157,6 +157,43 @@ class TestInvalidImageArea:
             estimator.estimate_item(_item(), bbox=SMALL_RATIO_BBOX, image_area=-1.0)
 
 
+class TestInvalidDefaultServing:
+    """default_serving_g precondition.
+
+    `model_copy(update=...)`는 Pydantic validator를 재실행하지 않으므로
+    `RecognizedMealItem.estimated_grams`의 `gt=0` 계약이 우회될 수 있다.
+    default_serving_g=0이면 estimated_grams=0, default_serving_g=-1이면
+    multiplier 적용 시 음수가 들어가므로 명시적으로 ValueError로 차단한다.
+    """
+
+    def test_default_serving_zero_raises_in_fallback_path(self) -> None:
+        """default_serving_g=0 → ValueError (fallback 경로)."""
+        estimator = PortionEstimator()
+        with pytest.raises(ValueError, match="default_serving_g"):
+            estimator.estimate_item(_item(), bbox=None, image_area=None, default_serving_g=0.0)
+
+    def test_default_serving_negative_raises_in_bbox_path(self) -> None:
+        """default_serving_g<0 → ValueError (bbox 보정 경로)."""
+        estimator = PortionEstimator()
+        with pytest.raises(ValueError, match="default_serving_g"):
+            estimator.estimate_item(
+                _item(),
+                bbox=SMALL_RATIO_BBOX,
+                image_area=IMAGE_AREA,
+                default_serving_g=-1.0,
+            )
+
+    def test_estimate_items_propagates_default_serving_validation(self) -> None:
+        """estimate_items 경로도 default_serving_g 검증을 전파한다."""
+        estimator = PortionEstimator()
+        with pytest.raises(ValueError, match="default_serving_g"):
+            estimator.estimate_items(
+                [_item("공기밥")],
+                detections=[],
+                default_serving_g=0.0,
+            )
+
+
 class TestRatioBands:
     """bbox.area / image_area 비율 3구간."""
 

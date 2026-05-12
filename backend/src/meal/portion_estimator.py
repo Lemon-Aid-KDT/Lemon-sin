@@ -95,9 +95,13 @@ class PortionEstimator:
             갱신된 새 `RecognizedMealItem`.
 
         Raises:
-            ValueError: `image_area`가 0 이하인 경우 (bbox 유무와 무관한
-                precondition).
+            ValueError: `default_serving_g`가 0 이하이거나 `image_area`가 0
+                이하인 경우. `model_copy(update=...)`가 Pydantic validator를
+                재실행하지 않아 `estimated_grams`의 `gt=0` 계약이 우회될 수
+                있으므로 명시적으로 차단한다.
         """
+        if default_serving_g <= 0:
+            raise ValueError(f"default_serving_g must be > 0, got {default_serving_g}")
         if image_area is not None and image_area <= 0:
             raise ValueError(f"image_area must be > 0, got {image_area}")
 
@@ -155,7 +159,8 @@ class PortionEstimator:
             보정된 `RecognizedMealItem` 리스트 (입력 순서 보존).
 
         Raises:
-            ValueError: `image_area`가 0 이하인 경우.
+            ValueError: `default_serving_g`가 0 이하이거나 `image_area`가 0
+                이하인 경우. `estimate_item` 호출 시 첫 번째 위반에서 전파된다.
         """
         return [
             self.estimate_item(
