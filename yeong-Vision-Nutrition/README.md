@@ -27,9 +27,9 @@
 [![HealthKit](https://img.shields.io/badge/Apple-HealthKit-000000?logo=apple&logoColor=white)]()
 [![Health Connect](https://img.shields.io/badge/Google-Health_Connect-4285F4?logo=google&logoColor=white)]()
 
-[![Backend CI](https://img.shields.io/badge/Backend_CI-not%20yet-lightgrey)]()
-[![Mobile CI](https://img.shields.io/badge/Mobile_CI-not%20yet-lightgrey)]()
-[![Coverage](https://img.shields.io/badge/coverage-pending-lightgrey)]()
+[![Backend CI](https://img.shields.io/badge/Backend_CI-passing-brightgreen?logo=githubactions&logoColor=white)](https://github.com/Lemon-Aid-KDT/Lemon-sin/actions)
+[![Mobile CI](https://img.shields.io/badge/Mobile_CI-pending-lightgrey)]()
+[![Tests](https://img.shields.io/badge/tests-190%20passed-brightgreen)]()
 
 ---
 
@@ -262,9 +262,20 @@ ENCRYPTION_KEY=...                # AES-256 컬럼 암호화 키
 # 환경
 ENVIRONMENT=development           # development/staging/production
 LOG_LEVEL=DEBUG
+
+# Phase 게이트 (docs/17 §9 발주처 리뷰 통과 후에만 true 로 변경)
+ENABLE_MULTIMODAL_LLM=false       # Phase 2 게이트 #1: Ollama 멀티모달(Gemma 4)
+ENABLE_VISION_CLASSIFIER=false    # Phase 3 게이트 #2: YOLO 라벨 영역 검출
+VISION_CLASSIFIER_MODEL=yolov8n.pt
+ENABLE_IMAGE_LEARNING_PIPELINE=false  # Phase 4 게이트 #3: 학습 적재
+ENABLE_PGVECTOR_STORAGE=false         # Phase 4 게이트 #3 부속 인프라
+EMBEDDING_MODEL=clip-ViT-B-32
+IMAGE_RETENTION_DAYS=0            # 0 = 분석 직후 즉시 삭제 (docs/17 §5)
 ```
 
 > ⚠️ **절대 `.env` 파일을 커밋하지 마세요.** `.gitignore`에 등록되어 있습니다.
+>
+> 🚧 **Phase 게이트 7개**(`ENABLE_*`, `IMAGE_RETENTION_DAYS`)는 production 환경에서 `true`/`>0` 으로 설정하면 `config.py` 의 `validate_production_security` 가 ValueError 를 발생시킵니다. 발주처 리뷰 게이트(docs/17 §8) 통과 후에만 변경하세요.
 
 ### 5️⃣ Pre-commit Hooks 설치 (권장)
 
@@ -283,31 +294,39 @@ pre-commit install
 lemon-healthcare-project/
 ├── 📄 README.md                    # 이 문서
 │
-├── 📁 docs/                        # 기획·설계 문서 (10개)
-│   ├── 01-project-overview.md      # 프로젝트 개요
-│   ├── 02-background-problem.md    # 배경 및 문제 정의
-│   ├── 03-project-intent.md        # 기획 의도·차별화
-│   ├── 04-market-research.md       # 시장·경쟁사 분석
-│   ├── 05-github-guidelines.md     # GitHub 협업 규칙
-│   ├── 06-tech-stack.md            # 기술 스택
-│   ├── 07-core-algorithm.md        # 핵심 알고리즘
-│   ├── 08-implementation-plan.md   # 구현 계획
-│   ├── 09-data-catalog.md          # 데이터·API 카탈로그
-│   └── 10-compliance-checklist.md  # 컴플라이언스 체크리스트
+├── 📁 docs/                        # 기획·설계·구현 명세 (39개) + dev-guides 30개
+│   ├── 01~04                       # 비전·합의 (overview, problem, intent, market)
+│   ├── 05                          # GitHub 협업 규칙
+│   ├── 06~09                       # 실행 설계 (tech-stack, algorithm, plan, data)
+│   ├── 10·14·15·17                 # 컴플라이언스 (checklist, scope-rules, regulated, consent)
+│   ├── 11~13·16                    # 보조 명세 (detailed-impl, ollama, evidence, gap-review)
+│   ├── 18~25 (p1-*)                # Phase 1 백엔드 구현 플랜 (security, db, OCR, parser, ...)
+│   ├── 20~30 (planning)            # 백엔드 파일 구조·후속 고도화 플랜
+│   ├── 31-backend-feature-specifications.md   # 현행 백엔드 기능 명세 (700줄)
+│   ├── dev-guides/                 # 작업 단위 가이드 30개 (Tier 3)
+│   ├── pdf/                        # 공식 가이드 PDF
+│   └── previous-version/           # 폐기·아카이브 문서
 │
 ├── 📁 backend/                     # Python 백엔드 (FastAPI)
-│   ├── src/
-│   │   ├── algorithms/             # v1~v4, 7-step 산출식
-│   │   ├── ocr/                    # 영양제 OCR 파이프라인
-│   │   ├── nutrition/              # KDRIs 룩업 + 결핍 진단
-│   │   ├── prediction/             # 체중 예측
-│   │   ├── activity/               # 활동점수
-│   │   ├── api/                    # FastAPI 라우터
-│   │   ├── models/                 # Pydantic 스키마, DB 모델
-│   │   └── utils/
-│   ├── tests/                      # pytest 50+
+│   ├── src/                        # 14개 도메인
+│   │   ├── algorithms/             # BMI, 활동점수 v1~v4, BMR/TDEE
+│   │   ├── prediction/             # 7-step 정적 + Hall-lite 동적 + selector
+│   │   ├── nutrition/              # KDRIs 룩업, 부족 영양소 분석, 단위 환산
+│   │   ├── ocr/                    # OCR Adapter + providers (Google Vision / CLOVA / Noop)
+│   │   ├── llm/                    # Ollama 구조화 출력 + Vision Assist + LLMAdapter ABC
+│   │   ├── vision/                 # YOLO ROI 검출 (Phase 3 게이트, fail-closed)
+│   │   ├── learning/               # consent gate + embedding/vector ABC (Phase 4 게이트)
+│   │   ├── services/               # 비즈니스 오케스트레이션 11개
+│   │   ├── api/v1/                 # FastAPI 라우터 8개 도메인
+│   │   ├── db/                     # Async SQLAlchemy 세션 + Alembic
+│   │   ├── models/                 # Pydantic v2 schemas + ORM
+│   │   ├── security/               # OAuth/OIDC JWT + scopes + HMAC subjects
+│   │   ├── privacy/                # 동의 정책 + SHA-256 해시
+│   │   ├── cache/                  # Redis 헬퍼 (scaffold)
+│   │   └── utils/                  # 로깅
+│   ├── tests/                      # pytest 53 files / 190 passed + 1 skipped
 │   ├── requirements.txt
-│   └── pyproject.toml              # Black·Ruff·mypy 설정
+│   └── pyproject.toml              # Black·Ruff·mypy + [project.optional-dependencies] (vision/learning extras)
 │
 ├── 📁 mobile/                      # Flutter 모바일 앱
 │   ├── lib/
@@ -345,7 +364,7 @@ lemon-healthcare-project/
 
 ## 📖 문서 허브
 
-본 프로젝트는 **10개의 핵심 문서**로 구성되어 있습니다. 어떤 질문이 있는지에 따라 적합한 문서로 바로 이동하세요.
+본 프로젝트는 `docs/` 의 **39개 핵심 문서** 와 `docs/dev-guides/` 의 **30개 작업 가이드** 로 구성되어 있습니다. 단계별로 어떤 문서를 보아야 하는지 아래 표를 따라가세요.
 
 ### 🟢 1단계 — 비전·합의 (What·Why·Who)
 
@@ -377,6 +396,53 @@ lemon-healthcare-project/
 | 어떤 데이터·API를 쓰고, 비용은 얼마인가? | [`09-data-catalog.md`](./docs/09-data-catalog.md) |
 | 의료법·약사법·개인정보보호법은? | [`10-compliance-checklist.md`](./docs/10-compliance-checklist.md) |
 
+### 🟤 4단계 — 컴플라이언스 심화 (Compliance Deep-dive)
+
+| 질문 | 문서 |
+|------|------|
+| 기능 단위로 어떻게 쪼개서 구현하나? | [`11-detailed-feature-implementation-plan.md`](./docs/11-detailed-feature-implementation-plan.md) |
+| 상세 구현 전 어떤 범위·규칙을 고정해야 하나? | [`14-pre-implementation-scope-and-rules.md`](./docs/14-pre-implementation-scope-and-rules.md) |
+| 처방전·검사표·병원데이터 같은 규제 기능은 어떻게 단계화하나? | [`15-regulated-feature-feasibility-and-compliance-plan.md`](./docs/15-regulated-feature-feasibility-and-compliance-plan.md) |
+| 사용자 영양제 이미지 수집·재사용·학습 동의는 어떻게 받나? | [`17-image-collection-consent-plan.md`](./docs/17-image-collection-consent-plan.md) |
+
+### ⚫ 5단계 — Phase 1 백엔드 구현 플랜 (P1 Implementation Plans)
+
+| 단계 | 문서 |
+|------|------|
+| P1-0 API 보안 계약 | [`18-p1-0-api-security-contract.md`](./docs/18-p1-0-api-security-contract.md) |
+| P1-1 DB·Alembic 확장 | [`19-p1-1-db-alembic-extension.md`](./docs/19-p1-1-db-alembic-extension.md) |
+| P1-2 OCR 이미지 intake | [`20-p1-2-ocr-image-intake.md`](./docs/20-p1-2-ocr-image-intake.md) |
+| P1-3 Ollama 구조화 파서 | [`21-p1-3-ollama-structured-parser.md`](./docs/21-p1-3-ollama-structured-parser.md) |
+| P1-4 영양제 등록·매칭 | [`22-p1-4-supplement-registration-matching.md`](./docs/22-p1-4-supplement-registration-matching.md) |
+| P1-5 부족 영양소 대시보드 API | [`23-p1-5-deficiency-dashboard-api.md`](./docs/23-p1-5-deficiency-dashboard-api.md) |
+| P1-6 HealthKit·Health Connect 동기화 | [`24-p1-6-healthkit-health-connect-sync.md`](./docs/24-p1-6-healthkit-health-connect-sync.md) |
+| P1-7 모바일 MVP 캡처·YOLOv8 | [`25-p1-7-mobile-mvp-capture-yolov8-plan.md`](./docs/25-p1-7-mobile-mvp-capture-yolov8-plan.md) |
+
+### 🔘 6단계 — 후속 고도화 플랜 (Follow-up Enhancement Plans)
+
+| 영역 | 문서 |
+|------|------|
+| PostgreSQL 정식 전환 | [`24-postgresql-transition-plan.md`](./docs/24-postgresql-transition-plan.md) |
+| OCR·텍스트 영양제 분석 전체 흐름 | [`25-ocr-text-supplement-analysis-plan.md`](./docs/25-ocr-text-supplement-analysis-plan.md) |
+| OT-S2 OCR Provider Adapter | [`26-ot-s2-ocr-provider-adapter-implementation-plan.md`](./docs/26-ot-s2-ocr-provider-adapter-implementation-plan.md) |
+| OT-S2b Google Vision OCR 리뷰 | [`27-ot-s2b-google-vision-ocr-review-plan.md`](./docs/27-ot-s2b-google-vision-ocr-review-plan.md) |
+| Ollama 로컬 LLM 연결 | [`28-ollama-local-llm-connection-implementation-plan.md`](./docs/28-ollama-local-llm-connection-implementation-plan.md) |
+| Hall-lite 체중 예측 도입 | [`29-hall-lite-weight-prediction-implementation-plan.md`](./docs/29-hall-lite-weight-prediction-implementation-plan.md) |
+| 멀티모달 Ollama / YOLO 실험 | [`30-multimodal-yolo-experiment-plan.md`](./docs/30-multimodal-yolo-experiment-plan.md) |
+
+### 🟪 7단계 — 메타·진척 노트 (Meta & Progress Notes)
+
+| 영역 | 문서 |
+|------|------|
+| 알고리즘·논문 근거 매핑 | [`13-algorithm-literature-evidence.md`](./docs/13-algorithm-literature-evidence.md) |
+| 설정값 누락 검토 | [`16-implementation-settings-gap-review.md`](./docs/16-implementation-settings-gap-review.md) |
+| 47개 문서 전체 3-Lens 브레인스토밍 | [`18-enhancement-brainstorm-notes.md`](./docs/18-enhancement-brainstorm-notes.md) |
+| Phase 별 현행 구현 매핑 | [`22-current-implementation-status-map.md`](./docs/22-current-implementation-status-map.md) |
+| Phase 1 안정화 작업 목록 | [`23-p1-stabilization-plan.md`](./docs/23-p1-stabilization-plan.md) |
+| 핵심 알고리즘 논문·근거 | [`17-api-paper-algorithm-rationale.md`](./docs/17-api-paper-algorithm-rationale.md) |
+| 백엔드 파일 구조 확장 계획 | [`20-backend-file-structure-plan.md`](./docs/20-backend-file-structure-plan.md) · [`21-backend-file-structure-guide.md`](./docs/21-backend-file-structure-guide.md) |
+| 로컬 LLM 마이그레이션 | [`12-local-llm-ollama-migration.md`](./docs/12-local-llm-ollama-migration.md) |
+
 ### 🟠 백엔드 구현 명세 (Backend Feature Specifications)
 
 | 질문 | 문서 |
@@ -385,7 +451,20 @@ lemon-healthcare-project/
 
 `docs/31` 은 알고리즘(BMI, v1~v4, BMR/TDEE, 7-step, Hall-lite) · 영양 분석(KDRIs, 부족 영양소, 단위 환산) · OCR · Ollama 로컬 LLM · YOLO 비전(Phase 3 게이트) · 학습 적재(Phase 4 게이트) · 서비스 오케스트레이션 · API v1 · DB · 보안(JWT/OIDC) · Settings/게이트 플래그까지 17개 영역을 한 문서로 정리한 현행 구현 명세서입니다.
 
-> 💡 **처음 보시는 분이라면**: `01 → 02 → 03 → 04` 순서로 1단계 4개 문서만 읽으셔도 프로젝트의 전체 그림이 보입니다. 백엔드 코드를 바로 따라가야 하는 개발자는 `31` 부터 보세요.
+### 🧭 작업 단위 가이드 — `docs/dev-guides/` (30개)
+
+기능을 직접 구현하거나 모바일 화면을 따라가야 할 때 참조한다. 분류:
+
+- **00**: 백엔드 개발 환경 셋업
+- **01~09**: 알고리즘 (BMI/v1~v4/BMR·TDEE/7-step/Hall) · KDRIs 룩업 · 부족 영양소 진단 · OCR 파이프라인 · LLM 영양제 파싱 · 영양제 등록 API
+- **10~21**: Flutter 모바일 (Flutter 셋업, 카메라, HealthKit, 대시보드, Hall, 목적별 분석, 식단 인식, 피드백/푸시, 부족·목적·식단·피드백 화면 등)
+- **22~29**: 데모 시나리오 · 발표 자료 · 리허설 · 인수인계 · 운영 매뉴얼 · 인시던트 런북 · 회고 · 최종 산출물 인덱스
+
+> 💡 **처음 보시는 분**: `01 → 02 → 03 → 04` 순서로 1단계 4개 문서만 읽어도 프로젝트의 전체 그림이 보입니다.
+>
+> 💻 **백엔드 코드부터 따라가는 개발자**: [`docs/31-backend-feature-specifications.md`](./docs/31-backend-feature-specifications.md) 가 17개 영역(알고리즘/예측/영양/OCR/LLM/Vision/Learning/Services/API/DB/Security/Privacy/Settings 등)을 한 번에 정리한 진입점입니다.
+>
+> 📋 **Phase 1 작업을 시작하는 개발자**: 5단계 P1-X 시리즈를 단계 순서대로 보세요.
 
 ---
 
