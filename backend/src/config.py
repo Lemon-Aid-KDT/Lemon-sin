@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Social Login
+    google_client_id: str | None = None  # Google Cloud Console에서 발급받은 클라이언트 ID
+
     @property
     def database_url(self) -> str:
         return (

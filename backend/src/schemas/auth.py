@@ -29,3 +29,7 @@ class AccessTokenResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class SocialLoginRequest(BaseModel):
+    token: str

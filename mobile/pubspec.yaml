@@ -1,0 +1,32 @@
+name: lemon_aid
+description: 만성질환자 AI 헬스케어 앱
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP 요청 (우리 FastAPI 서버와 통신)
+  http: ^1.2.0
+
+  # 토큰 안전 저장 (휴대폰 보안 저장소 사용)
+  flutter_secure_storage: ^9.2.2
+
+  # 구글 로그인
+  google_sign_in: ^6.2.0
+
+  # 카카오 로그인
+  kakao_flutter_sdk_user: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
