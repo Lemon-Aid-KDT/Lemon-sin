@@ -3,9 +3,7 @@
 // 참조: PROJECT_GUIDE.md §3.5 설정 화면 / §20.5 데이터 주체 5권리
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../utils/router.dart';
 import '../utils/tokens.dart';
 
 class SettingsScreen extends StatelessWidget {

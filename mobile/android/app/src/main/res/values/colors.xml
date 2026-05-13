@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FEFAE0</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- 네이티브 splash·windowBackground·navigationBar — Flutter LemonColors.bg 와 동일 (흰색) -->
+    <color name="lemonBg">#FFFFFF</color>
 </resources>

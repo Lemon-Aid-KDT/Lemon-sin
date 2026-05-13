@@ -3,9 +3,7 @@
 // 참조: PROJECT_GUIDE.md §9.3 건강 데이터 연동 (HealthKit / Health Connect)
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../utils/router.dart';
 import '../utils/tokens.dart';
 
 class HealthScreen extends StatelessWidget {

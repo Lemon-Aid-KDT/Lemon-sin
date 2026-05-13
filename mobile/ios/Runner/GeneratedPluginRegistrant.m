@@ -30,12 +30,6 @@
 @import flutter_local_notifications;
 #endif
 
-#if __has_include(<flutter_native_splash/FlutterNativeSplashPlugin.h>)
-#import <flutter_native_splash/FlutterNativeSplashPlugin.h>
-#else
-@import flutter_native_splash;
-#endif
-
 #if __has_include(<health/HealthPlugin.h>)
 #import <health/HealthPlugin.h>
 #else
@@ -61,7 +55,6 @@
   [CameraPlugin registerWithRegistrar:[registry registrarForPlugin:@"CameraPlugin"]];
   [FPPDeviceInfoPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPDeviceInfoPlusPlugin"]];
   [FlutterLocalNotificationsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterLocalNotificationsPlugin"]];
-  [FlutterNativeSplashPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterNativeSplashPlugin"]];
   [HealthPlugin registerWithRegistrar:[registry registrarForPlugin:@"HealthPlugin"]];
   [FLTImagePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTImagePickerPlugin"]];
   [Sqlite3FlutterLibsPlugin registerWithRegistrar:[registry registrarForPlugin:@"Sqlite3FlutterLibsPlugin"]];

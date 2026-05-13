@@ -3,9 +3,7 @@
 // 참조: PROJECT_GUIDE.md §3.1 챗봇 Agent / §3.3 Tool 정의 / §7.3.3
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../utils/router.dart';
 import '../utils/tokens.dart';
 
 class ChatScreen extends StatelessWidget {

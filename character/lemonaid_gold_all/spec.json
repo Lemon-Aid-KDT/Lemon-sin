@@ -1,0 +1,19 @@
+{
+  "name": "Lemon-Aid inner gold carbon leaf growth loading",
+  "fps": 30,
+  "duration_seconds": 6,
+  "frames": 180,
+  "canvas": {
+    "width": 953,
+    "height": 948
+  },
+  "revision": "gold-assets-repack",
+  "changes": [
+    "gold carbon assets",
+    "warm empty shell",
+    "gold liquid surface",
+    "gold bubble layer",
+    "external and embedded JSON regenerated",
+    "dotLottie and ZIP packages regenerated"
+  ]
+}

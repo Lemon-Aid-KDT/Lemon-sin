@@ -1,21 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
+    <!-- Android 12+ splash 단순화 — 아이콘 제거, 배경색만 -->
+    <!-- Flutter Splash (splash_screen.dart) 가 유일한 로고 화면 -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowDrawsSystemBarBackgrounds">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
-        <item name="android:windowSplashScreenBackground">#FEFAE0</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/android12splash</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">#FEFAE0</item>
+        <!-- 시스템 splash — 흰 배경만. 아이콘 제거 (Android 12+ 원형 마스크 강제 회피).
+             Flutter Splash (splash_screen.dart) 가 유일한 사용자 시각 splash. -->
+        <item name="android:windowSplashScreenBackground">#FFFFFF</item>
     </style>
-    <!-- Theme applied to the Android Window as soon as the process has started.
-         This theme determines the color of the Android Window while your
-         Flutter UI initializes, as well as behind your Flutter UI while its
-         running.
-         
-         This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>

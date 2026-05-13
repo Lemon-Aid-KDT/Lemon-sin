@@ -20,6 +20,7 @@ dependencies:
 
   # SVG (카카오·구글 등 브랜드 로고)
   flutter_svg: ^2.0.10+1
+  lottie: ^3.1.2          # Splash 골드 캐릭터 로딩 애니메이션
 
   # HTTP 통신
   dio: ^5.4.3
@@ -71,8 +72,8 @@ dev_dependencies:
   # 앱 아이콘 자동 생성
   flutter_launcher_icons: ^0.13.1
 
-  # 네이티브 splash 자동 생성
-  flutter_native_splash: ^2.4.1
+  # 네이티브 splash 제거 (사용자 결정 2026-05-11):
+  # Flutter Splash 화면이 유일한 splash. flutter_native_splash 의존성 제거.
 
 flutter:
   uses-material-design: true
@@ -80,6 +81,7 @@ flutter:
   assets:
     - assets/icons/
     - assets/illustrations/
+    - assets/animations/
 
   # 폰트 패밀리 (다이어리 §4.5a)
   # 현재 Pretendard만 활성. Gmarket Sans / Plus Jakarta Sans 는
@@ -114,21 +116,14 @@ flutter_icons:
   android: true
   ios: false  # iOS Xcode 프로젝트 미생성 (Windows 환경) — macOS에서 ios:true 로 재실행
   image_path: "assets/app_icon/app_icon.png"
-  adaptive_icon_background: "#FEFAE0"
+  # 어댑티브 아이콘 — 시스템(런처)이 라운드 사각/원형/스쿼클 마스크 자동 적용
+  # background: 흰색 (캐릭터 시안의 라운드 사각 배경과 동일)
+  # foreground: 캐릭터 그대로 (라운드 사각 그림자는 포함)
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/app_icon/app_icon.png"
   min_sdk_android: 26
   remove_alpha_ios: true
 
-flutter_native_splash:
-  color: "#FEFAE0"
-  image: assets/app_icon/app_icon.png
-  android_12:
-    color: "#FEFAE0"
-    image: assets/app_icon/app_icon.png
-    icon_background_color: "#FEFAE0"
-  ios: false  # iOS Xcode 프로젝트 미생성 — macOS에서 ios:true 로 재실행
-  android: true
-  web: false
-  fullscreen: false
-  android_gravity: center
-  ios_content_mode: center
+# flutter_native_splash 설정 제거 — Flutter Splash 화면이 유일한 splash
+# 네이티브 단계는 Android OS 기본 (검은/흰 화면 0.3~0.5초) 만 — 우리 제어 X
+# 그 직후 바로 Flutter Splash (splash_screen.dart, 2초) 가 떠서 사용자 시각 splash 하나

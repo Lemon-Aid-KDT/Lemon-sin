@@ -3,9 +3,7 @@
 // 참조: PROJECT_GUIDE.md §3.7 영양제 분석 흐름 / §8.5 OCR 파이프라인
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../utils/router.dart';
 import '../utils/tokens.dart';
 
 class CameraScreen extends StatelessWidget {

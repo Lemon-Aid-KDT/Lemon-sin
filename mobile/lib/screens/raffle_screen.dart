@@ -3,9 +3,7 @@
 // 참조: PROJECT_GUIDE.md §3.8 사진 기록 응모권 UX
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import '../utils/router.dart';
 import '../utils/tokens.dart';
 
 class RaffleScreen extends StatelessWidget {
