@@ -43,8 +43,10 @@ def normalize_vision_label(label: str) -> str | None:
         Canonical label when allowed, otherwise None.
     """
     normalized = label.strip().lower().replace(" ", "_").replace("-", "_")
-    return normalized if normalized in VISION_DETECTION_LABELS else VISION_LABEL_ALIASES.get(
+    return (
         normalized
+        if normalized in VISION_DETECTION_LABELS
+        else VISION_LABEL_ALIASES.get(normalized)
     )
 
 

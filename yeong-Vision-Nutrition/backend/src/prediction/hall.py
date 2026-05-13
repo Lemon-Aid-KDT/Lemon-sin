@@ -23,9 +23,7 @@ GAMMA_L_KJ_PER_KG_DAY: Final[float] = 92.0
 RHO_F_KJ_PER_KG: Final[float] = 39_500.0
 RHO_L_KJ_PER_KG: Final[float] = 7_600.0
 FORBES_C_MASS_KG: Final[float] = 10.4
-FORBES_C_ENERGY_PARTITION_KG: Final[float] = (
-    FORBES_C_MASS_KG * RHO_L_KJ_PER_KG / RHO_F_KJ_PER_KG
-)
+FORBES_C_ENERGY_PARTITION_KG: Final[float] = FORBES_C_MASS_KG * RHO_L_KJ_PER_KG / RHO_F_KJ_PER_KG
 BETA_TEF: Final[float] = 0.10
 BETA_AT: Final[float] = 0.14
 TAU_AT_DAYS: Final[float] = 14.0
@@ -289,9 +287,7 @@ def step_one_day(
     """
     target_intake_kj = kcal_to_kj(target_intake_kcal)
     rmr_kj = calculate_dynamic_rmr_kj(composition=composition, baseline=baseline)
-    paee_kj = baseline.baseline_paee_kj * (
-        composition.weight_kg / baseline.initial_weight_kg
-    )
+    paee_kj = baseline.baseline_paee_kj * (composition.weight_kg / baseline.initial_weight_kg)
     tef_kj = BETA_TEF * target_intake_kj
     tdee_kj = rmr_kj + paee_kj + tef_kj + adaptive_thermogenesis_kj
     energy_balance_kj = target_intake_kj - tdee_kj
@@ -304,12 +300,11 @@ def step_one_day(
         fat_free_mass_kg=composition.fat_free_mass_kg + delta_fat_free_mass_kg,
     )
 
-    target_adaptive_thermogenesis_kj = BETA_AT * (
-        target_intake_kj - baseline.baseline_intake_kj
+    target_adaptive_thermogenesis_kj = BETA_AT * (target_intake_kj - baseline.baseline_intake_kj)
+    next_adaptive_thermogenesis_kj = (
+        adaptive_thermogenesis_kj
+        + (target_adaptive_thermogenesis_kj - adaptive_thermogenesis_kj) / TAU_AT_DAYS
     )
-    next_adaptive_thermogenesis_kj = adaptive_thermogenesis_kj + (
-        target_adaptive_thermogenesis_kj - adaptive_thermogenesis_kj
-    ) / TAU_AT_DAYS
 
     state = DailyState(
         day=day,

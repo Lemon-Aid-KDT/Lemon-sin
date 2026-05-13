@@ -14,9 +14,7 @@ LONG_TERM_HALL_CANDIDATE_DAYS: Final[int] = 90
 HALL_LITE_MIN_AGE_YEARS: Final[int] = 18
 ROUND_KCAL_DECIMALS: Final[int] = 1
 ROUND_CHANGE_DECIMALS: Final[int] = 3
-HALL_LITE_WARNING = (
-    "Hall-lite 동적 시뮬레이션 참고값입니다. 실제 체중 변화는 개인 상태와 측정 오차에 따라 달라질 수 있습니다."
-)
+HALL_LITE_WARNING = "Hall-lite 동적 시뮬레이션 참고값입니다. 실제 체중 변화는 개인 상태와 측정 오차에 따라 달라질 수 있습니다."
 
 
 class WeightPredictionEngine(StrEnum):
