@@ -1,7 +1,7 @@
 """Create P1 supplement and health tables.
 
 Revision ID: 0004_create_p1_supplement_health
-Revises: 0003_create_privacy_consent_audit
+Revises: 0003_privacy_consent_audit
 Create Date: 2026-05-12 00:00:00.000000
 """
 
@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0004_create_p1_supplement_health"
-down_revision: str | Sequence[str] | None = "0003_create_privacy_consent_audit"
+down_revision: str | Sequence[str] | None = "0003_privacy_consent_audit"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
