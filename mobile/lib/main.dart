@@ -5,7 +5,7 @@ import 'screens/auth/login_screen.dart';
 
 void main() {
   // 카카오 SDK 초기화 — kakao_app_key는 카카오 개발자 콘솔에서 발급받은 네이티브 앱 키
-  KakaoSdk.init(nativeAppKey: 'YOUR_KAKAO_NATIVE_APP_KEY');
+  KakaoSdk.init(nativeAppKey: e77b0826818850493f5ffeb1014a0833);
 
   runApp(const LemonAidApp());
 }
