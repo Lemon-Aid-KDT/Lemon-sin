@@ -26,7 +26,7 @@ MD_PATH = ROOT / "PROJECT_GUIDE.md"
 HTML_PATH = ROOT / "guide.html"
 
 MD_SOURCE_RE = re.compile(
-    r'(<script id="md-source" type="text/plain">\n)(.*?)(\n</script>)',
+    r'(<script id="md-source" type="text/plain">\r?\n)(.*?)(\r?\n</script>)',
     re.DOTALL,
 )
 
