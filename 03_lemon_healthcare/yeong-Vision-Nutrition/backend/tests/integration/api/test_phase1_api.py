@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from src.config import Settings, get_settings
 from src.main import create_app
+from src.prediction.selector import HALL_LITE_WARNING
 
 
 def test_activity_score_api() -> None:
@@ -55,6 +57,43 @@ def test_weight_prediction_api() -> None:
     body = response.json()
     assert [prediction["days"] for prediction in body["predictions"]] == [7, 30, 90]
     assert body["predictions"][1]["predicted_weight_kg"] == 67.19
+
+
+def test_weight_prediction_api_can_route_hall_lite_when_enabled() -> None:
+    """체중 예측 API가 설정 주입 시 Hall-lite selector를 통과하는지 검증한다."""
+
+    def hall_lite_settings() -> Settings:
+        """Return Hall-lite enabled settings for dependency override.
+
+        Returns:
+            Settings configured to enable auto Hall-lite selection.
+        """
+        return Settings(
+            feature_hall_lite_weight_prediction=True,
+            weight_prediction_engine="auto",
+        )
+
+    app = create_app()
+    app.dependency_overrides[get_settings] = hall_lite_settings
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/predictions/weight",
+        json={
+            "age": 50,
+            "sex": "female",
+            "height_cm": 160,
+            "weight_kg": 68,
+            "daily_steps": 6500,
+            "daily_intake_kcal": 1500,
+            "periods_days": [30, 90],
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["predictions"][0]["predicted_weight_kg"] == 67.19
+    assert body["predictions"][1]["warning"] == HALL_LITE_WARNING
 
 
 def test_kdris_lookup_api() -> None:
