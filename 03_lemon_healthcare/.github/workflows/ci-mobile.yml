@@ -1,20 +1,20 @@
 # =============================================================================
 # Mobile CI: Flutter 코드 자동 검증
-# 트리거: 03_lemon_healthcare/pr1/mobile/** 변경 시
+# 트리거: 03_lemon_healthcare/yeong-Vision-Nutrition/mobile/** 변경 시
 # =============================================================================
 
 name: Mobile CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, yeong-tech]
     paths:
-      - '03_lemon_healthcare/pr1/mobile/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/mobile/**'
       - '03_lemon_healthcare/.github/workflows/ci-mobile.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, yeong-tech]
     paths:
-      - '03_lemon_healthcare/pr1/mobile/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/mobile/**'
       - '03_lemon_healthcare/.github/workflows/ci-mobile.yml'
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: 03_lemon_healthcare/pr1/mobile
+        working-directory: 03_lemon_healthcare/yeong-Vision-Nutrition/mobile
 
     steps:
       # -----------------------------------------------------------------------
@@ -33,10 +33,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Detect Flutter project
+        id: flutter_project
+        run: |
+          if [ -f pubspec.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No pubspec.yaml found; skipping Flutter checks."
+          fi
+
       # -----------------------------------------------------------------------
       # 2. Setup Java (Android 빌드용)
       # -----------------------------------------------------------------------
       - name: Set up Java
+        if: steps.flutter_project.outputs.present == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -46,6 +57,7 @@ jobs:
       # 3. Setup Flutter
       # -----------------------------------------------------------------------
       - name: Set up Flutter
+        if: steps.flutter_project.outputs.present == 'true'
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
@@ -55,36 +67,42 @@ jobs:
       # 4. Verify Flutter Installation
       # -----------------------------------------------------------------------
       - name: Flutter doctor
+        if: steps.flutter_project.outputs.present == 'true'
         run: flutter doctor -v
 
       # -----------------------------------------------------------------------
       # 5. Install Dependencies
       # -----------------------------------------------------------------------
       - name: Install dependencies
+        if: steps.flutter_project.outputs.present == 'true'
         run: flutter pub get
 
       # -----------------------------------------------------------------------
       # 6. Format Check
       # -----------------------------------------------------------------------
       - name: Verify formatting
+        if: steps.flutter_project.outputs.present == 'true'
         run: dart format --output=none --set-exit-if-changed lib test
 
       # -----------------------------------------------------------------------
       # 7. Static Analysis
       # -----------------------------------------------------------------------
       - name: Analyze project source
+        if: steps.flutter_project.outputs.present == 'true'
         run: flutter analyze --no-fatal-infos
 
       # -----------------------------------------------------------------------
       # 8. Run Tests
       # -----------------------------------------------------------------------
       - name: Run tests
+        if: steps.flutter_project.outputs.present == 'true'
         run: flutter test --coverage
 
       # -----------------------------------------------------------------------
       # 9. Build Verification (Android APK only — iOS는 macOS runner 필요)
       # -----------------------------------------------------------------------
       - name: Build APK (debug)
+        if: steps.flutter_project.outputs.present == 'true'
         run: flutter build apk --debug
         continue-on-error: true
 
@@ -99,5 +117,5 @@ jobs:
   #     - uses: subosito/flutter-action@v2
   #       with:
   #         channel: 'stable'
-  #     - run: cd mobile && flutter pub get
-  #     - run: cd mobile && flutter build ios --debug --no-codesign
+  #     - run: cd 03_lemon_healthcare/yeong-Vision-Nutrition/mobile && flutter pub get
+  #     - run: cd 03_lemon_healthcare/yeong-Vision-Nutrition/mobile && flutter build ios --debug --no-codesign

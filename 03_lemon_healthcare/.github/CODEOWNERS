@@ -1,6 +1,6 @@
 # =============================================================================
 # CODEOWNERS — 영역별 자동 리뷰어 지정
-# Spec: 03_lemon_healthcare/docs/05-github-guidelines.md §9.3
+# Spec: 03_lemon_healthcare/yeong-Vision-Nutrition/docs/05-github-guidelines.md §9.3
 #
 # Path patterns are repo-root-relative. All entries currently point to the
 # repository owner as a placeholder; replace per-area handles when the team
@@ -10,9 +10,19 @@
 # Default reviewer
 *                                              @HorangEe02
 
-# Per-area reviewers (placeholders — replace when team handles assigned)
-/03_lemon_healthcare/pr1/backend/              @HorangEe02
-/03_lemon_healthcare/pr1/mobile/               @HorangEe02
-/03_lemon_healthcare/pr1/data/                 @HorangEe02
-/03_lemon_healthcare/pr1/docs/                 @HorangEe02
-/03_lemon_healthcare/.github/                  @HorangEe02
+# Per-area reviewers (replace when team handles assigned)
+/03_lemon_healthcare/PROJECT_GUIDE.md                          @HorangEe02
+/03_lemon_healthcare/guide.html                                @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/PROJECT_GUIDE.md    @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/guide.html          @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/backend/            @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/backend/src/llm/    @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/backend/src/ocr/    @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/backend/src/vision/ @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/backend/src/learning/ @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/backend/src/prediction/ @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/config/             @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/data/               @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/docs/               @HorangEe02
+/03_lemon_healthcare/yeong-Vision-Nutrition/mobile/             @HorangEe02
+/03_lemon_healthcare/.github/                                  @HorangEe02

@@ -61,8 +61,10 @@ Closes #
 
 - [ ] develop 브랜치 최신화 (rebase or merge)
 - [ ] 커밋 메시지가 컨벤션을 따름
+- [ ] 백엔드 변경 시 Python 3.13 환경에서 확인
 - [ ] 코드 린터·포매터 통과 (`black`, `ruff`, `dart format`, `flutter analyze`)
 - [ ] 단위 테스트 통과 (`pytest`, `flutter test`)
+- [ ] AI/OCR/YOLO/학습 파이프라인 변경 시 기능 플래그·동의 게이트 기본값 OFF 유지
 - [ ] 새로운 의존성을 추가했다면 `requirements.txt` / `pubspec.yaml` 업데이트
 - [ ] 환경 변수가 추가되었다면 `.env.example` 업데이트
 - [ ] 관련 문서를 함께 업데이트 (필요 시)
