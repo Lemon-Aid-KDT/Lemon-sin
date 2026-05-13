@@ -377,7 +377,15 @@ lemon-healthcare-project/
 | 어떤 데이터·API를 쓰고, 비용은 얼마인가? | [`09-data-catalog.md`](./docs/09-data-catalog.md) |
 | 의료법·약사법·개인정보보호법은? | [`10-compliance-checklist.md`](./docs/10-compliance-checklist.md) |
 
-> 💡 **처음 보시는 분이라면**: `01 → 02 → 03 → 04` 순서로 1단계 4개 문서만 읽으셔도 프로젝트의 전체 그림이 보입니다.
+### 🟠 백엔드 구현 명세 (Backend Feature Specifications)
+
+| 질문 | 문서 |
+|------|------|
+| `backend/src/` 의 각 기능이 무엇을 하고, 어떤 기술 스택을 쓰며, 왜 그렇게 구현했는가? | [`31-backend-feature-specifications.md`](./docs/31-backend-feature-specifications.md) |
+
+`docs/31` 은 알고리즘(BMI, v1~v4, BMR/TDEE, 7-step, Hall-lite) · 영양 분석(KDRIs, 부족 영양소, 단위 환산) · OCR · Ollama 로컬 LLM · YOLO 비전(Phase 3 게이트) · 학습 적재(Phase 4 게이트) · 서비스 오케스트레이션 · API v1 · DB · 보안(JWT/OIDC) · Settings/게이트 플래그까지 17개 영역을 한 문서로 정리한 현행 구현 명세서입니다.
+
+> 💡 **처음 보시는 분이라면**: `01 → 02 → 03 → 04` 순서로 1단계 4개 문서만 읽으셔도 프로젝트의 전체 그림이 보입니다. 백엔드 코드를 바로 따라가야 하는 개발자는 `31` 부터 보세요.
 
 ---
 
