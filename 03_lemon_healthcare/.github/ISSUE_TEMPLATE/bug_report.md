@@ -14,9 +14,9 @@ assignees: []
 
 <!-- 버그를 재현하는 단계를 순서대로 -->
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 4. 에러 발생
 
 ## ✅ 기대한 동작 (Expected Behavior)
@@ -45,13 +45,13 @@ assignees: []
 
 **백엔드 관련 버그인 경우:**
 - Python 버전: [예: 3.13.5]
-- FastAPI 버전: 
-- 관련 패키지 버전: 
+- FastAPI 버전:
+- 관련 패키지 버전:
 
 **모바일 관련 버그인 경우:**
-- Flutter 버전: 
+- Flutter 버전:
 - 디바이스: [예: iPhone 14 / Galaxy S23]
-- iOS/Android 버전: 
+- iOS/Android 버전:
 
 ## 🔄 재현 빈도 (Reproducibility)
 
