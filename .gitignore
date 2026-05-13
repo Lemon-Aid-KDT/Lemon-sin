@@ -29,6 +29,7 @@ venv/
 env/
 ENV/
 .pytest_cache/
+backend/.pytest-basetemp-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
