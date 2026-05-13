@@ -117,6 +117,8 @@
 
 ### 2.3 백엔드 주요 라이브러리 (`requirements.txt` 골격)
 
+기본 의존성 (모든 환경 공통):
+
 ```
 fastapi>=0.110
 uvicorn[standard]>=0.27
@@ -126,7 +128,6 @@ asyncpg>=0.29
 alembic>=1.13              # DB 마이그레이션
 redis>=5.0
 httpx>=0.27                # 외부 API 호출
-PyJWT[crypto]>=2.10        # OAuth/OIDC access token 검증
 google-cloud-vision>=3.7
 ollama>=0.6.0              # Ollama Local API
 pillow>=10.2               # 이미지 처리
@@ -138,6 +139,29 @@ black>=24.4
 ruff>=0.4
 mypy>=1.10
 ```
+
+선택 의존성 — `backend/pyproject.toml` 의 `[project.optional-dependencies]` 에 정식 분리. MVP 기본 설치(`pip install -e backend`)에는 포함되지 않음:
+
+```toml
+[project.optional-dependencies]
+# pip install ".[vision]" — Phase 3 비전 게이트 통과 후에만 설치
+vision = [
+    "torch>=2.2",
+    "ultralytics>=8.1",
+]
+# pip install ".[learning]" — Phase 4 학습 적재 게이트 통과 후에만 설치
+learning = [
+    "pgvector>=0.2",
+    "sentence-transformers>=2.5",
+]
+```
+
+extras 사용 원칙:
+
+- `[vision]`은 `enable_vision_classifier=true` 환경에서만 설치(기본 OFF)
+- `[learning]`은 `enable_image_learning_pipeline=true` 환경에서만 설치(기본 OFF)
+- 기본 빌드/CI 는 두 extras 를 설치하지 않아 MVP 영향을 최소화한다.
+- 운영 활성화 조건은 [docs/17 §9](./17-image-collection-consent-plan.md)의 게이트 플래그 매핑을 따른다. production 환경에서 게이트 플래그가 활성화된 채 extras 미설치면 `ImportError` 가 즉시 발생하도록 구현체 측에서 가드한다.
 
 ### 2.4 모바일 주요 패키지 (`pubspec.yaml` 골격)
 
@@ -238,6 +262,7 @@ dev_dependencies:
 3. **JSON/JSONB 컬럼** — 영양제 성분 등 동적 스키마 저장
 4. **GIN 인덱스** — 식품 검색 성능
 5. **AES-256 컬럼 암호화** 가능 — 의료 데이터 보안
+6. **`pgvector` 확장(선택)** — 영양제 이미지 임베딩 학습 적재용. Phase 4 게이트가 통과되어 `enable_pgvector_storage=true`로 설정된 경우에만 활성화한다. 자세한 적용 절차는 [docs/17](./17-image-collection-consent-plan.md) 참조.
 
 #### 데이터 모델 개요
 
@@ -254,6 +279,9 @@ dev_dependencies:
   step_counts          (걸음수, hour 단위 집계)
   weight_logs          (체중 측정, 일 단위)
   heart_rate_samples   (심박수, 분 단위)
+
+벡터 (pgvector, Phase 4 게이트 통과 시에만):
+  labeled_supplement_images (가명화 이미지 + CLIP 임베딩, docs/17 §3 4번 동의 한정)
 ```
 
 #### 대안 비교

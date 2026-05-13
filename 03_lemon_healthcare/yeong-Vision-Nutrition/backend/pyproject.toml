@@ -6,6 +6,18 @@ requires-python = ">=3.11"
 authors = [{ name = "TBD Team" }]
 license = { text = "MIT" }
 
+[project.optional-dependencies]
+# Phase 3 게이트 #2 통과 시에만 설치 (docs/17 §9, docs/06 §2.3)
+vision = [
+    "torch>=2.2",
+    "ultralytics>=8.1",
+]
+# Phase 4 게이트 #3 통과 시에만 설치
+learning = [
+    "pgvector>=0.2",
+    "sentence-transformers>=2.5",
+]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

@@ -249,6 +249,33 @@ class Settings(BaseSettings):
     feature_dosage_change_recommendation: bool = Field(default=False)
     feature_medication_safety_alert: bool = Field(default=True)
 
+    # Phase 게이트 플래그 — docs/17 §9 매핑. 모든 기본값 False/0.
+    # 운영 활성화 전에는 발주처 리뷰 게이트(#1/#2/#3) 통과 후에만 변경.
+    enable_multimodal_llm: bool = Field(
+        default=False,
+        description="Ollama 멀티모달(예: Gemma 4) 보조 채널 활성화. docs/17 §9 게이트 #1 필요.",
+    )
+    enable_vision_classifier: bool = Field(
+        default=False,
+        description="라벨 영역 검출용 YOLO 어댑터 활성화. docs/17 §9 게이트 #2 필요.",
+    )
+    vision_classifier_model: str = Field(default="yolov8n.pt")
+    enable_image_learning_pipeline: bool = Field(
+        default=False,
+        description="가명화 영양제 이미지의 학습 데이터셋 적재 활성화. docs/17 §9 게이트 #3 필요.",
+    )
+    enable_pgvector_storage: bool = Field(
+        default=False,
+        description="pgvector 기반 임베딩 저장소 활성화. docs/17 §9 게이트 #3 필요.",
+    )
+    embedding_model: str = Field(default="clip-ViT-B-32")
+    image_retention_days: int = Field(
+        default=0,
+        ge=0,
+        le=730,
+        description="영양제 이미지 보유 일수. 0 = 분석 직후 즉시 삭제(docs/17 §5).",
+    )
+
     @model_validator(mode="after")
     def validate_production_security(self) -> Self:
         """Validate production-only security requirements.
@@ -330,6 +357,22 @@ class Settings(BaseSettings):
                 (
                     not self.kdris_data_path,
                     "KDRIS_DATA_PATH is required in production.",
+                ),
+                (
+                    self.enable_multimodal_llm,
+                    "ENABLE_MULTIMODAL_LLM=true requires docs/17 §9 gate #1 sign-off.",
+                ),
+                (
+                    self.enable_vision_classifier,
+                    "ENABLE_VISION_CLASSIFIER=true requires docs/17 §9 gate #2 sign-off.",
+                ),
+                (
+                    self.enable_image_learning_pipeline,
+                    "ENABLE_IMAGE_LEARNING_PIPELINE=true requires docs/17 §9 gate #3 sign-off.",
+                ),
+                (
+                    self.enable_pgvector_storage,
+                    "ENABLE_PGVECTOR_STORAGE=true requires docs/17 §9 gate #3 sign-off.",
                 ),
             )
         )
