@@ -63,7 +63,7 @@ tests/
 name = "lemon-healthcare-backend"
 version = "0.1.0"
 description = "Lemon Healthcare AI - Backend API"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 authors = [{ name = "TBD Team" }]
 license = { text = "MIT" }
 ```

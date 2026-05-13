@@ -6,7 +6,7 @@
 
 **Architecture:** The backend owns all algorithms, nutrition evaluation, OCR/LLM adapters, persistence, and REST APIs. The Flutter app is a client for consent, capture, health-data sync, and result visualization only. Data standards and compliance wording are treated as first-class inputs, with demo/operations/handover artifacts produced after the core system is working.
 
-**Tech Stack:** Python 3.11, FastAPI, Pydantic v2, pytest, mypy strict, Ruff, Black, PostgreSQL/Alembic, Redis, Google Cloud Vision, Naver CLOVA OCR, Claude/OpenAI adapters, Flutter, Riverpod, Dio, Retrofit, Freezed, go_router, HealthKit/Health Connect.
+**Tech Stack:** Python 3.13, FastAPI, Pydantic v2, pytest, mypy strict, Ruff, Black, PostgreSQL/Alembic, Redis, Google Cloud Vision, Naver CLOVA OCR, Claude/OpenAI adapters, Flutter, Riverpod, Dio, Retrofit, Freezed, go_router, HealthKit/Health Connect.
 
 ---
 
