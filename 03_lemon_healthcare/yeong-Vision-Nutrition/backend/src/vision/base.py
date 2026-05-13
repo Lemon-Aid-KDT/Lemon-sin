@@ -1,11 +1,11 @@
-"""Vision Adapter 추상 인터페이스 — Phase 3 게이트 (구현체 없음).
+"""Vision Adapter 추상 인터페이스 — Phase 3 게이트.
 
 영양제 라벨 영역 검출(detection) 전용 인터페이스다. 분류(classification)나
-의료 판단은 본 어댑터에서 제공하지 않는다. **현재 구현체(예: ``YoloLabelDetector``)
-는 등록되지 않았으며, 서비스/라우터에서도 호출되지 않는다.** 본 모듈은 향후
-Phase 3 게이트 통과 시 구현체를 등록하기 위한 자리표시자(placeholder)다.
+의료 판단은 본 어댑터에서 제공하지 않는다. ``src.vision.yolo.YoloLabelDetector`` 는
+안정적인 import 경로를 제공하는 fail-closed scaffold 이며, 실제 모델 추론은
+Phase 3 게이트 통과 후 별도 PR 에서 연결한다.
 
-활성화 조건(모두 동시 충족 시에만 구현체 추가 PR 진행):
+활성화 조건(모두 동시 충족 시에만 실제 추론 활성화):
     1. ``docs/17 §8`` 게이트 #2 통과 (발주처 리뷰 + 의료법 검토)
     2. ``Settings.enable_vision_classifier=True``
     3. ``pip install ".[vision]"`` (``backend/pyproject.toml`` 의 vision extras)
@@ -41,6 +41,8 @@ class BoundingBox:
         width: 영역 너비(px, 양수).
         height: 영역 높이(px, 양수).
         confidence: 검출 신뢰도(0.0~1.0).
+        label: 검출된 object class label. OCR 전처리용 metadata이며 제품명/성분명이 아니다.
+        model: 검출에 사용된 모델 태그 또는 파일명.
     """
 
     x: int
@@ -48,6 +50,8 @@ class BoundingBox:
     width: int
     height: int
     confidence: float
+    label: str | None = None
+    model: str | None = None
 
 
 class VisionAdapter(ABC):
@@ -58,8 +62,9 @@ class VisionAdapter(ABC):
     출력에 직접 사용해서는 안 된다.
 
     Examples:
+        >>> from src.config import Settings
         >>> from src.vision.yolo import YoloLabelDetector
-        >>> detector: VisionAdapter = YoloLabelDetector()
+        >>> detector: VisionAdapter = YoloLabelDetector(Settings(enable_vision_classifier=True))
         >>> box = await detector.detect_label_region(image_bytes)
         >>> print(box.confidence)
     """
