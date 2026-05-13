@@ -158,15 +158,15 @@ dev-guide의 내부 파일명과 테스트명은 추적성을 위해 `nutrition/
 [project]
 name = "lemon-healthcare-backend"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 
 [tool.black]
 line-length = 100
-target-version = ["py311"]
+target-version = ["py313"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -195,7 +195,7 @@ ignore = [
 convention = "google"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
