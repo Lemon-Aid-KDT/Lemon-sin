@@ -52,10 +52,9 @@ class LLMAdapter(ABC):
     변경하면 된다.
 
     Examples:
-        >>> from src.llm.ollama import OllamaAdapter
-        >>> llm: LLMAdapter = OllamaAdapter()
-        >>> result = await llm.analyze_text("영양제 라벨 텍스트를 JSON 으로 정규화한다.")
-        >>> print(result.text)
+        >>> from src.llm.base import LLMAdapter
+        >>> def requires_adapter(adapter: LLMAdapter) -> LLMAdapter:
+        ...     return adapter
     """
 
     @abstractmethod

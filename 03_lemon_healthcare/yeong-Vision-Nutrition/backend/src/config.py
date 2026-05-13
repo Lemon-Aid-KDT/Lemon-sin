@@ -7,13 +7,17 @@ from typing import Literal, Self
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://lemon:lemon@localhost:5432/lemon"
+POSTGRESQL_ASYNCPG_DRIVER = "postgresql+asyncpg"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 DEFAULT_JWT_ALGORITHMS = ["RS256"]
 DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
+DEFAULT_VISION_ROI_ALLOWED_CLASSES = ["supplement_label", "supplement_bottle", "blister_pack"]
 # Deliberately insecure development sentinel; production validation rejects this exact value.
 DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100
 JWT_CORE_REQUIRED_CLAIMS = {"aud", "exp", "iat", "iss", "sub"}
@@ -66,6 +70,15 @@ def _default_jwt_scope_claims() -> list[str]:
         Scope claim names checked in order.
     """
     return DEFAULT_JWT_SCOPE_CLAIMS.copy()
+
+
+def _default_vision_roi_allowed_classes() -> list[str]:
+    """Return default YOLO ROI labels allowed for supplement image preprocessing.
+
+    Returns:
+        Allowed object-detection labels for supplement ROI assistance.
+    """
+    return DEFAULT_VISION_ROI_ALLOWED_CLASSES.copy()
 
 
 def _contains_wildcard(values: list[str]) -> bool:
@@ -132,13 +145,31 @@ def _secret_value(value: SecretStr | None) -> str | None:
     return value.get_secret_value()
 
 
+def _database_drivername(database_url: str) -> str:
+    """Return the SQLAlchemy driver name for a configured database URL.
+
+    Args:
+        database_url: SQLAlchemy database URL.
+
+    Returns:
+        SQLAlchemy driver name such as ``postgresql+asyncpg``.
+
+    Raises:
+        ValueError: If the URL cannot be parsed by SQLAlchemy.
+    """
+    try:
+        return make_url(database_url).drivername
+    except ArgumentError as exc:
+        raise ValueError("DATABASE_URL must be a valid SQLAlchemy database URL.") from exc
+
+
 class Settings(BaseSettings):
     """환경 변수 기반 애플리케이션 설정.
 
     Attributes:
         environment: 실행 환경.
         log_level: 애플리케이션 로그 레벨.
-        database_url: PostgreSQL 연결 URL.
+        database_url: PostgreSQL asyncpg SQLAlchemy 연결 URL.
         redis_url: Redis 연결 URL.
         allowed_origins: CORS 허용 origin 목록.
         allowed_hosts: TrustedHost 허용 host 목록.
@@ -174,6 +205,11 @@ class Settings(BaseSettings):
         supplement_ocr_text_max_chars: Maximum OCR text characters sent to the parser.
         supplement_parser_algorithm_version: Version label for structured supplement parsing.
         supplement_parser_max_ingredients: Maximum ingredient candidates accepted from the parser.
+        multimodal_ocr_assist_policy: Policy controlling when local vision LLM fallback may run.
+        vision_roi_min_confidence: Minimum detection confidence accepted for a YOLO ROI.
+        vision_roi_allowed_classes: Allowed non-text object labels accepted from YOLO.
+        feature_hall_lite_weight_prediction: Whether Hall-lite weight prediction can run.
+        weight_prediction_engine: Internal weight prediction engine selector.
         kdris_data_version: KDRIs dataset version used by runtime lookup.
         kdris_data_path: Optional explicit KDRIs CSV path.
         kdris_manifest_path: Optional explicit KDRIs source manifest path.
@@ -239,6 +275,15 @@ class Settings(BaseSettings):
     )
     supplement_parser_max_ingredients: int = Field(default=80, ge=1, le=80)
 
+    feature_hall_lite_weight_prediction: bool = Field(
+        default=False,
+        description="Hall-lite 동적 체중 예측 활성화. 기본값은 기존 7-step fallback.",
+    )
+    weight_prediction_engine: Literal["static_7step", "hall_lite", "auto"] = Field(
+        default="static_7step",
+        description="체중 예측 엔진 선택. 기본값은 기존 static 7-step.",
+    )
+
     kdris_data_version: Literal["2020-sample", "2025"] = "2020-sample"
     kdris_data_path: str | None = Field(default=None)
     kdris_manifest_path: str | None = Field(default=None)
@@ -260,6 +305,26 @@ class Settings(BaseSettings):
         description="라벨 영역 검출용 YOLO 어댑터 활성화. docs/17 §9 게이트 #2 필요.",
     )
     vision_classifier_model: str = Field(default="yolov8n.pt")
+    multimodal_ocr_assist_policy: Literal[
+        "disabled",
+        "ocr_empty_only",
+        "low_confidence",
+    ] = Field(
+        default="disabled",
+        description="Ollama vision assist 호출 조건. 기본값 disabled.",
+    )
+    vision_roi_min_confidence: float = Field(
+        default=0.50,
+        ge=0.0,
+        le=1.0,
+        description="YOLO ROI 후보로 인정할 최소 confidence.",
+    )
+    vision_roi_allowed_classes: list[str] = Field(
+        default_factory=_default_vision_roi_allowed_classes,
+        min_length=1,
+        max_length=10,
+        description="YOLO ROI 보조에서 허용하는 object-detection class labels.",
+    )
     enable_image_learning_pipeline: bool = Field(
         default=False,
         description="가명화 영양제 이미지의 학습 데이터셋 적재 활성화. docs/17 §9 게이트 #3 필요.",
@@ -277,16 +342,23 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_production_security(self) -> Self:
-        """Validate production-only security requirements.
+    def validate_runtime_security(self) -> Self:
+        """Validate database and production-only security requirements.
 
         Returns:
             Validated settings instance.
 
         Raises:
-            ValueError: If production settings contain unsafe defaults or missing
-                OAuth/JWT configuration.
+            ValueError: If settings contain an unsupported database URL, or if
+                production settings contain unsafe defaults or missing OAuth/JWT
+                configuration.
         """
+        if _database_drivername(self.database_url) != POSTGRESQL_ASYNCPG_DRIVER:
+            raise ValueError(
+                f"DATABASE_URL must use {POSTGRESQL_ASYNCPG_DRIVER}; "
+                "SQLite and sync PostgreSQL drivers are not supported."
+            )
+
         if self.environment != "production":
             return self
 
@@ -373,6 +445,10 @@ class Settings(BaseSettings):
                 (
                     self.enable_pgvector_storage,
                     "ENABLE_PGVECTOR_STORAGE=true requires docs/17 §9 gate #3 sign-off.",
+                ),
+                (
+                    self.feature_hall_lite_weight_prediction,
+                    "FEATURE_HALL_LITE_WEIGHT_PREDICTION=true requires Hall-lite validation sign-off.",
                 ),
             )
         )

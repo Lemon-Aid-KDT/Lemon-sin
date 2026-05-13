@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_parser import (
+    SupplementOCRTextParseRequest,
+    SupplementStructuredParseResult,
+)
 
 
 def test_structured_parse_result_rejects_fake_nutrient_code() -> None:
@@ -42,3 +45,28 @@ def test_structured_parse_result_normalizes_warning_lists() -> None:
 
     assert result.low_confidence_fields == ["manufacturer"]
     assert result.warnings == ["사용자 확인 필요"]
+
+
+def test_ocr_text_parse_request_bounds_provider_and_confidence() -> None:
+    """Verify OCR text attach requests reject invalid provider metadata."""
+    request = SupplementOCRTextParseRequest.model_validate(
+        {
+            "ocr_text": " 비타민 D 1000 ",
+            "ocr_provider": " manual ",
+            "ocr_confidence": 0.91,
+        }
+    )
+
+    assert request.ocr_text == "비타민 D 1000"
+    assert request.ocr_provider == "manual"
+    assert request.ocr_confidence == 0.91
+
+    with pytest.raises(ValidationError):
+        SupplementOCRTextParseRequest.model_validate(
+            {"ocr_text": "비타민 D", "ocr_provider": "manual", "ocr_confidence": 1.01}
+        )
+
+    with pytest.raises(ValidationError):
+        SupplementOCRTextParseRequest.model_validate(
+            {"ocr_text": "비타민 D", "ocr_provider": "", "ocr_confidence": None}
+        )

@@ -72,6 +72,16 @@ ACTIVE_CONSENT_POLICIES: dict[ConsentType, ConsentPolicyDefinition] = {
         required=False,
         content_hash=_policy_hash("Consent to retain analysis history for user review."),
     ),
+    ConsentType.IMAGE_LEARNING_DATASET: ConsentPolicyDefinition(
+        consent_type=ConsentType.IMAGE_LEARNING_DATASET,
+        version="2026-05-13",
+        title="Pseudonymized image learning dataset reuse",
+        required=False,
+        content_hash=_policy_hash(
+            "Separate opt-in consent to reuse pseudonymized supplement images and labels "
+            "for model evaluation or learning datasets."
+        ),
+    ),
 }
 
 

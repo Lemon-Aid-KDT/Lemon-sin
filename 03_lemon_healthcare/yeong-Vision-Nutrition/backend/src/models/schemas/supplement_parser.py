@@ -87,3 +87,20 @@ class SupplementStructuredParseResult(BaseModel):
             normalized.append(stripped)
             seen.add(stripped)
         return normalized
+
+
+class SupplementOCRTextParseRequest(BaseModel):
+    """Request payload for attaching OCR text to an existing preview.
+
+    Attributes:
+        ocr_text: OCR text extracted from a supplement label. The API normalizes,
+            hashes, and parses this text without storing it raw.
+        ocr_provider: Bounded OCR provider label, such as ``manual`` or ``clova``.
+        ocr_confidence: Optional provider-level OCR confidence from 0.0 to 1.0.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    ocr_text: str = Field(min_length=1, max_length=50_000)
+    ocr_provider: str = Field(min_length=1, max_length=64)
+    ocr_confidence: float | None = Field(default=None, ge=0, le=1)
