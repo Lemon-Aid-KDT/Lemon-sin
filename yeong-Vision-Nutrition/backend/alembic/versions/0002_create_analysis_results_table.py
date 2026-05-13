@@ -10,9 +10,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0002_create_analysis_results"
 down_revision: str | Sequence[str] | None = "0001_create_users"

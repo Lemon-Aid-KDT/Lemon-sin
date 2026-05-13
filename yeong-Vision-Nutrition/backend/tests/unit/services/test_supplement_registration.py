@@ -133,7 +133,7 @@ class _FakeRegistrationSession:
         """
         self.flushed = True
         for record in self.added:
-            if isinstance(record, UserSupplement) and record.id is None:
+            if isinstance(record, UserSupplement) and cast(object | None, record.id) is None:
                 record.id = uuid4()
 
     async def commit(self) -> None:
@@ -154,7 +154,7 @@ class _FakeRegistrationSession:
             None.
         """
         if isinstance(record, UserSupplement):
-            if record.id is None:
+            if cast(object | None, record.id) is None:
                 record.id = uuid4()
             record.created_at = datetime.now(UTC)
             record.updated_at = datetime.now(UTC)

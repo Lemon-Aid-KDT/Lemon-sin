@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import cast
 from uuid import uuid4
@@ -17,8 +18,8 @@ from src.services.supplement_matching import match_supplement_product, normalize
 class _ScalarResult:
     """Fake SQLAlchemy scalar result."""
 
-    def __init__(self, rows: list[object]) -> None:
-        self.rows = rows
+    def __init__(self, rows: Sequence[object]) -> None:
+        self.rows = list(rows)
 
     def all(self) -> list[object]:
         """Return fake rows.

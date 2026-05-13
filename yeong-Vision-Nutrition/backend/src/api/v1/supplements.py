@@ -40,6 +40,11 @@ from src.api.v1.examples import (
 )
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
+from src.llm.ollama import (
+    OllamaClientError,
+    OllamaConfigurationError,
+    OllamaStructuredOutputError,
+)
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import (
     SupplementAnalysisPreview,
@@ -47,6 +52,7 @@ from src.models.schemas.supplement import (
     UserSupplementListResponse,
     UserSupplementResponse,
 )
+from src.models.schemas.supplement_parser import SupplementOCRTextParseRequest
 from src.security.auth import (
     AuthenticatedUser,
     require_supplement_delete,
@@ -55,16 +61,24 @@ from src.security.auth import (
 )
 from src.security.scopes import ApiScope
 from src.services.privacy import (
+    AuditOutcome,
     ConsentRequiredError,
     record_sensitive_audit_event,
     require_user_consent,
 )
+from src.services.supplement_image_analysis import analyze_supplement_image
 from src.services.supplement_intake import (
     SupplementImageValidationError,
     SupplementIntakeConflictError,
-    create_supplement_analysis_intake,
-    read_and_validate_supplement_image,
     supplement_analysis_run_to_preview,
+)
+from src.services.supplement_parser import (
+    SupplementAnalysisExpiredError,
+    SupplementAnalysisNotFoundError,
+    SupplementAnalysisStateError,
+    SupplementParserConflictError,
+    SupplementParserInputError,
+    parse_supplement_analysis_ocr_text,
 )
 from src.services.supplement_registration import (
     SupplementPreviewExpiredError,
@@ -79,6 +93,8 @@ from src.services.supplement_registration import (
 )
 
 router = APIRouter(prefix="/supplements", tags=["supplements"])
+
+__all__ = ["router", "user_supplement_to_response"]
 
 SUPPLEMENT_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"content": {"application/json": {"examples": UNAUTHORIZED_EXAMPLE}}},
@@ -217,7 +233,13 @@ async def analyze_supplement_label(
         ) from exc
 
     try:
-        image_metadata = await read_and_validate_supplement_image(image, settings)
+        result = await analyze_supplement_image(
+            session=session,
+            user=current_user,
+            image=image,
+            client_request_id=client_request_id,
+            settings=settings,
+        )
     except SupplementImageValidationError as exc:
         await record_sensitive_audit_event(
             session,
@@ -234,15 +256,6 @@ async def analyze_supplement_label(
             status_code=exc.status_code,
             detail={"code": exc.code, "message": exc.message},
         ) from exc
-
-    try:
-        result = await create_supplement_analysis_intake(
-            session,
-            current_user,
-            image_metadata,
-            client_request_id,
-            settings,
-        )
     except SupplementIntakeConflictError as exc:
         await record_sensitive_audit_event(
             session,
@@ -278,12 +291,252 @@ async def analyze_supplement_label(
         settings=settings,
         event_metadata={
             "client_request_id_present": bool(client_request_id),
-            "image_mime_type": image_metadata.mime_type,
-            "image_size_bytes": image_metadata.size_bytes,
+            "image_mime_type": result.image_metadata.mime_type,
+            "image_size_bytes": result.image_metadata.size_bytes,
             "reused_existing": result.reused_existing,
+            "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
+            "parser_used": result.parser_used,
+            "vision_roi_used": result.vision_region is not None,
         },
     )
     return supplement_analysis_run_to_preview(result.record)
+
+
+@router.post(
+    "/analyses/{analysis_id}/ocr-text",
+    response_model=SupplementAnalysisPreview,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        200: {"description": "Structured OCR text preview requiring user confirmation."},
+        403: {"content": {"application/json": {"examples": CONSENT_REQUIRED_EXAMPLE}}},
+        404: {"description": "Supplement analysis preview was not found for the current user."},
+        409: {"description": "Supplement analysis preview is expired or not parseable."},
+        502: {"description": "Local structured parser failed or returned invalid content."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        consents=(ConsentType.OCR_IMAGE_PROCESSING,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def parse_supplement_analysis_ocr_text_preview(
+    analysis_id: UUID,
+    http_request: Request,
+    request: Annotated[SupplementOCRTextParseRequest, Body()],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementAnalysisPreview:
+    """Attach OCR text to an existing preview and return structured parse candidates.
+
+    Args:
+        analysis_id: Existing supplement analysis preview identifier.
+        http_request: Current FastAPI request.
+        request: OCR text and provider metadata. Raw OCR text is never persisted.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Updated supplement preview that still requires user confirmation.
+
+    Raises:
+        HTTPException: If consent is missing, the preview is unavailable, OCR text
+            is invalid, or the local parser cannot produce schema-valid output.
+    """
+    try:
+        await require_user_consent(session, current_user, ConsentType.OCR_IMAGE_PROCESSING)
+    except ConsentRequiredError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_ocr_text_parse_blocked",
+            resource_type="supplement_analysis_run",
+            resource_id=str(analysis_id),
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"missing_consent": ConsentType.OCR_IMAGE_PROCESSING.value},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "consent_required",
+                "message": str(exc),
+                "required_consents": [ConsentType.OCR_IMAGE_PROCESSING.value],
+            },
+        ) from exc
+
+    try:
+        result = await parse_supplement_analysis_ocr_text(
+            session=session,
+            user=current_user,
+            analysis_id=analysis_id,
+            ocr_text=request.ocr_text,
+            ocr_provider=request.ocr_provider,
+            ocr_confidence=request.ocr_confidence,
+            settings=settings,
+        )
+    except SupplementParserInputError as exc:
+        await _record_ocr_text_parse_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="blocked",
+            reason="invalid_ocr_text",
+            request=request,
+        )
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="invalid_ocr_text",
+            message=str(exc),
+        ) from exc
+    except SupplementAnalysisNotFoundError as exc:
+        await _record_ocr_text_parse_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="not_found",
+            reason="analysis_not_found",
+            request=request,
+        )
+        raise _supplement_http_error(
+            status.HTTP_404_NOT_FOUND,
+            code="supplement_analysis_not_found",
+            message=str(exc),
+        ) from exc
+    except (
+        SupplementAnalysisExpiredError,
+        SupplementAnalysisStateError,
+        SupplementParserConflictError,
+    ) as exc:
+        await _record_ocr_text_parse_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="blocked",
+            reason="analysis_not_parseable",
+            request=request,
+        )
+        raise _supplement_http_error(
+            status.HTTP_409_CONFLICT,
+            code="supplement_analysis_not_parseable",
+            message=str(exc),
+        ) from exc
+    except (OllamaClientError, OllamaConfigurationError) as exc:
+        await _record_ocr_text_parse_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="failed",
+            reason="parser_unavailable",
+            request=request,
+        )
+        raise _supplement_http_error(
+            status.HTTP_502_BAD_GATEWAY,
+            code="parser_unavailable",
+            message="Local supplement parser is unavailable.",
+        ) from exc
+    except OllamaStructuredOutputError as exc:
+        await _record_ocr_text_parse_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="failed",
+            reason="parser_schema_invalid",
+            request=request,
+        )
+        raise _supplement_http_error(
+            status.HTTP_502_BAD_GATEWAY,
+            code="parser_schema_invalid",
+            message="Local supplement parser returned invalid structured output.",
+        ) from exc
+
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_ocr_text_parsed",
+        resource_type="supplement_analysis_run",
+        resource_id=str(result.record.id),
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "ocr_provider": result.record.ocr_provider,
+            "ocr_confidence_present": result.record.ocr_confidence is not None,
+            "parser_provider": settings.llm_provider,
+            "parser_model": settings.ollama_model,
+            "parser_schema": "SupplementStructuredParseResult",
+            "schema_valid": True,
+            "ingredient_count": len(result.parse_result.ingredient_candidates),
+            "low_confidence_field_count": len(
+                result.record.parsed_snapshot.get("low_confidence_fields", [])
+            ),
+            "raw_ocr_text_stored": False,
+            "raw_llm_response_stored": False,
+        },
+    )
+    return supplement_analysis_run_to_preview(result.record)
+
+
+async def _record_ocr_text_parse_audit(
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    http_request: Request,
+    settings: Settings,
+    analysis_id: UUID,
+    *,
+    outcome: AuditOutcome,
+    reason: str,
+    request: SupplementOCRTextParseRequest,
+) -> None:
+    """Record a sanitized OCR text parsing audit event.
+
+    Args:
+        session: Request-scoped async database session.
+        current_user: Authenticated actor.
+        http_request: Current FastAPI request.
+        settings: Application settings.
+        analysis_id: Supplement analysis preview identifier.
+        outcome: Sanitized audit outcome.
+        reason: Stable failure reason.
+        request: OCR text parse request. Raw OCR text is intentionally not logged.
+
+    Returns:
+        None.
+    """
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_ocr_text_parse_failed",
+        resource_type="supplement_analysis_run",
+        resource_id=str(analysis_id),
+        outcome=outcome,
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "reason": reason,
+            "ocr_provider": request.ocr_provider,
+            "ocr_confidence_present": request.ocr_confidence is not None,
+            "parser_provider": settings.llm_provider,
+            "parser_model": settings.ollama_model,
+            "parser_schema": "SupplementStructuredParseResult",
+            "schema_valid": False if reason == "parser_schema_invalid" else None,
+            "raw_ocr_text_stored": False,
+            "raw_llm_response_stored": False,
+        },
+    )
 
 
 @router.post(

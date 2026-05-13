@@ -90,7 +90,7 @@ class _FakeHealthSyncSession:
         """
         self.flushed = True
         for record in self.added:
-            if isinstance(record, HealthSyncBatch) and record.id is None:
+            if isinstance(record, HealthSyncBatch) and cast(object | None, record.id) is None:
                 record.id = uuid4()
 
     async def commit(self) -> None:
@@ -111,11 +111,11 @@ class _FakeHealthSyncSession:
             None.
         """
         if isinstance(record, HealthSyncBatch):
-            if record.id is None:
+            if cast(object | None, record.id) is None:
                 record.id = uuid4()
-            if record.created_at is None:
+            if cast(object | None, record.created_at) is None:
                 record.created_at = datetime.now(UTC)
-            if record.updated_at is None:
+            if cast(object | None, record.updated_at) is None:
                 record.updated_at = datetime.now(UTC)
         self.refreshed = record
 

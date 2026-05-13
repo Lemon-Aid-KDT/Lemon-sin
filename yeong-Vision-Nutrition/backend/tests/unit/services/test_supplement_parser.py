@@ -89,16 +89,13 @@ class _FakeParserSession:
         self.refreshed = cast(SupplementAnalysisRun, record)
 
 
-def _settings(**overrides: object) -> Settings:
+def _settings() -> Settings:
     """Return parser service test settings.
-
-    Args:
-        **overrides: Settings overrides.
 
     Returns:
         Settings object.
     """
-    return Settings(privacy_hash_secret=SecretStr("test-privacy-secret"), **overrides)
+    return Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
 
 
 def _user() -> AuthenticatedUser:
@@ -217,9 +214,53 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
     assert record.parsed_snapshot["ingredient_candidates"][0]["source"] == "ollama_structured"
     assert record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
     assert record.parsed_snapshot["parser_metadata"]["raw_model_response_stored"] is False
+    assert record.parsed_snapshot["parser_metadata"]["input_provider"] == "manual-test"
     assert "ocr_text" not in record.parsed_snapshot
     assert record.parsed_snapshot["intake"] == {"mime_type": "image/png", "size_bytes": 128}
     assert record.warnings[0].startswith("Structured OCR parsing is a preview")
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_flags_low_ocr_confidence() -> None:
+    """Verify low OCR confidence is surfaced as a user-review field."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "비타민 D 1000",
+        "manual-test",
+        0.79,
+        _settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    assert record.ocr_confidence == Decimal("0.79")
+    assert record.parsed_snapshot["low_confidence_fields"] == ["manufacturer", "ocr_text"]
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_marks_vision_assist_input() -> None:
+    """Verify vision-assist candidates stay identifiable as fallback preview input."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "비타민 D 1000",
+        "ollama_vision_assist",
+        None,
+        _settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    assert record.ocr_provider == "ollama_vision_assist"
+    assert record.parsed_snapshot["parser_metadata"]["input_provider"] == "ollama_vision_assist"
+    assert any("Image-assisted text extraction" in warning for warning in record.warnings)
 
 
 @pytest.mark.asyncio

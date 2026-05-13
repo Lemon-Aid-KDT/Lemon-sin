@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -14,6 +15,7 @@ from src.config import Settings
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 
 LOCAL_OLLAMA_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+HTTP_NOT_FOUND = 404
 SUPPLEMENT_PARSER_PROVIDER = "ollama"
 SUPPLEMENT_PARSER_SOURCE = "ollama_structured"
 
@@ -59,6 +61,30 @@ class _AsyncPostClient(Protocol):
         """
 
 
+class _AsyncGetClient(Protocol):
+    """Small async HTTP client protocol used by Ollama readiness checks."""
+
+    async def get(
+        self,
+        url: str,
+        *,
+        timeout: float,
+    ) -> _HTTPResponse:
+        """Submit a GET request.
+
+        Args:
+            url: Absolute request URL.
+            timeout: Request timeout in seconds.
+
+        Returns:
+            HTTP response object.
+        """
+
+
+class _AsyncHTTPClient(_AsyncPostClient, _AsyncGetClient, Protocol):
+    """Async HTTP client protocol with the methods used by Ollama integration."""
+
+
 class OllamaConfigurationError(RuntimeError):
     """Raised when Ollama runtime settings violate the local-LLM policy."""
 
@@ -69,6 +95,112 @@ class OllamaStructuredOutputError(RuntimeError):
 
 class OllamaClientError(RuntimeError):
     """Raised when the local Ollama API request fails."""
+
+
+class OllamaModelUnavailableError(OllamaClientError):
+    """Raised when the configured Ollama model is not available locally."""
+
+
+@dataclass(frozen=True)
+class OllamaReadiness:
+    """Readiness status for the configured local Ollama parser runtime.
+
+    Attributes:
+        base_url: Configured Ollama base URL.
+        model: Configured model tag.
+        ready: Whether the local runtime is ready for parser calls.
+        model_present: Whether the configured model exists in `/api/tags`.
+        model_names: Sanitized model tags returned by Ollama.
+        error_code: Stable non-sensitive readiness failure code.
+    """
+
+    base_url: str
+    model: str
+    ready: bool
+    model_present: bool
+    model_names: tuple[str, ...] = ()
+    error_code: str | None = None
+
+
+class OllamaChatClient:
+    """Thin HTTP transport for local Ollama Chat API and readiness calls.
+
+    The supplement parser owns prompting and schema validation. This client owns
+    only HTTP request/response handling so tests can isolate transport failures
+    without touching parser logic.
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        http_client: _AsyncHTTPClient | None = None,
+    ) -> None:
+        """Initialize an Ollama HTTP transport.
+
+        Args:
+            settings: Runtime settings containing base URL and timeout.
+            http_client: Optional injected async HTTP client for tests.
+        """
+        self.settings = settings
+        self.http_client = http_client
+
+    async def post_chat(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Submit a non-streaming chat payload to Ollama.
+
+        Args:
+            payload: Ollama Chat API payload.
+
+        Returns:
+            Decoded response JSON object.
+
+        Raises:
+            OllamaClientError: If the HTTP request or response decoding fails.
+            OllamaModelUnavailableError: If Ollama reports a missing model.
+        """
+        endpoint = _ollama_endpoint(self.settings, "/api/chat")
+        try:
+            if self.http_client is not None:
+                response = await self.http_client.post(
+                    endpoint,
+                    json=payload,
+                    timeout=float(self.settings.ollama_timeout_sec),
+                )
+            else:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        endpoint,
+                        json=payload,
+                        timeout=float(self.settings.ollama_timeout_sec),
+                    )
+        except httpx.HTTPError as exc:
+            raise OllamaClientError("Local Ollama Chat API request failed.") from exc
+        return _decode_object_response(response, action="Chat API")
+
+    async def list_models(self) -> Mapping[str, Any]:
+        """Fetch the locally available Ollama model list.
+
+        Returns:
+            Decoded `/api/tags` response JSON object.
+
+        Raises:
+            OllamaClientError: If the model list request fails.
+        """
+        endpoint = _ollama_endpoint(self.settings, "/api/tags")
+        try:
+            if self.http_client is not None:
+                response = await self.http_client.get(
+                    endpoint,
+                    timeout=float(self.settings.ollama_timeout_sec),
+                )
+            else:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        endpoint,
+                        timeout=float(self.settings.ollama_timeout_sec),
+                    )
+        except httpx.HTTPError as exc:
+            raise OllamaClientError("Local Ollama Tags API request failed.") from exc
+        return _decode_object_response(response, action="Tags API")
 
 
 class OllamaSupplementParser:
@@ -93,6 +225,7 @@ class OllamaSupplementParser:
         """
         self.settings = settings
         self.http_client = http_client
+        self.chat_client = None if http_client is not None else OllamaChatClient(settings)
 
     async def parse_supplement_ocr_text(self, ocr_text: str) -> SupplementStructuredParseResult:
         """Parse OCR text into a validated supplement structure.
@@ -132,28 +265,69 @@ class OllamaSupplementParser:
         Raises:
             OllamaClientError: If the HTTP request or response decoding fails.
         """
-        endpoint = f"{self.settings.ollama_base_url.rstrip('/')}/api/chat"
+        if self.http_client is None:
+            if self.chat_client is None:
+                raise OllamaClientError("Local Ollama Chat API transport is unavailable.")
+            return await self.chat_client.post_chat(payload)
+
+        endpoint = _ollama_endpoint(self.settings, "/api/chat")
         try:
-            if self.http_client is not None:
-                response = await self.http_client.post(
-                    endpoint,
-                    json=payload,
-                    timeout=float(self.settings.ollama_timeout_sec),
-                )
-            else:
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        endpoint,
-                        json=payload,
-                        timeout=float(self.settings.ollama_timeout_sec),
-                    )
-            response.raise_for_status()
-            data = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+            response = await self.http_client.post(
+                endpoint,
+                json=payload,
+                timeout=float(self.settings.ollama_timeout_sec),
+            )
+        except httpx.HTTPError as exc:
             raise OllamaClientError("Local Ollama Chat API request failed.") from exc
-        if not isinstance(data, Mapping):
-            raise OllamaClientError("Local Ollama Chat API returned a non-object JSON body.")
-        return data
+        return _decode_object_response(response, action="Chat API")
+
+
+async def check_ollama_readiness(
+    settings: Settings,
+    client: OllamaChatClient | None = None,
+) -> OllamaReadiness:
+    """Check whether the configured local Ollama parser runtime is ready.
+
+    Args:
+        settings: Runtime settings.
+        client: Optional preconfigured Ollama transport, primarily for tests.
+
+    Returns:
+        Sanitized readiness status. Raw model output and prompts are never included.
+    """
+    try:
+        _validate_local_ollama_settings(settings)
+    except OllamaConfigurationError:
+        return OllamaReadiness(
+            base_url=settings.ollama_base_url,
+            model=settings.ollama_model,
+            ready=False,
+            model_present=False,
+            error_code="configuration_invalid",
+        )
+
+    active_client = client or OllamaChatClient(settings)
+    try:
+        response_data = await active_client.list_models()
+        model_names = _extract_model_names(response_data)
+    except OllamaClientError:
+        return OllamaReadiness(
+            base_url=settings.ollama_base_url,
+            model=settings.ollama_model,
+            ready=False,
+            model_present=False,
+            error_code="ollama_unavailable",
+        )
+
+    model_present = settings.ollama_model in model_names
+    return OllamaReadiness(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_model,
+        ready=model_present,
+        model_present=model_present,
+        model_names=model_names,
+        error_code=None if model_present else "model_missing",
+    )
 
 
 def _validate_local_ollama_settings(settings: Settings) -> None:
@@ -174,6 +348,108 @@ def _validate_local_ollama_settings(settings: Settings) -> None:
         raise OllamaConfigurationError(
             "OLLAMA_BASE_URL must target localhost when ALLOW_EXTERNAL_LLM=false."
         )
+
+
+def validate_local_ollama_settings(settings: Settings) -> None:
+    """Validate local-only Ollama settings for sensitive healthcare inputs.
+
+    Args:
+        settings: Runtime settings.
+
+    Raises:
+        OllamaConfigurationError: If the configured runtime is not an allowed
+            local Ollama endpoint.
+    """
+    _validate_local_ollama_settings(settings)
+
+
+def _ollama_endpoint(settings: Settings, path: str) -> str:
+    """Build an absolute Ollama API endpoint URL.
+
+    Args:
+        settings: Runtime settings.
+        path: API path beginning with `/`.
+
+    Returns:
+        Absolute endpoint URL.
+    """
+    return f"{settings.ollama_base_url.rstrip('/')}{path}"
+
+
+def _decode_object_response(response: _HTTPResponse, *, action: str) -> Mapping[str, Any]:
+    """Decode a successful Ollama HTTP response as a JSON object.
+
+    Args:
+        response: HTTP response object.
+        action: Short action label for non-sensitive error messages.
+
+    Returns:
+        Decoded JSON object.
+
+    Raises:
+        OllamaClientError: If status or JSON decoding fails.
+        OllamaModelUnavailableError: If Ollama returns 404 for the request.
+    """
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == HTTP_NOT_FOUND:
+            raise OllamaModelUnavailableError("Configured Ollama model is unavailable.") from exc
+        raise OllamaClientError(f"Local Ollama {action} request failed.") from exc
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise OllamaClientError(f"Local Ollama {action} returned invalid JSON.") from exc
+    if not isinstance(data, Mapping):
+        raise OllamaClientError(f"Local Ollama {action} returned a non-object JSON body.")
+    return data
+
+
+def _extract_model_names(response_data: Mapping[str, Any]) -> tuple[str, ...]:
+    """Extract model tags from an Ollama `/api/tags` response.
+
+    Args:
+        response_data: Decoded `/api/tags` response.
+
+    Returns:
+        Unique model names in first-seen order.
+
+    Raises:
+        OllamaClientError: If the response shape is invalid.
+    """
+    models = response_data.get("models")
+    if not isinstance(models, list):
+        raise OllamaClientError("Local Ollama Tags API response is missing models.")
+
+    model_names: list[str] = []
+    seen: set[str] = set()
+    for model in models:
+        if not isinstance(model, Mapping):
+            raise OllamaClientError("Local Ollama Tags API returned an invalid model entry.")
+        for key in ("name", "model"):
+            value = model.get(key)
+            if not isinstance(value, str):
+                continue
+            normalized = value.strip()
+            if normalized and normalized not in seen:
+                model_names.append(normalized)
+                seen.add(normalized)
+    return tuple(model_names)
+
+
+def extract_ollama_model_names(response_data: Mapping[str, Any]) -> tuple[str, ...]:
+    """Extract local model tags from an Ollama `/api/tags` response.
+
+    Args:
+        response_data: Decoded `/api/tags` response.
+
+    Returns:
+        Unique model names in first-seen order.
+
+    Raises:
+        OllamaClientError: If the response shape is invalid.
+    """
+    return _extract_model_names(response_data)
 
 
 def _build_chat_payload(ocr_text: str, settings: Settings) -> dict[str, Any]:
@@ -228,3 +504,18 @@ def _extract_message_content(response_data: Mapping[str, Any]) -> str:
     if not isinstance(content, str) or not content.strip():
         raise OllamaClientError("Local Ollama Chat API response content is empty.")
     return content
+
+
+def extract_ollama_message_content(response_data: Mapping[str, Any]) -> str:
+    """Extract assistant message content from an Ollama Chat API response.
+
+    Args:
+        response_data: Decoded Ollama response JSON.
+
+    Returns:
+        Assistant message content.
+
+    Raises:
+        OllamaClientError: If the response does not contain string content.
+    """
+    return _extract_message_content(response_data)

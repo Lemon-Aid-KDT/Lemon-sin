@@ -25,8 +25,13 @@ from src.security.subjects import build_owner_subject
 SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
     "Structured OCR parsing is a preview. Review and confirm every field before saving."
 )
+SUPPLEMENT_IMAGE_ASSIST_WARNING = (
+    "Image-assisted text extraction is a fallback preview. Review every field before saving."
+)
 SUPPLEMENT_PARSER_PROVIDER = "ollama"
+OLLAMA_VISION_ASSIST_PROVIDER = "ollama_vision_assist"
 OCR_PROVIDER_MAX_LENGTH = 64
+OCR_LOW_CONFIDENCE_THRESHOLD = Decimal("0.80")
 
 
 class SupplementOCRTextParser(Protocol):
@@ -138,9 +143,11 @@ async def parse_supplement_analysis_ocr_text(
     record.parsed_snapshot = _build_parsed_snapshot(
         parse_result=parse_result,
         previous_snapshot=record.parsed_snapshot,
+        ocr_confidence=normalized_confidence,
+        ocr_provider=normalized_provider,
         settings=settings,
     )
-    record.warnings = _build_warning_list(parse_result.warnings)
+    record.warnings = _build_warning_list(parse_result.warnings, normalized_provider)
     record.algorithm_version = settings.supplement_parser_algorithm_version
     record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
 
@@ -266,6 +273,8 @@ def _build_parsed_snapshot(
     *,
     parse_result: SupplementStructuredParseResult,
     previous_snapshot: dict[str, Any],
+    ocr_confidence: Decimal | None,
+    ocr_provider: str,
     settings: Settings,
 ) -> dict[str, Any]:
     """Build the sanitized JSON snapshot persisted for user confirmation.
@@ -273,21 +282,28 @@ def _build_parsed_snapshot(
     Args:
         parse_result: Validated structured parser result.
         previous_snapshot: Existing preview snapshot, used only to preserve intake metadata.
+        ocr_confidence: Provider-level OCR confidence.
+        ocr_provider: OCR-like provider that produced the parser input.
         settings: Runtime settings used for model and algorithm metadata.
 
     Returns:
         Sanitized parsed snapshot with no raw OCR text or model response.
     """
+    low_confidence_fields = _build_low_confidence_fields(
+        parse_result.low_confidence_fields,
+        ocr_confidence,
+    )
     snapshot: dict[str, Any] = {
         "parsed_product": parse_result.parsed_product.model_dump(exclude_none=True),
         "ingredient_candidates": [
             candidate.model_dump(exclude_none=True)
             for candidate in parse_result.ingredient_candidates
         ],
-        "low_confidence_fields": parse_result.low_confidence_fields,
+        "low_confidence_fields": low_confidence_fields,
         "parser_metadata": {
             "provider": SUPPLEMENT_PARSER_PROVIDER,
             "source": SUPPLEMENT_PARSER_SOURCE,
+            "input_provider": ocr_provider,
             "model": settings.ollama_model,
             "algorithm_version": settings.supplement_parser_algorithm_version,
             "raw_ocr_text_stored": False,
@@ -300,16 +316,47 @@ def _build_parsed_snapshot(
     return snapshot
 
 
-def _build_warning_list(parser_warnings: list[str]) -> list[str]:
+def _build_low_confidence_fields(
+    parser_fields: list[str],
+    ocr_confidence: Decimal | None,
+) -> list[str]:
+    """Merge parser field warnings with OCR-level confidence review signals.
+
+    Args:
+        parser_fields: Field paths reported by the structured parser.
+        ocr_confidence: Provider-level OCR confidence.
+
+    Returns:
+        Deduplicated field paths that require user review.
+    """
+    fields = list(parser_fields)
+    if ocr_confidence is not None and ocr_confidence < OCR_LOW_CONFIDENCE_THRESHOLD:
+        fields.append("ocr_text")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for field in fields:
+        stripped = field.strip()
+        if not stripped or stripped in seen:
+            continue
+        normalized.append(stripped)
+        seen.add(stripped)
+    return normalized
+
+
+def _build_warning_list(parser_warnings: list[str], ocr_provider: str) -> list[str]:
     """Merge parser warnings with the required user-confirmation warning.
 
     Args:
         parser_warnings: Safe parser-produced warning strings.
+        ocr_provider: OCR-like provider that produced parser input.
 
     Returns:
         Deduplicated warning list.
     """
     warnings = [SUPPLEMENT_PARSER_CONFIRMATION_WARNING, *parser_warnings]
+    if ocr_provider == OLLAMA_VISION_ASSIST_PROVIDER:
+        warnings.append(SUPPLEMENT_IMAGE_ASSIST_WARNING)
     normalized: list[str] = []
     seen: set[str] = set()
     for warning in warnings:

@@ -1,1 +1,5 @@
-"""OCR adapter와 이미지 전처리 패키지."""
+"""OCR adapter package exports."""
+
+from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+
+__all__ = ["OCRAdapter", "OCRError", "OCRImageInput", "OCRResult"]

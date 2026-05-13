@@ -2,17 +2,29 @@
 name = "lemon-healthcare-backend"
 version = "0.1.0"
 description = "Lemon Healthcare AI - Backend API"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 authors = [{ name = "TBD Team" }]
 license = { text = "MIT" }
 
+[project.optional-dependencies]
+# Phase 3 게이트 #2 통과 시에만 설치 (docs/17 §9, docs/06 §2.3)
+vision = [
+    "torch>=2.2",
+    "ultralytics>=8.1",
+]
+# Phase 4 게이트 #3 통과 시에만 설치
+learning = [
+    "pgvector>=0.2",
+    "sentence-transformers>=2.5",
+]
+
 [tool.black]
 line-length = 100
-target-version = ["py311"]
+target-version = ["py313"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -40,11 +52,14 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["PLR2004"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

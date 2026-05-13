@@ -151,12 +151,16 @@ def _validate_manifest_years(raw_manifest: dict[str, object]) -> tuple[int, int,
     """
     current_year = raw_manifest.get("current_official_reference_year")
     local_dataset_year = raw_manifest.get("local_dataset_year")
+    if not isinstance(current_year, int):
+        raise ValueError("KDRIs current official reference year must be an integer.")
     if current_year != CURRENT_OFFICIAL_REFERENCE_YEAR:
         raise ValueError("KDRIs source manifest must point to the 2025 official reference.")
     if not isinstance(local_dataset_year, int):
         raise ValueError("KDRIs local dataset year must be an integer.")
 
     local_status = raw_manifest.get("local_dataset_status")
+    if not isinstance(local_status, str):
+        raise ValueError("KDRIs local dataset status must be a string.")
     if local_status != LOCAL_DATASET_STATUS:
         raise ValueError("KDRIs local dataset must remain marked as a non-production sample.")
     return current_year, local_dataset_year, local_status

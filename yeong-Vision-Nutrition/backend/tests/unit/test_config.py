@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from src.config import DEFAULT_DATABASE_URL, DEVELOPMENT_PRIVACY_HASH_SENTINEL, Settings
+from src.config import DEFAULT_DATABASE_URL, DEFAULT_PRIVACY_HASH_SECRET, Settings
 
 
 def _valid_production_kwargs() -> dict[str, Any]:
@@ -39,11 +39,38 @@ def test_default_development_settings_load() -> None:
 
     assert settings.environment == "development"
     assert settings.database_url == DEFAULT_DATABASE_URL
+    assert settings.database_url.startswith("postgresql+asyncpg://")
     assert "testserver" in settings.allowed_hosts
     assert settings.auth_mode == "disabled"
     assert settings.supplement_image_max_bytes == 5 * 1024 * 1024
     assert settings.supplement_image_max_pixels == 12_000_000
     assert settings.supplement_preview_ttl_minutes == 30
+    assert not settings.feature_hall_lite_weight_prediction
+    assert settings.weight_prediction_engine == "static_7step"
+    assert settings.enable_multimodal_llm is False
+    assert settings.multimodal_ocr_assist_policy == "disabled"
+    assert settings.enable_vision_classifier is False
+    assert settings.vision_roi_min_confidence == 0.50
+    assert settings.vision_roi_allowed_classes == [
+        "supplement_label",
+        "supplement_bottle",
+        "blister_pack",
+    ]
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    (
+        "sqlite+aiosqlite:///tmp/lemon.db",
+        "sqlite:///tmp/lemon.db",
+        "postgresql://lemon:lemon@localhost:5432/lemon",
+        "mysql+aiomysql://lemon:lemon@localhost:3306/lemon",
+    ),
+)
+def test_database_url_must_use_postgresql_asyncpg(database_url: str) -> None:
+    """Verify every runtime environment is pinned to PostgreSQL asyncpg."""
+    with pytest.raises(ValidationError, match=r"postgresql\+asyncpg"):
+        Settings(database_url=database_url)
 
 
 def test_production_rejects_development_database_url() -> None:
@@ -115,9 +142,36 @@ def test_production_requires_explicit_kdris_data_path() -> None:
 def test_production_rejects_default_privacy_hash_secret() -> None:
     """Verify production audit hashes cannot use the development HMAC secret."""
     kwargs = _valid_production_kwargs()
-    kwargs["privacy_hash_secret"] = DEVELOPMENT_PRIVACY_HASH_SENTINEL
+    kwargs["privacy_hash_secret"] = DEFAULT_PRIVACY_HASH_SECRET
 
     with pytest.raises(ValidationError, match="PRIVACY_HASH_SECRET"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_hall_lite_weight_prediction_without_signoff() -> None:
+    """Verify production cannot enable Hall-lite before validation sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs["feature_hall_lite_weight_prediction"] = True
+
+    with pytest.raises(ValidationError, match="FEATURE_HALL_LITE_WEIGHT_PREDICTION"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_multimodal_llm_without_signoff() -> None:
+    """Verify production cannot enable multimodal LLM before gate sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs["enable_multimodal_llm"] = True
+
+    with pytest.raises(ValidationError, match="ENABLE_MULTIMODAL_LLM"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_vision_classifier_without_signoff() -> None:
+    """Verify production cannot enable YOLO ROI detection before gate sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs["enable_vision_classifier"] = True
+
+    with pytest.raises(ValidationError, match="ENABLE_VISION_CLASSIFIER"):
         Settings(**kwargs)
 
 

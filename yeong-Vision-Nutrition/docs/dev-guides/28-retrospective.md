@@ -189,7 +189,7 @@ retrospective/
    설계가 코드로 검증된 순간."
 
 #### Skills Acquired (이력서용)
-- Python 3.12+, FastAPI, Pydantic v2
+- Python 3.13+, FastAPI, Pydantic v2
 - PostgreSQL + SQLAlchemy 2.0 (async)
 - Redis caching
 - Ollama Local API (Structured Outputs, Vision)

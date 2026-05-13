@@ -7,7 +7,9 @@
 
 ## 📋 한 줄 요약
 
-> **Flutter (모바일) + FastAPI (백엔드) + Google Cloud Vision (OCR) + Ollama 로컬 LLM + PostgreSQL/TimescaleDB (DB)** 의 5개 핵심 스택을 중심으로, 환자 개인정보를 외부 LLM으로 보내지 않는 의료 헬스케어 앱을 구현할 수 있도록 설계된 하이브리드 아키텍처.
+> **Flutter (모바일) + FastAPI (백엔드) + OCR adapter 계약 + Ollama 로컬 LLM + PostgreSQL/TimescaleDB (DB)** 의 5개 핵심 스택을 중심으로, 환자 개인정보를 외부 LLM으로 보내지 않는 의료 헬스케어 앱을 구현할 수 있도록 설계된 하이브리드 아키텍처.
+
+> 현행 구현 상태(2026-05-13): OCR은 `src.ocr.base.OCRAdapter` 계약과 `NoopOCRAdapter`만 코드에 있으며, 외부 OCR provider는 아직 연결되지 않았다. provider별 정확도·비용 수치는 공식 문서와 자체 테스트셋으로 재검증하기 전까지 운영 근거로 사용하지 않는다.
 
 ---
 
@@ -60,10 +62,10 @@
         │                  │                  │
         ▼                  ▼                  ▼
 ┌──────────────┐  ┌────────────────┐  ┌────────────────┐
-│ 🗄️ PostgreSQL │  │ 🌐 Google Cloud │  │ 🤖 Ollama Local│
-│ + TimescaleDB │  │   Vision API    │  │   (localhost)   │
-│ + Redis       │  │   (OCR 텍스트   │  │   (텍스트→JSON │
-│              │  │   추출)         │  │   구조화)       │
+│ 🗄️ PostgreSQL │  │ OCR Adapter     │  │ 🤖 Ollama Local│
+│ + TimescaleDB │  │ 계약/Provider   │  │   (localhost)   │
+│ + Redis       │  │ 후보            │  │   (텍스트→JSON │
+│              │  │                 │  │   구조화)       │
 └──────────────┘  └────────────────┘  └────────────────┘
         │
         │
@@ -96,8 +98,8 @@
 | 영역 | 기술 | 버전 | 용도 |
 |------|------|------|------|
 | **모바일** | Flutter | 3.24+ (stable) | iOS + Android 동시 배포 |
-| **백엔드** | FastAPI (Python 3.11+) | 0.110+ | REST API 서버 |
-| **OCR** | Google Cloud Vision API | v1 | 영양제 라벨 텍스트 추출 |
+| **백엔드** | FastAPI (Python 3.13+) | 0.110+ | REST API 서버 |
+| **OCR** | `OCRAdapter` + provider 후보 | 현행: no-op | 영양제 라벨 텍스트 추출 확장 지점 |
 | **LLM** | Ollama Local API | qwen3.5 / gemma4 | 텍스트 → 영양 성분 JSON 구조화 |
 | **DB** | PostgreSQL + TimescaleDB | PG 16 / TS 2.x | 관계형 + 시계열 통합 |
 
@@ -117,6 +119,8 @@
 
 ### 2.3 백엔드 주요 라이브러리 (`requirements.txt` 골격)
 
+기본 의존성 (모든 환경 공통):
+
 ```
 fastapi>=0.110
 uvicorn[standard]>=0.27
@@ -126,7 +130,6 @@ asyncpg>=0.29
 alembic>=1.13              # DB 마이그레이션
 redis>=5.0
 httpx>=0.27                # 외부 API 호출
-PyJWT[crypto]>=2.10        # OAuth/OIDC access token 검증
 google-cloud-vision>=3.7
 ollama>=0.6.0              # Ollama Local API
 pillow>=10.2               # 이미지 처리
@@ -138,6 +141,29 @@ black>=24.4
 ruff>=0.4
 mypy>=1.10
 ```
+
+선택 의존성 — `backend/pyproject.toml` 의 `[project.optional-dependencies]` 에 정식 분리. MVP 기본 설치(`pip install -e backend`)에는 포함되지 않음:
+
+```toml
+[project.optional-dependencies]
+# pip install ".[vision]" — Phase 3 비전 게이트 통과 후에만 설치
+vision = [
+    "torch>=2.2",
+    "ultralytics>=8.1",
+]
+# pip install ".[learning]" — Phase 4 학습 적재 게이트 통과 후에만 설치
+learning = [
+    "pgvector>=0.2",
+    "sentence-transformers>=2.5",
+]
+```
+
+extras 사용 원칙:
+
+- `[vision]`은 `enable_vision_classifier=true` 환경에서만 설치(기본 OFF)
+- `[learning]`은 `enable_image_learning_pipeline=true` 환경에서만 설치(기본 OFF)
+- 기본 빌드/CI 는 두 extras 를 설치하지 않아 MVP 영향을 최소화한다.
+- 운영 활성화 조건은 [docs/17 §9](./17-image-collection-consent-plan.md)의 게이트 플래그 매핑을 따른다. production 환경에서 게이트 플래그가 활성화된 채 extras 미설치면 `ImportError` 가 즉시 발생하도록 구현체 측에서 가드한다.
 
 ### 2.4 모바일 주요 패키지 (`pubspec.yaml` 골격)
 
@@ -207,7 +233,7 @@ dev_dependencies:
 - ⚠️ 앱 크기 커짐 (Flutter 엔진 ~10MB)
 - ⚠️ 일부 네이티브 SDK는 채널 통신 코드 필요
 
-### 3.2 백엔드 — **Python 3.11+ + FastAPI**
+### 3.2 백엔드 — **Python 3.13+ + FastAPI**
 
 #### 선택 근거
 1. **팀이 Python에 익숙** — 학습 비용 0
@@ -238,6 +264,7 @@ dev_dependencies:
 3. **JSON/JSONB 컬럼** — 영양제 성분 등 동적 스키마 저장
 4. **GIN 인덱스** — 식품 검색 성능
 5. **AES-256 컬럼 암호화** 가능 — 의료 데이터 보안
+6. **`pgvector` 확장(선택)** — 영양제 이미지 임베딩 학습 적재용. Phase 4 게이트가 통과되어 `enable_pgvector_storage=true`로 설정된 경우에만 활성화한다. 자세한 적용 절차는 [docs/17](./17-image-collection-consent-plan.md) 참조.
 
 #### 데이터 모델 개요
 
@@ -254,6 +281,9 @@ dev_dependencies:
   step_counts          (걸음수, hour 단위 집계)
   weight_logs          (체중 측정, 일 단위)
   heart_rate_samples   (심박수, 분 단위)
+
+벡터 (pgvector, Phase 4 게이트 통과 시에만):
+  labeled_supplement_images (가명화 이미지 + CLIP 임베딩, docs/17 §3 4번 동의 한정)
 ```
 
 #### 대안 비교
@@ -274,35 +304,31 @@ dev_dependencies:
 1. **OCR 결과 캐싱** — 같은 영양제 라벨 재인식 비용 ↓
 2. **KDRIs 룩업 캐싱** — 자주 조회되는 영양 기준값
 3. **세션·토큰 저장**
-4. **Rate Limiting** — Cloud Vision API 비용 폭주 방지
+4. **Rate Limiting** — 외부 OCR provider 연결 시 비용 폭주 방지
 
 #### 트레이드오프
 - ⚠️ 메모리 제한 — TTL 정책 필수 (예: OCR 결과 30일 캐싱 후 만료)
 
-### 3.5 OCR — **Google Cloud Vision API**
+### 3.5 OCR — **Adapter 계약 + Provider 후보**
 
 #### 선택 근거
-1. **정확도 검증됨** — 한국어 + 영어 영양제 라벨에서 92~98% 보고
-2. **첫 1,000건/월 무료** — PoC·MVP 단계에서 비용 0
-3. **이후 $1.50/1,000건** — 학생 팀 예산으로 충분
-4. **TEXT_DETECTION + DOCUMENT_TEXT_DETECTION** 두 모드 — 영양제 라벨엔 후자 적합
-5. **Python SDK 성숙**
+1. **현행 코드 안전성** — 기본 API는 외부 OCR 호출 없이 이미지 intake preview까지만 수행한다.
+2. **Adapter 경계** — provider 교체는 `OCRAdapter.extract_text` 구현체 주입으로 제한한다.
+3. **개인정보 통제** — 외부 provider 전송 전 동의, 보유 기간, 감사 로그, 비식별 정책을 먼저 검증한다.
+4. **검증 가능성** — provider별 정확도와 비용은 공식 문서와 프로젝트 테스트셋으로 재측정한 뒤 채택한다.
 
 #### 대안 비교
 
-| 옵션 | 정확도 | 한국어 | 비용 | 결론 |
-|------|-------|-------|------|------|
-| **Google Cloud Vision** ⭐ | 92~98% | ✅ | $1.5/1k (1k 무료) | ✅ 채택 |
-| Naver CLOVA OCR | 한국어 SOTA | ⭐⭐ | 일정 무료 + 종량 | 🔄 백업 옵션 |
-| AWS Textract | 95%+ | △ | $1.5/1k | ❌ (한국어 약점) |
-| Azure AI Vision | 90%+ | ✅ | $1/1k | △ |
-| Tesseract (오픈소스) | 70~85% | △ (학습 필요) | 무료 | ❌ (정확도 ↓) |
-| PaddleOCR | 85%+ | ✅ | 무료 (자체 호스팅) | △ (인프라 부담) |
+| 옵션 | 현재 코드 상태 | 채택 전 확인할 것 |
+|------|------|------|
+| 외부 OCR provider | 미구현 | 공식 API, 데이터 처리 위치, 비용, 장애 정책, 테스트셋 성능 |
+| 자체 호스팅 OCR | 미구현 | 모델 라이선스, 배포 리소스, 한국어 라벨 성능, 운영 복잡도 |
+| no-op provider | 구현됨 | intake-only 환경에서만 사용 |
 
 #### 권고
-- **주력**: Google Cloud Vision API (DOCUMENT_TEXT_DETECTION 모드)
-- **백업**: Naver CLOVA OCR (Cloud Vision 정확도 부족 시 폴백)
-- **자체 호스팅 옵션**: PaddleOCR (장기적 비용 절감 시)
+- **현행 기본값**: no-op 또는 provider 미주입 상태로 intake-only 운영
+- **후속 구현**: provider별 adapter를 별도 파일로 추가하고 공식 문서 URL과 자체 테스트 결과를 PR에 첨부
+- **외부 전송**: 민감정보와 이미지 전송 정책 승인 전에는 비활성 유지
 
 ### 3.6 LLM — **Ollama 로컬 LLM**
 
@@ -388,7 +414,7 @@ response = await client.chat(
 |------|---------|---------|------------|
 | **NCP (Naver Cloud)** | 학생 크레딧 (정부 사업) | ✅ 한국 | ⭐ 한국 사용자 + 의료 데이터 보호 |
 | AWS | AWS Educate (제한적) | △ Tokyo / Seoul | 글로벌 확장 시 |
-| GCP | $300 무료 크레딧 | △ Seoul | Google Cloud Vision 통합 시 |
+| GCP | 무료 크레딧 정책 확인 필요 | △ Seoul | GCP 서비스 통합 시 |
 | Azure | Azure for Students | △ | Microsoft 생태계 시 |
 
 #### Docker Compose 골격 (`docker-compose.yml`)
@@ -433,21 +459,20 @@ volumes:
 
 ### 4.1 시퀀스 다이어그램
 
-```
-[사용자]    [Flutter App]    [FastAPI]    [Cloud Vision]    [Ollama Local]  [PostgreSQL]    [Redis]
+```text
+[사용자]    [Flutter App]    [FastAPI]    [OCR Adapter]   [Ollama Local]  [PostgreSQL]    [Redis]
    │             │              │              │                 │               │             │
    │ 사진 촬영   │              │              │                 │               │             │
    ├────────────►│              │              │                 │               │             │
    │             │              │              │                 │               │             │
-   │             │ POST /upload │              │                 │               │             │
+   │             │ POST /api/v1/supplements/analyze              │               │             │
    │             ├─────────────►│              │                 │               │             │
    │             │              │              │                 │               │             │
-   │             │              │ 이미지 해시  │                 │               │             │
-   │             │              │ 캐시 조회    │                 │               │             │
-   │             │              ├──────────────────────────────────────────────────────────────►│
+   │             │              │ 이미지 검증  │                 │               │             │
+   │             │              │ preview 저장 │                 │               │             │
+   │             │              ├──────────────────────────────────────────────►│              │
    │             │              │                                                                │
-   │             │              │              ⓒ 캐시 미스 - 신규 처리                          │
-   │             │              │ TEXT_DETECTION                                                 │
+   │             │              │              OCR adapter가 주입된 경우에만 실행                │
    │             │              ├─────────────►│                                                 │
    │             │              │              │                                                 │
    │             │              │ OCR 텍스트   │                                                 │
@@ -459,14 +484,11 @@ volumes:
    │             │              │ {supplements: [...]}             │                              │
    │             │              │◄─────────────────────────────────┤                              │
    │             │              │                                                                │
-   │             │              │ 식약처 DB 매칭 + 저장                                          │
+   │             │              │ 사용자 확인 후 등록 저장                                       │
    │             │              ├──────────────────────────────────────────────►│                │
    │             │              │                                                                │
-   │             │              │ 결과 캐시 저장                                                  │
-   │             │              ├──────────────────────────────────────────────────────────────►│
-   │             │              │                                                                │
-   │             │ 200 OK       │                                                                │
-   │             │ {result}     │                                                                │
+   │             │ 202 Accepted │                                                                │
+   │             │ {preview}    │                                                                │
    │             │◄─────────────┤                                                                │
    │             │              │                                                                │
    │ UI 갱신     │              │                                                                │
@@ -475,19 +497,16 @@ volumes:
 
 ### 4.2 단계별 처리
 
-| 단계 | 작업 | 예상 소요 시간 |
+| 단계 | 작업 | 현재 구현 상태 |
 |------|------|--------------|
-| 1. 사용자 촬영 | Flutter `image_picker` | — |
-| 2. 클라이언트 검증 | 이미지 크기·형식 검증 (5MB 이하 JPEG) | < 100ms |
-| 3. 백엔드 업로드 | HTTPS multipart/form-data | 200~500ms |
-| 4. 이미지 해시 + 캐시 조회 | SHA-256 해시 → Redis 조회 | < 10ms |
-| 5. OCR (캐시 미스 시) | Google Cloud Vision DOCUMENT_TEXT_DETECTION | 800~1500ms |
-| 6. LLM 구조화 | Ollama 로컬 모델 (`qwen3.5`/`gemma4`) | 장비·모델별 측정 필요 |
-| 7. 식약처 DB 매칭 | PostgreSQL 풀텍스트 검색 | 50~200ms |
-| 8. 결과 저장·캐시 | PostgreSQL INSERT + Redis SET | < 50ms |
-| 9. 응답 반환 | JSON 직렬화 → HTTPS | 100~300ms |
-| **합계 (캐시 미스)** | | **약 2.5~6초** |
-| **합계 (캐시 히트)** | | **< 1초** |
+| 1. 사용자 촬영 | Flutter camera/image picker 연동 | 모바일 화면 문서 단계 |
+| 2. 백엔드 업로드 | `POST /api/v1/supplements/analyze` multipart/form-data | 구현됨 |
+| 3. 이미지 검증 | 크기, MIME type, pixel 제한 | 구현됨 |
+| 4. preview 저장 | SHA-256 image hash와 metadata 저장 | 구현됨 |
+| 5. OCR | `OCRAdapter`가 주입된 경우만 실행 | provider 미연결 |
+| 6. LLM 구조화 | OCR text가 있을 때 `OllamaSupplementParser` 실행 | 텍스트 parser 구현됨 |
+| 7. 사용자 확인 등록 | `POST /api/v1/supplements` | 구현됨 |
+| 8. 결과 조회/삭제 | 목록, 상세, soft delete | 구현됨 |
 
 ---
 
@@ -497,27 +516,27 @@ volumes:
 
 | 항목 | 사용량 | 단가 | 월 비용 (USD) |
 |------|--------|------|------------|
-| **Google Cloud Vision API** | 1,500건/월 (100건 무료 차감) | $1.5/1k | **약 $0.75** |
-| **Ollama 로컬 LLM** | 5,000회 호출 | MacBook 로컬 실행 | **$0** (전기·장비 비용 제외) |
+| **OCR provider** | 현행 미연결 | provider 선정 후 공식 과금표 확인 | 미산정 |
+| **Ollama 로컬 LLM** | 호출량 미측정 | MacBook 로컬 실행 | 장비·전기 비용 별도 |
 | **NCP 백엔드** | 1 vCPU, 2GB RAM 인스턴스 | 학생 크레딧 활용 | **$0** (크레딧 사용 시) |
 | **NCP DB Manager** | PostgreSQL 1GB | 학생 크레딧 | **$0** |
 | **NCP Object Storage** | 10GB 사진 저장 | $0.02/GB | **약 $0.20** |
 | **도메인** (선택) | .com 1년 | $12/년 | **약 $1** |
-| **합계** | | | **약 $2~3/월** |
+| **합계** | | | **OCR provider 선정 전 미산정** |
 
 ### 5.2 정식 출시 시 (월 1만 활성 사용자 가정)
 
 | 항목 | 월 비용 (USD) |
 |------|------------|
-| Cloud Vision API | $50~150 |
+| OCR provider | 공식 과금표와 자체 사용량 추정 후 산정 |
 | Ollama 로컬/사내 LLM 서버 | 장비·운영 방식에 따라 산정 |
 | 인프라 (NCP) | $200~500 |
 | 합계 | **외부 LLM 비용 제외, 서버 운영비 별도 산정** |
 
 > 💡 **비용 절감 전략**:
-> 1. OCR 결과 캐싱 (동일 영양제 = 동일 결과) → API 호출 50%+ 절감
+> 1. provider 연결 후 OCR 결과 캐싱 정책 검토
 > 2. KDRIs 룩업은 PostgreSQL에 저장, LLM 호출 최소화
-> 3. CLOVA OCR이 더 저렴할 경우 폴백
+> 3. 외부 OCR provider 간 비용·정확도·데이터 처리 위치 비교
 > 4. 사용량 임계치 도달 시 알림 (NCP/AWS Cloud Watch)
 
 ---
@@ -526,7 +545,7 @@ volumes:
 
 10주 학생 팀 + 발표 + 양대 스토어 배포라는 제약 조건에서 각 후보를 평가:
 
-| 평가 기준 (가중치) | Flutter | FastAPI | PostgreSQL | Cloud Vision | Ollama | 합계 |
+| 평가 기준 (가중치) | Flutter | FastAPI | PostgreSQL | OCR Adapter | Ollama | 합계 |
 |-------------------|:-------:|:-------:|:----------:|:------------:|:------:|:----:|
 | **학습 곡선** (25%) | 8/10 | 9/10 | 8/10 | 9/10 | 9/10 | 8.6 |
 | **개발 속도** (20%) | 9/10 | 9/10 | 8/10 | 10/10 | 9/10 | 9.0 |
@@ -537,7 +556,7 @@ volumes:
 | **발표 어필** (5%) | 9/10 | 8/10 | 7/10 | 9/10 | 9/10 | 8.4 |
 | **종합** | **8.7** | **9.0** | **8.9** | **9.2** | **8.8** | **8.9/10** |
 
-> 💡 모든 영역에서 평균 8.5 이상 — **균형 잡힌 스택**임이 정량적으로 검증됨.
+> 💡 기존 점수표는 설계 단계 평가다. 실제 운영 채택 전에는 OCR provider별 공식 조건과 자체 테스트셋 결과로 재산정해야 한다.
 
 ---
 
@@ -554,9 +573,10 @@ volumes:
 - 공식 튜토리얼 (한국어 번역 있음): https://fastapi.tiangolo.com/ko/
 - 책: *"FastAPI를 사용한 견고한 파이썬 웹 API 개발"* (한빛미디어)
 
-### Google Cloud Vision
-- 공식 빠른 시작: https://cloud.google.com/vision/docs/quickstart-client-libraries
-- 한국어 강의: 인프런 *"GCP Vision API 활용"*
+### OCR Adapter
+- 현행 계약: `backend/src/ocr/base.py`
+- 현행 no-op provider: `backend/src/ocr/providers/noop.py`
+- 외부 provider 연결 시 해당 provider의 최신 공식 문서를 확인하고 PR에 URL을 첨부한다.
 
 ### Ollama
 - API Introduction: https://docs.ollama.com/api/introduction
@@ -604,24 +624,18 @@ volumes:
 | Flutter → React Native | 전체 재작성 (높은 비용) |
 | FastAPI → Django | 알고리즘 코드는 재사용 가능, 라우터·미들웨어만 |
 | PostgreSQL → MySQL | SQL 미세 조정 (대부분 호환) |
-| Cloud Vision → CLOVA | OCR 호출 부분만 교체 (인터페이스 추상화로 쉽게) |
+| OCR provider 교체 | `OCRAdapter` 구현체 주입 지점만 교체 |
 | Ollama 모델 교체 | `OLLAMA_MODEL` 설정만 교체하되, 테스트셋 기준 품질·속도 재측정 |
 
 > 💡 **설계 원칙**: OCR·LLM은 **Adapter 패턴**으로 추상화한다. LLM은 Ollama 로컬을 기본값으로 두고, 외부 LLM은 비식별·승인 환경에서만 선택적으로 연결한다.
 
 ```python
-# 예시: OCR Adapter 패턴
-class OCRAdapter(ABC):
-    @abstractmethod
-    async def extract_text(self, image_bytes: bytes) -> str: ...
+# 현행 구현: src.ocr.base.OCRAdapter 계약과 no-op provider
+from src.ocr.base import OCRAdapter, OCRImageInput
+from src.ocr.providers.noop import NoopOCRAdapter
 
-class GoogleVisionOCR(OCRAdapter): ...
-class CLOVAOCR(OCRAdapter): ...
-class TesseractOCR(OCRAdapter): ...
-
-# 사용처는 변경 없음
-ocr: OCRAdapter = GoogleVisionOCR()  # ← 한 줄만 바꾸면 교체
-text = await ocr.extract_text(image)
+ocr: OCRAdapter = NoopOCRAdapter()
+result = await ocr.extract_text(OCRImageInput(image_bytes=image, mime_type="image/png"))
 ```
 
 ---

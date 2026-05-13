@@ -18,12 +18,14 @@ class ConsentType(StrEnum):
         HEALTH_DEVICE_DATA: Consent for future wearable or device data intake.
         OCR_IMAGE_PROCESSING: Consent for future OCR image processing.
         DATA_RETENTION: Consent for retaining user analysis history.
+        IMAGE_LEARNING_DATASET: Separate opt-in for pseudonymized image reuse in learning datasets.
     """
 
     SENSITIVE_HEALTH_ANALYSIS = "sensitive_health_analysis"
     HEALTH_DEVICE_DATA = "health_device_data"
     OCR_IMAGE_PROCESSING = "ocr_image_processing"
     DATA_RETENTION = "data_retention"
+    IMAGE_LEARNING_DATASET = "image_learning_dataset"
 
 
 class ConsentStatus(BaseModel):
