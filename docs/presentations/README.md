@@ -13,4 +13,4 @@
 ## 작성 기준
 
 - 발표용 문서는 핵심 메시지와 공유 목적을 먼저 둡니다.
-- 세부 기술 근거는 `guide/`, `research/`, `reports/` 문서로 연결합니다.
+- 세부 기술 근거는 `planning/guide/`, `planning/research/`, `daily/reports/` 문서로 연결합니다.

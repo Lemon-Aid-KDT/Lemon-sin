@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lemon Aid 1주차 프로젝트 브리핑</title>
+  <style>
+    @page { size: 10in 5.625in; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-height: 100%; background: #f4f7fb; }
+    body {
+      color: #141a2c;
+      font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .slide {
+      width: 10in;
+      height: 5.625in;
+      page-break-after: always;
+      break-after: page;
+      position: relative;
+      overflow: hidden;
+      padding: 34px 48px;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .pattern {
+      position: absolute;
+      inset: 0;
+      opacity: 0.62;
+      background:
+        radial-gradient(circle at 24px 24px, rgba(76, 126, 247, 0.08) 0 1.5px, transparent 1.8px) 0 0 / 32px 32px,
+        linear-gradient(135deg, rgba(76, 126, 247, 0.06), transparent 42%),
+        linear-gradient(315deg, rgba(255, 199, 0, 0.08), transparent 34%);
+      pointer-events: none;
+    }
+    .slide > *:not(.pattern) { position: relative; z-index: 1; }
+    .slide-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 25px;
+      padding: 6px 13px;
+      border-radius: 999px;
+      background: #fff6d6;
+      color: #a16c00;
+      font-size: 13px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+    h1 {
+      max-width: 740px;
+      color: #141a2c;
+      font-size: 50px;
+      line-height: 1.08;
+      font-weight: 900;
+    }
+    h2 {
+      margin-top: 10px;
+      color: #141a2c;
+      font-size: 32px;
+      line-height: 1.2;
+      font-weight: 900;
+    }
+    p {
+      color: #5a6478;
+      font-size: 16px;
+      line-height: 1.62;
+      font-weight: 500;
+    }
+    strong { color: #315fda; font-weight: 900; }
+    code {
+      padding: 2px 6px;
+      border-radius: 7px;
+      background: #edf3ff;
+      color: #315fda;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 0.92em;
+    }
+    .count {
+      color: #8a94a8;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+    .hero {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 20px;
+    }
+    .hero > p {
+      max-width: 760px;
+      font-size: 18px;
+      line-height: 1.48;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.2fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .hero-grid .note {
+      min-height: 108px;
+      border: 1px solid #e5eaf4;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 14px 16px;
+      color: #5a6478;
+      font-size: 13px;
+      line-height: 1.55;
+      box-shadow: 0 14px 34px rgba(29, 52, 105, 0.08);
+    }
+    .hero-grid > p {
+      border-left: 5px solid #4c7ef7;
+      padding: 10px 0 10px 16px;
+      font-size: 15px;
+      color: #141a2c;
+    }
+    .slide-body {
+      display: grid;
+      gap: 11px;
+      max-height: 368px;
+    }
+    .dense .slide-body { gap: 8px; }
+    .dense p { font-size: 13px; line-height: 1.42; }
+    .slide.dense {
+      padding-top: 28px;
+      padding-bottom: 30px;
+      gap: 12px;
+    }
+    .dense h2 {
+      margin-top: 8px;
+      font-size: 28px;
+      line-height: 1.16;
+    }
+    .note {
+      border-radius: 16px;
+      border: 1px solid #dce6ff;
+      background: #f3f7ff;
+      padding: 12px 15px;
+      color: #315fda;
+      font-size: 14px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+    .table-wrap {
+      overflow: hidden;
+      border: 1px solid #e5eaf4;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: 0 14px 34px rgba(29, 52, 105, 0.08);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e9edf6;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: keep-all;
+      font-size: 11px;
+      line-height: 1.34;
+    }
+    th {
+      background: #eef4ff;
+      color: #315fda;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .dense th, .dense td { padding: 6px 8px; font-size: 10px; line-height: 1.28; }
+    .bullet-list {
+      margin: 0;
+      padding-left: 22px;
+      color: #5a6478;
+      font-size: 14px;
+      line-height: 1.42;
+    }
+    .bullet-list li { margin: 3px 0; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      border-radius: 16px;
+      background: #141a2c;
+      color: #f8fbff;
+      padding: 13px 16px;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 12px;
+      line-height: 1.38;
+      box-shadow: 0 14px 34px rgba(20, 26, 44, 0.16);
+    }
+    .dense pre {
+      padding: 10px 14px;
+      font-size: 10px;
+      line-height: 1.28;
+    }
+    .section-slide {
+      justify-content: center;
+      background: #ffffff;
+    }
+    .section-kicker {
+      position: absolute;
+      right: 50px;
+      top: 38px;
+      color: rgba(76, 126, 247, 0.12);
+      font-size: 142px;
+      line-height: 1;
+      font-weight: 900;
+    }
+    .section-panel {
+      width: 820px;
+      border-radius: 22px;
+      border: 1px solid #e5eaf4;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 28px 34px;
+      box-shadow: 0 24px 58px rgba(29, 52, 105, 0.10);
+    }
+    .section-panel .slide-body { margin-top: 14px; max-height: 300px; }
+    .section-panel p { font-size: 16px; line-height: 1.52; color: #5a6478; }
+    .title-slide {
+      padding-top: 28px;
+      padding-bottom: 30px;
+    }
+    .title-slide .hero {
+      min-height: auto;
+      justify-content: flex-start;
+      gap: 16px;
+    }
+    .title-slide .count,
+    .section-slide .count {
+      position: absolute;
+      left: 48px;
+      bottom: 22px;
+    }
+    .title-slide h1 {
+      max-width: 820px;
+      font-size: 38px;
+      line-height: 1.08;
+    }
+    .title-slide .hero > p {
+      font-size: 15px;
+      line-height: 1.42;
+    }
+    .title-slide .hero-grid {
+      gap: 10px;
+    }
+    .title-slide .hero-grid > p {
+      padding-top: 8px;
+      padding-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .title-slide th,
+    .title-slide td {
+      padding: 5px 7px;
+      font-size: 9px;
+      line-height: 1.25;
+    }
+    @media print {
+      html, body { background: #ffffff; }
+      .slide { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <section class="slide title-slide">
+    <div class="pattern"></div>
+    <div class="hero">
+      <span class="pill">Lemon Aid Team · 1주차 브리핑</span>
+      <h1>Lemon Aid 1주차 프로젝트 브리핑</h1>
+      <p>기업 과제 수행 방향과 서비스화 관점을 파트별 산출물 중심으로 정리한 발표용 통합 문서입니다.</p>
+      <div class="hero-grid"><p>Lemon Aid는 음식·영양제 입력을 기반으로 만성질환자의 건강관리 흐름을 돕는 AI 기반 건강관리 보조 서비스입니다.</p><p>1주차에는 최종 기능을 완성하기보다, 각 파트가 앞으로 어떤 기준으로 구현을 이어갈지 정리했습니다. UX는 사용자가 결과를 받아들이는 화면 규칙을 정했고, 음식 비전은 음식 입력을 분석 후보로 바꾸는 파이프라인을 잡았습니다. 알고리즘은 공식 기준과 운영 규칙을 분리했고, DB/백엔드는 사용자 기록과 Agent 분석 결과를 안전하게 연결하는 구조를 정리했습니다.</p><p>이 문서는 1주차 개별 문서를 모두 설명하는 대신, 발표에서 꼭 전달해야 할 핵심만 파트별로 압축한 통합본입니다.</p><div class="table-wrap"><table><thead><tr><th>파트</th><th>1주차 핵심 산출물</th></tr></thead><tbody><tr><td>UX</td><td>7개 화면 뼈대, 사용자 멈춤 지점, 결과 카드 공통 규칙</td></tr><tr><td>음식 비전</td><td>음식 후보 생성, 100g 기준 영양 프로필, 사용자 입력량 기반 재계산</td></tr><tr><td>알고리즘</td><td>공식 계산식과 운영 규칙 분리, preview 처리, 안전 표현 원칙</td></tr><tr><td>DB/백엔드</td><td>user_id 기준 데이터 연결, PostgreSQL/Redis 구조, Agent Memory</td></tr></tbody></table></div></div>
+    </div>
+    <span class="count">01 / 20</span>
+  </section>
+<section class="slide ">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">2. UX 파트</span>
+        <h2>2.1 1주차 UX 작업의 핵심</h2>
+      </div>
+      <span class="count">02 / 20</span>
+    </header>
+    <div class="slide-body"><p>UX 파트의 1주차 작업은 최종 화면 디자인이 아니라, <strong>사용자가 AI·DB·음식 비전 결과를 이해하고 고칠 수 있게 만드는 화면 규칙</strong>을 정한 것입니다.</p><p>서비스의 기술 결과가 아무리 좋아도 사용자가 어디서 시작해야 하는지 모르거나, AI 결과를 믿지 못하거나, 틀린 결과를 고치기 어렵다면 서비스 가치는 떨어집니다. 그래서 UX는 화면을 예쁘게 꾸미기 전에 사용자가 실제로 멈추는 지점을 먼저 정리했습니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">2. UX 파트</span>
+        <h2>2.2 7개 핵심 화면</h2>
+      </div>
+      <span class="count">03 / 20</span>
+    </header>
+    <div class="slide-body"><p>1주차에는 서비스 전체 흐름을 구성하는 7개 기본 화면의 뼈대를 정했습니다.</p><div class="table-wrap"><table><thead><tr><th>코드</th><th>화면</th><th>역할</th></tr></thead><tbody><tr><td>S-01</td><td>Splash</td><td>앱 시작 화면</td></tr><tr><td>S-02</td><td>Login</td><td>기존 사용자 로그인</td></tr><tr><td>S-03</td><td>Signup</td><td>신규 사용자 가입</td></tr><tr><td>S-04</td><td>Verify</td><td>이메일 확인 또는 인증</td></tr><tr><td>S-05</td><td>Consent</td><td>개인정보·건강정보·권한 안내</td></tr><tr><td>S-06</td><td>Onboarding</td><td>첫 사용법과 기본 정보 입력</td></tr><tr><td>S-07</td><td>Dashboard</td><td>기록, 분석 결과, 다음 행동을 보여주는 홈</td></tr></tbody></table></div><p>이 화면들은 최종 디자인이 아니라, 다음 단계에서 AI·DB·음식 비전 결과가 들어올 자리를 미리 정해 둔 구조입니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">2. UX 파트</span>
+        <h2>2.3 사용자 기준</h2>
+      </div>
+      <span class="count">04 / 20</span>
+    </header>
+    <div class="slide-body"><p>Lemon Aid의 사용자는 단순히 건강 앱을 둘러보는 사람이 아니라, 식사 직후나 약통 옆에서 짧은 시간 안에 기록을 남겨야 하는 사람입니다.</p><div class="table-wrap"><table><thead><tr><th>기준</th><th>UX 해석</th></tr></thead><tbody><tr><td>주 사용자</td><td>30~50대 만성질환 관심층, 60대 이상도 함께 고려</td></tr><tr><td>사용 시간</td><td>한 번 켤 때 30초~2분, 하루 3~5회</td></tr><tr><td>사용 상황</td><td>식탁 앞, 약통 옆, 운동 직후</td></tr><tr><td>화면 원칙</td><td>큰 글씨, 큰 버튼, 높은 색 대비, 빠른 카메라 접근</td></tr></tbody></table></div><p>따라서 UX는 긴 설명보다 짧은 안내, 복잡한 메뉴보다 바로 실행할 수 있는 카메라와 결과 카드, 작은 버튼보다 손가락 크기의 조작 영역을 우선합니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">2. UX 파트</span>
+        <h2>2.4 사용자가 멈추는 4가지 지점</h2>
+      </div>
+      <span class="count">05 / 20</span>
+    </header>
+    <div class="slide-body"><div class="table-wrap"><table><thead><tr><th>지점</th><th>사용자 생각</th><th>UX가 해결할 일</th></tr></thead><tbody><tr><td>처음 켤 때</td><td>앱을 켰는데 뭐부터 하지?</td><td>안내를 3단계 안으로 줄이고 카메라까지 빠르게 이동</td></tr><tr><td>결과를 의심할 때</td><td>AI 결과를 믿어도 되나?</td><td>확신도, 출처, 고치기 경로를 함께 표시</td></tr><tr><td>고치고 싶을 때</td><td>틀린 것 같은데 어떻게 고치지?</td><td>다른 화면으로 보내지 않고 같은 카드 안에서 수정</td></tr><tr><td>하루 마무리</td><td>오늘 잘했나? 내일 뭐 해야 하지?</td><td>점수와 함께 다음 할 일 한 줄 제공</td></tr></tbody></table></div><p>이 지점들은 UX 혼자 해결할 수 없습니다. AI 팀은 확신도와 출처를 내려줘야 하고, DB 팀은 빈 상태와 사용자 데이터를 구분해줘야 하며, 음식 비전 팀은 후보와 검토 필요 상태를 화면이 이해할 수 있는 형식으로 제공해야 합니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">2. UX 파트</span>
+        <h2>2.5 화면 판단 기준과 결과 카드 약속</h2>
+      </div>
+      <span class="count">06 / 20</span>
+    </header>
+    <div class="slide-body"><p>UX 파트는 화면을 정할 때 다음 6가지 기준을 사용합니다.</p><div class="table-wrap"><table><thead><tr><th>기준</th><th>내용</th></tr></thead><tbody><tr><td>한눈에 중요한 것</td><td>한 화면에서 가장 중요한 것 하나를 먼저 보이게 함</td></tr><tr><td>손가락이 닿는 거리</td><td>자주 쓰는 일은 세 번 안에, 카메라는 한 번에 도달</td></tr><tr><td>신뢰 표시</td><td>AI 결과에는 출처, 확신도, 시간 중 최소 두 가지 표시</td></tr><tr><td>가독성</td><td>글자는 작지 않게, 버튼은 충분히 크게, 색 대비는 명확하게</td></tr><tr><td>같은 의미는 같은 모양</td><td>같은 행동은 같은 위치·색·아이콘으로 통일</td></tr><tr><td>빠져나갈 길</td><td>오류, 데이터 없음, 로딩에는 다음 행동 한 줄 제공</td></tr></tbody></table></div><p>모든 결과 카드는 다음 4요소를 공통으로 갖습니다.</p><div class="table-wrap"><table><thead><tr><th>요소</th><th>설명</th></tr></thead><tbody><tr><td>결과 큰 글씨</td><td>사용자가 가장 먼저 봐야 할 핵심 결과</td></tr><tr><td>확신 정도</td><td>% 또는 색상 배지</td></tr><tr><td>출처 / 시간</td><td>공식 DB, 최근 업데이트 시각 등 작은 라벨</td></tr><tr><td>다음 행동</td><td>저장, 고치기, 더 보기 같은 한 줄 행동</td></tr></tbody></table></div></div>
+  </section>
+<section class="slide ">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">3. 음식 비전 파트</span>
+        <h2>3.1 음식 비전 파트의 역할</h2>
+      </div>
+      <span class="count">07 / 20</span>
+    </header>
+    <div class="slide-body"><p>음식 비전 파트의 목표는 AI가 음식 사진을 완벽하게 판정하는 것이 아닙니다. 1주차의 핵심은 <strong>MVP에서 설명 가능하고 검증 가능한 음식 분석 흐름</strong>을 만드는 것입니다.</p><p>사용자가 음식 사진이나 텍스트 식단을 입력하면, 앱은 이를 음식 후보로 만들고 공식 영양 데이터와 연결해야 합니다. 이때 사진만 보고 섭취량까지 단정하면 영양 계산이 크게 흔들릴 수 있으므로, MVP에서는 기본 계산을 100g 기준으로 단순화합니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">3. 음식 비전 파트</span>
+        <h2>3.2 음식 분석 파이프라인</h2>
+      </div>
+      <span class="count">08 / 20</span>
+    </header>
+    <div class="slide-body"><p>음식 비전 파트의 전체 흐름은 다음과 같습니다.</p><pre>Input
+  -&gt; Detection
+  -&gt; Fusion
+  -&gt; RDA Match
+  -&gt; 100g Nutrition Profile
+  -&gt; Optional Scale</pre><div class="table-wrap"><table><thead><tr><th>단계</th><th>역할</th></tr></thead><tbody><tr><td>Input</td><td>음식 사진 또는 텍스트 식단 입력</td></tr><tr><td>YOLOv8 mock detector</td><td>음식 bbox, class, confidence 후보 생성</td></tr><tr><td>Google Vision mock hint adapter</td><td>label, object hint, OCR 원문 제공</td></tr><tr><td>Fusion engine</td><td>YOLO 후보를 중심으로 GCV hint와 OCR을 보강해 최종 후보 정리</td></tr><tr><td>RDA matcher</td><td>음식 후보를 농진청/RDA 계열 영양 데이터와 연결</td></tr><tr><td>Optional Scale</td><td>사용자가 g 또는 인분을 입력한 경우 섭취량 기준 재계산</td></tr></tbody></table></div><p>중요한 구조 결정은 GCV를 음식명 확정 엔진으로 쓰지 않는다는 점입니다. GCV label과 OCR은 보조 힌트로 사용하고, 최종 후보는 YOLO primary와 fusion 규칙으로 정리합니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">3. 음식 비전 파트</span>
+        <h2>3.3 100g 기준 영양 프로필</h2>
+      </div>
+      <span class="count">09 / 20</span>
+    </header>
+    <div class="slide-body"><p>음식 사진만으로 실제 섭취량을 정확히 추정하는 것은 기술 리스크가 큽니다. 그래서 MVP 기본 경로에서는 이미지 기반 섭취량 추정을 제외하고, 식별된 음식의 <strong>100g 기준 영양 프로필</strong>을 먼저 제공합니다.</p><div class="table-wrap"><table><thead><tr><th>결정</th><th>이유</th></tr></thead><tbody><tr><td>사진만으로 섭취량을 단정하지 않음</td><td>부정확한 양 추정으로 영양 결과가 왜곡되는 것을 방지</td></tr><tr><td>100g 기준 영양정보 제공</td><td>사용자에게 음식의 기본 영양 성격을 빠르게 전달</td></tr><tr><td>사용자 입력량 기반 재계산</td><td>사용자가 g 또는 인분을 입력했을 때만 실제 섭취량 계산</td></tr><tr><td>review flag 유지</td><td>매칭 실패나 애매한 후보를 확정하지 않고 사용자 검토로 전환</td></tr></tbody></table></div><p>이 방식은 기술적 한계를 숨기는 것이 아니라, 불확실한 추정을 줄이고 사용자가 확인할 수 있는 구조로 만드는 결정입니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">3. 음식 비전 파트</span>
+        <h2>3.4 응답 구조와 리스크 대응</h2>
+      </div>
+      <span class="count">10 / 20</span>
+    </header>
+    <div class="slide-body"><p>음식 분석 응답에는 다음 정보가 포함되어야 합니다.</p><div class="table-wrap"><table><thead><tr><th>응답 요소</th><th>의미</th></tr></thead><tbody><tr><td>음식 후보</td><td>사용자가 선택하거나 수정할 수 있는 후보 목록</td></tr><tr><td>100g 기준 영양정보</td><td>공식 영양 데이터와 연결된 기본 영양 프로필</td></tr><tr><td>review flag</td><td>후보가 애매하거나 매칭 실패 시 사용자 검토 필요 표시</td></tr></tbody></table></div><p>대표 리스크와 대응은 다음과 같습니다.</p><div class="table-wrap"><table><thead><tr><th>리스크</th><th>대응</th></tr></thead><tbody><tr><td>이미지 기반 섭취량 추정 부정확</td><td>100g 기준을 기본으로 두고 사용자 입력량이 있을 때만 재계산</td></tr><tr><td>AI Hub 전체 데이터 용량 과다</td><td>작은 subset과 mock 기반으로 MVP 흐름 우선 검증</td></tr><tr><td>한국 음식 alias와 표기 변형</td><td><code>food_aliases.json</code> 같은 제품 자산으로 관리</td></tr><tr><td>의료 표현 오해</td><td>진단·치료·처방처럼 보이는 표현을 제외하고 정보 제공형 문구 사용</td></tr><tr><td>real GCV/YOLO 전환 시 흔들림</td><td>mock과 real 구현이 같은 인터페이스를 따르도록 고정</td></tr></tbody></table></div></div>
+  </section>
+<section class="slide ">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">4. 알고리즘 파트</span>
+        <h2>4.1 알고리즘 설계의 핵심</h2>
+      </div>
+      <span class="count">11 / 20</span>
+    </header>
+    <div class="slide-body"><p>알고리즘 파트의 핵심은 계산을 더 복잡하게 만드는 것이 아니라, <strong>공식 근거가 있는 계산식과 프로젝트 운영 중 검증해야 할 규칙을 분리</strong>하는 것입니다.</p><p>비전공자 관점에서 보면, 이 작업은 AI가 건강 판단을 마음대로 하게 만드는 일이 아닙니다. 근거가 있는 계산은 고정하고, 아직 검증이 필요한 값은 운영 규칙으로 표시해 나중에 검토할 수 있게 만드는 작업입니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">4. 알고리즘 파트</span>
+        <h2>4.2 공식 기반 계산식과 운영 규칙</h2>
+      </div>
+      <span class="count">12 / 20</span>
+    </header>
+    <div class="slide-body"><div class="table-wrap"><table><thead><tr><th>구분</th><th>항목</th><th>설명</th></tr></thead><tbody><tr><td>공식 기반 계산식</td><td>BMI</td><td>체형 분류의 기본 기준</td></tr><tr><td>공식 기반 계산식</td><td>BMR</td><td>기초대사량 계산</td></tr><tr><td>공식 기반 계산식</td><td>HRmax</td><td>심박 기반 활동 기준</td></tr><tr><td>공식 기반 계산식</td><td>KDRIs/DRI</td><td>영양 권장 기준</td></tr><tr><td>공식 기반 계산식</td><td>7-step 체중 예측</td><td>BMR, TDEE, 섭취 칼로리, 7,700 kcal/kg 기준 참고 예측</td></tr><tr><td>운영 규칙</td><td>성별·나이·BMI 보정</td><td>사용자 특성별 활동 기준 조정</td></tr><tr><td>운영 규칙</td><td>질환 가중치</td><td>만성질환 맥락을 반영하는 프로젝트 규칙</td></tr><tr><td>운영 규칙</td><td>부족/낮음/적정/과다 기준</td><td>권장량 대비 상태를 단계로 표현</td></tr><tr><td>운영 규칙</td><td>영양제 매칭 가중치</td><td>성분명, 함량, 단위 매칭 기준</td></tr></tbody></table></div><p>공식 기반 계산식은 비교적 안정적인 기준으로 두고, 운영 규칙은 MVP 이후 데이터와 전문가 검토를 통해 조정할 수 있는 영역으로 분리합니다.</p></div>
+  </section>
+<section class="slide ">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">4. 알고리즘 파트</span>
+        <h2>4.3 OCR/LLM 결과와 preview 처리</h2>
+      </div>
+      <span class="count">13 / 20</span>
+    </header>
+    <div class="slide-body"><p>OCR이나 LLM이 만든 영양제 분석 결과는 바로 최종 기록이 아닙니다.</p><pre>영양제 라벨 촬영
+  -&gt; OCR 텍스트 추출
+  -&gt; LLM 구조화
+  -&gt; Pydantic 검증
+  -&gt; preview 결과 표시
+  -&gt; 사용자 수정·승인
+  -&gt; 최종 기록 저장</pre><p>이 흐름에서 AI는 판단을 확정하는 주체가 아닙니다. OCR 결과를 정리하고 설명을 돕는 역할이며, 최종 기록은 사용자가 확인한 뒤 저장됩니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">4. 알고리즘 파트</span>
+        <h2>4.4 안전성과 재현 가능성</h2>
+      </div>
+      <span class="count">14 / 20</span>
+    </header>
+    <div class="slide-body"><p>사용자에게 보이는 문구는 진단, 치료, 처방처럼 들리지 않게 제한합니다. 표현은 <strong>참고 정보</strong>, <strong>주의 가능성</strong>, <strong>전문가 상담 권장</strong> 형태로 유지합니다.</p><p>또한 나중에 같은 입력에 대해 같은 결과가 나왔는지 확인할 수 있도록 다음 정보를 함께 남깁니다.</p><div class="table-wrap"><table><thead><tr><th>저장해야 할 정보</th><th>이유</th></tr></thead><tbody><tr><td>입력값 snapshot</td><td>어떤 데이터로 계산했는지 확인</td></tr><tr><td>결과값 snapshot</td><td>사용자에게 어떤 결과를 보여줬는지 확인</td></tr><tr><td>알고리즘 버전</td><td>계산식 변경 여부 추적</td></tr><tr><td>KDRIs 출처 버전</td><td>영양 기준 변경 여부 추적</td></tr><tr><td>preview 승인 상태</td><td>사용자가 확인한 결과인지 구분</td></tr></tbody></table></div><p>알고리즘 파트의 방향은 기능 과장이 아니라 <strong>설명 가능성, 재현 가능성, 안전성</strong>을 강화하는 것입니다.</p></div>
+  </section>
+<section class="slide ">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">5. DB/백엔드 파트</span>
+        <h2>5.1 DB/백엔드 파트의 역할</h2>
+      </div>
+      <span class="count">15 / 20</span>
+    </header>
+    <div class="slide-body"><p>DB는 단순 저장소가 아니라, Lemon Aid의 로그인, 프로필, 식단, 영양제, 병원성 데이터, Agent 분석 결과를 <strong>user_id 기준으로 연결하는 서비스의 기억 공간</strong>입니다.</p><p>사용자는 로그인하고 프로필을 저장하며, 음식·영양제와 건강 데이터를 기록합니다. 백엔드는 이 데이터를 검증하고 필요한 만큼만 Agent에게 전달합니다. Agent 분석 결과는 다시 PostgreSQL에 저장되고, 다음 분석에 필요한 요약은 Agent Memory로 재활용됩니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">5. DB/백엔드 파트</span>
+        <h2>5.2 전체 데이터 흐름</h2>
+      </div>
+      <span class="count">16 / 20</span>
+    </header>
+    <div class="slide-body"><p>전체 구조는 다음과 같습니다.</p><pre>Flutter App
+  -&gt; FastAPI Backend
+  -&gt; PostgreSQL / Redis
+  -&gt; 분석 알고리즘 / LLM Agent</pre><div class="table-wrap"><table><thead><tr><th>구성</th><th>역할</th></tr></thead><tbody><tr><td>Flutter App</td><td>로그인, 사진 촬영, 프로필 입력, 챗봇 요청</td></tr><tr><td>FastAPI Backend</td><td>인증, 요청 검증, DB 저장, Agent 호출</td></tr><tr><td>PostgreSQL</td><td>사용자 정보, 프로필, 음식·영양제 기록, 분석 결과, Agent Memory 장기 저장</td></tr><tr><td>Redis</td><td>OCR 결과, KDRIs 기준값, API 호출 제한 등 임시 저장</td></tr><tr><td>LLM Agent</td><td>백엔드가 정리한 최소 데이터로 분석 보조</td></tr></tbody></table></div><p>중요한 점은 Flutter 앱이 DB에 직접 접근하지 않는다는 것입니다. 모든 요청은 FastAPI를 거쳐야 인증, 검증, 저장 정책을 일관되게 적용할 수 있습니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">5. DB/백엔드 파트</span>
+        <h2>5.3 PostgreSQL과 Redis 선택 이유</h2>
+      </div>
+      <span class="count">17 / 20</span>
+    </header>
+    <div class="slide-body"><p>PostgreSQL은 Lemon Aid 데이터 특성과 잘 맞습니다.</p><div class="table-wrap"><table><thead><tr><th>기능</th><th>Lemon Aid에서 필요한 이유</th></tr></thead><tbody><tr><td>JSONB</td><td>영양제 성분표, 음식 분석 결과처럼 구조가 유동적인 데이터 저장</td></tr><tr><td>TimescaleDB</td><td>걸음수, 체중, 심박수처럼 시간 순서로 쌓이는 건강 데이터 처리</td></tr><tr><td>RLS</td><td>user_id 기준으로 자기 데이터만 접근하도록 제한</td></tr></tbody></table></div><p>Redis는 영속 저장소가 아니라 반복 비용을 줄이기 위한 캐시 계층입니다.</p><div class="table-wrap"><table><thead><tr><th>Redis 사용처</th><th>목적</th></tr></thead><tbody><tr><td>OCR 결과 캐시</td><td>같은 사진 분석의 반복 호출 비용 절감</td></tr><tr><td>KDRIs 기준값 캐시</td><td>자주 조회되는 기준값 빠른 반환</td></tr><tr><td>rate limit</td><td>사용자별 호출 제한 관리</td></tr></tbody></table></div></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">5. DB/백엔드 파트</span>
+        <h2>5.4 주요 데이터와 Agent Memory</h2>
+      </div>
+      <span class="count">18 / 20</span>
+    </header>
+    <div class="slide-body"><p>주요 테이블은 user_id 기준으로 연결됩니다.</p><div class="table-wrap"><table><thead><tr><th>데이터</th><th>의미</th></tr></thead><tbody><tr><td>users</td><td>로그인 계정 정보</td></tr><tr><td>profiles</td><td>나이, 성별, 키, 몸무게, 만성질환, 복약 정보</td></tr><tr><td>foods / supplements</td><td>음식·영양제 마스터 데이터</td></tr><tr><td>meals / user_supplements</td><td>사용자의 실제 음식·영양제 기록</td></tr><tr><td>analysis_results / daily_scores</td><td>AI 분석 결과와 식단관리 점수</td></tr><tr><td>agent_memory / agent_runs</td><td>Agent 요약 기억과 호출 로그</td></tr></tbody></table></div><p>Agent Memory는 모든 원본 데이터를 저장하지 않습니다. 다음 분석에 필요한 최근 검사값 요약, 만성질환 태그, 복약 정보, 최근 주의사항, 식단관리 점수 같은 핵심 요약만 저장합니다.</p></div>
+  </section>
+<section class="slide dense">
+    <div class="pattern"></div>
+    <header class="slide-header">
+      <div>
+        <span class="pill">5. DB/백엔드 파트</span>
+        <h2>5.5 보안 방향</h2>
+      </div>
+      <span class="count">19 / 20</span>
+    </header>
+    <div class="slide-body"><p>Lemon Aid는 민감한 건강 정보를 다루기 때문에 데이터 접근과 저장 범위를 제한해야 합니다.</p><div class="table-wrap"><table><thead><tr><th>보안 방향</th><th>내용</th></tr></thead><tbody><tr><td>비밀번호 원문 저장 금지</td><td>해시로 검증</td></tr><tr><td>JWT 인증</td><td>요청마다 사용자 확인</td></tr><tr><td>user_id 기준 접근 제한</td><td>사용자별 데이터 분리</td></tr><tr><td>민감정보 암호화 검토</td><td>만성질환, 복약, 검사값 등 보호</td></tr><tr><td>감사 로그</td><td>민감정보 접근 기록</td></tr><tr><td>LLM 전달 데이터 최소화</td><td>Agent가 DB 전체를 보지 않도록 제한</td></tr></tbody></table></div><p>DB/백엔드 파트의 핵심은 사용자별 장기 데이터를 안전하게 저장하고, Redis로 반복 비용을 줄이며, LLM Agent에는 필요한 최소 데이터만 전달하는 구조입니다.</p></div>
+  </section>
+<section class="slide section-slide">
+    <div class="pattern"></div>
+    <div class="section-kicker">20</div>
+    <div class="section-panel">
+      <span class="pill">Section</span>
+      <h2>6. 1주차 통합 정리</h2>
+      <div class="slide-body"><p>1주차의 핵심은 각 파트가 따로 문서를 만든 것이 아니라, 하나의 서비스 흐름을 나누어 정리했다는 점입니다.</p><p>UX는 사용자가 결과를 믿고 고칠 수 있는 화면 규칙을 정리했습니다. 음식 비전은 음식 사진과 텍스트를 분석 후보로 만들고, 100g 기준 영양 프로필과 사용자 입력량 기반 재계산 구조를 잡았습니다. 알고리즘은 공식 기준과 운영 규칙을 분리해 설명 가능성과 안전성을 확보했습니다. DB/백엔드는 사용자별 기록과 Agent 분석 결과를 안전하게 연결하고 재사용하는 구조를 정리했습니다.</p><p>이 네 파트는 분리된 작업이 아니라, <strong>음식·영양제 입력이 사용자 건강관리 피드백으로 이어지는 하나의 서비스 흐름</strong>을 구성합니다.</p></div>
+    </div>
+    <span class="count">20 / 20</span>
+  </section>
+</body>
+</html>
