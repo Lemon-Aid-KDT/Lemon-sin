@@ -127,13 +127,15 @@ ALLOW_EXTERNAL_LLM=false
 
 ## 6. 구현 변경 사항
 
+세부 구현 플랜은 `docs/28-ollama-local-llm-connection-implementation-plan.md`를 기준으로 한다. 현 단계에서는 `OllamaSupplementParser`를 중심으로 안정화하고, 필요할 때만 얇은 transport/readiness 계층을 추가한다.
+
 | 영역 | 변경 내용 |
 |------|-----------|
 | `src/llm/base.py` | 기존 Adapter 인터페이스 유지 |
-| `src/llm/ollama.py` | 신규 `OllamaAdapter` 구현 |
-| `src/llm/external.py` | 기본 비활성화, 비식별 테스트 또는 승인 환경 전용 가드 |
-| `src/llm/schemas.py` | Pydantic 모델의 `model_json_schema()`를 Ollama `format`에 전달 |
-| `src/llm/prompts.py` | 의료법·약사법 금지 표현과 JSON 전용 응답 규칙 유지 |
+| `src/llm/ollama.py` | 현재 `OllamaSupplementParser` 운영, 향후 text/multimodal adapter 분리 |
+| `src/ocr/base.py` | OCR provider 인터페이스와 이미지 입력 컨테이너 |
+| `src/services/supplement_image_analysis.py` | 이미지 intake → 선택적 OCR → 구조화 parser orchestration |
+| `src/models/schemas/supplement_parser.py` | Pydantic 모델의 `model_json_schema()`를 Ollama `format`에 전달 |
 | 테스트 | mock 테스트 + 로컬 Ollama 통합 테스트 분리 |
 
 Ollama 구조화 출력은 Pydantic JSON Schema를 `format`에 넣고, 응답을 다시 Pydantic으로 검증하는 방식으로 구현한다. 검증 실패 시 재시도는 최대 1회로 제한하고, 실패 결과는 사용자 수정 화면으로 넘긴다.

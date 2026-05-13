@@ -132,6 +132,8 @@
 | `embedding_model` | `"clip-ViT-B-32"` | `enable_image_learning_pipeline` 와 동시 운용 | 기능 C 임베딩 모델 태그 |
 | `image_retention_days` | `0` | 동의 매트릭스 §3에 따라 운영자가 설정 | 보유 기간 제어(0 = 즉시 삭제) |
 
+학습 재사용은 `image_learning_dataset` 별도 동의, `ocr_image_processing`, `data_retention` 세 동의가 모두 활성화된 경우에만 `src/learning/consent_gate.py` 를 통과한다.
+
 플래그를 운영 환경에서 변경하는 경우 변경 이력을 본 문서 §10에 추가한다.
 
 ## 10. 변경 이력
@@ -146,4 +148,5 @@
 - [docs/14-pre-implementation-scope-and-rules.md](./14-pre-implementation-scope-and-rules.md)
 - [docs/15-regulated-feature-feasibility-and-compliance-plan.md](./15-regulated-feature-feasibility-and-compliance-plan.md)
 - [docs/12-local-llm-ollama-migration.md](./12-local-llm-ollama-migration.md)
+- [docs/30-multimodal-yolo-experiment-plan.md](./30-multimodal-yolo-experiment-plan.md)
 - [docs/06-tech-stack.md](./06-tech-stack.md)

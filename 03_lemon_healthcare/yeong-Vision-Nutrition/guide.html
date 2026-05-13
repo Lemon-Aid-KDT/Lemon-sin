@@ -1007,7 +1007,7 @@ Agent는 전체 원본 데이터를 모두 저장하지 않고, 개인화에 필
 
 | 분류 | 기술 | 선정 이유 | 앱에서의 역할 |
 |------|------|-----------|---------------|
-| 언어 | Python 3.11+ | 팀 익숙도, 데이터·AI 라이브러리 풍부, Type Hint 성숙 | 모든 비즈니스 로직과 알고리즘 |
+| 언어 | Python 3.13+ | 팀 익숙도, 데이터·AI 라이브러리 풍부, Type Hint 성숙 | 모든 비즈니스 로직과 알고리즘 |
 | 프레임워크 | FastAPI 0.110+ | Pydantic 기반 자동 OpenAPI/Swagger, async/await가 OCR/LLM I/O 바운드에 강점, Uvicorn workers로 병렬 | REST API 서빙, 인증, AI 호출 오케스트레이션 |
 | 검증 | Pydantic v2 | LLM 응답·외부 API 응답 강제 검증 | Ollama 구조화 응답 스키마 강제, 요청 바디 검증 |
 | 인증 | OAuth/OIDC Bearer JWT + PyJWT[crypto] | 실제 사용자 앱에서 외부 IdP가 발급한 access token을 백엔드 리소스 서버가 검증 | issuer·audience·JWKS 서명·typ/token_use·scope 검증 |
@@ -2076,7 +2076,7 @@ flowchart TB
 
 | 도구 | 용도 | 비고 |
 |------|------|------|
-| Python 3.11+ | 백엔드 언어 | Type Hint 성숙 |
+| Python 3.13+ | 백엔드 언어 | Type Hint 성숙 |
 | FastAPI 0.110+ | 웹 프레임워크 | async, Swagger 자동 |
 | Uvicorn | ASGI 서버 | workers로 병렬 |
 | Pydantic v2 | 스키마 검증 | LLM 응답·요청 강제 |
@@ -2692,7 +2692,7 @@ flowchart LR
 ### 17.3 팀원 1회 셋업 (D1)
 
 ```
-# Python 3.11+ 설치 후
+# Python 3.13+ 설치 후
 pip install pre-commit
 pre-commit install
 ```

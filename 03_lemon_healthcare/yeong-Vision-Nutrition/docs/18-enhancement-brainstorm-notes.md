@@ -429,7 +429,7 @@
 #### 추천 액션(상위 3개)
 1. [즉시] §3.1 멀티모달 시그니처 구현 시 "이미지 전처리 가이드" 문서 추가 (최대 10MB, 2048px, 포맷: JPEG/PNG)
 2. [Phase 1] §3 모델 운영안 테이블에 "M4 Pro 24GB 메모리 점유율(%) + 응답시간(ms)" 실측값 추가
-3. [Phase 2] §4 변경 아키텍처 플로우에 실제 `OllamaAdapter` 클래스, `GemmaMultimodalAdapter` 구현체 명시
+3. [Phase 2] §4 변경 아키텍처 플로우에 현행 `OllamaSupplementParser`와 향후 multimodal parser adapter 경계를 명시
 
 ---
 
@@ -834,7 +834,7 @@
 - vs 필라이즈: 필라이즈는 개별 기능(BMI·활동) 엔드포인트만, Lemon은 영양제 등록 E2E 통합. 결과는 "참고치", 약물·건강상태 변수 미고려 공시
 
 #### 추천 액션(2개)
-1. [즉시] `src/api/v1/supplements.py` 골격 + `service/supplement_service.py` 비즈니스 로직 분리, custom exceptions 정의
+1. [즉시] `src/api/v1/supplements.py` + `src/services/supplement_image_analysis.py` orchestration 경계와 custom exceptions 정의
 2. [Phase 2] FastAPI Depends 패턴 + AsyncSession 의존성 주입 예시 추가, 통합 테스트 케이스 3개 작성
 
 ---
@@ -1397,7 +1397,7 @@
 | P2-03 | docs/07 §4.2 | 식약처 API 스키마 정의 + `HRmaxMethod` enum |
 | P2-04 | docs/09 §3.1 | KDRIs PDF→CSV 자동화 + 식약처 Redis TTL 다층 |
 | P2-05 | docs/11 §5 | 각 구현 섹션 Pydantic 입출력·예외 박스 추가 |
-| P2-06 | docs/12 §4 | `OllamaAdapter`/`GemmaMultimodalAdapter` 구현체 명시 |
+| P2-06 | docs/12 §4 | `OllamaSupplementParser` 현행 연결과 향후 multimodal parser adapter 경계 명시 |
 | P2-07 | docs/13 §3 | 부족 영양소 임계값(35/70/130) `nutrition-classification.settings.json` 분리 |
 | P2-08 | docs/14 §3 | 백업·감사 로그 정책 보강 |
 | P2-09 | docs/15 §3.2~3.3 | 처방전/검사표 UI 와이어프레임 |
@@ -1478,7 +1478,7 @@
 | T-030 | dev-guides/27 | 플랫폼별 진단 명령 | 즉시 | — |
 | T-031 | dev-guides/29 | 산출물 완료도·검증 체크리스트 | 즉시 | — |
 | T-032 | docs/06 §3.6 | Ollama 모델 벤치마크 | Phase 2 | enable_multimodal_llm |
-| T-033 | docs/12 §4 | OllamaAdapter 구현체 명시 | Phase 2 | enable_multimodal_llm |
+| T-033 | docs/12 §4 | OllamaSupplementParser 현행 연결 명시 | Phase 2 | enable_multimodal_llm |
 | T-034 | docs/13 §3 | 영양소 임계값 settings 분리 | Phase 2 | — |
 | T-035 | docs/15 §3.2~3.3 | UI 와이어프레임 | Phase 2 | enable_prescription_ocr(신설 후보) |
 | T-036 | docs/17 §4.3 | k-anonymity 스크립트 | Phase 2 | enable_image_learning_pipeline |

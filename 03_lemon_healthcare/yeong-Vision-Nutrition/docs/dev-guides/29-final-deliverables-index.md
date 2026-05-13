@@ -191,14 +191,14 @@ lemon-healthcare-project/
 | 04 | `04-weight-prediction-7step.md` | 750 |
 | 05 | `05-kdris-lookup.md` | 962 |
 
-#### 🟢 Phase 2 가이드: OCR + LLM + 모바일 (7,627줄)
+#### 🟢 Phase 2 가이드: OCR + LLM + 모바일 (4,481줄)
 
 | # | 파일 | 줄수 |
 |---|------|-----|
 | 06 | `06-deficient-nutrient-diagnosis.md` | 1,037 |
-| 07 | `07-ocr-pipeline.md` | 1,094 |
-| 08 | `08-llm-supplement-parsing.md` | 1,119 |
-| 09 | `09-supplement-registration-api.md` | 1,121 |
+| 07 | `07-ocr-pipeline.md` | 53 |
+| 08 | `08-llm-supplement-parsing.md` | 59 |
+| 09 | `09-supplement-registration-api.md` | 76 |
 | 10 | `10-mobile-flutter-setup.md` | 781 |
 | 11 | `11-mobile-camera-screen.md` | 854 |
 | 12 | `12-mobile-healthkit-integration.md` | 770 |

@@ -204,11 +204,14 @@ docker logs --tail 200 backend-prod 2>&1 | grep -E "OCR|LLM|FCM" | tail -20
 # - Naver Cloud: https://status.ncloud.com/
 ```
 
-### Step 2: Adapter 폴백 동작 확인
+### Step 2: OCR adapter 주입 상태 확인
 ```python
-# OCR 백업이 작동하는지
-from src.ocr.pipeline import OCRPipeline
-# 로그에 "Fallback OCR called" 확인
+# 현행 기본값은 intake-only이며 외부 OCR provider는 주입되어 있지 않다.
+from src.ocr.providers.noop import NoopOCRAdapter
+from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
+
+adapters = SupplementImageAnalysisAdapters(ocr=NoopOCRAdapter())
+# 실제 provider 장애 시에는 주입된 OCRAdapter 구현체와 provider 로그를 확인한다.
 ```
 
 ### Step 3: 폴백마저 실패하면

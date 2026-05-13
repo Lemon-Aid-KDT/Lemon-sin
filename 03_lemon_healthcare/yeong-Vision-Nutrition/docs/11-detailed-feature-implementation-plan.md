@@ -55,7 +55,7 @@ MVP는 "건강 정보 제공 PoC"로 제한한다. 질병의 진단, 치료, 처
 
 ### 3.2 기술 원칙
 
-- 백엔드는 Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic 기준으로 시작한다.
+- 백엔드는 Python 3.13+, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic 기준으로 시작한다.
 - 모바일은 Flutter, Riverpod, go_router, Dio, Freezed 기준으로 시작한다.
 - OCR/LLM은 Adapter 인터페이스를 반드시 거친다. LLM 기본 Provider는 환자 개인정보 보호를 위해 Ollama 로컬 LLM으로 둔다.
 - 모든 public 함수와 클래스는 Google-style docstring 또는 Dart doc comment를 작성한다.
@@ -377,7 +377,7 @@ DB 모델:
 정책:
 
 - 7-step 모델은 기본 모델로 유지한다.
-- Hall 모델은 30일 이상 예측 또는 고도화 화면에서 선택 적용한다.
+- Hall 모델은 기능 플래그 기본 `false` 뒤에 두고, 고도화 화면 또는 별도 contract 승인 이후에만 선택 적용한다.
 - 결과는 "예측 참고값"으로 표현한다.
 
 ### 5.11 Phase 3: 피드백과 푸시 알림
