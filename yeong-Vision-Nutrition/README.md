@@ -145,6 +145,7 @@
 ### AI / 외부 API
 - **OCR**: Google Cloud Vision API (주력) · Naver CLOVA OCR (백업)
 - **LLM**: Ollama 로컬 LLM (qwen3.5 / gemma4) · 외부 LLM은 비식별·승인 환경 전용
+- **LLM 서빙 엔진 환경별 가이드**: Mac · Windows · Linux 별 Ollama / MLX-LM / vLLM 설치·운영 표준 → [`34-llm-serving-engines-multi-environment-setup-guide.md`](./docs/34-llm-serving-engines-multi-environment-setup-guide.md)
 - **데이터셋**: AI Hub 한국 음식 이미지 (Phase 3)
 
 ### 인프라 · DevOps
