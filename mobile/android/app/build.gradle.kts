@@ -29,6 +29,21 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+
+        // ─── 카카오 OAuth 딥링크 ───
+        // AndroidManifest.xml 의 ${KAKAO_NATIVE_APP_KEY} 자리에 주입.
+        // 보안: 키는 소스에 박지 않음. 빌드 시 -P 플래그 또는 환경변수로 전달:
+        //   flutter build apk --dart-define=KAKAO_NATIVE_APP_KEY=xxxx \
+        //                     -Pkakao.nativeAppKey=xxxx
+        //   또는 ~/.gradle/gradle.properties 에 kakao.nativeAppKey=xxxx
+        //
+        // 미주입 상태에선 placeholder "DISABLED" 가 들어가 카카오 딥링크가 안 잡힘
+        // (앱은 정상 빌드되고 카카오 버튼만 비활성).
+        val kakaoNativeAppKey: String =
+            (project.findProperty("kakao.nativeAppKey") as String?)
+                ?: System.getenv("KAKAO_NATIVE_APP_KEY")
+                ?: "DISABLED"
+        manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] = kakaoNativeAppKey
     }
 
     buildTypes {

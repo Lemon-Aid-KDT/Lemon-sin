@@ -1,8 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 백엔드 API 호출 + 카카오/구글 OAuth -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="lemon_aid"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -30,16 +34,30 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-    </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+        <!-- ─── 카카오 로그인 딥링크 콜백 ───
+             카카오 계정 로그인 (카카오톡 미설치 시 폴백) 후 앱으로 돌아올 때 사용.
+             scheme = "kakao{NATIVE_APP_KEY}" — 빌드 시 manifestPlaceholders 로 주입.
+             값은 app/build.gradle 에서 dart-define 으로 받은 키를 placeholder 로 전달.  -->
+        <activity
+            android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
+            android:exported="true">
+            <intent-filter android:label="flutter_web_auth">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kakao${KAKAO_NATIVE_APP_KEY}" android:host="oauth"/>
+            </intent-filter>
+        </activity>
+    </application>
+    <!-- Required to query activities that can process text + 카카오톡 앱 visibility (Android 11+).
+         https://developer.android.com/training/package-visibility -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- 카카오톡 앱 — 카카오톡으로 로그인 호출 시 패키지 visibility 필요 -->
+        <package android:name="com.kakao.talk" />
     </queries>
 </manifest>
