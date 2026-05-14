@@ -13,19 +13,21 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lottie/lottie.dart';
 
+import '../providers/auth_provider.dart';
 import '../utils/router.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _floatController;
   late final AnimationController _lottieController;
@@ -108,15 +110,19 @@ class _SplashScreenState extends State<SplashScreen>
     String? errorMessage;
 
     // 실제 인증 / 네트워크 호출 future
+    // AuthController.bootstrap() 이 토큰 읽고 상태 결정 — unknown → authenticated/unauthenticated.
     Future<String> authFuture() async {
       try {
-        // TODO: 실제 인증 체크
-        //   - SharedPreferences 에서 auth_token 읽기
-        //   - 토큰 있으면 /auth/me 호출해서 유효성 검증
-        //   - 응답에 따라 /home 또는 /login
-        //
-        // 지금은 mock: 즉시 응답 → /login
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        // AuthState 가 unknown 이 아닐 때까지 polling (보통 50ms 이내 끝남)
+        // bootstrap 이 끝나면 isReady = true.
+        for (var i = 0; i < 100; i++) {
+          final state = ref.read(authControllerProvider);
+          if (state.isReady) {
+            return state.isAuthenticated ? '/shell/home' : AppRoute.login;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        // 5초 동안 부트스트랩 안 끝나면 로그인 화면으로
         return AppRoute.login;
       } catch (_) {
         errorMessage = '잠시 후 다시 시도해주세요';

@@ -8,29 +8,36 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../providers/auth_provider.dart';
+import '../../services/auth_service.dart';
 import '../../utils/router.dart';
 import '../../utils/design_tokens_v2.dart';
 import '../../widgets/common/app_modals.dart';
 
-class VerifyEmailScreen extends StatefulWidget {
-  const VerifyEmailScreen({super.key});
+class VerifyEmailScreen extends ConsumerStatefulWidget {
+  const VerifyEmailScreen({super.key, this.email});
+
+  /// 라우트 파라미터로 받은 이메일. null 이면 fallback (테스트용).
+  final String? email;
 
   @override
-  State<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
+  ConsumerState<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
 }
 
-class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
+class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   static const int _codeLength = 6;
-  static const Duration _expireAfter = Duration(minutes: 5);
-  static const Duration _resendCooldown = Duration(seconds: 10);
+  // 백엔드 email_code_ttl_minutes 와 동일 (10분)
+  static const Duration _expireAfter = Duration(minutes: 10);
+  // 백엔드 email_send_min_interval_seconds 와 동일 (60초)
+  static const Duration _resendCooldown = Duration(seconds: 60);
 
   late List<TextEditingController> _ctrls;
   late List<FocusNode> _focs;
 
-  // mock — 실제는 Signup 에서 라우트 파라미터로 전달
-  String _email = 'example@email.com';
+  late String _email;
 
   Duration _remaining = _expireAfter;
   Timer? _timer;
@@ -49,10 +56,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   @override
   void initState() {
     super.initState();
+    _email = widget.email ?? 'example@email.com';
     _ctrls = List.generate(_codeLength, (_) => TextEditingController());
     _focs = List.generate(_codeLength, (_) => FocusNode());
     _startTimer();
-    _startCooldown(); // 진입 직후 10초 비활성
+    // signup 에서 이미 첫 코드 보냈음 → 재발송 쿨다운 즉시 시작 (1분)
+    _startCooldown();
   }
 
   @override
@@ -136,28 +145,37 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   Future<void> _submit() async {
     if (_verifying || _expired) return;
     if (_code.length != _codeLength) return;
-    setState(() => _verifying = true);
+    setState(() {
+      _verifying = true;
+      _errorMsg = null;
+    });
     HapticFeedback.lightImpact();
 
-    // TODO(D2): POST /auth/verify-email {token}
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-
-    if (!mounted) return;
-    // mock: '000000' 만 통과 (개발용)
-    final ok = _code == '000000' || _code.length == 6; // 임시 통과
-    if (ok) {
+    try {
+      await ref.read(authControllerProvider.notifier).verifyEmailCode(
+            email: _email,
+            code: _code,
+            purpose: 'signup',
+          );
+      if (!mounted) return;
       HapticFeedback.mediumImpact();
       setState(() => _verifying = false);
-      context.go(AppRoute.consent);
-    } else {
-      _onWrongCode();
+      // 인증 성공 → 토큰 자동 발급됨 → 라우터 가드가 /shell/home 으로 자동 이동.
+      // 명시적으로 한 번 더 push — 가드 늦게 반응할 때 대비.
+      context.go(AppRoute.shellHome);
+    } on AuthFailure catch (e) {
+      if (!mounted) return;
+      _onWrongCode(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      _onWrongCode('인증에 실패했어요. 잠시 후 다시 시도해주세요');
     }
   }
 
-  void _onWrongCode() {
+  void _onWrongCode([String? message]) {
     setState(() {
       _verifying = false;
-      _errorMsg = '코드가 일치하지 않아요. 다시 입력해주세요';
+      _errorMsg = message ?? '코드가 일치하지 않아요. 다시 입력해주세요';
       for (final c in _ctrls) c.clear();
     });
     HapticFeedback.heavyImpact();
@@ -171,25 +189,48 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       _showFallbackSheet();
       return;
     }
-    // TODO(D2): POST /auth/resend-verification
-    setState(() {
-      _resendCount += 1;
-      for (final c in _ctrls) c.clear();
-      _errorMsg = null;
-    });
-    _startTimer();
-    _startCooldown();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('새 코드를 보냈어요 ($_resendCount/5)'),
-        backgroundColor: AppColor.ink,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-    FocusScope.of(context).requestFocus(_focs[0]);
+    try {
+      await ref.read(authControllerProvider.notifier).sendEmailCode(
+            email: _email,
+            purpose: 'signup',
+          );
+      if (!mounted) return;
+      setState(() {
+        _resendCount += 1;
+        for (final c in _ctrls) c.clear();
+        _errorMsg = null;
+      });
+      _startTimer();
+      _startCooldown();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('새 코드를 보냈어요 ($_resendCount/5)'),
+          backgroundColor: AppColor.ink,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      FocusScope.of(context).requestFocus(_focs[0]);
+    } on AuthFailure catch (e) {
+      if (!mounted) return;
+      // rate-limit (429) 등 백엔드 메시지 그대로 노출
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('재발송 중 오류가 발생했어요'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _showFallbackSheet() {

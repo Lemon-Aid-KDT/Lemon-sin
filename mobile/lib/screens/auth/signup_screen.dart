@@ -5,20 +5,22 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../utils/router.dart';
 import '../../utils/design_tokens_v2.dart';
 import '../../widgets/common/app_modals.dart';
 
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _email = TextEditingController();
   final _pw = TextEditingController();
   final _pw2 = TextEditingController();
@@ -83,10 +85,37 @@ class _SignupScreenState extends State<SignupScreen> {
   void _submit() async {
     if (!_allOk || _submitting) return;
     setState(() => _submitting = true);
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    final controller = ref.read(authControllerProvider.notifier);
+    final email = _email.text.trim();
+    final ok = await controller.signUpWithEmail(
+      email: email,
+      password: _pw.text,
+      displayName: _name.text.trim(),
+    );
+
     if (!mounted) return;
     setState(() => _submitting = false);
-    context.push(AppRoute.verifyEmail);
+
+    if (ok) {
+      // 회원가입 성공 → 이메일 인증 화면으로. 백엔드가 signup 직후 자동으로
+      // 6 자리 코드 발송한 상태. verify 화면이 이메일을 표시하고 코드 입력 받음.
+      context.go('${AppRoute.verifyEmail}?email=${Uri.encodeComponent(email)}');
+    } else {
+      _showError(
+        ref.read(authControllerProvider).errorMessage ?? '회원가입에 실패했어요',
+      );
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ));
   }
 
   Future<bool> _confirmDiscard() async {

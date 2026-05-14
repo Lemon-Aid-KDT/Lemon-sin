@@ -4,8 +4,10 @@
 // 참조: PROJECT_GUIDE.md §3.4 인증·온보딩 흐름 / §3.5 주요 화면
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../providers/auth_provider.dart';
 import '../screens/splash_screen.dart';
 import '../screens/auth/login_screen_v3.dart';
 import '../screens/auth/signup_screen.dart';
@@ -47,15 +49,45 @@ class AppRoute {
   static const String tokensPreview = '/devtools/tokens';
 }
 
-/// 라우터 생성. 인증 가드는 D2에 auth_provider와 연결해서 추가.
-///
-/// 2026-05-11 결정: Flutter Splash 화면 제거 — 네이티브 LaunchTheme (앱 아이콘 splash) 가
-/// 유일한 splash. 사용자 시각 splash 한 장만 보임.
-///   네이티브 splash (앱 아이콘) → Login 바로 진입
-final GoRouter appRouter = GoRouter(
-  initialLocation: AppRoute.splash,
-  debugLogDiagnostics: true,
-  routes: [
+/// Riverpod ChangeNotifier 어댑터 — AuthState 변경 시 go_router refresh.
+class _AuthRouterListenable extends ChangeNotifier {
+  _AuthRouterListenable(this._ref) {
+    _ref.listen<AuthState>(authControllerProvider, (_, __) {
+      notifyListeners();
+    });
+  }
+  final Ref _ref;
+}
+
+/// 라우터 Provider — Riverpod 안에서 만들어 인증 상태와 자동 연결.
+final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
+  final listenable = _AuthRouterListenable(ref);
+  return GoRouter(
+    initialLocation: AppRoute.splash,
+    debugLogDiagnostics: true,
+    refreshListenable: listenable,
+    redirect: (context, state) {
+      final auth = ref.read(authControllerProvider);
+      // 부트스트랩 전엔 splash 유지 — splash 화면이 자체 분기
+      if (!auth.isReady) return null;
+      final path = state.matchedLocation;
+      final isAuthRoute = path == AppRoute.login ||
+                          path == AppRoute.signup ||
+                          path == AppRoute.verifyEmail ||
+                          path == AppRoute.consent ||
+                          path == AppRoute.splash;
+      // 로그인 안 됐는데 보호 라우트로 가려는 경우
+      if (!auth.isAuthenticated && !isAuthRoute) {
+        return AppRoute.login;
+      }
+      // 로그인 됐는데 login/signup 화면이면 셸로 보냄
+      if (auth.isAuthenticated &&
+          (path == AppRoute.login || path == AppRoute.signup)) {
+        return '/shell/home';
+      }
+      return null;
+    },
+    routes: [
     // Splash 라우트는 라우터에 등록되어 있지만 initialLocation에서 빠짐
     // 필요시 (백엔드 인증 체크) /splash 로 명시 진입 가능
     GoRoute(
@@ -79,7 +111,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoute.verifyEmail,
       name: 'verifyEmail',
-      builder: (context, state) => const VerifyEmailScreen(),
+      builder: (context, state) => VerifyEmailScreen(
+        email: state.uri.queryParameters['email'],
+      ),
     ),
     GoRoute(
       path: AppRoute.consent,
@@ -230,4 +264,5 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
   ),
-);
+  );
+});

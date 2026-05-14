@@ -26,6 +26,17 @@ dependencies:
   dio: ^5.4.3
   retrofit: ^4.1.0
 
+  # 토큰 보안 저장 (access / refresh JWT)
+  flutter_secure_storage: ^9.2.2
+
+  # OAuth 로그인
+  # 카카오: Native App Key 는 dart-define 으로 빌드 시 주입.
+  #   flutter run --dart-define=KAKAO_NATIVE_APP_KEY=xxxx
+  kakao_flutter_sdk_user: ^1.9.5
+  # 구글: Client ID 는 google-services.json (Android) / GoogleService-Info.plist (iOS)
+  #   또는 dart-define=GOOGLE_SERVER_CLIENT_ID=xxxx 로 주입.
+  google_sign_in: ^6.2.1
+
   # 카메라·갤러리
   image_picker: ^1.1.2
   camera: ^0.11.0
