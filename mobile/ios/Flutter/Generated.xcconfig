@@ -1,6 +1,6 @@
 // This is a generated file; do not edit or check into version control.
 FLUTTER_ROOT=C:\dev\flutter
-FLUTTER_APPLICATION_PATH=C:\Users\KDS09\OneDrive\Dokumen\Claude\Projects\lemon_healthcare\Lemon_Aid\mobile
+FLUTTER_APPLICATION_PATH=C:\Claude_Projects\lemon_healthcare\Lemon_Aid\mobile
 COCOAPODS_PARALLEL_CODE_SIGN=true
 FLUTTER_TARGET=lib\main.dart
 FLUTTER_BUILD_DIR=build
