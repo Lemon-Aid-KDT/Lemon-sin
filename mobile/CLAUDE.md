@@ -13,6 +13,20 @@
 3. **전면 수정은 흔하다.** 디자인 / 5 탭 구조 / 카드 모양 — 한 번 결정했어도 바뀔 수 있다. 옛 결정에 묶이지 말고 새 지시 들어오면 즉시 따른다.
 4. **최고의 작업물.** "동작하면 됨" 으로 끝내지 않는다. 디자인 토큰 / 약속 다 따른다.
 5. **기획서 (`PROJECT_GUIDE.md`) 는 기준**. 단, UX 결정으로 바뀐 부분은 이 문서의 §3 "결정 누적" 과 **사용자의 가장 최근 지시** 를 따른다 — 새 지시 > 이 문서 > 기획서 순서.
+6. **보안 — 키는 절대 소스에 박지 않는다.**
+   - API 키 / OAuth Native App Key / Client Secret / DB 비번 — 어떤 키도 `.dart` 파일에 평문으로 박지 않는다.
+   - 주입 방법: `--dart-define=KEY=value`. `lib/utils/oauth_config.dart` 처럼 `String.fromEnvironment()` 한 군데에서만 읽는다.
+   - `.env` 는 깃에 안 올라가지만 `.env.example` 은 올라간다 — example 에 실 키 적지 말 것.
+   - 키 노출 발견 시 즉시 (1) 해당 키 회전 (재발급), (2) 사용자 / 팀에 알림, (3) 가능하면 history rewrite. 노출된 키는 회전 전까지 작동 가능한 상태로 둔다고 가정.
+
+7. **남용 방지 (rate-limit / 일일 한도) — 비용 / 발송 / 외부 API 호출은 무조건 가드.**
+   - 이메일·SMS·푸시 등 **외부에 돈 / 평판이 나가는 모든 작업**에 rate-limit 필수.
+   - 기본 정책 (개별 정책은 §11 참고):
+     - **이메일 인증 코드 발송**: 동일 이메일 기준 **1 분에 1 회**, **하루 5 회**까지.
+     - **비번 찾기 / 재인증 코드**: 위와 동일 (퍼퍼스 별 카운터 분리).
+     - **로그인 시도 실패**: 동일 이메일 기준 **10 분에 5 회** (계정 잠금 또는 추가 인증 요구).
+   - 제한 초과 시 응답: **429 Too Many Requests** + 사용자에게 "잠시 후 다시 시도해주세요. 약 N 초 후 가능" 안내.
+   - 백엔드가 유일한 진실 — 모바일도 같이 가드하되 (UX 차원), 백엔드 가드 없는 호출은 절대 만들지 않는다.
 
 ---
 
@@ -223,3 +237,85 @@
 - 발표 / 브리핑 PDF — `Lemon_Aid_Week1_Integrated_Briefing.pdf` 가 1주차 최종본.
 - 2주차 의제 — 메인 5 탭 셸 + 본 화면 (홈 / 카메라 결과 카드 / 챗) + 빈 화면 3 종 통일.
 - 발주처 / AI 팀 합의 대기 항목 — AI 응답 메타 4 키 (`confidence` · `source` · `editable_fields[]` · `fallback_text`).
+
+---
+
+## 10. 인증 / 보안 정책 (2026-05-13 확정)
+
+### 10.1 계정 매칭 / 중복
+
+- **OAuth ID 매칭 우선** — 같은 `google_id` / `kakao_id` 면 같은 사람으로 간주 (자동 로그인).
+- **이메일 중복 차단** — 다른 방식이라도 같은 이메일이면 신규 가입 거부 (409 Conflict).
+  - 예: 이메일로 자체 가입한 `a@b.com` 이 있으면, 같은 이메일의 카카오 / 구글 신규 가입 차단.
+  - 안내문에 어떤 방식으로 가입돼 있는지 분기 노출 ("구글로 가입돼 있어요").
+- **다른 이메일이면 OK** — 같은 사람이라도 서로 다른 이메일이면 별개 계정 허용.
+- **이메일 동의 미수락 OAuth** (카카오에서 `kakao_account.email` 미동의) — `email=None` 으로 들어옴. 이 케이스는 이메일 중복 검사 스킵 (`kakao_id` 매칭만).
+
+### 10.2 이메일 인증
+
+- **시점**: 자체 회원가입 직후 강제. 미인증 유저는 보호 라우트 진입 시 verify-email 로 redirect.
+- **UX**: 6 자리 숫자 코드. 매직 링크 안 씀 (시니어 친화).
+- **유효 시간**: 10 분. 만료 시 재발송 요구.
+- **발송 채널**: Resend (개발 / MVP). 운영 가면 도메인 인증 후 자체 도메인 발신자로.
+- **재사용**: 비밀번호 찾기 등 다른 흐름에서도 같은 코드 발송 인프라 재사용 (`purpose` 컬럼으로 구분).
+
+### 10.3 Rate Limit (남용 방지) — **필수**
+
+이메일 / SMS / 푸시 / 외부 API 호출 모두 백엔드에서 가드. **모바일 가드는 보조 (UX 차원)**.
+
+| 작업 | 동일 식별자 기준 | 단기 제한 | 일일 제한 |
+|---|---|---|---|
+| 이메일 인증 코드 발송 | email | **1 분에 1 회** | **하루 5 회** |
+| 비밀번호 찾기 코드 발송 | email | 1 분에 1 회 | 하루 5 회 |
+| 로그인 시도 실패 | email + IP | 10 분에 5 회 | (계정 잠금 또는 captcha) |
+| OAuth 토큰 검증 | IP | 1 분에 10 회 | — |
+
+- 초과 시 응답 **429 Too Many Requests** + `Retry-After` 헤더.
+- 모바일 메시지: "잠시 후 다시 시도해주세요 (N 초 후 가능)".
+- 카운터 저장소: Redis (이미 docker-compose 에 들어있음). 키: `rl:{purpose}:{email}` , TTL 으로 자동 만료.
+- **개발 환경 우회**: `kDebugMode` + 특정 테스트 이메일 (예: `dev+*@lemonaid.test`) 만 rate-limit 면제. 운영에선 절대 우회 없음.
+
+### 10.4 비밀번호 정책
+
+- 최소 8 자, 영문 + 숫자 혼합 (특수문자 권장 — 강제 아님).
+- 평문 저장 금지 (bcrypt — 백엔드 `passlib`).
+- 사용자 표시 입력 마스킹 기본, 토글로 보이기 허용.
+
+### 10.5 세션 / 토큰
+
+- JWT access 30 분 / refresh 7 일.
+- access 만료 시 refresh 로 자동 갱신 (api_client 인터셉터).
+- refresh 도 만료 → 강제 로그아웃, `/login` 으로.
+- 로그아웃 시 백엔드 refresh 토큰 revoke + 로컬 secure storage 삭제.
+
+### 10.6 iOS 합류 시 작업 목록 (2026-05-13 합의 — Android 끝나고 진행)
+
+**책임**: 팀 Mac 보유자 + Apple Developer 계정 (팀이 발급, 형 부담 X).
+
+**GCP 추가 작업**:
+- iOS OAuth Client ID 발급 — Bundle ID `com.lemonaid.lemon_aid`
+- 새 환경변수: `GOOGLE_IOS_CLIENT_ID` (Android 와 별도)
+- Web Client ID 는 그대로 공용 (백엔드 검증용)
+
+**카카오 추가 작업**:
+- 디벨로퍼스 → 플랫폼 → iOS 등록, Bundle ID 입력
+- Native App Key 는 Android 와 동일한 값 사용 (플랫폼 공용)
+
+**iOS 측 코드**:
+- `mobile/ios/Runner/Info.plist`:
+  - URL Scheme: `kakao{KAKAO_NATIVE_APP_KEY}`
+  - URL Scheme: 구글 `REVERSED_CLIENT_ID`
+  - LSApplicationQueriesSchemes: `kakaokompassauth`, `kakaolink`
+- 다트 코드는 변경 거의 없음 (`kakao_flutter_sdk_user`, `google_sign_in` 둘 다 iOS/Android 공용)
+
+**Apple Sign-In (App Store 가이드라인 4.8 — 소셜 로그인 있으면 필수)**:
+- `sign_in_with_apple` 패키지 추가
+- 백엔드 `POST /api/v1/auth/apple` 엔드포인트 (apple_id 컬럼 추가 필요)
+- Apple Developer 콘솔에서 "Sign in with Apple" capability 활성화
+- 로그인 화면 "Apple 로 계속하기" 버튼 onPressed 연결
+
+**현재 코드 준비 상태**:
+- `OAuthConfig` 가 키 한 군데로 모음 — iOS 추가돼도 그대로 확장
+- `OAuthService.signInWithKakao()`, `signInWithGoogle()` 플랫폼 무관 동작
+- 백엔드 `/auth/kakao`, `/auth/google` 도 토큰만 받아 검증 — 클라이언트 OS 무관
+- Android 코드 (manifest / build.gradle) 외엔 iOS 합류로 인한 모바일 코드 변경 거의 없음
