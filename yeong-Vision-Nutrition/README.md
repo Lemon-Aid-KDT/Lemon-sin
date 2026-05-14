@@ -1,12 +1,12 @@
 <!-- 
   README.md
-  Lemon Healthcare Project — 건강의신 AI 모델
+  Lemon Healthcare Project — Lemon Aid
   최종 작성일: 2026-05-03
 -->
 
 <div align="center">
 
-# 🍋 Lemon Healthcare — 건강의신 AI 모델
+# 🍋 Lemon Healthcare — Lemon Aid
 
 ### 영양제·식단·활동을 통합 분석하여 만성질환자 중심의 맞춤형 건강 관리를 제공하는 AI 헬스케어 플랫폼
 
@@ -664,7 +664,7 @@ Phase:  │ 0 │     1     │       2        │     3      │  4   │
 ## 👥 팀
 
 ```
-경북대학교 AI/빅데이터 전문가 양성 과정 — TBD팀
+경북대학교 AI/빅데이터 전문가 양성 과정 — Lemon-Aid
 
 🔧 Backend Engineer  : TBD
 📱 Mobile Engineer   : TBD
@@ -716,7 +716,7 @@ FastAPI · Flutter · PostgreSQL · TimescaleDB · Redis · Docker · pytest · 
 ```
 MIT License
 
-Copyright (c) 2026 경북대학교 AI/빅데이터 전문가 양성 과정 — TBD팀
+Copyright (c) 2026 경북대학교 AI/빅데이터 전문가 양성 과정 — Lemon-Aid
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -739,13 +739,13 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. ...
 
 <div align="center">
 
-### 🍋 Lemon Healthcare — 건강의신 AI 모델
+### 🍋 Lemon Healthcare — Lemon Aid
 
 *"필라이즈가 못하는 영역, 만성질환자를 위한 의료 데이터 통합 플랫폼"*
 
 **[📖 1단계 문서부터 시작하기](./docs/01-project-overview.md)**
 
-Made with 💛 by 경북대학교 AI/빅데이터 전문가 양성 과정 TBD팀  
+Made with 💛 by 경북대학교 AI/빅데이터 전문가 양성 과정 Lemon-Aid  
 in collaboration with **(주)레몬헬스케어**
 
 </div>
