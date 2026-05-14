@@ -38,11 +38,11 @@ class _JwksClient:
     def __init__(self, key: object) -> None:
         self._key = key
 
-    def get_signing_key_from_jwt(self, _token: str) -> _SigningKey:
+    def get_signing_key(self, _key_id: str) -> _SigningKey:
         """Return the configured signing key.
 
         Args:
-            _token: JWT string. The fake does not inspect it.
+            _key_id: JWT key ID. The fake does not inspect it.
 
         Returns:
             Signing key wrapper.
@@ -76,15 +76,29 @@ def _key_pair() -> tuple[RSAPrivateKey, RSAPublicKey]:
     return private_key, private_key.public_key()
 
 
-def _token(private_key: RSAPrivateKey, **claims: Any) -> str:
-    """Build a signed RS256 JWT for tests.
+class _UnavailableJwksClient:
+    """Fake JWKS client that simulates an unavailable identity provider."""
+
+    def get_signing_key(self, _key_id: str) -> _SigningKey:
+        """Raise the same connection error class PyJWT uses for JWKS fetch failures.
+
+        Args:
+            _key_id: JWT key ID from the token header.
+
+        Raises:
+            jwt.PyJWKClientConnectionError: Always raised to simulate provider timeout.
+        """
+        raise jwt.PyJWKClientConnectionError("JWKS endpoint timed out.")
+
+
+def _default_claims(**claims: Any) -> dict[str, Any]:
+    """Build default JWT claims for auth tests.
 
     Args:
-        private_key: RSA private key.
         **claims: Claim overrides.
 
     Returns:
-        Encoded JWT string.
+        JWT claims dictionary.
     """
     now = datetime.now(UTC)
     payload = {
@@ -96,7 +110,31 @@ def _token(private_key: RSAPrivateKey, **claims: Any) -> str:
         "scope": "analysis:write profile:read",
     }
     payload.update(claims)
-    return jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": "test"})
+    return payload
+
+
+def _token(
+    private_key: RSAPrivateKey,
+    *,
+    headers: dict[str, Any] | None = None,
+    **claims: Any,
+) -> str:
+    """Build a signed RS256 JWT for tests.
+
+    Args:
+        private_key: RSA private key.
+        headers: Optional JWT header overrides.
+        **claims: Claim overrides.
+
+    Returns:
+        Encoded JWT string.
+    """
+    return jwt.encode(
+        _default_claims(**claims),
+        private_key,
+        algorithm="RS256",
+        headers=headers or {"kid": "test"},
+    )
 
 
 @pytest.mark.asyncio
@@ -143,6 +181,57 @@ def test_jwt_verifier_rejects_wrong_audience(monkeypatch: pytest.MonkeyPatch) ->
         JWTVerifier(_jwt_settings()).verify(_token(private_key, aud="other-api"))
 
     assert error.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_jwt_verifier_requires_kid_before_jwks_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify production JWKS mode never falls back to an arbitrary key without kid."""
+    private_key, _public_key = _key_pair()
+
+    def fail_get_jwks_client(*_args: object) -> object:
+        raise AssertionError("JWKS should not be fetched when kid is missing.")
+
+    monkeypatch.setattr(auth, "get_jwks_client", fail_get_jwks_client)
+
+    with pytest.raises(HTTPException) as error:
+        JWTVerifier(_jwt_settings()).verify(_token(private_key, headers={"typ": "JWT"}))
+
+    assert error.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_jwt_verifier_rejects_invalid_algorithm_before_jwks_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify attacker-controlled alg values do not influence key resolution."""
+
+    def fail_get_jwks_client(*_args: object) -> object:
+        raise AssertionError("JWKS should not be fetched for a disallowed algorithm.")
+
+    monkeypatch.setattr(auth, "get_jwks_client", fail_get_jwks_client)
+    token = jwt.encode(
+        _default_claims(),
+        "not-used-for-rs256-but-long-enough-for-hmac",
+        algorithm="HS256",
+        headers={"kid": "test", "typ": "JWT"},
+    )
+
+    with pytest.raises(HTTPException) as error:
+        JWTVerifier(_jwt_settings()).verify(token)
+
+    assert error.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_jwt_verifier_maps_jwks_connection_failure_to_service_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify provider timeouts are reported as auth backend availability failures."""
+    private_key, _public_key = _key_pair()
+    monkeypatch.setattr(auth, "get_jwks_client", lambda *_args: _UnavailableJwksClient())
+
+    with pytest.raises(HTTPException) as error:
+        JWTVerifier(_jwt_settings()).verify(_token(private_key))
+
+    assert error.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert error.value.detail == "Authentication provider unavailable."
 
 
 def test_jwt_verifier_requires_iat_claim(monkeypatch: pytest.MonkeyPatch) -> None:

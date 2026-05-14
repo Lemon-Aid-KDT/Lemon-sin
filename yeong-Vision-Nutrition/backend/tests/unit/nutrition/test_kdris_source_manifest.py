@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from src.nutrition.kdris import DEFAULT_KDRIS_2025_CSV, DEFAULT_KDRIS_CSV
+from src.nutrition.kdris import DEFAULT_KDRIS_2025_CSV, DEFAULT_KDRIS_CSV, PROJECT_ROOT
 from src.nutrition.source_manifest import (
     CURRENT_OFFICIAL_REFERENCE_YEAR,
     LOCAL_DATASET_STATUS,
@@ -27,15 +27,16 @@ def _sha256(path: Path) -> str:
 
 
 def test_manifest_tracks_2025_as_current_official_reference() -> None:
-    """Verify manifest separates current official KDRIs from the local fixture."""
+    """Verify manifest tracks the promoted 2025 dataset as local production data."""
     manifest = load_kdris_source_manifest()
 
     assert manifest["current_official_reference_year"] == CURRENT_OFFICIAL_REFERENCE_YEAR
-    assert manifest["local_dataset_year"] == 2020
+    assert manifest["local_dataset_year"] == 2025
     assert manifest["local_dataset_status"] == LOCAL_DATASET_STATUS
     assert manifest["schema_version"] == "2.0"
     assert manifest["candidate_dataset_version"] == "2025"
-    assert manifest["candidate_dataset_status"] == "digitization_pending"
+    assert manifest["candidate_dataset_status"] == "promoted_to_production"
+    assert manifest["operational_dataset_version"] == "2025"
     assert manifest["current_errata_version"] == "2026-03-16"
     assert get_current_official_reference_year() == CURRENT_OFFICIAL_REFERENCE_YEAR
 
@@ -74,8 +75,8 @@ def test_local_fixture_checksum_matches_manifest() -> None:
     assert fixture["checksum_sha256"] == _sha256(DEFAULT_KDRIS_CSV)
 
 
-def test_2025_candidate_checksum_matches_manifest() -> None:
-    """Verify the manifest checksum matches the 2025 candidate dataset scaffold."""
+def test_2025_dataset_checksum_matches_manifest() -> None:
+    """Verify the manifest checksum matches the approved 2025 dataset."""
     manifest = load_kdris_source_manifest()
     artifact = next(
         artifact
@@ -83,8 +84,29 @@ def test_2025_candidate_checksum_matches_manifest() -> None:
         if artifact["id"] == "kdris_2025_candidate"
     )
 
-    assert artifact["status"] == "digitization_pending"
+    assert artifact["status"] == "official_2025_approved"
+    assert artifact["review_status"] == "approved"
     assert artifact["checksum_sha256"] == _sha256(DEFAULT_KDRIS_2025_CSV)
+
+
+def test_2025_review_artifact_checksums_match_manifest() -> None:
+    """Verify review artifact checksums are tracked before production promotion."""
+    manifest = load_kdris_source_manifest()
+    review_artifacts = {
+        artifact["id"]: artifact
+        for artifact in manifest["dataset_artifacts"]
+        if artifact["id"].startswith("kdris_2025_") and artifact["status"] == "review_artifact"
+    }
+
+    assert set(review_artifacts) == {
+        "kdris_2025_target_nutrient_inventory",
+        "kdris_2025_candidate_review_rows",
+        "kdris_2025_candidate_schema_issues",
+        "kdris_2025_schema_decisions",
+    }
+    for artifact in review_artifacts.values():
+        artifact_path = PROJECT_ROOT / artifact["path"]
+        assert artifact["checksum_sha256"] == _sha256(artifact_path)
 
 
 def test_manifest_requires_quality_gates_before_production() -> None:

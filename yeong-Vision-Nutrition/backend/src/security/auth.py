@@ -192,6 +192,31 @@ def _validate_token_use(claims: dict[str, Any], settings: Settings) -> None:
         )
 
 
+def _validate_jwt_header(header: dict[str, Any], settings: Settings) -> str:
+    """Validate JOSE header fields required for production JWKS verification.
+
+    Args:
+        header: Unverified JWT header.
+        settings: Application settings.
+
+    Returns:
+        JWT key ID used to resolve the signing key from JWKS.
+
+    Raises:
+        jwt.PyJWTError: If the header is malformed or not allowed by settings.
+        HTTPException: If the configured token type does not match.
+    """
+    algorithm = header.get("alg")
+    if not isinstance(algorithm, str) or algorithm not in settings.jwt_algorithms:
+        raise jwt.InvalidAlgorithmError("Unsupported JWT algorithm.")
+    _validate_token_type(header, settings)
+
+    key_id = header.get("kid")
+    if not isinstance(key_id, str) or not key_id:
+        raise jwt.InvalidTokenError("JWT kid header is required for JWKS verification.")
+    return key_id
+
+
 class JWTVerifier:
     """Validate OAuth/OIDC JWT access tokens with issuer JWKS keys.
 
@@ -226,16 +251,13 @@ class JWTVerifier:
 
         try:
             header = jwt.get_unverified_header(token)
-            algorithm = header.get("alg")
-            if not isinstance(algorithm, str) or algorithm not in self._settings.jwt_algorithms:
-                raise jwt.InvalidAlgorithmError("Unsupported JWT algorithm.")
-            _validate_token_type(header, self._settings)
+            key_id = _validate_jwt_header(header, self._settings)
 
             signing_key = get_jwks_client(
                 self._settings.jwt_jwks_url,
                 self._settings.jwt_jwks_cache_ttl_seconds,
                 self._settings.jwt_jwks_timeout_seconds,
-            ).get_signing_key_from_jwt(token)
+            ).get_signing_key(key_id)
             claims: dict[str, Any] = jwt.decode(
                 token,
                 signing_key.key,
@@ -245,6 +267,11 @@ class JWTVerifier:
                 leeway=self._settings.jwt_leeway_seconds,
                 options={"require": self._settings.jwt_required_claims},
             )
+        except jwt.PyJWKClientConnectionError as exc:
+            raise _auth_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Authentication provider unavailable.",
+            ) from exc
         except jwt.PyJWTError as exc:
             raise _auth_error(
                 status.HTTP_401_UNAUTHORIZED,

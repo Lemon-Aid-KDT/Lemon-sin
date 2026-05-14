@@ -9,6 +9,7 @@ from src.models.schemas.nutrition import (
     NutritionAnalysisResponse,
 )
 from src.models.schemas.user import UserProfile
+from src.nutrition.chronic_priority import get_chronic_priority_match
 from src.nutrition.kdris import get_kdris_dataset_context, lookup_kdris_reference
 from src.nutrition.unit_converter import convert_amount
 
@@ -32,7 +33,7 @@ def _message_for_status(status: NutrientStatus) -> str:
     """
     messages = {
         NutrientStatus.DEFICIENT: "부족 가능성이 높아 섭취량 확인이 필요합니다.",
-        NutrientStatus.LOW: "섭취를 늘리면 도움이 될 수 있습니다.",
+        NutrientStatus.LOW: "섭취량이 낮을 가능성이 있어 우선 확인 대상입니다.",
         NutrientStatus.ADEQUATE: "현재 입력 기준으로 적정 범위에 가깝습니다.",
         NutrientStatus.EXCESSIVE: "섭취량이 기준보다 많아 조정 여부 확인이 필요합니다.",
         NutrientStatus.RISKY: "상한 섭취량을 초과할 수 있어 전문가 상담 권장 대상입니다.",
@@ -155,7 +156,26 @@ def analyze_nutrient_intakes(
         for result in results
         if result.status in (NutrientStatus.DEFICIENT, NutrientStatus.LOW)
     ]
-    low_results.sort(key=lambda result: result.ratio)
+    priority_boosts: dict[str, int] = {}
+    for result in low_results:
+        priority_match = get_chronic_priority_match(
+            nutrient_code=result.nutrient_code,
+            chronic_diseases=profile.chronic_diseases,
+        )
+        if priority_match is None:
+            continue
+        priority_boosts[result.nutrient_code] = priority_match.boost_score
+        result.priority_context = list(priority_match.condition_codes)
+        result.priority_source_ids = list(priority_match.source_ids)
+        result.user_message = priority_match.message
+
+    low_results.sort(
+        key=lambda result: (
+            -priority_boosts.get(result.nutrient_code, 0),
+            result.ratio,
+            result.nutrient_code,
+        )
+    )
     for index, result in enumerate(low_results, start=1):
         result.priority = index
 

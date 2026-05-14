@@ -2,12 +2,54 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from src.config import DEFAULT_DATABASE_URL, DEFAULT_PRIVACY_HASH_SECRET, Settings
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+READINESS_SETTINGS_PATH = PROJECT_ROOT / "config" / "implementation-readiness.settings.json"
+
+
+def _load_json_object(path: Path) -> dict[str, object]:
+    """Load a JSON document and verify it is an object.
+
+    Args:
+        path: JSON file path.
+
+    Returns:
+        Parsed JSON object with string keys.
+    """
+    raw_value = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(raw_value, dict)
+    parsed: dict[str, object] = {}
+    for key, value in raw_value.items():
+        assert isinstance(key, str)
+        parsed[key] = value
+    return parsed
+
+
+def _object_field(mapping: dict[str, object], key: str) -> dict[str, object]:
+    """Return a nested JSON object field.
+
+    Args:
+        mapping: Parent JSON object.
+        key: Nested object key.
+
+    Returns:
+        Nested JSON object with string keys.
+    """
+    raw_value = mapping[key]
+    assert isinstance(raw_value, dict)
+    parsed: dict[str, object] = {}
+    for nested_key, nested_value in raw_value.items():
+        assert isinstance(nested_key, str)
+        parsed[nested_key] = nested_value
+    return parsed
 
 
 def _valid_production_kwargs() -> dict[str, Any]:
@@ -47,6 +89,10 @@ def test_default_development_settings_load() -> None:
     assert settings.supplement_preview_ttl_minutes == 30
     assert not settings.feature_hall_lite_weight_prediction
     assert settings.weight_prediction_engine == "static_7step"
+    assert settings.feature_prescription_ocr_intake is False
+    assert settings.feature_lab_result_ocr_intake is False
+    assert settings.feature_dosage_change_recommendation is False
+    assert settings.feature_medication_safety_alert is False
     assert settings.enable_multimodal_llm is False
     assert settings.multimodal_ocr_assist_policy == "disabled"
     assert settings.enable_vision_classifier is False
@@ -173,6 +219,61 @@ def test_production_rejects_vision_classifier_without_signoff() -> None:
 
     with pytest.raises(ValidationError, match="ENABLE_VISION_CLASSIFIER"):
         Settings(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("setting_name", "error_message"),
+    (
+        ("enable_image_learning_pipeline", "ENABLE_IMAGE_LEARNING_PIPELINE"),
+        ("enable_pgvector_storage", "ENABLE_PGVECTOR_STORAGE"),
+    ),
+)
+def test_production_rejects_learning_storage_flags_without_signoff(
+    setting_name: str,
+    error_message: str,
+) -> None:
+    """Verify production cannot enable learning storage gates before sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs[setting_name] = True
+
+    with pytest.raises(ValidationError, match=error_message):
+        Settings(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("setting_name", "error_message"),
+    (
+        ("feature_prescription_ocr_intake", "FEATURE_PRESCRIPTION_OCR_INTAKE"),
+        ("feature_lab_result_ocr_intake", "FEATURE_LAB_RESULT_OCR_INTAKE"),
+        ("feature_medication_safety_alert", "FEATURE_MEDICATION_SAFETY_ALERT"),
+    ),
+)
+def test_production_rejects_regulated_feature_flags_without_signoff(
+    setting_name: str,
+    error_message: str,
+) -> None:
+    """Verify production cannot enable non-P1 regulated flags before sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs[setting_name] = True
+
+    with pytest.raises(ValidationError, match=error_message):
+        Settings(**kwargs)
+
+
+def test_implementation_readiness_regulated_flags_default_off() -> None:
+    """Verify the readiness manifest matches P1 default-off policy."""
+    manifest = _load_json_object(READINESS_SETTINGS_PATH)
+    environment_variables = _object_field(manifest, "environment_variables")
+    feature_flags = _object_field(environment_variables, "feature_flags")
+
+    for flag_name in (
+        "FEATURE_PRESCRIPTION_OCR_INTAKE",
+        "FEATURE_LAB_RESULT_OCR_INTAKE",
+        "FEATURE_HOSPITAL_MOCK_FHIR",
+        "FEATURE_MEDICATION_SAFETY_ALERT",
+    ):
+        flag_config = _object_field(feature_flags, flag_name)
+        assert flag_config["default"] is False
 
 
 def test_production_rejects_non_https_jwks_url() -> None:

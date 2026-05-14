@@ -1,19 +1,19 @@
 # 34. Ollama · MLX-LM · vLLM 다중 환경 설치·운영 가이드
 
 > **문서 정보**
-> 버전: v1.0 | 작성일: 2026-05-14 | 상태: 환경 표준 (Mac + Windows 병행 개발) | 작성자: yeong-tech
+> 버전: v1.1 | 작성일: 2026-05-14 | 상태: 환경 후보 가이드 (Ollama 기본, MLX/vLLM 후속 검증) | 작성자: yeong-tech
 
 ---
 
 ## 0. 한 줄 요약
 
-본 프로젝트는 **Mac(Apple Silicon)** 과 **Windows** 환경에서 병렬로 개발되므로, LLM 서빙 엔진을 **환경별로 다른 조합** 으로 운영한다. 모든 백엔드 호출은 `src/llm/base.py` Adapter 패턴(CLAUDE.md Rule 2)을 통하므로, 엔진 교체는 환경 변수 + DI 한 줄만으로 끝난다. 본 가이드는 세 엔진(**Ollama** / **MLX-LM** / **vLLM**)의 공식 설치 요건·버전·운영 모드를 OS 별로 정리해 신규 개발자가 30분 안에 환경을 갖출 수 있게 한다.
+본 프로젝트의 현재 백엔드 런타임은 `LLM_PROVIDER=ollama` 만 지원한다. 이 문서는 **Mac(Apple Silicon)** 과 **Windows** 병행 개발을 위해 Ollama 기본 환경을 고정하고, MLX-LM/vLLM 은 후속 Adapter PR 전까지 실험 후보로만 정리한다. `src/llm/base.py` 는 아직 Phase 2 후반 도입 예정 인터페이스이므로, MLX/vLLM 전환은 환경 변수 한 줄만으로 끝나는 상태가 아니다.
 
 | 환경 | 1순위 (개발) | 2순위 (실험) | 3순위 (Phase 4 출시 시) |
 | --- | --- | --- | --- |
-| **macOS (Apple Silicon)** | **Ollama 0.19+** (MLX 백엔드) | MLX-LM / `vllm-mlx` | (cloud GPU 로 이전) |
-| **Windows (NVIDIA GPU)** | **Ollama (winget)** | WSL2 + **vLLM** | WSL2 + vLLM 운영 표준 |
-| **Linux (cloud GPU)** | vLLM / SGLang | Ollama | vLLM (운영 표준) |
+| **macOS (Apple Silicon)** | **Ollama** | MLX-LM / `vllm-mlx` | (cloud GPU 로 이전) |
+| **Windows (NVIDIA GPU)** | **Ollama (winget)** | WSL2 + **vLLM** | 후속 PR 이후 검증 |
+| **Linux (cloud GPU)** | vLLM 후보 | Ollama | Phase 4 이후 검증 |
 
 ---
 
@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | Chip | **Apple Silicon M1 이상** (M1/M2/M3/M4) | Intel Mac 은 MLX 사용 불가 |
 | macOS | **14.0 Sonoma 이상** (Ollama·MLX 공통) | MLX 일부 신규 기능은 macOS 15+ 필요 |
-| 통합 메모리 | **16GB 권장**(최소), **24GB+** 권장(Qwen 3.5 9B + Gemma 4 9B 동시 캐시) | Ollama 0.19 MLX 백엔드는 32GB+ 에서 자동 활성 |
+| 통합 메모리 | **16GB 권장**(최소), **24GB+** 권장(Qwen 3.5 9B + Gemma 4 E4B 순차 실행) | Ollama 0.19 MLX preview 검증은 공식 블로그 기준 32GB 초과 Mac 권장 |
 | Python | **3.11.x 이상** (MLX-LM 요구) | 반드시 native ARM Python (`python -c "import platform; print(platform.processor())"` → `arm`) |
 | Homebrew | 최신 | Ollama 설치 경로 |
 | Xcode CLT | 설치 | `xcode-select --install` |
@@ -35,10 +35,10 @@
 | 항목 | 요건 | 비고 |
 | --- | --- | --- |
 | OS | **Windows 10 1903+** 또는 **Windows 11** | 2026 부터 **Windows ARM64 네이티브 빌드** 제공 (Ollama) |
-| RAM | **16GB+** 권장 (최소 8GB) | vLLM 운영 시 32GB+ |
+| RAM | **16GB+** 권장 (최소 8GB) | vLLM 실험 시 32GB+ |
 | GPU (Ollama) | NVIDIA CUDA driver **525.60.13+** | Ollama 가 CUDA 런타임 자체 번들 → Toolkit 별도 설치 불요 |
 | GPU (vLLM) | CUDA Toolkit **12.1** 권장 (11.8 호환) | vLLM 바이너리가 CUDA 12.1 컴파일됨 |
-| WSL2 | **Ubuntu 22.04 LTS** (vLLM 운영) | WSL --install Ubuntu |
+| WSL2 | **Ubuntu 22.04 LTS** (vLLM 실험) | WSL --install Ubuntu |
 | Python | **3.10 ~ 3.12** (vLLM/WSL2) | fresh conda env 권장 |
 | Docker Desktop | 4.36+ (선택) | Docker Model Runner 가 2026 부터 vLLM 통합 지원 |
 
@@ -56,15 +56,13 @@
 
 - 본 프로젝트의 **현재 기본 LLM 서빙** ([docs/12](./12-local-llm-ollama-migration.md), [docs/33 §5](./33-three-tier-ocr-pipeline-implementation-guide.md))
 - 단일 명령 설치, 모델 자동 캐싱, OpenAI 호환 API, 양 OS 모두 지원
-- 2026 신규: ARM64 Windows 네이티브 빌드 + Mac 의 MLX 백엔드(0.19+)
+- 2026 신규 검증 후보: Ollama 0.19 MLX preview on Apple Silicon
 
 ### 2.2 버전 기준
 
-- **권장 버전**: **v0.19 이상**
-- 이유:
-  - 0.19 에서 Apple Silicon **MLX 백엔드** 추가 → Mac 32GB+ 에서 자동 활성, MLX-LM 의 ~85% 처리량 회수
-  - Windows ARM64 네이티브 빌드 제공
-- 본 프로젝트 baseline: `OLLAMA_VERSION>=0.19.0`
+- **기본 요구**: 공식 macOS/Windows 설치판의 `ollama --version` 확인
+- **MLX preview 검증 후보**: Ollama 0.19. 공식 블로그는 Apple Silicon에서 MLX 기반 preview와 32GB 초과 unified memory 조건을 안내한다.
+- 본 프로젝트 backend 설정은 현재 특정 Ollama 버전 문자열을 강제하지 않는다. 실제 모델 tag와 `/api/chat` 동작을 smoke test로 확인한다.
 
 ### 2.3 macOS 설치
 
@@ -80,13 +78,9 @@ brew services start ollama   # 백그라운드 데몬
 ollama --version            # >= 0.19.0
 curl http://127.0.0.1:11434/api/version
 
-# MLX 백엔드 명시 활성 (32GB+ 시 자동, 24GB 는 수동 옵션)
-export OLLAMA_LLM_LIBRARY=mlx
-launchctl setenv OLLAMA_LLM_LIBRARY mlx    # 영구 적용
-
 # 필요 모델 풀
 ollama pull qwen3.5:9b      # 텍스트 (docs/12 §3 1차 기본)
-ollama pull gemma4:9b       # 멀티모달 (docs/33 §5.3 Tier 3 이미지→텍스트)
+ollama pull gemma4:e4b      # 멀티모달 (docs/33 §5.3 Tier 3 이미지→텍스트)
 
 # 동작 확인
 curl http://127.0.0.1:11434/api/chat \
@@ -113,7 +107,7 @@ Invoke-WebRequest -Uri http://127.0.0.1:11434/api/version
 
 # 모델 풀 + 동작 확인
 ollama pull qwen3.5:9b
-ollama pull gemma4:9b
+ollama pull gemma4:e4b
 ollama list
 ```
 
@@ -123,7 +117,7 @@ ollama list
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3.5:9b              # 텍스트 구조화 (Tier 3 B)
-OLLAMA_VISION_MODEL=gemma4:9b        # 이미지→텍스트 (Tier 3 A)
+OLLAMA_VISION_MODEL=gemma4:e4b       # 이미지→텍스트 (Tier 3 A)
 OLLAMA_TIMEOUT_SEC=60
 OLLAMA_TEMPERATURE=0
 ALLOW_EXTERNAL_LLM=false
@@ -183,12 +177,11 @@ source .venv-mlx/bin/activate
 uv pip install mlx-lm
 mlx_lm.generate --help
 
-# 5. Vision 모델용 mlx-vlm (Gemma 4 vision)
+# 5. Vision 모델용 mlx-vlm (공식 지원 모델은 후속 PoC에서 확정)
 uv pip install mlx-vlm
 
-# 6. 모델 다운로드 (mlx-community 양자화 가중치)
+# 6. 모델 다운로드 (예시는 텍스트 모델만 고정; vision 가중치는 후속 PoC에서 공식 지원 여부 확인)
 huggingface-cli download mlx-community/Qwen3.5-9B-Instruct-4bit
-huggingface-cli download mlx-community/gemma-4-9b-it-4bit
 ```
 
 ### 3.4 OpenAI 호환 서버 실행
@@ -203,8 +196,9 @@ mlx_lm.server \
   --port 8081
 
 # 별도 터미널에서 Vision 서버
+# 모델명은 mlx-vlm 공식 지원 목록과 라이선스 확인 후 확정한다.
 python -m mlx_vlm.server \
-  --model mlx-community/gemma-4-9b-it-4bit \
+  --model <official-mlx-vlm-vision-model> \
   --port 8082
 ```
 
@@ -298,8 +292,9 @@ vllm serve Qwen/Qwen3.5-9B-Instruct \
   --dtype auto \
   --gpu-memory-utilization 0.85
 
-# 별도 터미널에서 Vision 모델 (Gemma 4 9B vision)
-vllm serve google/gemma-4-9b-it \
+# 별도 터미널에서 Vision 모델
+# 모델명은 vLLM 멀티모달 지원 목록과 라이선스 확인 후 확정한다.
+vllm serve <official-vllm-vision-model> \
   --host 127.0.0.1 \
   --port 8092 \
   --dtype auto \
@@ -332,11 +327,11 @@ python -m vllm_mlx.server --model mlx-community/Qwen3.5-9B-Instruct-4bit --port 
 ### 4.6 본 프로젝트 환경변수 매핑
 
 ```env
-LLM_PROVIDER=vllm                    # 신규 Adapter (후속 PR)
+LLM_PROVIDER=vllm                    # 후속 Adapter + Settings 확장 이후에만 사용
 VLLM_BASE_URL=http://127.0.0.1:8091  # 텍스트
 VLLM_VISION_BASE_URL=http://127.0.0.1:8092
 VLLM_MODEL=Qwen/Qwen3.5-9B-Instruct
-VLLM_VISION_MODEL=google/gemma-4-9b-it
+VLLM_VISION_MODEL=<official-vllm-vision-model>
 ALLOW_EXTERNAL_LLM=false
 ```
 
@@ -381,34 +376,34 @@ resp = client.chat.completions.create(
 
 | 단계 / OS | macOS Apple Silicon | Windows + NVIDIA GPU | Linux cloud GPU (Phase 4) |
 | --- | --- | --- | --- |
-| 텍스트 LLM 기본 | **Ollama 0.19 (MLX 백엔드)** | **Ollama (CUDA)** | **vLLM** |
-| Vision (Tier 3 이미지→텍스트) | Ollama gemma4:9b | Ollama gemma4:9b | vLLM google/gemma-4-9b-it |
+| 텍스트 LLM 기본 | **Ollama qwen3.5:9b** | **Ollama qwen3.5:9b** | vLLM 후보(후속 Adapter 필요) |
+| Vision (Tier 3 이미지→텍스트) | Ollama gemma4:e4b | Ollama gemma4:e4b | vLLM vision 후보(모델 미확정) |
 | 텍스트 구조화 (Tier 3 텍스트→JSON) | Ollama qwen3.5:9b | Ollama qwen3.5:9b | vLLM Qwen/Qwen3.5-9B-Instruct (`guided_json`) |
 | 처리량 비교 실험 | MLX-LM (`mlx_lm.server`) 또는 `vllm-mlx` | WSL2 + vLLM | vLLM |
-| 발주처 인수 데모 | Mac 에서 Ollama 단일 | Windows 에서 Ollama 단일 | vLLM 운영 (해당 시점) |
+| 발주처 인수 데모 | Mac 에서 Ollama 단일 | Windows 에서 Ollama 단일 | vLLM 후보(해당 시점 재검증) |
 
 ### 5.2 Adapter 패턴(CLAUDE.md Rule 2) 일관 유지
 
-세 엔진 모두 OpenAI 호환 또는 자체 호환 API 를 제공하므로, 신규 Adapter 만 추가하면 비즈니스 로직 변경 0:
+세 엔진 모두 OpenAI 호환 또는 자체 호환 API 를 제공할 수 있지만, 현재 `Settings.llm_provider` 는 `ollama` 만 허용한다. MLX/vLLM 전환은 신규 Adapter, Settings 확장, DI 분기, 테스트가 모두 머지된 뒤에만 가능하다.
 
 ```
 backend/src/llm/
 ├── base.py              # LLMAdapter ABC + analyze_text/analyze_multimodal
 ├── ollama.py            # 현행 (OllamaSupplementParser)
-├── ollama_vision.py     # 현행 (Gemma 4 vision assist)
+├── ollama_vision.py     # 현행 (Gemma 4 E4B vision assist 후보)
 ├── mlx_openai.py        # NEW (후속 PR — MLX-LM 도입 시)
 └── vllm_openai.py       # NEW (후속 PR — vLLM 도입 시)
 ```
 
-`Settings.LLM_PROVIDER` 값으로 어느 Adapter 를 DI 에 주입할지 결정. 본 가이드는 그 분기 코드를 정의하지 않고 후속 PR 에서 다룬다.
+후속 PR 에서 `Settings.LLM_PROVIDER` 허용값과 adapter factory를 확장한다. 본 가이드는 그 분기 코드를 정의하지 않는다.
 
 ### 5.3 신규 개발자 온보딩 30분 체크리스트
 
 **macOS:**
 - [ ] `brew install ollama` + `brew services start ollama`
-- [ ] `ollama --version` ≥ 0.19
-- [ ] `export OLLAMA_LLM_LIBRARY=mlx` (24GB 메모리에서 권장)
-- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:9b`
+- [ ] `ollama --version` 확인
+- [ ] MLX preview 성능 비교는 32GB 초과 Apple Silicon에서 별도 측정
+- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:e4b`
 - [ ] §2.6 smoke 테스트 통과
 - [ ] [`backend/.env.example`](../backend/.env.example) → `.env` 복사 + Service Account JSON 경로 입력 ([docs/33 §4.4](./33-three-tier-ocr-pipeline-implementation-guide.md))
 - [ ] `pytest backend/tests` 그린
@@ -416,7 +411,7 @@ backend/src/llm/
 **Windows:**
 - [ ] `winget install Ollama.Ollama`
 - [ ] NVIDIA driver ≥ 525.60.13 확인 (`nvidia-smi`)
-- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:9b`
+- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:e4b`
 - [ ] §2.6 smoke 테스트 통과
 - [ ] `.env` 동일 작성
 - [ ] `pytest backend/tests` 그린
@@ -436,10 +431,10 @@ backend/src/llm/
 | 증상 | 원인 | 해결 |
 | --- | --- | --- |
 | `ollama list` 가 멈춤 | `ollama` 데몬 미실행 | `brew services start ollama` |
-| MLX 백엔드가 안 켜짐 | 24GB 메모리 (자동 활성 조건 32GB+) | `OLLAMA_LLM_LIBRARY=mlx` 명시 |
+| MLX preview 성능이 기대보다 낮음 | 공식 preview 조건 또는 모델/메모리 조건 불일치 | Ollama 0.19 blog 조건(32GB 초과 Apple Silicon)과 실제 `ollama --version`/모델 tag를 재확인 |
 | `python -c "import mlx"` 실패 | x86 Python 사용 중 | `uv venv --python 3.12` 로 fresh venv |
 | `mlx_lm.server` 포트 충돌 | Ollama 의 11434 와 다른 포트 필요 | `--port 8081` 등 충돌 회피 |
-| Vision 응답이 너무 느림 | `gemma4:9b` 가 메모리 부족 | `gemma4:e4b` 같은 4B 변종 사용 ([docs/12 §3](./12-local-llm-ollama-migration.md)) |
+| Vision 응답이 너무 느림 | `gemma4:e4b` 도 메모리 또는 latency 부담 | `gemma4:e2b` PoC 또는 사용자 수동 확인 화면으로 escalation |
 
 ### 6.2 Windows / WSL2
 
@@ -470,7 +465,7 @@ backend/src/llm/
 - [ ] 모델 가중치는 공식 출처(`mlx-community`, `Qwen/`, `google/`, `ollama.com/library/`) 만 사용
 - [ ] 로그에 prompt 전문 저장 금지 ([docs/12 §2.4](./12-local-llm-ollama-migration.md))
 - [ ] 시스템 프롬프트의 의료 판단 금지 규칙 적용 ([docs/33 §5.4](./33-three-tier-ocr-pipeline-implementation-guide.md))
-- [ ] 양자화 가중치 라이선스 확인 (Gemma 4 — Apache 2.0 변형, Qwen 3.5 — 자체 라이선스. 발주처 인수 시점 확인 필요)
+- [ ] 양자화 가중치 라이선스 확인. 모델별 라이선스는 발주처 인수 시점에 공식 모델 페이지 또는 원 배포처에서 재확인한다.
 
 ---
 
@@ -482,7 +477,7 @@ backend/src/llm/
 | --- | --- | --- | --- |
 | 0 | 본 가이드(`docs/34`) 푸시 | 본 PR | — |
 | 1 | 신규 개발자 환경 셋업 검증 (Mac/Win 각 1명) | 0.5일 | 0 |
-| 2 | Ollama 0.19 + MLX 백엔드 활성 후 응답시간 측정 | 0.5일 | 1 |
+| 2 | Ollama 0.19 MLX preview 응답시간 측정(32GB 초과 Apple Silicon 조건) | 0.5일 | 1 |
 | 3 | MLX-LM 직접 도입 결정 (실험 데이터로 판단) | — | 2 |
 | 4 | (Phase 4 진입 시) vLLM Adapter PR — `src/llm/vllm_openai.py` 신규 | 1일 | docs/33 100장 PoC 완료 |
 | 5 | 운영 환경 GPU 인스턴스 프로비저닝 + smoke | 0.5일 | 4 |
@@ -493,7 +488,8 @@ backend/src/llm/
 
 | 날짜 | 변경 내용 | 작성자 |
 | --- | --- | --- |
-| 2026-05-14 | 최초 작성. Ollama / MLX-LM / vLLM 의 Mac · Windows 환경 설치·운영 표준 정의. | yeong-tech |
+| 2026-05-14 | 공식 Ollama tag 기준으로 `gemma4:e4b` / `qwen3.5:9b`를 정리하고, MLX/vLLM 항목을 후속 검증 후보로 낮춤. | yeong-tech |
+| 2026-05-14 | 최초 작성. Ollama / MLX-LM / vLLM 의 Mac · Windows 환경 설치·운영 후보 정의. | yeong-tech |
 
 ## 10. 관련 문서
 
@@ -507,14 +503,19 @@ backend/src/llm/
 
 - [Ollama macOS install](https://docs.ollama.com/macos)
 - [Ollama is now powered by MLX](https://ollama.com/blog/mlx)
-- [Ollama System Requirements](https://localaimaster.com/blog/ollama-system-requirements)
 - [Ollama GitHub](https://github.com/ollama/ollama)
+- [Ollama Vision](https://docs.ollama.com/capabilities/vision)
+- [Ollama Structured Outputs](https://docs.ollama.com/capabilities/structured-outputs)
+- [Ollama qwen3.5](https://ollama.com/library/qwen3.5)
+- [Ollama gemma4](https://ollama.com/library/gemma4)
 - [MLX official docs](https://ml-explore.github.io/mlx/build/html/install.html)
 - [mlx-lm PyPI](https://pypi.org/project/mlx-lm/)
 - [mlx-lm GitHub](https://github.com/ml-explore/mlx-lm)
-- [mlx-vlm GitHub](https://github.com/Blaizzy/mlx-vlm)
 - [vLLM Installation](https://docs.vllm.ai/en/latest/getting_started/installation/)
 - [vLLM GPU install](https://docs.vllm.ai/en/stable/getting_started/installation/gpu/)
-- [vLLM on WSL2 (DEV community)](https://dev.to/docteurrs/making-vllm-work-on-wsl2-482e)
 - [Docker Model Runner vLLM Windows](https://www.docker.com/blog/docker-model-runner-vllm-windows/)
+
+비공식/실험 참고:
+
 - [vllm-mlx (Apple Silicon)](https://github.com/waybarrios/vllm-mlx)
+- [mlx-vlm GitHub](https://github.com/Blaizzy/mlx-vlm)

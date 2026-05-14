@@ -6,7 +6,7 @@ import base64
 import json
 from collections.abc import Mapping
 from io import BytesIO
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import pytest
@@ -26,6 +26,8 @@ from src.llm.ollama_vision import (
 )
 from src.ocr.base import OCRImageInput
 from src.vision.base import BoundingBox
+
+OcrAssistPolicy = Literal["disabled", "ocr_empty_only", "low_confidence"]
 
 
 class _FakeResponse:
@@ -117,21 +119,30 @@ class _FakeHTTPClient:
         return _FakeResponse(self.get_payload, self.get_status_code)
 
 
-def _settings(**overrides: object) -> Settings:
+def _settings(
+    *,
+    enable_multimodal_llm: bool = True,
+    multimodal_ocr_assist_policy: OcrAssistPolicy = "ocr_empty_only",
+    ollama_base_url: str = "http://127.0.0.1:11434",
+    ollama_vision_model: str | None = "gemma4:e4b",
+) -> Settings:
     """Return settings for Ollama vision tests.
 
     Args:
-        **overrides: Settings overrides.
+        enable_multimodal_llm: Whether the gated multimodal channel is enabled.
+        multimodal_ocr_assist_policy: Runtime policy for vision assist calls.
+        ollama_base_url: Ollama base URL used by the fake client assertions.
+        ollama_vision_model: Local vision model tag to check in readiness tests.
 
     Returns:
         Settings object.
     """
-    values: dict[str, object] = {
-        "enable_multimodal_llm": True,
-        "multimodal_ocr_assist_policy": "ocr_empty_only",
-    }
-    values.update(overrides)
-    return Settings(**values)
+    return Settings(
+        enable_multimodal_llm=enable_multimodal_llm,
+        multimodal_ocr_assist_policy=multimodal_ocr_assist_policy,
+        ollama_base_url=ollama_base_url,
+        ollama_vision_model=ollama_vision_model,
+    )
 
 
 def _png_bytes(width: int = 10, height: int = 8) -> bytes:

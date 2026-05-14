@@ -289,10 +289,10 @@ class Settings(BaseSettings):
     kdris_manifest_path: str | None = Field(default=None)
     allow_sample_kdris: bool = Field(default=True)
 
-    feature_prescription_ocr_intake: bool = Field(default=True)
-    feature_lab_result_ocr_intake: bool = Field(default=True)
+    feature_prescription_ocr_intake: bool = Field(default=False)
+    feature_lab_result_ocr_intake: bool = Field(default=False)
     feature_dosage_change_recommendation: bool = Field(default=False)
-    feature_medication_safety_alert: bool = Field(default=True)
+    feature_medication_safety_alert: bool = Field(default=False)
 
     # Phase 게이트 플래그 — docs/17 §9 매핑. 모든 기본값 False/0.
     # 운영 활성화 전에는 발주처 리뷰 게이트(#1/#2/#3) 통과 후에만 변경.
@@ -449,6 +449,18 @@ class Settings(BaseSettings):
                 (
                     self.feature_hall_lite_weight_prediction,
                     "FEATURE_HALL_LITE_WEIGHT_PREDICTION=true requires Hall-lite validation sign-off.",
+                ),
+                (
+                    self.feature_prescription_ocr_intake,
+                    "FEATURE_PRESCRIPTION_OCR_INTAKE=true requires regulated OCR intake sign-off.",
+                ),
+                (
+                    self.feature_lab_result_ocr_intake,
+                    "FEATURE_LAB_RESULT_OCR_INTAKE=true requires regulated OCR intake sign-off.",
+                ),
+                (
+                    self.feature_medication_safety_alert,
+                    "FEATURE_MEDICATION_SAFETY_ALERT=true requires medication safety workflow sign-off.",
                 ),
             )
         )

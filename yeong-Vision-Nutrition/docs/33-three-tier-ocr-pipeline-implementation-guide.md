@@ -1,17 +1,17 @@
 # 33. 3-Tier OCR 파이프라인 상세 구현 가이드
 
 > **문서 정보**
-> 버전: v1.0 | 작성일: 2026-05-13 | 상태: 운영 표준 채택 (구현 가이드) | 작성자: yeong-tech
+> 버전: v1.1 | 작성일: 2026-05-14 | 상태: 후속 구현 가이드 | 작성자: yeong-tech
 
 ---
 
 ## 0. 한 줄 요약
 
-영양제 라벨 분석을 ① **YOLO ROI 보조** ② **Google Cloud Vision Primary OCR(`DOCUMENT_TEXT_DETECTION`)** ③ **Ollama 멀티모달 Fallback + Cross-check 검수** 의 3-tier 파이프라인으로 운영한다. 각 단계는 책임이 명확히 분리되어 있으며, 어느 하나가 실패하거나 게이트 통과 전 비활성 상태여도 다른 단계가 graceful 하게 단독 동작한다.
+영양제 라벨 분석의 후속 목표 파이프라인은 ① **YOLO ROI 보조** ② **Google Cloud Vision Primary OCR(`DOCUMENT_TEXT_DETECTION`)** ③ **Ollama 멀티모달 Fallback + Cross-check 검수** 의 3-tier 구조다. 현재 코드에는 `NoopOCRAdapter`, `OllamaVisionAssistAdapter`, gated YOLO ROI scaffold가 존재하지만 `GoogleVisionOCRAdapter`, PaddleOCR/CLOVA adapter, cross-check 검수는 아직 후속 구현 대상이다.
 
 ---
 
-## 1. 채택 결정 + 사용자 의도
+## 1. 구현 방향 + 사용자 의도
 
 ### 1.1 사용자 요구
 
@@ -25,12 +25,11 @@
 
 - [docs/27](./27-ot-s2b-google-vision-ocr-review-plan.md) — Google Vision 의 한글 OCR 정확도가 시장에서 가장 안정적
 - [docs/30 §1](./30-multimodal-yolo-experiment-plan.md) — `OCR-first + optional ROI + optional vision assist` 결론
-- 웹 검색 결과(2026-05 기준):
-  - **Qwen 3.5 9B** ([`qwen3.5:9b`](https://ollama.com/library/qwen3.5)) 은 docs/12 §3 에서 이미 1차 텍스트 파서 기본 모델로 채택. Tier 3 의 *텍스트 구조화* 단계도 동일 모델로 통일해 운영 모델 수를 최소화한다.
-  - 멀티모달(이미지 → 텍스트) 호출은 Qwen 3.5 의 텍스트 한계를 보완하기 위해 **Gemma 4 vision 보조 채널** 을 함께 사용한다 — Gemma 4 9B 는 2026-04-02 출시되어 로컬 vision + tool calling + structured output 을 제공([Best Ollama Models 2026](https://mljourney.com/best-ollama-models-in-2026-a-practical-guide-by-use-case/)).
-  - **Gemma 4 9B (vision + tool calling)** 가 2026-04-02 출시되어 로컬 structured output 운영안에 권장 ([Ollama Vision Search](https://ollama.com/search?c=vision))
-  - **Gemma 3 27B** 는 DocVQA 85.6 점으로 문서 작업에서 LLaVA 와 폐쇄형 VLM 다수를 능가 ([Ollama Models Cheat Sheet 2026](https://computingforgeeks.com/ollama-models-cheat-sheet/))
-  - Google Cloud Vision 의 **`DOCUMENT_TEXT_DETECTION`** 은 밀집 텍스트(영양제 라벨)에 적합하며 모든 지원 언어를 자동 감지 ([Cloud Vision OCR](https://cloud.google.com/vision/docs/ocr), [Dense document text detection](https://cloud.google.com/vision/docs/fulltext-annotations), [OCR language support](https://docs.cloud.google.com/vision/docs/languages))
+- 공식 문서 확인(2026-05-14 기준):
+  - **Qwen 3.5 9B** ([`qwen3.5:9b`](https://ollama.com/library/qwen3.5)) 은 Ollama 공식 모델 목록에 존재하며 text/image 입력을 지원한다. 현행 코드의 `OllamaSupplementParser` 기본 텍스트 구조화 모델과 일치한다.
+  - **Gemma 4 E4B** ([`gemma4:e4b`](https://ollama.com/library/gemma4)) 은 Ollama 공식 모델 목록의 최신 edge vision tag다. `gemma4:9b` tag는 공식 모델 목록에서 확인되지 않아 사용하지 않는다.
+  - Ollama는 vision 입력의 `images` 배열과 structured output의 JSON schema `format`을 공식 지원한다 ([Ollama Vision](https://docs.ollama.com/capabilities/vision), [Ollama Structured Outputs](https://docs.ollama.com/capabilities/structured-outputs)).
+  - Google Cloud Vision 의 **`DOCUMENT_TEXT_DETECTION`** 은 dense text image/document OCR에 맞는 feature이며, Cloud Vision 가격표에서 `Text Detection`과 동일한 단가 그룹으로 공시된다 ([Cloud Vision features](https://docs.cloud.google.com/vision/docs/features-list), [Cloud Vision pricing](https://cloud.google.com/vision/pricing)).
 
 ### 1.3 기존 문서와의 관계
 
@@ -40,7 +39,7 @@
 | [docs/26](./26-ot-s2-ocr-provider-adapter-implementation-plan.md) | `OCRAdapter` 인터페이스 표준. 본 가이드는 그 표준을 그대로 채택한다. |
 | [docs/27](./27-ot-s2b-google-vision-ocr-review-plan.md) | Google Vision 리뷰. 본 가이드 §4 에서 `DOCUMENT_TEXT_DETECTION` 으로 결정을 갱신한다. |
 | [docs/28](./28-ollama-local-llm-connection-implementation-plan.md) | Ollama 텍스트 파서 연결. 본 가이드 §5 의 Pydantic structured output 단계에서 재사용. |
-| [docs/30](./30-multimodal-yolo-experiment-plan.md) | 실험 결론. 본 가이드는 그 결론을 **운영 표준** 으로 격상. |
+| [docs/30](./30-multimodal-yolo-experiment-plan.md) | 실험 결론. 본 가이드는 그 결론을 후속 구현 명세로 구체화. |
 | [docs/32](./32-paddleocr-local-fallback-plan.md) | PaddleOCR 비용 최적화 폴백. 본 가이드 §5.2 라우팅 트리에 후순위 폴백으로 포함. |
 | [docs/31](./31-backend-feature-specifications.md) | 현행 기능 명세. 본 가이드 채택 후 §4 OCR·§5 LLM·§6 Vision 섹션 링크 갱신. |
 
@@ -220,25 +219,25 @@ Tier 5 (옵션): CLOVA OCR (기본 OFF, 비용)
         └─ 모두 실패 → 사용자 확인 화면 (수동 텍스트 입력)
 ```
 
-### 5.3 권장 모델 — Qwen 3.5 + Gemma 4 vision 이중 채널
+### 5.3 권장 모델 — Qwen 3.5 + Gemma 4 E4B vision 이중 채널
 
-Tier 3 는 두 책임을 분리해 운영한다.
+Tier 3 는 후속 구현에서 두 책임을 분리한다.
 
 | 역할 | 모델 | Ollama 태그 | 메모리(M4 Pro 24GB) | 비고 |
 | --- | --- | --- | --- | --- |
-| **이미지 → 텍스트 (멀티모달 추출)** ⭐ | Gemma 4 9B vision | `gemma4:9b` | ~9GB | 2026-04-02 출시. vision + tool calling + structured output. docs/12 §3 가 이미 `gemma4:e4b` 로 채택. |
-| **텍스트 구조화 (Pydantic JSON)** ⭐ | Qwen 3.5 9B | `qwen3.5:9b` | ~9GB | docs/12 §3 1차 기본 텍스트 파서. 본 단계에서도 동일 모델 재사용 → 메모리 상주 모델 1개로 통일 가능(Ollama hot-swap 시 두 모델 모두 캐시). |
-| 보강(선택) | Gemma 3 27B | `gemma3:27b` | ~27GB(M4 Pro 권장 X) | DocVQA 85.6, 사내 GPU 서버 또는 발주처 인프라 전용. |
+| **이미지 → 텍스트 (멀티모달 추출)** ⭐ | Gemma 4 E4B vision | `gemma4:e4b` | 9.6GB model size | Ollama 공식 tag. Text/Image 입력 지원. 현행 `Settings.ollama_vision_model` 기본값과 일치. |
+| **텍스트 구조화 (Pydantic JSON)** ⭐ | Qwen 3.5 9B | `qwen3.5:9b` | 6.6GB model size | Ollama 공식 tag. 현행 `Settings.ollama_model` 기본값과 일치. |
+| 보강(선택) | Gemma 4 26B | `gemma4:26b` | 18GB model size | 사내 GPU 서버 또는 발주처 인프라 전용 후보. MacBook 24GB 기본 개발 환경에는 권장하지 않음. |
 
-권장 운영 방식:
+권장 구현 방식:
 
-1. **이미지 입력**은 `ollama_vision_model=gemma4:9b` 또는 docs/12 의 기본값 `gemma4:e4b` 로 호출 → visible text 만 추출
+1. **이미지 입력**은 `ollama_vision_model=gemma4:e4b` 로 호출 → visible text 만 추출
 2. 추출된 텍스트는 **Qwen 3.5 9B**(docs/12 §3 와 동일)에 다시 보내 `SupplementStructuredParseResult` 로 구조화
 3. 두 모델 모두 로컬 Ollama 에서 실행되며, 식별 가능 환자 정보 외부 송출 없음(docs/12 §2)
 
-운영자는 `ollama_vision_model` (이미지 → 텍스트)과 `ollama_model` (텍스트 → JSON) 두 환경 변수를 분리해 설정. Qwen 3.5 의 vision 변종(`qwen3.5-vl:*` 등)이 Ollama 라이브러리에 정식 등록되면 그 시점에 `gemma4:9b` 와 교체 가능 — 환경 변수 한 줄만 변경하면 됨(Adapter 패턴).
+운영자는 `ollama_vision_model` (이미지 → 텍스트)과 `ollama_model` (텍스트 → JSON) 두 환경 변수를 분리해 설정. Qwen 3.5 vision 경로를 쓰기로 결정하면 그 시점에 별도 PoC 후 환경 변수만 바꾼다(Adapter 패턴).
 
-> 📌 **결정**: 본 가이드는 docs/12 §3 의 Qwen 3.5 텍스트 + Gemma 4 vision 정책을 그대로 따른다. 별도의 Qwen-VL/Qwen2.5-VL 라인은 도입하지 않는다.
+> 결정: 본 가이드는 현재 코드 기본값과 공식 Ollama tag가 맞는 `qwen3.5:9b` 텍스트 + `gemma4:e4b` vision 정책을 기준으로 한다. 공식 목록에서 확인되지 않는 `gemma4:9b` tag는 사용하지 않는다.
 
 ### 5.4 시스템 프롬프트 (재사용)
 
@@ -509,7 +508,8 @@ async def verify_against_ocr(
 
 | 날짜 | 변경 내용 | 작성자 |
 | --- | --- | --- |
-| 2026-05-13 | 최초 작성. docs/30 실험 결론을 3-tier 운영 표준으로 격상. Tier 별 책임·라우팅 트리·코드 변경 범위·테스트 시나리오 7건·일정 1주 정의. | yeong-tech |
+| 2026-05-14 | 상태를 후속 구현 가이드로 낮추고, Ollama 공식 tag 기준으로 `gemma4:e4b` / `qwen3.5:9b` 조합을 정리. | yeong-tech |
+| 2026-05-13 | 최초 작성. docs/30 실험 결론을 3-tier 후속 구현 명세로 정리. Tier 별 책임·라우팅 트리·코드 변경 범위·테스트 시나리오 7건·일정 1주 정의. | yeong-tech |
 
 ## 13. 관련 문서
 
@@ -534,9 +534,7 @@ async def verify_against_ocr(
 - [Cloud Vision OCR](https://cloud.google.com/vision/docs/ocr)
 - [Cloud Vision Dense Document Text Detection](https://cloud.google.com/vision/docs/fulltext-annotations)
 - [Cloud Vision Language Support](https://docs.cloud.google.com/vision/docs/languages)
-- [Ollama Multimodal Models](https://ollama.com/blog/multimodal-models)
+- [Ollama Vision](https://docs.ollama.com/capabilities/vision)
+- [Ollama Structured Outputs](https://docs.ollama.com/capabilities/structured-outputs)
 - [Ollama qwen3.5](https://ollama.com/library/qwen3.5)
 - [Ollama gemma4](https://ollama.com/library/gemma4)
-- [Ollama Vision Search](https://ollama.com/search?c=vision)
-- [Best Ollama Models in 2026](https://mljourney.com/best-ollama-models-in-2026-a-practical-guide-by-use-case/)
-- [Ollama Models Cheat Sheet 2026](https://computingforgeeks.com/ollama-models-cheat-sheet/)

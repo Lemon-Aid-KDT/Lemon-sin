@@ -238,7 +238,11 @@ $RECYCLE.BIN/
 # Data & Models (LFS or external storage)
 # -----------------------------------------------------------------------------
 # Raw data
-data/raw/
+data/raw/*
+!data/raw/kdris/
+data/raw/kdris/*
+!data/raw/kdris/2025/
+!data/raw/kdris/2025/**
 data/private/
 data/processed/
 

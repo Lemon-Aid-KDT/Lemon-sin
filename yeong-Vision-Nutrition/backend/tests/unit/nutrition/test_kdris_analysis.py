@@ -71,6 +71,112 @@ def test_nutrient_analysis_flags_deficient_and_risky() -> None:
     assert not contains_forbidden_terms([result.user_message for result in response.results])
 
 
+def test_chronic_priority_boosts_only_low_or_deficient_nutrients() -> None:
+    """만성질환 룩업은 이미 낮음/부족인 영양소의 확인 순서에만 반영한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["htn"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="vitamin_c_mg", amount=20, unit="mg"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+            NutrientIntake(nutrient_code="magnesium_mg", amount=350, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+
+    assert by_code["vitamin_c_mg"].status == NutrientStatus.DEFICIENT
+    assert by_code["vitamin_c_mg"].ratio == 0.2
+    assert by_code["vitamin_c_mg"].priority == 2
+    assert by_code["potassium_mg"].status == NutrientStatus.LOW
+    assert by_code["potassium_mg"].ratio == 0.57
+    assert by_code["potassium_mg"].priority == 1
+    assert by_code["potassium_mg"].priority_context == ["hypertension"]
+    assert by_code["potassium_mg"].priority_source_ids == ["nhlbi_dash"]
+    assert by_code["potassium_mg"].user_message == (
+        "현재 입력과 만성질환 정보를 함께 볼 때 우선 확인 대상입니다."
+    )
+    assert by_code["magnesium_mg"].status == NutrientStatus.ADEQUATE
+    assert by_code["magnesium_mg"].priority == 0
+    assert by_code["magnesium_mg"].priority_context == []
+
+
+def test_unknown_chronic_disease_keeps_ratio_based_priority() -> None:
+    """미정의 만성질환 코드는 무시하고 기존 ratio 기반 우선순위를 유지한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["unknown-condition"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="vitamin_c_mg", amount=20, unit="mg"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+
+    assert by_code["vitamin_c_mg"].priority == 1
+    assert by_code["potassium_mg"].priority == 2
+    assert by_code["potassium_mg"].priority_context == []
+
+
+def test_ckd_caution_nutrients_do_not_receive_priority_boost() -> None:
+    """신장질환 주의 영양소는 자동으로 부족 우선순위를 올리지 않는다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["ckd"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="vitamin_c_mg", amount=20, unit="mg"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+
+    assert by_code["vitamin_c_mg"].priority == 1
+    assert by_code["potassium_mg"].priority == 2
+    assert by_code["potassium_mg"].priority_context == []
+
+
+def test_chronic_priority_messages_do_not_contain_forbidden_terms() -> None:
+    """만성질환 우선 확인 문구가 치료·처방 표현을 포함하지 않는지 검증한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["diabetes", "hypertension"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="fiber_g", amount=10, unit="g"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    messages = [result.user_message for result in response.results]
+    assert all("우선 확인 대상" in result.user_message for result in response.results)
+    assert not contains_forbidden_terms(messages)
+
+
 def test_unknown_nutrient_reference_raises() -> None:
     """기준값이 없는 영양소는 명확한 오류로 처리한다."""
     profile = UserProfile(age=30, sex="male", height_cm=170, weight_kg=70)

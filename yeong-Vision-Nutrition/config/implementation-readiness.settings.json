@@ -4,7 +4,7 @@
     "settings_name": "implementation-readiness",
     "version": "0.1.0",
     "status": "pre_implementation_baseline",
-    "updated_at": "2026-05-11",
+    "updated_at": "2026-05-14",
     "purpose": "상세 구현을 시작하기 전에 환경변수, 보안, 데이터, OCR, LLM, 규제 기능, 테스트 게이트를 고정하기 위한 설정값입니다.",
     "source_guides_checked": [
       "PROJECT_GUIDE.md",
@@ -242,11 +242,15 @@
       },
       "KDRIS_DATA_VERSION": {
         "required": true,
-        "default": "2020"
+        "default": "2025"
       },
       "KDRIS_DATA_PATH": {
         "required": true,
-        "default": "data/kdris/kdris_2020.csv"
+        "default": "data/kdris/kdris_2025.csv"
+      },
+      "ALLOW_SAMPLE_KDRIS": {
+        "required": true,
+        "default": false
       },
       "NUTRIENT_CODE_PATH": {
         "required": true,
@@ -329,15 +333,15 @@
       },
       "FEATURE_PRESCRIPTION_OCR_INTAKE": {
         "required": true,
-        "default": true
+        "default": false
       },
       "FEATURE_LAB_RESULT_OCR_INTAKE": {
         "required": true,
-        "default": true
+        "default": false
       },
       "FEATURE_HOSPITAL_MOCK_FHIR": {
         "required": true,
-        "default": true
+        "default": false
       },
       "FEATURE_HEALTHWAY_API_PILOT": {
         "required": true,
@@ -349,7 +353,7 @@
       },
       "FEATURE_MEDICATION_SAFETY_ALERT": {
         "required": true,
-        "default": true
+        "default": false
       },
       "FEATURE_CLINICIAN_REVIEW_QUEUE": {
         "required": true,

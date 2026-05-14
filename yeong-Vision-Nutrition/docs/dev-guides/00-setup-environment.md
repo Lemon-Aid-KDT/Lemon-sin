@@ -233,10 +233,10 @@ class Settings(BaseSettings):
     mfds_api_key: SecretStr | None = Field(default=None)
 
     # Regulated feature flags
-    feature_prescription_ocr_intake: bool = Field(default=True)
-    feature_lab_result_ocr_intake: bool = Field(default=True)
+    feature_prescription_ocr_intake: bool = Field(default=False)
+    feature_lab_result_ocr_intake: bool = Field(default=False)
     feature_dosage_change_recommendation: bool = Field(default=False)
-    feature_medication_safety_alert: bool = Field(default=True)
+    feature_medication_safety_alert: bool = Field(default=False)
 
 
 @lru_cache
