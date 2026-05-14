@@ -481,7 +481,7 @@ MVP에서 하지 않는 것:
 - [ ] 멘토용 기획서에는 조사 자료를 1쪽 표로 압축
 - [ ] `08-compliance-safety.md` 기준으로 사용자 노출 문구를 점검
 
-## 12. 최종 출처 목록
+## 12. 기존 조사 출처 목록
 
 - 서울대학교 보건영양연구실: <https://sites.google.com/view/snuphn/home>
 - PubMed, Precision nutrition for cardiometabolic diseases: <https://pubmed.ncbi.nlm.nih.gov/40307513/>
@@ -502,3 +502,90 @@ MVP에서 하지 않는 것:
 - 질병관리청 국가건강정보포털, 뇌졸중: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5495>
 - 질병관리청 국가건강정보포털, 골다공증: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=5833>
 - 질병관리청 국가건강정보포털, 빈혈: <https://health.kdca.go.kr/healthinfo/biz/health/gnrlzHealthInfo/gnrlzHealthInfo/gnrlzHealthInfoView.do?cntnts_sn=1104>
+
+## 13. 2026-05-14 보강 조사 출처
+
+이번 보강 조사는 기존 자료를 대체하지 않고, Lemon Aid 구현에 필요한 공식 기준과 기술·안전 근거의 빈틈을 메우기 위한 것이다. 기존 `research.md` 수록 자료는 그대로 유지하고, 새 자료는 아래 태그로 구분한다.
+
+| 태그 | 의미 | 구현 기준 사용 |
+|------|------|----------------|
+| `KR_OFFICIAL` | 국내 공식 기준, 공공 데이터, 공공 건강정보 | 가능 |
+| `KR_CLINICAL_GUIDE` | 국내 학회 진료지침, 복약 안전 안내 | 직접 사용 금지, 전문가 검토용 |
+| `KR_RESEARCH` | 국내 연구보고서, 학위논문, 특허, UI/UX 연구 | 배경·구조 참고 |
+| `GLOBAL_REVIEW` | 국외 리뷰 논문, scoping/systematic review | 최신 동향·한계 이해 |
+| `GLOBAL_TECH` | AI, OCR, 추천 시스템, LLM 평가 기술 자료 | 파이프라인·검증 참고 |
+| `NOT_FOR_RULE` | 사용자별 건강 판단 규칙화 금지 항목 | 구현 제한 기준 |
+
+### 13.1 KR_OFFICIAL 추가 자료
+
+| 자료 | 상태 | 사용할 수 있는 방식 | 사용하면 안 되는 방식 |
+|------|------|---------------------|------------------------|
+| 보건복지부/한국영양학회 2020 한국인 영양소 섭취기준(KDRIs) | 이번 보강 조사, 원문 확인 대상 | 연령·성별 영양소 기준값, 상한섭취량, 권장량 대비 비율 계산 | 만성질환자 치료 목표 또는 질환별 처방 기준으로 확장 |
+| 식약처 식품영양성분 DB Open API | 이번 보강 조사 | 음식·가공식품 영양성분 매칭, 출처 코드 관리 | 실제 섭취량을 사용자 확인 없이 확정 |
+| 농촌진흥청 국가표준식품성분표/Open API | 이번 보강 조사 | 한식·농식품 영양성분 보강, 음식명 정규화 | 조리법·분량 차이를 무시하고 확정값처럼 표시 |
+| 식품안전나라 건강기능식품 원료 정보 | 이번 보강 조사 | 기능성 원료, 기능성 내용, 섭취 시 주의사항 확인 | 질병 예방·치료 효과 또는 제품 추천으로 표현 |
+| 한국의약품안전관리원 DUR 안내 | 이번 보강 조사 | 병용금기·주의 개념 학습, 상담 권장 경계 설계 | 앱이 복용 가능/불가능을 최종 판정 |
+
+### 13.2 KR_CLINICAL_GUIDE 추가 자료
+
+| 자료 | 상태 | 사용할 수 있는 방식 | 사용하면 안 되는 방식 |
+|------|------|---------------------|------------------------|
+| 대한당뇨병학회 당뇨병 진료지침 | 이번 보강 조사, 원문 확인 대상 | 당뇨병과 식사·혈당 관리 맥락 학습, 의료자문 질문 정리 | 당뇨병 여부 판정, 식단 처방, 약물 기준 반영 |
+| 대한고혈압학회 고혈압 진료지침 | 이번 보강 조사, 원문 확인 대상 | 고혈압과 나트륨·체중·활동 관리 맥락 학습 | 혈압 상태 진단, 치료 목표 판정 |
+| 한국지질·동맥경화학회 이상지질혈증 진료지침 | 이번 보강 조사, 원문 확인 대상 | 지질 지표와 식사 요인 학습 | 심혈관질환 위험도 판정 또는 치료 권고 |
+| 대한골대사학회 골다공증 진료지침 | 이번 보강 조사, 원문 확인 대상 | 칼슘·비타민 D·신체활동 맥락 학습 | 골다공증 진단, 골절 예방 보장 표현 |
+
+### 13.3 GLOBAL_REVIEW 추가 자료
+
+| 자료 | 상태 | 사용할 수 있는 방식 | 사용하면 안 되는 방식 |
+|------|------|---------------------|------------------------|
+| Artificial Intelligence Applications to Measure Food and Nutrient Intakes: Scoping Review | 이번 보강 조사 | AI 기반 식품·영양 섭취 측정의 장점과 한계 이해 | AI 추정 결과를 공식 DB 검증 없이 확정 |
+| Mobile Computer Vision-Based Applications for Food Recognition and Volume and Calorific Estimation: A Systematic Review | 이번 보강 조사 | 음식 인식·분량 추정의 오차와 사용자 확인 필요성 설명 | 음식 사진만으로 섭취량·열량 확정 |
+| Navigating nutrients: real-time food nutrition classification and recommendation systems | 이번 보강 조사 | 실시간 음식 영양 분류·추천 시스템 동향 참고 | 국외 추천 기준을 한국 사용자에게 직접 적용 |
+| Large language models provide unsafe answers to patient-posed medical questions | 이번 보강 조사 | 환자 대상 LLM 의료 답변 안전성 위험과 필터 필요성 설명 | 챗봇이 의료 상담을 대신하도록 허용 |
+
+### 13.4 GLOBAL_TECH 추가 자료
+
+| 자료 | 상태 | 사용할 수 있는 방식 | 사용하면 안 되는 방식 |
+|------|------|---------------------|------------------------|
+| NutriBench: nutrition estimation from meal descriptions | 이번 보강 조사 | 식사 설명 기반 영양 추정 벤치마크 참고 | 벤치마크 결과를 Lemon Aid 정확도 보장으로 사용 |
+| Demystifying Large Language Models for Medicine: A Primer | 이번 보강 조사 | 의료 LLM 사용 범위와 평가 관점 학습 | LLM이 의료 판단을 생성해도 된다는 근거로 사용 |
+| MedHalu: Hallucinations in Responses to Healthcare Queries | 이번 보강 조사 | 의료 질의 hallucination 위험과 expert-in-the-loop 필요성 참고 | hallucination이 자동으로 해결됐다고 가정 |
+| A Framework for Human Evaluation of LLMs in Healthcare | 이번 보강 조사 | 의료 LLM 인간 평가 항목 참고 | 자동 평가만으로 의료 안전성 확보 판단 |
+| Towards Human-AI Collaboration in Healthcare: Guided Deferral Systems | 이번 보강 조사 | 불확실하거나 위험한 경우 사람에게 넘기는 deferral 설계 참고 | 앱이 최종 판단을 계속 유지 |
+
+## 14. 태그별 상세 문서
+
+보강 조사 자료와 기존 자료는 아래 상세 문서에서 태그별로 다시 정리한다.
+
+| 문서 | 태그 | 목적 |
+|------|------|------|
+| [01-kr-official.md](./evidence-tags/01-kr-official.md) | `KR_OFFICIAL` | 구현 기준 가능 자료 |
+| [02-kr-clinical-guide.md](./evidence-tags/02-kr-clinical-guide.md) | `KR_CLINICAL_GUIDE` | 팀 학습/전문가 검토용 자료 |
+| [03-kr-research.md](./evidence-tags/03-kr-research.md) | `KR_RESEARCH` | 한국 사용자 맥락/배경 근거 |
+| [04-global-review.md](./evidence-tags/04-global-review.md) | `GLOBAL_REVIEW` | 최신 동향/배경 근거 |
+| [05-global-tech.md](./evidence-tags/05-global-tech.md) | `GLOBAL_TECH` | AI, OCR, 추천 시스템 구현 참고 |
+| [06-not-for-rule.md](./evidence-tags/06-not-for-rule.md) | `NOT_FOR_RULE` | 사용자별 건강 판단 규칙화 금지 |
+
+## 15. 보강 출처 목록
+
+- 보건복지부, 2020 한국인 영양소 섭취기준: <https://www.mohw.go.kr/board.es?act=view&bid=0019&list_no=362385&mid=a10411000000&nPage=39&tag=>
+- 한국영양학회 KDRIs 자료실: <https://www.kns.or.kr/fileroom/fileroom_view.asp?BoardID=Kdr&idx=108>
+- 식약처 식품영양성분 DB Open API: <https://various.foodsafetykorea.go.kr/nutrient/industry/openApi/info.do>
+- 농촌진흥청 국가표준식품성분표/Open API: <https://koreanfood.rda.go.kr/kfi/openapi/useNewGuidance>
+- 식품안전나라: <https://www.foodsafetykorea.go.kr>
+- 한국의약품안전관리원 DUR 안내: <https://www.drugsafe.or.kr/iwt/ds/ko/useinfo/EgovDurUds.do?pageCsf=KR>
+- 대한당뇨병학회 당뇨병 진료지침: <https://diabetes.or.kr/bbs/download.php?code=guide&number=1522>
+- 대한고혈압학회 진료지침 자료: <https://www.koreanhypertension.org/reference/guide?mode=read>
+- 한국지질·동맥경화학회 이상지질혈증 진료지침: <https://www.lipid.or.kr/conferences_journals/publication.php>
+- 대한골대사학회 골다공증 진료지침: <https://www.ksbmr.org/bbs/index.html?category=&code=notice&gubun=&key=&keyfield=&mode=view&number=1294&page=13>
+- PubMed, Artificial Intelligence Applications to Measure Food and Nutrient Intakes: <https://pubmed.ncbi.nlm.nih.gov/39608003/>
+- MDPI, Mobile Computer Vision-Based Applications for Food Recognition and Volume and Calorific Estimation: <https://www.mdpi.com/2029682>
+- PubMed, Navigating nutrients: <https://pubmed.ncbi.nlm.nih.gov/40328030/>
+- PMC, Large language models provide unsafe answers to patient-posed medical questions: <https://pmc.ncbi.nlm.nih.gov/articles/PMC13013898/>
+- Hugging Face Papers, NutriBench: <https://huggingface.co/papers/2407.12843>
+- Hugging Face Papers, Demystifying Large Language Models for Medicine: <https://huggingface.co/papers/2410.18856>
+- Hugging Face Papers, MedHalu: <https://huggingface.co/papers/2409.19492>
+- arXiv, A Framework for Human Evaluation of LLMs in Healthcare: <https://arxiv.org/abs/2405.02559>
+- arXiv, Towards Human-AI Collaboration in Healthcare: <https://arxiv.org/abs/2406.07212>
+- ScienceDirect, Can large language models reason about medical questions?: <https://www.sciencedirect.com/science/article/pii/S2666389924000424>

@@ -8,6 +8,7 @@
 | 문서 | 목적 |
 |------|------|
 | [research.md](./research.md) | 자료별 사용 목적, 적용 위치, 후속 분석 체크리스트 |
+| [evidence-tags/](./evidence-tags/) | KR_OFFICIAL, KR_CLINICAL_GUIDE, KR_RESEARCH, GLOBAL_REVIEW, GLOBAL_TECH, NOT_FOR_RULE 태그별 상세 정리 |
 | [17-api-paper-algorithm-rationale.html](./17-api-paper-algorithm-rationale.html) | API, 논문, 알고리즘 수정 근거 정리 HTML |
 
 ## 작성 기준
