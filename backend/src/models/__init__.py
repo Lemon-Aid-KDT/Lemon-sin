@@ -1,4 +1,5 @@
+from src.models.email_verification import EmailVerification
 from src.models.profile import Consent, Profile
 from src.models.user import RefreshToken, User
 
-__all__ = ["User", "RefreshToken", "Profile", "Consent"]
+__all__ = ["User", "RefreshToken", "Profile", "Consent", "EmailVerification"]
