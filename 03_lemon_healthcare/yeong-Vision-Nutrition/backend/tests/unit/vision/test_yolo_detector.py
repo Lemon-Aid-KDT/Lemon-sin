@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, ClassVar
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -53,11 +53,12 @@ class _Result:
 class _FakeModel:
     """Fake Ultralytics model object."""
 
-    names: ClassVar[dict[int, str]] = {
-        0: "supplement_label",
-        1: "supplement_bottle",
-        2: "person",
-    }
+    def __init__(self) -> None:
+        self.names: dict[int, str] = {
+            0: "supplement_label",
+            1: "supplement_bottle",
+            2: "person",
+        }
 
     def predict(self, *, source: Any, conf: float, verbose: bool) -> list[_Result]:
         """Return a fake result list matching the Ultralytics result shape.
@@ -76,18 +77,38 @@ class _FakeModel:
         return [_Result()]
 
 
-def _settings(**overrides: object) -> Settings:
+def _settings(
+    *,
+    enable_vision_classifier: bool = True,
+    vision_roi_allowed_classes: list[str] | None = None,
+) -> Settings:
     """Return settings for detector tests.
 
     Args:
-        **overrides: Settings overrides.
+        enable_vision_classifier: Whether the gated YOLO channel is enabled.
+        vision_roi_allowed_classes: Optional ROI taxonomy override.
 
     Returns:
         Settings object.
     """
-    values: dict[str, object] = {"enable_vision_classifier": True}
-    values.update(overrides)
-    return Settings(**values)
+    if vision_roi_allowed_classes is None:
+        return Settings(enable_vision_classifier=enable_vision_classifier)
+    return Settings(
+        enable_vision_classifier=enable_vision_classifier,
+        vision_roi_allowed_classes=vision_roi_allowed_classes,
+    )
+
+
+def _fake_model_factory(_name: str) -> _FakeModel:
+    """Return a fake YOLO model for runner tests.
+
+    Args:
+        _name: Model name accepted for parity with the production model factory.
+
+    Returns:
+        Fake model satisfying the runner protocol.
+    """
+    return _FakeModel()
 
 
 def _png_bytes(width: int = 10, height: int = 8) -> bytes:
@@ -164,7 +185,7 @@ def test_ultralytics_runner_normalizes_allowed_boxes_without_text_extraction() -
         model_name="local-supplement-roi.pt",
         allowed_labels={"supplement_bottle", "supplement_label", "blister_pack"},
         min_confidence=0.5,
-        model_factory=lambda _name: _FakeModel(),
+        model_factory=_fake_model_factory,
     )
 
     regions = runner.detect_regions(_png_bytes())
@@ -188,7 +209,7 @@ def test_ultralytics_runner_fails_closed_without_allowed_boxes() -> None:
         model_name="local-supplement-roi.pt",
         allowed_labels={"blister_pack"},
         min_confidence=0.5,
-        model_factory=lambda _name: _FakeModel(),
+        model_factory=_fake_model_factory,
     )
 
     with pytest.raises(VisionError, match="allowed supplement ROI"):

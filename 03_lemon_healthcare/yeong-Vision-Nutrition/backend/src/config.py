@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, SecretStr, model_validator
@@ -20,6 +21,9 @@ DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
 DEFAULT_VISION_ROI_ALLOWED_CLASSES = ["supplement_label", "supplement_bottle", "blister_pack"]
 # Deliberately insecure development sentinel; production validation rejects this exact value.
 DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE_CANDIDATES = (PROJECT_ROOT / ".env", BACKEND_ROOT / ".env")
 JWT_CORE_REQUIRED_CLAIMS = {"aud", "exp", "iat", "iss", "sub"}
 WILDCARD_VALUES = {"*"}
 ASYMMETRIC_JWT_ALGORITHMS = {
@@ -195,7 +199,8 @@ class Settings(BaseSettings):
         ollama_timeout_sec: Ollama 요청 타임아웃.
         ollama_temperature: 구조화 출력 안정성을 위한 temperature.
         allow_external_llm: 외부 LLM 사용 허용 여부.
-        google_application_credentials: Google Cloud 인증 파일 경로.
+        google_cloud_api_key: Google Cloud Vision REST API key.
+        google_application_credentials: Deprecated Google Cloud 인증 파일 경로.
         clova_ocr_api_url: CLOVA OCR API Gateway invoke URL.
         clova_ocr_secret: CLOVA OCR client secret.
         mfds_api_key: 식약처/공공데이터 API 키.
@@ -221,8 +226,9 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE_CANDIDATES,
         env_file_encoding="utf-8",
+        env_ignore_empty=True,
         case_sensitive=False,
         extra="ignore",
     )
@@ -259,6 +265,7 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
+    google_cloud_api_key: SecretStr | None = Field(default=None)
     google_application_credentials: str | None = Field(default=None)
     clova_ocr_api_url: str | None = Field(default=None)
     clova_ocr_secret: SecretStr | None = Field(default=None)
@@ -289,10 +296,10 @@ class Settings(BaseSettings):
     kdris_manifest_path: str | None = Field(default=None)
     allow_sample_kdris: bool = Field(default=True)
 
-    feature_prescription_ocr_intake: bool = Field(default=True)
-    feature_lab_result_ocr_intake: bool = Field(default=True)
+    feature_prescription_ocr_intake: bool = Field(default=False)
+    feature_lab_result_ocr_intake: bool = Field(default=False)
     feature_dosage_change_recommendation: bool = Field(default=False)
-    feature_medication_safety_alert: bool = Field(default=True)
+    feature_medication_safety_alert: bool = Field(default=False)
 
     # Phase 게이트 플래그 — docs/17 §9 매핑. 모든 기본값 False/0.
     # 운영 활성화 전에는 발주처 리뷰 게이트(#1/#2/#3) 통과 후에만 변경.
@@ -449,6 +456,18 @@ class Settings(BaseSettings):
                 (
                     self.feature_hall_lite_weight_prediction,
                     "FEATURE_HALL_LITE_WEIGHT_PREDICTION=true requires Hall-lite validation sign-off.",
+                ),
+                (
+                    self.feature_prescription_ocr_intake,
+                    "FEATURE_PRESCRIPTION_OCR_INTAKE=true requires regulated OCR intake sign-off.",
+                ),
+                (
+                    self.feature_lab_result_ocr_intake,
+                    "FEATURE_LAB_RESULT_OCR_INTAKE=true requires regulated OCR intake sign-off.",
+                ),
+                (
+                    self.feature_medication_safety_alert,
+                    "FEATURE_MEDICATION_SAFETY_ALERT=true requires medication safety workflow sign-off.",
                 ),
             )
         )
