@@ -1,663 +1,420 @@
 <!--
   README.md
   Lemon Healthcare Project — 건강의신 AI 모델
-  최종 작성일: 2026-05-03
+  최종 수정일: 2026-05-15
 -->
 
 <div align="center">
 
 # 🍋 Lemon Healthcare — 건강의신 AI 모델
 
-### 영양제·식단·활동을 통합 분석하여 만성질환자 중심의 맞춤형 건강 관리를 제공하는 AI 헬스케어 플랫폼
+### 영양제·식단·활동 데이터를 바탕으로 만성질환자 중심의 건강관리 보조 흐름을 검증하는 Lemon Aid 팀 프로젝트
 
-[![Status](https://img.shields.io/badge/status-in%20development-yellow)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
-[![Phase](https://img.shields.io/badge/phase-0%20%7C%201%20%7C%202%20%7C%203%20%7C%204-orange)]()
+[![Status](https://img.shields.io/badge/status-team%20branch%20workspace-yellow)]()
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)]()
+[![FastAPI](https://img.shields.io/badge/FastAPI-Pydantic%20v2-009688?logo=fastapi&logoColor=white)]()
+[![Ollama](https://img.shields.io/badge/Ollama-local%20LLM%20default-000000)]()
+[![OCR](https://img.shields.io/badge/OCR-fail--closed%20by%20default-4285F4)]()
+[![Tests](https://img.shields.io/badge/latest%20local%20pytest-390%20passed%2C%202%20skipped-brightgreen)]()
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)]()
-[![Flutter](https://img.shields.io/badge/Flutter-3.24+-02569B?logo=flutter&logoColor=white)]()
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)]()
-[![TimescaleDB](https://img.shields.io/badge/TimescaleDB-2.x-FDB515?logo=timescale&logoColor=white)]()
-[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)]()
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)]()
-
-[![Cloud Vision](https://img.shields.io/badge/Google_Cloud_Vision-OCR-4285F4?logo=googlecloud&logoColor=white)]()
-[![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?logo=ollama&logoColor=white)]()
-[![HealthKit](https://img.shields.io/badge/Apple-HealthKit-000000?logo=apple&logoColor=white)]()
-[![Health Connect](https://img.shields.io/badge/Google-Health_Connect-4285F4?logo=google&logoColor=white)]()
-
-[![Backend CI](https://img.shields.io/badge/Backend_CI-not%20yet-lightgrey)]()
-[![Mobile CI](https://img.shields.io/badge/Mobile_CI-not%20yet-lightgrey)]()
-[![Coverage](https://img.shields.io/badge/coverage-pending-lightgrey)]()
-
----
-
-**[📖 문서](#-문서-허브) · [🚀 빠른 시작](#-빠른-시작-quick-start) · [🏗 아키텍처](#-아키텍처) · [🛠 기술 스택](#-기술-스택) · [🗺 로드맵](#-로드맵)**
+**[현재 상태](#-현재-구현-상태) · [빠른 시작](#-빠른-시작) · [폴더 구조](#-폴더-구조) · [검증 명령](#-검증-명령) · [문서 허브](#-문서-허브) · [협업 규칙](#-협업-규칙)**
 
 </div>
 
 ---
 
-## 📋 한 줄 정의
+## 📋 프로젝트 정의
 
-> 영양제 라벨 사진 한 장과 식단 정보로, **부족 영양소 추천 · 영양 권장량 · 체중 변화 예측 · 운동 권고 · 목적별(눈/간/피로) 분석** 5가지를 한 번에 제공하는 AI 헬스케어 플랫폼.
-> *(주)레몬헬스케어 발주, 경북대학교 AI/빅데이터 전문가 양성 과정 협업 프로젝트.*
+Lemon Aid는 (주)레몬헬스케어 기업 프로젝트 맥락에서 진행하는 AI 헬스케어 팀 프로젝트입니다. 현재 저장소는 건강의신 직접 연동 완성본이 아니라, 영양제 분석을 중심으로 음식 사진 분석, AI agent chat, 모바일/프론트엔드 파트를 통합하기 위한 참조 구현 작업 공간입니다.
 
-## 🎯 누구를 위한 서비스인가
+서비스 방향은 진단·처방·치료가 아닌 건강관리 보조입니다. 처방전·검사표 같은 민감 문서는 OCR intake와 사용자 확인 흐름으로 제한하고, 복용량 변경을 직접 안내하지 않는 안전 정책을 기본값으로 둡니다.
 
-```
-🩺 1차 핵심 페르소나 — 김건강 (52세, 만성질환 관리자)
-   고혈압·당뇨 전단계 진단 받음. 영양제 4종 동시 복용 중.
-   "약과 영양제가 충돌하지 않을까?",
-   "내 만성질환에 맞는 운동·영양은?" 같은 질문을 매일 한다.
+---
 
-📊 2차 확장 페르소나 — 박직장 (38세, 예방 단계 직장인)
-   정기 검진에서 콜레스테롤·체중 경고. 시간이 없다.
-   "최소 시간으로 만성질환을 예방하고 싶다."
-```
+## ✅ 현재 구현 상태
 
-> 🔍 **상세 페르소나·차별화 전략**: [`docs/Nutrition-docs/03-project-intent.md`](./docs/Nutrition-docs/03-project-intent.md)
+| 영역 | 상태 | 주요 경로 | 설명 |
+|------|------|-----------|------|
+| Nutrition backend | 구현·검증 진행 중 | `backend/Nutrition-backend/` | FastAPI 런타임, 영양제 OCR/파싱, KDRIs 룩업, 체중 예측, 개인정보/동의, regulated OCR intake, 테스트가 이 폴더에 모여 있습니다. |
+| Food image analysis | 구조 준비 | `backend/food_image_analysis/`, `data/food_images/` | 음식 사진 분석 담당 폴더와 데이터 표준 구조가 준비되어 있고, 실제 모델/서비스 구현은 다음 단계입니다. |
+| AI agent chat | 구조 준비 | `backend/ai_agent_chat/`, `docs/Chat-docs/` | AI agent chat 담당 폴더가 준비되어 있고, 대화 런타임 구현은 후속 작업입니다. |
+| Frontend | 구조 준비 | `frontend/` | 팀 통합용 프론트엔드 위치만 정의된 상태입니다. |
+| Mobile | 구조 준비 | `mobile/` | Flutter/Xcode 기반 UI/UX 작업을 위한 위치가 정의되어 있습니다. |
+| Data | 일부 구현 | `data/nutrition_reference/`, `data/supplement_images/`, `data/food_images/` | KDRIs 2025 파생 CSV와 taxonomy/manifests/splits 구조를 포함합니다. 원본 이미지·PDF·ZIP은 Git에 올리지 않습니다. |
+| Docs | 정리 완료 | `docs/`, `docs/Nutrition-docs/`, `docs/Integration-docs/` | 공통 문서와 Nutrition 담당 상세 문서를 분리했습니다. |
+| CI/GitHub templates | 현재 브랜치에는 없음 | `docs/05-github-guidelines.md` | `.github/` 워크플로와 템플릿은 현재 푸시 트리에 포함하지 않았습니다. 협업 규칙은 문서 기준으로 관리합니다. |
 
-## ✨ 핵심 차별점 (vs 필라이즈·CalZen 등 선행 주자)
+최근 로컬 검증 기준:
 
-| 차별 무기 | 본 프로젝트 | 경쟁 서비스 |
-|----------|-----------|-----------|
-| 🏥 **의료기관 네트워크 연계 가능성** | ✅ LDB (130여 의료기관) | ❌ |
-| 🧬 **만성질환 v4 가중 알고리즘** | ✅ 임상적 정교함 | ❌ |
-| 👥 **검증된 사용자 베이스** | ✅ 770만+ (청구의신) | △ |
-| 📊 **5종 출력 한 번에** | ✅ 통합 | △ (단편) |
-| ⚖️ **공식 데이터 기반** | ✅ KDRIs·식약처 | △ |
-
-> 🔍 **상세 시장·경쟁 분석**: [`docs/Nutrition-docs/04-market-research.md`](./docs/Nutrition-docs/04-market-research.md)
+- KDRIS 2025 데이터셋 검증: `1795` rows 통과
+- `black --check .` 통과
+- `ruff check .` 통과
+- 핵심 backend mypy 통과
+- `pytest -q --no-cov`: `390 passed, 2 skipped`
 
 ---
 
 ## 🏗 아키텍처
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                   👤 사용자 (페르소나 B/A)                  │
-└────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────┐
-│                📱 Flutter App (iOS + Android)                │
-│   영양제 카메라 · 식단 입력 · 5종 출력 대시보드               │
-│   📦 health 패키지 → HealthKit + Health Connect 자동 연동    │
-└────────────────────────────────────────────────────────────┘
-                              │ HTTPS / REST
-                              ▼
-┌────────────────────────────────────────────────────────────┐
-│              🐍 FastAPI Backend (Python 3.11+)              │
-│   알고리즘 (v1~v4 · BMR/TDEE · 7-step) · API · 인증         │
-└────────────────────────────────────────────────────────────┘
-        │              │              │              │
-        ▼              ▼              ▼              ▼
-   ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-   │PostgreSQL│   │ Cloud   │    │ Claude  │    │  Redis  │
-   │   +      │   │ Vision  │    │   API   │    │  Cache  │
-   │TimescaleDB│  │  (OCR)  │    │  (LLM)  │    │         │
-   └─────────┘    └─────────┘    └─────────┘    └─────────┘
-                              │
-                              ▼
-        🌐 외부 데이터: KDRIs · 식약처 · 농진청 · AI Hub
+```text
+사용자 입력
+  ├─ 영양제 라벨 이미지 또는 OCR 텍스트
+  ├─ 음식 이미지/식단 정보 (후속 구현)
+  └─ AI agent chat 입력 (후속 구현)
+        │
+        ▼
+FastAPI Backend
+  ├─ backend/Nutrition-backend/src/api/v1/
+  ├─ backend/Nutrition-backend/src/services/
+  ├─ backend/Nutrition-backend/src/nutrition/
+  ├─ backend/Nutrition-backend/src/prediction/
+  ├─ backend/Nutrition-backend/src/ocr/
+  ├─ backend/Nutrition-backend/src/llm/
+  ├─ backend/Nutrition-backend/src/regulated/
+  └─ backend/Nutrition-backend/src/learning/
+        │
+        ├─ PostgreSQL / Redis 설정값 보유
+        ├─ KDRIs 2025 / nutrient reference data
+        ├─ Ollama local LLM 기본 경로
+        └─ Google Vision / CLOVA / PaddleOCR optional OCR adapters
 ```
 
-### 🔄 영양제 사진 → 결과 (예상 응답 시간 2.5~6초)
+### 영양제 분석 흐름
 
-```
-📸 사용자 촬영
-   ↓
-📤 Flutter → FastAPI 업로드 (multipart)
-   ↓
-🔑 SHA-256 해시 → Redis 캐시 조회
-   ↓ (캐시 미스)
-👁 Google Cloud Vision OCR (~1초)
-   ↓
-🤖 Ollama 로컬 LLM 구조화 (모델별 측정)
-   ↓
-📚 식약처 DB 매칭 (~0.2초)
-   ↓
-💾 PostgreSQL 저장 + Redis 캐싱
-   ↓
-📦 결과 JSON 반환 → 5종 출력 대시보드
+```text
+이미지 또는 OCR 텍스트 입력
+  → 이미지 크기·파일 제한 검증
+  → OCR provider 선택
+      기본값: OCR_PRIMARY_PROVIDER=none, ALLOW_EXTERNAL_OCR=false
+      opt-in: Google Vision, CLOVA, PaddleOCR, YOLO ROI, Ollama vision assist
+  → OCR 텍스트 정리
+  → Ollama 기반 구조화 parser
+  → 성분·함량·섭취 방법 후보 추출
+  → KDRIs / 영양 기준 / 주의 성분 규칙과 매칭
+  → 사용자 확인 후 저장 또는 폐기
 ```
 
-> 🔍 **상세 아키텍처·기술 의사결정**: [`docs/Nutrition-docs/06-tech-stack.md`](./docs/Nutrition-docs/06-tech-stack.md)
+Google Vision 관련 코드와 설정은 존재하지만 기본 운영 자세는 fail-closed입니다. 외부 OCR로 이미지 바이트를 보내려면 `ALLOW_EXTERNAL_OCR=true`와 provider별 인증 설정을 명시해야 합니다.
 
 ---
 
 ## 🛠 기술 스택
 
-### 백엔드
-- **언어·프레임워크**: Python 3.11+ · FastAPI 0.110+ · Pydantic v2
-- **데이터베이스**: PostgreSQL 16 · TimescaleDB 2.x (시계열) · Redis 7
-- **테스트**: pytest · pytest-cov · httpx (50+ 단위 테스트)
-- **품질**: Black · Ruff · mypy · pre-commit hooks
+### Backend
 
-### 모바일
-- **프레임워크**: Flutter 3.24+ · Dart 3.x
-- **상태 관리**: Riverpod (또는 Provider)
-- **헬스 데이터**: `health` 패키지 (HealthKit + Health Connect 통합)
-- **API 통신**: Dio + Retrofit
+- Python `>=3.13`
+- FastAPI, Pydantic v2, SQLAlchemy, Alembic
+- pytest, pytest-cov, httpx
+- Black, Ruff, mypy strict
+- PostgreSQL/Redis 설정값 보유
 
-### AI / 외부 API
-- **OCR**: Google Cloud Vision API (주력) · Naver CLOVA OCR (백업)
-- **LLM**: Ollama 로컬 LLM (qwen3.5 / gemma4) · 외부 LLM은 비식별·승인 환경 전용
-- **데이터셋**: AI Hub 한국 음식 이미지 (Phase 3)
+### AI / OCR
 
-### 인프라 · DevOps
-- **컨테이너**: Docker + Docker Compose
-- **CI/CD**: GitHub Actions (3개 워크플로 — backend/mobile/docs)
-- **클라우드**: NCP / AWS / GCP (택 1, 학생 크레딧 활용)
-- **모니터링**: Python logging + Sentry (선택)
+- Local LLM 기본값: Ollama
+- Text model 기본 예시: `qwen3.5:9b`
+- Vision model 기본 예시: `gemma4:e4b`
+- OCR 기본값: disabled
+- Optional OCR: Google Vision API key/ADC, NAVER CLOVA OCR, PaddleOCR
+- Optional ROI: YOLO 기반 label region helper
 
-### 데이터 출처 (모두 공공)
-- 한국영양학회 KDRIs 2020 · 식약처 식품영양성분 Open API
-- 식약처 건강기능식품 원료 DB · 농진청 국가표준식품성분표
+### Frontend / Mobile
 
-> 🔍 **각 기술 의사결정 근거·대안 비교**: [`docs/Nutrition-docs/06-tech-stack.md`](./docs/Nutrition-docs/06-tech-stack.md)
-> 🔍 **데이터·API 카탈로그**: [`docs/Nutrition-docs/09-data-catalog.md`](./docs/Nutrition-docs/09-data-catalog.md)
+- `frontend/`: 팀 통합용 프론트엔드 작업 위치
+- `mobile/`: Flutter + Xcode 기반 UI/UX 및 모바일 구현 위치
 
 ---
 
-## 🚀 빠른 시작 (Quick Start)
+## 🚀 빠른 시작
 
-### 사전 요구사항
+현재 루트에는 Docker Compose 파일이 포함되어 있지 않습니다. backend 검증은 로컬 Python 환경 기준으로 실행합니다.
 
-| 도구 | 버전 | 확인 명령 |
-|------|------|---------|
-| Python | 3.11+ | `python --version` |
-| Flutter | 3.24+ | `flutter --version` |
-| Docker | 최신 | `docker --version` |
-| Docker Compose | v2 | `docker compose version` |
-| Git | 최신 | `git --version` |
-
-### 1️⃣ 저장소 클론
+### 1. 저장소 준비
 
 ```bash
-git clone https://github.com/<team>/lemon-healthcare-project.git
-cd lemon-healthcare-project
+git clone https://github.com/Lemon-Aid-KDT/Lemon-sin.git
+cd Lemon-sin
+git switch yeong-tech
 ```
 
-### 2️⃣ 백엔드 셋업 (Docker Compose 권장)
+로컬 작업 경로에서 바로 실행하는 경우:
 
 ```bash
-# 환경 변수 설정
-cd backend
-cp .env.example .env
-# .env 파일 열어 API 키 입력 (아래 '환경 변수' 섹션 참조)
+cd /Users/yeong/99_me/00_github/03_lemon_healthcare/yeong-Lemon-Aid
+```
 
-# Docker Compose로 한 번에 시작
-cd ..
-docker compose up -d
+### 2. Backend 환경 구성
 
-# 또는 로컬에서 직접 실행
+```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate    # Windows
+python3.13 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn src.main:app --reload --port 8000
+pip install -r requirements-dev.txt
+cp .env.example .env
 ```
 
-#### 동작 확인
+`Settings`는 프로젝트 루트 `.env`와 `backend/.env`를 모두 읽습니다. 실제 키는 `.env`에만 넣고, `.env`는 Git에 커밋하지 않습니다.
+
+### 3. Backend 실행
 
 ```bash
-# Swagger UI 확인
-open http://localhost:8000/docs
-
-# 헬스 체크 API
-curl http://localhost:8000/health
-# {"status": "ok"}
+cd backend
+source .venv/bin/activate
+python -m uvicorn src.main:app --app-dir Nutrition-backend --reload --port 8000
 ```
 
-### 3️⃣ 모바일 셋업
+동작 확인:
 
 ```bash
-cd mobile
-flutter doctor                 # 환경 확인
-flutter pub get                # 의존성 설치
-flutter run                    # 시뮬레이터/실기기 실행
+curl http://127.0.0.1:8000/health
 ```
 
-#### iOS (Mac 환경)
+Swagger UI:
 
-```bash
-cd ios
-pod install
-cd ..
-flutter run -d "iPhone 15"     # 시뮬레이터 지정
+```text
+http://127.0.0.1:8000/docs
 ```
 
-#### Android
+---
 
-```bash
-flutter run -d <device_id>     # adb devices로 확인
-```
+## 🔐 환경 변수 기준
 
-### 4️⃣ 환경 변수 (`backend/.env`)
+기본 템플릿은 `backend/.env.example`입니다. 실제 로컬 키는 루트 `.env` 또는 `backend/.env`에 둡니다.
 
-```bash
-# 데이터베이스
+핵심 기본값:
+
+```dotenv
+ENVIRONMENT=development
 DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 
-# 로컬 LLM
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3.5:9b
+OLLAMA_VISION_MODEL=gemma4:e4b
 ALLOW_EXTERNAL_LLM=false
 
-# 외부 API 키
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-MFDS_API_KEY=...                  # 식약처 식품영양성분 API
-CLOVA_OCR_API_KEY=...             # (선택) 백업 OCR
+OCR_PRIMARY_PROVIDER=none
+ALLOW_EXTERNAL_OCR=false
+GOOGLE_VISION_AUTH_MODE=api_key
+GOOGLE_CLOUD_API_KEY=
 
-# 보안
-JWT_SECRET=...                    # openssl rand -hex 32
-ENCRYPTION_KEY=...                # AES-256 컬럼 암호화 키
-
-# 환경
-ENVIRONMENT=development           # development/staging/production
-LOG_LEVEL=DEBUG
+FEATURE_PRESCRIPTION_OCR_INTAKE=false
+FEATURE_LAB_RESULT_OCR_INTAKE=false
+FEATURE_DOSAGE_CHANGE_RECOMMENDATION=false
+FEATURE_MEDICATION_SAFETY_ALERT=false
 ```
 
-> ⚠️ **절대 `.env` 파일을 커밋하지 마세요.** `.gitignore`에 등록되어 있습니다.
-
-### 5️⃣ Pre-commit Hooks 설치 (권장)
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-이후 모든 `git commit`이 자동 린트·포매팅 검증.
+운영 환경에서는 외부 LLM 사용을 금지하고, Google Vision 운영 사용 시 `GOOGLE_VISION_AUTH_MODE=adc`, `GOOGLE_CLOUD_PROJECT`, attached service account, 별도 승인 게이트가 필요합니다.
 
 ---
 
 ## 📂 폴더 구조
 
-```
-lemon-healthcare-project/
-├── 📄 README.md                    # 이 문서
-│
-├── 📁 docs/                        # 기획·설계 문서 (10개)
-│   ├── 01-project-overview.md      # 프로젝트 개요
-│   ├── 02-background-problem.md    # 배경 및 문제 정의
-│   ├── 03-project-intent.md        # 기획 의도·차별화
-│   ├── 04-market-research.md       # 시장·경쟁사 분석
-│   ├── 05-github-guidelines.md     # GitHub 협업 규칙
-│   ├── 06-tech-stack.md            # 기술 스택
-│   ├── 07-core-algorithm.md        # 핵심 알고리즘
-│   ├── 08-implementation-plan.md   # 구현 계획
-│   ├── 09-data-catalog.md          # 데이터·API 카탈로그
-│   └── 10-compliance-checklist.md  # 컴플라이언스 체크리스트
-│
-├── 📁 backend/                     # Python 백엔드 (FastAPI)
-│   ├── src/
-│   │   ├── algorithms/             # v1~v4, 7-step 산출식
-│   │   ├── ocr/                    # 영양제 OCR 파이프라인
-│   │   ├── nutrition/              # KDRIs 룩업 + 결핍 진단
-│   │   ├── prediction/             # 체중 예측
-│   │   ├── activity/               # 활동점수
-│   │   ├── api/                    # FastAPI 라우터
-│   │   ├── models/                 # Pydantic 스키마, DB 모델
-│   │   └── utils/
-│   ├── tests/                      # pytest 50+
+```text
+yeong-Lemon-Aid/
+├── README.md
+├── PROJECT_GUIDE.md
+├── guide.html
+├── config/
+│   ├── implementation-readiness.settings.json
+│   └── service-segmentation.settings.json
+├── backend/
+│   ├── Nutrition-backend/
+│   │   ├── src/
+│   │   │   ├── api/v1/
+│   │   │   ├── algorithms/
+│   │   │   ├── db/
+│   │   │   ├── learning/
+│   │   │   ├── llm/
+│   │   │   ├── models/
+│   │   │   ├── nutrition/
+│   │   │   ├── ocr/
+│   │   │   ├── prediction/
+│   │   │   ├── regulated/
+│   │   │   ├── security/
+│   │   │   ├── services/
+│   │   │   └── vision/
+│   │   └── tests/
+│   ├── food_image_analysis/
+│   ├── ai_agent_chat/
+│   ├── alembic/
+│   ├── scripts/
 │   ├── requirements.txt
-│   └── pyproject.toml              # Black·Ruff·mypy 설정
-│
-├── 📁 mobile/                      # Flutter 모바일 앱
-│   ├── lib/
-│   │   ├── screens/                # UI 화면
-│   │   ├── widgets/                # 재사용 위젯
-│   │   ├── services/               # API · HealthKit · Health Connect
-│   │   ├── models/
-│   │   └── utils/
-│   ├── ios/                        # iOS 빌드 설정
-│   ├── android/                    # Android 빌드 설정
-│   ├── test/
-│   ├── pubspec.yaml
-│   └── analysis_options.yaml
-│
-├── 📁 data/                        # 정적 데이터
-│   ├── kdris_2020.csv              # KDRIs 룩업 테이블
-│   └── README.md                   # 출처·라이선스
-│
-├── 📁 notebooks/                   # 실험·EDA
-├── 📁 scripts/                     # 보조 스크립트
-│
-├── 📁 .github/
-│   ├── PULL_REQUEST_TEMPLATE.md
-│   ├── ISSUE_TEMPLATE/
-│   ├── CODEOWNERS
-│   └── workflows/                  # CI 워크플로 3개
-│
-├── 🔧 .gitignore
-├── 🔧 .pre-commit-config.yaml
-├── 🔧 .editorconfig
-└── 🔧 docker-compose.yml
+│   ├── requirements-dev.txt
+│   └── pyproject.toml
+├── data/
+│   ├── nutrition_reference/
+│   │   ├── kdris/
+│   │   ├── mfds/
+│   │   └── nutrient/
+│   ├── supplement_images/
+│   │   ├── raw/
+│   │   ├── interim/
+│   │   ├── processed/
+│   │   ├── splits/
+│   │   ├── manifests/
+│   │   ├── quarantine/
+│   │   └── scripts/
+│   └── food_images/
+│       ├── raw/
+│       ├── interim/
+│       ├── processed/
+│       ├── splits/
+│       ├── manifests/
+│       ├── quarantine/
+│       └── scripts/
+├── docs/
+│   ├── 01-project-overview.md
+│   ├── 03-project-intent.md
+│   ├── 05-github-guidelines.md
+│   ├── 06-tech-stack.md
+│   ├── 10-compliance-checklist.md
+│   ├── Integration-docs/
+│   ├── Nutrition-docs/
+│   ├── Food-docs/
+│   └── Chat-docs/
+├── frontend/
+├── mobile/
+├── outputs/
+└── records/
 ```
+
+### Git에 올리지 않는 항목
+
+- `.env`, `.env.local`, API key 원본 폴더
+- `.venv`, cache, `__pycache__`, coverage/htmlcov
+- 원본 이미지 데이터, AI Hub 원본, 친구 제공 원본
+- KDRI 원본 PDF/ZIP/HWPX, 발표용 PDF/PPTX/DOCX
+- 대용량 모델 weight/checkpoint
+
+원본 데이터는 로컬 또는 외부 저장소에 보존하고, Git에는 taxonomy, manifest, split CSV, review CSV, 파생된 작은 reference 파일만 올리는 기준입니다.
+
+---
+
+## 🧪 검증 명령
+
+Backend 기준:
+
+```bash
+cd backend
+source .venv/bin/activate
+
+python -m json.tool ../config/implementation-readiness.settings.json
+python -m json.tool ../config/service-segmentation.settings.json
+python scripts/validate_kdris_dataset.py
+
+python -m black --check .
+python -m ruff check .
+python -m mypy \
+  Nutrition-backend/src Nutrition-backend/tests \
+  food_image_analysis/src food_image_analysis/tests \
+  ai_agent_chat/src ai_agent_chat/tests
+python -m pytest -q --no-cov
+```
+
+주의: `backend/scripts/digitize_kdris_2025_summary.py`는 KDRI 원본 PDF 디지털화 보조 스크립트라 선택 의존성 `pdfplumber`가 필요합니다. 일반 backend 검증 범위에서는 핵심 패키지와 테스트 경로 mypy를 기준으로 봅니다.
 
 ---
 
 ## 📖 문서 허브
 
-본 프로젝트는 **10개의 핵심 문서**로 구성되어 있습니다. 어떤 질문이 있는지에 따라 적합한 문서로 바로 이동하세요.
+### 공통 문서
 
-### 🟢 1단계 — 비전·합의 (What·Why·Who)
-
-| 질문 | 문서 |
+| 목적 | 문서 |
 |------|------|
-| 이 프로젝트가 무엇인가? | [`01-project-overview.md`](./docs/01-project-overview.md) |
-| 왜 만드는가? 어떤 문제를 해결하는가? | [`02-background-problem.md`](./docs/Nutrition-docs/02-background-problem.md) |
-| 누구를 위한 것이고, 어떻게 차별화되는가? | [`03-project-intent.md`](./docs/03-project-intent.md) |
-| 시장과 경쟁사는 어떤가? | [`04-market-research.md`](./docs/Nutrition-docs/04-market-research.md) |
+| 프로젝트 개요 | [`docs/01-project-overview.md`](./docs/01-project-overview.md) |
+| 프로젝트 의도 | [`docs/03-project-intent.md`](./docs/03-project-intent.md) |
+| GitHub 협업 규칙 | [`docs/05-github-guidelines.md`](./docs/05-github-guidelines.md) |
+| 기술 스택 요약 | [`docs/06-tech-stack.md`](./docs/06-tech-stack.md) |
+| 컴플라이언스 체크리스트 | [`docs/10-compliance-checklist.md`](./docs/10-compliance-checklist.md) |
+| CI/PR/통합 운영 | [`docs/Integration-docs/01-ci-pr-integration-operations.md`](./docs/Integration-docs/01-ci-pr-integration-operations.md) |
 
-### 🟡 2단계 — 협업 시스템 (How to Collaborate)
+### 파트별 문서
 
-| 질문 | 문서 |
-|------|------|
-| 팀이 어떻게 함께 코딩할 것인가? | [`05-github-guidelines.md`](./docs/05-github-guidelines.md) |
-
-### 🔵 3단계 — 실행 설계 (How to Build)
-
-| 질문 | 문서 |
-|------|------|
-| 어떤 기술 스택을 쓰는가? 왜? | [`06-tech-stack.md`](./docs/06-tech-stack.md) |
-| 알고리즘은 어떻게 동작하는가? | [`07-core-algorithm.md`](./docs/Nutrition-docs/07-core-algorithm.md) |
-| 언제·누가·어떻게 만드는가? | [`08-implementation-plan.md`](./docs/Nutrition-docs/08-implementation-plan.md) |
-
-### 🟣 추가 — 데이터·법규 (Data & Compliance)
-
-| 질문 | 문서 |
-|------|------|
-| 어떤 데이터·API를 쓰고, 비용은 얼마인가? | [`09-data-catalog.md`](./docs/Nutrition-docs/09-data-catalog.md) |
-| 의료법·약사법·개인정보보호법은? | [`10-compliance-checklist.md`](./docs/10-compliance-checklist.md) |
-
-> 💡 **처음 보시는 분이라면**: `01 → 02 → 03 → 04` 순서로 1단계 4개 문서만 읽으셔도 프로젝트의 전체 그림이 보입니다.
+| 파트 | 문서 경로 |
+|------|-----------|
+| Nutrition | [`docs/Nutrition-docs/`](./docs/Nutrition-docs/) |
+| Food | [`docs/Food-docs/`](./docs/Food-docs/) |
+| Chat | [`docs/Chat-docs/`](./docs/Chat-docs/) |
+| Backend structure | [`backend/README.md`](./backend/README.md) |
+| Nutrition backend | [`backend/Nutrition-backend/README.md`](./backend/Nutrition-backend/README.md) |
 
 ---
 
-## 🛠 명령어 레퍼런스
+## 🤝 협업 규칙
 
-### 백엔드 (Python)
+현재 팀 브랜치는 기능별 `feature/*`를 계속 만드는 방식보다 팀원 이름과 담당 파트를 붙인 고정 브랜치 방식을 기준으로 합니다.
 
-```bash
-# 개발 서버 실행 (Hot Reload)
-uvicorn src.main:app --reload --port 8000
+| 브랜치 | 담당 범위 |
+|--------|-----------|
+| `changmin-aiagent` | AI agent chat 기능, `backend/ai_agent_chat/`, `docs/Chat-docs/` |
+| `changmin-plan` | 기획·일정·회의록·공통 문서 |
+| `taedong-design` | UI/UX, mobile, frontend, assets |
+| `yeong-tech` | Nutrition 기술 구현, `backend/Nutrition-backend/`, `docs/Nutrition-docs/`, supplement data |
+| `jongpil-tech` | 기술 구현 보조와 담당 기능 개발 |
+| `sunghoon-database` | DB, Alembic, data structure, scripts |
 
-# 코드 포매팅
-black src tests --line-length=100
-
-# 린트
-ruff check src tests
-ruff check src tests --fix          # 자동 수정
-
-# 타입 체크
-mypy src --ignore-missing-imports
-
-# 테스트
-pytest                              # 전체
-pytest -v                           # 상세
-pytest --cov=src                    # 커버리지
-pytest tests/unit/test_algorithms.py::test_v4_50f_example  # 특정 테스트
-
-# 데이터베이스 마이그레이션 (Alembic)
-alembic upgrade head                # 최신 적용
-alembic revision -m "add user table" --autogenerate
-
-# 의존성 추가
-pip install <package>
-pip freeze > requirements.txt
-```
-
-### 모바일 (Flutter)
+기본 흐름:
 
 ```bash
-# 환경 확인
-flutter doctor -v
-
-# 의존성
-flutter pub get
-flutter pub upgrade
-flutter pub outdated
-
-# 코드 포매팅
-dart format lib test
-
-# 정적 분석
-flutter analyze
-
-# 테스트
-flutter test
-flutter test --coverage
-
-# 실행
-flutter run                         # 기본 디바이스
-flutter run -d <device_id>          # 특정 디바이스
-flutter devices                     # 디바이스 목록
-
-# 빌드
-flutter build apk --debug           # Android Debug APK
-flutter build apk --release         # Android Release APK
-flutter build appbundle             # Google Play 업로드용
-flutter build ios --debug --no-codesign  # iOS 빌드 검증
-flutter build ipa                   # App Store 업로드용 (Mac만)
-
-# 코드 생성 (build_runner)
-dart run build_runner build --delete-conflicting-outputs
-dart run build_runner watch         # 변경 감시
+git switch yeong-tech
+git fetch origin
+git merge origin/develop
+# 작업
+git add -A
+git commit
+git push origin yeong-tech
 ```
 
-### Docker
-
-```bash
-# 전체 스택 시작
-docker compose up -d
-
-# 특정 서비스만
-docker compose up -d postgres redis
-
-# 로그 보기
-docker compose logs -f backend
-docker compose logs -f --tail=100 backend
-
-# 종료
-docker compose down                 # 볼륨 유지
-docker compose down -v              # 볼륨 삭제 (DB 초기화)
-
-# 재빌드
-docker compose up -d --build
-
-# 컨테이너 내부 진입
-docker compose exec backend bash
-docker compose exec postgres psql -U lemon -d lemon
-```
-
-### Git (Conventional Commits)
-
-```bash
-# 새 기능
-git commit -m "feat(algo): add v1 step score calculation"
-
-# 버그 수정
-git commit -m "fix(ocr): handle empty supplement label edge case"
-
-# 문서
-git commit -m "docs(readme): update setup instructions"
-
-# 리팩토링
-git commit -m "refactor(api): split nutrition router"
-
-# 테스트
-git commit -m "test(algo): add edge cases for BMI categories"
-```
-
-> 🔍 **상세 컨벤션**: [`docs/05-github-guidelines.md`](./docs/05-github-guidelines.md)
+커밋 메시지는 Conventional Commits를 기본으로 하되, 현재 로컬 hook은 Lore format과 `Co-authored-by: OmX <omx@oh-my-codex.dev>` trailer를 요구할 수 있습니다.
 
 ---
 
-## 🗺 로드맵
+## 🗺 다음 작업 우선순위
 
-10주 학생 프로젝트 일정 (5-Phase 구조).
-
-```
-Week:    1     2-4         5-7              8-9          10
-        ┌───┬───────────┬────────────────┬────────────┬──────┐
-Phase:  │ 0 │     1     │       2        │     3      │  4   │
-        │기획│ 핵심산출식 │ 영양제OCR MVP  │ 식단·고도화 │ 발표 │
-        │조사│   PoC     │   + 모바일     │            │      │
-        └───┴───────────┴────────────────┴────────────┴──────┘
-         1주     3주          3주             2주        1주
-```
-
-### Phase 마일스톤
-
-- ⬜ **Phase 0** (W1) — 환경 세팅, API 키 발급, 데이터 수급 계획
-- ⬜ **Phase 1** (W2-W4) — v1~v4 + 7-step 산출식 PoC, 50+ 단위 테스트
-- ⬜ **Phase 2** (W5-W7) — 영양제 OCR + 모바일 앱 + HealthKit 연동
-- ⬜ **Phase 3** (W8-W9) — 식단 분석 + 5종 출력 통합 + 의료자문위 검토
-- ⬜ **Phase 4** (W10) — 발표·시연
-
-### 향후 계획 (Year 2~3)
-
-- ⬜ ISMS-P 인증 추진
-- ⬜ LDB-E 마이데이터 연계 (의료기관 진료 기록 통합)
-- ⬜ FHIR KR Core 표준 적용
-- ⬜ DTx (디지털치료기기) 진입 검토
-- ⬜ 글로벌 확장 (일본·동남아)
-
-> 🔍 **상세 일정·역할 분담·리스크 관리**: [`docs/Nutrition-docs/08-implementation-plan.md`](./docs/Nutrition-docs/08-implementation-plan.md)
-
----
-
-## 🤝 기여하기 (Contributing)
-
-본 프로젝트는 학생 팀 + 발주처 협업 프로젝트입니다.
-
-### 기여 흐름
-
-1. Issue 생성 (Bug Report / Feature Request 템플릿 사용)
-2. `develop` 브랜치에서 `feature/<scope>-<description>` 분기
-3. 작업 + Conventional Commits 형식의 커밋
-4. PR 생성 (`docs/05-github-guidelines.md`의 PR 템플릿 자동 적용)
-5. CI 통과 + 1명 이상 리뷰 → Squash & Merge
-
-### 행동 강령
-
-- 사람이 아니라 코드를 비판합니다.
-- 의료법 표현 가이드를 준수합니다 (진단·처방 표현 금지).
-- 민감 정보(API 키·개인정보)를 절대 커밋하지 않습니다.
-
-> 🔍 **상세 협업 규칙**: [`docs/05-github-guidelines.md`](./docs/05-github-guidelines.md)
+1. 최상위 README와 실제 브랜치 구조를 계속 동기화
+2. `food_image_analysis` 실제 모델/API 스켈레톤 확장
+3. `ai_agent_chat` 대화 런타임 계약 정의
+4. `frontend`/`mobile` 초기 앱 구조 생성
+5. 팀 통합용 `.github` CI/PR 템플릿을 별도 합의 후 복원
+6. OCR fixture 기반 Google Vision, CLOVA, PaddleOCR 비교 리포트 작성
+7. 원본 이미지/문서 데이터의 외부 저장소 정책 확정
 
 ---
 
 ## ⚖️ 컴플라이언스 고지
 
-> ⚠️ **본 서비스에서 제공하는 정보는 일반적인 건강 관리를 위한 참고 자료이며, 의사·약사·영양사의 전문적 진단이나 처방을 대체하지 않습니다.**
-> 증상이 있거나 만성질환을 앓고 계신 경우, 반드시 전문가와 상담하시기 바랍니다.
+본 프로젝트의 결과는 건강관리 참고 정보 제공을 목표로 하며, 진단·처방·치료를 대체하지 않습니다.
 
-본 프로젝트는 다음 법령·표준을 준수합니다:
+금지 기본값:
 
-- 의료법 · 약사법 · 건강기능식품법
-- 개인정보보호법 (민감정보 별도 동의)
-- 정보통신망법
-- 보건복지부 「비의료 건강관리서비스 가이드라인 (2차)」
-- KISA ISMS-P 인증 기준 (정식 출시 전 추진)
+- 질병 진단 또는 치료 판단
+- 약물 중단·대체·증량·감량 직접 지시
+- 검사 수치만으로 질환 확정 표현
+- 의료 전문가 상담을 대체하는 문구
+- 식별 가능한 건강정보의 외부 LLM 전송
 
-> 🔍 **상세 컴플라이언스 체크리스트**: [`docs/Nutrition-docs/10-compliance-checklist.md`](./docs/Nutrition-docs/10-compliance-checklist.md)
-
----
-
-## 👥 팀
-
-```
-경북대학교 AI/빅데이터 전문가 양성 과정 — TBD팀
-
-🔧 Backend Engineer  : TBD
-📱 Mobile Engineer   : TBD
-🤖 AI/ML Engineer    : TBD
-📊 Data / Domain     : TBD
-📋 Project Manager   : TBD
-```
-
-> 한 명이 여러 역할을 겸할 수 있습니다. 팀원 수에 따른 매핑 가이드는 [`docs/Nutrition-docs/08-implementation-plan.md`](./docs/Nutrition-docs/08-implementation-plan.md) 참조.
-
-### 발주처
-
-**(주)레몬헬스케어** — 코스닥 상장 예정 디지털 헬스케어 인프라 기업
-- 핵심 기술: LDB(Lemon Digital Bridge) 의료데이터 중계 플랫폼
-- 누적 사용자: 770만+ (청구의신 → 건강의신)
-- 의료기관 네트워크: 상급종합병원 80% (37개), 종합병원 포함 130여 곳
-- 공식 사이트: https://www.lemonhealthcare.com
+처방전·검사표 OCR은 intake와 사용자 확인 흐름으로 제한합니다. 실제 복용 변경이나 임상 판단이 필요한 경우 의사 또는 약사 상담으로 연결하는 것이 기본 정책입니다.
 
 ---
 
-## 🙏 감사의 말
+## 🙏 참고 자원
 
-본 프로젝트는 다음 공공 자원과 외부 도구의 도움으로 만들어집니다:
-
-### 공공 데이터·기관
-- **한국영양학회** · 보건복지부 — KDRIs 2020
-- **식품의약품안전처** — 식품영양성분 Open API, 건강기능식품 원료 DB
-- **농촌진흥청 국립농업과학원** — 국가표준식품성분표
-- **NIA AI Hub** — 한국 음식 이미지 데이터셋
-- **한국인터넷진흥원 (KISA)** — ISMS-P 인증 기준
-- **개인정보보호위원회** — 가명정보 처리 가이드라인
-
-### 외부 도구·서비스
-- **Google Cloud Platform** — Cloud Vision API
-- **Ollama** — Local LLM runtime
-- **Apple** — HealthKit
-- **Google** — Health Connect
-- **Naver Cloud** — CLOVA OCR
-
-### 오픈소스 프로젝트
-FastAPI · Flutter · PostgreSQL · TimescaleDB · Redis · Docker · pytest · Black · Ruff · 그 외 의존성에 명시된 모든 패키지의 기여자분들께 감사드립니다.
-
----
-
-## 📜 라이선스
-
-본 프로젝트는 [MIT License](./LICENSE) 하에 배포됩니다.
-
-```
-MIT License
-
-Copyright (c) 2026 경북대학교 AI/빅데이터 전문가 양성 과정 — TBD팀
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. ...
-```
-
-> ⚠️ **데이터 라이선스 주의**: AI Hub 데이터셋은 활용 신청 동의에 따라 **재배포 금지**입니다. 본 코드는 MIT지만, 학습 데이터는 원 라이선스를 따릅니다.
+- 한국영양학회 / 보건복지부 KDRIs
+- 식품의약품안전처 식품영양성분 및 건강기능식품 데이터
+- 농촌진흥청 국가표준식품성분표
+- AI Hub 음식 이미지 데이터셋
+- Ollama local runtime
+- Google Vision, NAVER CLOVA OCR, PaddleOCR
+- FastAPI, Pydantic, SQLAlchemy, pytest, Black, Ruff, mypy
 
 ---
 
 <div align="center">
 
-### 🍋 Lemon Healthcare — 건강의신 AI 모델
+### 🍋 Lemon Aid
 
-*"필라이즈가 못하는 영역, 만성질환자를 위한 의료 데이터 통합 플랫폼"*
-
-**[📖 1단계 문서부터 시작하기](./docs/01-project-overview.md)**
-
-Made with 💛 by 경북대학교 AI/빅데이터 전문가 양성 과정 TBD팀
-in collaboration with **(주)레몬헬스케어**
+만성질환자 중심의 영양제·식단·활동 분석을 안전하게 검증하기 위한 팀 프로젝트 작업 공간
 
 </div>
