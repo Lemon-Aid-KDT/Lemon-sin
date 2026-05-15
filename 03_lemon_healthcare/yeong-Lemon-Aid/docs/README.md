@@ -9,7 +9,7 @@ This directory keeps team-wide documentation separate from each member or featur
 - `05-github-guidelines.md`: common GitHub collaboration rules for the whole team.
 - `06-tech-stack.md`: common architecture and validation summary.
 - `10-compliance-checklist.md`: common compliance guardrails.
-- `Nutrition-docs/`: detailed Nutrition and supplement-analysis documents maintained by the Nutrition part.
+- `Nutrition-docs/`: detailed Nutrition and supplement-analysis documents maintained by the Nutrition part. See `Nutrition-docs/43-ocr-3-tier-fixture-evaluation-report-plan.md` for the current OCR fixture evaluation gate.
 - `Food-docs/`: reserved for food image analysis documents.
 - `Chat-docs/`: reserved for AI agent chat documents.
 - `Integration-docs/`: reserved for final integration, deployment, and demo documents.
