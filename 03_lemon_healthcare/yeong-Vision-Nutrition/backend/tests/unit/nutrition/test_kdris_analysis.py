@@ -1,9 +1,12 @@
-"""KDRIs 샘플 룩업과 영양 분석 테스트."""
+"""KDRIs 2025 룩업과 영양 분석 테스트."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
+from src.config import get_settings
 from src.models.schemas.nutrition import NutrientIntake, NutrientStatus
 from src.models.schemas.user import UserProfile
 from src.nutrition.deficiency_analysis import analyze_nutrient_intakes, contains_forbidden_terms
@@ -11,14 +14,36 @@ from src.nutrition.kdris import get_dataset_status, get_kdris_for_profile, looku
 from src.nutrition.unit_converter import convert_amount
 
 
-def test_kdris_sample_loads_30_major_nutrients() -> None:
-    """성인 남성 기본 조건에서 30종 샘플 영양소를 로드한다."""
-    references = get_kdris_for_profile(age=30, sex="male")
+@pytest.fixture(autouse=True)
+def use_kdris_2025_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Pin this module to the promoted KDRIs 2025 dataset.
 
-    assert len(references) == 30
-    assert get_dataset_status() == "implementation_sample_not_official_reference_table"
-    assert references[0].dataset_version == "2020-sample"
+    Args:
+        monkeypatch: Pytest environment patch helper.
+
+    Yields:
+        None after the cached Settings object has been reset.
+    """
+    monkeypatch.setenv("KDRIS_DATA_VERSION", "2025")
+    monkeypatch.setenv("KDRIS_DATA_PATH", "data/kdris/kdris_2025.csv")
+    monkeypatch.setenv("ALLOW_SAMPLE_KDRIS", "false")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_kdris_2025_loads_official_adult_male_references() -> None:
+    """성인 남성 기본 조건에서 승인된 KDRIs 2025 기준값을 로드한다."""
+    references = get_kdris_for_profile(age=30, sex="male")
+    nutrient_codes = {reference.nutrient_code for reference in references}
+
+    assert len(references) == 81
+    assert len(nutrient_codes) == 49
+    assert get_dataset_status() == "official_2025_approved"
+    assert {reference.dataset_version for reference in references} == {"2025"}
+    assert {reference.review_status for reference in references} == {"approved"}
     assert references[0].source_manifest_version == "2.0"
+    assert {"vitamin_c_mg", "vitamin_a_ug", "potassium_mg", "magnesium_mg"}.issubset(nutrient_codes)
 
 
 def test_kdris_lookup_by_nutrient_code() -> None:
@@ -30,15 +55,47 @@ def test_kdris_lookup_by_nutrient_code() -> None:
     assert reference.reference_unit == "mg"
 
 
-def test_pregnancy_specific_reference_overrides_baseline_only_for_matching_nutrient() -> None:
-    """임신 조건에서는 특수 기준값이 있는 영양소만 baseline을 대체한다."""
+def test_pregnancy_specific_references_append_without_dropping_baseline() -> None:
+    """임신 조건에서는 baseline 기준값과 임신 추가 기준값을 함께 반환한다."""
     references = get_kdris_for_profile(age=30, sex="female", pregnancy_status="pregnant")
-    by_code = {reference.nutrient_code: reference for reference in references}
+    baseline_vitamin_c = [
+        reference
+        for reference in references
+        if reference.nutrient_code == "vitamin_c_mg"
+        and reference.pregnancy_status == "none"
+        and reference.reference_type == "RNI"
+    ]
+    baseline_protein = [
+        reference
+        for reference in references
+        if reference.nutrient_code == "protein_g"
+        and reference.pregnancy_status == "none"
+        and reference.reference_type == "RNI"
+    ]
+    pregnant_vitamin_a = [
+        reference
+        for reference in references
+        if reference.nutrient_code == "vitamin_a_ug"
+        and reference.pregnancy_status == "pregnant"
+        and reference.reference_type == "RNI"
+    ]
+    pregnant_protein = [
+        reference
+        for reference in references
+        if reference.nutrient_code == "protein_g"
+        and reference.pregnancy_status == "pregnant"
+        and reference.reference_type == "RNI"
+    ]
 
-    assert len(references) == 30
-    assert by_code["vitamin_c_mg"].pregnancy_status == "pregnant"
-    assert by_code["vitamin_c_mg"].reference_amount == 110
-    assert by_code["protein_g"].pregnancy_status == "none"
+    assert len(references) == 137
+    assert len({reference.nutrient_code for reference in references}) == 49
+    assert {reference.reference_amount for reference in baseline_vitamin_c} == {100}
+    assert {reference.reference_amount for reference in baseline_protein} == {50}
+    assert {reference.reference_amount for reference in pregnant_vitamin_a} == {70}
+    assert {reference.condition_detail for reference in pregnant_protein} == {
+        "pregnancy_trimester_2_additional",
+        "pregnancy_trimester_3_additional",
+    }
 
 
 def test_unit_conversion_supports_mass_and_vitamin_d_iu() -> None:
@@ -46,6 +103,8 @@ def test_unit_conversion_supports_mass_and_vitamin_d_iu() -> None:
     assert convert_amount(1, "g", "mg") == 1000
     assert convert_amount(1000, "ug", "mg") == 1
     assert convert_amount(400, "iu", "ug", nutrient_code="vitamin_d_ug") == 10
+    assert convert_amount(5000, "ug", "ug RAE", nutrient_code="vitamin_a_ug") == 5000
+    assert convert_amount(350, "mg supplemental", "mg", nutrient_code="magnesium_mg") == 350
 
 
 def test_nutrient_analysis_flags_deficient_and_risky() -> None:
@@ -62,13 +121,120 @@ def test_nutrient_analysis_flags_deficient_and_risky() -> None:
     by_code = {result.nutrient_code: result for result in response.results}
 
     assert by_code["vitamin_c_mg"].status == NutrientStatus.DEFICIENT
-    assert by_code["vitamin_c_mg"].reference_type == "RDA"
-    assert by_code["vitamin_c_mg"].source_id == "local_kdris_2020_sample_fixture"
+    assert by_code["vitamin_c_mg"].reference_type == "RNI"
+    assert by_code["vitamin_c_mg"].source_id == "kns_2025_kdris_publication"
     assert by_code["vitamin_c_mg"].priority == 1
     assert by_code["vitamin_a_ug"].status == NutrientStatus.RISKY
-    assert response.dataset_version == "2020-sample"
+    assert response.dataset_status == "official_2025_approved"
+    assert response.dataset_version == "2025"
     assert response.source_manifest_version == "2.0"
     assert not contains_forbidden_terms([result.user_message for result in response.results])
+
+
+def test_chronic_priority_boosts_only_low_or_deficient_nutrients() -> None:
+    """만성질환 룩업은 이미 낮음/부족인 영양소의 확인 순서에만 반영한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["htn"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="vitamin_c_mg", amount=20, unit="mg"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+            NutrientIntake(nutrient_code="magnesium_mg", amount=350, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+
+    assert by_code["vitamin_c_mg"].status == NutrientStatus.DEFICIENT
+    assert by_code["vitamin_c_mg"].ratio == 0.2
+    assert by_code["vitamin_c_mg"].priority == 2
+    assert by_code["potassium_mg"].status == NutrientStatus.LOW
+    assert by_code["potassium_mg"].ratio == 0.57
+    assert by_code["potassium_mg"].priority == 1
+    assert by_code["potassium_mg"].priority_context == ["hypertension"]
+    assert by_code["potassium_mg"].priority_source_ids == ["nhlbi_dash"]
+    assert by_code["potassium_mg"].user_message == (
+        "현재 입력과 만성질환 정보를 함께 볼 때 우선 확인 대상입니다."
+    )
+    assert by_code["magnesium_mg"].status == NutrientStatus.ADEQUATE
+    assert by_code["magnesium_mg"].priority == 0
+    assert by_code["magnesium_mg"].priority_context == []
+
+
+def test_unknown_chronic_disease_keeps_ratio_based_priority() -> None:
+    """미정의 만성질환 코드는 무시하고 기존 ratio 기반 우선순위를 유지한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["unknown-condition"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="vitamin_c_mg", amount=20, unit="mg"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+
+    assert by_code["vitamin_c_mg"].priority == 1
+    assert by_code["potassium_mg"].priority == 2
+    assert by_code["potassium_mg"].priority_context == []
+
+
+def test_ckd_caution_nutrients_do_not_receive_priority_boost() -> None:
+    """신장질환 주의 영양소는 자동으로 부족 우선순위를 올리지 않는다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["ckd"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="vitamin_c_mg", amount=20, unit="mg"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+
+    assert by_code["vitamin_c_mg"].priority == 1
+    assert by_code["potassium_mg"].priority == 2
+    assert by_code["potassium_mg"].priority_context == []
+
+
+def test_chronic_priority_messages_do_not_contain_forbidden_terms() -> None:
+    """만성질환 우선 확인 문구가 치료·처방 표현을 포함하지 않는지 검증한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["diabetes", "hypertension"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="fiber_g", amount=10, unit="g"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    messages = [result.user_message for result in response.results]
+    assert all("우선 확인 대상" in result.user_message for result in response.results)
+    assert not contains_forbidden_terms(messages)
 
 
 def test_unknown_nutrient_reference_raises() -> None:

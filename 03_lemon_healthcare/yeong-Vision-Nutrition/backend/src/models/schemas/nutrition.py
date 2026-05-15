@@ -40,6 +40,8 @@ class KDRIReference(BaseModel):
         age_min_months: 적용 나이 하한(개월).
         age_max_months: 적용 나이 상한(개월).
         pregnancy_status: 임신/수유 조건.
+        condition_detail: 임신 분기, 부가량, 총량 등 조건 세부 구분.
+        source_variant: 같은 영양소의 공식 표 variant(예: liquid water, total water).
         reference_type: RDA, AI, EER 등 기준 유형.
         reference_amount: 단일 기준 섭취량.
         reference_amount_min: 범위 기준 하한.
@@ -47,6 +49,8 @@ class KDRIReference(BaseModel):
         reference_unit: 기준 단위.
         ul_amount: 상한 섭취량.
         ul_unit: 상한 단위.
+        ul_amount_secondary: 같은 row에서 병기되는 두 번째 상한 섭취량.
+        ul_unit_secondary: 두 번째 상한 섭취량 단위.
         source_note: 출처 또는 검수 상태.
         source_id: KDRIs source manifest source id.
         source_artifact: 검수한 원본 산출물.
@@ -73,6 +77,8 @@ class KDRIReference(BaseModel):
     age_min_months: int | None = None
     age_max_months: int | None = None
     pregnancy_status: PregnancyStatus
+    condition_detail: str | None = None
+    source_variant: str | None = None
     reference_type: str
     reference_amount: float | None
     reference_amount_min: float | None = None
@@ -80,6 +86,8 @@ class KDRIReference(BaseModel):
     reference_unit: str
     ul_amount: float | None = None
     ul_unit: str | None = None
+    ul_amount_secondary: float | None = None
+    ul_unit_secondary: str | None = None
     source_note: str
     source_id: str | None = None
     source_artifact: str | None = None
@@ -112,7 +120,9 @@ class KDRILookupResponse(BaseModel):
     dataset_status: str
     dataset_version: str
     source_manifest_version: str
-    note: str = "현재 KDRIs 데이터는 Phase 1 샘플 fixture이며 공식 수치 검수 전입니다."
+    note: str = (
+        "KDRIs 기준값은 source manifest의 dataset_status와 row review_status를 함께 확인해야 합니다."
+    )
 
 
 class NutrientIntake(BaseModel):
@@ -146,6 +156,8 @@ class NutrientAnalysisResult(BaseModel):
         ul_amount: 상한 섭취량.
         status: 섭취 상태.
         priority: 부족 가능성 우선순위.
+        priority_context: 우선 확인 대상 정렬에 반영된 canonical 만성질환 코드.
+        priority_source_ids: 우선 확인 대상 정렬 근거 source id.
         user_message: 사용자 노출용 안전 문구.
     """
 
@@ -162,6 +174,8 @@ class NutrientAnalysisResult(BaseModel):
     ul_amount: float | None
     status: NutrientStatus
     priority: int
+    priority_context: list[str] = Field(default_factory=list)
+    priority_source_ids: list[str] = Field(default_factory=list)
     user_message: str
 
 

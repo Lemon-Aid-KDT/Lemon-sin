@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
 from src.config import Settings, get_settings
 from src.main import create_app
 from src.prediction.selector import HALL_LITE_WARNING
+
+
+@pytest.fixture
+def kdris_2025_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    """Return a TestClient pinned to the promoted KDRIs 2025 dataset.
+
+    Args:
+        monkeypatch: Pytest environment patch helper.
+
+    Yields:
+        TestClient instance after clearing cached Settings.
+    """
+    monkeypatch.setenv("KDRIS_DATA_VERSION", "2025")
+    monkeypatch.setenv("KDRIS_DATA_PATH", "data/kdris/kdris_2025.csv")
+    monkeypatch.setenv("ALLOW_SAMPLE_KDRIS", "false")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as client:
+        yield client
+    get_settings.cache_clear()
 
 
 def test_activity_score_api() -> None:
@@ -96,25 +118,23 @@ def test_weight_prediction_api_can_route_hall_lite_when_enabled() -> None:
     assert body["predictions"][1]["warning"] == HALL_LITE_WARNING
 
 
-def test_kdris_lookup_api() -> None:
-    """KDRIs 샘플 룩업 API가 30종 기준값을 반환하는지 검증한다."""
-    client = TestClient(create_app())
-
-    response = client.get("/api/v1/nutrition/kdris?age=30&sex=male")
+def test_kdris_lookup_api(kdris_2025_client: TestClient) -> None:
+    """KDRIs 2025 룩업 API가 승인된 기준값을 반환하는지 검증한다."""
+    response = kdris_2025_client.get("/api/v1/nutrition/kdris?age=30&sex=male")
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["query"]["age"] == 30
-    assert len(body["references"]) == 30
-    assert body["dataset_version"] == "2020-sample"
+    assert len(body["references"]) == 81
+    assert {reference["review_status"] for reference in body["references"]} == {"approved"}
+    assert body["dataset_status"] == "official_2025_approved"
+    assert body["dataset_version"] == "2025"
     assert body["source_manifest_version"] == "2.0"
 
 
-def test_nutrition_analysis_api() -> None:
+def test_nutrition_analysis_api(kdris_2025_client: TestClient) -> None:
     """영양 분석 API가 부족 가능성과 UL 초과 가능성을 반환하는지 검증한다."""
-    client = TestClient(create_app())
-
-    response = client.post(
+    response = kdris_2025_client.post(
         "/api/v1/nutrition/analyze",
         json={
             "profile": {
@@ -135,5 +155,6 @@ def test_nutrition_analysis_api() -> None:
     statuses = {result["nutrient_code"]: result["status"] for result in body["results"]}
     assert statuses["vitamin_c_mg"] == "deficient"
     assert statuses["vitamin_a_ug"] == "risky"
-    assert body["dataset_version"] == "2020-sample"
+    assert body["dataset_status"] == "official_2025_approved"
+    assert body["dataset_version"] == "2025"
     assert body["source_manifest_version"] == "2.0"
