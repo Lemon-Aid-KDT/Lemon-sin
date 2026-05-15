@@ -3,6 +3,8 @@
 This harness keeps Agent development testable before the app has a complete
 backend and mobile integration.
 
+For a Korean plain-language explanation, see [EXPLANATION.md](./EXPLANATION.md).
+
 It follows the Lemon Aid baseline:
 
 - `analysis` is a deterministic pipeline, not an Agent.
@@ -63,4 +65,3 @@ A run passes only when all scenario checks pass:
 - blocked scenarios stop before Agent/tool side effects
 - safety policy blocks forbidden medical or medication wording
 - no forbidden log fields are present
-
