@@ -1,0 +1,62 @@
+name: Lemon Mobile CI
+
+on:
+  pull_request:
+    branches: [main, develop, yeong-tech]
+  push:
+    branches: [main, develop, yeong-tech]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+    working-directory: 03_lemon_healthcare/yeong-Lemon-Aid/mobile/flutter_app
+
+jobs:
+  flutter-quality:
+    name: Flutter quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect Flutter project
+        id: flutter-project
+        run: |
+          if [ -f pubspec.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Flutter
+        if: steps.flutter-project.outputs.present == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        if: steps.flutter-project.outputs.present == 'true'
+        run: flutter pub get
+
+      - name: Check formatting
+        if: steps.flutter-project.outputs.present == 'true'
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        if: steps.flutter-project.outputs.present == 'true'
+        run: flutter analyze
+
+      - name: Test
+        if: steps.flutter-project.outputs.present == 'true'
+        run: flutter test
+
+      - name: Skip placeholder
+        if: steps.flutter-project.outputs.present != 'true'
+        run: echo "No Flutter pubspec.yaml yet; skipping mobile checks."

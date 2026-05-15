@@ -31,6 +31,22 @@ updates:
     commit-message:
       prefix: chore(deps)
 
+  # Lemon Healthcare Backend Python
+  - package-ecosystem: pip
+    directory: /03_lemon_healthcare/yeong-Lemon-Aid/backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - backend
+      - lemon-healthcare
+    commit-message:
+      prefix: chore(deps)
+
   # GitHub Actions 자체
   - package-ecosystem: github-actions
     directory: /

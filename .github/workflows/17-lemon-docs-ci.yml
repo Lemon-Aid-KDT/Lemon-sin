@@ -1,0 +1,51 @@
+name: Lemon Docs CI
+
+on:
+  pull_request:
+    branches: [main, develop, yeong-tech]
+  push:
+    branches: [main, develop, yeong-tech]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs-quality:
+    name: Documentation quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check whitespace in Lemon docs
+        run: |
+          git grep -n '[[:blank:]]$' -- \
+            03_lemon_healthcare/PROJECT_GUIDE.md \
+            03_lemon_healthcare/yeong-Lemon-Aid/README.md \
+            03_lemon_healthcare/yeong-Lemon-Aid/docs \
+            && exit 1 || test $? = 1
+
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@v23
+        with:
+          globs: |
+            03_lemon_healthcare/PROJECT_GUIDE.md
+            03_lemon_healthcare/yeong-Lemon-Aid/README.md
+            03_lemon_healthcare/yeong-Lemon-Aid/docs/**/*.md
+        continue-on-error: true
+
+      - name: Check Markdown links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --accept 200,204,206,301,302,429
+            03_lemon_healthcare/PROJECT_GUIDE.md
+            03_lemon_healthcare/yeong-Lemon-Aid/README.md
+            '03_lemon_healthcare/yeong-Lemon-Aid/docs/**/*.md'
+          fail: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
