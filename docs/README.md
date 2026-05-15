@@ -9,6 +9,7 @@
 | 폴더 | 내용 |
 |------|------|
 | [planning/](./planning/) | 기획서, 제품 가이드, 도메인 학습, 연구 근거, 부록 문서 |
+| [implementation/](./implementation/) | Agent implementation planning, branch absorption notes, prerequisites, and step-by-step roadmap |
 | [daily/](./daily/) | 일일 작업 보고, 검토 보고서, 의사결정 기록 |
 | [weekly/](./weekly/) | 주차별 공유·발표 정리 문서 |
 | [presentations/](./presentations/) | 멘토 미팅, 기술 리뷰, 발표용 PDF/HTML 산출물 |
