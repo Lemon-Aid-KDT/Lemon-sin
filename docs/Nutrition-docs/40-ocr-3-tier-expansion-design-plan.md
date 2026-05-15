@@ -29,7 +29,7 @@ Google Vision MVP 이후 다음 단계는 새로운 OCR 체인을 한 번에 켜
 | O3T-3 Ollama fallback/verification | 1차 완료 | 기존 fallback 정책을 route factory에 연결했고, `ENABLE_MULTIMODAL_VERIFICATION` sample 검증 경로와 mismatch warning code를 추가했다. |
 | O3T-4 PaddleOCR fallback | 1차 완료 | `PaddleOCRAdapter`를 optional dependency 기반 lazy-load adapter로 추가했다. 기본값은 off다. |
 | O3T-5 CLOVA fallback | 1차 완료 | `ClovaOCRAdapter`를 external OCR gate 뒤 optional fallback으로 추가했다. 기본값은 off다. |
-| O3T-6 fixture report | 완료 | `backend/scripts/evaluate_ocr_three_tier.py`, manifest example, redacted report template을 추가했다. |
+| O3T-6 fixture report | 완료 | `backend/scripts/evaluate_ocr_three_tier.py`, manifest example, redacted report template을 추가했다. P1 fixture 평가 리포트 gate는 `docs/Nutrition-docs/43-ocr-3-tier-fixture-evaluation-report-plan.md`에서 상세화한다. |
 | O3T-7 발주처 review gate | 부분 완료 | OCR evaluation report template은 추가했다. provider sign-off 문서와 checklist 연결은 별도 문서 보강 단계로 남긴다. |
 
 검증 결과:
