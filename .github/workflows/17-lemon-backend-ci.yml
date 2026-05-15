@@ -6,12 +6,16 @@ on:
     paths:
       - "03_lemon_healthcare/yeong-Vision-Nutrition/backend/**"
       - "03_lemon_healthcare/yeong-Vision-Nutrition/data/kdris/**"
+      - "03_lemon_healthcare/yeong-Vision-Nutrition/data/reference/**"
+      - "03_lemon_healthcare/yeong-Vision-Nutrition/config/**"
       - ".github/workflows/17-lemon-backend-ci.yml"
   push:
     branches: [main]
     paths:
       - "03_lemon_healthcare/yeong-Vision-Nutrition/backend/**"
       - "03_lemon_healthcare/yeong-Vision-Nutrition/data/kdris/**"
+      - "03_lemon_healthcare/yeong-Vision-Nutrition/data/reference/**"
+      - "03_lemon_healthcare/yeong-Vision-Nutrition/config/**"
       - ".github/workflows/17-lemon-backend-ci.yml"
   workflow_dispatch:
 
@@ -63,6 +67,44 @@ jobs:
 
       - name: Dependency audit
         run: pip-audit -r requirements.txt
+
+      - name: Settings and OpenAPI smoke
+        run: |
+          python -m json.tool ../config/implementation-readiness.settings.json > /tmp/implementation-readiness.settings.json
+          python - <<'PY'
+          from src.config import Settings
+
+          settings = Settings(_env_file=None)
+          assert settings.database_url.startswith("postgresql+asyncpg://")
+          for flag_name in (
+              "allow_external_llm",
+              "enable_multimodal_llm",
+              "enable_vision_classifier",
+              "enable_image_learning_pipeline",
+              "enable_pgvector_storage",
+              "feature_prescription_ocr_intake",
+              "feature_lab_result_ocr_intake",
+              "feature_dosage_change_recommendation",
+              "feature_medication_safety_alert",
+          ):
+              assert getattr(settings, flag_name) is False, flag_name
+          PY
+          python - <<'PY'
+          from src.main import create_app
+
+          schema = create_app().openapi()
+          required_paths = {
+              "/api/v1/supplements/analyze",
+              "/api/v1/supplements/analyses/{analysis_id}/ocr-text",
+              "/api/v1/nutrition/kdris",
+              "/api/v1/nutrition/analyze",
+          }
+          assert schema["openapi"].startswith("3.")
+          assert required_paths.issubset(schema["paths"]), required_paths - set(schema["paths"])
+          PY
+
+      - name: KDRIs dataset gate
+        run: python scripts/validate_kdris_dataset.py --require-approved
 
       - name: Pytest
         run: pytest

@@ -1,6 +1,6 @@
 # =============================================================================
 # Backend CI: Python (FastAPI) 코드 자동 검증
-# 트리거: 03_lemon_healthcare/yeong-Vision-Nutrition/backend/** 변경 시
+# 트리거: backend, KDRIs/reference data, config 변경 시
 # =============================================================================
 
 name: Backend CI
@@ -10,11 +10,17 @@ on:
     branches: [main, develop, yeong-tech]
     paths:
       - '03_lemon_healthcare/yeong-Vision-Nutrition/backend/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/data/kdris/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/data/reference/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/config/**'
       - '03_lemon_healthcare/.github/workflows/ci-backend.yml'
   pull_request:
     branches: [main, develop, yeong-tech]
     paths:
       - '03_lemon_healthcare/yeong-Vision-Nutrition/backend/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/data/kdris/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/data/reference/**'
+      - '03_lemon_healthcare/yeong-Vision-Nutrition/config/**'
       - '03_lemon_healthcare/.github/workflows/ci-backend.yml'
 
 jobs:
@@ -94,11 +100,47 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Validate settings and OpenAPI contract
         run: |
-          python -c "from src.config import Settings; s=Settings(); assert s.database_url.startswith('postgresql+asyncpg://'); assert not s.enable_multimodal_llm and not s.enable_vision_classifier and not s.enable_image_learning_pipeline and not s.enable_pgvector_storage"
-          python -c "from src.main import create_app; schema=create_app().openapi(); assert schema['openapi'].startswith('3.'); assert '/api/v1/supplements/analyze' in schema['paths']; assert '/api/v1/supplements/analyses/{analysis_id}/ocr-text' in schema['paths']"
+          python -m json.tool ../config/implementation-readiness.settings.json > /tmp/implementation-readiness.settings.json
+          python - <<'PY'
+          from src.config import Settings
+
+          settings = Settings(_env_file=None)
+          assert settings.database_url.startswith("postgresql+asyncpg://")
+          for flag_name in (
+              "allow_external_llm",
+              "enable_multimodal_llm",
+              "enable_vision_classifier",
+              "enable_image_learning_pipeline",
+              "enable_pgvector_storage",
+              "feature_prescription_ocr_intake",
+              "feature_lab_result_ocr_intake",
+              "feature_dosage_change_recommendation",
+              "feature_medication_safety_alert",
+          ):
+              assert getattr(settings, flag_name) is False, flag_name
+          PY
+          python - <<'PY'
+          from src.main import create_app
+
+          schema = create_app().openapi()
+          required_paths = {
+              "/api/v1/supplements/analyze",
+              "/api/v1/supplements/analyses/{analysis_id}/ocr-text",
+              "/api/v1/nutrition/kdris",
+              "/api/v1/nutrition/analyze",
+          }
+          assert schema["openapi"].startswith("3.")
+          assert required_paths.issubset(schema["paths"]), required_paths - set(schema["paths"])
+          PY
 
       # -----------------------------------------------------------------------
-      # 8. PostgreSQL migration smoke
+      # 8. KDRIs dataset gate
+      # -----------------------------------------------------------------------
+      - name: Validate KDRIs 2025 dataset
+        run: python scripts/validate_kdris_dataset.py --require-approved
+
+      # -----------------------------------------------------------------------
+      # 9. PostgreSQL migration smoke
       # -----------------------------------------------------------------------
       - name: Apply Alembic migrations against PostgreSQL
         run: |
@@ -106,13 +148,13 @@ jobs:
           alembic current
 
       # -----------------------------------------------------------------------
-      # 9. Run Tests with Coverage
+      # 10. Run Tests with Coverage
       # -----------------------------------------------------------------------
       - name: Run pytest
         run: pytest --cov-report=xml --cov-report=term-missing
 
       # -----------------------------------------------------------------------
-      # 10. Upload Coverage (선택 - codecov 사용 시)
+      # 11. Upload Coverage (선택 - codecov 사용 시)
       # -----------------------------------------------------------------------
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.13'
