@@ -92,11 +92,42 @@ def validate_oidc_metadata(settings: Settings, metadata: dict[str, Any]) -> OIDC
     return parsed_metadata
 
 
-async def fetch_oidc_metadata(settings: Settings) -> OIDCMetadata:
+async def _request_oidc_metadata(
+    client: httpx.AsyncClient,
+    discovery_url: str,
+) -> dict[str, Any]:
+    """Request raw OIDC metadata from a discovery endpoint.
+
+    Args:
+        client: HTTP client configured with the caller's timeout and redirect policy.
+        discovery_url: OpenID Provider configuration endpoint.
+
+    Returns:
+        Raw discovery JSON object.
+
+    Raises:
+        OIDCMetadataError: If the endpoint cannot be fetched or returns non-object JSON.
+    """
+    try:
+        response = await client.get(discovery_url, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        raw_metadata = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise OIDCMetadataError("OIDC metadata could not be fetched.") from exc
+    if not isinstance(raw_metadata, dict):
+        raise OIDCMetadataError("OIDC metadata response must be a JSON object.")
+    return raw_metadata
+
+
+async def fetch_oidc_metadata(
+    settings: Settings,
+    client: httpx.AsyncClient | None = None,
+) -> OIDCMetadata:
     """Fetch and validate OIDC discovery metadata.
 
     Args:
         settings: Application settings.
+        client: Optional HTTP client for tests or managed operational callers.
 
     Returns:
         Validated OIDC metadata.
@@ -105,16 +136,14 @@ async def fetch_oidc_metadata(settings: Settings) -> OIDCMetadata:
         OIDCMetadataError: If retrieval or validation fails.
     """
     discovery_url = resolve_oidc_discovery_url(settings)
-    try:
-        async with httpx.AsyncClient(
-            follow_redirects=False,
-            timeout=settings.jwt_jwks_timeout_seconds,
-        ) as client:
-            response = await client.get(discovery_url, headers={"Accept": "application/json"})
-        response.raise_for_status()
-        raw_metadata = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise OIDCMetadataError("OIDC metadata could not be fetched.") from exc
-    if not isinstance(raw_metadata, dict):
-        raise OIDCMetadataError("OIDC metadata response must be a JSON object.")
-    return validate_oidc_metadata(settings, raw_metadata)
+    if client is not None:
+        return validate_oidc_metadata(settings, await _request_oidc_metadata(client, discovery_url))
+
+    async with httpx.AsyncClient(
+        follow_redirects=False,
+        timeout=settings.jwt_jwks_timeout_seconds,
+    ) as owned_client:
+        return validate_oidc_metadata(
+            settings,
+            await _request_oidc_metadata(owned_client, discovery_url),
+        )

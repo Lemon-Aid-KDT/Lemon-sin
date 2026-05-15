@@ -104,6 +104,17 @@ def _dashboard_response() -> DashboardSummaryResponse:
     )
 
 
+def test_openapi_exposes_bearer_auth_security_scheme() -> None:
+    """Verify OpenAPI documents the JWT BearerAuth contract."""
+    schema = _openapi_schema()
+
+    security_scheme = schema["components"]["securitySchemes"]["BearerAuth"]
+    assert security_scheme["type"] == "http"
+    assert security_scheme["scheme"] == "bearer"
+    assert security_scheme["bearerFormat"] == "JWT"
+    assert "OAuth/OIDC Bearer access token" in security_scheme["description"]
+
+
 def test_p1_contract_endpoints_are_registered_with_required_scopes() -> None:
     """Verify P1 endpoints expose frozen route-level scope contracts."""
     schema = _openapi_schema()
