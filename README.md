@@ -17,6 +17,15 @@ This worktree is for the `changmin-aiagent` branch.
 
 ## Key References
 
+- `harness/README.md`
 - `docs/implementation/README.md`
 - `docs/planning/guide/06-ai-agents.md`
 - `docs/planning/guide/09-team-workflow.md`
+
+## Harness
+
+Run the initial Agent harness from this worktree:
+
+```powershell
+python harness\scripts\run_harness.py
+```

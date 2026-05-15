@@ -1,0 +1,16 @@
+{
+  "user_id": 1001,
+  "consent_state": {
+    "health_data": true,
+    "supplement_analysis": true,
+    "agent_execution": true
+  },
+  "profile": {
+    "age": 52,
+    "sex": "female",
+    "chronic_conditions": ["hypertension"],
+    "medications": ["blood_pressure_medication"],
+    "goals": ["nutrition_balance", "steady_routine"]
+  }
+}
+

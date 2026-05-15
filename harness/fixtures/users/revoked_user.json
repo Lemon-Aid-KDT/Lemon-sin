@@ -1,0 +1,16 @@
+{
+  "user_id": 1002,
+  "consent_state": {
+    "health_data": false,
+    "supplement_analysis": false,
+    "agent_execution": false
+  },
+  "profile": {
+    "age": 48,
+    "sex": "male",
+    "chronic_conditions": ["diabetes"],
+    "medications": ["diabetes_medication"],
+    "goals": ["glucose_related_nutrition_awareness"]
+  }
+}
+

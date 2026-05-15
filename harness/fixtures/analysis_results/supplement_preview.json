@@ -1,0 +1,22 @@
+{
+  "analysis_type": "supplement",
+  "request_id": "req-supplement-preview",
+  "source": {
+    "ocr_hash": "sha256:demo-supplement-label",
+    "provider": "mock_ocr",
+    "confidence": 0.91
+  },
+  "parsed": {
+    "product_name": "Demo Vitamin D",
+    "nutrients": [
+      {
+        "name": "vitamin_d",
+        "amount": 25,
+        "unit": "mcg",
+        "daily_value_pct": 125
+      }
+    ]
+  },
+  "preview_state": "pending_user_confirmation"
+}
+

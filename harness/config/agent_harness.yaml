@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "agent_names": ["personalization", "evaluation", "chat"],
+  "analysis_is_agent": false,
+  "mock_first": true,
+  "tool_preview_required": true,
+  "forbidden_log_fields": [
+    "raw_ocr_text",
+    "raw_llm_response",
+    "personal_health_source_text",
+    "medication_source_text"
+  ],
+  "default_report_dir": "harness/reports",
+  "default_scenario_dir": "harness/scenarios"
+}
+
