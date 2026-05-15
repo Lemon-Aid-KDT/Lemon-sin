@@ -47,29 +47,18 @@ Closes #
 1.
 2.
 
-## 📸 스크린샷 / 데모 (UI 변경 시)
-
-<!-- UI가 변경된 경우 Before / After 스크린샷 또는 GIF -->
-
-| Before | After |
-|--------|-------|
-|        |       |
-
-## ✅ 체크리스트 (Checklist)
+## ✅ 공통 체크리스트 (Checklist)
 
 <!-- 머지 전 확인 -->
 
-- [ ] develop 브랜치 최신화 (rebase or merge)
+- [ ] 대상 브랜치 최신화 (rebase or merge)
 - [ ] 커밋 메시지가 컨벤션을 따름
-- [ ] 백엔드 변경 시 Python 3.13 환경에서 확인
-- [ ] 코드 린터·포매터 통과 (`black`, `ruff`, `dart format`, `flutter analyze`)
-- [ ] 단위 테스트 통과 (`pytest`, `flutter test`)
-- [ ] AI/OCR/YOLO/학습 파이프라인 변경 시 기능 플래그·동의 게이트 기본값 OFF 유지
-- [ ] 새로운 의존성을 추가했다면 `requirements.txt` / `pubspec.yaml` 업데이트
-- [ ] 환경 변수가 추가되었다면 `.env.example` 업데이트
+- [ ] 코드 린터·포매터 통과
+- [ ] 단위 테스트 통과
+- [ ] 새로운 의존성을 추가했다면 lockfile 또는 dependency 파일 업데이트
+- [ ] 환경 변수가 추가되었다면 예시 env 문서 업데이트
 - [ ] 관련 문서를 함께 업데이트 (필요 시)
 - [ ] 민감정보(API 키, 비밀번호)를 커밋하지 않음
-- [ ] 의료법·약사법 표현 가이드를 위반하지 않음 (사용자 노출 텍스트의 경우)
 
 ## 🧱 Lemon Healthcare P1 안정화 게이트 (해당 시)
 

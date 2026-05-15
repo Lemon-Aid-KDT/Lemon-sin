@@ -74,7 +74,8 @@ lemon-healthcare-project/
 │       ├── 26-operations-manual.md
 │       ├── 27-incident-runbook.md
 │       ├── 28-retrospective.md
-│       └── 29-final-deliverables-index.md  ⭐ (이 문서)
+│       ├── 29-final-deliverables-index.md  ⭐ (이 문서)
+│       └── 30-post-p1-execution-checklist.md
 │
 ├── backend/
 │   └── CLAUDE.md                      # Tier 2 (백엔드)
@@ -229,6 +230,12 @@ lemon-healthcare-project/
 | 27 | `27-incident-runbook.md` | P0~P3 + R001~R008 |
 | 28 | `28-retrospective.md` | KPT + 학습사항 Top 10 |
 | 29 | `29-final-deliverables-index.md` | (이 문서) |
+
+#### ⚪ Post-P1 안정화 후속 가이드
+
+| # | 파일 | 핵심 가치 |
+|---|------|---------|
+| 30 | `30-post-p1-execution-checklist.md` | CI/PR gate, Google Vision MVP, 3-tier OCR, learning/vector, regulated OCR intake 진입 전 체크리스트 |
 
 ---
 

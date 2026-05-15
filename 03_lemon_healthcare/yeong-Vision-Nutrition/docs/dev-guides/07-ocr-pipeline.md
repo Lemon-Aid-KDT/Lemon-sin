@@ -47,6 +47,12 @@ POST /api/v1/supplements/analyses/{analysis_id}/ocr-text
 - OCR confidence normalization beyond adapter result validation
 - raw image object storage
 
+## 후속 구현 기준
+
+외부 OCR provider는 `docs/35-google-vision-ocr-provider-implementation-plan.md`와 `docs/36-post-p1-execution-plan.md` 기준으로 Google Vision MVP부터 착수한다. 기본값은 `OCR_PRIMARY_PROVIDER=none`, `ALLOW_EXTERNAL_OCR=false`이며, `EXTERNAL_OCR_PROCESSING` 동의가 없으면 외부 OCR을 호출하지 않는다.
+
+3-tier OCR 확장은 Google Vision MVP가 통과된 뒤 `docs/33-three-tier-ocr-pipeline-implementation-guide.md`를 기준으로 진행한다. YOLO ROI는 OCR 입력 crop 후보로만 사용하고, Ollama vision assist는 OCR empty 또는 low-confidence fallback으로만 호출한다.
+
 ## 구현 시 주의사항
 
 - raw OCR text는 DB에 저장하지 않는다.

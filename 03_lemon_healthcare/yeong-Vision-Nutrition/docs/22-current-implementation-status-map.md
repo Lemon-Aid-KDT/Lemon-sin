@@ -1,6 +1,27 @@
 # Current Implementation Status Map
 
-작성일: 2026-05-13
+작성일: 2026-05-15
+
+## Weekly Snapshot
+
+스냅샷 기준: 2026-05-15 로컬 backend 재검증 결과. 상태값은 `done`, `open`, `blocked`만 사용하며, 이번 주간 범위에서 `blocked` 항목은 없다.
+
+| 항목 | 상태 | 근거 | 남은 작업 |
+| --- | --- | --- | --- |
+| KDRIs 2025 전환 | `done` | `data/kdris/kdris_2025.csv` 1,795개 approved row 검증, KDRIs 2025 API/unit 테스트 기준 재정렬, `KDRIS_DATA_VERSION=2025`, `ALLOW_SAMPLE_KDRIS=false` | 없음 |
+| JWT production 경로 | `done` | JWKS key rotation, missing `kid`, timeout, invalid alg, token-use/id-token confusion 테스트와 OpenAPI `BearerAuth` contract 통과 | 운영 배포 전 실제 IdP discovery preflight 실행 |
+| 만성질환자 부족 영양소 우선순위 | `done` | chronic condition mapping, unknown disease ignore, 금지 표현 테스트 통과 | 질환별 룩업 확장은 추가 근거 확보 후 별도 진행 |
+| Feature flag default-off 정리 | `done` | AI/vision/learning/Hall-lite 및 regulated feature flag 기본값과 production guard 정렬 | 없음 |
+
+| 검증 | 명령 | 결과 |
+| --- | --- | --- |
+| Formatting | `.venv/bin/black --check src tests alembic` | pass, 160 files unchanged |
+| Lint | `.venv/bin/ruff check src tests alembic` | pass |
+| Type check | `.venv/bin/mypy src tests --strict` | pass, 155 source files |
+| Full pytest coverage | `.venv/bin/python -m pytest --cov-report=term-missing` | pass, `313 passed, 1 skipped`, total coverage `87.75%` |
+| KDRIs production validator | `.venv/bin/python scripts/validate_kdris_dataset.py --require-approved` | pass, 1,795 rows validated |
+
+이전 계획 입력의 `267 passed, 1 skipped`와 2026-05-14 재검증의 `310 passed, 1 skipped`는 현재 코드 기준 재검증 결과와 다르므로, 이 주간 스냅샷에는 오늘 실행한 `313 passed, 1 skipped`를 실제 결과로 기록한다. 이번 재검증에서는 KDRIs 2025 기준 테스트 드리프트 7건과 `SecretStr` 타입 불일치 mypy 1건을 정리했다.
 
 이 문서는 현재 로컬 코드 기준으로 실제 연결된 기능과 아직 스캐폴드 또는 설계 단계인 기능을 구분한다. 문서에 남아 있던 `OllamaAdapter`, Google/CLOVA OCR provider, `OCRPipeline`, `SupplementService` 같은 표현은 현행 구현체 이름이 아니라 과거 설계 예시 또는 후속 adapter 후보로 취급한다.
 
@@ -126,6 +147,8 @@ API 연결 지점은 `backend/src/api/v1/supplements.py`의 `POST /api/v1/supple
 
 ## AI/Image/Learning Flags
 
+주간 스냅샷 기준 `Feature flag default-off 정리`는 `done`이다. AI/vision/learning/Hall-lite gate와 non-P1 regulated feature flag는 기본 `false`이며, production에서는 sign-off 없이 `true`로 실행할 수 없도록 guard가 고정되어 있다.
+
 | 설정 | 기본값 | 실제 연결 상태 |
 | --- | --- | --- |
 | `ALLOW_EXTERNAL_LLM` | `false` | production에서 true 금지. Ollama host local guard에 사용 |
@@ -140,10 +163,12 @@ API 연결 지점은 `backend/src/api/v1/supplements.py`의 `POST /api/v1/supple
 | `ENABLE_PGVECTOR_STORAGE` | `false` | learning gate와 `DisabledVectorStore` 계약에만 존재 |
 | `EMBEDDING_MODEL` | `clip-ViT-B-32` | 설정만 존재. embedding runner 없음 |
 | `IMAGE_RETENTION_DAYS` | `0` | retention helper와 learning gate에서 사용. 0은 즉시 삭제 정책 의미 |
-| `FEATURE_PRESCRIPTION_OCR_INTAKE` | `true` | 설정과 문서 guardrail 성격. 전용 endpoint는 아직 없음 |
-| `FEATURE_LAB_RESULT_OCR_INTAKE` | `true` | 설정과 문서 guardrail 성격. 전용 endpoint는 아직 없음 |
+| `FEATURE_PRESCRIPTION_OCR_INTAKE` | `false` | 설정과 문서 guardrail 성격. 전용 endpoint는 아직 없음 |
+| `FEATURE_LAB_RESULT_OCR_INTAKE` | `false` | 설정과 문서 guardrail 성격. 전용 endpoint는 아직 없음 |
 | `FEATURE_DOSAGE_CHANGE_RECOMMENDATION` | `false` | 직접 복용량 변경 안내 금지 guardrail 성격 |
-| `FEATURE_MEDICATION_SAFETY_ALERT` | `true` | 설정 존재. 별도 알림 workflow는 이 문서에서 확인되지 않음 |
+| `FEATURE_MEDICATION_SAFETY_ALERT` | `false` | 설정 존재. 별도 알림 workflow는 이 문서에서 확인되지 않음 |
+
+`config/implementation-readiness.settings.json`의 `FEATURE_HOSPITAL_MOCK_FHIR` 기본값도 `false`로 고정되어 있다. 현재 backend `Settings` 필드에는 대응 값이 없으므로, 이 문서에서는 runtime 연결 상태를 확인하지 않는다.
 
 ## Vision/YOLO Status
 
