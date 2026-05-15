@@ -1,11 +1,11 @@
 {
   "schema_version": "2.0",
   "current_official_reference_year": 2025,
-  "local_dataset_year": 2020,
-  "local_dataset_status": "implementation_sample_not_official_reference_table",
-  "operational_dataset_version": "2020-sample",
+  "local_dataset_year": 2025,
+  "local_dataset_status": "official_2025_approved",
+  "operational_dataset_version": "2025",
   "candidate_dataset_version": "2025",
-  "candidate_dataset_status": "digitization_pending",
+  "candidate_dataset_status": "promoted_to_production",
   "current_errata_version": "2026-03-16",
   "retrieved_at": "2026-05-14",
   "dataset_artifacts": [
@@ -23,9 +23,45 @@
       "version": "2025",
       "path": "data/kdris/kdris_2025.csv",
       "reference_year": 2025,
-      "status": "digitization_pending",
-      "checksum_sha256": "68678dbbec59f1d6424ba7e9804633fdee66cfec0d59068ee5f0bfd07e40e2b8",
-      "review_status": "not_started"
+      "status": "official_2025_approved",
+      "checksum_sha256": "132ea658b6c3a1c25c643d257a0af7c460eecce7e7eac984d19adab3c62a5091",
+      "review_status": "approved"
+    },
+    {
+      "id": "kdris_2025_target_nutrient_inventory",
+      "version": "2025",
+      "path": "data/kdris/review/2025/kdris_2025_target_nutrient_inventory.csv",
+      "reference_year": 2025,
+      "status": "review_artifact",
+      "checksum_sha256": "cc4d3a44fface341479a9454ea196cfbfad1bb3e8d5d367a7bc702705b2e39a0",
+      "review_status": "source_check_pending"
+    },
+    {
+      "id": "kdris_2025_candidate_review_rows",
+      "version": "2025",
+      "path": "data/kdris/review/2025/kdris_2025_candidate_rows.csv",
+      "reference_year": 2025,
+      "status": "review_artifact",
+      "checksum_sha256": "9b424031e9b3adddb1d48b8e02c4744e0eee3ca3438f861851ed920d7b610623",
+      "review_status": "source_check_pending"
+    },
+    {
+      "id": "kdris_2025_candidate_schema_issues",
+      "version": "2025",
+      "path": "data/kdris/review/2025/kdris_2025_candidate_issues.csv",
+      "reference_year": 2025,
+      "status": "review_artifact",
+      "checksum_sha256": "e123cc91fb9ed398a60ba514fcd77b4283b6ec344a0ba7d11763012dc989cc85",
+      "review_status": "schema_decision_resolved"
+    },
+    {
+      "id": "kdris_2025_schema_decisions",
+      "version": "2025",
+      "path": "data/kdris/review/2025/kdris_2025_schema_decisions.md",
+      "reference_year": 2025,
+      "status": "review_artifact",
+      "checksum_sha256": "12dc020a0d843586c91a25010274315589927e73786c41a90c5c7a7f0cfae165",
+      "review_status": "schema_decision_resolved"
     }
   ],
   "sources": [
@@ -52,7 +88,7 @@
       "source_url": "https://www.kns.or.kr/FileRoom/FileRoom_view.asp?BoardID=Kdr&idx=167",
       "release_date": "2025-12-31",
       "retrieved_at": "2026-05-14",
-      "license_note": "Raw official archive is committed for project traceability by DD decision; confirm Korean Nutrition Society redistribution terms before public release or external redistribution.",
+      "license_note": "Raw official archive is committed for project traceability; confirm Korean Nutrition Society redistribution terms before public release or external redistribution.",
       "errata_note": "Publication page notes typo updates dated 2026-02-02, 2026-02-27, and 2026-03-16. Use 2026-03-16 as the current tracked errata version.",
       "checksum_sha256": "26966013355039668bfc9eae799e86bd7ca45c27942ae5d10fb41c637913a6cb",
       "usage_status": "current_official_reference"

@@ -24,6 +24,8 @@ REQUIRED_COLUMNS = (
     "age_min_months",
     "age_max_months",
     "pregnancy_status",
+    "condition_detail",
+    "source_variant",
     "reference_type",
     "reference_amount",
     "reference_amount_min",
@@ -31,6 +33,8 @@ REQUIRED_COLUMNS = (
     "reference_unit",
     "ul_amount",
     "ul_unit",
+    "ul_amount_secondary",
+    "ul_unit_secondary",
     "source_id",
     "source_artifact",
     "source_page",
@@ -319,10 +323,19 @@ def _validate_ul_fields(row: dict[str, str], row_number: int) -> list[str]:
     errors: list[str] = []
     try:
         _parse_optional_float(row.get("ul_amount", ""))
+        _parse_optional_float(row.get("ul_amount_secondary", ""))
     except ValueError:
-        errors.append(f"row {row_number}: ul_amount must be numeric when present.")
+        errors.append(f"row {row_number}: UL amounts must be numeric when present.")
     if row.get("ul_amount", "") != "" and row.get("ul_unit", "") == "":
         errors.append(f"row {row_number}: ul_unit is required when ul_amount is present.")
+    if row.get("ul_amount_secondary", "") != "" and row.get("ul_unit_secondary", "") == "":
+        errors.append(
+            f"row {row_number}: ul_unit_secondary is required when ul_amount_secondary is present."
+        )
+    if row.get("ul_unit_secondary", "") != "" and row.get("ul_amount_secondary", "") == "":
+        errors.append(
+            f"row {row_number}: ul_amount_secondary is required when ul_unit_secondary is present."
+        )
     return errors
 
 
@@ -383,7 +396,7 @@ def _validate_age_overlaps(rows: list[dict[str, str]]) -> list[str]:
         Age overlap validation errors.
     """
     errors: list[str] = []
-    groups: dict[tuple[str, str, str, str], list[tuple[int, int, int]]] = {}
+    groups: dict[tuple[str, str, str, str, str, str], list[tuple[int, int, int]]] = {}
     for index, row in enumerate(rows, start=2):
         try:
             age_min = int(row["age_min_months"])
@@ -394,6 +407,8 @@ def _validate_age_overlaps(rows: list[dict[str, str]]) -> list[str]:
             row["nutrient_code"],
             row["sex"],
             row["pregnancy_status"],
+            row.get("condition_detail", ""),
+            row.get("source_variant", ""),
             row["reference_type"],
         )
         groups.setdefault(key, []).append((age_min, age_max, index))

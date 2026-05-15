@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 MICROGRAM_SYMBOL = "μg"
+MICROGRAM_SIGN = "µg"
 MICROGRAM_ASCII = "ug"
+MICROGRAM_RAE = "ug rae"
 GRAM = "g"
 MILLIGRAM = "mg"
+MILLIGRAM_SUPPLEMENTAL = "mg supplemental"
 KILOCALORIE = "kcal"
 INTERNATIONAL_UNIT = "iu"
+VITAMIN_A_CODE = "vitamin_a_ug"
 VITAMIN_D_CODE = "vitamin_d_ug"
+MAGNESIUM_CODE = "magnesium_mg"
 G_TO_MG = 1000.0
 MG_TO_UG = 1000.0
 VITAMIN_D_IU_TO_UG = 0.025
+KDRIS_LABEL_COMPATIBLE_UNIT_PAIRS = {
+    (MICROGRAM_ASCII, MICROGRAM_RAE): frozenset({VITAMIN_A_CODE}),
+    (MICROGRAM_RAE, MICROGRAM_ASCII): frozenset({VITAMIN_A_CODE}),
+    (MILLIGRAM_SUPPLEMENTAL, MILLIGRAM): frozenset({MAGNESIUM_CODE}),
+}
 MASS_CONVERSION_FACTORS = {
     (GRAM, MILLIGRAM): G_TO_MG,
     (MILLIGRAM, GRAM): 1 / G_TO_MG,
@@ -35,7 +45,29 @@ def normalize_unit(unit: str) -> str:
     Returns:
         소문자 ASCII 단위.
     """
-    return unit.strip().lower().replace(MICROGRAM_SYMBOL, MICROGRAM_ASCII)
+    normalized = unit.strip().lower().replace(MICROGRAM_SYMBOL, MICROGRAM_ASCII)
+    return normalized.replace(MICROGRAM_SIGN, MICROGRAM_ASCII)
+
+
+def _is_kdris_label_compatible(
+    source: str,
+    target: str,
+    nutrient_code: str | None,
+) -> bool:
+    """KDRIs 표시 단위 라벨이 같은 양으로 비교 가능한지 확인한다.
+
+    Args:
+        source: 정규화된 입력 단위.
+        target: 정규화된 목표 단위.
+        nutrient_code: 내부 영양소 코드.
+
+    Returns:
+        같은 값으로 비교 가능한 KDRIs 라벨 조합이면 True.
+    """
+    if nutrient_code is None:
+        return False
+    compatible_nutrients = KDRIS_LABEL_COMPATIBLE_UNIT_PAIRS.get((source, target))
+    return compatible_nutrients is not None and nutrient_code in compatible_nutrients
 
 
 def convert_amount(
@@ -61,6 +93,10 @@ def convert_amount(
     source = normalize_unit(from_unit)
     target = normalize_unit(to_unit)
     if source == target:
+        return amount
+    if _is_kdris_label_compatible(source, target, nutrient_code):
+        # TODO: Model source-specific supplemental intake before applying magnesium ULs
+        # separately from total dietary magnesium.
         return amount
     conversion_factor = MASS_CONVERSION_FACTORS.get((source, target))
     if conversion_factor is not None:

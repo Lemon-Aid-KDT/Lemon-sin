@@ -31,6 +31,7 @@ REFERENCE_TYPE_PRIORITY = {
     "EAR": 3,
     "CDRR": 4,
     "AMDR": 5,
+    "policy_limit": 6,
     "UL": 6,
 }
 
@@ -224,6 +225,8 @@ def _parse_2025_row(row: dict[str, str]) -> KDRIReference:
         age_min_months=age_min_months,
         age_max_months=age_max_months,
         pregnancy_status=cast(PregnancyStatus, row["pregnancy_status"]),
+        condition_detail=_parse_optional_text(row.get("condition_detail")),
+        source_variant=_parse_optional_text(row.get("source_variant")),
         reference_type=row["reference_type"],
         reference_amount=_parse_optional_float(row.get("reference_amount")),
         reference_amount_min=_parse_optional_float(row.get("reference_amount_min")),
@@ -231,6 +234,8 @@ def _parse_2025_row(row: dict[str, str]) -> KDRIReference:
         reference_unit=row["reference_unit"],
         ul_amount=_parse_optional_float(row.get("ul_amount")),
         ul_unit=_parse_optional_text(row.get("ul_unit")),
+        ul_amount_secondary=_parse_optional_float(row.get("ul_amount_secondary")),
+        ul_unit_secondary=_parse_optional_text(row.get("ul_unit_secondary")),
         source_note=f"{source_id}:{source_table}:{source_cell}",
         source_id=source_id,
         source_artifact=row["source_artifact"],
@@ -467,16 +472,34 @@ def get_kdris_for_profile(
     if not condition_matches:
         return baseline_matches
 
-    condition_by_code = {reference.nutrient_code: reference for reference in condition_matches}
+    replacement_matches = [
+        reference
+        for reference in condition_matches
+        if reference.condition_detail is None and reference.source_variant is None
+    ]
+    replacement_by_code = {reference.nutrient_code: reference for reference in replacement_matches}
     merged: list[KDRIReference] = []
-    seen_codes: set[str] = set()
     for reference in baseline_matches:
-        replacement = condition_by_code.get(reference.nutrient_code, reference)
-        merged.append(replacement)
-        seen_codes.add(replacement.nutrient_code)
+        merged.append(replacement_by_code.get(reference.nutrient_code, reference))
+    seen_keys = {
+        (
+            reference.nutrient_code,
+            reference.reference_type,
+            reference.condition_detail,
+            reference.source_variant,
+        )
+        for reference in merged
+    }
     for reference in condition_matches:
-        if reference.nutrient_code not in seen_codes:
+        key = (
+            reference.nutrient_code,
+            reference.reference_type,
+            reference.condition_detail,
+            reference.source_variant,
+        )
+        if key not in seen_keys:
             merged.append(reference)
+            seen_keys.add(key)
     return merged
 
 

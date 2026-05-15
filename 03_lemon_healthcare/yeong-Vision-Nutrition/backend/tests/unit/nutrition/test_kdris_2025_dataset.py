@@ -27,6 +27,8 @@ REQUIRED_2025_COLUMNS = (
     "age_min_months",
     "age_max_months",
     "pregnancy_status",
+    "condition_detail",
+    "source_variant",
     "reference_type",
     "reference_amount",
     "reference_amount_min",
@@ -34,6 +36,8 @@ REQUIRED_2025_COLUMNS = (
     "reference_unit",
     "ul_amount",
     "ul_unit",
+    "ul_amount_secondary",
+    "ul_unit_secondary",
     "source_id",
     "source_artifact",
     "source_page",
@@ -57,11 +61,14 @@ def test_2025_candidate_header_has_operational_columns() -> None:
     assert set(REQUIRED_2025_COLUMNS).issubset(set(fieldnames))
 
 
-def test_2025_candidate_is_empty_until_official_review_finishes() -> None:
-    """Verify no unreviewed or guessed 2025 KDRIs values are present."""
+def test_2025_dataset_contains_only_approved_official_rows() -> None:
+    """Verify the promoted 2025 KDRIs dataset contains approved official rows."""
     references = load_kdris_references(DEFAULT_KDRIS_2025_CSV)
 
-    assert references == ()
+    assert len(references) == 1795
+    assert {reference.review_status for reference in references} == {"approved"}
+    assert any(reference.source_variant == "total_water" for reference in references)
+    assert any(reference.ul_amount_secondary is not None for reference in references)
 
 
 def test_2025_settings_resolve_candidate_dataset_context() -> None:
@@ -74,7 +81,7 @@ def test_2025_settings_resolve_candidate_dataset_context() -> None:
     context = get_kdris_dataset_context(settings=settings)
 
     assert resolve_kdris_data_path("2025") == DEFAULT_KDRIS_2025_CSV
-    assert context["dataset_status"] == "digitization_pending"
+    assert context["dataset_status"] == "official_2025_approved"
     assert context["dataset_version"] == "2025"
     assert context["source_manifest_version"] == "2.0"
 
@@ -95,6 +102,8 @@ def test_load_2025_schema_supports_month_ranges_and_source_provenance(
             "228",
             "779",
             "none",
+            "",
+            "test_variant",
             "RNI",
             "1.5",
             "",
@@ -102,6 +111,8 @@ def test_load_2025_schema_supports_month_ranges_and_source_provenance(
             "mg",
             "3",
             "mg",
+            "",
+            "",
             "kns_2025_kdris_publication",
             "synthetic_parser_test_not_official_source.pdf",
             "p.1",
@@ -125,12 +136,13 @@ def test_load_2025_schema_supports_month_ranges_and_source_provenance(
     assert reference.age_min == 19
     assert reference.age_max == 64
     assert reference.reference_type == "RNI"
+    assert reference.source_variant == "test_variant"
     assert reference.source_id == "kns_2025_kdris_publication"
     assert reference.errata_version == "2026-03-16"
 
 
-def test_kdris_validator_accepts_draft_header_only_candidate() -> None:
-    """Verify draft validation passes for the header-only candidate dataset."""
+def test_kdris_validator_accepts_promoted_official_dataset() -> None:
+    """Verify draft validation passes for the promoted official dataset."""
     result = subprocess.run(
         [sys.executable, str(VALIDATOR)],
         cwd=PROJECT_ROOT,
@@ -140,11 +152,11 @@ def test_kdris_validator_accepts_draft_header_only_candidate() -> None:
     )
 
     assert result.returncode == 0
-    assert "Validated 0 KDRIs rows" in result.stdout
+    assert "Validated 1795 KDRIs rows" in result.stdout
 
 
-def test_kdris_validator_rejects_production_without_approved_rows() -> None:
-    """Verify production validation fails until reviewed official rows exist."""
+def test_kdris_validator_accepts_production_approved_rows() -> None:
+    """Verify production validation passes after reviewed official rows exist."""
     result = subprocess.run(
         [sys.executable, str(VALIDATOR), "--require-approved"],
         cwd=PROJECT_ROOT,
@@ -153,5 +165,5 @@ def test_kdris_validator_rejects_production_without_approved_rows() -> None:
         text=True,
     )
 
-    assert result.returncode == 1
-    assert "production KDRIs dataset must contain approved rows" in result.stdout
+    assert result.returncode == 0
+    assert "Validated 1795 KDRIs rows" in result.stdout

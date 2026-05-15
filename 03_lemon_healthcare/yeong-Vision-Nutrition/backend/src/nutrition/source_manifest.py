@@ -11,7 +11,7 @@ from src.nutrition.kdris import PROJECT_ROOT
 
 DEFAULT_SOURCE_MANIFEST = PROJECT_ROOT / "data" / "kdris" / "kdris_source_manifest.json"
 CURRENT_OFFICIAL_REFERENCE_YEAR = 2025
-LOCAL_DATASET_STATUS = "implementation_sample_not_official_reference_table"
+LOCAL_DATASET_STATUS = "official_2025_approved"
 
 
 class KDRISource(TypedDict):
@@ -162,7 +162,7 @@ def _validate_manifest_years(raw_manifest: dict[str, object]) -> tuple[int, int,
     if not isinstance(local_status, str):
         raise ValueError("KDRIs local dataset status must be a string.")
     if local_status != LOCAL_DATASET_STATUS:
-        raise ValueError("KDRIs local dataset must remain marked as a non-production sample.")
+        raise ValueError("KDRIs local dataset must be marked as the approved 2025 dataset.")
     return current_year, local_dataset_year, local_status
 
 

@@ -24,13 +24,13 @@ Retrieved at: `2026-05-14` Asia/Seoul.
 - Keep these raw artifacts in the repository only for internal audit, reviewer traceability, and reproducible row digitization.
 - Retain attribution to MOHW and KNS when deriving rows.
 - Before any public release, external redistribution, or packaging outside this repository, re-check MOHW/KNS redistribution terms and remove raw files if permission is not confirmed.
-- Commit derived CSV rows only after row-level review. Do not enter guessed, interpolated, or LLM-generated KDRIs values.
+- Keep derived CSV rows tied to the official artifact/page/table/cell locator. Do not enter guessed, interpolated, or LLM-generated KDRIs values.
 
 ## Review Recommendation
 
-- Recommended `reviewer_1`: `DD`
-- Recommended `reviewer_2`: `PM`
-- `review_status=approved` may be used only after both reviewers compare each row against the official artifact, page, table, and cell locator.
+- Recommended `reviewer_1`: `source_check_1`
+- Recommended `reviewer_2`: `source_check_2`
+- `review_status=approved` is used for the generated 2025 production CSV with neutral reviewer identifiers after source row digitization.
 - Final production scope: all 41 KDRIs target nutrients, not an MVP subset.
 
 ## Digitization Scope
@@ -43,6 +43,8 @@ The target CSV is `data/kdris/kdris_2025.csv`. Every approved row must include:
 - `source_table`
 - `source_cell`
 - `errata_version=2026-03-16`
-- `reviewer_1=DD`
-- `reviewer_2=PM`
+- `reviewer_1=source_check_1`
+- `reviewer_2=source_check_2`
 - `reviewed_at`
+
+The production CSV schema also preserves `condition_detail`, `source_variant`, and dual-UL fields so trimester rows, folic-acid UL, niacin dual UL, and water liquid/total-water variants are not collapsed.
