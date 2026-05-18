@@ -286,7 +286,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 - [x] push 대상
   `origin/changmin-aiagent`
 
-- [ ] PR 설명에 포함
+- [x] PR 설명에 포함
   - mock 데이터 전제
   - Local LLM provider 전략
   - Ollama/vLLM 차이
