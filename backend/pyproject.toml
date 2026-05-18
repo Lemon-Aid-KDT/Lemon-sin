@@ -94,6 +94,9 @@ testpaths = [
     "ai_agent_chat/tests",
 ]
 python_files = "test_*.py"
+markers = [
+    "timescaledb: requires a PostgreSQL instance with the timescaledb extension installed",
+]
 addopts = """
     -v
     --cov=src
@@ -101,6 +104,7 @@ addopts = """
     --cov-report=html
     --cov-fail-under=80
     --strict-markers
+    -m "not timescaledb"
 """
 asyncio_mode = "auto"
 

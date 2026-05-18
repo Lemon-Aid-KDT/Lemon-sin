@@ -63,8 +63,11 @@ async def test_paddle_adapter_flattens_prediction_text_and_scores() -> None:
 
 @pytest.mark.asyncio
 async def test_paddle_adapter_requires_local_ocr_gate() -> None:
-    """Verify local OCR stays fail-closed by default."""
-    adapter = PaddleOCRAdapter(Settings(_env_file=None), predictor=_FakePaddlePredictor([]))
+    """Verify the adapter fails closed when ENABLE_LOCAL_OCR is explicitly disabled."""
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=False),
+        predictor=_FakePaddlePredictor([]),
+    )
 
     with pytest.raises(OCRError, match="ENABLE_LOCAL_OCR"):
         await adapter.extract_text(_image_input())

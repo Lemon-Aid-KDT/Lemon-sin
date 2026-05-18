@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
-from io import BytesIO
 from typing import Any, Protocol, cast
 
 from PIL import Image, UnidentifiedImageError
 
+from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard
 from src.vision.base import BoundingBox, VisionError
 from src.vision.preprocessing import VisionPreprocessingError, clamp_bounding_box
 from src.vision.taxonomy import normalize_vision_label
@@ -148,7 +148,12 @@ def _decode_image(image_bytes: bytes) -> tuple[Image.Image, int, int]:
         VisionError: If the image cannot be decoded.
     """
     try:
-        with Image.open(BytesIO(image_bytes)) as image:
+        decoded = safe_load_with_bomb_guard(image_bytes)
+    except ImageSafetyError as exc:
+        raise VisionError("Image cannot be decoded for YOLO detection.") from exc
+
+    try:
+        with decoded as image:
             width, height = image.size
             return image.convert("RGB"), width, height
     except (OSError, UnidentifiedImageError) as exc:

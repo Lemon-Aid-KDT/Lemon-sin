@@ -278,10 +278,12 @@ dev_dependencies:
   meals          (식단 기록)
   diagnoses      (만성질환 정보)
 
-시계열 (TimescaleDB Hypertable):
-  step_counts          (걸음수, hour 단위 집계)
-  weight_logs          (체중 측정, 일 단위)
-  heart_rate_samples   (심박수, 분 단위)
+시계열 (TimescaleDB Hypertable, alembic 0008 opt-in):
+  health_daily_summaries (일별 걸음수·체중·심박·활동 칼로리 집계)
+  # 본 PR-O(0007 composite PK) + PR-P(0008 conditional create_hypertable)
+  # 머지 후, TimescaleDB 확장이 있는 DB 인스턴스에서만 hypertable로 동작.
+  # 표준 PostgreSQL 인스턴스에서는 일반 테이블 그대로 동작 (NOTICE 후 no-op).
+  # 운영 활성화 절차: dev-guides/timescaledb-activation.md 참조.
 
 벡터 (pgvector, Phase 4 게이트 통과 시에만):
   labeled_supplement_images (가명화 이미지 + CLIP 임베딩, docs/17 §3 4번 동의 한정)

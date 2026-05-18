@@ -199,7 +199,8 @@ class Settings(BaseSettings):
         ollama_timeout_sec: Ollama 요청 타임아웃.
         ollama_temperature: 구조화 출력 안정성을 위한 temperature.
         allow_external_llm: 외부 LLM 사용 허용 여부.
-        ocr_primary_provider: Primary supplement-label OCR provider selector.
+        ocr_primary_provider: Primary supplement-label OCR provider selector. Defaults to
+            ``paddleocr`` (local). ``google_vision`` is an opt-in external option.
         allow_external_ocr: Whether external OCR providers can receive image bytes.
         google_vision_auth_mode: Google Vision authentication mode.
         google_cloud_api_key: Google Cloud Vision REST API key.
@@ -287,9 +288,18 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
-    ocr_primary_provider: Literal["none", "google_vision"] = Field(default="none")
+    ocr_primary_provider: Literal["none", "google_vision", "paddleocr"] = Field(
+        default="paddleocr"
+    )
     allow_external_ocr: bool = Field(default=False)
-    google_vision_auth_mode: Literal["api_key", "adc"] = Field(default="api_key")
+    google_vision_auth_mode: Literal["api_key", "adc"] = Field(default="adc")
+    allow_google_api_key_auth: bool = Field(
+        default=False,
+        description=(
+            "Permit GOOGLE_VISION_AUTH_MODE=api_key. Non-production only "
+            "(local smoke/dev). Production forbids API-key auth entirely."
+        ),
+    )
     google_cloud_api_key: SecretStr | None = Field(default=None)
     google_cloud_project: str | None = Field(default=None)
     google_vision_location: Literal["global", "us", "eu"] = Field(default="global")
@@ -370,13 +380,24 @@ class Settings(BaseSettings):
     multimodal_verification_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     multimodal_verification_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
     enable_local_ocr: bool = Field(
-        default=False,
-        description="PaddleOCR 등 local OCR fallback 활성화. 기본값 disabled.",
+        default=True,
+        description=(
+            "Local OCR (PaddleOCR) 운영 활성화. PaddleOCR이 primary로 동작하려면 true여야 한다. "
+            "Google Vision primary 운영 환경에서 PaddleOCR fallback을 끄려면 false."
+        ),
     )
     local_ocr_provider: Literal["paddleocr"] = Field(default="paddleocr")
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
     local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    paddle_disable_model_source_check: bool = Field(
+        default=True,
+        description=(
+            "Set PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true at startup so the local "
+            "PaddleOCR runtime never probes external model hosters on first call. "
+            "Required for closed-network deployments (docs/32 §6)."
+        ),
+    )
     enable_clova_ocr: bool = Field(
         default=False,
         description="NAVER Cloud CLOVA OCR external fallback 활성화. 기본값 disabled.",
@@ -454,6 +475,26 @@ class Settings(BaseSettings):
                 "LEARNING_OBJECT_STORAGE_PROVIDER=s3."
             )
 
+        if self.environment in {"staging", "production"} and self.auth_mode == "disabled":
+            raise ValueError(
+                "AUTH_MODE=disabled is forbidden outside development; "
+                "set AUTH_MODE=jwt for staging and production."
+            )
+        if self.google_vision_auth_mode == "api_key" and not self.allow_google_api_key_auth:
+            raise ValueError(
+                "GOOGLE_VISION_AUTH_MODE=api_key requires "
+                "ALLOW_GOOGLE_API_KEY_AUTH=true (non-production only)."
+            )
+        if self.allow_google_api_key_auth and self.environment == "production":
+            raise ValueError(
+                "ALLOW_GOOGLE_API_KEY_AUTH=true is forbidden in production; "
+                "use GOOGLE_VISION_AUTH_MODE=adc with an attached service account."
+            )
+        if self.environment == "staging" and not self.allowed_hosts:
+            raise ValueError("ALLOWED_HOSTS must be explicit in staging.")
+        if self.environment == "staging" and _contains_wildcard(self.allowed_hosts):
+            raise ValueError("ALLOWED_HOSTS must not contain wildcards in staging.")
+
         if self.environment != "production":
             return self
 
@@ -523,6 +564,10 @@ class Settings(BaseSettings):
                     "ALLOWED_ORIGINS must not contain wildcards in production.",
                 ),
                 (
+                    any(not origin.startswith("https://") for origin in self.allowed_origins),
+                    "ALLOWED_ORIGINS must contain only https:// URLs in production.",
+                ),
+                (
                     _contains_wildcard(self.allowed_hosts),
                     "ALLOWED_HOSTS must not contain wildcards in production.",
                 ),
@@ -586,8 +631,12 @@ class Settings(BaseSettings):
                     "OCR_ROI_PREPROCESSING_POLICY requires docs/17 §9 gate #2 sign-off.",
                 ),
                 (
-                    self.enable_local_ocr,
-                    "ENABLE_LOCAL_OCR=true requires local OCR fallback validation sign-off.",
+                    self.ocr_primary_provider == "paddleocr" and not self.enable_local_ocr,
+                    "OCR_PRIMARY_PROVIDER=paddleocr requires ENABLE_LOCAL_OCR=true.",
+                ),
+                (
+                    self.enable_local_ocr and self.ocr_primary_provider != "paddleocr",
+                    "ENABLE_LOCAL_OCR=true alongside a non-paddleocr primary requires local OCR fallback validation sign-off.",
                 ),
                 (
                     self.enable_clova_ocr,

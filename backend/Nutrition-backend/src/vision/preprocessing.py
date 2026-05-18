@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from PIL import Image, UnidentifiedImageError
+from PIL import UnidentifiedImageError
 
+from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard
 from src.vision.base import BoundingBox
 from src.vision.taxonomy import label_priority
 
@@ -93,7 +94,14 @@ def crop_image_to_bounding_box(
         raise VisionPreprocessingError("Bounding box origin must be non-negative.")
 
     try:
-        with Image.open(BytesIO(image_bytes)) as source:
+        decoded = safe_load_with_bomb_guard(image_bytes)
+    except ImageSafetyError as exc:
+        raise VisionPreprocessingError(
+            "Image cannot be decoded for vision preprocessing."
+        ) from exc
+
+    try:
+        with decoded as source:
             image_width, image_height = source.size
             right = box.x + box.width
             lower = box.y + box.height

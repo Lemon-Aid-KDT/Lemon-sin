@@ -450,3 +450,17 @@ def test_learning_constraints_and_indexes_are_defined() -> None:
     assert "ck_image_embedding_records_embedding_dimensions_positive" in record_constraint_names
     assert "ix_image_embedding_jobs_status_next_run" in job_index_names
     assert "ix_image_embedding_records_owner_created_at" in record_index_names
+
+
+def test_health_daily_summary_pk_is_composite_with_measured_date() -> None:
+    """Verify the PK widens to (id, measured_date) so the table is hypertable-ready.
+
+    TimescaleDB requires every UNIQUE/PRIMARY KEY constraint on a hypertable to
+    include the time partitioning column. PR-O widens the PK to satisfy that
+    rule; PR-P then performs the opt-in ``create_hypertable`` conversion.
+    """
+    table = cast(Table, HealthDailySummary.__table__)
+    pk_column_names = [column.name for column in table.primary_key.columns]
+
+    assert pk_column_names == ["id", "measured_date"]
+    assert table.primary_key.name == "pk_health_daily_summaries"

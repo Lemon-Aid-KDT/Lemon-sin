@@ -308,7 +308,13 @@ async def test_create_supplement_analysis_intake_stores_sanitized_preview() -> N
     assert result.record is fake_session.added
     assert result.record is fake_session.refreshed
     assert result.record.owner_subject == "https://auth.example.com/::user_123"
-    assert result.record.client_request_id == "client-1"
+    stored_idempotency_key = result.record.client_request_id
+    assert stored_idempotency_key is not None
+    prefix, sep, hint = stored_idempotency_key.partition(":")
+    assert sep == ":"
+    assert len(prefix) == 16
+    assert all(char in "0123456789abcdef" for char in prefix)
+    assert hint == "client-1"
     assert result.record.image_sha256 == "a" * 64
     assert result.record.ocr_text_hash is None
     assert result.record.parsed_snapshot["intake"] == {

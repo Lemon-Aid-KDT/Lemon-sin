@@ -6,6 +6,8 @@ from io import BytesIO
 
 from PIL import Image, UnidentifiedImageError
 
+from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard
+
 
 class OCRPreprocessingError(ValueError):
     """Raised when an image cannot be normalized for OCR."""
@@ -28,7 +30,12 @@ def normalize_image_for_ocr(image_bytes: bytes, *, max_side_px: int = 2048) -> b
         raise OCRPreprocessingError("max_side_px must be positive.")
 
     try:
-        with Image.open(BytesIO(image_bytes)) as source:
+        source = safe_load_with_bomb_guard(image_bytes)
+    except ImageSafetyError as exc:
+        raise OCRPreprocessingError("Image cannot be decoded for OCR preprocessing.") from exc
+
+    try:
+        with source:
             normalized = source.convert("RGB")
             normalized.thumbnail((max_side_px, max_side_px), Image.Resampling.LANCZOS)
             buffer = BytesIO()

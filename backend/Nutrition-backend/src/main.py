@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,7 +15,11 @@ from src.api.v1.examples import HEALTH_RESPONSE_EXAMPLES
 from src.api.v1.router import api_router
 from src.config import Settings, get_settings
 from src.db.session import dispose_engine
+from src.middleware.secure_headers import SecureHeadersMiddleware
+from src.utils.image_safety import configure_pillow_limits
 from src.utils.logger import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -28,6 +34,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     settings = get_settings()
     setup_logging(settings.log_level)
+    logger.info(
+        "TrustedHost allowed_hosts=%s active=%s",
+        settings.allowed_hosts or ["<sentinel>"],
+        "explicit" if settings.allowed_hosts else "dev-sentinel",
+    )
+    configure_pillow_limits(settings.supplement_image_max_pixels)
+    if settings.paddle_disable_model_source_check:
+        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "true")
     # TODO: Phase 2에서 Redis/OCR/LLM adapter readiness check를 분리한다.
     try:
         yield
@@ -45,8 +59,13 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
     Returns:
         None.
     """
-    if settings.allowed_hosts:
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+    # Always install TrustedHostMiddleware. Staging/production validators require
+    # explicit ALLOWED_HOSTS; in development we fall back to a TestClient-safe
+    # sentinel so the middleware can never silently fail-open.
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.allowed_hosts or ["testserver", "localhost", "127.0.0.1"],
+    )
     if settings.allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -55,6 +74,7 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Authorization"],
         )
+    app.add_middleware(SecureHeadersMiddleware, settings=settings)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

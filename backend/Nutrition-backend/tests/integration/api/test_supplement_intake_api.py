@@ -20,6 +20,7 @@ from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement import SupplementAnalysisStatus
 from src.services.privacy import ConsentRequiredError
+from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
 
 
 class _TransactionContext:
@@ -244,6 +245,9 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
+        lambda: SupplementImageAnalysisAdapters()
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -255,7 +259,13 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert fake_session.added_analysis is not None
     assert fake_session.added_analysis.owner_subject == "local-development::local-dev-user"
-    assert fake_session.added_analysis.client_request_id == "client-1"
+    stored_idempotency_key = fake_session.added_analysis.client_request_id
+    assert stored_idempotency_key is not None
+    prefix, sep, suffix = stored_idempotency_key.partition(":")
+    assert sep == ":"
+    assert len(prefix) == 16
+    assert all(char in "0123456789abcdef" for char in prefix)
+    assert suffix == "client-1"
     assert fake_session.added_analysis.ocr_text_hash is None
     assert fake_session.added_analysis.parsed_snapshot["ingredient_candidates"] == []
     assert len(fake_session.added_audits) == 1

@@ -211,12 +211,13 @@
     "ocr": {
       "OCR_PRIMARY_PROVIDER": {
         "required": true,
-        "default": "none",
+        "default": "paddleocr",
         "allowed_values": [
           "none",
-          "google_vision"
+          "google_vision",
+          "paddleocr"
         ],
-        "production_note": "Google Vision은 명시 opt-in 후 ALLOW_EXTERNAL_OCR=true, GOOGLE_VISION_AUTH_MODE=adc, attached service account smoke test 통과 시에만 활성화합니다."
+        "production_note": "PaddleOCR local OCR이 default primary입니다. Google Vision은 명시 opt-in 후 ALLOW_EXTERNAL_OCR=true, GOOGLE_VISION_AUTH_MODE=adc, attached service account smoke test 통과 시에만 활성화합니다."
       },
       "ALLOW_EXTERNAL_OCR": {
         "required": true,
@@ -287,8 +288,8 @@
       },
       "ENABLE_LOCAL_OCR": {
         "required": true,
-        "default": false,
-        "production_note": "PaddleOCR local fallback은 fixture report와 local OCR fallback sign-off 전까지 false를 유지합니다."
+        "default": true,
+        "production_note": "PaddleOCR이 default primary이므로 ENABLE_LOCAL_OCR=true가 운영 기본값입니다. OCR_PRIMARY_PROVIDER를 google_vision으로 전환하면서 legacy fallback 경로를 활성화하려면 fixture report와 sign-off가 별도로 필요합니다."
       },
       "LOCAL_OCR_PROVIDER": {
         "required": true,

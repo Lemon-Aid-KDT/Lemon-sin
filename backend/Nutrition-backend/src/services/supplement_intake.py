@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -12,6 +13,7 @@ from typing import Any
 
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,11 @@ from src.models.schemas.supplement import (
 )
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.utils.image_safety import (
+    ImageSafetyError,
+    safe_load_with_bomb_guard,
+    strip_image_metadata,
+)
 
 SUPPLEMENT_INTAKE_ALGORITHM_VERSION = "supplement-intake-v1.0.0"
 SUPPLEMENT_INTAKE_PROVIDER = "intake-only"
@@ -149,10 +156,20 @@ async def read_and_validate_supplement_image(
         )
 
     width, height = _validate_decodable_image(data, settings.supplement_image_max_pixels)
+
+    try:
+        sanitized = strip_image_metadata(data, detected_mime)
+    except ImageSafetyError as exc:
+        raise SupplementImageValidationError(
+            code="invalid_image",
+            message="Uploaded label image cannot be normalized.",
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        ) from exc
+
     return ValidatedSupplementImage(
-        sha256=hashlib.sha256(data).hexdigest(),
+        sha256=hashlib.sha256(sanitized).hexdigest(),
         mime_type=detected_mime,
-        size_bytes=len(data),
+        size_bytes=len(sanitized),
         width=width,
         height=height,
     )
@@ -216,7 +233,11 @@ async def create_supplement_analysis_intake(
         ValueError: If owner identity cannot be persisted safely.
     """
     owner_subject = build_owner_subject(user)
-    normalized_client_request_id = _normalize_client_request_id(client_request_id)
+    normalized_client_request_id = derive_idempotency_key(
+        client_request_id,
+        owner_subject,
+        settings.privacy_hash_secret,
+    )
     record: SupplementAnalysisRun | None = None
     reused_existing = False
 
@@ -320,14 +341,29 @@ def _validate_decodable_image(data: bytes, max_pixels: int) -> tuple[int, int]:
                     status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 )
             image.verify()
-            return width, height
     except SupplementImageValidationError:
         raise
+    except Image.DecompressionBombError as exc:
+        raise SupplementImageValidationError(
+            code="payload_too_large",
+            message="Uploaded label image exceeds the configured pixel limit.",
+            status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+        ) from exc
     except (OSError, UnidentifiedImageError) as exc:
         raise SupplementImageValidationError(
             code="invalid_image",
             message="Uploaded label image cannot be decoded.",
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        ) from exc
+
+    try:
+        with safe_load_with_bomb_guard(data) as decoded:
+            return decoded.size
+    except ImageSafetyError as exc:
+        raise SupplementImageValidationError(
+            code="payload_too_large",
+            message="Uploaded label image is too large to decode safely.",
+            status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
         ) from exc
 
 
@@ -366,6 +402,36 @@ def _normalize_client_request_id(client_request_id: str | None) -> str | None:
         return None
     normalized = client_request_id.strip()
     return normalized or None
+
+
+def derive_idempotency_key(
+    client_request_id: str | None,
+    owner_subject: str,
+    privacy_hash_secret: SecretStr,
+) -> str | None:
+    """Combine an owner-scoped HMAC prefix with the client's idempotency hint.
+
+    The server never trusts client-supplied keys to be unique across owners.
+    A short HMAC of the authenticated owner_subject is prepended so that two
+    users cannot collide on the same hint by accident, and a single user
+    cannot probe for another user's key by reusing the same string.
+
+    Args:
+        client_request_id: Raw client idempotency key, possibly ``None``.
+        owner_subject: Hashed owner identifier used as the HMAC input.
+        privacy_hash_secret: Application HMAC secret already used for OCR text
+            hashing in :func:`hash_ocr_text`.
+
+    Returns:
+        Owner-scoped idempotency key, or ``None`` when no client value was
+        provided.
+    """
+    normalized = _normalize_client_request_id(client_request_id)
+    if normalized is None:
+        return None
+    secret = privacy_hash_secret.get_secret_value().encode("utf-8")
+    digest = hmac.new(secret, owner_subject.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
+    return f"{digest}:{normalized[:120]}"
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:

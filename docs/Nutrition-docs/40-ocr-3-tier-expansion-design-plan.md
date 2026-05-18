@@ -1,17 +1,18 @@
 # 40. OCR 3-Tier 확장 상세 설계 및 구현 플랜
 
 > **문서 정보**
-> 버전: v1.0 | 작성일: 2026-05-15 | 상태: 브레인스토밍 확정안 + 구현 플랜 | 작성자: yeong-tech
+> 버전: v1.1 | 작성일: 2026-05-18 | 상태: PaddleOCR primary 전환 반영 (docs/33 v1.3 align) | 작성자: yeong-tech
 
 ---
 
 ## 0. 결론
 
-Google Vision MVP 이후 다음 단계는 새로운 OCR 체인을 한 번에 켜는 작업이 아니라, 이미 존재하는 orchestration 지점에 **YOLO ROI**, **Google Vision primary OCR**, **Ollama local vision assist**, **PaddleOCR/CLOVA optional fallback**, **fixture evaluation report**를 단계적으로 연결하는 작업이다.
+PaddleOCR primary 전환(docs/33 v1.3) 이후 다음 단계는 새로운 OCR 체인을 한 번에 켜는 작업이 아니라, 이미 존재하는 orchestration 지점에 **YOLO ROI**, **PaddleOCR primary OCR**, **Ollama local vision assist**, **Google Vision/CLOVA optional external fallback**, **fixture evaluation report**를 단계적으로 연결하는 작업이다.
 
 이번 문서의 운영 원칙은 다음과 같다.
 
-- Google Vision은 primary OCR 역할을 유지한다.
+- PaddleOCR(`paddleocr_local`)이 default primary OCR이며 `OCR_PRIMARY_PROVIDER=paddleocr` + `ENABLE_LOCAL_OCR=true`가 운영 기본값이다.
+- Google Vision은 `ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의가 켜진 환경에서만 활성화되는 외부 비교/스모크 옵션이다.
 - YOLO는 OCR 전처리용 ROI detector이며, OCR 또는 성분 추론 엔진으로 취급하지 않는다.
 - Ollama vision은 local-only fallback/verification 보조 채널이며, `OCRResult.confidence`를 만들어낸다고 가정하지 않는다.
 - PaddleOCR과 CLOVA의 우선순위는 정확도 수치를 임의로 확정하지 않고 fixture benchmark 결과로 재검토한다.
@@ -52,7 +53,7 @@ cd 03_lemon_healthcare/yeong-Lemon-Aid/backend
 | --- | --- | --- |
 | Primary OCR | `backend/Nutrition-backend/src/ocr/factory.py`에서 `OCR_PRIMARY_PROVIDER=google_vision`일 때 `GoogleVisionOCRAdapter`를 생성한다. | route-level adapter factory가 아직 primary OCR만 주입한다. vision/multimodal/local fallback adapter까지 한 번에 조립하는 factory가 필요하다. |
 | Analyze endpoint | `backend/Nutrition-backend/src/api/v1/supplements.py`의 `get_supplement_image_analysis_adapters()`는 `SupplementImageAnalysisAdapters(ocr=...)`만 반환한다. | `vision=YoloLabelDetector(...)`, `multimodal_ocr=OllamaVisionAssistAdapter(...)`, optional fallback provider 주입이 필요하다. |
-| YOLO ROI | `backend/Nutrition-backend/src/vision/yolo.py`와 `backend/Nutrition-backend/src/vision/ultralytics_runner.py`에 gated detector와 Ultralytics runner가 있다. | 실제 analyze path에서 adapter가 주입되지 않는다. 또한 Google Vision primary OCR 입력을 ROI crop으로 바꾸는 전처리 경로가 필요하다. |
+| YOLO ROI | `backend/Nutrition-backend/src/vision/yolo.py`와 `backend/Nutrition-backend/src/vision/ultralytics_runner.py`에 gated detector와 Ultralytics runner가 있다. | 실제 analyze path에서 adapter가 주입되지 않는다. 또한 primary OCR(PaddleOCR) 입력을 ROI crop으로 바꾸는 전처리 경로가 필요하다. |
 | ROI crop helper | `backend/Nutrition-backend/src/vision/preprocessing.py`에 `crop_image_to_bounding_box()`가 있다. | Ollama vision assist는 자체 crop을 하지만, Google Vision adapter는 현재 `label_region` metadata를 직접 crop하지 않는다. |
 | Ollama vision assist | `backend/Nutrition-backend/src/llm/ollama_vision.py`에 local-only OCR-like fallback adapter가 있다. 결과 confidence는 `None`이다. | route factory 주입, fallback 실패 처리, cross-check verification 모델이 필요하다. |
 | Fallback policy | `Settings.multimodal_ocr_assist_policy`는 `disabled`, `ocr_empty_only`, `low_confidence`를 지원한다. | PaddleOCR/CLOVA 후순위 fallback selector와 verification sample policy가 없다. |
@@ -111,13 +112,13 @@ Ollama vision assist는 두 모드로 분리한다.
 
 정확도 우선순위는 fixture benchmark 전에는 확정하지 않는다. 다만 운영 기본값은 다음처럼 둔다.
 
-1. Google Vision primary OCR
+1. PaddleOCR primary OCR (`paddleocr_local`)
 2. Ollama local vision fallback 또는 verification
-3. PaddleOCR local fallback
-4. CLOVA OCR external fallback
+3. Google Vision external OCR (`ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의 시에만)
+4. CLOVA OCR external fallback (기본 OFF + vendor review 필요)
 5. manual confirmation
 
-이 순서의 이유는 "PaddleOCR이 CLOVA보다 정확하다"는 확정이 아니라, 개인정보 외부 전송과 비용/secret/vendor 검토면에서 local fallback을 먼저 검토하는 것이 프로젝트 기본 안전 원칙과 맞기 때문이다. CLOVA는 한국어 OCR 후보로 유지하되, external OCR consent와 발주처 vendor review가 끝나기 전에는 기본 off로 둔다.
+이 순서의 이유는 정확도 확정이 아니라, 환자 정보의 외부 전송과 비용/secret/vendor 검토면에서 local primary를 먼저 활용하고 외부 provider는 명시 동의 게이트를 거친 뒤에만 활성화하는 것이 프로젝트 기본 안전 원칙과 맞기 때문이다. Google Vision과 CLOVA는 한국어 OCR 정확도 상한 측정 후보로 유지하되, external OCR consent와 발주처 vendor review가 끝나기 전에는 기본 off로 둔다.
 
 ### 3.4 Fixture report
 

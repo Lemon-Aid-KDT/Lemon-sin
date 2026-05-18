@@ -74,7 +74,7 @@ def _valid_production_kwargs() -> dict[str, Any]:
     }
 
 
-def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
     """Verify development defaults remain usable for local work."""
     monkeypatch.delenv("GOOGLE_CLOUD_API_KEY", raising=False)
 
@@ -96,9 +96,10 @@ def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> N
     assert settings.feature_lab_result_ocr_intake is False
     assert settings.feature_dosage_change_recommendation is False
     assert settings.feature_medication_safety_alert is False
-    assert settings.ocr_primary_provider == "none"
+    assert settings.ocr_primary_provider == "paddleocr"
     assert settings.allow_external_ocr is False
-    assert settings.google_vision_auth_mode == "api_key"
+    assert settings.google_vision_auth_mode == "adc"
+    assert settings.allow_google_api_key_auth is False
     assert settings.google_cloud_api_key is None
     assert settings.google_cloud_project is None
     assert settings.google_vision_location == "global"
@@ -113,7 +114,7 @@ def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> N
     assert settings.multimodal_verification_threshold == 0.80
     assert settings.enable_vision_classifier is False
     assert settings.ocr_roi_preprocessing_policy == "disabled"
-    assert settings.enable_local_ocr is False
+    assert settings.enable_local_ocr is True
     assert settings.local_ocr_provider == "paddleocr"
     assert settings.local_ocr_language == "korean"
     assert settings.local_ocr_device is None
@@ -217,6 +218,47 @@ def test_production_rejects_wildcard_origins_and_hosts() -> None:
         Settings(**kwargs)
 
 
+def test_production_rejects_http_only_allowed_origin() -> None:
+    """Verify production CORS origins must use https://."""
+    kwargs = _valid_production_kwargs()
+    kwargs["allowed_origins"] = ["http://insecure.example.com"]
+    kwargs["allowed_hosts"] = ["api.example.com"]
+
+    with pytest.raises(ValidationError, match="https://"):
+        Settings(**kwargs)
+
+
+def test_production_accepts_https_allowed_origins() -> None:
+    """Verify production CORS https URLs are accepted."""
+    kwargs = _valid_production_kwargs()
+    kwargs["allowed_origins"] = ["https://lemonaid.example.com"]
+    kwargs["allowed_hosts"] = ["api.lemonaid.example.com"]
+    kwargs["ocr_primary_provider"] = "none"
+    kwargs["enable_local_ocr"] = False
+
+    settings = Settings(**kwargs)
+
+    assert settings.allowed_origins == ["https://lemonaid.example.com"]
+
+
+def test_staging_rejects_auth_mode_disabled() -> None:
+    """Verify ``AUTH_MODE=disabled`` is forbidden outside development environments."""
+    with pytest.raises(ValidationError, match="AUTH_MODE=disabled is forbidden"):
+        Settings(_env_file=None, environment="staging", auth_mode="disabled")
+
+
+def test_production_rejects_auth_mode_disabled_via_staging_guard() -> None:
+    """Verify the staging guard also fires for production with ``AUTH_MODE=disabled``."""
+    with pytest.raises(ValidationError, match="AUTH_MODE=disabled is forbidden"):
+        Settings(_env_file=None, environment="production", auth_mode="disabled")
+
+
+def test_development_accepts_auth_mode_disabled() -> None:
+    """Verify dev environments retain ``AUTH_MODE=disabled`` so local smoke runs."""
+    settings = Settings(_env_file=None, environment="development", auth_mode="disabled")
+    assert settings.auth_mode == "disabled"
+
+
 def test_production_requires_jwt_configuration() -> None:
     """Verify production user apps must be configured for OAuth/OIDC JWT."""
     kwargs = _valid_production_kwargs()
@@ -253,6 +295,17 @@ def test_production_rejects_default_privacy_hash_secret() -> None:
 
     with pytest.raises(ValidationError, match="PRIVACY_HASH_SECRET"):
         Settings(**kwargs)
+
+
+def test_development_allows_default_privacy_hash_secret() -> None:
+    """Verify the default secret remains usable in development environments.
+
+    This sibling guard ensures a future refactor that moves the production
+    rejection out of ``validate_runtime_security`` cannot also silently
+    drop the secret from non-prod environments.
+    """
+    settings = Settings(_env_file=None, environment="development")
+    assert settings.privacy_hash_secret.get_secret_value() == DEFAULT_PRIVACY_HASH_SECRET
 
 
 def test_production_rejects_hall_lite_weight_prediction_without_signoff() -> None:
@@ -301,12 +354,23 @@ def test_production_rejects_multimodal_verification_without_llm_gate() -> None:
         Settings(**kwargs)
 
 
-def test_production_rejects_local_ocr_without_signoff() -> None:
-    """Verify local OCR fallback remains default-off in production."""
+def test_production_rejects_local_ocr_alongside_non_paddleocr_primary() -> None:
+    """Verify local OCR fallback alongside a non-paddleocr primary needs sign-off."""
     kwargs = _valid_production_kwargs()
+    kwargs["ocr_primary_provider"] = "none"
     kwargs["enable_local_ocr"] = True
 
     with pytest.raises(ValidationError, match="ENABLE_LOCAL_OCR"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_paddleocr_primary_without_local_ocr() -> None:
+    """Verify PaddleOCR primary cannot run while local OCR is disabled."""
+    kwargs = _valid_production_kwargs()
+    kwargs["ocr_primary_provider"] = "paddleocr"
+    kwargs["enable_local_ocr"] = False
+
+    with pytest.raises(ValidationError, match="OCR_PRIMARY_PROVIDER=paddleocr"):
         Settings(**kwargs)
 
 
@@ -414,12 +478,15 @@ def test_implementation_readiness_google_vision_defaults_fail_closed() -> None:
     allow_external_ocr = _object_field(ocr_settings, "ALLOW_EXTERNAL_OCR")
     auth_mode = _object_field(ocr_settings, "GOOGLE_VISION_AUTH_MODE")
     credentials = _object_field(ocr_settings, "GOOGLE_APPLICATION_CREDENTIALS")
+    enable_local_ocr = _object_field(ocr_settings, "ENABLE_LOCAL_OCR")
 
-    assert primary_provider["default"] == "none"
+    assert primary_provider["default"] == "paddleocr"
+    assert "paddleocr" in primary_provider["allowed_values"]
     assert allow_external_ocr["default"] is False
     assert auth_mode["default"] == "api_key"
     assert auth_mode["production_required_value"] == "adc"
     assert credentials["default"] is None
+    assert enable_local_ocr["default"] is True
 
 
 def test_production_requires_external_ocr_gate_for_google_vision() -> None:
@@ -434,16 +501,60 @@ def test_production_requires_external_ocr_gate_for_google_vision() -> None:
 
 
 def test_production_requires_adc_for_google_vision() -> None:
-    """Verify production Google Vision cannot use API key auth."""
+    """Verify production Google Vision cannot use API key auth.
+
+    The PR-K guard fires from the api_key path: even with ALLOW_GOOGLE_API_KEY_AUTH=true,
+    production rejects the combination outright.
+    """
     kwargs = _valid_production_kwargs()
     kwargs["ocr_primary_provider"] = "google_vision"
     kwargs["allow_external_ocr"] = True
     kwargs["google_vision_auth_mode"] = "api_key"
+    kwargs["allow_google_api_key_auth"] = True
     kwargs["google_cloud_api_key"] = "local-only-key"
     kwargs["google_cloud_project"] = "lemon-prod"
 
-    with pytest.raises(ValidationError, match="GOOGLE_VISION_AUTH_MODE=adc"):
+    with pytest.raises(ValidationError, match="ALLOW_GOOGLE_API_KEY_AUTH=true is forbidden"):
         Settings(**kwargs)
+
+
+def test_api_key_auth_requires_allow_flag() -> None:
+    """Verify GOOGLE_VISION_AUTH_MODE=api_key needs ALLOW_GOOGLE_API_KEY_AUTH=true."""
+    with pytest.raises(ValidationError, match="ALLOW_GOOGLE_API_KEY_AUTH"):
+        Settings(
+            _env_file=None,
+            environment="development",
+            google_vision_auth_mode="api_key",
+        )
+
+
+def test_api_key_auth_passes_with_allow_flag_in_development() -> None:
+    """Verify api_key + allow flag is accepted in development."""
+    settings = Settings(
+        _env_file=None,
+        environment="development",
+        google_vision_auth_mode="api_key",
+        allow_google_api_key_auth=True,
+    )
+    assert settings.google_vision_auth_mode == "api_key"
+    assert settings.allow_google_api_key_auth is True
+
+
+def test_staging_requires_explicit_allowed_hosts() -> None:
+    """Verify staging cannot boot with an empty ALLOWED_HOSTS list."""
+    with pytest.raises(ValidationError, match="ALLOWED_HOSTS"):
+        Settings(_env_file=None, environment="staging", auth_mode="jwt", allowed_hosts=[])
+
+
+def test_staging_rejects_wildcard_allowed_hosts() -> None:
+    """Verify wildcards in ALLOWED_HOSTS are rejected in staging."""
+    with pytest.raises(ValidationError, match="wildcard"):
+        Settings(
+            _env_file=None,
+            environment="staging",
+            auth_mode="jwt",
+            allowed_hosts=["*"],
+        )
 
 
 def test_production_requires_project_for_google_vision_adc() -> None:
@@ -477,6 +588,7 @@ def test_valid_production_google_vision_adc_settings_load() -> None:
     kwargs["allow_external_ocr"] = True
     kwargs["google_vision_auth_mode"] = "adc"
     kwargs["google_cloud_project"] = "lemon-prod"
+    kwargs["enable_local_ocr"] = False
 
     settings = Settings(**kwargs)
 
@@ -484,6 +596,7 @@ def test_valid_production_google_vision_adc_settings_load() -> None:
     assert settings.allow_external_ocr is True
     assert settings.google_vision_auth_mode == "adc"
     assert settings.google_cloud_project == "lemon-prod"
+    assert settings.enable_local_ocr is False
 
 
 def test_production_rejects_non_https_jwks_url() -> None:

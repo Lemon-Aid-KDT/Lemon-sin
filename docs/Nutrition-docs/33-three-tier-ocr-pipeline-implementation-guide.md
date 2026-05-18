@@ -1,13 +1,13 @@
 # 33. 3-Tier OCR 파이프라인 상세 구현 가이드
 
 > **문서 정보**
-> 버전: v1.2 | 작성일: 2026-05-14 | 상태: 개념 기준선 + docs/40 실행 플랜으로 분리 | 작성자: yeong-tech
+> 버전: v1.3 | 작성일: 2026-05-18 | 상태: PaddleOCR primary로 전환 | 작성자: yeong-tech
 
 ---
 
 ## 0. 한 줄 요약
 
-영양제 라벨 분석의 후속 목표 파이프라인은 ① **YOLO ROI 보조** ② **Google Cloud Vision Primary OCR(`DOCUMENT_TEXT_DETECTION`)** ③ **Ollama 멀티모달 Fallback + Cross-check 검수** 의 3-tier 구조다. 2026-05-15 현재 브랜치 기준으로 `GoogleVisionOCRAdapter`와 OCR factory는 구현되었고, 남은 핵심 확장 범위는 YOLO ROI의 실제 primary OCR crop 연결, Ollama fallback/verification 주입, PaddleOCR/CLOVA fallback 우선순위 재검토, fixture 기반 report, 발주처 review gate 산출물이다. 상세 실행 플랜은 [docs/40](./40-ocr-3-tier-expansion-design-plan.md)을 기준으로 한다.
+영양제 라벨 분석의 목표 파이프라인은 ① **YOLO ROI 보조** ② **PaddleOCR Primary OCR(`ko_PP-OCRv4`, 로컬)** ③ **Ollama 멀티모달 Fallback + Cross-check 검수** 의 3-tier 구조다. 2026-05-18 v1.3 기준으로 `OCR_PRIMARY_PROVIDER=paddleocr` + `ENABLE_LOCAL_OCR=true` 가 default이며, Google Vision은 `ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의가 있을 때만 활성화되는 외부 비교/스모크 옵션이다. 남은 핵심 확장 범위는 YOLO ROI의 PaddleOCR crop 연결, Ollama fallback/verification 주입, CLOVA fallback 우선순위 재검토, fixture report, 발주처 review gate 산출물이다. 상세 실행 플랜은 [docs/40](./40-ocr-3-tier-expansion-design-plan.md)을 기준으로 한다.
 
 > 주의: 이 문서는 3-tier 개념 기준선이다. 모델 tag, 비용, 정확도, latency 수치는 fixture 실행 결과가 아니면 완료 수치로 해석하지 않는다. 구현 순서와 현재 상태 판단은 [docs/40](./40-ocr-3-tier-expansion-design-plan.md)이 우선한다.
 
@@ -17,11 +17,12 @@
 
 ### 1.1 사용자 요구
 
-- **Tier 1**: YOLO 로 라벨 영역만 검출(분류·의료 판단 X) → OCR 정확도 향상을 위한 입력 전처리
-- **Tier 2**: Google Cloud Vision 으로 텍스트 추출 — 한국어 + 영양제 라벨 정확도 우선
+- **Tier 1**: YOLO 로 라벨 영역만 검출(분류·의료 판단 X) → primary OCR 입력 전처리
+- **Tier 2**: PaddleOCR(`ko_PP-OCRv4`, 로컬) 으로 텍스트 추출 — 한국어 라벨 무료·환자 정보 외부 송출 0
 - **Tier 3**: Ollama 멀티모달 LLM(Qwen 3.5 + Gemma 4 vision 보조)
-  - *Fallback*: Google Vision 신뢰도가 낮을 때 라벨 이미지를 직접 멀티모달에 보내 텍스트 재추출
-  - *Cross-check 검수*: Google Vision 출력이 시각 콘텐츠와 일치하는지 샘플링으로 교차 검증
+  - *Fallback*: primary OCR 신뢰도가 임계값 미만일 때 라벨 이미지를 직접 멀티모달에 보내 텍스트 재추출
+  - *Cross-check 검수*: primary OCR 출력이 시각 콘텐츠와 일치하는지 샘플링으로 교차 검증
+- **Tier 4 (옵션)**: Google Cloud Vision `DOCUMENT_TEXT_DETECTION` — `ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의가 있는 환경에서 정확도 상한 측정·스모크 비교용으로만 활성화
 
 ### 1.2 선택 근거
 
@@ -55,7 +56,7 @@ sequenceDiagram
     participant API as FastAPI /supplements/analyze
     participant SVC as supplement_image_analysis
     participant YOLO as YoloLabelDetector (Tier 1)
-    participant GV as GoogleVisionOCRAdapter (Tier 2)
+    participant PADDLE as PaddleOCRAdapter (Tier 2)
     participant OLV as OllamaVisionAssist (Tier 3)
     participant PARSE as OllamaSupplementParser
     participant DB as PostgreSQL
@@ -69,8 +70,8 @@ sequenceDiagram
     else 미검출
         SVC->>SVC: 원본 이미지 사용
     end
-    SVC->>GV: extract_text(cropped_or_original)
-    GV-->>SVC: OCRResult(confidence)
+    SVC->>PADDLE: extract_text(cropped_or_original)
+    PADDLE-->>SVC: OCRResult(confidence)
     alt confidence >= 0.85
         SVC->>PARSE: parse_supplement_ocr_text(text)
     else confidence < 0.85
@@ -144,7 +145,13 @@ Ultralytics 는 AGPL-3.0 또는 Enterprise 라이선스. 발주처 인수인계 
 
 ---
 
-## 4. Tier 2 — Google Cloud Vision Primary OCR
+## 4. Tier 2 (default) — PaddleOCR Primary OCR / Tier 4 (옵션) — Google Cloud Vision External OCR
+
+### 4.0 Tier 2 PaddleOCR primary
+
+기본 운영 경로는 로컬 PaddleOCR(`ko_PP-OCRv4`, provider key `paddleocr_local`)이며 `OCR_PRIMARY_PROVIDER=paddleocr` + `ENABLE_LOCAL_OCR=true` 가 default로 활성화된다. PaddleOCR 어댑터의 책임·신뢰도 계산·실패 모드·로컬 동작 보장은 [docs/32](./32-paddleocr-local-fallback-plan.md) §3·§5 에 기준선이 정의돼 있으며, 본 v1.3 이후로는 fallback이 아닌 primary 경로로 운영한다. 의미 추론·구조화는 후속 단계(`OllamaSupplementParser`)가 담당한다.
+
+§4.1~4.6 은 외부 비교/스모크용 Google Vision 옵션 경로(Tier 4) 명세이며, `ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의 게이트가 켜진 환경에서만 활성화된다.
 
 ### 4.1 책임
 Tier 1 이 잘라낸 라벨 영역(또는 원본)에서 **텍스트와 신뢰도** 만 추출. 의미 추론·구조화는 다음 단계(`OllamaSupplementParser`)가 담당.
@@ -211,19 +218,20 @@ Tier 1: YOLO ROI 검출
         ├─ 검출 성공  → 이미지 크롭
         └─ 미검출     → 원본 사용
 
-Tier 2: Google Vision DOCUMENT_TEXT_DETECTION
-        ├─ confidence >= 0.85 → 텍스트 채택
+Tier 2: PaddleOCR (primary, local — `paddleocr_local`)
+        ├─ confidence >= LOCAL_OCR_CONFIDENCE_THRESHOLD → 텍스트 채택
         │                       (옵션) cross-check 샘플링 → 불일치 시 escalation
-        └─ confidence <  0.85 → Tier 3 Fallback 진입
+        └─ confidence <  임계값 → Tier 3 Fallback 진입
 
 Tier 3: Ollama 멀티모달 vision assist
         ├─ schema validation + visible text 후보 있음 → parser input 후보로 사용
         └─ 후보 없음 또는 검증 실패 → Tier 4 진입
 
-Tier 4 (옵션): PaddleOCR (docs/32, 무료 quota 보호 또는 폐쇄망)
-        └─ 미달 → Tier 5
+Tier 4 (옵션): Google Cloud Vision DOCUMENT_TEXT_DETECTION
+        활성 조건: ALLOW_EXTERNAL_OCR=true + EXTERNAL_OCR_PROCESSING 동의 + (개발 환경 옵션) OCR_PRIMARY_PROVIDER=google_vision
+        └─ 외부 비교/스모크 경로. 미달 시 Tier 5
 
-Tier 5 (옵션): CLOVA OCR (기본 OFF, 비용)
+Tier 5 (옵션): CLOVA OCR (기본 OFF, 비용·외부 송출 동의 필요)
         └─ 모두 실패 → 사용자 확인 화면 (수동 텍스트 입력)
 ```
 
@@ -429,19 +437,20 @@ async def verify_against_ocr(
 
 ## 8. 컴플라이언스 평가
 
-| 항목 | Tier 1 (YOLO) | Tier 2 (Google Vision) | Tier 3 (Ollama 멀티모달) |
-| --- | --- | --- | --- |
-| 환자 정보 외부 전송 | 없음(로컬) | **있음** | 없음(로컬, `127.0.0.1` 강제) |
-| docs/17 §3 동의 카테고리 | 1번 분석용 임시 | 1번 분석용 임시 + 외부 송출 동의 | 1번 분석용 임시 |
-| docs/17 §7 의료기기법 회피 | ROI metadata 만 출력 | 텍스트만 출력 | system prompt 로 의료 판단 금지 |
-| docs/15 §3 규제 검토 | 라이선스(AGPL-3.0) 검토 | 외부 API 약관 | 로컬 처리로 면제 |
-| EXIF / GPS 제거 (§4.1) | 적용 | 적용 | 적용 |
-| `image_retention_days=0` 기본 | 적용 | 적용 | 적용 |
+| 항목 | Tier 1 (YOLO) | Tier 2 (PaddleOCR, default) | Tier 3 (Ollama 멀티모달) | Tier 4 (Google Vision, 옵션) |
+| --- | --- | --- | --- | --- |
+| 환자 정보 외부 전송 | 없음(로컬) | 없음(로컬) | 없음(로컬, `127.0.0.1` 강제) | **있음(외부 송출 동의 필요)** |
+| docs/17 §3 동의 카테고리 | 1번 분석용 임시 | 1번 분석용 임시 | 1번 분석용 임시 | 1번 분석용 임시 + 외부 송출 동의 |
+| docs/17 §7 의료기기법 회피 | ROI metadata 만 출력 | 텍스트만 출력 | system prompt 로 의료 판단 금지 | 텍스트만 출력 |
+| docs/15 §3 규제 검토 | 라이선스(AGPL-3.0) 검토 | 로컬 처리로 면제(Apache-2.0) | 로컬 처리로 면제 | 외부 API 약관 + GCP 처리 위치 |
+| EXIF / GPS 제거 (§4.1) | 적용 | 적용 | 적용 | 적용 |
+| `image_retention_days=0` 기본 | 적용 | 적용 | 적용 | 적용 |
 
 발주처 리뷰 게이트 매핑:
 - 게이트 #1 — Tier 3 활성화 ([docs/17 §8](./17-image-collection-consent-plan.md))
 - 게이트 #2 — Tier 1 활성화 + Ultralytics 라이선스 검토
-- Tier 2 는 별도 게이트 없이 외부 송출 동의로 운영
+- Tier 2(PaddleOCR primary)는 환자 정보 외부 송출이 없으므로 별도 발주처 게이트 없이 default로 운영
+- Tier 4(Google Vision 옵션)는 `ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의가 모두 켜진 환경에서만 활성화
 
 ---
 
@@ -503,6 +512,7 @@ async def verify_against_ocr(
 
 | 날짜 | 변경 내용 | 작성자 |
 | --- | --- | --- |
+| 2026-05-18 | v1.3: PaddleOCR을 primary OCR로 승격. `OCR_PRIMARY_PROVIDER=paddleocr` + `ENABLE_LOCAL_OCR=true`가 default. Google Vision은 Tier 4 외부 비교/스모크 옵션으로 강등. 라우팅 트리·컴플라이언스 표·게이트 매핑 갱신. | yeong-tech |
 | 2026-05-15 | Google Vision MVP 이후 실제 확장 실행 플랜을 `docs/40`으로 분리하고, 본 문서의 성능·모델·비용 수치가 fixture 결과로 오해되지 않도록 상태 주석을 추가. | yeong-tech |
 | 2026-05-14 | 상태를 후속 구현 가이드로 낮추고, Ollama 공식 tag 기준으로 `gemma4:e4b` / `qwen3.5:9b` 조합을 정리. | yeong-tech |
 | 2026-05-13 | 최초 작성. docs/30 실험 결론을 3-tier 후속 구현 명세로 정리. Tier 별 책임·라우팅 트리·코드 변경 범위·테스트 시나리오 7건·일정 1주 정의. | yeong-tech |

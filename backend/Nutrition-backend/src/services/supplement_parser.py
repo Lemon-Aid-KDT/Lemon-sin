@@ -21,6 +21,13 @@ from src.models.schemas.supplement import SupplementAnalysisStatus
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.supplement_text_sanitizer import (
+    sanitize_ingredient_name,
+    sanitize_manufacturer,
+    sanitize_product_name,
+    sanitize_serving_size,
+    sanitize_unit,
+)
 
 SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
     "Structured OCR parsing is a preview. Review and confirm every field before saving."
@@ -136,6 +143,7 @@ async def parse_supplement_analysis_ocr_text(
     active_parser = parser or OllamaSupplementParser(settings)
     parse_result = await active_parser.parse_supplement_ocr_text(normalized_text)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
+    parse_result = _sanitize_parser_result(parse_result)
 
     record.ocr_provider = normalized_provider
     record.ocr_confidence = normalized_confidence
@@ -228,6 +236,65 @@ def _validate_parser_result(
     """
     if len(parse_result.ingredient_candidates) > max_ingredients:
         raise SupplementParserInputError("Parser returned too many ingredient candidates.")
+
+
+def _sanitize_parser_result(
+    parse_result: SupplementStructuredParseResult,
+) -> SupplementStructuredParseResult:
+    """Strip injection / SQL / HTML / URL payloads from free-text parser fields.
+
+    Blocked product/manufacturer/serving fields collapse to ``None`` so the
+    Pydantic schema remains satisfied. Ingredient candidates whose
+    ``display_name`` would be blocked are dropped entirely because the schema
+    requires a non-empty name. Sanitizer warning codes are merged into the
+    returned ``warnings`` list so downstream callers and audit logs see them.
+
+    Args:
+        parse_result: Result returned by the LLM parser after schema validation.
+
+    Returns:
+        A new ``SupplementStructuredParseResult`` with sanitized free-text fields
+        and any ``sanitizer.blocked:*`` warning codes appended.
+    """
+    snapshot = parse_result.model_dump()
+    warnings: list[str] = list(snapshot.get("warnings", []))
+
+    product = snapshot.get("parsed_product") or {}
+    name_result = sanitize_product_name(product.get("product_name"))
+    product["product_name"] = name_result.value or None
+    warnings.extend(name_result.warnings)
+
+    manufacturer_result = sanitize_manufacturer(product.get("manufacturer"))
+    product["manufacturer"] = manufacturer_result.value or None
+    warnings.extend(manufacturer_result.warnings)
+
+    serving_result = sanitize_serving_size(product.get("serving_size"))
+    product["serving_size"] = serving_result.value or None
+    warnings.extend(serving_result.warnings)
+    snapshot["parsed_product"] = product
+
+    surviving_ingredients: list[dict[str, Any]] = []
+    for candidate in snapshot.get("ingredient_candidates", []):
+        name_res = sanitize_ingredient_name(candidate.get("display_name"))
+        if not name_res.value:
+            warnings.extend(name_res.warnings)
+            continue
+        unit_res = sanitize_unit(candidate.get("unit"))
+        candidate["display_name"] = name_res.value
+        candidate["unit"] = unit_res.value or None
+        warnings.extend(unit_res.warnings)
+        surviving_ingredients.append(candidate)
+    snapshot["ingredient_candidates"] = surviving_ingredients
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for warning in warnings:
+        if warning and warning not in seen:
+            deduped.append(warning)
+            seen.add(warning)
+    snapshot["warnings"] = deduped
+
+    return SupplementStructuredParseResult.model_validate(snapshot)
 
 
 def _normalize_ocr_provider(ocr_provider: str) -> str:

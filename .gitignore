@@ -291,3 +291,15 @@ node_modules/
 .yarn
 package-lock.json
 yarn.lock
+
+# -----------------------------------------------------------------------------
+# Large vendored assets we never want tracked (L3 defensive)
+# Source archives (zip/tar) are kept out so accidental `git add .` cannot ship
+# a 100 MB+ blob to the repo. PaddleOCR vendor drops are particularly common.
+# -----------------------------------------------------------------------------
+PaddleOCR-main.zip
+PaddleOCR-main/
+*.zip
+*.tar
+*.tar.gz
+*.tgz

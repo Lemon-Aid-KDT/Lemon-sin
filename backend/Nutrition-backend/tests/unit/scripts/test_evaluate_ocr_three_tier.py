@@ -60,6 +60,42 @@ def test_evaluate_manifest_returns_redacted_provider_metrics(tmp_path: Path) -> 
     assert summary["raw_ocr_text_stored"] is False
 
 
+def test_evaluate_manifest_returns_paddleocr_provider_metrics(tmp_path: Path) -> None:
+    """Verify PaddleOCR observations are aggregated under the paddleocr_local key."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-paddle-1",
+                "image_path": "images/missing.png",
+                "expected": {"ingredients": [{"name": "vitamin d"}]},
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "latency_ms": 420,
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "vitamin d"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+
+    providers = summary["providers"]
+    assert isinstance(providers, dict)
+    paddle_metrics = providers["paddleocr_local"]
+    assert isinstance(paddle_metrics, dict)
+    assert paddle_metrics["calls"] == 1
+    assert paddle_metrics["text_non_empty_rate"] == 1.0
+    assert paddle_metrics["ingredient_name_exact_rate"] == 1.0
+    assert summary["raw_artifacts_stored"] is False
+    assert summary["raw_ocr_text_stored"] is False
+
+
 def test_evaluate_manifest_rejects_raw_ocr_text(tmp_path: Path) -> None:
     """Verify raw OCR text cannot enter report manifests."""
     manifest_path = tmp_path / "manifest.jsonl"

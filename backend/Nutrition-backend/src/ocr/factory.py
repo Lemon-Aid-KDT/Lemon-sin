@@ -34,10 +34,12 @@ def build_supplement_ocr_adapter(settings: Settings) -> OCRAdapter | None:
         OCR adapter, or None when OCR is intentionally disabled.
 
     Raises:
-        OCRConfigurationError: If Google Vision is enabled without required gates.
+        OCRConfigurationError: If the selected provider is missing its required gates.
     """
     if settings.ocr_primary_provider == "none":
         return None
+    if settings.ocr_primary_provider == "paddleocr":
+        return _build_paddleocr_primary_adapter(settings)
     if settings.ocr_primary_provider == "google_vision":
         return _build_google_vision_adapter(settings)
     raise OCRConfigurationError(
@@ -102,8 +104,30 @@ def _build_multimodal_ocr_adapter(settings: Settings) -> OllamaVisionAssistAdapt
     return OllamaVisionAssistAdapter(settings)
 
 
+def _build_paddleocr_primary_adapter(settings: Settings) -> PaddleOCRAdapter:
+    """Build PaddleOCR as the primary OCR adapter.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        PaddleOCR adapter.
+
+    Raises:
+        OCRConfigurationError: If local OCR is disabled.
+    """
+    if not settings.enable_local_ocr:
+        raise OCRConfigurationError(
+            "ENABLE_LOCAL_OCR=true is required when OCR_PRIMARY_PROVIDER=paddleocr."
+        )
+    return PaddleOCRAdapter(settings)
+
+
 def _build_fallback_ocr_adapters(settings: Settings) -> list[OCRAdapter]:
     """Build optional secondary OCR fallback adapters in configured order.
+
+    PaddleOCR is omitted from the secondary list when it is already the primary
+    provider, so the same adapter is never invoked twice in a single pipeline.
 
     Args:
         settings: Runtime settings.
@@ -112,7 +136,7 @@ def _build_fallback_ocr_adapters(settings: Settings) -> list[OCRAdapter]:
         OCR fallback adapters.
     """
     adapters: list[OCRAdapter] = []
-    if settings.enable_local_ocr:
+    if settings.enable_local_ocr and settings.ocr_primary_provider != "paddleocr":
         adapters.append(PaddleOCRAdapter(settings))
     if settings.enable_clova_ocr:
         adapters.append(ClovaOCRAdapter(settings))

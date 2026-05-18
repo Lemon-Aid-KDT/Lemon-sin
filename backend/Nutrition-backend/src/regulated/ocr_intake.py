@@ -36,6 +36,11 @@ from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 from src.regulated.factory import RegulatedOCRAdapters
 from src.security.auth import AuthenticatedUser
 from src.security.privacy import hash_actor_subject
+from src.utils.image_safety import (
+    ImageSafetyError,
+    safe_load_with_bomb_guard,
+    strip_image_metadata,
+)
 
 REGULATED_INTAKE_ALGORITHM_VERSION = "regulated-ocr-intake-v1.0.0"
 REGULATED_INTAKE_PROVIDER = "intake-only"
@@ -513,11 +518,21 @@ async def read_and_validate_regulated_image(
         )
 
     width, height = _validate_decodable_image(data, settings.supplement_image_max_pixels)
+
+    try:
+        sanitized = strip_image_metadata(data, detected_mime)
+    except ImageSafetyError as exc:
+        raise RegulatedImageValidationError(
+            code="invalid_image",
+            message="Uploaded regulated document image cannot be normalized.",
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        ) from exc
+
     return ValidatedRegulatedImage(
-        image_bytes=data,
-        sha256=hashlib.sha256(data).hexdigest(),
+        image_bytes=sanitized,
+        sha256=hashlib.sha256(sanitized).hexdigest(),
         mime_type=detected_mime,
-        size_bytes=len(data),
+        size_bytes=len(sanitized),
         width=width,
         height=height,
     )
@@ -748,14 +763,29 @@ def _validate_decodable_image(data: bytes, max_pixels: int) -> tuple[int, int]:
                     status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 )
             image.verify()
-            return width, height
     except RegulatedImageValidationError:
         raise
+    except Image.DecompressionBombError as exc:
+        raise RegulatedImageValidationError(
+            code="payload_too_large",
+            message="Uploaded document image exceeds the configured pixel limit.",
+            status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+        ) from exc
     except (OSError, UnidentifiedImageError) as exc:
         raise RegulatedImageValidationError(
             code="invalid_image",
             message="Uploaded document image cannot be decoded.",
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        ) from exc
+
+    try:
+        with safe_load_with_bomb_guard(data) as decoded:
+            return decoded.size
+    except ImageSafetyError as exc:
+        raise RegulatedImageValidationError(
+            code="payload_too_large",
+            message="Uploaded document image is too large to decode safely.",
+            status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
         ) from exc
 
 

@@ -18,8 +18,37 @@ from src.vision.yolo import YoloLabelDetector
 
 
 def test_factory_returns_none_when_primary_provider_disabled() -> None:
-    """Verify OCR remains intake-only by default."""
-    assert build_supplement_ocr_adapter(Settings(_env_file=None)) is None
+    """Verify intake-only mode is reachable via an explicit opt-out."""
+    settings = Settings(_env_file=None, ocr_primary_provider="none")
+    assert build_supplement_ocr_adapter(settings) is None
+
+
+def test_factory_builds_paddleocr_primary_by_default() -> None:
+    """Verify PaddleOCR is the default primary OCR adapter."""
+    adapter = build_supplement_ocr_adapter(Settings(_env_file=None))
+    assert isinstance(adapter, PaddleOCRAdapter)
+
+
+def test_factory_builds_paddleocr_primary_when_selected() -> None:
+    """Verify explicit PaddleOCR selection returns PaddleOCRAdapter."""
+    settings = Settings(
+        _env_file=None,
+        ocr_primary_provider="paddleocr",
+        enable_local_ocr=True,
+    )
+    adapter = build_supplement_ocr_adapter(settings)
+    assert isinstance(adapter, PaddleOCRAdapter)
+
+
+def test_factory_paddleocr_primary_requires_local_ocr_gate() -> None:
+    """Verify PaddleOCR primary cannot run while local OCR is disabled."""
+    settings = Settings(
+        _env_file=None,
+        ocr_primary_provider="paddleocr",
+        enable_local_ocr=False,
+    )
+    with pytest.raises(OCRConfigurationError, match="ENABLE_LOCAL_OCR"):
+        build_supplement_ocr_adapter(settings)
 
 
 def test_factory_requires_external_ocr_gate_for_google_vision() -> None:
@@ -35,11 +64,17 @@ def test_factory_requires_external_ocr_gate_for_google_vision() -> None:
 
 
 def test_factory_requires_api_key_for_api_key_mode() -> None:
-    """Verify API-key mode fails closed without a key."""
+    """Verify API-key mode fails closed without a key.
+
+    API-key mode now requires ALLOW_GOOGLE_API_KEY_AUTH=true at the Settings
+    layer; this test focuses on the factory-level GOOGLE_CLOUD_API_KEY guard.
+    """
     settings = Settings(
         _env_file=None,
         ocr_primary_provider="google_vision",
         allow_external_ocr=True,
+        google_vision_auth_mode="api_key",
+        allow_google_api_key_auth=True,
     )
 
     with pytest.raises(OCRConfigurationError, match="GOOGLE_CLOUD_API_KEY"):
@@ -52,6 +87,8 @@ def test_factory_builds_google_vision_adapter_for_api_key_mode() -> None:
         _env_file=None,
         ocr_primary_provider="google_vision",
         allow_external_ocr=True,
+        google_vision_auth_mode="api_key",
+        allow_google_api_key_auth=True,
         google_cloud_api_key=SecretStr("test-key"),
         google_vision_language_hints=["ko", "en"],
     )
@@ -74,14 +111,40 @@ def test_factory_requires_project_for_adc_mode() -> None:
         build_supplement_ocr_adapter(settings)
 
 
-def test_analysis_factory_returns_empty_bundle_by_default() -> None:
-    """Verify the complete analysis bundle preserves intake-only defaults."""
+def test_analysis_factory_builds_paddleocr_bundle_by_default() -> None:
+    """Verify the default bundle wires PaddleOCR as the primary OCR adapter."""
     adapters = build_supplement_image_analysis_adapters(Settings(_env_file=None))
+
+    assert isinstance(adapters.ocr, PaddleOCRAdapter)
+    assert adapters.vision is None
+    assert adapters.multimodal_ocr is None
+    assert adapters.fallback_ocr_adapters == ()
+
+
+def test_analysis_factory_returns_intake_only_bundle_when_provider_disabled() -> None:
+    """Verify the analysis bundle preserves intake-only when explicitly opted out."""
+    adapters = build_supplement_image_analysis_adapters(
+        Settings(_env_file=None, ocr_primary_provider="none", enable_local_ocr=False)
+    )
 
     assert adapters.ocr is None
     assert adapters.vision is None
     assert adapters.multimodal_ocr is None
     assert adapters.fallback_ocr_adapters == ()
+
+
+def test_analysis_factory_skips_paddleocr_fallback_when_primary() -> None:
+    """Verify PaddleOCR is not duplicated in the fallback list when already primary."""
+    adapters = build_supplement_image_analysis_adapters(
+        Settings(
+            _env_file=None,
+            ocr_primary_provider="paddleocr",
+            enable_local_ocr=True,
+        )
+    )
+
+    assert isinstance(adapters.ocr, PaddleOCRAdapter)
+    assert all(not isinstance(item, PaddleOCRAdapter) for item in adapters.fallback_ocr_adapters)
 
 
 def test_analysis_factory_builds_yolo_adapter_when_gate_enabled() -> None:
@@ -115,10 +178,15 @@ def test_analysis_factory_builds_multimodal_adapter_when_policy_enabled() -> Non
 
 
 def test_analysis_factory_builds_optional_fallback_adapters() -> None:
-    """Verify optional fallback adapters are appended in local-before-external order."""
+    """Verify optional fallback adapters are appended in local-before-external order.
+
+    PaddleOCR is opted out as primary here so the legacy local-before-external
+    fallback ordering can be exercised.
+    """
     adapters = build_supplement_image_analysis_adapters(
         Settings(
             _env_file=None,
+            ocr_primary_provider="none",
             enable_local_ocr=True,
             enable_clova_ocr=True,
             allow_external_ocr=True,

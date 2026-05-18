@@ -148,7 +148,7 @@ class HealthDailySummary(TimestampMixin, Base):
 
     id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
     owner_subject: Mapped[str] = mapped_column(String(512), nullable=False)
-    measured_date: Mapped[date] = mapped_column(Date, nullable=False)
+    measured_date: Mapped[date] = mapped_column(Date, nullable=False, primary_key=True)
     source_platform: Mapped[str] = mapped_column(String(32), nullable=False)
     steps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)

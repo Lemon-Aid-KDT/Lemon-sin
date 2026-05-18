@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from difflib import SequenceMatcher
+from http import HTTPStatus
 from random import random
 
 from fastapi import UploadFile
@@ -29,6 +30,7 @@ from src.models.schemas.privacy import ConsentType
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_intake import (
+    SupplementImageValidationError,
     SupplementIntakeStoreResult,
     ValidatedSupplementImage,
     create_supplement_analysis_intake,
@@ -40,6 +42,7 @@ from src.services.supplement_parser import (
     SupplementParserInputError,
     parse_supplement_analysis_ocr_text,
 )
+from src.utils.image_safety import ImageSafetyError, strip_image_metadata
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
 from src.vision.preprocessing import VisionPreprocessingError, crop_image_to_bounding_box
 
@@ -179,6 +182,7 @@ async def analyze_supplement_image(
         active_adapters=active_adapters,
         settings=settings,
         needs_learning_image_bytes=learning_gate_allowed,
+        image_metadata=image_metadata,
     )
     vision_region = await _detect_label_region_if_enabled(
         image_bytes=image_bytes,
@@ -271,17 +275,27 @@ async def _read_validated_image_bytes_if_needed(
     active_adapters: SupplementImageAnalysisAdapters,
     settings: Settings,
     needs_learning_image_bytes: bool = False,
+    image_metadata: ValidatedSupplementImage,
 ) -> bytes | None:
     """Read image bytes for adapters only when an adapter path may execute.
+
+    Bytes returned here are stripped of EXIF/XMP/IPTC metadata so downstream
+    OCR adapters, learning storage, and audit consumers never observe user
+    GPS coordinates or device identifiers.
 
     Args:
         image: Already validated upload file.
         active_adapters: Pipeline adapters requested for this call.
         settings: Runtime settings containing feature flags.
         needs_learning_image_bytes: Whether learning retention needs the original image bytes.
+        image_metadata: Validated metadata used to authorize the MIME for stripping.
 
     Returns:
-        Image bytes, or None when no adapter needs them.
+        Sanitized image bytes, or None when no adapter needs them.
+
+    Raises:
+        SupplementImageValidationError: If the validated image fails the
+            sanitization re-encode pass.
     """
     needs_bytes = active_adapters.ocr is not None or settings.enable_vision_classifier
     needs_bytes = needs_bytes or bool(active_adapters.fallback_ocr_adapters)
@@ -292,7 +306,15 @@ async def _read_validated_image_bytes_if_needed(
     if not needs_bytes:
         return None
     await image.seek(0)
-    return await image.read()
+    raw = await image.read()
+    try:
+        return strip_image_metadata(raw, image_metadata.mime_type)
+    except ImageSafetyError as exc:
+        raise SupplementImageValidationError(
+            code="invalid_image",
+            message="Uploaded label image cannot be normalized for downstream use.",
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        ) from exc
 
 
 async def _detect_label_region_if_enabled(

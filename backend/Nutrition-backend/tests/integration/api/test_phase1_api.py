@@ -2,14 +2,79 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from typing import Self
 
 import pytest
-from fastapi import status
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+from src.api.v1 import activity as activity_module
+from src.api.v1 import predictions as predictions_module
 from src.config import Settings, get_settings
+from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.prediction.selector import HALL_LITE_WARNING
+
+
+class _TransactionContext:
+    """Async no-op transaction context for fake sessions."""
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_exc_info: object) -> None:
+        return None
+
+
+class _FakePhase1Session:
+    """Minimal async session double for Phase 1 audit + consent paths."""
+
+    def begin(self) -> _TransactionContext:
+        return _TransactionContext()
+
+    def add(self, _record: object) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+    async def refresh(self, _record: object) -> None:
+        return None
+
+    async def scalar(self, _statement: object) -> None:
+        return None
+
+
+def _session_dependency(
+    session: _FakePhase1Session,
+) -> Callable[[], AsyncIterator[object]]:
+    async def dependency() -> AsyncIterator[object]:
+        yield session
+
+    return dependency
+
+
+async def _allow_consent(*_args: object, **_kwargs: object) -> None:
+    return None
+
+
+async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
+    return None
+
+
+def _apply_phase1_overrides(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch out auth/consent/audit infrastructure for Phase 1 algorithm routes.
+
+    Args:
+        app: FastAPI app under test.
+        monkeypatch: pytest monkeypatch fixture.
+    """
+    fake_session = _FakePhase1Session()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    monkeypatch.setattr(predictions_module, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(predictions_module, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(activity_module, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(activity_module, "record_sensitive_audit_event", _record_noop_audit)
 
 
 @pytest.fixture
@@ -31,9 +96,11 @@ def kdris_2025_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     get_settings.cache_clear()
 
 
-def test_activity_score_api() -> None:
+def test_activity_score_api(monkeypatch: pytest.MonkeyPatch) -> None:
     """활동점수 API가 v1-v4 결과를 반환하는지 검증한다."""
-    client = TestClient(create_app())
+    app = create_app()
+    _apply_phase1_overrides(app, monkeypatch)
+    client = TestClient(app)
 
     response = client.post(
         "/api/v1/activity/score",
@@ -57,9 +124,11 @@ def test_activity_score_api() -> None:
     assert body["v4_score"] > body["v3_score"]
 
 
-def test_weight_prediction_api() -> None:
+def test_weight_prediction_api(monkeypatch: pytest.MonkeyPatch) -> None:
     """체중 예측 API가 기본 기간별 결과를 반환하는지 검증한다."""
-    client = TestClient(create_app())
+    app = create_app()
+    _apply_phase1_overrides(app, monkeypatch)
+    client = TestClient(app)
 
     response = client.post(
         "/api/v1/predictions/weight",
@@ -80,7 +149,9 @@ def test_weight_prediction_api() -> None:
     assert body["predictions"][1]["predicted_weight_kg"] == 67.19
 
 
-def test_weight_prediction_api_can_route_hall_lite_when_enabled() -> None:
+def test_weight_prediction_api_can_route_hall_lite_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """체중 예측 API가 설정 주입 시 Hall-lite selector를 통과하는지 검증한다."""
 
     def hall_lite_settings() -> Settings:
@@ -96,6 +167,7 @@ def test_weight_prediction_api_can_route_hall_lite_when_enabled() -> None:
 
     app = create_app()
     app.dependency_overrides[get_settings] = hall_lite_settings
+    _apply_phase1_overrides(app, monkeypatch)
     client = TestClient(app)
 
     response = client.post(
