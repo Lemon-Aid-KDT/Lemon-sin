@@ -58,12 +58,16 @@ def test_openapi_contains_named_request_examples() -> None:
     health_sync_examples = schema["paths"]["/api/v1/health/sync"]["post"]["requestBody"]["content"][
         "application/json"
     ]["examples"]
+    ai_agent_examples = schema["paths"]["/api/v1/ai-agent/daily-coaching"]["post"][
+        "requestBody"
+    ]["content"]["application/json"]["examples"]
 
     assert "phase1_chronic_disease" in activity_examples
     assert "phase1_weight_prediction" in weight_examples
     assert "vitamin_status_sample" in nutrition_examples
     assert "ios_healthkit_daily_aggregate" in health_sync_examples
     assert "android_health_connect_daily_aggregate" in health_sync_examples
+    assert "daily_coaching_confirmed_mock" in ai_agent_examples
 
 
 def test_openapi_contains_success_response_examples() -> None:
@@ -82,6 +86,9 @@ def test_openapi_contains_success_response_examples() -> None:
     health_sync_examples = schema["paths"]["/api/v1/health/sync"]["post"]["responses"]["202"][
         "content"
     ]["application/json"]["examples"]
+    ai_agent_examples = schema["paths"]["/api/v1/ai-agent/daily-coaching"]["post"]["responses"][
+        "200"
+    ]["content"]["application/json"]["examples"]
 
     assert health_examples["healthy"]["value"] == {"status": "ok", "version": "0.1.0"}
     assert activity_examples["activity_score"]["value"]["recommended_steps"] == 7524
@@ -89,6 +96,7 @@ def test_openapi_contains_success_response_examples() -> None:
         "implementation_sample"
     )
     assert health_sync_examples["accepted_health_aggregate"]["value"]["accepted_count"] == 1
+    assert ai_agent_examples["completed_daily_coaching"]["value"]["status"] == "completed"
 
 
 def test_openapi_contains_validation_error_examples() -> None:
@@ -101,6 +109,7 @@ def test_openapi_contains_validation_error_examples() -> None:
         ("/api/v1/nutrition/kdris", "get"),
         ("/api/v1/nutrition/analyze", "post"),
         ("/api/v1/health/sync", "post"),
+        ("/api/v1/ai-agent/daily-coaching", "post"),
     ):
         examples = schema["paths"][path][method]["responses"]["422"]["content"]["application/json"][
             "examples"

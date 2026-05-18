@@ -598,3 +598,137 @@ DASHBOARD_SUMMARY_RESPONSE_EXAMPLES = {
         },
     }
 }
+
+AI_AGENT_DAILY_COACHING_REQUEST_EXAMPLES = {
+    "daily_coaching_confirmed_mock": {
+        "summary": "Confirmed mock intake for daily coaching",
+        "value": {
+            "request_id": "daily-coaching-2026-05-18",
+            "user_id": "client-side-placeholder",
+            "context": {
+                "profile": {
+                    "age": 52,
+                    "gender": "male",
+                    "goals": ["meal_management"],
+                    "chronic_conditions": ["hypertension"],
+                    "medications": ["blood_pressure_medication"],
+                }
+            },
+            "payload": {
+                "date": "2026-05-18",
+                "sources": [
+                    {
+                        "source_type": "food_ocr",
+                        "image_id": "meal-image-1",
+                        "raw_ocr_text": "instant noodles sodium 2600mg",
+                        "user_confirmed": True,
+                    }
+                ],
+                "foods": [
+                    {
+                        "name": "instant noodles",
+                        "meal_type": "lunch",
+                        "serving_label": "1 bowl",
+                        "nutrients": [
+                            {"name": "sodium", "amount": 2600, "unit": "mg"},
+                            {"name": "protein", "amount": 25, "unit": "g"},
+                        ],
+                    }
+                ],
+                "supplements": [],
+                "health_trends": [],
+            },
+        },
+    },
+    "daily_coaching_preview_mock": {
+        "summary": "Unconfirmed OCR source returns preview state",
+        "value": {
+            "request_id": "daily-coaching-preview-2026-05-18",
+            "user_id": "client-side-placeholder",
+            "context": {"profile": {"age": 45, "gender": "other"}},
+            "payload": {
+                "date": "2026-05-18",
+                "sources": [
+                    {
+                        "source_type": "food_ocr",
+                        "image_id": "meal-image-2",
+                        "raw_ocr_text": "label text pending user review",
+                        "user_confirmed": False,
+                    }
+                ],
+                "foods": [],
+                "supplements": [],
+                "health_trends": [],
+            },
+        },
+    },
+}
+
+AI_AGENT_DAILY_COACHING_RESPONSE_EXAMPLES = {
+    "completed_daily_coaching": {
+        "summary": "Completed deterministic coaching response",
+        "value": {
+            "request_id": "daily-coaching-2026-05-18",
+            "user_id": "local-dev-user",
+            "agent_name": "daily_health_agent",
+            "status": "completed",
+            "approval_status": "confirmed",
+            "requires_user_approval": True,
+            "message": (
+                "For your question, the answer is based on the current input, "
+                "recent flow, and policy checks already computed for 2026-05-18."
+            ),
+            "findings": [
+                {
+                    "nutrient": "sodium",
+                    "total_amount": 2600,
+                    "unit": "mg",
+                    "ratio_to_target": 1.3,
+                    "level": "risky",
+                    "message": "Sodium is above the upper limit.",
+                }
+            ],
+            "recommendations": [],
+            "actions": [],
+            "safety_warnings": [],
+            "used_tools": [
+                "daily_health_agent",
+                "nutrition_engine",
+                "supplement_engine",
+                "safety_guard",
+                "chat_agent",
+            ],
+            "latency_ms": 1.0,
+            "cost_usd": 0,
+            "provider": "deterministic",
+            "debug_trace": [],
+        },
+    },
+    "preview_daily_coaching": {
+        "summary": "Preview response for unconfirmed OCR source",
+        "value": {
+            "request_id": "daily-coaching-preview-2026-05-18",
+            "user_id": "local-dev-user",
+            "agent_name": "daily_health_agent",
+            "status": "preview",
+            "approval_status": "requires_confirmation",
+            "requires_user_approval": True,
+            "message": "For your question, the answer is based on the current input.",
+            "findings": [],
+            "recommendations": [],
+            "actions": [],
+            "safety_warnings": [],
+            "used_tools": [
+                "daily_health_agent",
+                "nutrition_engine",
+                "supplement_engine",
+                "safety_guard",
+                "chat_agent",
+            ],
+            "latency_ms": 1.0,
+            "cost_usd": 0,
+            "provider": "deterministic",
+            "debug_trace": [],
+        },
+    },
+}

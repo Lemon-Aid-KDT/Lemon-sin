@@ -138,6 +138,10 @@ def test_p1_contract_endpoints_are_registered_with_required_scopes() -> None:
             ["supplement:delete"],
         ),
         ("/api/v1/health/sync", "post"): ("p1_6_health_sync_ready", ["health:write"]),
+        ("/api/v1/ai-agent/daily-coaching", "post"): (
+            "p1_7_ai_agent_daily_coaching_ready",
+            ["analysis:write"],
+        ),
         ("/api/v1/dashboard/summary", "get"): (
             "p1_5_deficiency_dashboard_ready",
             ["dashboard:read"],
@@ -174,6 +178,9 @@ def test_p1_contract_endpoints_expose_required_consents() -> None:
     assert schema["paths"]["/api/v1/health/sync"]["post"]["x-required-consents"] == [
         "health_device_data"
     ]
+    assert schema["paths"]["/api/v1/ai-agent/daily-coaching"]["post"][
+        "x-required-consents"
+    ] == ["sensitive_health_analysis"]
     assert schema["paths"]["/api/v1/dashboard/summary"]["get"]["x-required-consents"] == [
         "sensitive_health_analysis"
     ]
