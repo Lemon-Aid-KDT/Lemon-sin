@@ -8,10 +8,12 @@ class FakeLLMClient:
 
     def __init__(self, response_text: str = "현재 입력된 정보 기준으로 설명합니다.") -> None:
         self.response_text = response_text
+        self.provider = "fake"
+        self.model = "fake-local-llm"
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         return LLMResponse(
             text=self.response_text,
-            provider="fake",
-            model="fake-local-llm",
+            provider=self.provider,
+            model=self.model,
         )

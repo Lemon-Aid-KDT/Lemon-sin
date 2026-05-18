@@ -51,3 +51,20 @@
 - 영양제 성분 총량은 Supplement Engine에서 별도 계산해 UI와 검토 흐름에서
   음식+영양제 합산 결과와 구분해 볼 수 있게 합니다.
 - Intake 결과에는 OCR 원본 이미지 ID, OCR 텍스트, 사용자 확인 여부를 보존합니다.
+
+## 2026-05-18: 앱 통합 Adapter 경계
+
+- `DailyHealthAgent` 내부 dataclass 모델을 Pydantic으로 교체하지 않습니다.
+- 앱/FastAPI 계약은 `DailyHealthAgentAppAdapter`의 Pydantic `AgentInput`과
+  `AgentOutput`에서 맞춥니다.
+- Pydantic 모델과 필드 정의는 공식 문서
+  [Models](https://docs.pydantic.dev/latest/concepts/models/)와
+  [Fields](https://docs.pydantic.dev/latest/concepts/fields/)를 기준으로 확인합니다.
+- adapter는 `request_id`, `agent_name`, `used_tools`, `latency_ms`, `cost_usd`,
+  `provider`를 채워 `agent_runs` 기록에 필요한 최소 값을 제공합니다.
+- 실제 DB 테이블이 아직 이 checkout에 없으므로 `AgentRunLogger`와
+  `AgentMemoryWriter` Protocol로 저장 연결점만 둡니다.
+- 미승인 OCR source는 preview 응답으로 멈추고, 승인된 payload가 다시 들어올 때만
+  deterministic engine을 실행해 completed 응답을 만듭니다.
+- trace 원문은 기본 `AgentOutput`에 포함하지 않습니다. debug trace를 켜도
+  `SafetyGuard`로 정제된 trace만 노출합니다.

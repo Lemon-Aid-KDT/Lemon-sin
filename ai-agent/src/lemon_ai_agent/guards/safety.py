@@ -42,11 +42,11 @@ class SafetyGuard:
 
         for term in FORBIDDEN_TERMS:
             if term.lower() in lowered:
-                warnings.append(f"Forbidden medical expression detected: {term}")
+                warnings.append("Forbidden medical expression detected")
 
         for term in PRODUCT_PROMOTION_TERMS:
             if term.lower() in lowered:
-                warnings.append(f"Product-promotion expression detected: {term}")
+                warnings.append("Product-promotion expression detected")
 
         return SafetyCheckResult(allowed=not warnings, warnings=warnings)
 

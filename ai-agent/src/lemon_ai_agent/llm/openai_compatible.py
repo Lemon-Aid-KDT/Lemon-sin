@@ -17,6 +17,7 @@ class OpenAICompatibleClient:
         api_key: str | None = None,
         timeout: float = 30,
     ) -> None:
+        self.provider = "openai-compatible"
         self.model = model
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key or "EMPTY"
@@ -54,6 +55,6 @@ class OpenAICompatibleClient:
             text = choices[0].get("message", {}).get("content", "")
         return LLMResponse(
             text=text,
-            provider="openai-compatible",
+            provider=self.provider,
             model=self.model,
         )

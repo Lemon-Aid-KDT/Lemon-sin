@@ -16,6 +16,7 @@ class OllamaClient:
         endpoint: str = "http://127.0.0.1:11434",
         timeout: float = 30,
     ) -> None:
+        self.provider = "ollama"
         self.model = model
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
@@ -47,4 +48,4 @@ class OllamaClient:
             raise RuntimeError(f"Ollama request failed: {exc}") from exc
 
         text = data.get("message", {}).get("content", "")
-        return LLMResponse(text=text, provider="ollama", model=self.model)
+        return LLMResponse(text=text, provider=self.provider, model=self.model)

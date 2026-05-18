@@ -96,8 +96,30 @@ trace도 사용자에게 보일 수 있으므로 출력 전 `SafetyGuard`를 통
 `g/mg/mcg` 변환, 비타민 D `IU -> mcg` 변환을 지원합니다. OCR confidence,
 원문-정규화 매핑, 사용자 수정 반영, 전체 식약처 DB alias는 후속 통합 범위입니다.
 
-기존 가이드의 `AgentInput`/`AgentOutput`, `agent_runs`, `agent_memory` 계약과의
-호환 adapter는 FastAPI/DB 통합 단계에서 별도 구현합니다.
+## 앱 통합 Adapter
+
+`DailyHealthAgent` 내부 모델은 dataclass로 유지하고, 앱 계약은
+`DailyHealthAgentAppAdapter`가 Pydantic `AgentInput`/`AgentOutput`으로 맞춥니다.
+Pydantic 모델/필드 사용은
+[Pydantic 공식 문서](https://docs.pydantic.dev/latest/concepts/models/)와
+[Fields 문서](https://docs.pydantic.dev/latest/concepts/fields/)를 기준으로 합니다.
+
+adapter가 담당하는 일은 다음과 같습니다.
+
+- `AgentInput.user_id`, `payload`, `context`를 `UserProfile`, `DailyIntake`,
+  `HealthTrend`, `ReferenceRange`로 변환
+- `DailyCoachingResult`를 앱 응답용 findings, recommendations, actions, message로
+  변환
+- 미승인 OCR source는 `status="preview"`와
+  `approval_status="requires_confirmation"`으로 반환
+- confirmed 결과만 `AgentMemoryWriter` 연결점으로 넘김
+- `AgentRunLogger` 연결점에 request_id, used_tools, latency_ms, cost_usd, provider를
+  기록
+- trace 원문은 기본 응답에서 숨기고, 명시적으로 켠 debug trace도 sanitized trace만
+  노출
+
+현재 구현은 backend DB 없이 테스트 가능한 adapter 계층입니다. 실제 FastAPI route와
+`agent_runs`/`agent_memory` 테이블 저장은 backend checkout에서 이어서 연결합니다.
 다음 통합 작업은 [앱 통합 TODO](docs/app-integration-todo.md)를 기준으로 진행합니다.
 
 ## 로컬 검증
