@@ -121,10 +121,13 @@ python -m compileall ai-agent\src
 
 ## 리뷰 참고
 
-- 로컬 workspace에는 `gh` CLI가 없어 PR을 CLI로 생성하지 않았습니다.
-- `changmin-aiagent`를 `changmin-plan`과 직접 비교하면 branch history divergence
-  때문에 관련 없는 `docs/` 삭제가 함께 잡힙니다. PR 생성 전 대상 base branch를
-  확인해야 합니다.
+- PR용 브랜치 `feat/ai-agent-local-llm`은 `origin/changmin-plan`에서 새로 따서
+  `ai-agent/`만 추가했습니다.
+- 기존 `changmin-aiagent` 브랜치를 직접 PR로 올릴 때 보였던 관련 없는 `docs/`
+  삭제는 이 PR 범위에 포함되지 않습니다.
+- 로컬 workspace에는 `gh` CLI가 없고, GitHub App connector의 PR 생성 호출은
+  `Resource not accessible by integration` 403으로 차단되었습니다. 따라서 PR은
+  GitHub UI에서 `feat/ai-agent-local-llm` -> `changmin-plan` 기준으로 열면 됩니다.
 - 의도한 리뷰 범위는 `ai-agent/`입니다.
 - 실제 FastAPI route-level test와 DB persistence 연결은 backend checkout/branch가
   정해진 뒤 진행합니다.
