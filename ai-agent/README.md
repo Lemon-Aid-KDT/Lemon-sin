@@ -1,32 +1,35 @@
 # Lemon Aid AI Agent
 
-Server-side AI Agent workspace for turning reliable food and supplement intake
-data into health-management coaching.
+음식과 영양제 OCR로 확보한 신뢰 가능한 섭취 데이터를 건강관리 코칭으로
+바꾸기 위한 서버 기반 AI Agent 작업 공간입니다.
 
-This package is intentionally separate from the current app code. It defines the
-first production-oriented boundaries for:
+이 패키지는 현재 앱 코드와 의도적으로 분리되어 있습니다. 먼저 상용화를 염두에 둔
+AI Agent 경계를 작게 세우고, 이후 기존 Flutter/FastAPI 앱에 통합할 수 있게
+만드는 것이 목적입니다.
 
-- intake normalization from OCR results
-- nutrition and supplement aggregation
-- recent health-trend interpretation
-- personalized coaching
-- safety filtering and action approval
+현재 정의한 1차 경계는 다음과 같습니다.
 
-## Product Direction
+- OCR 결과 기반 섭취 데이터 정규화
+- 음식과 영양제 영양소 합산
+- 최근 건강 흐름 해석
+- 사용자별 개인화 코칭
+- 안전 표현 필터링
+- 사용자 승인 기반 액션 제안
 
-Lemon Aid is not a general chatbot. The Agent system must combine structured
-intake data, official nutrition references, user context, and safety policy.
-The LLM is an assistant inside the workflow, not the sole source of health
-judgment.
+## 제품 방향
 
-The MVP excludes blood glucose and CGM integration, but the schemas keep a
-generic `health_trends` input so glucose-like trend signals can be added later
-without redesigning the Agent interface.
+Lemon Aid는 일반 챗봇이 아닙니다. Agent 시스템은 구조화된 섭취 데이터, 공식
+영양 기준, 사용자 맥락, 안전 정책을 함께 사용해야 합니다. LLM은 이 흐름 안에서
+문장을 정리하고 설명을 돕는 보조 엔진이지, 건강 판단의 단독 근거가 아닙니다.
 
-## Runtime Shape
+MVP에서는 혈당과 CGM 연동을 제외합니다. 다만 스키마에는 범용 `health_trends`
+입력을 남겨 두어, 이후 혈당과 유사한 건강 지표 흐름을 Agent 인터페이스 변경
+없이 추가할 수 있게 합니다.
+
+## 실행 흐름
 
 ```text
-OCR food/supplement result
+OCR 음식/영양제 결과
 -> Intake Agent
 -> Nutrition Engine
 -> Health Trend Engine
@@ -34,12 +37,11 @@ OCR food/supplement result
 -> Coaching Agent
 -> Safety Guard
 -> Action Agent
--> user preview and approval
+-> 사용자 미리보기 및 승인
 ```
 
-## Local Verification
+## 로컬 검증
 
 ```powershell
 python -m unittest discover ai-agent/tests
 ```
-

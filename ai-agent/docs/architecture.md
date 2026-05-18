@@ -1,70 +1,87 @@
-# AI Agent Architecture
+# AI Agent 아키텍처
 
-## Goal
+## 목표
 
-The Agent system converts accurate food and supplement intake data into
-practical health-management guidance:
+Agent 시스템은 정확히 확보된 음식과 영양제 섭취 데이터를 실제 건강관리 코칭으로
+바꿉니다.
 
-- what to reduce in meals
-- what to add through food first
-- which nutrient ingredients may be considered if food intake is difficult
-- which reminders or daily missions can help the user follow through
+사용자에게 제공해야 할 결과는 다음과 같습니다.
 
-It must not diagnose, treat, prescribe, or guarantee outcomes.
+- 식사에서 줄이면 좋은 부분
+- 음식으로 먼저 보완하면 좋은 부분
+- 음식 섭취가 어렵다면 검토할 수 있는 영양 성분
+- 실천을 돕는 영양제 알림 또는 오늘의 작은 미션
 
-## Components
+단, Agent는 진단, 치료, 처방, 효과 보장을 해서는 안 됩니다. Lemon Aid의
+판단은 건강관리 참고와 실천 보조에 머물러야 합니다.
+
+## 구성 요소
 
 ### Intake Agent
 
-Normalizes OCR and structured app inputs into canonical daily intake records.
-It should preserve source metadata and user approval state, but this first
-workspace assumes OCR has already provided accurate product, ingredient, and
-amount data.
+OCR 결과와 앱에서 들어온 구조화 입력을 하루 섭취 기록으로 정규화합니다.
+
+상용 버전에서는 원본 출처, OCR 결과, 사용자 승인 상태를 보존해야 합니다. 다만
+이 첫 작업 공간에서는 OCR이 제품명, 성분, 함량 데이터를 이미 정확히 제공했다고
+가정합니다.
 
 ### Nutrition Engine
 
-Deterministically aggregates food and supplement nutrients, compares them with
-reference targets and upper limits, and produces nutrient-level findings.
+음식과 영양제의 영양소를 결정론적으로 합산합니다. 이후 기준 섭취량과 상한량을
+비교해 영양소별 부족, 적정, 과다, 위험 가능성을 계산합니다.
+
+이 엔진은 LLM이 아니라 코드로 동작합니다. 따라서 영양소 계산과 기준 비교의
+권위는 LLM이 아니라 이 엔진과 공식 기준 데이터에 있습니다.
 
 ### Health Trend Engine
 
-Summarizes recent health signals such as meal-score trends, weight trend,
-activity trend, or future glucose trend fields. Glucose and CGM are excluded
-from MVP implementation, but trend input is deliberately generic.
+최근 건강 흐름을 요약합니다. 예를 들면 식단 점수 흐름, 체중 흐름, 활동량 흐름,
+향후 혈당 흐름 같은 데이터를 다룰 수 있습니다.
+
+현재 MVP에서는 혈당과 CGM을 구현하지 않습니다. 대신 추세 입력을 범용 구조로
+두어 이후 혈당, CGM, 체중, 활동량, 식단 점수를 같은 방식으로 확장할 수 있게
+합니다.
 
 ### Personalization Agent
 
-Turns user profile, goals, chronic conditions, medications, and trend summaries
-into coaching constraints. It does not create clinical rules by itself.
+사용자 프로필, 목표, 만성질환, 복약 정보, 건강 흐름 요약을 코칭 제약 조건으로
+바꿉니다.
+
+이 Agent는 임상 규칙을 스스로 만들어서는 안 됩니다. 질환과 복약 정보는
+"주의가 필요할 수 있음", "전문가 상담 권장" 같은 안전한 코칭 제약으로만
+사용합니다.
 
 ### Coaching Agent
 
-Creates user-facing guidance from nutrition findings and personalization
-constraints. It must follow this priority:
+Nutrition Engine의 판단과 Personalization Agent의 제약 조건을 바탕으로 사용자
+화면에 보여줄 코칭을 만듭니다.
 
-1. Reduce excessive intake patterns.
-2. Suggest food-first improvements.
-3. Suggest ingredient-level supplement consideration only when food intake may
-   be difficult.
-4. Propose reminders or small daily missions when useful.
+코칭 우선순위는 다음과 같습니다.
+
+1. 과다한 섭취 패턴을 줄이도록 제안합니다.
+2. 부족한 영양소는 음식으로 먼저 보완하도록 제안합니다.
+3. 음식 섭취가 어렵다면 성분 단위의 영양제 검토를 제안합니다.
+4. 필요하면 알림이나 작은 일일 미션을 제안합니다.
+
+MVP에서는 특정 제품 추천이 아니라 성분 중심 제안만 허용합니다.
 
 ### Safety Guard
 
-Blocks diagnosis, prescription, treatment claims, medication guarantees, product
-promotion, and direct medication recommendations. It also ensures supplement
-recommendations remain ingredient-level in the MVP.
+진단, 처방, 치료 효과 보장, 약물 복용 단정, 특정 제품 구매 유도, 직접적인
+의약품 추천 표현을 차단합니다.
+
+또한 MVP에서는 영양제 제안이 특정 제품이 아니라 성분 수준에 머물도록 막습니다.
 
 ### Action Agent
 
-Prepares actions such as supplement reminders or daily missions. It never
-executes actions without explicit user approval.
+영양제 알림, 일일 미션 같은 액션을 준비합니다. 이 Agent는 어떤 액션도 사용자
+명시 승인 없이 실행하지 않습니다.
 
-## LLM Strategy
+## LLM 전략
 
-The product direction is server-operated AI. External LLM API keys should not be
-the default path for sensitive health information. The code should keep a model
-provider boundary so a self-hosted model can be used behind the Agent layer.
+제품 방향은 서버에서 운영하는 AI입니다. 민감한 건강정보를 다루므로 외부 LLM API
+키를 기본 경로로 두지 않습니다. Agent 계층 뒤에 자사 운영 또는 self-hosted
+모델을 붙일 수 있도록 모델 provider 경계를 유지해야 합니다.
 
-The deterministic engines remain authoritative for nutrition math, trend
-aggregation, and policy decisions.
-
+영양 계산, 건강 흐름 집계, 정책 판단의 최종 권위는 결정론적 엔진에 있습니다.
+LLM은 구조화, 설명, 문장화, 코칭 표현 보조 역할을 맡습니다.

@@ -1,22 +1,18 @@
-# Decision Log
+# 의사결정 기록
 
-## 2026-05-18: AI Agent direction
+## 2026-05-18: AI Agent 방향
 
-- Work happens on branch `changmin-aiagent`.
-- New Agent work is isolated under `ai-agent/`.
-- The MVP is treated as the minimum commercial product path, not a throwaway
-  demo.
-- Blood glucose and CGM integrations are excluded from MVP implementation.
-- The Agent interface keeps a generic health trend input for future glucose,
-  CGM, weight, activity, and score trends.
-- External LLM APIs are not the preferred production path for sensitive health
-  data. The architecture assumes server-operated/self-hosted LLM capability.
-- OCR low-confidence handling is not the center of this work. The main problem
-  is converting reliable OCR intake data into safe health-management coaching.
-- Supplement suggestions are ingredient-level in MVP. Specific product
-  recommendations are out of scope until legal, pharmacy, advertising, and
-  conflict-of-interest review are complete.
-- LLM output is not authoritative for health judgment. Official data,
-  deterministic nutrition logic, user context, and Safety Guard policy remain
-  authoritative.
-
+- 작업 브랜치는 `changmin-aiagent`입니다.
+- 새 Agent 작업은 `ai-agent/` 아래에 격리합니다.
+- 여기서 말하는 MVP는 버리는 데모가 아니라, 상용화를 향한 최소 제품 경로입니다.
+- 혈당과 CGM 연동은 MVP 구현 범위에서 제외합니다.
+- Agent 인터페이스에는 범용 건강 흐름 입력을 유지합니다. 이후 혈당, CGM, 체중,
+  활동량, 식단 점수 흐름을 추가할 수 있게 하기 위함입니다.
+- 민감한 건강 데이터를 다루므로 외부 LLM API는 선호하는 운영 경로가 아닙니다.
+  아키텍처는 서버 운영 또는 self-hosted LLM 사용을 전제로 둡니다.
+- OCR 저신뢰 대응은 이번 작업의 중심이 아닙니다. 핵심 문제는 신뢰 가능한 OCR
+  섭취 데이터를 안전한 건강관리 코칭으로 바꾸는 것입니다.
+- MVP에서 영양제 제안은 성분 중심으로 제한합니다. 특정 제품 추천은 법무, 약사,
+  광고, 이해상충 검토가 끝나기 전까지 범위 밖입니다.
+- LLM 출력은 건강 판단의 최종 권위가 아닙니다. 공식 데이터, 결정론적 영양 로직,
+  사용자 맥락, Safety Guard 정책이 최종 기준입니다.
