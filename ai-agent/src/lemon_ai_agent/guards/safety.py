@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 FORBIDDEN_TERMS = (
     "diagnose",
+    "diagnosis",
+    "diabetes",
     "cure",
     "treats",
     "prescribe",
@@ -54,3 +56,17 @@ class SafetyGuard:
             raise ValueError("; ".join(result.warnings))
         return text
 
+    def sanitize_trace(self, trace: list[str]) -> tuple[list[str], list[str]]:
+        safe_trace: list[str] = []
+        warnings: list[str] = []
+
+        for item in trace:
+            result = self.check_text(item)
+            if result.allowed:
+                safe_trace.append(item)
+                continue
+
+            safe_trace.append("trace item withheld by policy guard")
+            warnings.extend(f"Trace text blocked: {warning}" for warning in result.warnings)
+
+        return safe_trace, warnings

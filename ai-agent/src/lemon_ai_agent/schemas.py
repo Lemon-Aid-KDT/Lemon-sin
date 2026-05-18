@@ -6,7 +6,9 @@ from typing import Literal
 
 
 MealType = Literal["breakfast", "lunch", "dinner", "snack"]
-ActionType = Literal["supplement_reminder", "daily_mission"]
+ActionType = Literal["supplement_reminder", "daily_mission", "professional_consult"]
+SourceType = Literal["food_ocr", "supplement_ocr", "manual"]
+ApprovalStatus = Literal["confirmed", "requires_confirmation"]
 
 
 class FindingLevel(str, Enum):
@@ -39,9 +41,18 @@ class SupplementIntake:
 
 
 @dataclass(frozen=True)
+class IntakeSource:
+    source_type: SourceType
+    image_id: str | None = None
+    raw_ocr_text: str | None = None
+    user_confirmed: bool = False
+
+
+@dataclass(frozen=True)
 class DailyIntake:
     user_id: str
     date: str
+    sources: list[IntakeSource] = field(default_factory=list)
     foods: list[FoodIntake] = field(default_factory=list)
     supplements: list[SupplementIntake] = field(default_factory=list)
 
@@ -83,6 +94,14 @@ class NutrientFinding:
 
 
 @dataclass(frozen=True)
+class SupplementDailyTotal:
+    ingredient: str
+    total_amount: float
+    unit: str
+    product_names: list[str]
+
+
+@dataclass(frozen=True)
 class PersonalizationContext:
     user_id: str
     goals: list[str]
@@ -116,4 +135,7 @@ class DailyCoachingResult:
     recommendations: list[CoachingRecommendation]
     actions: list[ProposedAction]
     safety_warnings: list[str]
-
+    sources: list[IntakeSource] = field(default_factory=list)
+    supplement_totals: list[SupplementDailyTotal] = field(default_factory=list)
+    trace: list[str] = field(default_factory=list)
+    approval_status: ApprovalStatus = "confirmed"

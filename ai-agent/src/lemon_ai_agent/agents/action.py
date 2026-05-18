@@ -9,6 +9,14 @@ class ActionAgent:
     ) -> list[ProposedAction]:
         actions: list[ProposedAction] = []
         for recommendation in recommendations:
+            if recommendation.requires_professional_consult:
+                actions.append(
+                    ProposedAction(
+                        action_type="professional_consult",
+                        title=f"Review with a professional: {recommendation.title}",
+                        payload={"source": recommendation.title},
+                    )
+                )
             if recommendation.category == "consider_ingredient":
                 actions.append(
                     ProposedAction(
@@ -26,4 +34,3 @@ class ActionAgent:
                     )
                 )
         return actions
-
