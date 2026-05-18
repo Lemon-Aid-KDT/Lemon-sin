@@ -14,11 +14,23 @@ FastAPI/DB/승인 흐름 계약에 맞추는 adapter 작업을 별도 단계로 
 
 ### 1. 계약 확인
 
-- [ ] `changmin-plan/docs/planning/guide/06-ai-agents.md`의 `AgentInput`,
+- [x] `changmin-plan/docs/planning/guide/06-ai-agents.md`의 `AgentInput`,
   `AgentOutput` 계약을 실제 backend 코드와 대조한다.
-- [ ] backend에 이미 존재하는 Pydantic 모델, API route, DB logging 모듈을 확인한다.
-- [ ] `agent_runs`와 `agent_memory` 테이블/모듈의 현재 구현 여부를 확인한다.
-- [ ] 앱의 preview/approval API 흐름이 현재 어디에 구현되어 있는지 확인한다.
+- [x] backend에 이미 존재하는 Pydantic 모델, API route, DB logging 모듈을 확인한다.
+- [x] `agent_runs`와 `agent_memory` 테이블/모듈의 현재 구현 여부를 확인한다.
+- [x] 앱의 preview/approval API 흐름이 현재 어디에 구현되어 있는지 확인한다.
+
+현재 확인 결과:
+
+- 실제 backend checkout은 `C:\MyWorkspace\lemon_aid\main\backend`에 있다.
+- 현재 backend는 `README.md`와 폴더 skeleton 중심이며, 실제 `AgentInput`,
+  `AgentOutput` Pydantic 모델 파일은 아직 없다.
+- `src/agents/README.md`에는 `orchestrator.py`, `memory.py`, `agent_runs`,
+  `agent_memory` 책임이 문서화되어 있지만 구현 파일은 아직 없다.
+- `src/api/README.md`에는 FastAPI 라우터를 `APIRouter`로 분리한다는 방향만 있고,
+  preview/approval route 구현은 아직 없다.
+- 따라서 다음 실제 작업은 backend 코드에 adapter 테스트와 최소 Pydantic 계약을
+  먼저 추가하는 것이다.
 
 ### 2. Adapter 설계
 
