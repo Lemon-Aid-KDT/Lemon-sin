@@ -236,7 +236,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 - [x] 대량 포맷팅, 줄바꿈 정리, import 정렬 자동화는 하지 않는다.
 - [x] `ai-agent/` 밖 파일은 수정하지 않는다.
 - [x] 병합 전 `git diff --stat`으로 변경 범위를 확인한다.
-- [ ] 병합 전 원격 최신화는 `git fetch origin`까지만 하고, rebase/merge는 충돌
+- [x] 병합 전 원격 최신화는 `git fetch origin`까지만 하고, rebase/merge는 충돌
   가능성을 확인한 뒤 진행한다.
 
 ### 9. 최종 검증 TODO
@@ -283,7 +283,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
   `git branch --show-current`
   `git status --short`
 
-- [ ] push 대상
+- [x] push 대상
   `origin/changmin-aiagent`
 
 - [ ] PR 설명에 포함
