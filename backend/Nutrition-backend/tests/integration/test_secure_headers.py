@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from src.config import Settings
 from src.main import create_app
 from src.middleware.secure_headers import (
@@ -40,7 +41,7 @@ def _production_settings() -> Settings:
         jwt_audience="lemon-api",
         jwt_jwks_url="https://auth.example.com/.well-known/jwks.json",
         jwt_expected_token_type="at+jwt",
-        privacy_hash_secret="prod-privacy-hash-secret-at-least-32",
+        privacy_hash_secret=SecretStr("prod-privacy-hash-secret-at-least-32"),
         kdris_data_version="2025",
         kdris_data_path="data/nutrition_reference/kdris/kdris_2025.csv",
         allow_sample_kdris=False,

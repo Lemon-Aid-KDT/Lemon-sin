@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
-from typing import Self, cast
+from typing import Any, Self, cast
 from uuid import uuid4
 
 import pytest
@@ -108,9 +108,7 @@ def test_returns_403_when_sensitive_consent_missing(monkeypatch: pytest.MonkeyPa
     """Verify missing SENSITIVE_HEALTH_ANALYSIS consent yields HTTP 403."""
 
     async def _deny(*_args: object, **_kwargs: object) -> None:
-        raise ConsentRequiredError(
-            "User has not granted SENSITIVE_HEALTH_ANALYSIS consent."
-        )
+        raise ConsentRequiredError("User has not granted SENSITIVE_HEALTH_ANALYSIS consent.")
 
     monkeypatch.setattr(activity_module, "require_user_consent", _deny)
     monkeypatch.setattr(activity_module, "record_sensitive_audit_event", _record_noop)
@@ -130,7 +128,7 @@ def test_returns_200_and_emits_audit_event_when_consent_granted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Verify the success path records one ``activity_score_compute`` audit row."""
-    captured_audits: list[dict[str, object]] = []
+    captured_audits: list[dict[str, Any]] = []
 
     async def _capture_audit(*args: object, **kwargs: object) -> None:
         captured_audits.append({"args": args, "kwargs": kwargs})

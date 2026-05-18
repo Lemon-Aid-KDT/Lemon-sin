@@ -29,6 +29,8 @@ def test_different_owners_get_different_prefixes() -> None:
     """Verify the prefix is owner-scoped — two users cannot collide."""
     key_a = derive_idempotency_key("dup", "owner-a", _SECRET)
     key_b = derive_idempotency_key("dup", "owner-b", _SECRET)
+    assert key_a is not None
+    assert key_b is not None
     assert key_a != key_b
     assert key_a.split(":")[0] != key_b.split(":")[0]
 

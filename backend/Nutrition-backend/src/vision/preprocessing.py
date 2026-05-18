@@ -96,9 +96,7 @@ def crop_image_to_bounding_box(
     try:
         decoded = safe_load_with_bomb_guard(image_bytes)
     except ImageSafetyError as exc:
-        raise VisionPreprocessingError(
-            "Image cannot be decoded for vision preprocessing."
-        ) from exc
+        raise VisionPreprocessingError("Image cannot be decoded for vision preprocessing.") from exc
 
     try:
         with decoded as source:

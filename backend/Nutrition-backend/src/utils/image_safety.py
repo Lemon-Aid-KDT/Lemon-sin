@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import warnings
 from io import BytesIO
+from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -76,7 +77,7 @@ def strip_image_metadata(data: bytes, mime: str) -> bytes:
         with Image.open(BytesIO(data)) as source:
             oriented = ImageOps.exif_transpose(source) or source
             buf = BytesIO()
-            save_kwargs: dict[str, object] = {
+            save_kwargs: dict[str, Any] = {
                 "format": fmt,
                 "exif": b"",
                 "xmp": b"",

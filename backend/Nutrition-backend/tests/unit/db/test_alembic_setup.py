@@ -81,10 +81,7 @@ def test_regulated_ocr_intake_migration_file_exists() -> None:
 def test_health_daily_summaries_composite_pk_migration_file_exists() -> None:
     """Verify the PR-O composite-PK migration file exists."""
     migration_path = (
-        BACKEND_ROOT
-        / "alembic"
-        / "versions"
-        / "0007_health_daily_summaries_composite_pk.py"
+        BACKEND_ROOT / "alembic" / "versions" / "0007_health_daily_summaries_composite_pk.py"
     )
 
     assert migration_path.is_file()
@@ -93,10 +90,7 @@ def test_health_daily_summaries_composite_pk_migration_file_exists() -> None:
 def test_health_daily_summaries_hypertable_migration_file_exists() -> None:
     """Verify the PR-P opt-in hypertable migration file exists."""
     migration_path = (
-        BACKEND_ROOT
-        / "alembic"
-        / "versions"
-        / "0008_health_daily_summaries_hypertable.py"
+        BACKEND_ROOT / "alembic" / "versions" / "0008_health_daily_summaries_hypertable.py"
     )
 
     assert migration_path.is_file()

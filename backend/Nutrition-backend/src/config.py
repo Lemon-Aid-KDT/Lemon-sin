@@ -288,9 +288,7 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
-    ocr_primary_provider: Literal["none", "google_vision", "paddleocr"] = Field(
-        default="paddleocr"
-    )
+    ocr_primary_provider: Literal["none", "google_vision", "paddleocr"] = Field(default="paddleocr")
     allow_external_ocr: bool = Field(default=False)
     google_vision_auth_mode: Literal["api_key", "adc"] = Field(default="adc")
     allow_google_api_key_auth: bool = Field(

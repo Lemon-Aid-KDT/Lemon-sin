@@ -780,7 +780,8 @@ def _validate_decodable_image(data: bytes, max_pixels: int) -> tuple[int, int]:
 
     try:
         with safe_load_with_bomb_guard(data) as decoded:
-            return decoded.size
+            width, height = decoded.size
+            return int(width), int(height)
     except ImageSafetyError as exc:
         raise RegulatedImageValidationError(
             code="payload_too_large",

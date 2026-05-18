@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
-from typing import Self
+from typing import Self, cast
 
 import pytest
+from fastapi import FastAPI
 from PIL import Image
 from src.config import Settings, get_settings
 from src.main import lifespan
@@ -33,7 +34,7 @@ async def test_lifespan_sets_paddle_disable_model_source_check_env(
     monkeypatch.delenv("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", raising=False)
     get_settings.cache_clear()
     try:
-        async with lifespan(_Sentinel()):
+        async with lifespan(cast(FastAPI, _Sentinel())):
             assert os.environ.get("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK") == "true"
     finally:
         get_settings.cache_clear()
@@ -51,7 +52,7 @@ async def test_lifespan_preserves_explicit_paddle_env(
     monkeypatch.setenv("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "false")
     get_settings.cache_clear()
     try:
-        async with lifespan(_Sentinel()):
+        async with lifespan(cast(FastAPI, _Sentinel())):
             assert os.environ.get("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK") == "false"
     finally:
         get_settings.cache_clear()
@@ -62,7 +63,7 @@ async def test_lifespan_applies_configured_pillow_pixel_limit() -> None:
     """Verify lifespan applies the configured Pillow safety pixel limit."""
     get_settings.cache_clear()
     try:
-        async with lifespan(_Sentinel()):
+        async with lifespan(cast(FastAPI, _Sentinel())):
             settings = Settings(_env_file=None)
             assert settings.supplement_image_max_pixels == Image.MAX_IMAGE_PIXELS
     finally:
@@ -84,7 +85,7 @@ async def test_lifespan_logs_trusted_host_active_mode(
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     get_settings.cache_clear()
     try:
-        async with lifespan(_Sentinel()):
+        async with lifespan(cast(FastAPI, _Sentinel())):
             pass
     finally:
         get_settings.cache_clear()

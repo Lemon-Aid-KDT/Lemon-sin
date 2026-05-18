@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -74,7 +74,9 @@ def _valid_production_kwargs() -> dict[str, Any]:
     }
 
 
-def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
+def test_default_development_settings_load(  # noqa: PLR0915
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify development defaults remain usable for local work."""
     monkeypatch.delenv("GOOGLE_CLOUD_API_KEY", raising=False)
 
@@ -481,7 +483,7 @@ def test_implementation_readiness_google_vision_defaults_fail_closed() -> None:
     enable_local_ocr = _object_field(ocr_settings, "ENABLE_LOCAL_OCR")
 
     assert primary_provider["default"] == "paddleocr"
-    assert "paddleocr" in primary_provider["allowed_values"]
+    assert "paddleocr" in cast(list[str], primary_provider["allowed_values"])
     assert allow_external_ocr["default"] is False
     assert auth_mode["default"] == "api_key"
     assert auth_mode["production_required_value"] == "adc"

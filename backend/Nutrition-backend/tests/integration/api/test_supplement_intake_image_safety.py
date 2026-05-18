@@ -88,9 +88,7 @@ class _CapturingOCRAdapter(OCRAdapter):
 
 
 class _FakeParser:
-    async def parse_supplement_ocr_text(
-        self, _ocr_text: str
-    ) -> SupplementStructuredParseResult:
+    async def parse_supplement_ocr_text(self, _ocr_text: str) -> SupplementStructuredParseResult:
         return SupplementStructuredParseResult.model_validate(
             {
                 "parsed_product": {"product_name": "비타민 D"},

@@ -52,7 +52,8 @@ class PgvectorStore(VectorStore):
         validate_vector_record(record, self._expected_dimensions)
         embedding_literal = vector_literal(record.embedding)
         metadata_json = json.dumps(record.metadata, ensure_ascii=False, sort_keys=True)
-        statement = text("""
+        statement = text(
+            """
             INSERT INTO image_embedding_records (
                 owner_subject_hash,
                 analysis_id,
@@ -86,7 +87,8 @@ class PgvectorStore(VectorStore):
                 metadata = EXCLUDED.metadata,
                 deleted_at = NULL,
                 updated_at = now()
-            """)
+            """
+        )
         try:
             await self._session.execute(
                 statement,
