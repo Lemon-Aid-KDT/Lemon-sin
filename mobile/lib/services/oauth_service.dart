@@ -21,6 +21,13 @@ class OAuthFailure implements Exception {
   String toString() => 'OAuthFailure($message, cancelled=$cancelled)';
 }
 
+/// OAuth 사용자 프로필 — signup_flow 미리 채우기용
+class OAuthProfile {
+  const OAuthProfile({this.name, this.email});
+  final String? name;
+  final String? email;
+}
+
 class OAuthService {
   OAuthService();
 
@@ -77,6 +84,55 @@ class OAuthService {
         throw OAuthFailure('구글 토큰을 가져오지 못했어요');
       }
       return idToken;
+    } on OAuthFailure {
+      rethrow;
+    } catch (e) {
+      throw OAuthFailure('구글 로그인 중 오류: $e');
+    }
+  }
+
+  /// 카카오 사용자 정보 조회 (signup_flow 프리필용)
+  /// 로그인 직후 한 번만 호출. 실패해도 무시 (UX 차단 X)
+  Future<OAuthProfile?> fetchKakaoProfile() async {
+    try {
+      final user = await UserApi.instance.me();
+      final account = user.kakaoAccount;
+      return OAuthProfile(
+        name: account?.profile?.nickname,
+        email: account?.email,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 구글 사용자 정보 — signIn 시 GoogleSignInAccount 에 이미 포함
+  /// 호출부에서 GoogleSignInAccount 보존해뒀다가 여기로 넘기는 방식이 가장 깔끔.
+  /// 단, 현재 signInWithGoogle 은 idToken 만 리턴. 별도 메서드로 분리.
+  Future<({String idToken, OAuthProfile profile})?> signInWithGoogleWithProfile() async {
+    final googleSignIn = GoogleSignIn(
+      serverClientId: OAuthConfig.hasGoogleKey
+          ? OAuthConfig.googleServerClientId
+          : null,
+      scopes: const ['email', 'profile'],
+    );
+    try {
+      final account = await googleSignIn.signIn();
+      if (account == null) {
+        throw OAuthFailure('구글 로그인이 취소됐어요', cancelled: true);
+      }
+      final auth = await account.authentication;
+      final idToken = auth.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw OAuthFailure('구글 토큰을 가져오지 못했어요');
+      }
+      return (
+        idToken: idToken,
+        profile: OAuthProfile(
+          name: account.displayName,
+          email: account.email,
+        ),
+      );
     } on OAuthFailure {
       rethrow;
     } catch (e) {

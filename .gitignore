@@ -118,3 +118,15 @@ private/
 
 # ── 대형 에셋 번들 (Git LFS 대신 외부 보관) ────
 character/*.zip
+
+# ── 데이터 수집 / 학습 (data/) ───────────────────
+data/.venv/
+data/raw/
+data/clean/
+data/checkpoints/
+data/logs/
+data/.checkpoint.sqlite
+data/.env
+data/notebooks/.ipynb_checkpoints/
+data/wandb/
+data/**/__pycache__/

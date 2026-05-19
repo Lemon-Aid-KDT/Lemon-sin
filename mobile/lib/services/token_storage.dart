@@ -37,6 +37,9 @@ class TokenStorage {
   static const _kAccess = 'lemon.auth.access';
   static const _kRefresh = 'lemon.auth.refresh';
   static const _kLastProvider = 'lemon.auth.last_provider';
+  // 2026-05-18: 회원가입 (signup_flow 10-step) 완료 플래그
+  // OAuth (카카오/구글) 진입 후에도 이 플래그가 없으면 signup_flow 로 보냄
+  static const _kSignupComplete = 'lemon.auth.signup_complete';
 
   Future<String?> readAccess() => _storage.read(key: _kAccess);
   Future<String?> readRefresh() => _storage.read(key: _kRefresh);
@@ -77,4 +80,18 @@ class TokenStorage {
     final v = await _storage.read(key: _kLastProvider);
     return AuthProviderExt.fromKey(v);
   }
+
+  // ─── 회원가입 완료 플래그 (2026-05-18) ───
+  // OAuth (카카오/구글) 인증 OK 후에도 이 플래그가 false 이면
+  // signup_flow 10-step 으로 보냄. (라우터 redirect 에서 사용)
+  Future<void> markSignupComplete() =>
+      _storage.write(key: _kSignupComplete, value: '1');
+
+  Future<bool> isSignupComplete() async {
+    final v = await _storage.read(key: _kSignupComplete);
+    return v == '1';
+  }
+
+  Future<void> clearSignupComplete() =>
+      _storage.delete(key: _kSignupComplete);
 }

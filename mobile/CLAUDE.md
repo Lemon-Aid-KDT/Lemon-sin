@@ -28,6 +28,54 @@
    - 제한 초과 시 응답: **429 Too Many Requests** + 사용자에게 "잠시 후 다시 시도해주세요. 약 N 초 후 가능" 안내.
    - 백엔드가 유일한 진실 — 모바일도 같이 가드하되 (UX 차원), 백엔드 가드 없는 호출은 절대 만들지 않는다.
 
+8. **`docs/UX_DIARY.md` = Lemon Aid UX/UI 디자인 바이블 (단일 진실 원천).**
+   - 모든 UX 결정 / UI 변경 / 화면 명세 / 디자인 시스템 변동은 **반드시 UX_DIARY 의 해당 챕터 안에 반영**한다.
+   - **카테고리 추가가 아니라 카테고리 안 내용 갱신**이 원칙. 새 §X.X 만들지 않는다 — 기존 챕터 안에 누적.
+   - 작업 끝났을 때 누가 와서 봐도 "이 앱의 모든 UX/UI 결정이 여기 다 있다" 가 돼야 한다 — 보고서 / 가이드 / 바이블 통합본.
+   - 매 작업 후 점검 — "내가 바꾼 것이 UX_DIARY 에 반영됐는가?" 안 됐으면 즉시 갱신.
+
+   **갱신 위치 매핑 (어떤 변경 → 어느 챕터)**:
+   - **프로덕트 정의 / 페르소나** → §1
+   - **UX 원칙 / 12 핵심 / 의료법 룰** → §2
+   - **디자인 토큰 (색 / 폰트 / 간격 / 라운드 / 그림자 / 모션)** → §3.x
+   - **공통 컴포넌트 (AppCard / Button / TextField / OutputCard / ConfidenceBadge / EmptyState / 모달 / NutrientBar / MainShell)** → §4
+   - **화면 결정 / 변경 (S-01 Splash ~ S-13 Settings, 14개 화면)** → §5.x
+   - **인증 / 보안 / Rate Limit / iOS 합류** → §6.x
+   - **라우팅 / 5탭 셸** → §7.x
+   - **데이터 / 상태 (Riverpod / secure storage / API / 모델)** → §8.x
+   - **Figma 작업 룰 (페이지 구조 / 네이밍 / 해상도 / Auto Layout / AI 프롬프트)** → §9.x
+   - **도구 분담 (Stitch / Claude Design / Figma / VS Code) / 워크플로** → §10
+   - **운영 / 검증 (접근성 / 시니어 모드 / 다크 모드 / 의료법 면책 / 응급 신호 / 핸드오프 / 사용성 테스트 / A/B 실험)** → §11.x
+   - **일자별 한 줄 변경 요약 (날짜 · 챕터 · 한 줄)** → §12
+
+   - 코드만 바꾸고 UX_DIARY 안 갱신하면 **작업 미완료**로 간주. UX_DIARY §12 한 줄 색인 추가도 필수.
+
+9. **`data/` = 데이터 수집·CV 모델 학습의 단일 진실 원천.**
+   - 데이터 수집 / 정제 / 학습 결정 → `data/README.md` (학습 가이드 + 진행 상태) + `data/SOURCES.md` (8 트랙 합법성)
+   - CV 모델 (분류기 / inference / 모바일 통합) → `data/models/` + `backend/src/api/analyze.py` (예정)
+   - **합법 8 트랙만** — 비공식 크롤링 / 탐지 회피 코드 0건. 코드 작성 전 SOURCES.md 합법성 검토.
+   - 학습 데이터 수집 결정 (새 트랙 추가 / 라이선스 변경 / robots.txt 결과) 변경 시 `data/SOURCES.md` 갱신.
+   - 학습 모델 결정 (아키텍처 / 하이퍼파라미터 / 평가 지표 / SOTA 비교) 변경 시 `data/README.md` "CV/ML 학습 포인트" 섹션 갱신.
+
+10. **결정의 근거 항상 명시 — "왜 이렇게 했는가 / 다른 방법보다 왜 이게 나은가".**
+    - 사용자(태동)는 ML/DL/CV/UX 전 영역 마스터 목표 — 단순 코드 받아쓰기 X, **이해하면서 가는** 게 핵심.
+    - 라이브러리 / 아키텍처 / 하이퍼파라미터 / API / 디자인 / 인프라 결정마다 **"왜 A 보다 B 가 나은가"** 트레이드오프 명시.
+    - 추천 대안 1~2개도 같이 — 사용자가 다른 길을 알고 선택할 수 있게.
+    - 형식 (간결): `결정 → 근거 (한 줄) → 대안 (한 줄, 왜 안 채택했는지)`.
+    - 예) "ResNet-50 채택 — pretrained 안정 + timm zoo 즉시. EfficientNet-B0 도 후보였으나 학습 속도 느림 / mobile 추론 차이 미미."
+    - 짧게 — 매 결정마다 박사 논문 쓰지 말 것. 한두 줄로 충분. 사용자가 "왜?" 한 번 물으면 깊게 파고들 준비.
+    - 코드 주석에도 (특히 ML 코드) "왜 이 값" 한 줄. 학습 노트북엔 markdown 셀에 학습 포인트 명시.
+    - **단, 사용자가 "그냥 빨리 가자" 라고 명시하면 근거 생략 — 사용자 결정 우선.**
+
+11. **설명은 항상 쉽게 — 누구나 이해할 만큼.**
+    - 전문 용어 쓸 때 **반드시 한 줄 풀이 동봉** (예: "CLIP — 사진과 글자를 같은 공간에 배치하는 AI 모델 (OpenAI 2021)").
+    - 약어 처음 등장 시 풀어쓰기 (예: "CV (컴퓨터 비전 — 사진/영상 이해 분야)").
+    - 비유 / 예시 적극 — 추상 개념은 일상 사물로 (예: "Transfer Learning = 영어 잘하는 사람이 일본어 빨리 배우는 것").
+    - 수식 / 논문 인용은 보조 — 본문은 한국어 일반인 톤.
+    - "당연히 알겠지" 라는 가정 금지 — 모든 결정은 **처음 듣는 사람도 이해 가능** 하게.
+    - **"비전공자" 같은 표현 사용 금지** — 사용자 영역을 한정하지 말 것. "이해하기 쉬운 설명" 으로만 표현.
+    - 복잡한 결정은 단계별 — 한 번에 다 던지지 말고 "1단계는 X / 2단계는 Y" 분리.
+
 ---
 
 ## 1. 프로젝트 한 줄
@@ -218,17 +266,18 @@
 
 ---
 
-## 8. UX_DIARY 핵심 섹션 색인
+## 8. UX_DIARY 챕터 색인
 
-`docs/UX_DIARY.md` 안의 자주 보는 섹션 :
+`docs/UX_DIARY.md` (2026-05 재구조, 12 챕터) — 자주 보는 챕터:
 
-- **§14.10** — Hybrid 디자인 시스템 v2.1
-- **§14.11** — 인풋 · 라벨 정의
-- **§14.12** — 컬러 시스템 (#4C7EF7 + #FFC700 확정 근거)
-- **§14.13** — 모달 디자인 (Claude Design 핸드오프 분석)
-- **§14.14** — UI px 가이드
+- **§2** — UX 원칙 (사용자 친화 7원칙 / Nielsen 5 / 12 핵심 / 의료법 룰)
+- **§3** — 디자인 시스템 (컬러 #4C7EF7 + #FFC700 / 타입 / 간격 / 라운드 / 그림자 / 모션)
+- **§4** — 공통 컴포넌트 (AppCard / Button / TextField / OutputCard / 모달 3종)
+- **§5** — 화면 명세 14개 (Splash / Login v3 / Signup / Verify / Consent / Onboarding / Dashboard / Camera / Score / Health / Chat / Raffle / Settings)
+- **§6** — 인증 / 보안 정책 (계정 매칭 / 이메일 인증 / Rate Limit / 비밀번호 / 세션 / iOS 합류)
+- **§11** — 운영 / 검증 (접근성 / 시니어 모드 / 의료법 면책 / 응급 신호 / 핸드오프)
 
-새 화면 작업 시 — UX_DIARY 의 해당 섹션을 먼저 확인 → 약속 어기지 않는다.
+새 화면 작업 시 — UX_DIARY 의 해당 챕터를 먼저 확인 → 약속 어기지 않는다. 변경 시 같은 챕터 안에 누적 + §12 한 줄 색인 추가.
 
 ---
 
@@ -240,82 +289,6 @@
 
 ---
 
-## 10. 인증 / 보안 정책 (2026-05-13 확정)
+## 10. 인증 / 보안 정책
 
-### 10.1 계정 매칭 / 중복
-
-- **OAuth ID 매칭 우선** — 같은 `google_id` / `kakao_id` 면 같은 사람으로 간주 (자동 로그인).
-- **이메일 중복 차단** — 다른 방식이라도 같은 이메일이면 신규 가입 거부 (409 Conflict).
-  - 예: 이메일로 자체 가입한 `a@b.com` 이 있으면, 같은 이메일의 카카오 / 구글 신규 가입 차단.
-  - 안내문에 어떤 방식으로 가입돼 있는지 분기 노출 ("구글로 가입돼 있어요").
-- **다른 이메일이면 OK** — 같은 사람이라도 서로 다른 이메일이면 별개 계정 허용.
-- **이메일 동의 미수락 OAuth** (카카오에서 `kakao_account.email` 미동의) — `email=None` 으로 들어옴. 이 케이스는 이메일 중복 검사 스킵 (`kakao_id` 매칭만).
-
-### 10.2 이메일 인증
-
-- **시점**: 자체 회원가입 직후 강제. 미인증 유저는 보호 라우트 진입 시 verify-email 로 redirect.
-- **UX**: 6 자리 숫자 코드. 매직 링크 안 씀 (시니어 친화).
-- **유효 시간**: 10 분. 만료 시 재발송 요구.
-- **발송 채널**: Resend (개발 / MVP). 운영 가면 도메인 인증 후 자체 도메인 발신자로.
-- **재사용**: 비밀번호 찾기 등 다른 흐름에서도 같은 코드 발송 인프라 재사용 (`purpose` 컬럼으로 구분).
-
-### 10.3 Rate Limit (남용 방지) — **필수**
-
-이메일 / SMS / 푸시 / 외부 API 호출 모두 백엔드에서 가드. **모바일 가드는 보조 (UX 차원)**.
-
-| 작업 | 동일 식별자 기준 | 단기 제한 | 일일 제한 |
-|---|---|---|---|
-| 이메일 인증 코드 발송 | email | **1 분에 1 회** | **하루 5 회** |
-| 비밀번호 찾기 코드 발송 | email | 1 분에 1 회 | 하루 5 회 |
-| 로그인 시도 실패 | email + IP | 10 분에 5 회 | (계정 잠금 또는 captcha) |
-| OAuth 토큰 검증 | IP | 1 분에 10 회 | — |
-
-- 초과 시 응답 **429 Too Many Requests** + `Retry-After` 헤더.
-- 모바일 메시지: "잠시 후 다시 시도해주세요 (N 초 후 가능)".
-- 카운터 저장소: Redis (이미 docker-compose 에 들어있음). 키: `rl:{purpose}:{email}` , TTL 으로 자동 만료.
-- **개발 환경 우회**: `kDebugMode` + 특정 테스트 이메일 (예: `dev+*@lemonaid.test`) 만 rate-limit 면제. 운영에선 절대 우회 없음.
-
-### 10.4 비밀번호 정책
-
-- 최소 8 자, 영문 + 숫자 혼합 (특수문자 권장 — 강제 아님).
-- 평문 저장 금지 (bcrypt — 백엔드 `passlib`).
-- 사용자 표시 입력 마스킹 기본, 토글로 보이기 허용.
-
-### 10.5 세션 / 토큰
-
-- JWT access 30 분 / refresh 7 일.
-- access 만료 시 refresh 로 자동 갱신 (api_client 인터셉터).
-- refresh 도 만료 → 강제 로그아웃, `/login` 으로.
-- 로그아웃 시 백엔드 refresh 토큰 revoke + 로컬 secure storage 삭제.
-
-### 10.6 iOS 합류 시 작업 목록 (2026-05-13 합의 — Android 끝나고 진행)
-
-**책임**: 팀 Mac 보유자 + Apple Developer 계정 (팀이 발급, 형 부담 X).
-
-**GCP 추가 작업**:
-- iOS OAuth Client ID 발급 — Bundle ID `com.lemonaid.lemon_aid`
-- 새 환경변수: `GOOGLE_IOS_CLIENT_ID` (Android 와 별도)
-- Web Client ID 는 그대로 공용 (백엔드 검증용)
-
-**카카오 추가 작업**:
-- 디벨로퍼스 → 플랫폼 → iOS 등록, Bundle ID 입력
-- Native App Key 는 Android 와 동일한 값 사용 (플랫폼 공용)
-
-**iOS 측 코드**:
-- `mobile/ios/Runner/Info.plist`:
-  - URL Scheme: `kakao{KAKAO_NATIVE_APP_KEY}`
-  - URL Scheme: 구글 `REVERSED_CLIENT_ID`
-  - LSApplicationQueriesSchemes: `kakaokompassauth`, `kakaolink`
-- 다트 코드는 변경 거의 없음 (`kakao_flutter_sdk_user`, `google_sign_in` 둘 다 iOS/Android 공용)
-
-**Apple Sign-In (App Store 가이드라인 4.8 — 소셜 로그인 있으면 필수)**:
-- `sign_in_with_apple` 패키지 추가
-- 백엔드 `POST /api/v1/auth/apple` 엔드포인트 (apple_id 컬럼 추가 필요)
-- Apple Developer 콘솔에서 "Sign in with Apple" capability 활성화
-- 로그인 화면 "Apple 로 계속하기" 버튼 onPressed 연결
-
-**현재 코드 준비 상태**:
-- `OAuthConfig` 가 키 한 군데로 모음 — iOS 추가돼도 그대로 확장
-- `OAuthService.signInWithKakao()`, `signInWithGoogle()` 플랫폼 무관 동작
-- 백엔드 `/auth/kakao`, `/auth/google` 도 토큰만 받아 검증 — 클라이언트 OS 무관
-- Android 코드 (manifest / build.gradle) 외엔 iOS 합류로 인한 모바일 코드 변경 거의 없음
+→ **`docs/UX_DIARY.md` §6 참조** (계정 매칭 / 이메일 인증 / Rate Limit / 비밀번호 / 세션 토큰 / iOS 합류 시 작업 / 키 관리 — 모두 §6.1~§6.7).

@@ -54,11 +54,16 @@ class AuthState {
     required this.status,
     this.errorMessage,
     this.isSubmitting = false,
+    this.pendingOAuthName,
+    this.pendingOAuthEmail,
   });
 
   final AuthStatus status;
   final String? errorMessage;
   final bool isSubmitting;
+  // OAuth 신규 사용자 signup_flow 프리필용 — 한 번 쓰면 비움.
+  final String? pendingOAuthName;
+  final String? pendingOAuthEmail;
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
   bool get isReady => status != AuthStatus.unknown;
@@ -68,11 +73,16 @@ class AuthState {
     String? errorMessage,
     bool? isSubmitting,
     bool clearError = false,
+    String? pendingOAuthName,
+    String? pendingOAuthEmail,
+    bool clearPendingOAuth = false,
   }) {
     return AuthState(
       status: status ?? this.status,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isSubmitting: isSubmitting ?? this.isSubmitting,
+      pendingOAuthName: clearPendingOAuth ? null : (pendingOAuthName ?? this.pendingOAuthName),
+      pendingOAuthEmail: clearPendingOAuth ? null : (pendingOAuthEmail ?? this.pendingOAuthEmail),
     );
   }
 
@@ -171,10 +181,14 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final kakaoToken = await _oauth.signInWithKakao();
       await _auth.loginWithKakao(kakaoToken);
+      // 카카오 사용자 프로필 별도 조회 — signup_flow 프리필용 (실패 OK)
+      final profile = await _oauth.fetchKakaoProfile();
       state = state.copyWith(
         isSubmitting: false,
         status: AuthStatus.authenticated,
         clearError: true,
+        pendingOAuthName: profile?.name,
+        pendingOAuthEmail: profile?.email,
       );
       return true;
     } on OAuthFailure catch (e) {
@@ -196,16 +210,24 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// 구글 SDK → id_token → 백엔드 검증 → JWT 발급 → 상태 갱신.
+  /// 구글 SDK → id_token + profile → 백엔드 검증 → JWT 발급 → 상태 갱신.
   Future<bool> signInWithGoogle() async {
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final googleIdToken = await _oauth.signInWithGoogle();
-      await _auth.loginWithGoogle(googleIdToken);
+      // 프로필 포함 메서드 사용 — signup_flow 프리필
+      final result = await _oauth.signInWithGoogleWithProfile();
+      if (result == null) {
+        // 정상 경로면 OAuthFailure 가 던져졌어야 함
+        state = state.copyWith(isSubmitting: false, errorMessage: '구글 로그인이 취소됐어요');
+        return false;
+      }
+      await _auth.loginWithGoogle(result.idToken);
       state = state.copyWith(
         isSubmitting: false,
         status: AuthStatus.authenticated,
         clearError: true,
+        pendingOAuthName: result.profile.name,
+        pendingOAuthEmail: result.profile.email,
       );
       return true;
     } on OAuthFailure catch (e) {
@@ -247,7 +269,10 @@ class AuthController extends StateNotifier<AuthState> {
     return _auth.sendEmailCode(email: email, purpose: purpose);
   }
 
-  /// 코드 검증. signup 인 경우 토큰 자동 발급 + 인증 상태 authenticated 로 갱신.
+  /// 코드 검증.
+  /// signup 진행 중에는 토큰만 저장하고 state.status 는 unauthenticated 유지.
+  /// → router 가 자동으로 shell 로 보내는 걸 방지, signup_flow 끝까지 사용자가 진행.
+  /// 완료 시점에 별도로 markAuthenticated() 호출 (또는 다음 로그인부터 자연 인증).
   Future<String> verifyEmailCode({
     required String email,
     required String code,
@@ -258,14 +283,21 @@ class AuthController extends StateNotifier<AuthState> {
       code: code,
       purpose: purpose,
     );
+    // 토큰은 _auth 내부에서 storage 에 저장됨.
+    // state 는 그대로 유지 — signup_flow 가 끝까지 화면 통제.
     if (result.tokens != null) {
-      // signup → 토큰 받음 → 즉시 로그인 상태로
-      state = state.copyWith(
-        status: AuthStatus.authenticated,
-        clearError: true,
-      );
+      // 에러 메시지만 비움
+      state = state.copyWith(clearError: true);
     }
     return result.message;
+  }
+
+  /// signup_flow 마지막 _finish() 에서 호출 — 토큰은 이미 저장돼있음
+  void markAuthenticated() {
+    state = state.copyWith(
+      status: AuthStatus.authenticated,
+      clearError: true,
+    );
   }
 
   /// 마지막 로그인 방식 (UX 힌트용). 토큰 지워져도 보존됨.
@@ -282,5 +314,10 @@ class AuthController extends StateNotifier<AuthState> {
 
   void clearError() {
     state = state.copyWith(clearError: true);
+  }
+
+  /// OAuth 프리필 데이터 사용 후 비움 — signup_flow 진입 직후 호출
+  void clearPendingOAuth() {
+    state = state.copyWith(clearPendingOAuth: true);
   }
 }

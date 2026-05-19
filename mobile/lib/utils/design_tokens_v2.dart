@@ -26,14 +26,19 @@ class AppColor {
   static const Color inkDisabled  = Color(0xFFC5C8CE);
 
   // 브랜드 ───────────────────────────────────
-  // 메인 컬러 확정 (UX_DIARY §14.12, 2026-05-12)
-  static const Color brand        = Color(0xFF4C7EF7);   // Lemon Aid 블루
-  static const Color brandPressed = Color(0xFF2F66E2);   // 눌림
-  static const Color brandSoft    = Color(0xFFEDF3FF);   // chip 배경 / 옅은 강조
+  // 메인 컬러 확정 (UX_DIARY §14.12, 2026-05-18 갱신)
+  // 블루 폐기 → 워드마크 "레몬·에이드" 중간 점 색 (Lemon Yellow) 으로 통일
+  // 일관성 §17: brand = yellow 로 통합. 모든 CTA / 활성 / 강조에 사용.
+  static const Color brand        = Color(0xFFFFC700);   // ★ Lemon Aid 메인 (워드마크 점 색)
+  static const Color brandPressed = Color(0xFFE5B300);   // 눌림 (어두운 톤)
+  static const Color brandDeep    = Color(0xFFC99100);   // 깊은 톤 (텍스트 on yellow)
+  static const Color brandSoft    = Color(0xFFFFF6CC);   // chip 배경 / 옅은 강조
+  static const Color brandTint    = Color(0xFFFFF0A8);   // 더 옅은 노랑 (선택 배경)
 
   // 액센트 ───────────────────────────────────
-  static const Color yellow       = Color(0xFFFFC700);   // Lemon Aid 레몬 (캐릭터·하이라이트)
-  static const Color yellowSoft   = Color(0xFFFFF6CC);   // 옅은 노랑 배경
+  // 호환성 유지 — yellow = brand 동의어
+  static const Color yellow       = Color(0xFFFFC700);   // = brand (마스코트·하이라이트)
+  static const Color yellowSoft   = Color(0xFFFFF6CC);   // = brandSoft
   static const Color kakao        = Color(0xFFFEE500);   // 카카오 브랜드 가이드
   static const Color appleBlack   = Color(0xFF1A1F2E);
 
@@ -41,8 +46,14 @@ class AppColor {
   static const Color success      = Color(0xFF22B07D);   // Claude LA.success
   static const Color successSoft  = Color(0xFFE6F5EE);   // 옅은 초록 배경 (chip·badge)
   static const Color warning      = Color(0xFFFF9500);
+  static const Color warningSoft  = Color(0xFFFFEACC);   // 옅은 주황 배경
   static const Color danger       = Color(0xFFEF4452);   // Claude LA.danger
   static const Color dangerSoft   = Color(0xFFFDE7E9);
+  // "확인 필요" — OCR 신뢰도 낮음 / 의료 면책 등 (signup_flow_screen.dart 사용)
+  static const Color review       = Color(0xFFB86A00);
+  static const Color reviewSoft   = Color(0xFFFFE9C4);
+  static const Color info         = Color(0xFF2CA8E0);
+  static const Color infoSoft     = Color(0xFFDAF1FB);
 }
 
 class AppShadow {
@@ -120,6 +131,16 @@ class AppSpace {
   static const double xl  = 24;
   static const double xxl = 32;
   static const double xxxl = 48;
+
+  // ─── 2026-05-18: 페이지 좌우 패딩 통일 (§17 일관성) ───
+  // 모든 화면의 horizontal padding 은 page 로 통일
+  // 시니어 친화 + 카드 숨쉴 공간 확보
+  // 2026-05-18: 20 → 24, 전체 화면 좌우 여백 살짝 더 확보 (시니어 친화 + 호흡)
+  static const double page = 24;        // ★ 페이지 좌우 패딩 표준
+  static const double pageTop = 24;     // 페이지 상단
+  static const double pageBottom = 32;  // 페이지 하단 (CTA 와 간격)
+  static const double cardInside = 20;  // 카드 안 padding
+  static const double sectionGap = 28;  // 섹션 사이 간격
 }
 
 class AppText {
@@ -324,17 +345,12 @@ class AppSecondaryButton extends StatelessWidget {
     this.leading,
   });
 
-  // 흰 배경 위 흰 버튼 — 2단 그림자 (가까운 경계 + 부드러운 입체감)
+  // 흰 배경 위 흰 버튼 — flat 톤 1단 그림자 (회원가입 박스와 통일)
   static const List<BoxShadow> _secondaryShadow = [
     BoxShadow(
-      color: Color.fromRGBO(140, 155, 175, 0.09),
-      blurRadius: 4,
-      offset: Offset(0, 2),
-    ),
-    BoxShadow(
-      color: Color.fromRGBO(140, 155, 175, 0.22),
-      blurRadius: 18,
-      offset: Offset(0, 8),
+      color: Color.fromRGBO(140, 155, 175, 0.20),
+      blurRadius: 16,
+      offset: Offset(0, 5),
     ),
   ];
 

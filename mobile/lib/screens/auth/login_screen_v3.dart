@@ -14,6 +14,7 @@ import '../../services/token_storage.dart';
 import '../../utils/oauth_config.dart';
 import '../../utils/router.dart';
 import '../../utils/design_tokens_v2.dart';
+import 'consent_modal.dart';
 
 // 카카오 로고 위 글자 색 — 카카오 가이드의 진한 갈색 (#191600)
 const Color _kakaoInk = Color(0xFF191600);
@@ -40,18 +41,32 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
     setState(() => _lastProvider = p);
   }
 
-  /// tooltip 영역 — 매칭되면 실 위젯, 안 되면 SizedBox.shrink().
-  /// 캐릭터 위치 고정은 OAuth 영역 위 SizedBox 로 보장 (각 슬롯 동적 높이는 OK).
-  Widget _tooltipFor(AuthProvider provider) {
-    if (_lastProvider != provider) return const SizedBox.shrink();
+  /// 버튼 위에 "최근 로그인" 말풍선을 overlay 로 띄움.
+  /// 말풍선이 자리를 차지하지 않아 캐릭터 / 다른 버튼 위치 흔들림 0.
+  /// OAuth 3 종 (kakao / google / apple) 만 적용 — 이메일은 정책상 안 띄움.
+  Widget _withTooltipOverlay({
+    required AuthProvider provider,
+    required Widget child,
+  }) {
+    if (provider == AuthProvider.email || _lastProvider != provider) {
+      return child;
+    }
     final (bg, fg, border) = _tooltipColors(provider);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpace.sm),
-      child: _RecentLoginTooltip(
-        background: bg,
-        foreground: fg,
-        borderColor: border,
-      ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        // 버튼 상단 바깥쪽으로 말풍선 + 아래로 향한 화살표
+        Positioned(
+          left: 0,
+          top: -36, // 말풍선 본체 ~28 + 화살표 ~6 → -36 으로 버튼 바로 위
+          child: _RecentLoginTooltip(
+            background: bg,
+            foreground: fg,
+            borderColor: border,
+          ),
+        ),
+      ],
     );
   }
 
@@ -68,8 +83,9 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
         // Apple — 검정 배경 + 흰 글자
         return (AppColor.appleBlack, Colors.white, null);
       case AuthProvider.email:
-        // 자체 가입/로그인 — 브랜드 블루 배경 + 흰 글자
-        return (AppColor.brand, Colors.white, null);
+        // 자체 가입/로그인 — 브랜드 레몬 배경 + 검정 글자 (2026-05-18 swap)
+        // 블루(흰글자) → 레몬(검정글자). 대비 4.5:1+ 확보 (시니어 친화 §17)
+        return (AppColor.brand, AppColor.ink, null);
     }
   }
 
@@ -86,7 +102,8 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
         backgroundColor: AppColor.bg,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpace.xl),
+            // 2026-05-18: page 토큰 통일 (§17 일관성)
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -97,11 +114,10 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
                 const SizedBox(height: 9),  // 워드마크 ↔ 태그라인 간격 12 → 9 (태그라인 위로 3dp)
                 const _Tagline(),
 
-                // 태그라인 ↔ 캐릭터 사이 — Spacer 가 남은 세로 공간 흡수.
-                // 기존 Spacer 1 → 캐릭터·버튼 묶음 살짝 위로: Spacer flex 비율을 잘라
-                //   위쪽 (Spacer 3) : 아래쪽 (SizedBox 으로 추가 여백) 으로 분배해
-                //   결과적으로 묶음이 약 12 ~ 16dp 위로 올라옴.
-                const Spacer(flex: 3),
+                // 태그라인 ↔ 캐릭터 사이 — 캐릭터·버튼 묶음 아래로 내림.
+                // 2026-05-18: signup_flow CTA 위치와 호흡 맞추기 위해 flex 3 → 5
+                // 캐릭터·OAuth·이메일 버튼이 화면 하단 1/3 영역에 모이도록 정렬.
+                const Spacer(flex: 5),
 
                 // ─── 캐릭터 ───
                 Transform.translate(
@@ -123,41 +139,46 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
                 const SizedBox(height: AppSpace.sm + 4),
 
                 // ─── OAuth 3종 (카카오 / 구글 / Apple) ───
-                // 각 버튼 위에 — 마지막 로그인 방식이 그 버튼이면 "최근 로그인" 말풍선 표시.
-                // 카카오·Apple → 뉴모 액센트 (감성 강조, 진입 첫 화면 인상)
-                // 구글 → Flat (대비, 균형)
-                _tooltipFor(AuthProvider.kakao),
-                AppPrimaryButton(
-                  label: '카카오로 계속하기',
-                  color: AppColor.kakao,
-                  textColor: _kakaoInk,
-                  accent: true,
-                  onPressed: () => _handleKakaoLogin(context, ref),
-                  leading: SvgPicture.asset(
-                    'assets/icons/kakao_message.svg',
-                    width: 20, height: 20,
-                    colorFilter: const ColorFilter.mode(_kakaoInk, BlendMode.srcIn),
+                // "최근 로그인" 말풍선은 버튼 위로 overlay (Stack) — 자리 차지 X.
+                // 캐릭터 / 다른 버튼 위치 흔들림 0.
+                _withTooltipOverlay(
+                  provider: AuthProvider.kakao,
+                  child: AppPrimaryButton(
+                    label: '카카오로 계속하기',
+                    color: AppColor.kakao,
+                    textColor: _kakaoInk,
+                    accent: true,
+                    onPressed: () => _handleKakaoLogin(context, ref),
+                    leading: SvgPicture.asset(
+                      'assets/icons/kakao_message.svg',
+                      width: 20, height: 20,
+                      colorFilter: const ColorFilter.mode(_kakaoInk, BlendMode.srcIn),
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppSpace.md),
-                _tooltipFor(AuthProvider.google),
-                AppSecondaryButton(
-                  label: '구글로 계속하기',
-                  onPressed: () => _handleGoogleLogin(context, ref),
-                  leading: SvgPicture.asset('assets/icons/google_g.svg', width: 20, height: 20),
+                _withTooltipOverlay(
+                  provider: AuthProvider.google,
+                  child: AppSecondaryButton(
+                    label: '구글로 계속하기',
+                    onPressed: () => _handleGoogleLogin(context, ref),
+                    leading: SvgPicture.asset('assets/icons/google_g.svg', width: 20, height: 20),
+                  ),
                 ),
                 const SizedBox(height: AppSpace.md),
-                _tooltipFor(AuthProvider.apple),
-                AppPrimaryButton(
-                  label: 'Apple로 계속하기',
-                  color: AppColor.appleBlack,
-                  accent: true,
-                  // Apple 로그인은 iOS 합류 후 구현 — sign_in_with_apple 추가 필요.
-                  onPressed: () => _showNotReady(context, 'Apple'),
-                  leading: SvgPicture.asset(
-                    'assets/icons/apple_logo.svg',
-                    width: 20, height: 20,
-                    colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                _withTooltipOverlay(
+                  provider: AuthProvider.apple,
+                  child: AppPrimaryButton(
+                    label: 'Apple로 계속하기',
+                    color: AppColor.appleBlack,
+                    accent: true,
+                    // Apple 로그인은 iOS 합류 후 구현 — sign_in_with_apple 추가 필요.
+                    onPressed: () => _showNotReady(context, 'Apple'),
+                    leading: SvgPicture.asset(
+                      'assets/icons/apple_logo.svg',
+                      width: 20, height: 20,
+                      colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                    ),
                   ),
                 ),
 
@@ -179,17 +200,16 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
                 ),
                 const SizedBox(height: AppSpace.md),
 
-                // 이메일 로그인 영역에도 마지막 로그인 표시 — 로그인 버튼 위쪽으로
-                _tooltipFor(AuthProvider.email),
-
                 // ─── 회원가입 / 로그인 1:2 ───
+                // (정책: 이메일 자체 가입은 "최근 로그인" 말풍선 안 띄움 — OAuth 3종만)
                 Row(
                   children: [
                     Expanded(
                       flex: 1,
                       child: AppSecondaryButton(
                         label: '회원가입',
-                        onPressed: () => context.push(AppRoute.signup),
+                        // 약관 모달 먼저 → 동의 시에만 signup 진입
+                        onPressed: () => _startSignupWithConsent(context),
                       ),
                     ),
                     const SizedBox(width: AppSpace.sm),
@@ -204,11 +224,9 @@ class _LoginScreenV3State extends ConsumerState<LoginScreenV3> {
                   ],
                 ),
 
+                // 2026-05-18: 로그인 하단 — 고정 (변경 금지)
+                //   마지막 버튼 → xl(24) → © (micro) → md(12) → 바닥
                 const SizedBox(height: AppSpace.xl),
-
-                // 캐릭터·버튼 묶음을 위로 끌어올리기 위한 하단 흡수 Spacer
-                const Spacer(flex: 1),
-
                 Center(
                   child: Text(
                     '© Lemon Aid · 이용약관 · 개인정보',
@@ -474,14 +492,19 @@ class _ArrowPainter extends CustomPainter {
 
 // ─── OAuth 버튼 핸들러 ───
 // 키 미주입 상태에서 누르면 안내 SnackBar 만 띄움.
-// 키 있으면 SDK 호출 → 백엔드 검증 → 인증 상태 변경 (router 가 자동 /shell 이동)
+// 키 있으면 SDK 호출 → 백엔드 검증 → 인증 상태 변경
+// 2026-05-18: OAuth 성공 후 signup_complete 플래그 검사
+//   - 미완료 (신규 사용자) → signup_flow (/signup) 로 진입
+//   - 완료 (재방문) → router 자동 redirect 로 /shell/home
 Future<void> _handleKakaoLogin(BuildContext context, WidgetRef ref) async {
   if (!OAuthConfig.hasKakaoKey) {
     _showNotReady(context, '카카오');
     return;
   }
   final ok = await ref.read(authControllerProvider.notifier).signInWithKakao();
-  if (!ok && context.mounted) {
+  if (ok && context.mounted) {
+    await _routeAfterOAuth(context, ref);
+  } else if (!ok && context.mounted) {
     final msg = ref.read(authControllerProvider).errorMessage;
     if (msg != null && msg.isNotEmpty) {
       _showSnack(context, msg);
@@ -495,11 +518,59 @@ Future<void> _handleGoogleLogin(BuildContext context, WidgetRef ref) async {
     return;
   }
   final ok = await ref.read(authControllerProvider.notifier).signInWithGoogle();
-  if (!ok && context.mounted) {
+  if (ok && context.mounted) {
+    await _routeAfterOAuth(context, ref);
+  } else if (!ok && context.mounted) {
     final msg = ref.read(authControllerProvider).errorMessage;
     if (msg != null && msg.isNotEmpty) {
       _showSnack(context, msg);
     }
+  }
+}
+
+/// 회원가입 진입 직전 약관 동의 모달 → 동의 시에만 /signup 으로 push.
+/// 동의 안 하면 /login 그대로 유지 (signup 미진입).
+Future<void> _startSignupWithConsent(BuildContext context) async {
+  final result = await showConsentModal(context);
+  if (result == null || !result.agreed) return;
+  if (!context.mounted) return;
+  // 약관 동의 완료 플래그를 query 로 전달 (signup_flow 가 step 10 약관 화면 스킵)
+  final mk = result.marketing ? '1' : '0';
+  context.push('${AppRoute.signup}?consented=1&mk=$mk');
+}
+
+// OAuth 성공 후 신규/재방문 분기
+Future<void> _routeAfterOAuth(BuildContext context, WidgetRef ref) async {
+  try {
+    final done = await TokenStorage().isSignupComplete();
+    if (!context.mounted) return;
+    if (!done) {
+      // 신규 OAuth 사용자 → 약관 모달 먼저 → 동의 시 회원가입 진입
+      final consent = await showConsentModal(context);
+      if (!context.mounted) return;
+      if (consent == null || !consent.agreed) {
+        // 미동의 → OAuth 로그아웃 후 로그인 화면 유지
+        await ref.read(authControllerProvider.notifier).logout();
+        return;
+      }
+      // oauth=1 + consented=1 + prefill
+      final auth = ref.read(authControllerProvider);
+      final qp = <String, String>{
+        'oauth': '1',
+        'consented': '1',
+        'mk': consent.marketing ? '1' : '0',
+      };
+      if (auth.pendingOAuthName?.isNotEmpty ?? false) qp['name'] = auth.pendingOAuthName!;
+      if (auth.pendingOAuthEmail?.isNotEmpty ?? false) qp['email'] = auth.pendingOAuthEmail!;
+      final qs = qp.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+      ref.read(authControllerProvider.notifier).clearPendingOAuth();
+      if (!context.mounted) return;
+      context.go('${AppRoute.signup}?$qs');
+    } else {
+      context.go(AppRoute.shellHome);
+    }
+  } catch (_) {
+    if (context.mounted) context.go(AppRoute.shellHome);
   }
 }
 
@@ -527,6 +598,8 @@ Future<void> _showEmailLoginSheet(BuildContext context, WidgetRef ref) async {
     context: context,
     isScrollControlled: true,
     backgroundColor: AppColor.bg,
+    // consent_modal 과 핸들 패턴 통일
+    showDragHandle: false,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -685,7 +758,8 @@ class _EmailLoginSheetState extends ConsumerState<_EmailLoginSheet> {
                     ? null
                     : () {
                         Navigator.of(context).pop();
-                        context.push(AppRoute.signup);
+                        // 약관 모달 먼저 → 동의 시 signup
+                        _startSignupWithConsent(context);
                       },
                 child: Text(
                   '계정이 없어요 — 회원가입',

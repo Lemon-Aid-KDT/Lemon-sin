@@ -186,8 +186,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               // ─── Lottie 캐릭터 로딩 ───
               // lemonaid_gold.json — 원본 6 초 / 30fps, 1.5x 속도로 4 초 사이클 (무한 반복).
               SizedBox(
-                width: 280,
-                height: 280,
+                // 2026-05-18: 280 → 240 미세하게 줄임
+                width: 240,
+                height: 240,
                 child: Lottie.asset(
                   'assets/animations/lemonaid_gold.json',
                   fit: BoxFit.contain,

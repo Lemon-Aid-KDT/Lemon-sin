@@ -264,6 +264,8 @@ Future<void> showAppBottomSheet(
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x80141A2C),
     isScrollControlled: true,
+    // consent_modal 과 핸들 패턴 통일 — Material 3 기본 핸들 OFF
+    showDragHandle: false,
     builder: (_) => _AppBottomSheet(title: title, subtitle: subtitle, items: items),
   );
 }
@@ -302,14 +304,14 @@ class _AppBottomSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 드래그 핸들
+              // 드래그 핸들 — consent_modal 과 통일 (36×4 + border + radius 2)
               Center(
                 child: Container(
-                  width: 44, height: 5,
-                  margin: const EdgeInsets.only(top: 4, bottom: 14),
+                  width: 36, height: 4,
+                  margin: const EdgeInsets.only(top: 4, bottom: AppSpace.lg),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD2D7E1),
-                    borderRadius: BorderRadius.circular(999),
+                    color: AppColor.border,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),

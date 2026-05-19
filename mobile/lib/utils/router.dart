@@ -11,11 +11,13 @@ import '../providers/auth_provider.dart';
 import '../screens/splash_screen.dart';
 import '../screens/auth/login_screen_v3.dart';
 import '../screens/auth/signup_screen.dart';
+import '../screens/auth/signup_flow_screen.dart';
 import '../screens/auth/verify_email_screen.dart';
 import '../screens/auth/consent_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/camera_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/dashboard_screen_v3.dart';
 import '../screens/chat_screen.dart';
 import '../screens/score_screen.dart';
 import '../screens/raffle_screen.dart';
@@ -35,6 +37,7 @@ class AppRoute {
   static const String home         = '/home';
   static const String camera       = '/camera';
   static const String dashboard    = '/dashboard';
+  static const String dashboardV3  = '/dashboard-v3';   // PREVIEW — LADS §13 v3 토큰 검증
   static const String chat         = '/chat';
   static const String score        = '/score';
   static const String raffle       = '/raffle';
@@ -80,9 +83,9 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
       if (!auth.isAuthenticated && !isAuthRoute) {
         return AppRoute.login;
       }
-      // 로그인 됐는데 login/signup 화면이면 셸로 보냄
-      if (auth.isAuthenticated &&
-          (path == AppRoute.login || path == AppRoute.signup)) {
+      // 로그인 됐는데 login 화면이면 셸로
+      // (OAuth 신규 사용자 → signup_flow 분기는 listener 측에서 화면 진입 후 한 번 처리)
+      if (auth.isAuthenticated && path == AppRoute.login) {
         return '/shell/home';
       }
       return null;
@@ -106,6 +109,27 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoute.signup,
       name: 'signup',
+      // 2026-05-18: 10-step flow 로 교체 (Claude Design v1 구성 차용)
+      // /signup?oauth=1&consented=1&mk=1&name=xxx&email=xxx
+      //   - oauth=1   : 이메일/비번/인증 단계 스킵
+      //   - consented=1 : 약관 사전 동의 (step 10 약관 화면 스킵)
+      //   - mk=1      : 마케팅 동의 여부
+      //   - name/email: 프리필
+      builder: (context, state) {
+        final qp = state.uri.queryParameters;
+        return SignupFlowScreen(
+          oauthMode: qp['oauth'] == '1',
+          preConsented: qp['consented'] == '1',
+          marketingAgreed: qp['mk'] == '1',
+          prefillName: qp['name'],
+          prefillEmail: qp['email'],
+        );
+      },
+    ),
+    // 기존 단순 signup (이메일/비번만) 은 별도 경로로 백업
+    GoRoute(
+      path: '/signup-legacy',
+      name: 'signup-legacy',
       builder: (context, state) => const SignupScreen(),
     ),
     GoRoute(
@@ -141,6 +165,12 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
       path: AppRoute.dashboard,
       name: 'dashboard',
       builder: (context, state) => const DashboardScreen(),
+    ),
+    // PREVIEW — Dashboard v3 (LADS §13). Claude Design Export ZIP 도착 시 본 화면 교체.
+    GoRoute(
+      path: AppRoute.dashboardV3,
+      name: 'dashboardV3',
+      builder: (context, state) => const DashboardScreenV3(),
     ),
     GoRoute(
       path: AppRoute.chat,
