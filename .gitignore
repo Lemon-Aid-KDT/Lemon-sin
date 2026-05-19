@@ -80,3 +80,6 @@ node_modules/
 
 # === Local independent AJIN checkout ===
 /04_AJIN/
+
+# === Local independent MediWay checkout ===
+/02_MediWay/
