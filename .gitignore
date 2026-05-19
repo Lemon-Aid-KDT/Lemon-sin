@@ -77,3 +77,6 @@ node_modules/
 # Managed by launchd: ~/Library/LaunchAgents/com.lemonaid.sync-taedong-design.plist
 03_lemon_healthcare/taedong-design/Lemon-sin-taedong-design/
 03_lemon_healthcare/taedong-design/Lemon-sin-taedong-design.zip-backup/
+
+# === Local independent AJIN checkout ===
+/04_AJIN/
