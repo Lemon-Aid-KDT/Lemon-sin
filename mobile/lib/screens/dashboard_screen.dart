@@ -1,29 +1,19 @@
-// screens/dashboard_screen.dart — 홈 (5종 출력 카드)
+// screens/dashboard_screen.dart — 홈 (메인 화면)
 //
-// 참조:
-//   - PROJECT_GUIDE.md §3.5 주요 화면 / §8 5종 출력 메타스펙
-//   - mobile/CLAUDE.md §3.4 결과 카드 4 요소 약속
-//   - docs/UX_DIARY.md §5.6 Dashboard
+// 디자인: Pillyze 시안 기반 LADS 톤 변환
+//   - 상단: brand 노랑 헤더 (로고 + 우측 아이콘 3개 + 캘린더 weekday strip)
+//   - 본문: 흰 배경 카드들 (P0 작업 — 추후 단계별)
 //
-// 구조 (2026-05-14 결정):
-//   - 세로 스크롤 스택 (시니어 친화)
-//   - 카드 5개:
-//     1. 부족 영양소 추천
-//     2. 권장 섭취량 (KDRIs)
-//     3. 체중 예측
-//     4. 활동 권고 (v4)
-//     5. 목적별 분석 (눈/간/피로)
-//   - 각 카드 = OutputCard 위젯 (label / headline / detail / source / confidence)
-//   - 데이터: Mock (백엔드 /dashboard 엔드포인트 합의 후 교체)
-//
-// FAB: 카메라 진입 (사진 촬영 → AI 분석)
+// 작업 순서:
+//   ✅ 1. 상단 헤더 + weekday 캘린더 (지금 단계)
+//   ⏳ 2. 식단 카드
+//   ⏳ 3. 5종 분석 결과
+//   ⏳ 4. 최근 분석
+//   ⏳ 5. 의료 면책
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../utils/design_tokens_v2.dart';
-import '../utils/router.dart';
-import '../widgets/common/output_card.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -32,195 +22,269 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColor.bg,
-      appBar: AppBar(
-        backgroundColor: AppColor.bg,
-        elevation: 0,
-        title: const Text(
-          '오늘의 건강',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w800,
-            color: AppColor.ink,
-            letterSpacing: -0.5,
+      body: Column(
+        children: [
+          // ─── 상단 brand 헤더 (status bar 까지 포함) ───
+          const _BrandHeader(),
+
+          // ─── 본문 ───
+          // 헤더(노랑)와 만나는 지점에서 본문(흰)이 위쪽으로 둥글게 올라옴 (Pillyze 톤)
+          Expanded(
+            child: Transform.translate(
+              offset: const Offset(0, -24),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColor.bg,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
+                  ),
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.page,
+                    AppSpace.xl,
+                    AppSpace.page,
+                    AppSpace.xl + 80,
+                  ),
+                  children: const [
+                    _MainCard(),
+                    SizedBox(height: AppSpace.md),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-        centerTitle: false,
-      ),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpace.xl,
-            AppSpace.md,
-            AppSpace.xl,
-            AppSpace.xxxl + 64, // FAB 가리지 않게 하단 여백
-          ),
-          children: const [
-            _DateGreeting(),
-            SizedBox(height: AppSpace.lg),
-            _NutrientShortageCard(),
-            SizedBox(height: AppSpace.md),
-            _KdriIntakeCard(),
-            SizedBox(height: AppSpace.md),
-            _WeightPredictionCard(),
-            SizedBox(height: AppSpace.md),
-            _ActivityAdviceCard(),
-            SizedBox(height: AppSpace.md),
-            _PurposeAnalysisCard(),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push(AppRoute.camera),
-        backgroundColor: AppColor.brand,
-        foregroundColor: Colors.white,
-        elevation: 2,
-        label: const Text(
-          '사진 찍기',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        icon: const Icon(Icons.photo_camera_rounded),
+        ],
       ),
     );
   }
 }
 
-// ─── 상단 인사말 + 날짜 ───
-class _DateGreeting extends StatelessWidget {
-  const _DateGreeting();
+// ═══════════════════════════════════════════
+// 상단 brand 헤더 (Pillyze 톤)
+//   - status bar 부터 색 채움
+//   - 로고 + 우측 아이콘 3개
+//   - weekday strip + 날짜 (오늘 = 흰 원 강조)
+// ═══════════════════════════════════════════
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final weekday = ['월', '화', '수', '목', '금', '토', '일'][now.weekday - 1];
-    final dateText = '${now.month}월 ${now.day}일 ($weekday)';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final today = DateTime.now();
+    // 이번 주 월요일 기준 7일
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final days = List.generate(7, (i) => monday.add(Duration(days: i)));
+    const weekdayLabels = ['월', '화', '수', '목', '금', '토', '일'];
+
+    return Container(
+      color: AppColor.brand,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          // 노란 헤더 영역 더 넓고 길게 — 위 lg(16), 아래 xl+xl(48) + 좌우 page(24)
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.page, AppSpace.lg, AppSpace.page, AppSpace.xl + AppSpace.xl,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ─── 상단 행: 한국어 워드마크 + 우측 아이콘들 ───
+              Row(
+                children: [
+                  // 워드마크: "레몬·에이드" — 가운데 점 강조 (브랜드 시그니처)
+                  const _Wordmark(),
+                  const Spacer(),
+                  _HeaderIconButton(
+                    icon: Icons.calendar_today_rounded,
+                    onTap: () {
+                      // TODO: 캘린더 화면
+                    },
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  _HeaderIconButton(
+                    icon: Icons.notifications_rounded,
+                    onTap: () {
+                      // TODO: 알림 화면
+                    },
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  _HeaderIconButton(
+                    icon: Icons.person_rounded,
+                    onTap: () {
+                      // TODO: 프로필 화면
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: AppSpace.xl),
+
+              // ─── 요일 strip ───
+              Row(
+                children: [
+                  for (int i = 0; i < 7; i++)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          weekdayLabels[i],
+                          style: AppText.caption.copyWith(
+                            color: AppColor.ink.withOpacity(0.75),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
+              const SizedBox(height: AppSpace.sm),
+
+              // ─── 날짜 strip (오늘 = 흰 원 강조) ───
+              Row(
+                children: [
+                  for (int i = 0; i < 7; i++)
+                    Expanded(
+                      child: _DateBubble(
+                        day: days[i].day,
+                        isToday: _isSameDay(days[i], today),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+/// 한국어 워드마크 — "레몬·에이드"
+/// 가운데 점은 작은 원 (브랜드 시그니처 — 로그인 화면 "Lemon·Aid" 와 동일 톤)
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  @override
+  Widget build(BuildContext context) {
+    const baseStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontSize: 22,
+      fontWeight: FontWeight.w800,
+      color: AppColor.ink,
+      letterSpacing: -0.6,
+      height: 1.0,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          dateText,
-          style: AppText.caption.copyWith(
-            color: AppColor.inkTertiary,
-            fontWeight: FontWeight.w600,
+        const Text('레몬', style: baseStyle),
+        const SizedBox(width: 5),
+        // 가운데 점 — 흰색 원 (노란 헤더 위에서 또렷)
+        Container(
+          width: 6, height: 6,
+          decoration: const BoxDecoration(
+            color: AppColor.surface,
+            shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          '오늘 챙겨야 할 5가지예요',
-          style: AppText.bodyLg.copyWith(
-            fontWeight: FontWeight.w700,
-            color: AppColor.ink,
-          ),
-        ),
+        const SizedBox(width: 5),
+        const Text('에이드', style: baseStyle),
       ],
     );
   }
 }
 
-// ─── 1. 부족 영양소 ───
-// AI 가 최근 식사 기록 분석해 부족한 영양소 추천. 신뢰도 모델 출력.
-class _NutrientShortageCard extends StatelessWidget {
-  const _NutrientShortageCard();
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _HeaderIconButton({required this.icon, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
-    return OutputCard(
-      label: '부족한 영양소',
-      icon: Icons.eco_rounded,
-      iconBg: AppColor.successSoft,
-      iconFg: AppColor.success,
-      headline: '비타민 D 부족',
-      detail: '최근 7일 식사에서 비타민 D 권장량의 38%만 섭취했어요.',
-      source: 'KDRIs 2020 · AI 분석',
-      confidence: 0.84,
-      onTap: () {
-        // TODO: 영양소 상세 화면
-      },
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 32, height: 32,
+        child: Icon(icon, color: AppColor.ink, size: 22),
+      ),
     );
   }
 }
 
-// ─── 2. 권장 섭취량 (KDRIs) ───
-class _KdriIntakeCard extends StatelessWidget {
-  const _KdriIntakeCard();
+class _DateBubble extends StatelessWidget {
+  final int day;
+  final bool isToday;
+  const _DateBubble({required this.day, required this.isToday});
+
   @override
   Widget build(BuildContext context) {
-    return OutputCard(
-      label: '오늘 권장 섭취량',
-      icon: Icons.restaurant_rounded,
-      iconBg: AppColor.brandSoft,
-      iconFg: AppColor.brand,
-      headline: '칼로리 1,840 kcal',
-      detail: '단백질 72g · 탄수화물 230g · 지방 60g',
-      source: 'KDRIs 2020 · 50대 남성 기준',
-      confidence: 0.95,
-      onTap: () {
-        // TODO: KDRIs 상세
-      },
+    return Center(
+      child: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: isToday ? AppColor.surface : Colors.transparent,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          '$day',
+          style: AppText.bodyLg.copyWith(
+            color: AppColor.ink,
+            fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+            fontSize: 16,
+          ),
+        ),
+      ),
     );
   }
 }
 
-// ─── 3. 체중 예측 ───
-class _WeightPredictionCard extends StatelessWidget {
-  const _WeightPredictionCard();
-  @override
-  Widget build(BuildContext context) {
-    return OutputCard(
-      label: '체중 예측',
-      icon: Icons.trending_down_rounded,
-      iconBg: AppColor.yellowSoft,
-      iconFg: AppColor.warning,
-      headline: '4주 후 -1.2 kg',
-      detail: '현재 식단·활동 유지 시 예상치예요.',
-      source: '자체 모델 v0.3',
-      confidence: 0.62,
-      onTap: () {
-        // TODO: 체중 그래프
-      },
-    );
-  }
-}
+// ═══════════════════════════════════════════
+// 메인 박스 — 캘린더 아래 첫 번째 카드
+// 캐릭터 + 분석 미리보기 등 들어갈 자리 (지금은 셸)
+//
+// 디자인: Flat 2.0 + Soft UI (LADS §17 일관성)
+//   - 흰 배경
+//   - 라운드: Pillyze 톤 따라 살짝 더 둥글게 (AppRadius.lg = 20)
+//   - 그림자: 회원가입 박스/메인 흰 버튼과 동일한 soft 톤
+//   - 테두리 없음
+// ═══════════════════════════════════════════
+class _MainCard extends StatelessWidget {
+  const _MainCard();
 
-// ─── 4. 활동 권고 ───
-class _ActivityAdviceCard extends StatelessWidget {
-  const _ActivityAdviceCard();
   @override
   Widget build(BuildContext context) {
-    return OutputCard(
-      label: '오늘 활동 권고',
-      icon: Icons.directions_walk_rounded,
-      iconBg: AppColor.brandSoft,
-      iconFg: AppColor.brand,
-      headline: '걷기 30분',
-      detail: '저녁 식사 후 가볍게 — 혈당 상승 완화에 도움.',
-      source: 'WHO 가이드 · 활동 권고 v4',
-      confidence: 0.78,
-      onTap: () {
-        // TODO: 활동 상세
-      },
-    );
-  }
-}
-
-// ─── 5. 목적별 분석 (눈/간/피로) ───
-class _PurposeAnalysisCard extends StatelessWidget {
-  const _PurposeAnalysisCard();
-  @override
-  Widget build(BuildContext context) {
-    return OutputCard(
-      label: '목적별 분석 — 피로',
-      icon: Icons.battery_charging_full_rounded,
-      iconBg: AppColor.dangerSoft,
-      iconFg: AppColor.danger,
-      headline: '비타민 B군 보충 권장',
-      detail: '최근 피로 기록 + 식사 패턴 분석 결과예요.',
-      source: '자체 모델 · 사용자 일지',
-      confidence: 0.55,
-      onTap: () {
-        // TODO: 목적별 상세
-      },
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.cardInside + 2,
+        vertical: AppSpace.xl,
+      ),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        // Pillyze 톤 — Flat 2.0 라운드(sm=12)보다 살짝 더 둥글게.
+        // 회원가입 박스/버튼은 sm 그대로 유지, 메인 박스만 lg(20) 로 차별.
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: const [
+          // LADS 표준 soft UI 그림자 (회원가입 박스·메인 흰 버튼 동일)
+          BoxShadow(
+            color: Color.fromRGBO(140, 155, 175, 0.20),
+            blurRadius: 16,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      // 내용은 다음 단계에서 — 지금은 높이 확보용 SizedBox
+      child: const SizedBox(
+        height: 220,
+      ),
     );
   }
 }

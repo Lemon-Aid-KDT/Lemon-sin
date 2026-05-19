@@ -48,4 +48,12 @@ Future<void> main() async {
 
   // TODO(A): D2에 추가
   // - Isar 초기화 (오프라인 큐)
-  // - flutter_local_notific
+  // - flutter_local_notifications 초기화
+  // - 환경 변수 로드 (API_BASE_URL)
+
+  runApp(
+    const ProviderScope(
+      child: LemonAidApp(),
+    ),
+  );
+}

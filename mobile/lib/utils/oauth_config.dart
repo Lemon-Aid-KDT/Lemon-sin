@@ -42,4 +42,13 @@ class OAuthConfig {
 
   // ─── 카카오 ───
   static String get kakaoNativeAppKey => _resolve('KAKAO_NATIVE_APP_KEY');
-  static
+  static bool get hasKakaoKey => kakaoNativeAppKey.isNotEmpty;
+
+  // ─── 구글 ───
+  static String get googleServerClientId =>
+      _resolve('GOOGLE_SERVER_CLIENT_ID');
+  static bool get hasGoogleKey => googleServerClientId.isNotEmpty;
+
+  // ─── API 베이스 URL ───
+  static String get apiBaseUrl => _resolve('API_BASE_URL');
+}
