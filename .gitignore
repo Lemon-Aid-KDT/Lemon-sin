@@ -72,3 +72,8 @@ tmp/
 node_modules/
 .next/
 .env.local
+
+# === Upstream taedong-design 브랜치 자동 동기화 (nested git clone) ===
+# Managed by launchd: ~/Library/LaunchAgents/com.lemonaid.sync-taedong-design.plist
+03_lemon_healthcare/taedong-design/Lemon-sin-taedong-design/
+03_lemon_healthcare/taedong-design/Lemon-sin-taedong-design.zip-backup/
