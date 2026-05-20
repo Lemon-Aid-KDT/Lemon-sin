@@ -29,13 +29,56 @@ COORDINATE_SCALE_TOLERANCE = 1.20
 MIN_BOUNDING_VERTICES = 2
 ANCHOR_NORMALIZE_PATTERN = re.compile("[\\s·ㆍ:\\uFF1A\\-\\(\\)\\[\\]/|]+")
 SECTION_KEYWORDS: dict[SectionType, tuple[str, ...]] = {
-    "daily_intake": ("일일섭취량", "1일섭취량", "일일 섭취량", "섭취량"),
-    "nutrition_function_info": ("영양·기능정보", "영양 기능정보", "영양정보", "기능정보"),
-    "intake_method": ("섭취방법", "섭취 방법", "복용방법", "복용 방법"),
-    "precautions": ("섭취 시 주의사항", "섭취시 주의사항", "주의사항", "주의"),
-    "ingredients": ("원재료명", "원료명", "원재료"),
+    "daily_intake": (
+        "일일섭취량",
+        "1일섭취량",
+        "일일 섭취량",
+        "섭취량",
+        "Serving Size",
+        "Servings Per Container",
+        "Amount Per Serving",
+    ),
+    "nutrition_function_info": (
+        "영양·기능정보",
+        "영양 기능정보",
+        "영양정보",
+        "기능정보",
+        "Supplement Facts",
+        "Nutrition Facts",
+        "% Daily Value",
+    ),
+    "intake_method": (
+        "섭취방법",
+        "섭취 방법",
+        "복용방법",
+        "복용 방법",
+        "Directions",
+        "Suggested Use",
+        "How To Take",
+    ),
+    "precautions": (
+        "섭취 시 주의사항",
+        "섭취시 주의사항",
+        "주의사항",
+        "주의",
+        "Warnings",
+        "Caution",
+    ),
+    "ingredients": (
+        "원재료명",
+        "원료명",
+        "원재료",
+        "Ingredients",
+        "Other Ingredients",
+    ),
     "functionality": ("기능성", "기능성 내용", "기능성분"),
-    "storage_method": ("보관방법", "보관 방법", "보관 시 주의사항"),
+    "storage_method": (
+        "보관방법",
+        "보관 방법",
+        "보관 시 주의사항",
+        "Storage",
+        "Storage Instructions",
+    ),
 }
 
 

@@ -184,6 +184,59 @@ def test_parse_label_layout_detects_storage_method_anchor() -> None:
     assert layout.sections[0].rows[1][0].text == "직사광선을 피하여 보관"
 
 
+def test_parse_label_layout_detects_english_section_anchors() -> None:
+    """Verify English supplement-label anchors map to the configured section types."""
+    words = (
+        _word("Supplement", 10, 10, 90, 22, word_index=0),
+        _word("Facts", 96, 10, 138, 22, word_index=1),
+        _word("Vitamin", 10, 32, 64, 44, word_index=2),
+        _word("C", 70, 32, 80, 44, word_index=3),
+        _word("500", 150, 32, 180, 44, word_index=4),
+        _word("mg", 186, 32, 204, 44, word_index=5),
+        _word("Directions", 10, 70, 88, 82, word_index=6),
+        _word("Take", 10, 92, 40, 104, word_index=7),
+        _word("one", 46, 92, 70, 104, word_index=8),
+        _word("daily", 76, 92, 104, 104, word_index=9),
+        _word("Warnings", 10, 130, 76, 142, word_index=10),
+        _word("Consult", 10, 152, 60, 164, word_index=11),
+        _word("doctor", 66, 152, 110, 164, word_index=12),
+    )
+
+    layout = parse_label_layout(_ocr_result(words))
+
+    assert [section.section_type for section in layout.sections] == [
+        "nutrition_function_info",
+        "intake_method",
+        "precautions",
+    ]
+    assert layout.sections[0].anchor_text == "Supplement Facts"
+    assert layout.sections[1].anchor_text == "Directions"
+    assert layout.sections[2].anchor_text == "Warnings"
+
+
+def test_parse_label_layout_detects_korean_english_mixed_anchors() -> None:
+    """Verify Korean and English anchors coexist in the same fixture."""
+    words = (
+        _word("영양·기능정보", 10, 10, 110, 22, word_index=0),
+        _word("Vitamin", 10, 32, 60, 44, word_index=1),
+        _word("D", 66, 32, 76, 44, word_index=2),
+        _word("25", 150, 32, 170, 44, word_index=3),
+        _word("ug", 176, 32, 194, 44, word_index=4),
+        _word("Directions", 10, 70, 88, 82, word_index=5),
+        _word("1일", 10, 92, 40, 104, word_index=6),
+        _word("2캡슐", 46, 92, 90, 104, word_index=7),
+    )
+
+    layout = parse_label_layout(_ocr_result(words))
+
+    assert [section.section_type for section in layout.sections] == [
+        "nutrition_function_info",
+        "intake_method",
+    ]
+    assert layout.sections[0].anchor_text == "영양·기능정보"
+    assert layout.sections[1].anchor_text == "Directions"
+
+
 def test_parse_label_layout_preserves_unknown_rows_without_anchor() -> None:
     """Verify rows are preserved as unknown when no section anchor is visible."""
     words = (
