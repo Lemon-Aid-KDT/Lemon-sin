@@ -261,6 +261,26 @@ data/processed/
 # Local development log artifacts
 /firepit-log.txt
 
+# Supplement label raw images and private workspaces. Only consent memos and
+# directory placeholders are tracked; raw image bytes never enter the repo.
+data/supplement_images/raw/friend_contributed/inbox/*
+!data/supplement_images/raw/friend_contributed/inbox/CONSENT.md
+!data/supplement_images/raw/friend_contributed/inbox/.gitkeep
+data/supplement_images/raw/friend_contributed/ingested/images/*
+!data/supplement_images/raw/friend_contributed/ingested/images/.gitkeep
+data/supplement_images/raw/friend_contributed/ingested/metadata.jsonl
+data/supplement_images/raw/web_crawl/*/images/*
+!data/supplement_images/raw/web_crawl/*/images/.gitkeep
+data/supplement_images/raw/web_crawl/*/metadata.jsonl
+data/supplement_images/raw/public_sources/*.jpg
+data/supplement_images/raw/public_sources/*.jpeg
+data/supplement_images/raw/public_sources/*.png
+data/supplement_images/raw/public_sources/*.webp
+data/supplement_images/private_workspace/
+data/supplement_images/interim/
+data/supplement_images/processed/
+data/supplement_images/quarantine/
+
 # Local databases
 *.db
 *.sqlite
