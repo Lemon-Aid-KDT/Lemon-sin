@@ -41,6 +41,18 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         / "lib"
         / "features"
         / "supplement"
+        / "data"
+        / "supplement_capture_repository.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "domain"
+        / "supplement_analysis_preview.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
         / "presentation"
         / "supplement_capture_screen.dart",
         APP_ROOT / "lib" / "shared" / "widgets" / "medical_disclaimer.dart",
@@ -93,6 +105,37 @@ def test_flutter_shell_routes_and_sensitive_storage_are_wired() -> None:
     assert "Permission.camera.request()" in capture_screen
     assert "ImageSource.camera" in capture_screen
     assert "ImageSource.gallery" in capture_screen
+
+
+def test_flutter_supplement_capture_calls_backend_analyze_contract() -> None:
+    """Verify supplement capture uses the real consent and multipart analyze endpoints."""
+    client = (APP_ROOT / "lib" / "core" / "network" / "lemon_api_client.dart").read_text(
+        encoding="utf-8"
+    )
+    repository = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "data"
+        / "supplement_capture_repository.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "presentation"
+        / "supplement_capture_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "postMultipart" in client
+    assert "FormData.fromMap" in repository
+    assert "MultipartFile.fromBytes" in repository
+    assert "/api/v1/me/privacy/consents/ocr_image_processing" in repository
+    assert "/api/v1/supplements/analyze" in repository
+    assert "grantOcrImageProcessingConsent" in screen
+    assert "analyzeLabelImage" in screen
 
 
 def test_flutter_daily_coaching_request_is_confirmed_only() -> None:

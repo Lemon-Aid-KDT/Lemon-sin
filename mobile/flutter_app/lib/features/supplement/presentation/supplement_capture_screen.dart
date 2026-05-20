@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../shared/widgets/medical_disclaimer.dart';
+import '../data/supplement_capture_repository.dart';
+import '../domain/supplement_analysis_preview.dart';
 
 class SupplementCaptureScreen extends StatefulWidget {
   const SupplementCaptureScreen({super.key});
@@ -13,8 +15,10 @@ class SupplementCaptureScreen extends StatefulWidget {
 
 class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
   final ImagePicker _picker = ImagePicker();
+  final SupplementCaptureRepository _repository = SupplementCaptureRepository();
   String? _selectedImageName;
   String? _statusMessage;
+  SupplementAnalysisPreview? _preview;
   bool _isSelecting = false;
 
   Future<void> _selectImage(ImageSource source) async {
@@ -48,6 +52,9 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
         _selectedImageName = image?.name;
         _statusMessage = image == null ? '선택된 이미지가 없습니다.' : '이미지를 선택했습니다.';
       });
+      if (image != null) {
+        await _analyzeImage(image);
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -61,6 +68,30 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
           _isSelecting = false;
         });
       }
+    }
+  }
+
+  Future<void> _analyzeImage(XFile image) async {
+    setState(() {
+      _statusMessage = '분석 요청 중입니다.';
+    });
+    try {
+      await _repository.grantOcrImageProcessingConsent();
+      final SupplementAnalysisPreview preview = await _repository.analyzeLabelImage(image);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _preview = preview;
+        _statusMessage = '분석 미리보기를 받았습니다.';
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _statusMessage = '분석 요청을 완료하지 못했습니다.';
+      });
     }
   }
 
@@ -87,9 +118,40 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
           const SizedBox(height: 16),
           if (_selectedImageName != null) Text('선택 파일: $_selectedImageName'),
           if (_statusMessage != null) Text(_statusMessage!),
+          if (_preview != null) _SupplementPreviewPanel(preview: _preview!),
           const SizedBox(height: 24),
           const MedicalDisclaimer(),
         ],
+      ),
+    );
+  }
+}
+
+class _SupplementPreviewPanel extends StatelessWidget {
+  const _SupplementPreviewPanel({required this.preview});
+
+  final SupplementAnalysisPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('분석 상태: ${preview.status}'),
+              Text('OCR provider: ${preview.ocrProvider}'),
+              if (preview.warnings.isNotEmpty) Text('주의: ${preview.warnings.first}'),
+            ],
+          ),
+        ),
       ),
     );
   }

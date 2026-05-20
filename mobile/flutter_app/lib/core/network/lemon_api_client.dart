@@ -21,4 +21,11 @@ class LemonApiClient {
   ) {
     return _dio.post<Map<String, dynamic>>(path, data: body);
   }
+
+  Future<Response<Map<String, dynamic>>> postMultipart(
+    String path,
+    FormData body,
+  ) {
+    return _dio.post<Map<String, dynamic>>(path, data: body);
+  }
 }
