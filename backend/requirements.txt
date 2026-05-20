@@ -28,3 +28,5 @@ pillow>=10.2
 
 # Utils
 python-multipart>=0.0.9
+# OCR accuracy metrics (CER/WER/field match) — used by src/ocr/metrics.py
+rapidfuzz>=3.0
