@@ -6,7 +6,9 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
+from alembic.ddl import impl as alembic_impl
 from sqlalchemy import pool
+from sqlalchemy import Column, MetaData, PrimaryKeyConstraint, String, Table
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from src.config import get_settings
@@ -18,6 +20,45 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+ALEMBIC_VERSION_NUM_LENGTH = 80
+
+
+def _install_wide_alembic_version_table() -> None:
+    """Allow project migration IDs longer than Alembic's 32 char default."""
+
+    def version_table_impl(
+        self: alembic_impl.DefaultImpl,
+        *,
+        version_table: str,
+        version_table_schema: str | None,
+        version_table_pk: bool,
+        **kw: object,
+    ) -> Table:
+        _ = self, kw
+        version_table_object = Table(
+            version_table,
+            MetaData(),
+            Column(
+                "version_num",
+                String(ALEMBIC_VERSION_NUM_LENGTH),
+                nullable=False,
+            ),
+            schema=version_table_schema,
+        )
+        if version_table_pk:
+            version_table_object.append_constraint(
+                PrimaryKeyConstraint(
+                    "version_num",
+                    name=f"{version_table}_pkc",
+                )
+            )
+
+        return version_table_object
+
+    alembic_impl.DefaultImpl.version_table_impl = version_table_impl
+
+
+_install_wide_alembic_version_table()
 
 
 def _database_url() -> str:

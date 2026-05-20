@@ -133,6 +133,15 @@ def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> N
     assert settings.learning_object_storage_provider == "disabled"
 
 
+def test_default_llm_settings_include_sglang_operational_candidate() -> None:
+    """Verify LLM defaults keep Ollama while exposing SGLang settings."""
+    settings = Settings(_env_file=None)
+
+    assert settings.llm_provider == "ollama"
+    assert settings.sglang_base_url == "http://127.0.0.1:30000/v1"
+    assert settings.sglang_api_key is None
+
+
 def test_google_cloud_api_key_can_be_loaded_as_secret() -> None:
     """Verify local Google Vision REST API key input is accepted as a secret value."""
     settings = Settings(
@@ -205,6 +214,25 @@ def test_production_rejects_external_llm() -> None:
 
     with pytest.raises(ValidationError, match="ALLOW_EXTERNAL_LLM"):
         Settings(**kwargs)
+
+
+def test_sglang_provider_requires_local_endpoint_when_external_llm_disabled() -> None:
+    """Verify SGLang cannot point at a non-local endpoint by default."""
+    with pytest.raises(ValidationError, match="SGLANG_BASE_URL"):
+        Settings(
+            _env_file=None,
+            llm_provider="sglang",
+            sglang_base_url="https://sglang.example.com/v1",
+            allow_external_llm=False,
+        )
+
+
+def test_sglang_provider_accepts_loopback_endpoint() -> None:
+    """Verify local/self-hosted SGLang is accepted as an LLM provider."""
+    settings = Settings(_env_file=None, llm_provider="sglang")
+
+    assert settings.llm_provider == "sglang"
+    assert settings.sglang_base_url == "http://127.0.0.1:30000/v1"
 
 
 def test_production_rejects_wildcard_origins_and_hosts() -> None:

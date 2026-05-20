@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import delete_learning_artifacts_for_owner
+from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.db.privacy import AuditLog, ConsentRecord, DeletionRequest
@@ -711,6 +712,22 @@ async def create_delete_all_user_data_request(
                 )
             ).all()
         )
+        agent_memories = list(
+            (
+                await session.scalars(
+                    select(AgentMemory).where(
+                        AgentMemory.owner_subject_hash == owner_subject_hash
+                    )
+                )
+            ).all()
+        )
+        agent_runs = list(
+            (
+                await session.scalars(
+                    select(AgentRun).where(AgentRun.owner_subject_hash == owner_subject_hash)
+                )
+            ).all()
+        )
         consent_records = list(
             (
                 await session.scalars(
@@ -738,6 +755,10 @@ async def create_delete_all_user_data_request(
             await session.delete(analysis_record)
         for regulated_document in regulated_documents:
             await session.delete(regulated_document)
+        for agent_run in agent_runs:
+            await session.delete(agent_run)
+        for agent_memory in agent_memories:
+            await session.delete(agent_memory)
         for consent_record in consent_records:
             await session.delete(consent_record)
 
@@ -747,6 +768,8 @@ async def create_delete_all_user_data_request(
             "health_daily_summaries": len(health_daily_summaries),
             "health_sync_batches": len(health_sync_batches),
             "regulated_documents": len(regulated_documents),
+            "agent_memory": len(agent_memories),
+            "agent_runs": len(agent_runs),
             "supplement_analysis_runs": len(supplement_analysis_runs),
             "user_supplement_ingredients": len(user_supplement_ingredients),
             "user_supplements": len(user_supplements),

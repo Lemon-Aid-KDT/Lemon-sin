@@ -93,7 +93,36 @@ redis-cli -u $REDIS_URL ping
 - [ ] Critical 알림은 슬랙 즉시 알림 통합
 
 ## 3. 외부 API·로컬 LLM 상태
+- [ ] AI Agent live smoke 전제조건 확인:
+  ```bash
+  python backend/scripts/check_ai_agent_runtime_prereqs.py
+  ```
+  - 이 스크립트는 `TEST_DATABASE_URL`의 host/port와 `SGLANG_BASE_URL`의 host/port를
+    읽어 live smoke 대상 포트를 점검한다. 임시 PostgreSQL 포트가 5432가 아니어도
+    실제 설정값 기준으로 판단한다.
 - [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
+- [ ] SGLang 운영 후보 상태 확인
+  - 기본 endpoint: `http://127.0.0.1:30000/v1`
+  - `ALLOW_EXTERNAL_LLM=false`에서는 `localhost`, `127.0.0.1`, `::1`만 허용
+  - Windows 직접 설치가 `flashinfer_python` symlink 권한으로 막히면 WSL2 Linux 배포판,
+    Docker, 또는 conda 기반 격리 환경에서 재시도
+  - WSL 설치가 `ERROR_ALREADY_EXISTS`나 `WININET_E_CANNOT_CONNECT`로 막히면 기존
+    WSL 등록 상태와 네트워크 접근을 먼저 복구
+  - conda 환경에서도 `flashinfer_python` symlink 권한(`WinError 1314`)이 반복되면
+    Windows 개발자 모드/관리자 권한 또는 Linux 기반 런타임으로 전환
+  - opt-in smoke:
+    ```bash
+    RUN_SGLANG_SMOKE=1 \
+    SGLANG_BASE_URL=http://127.0.0.1:30000/v1 \
+    SGLANG_MODEL=<local-model> \
+    pytest backend/ai_agent_chat/tests/test_sglang_smoke.py -q
+    ```
+  - structured output이 필요한 호출은 `response_format={"type":"json_schema", ...}`
+    payload를 사용하고, 서비스 응답은 Pydantic/JSON Schema 검증 뒤에만 사용
+  - 공식 문서:
+    - https://github.com/sgl-project/sglang
+    - https://docs.sglang.io/docs/advanced_features/structured_outputs
+    - https://docs.sglang.io/docs/advanced_features/sgl_model_gateway
 - [ ] 기본 모델(`qwen3.5` 또는 `gemma4`) 로딩·응답 시간 확인
 - [ ] Google Cloud Vision 콘솔 → 어제 사용량
 - [ ] 한도 80% 초과 시 알람 발송 사전 설정
@@ -183,6 +212,13 @@ GROUP BY ocr_engine;
 # 1. 로컬에서 마이그레이션 dry-run
 alembic upgrade head --sql > migration.sql
 # 검토 후 이상 없으면 진행
+
+# AI Agent memory migration live smoke는 명시적 test DB에서만 실행
+RUN_POSTGRES_MIGRATION_SMOKE=1 \
+TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke \
+pytest backend/Nutrition-backend/tests/integration/db/test_alembic_migration_smoke.py -q
+# 2026-05-19 기준 conda PostgreSQL 16.10 + pgvector 0.8.1 test DB에서 1 passed 확인
+# 긴 Alembic revision id를 위해 backend/alembic/env.py는 alembic_version.version_num 길이를 80으로 확장
 
 # 2. 스테이징 환경 배포 + 검증
 make deploy-staging

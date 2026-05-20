@@ -67,6 +67,7 @@ from src.security.auth import (
     require_supplement_write,
 )
 from src.security.scopes import ApiScope
+from src.services.agent_memory import upsert_supplement_memory
 from src.services.privacy import (
     AuditOutcome,
     ConsentRequiredError,
@@ -719,6 +720,13 @@ async def create_user_supplement(
         ),
         settings=settings,
         granted_consents=learning_consents,
+    )
+    await upsert_supplement_memory(
+        session,
+        current_user,
+        settings,
+        result.supplement,
+        result.ingredients,
     )
 
     await record_sensitive_audit_event(

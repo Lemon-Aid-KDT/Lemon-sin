@@ -7,7 +7,6 @@ from lemon_ai_agent.schemas import (
     PersonalizationContext,
 )
 
-
 FOOD_FIRST_SUGGESTIONS = {
     "protein": "Add protein-rich foods such as tofu, eggs, fish, or chicken.",
     "fiber": "Add fiber-rich foods such as vegetables, beans, oats, or seaweed.",
@@ -22,6 +21,7 @@ SUPPLEMENT_INGREDIENT_ALLOWED = {
     "iron",
     "calcium",
 }
+REPEATED_PATTERN_THRESHOLD = 2
 
 
 class CoachingAgent:
@@ -31,16 +31,27 @@ class CoachingAgent:
         context: PersonalizationContext,
     ) -> list[CoachingRecommendation]:
         recommendations: list[CoachingRecommendation] = []
+        memory_patterns = _memory_patterns(context.agent_memory)
 
         for finding in findings:
             nutrient_key = finding.nutrient.lower()
+            repeat_count = memory_patterns.get(nutrient_key, 0)
+            repeat_prefix = (
+                f" This pattern has appeared {repeat_count} times in recent confirmed records."
+                if repeat_count >= REPEATED_PATTERN_THRESHOLD
+                else ""
+            )
             if finding.level in {FindingLevel.HIGH, FindingLevel.RISKY}:
                 recommendations.append(
                     CoachingRecommendation(
                         category="reduce",
                         title=f"Reduce {finding.nutrient}",
-                        rationale=finding.message,
-                        priority=10 if finding.level == FindingLevel.RISKY else 8,
+                        rationale=f"{finding.message}{repeat_prefix}",
+                        priority=min(
+                            10,
+                            (10 if finding.level == FindingLevel.RISKY else 8)
+                            + min(repeat_count, 2),
+                        ),
                         requires_professional_consult=finding.level == FindingLevel.RISKY,
                     )
                 )
@@ -53,8 +64,8 @@ class CoachingAgent:
                     CoachingRecommendation(
                         category="add_food",
                         title=f"Add {finding.nutrient} from food first",
-                        rationale=f"{finding.message} {food_text}",
-                        priority=7,
+                        rationale=f"{finding.message} {food_text}{repeat_prefix}",
+                        priority=min(10, 7 + min(repeat_count, 2)),
                     )
                 )
                 if nutrient_key in SUPPLEMENT_INGREDIENT_ALLOWED:
@@ -86,3 +97,40 @@ class CoachingAgent:
             )
 
         return sorted(recommendations, key=lambda item: item.priority, reverse=True)
+
+
+def _memory_patterns(agent_memory: dict[str, object]) -> dict[str, int]:
+    """Return repeated nutrient pattern counters from injected Agent memory."""
+    summaries = agent_memory.get("summaries", [])
+    if not isinstance(summaries, list):
+        return {}
+
+    counters: dict[str, int] = {}
+    for item in summaries:
+        if not isinstance(item, dict):
+            continue
+        summary = item.get("summary_json", {})
+        if not isinstance(summary, dict):
+            continue
+        patterns = summary.get("repeated_nutrient_patterns", {})
+        if not isinstance(patterns, dict):
+            continue
+        for nutrient, count in patterns.items():
+            if not isinstance(nutrient, str):
+                continue
+            try:
+                repeat_count = int(count)
+            except (TypeError, ValueError):
+                continue
+            key = _canonical_memory_nutrient_key(nutrient)
+            counters[key] = max(counters.get(key, 0), repeat_count)
+    return counters
+
+
+def _canonical_memory_nutrient_key(nutrient: str) -> str:
+    normalized = " ".join(nutrient.strip().lower().replace("_", " ").split())
+    aliases = {
+        "vitamin-d": "vitamin d",
+        "vitamin d": "vitamin d",
+    }
+    return aliases.get(normalized, normalized)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -135,6 +136,16 @@ def _is_non_https_url(value: str | None) -> bool:
     return value is not None and not value.startswith("https://")
 
 
+def _is_local_http_url(value: str) -> bool:
+    """Return whether a URL points at a loopback HTTP endpoint."""
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and parsed.hostname in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
+
+
 def _secret_value(value: SecretStr | None) -> str | None:
     """Return the raw secret value for production validation.
 
@@ -192,7 +203,7 @@ class Settings(BaseSettings):
         jwt_jwks_timeout_seconds: JWKS retrieval timeout.
         oidc_discovery_url: Optional OIDC discovery document URL for operational preflight.
         privacy_hash_secret: HMAC secret used for privacy-preserving audit identifiers.
-        llm_provider: 기본 LLM provider. 민감정보 보호를 위해 Ollama만 허용한다.
+        llm_provider: 기본 LLM provider. Ollama 또는 로컬/자가호스팅 SGLang을 허용한다.
         ollama_base_url: Ollama Local API 기본 주소.
         ollama_model: 텍스트 구조화 출력 기본 모델.
         ollama_vision_model: 이미지 입력 실험용 모델.
@@ -279,12 +290,15 @@ class Settings(BaseSettings):
     oidc_discovery_url: str | None = Field(default=None)
     privacy_hash_secret: SecretStr = Field(default=SecretStr(DEFAULT_PRIVACY_HASH_SECRET))
 
-    llm_provider: Literal["ollama"] = "ollama"
+    llm_provider: Literal["ollama", "sglang"] = "ollama"
     ollama_base_url: str = Field(default="http://127.0.0.1:11434")
     ollama_model: str = Field(default="qwen3.5:9b")
     ollama_vision_model: str | None = Field(default="gemma4:e4b")
     ollama_timeout_sec: int = Field(default=60, ge=1)
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    sglang_base_url: str = Field(default="http://127.0.0.1:30000/v1")
+    sglang_model: str = Field(default="qwen3.5:9b")
+    sglang_api_key: SecretStr | None = Field(default=None)
     allow_external_llm: bool = Field(default=False)
 
     ocr_primary_provider: Literal["none", "google_vision"] = Field(default="none")
@@ -452,6 +466,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LEARNING_OBJECT_STORAGE_BUCKET is required when "
                 "LEARNING_OBJECT_STORAGE_PROVIDER=s3."
+            )
+        if (
+            self.llm_provider == "sglang"
+            and not self.allow_external_llm
+            and not _is_local_http_url(self.sglang_base_url)
+        ):
+            raise ValueError(
+                "SGLANG_BASE_URL must be a local loopback endpoint when "
+                "ALLOW_EXTERNAL_LLM=false."
             )
 
         if self.environment != "production":

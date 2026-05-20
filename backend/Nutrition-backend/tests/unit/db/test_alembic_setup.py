@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
@@ -16,7 +18,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0006_create_regulated_ocr_intake"]
+    assert script.get_heads() == ["0007_create_agent_memory_tables"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +29,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0006_create_regulated_ocr_intake"]
+    assert script.get_heads() == ["0007_create_agent_memory_tables"]
 
 
 def test_initial_migration_file_exists() -> None:
@@ -76,3 +78,21 @@ def test_regulated_ocr_intake_migration_file_exists() -> None:
     )
 
     assert migration_path.is_file()
+
+
+def test_agent_memory_migration_file_exists() -> None:
+    """Verify the Agent memory migration file exists."""
+    migration_path = BACKEND_ROOT / "alembic" / "versions" / "0007_create_agent_memory_tables.py"
+
+    assert migration_path.is_file()
+
+
+def test_alembic_version_table_supports_long_revision_ids() -> None:
+    """Verify offline DDL uses a version column wide enough for local revision IDs."""
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    output = StringIO()
+    config.output_buffer = output
+
+    command.upgrade(config, "head", sql=True)
+
+    assert "version_num VARCHAR(80)" in output.getvalue()

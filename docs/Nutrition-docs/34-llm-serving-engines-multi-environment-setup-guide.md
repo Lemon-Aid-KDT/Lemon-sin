@@ -1,19 +1,19 @@
-# 34. Ollama · MLX-LM · vLLM 다중 환경 설치·운영 가이드
+# 34. Ollama · SGLang · MLX-LM · vLLM 다중 환경 설치·운영 가이드
 
 > **문서 정보**
-> 버전: v1.1 | 작성일: 2026-05-14 | 상태: 환경 후보 가이드 (Ollama 기본, MLX/vLLM 후속 검증) | 작성자: yeong-tech
+> 버전: v1.2 | 작성일: 2026-05-14 | 상태: 환경 후보 가이드 (Ollama 기본, SGLang 운영 후보, MLX/vLLM 후속 검증) | 작성자: yeong-tech
 
 ---
 
 ## 0. 한 줄 요약
 
-본 프로젝트의 현재 백엔드 런타임은 `LLM_PROVIDER=ollama` 만 지원한다. 이 문서는 **Mac(Apple Silicon)** 과 **Windows** 병행 개발을 위해 Ollama 기본 환경을 고정하고, MLX-LM/vLLM 은 후속 Adapter PR 전까지 실험 후보로만 정리한다. `src/llm/base.py` 는 아직 Phase 2 후반 도입 예정 인터페이스이므로, MLX/vLLM 전환은 환경 변수 한 줄만으로 끝나는 상태가 아니다.
+현재 백엔드 런타임은 `LLM_PROVIDER=ollama|sglang`을 지원한다. 개발 기본값은 Ollama이고, 운영 후보는 로컬/자가호스팅 SGLang이다. MLX-LM/vLLM은 후속 비교 검증이나 대체 OpenAI-compatible backend 후보로만 정리한다. SGLang을 사용할 때 `ALLOW_EXTERNAL_LLM=false`이면 endpoint는 `localhost`, `127.0.0.1`, `::1` loopback으로 제한한다.
 
 | 환경 | 1순위 (개발) | 2순위 (실험) | 3순위 (Phase 4 출시 시) |
 | --- | --- | --- | --- |
 | **macOS (Apple Silicon)** | **Ollama** | MLX-LM / `vllm-mlx` | (cloud GPU 로 이전) |
-| **Windows (NVIDIA GPU)** | **Ollama (winget)** | WSL2 + **vLLM** | 후속 PR 이후 검증 |
-| **Linux (cloud GPU)** | vLLM 후보 | Ollama | Phase 4 이후 검증 |
+| **Windows (NVIDIA GPU)** | **Ollama (winget)** | WSL2 + **SGLang** | vLLM은 대체 backend 검증 |
+| **Linux (cloud GPU)** | **SGLang 후보** | Ollama | vLLM은 대체 backend 검증 |
 
 ---
 
@@ -384,7 +384,7 @@ resp = client.chat.completions.create(
 
 ### 5.2 Adapter 패턴(CLAUDE.md Rule 2) 일관 유지
 
-세 엔진 모두 OpenAI 호환 또는 자체 호환 API 를 제공할 수 있지만, 현재 `Settings.llm_provider` 는 `ollama` 만 허용한다. MLX/vLLM 전환은 신규 Adapter, Settings 확장, DI 분기, 테스트가 모두 머지된 뒤에만 가능하다.
+현재 `Settings.llm_provider`는 `ollama|sglang`을 허용한다. SGLang은 OpenAI-compatible `/v1/chat/completions`와 JSON Schema structured output payload를 사용하는 운영 후보이며, vLLM은 같은 API 형태의 대체 backend로만 남긴다. MLX 전환은 신규 Adapter, Settings 확장, DI 분기, 테스트가 모두 머지된 뒤에만 가능하다.
 
 ```
 backend/src/llm/
@@ -392,10 +392,11 @@ backend/src/llm/
 ├── ollama.py            # 현행 (OllamaSupplementParser)
 ├── ollama_vision.py     # 현행 (Gemma 4 E4B vision assist 후보)
 ├── mlx_openai.py        # NEW (후속 PR — MLX-LM 도입 시)
-└── vllm_openai.py       # NEW (후속 PR — vLLM 도입 시)
+├── sglang.py            # 현행 운영 후보 (OpenAI-compatible)
+└── vllm_openai.py       # 후속 검증 — 대체 compatible backend 도입 시
 ```
 
-후속 PR 에서 `Settings.LLM_PROVIDER` 허용값과 adapter factory를 확장한다. 본 가이드는 그 분기 코드를 정의하지 않는다.
+SGLang 분기는 현행 설정과 adapter factory에서 지원한다. vLLM/MLX-LM 분기는 별도 후속 PR에서 정의한다.
 
 ### 5.3 신규 개발자 온보딩 30분 체크리스트
 
@@ -460,7 +461,7 @@ backend/src/llm/
 
 세 엔진 공통으로 다음을 운영 전 확인:
 
-- [ ] `OLLAMA_BASE_URL` / `MLX_BASE_URL` / `VLLM_BASE_URL` 이 모두 `127.0.0.1`·`localhost`·`::1` 만 사용 ([docs/12 §2](./12-local-llm-ollama-migration.md))
+- [ ] `OLLAMA_BASE_URL` / `SGLANG_BASE_URL` / `MLX_BASE_URL` / `VLLM_BASE_URL` 이 모두 `127.0.0.1`·`localhost`·`::1` 만 사용 ([docs/12 §2](./12-local-llm-ollama-migration.md))
 - [ ] `ALLOW_EXTERNAL_LLM=false` 유지 (개발 PoC 환경에서는 비식별 데이터만)
 - [ ] 모델 가중치는 공식 출처(`mlx-community`, `Qwen/`, `google/`, `ollama.com/library/`) 만 사용
 - [ ] 로그에 prompt 전문 저장 금지 ([docs/12 §2.4](./12-local-llm-ollama-migration.md))
@@ -488,6 +489,8 @@ backend/src/llm/
 
 | 날짜 | 변경 내용 | 작성자 |
 | --- | --- | --- |
+| 2026-05-19 | Windows 직접 SGLang 설치가 `flashinfer_python` symlink 권한으로 막힐 수 있음을 기록하고, SGLang live smoke는 Linux/WSL2/Docker runtime 준비 후 opt-in test로 검증하도록 정리. | changmin-aiagent |
+| 2026-05-19 | `LLM_PROVIDER=sglang` 운영 후보와 loopback 정책을 반영하고, vLLM은 대체 OpenAI-compatible backend 후보로 낮춤. | changmin-aiagent |
 | 2026-05-14 | 공식 Ollama tag 기준으로 `gemma4:e4b` / `qwen3.5:9b`를 정리하고, MLX/vLLM 항목을 후속 검증 후보로 낮춤. | yeong-tech |
 | 2026-05-14 | 최초 작성. Ollama / MLX-LM / vLLM 의 Mac · Windows 환경 설치·운영 후보 정의. | yeong-tech |
 
@@ -503,6 +506,9 @@ backend/src/llm/
 
 - [Ollama macOS install](https://docs.ollama.com/macos)
 - [Ollama is now powered by MLX](https://ollama.com/blog/mlx)
+- [SGLang GitHub](https://github.com/sgl-project/sglang)
+- [SGLang Structured Outputs](https://docs.sglang.io/docs/advanced_features/structured_outputs)
+- [SGLang Model Gateway](https://docs.sglang.io/docs/advanced_features/sgl_model_gateway)
 - [Ollama GitHub](https://github.com/ollama/ollama)
 - [Ollama Vision](https://docs.ollama.com/capabilities/vision)
 - [Ollama Structured Outputs](https://docs.ollama.com/capabilities/structured-outputs)

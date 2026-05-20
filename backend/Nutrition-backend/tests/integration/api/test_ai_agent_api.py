@@ -7,7 +7,9 @@ from collections.abc import AsyncIterator
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
+from lemon_ai_agent.llm import LLMRequest, LLMResponse
 from src.api.v1 import ai_agent
+from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.services.privacy import ConsentRequiredError
@@ -62,14 +64,47 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
     """
 
 
-def _client() -> TestClient:
+async def _memory_context(*_args: object, **_kwargs: object) -> dict[str, object]:
+    """Return route-level memory context for injection tests.
+
+    Args:
+        *_args: Positional call arguments.
+        **_kwargs: Keyword call arguments.
+
+    Returns:
+        Sanitized Agent memory context.
+    """
+    return {
+        "schema_version": "agent-memory-summary-v1",
+        "summaries": [
+            {
+                "memory_type": "daily_coaching",
+                "summary_json": {
+                    "repeated_nutrient_patterns": {
+                        "sodium": 3,
+                        "protein": 2,
+                    }
+                },
+                "source_counters": {"daily_coaching": 3},
+                "algorithm_version": "agent-memory-summary-v1.0.0",
+            }
+        ],
+    }
+
+
+def _client(settings: Settings | None = None) -> TestClient:
     """Return a TestClient with the DB session dependency replaced.
+
+    Args:
+        settings: Optional settings override for route dependency injection.
 
     Returns:
         FastAPI test client.
     """
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    if settings is not None:
+        app.dependency_overrides[get_settings] = lambda: settings
     return TestClient(app)
 
 
@@ -154,6 +189,113 @@ def test_daily_coaching_returns_completed_result_for_confirmed_input(
     assert levels["sodium"] == "risky"
     assert levels["protein"] == "low"
     assert "raw_ocr_text" not in str(body)
+
+
+def test_daily_coaching_injects_memory_and_records_confirmed_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify route-level memory injection and confirmed persistence handoff."""
+    persisted: dict[str, object] = {}
+
+    async def _capture_memory_update(*args: object, **_kwargs: object) -> None:
+        persisted["memory_request"] = args[3]
+        persisted["memory_output"] = args[4]
+
+    async def _capture_agent_run(*args: object, **_kwargs: object) -> None:
+        persisted["run_output"] = args[3]
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "upsert_daily_coaching_memory", _capture_memory_update)
+    monkeypatch.setattr(ai_agent, "record_agent_run", _capture_agent_run)
+
+    response = _client().post("/api/v1/ai-agent/daily-coaching", json=_payload())
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert "agent_memory" in body["used_tools"]
+    assert any(
+        "appeared 3 times" in recommendation["rationale"]
+        for recommendation in body["recommendations"]
+    )
+    memory_request = persisted["memory_request"]
+    memory_output = persisted["memory_output"]
+    run_output = persisted["run_output"]
+    assert memory_request.context["agent_memory"]["summaries"][0]["memory_type"] == "daily_coaching"
+    assert memory_output.status == "completed"
+    assert memory_output.approval_status == "confirmed"
+    assert run_output.status == "completed"
+
+
+def test_daily_coaching_uses_sglang_provider_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify backend route selects the SGLang client under SGLang settings."""
+    captured: dict[str, object] = {}
+
+    class _FakeSGLangClient:
+        """Network-free SGLang stand-in for route dependency tests."""
+
+        def __init__(
+            self,
+            *,
+            model: str,
+            endpoint: str,
+            api_key: str | None,
+            timeout: float,
+        ) -> None:
+            self.model = model
+            captured["sglang_client"] = {
+                "model": model,
+                "endpoint": endpoint,
+                "api_key": api_key,
+                "timeout": timeout,
+            }
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            captured["llm_request"] = request
+            return LLMResponse(
+                text=(
+                    "Based on the current input, one nutrition item may need attention. "
+                    "Please review medical concerns with a qualified professional."
+                ),
+                provider="sglang",
+                model=self.model,
+            )
+
+    async def _capture_agent_run(*args: object, **kwargs: object) -> None:
+        captured["run_output"] = args[3]
+        captured["run_model"] = kwargs.get("model")
+
+    settings = Settings(
+        _env_file=None,
+        llm_provider="sglang",
+        sglang_base_url="http://127.0.0.1:30000/v1",
+        sglang_model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+    monkeypatch.setattr(ai_agent, "SGLangClient", _FakeSGLangClient)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "record_agent_run", _capture_agent_run)
+
+    response = _client(settings=settings).post(
+        "/api/v1/ai-agent/daily-coaching",
+        json=_payload(),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["provider"] == "sglang"
+    assert captured["sglang_client"] == {
+        "model": "Qwen/Qwen2.5-0.5B-Instruct",
+        "endpoint": "http://127.0.0.1:30000/v1",
+        "api_key": None,
+        "timeout": settings.ollama_timeout_sec,
+    }
+    assert captured["llm_request"].messages[0].role == "system"
+    assert captured["run_output"].provider == "sglang"
+    assert captured["run_model"] == "Qwen/Qwen2.5-0.5B-Instruct"
 
 
 def test_daily_coaching_returns_preview_for_unconfirmed_ocr(

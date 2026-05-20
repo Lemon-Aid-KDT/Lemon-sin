@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from lemon_ai_agent.adapters import AgentInput, AgentOutput, DailyHealthAgentAppAdapter
+from lemon_ai_agent.llm import LocalLLMClient, OllamaClient, SGLangClient
 from lemon_ai_agent.schemas import ReferenceRange
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,11 @@ from src.db.dependencies import get_async_session
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser, require_analysis_write
 from src.security.scopes import ApiScope
+from src.services.agent_memory import (
+    load_agent_memory_context,
+    record_agent_run,
+    upsert_daily_coaching_memory,
+)
 from src.services.privacy import (
     ConsentRequiredError,
     record_sensitive_audit_event,
@@ -39,6 +45,27 @@ DEFAULT_REFERENCE_RANGES = [
     ReferenceRange("calcium", 800, "mg", upper_limit=2500),
     ReferenceRange("fiber", 25, "g"),
 ]
+
+
+def _build_llm_client(settings: Settings) -> LocalLLMClient:
+    """Build the configured local/self-hosted explanatory LLM client."""
+    if settings.llm_provider == "sglang":
+        api_key = (
+            settings.sglang_api_key.get_secret_value()
+            if settings.sglang_api_key is not None
+            else None
+        )
+        return SGLangClient(
+            model=settings.sglang_model,
+            endpoint=settings.sglang_base_url,
+            api_key=api_key,
+            timeout=settings.ollama_timeout_sec,
+        )
+    return OllamaClient(
+        model=settings.ollama_model,
+        endpoint=settings.ollama_base_url,
+        timeout=settings.ollama_timeout_sec,
+    )
 
 
 async def _require_sensitive_health_consent(
@@ -120,9 +147,32 @@ async def run_daily_coaching(
         App-facing AI Agent output.
     """
     await _require_sensitive_health_consent(session, current_user, http_request, settings)
-    server_owned_request = request.model_copy(update={"user_id": current_user.subject})
-    output = DailyHealthAgentAppAdapter(default_references=DEFAULT_REFERENCE_RANGES).run(
+    memory_context = await load_agent_memory_context(session, current_user, settings)
+    context = dict(request.context)
+    context["agent_memory"] = memory_context
+    server_owned_request = request.model_copy(
+        update={"user_id": current_user.subject, "context": context}
+    )
+    llm_client = _build_llm_client(settings)
+    output = DailyHealthAgentAppAdapter(
+        default_references=DEFAULT_REFERENCE_RANGES,
+        llm_client=llm_client,
+    ).run(
         server_owned_request
+    )
+    await upsert_daily_coaching_memory(
+        session,
+        current_user,
+        settings,
+        server_owned_request,
+        output,
+    )
+    await record_agent_run(
+        session,
+        current_user,
+        settings,
+        output,
+        model=getattr(llm_client, "model", None) if output.provider != "deterministic" else None,
     )
     await record_sensitive_audit_event(
         session,

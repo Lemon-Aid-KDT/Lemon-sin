@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Literal
-
+from enum import StrEnum
+from typing import Any, Literal
 
 MealType = Literal["breakfast", "lunch", "dinner", "snack"]
 ActionType = Literal["supplement_reminder", "daily_mission", "professional_consult"]
@@ -11,7 +10,7 @@ SourceType = Literal["food_ocr", "supplement_ocr", "manual"]
 ApprovalStatus = Literal["confirmed", "requires_confirmation"]
 
 
-class FindingLevel(str, Enum):
+class FindingLevel(StrEnum):
     LOW = "low"
     ADEQUATE = "adequate"
     HIGH = "high"
@@ -108,6 +107,7 @@ class PersonalizationContext:
     caution_tags: list[str]
     health_trend_notes: list[str]
     medication_notes: list[str]
+    agent_memory: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

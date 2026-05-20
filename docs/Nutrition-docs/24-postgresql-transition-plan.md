@@ -125,6 +125,11 @@ raw SQL은 성능 병목, 복잡한 PostgreSQL native query, pgvector similarity
 - [x] 이후 `alembic current` 확인.
 - 가능하면 `alembic check`를 추가해 ORM 모델 변경과 migration 누락을 감지한다.
 - 단, Alembic autogenerate는 rename/constraint 등 일부 변경을 완벽히 감지하지 못하므로 자동 생성 결과는 항상 수동 리뷰한다.
+- 2026-05-19 AI Agent memory migration smoke에서 긴 revision id
+  `0005_create_learning_vector_tables`가 Alembic 기본 version table 길이 32를 초과하는 문제가
+  확인되었다. `backend/alembic/env.py`는 `alembic_version.version_num` 길이를 80으로
+  확장하며, conda PostgreSQL 16.10 + pgvector 0.8.1 test DB에서 upgrade/downgrade smoke가
+  통과했다.
 
 완료 조건:
 

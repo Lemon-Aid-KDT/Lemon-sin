@@ -30,6 +30,7 @@ from src.security.auth import (
     require_analysis_read,
     require_analysis_write,
 )
+from src.services.agent_memory import upsert_nutrition_analysis_memory
 from src.services.analysis_results import (
     analysis_result_to_response,
     analysis_result_to_summary,
@@ -243,6 +244,7 @@ async def create_nutrition_analysis_result(
         settings=settings,
         event_metadata={"analysis_type": AnalysisType.NUTRITION_ANALYSIS.value},
     )
+    await upsert_nutrition_analysis_memory(session, current_user, settings, record)
     return analysis_result_to_response(record)
 
 

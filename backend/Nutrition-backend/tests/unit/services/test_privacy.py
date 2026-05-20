@@ -13,6 +13,7 @@ from fastapi import Request
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.db.privacy import AuditLog, ConsentRecord, DeletionRequest
@@ -315,6 +316,27 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
         raw_image_deleted_at=now,
         expires_at=now + timedelta(minutes=30),
     )
+    agent_memory = AgentMemory(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        memory_type="daily_coaching",
+        summary_json={"schema_version": "agent-memory-summary-v1"},
+        source_counters={"daily_coaching": 1},
+        algorithm_version="agent-memory-summary-v1.0.0",
+    )
+    agent_run = AgentRun(
+        id=uuid4(),
+        request_id="agent-run-123",
+        owner_subject_hash="a" * 64,
+        agent_name="daily_health_agent",
+        status="completed",
+        approval_status="confirmed",
+        provider="sglang",
+        model="qwen-test",
+        latency_ms=Decimal("12.5"),
+        cost_usd=Decimal("0"),
+        used_tools=["nutrition_engine", "agent_memory"],
+    )
     fake_session = _FakeDeletionSession(
         {
             HealthDailySummary: [health_summary],
@@ -324,6 +346,8 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
             UserSupplementIngredient: [supplement_ingredient],
             AnalysisResult: [analysis_result],
             RegulatedDocument: [regulated_document],
+            AgentMemory: [agent_memory],
+            AgentRun: [agent_run],
             ConsentRecord: [consent_record],
         }
     )
@@ -344,11 +368,15 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
         health_batch,
         analysis_result,
         regulated_document,
+        agent_run,
+        agent_memory,
         consent_record,
     ]
     assert isinstance(deletion_request, DeletionRequest)
     assert deletion_request.deleted_counts == {
         "analysis_results": 1,
+        "agent_memory": 1,
+        "agent_runs": 1,
         "consent_records": 1,
         "health_daily_summaries": 1,
         "health_sync_batches": 1,

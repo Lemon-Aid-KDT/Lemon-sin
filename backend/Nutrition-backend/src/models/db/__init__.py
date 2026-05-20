@@ -1,6 +1,7 @@
 """Database model registry."""
 
 from src.db.base import Base
+from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
@@ -16,6 +17,8 @@ from src.models.db.supplement import (
 from src.models.db.user import User
 
 __all__ = [
+    "AgentMemory",
+    "AgentRun",
     "AnalysisResult",
     "AuditLog",
     "Base",

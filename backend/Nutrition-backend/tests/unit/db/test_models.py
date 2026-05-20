@@ -8,6 +8,8 @@ from typing import cast
 from sqlalchemy import CheckConstraint, Index, Numeric, Table
 from src.db.base import Base
 from src.models.db import (
+    AgentMemory,
+    AgentRun,
     AnalysisResult,
     AuditLog,
     ConsentPolicy,
@@ -450,3 +452,52 @@ def test_learning_constraints_and_indexes_are_defined() -> None:
     assert "ck_image_embedding_records_embedding_dimensions_positive" in record_constraint_names
     assert "ix_image_embedding_jobs_status_next_run" in job_index_names
     assert "ix_image_embedding_records_owner_created_at" in record_index_names
+
+
+def test_agent_memory_tables_are_registered_without_raw_payload_columns() -> None:
+    """Verify Agent memory tables store summaries and execution metadata only."""
+    memory = cast(Table, AgentMemory.__table__)
+    run = cast(Table, AgentRun.__table__)
+
+    assert "agent_memory" in Base.metadata.tables
+    assert "agent_runs" in Base.metadata.tables
+    assert {
+        "owner_subject_hash",
+        "memory_type",
+        "summary_json",
+        "source_counters",
+        "last_source_created_at",
+        "algorithm_version",
+    }.issubset(set(memory.c.keys()))
+    assert {
+        "request_id",
+        "owner_subject_hash",
+        "agent_name",
+        "status",
+        "approval_status",
+        "provider",
+        "model",
+        "latency_ms",
+        "cost_usd",
+        "used_tools",
+    }.issubset(set(run.c.keys()))
+
+    forbidden_columns = {"raw_image", "raw_ocr_text", "raw_llm_response", "prompt"}
+    assert forbidden_columns.isdisjoint(set(memory.c.keys()) | set(run.c.keys()))
+
+
+def test_agent_memory_constraints_and_indexes_are_defined() -> None:
+    """Verify Agent memory tables expose deterministic constraints and lookup indexes."""
+    memory = cast(Table, AgentMemory.__table__)
+    run = cast(Table, AgentRun.__table__)
+    memory_constraint_names = {constraint.name for constraint in memory.constraints}
+    run_constraint_names = {constraint.name for constraint in run.constraints}
+    memory_index_names = {index.name for index in memory.indexes if isinstance(index, Index)}
+    run_index_names = {index.name for index in run.indexes if isinstance(index, Index)}
+
+    assert "uq_agent_memory_owner_type" in memory_constraint_names
+    assert "ck_agent_memory_agent_memory_memory_type_nonempty" in memory_constraint_names
+    assert "ck_agent_runs_agent_runs_status_allowed" in run_constraint_names
+    assert "ck_agent_runs_agent_runs_approval_status_allowed" in run_constraint_names
+    assert "ix_agent_memory_owner_type" in memory_index_names
+    assert "ix_agent_runs_owner_created_at" in run_index_names

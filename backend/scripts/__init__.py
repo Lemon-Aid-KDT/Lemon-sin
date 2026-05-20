@@ -1,1 +1,1 @@
-"""Backend maintenance scripts."""
+"""Backend maintenance scripts package."""
