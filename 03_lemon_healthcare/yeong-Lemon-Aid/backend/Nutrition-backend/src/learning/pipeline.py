@@ -76,13 +76,13 @@ async def maybe_store_learning_image_object(
     object_store: LearningImageObjectStore,
     granted_consents: tuple[ConsentType, ...],
 ) -> LearningImageObject | None:
-    """Store a raw image object only when the learning gate passes.
+    """Store a sanitized image object only when the learning gate passes.
 
     Args:
         session: Request-scoped async database session.
         user: Authenticated owner.
         analysis: Supplement analysis row that produced the image.
-        image_bytes: Validated image bytes. Required only when the gate passes.
+        image_bytes: Metadata-stripped image bytes. Required only when the gate passes.
         image_metadata: Validated image metadata.
         settings: Runtime settings.
         object_store: Learning image object store.

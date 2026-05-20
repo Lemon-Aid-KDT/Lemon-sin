@@ -7,7 +7,11 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.v1.contract import P1_5_DEFICIENCY_DASHBOARD_READY_STATUS, route_contract
+from src.api.v1.contract import (
+    P1_5_DEFICIENCY_DASHBOARD_READY_STATUS,
+    P1_7_SUPPLEMENT_RECOMMENDATION_READY_STATUS,
+    route_contract,
+)
 from src.api.v1.examples import (
     CONSENT_REQUIRED_EXAMPLE,
     INSUFFICIENT_SCOPE_EXAMPLE,
@@ -15,6 +19,8 @@ from src.api.v1.examples import (
     NUTRITION_ANALYSIS_REQUEST_EXAMPLES,
     NUTRITION_ANALYSIS_RESPONSE_EXAMPLES,
     NUTRITION_DIAGNOSIS_LATEST_RESPONSE_EXAMPLES,
+    SUPPLEMENT_IMPACT_PREVIEW_REQUEST_EXAMPLES,
+    SUPPLEMENT_IMPACT_PREVIEW_RESPONSE_EXAMPLES,
     UNAUTHORIZED_EXAMPLE,
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
@@ -28,11 +34,15 @@ from src.models.schemas.nutrition import (
     NutritionDiagnosisLatestResponse,
 )
 from src.models.schemas.privacy import ConsentType
+from src.models.schemas.supplement_recommendation import (
+    SupplementImpactPreviewRequest,
+    SupplementImpactPreviewResponse,
+)
 from src.models.schemas.user import PregnancyStatus, Sex
 from src.nutrition.deficiency_analysis import analyze_nutrient_intakes
 from src.nutrition.kdris import get_kdris_dataset_context, get_kdris_for_profile
 from src.nutrition.unit_converter import UnitConversionError
-from src.security.auth import AuthenticatedUser, require_analysis_read
+from src.security.auth import AuthenticatedUser, require_analysis_read, require_scopes
 from src.security.scopes import ApiScope
 from src.services.nutrition_diagnosis import get_latest_nutrition_diagnosis
 from src.services.privacy import (
@@ -40,6 +50,7 @@ from src.services.privacy import (
     record_sensitive_audit_event,
     require_user_consent,
 )
+from src.services.supplement_recommendation import build_supplement_impact_preview
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 
@@ -174,6 +185,87 @@ async def analyze_nutrition(
         )
     except (UnitConversionError, ValueError) as exc:
         raise _unprocessable(exc) from exc
+
+
+@router.post(
+    "/supplement-impact/preview",
+    response_model=SupplementImpactPreviewResponse,
+    responses={
+        200: {
+            "content": {
+                "application/json": {"examples": SUPPLEMENT_IMPACT_PREVIEW_RESPONSE_EXAMPLES}
+            }
+        },
+        401: {"content": {"application/json": {"examples": UNAUTHORIZED_EXAMPLE}}},
+        403: {
+            "content": {
+                "application/json": {
+                    "examples": {
+                        **INSUFFICIENT_SCOPE_EXAMPLE,
+                        **CONSENT_REQUIRED_EXAMPLE,
+                    }
+                }
+            }
+        },
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_READ, ApiScope.ANALYSIS_READ),
+        consents=(ConsentType.SENSITIVE_HEALTH_ANALYSIS,),
+        contract_status=P1_7_SUPPLEMENT_RECOMMENDATION_READY_STATUS,
+    ),
+)
+async def preview_supplement_impact(
+    http_request: Request,
+    request: Annotated[
+        SupplementImpactPreviewRequest,
+        Body(openapi_examples=SUPPLEMENT_IMPACT_PREVIEW_REQUEST_EXAMPLES),
+    ],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    current_user: Annotated[
+        AuthenticatedUser,
+        Depends(require_scopes(ApiScope.SUPPLEMENT_READ, ApiScope.ANALYSIS_READ)),
+    ],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementImpactPreviewResponse:
+    """Preview deterministic supplement impact for the current user.
+
+    Args:
+        http_request: Current FastAPI request.
+        request: Supplement impact preview request.
+        session: Request-scoped async database session.
+        current_user: Authenticated owner.
+        settings: Application settings.
+
+    Returns:
+        Deterministic supplement impact preview.
+
+    Raises:
+        HTTPException: If consent is missing or generated output is unsafe.
+    """
+    await _require_sensitive_health_consent(session, current_user, http_request, settings)
+    try:
+        response = await build_supplement_impact_preview(session, current_user, request)
+    except ValueError as exc:
+        raise _unprocessable(exc) from exc
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_impact_preview",
+        resource_type="supplement_recommendation",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "data_status": response.data_status.value,
+            "contribution_count": len(response.current_supplement_contributions),
+            "deficiency_candidate_count": len(response.deficiency_support_candidates),
+            "risk_count": len(response.excess_or_duplicate_risks),
+            "warning_count": len(response.warnings),
+        },
+    )
+    return response
 
 
 @router.get(

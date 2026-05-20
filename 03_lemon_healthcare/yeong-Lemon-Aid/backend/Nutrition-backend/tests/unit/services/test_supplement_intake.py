@@ -58,6 +58,8 @@ class _FakeStoreSession:
         self.existing = existing
         self.added: SupplementAnalysisRun | None = None
         self.refreshed: SupplementAnalysisRun | None = None
+        self.committed = False
+        self.rolled_back = False
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -103,6 +105,22 @@ class _FakeStoreSession:
         supplement_run.created_at = datetime.now(UTC)
         supplement_run.updated_at = datetime.now(UTC)
         self.refreshed = supplement_run
+
+    async def commit(self) -> None:
+        """Record a fake transaction commit.
+
+        Returns:
+            None.
+        """
+        self.committed = True
+
+    async def rollback(self) -> None:
+        """Record a fake transaction rollback.
+
+        Returns:
+            None.
+        """
+        self.rolled_back = True
 
 
 def _settings(
@@ -155,6 +173,20 @@ def _png_bytes(size: tuple[int, int] = (3, 2)) -> bytes:
     return buffer.getvalue()
 
 
+def _jpeg_with_exif_bytes() -> bytes:
+    """Return a tiny JPEG containing client-supplied EXIF metadata.
+
+    Returns:
+        JPEG image bytes with EXIF tags.
+    """
+    buffer = BytesIO()
+    exif = Image.Exif()
+    exif[0x010E] = "client-supplied-label-description"
+    exif[0x0110] = "client-camera-model"
+    Image.new("RGB", (4, 3), color=(255, 255, 255)).save(buffer, format="JPEG", exif=exif)
+    return buffer.getvalue()
+
+
 def _upload(data: bytes, content_type: str = "image/png") -> UploadFile:
     """Build an UploadFile for service tests.
 
@@ -187,6 +219,7 @@ def _image_metadata(sha256: str = "a" * 64) -> ValidatedSupplementImage:
         size_bytes=128,
         width=3,
         height=2,
+        image_bytes=_png_bytes(),
     )
 
 
@@ -229,15 +262,30 @@ def test_detect_image_mime_supports_allowed_magic_bytes() -> None:
 
 @pytest.mark.asyncio
 async def test_read_and_validate_supplement_image_returns_hash_and_dimensions() -> None:
-    """Verify valid PNG uploads return only bounded image metadata."""
+    """Verify valid PNG uploads return bounded sanitized image metadata."""
     data = _png_bytes()
 
     result = await read_and_validate_supplement_image(_upload(data), _settings())
 
-    assert result.sha256 == hashlib.sha256(data).hexdigest()
+    assert result.sha256 == hashlib.sha256(result.image_bytes).hexdigest()
     assert result.mime_type == "image/png"
-    assert result.size_bytes == len(data)
+    assert result.size_bytes == len(result.image_bytes)
     assert (result.width, result.height) == (3, 2)
+
+
+@pytest.mark.asyncio
+async def test_read_and_validate_supplement_image_strips_exif_metadata() -> None:
+    """Verify client EXIF metadata is removed before downstream image use."""
+    data = _jpeg_with_exif_bytes()
+    with Image.open(BytesIO(data)) as raw_image:
+        assert raw_image.getexif()
+
+    result = await read_and_validate_supplement_image(_upload(data, "image/jpeg"), _settings())
+
+    assert result.mime_type == "image/jpeg"
+    assert result.sha256 == hashlib.sha256(result.image_bytes).hexdigest()
+    with Image.open(BytesIO(result.image_bytes)) as sanitized_image:
+        assert not sanitized_image.getexif()
 
 
 @pytest.mark.asyncio
@@ -307,6 +355,8 @@ async def test_create_supplement_analysis_intake_stores_sanitized_preview() -> N
     assert result.reused_existing is False
     assert result.record is fake_session.added
     assert result.record is fake_session.refreshed
+    assert fake_session.committed is True
+    assert fake_session.rolled_back is False
     assert result.record.owner_subject == "https://auth.example.com/::user_123"
     assert result.record.client_request_id == "client-1"
     assert result.record.image_sha256 == "a" * 64
@@ -338,6 +388,7 @@ async def test_create_supplement_analysis_intake_reuses_existing_same_hash() -> 
     assert result.reused_existing is True
     assert fake_session.added is None
     assert fake_session.refreshed is None
+    assert fake_session.committed is True
 
 
 @pytest.mark.asyncio
@@ -353,6 +404,7 @@ async def test_create_supplement_analysis_intake_rejects_idempotency_conflict() 
             "client-1",
             _settings(),
         )
+    assert fake_session.rolled_back is True
 
 
 def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
@@ -372,3 +424,200 @@ def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
     assert body["low_confidence_fields"] == ["label_text"]
     assert "image_sha256" not in body
     assert "intake" not in body
+
+
+def test_supplement_analysis_run_to_preview_exposes_bounded_section_review() -> None:
+    """Verify mobile preview exposes bounded sections without raw OCR text."""
+    record = _existing_run("a" * 64)
+    record.parsed_snapshot = {
+        "schema_version": "supplement-parsed-snapshot-v3",
+        "requires_user_confirmation": True,
+        "source": {
+            "ocr_provider": "google_vision_document",
+            "ocr_confidence": 0.86,
+            "layout_available": True,
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "raw_model_response_stored": False,
+        },
+        "layout_context": {
+            "schema_version": "supplement-layout-context-v1",
+            "provider": "google_vision_document",
+            "layout_available": True,
+            "sections": [
+                {
+                    "section_id": "section-001",
+                    "section_type": "ingredients",
+                    "source_section_type": "ingredients",
+                    "heading_text": "영양정보",
+                    "text_bundle": "Vitamin D 25 ug",
+                    "confidence": 0.92,
+                    "requires_review": False,
+                    "evidence_refs": ["span-ingredient"],
+                    "row_count": 1,
+                    "cell_count": 2,
+                }
+            ],
+            "evidence_spans": [],
+            "low_confidence_sections": [],
+            "low_confidence_fields": [],
+            "warnings": [],
+            "fallback_reason": None,
+        },
+        "product": {"product_name": "Vitamin D", "manufacturer": "Lemon Labs"},
+        "serving": {
+            "serving_size_text": "1 tablet",
+            "serving_amount": 1,
+            "serving_unit": "tablet",
+            "daily_servings": 1,
+        },
+        "ingredients": [
+            {
+                "display_name": "Vitamin D",
+                "amount": 25,
+                "unit": "ug",
+                "nutrient_code_candidates": [
+                    {
+                        "nutrient_code": "vitamin_d_ug",
+                        "match_method": "alias_exact",
+                        "confidence": 0.98,
+                    }
+                ],
+                "confidence": 0.92,
+                "source": "ocr_llm_preview",
+                "evidence_refs": ["span-ingredient"],
+            }
+        ],
+        "label_sections": [
+            {
+                "section_type": "ingredients",
+                "heading_text": "영양정보",
+                "evidence_refs": ["span-ingredient"],
+            }
+        ],
+        "intake_method": {
+            "text": "Take 1 tablet daily.",
+            "structured": {
+                "frequency": "daily",
+                "times_per_day": 1,
+                "amount_per_time": 1,
+                "amount_unit": "tablet",
+                "time_of_day": [],
+                "with_food": "unknown",
+            },
+            "evidence_refs": ["span-intake"],
+        },
+        "precautions": [
+            {
+                "text": "Consult a professional if pregnant.",
+                "category": "pregnancy",
+                "severity": "label_caution",
+                "evidence_refs": ["span-precaution"],
+            }
+        ],
+        "functional_claims": [
+            {
+                "text": "Supports normal bone health.",
+                "claim_type": "label_claim",
+                "evidence_refs": ["span-claim"],
+            }
+        ],
+        "evidence_spans": [
+            {
+                "span_id": "span-ingredient",
+                "source_type": "label_layout",
+                "section_type": "ingredients",
+                "text_excerpt": "Vitamin D 25 ug",
+                "confidence": 0.92,
+            },
+            {
+                "span_id": "span-intake",
+                "source_type": "label_layout",
+                "section_type": "intake_method",
+                "text_excerpt": "Take 1 tablet daily.",
+                "confidence": 0.6,
+            },
+            {
+                "span_id": "span-precaution",
+                "source_type": "label_layout",
+                "section_type": "precautions",
+                "text_excerpt": "Consult a professional if pregnant.",
+                "confidence": 0.91,
+            },
+            {
+                "span_id": "span-claim",
+                "source_type": "label_layout",
+                "section_type": "functional_info",
+                "text_excerpt": "Supports normal bone health.",
+                "confidence": 0.88,
+            },
+        ],
+        "low_confidence_fields": ["intake_method"],
+        "warnings": [],
+    }
+
+    preview = supplement_analysis_run_to_preview(record)
+    body = preview.model_dump()
+
+    assert body["layout_available"] is True
+    assert body["label_sections"][0]["text_bundle"] == "Vitamin D 25 ug"
+    assert body["intake_method"]["requires_review"] is True
+    assert body["precautions"][0]["category"] == "pregnancy"
+    assert body["functional_claims"][0]["claim_type"] == "label_claim"
+    assert body["evidence_spans"][0]["text_excerpt"] == "Vitamin D 25 ug"
+    assert "raw_ocr_text" not in str(body)
+
+
+def test_supplement_analysis_run_to_preview_exposes_image_risk_action() -> None:
+    """Verify preview conversion exposes structured image risk actions."""
+    record = _existing_run("a" * 64)
+    record.parsed_snapshot = {
+        "schema_version": "supplement-parsed-snapshot-v3",
+        "requires_user_confirmation": True,
+        "source": {
+            "ocr_provider": "google_vision_document",
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "raw_model_response_stored": False,
+        },
+        "product": {"product_name": "Vitamin D"},
+        "serving": {},
+        "ingredients": [],
+        "warnings": [],
+        "image_quality_report": {
+            "status": "retake_recommended",
+            "issues": [
+                {
+                    "reason_code": "cover_only",
+                    "severity": "retake",
+                    "message": "Only the front label is visible.",
+                    "evidence": {"label": "brand_front_label"},
+                }
+            ],
+            "metrics": {"image_width": 400, "image_height": 300},
+            "detected_rois": [
+                {
+                    "label": "brand_front_label",
+                    "x": 10,
+                    "y": 20,
+                    "width": 180,
+                    "height": 220,
+                    "confidence": 0.94,
+                    "area_ratio": 0.33,
+                }
+            ],
+            "retake_reasons": ["cover_only"],
+        },
+    }
+
+    preview = supplement_analysis_run_to_preview(record)
+    body = preview.model_dump()
+
+    assert body["action_required"] == "additional_label_image_required"
+    assert body["analysis_scope"] == "identity_only"
+    assert body["image_role"] == "front_label"
+    assert body["missing_required_sections"] == ["supplement_facts"]
+    assert body["detected_product_regions"][0]["region_id"] == "roi-001"
+    assert body["detected_product_regions"][0]["selected"] is True

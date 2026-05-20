@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0006_create_regulated_ocr_intake"]
+    assert script.get_heads() == ["0007_create_supplement_product_identifiers"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0006_create_regulated_ocr_intake"]
+    assert script.get_heads() == ["0007_create_supplement_product_identifiers"]
 
 
 def test_initial_migration_file_exists() -> None:
@@ -73,6 +73,15 @@ def test_regulated_ocr_intake_migration_file_exists() -> None:
     """Verify the regulated OCR intake migration file exists."""
     migration_path = (
         BACKEND_ROOT / "alembic" / "versions" / "0006_create_regulated_ocr_intake_tables.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_supplement_product_identifier_migration_file_exists() -> None:
+    """Verify the supplement product identifier migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0007_create_supplement_product_identifiers.py"
     )
 
     assert migration_path.is_file()

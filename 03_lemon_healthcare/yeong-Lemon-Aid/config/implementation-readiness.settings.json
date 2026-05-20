@@ -211,12 +211,13 @@
     "ocr": {
       "OCR_PRIMARY_PROVIDER": {
         "required": true,
-        "default": "none",
+        "default": "paddleocr",
         "allowed_values": [
           "none",
-          "google_vision"
+          "google_vision",
+          "paddleocr"
         ],
-        "production_note": "Google Vision은 명시 opt-in 후 ALLOW_EXTERNAL_OCR=true, GOOGLE_VISION_AUTH_MODE=adc, attached service account smoke test 통과 시에만 활성화합니다."
+        "production_note": "PaddleOCR local primary가 기본값입니다. Google Vision은 명시 opt-in 후 ALLOW_EXTERNAL_OCR=true, GOOGLE_VISION_AUTH_MODE=adc, attached service account smoke test 통과 시에만 활성화합니다."
       },
       "ALLOW_EXTERNAL_OCR": {
         "required": true,
@@ -287,8 +288,8 @@
       },
       "ENABLE_LOCAL_OCR": {
         "required": true,
-        "default": false,
-        "production_note": "PaddleOCR local fallback은 fixture report와 local OCR fallback sign-off 전까지 false를 유지합니다."
+        "default": true,
+        "production_note": "PaddleOCR local primary 실행에 필요합니다. fallback 전용 확장은 별도 fixture report와 sign-off 후 활성화합니다."
       },
       "LOCAL_OCR_PROVIDER": {
         "required": true,
@@ -302,6 +303,50 @@
         "default": "korean"
       },
       "LOCAL_OCR_DEVICE": {
+        "required": false,
+        "default": null
+      },
+      "LOCAL_OCR_ENGINE": {
+        "required": true,
+        "default": "paddle",
+        "allowed_values": [
+          "paddle",
+          "paddle_static",
+          "paddle_dynamic",
+          "transformers"
+        ]
+      },
+      "LOCAL_OCR_USE_DOC_ORIENTATION_CLASSIFY": {
+        "required": true,
+        "default": false
+      },
+      "LOCAL_OCR_USE_DOC_UNWARPING": {
+        "required": true,
+        "default": false
+      },
+      "LOCAL_OCR_USE_TEXTLINE_ORIENTATION": {
+        "required": true,
+        "default": false
+      },
+      "LOCAL_OCR_PADDLEX_CONFIG": {
+        "required": false,
+        "default": null
+      },
+      "LOCAL_OCR_TEXT_RECOGNITION_MODEL_DIR": {
+        "required": false,
+        "default": null,
+        "production_note": "Fine-tuned recognition model은 frozen fixture benchmark와 artifact checksum 승인 후에만 설정합니다."
+      },
+      "LOCAL_OCR_TEXT_DETECTION_MODEL_DIR": {
+        "required": false,
+        "default": null,
+        "production_note": "Fine-tuned detection model은 detection_miss baseline report와 artifact checksum 승인 후에만 설정합니다."
+      },
+      "LOCAL_OCR_TEXT_RECOGNITION_MODEL_NAME": {
+        "required": false,
+        "default": null
+      },
+      "LOCAL_OCR_TEXT_DETECTION_MODEL_NAME": {
         "required": false,
         "default": null
       },
@@ -326,11 +371,21 @@
       },
       "CLOVA_OCR_API_URL": {
         "required": false,
-        "secret": true
+        "secret": true,
+        "description": "NAVER Cloud CLOVA OCR Domain에서 API Gateway 자동 연동 후 복사한 Invoke URL입니다. Firebase/custom DNS 도메인이 아닙니다."
       },
       "CLOVA_OCR_SECRET": {
         "required": false,
-        "secret": true
+        "secret": true,
+        "description": "NAVER Cloud CLOVA OCR Domain/API Gateway 연동에서 생성한 X-OCR-SECRET 값입니다."
+      },
+      "CLOVA_OCR_TIMEOUT_SECONDS": {
+        "required": true,
+        "default": 15
+      },
+      "CLOVA_OCR_MAX_RETRIES": {
+        "required": true,
+        "default": 1
       },
       "OCR_TIMEOUT_SEC": {
         "required": true,

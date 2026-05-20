@@ -104,8 +104,15 @@ class _FakeSupplementSession:
 class _FakeGoogleVisionOCRAdapter(OCRAdapter):
     """Fake Google Vision adapter for route tests."""
 
-    def __init__(self, text: str = "비타민 D 1000\nVitamin D 25 ug", *, fail: bool = False) -> None:
+    def __init__(
+        self,
+        text: str = "비타민 D 1000\nVitamin D 25 ug",
+        *,
+        provider: str = "google_vision_document",
+        fail: bool = False,
+    ) -> None:
         self.text = text
+        self.provider = provider
         self.fail = fail
         self.call_count = 0
         self.received_image: OCRImageInput | None = None
@@ -126,7 +133,7 @@ class _FakeGoogleVisionOCRAdapter(OCRAdapter):
         self.received_image = image
         if self.fail:
             raise OCRError("fake Google Vision failure")
-        return OCRResult(text=self.text, provider="google_vision_document", confidence=0.91)
+        return OCRResult(text=self.text, provider=self.provider, confidence=0.91)
 
 
 class _FakeParser:
@@ -311,6 +318,66 @@ def test_analyze_supplement_label_requires_external_ocr_consent(
     assert fake_session.added_analysis is None
 
 
+def test_analyze_supplement_label_uses_request_selected_paddleocr_without_external_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify request-level PaddleOCR selection bypasses external OCR consent."""
+    fake_session = _FakeSupplementSession()
+    fake_ocr = _FakeGoogleVisionOCRAdapter(provider="paddleocr_local")
+    fake_parser = _FakeParser()
+    seen_consents: list[ConsentType] = []
+    seen_provider_selectors: list[str] = []
+
+    async def allow_consent(*args: object, **_kwargs: object) -> None:
+        """Capture consent checks and allow them."""
+        seen_consents.append(cast(ConsentType, args[2]))
+
+    def build_provider_adapters(
+        settings: Settings,
+        provider_selector: str,
+        *,
+        configured_adapters: SupplementImageAnalysisAdapters | None = None,
+    ) -> SupplementImageAnalysisAdapters:
+        """Capture the request selector and return fake local OCR adapters.
+
+        Args:
+            settings: Runtime settings from the route.
+            provider_selector: OCR provider requested through multipart form data.
+            configured_adapters: Default adapter bundle passed by dependency injection.
+
+        Returns:
+            Fake adapter bundle for route-level assertions.
+        """
+        del settings, configured_adapters
+        seen_provider_selectors.append(provider_selector)
+        return SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser)
+
+    monkeypatch.setattr(supplements, "require_user_consent", allow_consent)
+    monkeypatch.setattr(
+        supplements,
+        "build_supplement_image_analysis_adapters_for_provider",
+        build_provider_adapters,
+    )
+    client = _client(
+        fake_session=fake_session,
+        settings=_google_vision_settings(),
+        adapters=SupplementImageAnalysisAdapters(),
+    )
+
+    response = client.post(
+        "/api/v1/supplements/analyze",
+        data={"ocr_provider": "paddleocr"},
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert seen_provider_selectors == ["paddleocr"]
+    assert seen_consents == [ConsentType.OCR_IMAGE_PROCESSING]
+    assert fake_ocr.call_count == 1
+    assert fake_session.added_analysis is not None
+    assert fake_session.added_analysis.ocr_provider == "paddleocr_local"
+
+
 def test_analyze_supplement_label_degrades_when_google_vision_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -347,7 +414,10 @@ def test_analyze_supplement_label_degrades_when_google_vision_fails(
     assert audit.event_metadata == {
         "ocr_provider": None,
         "ocr_confidence_present": False,
-        "warning_codes": ["automatic_ocr_unavailable"],
+        "warning_codes": [
+            "ocr_provider_unavailable:google_vision_document",
+            "automatic_ocr_unavailable",
+        ],
         "raw_image_stored": False,
         "raw_ocr_text_stored": False,
     }

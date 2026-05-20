@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.v1.contract import (
     P1_2_INTAKE_READY_STATUS,
     P1_4_SUPPLEMENT_REGISTRATION_READY_STATUS,
+    P1_7_SUPPLEMENT_RECOMMENDATION_READY_STATUS,
     route_contract,
 )
 from src.api.v1.examples import (
@@ -31,6 +32,9 @@ from src.api.v1.examples import (
     PAYLOAD_TOO_LARGE_EXAMPLE,
     SUPPLEMENT_ANALYSIS_RESPONSE_EXAMPLES,
     SUPPLEMENT_CREATE_REQUEST_EXAMPLES,
+    SUPPLEMENT_IMPACT_PREVIEW_RESPONSE_EXAMPLES,
+    SUPPLEMENT_RECOMMENDATION_EXPLAIN_REQUEST_EXAMPLES,
+    SUPPLEMENT_RECOMMENDATION_EXPLAIN_RESPONSE_EXAMPLES,
     TOO_MANY_REQUESTS_EXAMPLE,
     UNAUTHORIZED_EXAMPLE,
     UNPROCESSABLE_ENTITY_EXAMPLE,
@@ -54,14 +58,29 @@ from src.llm.ollama import (
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import (
     SupplementAnalysisPreview,
+    SupplementBarcodeLookupRequest,
+    SupplementBarcodeLookupResponse,
     UserSupplementCreate,
     UserSupplementListResponse,
     UserSupplementResponse,
 )
 from src.models.schemas.supplement_parser import SupplementOCRTextParseRequest
-from src.ocr.factory import OCRConfigurationError, build_supplement_image_analysis_adapters
+from src.models.schemas.supplement_recommendation import (
+    SupplementImpactPreviewRequest,
+    SupplementImpactPreviewResponse,
+    SupplementRecommendationExplainRequest,
+    SupplementRecommendationExplainResponse,
+)
+from src.ocr.factory import (
+    OCRConfigurationError,
+    SupplementOCRProviderSelector,
+    build_supplement_image_analysis_adapters,
+    build_supplement_image_analysis_adapters_for_provider,
+    is_external_ocr_pipeline_enabled,
+)
 from src.security.auth import (
     AuthenticatedUser,
+    require_scopes,
     require_supplement_delete,
     require_supplement_read,
     require_supplement_write,
@@ -72,6 +91,17 @@ from src.services.privacy import (
     ConsentRequiredError,
     record_sensitive_audit_event,
     require_user_consent,
+)
+from src.services.supplement_barcode_lookup import (
+    BarcodeLookupServiceResult,
+    SupplementBarcodeLookupService,
+    attach_barcode_lookup_to_analysis,
+    barcode_lookup_result_to_response,
+    build_supplement_barcode_lookup_service,
+)
+from src.services.supplement_explanation import (
+    SupplementExplanationError,
+    explain_supplement_recommendation,
 )
 from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
@@ -90,6 +120,7 @@ from src.services.supplement_parser import (
     SupplementParserInputError,
     parse_supplement_analysis_ocr_text,
 )
+from src.services.supplement_recommendation import build_supplement_impact_preview
 from src.services.supplement_registration import (
     SupplementPreviewExpiredError,
     SupplementPreviewNotFoundError,
@@ -115,6 +146,11 @@ SUPPLEMENT_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
 COMMON_SUPPLEMENT_RESPONSES: dict[int | str, dict[str, Any]] = {
     **SUPPLEMENT_AUTH_RESPONSES,
 }
+
+require_supplement_recommendation_read = require_scopes(
+    ApiScope.SUPPLEMENT_READ,
+    ApiScope.ANALYSIS_READ,
+)
 
 
 def _supplement_http_error(status_code: int, *, code: str, message: str) -> HTTPException:
@@ -160,19 +196,86 @@ def get_supplement_image_analysis_adapters(
         ) from exc
 
 
-def _required_supplement_analyze_consents(settings: Settings) -> tuple[ConsentType, ...]:
-    """Return consent buckets required for supplement image analysis.
+def get_supplement_barcode_lookup_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementBarcodeLookupService:
+    """Build the barcode lookup service for the current settings.
 
     Args:
         settings: Application settings.
 
     Returns:
+        Barcode lookup service.
+    """
+
+    return build_supplement_barcode_lookup_service(settings)
+
+
+def _required_supplement_analyze_consents(
+    settings: Settings,
+    ocr_provider: SupplementOCRProviderSelector = "configured",
+) -> tuple[ConsentType, ...]:
+    """Return consent buckets required for supplement image analysis.
+
+    Args:
+        settings: Application settings.
+        ocr_provider: Request-selected OCR provider.
+
+    Returns:
         Consent buckets required by the active OCR path.
     """
     consents = [ConsentType.OCR_IMAGE_PROCESSING]
-    if settings.ocr_primary_provider == "google_vision":
+    if is_external_ocr_pipeline_enabled(settings, ocr_provider):
         consents.append(ConsentType.EXTERNAL_OCR_PROCESSING)
     return tuple(consents)
+
+
+def _select_supplement_image_analysis_adapters(
+    *,
+    settings: Settings,
+    configured_adapters: SupplementImageAnalysisAdapters,
+    ocr_provider: SupplementOCRProviderSelector,
+) -> SupplementImageAnalysisAdapters:
+    """Return an adapter bundle constrained to the request-selected provider.
+
+    Args:
+        settings: Application settings.
+        configured_adapters: Default adapters built by dependency injection.
+        ocr_provider: Provider selector submitted with the multipart request.
+
+    Returns:
+        Adapter bundle for this request.
+
+    Raises:
+        HTTPException: If the requested provider cannot be configured.
+    """
+    try:
+        return build_supplement_image_analysis_adapters_for_provider(
+            settings,
+            ocr_provider,
+            configured_adapters=configured_adapters,
+        )
+    except OCRConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "ocr_provider_unconfigured",
+                "message": str(exc),
+                "requested_ocr_provider": ocr_provider,
+            },
+        ) from exc
+
+
+def _ocr_provider_warning_codes(codes: tuple[str, ...]) -> list[str]:
+    """Return warning codes that indicate OCR/provider/parser failure.
+
+    Args:
+        codes: Warning codes produced by the image analysis service.
+
+    Returns:
+        Warning codes excluding image-quality review hints.
+    """
+    return [code for code in codes if not code.startswith("image_quality:")]
 
 
 async def _require_sensitive_health_consent(
@@ -247,7 +350,14 @@ async def analyze_supplement_label(
         SupplementImageAnalysisAdapters,
         Depends(get_supplement_image_analysis_adapters),
     ],
+    barcode_service: Annotated[
+        SupplementBarcodeLookupService,
+        Depends(get_supplement_barcode_lookup_service),
+    ],
     client_request_id: Annotated[str | None, Form(max_length=80)] = None,
+    ocr_provider: Annotated[SupplementOCRProviderSelector, Form()] = "configured",
+    barcode_text: Annotated[str | None, Form(max_length=256)] = None,
+    barcode_format: Annotated[str | None, Form(max_length=40)] = None,
 ) -> SupplementAnalysisPreview:
     """Create a supplement label preview that must be confirmed by the user.
 
@@ -258,6 +368,9 @@ async def analyze_supplement_label(
         session: Request-scoped async database session.
         settings: Application settings.
         client_request_id: Optional idempotency key generated by the client.
+        ocr_provider: Request-level OCR provider selector for comparison testing.
+        barcode_text: Optional mobile-scanned barcode text.
+        barcode_format: Optional mobile scanner format label.
 
     Returns:
         Supplement parsing preview.
@@ -265,7 +378,12 @@ async def analyze_supplement_label(
     Raises:
         HTTPException: If consent is missing, image validation fails, or idempotency conflicts.
     """
-    required_consents = _required_supplement_analyze_consents(settings)
+    selected_adapters = _select_supplement_image_analysis_adapters(
+        settings=settings,
+        configured_adapters=adapters,
+        ocr_provider=ocr_provider,
+    )
+    required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
     missing_consents: list[ConsentType] = []
     last_consent_error: ConsentRequiredError | None = None
     for consent_type in required_consents:
@@ -313,10 +431,23 @@ async def analyze_supplement_label(
             image=image,
             client_request_id=client_request_id,
             settings=settings,
-            adapters=adapters,
+            adapters=selected_adapters,
             learning_consents=learning_consents,
             learning_object_store=build_learning_object_store(settings),
         )
+        barcode_lookup_result: BarcodeLookupServiceResult | None = None
+        if barcode_text and barcode_text.strip():
+            barcode_lookup_result = await barcode_service.lookup(
+                barcode_text,
+                barcode_format=barcode_format,
+            )
+            result_record = await attach_barcode_lookup_to_analysis(
+                session,
+                result.record,
+                barcode_lookup_result,
+            )
+        else:
+            result_record = result.record
     except SupplementImageValidationError as exc:
         await record_sensitive_audit_event(
             session,
@@ -354,17 +485,18 @@ async def analyze_supplement_label(
         ) from exc
 
     if result.ocr_attempted:
+        provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
         await record_sensitive_audit_event(
             session,
             current_user,
             action=(
                 "supplement_ocr_provider_failed"
-                if result.ocr_warning_codes
+                if provider_warning_codes
                 else "supplement_ocr_provider_completed"
             ),
             resource_type="supplement_analysis_run",
             resource_id=str(result.record.id),
-            outcome="failed" if result.ocr_warning_codes else "success",
+            outcome="failed" if provider_warning_codes else "success",
             request=http_request,
             settings=settings,
             event_metadata={
@@ -372,7 +504,7 @@ async def analyze_supplement_label(
                 "ocr_confidence_present": (
                     result.ocr_result.confidence is not None if result.ocr_result else False
                 ),
-                "warning_codes": list(result.ocr_warning_codes),
+                "warning_codes": provider_warning_codes,
                 "raw_image_stored": False,
                 "raw_ocr_text_stored": False,
             },
@@ -399,10 +531,136 @@ async def analyze_supplement_label(
             "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
             "parser_used": result.parser_used,
             "vision_roi_used": result.vision_region is not None,
+            "image_quality_status": (
+                result.image_quality_report.status if result.image_quality_report else None
+            ),
+            "image_quality_retake_reasons": (
+                list(result.image_quality_report.retake_reasons)
+                if result.image_quality_report
+                else []
+            ),
             "learning_image_object_created": result.learning_image_object_created,
+            "barcode_text_present": bool(barcode_text and barcode_text.strip()),
+            "barcode_lookup_status": (
+                barcode_lookup_result.status if barcode_lookup_result is not None else None
+            ),
         },
     )
-    return supplement_analysis_run_to_preview(result.record)
+    return supplement_analysis_run_to_preview(result_record)
+
+
+@router.post(
+    "/barcode/lookup",
+    response_model=SupplementBarcodeLookupResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        200: {"description": "Review-only official barcode lookup result."},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def lookup_supplement_barcode(
+    http_request: Request,
+    request: Annotated[SupplementBarcodeLookupRequest, Body()],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    barcode_service: Annotated[
+        SupplementBarcodeLookupService,
+        Depends(get_supplement_barcode_lookup_service),
+    ],
+) -> SupplementBarcodeLookupResponse:
+    """Look up review-only official product candidates by barcode.
+
+    Args:
+        http_request: Current FastAPI request.
+        request: Barcode lookup request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        barcode_service: Barcode lookup service.
+
+    Returns:
+        Barcode lookup response requiring user confirmation.
+
+    Raises:
+        HTTPException: If the barcode value is syntactically invalid.
+    """
+
+    result = await barcode_service.lookup(
+        request.barcode_text,
+        barcode_format=request.barcode_format,
+    )
+    response = barcode_lookup_result_to_response(result)
+    await _record_barcode_lookup_audit(
+        session,
+        current_user,
+        http_request,
+        settings,
+        response,
+    )
+    if result.status == "invalid_request":
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code=result.error_code or "invalid_barcode",
+            message=result.error_message or "Barcode value is invalid.",
+        )
+    return response
+
+
+async def _record_barcode_lookup_audit(
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    http_request: Request,
+    settings: Settings,
+    response: SupplementBarcodeLookupResponse,
+) -> None:
+    """Record sanitized barcode lookup audit metadata.
+
+    Args:
+        session: Request-scoped async database session.
+        current_user: Authenticated actor.
+        http_request: Current FastAPI request.
+        settings: Application settings.
+        response: Barcode lookup response. Raw barcode values are not logged.
+
+    Returns:
+        None.
+    """
+
+    outcome: AuditOutcome = "success"
+    if response.status == "invalid_request":
+        outcome = "blocked"
+    elif response.status == "provider_error":
+        outcome = "failed"
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_barcode_lookup",
+        resource_type="supplement_barcode",
+        resource_id=None,
+        outcome=outcome,
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "lookup_status": response.status,
+            "barcode_hash": response.barcode_hash,
+            "barcode_format": response.barcode_format,
+            "barcode_symbology": response.barcode_symbology,
+            "candidate_count": response.candidate_count,
+            "provider_observations": [
+                observation.model_dump(mode="json")
+                for observation in response.provider_observations
+            ],
+            "raw_barcode_stored": False,
+            "raw_provider_payload_stored": False,
+            "auto_confirmed": False,
+        },
+    )
 
 
 @router.post(
@@ -580,7 +838,7 @@ async def parse_supplement_analysis_ocr_text_preview(
             "ocr_confidence_present": result.record.ocr_confidence is not None,
             "parser_provider": settings.llm_provider,
             "parser_model": settings.ollama_model,
-            "parser_schema": "SupplementStructuredParseResult",
+            "parser_schema": "SupplementStructuredParseResultV2",
             "schema_valid": True,
             "ingredient_count": len(result.parse_result.ingredient_candidates),
             "low_confidence_field_count": len(
@@ -634,7 +892,7 @@ async def _record_ocr_text_parse_audit(
             "ocr_confidence_present": request.ocr_confidence is not None,
             "parser_provider": settings.llm_provider,
             "parser_model": settings.ollama_model,
-            "parser_schema": "SupplementStructuredParseResult",
+            "parser_schema": "SupplementStructuredParseResultV2",
             "schema_valid": False if reason == "parser_schema_invalid" else None,
             "raw_ocr_text_stored": False,
             "raw_llm_response_stored": False,
@@ -684,7 +942,12 @@ async def create_user_supplement(
     """
     await _require_sensitive_health_consent(session, current_user, http_request, settings)
     try:
-        result = await create_user_supplement_from_confirmation(session, current_user, request)
+        result = await create_user_supplement_from_confirmation(
+            session,
+            current_user,
+            request,
+            settings,
+        )
     except SupplementRegistrationValidationError as exc:
         raise _supplement_http_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -758,6 +1021,158 @@ async def _collect_learning_consents_if_enabled(
     if not settings.enable_image_learning_pipeline and not settings.enable_pgvector_storage:
         return ()
     return await collect_active_learning_consents(session, current_user)
+
+
+@router.get(
+    "/recommendations/latest",
+    response_model=SupplementImpactPreviewResponse,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        200: {
+            "content": {
+                "application/json": {"examples": SUPPLEMENT_IMPACT_PREVIEW_RESPONSE_EXAMPLES}
+            }
+        },
+        403: {"content": {"application/json": {"examples": CONSENT_REQUIRED_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_READ, ApiScope.ANALYSIS_READ),
+        consents=(ConsentType.SENSITIVE_HEALTH_ANALYSIS,),
+        contract_status=P1_7_SUPPLEMENT_RECOMMENDATION_READY_STATUS,
+    ),
+)
+async def get_latest_supplement_recommendations(
+    http_request: Request,
+    current_user: Annotated[
+        AuthenticatedUser,
+        Depends(require_supplement_recommendation_read),
+    ],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementImpactPreviewResponse:
+    """Return the latest deterministic supplement impact preview.
+
+    Args:
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Deterministic supplement impact preview using all active supplements.
+
+    Raises:
+        HTTPException: If consent is missing or generated output is unsafe.
+    """
+    await _require_sensitive_health_consent(session, current_user, http_request, settings)
+    try:
+        response = await build_supplement_impact_preview(
+            session,
+            current_user,
+            SupplementImpactPreviewRequest(),
+        )
+    except ValueError as exc:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="invalid_supplement_recommendation",
+            message=str(exc),
+        ) from exc
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_recommendations_latest",
+        resource_type="supplement_recommendation",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "data_status": response.data_status.value,
+            "contribution_count": len(response.current_supplement_contributions),
+            "deficiency_candidate_count": len(response.deficiency_support_candidates),
+            "risk_count": len(response.excess_or_duplicate_risks),
+            "warning_count": len(response.warnings),
+        },
+    )
+    return response
+
+
+@router.post(
+    "/recommendations/explain",
+    response_model=SupplementRecommendationExplainResponse,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        200: {
+            "content": {
+                "application/json": {
+                    "examples": SUPPLEMENT_RECOMMENDATION_EXPLAIN_RESPONSE_EXAMPLES
+                }
+            }
+        },
+        403: {"content": {"application/json": {"examples": CONSENT_REQUIRED_EXAMPLE}}},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_READ, ApiScope.ANALYSIS_READ),
+        consents=(ConsentType.SENSITIVE_HEALTH_ANALYSIS,),
+        contract_status=P1_7_SUPPLEMENT_RECOMMENDATION_READY_STATUS,
+    ),
+)
+async def explain_supplement_recommendations(
+    http_request: Request,
+    request: Annotated[
+        SupplementRecommendationExplainRequest,
+        Body(openapi_examples=SUPPLEMENT_RECOMMENDATION_EXPLAIN_REQUEST_EXAMPLES),
+    ],
+    current_user: Annotated[
+        AuthenticatedUser,
+        Depends(require_supplement_recommendation_read),
+    ],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementRecommendationExplainResponse:
+    """Explain deterministic supplement impact output with safety guardrails.
+
+    Args:
+        http_request: Current FastAPI request.
+        request: Explanation request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Safe explanation response.
+
+    Raises:
+        HTTPException: If consent is missing or fallback wording fails safety validation.
+    """
+    await _require_sensitive_health_consent(session, current_user, http_request, settings)
+    try:
+        response = await explain_supplement_recommendation(request, settings)
+    except SupplementExplanationError as exc:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="unsafe_supplement_explanation",
+            message=str(exc),
+        ) from exc
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_recommendations_explained",
+        resource_type="supplement_recommendation",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "llm_used": response.llm_used,
+            "warning_count": len(response.warnings),
+            "blocked_term_count": len(response.blocked_terms_detected),
+            "raw_ocr_text_stored": False,
+            "raw_llm_response_stored": False,
+        },
+    )
+    return response
 
 
 @router.get(

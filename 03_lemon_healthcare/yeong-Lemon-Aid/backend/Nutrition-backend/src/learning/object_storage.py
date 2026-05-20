@@ -20,8 +20,8 @@ class LearningImageObjectInput:
     """Payload for retaining a consent-gated learning image.
 
     Attributes:
-        image_bytes: Original image bytes that passed intake validation.
-        image_sha256: SHA-256 hash of the original image bytes.
+        image_bytes: Metadata-stripped image bytes that passed intake validation.
+        image_sha256: SHA-256 hash of the metadata-stripped image bytes.
         mime_type: Accepted image MIME type.
         owner_subject_hash: HMAC of the owner subject.
         retained_until: Automatic deletion deadline.

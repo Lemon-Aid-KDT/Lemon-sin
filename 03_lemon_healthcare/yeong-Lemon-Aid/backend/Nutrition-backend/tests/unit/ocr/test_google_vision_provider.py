@@ -9,12 +9,18 @@ from typing import Any
 import httpx
 import pytest
 from src.ocr.base import OCRError, OCRImageInput
+from src.ocr.google_vision import GoogleVisionOCR
 from src.ocr.providers.google_vision import (
     GOOGLE_VISION_PROVIDER,
     GoogleVisionOCRAdapter,
     build_google_vision_endpoint,
 )
 from src.ocr.providers.google_vision_auth import GoogleVisionApiKeyAuthHeaders
+
+
+def test_google_vision_compatibility_alias_points_to_adapter() -> None:
+    """Verify the handoff import path stays compatible with the provider package."""
+    assert GoogleVisionOCR is GoogleVisionOCRAdapter
 
 
 def _image_input() -> OCRImageInput:
@@ -50,12 +56,52 @@ async def test_google_vision_provider_posts_document_text_request_with_api_key_h
                             "text": "비타민 D 1000\nVitamin D 25 ug",
                             "pages": [
                                 {
+                                    "width": 300,
+                                    "height": 200,
+                                    "confidence": 0.87,
                                     "blocks": [
                                         {
-                                            "confidence": 0.92,
-                                            "paragraphs": [{"confidence": 0.88}],
+                                            "blockType": "TEXT",
+                                            "confidence": 0.88,
+                                            "boundingBox": {
+                                                "vertices": [
+                                                    {"x": 1, "y": 2},
+                                                    {"x": 100, "y": 2},
+                                                    {"x": 100, "y": 30},
+                                                    {"x": 1, "y": 30},
+                                                ]
+                                            },
+                                            "paragraphs": [
+                                                {
+                                                    "confidence": 0.89,
+                                                    "words": [
+                                                        {
+                                                            "confidence": 0.91,
+                                                            "boundingBox": {
+                                                                "vertices": [
+                                                                    {"x": 1, "y": 2},
+                                                                    {"x": 30, "y": 2},
+                                                                    {"x": 30, "y": 20},
+                                                                    {"x": 1, "y": 20},
+                                                                ]
+                                                            },
+                                                            "symbols": [
+                                                                {"text": "비"},
+                                                                {"text": "타"},
+                                                                {"text": "민"},
+                                                            ],
+                                                        },
+                                                        {
+                                                            "confidence": 0.93,
+                                                            "symbols": [
+                                                                {"text": "D"},
+                                                            ],
+                                                        },
+                                                    ],
+                                                }
+                                            ],
                                         }
-                                    ]
+                                    ],
                                 }
                             ],
                         }
@@ -76,7 +122,26 @@ async def test_google_vision_provider_posts_document_text_request_with_api_key_h
 
     assert result.provider == GOOGLE_VISION_PROVIDER
     assert result.text == "비타민 D 1000\nVitamin D 25 ug"
-    assert result.confidence == pytest.approx(0.90)
+    assert result.confidence == pytest.approx(0.92)
+    assert len(result.pages) == 1
+    page = result.pages[0]
+    assert page.width == 300
+    assert page.height == 200
+    assert page.confidence == pytest.approx(0.87)
+    block = page.blocks[0]
+    assert block.block_type == "TEXT"
+    assert block.text == "비타민 D"
+    assert block.bounding_box is not None
+    assert block.bounding_box.vertices[0].x == 1
+    paragraph = block.paragraphs[0]
+    assert paragraph.text == "비타민 D"
+    assert paragraph.words[0].text == "비타민"
+    assert paragraph.words[0].confidence == pytest.approx(0.91)
+    assert paragraph.words[0].block_index == 0
+    assert paragraph.words[0].paragraph_index == 0
+    assert paragraph.words[0].word_index == 0
+    assert paragraph.words[0].bounding_box is not None
+    assert paragraph.words[0].bounding_box.vertices[2].y == 20
     assert "key=" not in captured["url"]
     assert captured["headers"]["x-goog-api-key"] == "secret-key"
     request_body = captured["body"]["requests"][0]
@@ -107,6 +172,7 @@ async def test_google_vision_provider_falls_back_to_text_annotations() -> None:
 
     assert result.text == "fallback text"
     assert result.confidence is None
+    assert result.pages == ()
 
 
 @pytest.mark.asyncio

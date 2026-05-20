@@ -15,12 +15,36 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaSupplementParser
+from src.llm.ollama import OllamaSupplementParser
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement import SupplementAnalysisStatus
-from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_layout_context import SupplementLayoutContextV1
+from src.models.schemas.supplement_parser import (
+    StructuredParseResultLike,
+    SupplementStructuredParseResultV2,
+    coerce_supplement_structured_parse_result_v2,
+)
+from src.models.schemas.supplement_snapshot import (
+    OCRSnapshotProvider,
+    StructuredIntakeMethodV3,
+    SupplementParsedSnapshotSourceV3,
+    SupplementParsedSnapshotV3,
+    SupplementSnapshotEvidenceSpan,
+    SupplementSnapshotFunctionalClaimV3,
+    SupplementSnapshotIngredientV3,
+    SupplementSnapshotIntakeMethodV3,
+    SupplementSnapshotLabelSectionV3,
+    SupplementSnapshotPrecautionV3,
+    SupplementSnapshotProductV3,
+    SupplementSnapshotServingV3,
+)
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.nutrient_code_matcher import (
+    match_nutrient_code_candidates,
+    normalize_nutrient_alias,
+)
+from src.services.parser_domain_correction import apply_parser_domain_corrections
 
 SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
     "Structured OCR parsing is a preview. Review and confirm every field before saving."
@@ -28,10 +52,10 @@ SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
 SUPPLEMENT_IMAGE_ASSIST_WARNING = (
     "Image-assisted text extraction is a fallback preview. Review every field before saving."
 )
-SUPPLEMENT_PARSER_PROVIDER = "ollama"
 OLLAMA_VISION_ASSIST_PROVIDER = "ollama_vision_assist"
 OCR_PROVIDER_MAX_LENGTH = 64
-OCR_LOW_CONFIDENCE_THRESHOLD = Decimal("0.80")
+SNAPSHOT_MAX_EVIDENCE_SPANS = 160
+SNAPSHOT_MAX_LABEL_SECTIONS = 40
 
 
 class SupplementOCRTextParser(Protocol):
@@ -40,7 +64,7 @@ class SupplementOCRTextParser(Protocol):
     async def parse_supplement_ocr_text(
         self,
         ocr_text: str,
-    ) -> SupplementStructuredParseResult:
+    ) -> StructuredParseResultLike:
         """Parse OCR text into a validated supplement structure.
 
         Args:
@@ -57,11 +81,11 @@ class SupplementParserStoreResult:
 
     Attributes:
         record: Updated supplement analysis row.
-        parse_result: Validated structured parse output.
+        parse_result: Validated expanded structured parse output.
     """
 
     record: SupplementAnalysisRun
-    parse_result: SupplementStructuredParseResult
+    parse_result: SupplementStructuredParseResultV2
 
 
 class SupplementParserInputError(ValueError):
@@ -93,6 +117,8 @@ async def parse_supplement_analysis_ocr_text(
     ocr_confidence: float | None,
     settings: Settings,
     parser: SupplementOCRTextParser | None = None,
+    parser_input_text: str | None = None,
+    layout_context: SupplementLayoutContextV1 | None = None,
 ) -> SupplementParserStoreResult:
     """Parse OCR text and store the structured preview on an owned analysis row.
 
@@ -106,6 +132,9 @@ async def parse_supplement_analysis_ocr_text(
         ocr_confidence: Optional OCR confidence from 0.0 to 1.0.
         settings: Runtime settings.
         parser: Optional parser adapter, primarily for tests.
+        parser_input_text: Optional sectioned parser input. The original OCR text
+            remains the hash/conflict source of truth.
+        layout_context: Optional bounded layout context derived from OCR coordinates.
 
     Returns:
         Updated analysis row and validated parse result.
@@ -118,6 +147,11 @@ async def parse_supplement_analysis_ocr_text(
         SupplementParserConflictError: If a different OCR text was already attached.
     """
     normalized_text = normalize_ocr_text(ocr_text, settings.supplement_ocr_text_max_chars)
+    normalized_parser_text = (
+        normalize_ocr_text(parser_input_text, settings.supplement_ocr_text_max_chars)
+        if parser_input_text is not None
+        else normalized_text
+    )
     normalized_provider = _normalize_ocr_provider(ocr_provider)
     normalized_confidence = _normalize_confidence(ocr_confidence)
     text_hash = hash_ocr_text(normalized_text, settings.privacy_hash_secret)
@@ -134,7 +168,8 @@ async def parse_supplement_analysis_ocr_text(
     _validate_parseable_record(record, text_hash)
 
     active_parser = parser or OllamaSupplementParser(settings)
-    parse_result = await active_parser.parse_supplement_ocr_text(normalized_text)
+    raw_parse_result = await active_parser.parse_supplement_ocr_text(normalized_parser_text)
+    parse_result = coerce_supplement_structured_parse_result_v2(raw_parse_result)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
     record.ocr_provider = normalized_provider
@@ -142,12 +177,17 @@ async def parse_supplement_analysis_ocr_text(
     record.ocr_text_hash = text_hash
     record.parsed_snapshot = _build_parsed_snapshot(
         parse_result=parse_result,
-        previous_snapshot=record.parsed_snapshot,
+        analysis_id=analysis_id,
         ocr_confidence=normalized_confidence,
         ocr_provider=normalized_provider,
         settings=settings,
+        layout_context=layout_context,
     )
-    record.warnings = _build_warning_list(parse_result.warnings, normalized_provider)
+    record.warnings = _build_warning_list(
+        parse_result.warnings,
+        normalized_provider,
+        layout_warnings=layout_context.warnings if layout_context is not None else None,
+    )
     record.algorithm_version = settings.supplement_parser_algorithm_version
     record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
 
@@ -214,7 +254,7 @@ def _validate_parseable_record(record: SupplementAnalysisRun, ocr_text_hash: str
 
 
 def _validate_parser_result(
-    parse_result: SupplementStructuredParseResult,
+    parse_result: SupplementStructuredParseResultV2,
     max_ingredients: int,
 ) -> None:
     """Validate runtime parser bounds not expressed by static JSON schema settings.
@@ -226,7 +266,7 @@ def _validate_parser_result(
     Raises:
         SupplementParserInputError: If the parser result exceeds runtime bounds.
     """
-    if len(parse_result.ingredient_candidates) > max_ingredients:
+    if len(parse_result.ingredients) > max_ingredients:
         raise SupplementParserInputError("Parser returned too many ingredient candidates.")
 
 
@@ -271,20 +311,22 @@ def _normalize_confidence(ocr_confidence: float | None) -> Decimal | None:
 
 def _build_parsed_snapshot(
     *,
-    parse_result: SupplementStructuredParseResult,
-    previous_snapshot: dict[str, Any],
+    parse_result: SupplementStructuredParseResultV2,
+    analysis_id: UUID,
     ocr_confidence: Decimal | None,
     ocr_provider: str,
     settings: Settings,
+    layout_context: SupplementLayoutContextV1 | None = None,
 ) -> dict[str, Any]:
     """Build the sanitized JSON snapshot persisted for user confirmation.
 
     Args:
         parse_result: Validated structured parser result.
-        previous_snapshot: Existing preview snapshot, used only to preserve intake metadata.
+        analysis_id: Supplement analysis preview identifier.
         ocr_confidence: Provider-level OCR confidence.
         ocr_provider: OCR-like provider that produced the parser input.
         settings: Runtime settings used for model and algorithm metadata.
+        layout_context: Optional deterministic layout context.
 
     Returns:
         Sanitized parsed snapshot with no raw OCR text or model response.
@@ -292,75 +334,342 @@ def _build_parsed_snapshot(
     low_confidence_fields = _build_low_confidence_fields(
         parse_result.low_confidence_fields,
         ocr_confidence,
+        settings,
+        layout_fields=layout_context.low_confidence_fields if layout_context is not None else None,
     )
-    snapshot: dict[str, Any] = {
-        "parsed_product": parse_result.parsed_product.model_dump(exclude_none=True),
-        "ingredient_candidates": [
-            candidate.model_dump(exclude_none=True)
-            for candidate in parse_result.ingredient_candidates
+    daily_servings = parse_result.serving.daily_servings
+    domain_correction = apply_parser_domain_corrections(parse_result, settings)
+    parser_evidence_spans = [
+        SupplementSnapshotEvidenceSpan.model_validate(span.model_dump(exclude_none=True))
+        for span in parse_result.evidence_spans
+    ]
+    layout_evidence_spans = _layout_context_evidence_spans(layout_context)
+    evidence_spans = _merge_evidence_spans(parser_evidence_spans, layout_evidence_spans)
+    included_span_ids = {span.span_id for span in evidence_spans}
+    label_sections = _merge_label_sections(
+        _layout_context_label_sections(layout_context, included_span_ids),
+        [
+            SupplementSnapshotLabelSectionV3(
+                section_type=section.section_type,
+                heading_text=section.heading_text,
+                evidence_refs=[ref for ref in section.evidence_refs if ref in included_span_ids],
+            )
+            for section in parse_result.label_sections
         ],
-        "low_confidence_fields": low_confidence_fields,
-        "parser_metadata": {
-            "provider": SUPPLEMENT_PARSER_PROVIDER,
-            "source": SUPPLEMENT_PARSER_SOURCE,
-            "input_provider": ocr_provider,
-            "model": settings.ollama_model,
-            "algorithm_version": settings.supplement_parser_algorithm_version,
-            "raw_ocr_text_stored": False,
-            "raw_model_response_stored": False,
-        },
-    }
-    intake = previous_snapshot.get("intake")
-    if isinstance(intake, dict):
-        snapshot["intake"] = intake
-    return snapshot
+    )
+    snapshot_warnings = _merge_strings(
+        [
+            *(layout_context.warnings if layout_context is not None else []),
+            *parse_result.warnings,
+            *domain_correction.warnings,
+        ]
+    )
+    snapshot = SupplementParsedSnapshotV3(
+        source=SupplementParsedSnapshotSourceV3(
+            analysis_id=analysis_id,
+            ocr_provider=_normalize_snapshot_ocr_provider(ocr_provider),
+            ocr_confidence=float(ocr_confidence) if ocr_confidence is not None else None,
+            layout_available=bool(layout_context and layout_context.layout_available),
+            raw_image_stored=False,
+            raw_ocr_text_stored=False,
+            raw_provider_payload_stored=False,
+            raw_model_response_stored=False,
+        ),
+        layout_context=layout_context,
+        product=SupplementSnapshotProductV3(
+            product_name=parse_result.product.product_name,
+            manufacturer=parse_result.product.manufacturer,
+            evidence_refs=parse_result.product.evidence_refs,
+        ),
+        serving=SupplementSnapshotServingV3(
+            serving_size_text=parse_result.serving.serving_size_text,
+            serving_amount=parse_result.serving.serving_amount,
+            serving_unit=parse_result.serving.serving_unit,
+            daily_servings=daily_servings,
+            total_amount=parse_result.serving.total_amount,
+            total_unit=parse_result.serving.total_unit,
+            evidence_refs=parse_result.serving.evidence_refs,
+        ),
+        ingredients=[
+            SupplementSnapshotIngredientV3(
+                display_name=ingredient.display_name,
+                normalized_name=normalize_nutrient_alias(ingredient.display_name),
+                amount=ingredient.amount,
+                unit=domain_correction.unit_overrides_by_ingredient_index.get(
+                    index,
+                    ingredient.unit,
+                ),
+                amount_text=ingredient.amount_text,
+                daily_amount=_calculate_daily_amount(ingredient.amount, daily_servings),
+                daily_unit=(
+                    domain_correction.unit_overrides_by_ingredient_index.get(
+                        index,
+                        ingredient.unit,
+                    )
+                    if daily_servings is not None
+                    else None
+                ),
+                nutrient_code_candidates=match_nutrient_code_candidates(
+                    ingredient.display_name,
+                    domain_correction.alias_catalog_by_ingredient_index.get(index, ()),
+                ),
+                confidence=ingredient.confidence,
+                source="ocr_llm_preview",
+                evidence_refs=ingredient.evidence_refs,
+            )
+            for index, ingredient in enumerate(parse_result.ingredients)
+        ],
+        label_sections=label_sections,
+        intake_method=SupplementSnapshotIntakeMethodV3(
+            text=parse_result.intake_method.text,
+            structured=StructuredIntakeMethodV3(
+                frequency=parse_result.intake_method.structured.frequency,
+                times_per_day=parse_result.intake_method.structured.times_per_day,
+                amount_per_time=parse_result.intake_method.structured.amount_per_time,
+                amount_unit=parse_result.intake_method.structured.amount_unit,
+                time_of_day=parse_result.intake_method.structured.time_of_day,
+                with_food=parse_result.intake_method.structured.with_food,
+            ),
+            evidence_refs=parse_result.intake_method.evidence_refs,
+        ),
+        precautions=[
+            SupplementSnapshotPrecautionV3(
+                text=precaution.text,
+                category=precaution.category,
+                severity=precaution.severity,
+                evidence_refs=precaution.evidence_refs,
+            )
+            for precaution in parse_result.precautions
+        ],
+        functional_claims=[
+            SupplementSnapshotFunctionalClaimV3(
+                text=claim.text,
+                claim_type=claim.claim_type,
+                evidence_refs=claim.evidence_refs,
+            )
+            for claim in parse_result.functional_claims
+        ],
+        evidence_spans=evidence_spans,
+        domain_correction_audit=list(domain_correction.audit_entries),
+        low_confidence_fields=low_confidence_fields,
+        warnings=snapshot_warnings,
+    )
+    return snapshot.model_dump(mode="json", exclude_none=True)
+
+
+def _calculate_daily_amount(amount: float | None, daily_servings: float | None) -> float | None:
+    """Calculate label-derived daily amount when both inputs are explicit.
+
+    Args:
+        amount: Amount per serving.
+        daily_servings: Label-stated serving count per day.
+
+    Returns:
+        Daily amount candidate, or None when not computable.
+    """
+    if amount is None or daily_servings is None:
+        return None
+    return amount * daily_servings
+
+
+def _normalize_snapshot_ocr_provider(ocr_provider: str) -> OCRSnapshotProvider:
+    """Map runtime OCR provider labels into the bounded snapshot enum.
+
+    Args:
+        ocr_provider: Runtime OCR provider label.
+
+    Returns:
+        Snapshot OCR provider label.
+    """
+    if ocr_provider in {
+        "google_vision_document",
+        "clova_ocr",
+        "paddleocr_local",
+        "ollama_vision_assist",
+        "manual",
+        "intake-only",
+        "noop",
+        "none",
+    }:
+        return ocr_provider  # type: ignore[return-value]
+    if ocr_provider.startswith("manual"):
+        return "manual"
+    return "none"
+
+
+def _layout_context_evidence_spans(
+    layout_context: SupplementLayoutContextV1 | None,
+) -> list[SupplementSnapshotEvidenceSpan]:
+    """Convert layout context cell evidence into persisted snapshot spans.
+
+    Args:
+        layout_context: Optional deterministic layout context.
+
+    Returns:
+        Snapshot evidence spans derived from layout cells.
+    """
+    if layout_context is None:
+        return []
+    return [
+        SupplementSnapshotEvidenceSpan(
+            span_id=span.span_id,
+            source_type="label_layout",
+            section_type=span.section_type,
+            text_excerpt=span.text_excerpt,
+            page_index=span.page_index,
+            cell_ref=span.cell_ref,
+            confidence=span.confidence,
+        )
+        for span in layout_context.evidence_spans
+    ]
+
+
+def _layout_context_label_sections(
+    layout_context: SupplementLayoutContextV1 | None,
+    included_span_ids: set[str],
+) -> list[SupplementSnapshotLabelSectionV3]:
+    """Convert layout context sections into persisted label sections.
+
+    Args:
+        layout_context: Optional deterministic layout context.
+        included_span_ids: Evidence spans available in the final snapshot.
+
+    Returns:
+        Snapshot label sections derived from layout context.
+    """
+    if layout_context is None:
+        return []
+    return [
+        SupplementSnapshotLabelSectionV3(
+            section_type=section.section_type,
+            heading_text=section.heading_text,
+            evidence_refs=[ref for ref in section.evidence_refs if ref in included_span_ids],
+        )
+        for section in layout_context.sections
+    ]
+
+
+def _merge_evidence_spans(
+    primary_spans: list[SupplementSnapshotEvidenceSpan],
+    secondary_spans: list[SupplementSnapshotEvidenceSpan],
+) -> list[SupplementSnapshotEvidenceSpan]:
+    """Merge evidence spans without creating dangling parser references.
+
+    Parser spans are primary because parser output validation already guarantees
+    parser field refs point to them. Layout spans fill the remaining capacity.
+
+    Args:
+        primary_spans: Parser-produced evidence spans.
+        secondary_spans: Layout-derived evidence spans.
+
+    Returns:
+        Deduplicated evidence spans within the snapshot bound.
+    """
+    merged: list[SupplementSnapshotEvidenceSpan] = []
+    seen: set[str] = set()
+    for span in [*primary_spans, *secondary_spans]:
+        if span.span_id in seen:
+            continue
+        if len(merged) >= SNAPSHOT_MAX_EVIDENCE_SPANS:
+            break
+        merged.append(span)
+        seen.add(span.span_id)
+    return merged
+
+
+def _merge_label_sections(
+    primary_sections: list[SupplementSnapshotLabelSectionV3],
+    secondary_sections: list[SupplementSnapshotLabelSectionV3],
+) -> list[SupplementSnapshotLabelSectionV3]:
+    """Merge label sections while preserving layout-derived evidence first.
+
+    Args:
+        primary_sections: Layout-derived label sections.
+        secondary_sections: Parser-produced label sections.
+
+    Returns:
+        Deduplicated label sections within the snapshot bound.
+    """
+    merged: list[SupplementSnapshotLabelSectionV3] = []
+    index_by_key: dict[tuple[str, str], int] = {}
+    for section in [*primary_sections, *secondary_sections]:
+        key = (section.section_type, section.heading_text or "")
+        if key in index_by_key:
+            existing = merged[index_by_key[key]]
+            merged[index_by_key[key]] = SupplementSnapshotLabelSectionV3(
+                section_type=existing.section_type,
+                heading_text=existing.heading_text,
+                evidence_refs=_merge_strings([*existing.evidence_refs, *section.evidence_refs]),
+            )
+            continue
+        if len(merged) >= SNAPSHOT_MAX_LABEL_SECTIONS:
+            break
+        index_by_key[key] = len(merged)
+        merged.append(section)
+    return merged
 
 
 def _build_low_confidence_fields(
     parser_fields: list[str],
     ocr_confidence: Decimal | None,
+    settings: Settings,
+    *,
+    layout_fields: list[str] | None = None,
 ) -> list[str]:
     """Merge parser field warnings with OCR-level confidence review signals.
 
     Args:
         parser_fields: Field paths reported by the structured parser.
         ocr_confidence: Provider-level OCR confidence.
+        settings: Runtime settings containing the OCR confidence threshold.
+        layout_fields: Layout-derived field paths requiring user review.
 
     Returns:
         Deduplicated field paths that require user review.
     """
-    fields = list(parser_fields)
-    if ocr_confidence is not None and ocr_confidence < OCR_LOW_CONFIDENCE_THRESHOLD:
+    fields = [*parser_fields, *(layout_fields or [])]
+    threshold = Decimal(str(settings.ocr_confidence_threshold))
+    if ocr_confidence is not None and ocr_confidence < threshold:
         fields.append("ocr_text")
 
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for field in fields:
-        stripped = field.strip()
-        if not stripped or stripped in seen:
-            continue
-        normalized.append(stripped)
-        seen.add(stripped)
-    return normalized
+    return _merge_strings(fields)
 
 
-def _build_warning_list(parser_warnings: list[str], ocr_provider: str) -> list[str]:
+def _build_warning_list(
+    parser_warnings: list[str],
+    ocr_provider: str,
+    *,
+    layout_warnings: list[str] | None = None,
+) -> list[str]:
     """Merge parser warnings with the required user-confirmation warning.
 
     Args:
         parser_warnings: Safe parser-produced warning strings.
         ocr_provider: OCR-like provider that produced parser input.
+        layout_warnings: Optional layout-derived warnings.
 
     Returns:
         Deduplicated warning list.
     """
-    warnings = [SUPPLEMENT_PARSER_CONFIRMATION_WARNING, *parser_warnings]
+    warnings = [SUPPLEMENT_PARSER_CONFIRMATION_WARNING, *(layout_warnings or []), *parser_warnings]
     if ocr_provider == OLLAMA_VISION_ASSIST_PROVIDER:
         warnings.append(SUPPLEMENT_IMAGE_ASSIST_WARNING)
+    return _merge_strings(warnings)
+
+
+def _merge_strings(values: list[str]) -> list[str]:
+    """Normalize and deduplicate strings while preserving first-seen order.
+
+    Args:
+        values: Candidate strings.
+
+    Returns:
+        Trimmed unique strings.
+    """
     normalized: list[str] = []
     seen: set[str] = set()
-    for warning in warnings:
-        stripped = warning.strip()
+    for value in values:
+        stripped = value.strip()
         if not stripped or stripped in seen:
             continue
         normalized.append(stripped)

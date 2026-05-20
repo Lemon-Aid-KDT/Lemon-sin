@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Self, cast
+from typing import Any, Self, cast
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.config import Settings
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     SupplementProduct,
@@ -173,6 +174,18 @@ def _user() -> AuthenticatedUser:
     )
 
 
+def _settings(**overrides: Any) -> Settings:
+    """Return registration service test settings.
+
+    Args:
+        **overrides: Settings overrides.
+
+    Returns:
+        Settings object.
+    """
+    return Settings(_env_file=None, **overrides)
+
+
 def _request(
     *, analysis_id: object | None = None, nutrient_code: str = "vitamin_d_ug"
 ) -> UserSupplementCreate:
@@ -332,6 +345,7 @@ async def test_create_user_supplement_confirms_preview_and_persists_rows() -> No
         cast(AsyncSession, session),
         _user(),
         _request(analysis_id=preview.id),
+        _settings(),
     )
 
     assert session.flushed is True
@@ -349,6 +363,66 @@ async def test_create_user_supplement_confirms_preview_and_persists_rows() -> No
 
 
 @pytest.mark.asyncio
+async def test_create_user_supplement_captures_parser_domain_correction_events() -> None:
+    """Verify enabled parser/domain correction stores redacted confirmed diffs."""
+    product = _product()
+    preview = _preview()
+    preview.ocr_text_hash = "c" * 64
+    preview.parsed_snapshot = {
+        "schema_version": "supplement-parsed-snapshot-v3",
+        "requires_user_confirmation": True,
+        "source": {
+            "ocr_provider": "manual",
+            "ocr_confidence": 0.8,
+            "layout_available": False,
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "raw_model_response_stored": False,
+        },
+        "ingredients": [
+            {
+                "display_name": "Vitarnin D",
+                "amount": 2.5,
+                "unit": "㎍",
+                "confidence": 0.6,
+                "source": "ocr_llm_preview",
+                "evidence_refs": ["span:ingredient:0"],
+            }
+        ],
+        "evidence_spans": [
+            {
+                "span_id": "span:ingredient:0",
+                "source_type": "ocr_text",
+                "section_type": "nutrition_info",
+                "text_excerpt": "Vitarnin D 2.5 ㎍",
+            }
+        ],
+    }
+    session = _FakeRegistrationSession(
+        scalar_result=preview,
+        scalars_results=[[product], [_product_ingredient(product.id)]],
+    )
+
+    await create_user_supplement_from_confirmation(
+        cast(AsyncSession, session),
+        _user(),
+        _request(analysis_id=preview.id),
+        _settings(enable_parser_domain_correction=True),
+    )
+
+    events = preview.match_snapshot["parser_domain_correction_events"]
+    assert {event["correction_type"] for event in events} == {
+        "ingredient_alias",
+        "unit_normalization",
+        "amount_parse",
+        "nutrient_code_selection",
+    }
+    assert all("raw_ocr_text" not in event for event in events)
+    assert all(event["ocr_text_hash"] == "c" * 64 for event in events)
+
+
+@pytest.mark.asyncio
 async def test_create_user_supplement_rejects_unknown_nutrient_code() -> None:
     """Verify nutrient codes must be present in the deterministic allowlist."""
     session = _FakeRegistrationSession(scalars_results=[[], []])
@@ -358,6 +432,7 @@ async def test_create_user_supplement_rejects_unknown_nutrient_code() -> None:
             cast(AsyncSession, session),
             _user(),
             _request(nutrient_code="fake_code"),
+            _settings(),
         )
 
     assert session.added == []
@@ -374,6 +449,7 @@ async def test_create_user_supplement_rejects_expired_preview() -> None:
             cast(AsyncSession, session),
             _user(),
             _request(analysis_id=preview.id),
+            _settings(),
         )
 
     assert session.added == []

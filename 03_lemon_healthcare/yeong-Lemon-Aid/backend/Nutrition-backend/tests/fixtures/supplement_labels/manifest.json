@@ -1,0 +1,78 @@
+{
+  "version": "2026-05-17-phase0",
+  "description": "Synthetic supplement-label baseline fixtures for SupplementParsedSnapshotV2 validation. Metrics from this manifest are fixture observations, not product OCR performance claims.",
+  "cases": [
+    {
+      "case_id": "ko_dense_table_001",
+      "image_path": "images/ko_dense_table_001.png",
+      "image_required": true,
+      "ocr_text_path": "ocr/ko_dense_table_001.google_vision.txt",
+      "expected_snapshot_path": "expected/ko_dense_table_001.snapshot_v2.json",
+      "expected_snapshot_v3_path": "expected/ko_dense_table_001.snapshot_v3.json",
+      "labels": ["ko", "dense_table", "intake_method", "precautions"],
+      "allowed_providers": ["google_vision_document", "clova_ocr", "paddleocr_local", "manual"],
+      "contains_personal_data": false,
+      "source": "synthetic generated fixture"
+    },
+    {
+      "case_id": "ko_en_dense_table_001",
+      "image_path": "images/ko_en_dense_table_001.png",
+      "image_required": true,
+      "ocr_text_path": "ocr/ko_en_dense_table_001.google_vision.txt",
+      "expected_snapshot_path": "expected/ko_en_dense_table_001.snapshot_v2.json",
+      "expected_snapshot_v3_path": "expected/ko_en_dense_table_001.snapshot_v3.json",
+      "labels": ["ko", "en", "dense_table", "intake_method", "precautions"],
+      "allowed_providers": ["google_vision_document", "clova_ocr", "paddleocr_local", "manual"],
+      "contains_personal_data": false,
+      "source": "synthetic generated fixture"
+    },
+    {
+      "case_id": "low_quality_photo_001",
+      "image_path": "images/low_quality_photo_001.png",
+      "image_required": true,
+      "ocr_text_path": "ocr/low_quality_photo_001.google_vision.txt",
+      "expected_snapshot_path": "expected/low_quality_photo_001.snapshot_v2.json",
+      "expected_snapshot_v3_path": "expected/low_quality_photo_001.snapshot_v3.json",
+      "labels": ["low_quality", "ocr_warning", "manual_review"],
+      "allowed_providers": ["google_vision_document", "clova_ocr", "paddleocr_local", "manual"],
+      "contains_personal_data": false,
+      "source": "synthetic generated fixture"
+    },
+    {
+      "case_id": "no_layout_text_only_001",
+      "image_path": null,
+      "image_required": false,
+      "ocr_text_path": "ocr/no_layout_text_only_001.manual.txt",
+      "expected_snapshot_path": "expected/no_layout_text_only_001.snapshot_v2.json",
+      "expected_snapshot_v3_path": "expected/no_layout_text_only_001.snapshot_v3.json",
+      "labels": ["text_only", "layout_unavailable", "manual"],
+      "allowed_providers": ["manual"],
+      "contains_personal_data": false,
+      "source": "synthetic text-only fixture"
+    },
+    {
+      "case_id": "manual_ocr_text_001",
+      "image_path": null,
+      "image_required": false,
+      "ocr_text_path": "ocr/manual_ocr_text_001.manual.txt",
+      "expected_snapshot_path": "expected/manual_ocr_text_001.snapshot_v2.json",
+      "expected_snapshot_v3_path": "expected/manual_ocr_text_001.snapshot_v3.json",
+      "labels": ["manual", "raw_text_not_stored"],
+      "allowed_providers": ["manual"],
+      "contains_personal_data": false,
+      "source": "synthetic manual OCR text fixture"
+    },
+    {
+      "case_id": "external_ocr_consent_missing_001",
+      "image_path": "images/external_ocr_consent_missing_001.png",
+      "image_required": true,
+      "ocr_text_path": "ocr/external_ocr_consent_missing_001.intake_only.txt",
+      "expected_snapshot_path": "expected/external_ocr_consent_missing_001.snapshot_v2.json",
+      "expected_snapshot_v3_path": "expected/external_ocr_consent_missing_001.snapshot_v3.json",
+      "labels": ["consent_missing", "external_ocr_blocked", "intake_only"],
+      "allowed_providers": ["intake-only"],
+      "contains_personal_data": false,
+      "source": "synthetic consent-gate fixture"
+    }
+  ]
+}

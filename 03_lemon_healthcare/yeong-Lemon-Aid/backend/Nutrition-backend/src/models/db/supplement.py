@@ -77,6 +77,77 @@ class SupplementProduct(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class SupplementProductIdentifier(TimestampMixin, Base):
+    """Persist a verified or candidate identifier for a supplement product.
+
+    Attributes:
+        id: Stable identifier row id.
+        product_id: Reference supplement product id.
+        identifier_type: Identifier namespace such as ean13 or prdlst_report_no.
+        identifier_value_hash: Privacy-preserving hash of the identifier value.
+        identifier_value_encrypted: Optional encrypted identifier value for operations.
+        source_provider: Provider that supplied or verified the identifier.
+        verification_status: Candidate, verified, or rejected status.
+        source_payload: Redacted allowlisted provider evidence.
+        verified_at: Time when the identifier was verified by an official source.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "supplement_product_identifiers"
+    __table_args__ = (
+        UniqueConstraint(
+            "identifier_type",
+            "identifier_value_hash",
+            "source_provider",
+            name="uq_supplement_product_identifiers_type_hash_provider",
+        ),
+        CheckConstraint(
+            "identifier_type IN "
+            "('ean8', 'upca', 'ean13', 'gtin14', 'qr_url', 'foodqr_id', 'prdlst_report_no')",
+            name="identifier_type_allowed",
+        ),
+        CheckConstraint(
+            "verification_status IN ('candidate', 'verified', 'rejected')",
+            name="verification_status_allowed",
+        ),
+        CheckConstraint("identifier_value_hash <> ''", name="identifier_value_hash_nonempty"),
+        CheckConstraint("source_provider <> ''", name="identifier_source_provider_nonempty"),
+        Index(
+            "ix_supplement_product_identifiers_product_status",
+            "product_id",
+            "verification_status",
+        ),
+        Index(
+            "ix_supplement_product_identifiers_type_hash",
+            "identifier_type",
+            "identifier_value_hash",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    product_id: Mapped[UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("supplement_products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    identifier_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    identifier_value_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    identifier_value_encrypted: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    verification_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="candidate",
+    )
+    source_payload: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=dict,
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SupplementProductIngredient(TimestampMixin, Base):
     """Persist one ingredient row for a reference supplement product.
 

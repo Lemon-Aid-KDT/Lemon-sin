@@ -135,17 +135,29 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     """Verify the adapter sends JSON Schema and validates the structured response."""
     response_content = json.dumps(
         {
-            "parsed_product": {
+            "schema_version": "supplement-parser-output-v2",
+            "product": {
                 "product_name": "비타민 D 1000",
-                "serving_size": "1 tablet",
+            },
+            "serving": {
+                "serving_size_text": "1 tablet",
                 "daily_servings": 1,
             },
-            "ingredient_candidates": [
+            "ingredients": [
                 {
                     "display_name": "비타민 D",
                     "amount": 25,
                     "unit": "ug",
                     "confidence": 0.91,
+                    "evidence_refs": ["span:ingredient:0"],
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "span_id": "span:ingredient:0",
+                    "source_type": "ocr_text",
+                    "section_type": "nutrition_info",
+                    "text_excerpt": "비타민 D 25 ug",
                 }
             ],
             "low_confidence_fields": ["manufacturer"],
@@ -167,9 +179,11 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     assert fake_client.request_json["stream"] is False
     assert fake_client.request_json["think"] is False
     assert fake_client.request_json["format"]["type"] == "object"
+    assert fake_client.request_json["format"]["title"] == "SupplementStructuredParseResultV2"
     assert fake_client.request_json["options"] == {"temperature": 0.0}
-    assert result.parsed_product.product_name == "비타민 D 1000"
-    assert result.ingredient_candidates[0].source == "ollama_structured"
+    assert result.product.product_name == "비타민 D 1000"
+    assert result.parsed_product.serving_size == "1 tablet"
+    assert result.ingredients[0].source == "ollama_structured"
 
 
 @pytest.mark.asyncio
@@ -201,7 +215,7 @@ async def test_ollama_parser_rejects_non_null_nutrient_code() -> None:
     """Verify the LLM cannot invent internal nutrient codes."""
     response_content = json.dumps(
         {
-            "ingredient_candidates": [
+            "ingredients": [
                 {
                     "display_name": "비타민 D",
                     "nutrient_code": "VITAMIN_D",
@@ -225,7 +239,7 @@ async def test_ollama_parser_rejects_invalid_confidence() -> None:
     """Verify out-of-range LLM confidence values are rejected."""
     response_content = json.dumps(
         {
-            "ingredient_candidates": [
+            "ingredients": [
                 {
                     "display_name": "비타민 D",
                     "confidence": 1.2,

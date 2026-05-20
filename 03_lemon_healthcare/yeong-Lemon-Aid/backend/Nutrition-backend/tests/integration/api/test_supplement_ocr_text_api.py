@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Self
+from typing import Any, Self, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,7 +18,10 @@ from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement import SupplementAnalysisStatus
-from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_parser import (
+    SupplementStructuredParseResult,
+    SupplementStructuredParseResultV2,
+)
 from src.services.privacy import ConsentRequiredError
 from src.services.supplement_parser import (
     SupplementAnalysisExpiredError,
@@ -268,7 +271,10 @@ def test_parse_supplement_ocr_text_returns_confirmation_preview(
         """
         received.update(kwargs)
         record = _analysis_run(kwargs["analysis_id"])
-        return SupplementParserStoreResult(record=record, parse_result=_parse_result())
+        return SupplementParserStoreResult(
+            record=record,
+            parse_result=cast(SupplementStructuredParseResultV2, _parse_result()),
+        )
 
     monkeypatch.setattr(
         supplements,

@@ -11,6 +11,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import supplements
+from src.config import Settings
 from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.models.db.supplement import UserSupplement, UserSupplementIngredient
@@ -152,6 +153,7 @@ def test_create_user_supplement_uses_current_user_confirmation(
         _session: object,
         user: AuthenticatedUser,
         request: UserSupplementCreate,
+        _settings: Settings,
     ) -> UserSupplementStoreResult:
         """Capture route inputs and return a stored row.
 
@@ -159,6 +161,7 @@ def test_create_user_supplement_uses_current_user_confirmation(
             _session: Fake session dependency.
             user: Authenticated user passed by the route.
             request: Validated request payload.
+            _settings: Runtime settings passed by the route.
 
         Returns:
             Fake persisted supplement result.

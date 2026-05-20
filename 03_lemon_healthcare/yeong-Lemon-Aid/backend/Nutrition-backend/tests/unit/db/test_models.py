@@ -23,6 +23,7 @@ from src.models.db import (
     RegulatedDocument,
     SupplementAnalysisRun,
     SupplementProduct,
+    SupplementProductIdentifier,
     SupplementProductIngredient,
     User,
     UserSupplement,
@@ -245,12 +246,14 @@ def test_regulated_document_constraints_and_indexes_are_defined() -> None:
 def test_supplement_tables_are_registered_with_required_columns() -> None:
     """Verify P1 supplement tables are registered in shared ORM metadata."""
     supplement_product = cast(Table, SupplementProduct.__table__)
+    supplement_product_identifier = cast(Table, SupplementProductIdentifier.__table__)
     supplement_product_ingredient = cast(Table, SupplementProductIngredient.__table__)
     supplement_analysis_run = cast(Table, SupplementAnalysisRun.__table__)
     user_supplement = cast(Table, UserSupplement.__table__)
     user_supplement_ingredient = cast(Table, UserSupplementIngredient.__table__)
 
     assert "supplement_products" in Base.metadata.tables
+    assert "supplement_product_identifiers" in Base.metadata.tables
     assert "supplement_product_ingredients" in Base.metadata.tables
     assert "supplement_analysis_runs" in Base.metadata.tables
     assert "user_supplements" in Base.metadata.tables
@@ -263,6 +266,16 @@ def test_supplement_tables_are_registered_with_required_columns() -> None:
         "source_payload",
         "source_manifest_version",
     }.issubset(set(supplement_product.c.keys()))
+    assert {
+        "product_id",
+        "identifier_type",
+        "identifier_value_hash",
+        "identifier_value_encrypted",
+        "source_provider",
+        "verification_status",
+        "source_payload",
+        "verified_at",
+    }.issubset(set(supplement_product_identifier.c.keys()))
     assert {
         "product_id",
         "standard_name",
@@ -304,15 +317,22 @@ def test_supplement_tables_are_registered_with_required_columns() -> None:
 def test_supplement_constraints_and_indexes_are_defined() -> None:
     """Verify P1 supplement tables expose deterministic constraints and lookup indexes."""
     supplement_product = cast(Table, SupplementProduct.__table__)
+    supplement_product_identifier = cast(Table, SupplementProductIdentifier.__table__)
     supplement_analysis_run = cast(Table, SupplementAnalysisRun.__table__)
     user_supplement_ingredient = cast(Table, UserSupplementIngredient.__table__)
     product_constraint_names = {constraint.name for constraint in supplement_product.constraints}
+    identifier_constraint_names = {
+        constraint.name for constraint in supplement_product_identifier.constraints
+    }
     run_constraint_names = {constraint.name for constraint in supplement_analysis_run.constraints}
     ingredient_constraint_names = {
         constraint.name for constraint in user_supplement_ingredient.constraints
     }
     product_index_names = {
         index.name for index in supplement_product.indexes if isinstance(index, Index)
+    }
+    identifier_index_names = {
+        index.name for index in supplement_product_identifier.indexes if isinstance(index, Index)
     }
     run_index_names = {
         index.name for index in supplement_analysis_run.indexes if isinstance(index, Index)
@@ -323,10 +343,20 @@ def test_supplement_constraints_and_indexes_are_defined() -> None:
 
     assert "uq_supplement_products_source_provider_product_id" in product_constraint_names
     assert "ck_supplement_products_source_provider_nonempty" in product_constraint_names
+    assert "uq_supplement_product_identifiers_type_hash_provider" in identifier_constraint_names
+    assert (
+        "ck_supplement_product_identifiers_identifier_type_allowed" in identifier_constraint_names
+    )
+    assert (
+        "ck_supplement_product_identifiers_verification_status_allowed"
+        in identifier_constraint_names
+    )
     assert "ck_supplement_analysis_runs_status_allowed" in run_constraint_names
     assert "ck_supplement_analysis_runs_ocr_confidence_range" in run_constraint_names
     assert "ck_user_supplement_ingredients_confidence_range" in ingredient_constraint_names
     assert "ix_supplement_products_normalized_name" in product_index_names
+    assert "ix_supplement_product_identifiers_product_status" in identifier_index_names
+    assert "ix_supplement_product_identifiers_type_hash" in identifier_index_names
     assert "ix_supplement_analysis_runs_owner_created_at" in run_index_names
     assert "ix_supplement_analysis_runs_owner_status_created_at" in run_index_names
     assert "ix_user_supplement_ingredients_supplement_id" in ingredient_index_names

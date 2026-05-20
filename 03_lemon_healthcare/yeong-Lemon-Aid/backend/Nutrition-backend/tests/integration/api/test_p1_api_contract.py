@@ -146,6 +146,18 @@ def test_p1_contract_endpoints_are_registered_with_required_scopes() -> None:
             "p1_5_deficiency_dashboard_ready",
             ["analysis:read"],
         ),
+        ("/api/v1/nutrition/supplement-impact/preview", "post"): (
+            "p1_7_supplement_recommendation_ready",
+            ["supplement:read", "analysis:read"],
+        ),
+        ("/api/v1/supplements/recommendations/latest", "get"): (
+            "p1_7_supplement_recommendation_ready",
+            ["supplement:read", "analysis:read"],
+        ),
+        ("/api/v1/supplements/recommendations/explain", "post"): (
+            "p1_7_supplement_recommendation_ready",
+            ["supplement:read", "analysis:read"],
+        ),
     }
 
     for (path, method), (contract_status, required_scopes) in expected.items():
@@ -180,6 +192,15 @@ def test_p1_contract_endpoints_expose_required_consents() -> None:
     assert schema["paths"]["/api/v1/nutrition/diagnosis/latest"]["get"]["x-required-consents"] == [
         "sensitive_health_analysis"
     ]
+    assert schema["paths"]["/api/v1/nutrition/supplement-impact/preview"]["post"][
+        "x-required-consents"
+    ] == ["sensitive_health_analysis"]
+    assert schema["paths"]["/api/v1/supplements/recommendations/latest"]["get"][
+        "x-required-consents"
+    ] == ["sensitive_health_analysis"]
+    assert schema["paths"]["/api/v1/supplements/recommendations/explain"]["post"][
+        "x-required-consents"
+    ] == ["sensitive_health_analysis"]
 
 
 def test_p1_dashboard_endpoint_returns_summary_after_auth_in_development(

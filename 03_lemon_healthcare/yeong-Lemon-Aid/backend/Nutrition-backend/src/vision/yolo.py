@@ -74,6 +74,28 @@ class YoloLabelDetector(VisionAdapter):
         except VisionPreprocessingError as exc:
             raise VisionError("YOLO did not produce a usable supplement ROI.") from exc
 
+    async def detect_label_regions(self, image_bytes: bytes) -> tuple[BoundingBox, ...]:
+        """Detect supplement ROI candidates when the vision gate is fully enabled.
+
+        Args:
+            image_bytes: Validated image bytes.
+
+        Returns:
+            Candidate ROI boxes. Callers own final crop selection.
+
+        Raises:
+            VisionError: If disabled, not configured, or no valid ROI is detected.
+        """
+        if not self.settings.enable_vision_classifier:
+            raise VisionError("YOLO label detection is disabled by ENABLE_VISION_CLASSIFIER=false.")
+
+        active_runner = self.runner or UltralyticsYoloRunner(
+            model_name=self.settings.vision_classifier_model,
+            allowed_labels=_allowed_labels(self.settings.vision_roi_allowed_classes),
+            min_confidence=self.settings.vision_roi_min_confidence,
+        )
+        return tuple(active_runner.detect_regions(image_bytes))
+
 
 def _allowed_labels(configured_labels: list[str]) -> set[str]:
     """Normalize configured labels into canonical YOLO ROI labels.

@@ -1,0 +1,125 @@
+{
+  "schema_version": "supplement-parsed-snapshot-v3",
+  "requires_user_confirmation": true,
+  "source": {
+    "analysis_id": "00000000-0000-4000-8000-000000000002",
+    "parser_schema_version": "supplement-parser-output-v2",
+    "ocr_provider": "google_vision_document",
+    "ocr_confidence": 0.89,
+    "layout_available": true,
+    "raw_image_stored": false,
+    "raw_ocr_text_stored": false,
+    "raw_provider_payload_stored": false,
+    "raw_model_response_stored": false
+  },
+  "product": {
+    "product_name": "Lemon Omega Balance",
+    "manufacturer": "Lemon Health Lab",
+    "barcode_candidates": [],
+    "evidence_refs": []
+  },
+  "serving": {
+    "serving_size_text": "1회 1캡슐",
+    "serving_amount": 1.0,
+    "serving_unit": "캡슐",
+    "daily_servings": 1.0,
+    "evidence_refs": [
+      "section:intake_method:row:0:cell:0"
+    ]
+  },
+  "ingredients": [
+    {
+      "display_name": "Omega-3",
+      "normalized_name": "omega-3",
+      "amount": 1000.0,
+      "unit": "mg",
+      "daily_amount": 1000.0,
+      "daily_unit": "mg",
+      "nutrient_code_candidates": [],
+      "confidence": 0.86,
+      "source": "ocr_llm_preview",
+      "evidence_refs": [
+        "section:nutrition_function_info:row:1:cell:0"
+      ]
+    },
+    {
+      "display_name": "EPA",
+      "normalized_name": "epa",
+      "amount": 180.0,
+      "unit": "mg",
+      "daily_amount": 180.0,
+      "daily_unit": "mg",
+      "nutrient_code_candidates": [],
+      "confidence": 0.86,
+      "source": "ocr_llm_preview",
+      "evidence_refs": [
+        "section:nutrition_function_info:row:2:cell:0"
+      ]
+    }
+  ],
+  "label_sections": [],
+  "intake_method": {
+    "text": "1일 1회, 1회 1캡슐 식후 섭취",
+    "structured": {
+      "frequency": "daily",
+      "time_of_day": [],
+      "with_food": "yes"
+    },
+    "evidence_refs": [
+      "section:intake_method:row:0:cell:0"
+    ]
+  },
+  "precautions": [
+    {
+      "text": "People taking medication should consult a professional.",
+      "category": "medication",
+      "severity": "unknown",
+      "evidence_refs": [
+        "section:precautions:row:0:cell:0"
+      ]
+    }
+  ],
+  "functional_claims": [
+    {
+      "text": "혈중 중성지질 개선에 도움을 줄 수 있음",
+      "claim_type": "functionality",
+      "evidence_refs": [
+        "section:functionality:row:0:cell:0"
+      ]
+    }
+  ],
+  "evidence_spans": [
+    {
+      "span_id": "section:intake_method:row:0:cell:0",
+      "source_type": "label_layout",
+      "section_type": "intake_method",
+      "text_excerpt": "section:intake_method:row:0:cell:0"
+    },
+    {
+      "span_id": "section:nutrition_function_info:row:1:cell:0",
+      "source_type": "label_layout",
+      "section_type": "nutrition_info",
+      "text_excerpt": "section:nutrition_function_info:row:1:cell:0"
+    },
+    {
+      "span_id": "section:nutrition_function_info:row:2:cell:0",
+      "source_type": "label_layout",
+      "section_type": "nutrition_info",
+      "text_excerpt": "section:nutrition_function_info:row:2:cell:0"
+    },
+    {
+      "span_id": "section:precautions:row:0:cell:0",
+      "source_type": "label_layout",
+      "section_type": "precautions",
+      "text_excerpt": "section:precautions:row:0:cell:0"
+    },
+    {
+      "span_id": "section:functionality:row:0:cell:0",
+      "source_type": "label_layout",
+      "section_type": "functional_info",
+      "text_excerpt": "section:functionality:row:0:cell:0"
+    }
+  ],
+  "low_confidence_fields": [],
+  "warnings": []
+}

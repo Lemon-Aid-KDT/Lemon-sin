@@ -9,6 +9,7 @@ from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDo
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     SupplementProduct,
+    SupplementProductIdentifier,
     SupplementProductIngredient,
     UserSupplement,
     UserSupplementIngredient,
@@ -32,6 +33,7 @@ __all__ = [
     "RegulatedDocument",
     "SupplementAnalysisRun",
     "SupplementProduct",
+    "SupplementProductIdentifier",
     "SupplementProductIngredient",
     "User",
     "UserSupplement",

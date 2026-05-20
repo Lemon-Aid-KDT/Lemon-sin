@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -12,9 +14,22 @@ from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.parser_domain_correction import (
+    DomainCorrectionArtifactManifest,
+    DomainCorrectionRule,
+)
 from src.models.schemas.supplement import SupplementAnalysisStatus
-from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_layout_context import (
+    SupplementLayoutCellEvidenceV1,
+    SupplementLayoutContextSectionV1,
+    SupplementLayoutContextV1,
+)
+from src.models.schemas.supplement_parser import (
+    StructuredParseResultLike,
+    SupplementStructuredParseResultV2,
+)
 from src.security.auth import AuthenticatedUser
+from src.services.parser_domain_correction import with_domain_correction_artifact_checksum
 from src.services.supplement_parser import (
     SupplementAnalysisExpiredError,
     SupplementAnalysisNotFoundError,
@@ -29,14 +44,14 @@ from src.services.supplement_parser import (
 class _FakeParser:
     """Fake parser adapter for service tests."""
 
-    def __init__(self, result: SupplementStructuredParseResult) -> None:
+    def __init__(self, result: StructuredParseResultLike) -> None:
         self.result = result
         self.received_text: str | None = None
 
     async def parse_supplement_ocr_text(
         self,
         ocr_text: str,
-    ) -> SupplementStructuredParseResult:
+    ) -> StructuredParseResultLike:
         """Capture OCR text and return a configured structured result.
 
         Args:
@@ -152,31 +167,135 @@ def _analysis_run(
     )
 
 
-def _parse_result() -> SupplementStructuredParseResult:
+def _parse_result() -> SupplementStructuredParseResultV2:
     """Return a valid structured parser result.
 
     Returns:
         Structured supplement parse result fixture.
     """
-    return SupplementStructuredParseResult.model_validate(
+    return SupplementStructuredParseResultV2.model_validate(
         {
-            "parsed_product": {
+            "schema_version": "supplement-parser-output-v2",
+            "product": {
                 "product_name": "비타민 D 1000",
-                "serving_size": "1 tablet",
+            },
+            "serving": {
+                "serving_size_text": "1 tablet",
                 "daily_servings": 1,
             },
-            "ingredient_candidates": [
+            "ingredients": [
                 {
                     "display_name": "비타민 D",
                     "amount": 25,
                     "unit": "ug",
                     "confidence": 0.91,
+                    "evidence_refs": ["span:ingredient:0"],
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "span_id": "span:ingredient:0",
+                    "source_type": "ocr_text",
+                    "section_type": "nutrition_info",
+                    "text_excerpt": "비타민 D 25 ug",
                 }
             ],
             "low_confidence_fields": ["manufacturer"],
             "warnings": ["제조사명은 확인이 필요합니다."],
         }
     )
+
+
+def _layout_context() -> SupplementLayoutContextV1:
+    """Return a valid layout context fixture.
+
+    Returns:
+        Layout context fixture with request-local parser input.
+    """
+    return SupplementLayoutContextV1(
+        provider="google_vision_document",
+        layout_available=True,
+        parser_input_text=(
+            "[section:nutrition_info section_id=sec-000 source=nutrition_function_info "
+            "confidence=0.9000]\n"
+            "row=0 | col=0 cell=sec-000:r000:c000: 영양·기능정보"
+        ),
+        sections=[
+            SupplementLayoutContextSectionV1(
+                section_id="sec-000",
+                section_type="nutrition_info",
+                source_section_type="nutrition_function_info",
+                heading_text="영양·기능정보",
+                text_bundle="row=0 | col=0 cell=sec-000:r000:c000: 영양·기능정보",
+                confidence=0.9,
+                requires_review=False,
+                evidence_refs=["layout:sec-000:r000:c000"],
+                row_count=1,
+                cell_count=1,
+            )
+        ],
+        evidence_spans=[
+            SupplementLayoutCellEvidenceV1(
+                span_id="layout:sec-000:r000:c000",
+                section_id="sec-000",
+                section_type="nutrition_info",
+                page_index=0,
+                row_index=0,
+                column_index=0,
+                cell_ref="sec-000:r000:c000",
+                text_excerpt="영양·기능정보",
+                confidence=0.9,
+            )
+        ],
+        low_confidence_sections=[],
+        low_confidence_fields=[],
+        warnings=["layout_warning_fixture"],
+        fallback_reason=None,
+    )
+
+
+def _domain_correction_artifact_path(tmp_path: Path) -> Path:
+    """Write a reviewed parser/domain correction artifact.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+
+    Returns:
+        Artifact path.
+    """
+    artifact = with_domain_correction_artifact_checksum(
+        DomainCorrectionArtifactManifest(
+            domain_dictionary_version="domain-dict-v1",
+            confusion_map_version="confusion-map-v1",
+            created_from_manifest_checksum="manifest-checksum",
+            rules=[
+                DomainCorrectionRule(
+                    rule_id="rule-vitd-alias",
+                    rule_status="approved",
+                    correction_type="ingredient_alias",
+                    field_path="ingredients.display_name",
+                    match_value="Vitarnin D",
+                    replacement_value="Vitamin D",
+                    canonical_display_name="Vitamin D",
+                    nutrient_code="vitamin_d_ug",
+                ),
+                DomainCorrectionRule(
+                    rule_id="rule-microgram-unit",
+                    rule_status="approved",
+                    correction_type="unit_normalization",
+                    field_path="ingredients.unit",
+                    match_value="㎍",
+                    replacement_value="ug",
+                ),
+            ],
+        )
+    )
+    path = tmp_path / "domain-correction.json"
+    path.write_text(
+        json.dumps(artifact.model_dump(mode="json"), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return path
 
 
 @pytest.mark.asyncio
@@ -199,7 +318,7 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
     )
 
     assert result.record is record
-    assert result.parse_result.parsed_product.product_name == "비타민 D 1000"
+    assert result.parse_result.product.product_name == "비타민 D 1000"
     assert fake_parser.received_text == "비타민 D 1000\n1 tablet당 비타민 D 25 ug"
     assert fake_session.committed is True
     assert fake_session.refreshed is record
@@ -209,14 +328,113 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
     assert record.ocr_text_hash != "비타민 D 1000\n1 tablet당 비타민 D 25 ug"
     assert len(record.ocr_text_hash) == 64
     assert record.algorithm_version == "supplement-ollama-parser-v1.0.0"
-    assert record.parsed_snapshot["parsed_product"]["product_name"] == "비타민 D 1000"
-    assert record.parsed_snapshot["ingredient_candidates"][0]["source"] == "ollama_structured"
-    assert record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
-    assert record.parsed_snapshot["parser_metadata"]["raw_model_response_stored"] is False
-    assert record.parsed_snapshot["parser_metadata"]["input_provider"] == "manual-test"
+    assert record.parsed_snapshot["schema_version"] == "supplement-parsed-snapshot-v3"
+    assert record.parsed_snapshot["product"]["product_name"] == "비타민 D 1000"
+    assert record.parsed_snapshot["serving"]["serving_size_text"] == "1 tablet"
+    assert record.parsed_snapshot["ingredients"][0]["source"] == "ocr_llm_preview"
+    assert (
+        record.parsed_snapshot["ingredients"][0]["nutrient_code_candidates"][0]["nutrient_code"]
+        == "VITD"
+    )
+    assert record.parsed_snapshot["source"]["ocr_provider"] == "manual"
+    assert record.parsed_snapshot["source"]["raw_ocr_text_stored"] is False
+    assert record.parsed_snapshot["source"]["raw_model_response_stored"] is False
     assert "ocr_text" not in record.parsed_snapshot
-    assert record.parsed_snapshot["intake"] == {"mime_type": "image/png", "size_bytes": 128}
+    assert "intake" not in record.parsed_snapshot
     assert record.warnings[0].startswith("Structured OCR parsing is a preview")
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_applies_reviewed_domain_correction(
+    tmp_path: Path,
+) -> None:
+    """Verify reviewed parser/domain rules improve candidates without raw text storage."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    fake_parser = _FakeParser(
+        SupplementStructuredParseResultV2.model_validate(
+            {
+                "schema_version": "supplement-parser-output-v2",
+                "serving": {"daily_servings": 1},
+                "ingredients": [
+                    {
+                        "display_name": "Vitarnin D",
+                        "amount": 25,
+                        "unit": "㎍",
+                        "confidence": 0.6,
+                        "evidence_refs": ["span:ingredient:0"],
+                    }
+                ],
+                "evidence_spans": [
+                    {
+                        "span_id": "span:ingredient:0",
+                        "source_type": "ocr_text",
+                        "section_type": "nutrition_info",
+                        "text_excerpt": "Vitarnin D 25 ㎍",
+                    }
+                ],
+            }
+        )
+    )
+    settings = Settings(
+        _env_file=None,
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        enable_parser_domain_correction=True,
+        parser_domain_correction_mode="apply_reviewed",
+        parser_domain_correction_artifact_path=_domain_correction_artifact_path(tmp_path),
+    )
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "Vitarnin D 25 ㎍",
+        "manual-test",
+        0.8,
+        settings,
+        parser=fake_parser,
+    )
+
+    ingredient = record.parsed_snapshot["ingredients"][0]
+    assert ingredient["display_name"] == "Vitarnin D"
+    assert ingredient["unit"] == "ug"
+    assert ingredient["daily_unit"] == "ug"
+    assert ingredient["nutrient_code_candidates"][0]["nutrient_code"] == "vitamin_d_ug"
+    assert record.parsed_snapshot["domain_correction_audit"][0]["action"] == "applied"
+    assert "raw_ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_uses_layout_parser_input() -> None:
+    """Verify sectioned layout input is sent to parser without storing it raw."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    fake_parser = _FakeParser(_parse_result())
+    layout_context = _layout_context()
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "원본 OCR 텍스트",
+        "google_vision_document",
+        0.91,
+        _settings(),
+        parser=fake_parser,
+        parser_input_text=layout_context.parser_input_text,
+        layout_context=layout_context,
+    )
+
+    assert fake_parser.received_text is not None
+    assert fake_parser.received_text.startswith("[section:nutrition_info")
+    assert record.ocr_text_hash == hash_ocr_text("원본 OCR 텍스트", _settings().privacy_hash_secret)
+    assert record.parsed_snapshot["source"]["layout_available"] is True
+    assert record.parsed_snapshot["layout_context"]["layout_available"] is True
+    assert "parser_input_text" not in record.parsed_snapshot["layout_context"]
+    assert record.parsed_snapshot["label_sections"][0]["section_type"] == "nutrition_info"
+    assert record.parsed_snapshot["evidence_spans"][1]["source_type"] == "label_layout"
+    assert "layout_warning_fixture" in record.parsed_snapshot["warnings"]
+    assert "layout_warning_fixture" in record.warnings
 
 
 @pytest.mark.asyncio
@@ -241,6 +459,31 @@ async def test_parse_supplement_analysis_ocr_text_flags_low_ocr_confidence() -> 
 
 
 @pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_uses_configured_confidence_threshold() -> None:
+    """Verify OCR review fields follow the runtime confidence threshold."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    settings = Settings(
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        ocr_confidence_threshold=0.70,
+    )
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "비타민 D 1000",
+        "manual-test",
+        0.80,
+        settings,
+        parser=_FakeParser(_parse_result()),
+    )
+
+    assert record.ocr_confidence == Decimal("0.8")
+    assert record.parsed_snapshot["low_confidence_fields"] == ["manufacturer"]
+
+
+@pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_marks_vision_assist_input() -> None:
     """Verify vision-assist candidates stay identifiable as fallback preview input."""
     record = _analysis_run()
@@ -258,7 +501,7 @@ async def test_parse_supplement_analysis_ocr_text_marks_vision_assist_input() ->
     )
 
     assert record.ocr_provider == "ollama_vision_assist"
-    assert record.parsed_snapshot["parser_metadata"]["input_provider"] == "ollama_vision_assist"
+    assert record.parsed_snapshot["source"]["ocr_provider"] == "ollama_vision_assist"
     assert any("Image-assisted text extraction" in warning for warning in record.warnings)
 
 

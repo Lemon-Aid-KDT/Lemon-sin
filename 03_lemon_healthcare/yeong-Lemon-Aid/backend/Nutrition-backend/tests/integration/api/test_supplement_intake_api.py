@@ -12,14 +12,22 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from PIL import Image
+from pydantic import SecretStr
 from src.api.v1 import supplements
+from src.barcode.normalization import normalize_barcode_text
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
-from src.models.schemas.supplement import SupplementAnalysisStatus
+from src.models.schemas.privacy import ConsentType
+from src.models.schemas.supplement import (
+    SupplementAnalysisStatus,
+    SupplementBarcodeProductCandidate,
+)
 from src.services.privacy import ConsentRequiredError
+from src.services.supplement_barcode_lookup import BarcodeLookupServiceResult
+from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
 
 
 class _TransactionContext:
@@ -108,6 +116,40 @@ class _FakeSupplementSession:
             None.
         """
         self.committed = True
+
+    async def rollback(self) -> None:
+        """Allow service-level rollback in failed fake transactions.
+
+        Returns:
+            None.
+        """
+
+
+class _FakeBarcodeLookupService:
+    """Fake barcode lookup service for analyze route tests."""
+
+    def __init__(self, result: BarcodeLookupServiceResult) -> None:
+        self.result = result
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def lookup(
+        self,
+        barcode_text: str,
+        *,
+        barcode_format: str | None = None,
+    ) -> BarcodeLookupServiceResult:
+        """Return a configured barcode lookup result.
+
+        Args:
+            barcode_text: Request barcode text.
+            barcode_format: Optional scanner format.
+
+        Returns:
+            Configured barcode lookup result.
+        """
+
+        self.calls.append((barcode_text, barcode_format))
+        return self.result
 
 
 def _png_bytes() -> bytes:
@@ -236,6 +278,15 @@ def _settings(
     )
 
 
+def _empty_analysis_adapters() -> SupplementImageAnalysisAdapters:
+    """Return an empty adapter bundle for intake-only route tests.
+
+    Returns:
+        Empty supplement image analysis adapters.
+    """
+    return SupplementImageAnalysisAdapters()
+
+
 def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -244,6 +295,9 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
+        _empty_analysis_adapters
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -262,7 +316,66 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     body = response.json()
     assert body["status"] == "requires_confirmation"
     assert body["ingredient_candidates"] == []
+    assert body["action_required"] == "none"
+    assert body["analysis_scope"] == "unknown"
+    assert body["detected_product_regions"] == []
     assert body["algorithm_version"] == "supplement-intake-v1.0.0"
+
+
+def test_analyze_supplement_label_attaches_optional_barcode_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify analyze can attach review-only barcode candidates to the preview."""
+    fake_session = _FakeSupplementSession()
+    identifier = normalize_barcode_text("08801007325224", scanner_format="GTIN_14")
+    candidate = SupplementBarcodeProductCandidate(
+        source_id="foodqr:08801007325224:1:1",
+        provider="foodqr",
+        product_name="[CJ] Bibigo Gyoza Dumplings",
+        manufacturer="씨제이제일제당(주)",
+        barcode="08801007325224",
+        version="1",
+        valid_from="20250211",
+        valid_to="99991231",
+        match_score=0.92,
+        review_required_reason="user_confirmation_required",
+    )
+    fake_barcode_service = _FakeBarcodeLookupService(
+        BarcodeLookupServiceResult(
+            status="review_required",
+            identifier=identifier,
+            candidates=(candidate,),
+            warnings=("Official barcode candidates require user confirmation before storage.",),
+        )
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_barcode_lookup_service] = (
+        lambda: fake_barcode_service
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={
+            "client_request_id": "client-with-barcode",
+            "barcode_text": "08801007325224",
+            "barcode_format": "GTIN_14",
+        },
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    assert body["barcode_lookup"]["status"] == "review_required"
+    assert body["barcode_lookup"]["auto_confirmed"] is False
+    assert body["matched_product_candidates"][0]["source_id"] == "foodqr:08801007325224:1:1"
+    assert fake_barcode_service.calls == [("08801007325224", "GTIN_14")]
+    assert fake_session.added_analysis is not None
+    barcode_snapshot = fake_session.added_analysis.parsed_snapshot["barcode_lookup"]
+    assert barcode_snapshot["raw_provider_payload_stored"] is False
+    assert "raw_payload" not in str(barcode_snapshot)
 
 
 def test_analyze_supplement_label_requires_ocr_consent(
@@ -284,6 +397,57 @@ def test_analyze_supplement_label_requires_ocr_consent(
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert response.json()["detail"]["code"] == "consent_required"
     assert response.json()["detail"]["required_consents"] == ["ocr_image_processing"]
+
+
+def test_analyze_supplement_label_requires_external_consent_for_clova_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify CLOVA fallback requires external OCR consent even without primary OCR."""
+    fake_session = _FakeSupplementSession()
+    seen_consents: list[ConsentType] = []
+
+    async def deny_external_consent(*args: object, **_kwargs: object) -> None:
+        """Deny only external OCR consent and capture checked buckets."""
+        consent_type = cast(ConsentType, args[2])
+        seen_consents.append(consent_type)
+        if consent_type == ConsentType.EXTERNAL_OCR_PROCESSING:
+            raise ConsentRequiredError("external OCR consent is required.")
+
+    settings = Settings(
+        enable_clova_ocr=True,
+        allow_external_ocr=True,
+        clova_ocr_api_url="https://example.apigw.ntruss.com/custom/v1/infer",
+        clova_ocr_secret=SecretStr("test-secret"),
+    )
+
+    def empty_adapters() -> SupplementImageAnalysisAdapters:
+        """Return an empty adapter bundle so this test isolates consent routing.
+
+        Returns:
+            Empty supplement image analysis adapters.
+        """
+        return SupplementImageAnalysisAdapters()
+
+    monkeypatch.setattr(supplements, "require_user_consent", deny_external_consent)
+    monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = empty_adapters
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert seen_consents == [
+        ConsentType.OCR_IMAGE_PROCESSING,
+        ConsentType.EXTERNAL_OCR_PROCESSING,
+    ]
+    assert response.json()["detail"]["required_consents"] == ["external_ocr_processing"]
+    assert fake_session.added_analysis is None
 
 
 def test_analyze_supplement_label_rejects_media_type_spoofing(

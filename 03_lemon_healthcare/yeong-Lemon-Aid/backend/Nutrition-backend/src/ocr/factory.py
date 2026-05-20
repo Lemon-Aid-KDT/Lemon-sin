@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from src.config import Settings
 from src.llm.ollama_vision import OllamaVisionAssistAdapter
 from src.ocr.base import OCRAdapter
@@ -24,6 +26,31 @@ class OCRConfigurationError(RuntimeError):
     """Raised when OCR settings request a provider that cannot be built."""
 
 
+SupplementOCRProviderSelector = Literal["configured", "google_vision", "paddleocr"]
+
+
+def is_external_ocr_pipeline_enabled(
+    settings: Settings,
+    provider_selector: SupplementOCRProviderSelector = "configured",
+) -> bool:
+    """Return whether the configured OCR chain may call an external provider.
+
+    Args:
+        settings: Runtime settings.
+        provider_selector: Per-request provider selector. ``configured`` uses
+            the settings-driven provider chain.
+
+    Returns:
+        True when Google Vision primary or CLOVA fallback may send image bytes
+        to an external OCR provider.
+    """
+    if provider_selector == "google_vision":
+        return True
+    if provider_selector == "paddleocr":
+        return False
+    return settings.ocr_primary_provider == "google_vision" or settings.enable_clova_ocr
+
+
 def build_supplement_ocr_adapter(settings: Settings) -> OCRAdapter | None:
     """Build the configured supplement-label OCR adapter.
 
@@ -34,10 +61,12 @@ def build_supplement_ocr_adapter(settings: Settings) -> OCRAdapter | None:
         OCR adapter, or None when OCR is intentionally disabled.
 
     Raises:
-        OCRConfigurationError: If Google Vision is enabled without required gates.
+        OCRConfigurationError: If the requested OCR provider is not configured.
     """
     if settings.ocr_primary_provider == "none":
         return None
+    if settings.ocr_primary_provider == "paddleocr":
+        return _build_paddleocr_adapter(settings)
     if settings.ocr_primary_provider == "google_vision":
         return _build_google_vision_adapter(settings)
     raise OCRConfigurationError(
@@ -63,6 +92,45 @@ def build_supplement_image_analysis_adapters(settings: Settings) -> SupplementIm
         multimodal_ocr=_build_multimodal_ocr_adapter(settings),
         fallback_ocr_adapters=tuple(_build_fallback_ocr_adapters(settings)),
     )
+
+
+def build_supplement_image_analysis_adapters_for_provider(
+    settings: Settings,
+    provider_selector: SupplementOCRProviderSelector,
+    *,
+    configured_adapters: SupplementImageAnalysisAdapters | None = None,
+) -> SupplementImageAnalysisAdapters:
+    """Build adapters for a request-selected OCR provider.
+
+    Args:
+        settings: Runtime settings.
+        provider_selector: Provider requested by the client.
+        configured_adapters: Already-built default adapter bundle used when
+            ``provider_selector`` is ``configured``.
+
+    Returns:
+        Adapter bundle constrained to the selected OCR provider.
+
+    Raises:
+        OCRConfigurationError: If the requested provider is not configured.
+    """
+    if provider_selector == "configured":
+        return configured_adapters or build_supplement_image_analysis_adapters(settings)
+    if provider_selector == "google_vision":
+        return SupplementImageAnalysisAdapters(
+            ocr=_build_google_vision_adapter(settings),
+            vision=_build_vision_adapter(settings),
+            multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            fallback_ocr_adapters=(),
+        )
+    if provider_selector == "paddleocr":
+        return SupplementImageAnalysisAdapters(
+            ocr=_build_paddleocr_adapter(settings),
+            vision=_build_vision_adapter(settings),
+            multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            fallback_ocr_adapters=(),
+        )
+    raise OCRConfigurationError(f"Unsupported OCR provider selector: {provider_selector}")
 
 
 def _build_vision_adapter(settings: Settings) -> YoloLabelDetector | None:
@@ -103,7 +171,7 @@ def _build_multimodal_ocr_adapter(settings: Settings) -> OllamaVisionAssistAdapt
 
 
 def _build_fallback_ocr_adapters(settings: Settings) -> list[OCRAdapter]:
-    """Build optional secondary OCR fallback adapters in configured order.
+    """Build optional secondary OCR fallback adapters in P1-2 fallback order.
 
     Args:
         settings: Runtime settings.
@@ -112,11 +180,46 @@ def _build_fallback_ocr_adapters(settings: Settings) -> list[OCRAdapter]:
         OCR fallback adapters.
     """
     adapters: list[OCRAdapter] = []
-    if settings.enable_local_ocr:
-        adapters.append(PaddleOCRAdapter(settings))
     if settings.enable_clova_ocr:
+        _validate_clova_fallback_settings(settings)
         adapters.append(ClovaOCRAdapter(settings))
+    if settings.enable_local_ocr and settings.ocr_primary_provider != "paddleocr":
+        adapters.append(PaddleOCRAdapter(settings))
     return adapters
+
+
+def _build_paddleocr_adapter(settings: Settings) -> PaddleOCRAdapter:
+    """Build a local PaddleOCR adapter from settings.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        PaddleOCR adapter.
+
+    Raises:
+        OCRConfigurationError: If local OCR is disabled.
+    """
+    if not settings.enable_local_ocr:
+        raise OCRConfigurationError("ENABLE_LOCAL_OCR=true is required for PaddleOCR.")
+    return PaddleOCRAdapter(settings)
+
+
+def _validate_clova_fallback_settings(settings: Settings) -> None:
+    """Validate CLOVA fallback settings before image bytes are read.
+
+    Args:
+        settings: Runtime settings.
+
+    Raises:
+        OCRConfigurationError: If external OCR gate or credentials are missing.
+    """
+    if not settings.allow_external_ocr:
+        raise OCRConfigurationError("ALLOW_EXTERNAL_OCR=true is required for CLOVA OCR.")
+    if not settings.clova_ocr_api_url:
+        raise OCRConfigurationError("CLOVA_OCR_API_URL is required for CLOVA OCR.")
+    if settings.clova_ocr_secret is None:
+        raise OCRConfigurationError("CLOVA_OCR_SECRET is required for CLOVA OCR.")
 
 
 def _build_google_vision_adapter(settings: Settings) -> GoogleVisionOCRAdapter:

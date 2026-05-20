@@ -13,6 +13,10 @@ from src.api.v1.examples import HEALTH_RESPONSE_EXAMPLES
 from src.api.v1.router import api_router
 from src.config import Settings, get_settings
 from src.db.session import dispose_engine
+from src.middleware.rate_limit import RateLimitMiddleware
+from src.middleware.security_headers import SecureHeadersMiddleware
+from src.models.schemas.readiness import ReadinessResponse
+from src.services.readiness import build_readiness_response
 from src.utils.logger import setup_logging
 
 
@@ -53,8 +57,11 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
             allow_origins=settings.allowed_origins,
             allow_credentials=False,
             allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type", "Authorization"],
+            allow_headers=["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         )
+    if settings.rate_limit_enabled:
+        app.add_middleware(RateLimitMiddleware, settings=settings)
+    app.add_middleware(SecureHeadersMiddleware)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -92,6 +99,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             서비스 상태와 API 버전.
         """
         return {"status": "ok", "version": "0.1.0"}
+
+    @app.get("/ready", tags=["health"], response_model=ReadinessResponse)
+    async def readiness_check() -> ReadinessResponse:
+        """Return sanitized runtime readiness status.
+
+        Returns:
+            Sanitized readiness status for release gates.
+        """
+        return build_readiness_response(app_settings)
 
     app.include_router(api_router)
 

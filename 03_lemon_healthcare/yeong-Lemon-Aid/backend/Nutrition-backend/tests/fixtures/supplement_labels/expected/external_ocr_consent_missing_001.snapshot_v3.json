@@ -1,0 +1,42 @@
+{
+  "schema_version": "supplement-parsed-snapshot-v3",
+  "requires_user_confirmation": true,
+  "source": {
+    "analysis_id": "00000000-0000-4000-8000-000000000006",
+    "parser_schema_version": "supplement-parser-output-v2",
+    "ocr_provider": "intake-only",
+    "layout_available": false,
+    "raw_image_stored": false,
+    "raw_ocr_text_stored": false,
+    "raw_provider_payload_stored": false,
+    "raw_model_response_stored": false
+  },
+  "product": {
+    "barcode_candidates": [],
+    "evidence_refs": []
+  },
+  "serving": {
+    "evidence_refs": []
+  },
+  "ingredients": [],
+  "label_sections": [],
+  "intake_method": {
+    "structured": {
+      "frequency": "unknown",
+      "time_of_day": [],
+      "with_food": "unknown"
+    },
+    "evidence_refs": []
+  },
+  "precautions": [],
+  "functional_claims": [],
+  "evidence_spans": [],
+  "low_confidence_fields": [
+    "product",
+    "ingredient_candidates",
+    "serving"
+  ],
+  "warnings": [
+    "External OCR was blocked because required consent is missing."
+  ]
+}

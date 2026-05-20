@@ -244,7 +244,22 @@ data/raw/kdris/*
 !data/raw/kdris/2025/
 !data/raw/kdris/2025/**
 data/private/
+backend/data/private/
 data/processed/
+
+# External OCR tool/source checkout. Keep out of repo history.
+/PaddleOCR-main/
+/PaddleOCR-main.zip
+/sglang-main/
+/sglang-main.zip
+
+# Mascot binary asset bundles. Store originals out-of-repo; commit only tracked exports.
+/assets/mascot/*.zip
+/assets/mascot/Lemon-Aid_*/
+/assets/mascot/lemonaid_*/
+
+# Local development log artifacts
+/firepit-log.txt
 
 # Local databases
 *.db

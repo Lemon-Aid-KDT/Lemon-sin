@@ -1,0 +1,64 @@
+{
+  "schema_version": "supplement-parsed-snapshot-v2",
+  "requires_user_confirmation": true,
+  "source": {
+    "analysis_id": "00000000-0000-4000-8000-000000000005",
+    "ocr_provider": "manual",
+    "ocr_confidence": null,
+    "layout_available": false,
+    "raw_image_stored": false,
+    "raw_ocr_text_stored": false,
+    "raw_provider_payload_stored": false
+  },
+  "product": {
+    "product_name": "수동 입력 비타민B",
+    "manufacturer": "Manual Lab",
+    "barcode_text": null,
+    "barcode_format": null
+  },
+  "serving": {
+    "serving_size_text": "1정",
+    "serving_amount": 1,
+    "serving_unit": "정",
+    "daily_servings": 1,
+    "evidence_refs": ["text:line:4"]
+  },
+  "label_sections": [],
+  "ingredient_candidates": [
+    {
+      "display_name": "비타민 B6",
+      "normalized_name": "비타민 b6",
+      "nutrient_code_candidates": [],
+      "amount": 1.5,
+      "unit": "mg",
+      "daily_amount": 1.5,
+      "confidence": 0.9,
+      "source": "ocr_llm_preview",
+      "evidence_refs": ["text:line:2"]
+    },
+    {
+      "display_name": "비타민 B12",
+      "normalized_name": "비타민 b12",
+      "nutrient_code_candidates": [],
+      "amount": 2.4,
+      "unit": "ug",
+      "daily_amount": 2.4,
+      "confidence": 0.9,
+      "source": "ocr_llm_preview",
+      "evidence_refs": ["text:line:3"]
+    }
+  ],
+  "intake_method": {
+    "text": "하루 1회 1정",
+    "structured": {
+      "frequency": "daily",
+      "time_of_day": [],
+      "with_food": "unknown"
+    },
+    "evidence_refs": ["text:line:4"]
+  },
+  "precautions": [],
+  "functional_claims": [],
+  "low_confidence_fields": ["label_sections"],
+  "warnings": ["Manual OCR text was parsed without storing raw text."]
+}

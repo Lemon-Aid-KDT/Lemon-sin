@@ -8,7 +8,18 @@ from typing import Any, Literal
 
 import httpx
 
-from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.ocr.base import (
+    OCRAdapter,
+    OCRBlock,
+    OCRBoundingPoly,
+    OCRError,
+    OCRImageInput,
+    OCRPage,
+    OCRParagraph,
+    OCRResult,
+    OCRVertex,
+    OCRWord,
+)
 from src.ocr.providers.google_vision_auth import (
     GoogleVisionAuthError,
     GoogleVisionAuthHeadersProvider,
@@ -238,8 +249,14 @@ def _parse_google_vision_response(payload: dict[str, Any]) -> OCRResult:
         raise OCRError(f"Google Vision OCR provider error: {message}")
 
     text = _extract_text(first_response)
-    confidence = _average_confidence(first_response)
-    return OCRResult(text=text, provider=GOOGLE_VISION_PROVIDER, confidence=confidence)
+    pages = _extract_pages(first_response)
+    confidence = _average_layout_confidence(pages) or _average_confidence(first_response)
+    return OCRResult(
+        text=text,
+        provider=GOOGLE_VISION_PROVIDER,
+        confidence=confidence,
+        pages=pages,
+    )
 
 
 def _extract_text(response: dict[str, Any]) -> str:
@@ -267,6 +284,217 @@ def _extract_text(response: dict[str, Any]) -> str:
     return ""
 
 
+def _extract_pages(response: dict[str, Any]) -> tuple[OCRPage, ...]:
+    """Extract Google Vision page hierarchy.
+
+    Args:
+        response: One Google Vision annotate response.
+
+    Returns:
+        OCR pages in provider order, or an empty tuple when absent.
+    """
+    full_text_annotation = response.get("fullTextAnnotation")
+    if not isinstance(full_text_annotation, dict):
+        return ()
+    raw_pages = full_text_annotation.get("pages")
+    if not isinstance(raw_pages, list):
+        return ()
+    return tuple(_parse_page(page) for page in raw_pages if isinstance(page, dict))
+
+
+def _parse_page(page: dict[str, Any]) -> OCRPage:
+    """Parse one Google Vision page.
+
+    Args:
+        page: Google Vision page object.
+
+    Returns:
+        Normalized OCR page.
+    """
+    blocks = tuple(
+        _parse_block(block, block_index=block_index)
+        for block_index, block in enumerate(_json_objects(page.get("blocks")))
+    )
+    return OCRPage(
+        width=_field_int(page.get("width")),
+        height=_field_int(page.get("height")),
+        confidence=_bounded_confidence(page.get("confidence")),
+        blocks=blocks,
+    )
+
+
+def _parse_block(block: dict[str, Any], *, block_index: int) -> OCRBlock:
+    """Parse one Google Vision block.
+
+    Args:
+        block: Google Vision block object.
+        block_index: Zero-based block index on the page.
+
+    Returns:
+        Normalized OCR block.
+    """
+    paragraphs = tuple(
+        _parse_paragraph(
+            paragraph,
+            block_index=block_index,
+            paragraph_index=paragraph_index,
+        )
+        for paragraph_index, paragraph in enumerate(_json_objects(block.get("paragraphs")))
+    )
+    text = "\n".join(paragraph.text for paragraph in paragraphs if paragraph.text)
+    block_type = block.get("blockType")
+    return OCRBlock(
+        text=text,
+        confidence=_bounded_confidence(block.get("confidence")),
+        bounding_box=_parse_bounding_poly(block.get("boundingBox")),
+        block_type=block_type if isinstance(block_type, str) and block_type else None,
+        paragraphs=paragraphs,
+    )
+
+
+def _parse_paragraph(
+    paragraph: dict[str, Any],
+    *,
+    block_index: int,
+    paragraph_index: int,
+) -> OCRParagraph:
+    """Parse one Google Vision paragraph.
+
+    Args:
+        paragraph: Google Vision paragraph object.
+        block_index: Zero-based block index on the page.
+        paragraph_index: Zero-based paragraph index in the block.
+
+    Returns:
+        Normalized OCR paragraph.
+    """
+    words = tuple(
+        _parse_word(
+            word,
+            block_index=block_index,
+            paragraph_index=paragraph_index,
+            word_index=word_index,
+        )
+        for word_index, word in enumerate(_json_objects(paragraph.get("words")))
+    )
+    text = " ".join(word.text for word in words if word.text)
+    return OCRParagraph(
+        text=text,
+        confidence=_bounded_confidence(paragraph.get("confidence")),
+        bounding_box=_parse_bounding_poly(paragraph.get("boundingBox")),
+        words=words,
+    )
+
+
+def _parse_word(
+    word: dict[str, Any],
+    *,
+    block_index: int,
+    paragraph_index: int,
+    word_index: int,
+) -> OCRWord:
+    """Parse one Google Vision word.
+
+    Args:
+        word: Google Vision word object.
+        block_index: Zero-based block index on the page.
+        paragraph_index: Zero-based paragraph index in the block.
+        word_index: Zero-based word index in the paragraph.
+
+    Returns:
+        Normalized OCR word.
+    """
+    text = "".join(
+        symbol_text
+        for symbol in _json_objects(word.get("symbols"))
+        if (symbol_text := _field_string(symbol.get("text"))) is not None
+    )
+    return OCRWord(
+        text=text,
+        confidence=_bounded_confidence(word.get("confidence")),
+        bounding_box=_parse_bounding_poly(word.get("boundingBox")),
+        block_index=block_index,
+        paragraph_index=paragraph_index,
+        word_index=word_index,
+    )
+
+
+def _parse_bounding_poly(value: object) -> OCRBoundingPoly | None:
+    """Parse Google Vision bounding polygon vertices.
+
+    Args:
+        value: Candidate Google Vision bounding polygon object.
+
+    Returns:
+        Normalized bounding polygon, or None if coordinates are incomplete.
+    """
+    if not isinstance(value, dict):
+        return None
+    raw_vertices = value.get("vertices")
+    if not isinstance(raw_vertices, list):
+        raw_vertices = value.get("normalizedVertices")
+    if not isinstance(raw_vertices, list):
+        return None
+    vertices = tuple(
+        vertex
+        for raw_vertex in raw_vertices
+        if isinstance(raw_vertex, dict)
+        if (vertex := _parse_vertex(raw_vertex)) is not None
+    )
+    if not vertices:
+        return None
+    return OCRBoundingPoly(vertices=vertices)
+
+
+def _parse_vertex(value: dict[str, Any]) -> OCRVertex | None:
+    """Parse one Google Vision vertex without fabricating missing coordinates.
+
+    Args:
+        value: Vertex object.
+
+    Returns:
+        Normalized vertex or None when x/y is absent.
+    """
+    x = value.get("x")
+    y = value.get("y")
+    if not isinstance(x, int | float) or not isinstance(y, int | float):
+        return None
+    return OCRVertex(x=float(x), y=float(y))
+
+
+def _average_layout_confidence(pages: tuple[OCRPage, ...]) -> float | None:
+    """Average layout confidence using word values before broader containers.
+
+    Args:
+        pages: Parsed OCR pages.
+
+    Returns:
+        Average confidence or None.
+    """
+    tiers = (
+        [
+            word.confidence
+            for page in pages
+            for block in page.blocks
+            for paragraph in block.paragraphs
+            for word in paragraph.words
+        ],
+        [
+            paragraph.confidence
+            for page in pages
+            for block in page.blocks
+            for paragraph in block.paragraphs
+        ],
+        [block.confidence for page in pages for block in page.blocks],
+        [page.confidence for page in pages],
+    )
+    for tier in tiers:
+        average = _average([confidence for confidence in tier if confidence is not None])
+        if average is not None:
+            return average
+    return None
+
+
 def _average_confidence(response: dict[str, Any]) -> float | None:
     """Average confidence values present in the Google Vision response.
 
@@ -277,9 +505,7 @@ def _average_confidence(response: dict[str, Any]) -> float | None:
         Average confidence or None when Google did not return confidence values.
     """
     values = list(_confidence_values(response))
-    if not values:
-        return None
-    return sum(values) / len(values)
+    return _average(values)
 
 
 def _confidence_values(value: object) -> list[float]:
@@ -302,6 +528,74 @@ def _confidence_values(value: object) -> list[float]:
         for item in value:
             values.extend(_confidence_values(item))
     return values
+
+
+def _bounded_confidence(value: object) -> float | None:
+    """Return a confidence value only when it is in the provider-documented range.
+
+    Args:
+        value: Candidate confidence value.
+
+    Returns:
+        Bounded confidence or None.
+    """
+    if isinstance(value, int | float) and 0 <= value <= 1:
+        return float(value)
+    return None
+
+
+def _average(values: list[float]) -> float | None:
+    """Return an average when at least one value is present.
+
+    Args:
+        values: Numeric values.
+
+    Returns:
+        Average or None.
+    """
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _json_objects(value: object) -> list[dict[str, Any]]:
+    """Return object items from a JSON array-like value.
+
+    Args:
+        value: Candidate JSON value.
+
+    Returns:
+        Dictionary items only.
+    """
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _field_int(value: object) -> int | None:
+    """Return an integer field when present.
+
+    Args:
+        value: Candidate value.
+
+    Returns:
+        Integer value or None.
+    """
+    return value if isinstance(value, int) else None
+
+
+def _field_string(value: object) -> str | None:
+    """Return a non-empty string field when present.
+
+    Args:
+        value: Candidate value.
+
+    Returns:
+        String value or None.
+    """
+    if isinstance(value, str) and value:
+        return value
+    return None
 
 
 def _safe_provider_error_message(error: dict[str, Any]) -> str:

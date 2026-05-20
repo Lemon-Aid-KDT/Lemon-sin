@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import Settings, get_settings
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     UserSupplement,
@@ -30,6 +31,7 @@ from src.models.schemas.supplement import (
 )
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.parser_domain_correction import build_parser_correction_events
 from src.services.supplement_matching import match_supplement_product
 
 REFERENCE_DATA_PATH = (
@@ -75,6 +77,7 @@ async def create_user_supplement_from_confirmation(
     session: AsyncSession,
     user: AuthenticatedUser,
     request: UserSupplementCreate,
+    settings: Settings | None = None,
 ) -> UserSupplementStoreResult:
     """Persist a user-confirmed supplement and optional preview confirmation.
 
@@ -82,6 +85,7 @@ async def create_user_supplement_from_confirmation(
         session: Request-scoped async database session.
         user: Authenticated owner.
         request: User-confirmed supplement creation request.
+        settings: Runtime settings controlling optional learning metadata capture.
 
     Returns:
         Persisted supplement and ingredient rows.
@@ -92,6 +96,7 @@ async def create_user_supplement_from_confirmation(
         SupplementPreviewExpiredError: If the linked preview has expired.
         SupplementPreviewStateError: If the linked preview was already confirmed or failed.
     """
+    runtime_settings = settings or get_settings()
     _validate_nutrient_codes(request)
     owner_subject = build_owner_subject(user)
     now = datetime.now(UTC)
@@ -146,6 +151,19 @@ async def create_user_supplement_from_confirmation(
         }
         if match.matched_source_manifest_version is not None:
             preview.source_manifest_version = match.matched_source_manifest_version
+        if runtime_settings.enable_parser_domain_correction:
+            correction_events = build_parser_correction_events(
+                preview=preview,
+                request=request,
+                consent_scope=("parser_domain_correction",),
+            )
+            if correction_events:
+                preview.match_snapshot = {
+                    **dict(preview.match_snapshot or {}),
+                    "parser_domain_correction_events": [
+                        event.model_dump(mode="json") for event in correction_events
+                    ],
+                }
 
     await session.commit()
     await session.refresh(supplement)

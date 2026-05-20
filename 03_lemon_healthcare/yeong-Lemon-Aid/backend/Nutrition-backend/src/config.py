@@ -97,6 +97,18 @@ def _contains_wildcard(values: list[str]) -> bool:
     return any(value.strip() in WILDCARD_VALUES for value in values)
 
 
+def _contains_non_https_url(values: list[str]) -> bool:
+    """Check whether any configured URL is present but not HTTPS.
+
+    Args:
+        values: URL values to inspect.
+
+    Returns:
+        True when any non-empty value does not start with https://.
+    """
+    return any(_is_non_https_url(value.strip()) for value in values if value.strip())
+
+
 def _failed_checks(checks: tuple[tuple[bool, str], ...]) -> list[str]:
     """Return messages for failed production security checks.
 
@@ -109,18 +121,21 @@ def _failed_checks(checks: tuple[tuple[bool, str], ...]) -> list[str]:
     return [message for failed, message in checks if failed]
 
 
-def _missing_required_field_errors(fields: tuple[tuple[str, str | None], ...]) -> list[str]:
+def _missing_required_field_errors(
+    fields: tuple[tuple[str, str | None], ...],
+    *,
+    context: str = "ENVIRONMENT=production",
+) -> list[str]:
     """Return production errors for missing required fields.
 
     Args:
         fields: Environment variable names and values to inspect.
+        context: Runtime context to include in the error message.
 
     Returns:
         Error messages for empty values.
     """
-    return [
-        f"{name} is required when ENVIRONMENT=production." for name, value in fields if not value
-    ]
+    return [f"{name} is required when {context}." for name, value in fields if not value]
 
 
 def _is_non_https_url(value: str | None) -> bool:
@@ -172,11 +187,16 @@ class Settings(BaseSettings):
 
     Attributes:
         environment: 실행 환경.
+        deployment_exposure: 배포 노출 범위. public staging은 production에 준하는 보안 검증을 적용한다.
         log_level: 애플리케이션 로그 레벨.
         database_url: PostgreSQL asyncpg SQLAlchemy 연결 URL.
         redis_url: Redis 연결 URL.
         allowed_origins: CORS 허용 origin 목록.
         allowed_hosts: TrustedHost 허용 host 목록.
+        rate_limit_enabled: HTTP rate limit middleware 활성화 여부.
+        rate_limit_default_per_minute: 기본 route bucket 분당 요청 제한.
+        rate_limit_image_upload_per_minute: 영양제 이미지 업로드 route bucket 분당 요청 제한.
+        rate_limit_llm_explain_per_minute: LLM 설명 route bucket 분당 요청 제한.
         auth_mode: 인증 모드. 실제 사용자 앱은 production에서 jwt를 사용한다.
         jwt_issuer: OAuth/OIDC issuer URL.
         jwt_audience: JWT audience.
@@ -209,10 +229,25 @@ class Settings(BaseSettings):
         google_vision_language_hints: Optional BCP-47 language hints passed to OCR.
         google_vision_timeout_seconds: Google Vision request timeout.
         google_vision_max_retries: Google Vision retry count for transient failures.
+        ocr_confidence_threshold: Primary OCR confidence threshold for fallback/review routing.
         google_application_credentials: Deprecated Google Cloud 인증 파일 경로.
         clova_ocr_api_url: CLOVA OCR API Gateway invoke URL.
         clova_ocr_secret: CLOVA OCR client secret.
-        mfds_api_key: 식약처/공공데이터 API 키.
+        clova_ocr_timeout_seconds: CLOVA OCR request timeout.
+        clova_ocr_max_retries: CLOVA OCR retry count for transient failures.
+        mfds_api_key: 식품안전나라 데이터활용서비스 인증키.
+        enable_barcode_lookup: Whether official FoodQR/MFDS barcode lookup may run.
+        foodqr_service_key: 공공데이터포털 FoodQR 정보 서비스 인증키.
+        foodqr_base_url: Public Data Portal base URL used by FoodQR clients.
+        foodqr_product_list_path: FoodQR product-list endpoint path.
+        foodqr_product_manufacturing_path: Optional FoodQR product-manufacturing endpoint path.
+        foodqr_timeout_seconds: FoodQR request timeout.
+        foodqr_max_retries: FoodQR transient retry count.
+        foodqr_num_of_rows: FoodQR page size for product-list lookups.
+        mfds_openapi_base_url: FoodSafetyKorea OpenAPI base URL.
+        mfds_openapi_timeout_seconds: MFDS OpenAPI request timeout.
+        mfds_openapi_max_retries: MFDS OpenAPI transient retry count.
+        mfds_openapi_page_size: MFDS OpenAPI page size.
         supplement_image_max_bytes: Maximum uploaded supplement label image size.
         supplement_image_max_pixels: Maximum decoded supplement label image pixels.
         supplement_preview_ttl_minutes: Minutes before an intake-only preview expires.
@@ -227,12 +262,25 @@ class Settings(BaseSettings):
         enable_multimodal_verification: Whether local vision verification can sample OCR outputs.
         multimodal_verification_sample_rate: Fraction of accepted OCR outputs to verify.
         multimodal_verification_threshold: Minimum normalized text similarity for verification.
-        enable_local_ocr: Whether local OCR fallback adapters may run.
+        enable_local_ocr: Whether local PaddleOCR adapters may run.
         local_ocr_provider: Local OCR provider selector.
         local_ocr_language: Language setting passed to local OCR providers.
         local_ocr_device: Optional local OCR runtime device selector.
+        local_ocr_engine: Optional PaddleOCR 3.x inference engine selector.
+        local_ocr_use_doc_orientation_classify: Whether PaddleOCR runs orientation classification.
+        local_ocr_use_doc_unwarping: Whether PaddleOCR runs document unwarping.
+        local_ocr_use_textline_orientation: Whether PaddleOCR runs textline orientation.
+        local_ocr_paddlex_config: Optional PaddleX YAML config path for PaddleOCR.
+        local_ocr_text_recognition_model_dir: Optional fine-tuned text recognition model directory.
+        local_ocr_text_detection_model_dir: Optional fine-tuned text detection model directory.
+        local_ocr_text_recognition_model_name: Optional text recognition model name.
+        local_ocr_text_detection_model_name: Optional text detection model name.
         local_ocr_confidence_threshold: Minimum confidence for local OCR fallback candidates.
         enable_clova_ocr: Whether NAVER Cloud CLOVA OCR fallback may run.
+        enable_parser_domain_correction: Whether reviewed parser/domain correction can run.
+        parser_domain_correction_mode: Report-only or approved-rule application mode.
+        parser_domain_correction_artifact_path: Reviewed domain correction artifact path.
+        governance_gate_mode: Release governance mode. Heavy checks run in CLI/CI, not readiness.
         vision_roi_min_confidence: Minimum detection confidence accepted for a YOLO ROI.
         vision_roi_allowed_classes: Allowed non-text object labels accepted from YOLO.
         feature_hall_lite_weight_prediction: Whether Hall-lite weight prediction can run.
@@ -256,12 +304,17 @@ class Settings(BaseSettings):
     )
 
     environment: Literal["development", "staging", "production"] = "development"
+    deployment_exposure: Literal["local", "private", "public"] = "local"
     log_level: str = Field(default="INFO")
 
     database_url: str = Field(default=DEFAULT_DATABASE_URL)
     redis_url: str = Field(default=DEFAULT_REDIS_URL)
     allowed_origins: list[str] = Field(default_factory=list)
     allowed_hosts: list[str] = Field(default_factory=_default_allowed_hosts)
+    rate_limit_enabled: bool = Field(default=False)
+    rate_limit_default_per_minute: int = Field(default=60, ge=1, le=10_000)
+    rate_limit_image_upload_per_minute: int = Field(default=5, ge=1, le=1_000)
+    rate_limit_llm_explain_per_minute: int = Field(default=10, ge=1, le=1_000)
 
     auth_mode: Literal["disabled", "jwt"] = "disabled"
     jwt_issuer: str | None = Field(default=None)
@@ -287,7 +340,7 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
-    ocr_primary_provider: Literal["none", "google_vision"] = Field(default="none")
+    ocr_primary_provider: Literal["none", "google_vision", "paddleocr"] = Field(default="paddleocr")
     allow_external_ocr: bool = Field(default=False)
     google_vision_auth_mode: Literal["api_key", "adc"] = Field(default="api_key")
     google_cloud_api_key: SecretStr | None = Field(default=None)
@@ -299,10 +352,30 @@ class Settings(BaseSettings):
     google_vision_language_hints: list[str] = Field(default_factory=list, max_length=8)
     google_vision_timeout_seconds: int = Field(default=15, ge=1, le=60)
     google_vision_max_retries: int = Field(default=2, ge=0, le=5)
+    ocr_confidence_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Primary OCR confidence threshold for fallback/review routing.",
+    )
     google_application_credentials: str | None = Field(default=None)
     clova_ocr_api_url: str | None = Field(default=None)
     clova_ocr_secret: SecretStr | None = Field(default=None)
+    clova_ocr_timeout_seconds: int = Field(default=15, ge=1, le=60)
+    clova_ocr_max_retries: int = Field(default=1, ge=0, le=3)
     mfds_api_key: SecretStr | None = Field(default=None)
+    enable_barcode_lookup: bool = Field(default=False)
+    foodqr_service_key: SecretStr | None = Field(default=None)
+    foodqr_base_url: str = Field(default="https://apis.data.go.kr/1471000/FoodQrInfoService01")
+    foodqr_product_list_path: str = Field(default="/getFoodQrProdList01")
+    foodqr_product_manufacturing_path: str | None = Field(default=None)
+    foodqr_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    foodqr_max_retries: int = Field(default=2, ge=0, le=5)
+    foodqr_num_of_rows: int = Field(default=10, ge=1, le=100)
+    mfds_openapi_base_url: str = Field(default="http://openapi.foodsafetykorea.go.kr/api")
+    mfds_openapi_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    mfds_openapi_max_retries: int = Field(default=2, ge=0, le=5)
+    mfds_openapi_page_size: int = Field(default=100, ge=1, le=1000)
 
     supplement_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     supplement_image_max_pixels: int = Field(default=12_000_000, ge=1, le=25_000_000)
@@ -370,16 +443,47 @@ class Settings(BaseSettings):
     multimodal_verification_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     multimodal_verification_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
     enable_local_ocr: bool = Field(
-        default=False,
-        description="PaddleOCR 등 local OCR fallback 활성화. 기본값 disabled.",
+        default=True,
+        description="PaddleOCR 등 local OCR 활성화. 기본값 enabled.",
     )
     local_ocr_provider: Literal["paddleocr"] = Field(default="paddleocr")
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
+    local_ocr_engine: (
+        Literal["paddle", "paddle_static", "paddle_dynamic", "transformers"] | None
+    ) = Field(default="paddle")
+    local_ocr_use_doc_orientation_classify: bool = Field(default=False)
+    local_ocr_use_doc_unwarping: bool = Field(default=False)
+    local_ocr_use_textline_orientation: bool = Field(default=False)
+    local_ocr_paddlex_config: str | None = Field(default=None)
+    local_ocr_text_recognition_model_dir: str | None = Field(default=None)
+    local_ocr_text_detection_model_dir: str | None = Field(default=None)
+    local_ocr_text_recognition_model_name: str | None = Field(default=None)
+    local_ocr_text_detection_model_name: str | None = Field(default=None)
     local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     enable_clova_ocr: bool = Field(
         default=False,
         description="NAVER Cloud CLOVA OCR external fallback 활성화. 기본값 disabled.",
+    )
+    enable_parser_domain_correction: bool = Field(
+        default=False,
+        description="사용자 확정 기반 parser/domain correction layer 활성화. 기본값 disabled.",
+    )
+    parser_domain_correction_mode: Literal["report_only", "apply_reviewed"] = Field(
+        default="report_only",
+        description="Domain correction artifact 처리 정책. 기본값 report_only.",
+    )
+    parser_domain_correction_artifact_path: Path = Field(
+        default=PROJECT_ROOT
+        / "data"
+        / "nutrition_reference"
+        / "domain_corrections"
+        / "parser_domain_corrections.v1.json",
+        description="검수된 parser/domain correction artifact JSON 경로.",
+    )
+    governance_gate_mode: Literal["report_only", "block_release"] = Field(
+        default="report_only",
+        description="Cross-cutting release governance gate mode. Heavy checks run in CLI/CI.",
     )
     vision_roi_min_confidence: float = Field(
         default=0.50,
@@ -454,6 +558,72 @@ class Settings(BaseSettings):
                 "LEARNING_OBJECT_STORAGE_PROVIDER=s3."
             )
 
+        if self.environment == "staging" and self.deployment_exposure == "public":
+            staging_errors = _failed_checks(
+                (
+                    (
+                        self.auth_mode != "jwt",
+                        "AUTH_MODE=jwt is required when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        not self.allowed_hosts,
+                        "ALLOWED_HOSTS must be explicit when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        _contains_wildcard(self.allowed_hosts),
+                        "ALLOWED_HOSTS must not contain wildcards when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        _contains_wildcard(self.allowed_origins),
+                        "ALLOWED_ORIGINS must not contain wildcards when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        _contains_non_https_url(self.allowed_origins),
+                        "ALLOWED_ORIGINS must use https when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        not self.rate_limit_enabled,
+                        "RATE_LIMIT_ENABLED=true is required when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        _is_non_https_url(self.jwt_jwks_url),
+                        "JWT_JWKS_URL must use https when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        _is_non_https_url(self.oidc_discovery_url),
+                        "OIDC_DISCOVERY_URL must use https when ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public.",
+                    ),
+                    (
+                        not self.jwt_algorithms,
+                        "JWT_ALGORITHMS must be explicit for public staging.",
+                    ),
+                    (
+                        not set(self.jwt_algorithms).issubset(ASYMMETRIC_JWT_ALGORITHMS),
+                        "JWT_ALGORITHMS must use supported asymmetric signing algorithms for public staging.",
+                    ),
+                    (
+                        not JWT_CORE_REQUIRED_CLAIMS.issubset(set(self.jwt_required_claims)),
+                        "JWT_REQUIRED_CLAIMS must include aud, exp, iat, iss, and sub for public staging.",
+                    ),
+                    (
+                        not self.jwt_scope_claims,
+                        "JWT_SCOPE_CLAIMS must be explicit for public staging.",
+                    ),
+                )
+            )
+            staging_errors.extend(
+                _missing_required_field_errors(
+                    (
+                        ("JWT_ISSUER", self.jwt_issuer),
+                        ("JWT_AUDIENCE", self.jwt_audience),
+                        ("JWT_JWKS_URL", self.jwt_jwks_url),
+                    ),
+                    context="ENVIRONMENT=staging and DEPLOYMENT_EXPOSURE=public",
+                )
+            )
+            if staging_errors:
+                raise ValueError(" ".join(staging_errors))
+
         if self.environment != "production":
             return self
 
@@ -491,6 +661,10 @@ class Settings(BaseSettings):
                     "GOOGLE_APPLICATION_CREDENTIALS file-based credentials are not allowed for Google Vision in production.",
                 ),
                 (
+                    self.ocr_primary_provider == "paddleocr" and not self.enable_local_ocr,
+                    "ENABLE_LOCAL_OCR=true is required when OCR_PRIMARY_PROVIDER=paddleocr in production.",
+                ),
+                (
                     self.ocr_roi_preprocessing_policy != "disabled"
                     and not self.enable_vision_classifier,
                     "OCR_ROI_PREPROCESSING_POLICY requires ENABLE_VISION_CLASSIFIER=true.",
@@ -516,11 +690,27 @@ class Settings(BaseSettings):
                     self.enable_clova_ocr and self.clova_ocr_secret is None,
                     "CLOVA_OCR_SECRET is required when ENABLE_CLOVA_OCR=true in production.",
                 ),
+                (
+                    self.enable_barcode_lookup
+                    and not (
+                        _secret_value(self.foodqr_service_key) or _secret_value(self.mfds_api_key)
+                    ),
+                    "FOODQR_SERVICE_KEY or MFDS_API_KEY is required when "
+                    "ENABLE_BARCODE_LOOKUP=true in production.",
+                ),
                 (not self.allowed_origins, "ALLOWED_ORIGINS must be explicit in production."),
                 (not self.allowed_hosts, "ALLOWED_HOSTS must be explicit in production."),
                 (
+                    not self.rate_limit_enabled,
+                    "RATE_LIMIT_ENABLED=true is required in production.",
+                ),
+                (
                     _contains_wildcard(self.allowed_origins),
                     "ALLOWED_ORIGINS must not contain wildcards in production.",
+                ),
+                (
+                    _contains_non_https_url(self.allowed_origins),
+                    "ALLOWED_ORIGINS must use https in production.",
                 ),
                 (
                     _contains_wildcard(self.allowed_hosts),
@@ -586,12 +776,17 @@ class Settings(BaseSettings):
                     "OCR_ROI_PREPROCESSING_POLICY requires docs/17 §9 gate #2 sign-off.",
                 ),
                 (
-                    self.enable_local_ocr,
-                    "ENABLE_LOCAL_OCR=true requires local OCR fallback validation sign-off.",
+                    self.enable_local_ocr and self.ocr_primary_provider != "paddleocr",
+                    "ENABLE_LOCAL_OCR=true as a fallback requires local OCR fallback validation sign-off.",
                 ),
                 (
                     self.enable_clova_ocr,
                     "ENABLE_CLOVA_OCR=true requires external OCR fallback vendor sign-off.",
+                ),
+                (
+                    self.enable_parser_domain_correction
+                    and self.parser_domain_correction_mode == "apply_reviewed",
+                    "PARSER_DOMAIN_CORRECTION_MODE=apply_reviewed requires parser/domain correction validation sign-off.",
                 ),
                 (
                     self.enable_image_learning_pipeline,

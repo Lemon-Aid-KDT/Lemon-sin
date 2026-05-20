@@ -2,6 +2,8 @@
 
 > **Phase**: 2 | **선행 작업**: [`10-mobile-flutter-setup.md`](./10-mobile-flutter-setup.md), [`09-supplement-registration-api.md`](./09-supplement-registration-api.md) | **예상 소요**: 3~4시간
 
+> **Superseded note (2026-05-15)**: This guide is historical and still shows an older direct upload assumption. The current P2 mobile implementation follows [`docs/Integration-docs/04-p2-mobile-frontend-minimum-screen-plan.md`](../../Integration-docs/04-p2-mobile-frontend-minimum-screen-plan.md) and uploads images to `POST /api/v1/supplements/analyze` before OCR text review and user-confirmed `POST /api/v1/supplements` registration.
+
 ---
 
 ## 🎯 작업 목표
