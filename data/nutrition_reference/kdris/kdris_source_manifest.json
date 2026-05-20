@@ -24,7 +24,7 @@
       "path": "data/nutrition_reference/kdris/kdris_2025.csv",
       "reference_year": 2025,
       "status": "official_2025_approved",
-      "checksum_sha256": "132ea658b6c3a1c25c643d257a0af7c460eecce7e7eac984d19adab3c62a5091",
+      "checksum_sha256": "1c423aace4d21bd1909220fececbda823d1a57c6c6136f56d115350bd8adf093",
       "review_status": "approved"
     },
     {
@@ -33,7 +33,7 @@
       "path": "data/nutrition_reference/kdris/review/2025/kdris_2025_target_nutrient_inventory.csv",
       "reference_year": 2025,
       "status": "review_artifact",
-      "checksum_sha256": "1dfbee2c388a62fd135a335029fd58f8ba0b240d3246acf859ff83fa0a27cf4f",
+      "checksum_sha256": "cc4d3a44fface341479a9454ea196cfbfad1bb3e8d5d367a7bc702705b2e39a0",
       "review_status": "source_check_pending"
     },
     {
@@ -42,7 +42,7 @@
       "path": "data/nutrition_reference/kdris/review/2025/kdris_2025_candidate_rows.csv",
       "reference_year": 2025,
       "status": "review_artifact",
-      "checksum_sha256": "2af8071a26ff66febaca375bd45de43ed21d7867fffcb8086dd5ce75672551bd",
+      "checksum_sha256": "9b424031e9b3adddb1d48b8e02c4744e0eee3ca3438f861851ed920d7b610623",
       "review_status": "source_check_pending"
     },
     {
@@ -51,7 +51,7 @@
       "path": "data/nutrition_reference/kdris/review/2025/kdris_2025_candidate_issues.csv",
       "reference_year": 2025,
       "status": "review_artifact",
-      "checksum_sha256": "ec970fd64bbcb452484e95dace96c6b34429efc62c24c24661988e46c019c433",
+      "checksum_sha256": "e123cc91fb9ed398a60ba514fcd77b4283b6ec344a0ba7d11763012dc989cc85",
       "review_status": "schema_decision_resolved"
     },
     {
@@ -60,7 +60,7 @@
       "path": "data/nutrition_reference/kdris/review/2025/kdris_2025_schema_decisions.md",
       "reference_year": 2025,
       "status": "review_artifact",
-      "checksum_sha256": "12dc020a0d843586c91a25010274315589927e73786c41a90c5c7a7f0cfae165",
+      "checksum_sha256": "9130aaa62409eb4a75e75b370ac3cc77ddf8af104619a9785d74f76380475597",
       "review_status": "schema_decision_resolved"
     }
   ],
@@ -118,7 +118,7 @@
       "retrieved_at": "2026-05-11",
       "license_note": "Internal implementation fixture only; not an official KDRIs reference table.",
       "errata_note": "Replace with reviewed official 2025 KDRIs-derived tables before production use.",
-      "checksum_sha256": "c2f9f18991f2e147222b9437b81fb206415518760964c881714279956d861399",
+      "checksum_sha256": "6d87189d87fd7f2c0fa002d75f92f9725688059e6c111ce56d7a04254089e1f8",
       "usage_status": "sample_fixture"
     }
   ],

@@ -2939,7 +2939,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 
 ### B.0 한 줄 결론
 
-백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. 다음 실질 구현 단계는 P1-7 모바일 MVP 골격 생성, 다중 이미지 intake, 실제 OCR/Ollama live 검증, OIDC staging 연동이다.
+백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell과 AI Agent daily-coaching API client 연결까지 착수했다. 다음 실질 구현 단계는 다중 이미지 intake, 실제 OCR/Ollama live 검증, OIDC staging 연동, 모바일 화면 확장이다.
 
 ### B.1 현재 구현 완료 범위
 
@@ -2958,7 +2958,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | 영양제 매칭/등록 API | 구현 완료 | matching service, 등록/list/detail/delete, user confirmation, audit/consent 연결 |
 | 부족 영양소/대시보드 API | 구현 완료 | latest nutrition diagnosis, dashboard summary, supplement/health/activity snapshot 통합 |
 | HealthKit/Health Connect sync | 백엔드 구현 | daily aggregate sync, client batch idempotency, summary upsert, consent/audit 연결 |
-| 모바일 MVP | 착수 전 | `mobile/CLAUDE.md`만 존재. Flutter skeleton 또는 iOS SwiftUI skeleton 생성 필요 |
+| 모바일 MVP | 착수 | `mobile/flutter_app` Flutter shell, 환경 설정, Dio API client, daily-coaching DTO/repository, 화면 skeleton, 면책 고지, Python contract test |
 
 ### B.2 현재 주요 API 표면
 
@@ -3007,8 +3007,8 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 
 ### B.6 다음 구현 우선순위
 
-1. `mobile/` Flutter skeleton 또는 `ios-native/` SwiftUI skeleton 생성.
-2. 로그인/auth placeholder, API client, camera permission, supplement capture screen, dashboard shell 연결.
+1. `mobile/flutter_app`에 로그인/auth storage adapter, camera permission, supplement capture screen, dashboard shell 연결.
+2. Flutter/Dart SDK가 있는 환경에서 `flutter pub get`, `flutter analyze`, `flutter test` 실행.
 3. 여러 장 이미지 batch upload 계약 설계: batch id, per-image validation, merged OCR text, user confirmation.
 4. OCR provider adapter와 로컬 Ollama live smoke test 추가.
 5. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e 검증.
