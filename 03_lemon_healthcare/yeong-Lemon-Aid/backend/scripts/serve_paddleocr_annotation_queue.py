@@ -236,7 +236,7 @@ def build_annotation_server(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, directory=str(queue_dir), **kwargs)
 
-        def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        def do_GET(self) -> None:
             """Serve queue metadata, images, and static HTML."""
             if self.path == "/api/queue":
                 self._send_json(queue)
@@ -245,7 +245,7 @@ def build_annotation_server(
                 self.path = "/annotation_queue.html"
             super().do_GET()
 
-        def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        def do_POST(self) -> None:
             """Accept human-verified annotation JSON."""
             if self.path != "/api/annotations":
                 self.send_error(HTTPStatus.NOT_FOUND)
