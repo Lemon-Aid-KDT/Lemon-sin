@@ -16,6 +16,8 @@
 | 기여자 ID | 촬영일자 (YYYY-MM-DD) | 제출 파일 hash 또는 인덱스 범위 | 비고 (예: 라벨 언어, 제품 카테고리) |
 | --- | --- | --- | --- |
 | contributor-000 (template) | YYYY-MM-DD | <hash-prefix> | 예: 한국어 단일, 비타민 멀티 |
+| yeong-tech (project owner) | 2026-05-20 (수집), 2026-05-17~ (촬영 기간) | tampermonkey/naver/* (43 카테고리, 본인 수집분) | 한국어 단일 + 한/영 혼용. 네이버 상품 상세페이지/리뷰 사진을 본인 tampermonkey 스크립트로 다운로드한 본인 보유 자료. private_workspace로만 sample 복사, raw는 외부 드라이브에만 보관. |
+| sunghoon-database (팀 공유) | 2026-05-17~ (촬영 기간) | tampermonkey/naver_sunghoon/* (22 카테고리, 팀 공유분) | 한국어 단일. 동일 출처 도구로 sunghoon 팀원이 별도 수집한 자료를 본인이 fixture 평가 목적으로 공유 받음. 본 OCR fixture 평가에만 사용, 외부 전송/학습 적재 금지. 동의는 sunghoon 팀원 명시 확인 완료. |
 
 ## 새 기여자 추가 절차
 
