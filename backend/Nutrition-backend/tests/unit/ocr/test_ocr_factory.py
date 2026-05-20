@@ -6,6 +6,7 @@ import pytest
 from pydantic import SecretStr
 from src.config import Settings
 from src.llm.ollama_vision import OllamaVisionAssistAdapter
+from src.ocr import factory as ocr_factory
 from src.ocr.factory import (
     OCRConfigurationError,
     build_supplement_image_analysis_adapters,
@@ -112,6 +113,33 @@ def test_analysis_factory_builds_multimodal_adapter_when_policy_enabled() -> Non
     )
 
     assert isinstance(adapters.multimodal_ocr, OllamaVisionAssistAdapter)
+
+
+def test_factory_warns_when_api_key_mode_used_in_staging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify staging api_key mode emits the ADC migration warning."""
+    settings = Settings(
+        _env_file=None,
+        environment="staging",
+        ocr_primary_provider="google_vision",
+        allow_external_ocr=True,
+        google_vision_auth_mode="api_key",
+        allow_google_api_key_auth=True,
+        google_cloud_project="staging-project",
+        google_cloud_api_key=SecretStr("test-key"),
+    )
+    warnings: list[str] = []
+
+    def _record_warning(message: str) -> None:
+        warnings.append(message)
+
+    monkeypatch.setattr(ocr_factory.logger, "warning", _record_warning)
+
+    adapter = ocr_factory.build_supplement_ocr_adapter(settings)
+
+    assert isinstance(adapter, GoogleVisionOCRAdapter)
+    assert any("ADC migration recommended" in message for message in warnings)
 
 
 def test_analysis_factory_builds_optional_fallback_adapters() -> None:

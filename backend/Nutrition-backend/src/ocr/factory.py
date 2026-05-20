@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from src.config import Settings
 from src.llm.ollama_vision import OllamaVisionAssistAdapter
 from src.ocr.base import OCRAdapter
@@ -18,6 +20,8 @@ from src.ocr.providers.google_vision_auth import (
 from src.ocr.providers.paddle import PaddleOCRAdapter
 from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
 from src.vision.yolo import YoloLabelDetector
+
+logger = logging.getLogger(__name__)
 
 
 class OCRConfigurationError(RuntimeError):
@@ -138,6 +142,10 @@ def _build_google_vision_adapter(settings: Settings) -> GoogleVisionOCRAdapter:
     if settings.google_vision_auth_mode == "api_key":
         if settings.google_cloud_api_key is None:
             raise OCRConfigurationError("GOOGLE_CLOUD_API_KEY is required for Google Vision.")
+        if settings.environment == "staging":
+            logger.warning(
+                "Google Vision api_key mode active in staging; ADC migration recommended.",
+            )
         auth_headers: GoogleVisionAuthHeadersProvider = GoogleVisionApiKeyAuthHeaders(
             settings.google_cloud_api_key
         )
