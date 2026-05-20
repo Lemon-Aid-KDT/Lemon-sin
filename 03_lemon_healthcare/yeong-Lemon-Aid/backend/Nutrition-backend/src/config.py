@@ -454,7 +454,7 @@ class Settings(BaseSettings):
     ) = Field(default="paddle")
     local_ocr_use_doc_orientation_classify: bool = Field(default=True)
     local_ocr_use_doc_unwarping: bool = Field(default=False)
-    local_ocr_use_textline_orientation: bool = Field(default=True)
+    local_ocr_use_textline_orientation: bool = Field(default=False)
     local_ocr_paddlex_config: str | None = Field(default=None)
     local_ocr_text_recognition_model_dir: str | None = Field(default=None)
     local_ocr_text_detection_model_dir: str | None = Field(default=None)

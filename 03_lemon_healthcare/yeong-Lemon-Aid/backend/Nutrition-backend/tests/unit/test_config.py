@@ -161,7 +161,7 @@ def test_default_development_settings_load(monkeypatch: pytest.MonkeyPatch) -> N
         "paddle",
         True,
         False,
-        True,
+        False,
         None,
         None,
         None,
