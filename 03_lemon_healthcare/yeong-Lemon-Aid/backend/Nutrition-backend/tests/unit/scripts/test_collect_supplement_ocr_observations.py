@@ -69,6 +69,65 @@ class _FakeOCRAdapter:
         )
 
 
+class _FakeParserIngredient:
+    """Duck-typed ParserIngredient used by the LLM-parse wiring tests."""
+
+    def __init__(self) -> None:
+        self.display_name = "Vitamin C"
+        self.normalized_name = "vitamin c"
+        self.amount: float | None = 500.0
+        self.unit: str | None = "mg"
+        self.daily_amount: float | None = 500.0
+        self.confidence: float | None = 0.9
+
+
+class _FakeParserProduct:
+    """Duck-typed ParserProduct used by the LLM-parse wiring tests."""
+
+    product_name: str | None = "Lemon Health Vitamin C"
+
+
+class _FakeParserServing:
+    """Duck-typed ParserServing used by the LLM-parse wiring tests."""
+
+    serving_size_text: str | None = "1 capsule"
+
+
+class _FakeParseResult:
+    """Duck-typed SupplementStructuredParseResultV2 used by tests."""
+
+    def __init__(self) -> None:
+        self.ingredients = [_FakeParserIngredient()]
+        self.product = _FakeParserProduct()
+        self.serving = _FakeParserServing()
+
+
+class _FakeLLMParser:
+    """Duck-typed OllamaSupplementParser used by tests."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def parse_supplement_ocr_text(self, _ocr_text: str) -> Any:
+        """Record one call and return a fake structured parse result."""
+        self.calls += 1
+        return _FakeParseResult()
+
+
+class _RaisingLLMParser:
+    """Duck-typed parser that raises an OllamaStructuredOutputError."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def parse_supplement_ocr_text(self, _ocr_text: str) -> Any:
+        """Raise a structured-output error to exercise the redacted error path."""
+        from src.llm.ollama import OllamaStructuredOutputError
+
+        self.calls += 1
+        raise OllamaStructuredOutputError("schema validation failed")
+
+
 async def test_collect_observations_defaults_to_redacted_not_run(tmp_path: Path) -> None:
     """Verify provider observations are safe when live opt-in env vars are absent."""
     manifest_path = tmp_path / "manifest.json"
@@ -217,6 +276,107 @@ async def test_collect_observations_loads_allowlisted_operator_env_file(
     )
     assert "test-secret-key" not in dumped
     assert "GOOGLE_CLOUD_API_KEY" not in dumped
+
+
+async def test_collect_observations_llm_parse_attaches_ingredients(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify --llm-parse opt-in attaches redacted llm_parsed_ingredients."""
+    manifest_path = tmp_path / "manifest.json"
+    _write_manifest(manifest_path, _png_bytes())
+
+    fake_parser = _FakeLLMParser()
+    monkeypatch.setenv("RUN_GOOGLE_VISION_SMOKE", "1")
+    monkeypatch.setattr(
+        collect,
+        "_build_provider_adapter",
+        lambda provider, settings: cast(Any, _FakeOCRAdapter()),
+    )
+
+    collection = await collect.collect_observations_with_auto_expected(
+        manifest_path=manifest_path,
+        providers=("google_vision_document",),
+        llm_parse_enabled=True,
+        llm_parser=cast(Any, fake_parser),
+    )
+
+    assert fake_parser.calls == 1
+    row = collection.observations[0]
+    assert row["llm_parse_status"] == "completed"
+    assert row["llm_parsed_ingredient_count"] == 1
+    ingredients = cast(list[dict[str, Any]], row["llm_parsed_ingredients"])
+    assert ingredients[0]["display_name"] == "Vitamin C"
+    assert ingredients[0]["normalized_name"] == "vitamin c"
+    assert ingredients[0]["amount"] == 500.0
+    assert ingredients[0]["unit"] == "mg"
+    assert row.get("llm_parsed_product_name_present") is True
+    assert row.get("llm_parsed_serving_size_text_present") is True
+    forbidden_keys = {"raw_model_response", "raw_ocr_text", "ocr_text", "provider_payload"}
+    assert not forbidden_keys.intersection(row.keys())
+
+
+async def test_collect_observations_llm_parse_records_error_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify Ollama errors land as redacted llm_parse_error_code tokens only."""
+    manifest_path = tmp_path / "manifest.json"
+    _write_manifest(manifest_path, _png_bytes())
+
+    raising_parser = _RaisingLLMParser()
+    monkeypatch.setenv("RUN_GOOGLE_VISION_SMOKE", "1")
+    monkeypatch.setattr(
+        collect,
+        "_build_provider_adapter",
+        lambda provider, settings: cast(Any, _FakeOCRAdapter()),
+    )
+
+    collection = await collect.collect_observations_with_auto_expected(
+        manifest_path=manifest_path,
+        providers=("google_vision_document",),
+        llm_parse_enabled=True,
+        llm_parser=cast(Any, raising_parser),
+    )
+
+    assert raising_parser.calls == 1
+    row = collection.observations[0]
+    assert row["llm_parse_status"] == "error"
+    assert row["llm_parse_error_code"] == "ollama_structured_output"
+    assert "llm_parsed_ingredients" not in row
+
+
+async def test_collect_observations_llm_parse_disabled_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify omitting --llm-parse keeps llm_parse fields out of observations."""
+    manifest_path = tmp_path / "manifest.json"
+    _write_manifest(manifest_path, _png_bytes())
+
+    fake_parser = _FakeLLMParser()
+    monkeypatch.setenv("RUN_GOOGLE_VISION_SMOKE", "1")
+    monkeypatch.setattr(
+        collect,
+        "_build_provider_adapter",
+        lambda provider, settings: cast(Any, _FakeOCRAdapter()),
+    )
+
+    collection = await collect.collect_observations_with_auto_expected(
+        manifest_path=manifest_path,
+        providers=("google_vision_document",),
+        llm_parser=cast(Any, fake_parser),
+    )
+
+    assert fake_parser.calls == 0
+    row = collection.observations[0]
+    for key in (
+        "llm_parse_status",
+        "llm_parsed_ingredients",
+        "llm_parsed_ingredient_count",
+        "llm_parse_error_code",
+    ):
+        assert key not in row
 
 
 def test_operator_env_file_does_not_override_existing_environment(

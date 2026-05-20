@@ -31,6 +31,12 @@ if str(NUTRITION_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(NUTRITION_BACKEND_ROOT))
 
 from src.config import Settings  # noqa: E402
+from src.llm.ollama import (  # noqa: E402
+    OllamaClientError,
+    OllamaConfigurationError,
+    OllamaStructuredOutputError,
+    OllamaSupplementParser,
+)
 from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult  # noqa: E402
 from src.ocr.factory import (  # noqa: E402
     OCRConfigurationError,
@@ -195,6 +201,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--llm-parse",
+        action="store_true",
+        help=(
+            "Opt-in: send each non-empty OCR text to the local OllamaSupplementParser "
+            "and record redacted llm_parsed_ingredients on each completed observation. "
+            "Raw OCR text and raw model responses are never written; only structured "
+            "ingredient display_name/normalized_name/amount/unit are stored."
+        ),
+    )
+    parser.add_argument(
         "--auto-expected-manifest",
         type=Path,
         default=None,
@@ -211,6 +227,7 @@ def main() -> None:
             auto_expected_provider=cast(ProviderName | None, args.auto_expected_provider),
             auto_expected_manifest_path=args.auto_expected_manifest,
             env_file=args.env_file or _default_operator_env_file(),
+            llm_parse_enabled=bool(args.llm_parse),
         )
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -262,6 +279,8 @@ async def collect_observations_with_auto_expected(
     auto_expected_provider: ProviderName | None = None,
     auto_expected_manifest_path: Path | None = None,
     env_file: Path | None = None,
+    llm_parse_enabled: bool = False,
+    llm_parser: OllamaSupplementParser | None = None,
 ) -> CollectionResult:
     """Collect observations and optionally seed provisional expected fields.
 
@@ -282,12 +301,20 @@ async def collect_observations_with_auto_expected(
         settings = (
             Settings(_env_file=env_file) if env_file is not None else Settings(_env_file=None)
         )
+        active_llm_parser: OllamaSupplementParser | None = llm_parser
+        if llm_parse_enabled and active_llm_parser is None:
+            active_llm_parser = OllamaSupplementParser(settings)
         observations: list[dict[str, object]] = []
         seeded_expected: dict[str, dict[str, object]] = {}
         for fixture in fixtures:
             active_fixture = fixture
             for provider in providers:
-                observed = await _observe_provider(active_fixture, provider, settings)
+                observed = await _observe_provider(
+                    active_fixture,
+                    provider,
+                    settings,
+                    llm_parser=active_llm_parser if llm_parse_enabled else None,
+                )
                 observations.append(observed.row)
                 if provider == auto_expected_provider and observed.ocr_result is not None:
                     expected = _auto_expected_from_result(
@@ -312,6 +339,8 @@ async def _observe_provider(
     fixture: FixtureCase,
     provider: ProviderName,
     settings: Settings,
+    *,
+    llm_parser: OllamaSupplementParser | None = None,
 ) -> ProviderObservationResult:
     """Collect one provider observation or a safe not-run/error record.
 
@@ -348,15 +377,15 @@ async def _observe_provider(
                 error_code=_safe_error_code(exc),
             )
         )
-    return ProviderObservationResult(
-        row=_completed_observation(
-            fixture=fixture,
-            provider=provider,
-            result=result,
-            latency_ms=latency_ms,
-        ),
-        ocr_result=result,
+    row = _completed_observation(
+        fixture=fixture,
+        provider=provider,
+        result=result,
+        latency_ms=latency_ms,
     )
+    if llm_parser is not None and row.get("text_non_empty"):
+        await _attach_llm_parse(row=row, ocr_result=result, llm_parser=llm_parser)
+    return ProviderObservationResult(row=row, ocr_result=result)
 
 
 def _build_provider_adapter(provider: ProviderName, settings: Settings) -> OCRAdapter:
@@ -391,6 +420,69 @@ def _build_provider_adapter(provider: ProviderName, settings: Settings) -> OCRAd
             raise OCRConfigurationError("ENABLE_CLOVA_OCR=true is required for CLOVA OCR.")
         return ClovaOCRAdapter(settings)
     raise OCRConfigurationError(f"Unsupported provider: {provider}")
+
+
+async def _attach_llm_parse(
+    *,
+    row: dict[str, object],
+    ocr_result: OCRResult,
+    llm_parser: OllamaSupplementParser,
+) -> None:
+    """Run the local LLM parser on OCR text and attach a redacted ingredient list.
+
+    Args:
+        row: Completed observation row to mutate in place.
+        ocr_result: PaddleOCR/CLOVA/Google Vision result with in-memory text.
+        llm_parser: Local OllamaSupplementParser instance.
+
+    Notes:
+        Raw OCR text and raw Ollama responses are never persisted. Only the
+        structured ingredient display_name/normalized_name/amount/unit and the
+        ingredient_count are written to ``row``. Failure modes are recorded as a
+        safe ``llm_parse_error_code`` token only.
+    """
+    text = (ocr_result.text or "").strip()
+    if not text:
+        row["llm_parse_status"] = "skipped_empty_text"
+        return
+    try:
+        parse_result = await llm_parser.parse_supplement_ocr_text(text)
+    except OllamaConfigurationError:
+        row["llm_parse_status"] = "error"
+        row["llm_parse_error_code"] = "ollama_configuration"
+        return
+    except OllamaStructuredOutputError:
+        row["llm_parse_status"] = "error"
+        row["llm_parse_error_code"] = "ollama_structured_output"
+        return
+    except OllamaClientError:
+        row["llm_parse_status"] = "error"
+        row["llm_parse_error_code"] = "ollama_client"
+        return
+    except Exception as exc:  # pragma: no cover - defensive
+        row["llm_parse_status"] = "error"
+        row["llm_parse_error_code"] = f"unexpected:{type(exc).__name__}"
+        return
+
+    ingredients: list[dict[str, object]] = []
+    for ingredient in parse_result.ingredients:
+        ingredients.append(
+            {
+                "display_name": ingredient.display_name,
+                "normalized_name": ingredient.normalized_name or ingredient.display_name.lower(),
+                "amount": ingredient.amount,
+                "unit": ingredient.unit,
+                "daily_amount": ingredient.daily_amount,
+                "confidence": ingredient.confidence,
+            }
+        )
+    row["llm_parse_status"] = "completed"
+    row["llm_parsed_ingredients"] = ingredients
+    row["llm_parsed_ingredient_count"] = len(ingredients)
+    if parse_result.product.product_name:
+        row["llm_parsed_product_name_present"] = True
+    if parse_result.serving.serving_size_text:
+        row["llm_parsed_serving_size_text_present"] = True
 
 
 def _completed_observation(
