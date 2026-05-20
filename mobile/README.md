@@ -32,6 +32,15 @@ mobile/
 3. 응답의 `provider`, `used_tools`, `agent_memory` 사용 여부를 화면에 표시
 4. 영양제 촬영 화면에서 카메라 권한 요청 또는 갤러리 이미지 선택
 5. OCR 이미지 처리 동의 생성 후 `POST /api/v1/supplements/analyze` multipart 호출
+6. 분석 preview를 사용자가 확인/수정한 뒤 `user_confirmed=true` payload로
+   `POST /api/v1/supplements` 저장
+7. 음식 입력 화면에서 사진 선택과 수동 음식명/끼니/섭취량 확인 payload 생성
+8. 음식 flow는 음식 인식 모델이나 영양성분 DB lookup을 구현하지 않고,
+   확인된 입력만 AI Agent 연결 후보로 유지
+9. Daily coaching payload는 하드코딩된 OCR/영양성분 샘플 대신 confirmed
+   food/supplement entry 목록에서 조립
+10. `shared/state/confirmed_entry_store.dart`는 앱 세션 안에서 확인된 음식·영양제
+    entry를 보관하고 daily coaching 화면에 전달
 
 ## taedong-design에서 선별 반영한 연결점
 

@@ -160,20 +160,21 @@ async def run_daily_coaching(
     ).run(
         server_owned_request
     )
-    await upsert_daily_coaching_memory(
-        session,
-        current_user,
-        settings,
-        server_owned_request,
-        output,
-    )
-    await record_agent_run(
-        session,
-        current_user,
-        settings,
-        output,
-        model=getattr(llm_client, "model", None) if output.provider != "deterministic" else None,
-    )
+    if output.status != "preview":
+        await upsert_daily_coaching_memory(
+            session,
+            current_user,
+            settings,
+            server_owned_request,
+            output,
+        )
+        await record_agent_run(
+            session,
+            current_user,
+            settings,
+            output,
+            model=getattr(llm_client, "model", None) if output.provider != "deterministic" else None,
+        )
     await record_sensitive_audit_event(
         session,
         current_user,

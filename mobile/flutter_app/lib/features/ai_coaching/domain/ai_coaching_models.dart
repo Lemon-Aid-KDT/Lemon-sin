@@ -1,3 +1,6 @@
+import '../../food/domain/confirmed_food_entry.dart';
+import '../../supplement/domain/supplement_analysis_preview.dart';
+
 class DailyCoachingRequest {
   DailyCoachingRequest({
     required this.requestId,
@@ -6,42 +9,30 @@ class DailyCoachingRequest {
     required this.payload,
   });
 
-  factory DailyCoachingRequest.confirmedMealSample() {
+  factory DailyCoachingRequest.fromConfirmedInputs({
+    required List<ConfirmedFoodEntry> foods,
+    required List<SupplementConfirmedInput> supplements,
+  }) {
     final String requestId = 'mobile-daily-coaching-${DateTime.now().millisecondsSinceEpoch}';
     return DailyCoachingRequest(
       requestId: requestId,
       userId: 'mobile-client-placeholder',
       context: <String, dynamic>{
         'profile': <String, dynamic>{
-          'age': 52,
-          'gender': 'male',
           'goals': <String>['meal_management'],
-          'chronic_conditions': <String>['hypertension'],
-          'medications': <String>['blood_pressure_medication'],
         },
       },
       payload: <String, dynamic>{
         'date': DateTime.now().toIso8601String().substring(0, 10),
-        'sources': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'source_type': 'food_ocr',
-            'image_id': '$requestId-image',
-            'raw_ocr_text': 'instant noodles sodium 2600mg',
-            'user_confirmed': true,
-          },
-        ],
-        'foods': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'name': 'instant noodles',
-            'meal_type': 'lunch',
-            'serving_label': '1 bowl',
-            'nutrients': <Map<String, dynamic>>[
-              <String, dynamic>{'name': 'sodium', 'amount': 2600, 'unit': 'mg'},
-              <String, dynamic>{'name': 'protein', 'amount': 25, 'unit': 'g'},
-            ],
-          },
-        ],
-        'supplements': <Map<String, dynamic>>[],
+        'sources': foods
+            .map((ConfirmedFoodEntry food) => food.toAgentSourceJson())
+            .toList(growable: false),
+        'foods': foods
+            .map((ConfirmedFoodEntry food) => food.toAgentFoodJson())
+            .toList(growable: false),
+        'supplements': supplements
+            .map((SupplementConfirmedInput supplement) => supplement.toJson())
+            .toList(growable: false),
         'health_trends': <Map<String, dynamic>>[],
       },
     );

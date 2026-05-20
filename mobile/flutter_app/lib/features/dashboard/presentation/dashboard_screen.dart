@@ -14,20 +14,27 @@ class DashboardScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           Text(
-            '오늘의 건강 관리',
+            'Today',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 16),
           _DashboardAction(
-            title: '식단 코칭',
-            subtitle: '확인된 식단 기록으로 AI Agent 코칭을 요청합니다.',
+            title: 'Daily coaching',
+            subtitle: 'Run AI Agent coaching with confirmed meal data.',
             icon: Icons.chat_bubble_outline,
             onTap: () => context.go('/coaching'),
           ),
           const SizedBox(height: 12),
           _DashboardAction(
-            title: '영양제 촬영',
-            subtitle: '카메라 또는 갤러리에서 라벨 이미지를 선택합니다.',
+            title: 'Food input',
+            subtitle: 'Capture a food photo and confirm the meal details manually.',
+            icon: Icons.restaurant_outlined,
+            onTap: () => context.go('/food-capture'),
+          ),
+          const SizedBox(height: 12),
+          _DashboardAction(
+            title: 'Supplement capture',
+            subtitle: 'Capture or select a supplement label image.',
             icon: Icons.photo_camera_outlined,
             onTap: () => context.go('/supplement-capture'),
           ),

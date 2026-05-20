@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/state/confirmed_entry_store.dart';
 import '../../../shared/widgets/medical_disclaimer.dart';
 import '../data/ai_coaching_repository.dart';
 import '../domain/ai_coaching_models.dart';
@@ -17,7 +18,7 @@ class _DailyCoachingScreenState extends State<DailyCoachingScreen> {
   Object? _error;
   bool _isLoading = false;
 
-  Future<void> _runSmokeFlow() async {
+  Future<void> _runConfirmedFlow() async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -26,7 +27,10 @@ class _DailyCoachingScreenState extends State<DailyCoachingScreen> {
     try {
       await _repository.grantSensitiveHealthAnalysisConsent();
       final DailyCoachingResponse response = await _repository.runDailyCoaching(
-        DailyCoachingRequest.confirmedMealSample(),
+        DailyCoachingRequest.fromConfirmedInputs(
+          foods: ConfirmedEntryStore.instance.foods,
+          supplements: ConfirmedEntryStore.instance.supplements,
+        ),
       );
       if (!mounted) {
         return;
@@ -58,18 +62,21 @@ class _DailyCoachingScreenState extends State<DailyCoachingScreen> {
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           Text(
-            '오늘의 식단 코칭',
+            'Daily coaching',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 12),
-          const Text('확인된 식단 기록을 기반으로 AI Agent 코칭을 요청합니다.'),
+          const Text('AI Agent coaching uses confirmed food and supplement entries only.'),
+          const SizedBox(height: 8),
+          Text('Confirmed foods: ${ConfirmedEntryStore.instance.foods.length}'),
+          Text('Confirmed supplements: ${ConfirmedEntryStore.instance.supplements.length}'),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: _isLoading ? null : _runSmokeFlow,
-            child: Text(_isLoading ? '요청 중' : '코칭 요청'),
+            onPressed: _isLoading ? null : _runConfirmedFlow,
+            child: Text(_isLoading ? 'Requesting...' : 'Request coaching'),
           ),
           const SizedBox(height: 16),
-          if (_error != null) _ErrorPanel(error: _error!),
+          if (_error != null) const _ErrorPanel(),
           if (_response != null) _CoachingResult(response: _response!),
           const SizedBox(height: 24),
           const MedicalDisclaimer(),
@@ -86,7 +93,7 @@ class _CoachingResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String memoryLabel = response.usedAgentMemory ? '예' : '아니오';
+    final String memoryLabel = response.usedAgentMemory ? 'yes' : 'no';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -98,14 +105,14 @@ class _CoachingResult extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('상태: ${response.status}'),
+            Text('Status: ${response.status}'),
             Text('Provider: ${response.provider}'),
-            Text('Memory 사용: $memoryLabel'),
+            Text('Memory used: $memoryLabel'),
             const SizedBox(height: 12),
             Text(response.message),
             if (response.findings.isNotEmpty) ...<Widget>[
               const SizedBox(height: 12),
-              Text('주요 결과 ${response.findings.length}건'),
+              Text('Findings: ${response.findings.length}'),
             ],
           ],
         ),
@@ -115,9 +122,7 @@ class _CoachingResult extends StatelessWidget {
 }
 
 class _ErrorPanel extends StatelessWidget {
-  const _ErrorPanel({required this.error});
-
-  final Object error;
+  const _ErrorPanel();
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +134,7 @@ class _ErrorPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          '요청을 완료하지 못했습니다. 서버 연결과 인증 상태를 확인해 주세요.',
+          'The request did not complete. Check the server connection and authentication state.',
           style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
         ),
       ),

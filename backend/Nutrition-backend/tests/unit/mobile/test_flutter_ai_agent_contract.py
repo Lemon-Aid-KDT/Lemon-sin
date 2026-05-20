@@ -42,6 +42,23 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         / "daily_coaching_screen.dart",
         APP_ROOT
         / "lib"
+        / "shared"
+        / "state"
+        / "confirmed_entry_store.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "food"
+        / "domain"
+        / "confirmed_food_entry.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "food"
+        / "presentation"
+        / "food_capture_screen.dart",
+        APP_ROOT
+        / "lib"
         / "features"
         / "supplement"
         / "data"
@@ -123,11 +140,75 @@ def test_flutter_shell_routes_and_sensitive_storage_are_wired() -> None:
 
     assert "path: '/coaching'" in app
     assert "path: '/supplement-capture'" in app
+    assert "path: '/food-capture'" in app
     assert "flutter_secure_storage" in pubspec
     assert "flutter_secure_storage" in token_store
     assert "Permission.camera.request()" in capture_screen
     assert "ImageSource.camera" in capture_screen
     assert "ImageSource.gallery" in capture_screen
+
+
+def test_flutter_food_capture_collects_confirmed_input_without_nutrient_guessing() -> None:
+    """Verify food flow captures confirmed manual input without inventing nutrients."""
+    app = (APP_ROOT / "lib" / "app.dart").read_text(encoding="utf-8")
+    dashboard = (
+        APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart"
+    ).read_text(encoding="utf-8")
+    entry = (
+        APP_ROOT / "lib" / "features" / "food" / "domain" / "confirmed_food_entry.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT / "lib" / "features" / "food" / "presentation" / "food_capture_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "FoodCaptureScreen" in app
+    assert "context.go('/food-capture')" in dashboard
+    assert "class ConfirmedFoodEntry" in entry
+    assert "'source_type': 'food_user_input'" in entry
+    assert "'user_confirmed': true" in entry
+    assert "'nutrients'" not in entry
+    assert "food_recognition" not in entry
+    assert "nutrition_lookup" not in entry
+    assert "ImageSource.camera" in screen
+    assert "ImageSource.gallery" in screen
+    assert "_confirmedForAgentPayload" in screen
+    assert "userConfirmed" in screen
+
+
+def test_flutter_confirmed_entries_are_shared_with_daily_coaching() -> None:
+    """Verify confirmed food/supplements are handed off to daily coaching state."""
+    store = (
+        APP_ROOT / "lib" / "shared" / "state" / "confirmed_entry_store.dart"
+    ).read_text(encoding="utf-8")
+    food_screen = (
+        APP_ROOT / "lib" / "features" / "food" / "presentation" / "food_capture_screen.dart"
+    ).read_text(encoding="utf-8")
+    supplement_screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "presentation"
+        / "supplement_capture_screen.dart"
+    ).read_text(encoding="utf-8")
+    coaching_screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "ai_coaching"
+        / "presentation"
+        / "daily_coaching_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "class ConfirmedEntryStore" in store
+    assert "static final ConfirmedEntryStore instance" in store
+    assert "addFood" in store
+    assert "addSupplement" in store
+    assert "ConfirmedEntryStore.instance.addFood" in food_screen
+    assert "ConfirmedEntryStore.instance.addSupplement" in supplement_screen
+    assert "ConfirmedEntryStore.instance.foods" in coaching_screen
+    assert "ConfirmedEntryStore.instance.supplements" in coaching_screen
+    assert "DailyCoachingRequest.fromConfirmedInputs" in coaching_screen
 
 
 def test_flutter_supplement_capture_calls_backend_analyze_contract() -> None:
@@ -161,6 +242,45 @@ def test_flutter_supplement_capture_calls_backend_analyze_contract() -> None:
     assert "analyzeLabelImage" in screen
 
 
+def test_flutter_supplement_capture_can_save_user_confirmed_records() -> None:
+    """Verify supplement preview confirmation posts only user-confirmed records."""
+    repository = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "data"
+        / "supplement_capture_repository.dart"
+    ).read_text(encoding="utf-8")
+    preview = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "domain"
+        / "supplement_analysis_preview.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "presentation"
+        / "supplement_capture_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "saveConfirmedSupplement" in repository
+    assert "/api/v1/me/privacy/consents/sensitive_health_analysis" in repository
+    assert "grantSensitiveHealthAnalysisConsent" in repository
+    assert "_client.postJson(" in repository
+    assert "'/api/v1/supplements'" in repository
+    assert "SupplementConfirmedInput" in preview
+    assert "analysisId" in preview
+    assert "'user_confirmed': true" in preview
+    assert "saveConfirmedSupplement" in screen
+    assert "_confirmedForSave" in screen
+
+
 def test_flutter_taedong_compatible_models_preserve_raw_payloads() -> None:
     """Verify bridge models match taedong-style loose payload handling."""
     agent_memory = (
@@ -188,7 +308,7 @@ def test_flutter_taedong_compatible_models_preserve_raw_payloads() -> None:
 
 
 def test_flutter_daily_coaching_request_is_confirmed_only() -> None:
-    """Verify the starter flow sends confirmed OCR data, not preview-only data."""
+    """Verify daily coaching uses confirmed entries without hard-coded nutrient guesses."""
     models = (
         APP_ROOT
         / "lib"
@@ -197,9 +317,36 @@ def test_flutter_daily_coaching_request_is_confirmed_only() -> None:
         / "domain"
         / "ai_coaching_models.dart"
     ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "ai_coaching"
+        / "presentation"
+        / "daily_coaching_screen.dart"
+    ).read_text(encoding="utf-8")
+    food_entry = (
+        APP_ROOT / "lib" / "features" / "food" / "domain" / "confirmed_food_entry.dart"
+    ).read_text(encoding="utf-8")
+    supplement_preview = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "domain"
+        / "supplement_analysis_preview.dart"
+    ).read_text(encoding="utf-8")
 
-    assert "'user_confirmed': true" in models
-    assert "'raw_ocr_text': 'instant noodles sodium 2600mg'" in models
+    assert "fromConfirmedInputs" in models
+    assert "ConfirmedFoodEntry" in models
+    assert "SupplementConfirmedInput" in models
+    assert "'user_confirmed': true" in food_entry
+    assert "'user_confirmed': true" in supplement_preview
+    assert "'raw_ocr_text'" not in models
+    assert "'nutrients'" not in models
+    assert "instant noodles" not in models
+    assert "sodium 2600mg" not in models
+    assert "confirmedMealSample" not in screen
     assert "'agent_memory'" in models
 
 

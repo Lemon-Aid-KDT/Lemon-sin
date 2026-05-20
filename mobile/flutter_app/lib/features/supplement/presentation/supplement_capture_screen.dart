@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../shared/state/confirmed_entry_store.dart';
 import '../../../shared/widgets/medical_disclaimer.dart';
 import '../data/supplement_capture_repository.dart';
 import '../domain/supplement_analysis_preview.dart';
@@ -16,15 +17,42 @@ class SupplementCaptureScreen extends StatefulWidget {
 class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
   final ImagePicker _picker = ImagePicker();
   final SupplementCaptureRepository _repository = SupplementCaptureRepository();
+  final TextEditingController _productNameController = TextEditingController();
+  final TextEditingController _manufacturerController = TextEditingController();
+  final TextEditingController _ingredientNameController = TextEditingController();
+  final TextEditingController _ingredientAmountController = TextEditingController();
+  final TextEditingController _ingredientUnitController = TextEditingController();
+  final TextEditingController _servingAmountController = TextEditingController();
+  final TextEditingController _servingUnitController = TextEditingController();
+  final TextEditingController _dailyServingsController = TextEditingController(text: '1');
+  final TextEditingController _frequencyController = TextEditingController(text: 'daily');
+
   String? _selectedImageName;
   String? _statusMessage;
   SupplementAnalysisPreview? _preview;
   bool _isSelecting = false;
+  bool _isSaving = false;
+  bool _userConfirmed = false;
+
+  @override
+  void dispose() {
+    _productNameController.dispose();
+    _manufacturerController.dispose();
+    _ingredientNameController.dispose();
+    _ingredientAmountController.dispose();
+    _ingredientUnitController.dispose();
+    _servingAmountController.dispose();
+    _servingUnitController.dispose();
+    _dailyServingsController.dispose();
+    _frequencyController.dispose();
+    super.dispose();
+  }
 
   Future<void> _selectImage(ImageSource source) async {
     setState(() {
       _isSelecting = true;
       _statusMessage = null;
+      _userConfirmed = false;
     });
 
     try {
@@ -35,7 +63,7 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
             return;
           }
           setState(() {
-            _statusMessage = '카메라 권한이 필요합니다.';
+            _statusMessage = 'Camera permission is required.';
           });
           return;
         }
@@ -50,7 +78,7 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
       }
       setState(() {
         _selectedImageName = image?.name;
-        _statusMessage = image == null ? '선택된 이미지가 없습니다.' : '이미지를 선택했습니다.';
+        _statusMessage = image == null ? 'No image selected.' : 'Image selected.';
       });
       if (image != null) {
         await _analyzeImage(image);
@@ -60,7 +88,7 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
         return;
       }
       setState(() {
-        _statusMessage = '이미지를 가져오지 못했습니다.';
+        _statusMessage = 'Could not load the image.';
       });
     } finally {
       if (mounted) {
@@ -73,7 +101,7 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
 
   Future<void> _analyzeImage(XFile image) async {
     setState(() {
-      _statusMessage = '분석 요청 중입니다.';
+      _statusMessage = 'Requesting supplement preview.';
     });
     try {
       await _repository.grantOcrImageProcessingConsent();
@@ -81,44 +109,155 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
       if (!mounted) {
         return;
       }
+      _fillPreviewFields(preview);
       setState(() {
         _preview = preview;
-        _statusMessage = '분석 미리보기를 받았습니다.';
+        _statusMessage = 'Review and confirm the preview before saving.';
       });
     } catch (_) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _statusMessage = '분석 요청을 완료하지 못했습니다.';
+        _statusMessage = 'Preview request did not complete.';
       });
     }
+  }
+
+  void _fillPreviewFields(SupplementAnalysisPreview preview) {
+    final SupplementIngredientCandidate? firstIngredient =
+        preview.ingredientCandidates.isEmpty ? null : preview.ingredientCandidates.first;
+    _productNameController.text = preview.parsedProduct.productName;
+    _manufacturerController.text = preview.parsedProduct.manufacturer;
+    _ingredientNameController.text = firstIngredient?.displayName ?? '';
+    _ingredientAmountController.text = _formatNumber(firstIngredient?.amount);
+    _ingredientUnitController.text = firstIngredient?.unit ?? '';
+    _dailyServingsController.text = _formatNumber(preview.parsedProduct.dailyServings) == ''
+        ? '1'
+        : _formatNumber(preview.parsedProduct.dailyServings);
+  }
+
+  Future<void> _saveConfirmedPreview() async {
+    final SupplementConfirmedInput? input = _confirmedForSave();
+    if (input == null) {
+      setState(() {
+        _statusMessage = 'Confirm the preview and fill required fields before saving.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _statusMessage = 'Saving confirmed supplement.';
+    });
+
+    try {
+      await _repository.saveConfirmedSupplement(input);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        ConfirmedEntryStore.instance.addSupplement(input);
+        _statusMessage = 'Confirmed supplement saved.';
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _statusMessage = 'Could not save the confirmed supplement.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  SupplementConfirmedInput? _confirmedForSave() {
+    final SupplementAnalysisPreview? preview = _preview;
+    final String productName = _productNameController.text.trim();
+    final String ingredientName = _ingredientNameController.text.trim();
+    final double dailyServings = double.tryParse(_dailyServingsController.text.trim()) ?? 0;
+
+    if (!_userConfirmed || preview == null || productName.isEmpty || ingredientName.isEmpty) {
+      return null;
+    }
+    if (dailyServings <= 0 || dailyServings > 20) {
+      return null;
+    }
+
+    return SupplementConfirmedInput(
+      analysisId: preview.analysisId,
+      displayName: productName,
+      manufacturer: _manufacturerController.text.trim(),
+      ingredients: <SupplementConfirmedIngredientInput>[
+        SupplementConfirmedIngredientInput(
+          displayName: ingredientName,
+          nutrientCode: null,
+          amount: double.tryParse(_ingredientAmountController.text.trim()),
+          unit: _ingredientUnitController.text.trim(),
+        ),
+      ],
+      serving: SupplementServingInput(
+        amount: double.tryParse(_servingAmountController.text.trim()),
+        unit: _servingUnitController.text.trim(),
+        dailyServings: dailyServings,
+      ),
+      intakeSchedule: SupplementIntakeScheduleInput(
+        frequency: _frequencyController.text.trim().isEmpty
+            ? 'daily'
+            : _frequencyController.text.trim(),
+        timeOfDay: <String>[],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('영양제 촬영')),
+      appBar: AppBar(title: const Text('Supplement capture')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
-          const Text('영양제 제품명, 성분표, 섭취 방법이 보이도록 촬영해 주세요.'),
+          const Text('Capture or select a supplement label, then review the values before saving.'),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _isSelecting ? null : () => _selectImage(ImageSource.camera),
             icon: const Icon(Icons.photo_camera_outlined),
-            label: const Text('카메라 열기'),
+            label: const Text('Open camera'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _isSelecting ? null : () => _selectImage(ImageSource.gallery),
             icon: const Icon(Icons.photo_library_outlined),
-            label: const Text('갤러리에서 선택'),
+            label: const Text('Choose from gallery'),
           ),
           const SizedBox(height: 16),
-          if (_selectedImageName != null) Text('선택 파일: $_selectedImageName'),
+          if (_selectedImageName != null) Text('Selected file: $_selectedImageName'),
           if (_statusMessage != null) Text(_statusMessage!),
-          if (_preview != null) _SupplementPreviewPanel(preview: _preview!),
+          if (_preview != null) _SupplementPreviewForm(
+            preview: _preview!,
+            productNameController: _productNameController,
+            manufacturerController: _manufacturerController,
+            ingredientNameController: _ingredientNameController,
+            ingredientAmountController: _ingredientAmountController,
+            ingredientUnitController: _ingredientUnitController,
+            servingAmountController: _servingAmountController,
+            servingUnitController: _servingUnitController,
+            dailyServingsController: _dailyServingsController,
+            frequencyController: _frequencyController,
+            userConfirmed: _userConfirmed,
+            isSaving: _isSaving,
+            onConfirmedChanged: (bool? value) {
+              setState(() {
+                _userConfirmed = value ?? false;
+              });
+            },
+            onSave: _saveConfirmedPreview,
+          ),
           const SizedBox(height: 24),
           const MedicalDisclaimer(),
         ],
@@ -127,10 +266,38 @@ class _SupplementCaptureScreenState extends State<SupplementCaptureScreen> {
   }
 }
 
-class _SupplementPreviewPanel extends StatelessWidget {
-  const _SupplementPreviewPanel({required this.preview});
+class _SupplementPreviewForm extends StatelessWidget {
+  const _SupplementPreviewForm({
+    required this.preview,
+    required this.productNameController,
+    required this.manufacturerController,
+    required this.ingredientNameController,
+    required this.ingredientAmountController,
+    required this.ingredientUnitController,
+    required this.servingAmountController,
+    required this.servingUnitController,
+    required this.dailyServingsController,
+    required this.frequencyController,
+    required this.userConfirmed,
+    required this.isSaving,
+    required this.onConfirmedChanged,
+    required this.onSave,
+  });
 
   final SupplementAnalysisPreview preview;
+  final TextEditingController productNameController;
+  final TextEditingController manufacturerController;
+  final TextEditingController ingredientNameController;
+  final TextEditingController ingredientAmountController;
+  final TextEditingController ingredientUnitController;
+  final TextEditingController servingAmountController;
+  final TextEditingController servingUnitController;
+  final TextEditingController dailyServingsController;
+  final TextEditingController frequencyController;
+  final bool userConfirmed;
+  final bool isSaving;
+  final ValueChanged<bool?> onConfirmedChanged;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -146,13 +313,92 @@ class _SupplementPreviewPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text('분석 상태: ${preview.status}'),
+              Text('Preview status: ${preview.status}'),
               Text('OCR provider: ${preview.ocrProvider}'),
-              if (preview.warnings.isNotEmpty) Text('주의: ${preview.warnings.first}'),
+              if (preview.warnings.isNotEmpty) Text('Caution: ${preview.warnings.first}'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: productNameController,
+                decoration: const InputDecoration(labelText: 'Product name'),
+              ),
+              TextField(
+                controller: manufacturerController,
+                decoration: const InputDecoration(labelText: 'Manufacturer'),
+              ),
+              TextField(
+                controller: ingredientNameController,
+                decoration: const InputDecoration(labelText: 'Ingredient name'),
+              ),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      controller: ingredientAmountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Ingredient amount'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: ingredientUnitController,
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      controller: servingAmountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Serving amount'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: servingUnitController,
+                      decoration: const InputDecoration(labelText: 'Serving unit'),
+                    ),
+                  ),
+                ],
+              ),
+              TextField(
+                controller: dailyServingsController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Daily servings'),
+              ),
+              TextField(
+                controller: frequencyController,
+                decoration: const InputDecoration(labelText: 'Frequency'),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: userConfirmed,
+                onChanged: onConfirmedChanged,
+                title: const Text('I reviewed and confirmed these values.'),
+              ),
+              FilledButton.icon(
+                onPressed: isSaving ? null : onSave,
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Save confirmed supplement'),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+String _formatNumber(double? value) {
+  if (value == null) {
+    return '';
+  }
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+  return value.toString();
 }

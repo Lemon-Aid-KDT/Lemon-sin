@@ -240,6 +240,9 @@ SGLANG_API_KEY=EMPTY \
 python backend/scripts/smoke_ai_agent_server.py
 # 2026-05-20 기준 first_provider=sglang, second_provider=sglang,
 # second_used_tools에 daily_health_agent, chat_agent, agent_memory 포함 확인
+# 2026-05-20 재검증: first_provider=sglang, second_provider=sglang,
+# second_used_tools에 daily_health_agent, nutrition_engine, supplement_engine,
+# safety_guard, chat_agent, agent_memory 포함 확인
 
 # 2. 스테이징 환경 배포 + 검증
 make deploy-staging

@@ -320,6 +320,34 @@ def test_daily_coaching_returns_preview_for_unconfirmed_ocr(
     assert body["actions"] == []
 
 
+def test_daily_coaching_preview_does_not_persist_memory_or_run_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify unconfirmed preview responses skip memory and run persistence."""
+    persisted: dict[str, int] = {"memory": 0, "run": 0}
+
+    async def _capture_memory_update(*_args: object, **_kwargs: object) -> None:
+        persisted["memory"] += 1
+
+    async def _capture_agent_run(*_args: object, **_kwargs: object) -> None:
+        persisted["run"] += 1
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "upsert_daily_coaching_memory", _capture_memory_update)
+    monkeypatch.setattr(ai_agent, "record_agent_run", _capture_agent_run)
+
+    response = _client().post(
+        "/api/v1/ai-agent/daily-coaching",
+        json=_payload(user_confirmed=False),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "preview"
+    assert persisted == {"memory": 0, "run": 0}
+
+
 def test_daily_coaching_requires_sensitive_health_consent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -20,6 +20,13 @@ class SupplementCaptureRepository {
     );
   }
 
+  Future<void> grantSensitiveHealthAnalysisConsent() async {
+    await _client.postJson(
+      '/api/v1/me/privacy/consents/sensitive_health_analysis',
+      <String, dynamic>{},
+    );
+  }
+
   Future<SupplementAnalysisPreview> analyzeLabelImage(XFile image) async {
     final List<int> bytes = await image.readAsBytes();
     final FormData formData = FormData.fromMap(<String, dynamic>{
@@ -31,5 +38,13 @@ class SupplementCaptureRepository {
       formData,
     );
     return SupplementAnalysisPreview.fromJson(response.data ?? <String, dynamic>{});
+  }
+
+  Future<void> saveConfirmedSupplement(SupplementConfirmedInput input) async {
+    await grantSensitiveHealthAnalysisConsent();
+    await _client.postJson(
+      '/api/v1/supplements',
+      input.toJson(),
+    );
   }
 }

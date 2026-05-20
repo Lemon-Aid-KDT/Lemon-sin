@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/ai_coaching/presentation/daily_coaching_screen.dart';
+import 'features/food/presentation/food_capture_screen.dart';
 import 'features/supplement/presentation/supplement_capture_screen.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -18,6 +19,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/supplement-capture',
       builder: (BuildContext context, GoRouterState state) => const SupplementCaptureScreen(),
+    ),
+    GoRoute(
+      path: '/food-capture',
+      builder: (BuildContext context, GoRouterState state) => const FoodCaptureScreen(),
     ),
   ],
 );
