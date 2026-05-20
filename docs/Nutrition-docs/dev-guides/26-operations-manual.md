@@ -100,6 +100,18 @@ redis-cli -u $REDIS_URL ping
   - 이 스크립트는 `TEST_DATABASE_URL`의 host/port와 `SGLANG_BASE_URL`의 host/port를
     읽어 live smoke 대상 포트를 점검한다. 임시 PostgreSQL 포트가 5432가 아니어도
     실제 설정값 기준으로 판단한다.
+- [x] AI Agent 실제 서버 조합 smoke 확인 (2026-05-20):
+  ```bash
+  TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke \
+  SGLANG_BASE_URL=http://localhost:30000/v1 \
+  SGLANG_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
+  SGLANG_API_KEY=EMPTY \
+  python backend/scripts/smoke_ai_agent_server.py
+  ```
+  - 검증 범위: PostgreSQL Alembic upgrade, FastAPI `src.main:app` 실제 서버 부팅,
+    `/api/v1/me/privacy/consents/sensitive_health_analysis` 동의 생성,
+    `/api/v1/ai-agent/daily-coaching` 2회 호출, 로컬 SGLang provider 응답,
+    두 번째 호출의 `used_tools` 내 `agent_memory` 재주입 확인.
 - [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
 - [ ] SGLang 운영 후보 상태 확인
   - 기본 endpoint: `http://127.0.0.1:30000/v1`
@@ -219,6 +231,15 @@ TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smok
 pytest backend/Nutrition-backend/tests/integration/db/test_alembic_migration_smoke.py -q
 # 2026-05-19 기준 conda PostgreSQL 16.10 + pgvector 0.8.1 test DB에서 1 passed 확인
 # 긴 Alembic revision id를 위해 backend/alembic/env.py는 alembic_version.version_num 길이를 80으로 확장
+
+# AI Agent 실제 서버 조합 smoke: PostgreSQL + FastAPI + SGLang + agent_memory 재주입
+TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke \
+SGLANG_BASE_URL=http://localhost:30000/v1 \
+SGLANG_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
+SGLANG_API_KEY=EMPTY \
+python backend/scripts/smoke_ai_agent_server.py
+# 2026-05-20 기준 first_provider=sglang, second_provider=sglang,
+# second_used_tools에 daily_health_agent, chat_agent, agent_memory 포함 확인
 
 # 2. 스테이징 환경 배포 + 검증
 make deploy-staging

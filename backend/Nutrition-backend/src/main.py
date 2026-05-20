@@ -13,6 +13,7 @@ from src.api.v1.examples import HEALTH_RESPONSE_EXAMPLES
 from src.api.v1.router import api_router
 from src.config import Settings, get_settings
 from src.db.session import dispose_engine
+from src.middleware.secure_headers import SecureHeadersMiddleware
 from src.utils.logger import setup_logging
 
 
@@ -55,6 +56,7 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Authorization"],
         )
+    app.add_middleware(SecureHeadersMiddleware, settings=settings)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

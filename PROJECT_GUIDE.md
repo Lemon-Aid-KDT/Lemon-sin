@@ -2993,7 +2993,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | Xcode/iOS Simulator | 준비됨 | iOS 26.3.1 runtime, iPhone 17, iPad A16 simulator 확인 |
 | CocoaPods | 설치됨 | 1.16.2 확인 |
 | Android SDK | 미설치 | iOS 우선 개발에는 blocker 아님. Android 검증 전 설치 필요 |
-| Docker/PostgreSQL live smoke | 미완료 | Docker daemon 또는 로컬 PostgreSQL 준비 후 Alembic e2e 필요 |
+| Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-20 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
 | Ollama live smoke | 미완료 | parser unit test는 있으나 실제 Ollama server/model 호출 검증 필요 |
 
 ### B.5 보안/개인정보 현재 판단
@@ -3012,7 +3012,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 3. 여러 장 이미지 batch upload 계약 설계: batch id, per-image validation, merged OCR text, user confirmation.
 4. OCR provider adapter와 로컬 Ollama live smoke test 추가.
 5. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e 검증.
-6. 로컬 PostgreSQL 또는 Docker 기반 Alembic upgrade + API 저장/조회/삭제 smoke 수행.
+6. 앱 skeleton/API client가 생기면 `/api/v1/ai-agent/daily-coaching`을 실제 화면 flow에 연결하고 인증/JWT staging e2e 검증.
 7. KDRIs 2025 공식 row 승인, checksum 갱신, `ALLOW_SAMPLE_KDRIS=false` production 전환.
 
 ### B.7 브리핑 때 바로 말할 수 있는 문장
