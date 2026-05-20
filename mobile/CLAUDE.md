@@ -264,6 +264,25 @@
 5. **빌드 검증** — Flutter 환경 있으면 `flutter analyze`, 없으면 사용자가 빌드.
 6. **시스템 reminder · CLAUDE.md 변경** 후에는 사용자가 `flutter clean && flutter run` 해야 시스템 splash · 어댑티브 아이콘 등 OS 캐시 반영됨.
 
+7. **모든 기기 호환 (Responsive — 절대 어기지 말 것).**
+   - 타깃: 안드로이드 / iOS, 5인치 소형 폰 ~ 7인치 대형 폰 ~ 폴더블 ~ 태블릿까지 같은 코드로 동작.
+   - **고정 px 하드코딩 금지**. 화면 크기에 의존하는 값(전체 너비/높이, 카드 너비 등)은 항상 **비율 또는 MediaQuery 기반** 으로 계산.
+     - ❌ `width: 380, height: 600`
+     - ✅ `width: MediaQuery.of(context).size.width * 0.9`
+     - ✅ `Expanded`, `Flexible`, `FractionallySizedBox`, `AspectRatio` 사용
+   - **컴포넌트 내부 작은 값(아이콘 24, 패딩 16 등)** 은 토큰 그대로 OK — 이건 시각적 일관성 위해 유지. 단 **레이아웃 그릇** 은 비율로.
+   - **카메라 / 이미지 / 미리보기** — 항상 `AspectRatio` + `LayoutBuilder` 로 박스 크기 받아서 계산. 절대 px 박지 말 것.
+   - **폰트 크기** — 토큰(`AppText.title` 등) 그대로 사용. `MediaQuery.textScaleFactor` 가 시스템 폰트 크기 자동 반영. 시니어 모드 호환.
+   - **SafeArea** 필수 — 노치 / 하단 제스처 바 / 폴더블 힌지 회피.
+   - **세로/가로 회전** — 기본은 세로 고정이지만, `LayoutBuilder` 로 짜면 자동 대응. `MediaQuery.orientation` 분기 가능.
+   - **테스트** — 새 화면 만들 때 최소 3 사이즈 (소형 폰 360x640, 표준 390x844, 태블릿 768x1024) 시뮬에서 시각 점검. 잘림 / 겹침 / 빈 공간 큼 등 모두 잡는다.
+   - **체크리스트**:
+     - [ ] 화면 너비를 직접 박은 곳 없는가? (`width: 380` 같은 거)
+     - [ ] `MediaQuery.size.width *` 또는 `Expanded` / `Flexible` 사용했는가?
+     - [ ] 카메라/이미지 미리보기에 `AspectRatio` + `LayoutBuilder` 썼는가?
+     - [ ] `SafeArea` 감쌌는가?
+     - [ ] 시뮬레이터 3 사이즈에서 시각 점검했는가?
+
 ---
 
 ## 8. UX_DIARY 챕터 색인

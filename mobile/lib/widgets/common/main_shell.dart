@@ -69,18 +69,23 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final int currentIndex = widget.navigationShell.currentIndex;
+    // 카메라 branch 일 때는 풀스크린 — 탭바 + 배경 검정으로
+    final bool isCamera = currentIndex == _cameraBranchIndex;
     return Scaffold(
-      backgroundColor: AppColor.bg,
+      backgroundColor: isCamera ? Colors.black : AppColor.bg,
+      // extendBody = 카메라 모드일 때 body 가 시스템 영역까지 확장
+      extendBody: isCamera,
       body: widget.navigationShell,
-      // FAB 가 탭바 위에 살짝 떠있는 구조 → Stack 으로 직접 조합
-      bottomNavigationBar: _BottomBar(
-        leftTabs: _leftTabs,
-        rightTabs: _rightTabs,
-        currentIndex: currentIndex,
-        onTabTap: _goBranch,
-        onCameraTap: () => _goBranch(_cameraBranchIndex),
-        cameraActive: currentIndex == _cameraBranchIndex,
-      ),
+      bottomNavigationBar: isCamera
+          ? null
+          : _BottomBar(
+              leftTabs: _leftTabs,
+              rightTabs: _rightTabs,
+              currentIndex: currentIndex,
+              onTabTap: _goBranch,
+              onCameraTap: () => _goBranch(_cameraBranchIndex),
+              cameraActive: currentIndex == _cameraBranchIndex,
+            ),
     );
   }
 }

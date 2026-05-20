@@ -16,6 +16,10 @@ import '../screens/auth/verify_email_screen.dart';
 import '../screens/auth/consent_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/camera_screen.dart';
+import '../screens/analysis_result_screen.dart';
+import '../screens/health_profile_screen.dart';
+import '../screens/notifications_screen.dart';
+import '../screens/calendar_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/dashboard_screen_v3.dart';
 import '../screens/chat_screen.dart';
@@ -36,6 +40,7 @@ class AppRoute {
   static const String onboarding   = '/onboarding';
   static const String home         = '/home';
   static const String camera       = '/camera';
+  static const String analysisResult = '/analysis-result';
   static const String dashboard    = '/dashboard';
   static const String dashboardV3  = '/dashboard-v3';   // PREVIEW — LADS §13 v3 토큰 검증
   static const String chat         = '/chat';
@@ -160,6 +165,32 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
       path: AppRoute.camera,
       name: 'camera',
       builder: (context, state) => const CameraScreen(),
+    ),
+    GoRoute(
+      path: AppRoute.analysisResult,
+      name: 'analysisResult',
+      builder: (context, state) {
+        final mode = state.uri.queryParameters['mode'] ?? 'supplement';
+        return AnalysisResultScreen(mode: mode);
+      },
+    ),
+    GoRoute(
+      path: '/health-profile',
+      name: 'healthProfile',
+      builder: (context, state) {
+        final tab = state.uri.queryParameters['tab'] ?? 'disease';
+        return HealthProfileScreen(initialTab: tab);
+      },
+    ),
+    GoRoute(
+      path: '/notifications',
+      name: 'notifications',
+      builder: (context, state) => const NotificationsScreen(),
+    ),
+    GoRoute(
+      path: '/calendar',
+      name: 'calendar',
+      builder: (context, state) => const CalendarScreen(),
     ),
     GoRoute(
       path: AppRoute.dashboard,

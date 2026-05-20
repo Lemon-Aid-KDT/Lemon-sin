@@ -12,6 +12,7 @@
 //   ⏳ 5. 의료 면책
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../utils/design_tokens_v2.dart';
 
@@ -48,8 +49,23 @@ class DashboardScreen extends StatelessWidget {
                     AppSpace.xl + 80,
                   ),
                   children: const [
-                    _MainCard(),
+                    // 1. 메인 박스 (캐릭터 + 동적 인사 메시지)
+                    _GreetingCard(),
                     SizedBox(height: AppSpace.md),
+                    // 2. 오늘의 영양 진행률 (칼로리·탄단지)
+                    _NutritionProgressCard(),
+                    SizedBox(height: AppSpace.md),
+                    // 3. 5종 분석 결과 grid
+                    _FiveOutputsSection(),
+                    SizedBox(height: AppSpace.md),
+                    // 4. 복약 알람 (오늘 먹을 영양제·약)
+                    _SupplementAlarmCard(),
+                    SizedBox(height: AppSpace.md),
+                    // 5. 최근 분석
+                    _RecentAnalysisCard(),
+                    SizedBox(height: AppSpace.lg),
+                    // 6. 의료 면책 문구
+                    _MedicalDisclaimer(),
                   ],
                 ),
               ),
@@ -98,23 +114,17 @@ class _BrandHeader extends StatelessWidget {
                   const Spacer(),
                   _HeaderIconButton(
                     icon: Icons.calendar_today_rounded,
-                    onTap: () {
-                      // TODO: 캘린더 화면
-                    },
+                    onTap: () => context.push('/calendar'),
                   ),
                   const SizedBox(width: AppSpace.sm),
                   _HeaderIconButton(
                     icon: Icons.notifications_rounded,
-                    onTap: () {
-                      // TODO: 알림 화면
-                    },
+                    onTap: () => context.push('/notifications'),
                   ),
                   const SizedBox(width: AppSpace.sm),
                   _HeaderIconButton(
                     icon: Icons.person_rounded,
-                    onTap: () {
-                      // TODO: 프로필 화면
-                    },
+                    onTap: () => context.go('/shell/settings'),
                   ),
                 ],
               ),
@@ -165,18 +175,19 @@ class _BrandHeader extends StatelessWidget {
 }
 
 /// 한국어 워드마크 — "레몬·에이드"
-/// 가운데 점은 작은 원 (브랜드 시그니처 — 로그인 화면 "Lemon·Aid" 와 동일 톤)
+/// 로그인 화면 _Brand 동일 패턴 (GmarketSans w800 + 가운데 점) 을 헤더 사이즈로 축소.
+/// 노란 헤더 위라 점은 흰색 + 미세 그림자 (가독성).
 class _Wordmark extends StatelessWidget {
   const _Wordmark();
 
   @override
   Widget build(BuildContext context) {
     const baseStyle = TextStyle(
-      fontFamily: 'Pretendard',
-      fontSize: 22,
+      fontFamily: 'GmarketSans',
+      fontSize: 26,
       fontWeight: FontWeight.w800,
       color: AppColor.ink,
-      letterSpacing: -0.6,
+      letterSpacing: -1.1,
       height: 1.0,
     );
     return Row(
@@ -184,16 +195,24 @@ class _Wordmark extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Text('레몬', style: baseStyle),
-        const SizedBox(width: 5),
-        // 가운데 점 — 흰색 원 (노란 헤더 위에서 또렷)
-        Container(
-          width: 6, height: 6,
-          decoration: const BoxDecoration(
-            color: AppColor.surface,
-            shape: BoxShape.circle,
+        // 가운데 흰색 점 + 미세 그림자 (노란 헤더 위 가독성)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Container(
+            width: 9, height: 9,
+            decoration: BoxDecoration(
+              color: AppColor.surface,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColor.ink.withOpacity(0.10),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(width: 5),
         const Text('에이드', style: baseStyle),
       ],
     );
@@ -247,43 +266,611 @@ class _DateBubble extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════
-// 메인 박스 — 캘린더 아래 첫 번째 카드
-// 캐릭터 + 분석 미리보기 등 들어갈 자리 (지금은 셸)
-//
-// 디자인: Flat 2.0 + Soft UI (LADS §17 일관성)
-//   - 흰 배경
-//   - 라운드: Pillyze 톤 따라 살짝 더 둥글게 (AppRadius.lg = 20)
-//   - 그림자: 회원가입 박스/메인 흰 버튼과 동일한 soft 톤
-//   - 테두리 없음
+// 공통 카드 데코 — LADS Flat 2.0 + Soft UI
+// 모든 메인 카드는 이 톤 통일 (§17)
 // ═══════════════════════════════════════════
-class _MainCard extends StatelessWidget {
-  const _MainCard();
+BoxDecoration _mainCardDeco() => BoxDecoration(
+      color: AppColor.surface,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      boxShadow: const [
+        BoxShadow(
+          color: Color.fromRGBO(140, 155, 175, 0.20),
+          blurRadius: 16,
+          offset: Offset(0, 5),
+        ),
+      ],
+    );
+
+// ═══════════════════════════════════════════
+// 1. 인사 카드 — 캐릭터 + 동적 메시지
+// ═══════════════════════════════════════════
+class _GreetingCard extends StatelessWidget {
+  const _GreetingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = DateTime.now().hour;
+    final timeGreeting = hour < 11
+        ? '좋은 아침이에요'
+        : hour < 17
+            ? '오늘도 화이팅이에요'
+            : '오늘 하루 어떠셨어요';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.cardInside + 2, AppSpace.xl,
+        AppSpace.cardInside + 2, AppSpace.xl,
+      ),
+      decoration: _mainCardDeco(),
+      child: Row(
+        children: [
+          // 캐릭터
+          Image.asset(
+            'assets/mascot/hello-mascot.png',
+            width: 80, height: 80,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                color: AppColor.brandSoft,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.emoji_food_beverage,
+                  color: AppColor.brand, size: 40),
+            ),
+          ),
+          const SizedBox(width: AppSpace.md),
+          // 인사 + 부족 영양소 한 줄
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  timeGreeting,
+                  style: AppText.caption.copyWith(
+                    color: AppColor.inkTertiary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '태동님',
+                  style: AppText.title.copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColor.ink,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.md, vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.brandSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bolt_rounded,
+                          color: AppColor.brandDeep, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        '비타민 D 부족',
+                        style: AppText.caption.copyWith(
+                          color: AppColor.brandDeep,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 2. 오늘의 영양 진행률 (칼로리·탄단지·진행 바)
+// ═══════════════════════════════════════════
+class _NutritionProgressCard extends StatelessWidget {
+  const _NutritionProgressCard();
+
+  @override
+  Widget build(BuildContext context) {
+    // TODO: 실제 데이터 연결 — 지금은 mock
+    const consumed = 1240;
+    const target = 1840;
+    const ratio = consumed / target;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+      decoration: _mainCardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('오늘의 영양', style: AppText.subtitle),
+              Text(
+                '${(ratio * 100).toInt()}%',
+                style: AppText.subtitle.copyWith(
+                  color: AppColor.brandDeep,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          // 칼로리 큰 숫자
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '$consumed',
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: AppColor.ink,
+                  letterSpacing: -0.8,
+                  height: 1.0,
+                ),
+              ),
+              Text(
+                ' / $target kcal',
+                style: AppText.body.copyWith(
+                  color: AppColor.inkSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          // 진행 바
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            child: LinearProgressIndicator(
+              value: ratio.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: const Color(0xFFF1F3F6),
+              valueColor: AlwaysStoppedAnimation(AppColor.brand),
+            ),
+          ),
+          const SizedBox(height: AppSpace.lg),
+          // 탄단지 3개
+          Row(
+            children: const [
+              Expanded(child: _MacroBar(label: '탄수화물', value: 142, target: 230, color: Color(0xFFFFB200))),
+              SizedBox(width: AppSpace.sm),
+              Expanded(child: _MacroBar(label: '단백질', value: 42, target: 72, color: Color(0xFF22B07D))),
+              SizedBox(width: AppSpace.sm),
+              Expanded(child: _MacroBar(label: '지방', value: 38, target: 60, color: Color(0xFFFF6B6B))),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MacroBar extends StatelessWidget {
+  final String label;
+  final int value;
+  final int target;
+  final Color color;
+  const _MacroBar({
+    required this.label,
+    required this.value,
+    required this.target,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = (value / target).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: AppText.caption.copyWith(color: AppColor.inkSecondary, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text('$value',
+                style: AppText.body.copyWith(color: AppColor.ink, fontWeight: FontWeight.w800)),
+            Text(' / $target g',
+                style: AppText.caption.copyWith(color: AppColor.inkTertiary)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 4,
+            backgroundColor: const Color(0xFFF1F3F6),
+            valueColor: AlwaysStoppedAnimation(color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 3. 5종 분석 결과 grid (부족/과다/주의/점수/목적)
+// ═══════════════════════════════════════════
+class _FiveOutputsSection extends StatelessWidget {
+  const _FiveOutputsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      _OutputSpec(icon: Icons.eco_rounded, color: Color(0xFF22B07D),
+          label: '부족 영양소', value: '비타민D'),
+      _OutputSpec(icon: Icons.warning_amber_rounded, color: Color(0xFFFF9500),
+          label: '과다 섭취', value: '나트륨'),
+      _OutputSpec(icon: Icons.shield_outlined, color: Color(0xFFFF6B6B),
+          label: '주의 성분', value: '비타민K'),
+      _OutputSpec(icon: Icons.workspace_premium_rounded, color: Color(0xFFFFB200),
+          label: '식단 점수', value: '78점'),
+      _OutputSpec(icon: Icons.flag_rounded, color: Color(0xFF4D7BFF),
+          label: '목적별', value: '당뇨'),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text('오늘의 분석', style: AppText.subtitle),
+        ),
+        const SizedBox(height: AppSpace.sm),
+        SizedBox(
+          height: 110,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: AppSpace.sm),
+            itemBuilder: (ctx, i) => _OutputCard(spec: items[i]),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OutputSpec {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String value;
+  const _OutputSpec({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+}
+
+class _OutputCard extends StatelessWidget {
+  final _OutputSpec spec;
+  const _OutputCard({required this.spec});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 110,
+      padding: const EdgeInsets.all(AppSpace.md + 2),
+      decoration: _mainCardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: spec.color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(AppRadius.sm - 2),
+            ),
+            alignment: Alignment.center,
+            child: Icon(spec.icon, size: 18, color: spec.color),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                spec.label,
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkTertiary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                spec.value,
+                style: AppText.body.copyWith(
+                  color: AppColor.ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 4. 복약 알람 카드 (오늘 먹을 영양제·약)
+// ═══════════════════════════════════════════
+class _SupplementAlarmCard extends StatelessWidget {
+  const _SupplementAlarmCard();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.cardInside + 2,
-        vertical: AppSpace.xl,
-      ),
-      decoration: BoxDecoration(
-        color: AppColor.surface,
-        // Pillyze 톤 — Flat 2.0 라운드(sm=12)보다 살짝 더 둥글게.
-        // 회원가입 박스/버튼은 sm 그대로 유지, 메인 박스만 lg(20) 로 차별.
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: const [
-          // LADS 표준 soft UI 그림자 (회원가입 박스·메인 흰 버튼 동일)
-          BoxShadow(
-            color: Color.fromRGBO(140, 155, 175, 0.20),
-            blurRadius: 16,
-            offset: Offset(0, 5),
+      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+      decoration: _mainCardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('오늘 복용', style: AppText.subtitle),
+              Text(
+                '2/4 완료',
+                style: AppText.caption.copyWith(
+                  color: AppColor.brandDeep,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          const _AlarmRow(
+            time: '09:00',
+            name: '비타민 D',
+            dose: '1정',
+            taken: true,
+          ),
+          Divider(color: AppColor.border, height: AppSpace.lg),
+          const _AlarmRow(
+            time: '13:00',
+            name: '오메가-3',
+            dose: '1정',
+            taken: true,
+          ),
+          Divider(color: AppColor.border, height: AppSpace.lg),
+          const _AlarmRow(
+            time: '19:00',
+            name: '프로바이오틱스',
+            dose: '1정',
+            taken: false,
+          ),
+          Divider(color: AppColor.border, height: AppSpace.lg),
+          const _AlarmRow(
+            time: '21:00',
+            name: '마그네슘',
+            dose: '1정',
+            taken: false,
           ),
         ],
       ),
-      // 내용은 다음 단계에서 — 지금은 높이 확보용 SizedBox
-      child: const SizedBox(
-        height: 220,
+    );
+  }
+}
+
+class _AlarmRow extends StatelessWidget {
+  final String time;
+  final String name;
+  final String dose;
+  final bool taken;
+  const _AlarmRow({
+    required this.time,
+    required this.name,
+    required this.dose,
+    required this.taken,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // 시간
+        SizedBox(
+          width: 56,
+          child: Text(
+            time,
+            style: AppText.body.copyWith(
+              color: taken ? AppColor.inkTertiary : AppColor.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        // 이름 + 용량
+        Expanded(
+          child: Row(
+            children: [
+              Text(
+                name,
+                style: AppText.body.copyWith(
+                  color: taken ? AppColor.inkTertiary : AppColor.ink,
+                  fontWeight: FontWeight.w600,
+                  decoration: taken ? TextDecoration.lineThrough : null,
+                ),
+              ),
+              const SizedBox(width: AppSpace.xs),
+              Text(
+                dose,
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 체크 박스
+        Container(
+          width: 24, height: 24,
+          decoration: BoxDecoration(
+            color: taken ? AppColor.brand : const Color(0xFFE5E8EB),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.check_rounded,
+            color: Colors.white,
+            size: 16,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 5. 최근 분석 (사진 + 결과)
+// ═══════════════════════════════════════════
+class _RecentAnalysisCard extends StatelessWidget {
+  const _RecentAnalysisCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+      decoration: _mainCardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('최근 분석', style: AppText.subtitle),
+              Text(
+                '전체 보기 ›',
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkTertiary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          const _RecentRow(emoji: '💊', title: '오메가-3 1200mg', subtitle: '어제 · 부족 영양소 보완'),
+          const SizedBox(height: AppSpace.md),
+          const _RecentRow(emoji: '🥗', title: '점심 식단', subtitle: '오늘 12:30 · 80점'),
+          const SizedBox(height: AppSpace.md),
+          const _RecentRow(emoji: '💊', title: '비타민 D 1000IU', subtitle: '3일 전 · 권장량 충족'),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentRow extends StatelessWidget {
+  final String emoji;
+  final String title;
+  final String subtitle;
+  const _RecentRow({
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F3F6),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          alignment: Alignment.center,
+          child: Text(emoji, style: const TextStyle(fontSize: 22)),
+        ),
+        const SizedBox(width: AppSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppText.body.copyWith(
+                  color: AppColor.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Icon(Icons.chevron_right_rounded,
+            color: AppColor.inkTertiary, size: 20),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 6. 의료 면책 (LADS §14)
+// ═══════════════════════════════════════════
+class _MedicalDisclaimer extends StatelessWidget {
+  const _MedicalDisclaimer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.brandSoft,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: AppColor.brandDeep, size: 18),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Text(
+              '레몬에이드는 건강 관리를 도와드리는 서비스로\n의사·약사·영양사의 진단을 대신하진 않아요.',
+              style: AppText.caption.copyWith(
+                color: AppColor.ink,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'app.dart';
+import 'utils/device_env.dart';
 import 'utils/oauth_config.dart';
 import 'utils/tokens.dart';
 
@@ -21,6 +22,11 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('[env] .env 파일 미발견 — dart-define 으로 fallback ($e)');
   }
+
+  // ─── 에뮬/실기기 감지 (캐시) ─────────────────
+  // 카메라 화면에서 분기용. 한 번 호출 후 동기 접근 가능.
+  await DeviceEnv.warmUp();
+  debugPrint('[env] isEmulator = ${DeviceEnv.isEmulatorSync}');
 
   // ─── 카카오 SDK 초기화 ──────────────────────
   if (OAuthConfig.hasKakaoKey) {
