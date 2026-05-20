@@ -7,7 +7,8 @@
 deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이다.
 
 구현 기본값은 `FakeLLMClient`로 테스트 안정성을 확보하고, 개발용 런타임은
-`Ollama`, 운영 후보는 `vLLM/OpenAI-compatible endpoint`로 열어둔다.
+`Ollama`, 운영 후보는 `SGLang/OpenAI-compatible endpoint`로 열어둔다.
+vLLM은 대체 가능한 OpenAI-compatible backend로만 남긴다.
 
 ## Key Changes
 
@@ -17,7 +18,8 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 - 새 LLM adapter 계층을 추가한다:
   - `FakeLLMClient`: 테스트용, 네트워크 없음
   - `OllamaClient`: 개발용 로컬 LLM, 기본 endpoint `http://127.0.0.1:11434`
-  - `OpenAICompatibleClient`: vLLM 등 `/v1/chat/completions` 호환 서버용
+  - `SGLangClient`: 운영 후보 로컬/자가호스팅 `/v1/chat/completions` 호환 서버용
+  - `OpenAICompatibleClient`: vLLM 등 대체 compatible backend용
 - LLM 출력은 사용자 노출 전 반드시 `SafetyGuard`를 통과한다.
 - OCR/DB 미완성 부분은 mock dataclass 입력으로 고정한다.
 
@@ -98,7 +100,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 
 - [x] `openai_compatible.py`에 `OpenAICompatibleClient`를 만든다.
   - 기본 endpoint: `http://127.0.0.1:8000/v1`
-  - vLLM 서버의 `/chat/completions` 호출
+  - OpenAI-compatible 서버의 `/chat/completions` 호출
   - API key는 선택값
   - key가 없으면 `"EMPTY"`를 사용
   - timeout 기본값 30초
@@ -146,7 +148,8 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 
 - [x] MVP 기본 테스트 provider는 `FakeLLMClient`로 한다.
 - [x] 로컬 개발 문서 기본 provider는 Ollama로 안내한다.
-- [x] 운영 후보 문서에는 vLLM/OpenAI-compatible endpoint를 안내한다.
+- [x] 운영 후보 문서에는 SGLang/OpenAI-compatible endpoint를 안내한다.
+  - vLLM은 대체 가능한 compatible backend로만 남긴다.
 - [x] 이번 단계에서는 `.env` 로딩 라이브러리를 추가하지 않는다.
 - [x] provider 선택은 코드 생성자 주입 방식으로 처리한다.
   - 예: `ChatAgent(llm_client=OllamaClient(...))`
@@ -181,7 +184,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
   - messages, model, temperature, max_tokens 포함 확인
 
 - [x] OpenAI-compatible client HTTP payload 테스트 추가
-  - 실제 vLLM 서버 호출 금지
+  - 실제 OpenAI-compatible 서버 호출 금지
   - `urllib.request.urlopen` mock으로 요청 body 검증
   - endpoint는 `/chat/completions`
   - Authorization header 처리 확인
@@ -206,7 +209,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
   - 판단은 deterministic engine
   - LLM은 설명/문장화
   - 개발 기본값: Ollama
-  - 운영 후보: vLLM/OpenAI-compatible
+  - 운영 후보: SGLang/OpenAI-compatible
   - 테스트 기본값: FakeLLMClient
 
 - [x] `ai-agent/docs/architecture.md`에 LLM adapter 계층 추가
@@ -216,7 +219,8 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 
 - [x] `ai-agent/docs/decision-log.md`에 의사결정 추가
   - Ollama는 개발용 기본 후보
-  - vLLM은 운영용 고성능 serving 후보
+  - SGLang은 운영 후보 self-hosted serving
+  - vLLM은 대체 가능한 OpenAI-compatible backend
   - provider는 생성자 주입으로 분리
   - 외부 LLM API로 실제 건강 데이터를 보내지 않는 원칙 유지
   - 공식 문서가 있는 provider/runtime은 공식 URL을 남기는 원칙 유지
@@ -256,7 +260,7 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 
 - [x] LLM 네트워크 테스트가 실제 네트워크에 의존하지 않는지 확인
   - unit test는 mock/fake만 사용
-  - Ollama/vLLM 서버가 없어도 테스트 통과해야 함
+  - Ollama/SGLang/vLLM 서버가 없어도 테스트 통과해야 함
 
 - [x] 최종 git 상태 확인
   `git status --short`
@@ -289,26 +293,132 @@ deterministic engine이 하고, LLM은 설명/문장화만 담당**하는 것이
 - [x] PR 설명에 포함
   - mock 데이터 전제
   - Local LLM provider 전략
-  - Ollama/vLLM 차이
+  - Ollama/SGLang/vLLM 차이
   - 공식 문서 링크
   - LLM은 판단이 아니라 설명 레이어라는 원칙
   - SafetyGuard fallback 정책
   - 테스트/compile 결과
 
+## 2026-05-19 Personalization memory loop follow-up
+
+이번 항목은 `ai-agent-backend-integration` 구현 내용을 `changmin-aiagent` TODO 관점에서
+재정리한 것이다.
+
+### 완료 처리
+
+- [x] `AgentMemoryWriter` hook 수준에 머물던 장기 memory 저장을 backend DB service로 1차 구현했다.
+- [x] `agent_memory`와 `agent_runs` ORM model 및 Alembic revision 초안을 추가했다.
+- [x] confirmed `daily-coaching` 결과만 memory에 반영하도록 했다.
+- [x] unconfirmed OCR preview는 memory/run log를 쓰지 않는 정책을 유지했다.
+- [x] memory 주입 시 반복 nutrient pattern을 recommendation priority와 rationale에 반영했다.
+- [x] raw image, raw OCR text, raw LLM response, prompt 전문을 memory에 저장하지 않는 sanitizer를 추가했다.
+- [x] SGLang을 운영 후보 provider로 추가하고 개발 기본 provider는 Ollama로 유지했다.
+- [x] SGLang은 `ALLOW_EXTERNAL_LLM=false`일 때 loopback endpoint만 허용하도록 설정 검증을 추가했다.
+
+### 계속 남은 항목
+
+- [x] `agent_memory` summary schema를 실제 사용자 피드백 기준으로 안정화한다.
+  - `schema_version`, canonical nutrient key, recent finding limit, forbidden raw key sanitizer를 테스트로 고정했다.
+- [x] `(name, unit)` 기반 nutrient aggregation을 canonical nutrient id/unit conversion 중심으로 더 정리한다.
+  - backend memory summary에서 `vitamin_d`/`Vitamin-D`를 `vitamin d`로 canonicalize하고 Vitamin D `IU -> mcg`를 적용한다.
+- [x] supplement ingredient memory가 food-first coaching 원칙을 침범하지 않는지 안전 리뷰한다.
+  - supplement memory는 `supplement_ingredients`에만 쌓고 `repeated_nutrient_patterns`를 만들지 않도록 테스트했다.
+- [x] Alembic dependency가 있는 환경에서 `test_alembic_setup.py`를 다시 실행한다.
+  - `requirements-dev.txt` 설치 후 Alembic head `0007_create_agent_memory_tables` 로드 테스트를 통과했다.
+- [x] SGLang 공식 문서 링크와 운영 방법을 별도 backend 운영 문서에 추가한다.
+  - `docs/Nutrition-docs/dev-guides/26-operations-manual.md`에 opt-in SGLang smoke와 공식 링크를 추가했다.
+
+## 2026-05-19 changmin-aiagent package sync
+
+`ai-agent-backend-integration`에서 확정한 memory loop와 SGLang 운영 후보 결정을
+`changmin-aiagent/ai-agent` 독립 패키지에도 반영했다.
+
+### 완료
+
+- [x] `LLMRequest.response_format`를 추가해 OpenAI-compatible JSON Schema
+  structured output payload를 보낼 수 있게 했다.
+- [x] `SGLangClient`를 추가하고 provider label을 `sglang`으로 기록한다.
+- [x] `OpenAICompatibleClient`는 vLLM 전용 문맥에서 분리해 범용 compatible
+  backend adapter로 유지했다.
+- [x] `PersonalizationContext.agent_memory`와
+  `DailyHealthAgent.run(..., agent_memory=...)`를 추가했다.
+- [x] `context["agent_memory"]`가 있으면 app adapter가 Agent에 주입하고
+  `used_tools`에 `agent_memory`를 포함한다.
+- [x] 반복 nutrient pattern이 recommendation priority와 rationale에 반영된다.
+- [x] unconfirmed OCR preview는 standalone adapter에서도 run log를 남기지 않는다.
+- [x] SGLang `response_format=json_schema` payload와 memory recommendation 동작을
+  unit test로 고정했다.
+
+### 추천 작업 순서
+
+- [x] 1순위: canonical nutrient id/unit conversion을 `NutritionEngine`과
+  backend memory summary schema 기준으로 맞춘다.
+- [x] 2순위: backend integration 환경에서 Alembic head와 PostgreSQL
+  upgrade/downgrade를 실제로 검증한다.
+  - Alembic head 로드는 검증 완료. offline SQL 렌더링으로 `agent_memory`/`agent_runs` DDL 생성도 확인했다.
+  - `RUN_POSTGRES_MIGRATION_SMOKE=1` + `TEST_DATABASE_URL` 기반 opt-in migration smoke test는 추가했다.
+  - Chocolatey PostgreSQL 설치를 시도했지만 비관리자 권한과 `C:\ProgramData\chocolatey\lib` lock 접근 문제로 실패했다.
+  - WSL 실행 파일은 있으나 Linux 배포판이 설치되어 있지 않아 WSL 기반 smoke로 전환할 수 없었다.
+  - `winget`은 현재 로그온 세션 문제로 실행되지 않았고, `conda`는 PATH에서 찾을 수 없었다.
+  - `wsl --install -d Ubuntu`는 `ERROR_ALREADY_EXISTS`로 실패했고,
+    `wsl --list --online`은 `WININET_E_CANNOT_CONNECT`로 배포판 목록을 받지 못했다.
+  - 이후 PATH 밖의 `C:\Users\KDS13\anaconda3\Scripts\conda.exe`는 발견했고
+    `lemon-sglang` 환경을 통해 PostgreSQL 16.10 + pgvector 0.8.1 runtime을 구성했다.
+  - Alembic 기본 `alembic_version.version_num VARCHAR(32)`가
+    `0005_create_learning_vector_tables` revision id를 저장하지 못해 실패한 문제를
+    `backend/alembic/env.py`에서 version table 길이 80으로 확장해 해결했다.
+  - fresh DB `lemon_agent_smoke`에서
+    `RUN_POSTGRES_MIGRATION_SMOKE=1` + `TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke`
+    기준 upgrade/downgrade smoke가 `1 passed`로 통과했다.
+- [x] 3순위: opt-in local SGLang smoke test 문서를 추가하고, 운영 설정에서
+  `ALLOW_EXTERNAL_LLM=false` loopback 제한을 재확인한다.
+  - `python -m pip install sglang`도 시도했지만 `flashinfer_python` build 중 Windows symlink 권한(`WinError 1314`)으로 실패했다.
+  - `backend/scripts/check_ai_agent_runtime_prereqs.py`로 live smoke 전제조건을 확인할 수 있게 했다.
+  - preflight는 `TEST_DATABASE_URL`과 `SGLANG_BASE_URL`의 host/port를 읽어
+    임시 PostgreSQL port와 SGLang endpoint를 실제 설정 기준으로 점검한다.
+  - 이전 세션에서는 WSL 배포판과 Docker 접근이 없어 live smoke를 실행할 수 없었다.
+  - 이후 사용자가 `Ubuntu-Dev` WSL2 배포판, Docker Desktop, NVIDIA GPU passthrough,
+    SGLang CUDA 12.9 runtime을 구성했다.
+  - conda Python 3.11 환경에서도 `python -m pip install sglang`은 같은
+    `flashinfer_python` symlink 권한(`WinError 1314`)으로 실패했다.
+  - native Windows 설치 대신 WSL2/Docker runtime의
+    `lmsysorg/sglang:latest-cu129-runtime` 서버를 사용한다.
+  - `http://localhost:30000/v1` 기준 `/v1/models`, `/v1/chat/completions`,
+    `RUN_SGLANG_SMOKE=1` ai-agent live smoke가 통과했다.
+  - 긴 Docker 실행 명령은 `scripts/start-local-sglang.ps1`와
+    `scripts/check-local-sglang.ps1`로 정리했다.
+- [x] 4순위: memory summary 품질 기준을 만든다. 예: 반복 pattern이 너무 쉽게
+  priority를 올리지 않는지, 최근 confirmed record만 반영되는지.
+- [x] 5순위: supplement ingredient memory가 food-first coaching 원칙을 침범하지
+  않는지 safety review checklist를 추가한다.
+
+### 추가 검증 메모
+
+- [x] privacy 삭제 단위 테스트가 `agent_memory`, `agent_runs` 삭제와
+  `deleted_counts` 반영까지 검증하도록 갱신했다.
+- [x] 전체 Nutrition backend 테스트 suite는 실행했으나, 이번 작업과 무관한 KDRIs
+  dataset/source manifest checksum 불일치 5건으로 실패했다.
+  - memory/SGLang 관련 targeted test와 privacy/config test는 통과했다.
+  - PostgreSQL live migration smoke도 conda PostgreSQL + pgvector 환경에서 통과했다.
+  - KDRIs checksum 정합성은 별도 데이터/manifest 정리 작업으로 분리한다.
+
 ## Assumptions
 
 - 실제 OCR, DB, CGM, 혈당 API 연동은 이번 작업 범위가 아니다.
-- 실제 Ollama/vLLM 서버를 띄우는 것은 이번 unit test 범위가 아니다.
+- 실제 Ollama/SGLang/vLLM 서버를 띄우는 것은 이번 unit test 범위가 아니다.
 - 로컬 LLM 연결은 네트워크 client 구현까지만 하고, 자동 실행/모델 다운로드는
   하지 않는다.
 - 테스트는 항상 `FakeLLMClient` 또는 HTTP mock으로만 수행한다.
 - Lemon Aid의 건강 판단 최종 권위는 LLM이 아니라 `NutritionEngine`,
   `SupplementEngine`, `SafetyGuard`, 기준 데이터다.
-- Ollama는 개발 편의성 때문에 1차 추천 런타임이고, vLLM은 운영/서버 처리량이
-  필요해질 때 연결할 후보로 둔다.
+- Ollama는 개발 편의성 때문에 1차 추천 런타임이고, SGLang은 운영 후보로 둔다.
+  vLLM은 필요 시 대체 가능한 OpenAI-compatible backend로만 남긴다.
 
 ## 공식 참고 문서
 
 - [Ollama Chat API](https://docs.ollama.com/api/chat)
+- [SGLang GitHub](https://github.com/sgl-project/sglang)
+- [SGLang Structured Outputs](https://docs.sglang.io/docs/advanced_features/structured_outputs)
+- [SGLang Model Gateway](https://docs.sglang.io/docs/advanced_features/sgl_model_gateway)
 - [vLLM OpenAI-Compatible Server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/)
 - [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create)

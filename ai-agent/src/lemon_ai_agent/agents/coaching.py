@@ -22,6 +22,7 @@ SUPPLEMENT_INGREDIENT_ALLOWED = {
     "iron",
     "calcium",
 }
+REPEATED_PATTERN_THRESHOLD = 2
 
 
 class CoachingAgent:
@@ -31,16 +32,24 @@ class CoachingAgent:
         context: PersonalizationContext,
     ) -> list[CoachingRecommendation]:
         recommendations: list[CoachingRecommendation] = []
+        memory_patterns = self._memory_patterns(context)
 
         for finding in findings:
             nutrient_key = finding.nutrient.lower()
+            repeat_count = memory_patterns.get(nutrient_key, 0)
+            repeated_rationale = self._repeated_rationale(repeat_count)
+            priority_boost = min(repeat_count, 2) if repeat_count else 0
             if finding.level in {FindingLevel.HIGH, FindingLevel.RISKY}:
                 recommendations.append(
                     CoachingRecommendation(
                         category="reduce",
                         title=f"Reduce {finding.nutrient}",
-                        rationale=finding.message,
-                        priority=10 if finding.level == FindingLevel.RISKY else 8,
+                        rationale=f"{finding.message}{repeated_rationale}",
+                        priority=min(
+                            10,
+                            (10 if finding.level == FindingLevel.RISKY else 8)
+                            + priority_boost,
+                        ),
                         requires_professional_consult=finding.level == FindingLevel.RISKY,
                     )
                 )
@@ -53,8 +62,8 @@ class CoachingAgent:
                     CoachingRecommendation(
                         category="add_food",
                         title=f"Add {finding.nutrient} from food first",
-                        rationale=f"{finding.message} {food_text}",
-                        priority=7,
+                        rationale=f"{finding.message} {food_text}{repeated_rationale}",
+                        priority=min(10, 7 + priority_boost),
                     )
                 )
                 if nutrient_key in SUPPLEMENT_INGREDIENT_ALLOWED:
@@ -87,3 +96,41 @@ class CoachingAgent:
 
         return sorted(recommendations, key=lambda item: item.priority, reverse=True)
 
+    def _memory_patterns(self, context: PersonalizationContext) -> dict[str, int]:
+        patterns: dict[str, int] = {}
+        for summary in context.agent_memory.get("summaries", []):
+            if not isinstance(summary, dict):
+                continue
+            summary_json = summary.get("summary_json", {})
+            if not isinstance(summary_json, dict):
+                continue
+            repeated = summary_json.get("repeated_nutrient_patterns", {})
+            if not isinstance(repeated, dict):
+                continue
+            for nutrient, count in repeated.items():
+                try:
+                    repeat_count = int(count)
+                except (TypeError, ValueError):
+                    continue
+                nutrient_key = self._canonical_memory_nutrient_key(str(nutrient))
+                patterns[nutrient_key] = max(
+                    patterns.get(nutrient_key, 0),
+                    repeat_count,
+                )
+        return patterns
+
+    def _repeated_rationale(self, repeat_count: int) -> str:
+        if repeat_count < REPEATED_PATTERN_THRESHOLD:
+            return ""
+        return (
+            f" This pattern has appeared {repeat_count} times in recent "
+            "confirmed records."
+        )
+
+    def _canonical_memory_nutrient_key(self, nutrient: str) -> str:
+        normalized = " ".join(nutrient.strip().lower().replace("_", " ").split())
+        aliases = {
+            "vitamin-d": "vitamin d",
+            "vitamin d": "vitamin d",
+        }
+        return aliases.get(normalized, normalized)

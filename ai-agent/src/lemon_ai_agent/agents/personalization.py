@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from lemon_ai_agent.engines.health_trend import HealthTrendEngine
 from lemon_ai_agent.schemas import HealthTrend, PersonalizationContext, UserProfile
 
@@ -9,7 +11,10 @@ class PersonalizationAgent:
         self._trend_engine = trend_engine or HealthTrendEngine()
 
     def build_context(
-        self, profile: UserProfile, trends: list[HealthTrend]
+        self,
+        profile: UserProfile,
+        trends: list[HealthTrend],
+        agent_memory: dict[str, Any] | None = None,
     ) -> PersonalizationContext:
         caution_tags = list(profile.chronic_conditions)
         medication_notes = [
@@ -21,5 +26,5 @@ class PersonalizationAgent:
             caution_tags=caution_tags,
             health_trend_notes=self._trend_engine.summarize(trends),
             medication_notes=medication_notes,
+            agent_memory=agent_memory or {},
         )
-

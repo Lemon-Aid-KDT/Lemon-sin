@@ -66,8 +66,10 @@ Provider는 생성자 주입으로 선택합니다.
 - 로컬 개발 기본 후보: `OllamaClient`로 `http://127.0.0.1:11434`의 Ollama
   `/api/chat` 엔드포인트를 호출합니다. 참고:
   [Ollama Chat API](https://docs.ollama.com/api/chat).
-- 운영 후보: `OpenAICompatibleClient`로 vLLM 같은 `/v1/chat/completions`
-  호환 서버를 호출합니다. 참고:
+- 운영 후보: `SGLangClient`로 로컬/자가호스팅 SGLang의 `/v1/chat/completions`
+  호환 서버를 호출합니다. vLLM은 같은 API 형태의 대체 backend로만 남깁니다. 참고:
+  [SGLang GitHub](https://github.com/sgl-project/sglang),
+  [SGLang Structured Outputs](https://docs.sglang.io/docs/advanced_features/structured_outputs),
   [vLLM OpenAI-Compatible Server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/),
   [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create).
 
@@ -128,3 +130,33 @@ adapter가 담당하는 일은 다음과 같습니다.
 python -m unittest discover ai-agent/tests
 python -m compileall ai-agent\src
 ```
+
+## 2026-05-19 update
+
+`changmin-aiagent/ai-agent` also reflects the first personalization loop at the
+standalone package boundary.
+
+- `SGLangClient` is now available as the primary self-hosted operating
+  candidate. It reuses the OpenAI-compatible `/v1/chat/completions` contract and
+  supports `response_format` payloads such as JSON Schema structured output.
+- `OpenAICompatibleClient` remains available for compatible backends. vLLM is
+  documented as an alternative compatible backend, while SGLang is the current
+  operating candidate.
+- `DailyHealthAgent.run(..., agent_memory=...)` accepts summarized memory
+  context. Repeated nutrient patterns from confirmed records can increase
+  recommendation priority and add a short rationale.
+- `DailyHealthAgentAppAdapter` reads `context["agent_memory"]`, adds
+  `agent_memory` to `used_tools` when memory is present, and does not write run
+  logs for unconfirmed OCR preview responses.
+- This package still does not own backend DB persistence. Actual
+  `agent_memory`/`agent_runs` table storage is implemented in the backend
+  integration branch and connected through adapter protocols here.
+- Backend PostgreSQL + pgvector migration smoke passed in the integration
+  checkout. Local SGLang live smoke also passed against the WSL2/Docker server
+  at `http://localhost:30000/v1` with `RUN_SGLANG_SMOKE=1`.
+
+Official SGLang references:
+
+- [SGLang GitHub](https://github.com/sgl-project/sglang)
+- [SGLang Structured Outputs](https://docs.sglang.io/docs/advanced_features/structured_outputs)
+- [SGLang Model Gateway](https://docs.sglang.io/docs/advanced_features/sgl_model_gateway)

@@ -137,6 +137,9 @@ class DailyHealthAgentAppAdapter:
             "safety_guard",
             "chat_agent",
         ]
+        agent_memory = self._build_agent_memory(agent_input)
+        if agent_memory.get("summaries"):
+            used_tools.append("agent_memory")
 
         try:
             references = self._build_references(agent_input.payload)
@@ -144,6 +147,7 @@ class DailyHealthAgentAppAdapter:
                 profile=self._build_profile(agent_input),
                 intake=self._build_intake(agent_input),
                 trends=self._build_trends(agent_input.payload),
+                agent_memory=agent_memory,
             )
             message = self._chat_agent.answer("Summarize today's coaching.", result)
             output = self._to_output(
@@ -152,6 +156,7 @@ class DailyHealthAgentAppAdapter:
                 message=message,
                 used_tools=used_tools,
                 latency_ms=self._elapsed_ms(started_at),
+                provider=self._chat_agent.last_provider,
             )
             if (
                 result.approval_status == "confirmed"
@@ -163,7 +168,8 @@ class DailyHealthAgentAppAdapter:
                     output.safety_warnings.append(
                         f"agent_memory update skipped: {exc}"
                     )
-            self._record_run(output)
+            if output.status != "preview":
+                self._record_run(output)
             return output
         except Exception as exc:
             output = AgentOutput(
@@ -236,6 +242,10 @@ class DailyHealthAgentAppAdapter:
             for item in payload.get("health_trends", [])
         ]
 
+    def _build_agent_memory(self, agent_input: AgentInput) -> dict[str, Any]:
+        memory = agent_input.context.get("agent_memory", {})
+        return memory if isinstance(memory, dict) else {}
+
     def _build_source(self, item: dict[str, Any]) -> IntakeSource:
         return IntakeSource(
             source_type=item["source_type"],
@@ -279,6 +289,7 @@ class DailyHealthAgentAppAdapter:
         message: str,
         used_tools: list[str],
         latency_ms: float,
+        provider: str,
     ) -> AgentOutput:
         status: AgentStatus = (
             "preview"
@@ -340,7 +351,7 @@ class DailyHealthAgentAppAdapter:
             used_tools=used_tools,
             latency_ms=latency_ms,
             cost_usd=self._cost_usd(),
-            provider=self._provider,
+            provider=provider,
             debug_trace=result.trace if self._include_debug_trace else [],
         )
 

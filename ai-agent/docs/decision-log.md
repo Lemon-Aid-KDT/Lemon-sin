@@ -1,5 +1,49 @@
 # 의사결정 기록
 
+## 2026-05-19: Backend integration memory loop and SGLang candidate
+
+- 구현 기준 브랜치는 `ai-agent-backend-integration`이고, 이 문서는 `changmin-aiagent`
+  설계 문서에 해당 변경 내용을 추적하기 위해 갱신한다.
+- 1차 개인화는 모델 fine-tuning이 아니라 `agent_memory`에 사용자별 요약 기억을 저장하고
+  다음 `daily-coaching` 실행 전 `context["agent_memory"]`로 다시 주입하는 방식으로 둔다.
+- `agent_memory` 갱신 대상은 사용자가 확정한 음식/영양제 기록과 서버가 저장한
+  `nutrition_analysis` 결과로 한정한다.
+- `food_ocr`, `supplement_ocr` source가 `user_confirmed=false`이면 기존 원칙대로
+  preview-only 응답을 반환하고 `agent_memory`, `agent_runs`를 쓰지 않는다.
+- `agent_memory`에는 raw image, raw OCR text, raw LLM response, prompt 전문을 저장하지
+  않는다. 반복 패턴, 부족/과다 nutrient, supplement ingredient 요약, chronic caution tag처럼
+  coaching 근거가 되는 최소 요약만 저장한다.
+- `/api/v1/ai-agent/daily-coaching`은 기존 `AgentInput`/`AgentOutput` 응답 계약을 유지하되,
+  memory 사용 시 `used_tools`에 `agent_memory`를 포함한다.
+- `agent_runs`는 non-preview 실행에 대해서만 request id, provider, model, latency, cost,
+  used tools 같은 실행 메타데이터를 저장한다.
+- provider 전략은 개발 기본값 `Ollama`를 유지하고, 운영 후보는 `SGLang`을 추가한다.
+  SGLang은 OpenAI-compatible `/v1/chat/completions`와 JSON Schema structured output을
+  지원하는 self-hosted 후보로 본다.
+- vLLM은 최종 운영 후보에서 제외하고, 이번 결정에서는 "대체 가능한
+  OpenAI-compatible backend" 수준으로 문서화한다.
+- `ALLOW_EXTERNAL_LLM=false`일 때 SGLang endpoint는 `localhost`, `127.0.0.1`, `::1`
+  loopback URL만 허용한다.
+- LLM은 계속 건강 판단자가 아니라 설명/구조화 보조자다. deterministic nutrition/policy
+  engine과 `SafetyGuard`가 최종 판단 및 노출 가능성의 기준이다.
+- 개인정보 삭제 흐름은 `agent_memory`, `agent_runs`도 함께 삭제해야 한다.
+- 검증 메모: integration 브랜치에서 변경 파일 기준 `ruff`, `compileall`, 대상 pytest 70개가
+  통과했다. 단, 현재 로컬 Python 환경에 `pytest-cov`와 `alembic` 패키지가 없어 기본 pytest
+  addopts와 Alembic setup test는 완전 실행하지 못했다.
+
+## 2026-05-19: Standalone ai-agent sync
+
+- `changmin-aiagent/ai-agent` 독립 패키지에도 `SGLangClient`,
+  `LLMRequest.response_format`, `PersonalizationContext.agent_memory`,
+  `DailyHealthAgent.run(..., agent_memory=...)`를 반영한다.
+- 이 패키지는 DB table을 소유하지 않고, backend가 로드한 `context["agent_memory"]`
+  요약을 소비하는 경계만 담당한다.
+- repeated nutrient pattern은 recommendation rationale과 priority에 제한적으로
+  반영한다. 이 값은 confirmed record 기반 요약이어야 한다.
+- preview-only OCR 응답은 standalone adapter에서도 run log를 쓰지 않는다.
+- vLLM은 `OpenAICompatibleClient`로 대체 가능한 compatible backend로 남기고,
+  운영 후보 설명은 SGLang 중심으로 맞춘다.
+
 ## 2026-05-18: AI Agent 방향
 
 - 작업 브랜치는 `changmin-aiagent`입니다.
@@ -23,9 +67,11 @@
 - 로컬 개발용 LLM runtime 1차 후보는 Ollama입니다. 개발자는 필요한 모델을 직접
   준비하고 `OllamaClient(model=...)`를 주입합니다. 공식 문서는
   [Ollama Chat API](https://docs.ollama.com/api/chat)를 기준으로 확인합니다.
-- 운영용 고성능 serving 후보는 vLLM 같은 OpenAI-compatible endpoint입니다.
-  `OpenAICompatibleClient`는 `/v1/chat/completions` 호환 서버에 연결합니다.
+- 운영용 self-hosted serving 후보는 SGLang입니다.
+  `SGLangClient`는 OpenAI-compatible `/v1/chat/completions` 호환 서버에 연결합니다.
+  vLLM은 같은 API 형태를 따르는 대체 compatible backend로만 남깁니다.
   공식 문서는
+  [SGLang Structured Outputs](https://docs.sglang.io/docs/advanced_features/structured_outputs),
   [vLLM OpenAI-Compatible Server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/)와
   [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat/create)를
   기준으로 확인합니다.

@@ -133,7 +133,7 @@ class DailyHealthAgentAppAdapterTest(unittest.TestCase):
         self.assertEqual(output.findings, [])
         self.assertEqual(output.recommendations, [])
         self.assertEqual(output.actions, [])
-        self.assertEqual(logger.records[0].status, "preview")
+        self.assertEqual(logger.records, [])
 
     def test_confirmed_result_can_update_memory_after_agent_run(self) -> None:
         memory = _MemoryWriter()
@@ -141,6 +141,34 @@ class DailyHealthAgentAppAdapterTest(unittest.TestCase):
 
         self.assertEqual(output.status, "completed")
         self.assertEqual(memory.records, [("user-app-1", "confirmed")])
+
+    def test_agent_memory_context_is_used_for_repeated_pattern_recommendation(
+        self,
+    ) -> None:
+        agent_input = _agent_input(request_id="req-memory")
+        agent_input.context["agent_memory"] = {
+            "summaries": [
+                {
+                    "memory_type": "nutrition_patterns",
+                    "summary_json": {
+                        "repeated_nutrient_patterns": {
+                            "protein": "3",
+                        }
+                    },
+                }
+            ]
+        }
+
+        output = DailyHealthAgentAppAdapter().run(agent_input)
+
+        self.assertIn("agent_memory", output.used_tools)
+        protein_recommendation = next(
+            item
+            for item in output.recommendations
+            if item.title == "Add protein from food first"
+        )
+        self.assertIn("appeared 3 times", protein_recommendation.rationale)
+        self.assertEqual(protein_recommendation.priority, 9)
 
     def test_adapter_sanitizes_trace_and_hides_debug_trace_by_default(self) -> None:
         output = DailyHealthAgentAppAdapter().run(

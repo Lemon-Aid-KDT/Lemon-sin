@@ -16,7 +16,8 @@ recommendations, actions, safety warnings, trace를 결정론적으로 계산합
 - Local LLM adapter 계층 추가
   - `FakeLLMClient`: 테스트와 네트워크 없는 실행용
   - `OllamaClient`: 로컬 개발용
-  - `OpenAICompatibleClient`: vLLM 또는 OpenAI-compatible serving endpoint용
+  - `SGLangClient`: primary self-hosted operating candidate
+  - `OpenAICompatibleClient`: vLLM 또는 다른 OpenAI-compatible serving endpoint용
 - 앱 스타일 Pydantic `AgentInput`/`AgentOutput` 계약을 내부 dataclass 모델에
   연결하는 `DailyHealthAgentAppAdapter` 추가
 - OCR, DB, CGM, 혈당 API 직접 연동은 이번 PR 범위에서 제외
@@ -41,17 +42,41 @@ recommendations, actions, safety warnings, trace를 결정론적으로 계산합
   - 기본 endpoint: `http://127.0.0.1:11434`
   - `/api/chat` 호출
   - 공식 문서: https://docs.ollama.com/api/chat
-- 운영/서버 runtime 후보: `OpenAICompatibleClient`
-  - 기본 endpoint: `http://127.0.0.1:8000/v1`
+- 운영/서버 runtime 후보: `SGLangClient`
+  - 기본 endpoint: `http://127.0.0.1:30000/v1`
   - `/chat/completions` 호출
+  - JSON Schema structured output payload 전달 지원
+  - 공식 문서:
+    https://github.com/sgl-project/sglang
+    https://docs.sglang.io/docs/advanced_features/structured_outputs
+- 대체 호환 runtime: `OpenAICompatibleClient`
+  - 기본 endpoint: `http://127.0.0.1:8000/v1`
+  - vLLM 등 OpenAI-compatible serving endpoint 검증용
   - API key는 선택값이며 없으면 `EMPTY` 사용
-  - vLLM 공식 문서:
-    https://docs.vllm.ai/en/latest/serving/openai_compatible_server/
-  - OpenAI-compatible API reference:
-    https://platform.openai.com/docs/api-reference/chat/create
 
 Provider 선택은 생성자 주입으로만 처리합니다. 이번 PR에서는 `.env` 로딩, 모델
 다운로드 자동화, runtime process 관리 기능을 추가하지 않습니다.
+
+## 2026-05-19 follow-up scope
+
+- `SGLangClient` was added as the current self-hosted operating candidate.
+  It uses the same OpenAI-compatible `/v1/chat/completions` shape and supports
+  `LLMRequest.response_format` for JSON Schema structured output payloads.
+- `OpenAICompatibleClient` remains the generic adapter for compatible servers.
+  vLLM is now documented as an alternative compatible backend rather than the
+  primary operating candidate.
+- `DailyHealthAgent.run(..., agent_memory=...)` and
+  `PersonalizationContext.agent_memory` were added so backend-loaded summary
+  memory can affect coaching recommendations.
+- The app adapter now passes `context["agent_memory"]`, marks `agent_memory` in
+  `used_tools`, and skips run logging for unconfirmed OCR preview responses.
+- Backend DB persistence for `agent_memory` and `agent_runs` is still outside
+  this standalone package and belongs to the backend integration checkout.
+- Backend integration에서는 PostgreSQL + pgvector live migration smoke가 통과했다.
+  SGLang live smoke도 WSL2/Docker runtime의
+  `lmsysorg/sglang:latest-cu129-runtime` 서버를 대상으로 통과했다.
+  `RUN_SGLANG_SMOKE=1` 기준 ai-agent `SGLangClient`가
+  `http://localhost:30000/v1/chat/completions`를 실제 호출했다.
 
 ## SafetyGuard fallback 정책
 
@@ -96,7 +121,7 @@ python -m compileall ai-agent\src
 
 결과:
 
-- `22 tests OK`
+- `24 tests OK`
 - `compileall` 성공
 
 테스트 커버리지:

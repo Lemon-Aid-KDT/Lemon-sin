@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 
 MealType = Literal["breakfast", "lunch", "dinner", "snack"]
@@ -108,6 +108,7 @@ class PersonalizationContext:
     caution_tags: list[str]
     health_trend_notes: list[str]
     medication_notes: list[str]
+    agent_memory: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

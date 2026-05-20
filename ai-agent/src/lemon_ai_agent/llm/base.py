@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class LLMRequest:
     messages: list[LLMMessage]
     temperature: float = 0.2
     max_tokens: int = 500
+    response_format: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

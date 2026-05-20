@@ -15,6 +15,7 @@ from lemon_ai_agent.llm import (
     LLMRequest,
     OllamaClient,
     OpenAICompatibleClient,
+    SGLangClient,
 )
 from lemon_ai_agent.schemas import (
     CoachingRecommendation,
@@ -230,6 +231,53 @@ class LLMAndChatAgentTest(unittest.TestCase):
         self.assertEqual(captured["body"]["temperature"], 0.3)
         self.assertEqual(captured["body"]["max_tokens"], 256)
         self.assertEqual(response.text, "ok")
+
+    def test_sglang_client_sends_json_schema_response_format(self) -> None:
+        captured = {}
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "coaching_summary",
+                "schema": {
+                    "type": "object",
+                    "properties": {"summary": {"type": "string"}},
+                    "required": ["summary"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            captured["authorization"] = request.get_header("Authorization")
+            return _FakeHTTPResponse({"choices": [{"message": {"content": "ok"}}]})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            response = SGLangClient(
+                endpoint="http://127.0.0.1:30000/v1",
+                model="qwen-local",
+                api_key=None,
+                timeout=11,
+            ).generate(
+                LLMRequest(
+                    messages=[LLMMessage(role="user", content="hello")],
+                    temperature=0.0,
+                    max_tokens=128,
+                    response_format=response_format,
+                )
+            )
+
+        self.assertEqual(
+            captured["url"], "http://127.0.0.1:30000/v1/chat/completions"
+        )
+        self.assertEqual(captured["timeout"], 11)
+        self.assertEqual(captured["authorization"], "Bearer EMPTY")
+        self.assertEqual(captured["body"]["model"], "qwen-local")
+        self.assertEqual(captured["body"]["response_format"], response_format)
+        self.assertEqual(response.text, "ok")
+        self.assertEqual(response.provider, "sglang")
 
 
 if __name__ == "__main__":

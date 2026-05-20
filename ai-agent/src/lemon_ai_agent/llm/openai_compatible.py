@@ -8,7 +8,7 @@ from lemon_ai_agent.llm.base import LLMRequest, LLMResponse
 
 
 class OpenAICompatibleClient:
-    """Client for vLLM or another OpenAI-compatible chat completions server."""
+    """Client for an OpenAI-compatible chat completions server."""
 
     def __init__(
         self,
@@ -16,8 +16,9 @@ class OpenAICompatibleClient:
         endpoint: str = "http://127.0.0.1:8000/v1",
         api_key: str | None = None,
         timeout: float = 30,
+        provider: str = "openai-compatible",
     ) -> None:
-        self.provider = "openai-compatible"
+        self.provider = provider
         self.model = model
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key or "EMPTY"
@@ -33,6 +34,9 @@ class OpenAICompatibleClient:
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
         }
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
+
         http_request = urllib.request.Request(
             f"{self.endpoint}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),

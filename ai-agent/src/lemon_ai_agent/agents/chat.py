@@ -13,10 +13,12 @@ class ChatAgent:
         self._safety_guard = SafetyGuard()
         self.last_llm_warnings: list[str] = []
         self.last_llm_error: str | None = None
+        self.last_provider = "deterministic"
 
     def answer(self, question: str, result: DailyCoachingResult) -> str:
         self.last_llm_warnings = []
         self.last_llm_error = None
+        self.last_provider = "deterministic"
         fallback = self._deterministic_answer(result)
 
         if self._llm_client is None:
@@ -33,6 +35,7 @@ class ChatAgent:
         if not check.allowed:
             return fallback
 
+        self.last_provider = response.provider
         return response.text
 
     def _deterministic_answer(self, result: DailyCoachingResult) -> str:

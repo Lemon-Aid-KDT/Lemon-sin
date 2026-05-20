@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from lemon_ai_agent.agents.action import ActionAgent
 from lemon_ai_agent.agents.coaching import CoachingAgent
 from lemon_ai_agent.agents.intake import IntakeAgent
@@ -33,6 +35,7 @@ class DailyHealthAgent:
         profile: UserProfile,
         intake: DailyIntake,
         trends: list[HealthTrend] | None = None,
+        agent_memory: dict[str, Any] | None = None,
     ) -> DailyCoachingResult:
         normalized = self._intake_agent.normalize(intake)
         if self._requires_confirmation(normalized):
@@ -60,7 +63,11 @@ class DailyHealthAgent:
 
         supplement_totals = self._supplement_engine.evaluate(normalized)
         findings = self._nutrition_engine.evaluate(normalized)
-        context = self._personalization_agent.build_context(profile, trends or [])
+        context = self._personalization_agent.build_context(
+            profile,
+            trends or [],
+            agent_memory=agent_memory,
+        )
         recommendations = self._coaching_agent.recommend(findings, context)
 
         safety_warnings: list[str] = []
