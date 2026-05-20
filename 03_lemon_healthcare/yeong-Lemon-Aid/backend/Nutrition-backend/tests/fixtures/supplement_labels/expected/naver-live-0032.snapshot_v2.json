@@ -40,6 +40,7 @@
   "warnings": [
     "ground_truth_pending_human_review",
     "category:비타민B",
-    "labels:live_naver,detail_page,비타민B"
+    "labels:live_naver,detail_page,비타민B",
+    "auto_seeded_from_llm_requires_human_verification"
   ]
 }
