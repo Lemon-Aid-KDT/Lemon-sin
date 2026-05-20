@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/ai_coaching/presentation/daily_coaching_screen.dart';
+import 'features/supplement/presentation/supplement_capture_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   routes: <RouteBase>[
     GoRoute(
       path: '/',
+      builder: (BuildContext context, GoRouterState state) => const DashboardScreen(),
+    ),
+    GoRoute(
+      path: '/coaching',
       builder: (BuildContext context, GoRouterState state) => const DailyCoachingScreen(),
+    ),
+    GoRoute(
+      path: '/supplement-capture',
+      builder: (BuildContext context, GoRouterState state) => const SupplementCaptureScreen(),
     ),
   ],
 );

@@ -17,6 +17,8 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         APP_ROOT / "lib" / "app.dart",
         APP_ROOT / "lib" / "core" / "config" / "app_config.dart",
         APP_ROOT / "lib" / "core" / "network" / "lemon_api_client.dart",
+        APP_ROOT / "lib" / "core" / "storage" / "auth_token_store.dart",
+        APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart",
         APP_ROOT
         / "lib"
         / "features"
@@ -35,6 +37,12 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         / "ai_coaching"
         / "presentation"
         / "daily_coaching_screen.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "presentation"
+        / "supplement_capture_screen.dart",
         APP_ROOT / "lib" / "shared" / "widgets" / "medical_disclaimer.dart",
     ]
 
@@ -60,6 +68,31 @@ def test_flutter_ai_agent_client_uses_backend_contract_paths() -> None:
     assert "/api/v1/ai-agent/daily-coaching" in repository
     assert "LEMON_API_BASE_URL" in config
     assert "LEMON_AUTH_TOKEN" in config
+
+
+def test_flutter_shell_routes_and_sensitive_storage_are_wired() -> None:
+    """Verify dashboard routing and secure token storage are present."""
+    app = (APP_ROOT / "lib" / "app.dart").read_text(encoding="utf-8")
+    pubspec = (APP_ROOT / "pubspec.yaml").read_text(encoding="utf-8")
+    token_store = (
+        APP_ROOT / "lib" / "core" / "storage" / "auth_token_store.dart"
+    ).read_text(encoding="utf-8")
+    capture_screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "supplement"
+        / "presentation"
+        / "supplement_capture_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "path: '/coaching'" in app
+    assert "path: '/supplement-capture'" in app
+    assert "flutter_secure_storage" in pubspec
+    assert "flutter_secure_storage" in token_store
+    assert "Permission.camera.request()" in capture_screen
+    assert "ImageSource.camera" in capture_screen
+    assert "ImageSource.gallery" in capture_screen
 
 
 def test_flutter_daily_coaching_request_is_confirmed_only() -> None:

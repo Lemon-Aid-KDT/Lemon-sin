@@ -1,8 +1,8 @@
 # Mobile
 
 Lemon Aid 모바일 MVP 작업 공간입니다. 기본 구현 트랙은 Flutter이며,
-현재 `flutter_app/`에는 AI Agent daily-coaching API를 실제 백엔드 endpoint에
-연결하는 초기 shell이 들어 있습니다.
+현재 `flutter_app/`에는 dashboard shell, secure token store, AI Agent
+daily-coaching API client, 영양제 촬영 권한/이미지 선택 skeleton이 들어 있습니다.
 
 ```text
 mobile/
@@ -25,6 +25,7 @@ mobile/
 2. 확인된 식단 payload로 AI Agent 코칭 요청:
    `POST /api/v1/ai-agent/daily-coaching`
 3. 응답의 `provider`, `used_tools`, `agent_memory` 사용 여부를 화면에 표시
+4. 영양제 촬영 화면에서 카메라 권한 요청 또는 갤러리 이미지 선택
 
 Flutter CLI가 설치된 환경에서는 `mobile/flutter_app`에서 다음을 실행합니다.
 
