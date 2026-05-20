@@ -2355,7 +2355,7 @@ Lemon_Aid/
 | backend/src/services/email.py | 이메일 인증 발송 |
 | backend/src/utils/regex_filter.py | 의료법 표현 검수 |
 | backend/src/db/init.sql | TimescaleDB 확장 자동 설치 |
-| data/nutrition_reference/kdris/kdris_2020.csv | 30종 영양소 권장 섭취량 |
+| data/nutrition_reference/kdris_2020.csv | 30종 영양소 권장 섭취량 |
 | scripts/sync_guide.py | §17 PG.md → guide.html 자동 동기화 + 6중 검증 |
 | .pre-commit-config.yaml | §17 로컬 commit 시 자동 동기화 훅 |
 | .github/workflows/sync-guide.yml | §17 push 시 서버 동기화·자동 커밋, PR 시 검증 |
@@ -3463,7 +3463,7 @@ D5: backend/src/services/email.py SMTP PoC + RLS 정책 SQL
 #### E — 데이터 · 도메인 (KDRIs + 식약처 + 컴플라이언스)
 
 ```
-D1: data/nutrition_reference/kdris/kdris_2020.csv 임포트 스크립트 작성
+D1: data/nutrition_reference/kdris_2020.csv 임포트 스크립트 작성
 D2: backend/src/algorithms/kdris.py 룩업 함수 + 단위 테스트
 D3: 식약처 식품영양성분 Open API PoC (FastAPI 어댑터)
 D4: data/goal_matrix.json 작성 (눈/간/피로 §8.7 표 그대로)
@@ -3576,7 +3576,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | Xcode/iOS Simulator | 준비됨 | iOS 26.3.1 runtime, iPhone 17, iPad A16 simulator 확인 |
 | CocoaPods | 설치됨 | 1.16.2 확인 |
 | Android SDK | 미설치 | iOS 우선 개발에는 blocker 아님. Android 검증 전 설치 필요 |
-| Docker/PostgreSQL live smoke | 미완료 | Docker daemon 또는 로컬 PostgreSQL 준비 후 Alembic e2e 필요 |
+| Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-20 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
 | Ollama live smoke | 미완료 | parser unit test는 있으나 실제 Ollama server/model 호출 검증 필요 |
 
 ### B.5 보안/개인정보 현재 판단
@@ -3595,7 +3595,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 3. 여러 장 이미지 batch upload 계약 설계: batch id, per-image validation, merged OCR text, user confirmation.
 4. OCR provider adapter와 로컬 Ollama live smoke test 추가.
 5. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e 검증.
-6. 로컬 PostgreSQL 또는 Docker 기반 Alembic upgrade + API 저장/조회/삭제 smoke 수행.
+6. 앱 skeleton/API client가 생기면 `/api/v1/ai-agent/daily-coaching`을 실제 화면 flow에 연결하고 인증/JWT staging e2e 검증.
 7. KDRIs 2025 공식 row 승인, checksum 갱신, `ALLOW_SAMPLE_KDRIS=false` production 전환.
 
 ### B.7 브리핑 때 바로 말할 수 있는 문장
