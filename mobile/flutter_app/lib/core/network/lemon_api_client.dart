@@ -6,7 +6,7 @@ class LemonApiClient {
   LemonApiClient({
     required AppConfig config,
     Dio? dio,
-  }) : _dio = dio ?? Dio(BaseOptions(baseUrl: config.apiBaseUrl)) {
+  }) : _dio = dio ?? Dio(_baseOptions(config)) {
     if (config.hasAuthToken) {
       _dio.options.headers['Authorization'] = 'Bearer ${config.authToken}';
     }
@@ -27,5 +27,14 @@ class LemonApiClient {
     FormData body,
   ) {
     return _dio.post<Map<String, dynamic>>(path, data: body);
+  }
+
+  static BaseOptions _baseOptions(AppConfig config) {
+    return BaseOptions(
+      baseUrl: config.apiBaseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 30),
+      validateStatus: (int? status) => status != null && status < 500,
+    );
   }
 }

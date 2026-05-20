@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   const AppConfig({
     required this.apiBaseUrl,
@@ -5,12 +7,9 @@ class AppConfig {
   });
 
   factory AppConfig.fromEnvironment() {
-    return const AppConfig(
-      apiBaseUrl: String.fromEnvironment(
-        'LEMON_API_BASE_URL',
-        defaultValue: 'http://127.0.0.1:18080',
-      ),
-      authToken: String.fromEnvironment('LEMON_AUTH_TOKEN'),
+    return AppConfig(
+      apiBaseUrl: defaultApiBaseUrl(),
+      authToken: const String.fromEnvironment('LEMON_AUTH_TOKEN'),
     );
   }
 
@@ -18,4 +17,18 @@ class AppConfig {
   final String authToken;
 
   bool get hasAuthToken => authToken.isNotEmpty;
+
+  static String defaultApiBaseUrl() {
+    const String configured = String.fromEnvironment('LEMON_API_BASE_URL');
+    if (configured.isNotEmpty) {
+      return configured;
+    }
+    if (kIsWeb) {
+      return 'http://localhost:18080';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:18080';
+    }
+    return 'http://127.0.0.1:18080';
+  }
 }

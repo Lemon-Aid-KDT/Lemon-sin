@@ -18,6 +18,9 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         APP_ROOT / "lib" / "core" / "config" / "app_config.dart",
         APP_ROOT / "lib" / "core" / "network" / "lemon_api_client.dart",
         APP_ROOT / "lib" / "core" / "storage" / "auth_token_store.dart",
+        APP_ROOT / "lib" / "shared" / "models" / "agent_memory.dart",
+        APP_ROOT / "lib" / "shared" / "models" / "analysis_result.dart",
+        APP_ROOT / "lib" / "shared" / "models" / "supplement.dart",
         APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart",
         APP_ROOT
         / "lib"
@@ -82,6 +85,26 @@ def test_flutter_ai_agent_client_uses_backend_contract_paths() -> None:
     assert "LEMON_AUTH_TOKEN" in config
 
 
+def test_flutter_client_uses_mobile_safe_base_url_defaults() -> None:
+    """Verify local backend defaults work for desktop, web, and Android emulator."""
+    config = (APP_ROOT / "lib" / "core" / "config" / "app_config.dart").read_text(
+        encoding="utf-8"
+    )
+    client = (APP_ROOT / "lib" / "core" / "network" / "lemon_api_client.dart").read_text(
+        encoding="utf-8"
+    )
+
+    assert "defaultApiBaseUrl" in config
+    assert "LEMON_API_BASE_URL" in config
+    assert "TargetPlatform.android" in config
+    assert "http://10.0.2.2:18080" in config
+    assert "http://localhost:18080" in config
+    assert "http://127.0.0.1:18080" in config
+    assert "connectTimeout" in client
+    assert "receiveTimeout" in client
+    assert "validateStatus" in client
+
+
 def test_flutter_shell_routes_and_sensitive_storage_are_wired() -> None:
     """Verify dashboard routing and secure token storage are present."""
     app = (APP_ROOT / "lib" / "app.dart").read_text(encoding="utf-8")
@@ -136,6 +159,32 @@ def test_flutter_supplement_capture_calls_backend_analyze_contract() -> None:
     assert "/api/v1/supplements/analyze" in repository
     assert "grantOcrImageProcessingConsent" in screen
     assert "analyzeLabelImage" in screen
+
+
+def test_flutter_taedong_compatible_models_preserve_raw_payloads() -> None:
+    """Verify bridge models match taedong-style loose payload handling."""
+    agent_memory = (
+        APP_ROOT / "lib" / "shared" / "models" / "agent_memory.dart"
+    ).read_text(encoding="utf-8")
+    analysis_result = (
+        APP_ROOT / "lib" / "shared" / "models" / "analysis_result.dart"
+    ).read_text(encoding="utf-8")
+    supplement = (
+        APP_ROOT / "lib" / "shared" / "models" / "supplement.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "class AgentMemory" in agent_memory
+    assert "memory_summary" in agent_memory
+    assert "Map<String, dynamic>.from(json)" in agent_memory
+    assert "class AnalysisResult" in analysis_result
+    assert "analysis_type" in analysis_result
+    assert "result_snapshot" in analysis_result
+    assert "user_confirmed" in analysis_result
+    assert "class Supplement" in supplement
+    assert "analysis_status" in supplement
+    assert "ingredients" in supplement
+    assert "candidates" in supplement
+    assert "Map<String, dynamic>.from(json)" in supplement
 
 
 def test_flutter_daily_coaching_request_is_confirmed_only() -> None:

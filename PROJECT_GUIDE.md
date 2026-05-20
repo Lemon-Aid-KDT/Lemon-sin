@@ -2939,7 +2939,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 
 ### B.0 한 줄 결론
 
-백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell, dashboard routing, AI Agent daily-coaching API client, secure token store, 영양제 촬영·분석 preview API 연결까지 착수했다. 다음 실질 구현 단계는 다중 이미지 intake API, 실제 OCR/Ollama live 검증, OIDC staging 연동이다.
+백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell, dashboard routing, AI Agent daily-coaching API client, secure token store, 영양제 촬영·분석 preview API 연결까지 착수했다. `origin/taedong-design`의 루트 `mobile/` Flutter 앱은 UI/UX와 인증 흐름의 후보 원천으로 확인했지만, 현재 백엔드에는 `/api/v1/auth/*` 라우트가 아직 없으므로 직접 병합하지 않고 `mobile/flutter_app`에 API 연결층과 loose model 호환층부터 선별 반영한다. 다음 실질 구현 단계는 다중 이미지 intake API, 실제 OCR/Ollama live 검증, OIDC staging 연동이다.
 
 ### B.1 현재 구현 완료 범위
 
@@ -2958,7 +2958,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | 영양제 매칭/등록 API | 구현 완료 | matching service, 등록/list/detail/delete, user confirmation, audit/consent 연결 |
 | 부족 영양소/대시보드 API | 구현 완료 | latest nutrition diagnosis, dashboard summary, supplement/health/activity snapshot 통합 |
 | HealthKit/Health Connect sync | 백엔드 구현 | daily aggregate sync, client batch idempotency, summary upsert, consent/audit 연결 |
-| 모바일 MVP | 착수 | `mobile/flutter_app` Flutter shell, dashboard routing, secure token store, Dio API client, daily-coaching DTO/repository, 영양제 촬영 permission/image picker + `/api/v1/supplements/analyze` multipart preview 연결, 면책 고지, Python contract test |
+| 모바일 MVP | 착수 | `mobile/flutter_app` Flutter shell, dashboard routing, secure token store, Dio API client, Android emulator-safe local base URL, daily-coaching DTO/repository, taedong-compatible loose models, 영양제 촬영 permission/image picker + `/api/v1/supplements/analyze` multipart preview 연결, 면책 고지, Python contract test |
 
 ### B.2 현재 주요 API 표면
 
@@ -3008,12 +3008,13 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 ### B.6 다음 구현 우선순위
 
 1. Flutter/Dart SDK가 있는 환경에서 `flutter pub get`, `flutter analyze`, `flutter test` 실행.
-2. 여러 장 이미지 batch upload 계약 설계: batch id, per-image validation, merged OCR text, user confirmation.
-3. `mobile/flutter_app` 영양제 분석 preview에 사용자 확인/수정 UI와 `/api/v1/supplements` 저장 flow 연결.
-4. OCR provider adapter와 로컬 Ollama live smoke test 추가.
-5. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e 검증.
-6. 앱 skeleton/API client가 생기면 `/api/v1/ai-agent/daily-coaching`을 실제 화면 flow에 연결하고 인증/JWT staging e2e 검증.
-7. KDRIs 2025 공식 row 승인, checksum 갱신, `ALLOW_SAMPLE_KDRIS=false` production 전환.
+2. `taedong-design`의 루트 `mobile/` 앱을 canonical frontend로 옮길지, 현재 `mobile/flutter_app`을 임시 통합 앱으로 유지할지 결정한다.
+3. 여러 장 이미지 batch upload 계약 설계: batch id, per-image validation, merged OCR text, user confirmation.
+4. `mobile/flutter_app` 영양제 분석 preview에 사용자 확인/수정 UI와 `/api/v1/supplements` 저장 flow 연결.
+5. OCR provider adapter와 로컬 Ollama live smoke test 추가.
+6. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e 검증.
+7. 앱 skeleton/API client가 생기면 `/api/v1/ai-agent/daily-coaching`을 실제 화면 flow에 연결하고 인증/JWT staging e2e 검증.
+8. KDRIs 2025 공식 row 승인, checksum 갱신, `ALLOW_SAMPLE_KDRIS=false` production 전환.
 
 ### B.7 브리핑 때 바로 말할 수 있는 문장
 
