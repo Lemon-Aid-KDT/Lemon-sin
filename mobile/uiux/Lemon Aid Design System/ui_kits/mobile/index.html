@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lemon Aid · Mobile UI kit</title>
+
+  <!-- Resources referenced from JSX as string paths — lifted so the bundler
+       can inline them. In dev mode (window.__resources is undefined), the
+       JSX falls back to the original relative paths. -->
+  <meta name="ext-resource-dependency" content="../../assets/mascot/tablet-frames/00-idle.png"          data-resource-id="mIdle" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/tablet-frames/01-carbonating.png"   data-resource-id="mCarbonating" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/tablet-frames/02-charged.png"       data-resource-id="mCharged" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/tablet-frames/03-leaf-complete.png" data-resource-id="mLeafComplete" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/frames/00-empty-shell.png"          data-resource-id="mEmptyShell" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/frames/01-mid-rising.png"           data-resource-id="mMidRising" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/frames/02-leaf-growth.png"          data-resource-id="mLeafGrowth" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/character-cutout.png"               data-resource-id="mCutout" />
+  <meta name="ext-resource-dependency" content="../../assets/mascot/gold-poster.png"                    data-resource-id="mGoldPoster" />
+
+  <!-- Splash thumbnail shown while the bundle unpacks + no-JS fallback. -->
+  <template id="__bundler_thumbnail" data-bg-color="#FBF8EC">
+    <svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="lemBg" cx="50%" cy="45%" r="55%">
+          <stop offset="0%" stop-color="#FFF49C"/>
+          <stop offset="60%" stop-color="#FFD63C"/>
+          <stop offset="100%" stop-color="#E6A800"/>
+        </radialGradient>
+        <linearGradient id="leafG" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#A6E8AE"/>
+          <stop offset="100%" stop-color="#2EA354"/>
+        </linearGradient>
+      </defs>
+      <rect width="800" height="800" fill="#FBF8EC"/>
+      <circle cx="400" cy="440" r="220" fill="url(#lemBg)" stroke="#C99100" stroke-width="6"/>
+      <ellipse cx="400" cy="450" rx="180" ry="60" fill="rgba(255,255,255,0.32)"/>
+      <path d="M380 220 C 360 140, 460 110, 540 130 C 530 200, 470 240, 400 240 Z"
+            fill="url(#leafG)" stroke="#176B3A" stroke-width="6"/>
+      <text x="400" y="730" text-anchor="middle"
+             font-family="-apple-system, system-ui, sans-serif"
+             font-weight="800" font-size="56" letter-spacing="-2">
+        <tspan fill="#F0B800">Lemon</tspan><tspan fill="#ABA590">-</tspan><tspan fill="#2EA354">Aid</tspan>
+      </text>
+    </svg>
+  </template>
+
+  <link rel="stylesheet" href="mobile-kit.css">
+  <style>
+    /* Stage — center the iOS device on a warm canvas. */
+    html, body {
+      margin: 0; padding: 0;
+      background: transparent;
+      min-height: 100vh;
+      font-family: var(--font-body);
+      color: var(--ink-900);
+      overflow-x: hidden;
+    }
+    .stage {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+    }
+    .meta {
+      display: none !important;
+    }
+    .meta .wm { font: 800 36px/1 var(--font-display); letter-spacing: -0.02em; }
+    .meta .wm .lemon { color: var(--lemon-500); }
+    .meta .wm .aid   { color: var(--leaf-500); }
+    .meta p { margin: 0; color: var(--ink-700); font: var(--t-body); }
+    .meta .hint { font: var(--t-caption); color: var(--ink-500);
+                  letter-spacing: 0.04em; text-transform: uppercase; }
+    .device-host { position: relative; }
+    .device-host:focus { outline: none; }
+
+    /* Mobile web — fill the viewport with the device, hide chrome.
+       The iOS frame becomes the entire app surface. */
+    @media (max-width: 720px) {
+      html, body { background: var(--canvas); overflow: hidden;
+                   height: 100vh; height: 100dvh; }
+      .stage { padding: 0; gap: 0; min-height: 100vh; min-height: 100dvh;
+               display: block; }
+      .meta { display: none; }
+      .device-host {
+        position: fixed; inset: 0;
+        width: 100vw; height: 100vh; height: 100dvh;
+        overflow: hidden;
+      }
+      /* The IOSDevice renders an inline-styled wrapper with rounded
+         corners & fixed dimensions. On a phone we scale it to fill the
+         viewport edge-to-edge with no bezel chrome. */
+      .device-host > div {
+        width: 100vw !important;
+        height: 100vh !important; height: 100dvh !important;
+        max-width: none !important; max-height: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+      }
+      /* Hide the iOS device's dynamic island + home indicator — the OS chrome
+         already provides those on a real phone. */
+      .device-host > div > div:first-child { display: none !important; }
+      /* Status bar is the absolute child after the island; keep but flatten its padding */
+      .device-host > div > div[style*="position: absolute"][style*="top: 0"] {
+        padding-top: env(safe-area-inset-top, 8px) !important;
+      }
+      /* Home indicator */
+      .device-host > div > div[style*="bottom: 0"]:last-child { display: none !important; }
+    }
+
+  </style>
+  <!-- React + Babel (pinned versions) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+          integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+          integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+          integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+          crossorigin="anonymous"></script>
+  <!-- Lucide for icons -->
+  <script src="https://unpkg.com/lucide@0.452.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+  <main class="stage">
+    <div class="meta">
+      <span class="hint">Mobile UI kit · iOS 26</span>
+      <div class="wm"><span class="lemon">Lemon</span>-<span class="aid">Aid</span></div>
+      <p>
+        한 장의 사진으로 끝나는 만성질환 관리 — AI Agent가 내 병원 기록과
+        생활 데이터를 기억합니다.
+      </p>
+      <p style="color: var(--ink-500); font: var(--t-body-sm);">
+        Tap a tab to switch screens. The capture flow runs through a fake
+        analysis loader.
+      </p>
+    </div>
+
+    <div class="device-host">
+      <!-- iOS frame holds the React tree -->
+      <div id="device-host"></div>
+    </div>
+
+    <div class="meta">
+      <span class="hint">Surfaces</span>
+      <p>
+        <b>Onboarding → Dashboard → Capture → Review → Chat → Consent.</b>
+        Each surface follows the warm-canvas, liquid-glass capsule and
+        approval-before-action patterns codified in the design system.
+      </p>
+      <p style="color: var(--ink-500); font: var(--t-body-sm);">
+        Components live in <code>components.jsx</code>; screen flow in
+        <code>screens.jsx</code>; root in <code>App.jsx</code>.
+      </p>
+    </div>
+  </main>
+
+  <!-- iOS device frame -->
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <!-- UI kit primitives and screens -->
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+  <script type="text/babel" src="onboarding.jsx"></script>
+  <script type="text/babel" src="extras.jsx"></script>
+  <!-- App.jsx mounts the IOSDevice into #device-host once everything is loaded. -->
+  <script type="text/babel" src="App.jsx"></script>
+</body>
+</html>

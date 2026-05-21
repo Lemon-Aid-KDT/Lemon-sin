@@ -148,6 +148,7 @@ google_vision_feature: Literal["document_text_detection"] = "document_text_detec
 google_vision_language_hints: list[str] = Field(default_factory=list)
 google_vision_timeout_seconds: int = Field(default=15, ge=1, le=60)
 google_vision_max_retries: int = Field(default=2, ge=0, le=5)
+ocr_confidence_threshold: float = Field(default=0.85, ge=0, le=1)
 ```
 
 환경변수 예시:
@@ -164,6 +165,7 @@ GOOGLE_VISION_FEATURE=document_text_detection
 GOOGLE_VISION_LANGUAGE_HINTS=[]
 GOOGLE_VISION_TIMEOUT_SECONDS=15
 GOOGLE_VISION_MAX_RETRIES=2
+OCR_CONFIDENCE_THRESHOLD=0.85
 ```
 
 ```dotenv
@@ -177,6 +179,7 @@ GOOGLE_VISION_FEATURE=document_text_detection
 GOOGLE_VISION_LANGUAGE_HINTS=[]
 GOOGLE_VISION_TIMEOUT_SECONDS=15
 GOOGLE_VISION_MAX_RETRIES=2
+OCR_CONFIDENCE_THRESHOLD=0.85
 ```
 
 검증 규칙:
@@ -191,11 +194,12 @@ GOOGLE_VISION_MAX_RETRIES=2
 - `GOOGLE_VISION_LOCATION=us|eu`를 쓰려면 `GOOGLE_CLOUD_PROJECT`가 필요하다. MVP 기본값은 `global`이다. regional endpoint를 쓰는 경우 REST endpoint는 `projects/{project}/locations/{location}/images:annotate` 계열로 전환한다.
 - `GOOGLE_VISION_LANGUAGE_HINTS`는 기본 빈 배열이다. `["ko", "en"]`은 fixture benchmark에서 개선이 확인된 경우에만 켠다.
 - `GOOGLE_VISION_TIMEOUT_SECONDS`와 `GOOGLE_VISION_MAX_RETRIES`는 provider 장애가 API 전체 지연으로 번지지 않도록 상한을 둔다.
+- `OCR_CONFIDENCE_THRESHOLD=0.85`는 fallback/review routing 후보값이다. Google 공식 권장 threshold가 아니며 fixture 평가 전에는 정확도 지표로 해석하지 않는다.
 
 `config/implementation-readiness.settings.json` 보정 방향:
 
 - 현재 `OCR_PRIMARY_PROVIDER.default=google_vision`은 안전 기본값과 맞지 않는다. 코드 구현 시 config manifest는 `none` 기본값, Google Vision은 명시 opt-in으로 맞춘다.
-- `OCR_FALLBACK_PROVIDER=clova`는 아직 구현되지 않은 fallback이므로 후속 구현 상태가 명확해질 때까지 기본 OFF로 낮춘다.
+- `OCR_FALLBACK_PROVIDER=clova` 같은 단일 selector 표현은 현재 코드와 맞지 않는다. CLOVA는 `ENABLE_CLOVA_OCR=false` 기본값의 optional backup adapter로 구현되어 있으며, `ALLOW_EXTERNAL_OCR`, `CLOVA_OCR_API_URL`, `CLOVA_OCR_SECRET`와 vendor/security gate가 맞을 때만 factory fallback tuple에 들어간다.
 - `GOOGLE_VISION_AUTH_MODE.default=api_key`는 local/smoke 기본값일 뿐이며, production section에는 `adc`를 별도 요구사항으로 명시한다.
 - `GOOGLE_APPLICATION_CREDENTIALS`는 "사용 가능 예시"가 아니라 "JSON key 파일 금지/예외 승인 필요" 항목으로 재분류한다.
 
@@ -301,8 +305,9 @@ response normalization:
 1. `response.error`가 있으면 sanitized `OCRError`로 변환한다.
 2. `full_text_annotation.text`를 우선 사용한다.
 3. 없으면 `text_annotations[0].description`을 fallback 후보로 사용한다.
-4. 둘 다 없으면 `OCRResult(text="", provider="google_vision_document", confidence=None)`을 반환한다.
-5. confidence는 word/page/block confidence가 실제 response에 존재할 때만 평균 후보로 계산한다. 값이 없으면 `None`으로 둔다. 임의 confidence를 만들지 않는다.
+4. `fullTextAnnotation.pages[].blocks[].paragraphs[].words[]`는 `OCRResult.pages`에 page/block/paragraph/word hierarchy로 정규화한다.
+5. 둘 다 없으면 `OCRResult(text="", provider="google_vision_document", confidence=None, pages=())`을 반환한다.
+6. confidence는 word confidence 평균을 우선 사용하고, 없으면 paragraph/block/page confidence로 fallback한다. 값이 없으면 `None`으로 둔다. 임의 confidence를 만들지 않는다.
 
 provider label:
 

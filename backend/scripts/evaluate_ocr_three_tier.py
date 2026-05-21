@@ -29,6 +29,23 @@ class ProviderMetrics:
     ingredient_name_matches: int = 0
     ingredient_name_total: int = 0
     errors: int = 0
+    # LLM parser metrics (separate from OCR regex matching).
+    llm_parse_attempt_count: int = 0
+    llm_parse_success_count: int = 0
+    llm_ingredient_name_matches: int = 0
+    llm_ingredient_name_total: int = 0
+    # Korean/English segmented edit-rate metrics (averaged across observations).
+    cer_ko_sum: float = 0.0
+    cer_ko_count: int = 0
+    cer_en_sum: float = 0.0
+    cer_en_count: int = 0
+    wer_ko_sum: float = 0.0
+    wer_ko_count: int = 0
+    wer_en_sum: float = 0.0
+    wer_en_count: int = 0
+    # Chronic-disease (B-persona) grouped ingredient accuracy.
+    ingredient_matches_by_condition: dict[str, int] = field(default_factory=dict)
+    ingredient_total_by_condition: dict[str, int] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, object]:
         """Return serializable metrics.
@@ -46,6 +63,26 @@ class ProviderMetrics:
                 self.ingredient_name_total,
             ),
             "errors": self.errors,
+            "llm_parse_attempt_count": self.llm_parse_attempt_count,
+            "llm_parse_success_rate": _rate(
+                self.llm_parse_success_count,
+                self.llm_parse_attempt_count,
+            ),
+            "llm_ingredient_name_exact_rate": _rate(
+                self.llm_ingredient_name_matches,
+                self.llm_ingredient_name_total,
+            ),
+            "cer_ko_avg": _average(self.cer_ko_sum, self.cer_ko_count),
+            "cer_en_avg": _average(self.cer_en_sum, self.cer_en_count),
+            "wer_ko_avg": _average(self.wer_ko_sum, self.wer_ko_count),
+            "wer_en_avg": _average(self.wer_en_sum, self.wer_en_count),
+            "accuracy_by_condition": {
+                condition: _rate(
+                    self.ingredient_matches_by_condition.get(condition, 0),
+                    total,
+                )
+                for condition, total in sorted(self.ingredient_total_by_condition.items())
+            },
         }
 
 
@@ -100,6 +137,7 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
             accumulator.missing_image_count += 1
 
         expected_names = _expected_ingredient_names(row.get("expected"))
+        expected_conditions = _expected_chronic_conditions(row.get("expected"))
         observations = row.get("observations", [])
         if not isinstance(observations, list):
             continue
@@ -107,7 +145,12 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
             if not isinstance(observation, dict):
                 continue
             _reject_raw_fields(observation)
-            _add_observation(accumulator, observation=observation, expected_names=expected_names)
+            _add_observation(
+                accumulator,
+                observation=observation,
+                expected_names=expected_names,
+                expected_conditions=expected_conditions,
+            )
 
     return {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -194,6 +237,7 @@ def _add_observation(
     *,
     observation: dict[str, object],
     expected_names: set[str],
+    expected_conditions: list[str] | None = None,
 ) -> None:
     """Add one provider observation to aggregate metrics.
 
@@ -201,6 +245,9 @@ def _add_observation(
         accumulator: Mutable aggregate state.
         observation: Observation row.
         expected_names: Expected normalized ingredient names.
+        expected_conditions: Chronic-disease indications declared in the V3
+            ``expected.chronic_disease_indications`` field. Used to bucket
+            ingredient-accuracy contributions per B-persona condition.
     """
     provider = observation.get("provider")
     if not isinstance(provider, str) or not provider:
@@ -223,11 +270,96 @@ def _add_observation(
     observed_names = _observed_ingredient_names(observation.get("parsed_ingredients"))
     if expected_names:
         metrics.ingredient_name_total += len(expected_names)
-        metrics.ingredient_name_matches += len(expected_names.intersection(observed_names))
+        match_count = len(expected_names.intersection(observed_names))
+        metrics.ingredient_name_matches += match_count
+        if expected_conditions:
+            for condition in expected_conditions:
+                metrics.ingredient_total_by_condition[condition] = (
+                    metrics.ingredient_total_by_condition.get(condition, 0) + len(expected_names)
+                )
+                metrics.ingredient_matches_by_condition[condition] = (
+                    metrics.ingredient_matches_by_condition.get(condition, 0) + match_count
+                )
+
+    llm_parse_status = observation.get("llm_parse_status")
+    if isinstance(llm_parse_status, str) and llm_parse_status != "skipped_empty_text":
+        metrics.llm_parse_attempt_count += 1
+        if llm_parse_status == "completed":
+            metrics.llm_parse_success_count += 1
+    llm_observed_names = _observed_ingredient_names(observation.get("llm_parsed_ingredients"))
+    if expected_names and llm_observed_names:
+        metrics.llm_ingredient_name_total += len(expected_names)
+        metrics.llm_ingredient_name_matches += len(expected_names.intersection(llm_observed_names))
+
+    _accumulate_language_metric(metrics, observation, "cer_ko")
+    _accumulate_language_metric(metrics, observation, "cer_en")
+    _accumulate_language_metric(metrics, observation, "wer_ko")
+    _accumulate_language_metric(metrics, observation, "wer_en")
+
+
+def _accumulate_language_metric(
+    metrics: ProviderMetrics,
+    observation: dict[str, object],
+    key: str,
+) -> None:
+    """Add one observation's language-segmented error rate to the running sum.
+
+    Skipped silently when the observation does not carry the requested metric
+    (e.g. fixture had no expected reference text).
+
+    Args:
+        metrics: Mutable aggregate metrics container.
+        observation: One observation row.
+        key: Metric field name (``"cer_ko"`` / ``"cer_en"`` / ``"wer_ko"`` / ``"wer_en"``).
+    """
+    raw_value = observation.get(key)
+    if not isinstance(raw_value, int | float):
+        return
+    value = float(raw_value)
+    if value < 0:
+        return
+    if key == "cer_ko":
+        metrics.cer_ko_sum += value
+        metrics.cer_ko_count += 1
+    elif key == "cer_en":
+        metrics.cer_en_sum += value
+        metrics.cer_en_count += 1
+    elif key == "wer_ko":
+        metrics.wer_ko_sum += value
+        metrics.wer_ko_count += 1
+    elif key == "wer_en":
+        metrics.wer_en_sum += value
+        metrics.wer_en_count += 1
+
+
+def _expected_chronic_conditions(value: object) -> list[str]:
+    """Extract chronic-disease indications declared in the expected snapshot.
+
+    Args:
+        value: ``row["expected"]`` payload from the manifest.
+
+    Returns:
+        Unique list of condition strings, or an empty list when the field is
+        missing or malformed. No schema validation is performed here; the V3
+        snapshot's own validator owns that responsibility.
+    """
+    if not isinstance(value, dict):
+        return []
+    raw = value.get("chronic_disease_indications")
+    if not isinstance(raw, list):
+        return []
+    seen: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item and item not in seen:
+            seen.append(item)
+    return seen
 
 
 def _observed_ingredient_names(value: object) -> set[str]:
     """Extract observed ingredient names from one provider observation.
+
+    Supports both legacy ``{"name": ...}`` rows emitted by OCR regex matching and
+    the LLM parser's ``{"display_name", "normalized_name", ...}`` schema.
 
     Args:
         value: Parsed ingredients value.
@@ -241,9 +373,11 @@ def _observed_ingredient_names(value: object) -> set[str]:
     for ingredient in value:
         if not isinstance(ingredient, dict):
             continue
-        name = ingredient.get("name")
-        if isinstance(name, str):
-            names.add(_normalize_token(name))
+        for key in ("name", "normalized_name", "display_name"):
+            candidate = ingredient.get(key)
+            if isinstance(candidate, str) and candidate:
+                names.add(_normalize_token(candidate))
+                break
     return names
 
 
@@ -274,6 +408,21 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4)
 
 
+def _average(total: float, count: int) -> float | None:
+    """Calculate a rounded average from a running sum and observation count.
+
+    Args:
+        total: Accumulated sum.
+        count: Number of observations contributing to ``total``.
+
+    Returns:
+        Average rounded to 4 decimal places, or ``None`` when count is zero.
+    """
+    if count <= 0:
+        return None
+    return round(total / count, 4)
+
+
 def _render_markdown(summary: dict[str, object]) -> str:
     """Render a redacted Markdown report.
 
@@ -296,8 +445,8 @@ def _render_markdown(summary: dict[str, object]) -> str:
         "",
         "## Provider Metrics",
         "",
-        "| Provider | Calls | Text non-empty | Parser success | Avg latency ms | Ingredient name exact | Errors |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Provider | Calls | Text non-empty | Parser success | Avg latency ms | Ingredient name exact | Errors | LLM attempts | LLM parse success | LLM ingredient exact |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     providers = summary.get("providers", {})
     if isinstance(providers, dict):
@@ -305,7 +454,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
             if not isinstance(raw_metrics, dict):
                 continue
             lines.append(
-                "| {provider} | {calls} | {text_rate} | {parser_rate} | {latency} | {ingredient_rate} | {errors} |".format(
+                "| {provider} | {calls} | {text_rate} | {parser_rate} | {latency} | {ingredient_rate} | {errors} | {llm_attempts} | {llm_parse_rate} | {llm_ingredient_rate} |".format(
                     provider=provider,
                     calls=raw_metrics.get("calls"),
                     text_rate=raw_metrics.get("text_non_empty_rate"),
@@ -313,8 +462,57 @@ def _render_markdown(summary: dict[str, object]) -> str:
                     latency=raw_metrics.get("average_latency_ms"),
                     ingredient_rate=raw_metrics.get("ingredient_name_exact_rate"),
                     errors=raw_metrics.get("errors"),
+                    llm_attempts=raw_metrics.get("llm_parse_attempt_count"),
+                    llm_parse_rate=raw_metrics.get("llm_parse_success_rate"),
+                    llm_ingredient_rate=raw_metrics.get("llm_ingredient_name_exact_rate"),
                 )
             )
+    lines.extend(
+        [
+            "",
+            "## Language-Segmented Error Rates (한국어/영문)",
+            "",
+            "| Provider | CER ko (avg) | CER en (avg) | WER ko (avg) | WER en (avg) |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    if isinstance(providers, dict):
+        for provider, raw_metrics in providers.items():
+            if not isinstance(raw_metrics, dict):
+                continue
+            lines.append(
+                "| {provider} | {cer_ko} | {cer_en} | {wer_ko} | {wer_en} |".format(
+                    provider=provider,
+                    cer_ko=raw_metrics.get("cer_ko_avg"),
+                    cer_en=raw_metrics.get("cer_en_avg"),
+                    wer_ko=raw_metrics.get("wer_ko_avg"),
+                    wer_en=raw_metrics.get("wer_en_avg"),
+                )
+            )
+    lines.extend(
+        [
+            "",
+            "## 만성질환별 정확도 (B형 페르소나 시나리오)",
+            "",
+            "Expected fixture 의 ``chronic_disease_indications`` 별로 분리한 ingredient_name_exact_rate.",
+            "값이 비어 있으면 해당 fixture set 에 그 만성질환 인디케이션 라벨이 없음을 뜻한다.",
+            "",
+        ]
+    )
+    if isinstance(providers, dict):
+        for provider, raw_metrics in providers.items():
+            if not isinstance(raw_metrics, dict):
+                continue
+            condition_map = raw_metrics.get("accuracy_by_condition")
+            if not isinstance(condition_map, dict) or not condition_map:
+                continue
+            lines.append(f"### {provider}")
+            lines.append("")
+            lines.append("| Chronic condition | accuracy |")
+            lines.append("| --- | ---: |")
+            for condition, accuracy in sorted(condition_map.items()):
+                lines.append(f"| {condition} | {accuracy} |")
+            lines.append("")
     lines.append("")
     return "\n".join(lines)
 

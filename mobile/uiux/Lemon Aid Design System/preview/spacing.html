@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { display: grid; gap: 14px; }
+  .scale { display: flex; align-items: flex-end; gap: 12px; }
+  .bar { background: var(--lemon-300); border-radius: 4px; width: 28px; }
+  .bar .label { display: block; font: var(--t-caption); color: var(--ink-500);
+                margin-top: 4px; text-align: center; }
+  .demo {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);
+    background: var(--paper); border: 1px solid var(--ink-100);
+    border-radius: 16px; padding: var(--space-4);
+  }
+  .demo .row-d {
+    display: flex; gap: var(--space-2); align-items: center;
+    padding: var(--space-3) var(--space-4); background: var(--canvas);
+    border-radius: 12px;
+  }
+  .demo .row-d .icon { width: 24px; height: 24px; border-radius: 8px; background: var(--leaf-300); }
+  .demo .row-d .title { font: var(--t-label); color: var(--ink-700); }
+</style></head>
+<body class="preview compact" style="height: 240px;">
+  <div class="spread">
+    <div class="lbl" style="color: var(--ink-700);">Spacing scale — 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 56.</div>
+    <span class="tok">--space-1 → --space-9</span>
+  </div>
+  <div class="scale">
+    <div><div class="bar" style="height: 4px;"></div><span class="label">4</span></div>
+    <div><div class="bar" style="height: 8px;"></div><span class="label">8</span></div>
+    <div><div class="bar" style="height: 12px;"></div><span class="label">12</span></div>
+    <div><div class="bar" style="height: 16px;"></div><span class="label">16</span></div>
+    <div><div class="bar" style="height: 20px;"></div><span class="label">20</span></div>
+    <div><div class="bar" style="height: 24px;"></div><span class="label">24</span></div>
+    <div><div class="bar" style="height: 32px;"></div><span class="label">32</span></div>
+    <div><div class="bar" style="height: 40px;"></div><span class="label">40</span></div>
+    <div><div class="bar" style="height: 56px;"></div><span class="label">56</span></div>
+  </div>
+  <div class="demo">
+    <div class="row-d"><div class="icon"></div><span class="title">단백질</span></div>
+    <div class="row-d"><div class="icon"></div><span class="title">비타민 D</span></div>
+    <div class="row-d"><div class="icon"></div><span class="title">오메가-3</span></div>
+    <div class="row-d"><div class="icon"></div><span class="title">아연</span></div>
+  </div>
+</body></html>

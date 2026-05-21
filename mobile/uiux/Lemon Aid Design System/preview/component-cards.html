@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; height: 320px; align-items: stretch; }
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--ink-100);
+    border-radius: 20px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-2);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .card .head { display: flex; align-items: center; gap: 8px; }
+  .card .head .ico { width: 36px; height: 36px; border-radius: 12px;
+                     display: grid; place-items: center;
+                     background: var(--lemon-100); color: var(--lemon-600); }
+  .card .head .title { font: var(--t-h4); }
+  .card .head .meta { margin-left: auto; font: var(--t-label); color: var(--ink-500); }
+  .num-big { font: 800 44px/1 var(--font-display); letter-spacing: -0.02em;
+             font-variant-numeric: tabular-nums; color: var(--ink-900); }
+  .num-big .unit { font: 600 14px/1 var(--font-body); color: var(--ink-500);
+                   margin-left: 4px; vertical-align: 4px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .glass-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.42));
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.85);
+    border-radius: 24px;
+    padding: 18px;
+    box-shadow: var(--glass-shadow), var(--glass-inner-hl);
+    display: flex; flex-direction: column; gap: 10px;
+    background-image:
+      linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.42)),
+      radial-gradient(circle at 80% 0%, var(--lemon-200), transparent 60%);
+    color: var(--ink-900);
+  }
+  .glass-card .pill { font: var(--t-caption); padding: 4px 10px;
+                      background: rgba(255,255,255,0.6); border-radius: 999px;
+                      color: var(--lemon-600); width: max-content;
+                      border: 1px solid rgba(255,255,255,0.9); }
+  .glass-card .title { font: var(--t-h3); }
+  .progress { height: 6px; background: rgba(27,19,0,0.08); border-radius: 999px; overflow: hidden; }
+  .progress > span { display: block; height: 100%;
+                     background: linear-gradient(90deg, var(--lemon-400), var(--leaf-400));
+                     border-radius: 999px; }
+  [data-lucide] { width: 18px; height: 18px; stroke-width: 1.9; }
+</style></head>
+<body class="preview compact">
+  <!-- Resting card -->
+  <div class="card">
+    <div class="head">
+      <span class="ico"><i data-lucide="pill"></i></span>
+      <span class="title">멀티비타민 365</span>
+      <span class="meta">아침 1정</span>
+    </div>
+    <span class="lm-label" style="color: var(--ink-500);">하루 섭취량</span>
+    <span class="num-big">8<span class="unit">성분</span></span>
+    <div class="row">
+      <span class="tok" style="background: var(--leaf-50); border-color: var(--leaf-100); color: var(--leaf-700);">권장 범위 안 6</span>
+      <span class="tok" style="background: var(--review-soft); border: 1px solid #F1D9A2; color: var(--review);">확인 필요 2</span>
+    </div>
+    <div class="hairline" style="margin: 4px 0;"></div>
+    <small>마지막 분석 · 오늘 09:24 · OCR 88%</small>
+  </div>
+
+  <!-- Liquid-glass hero card -->
+  <div class="glass-card">
+    <span class="pill">오늘 한 줄</span>
+    <div class="title">단백질이 살짝 부족해요.</div>
+    <p style="margin: 0; color: var(--ink-700);">
+      점심에 가벼운 단백질 한 조각을 더해 보세요. 어제보다 식단 점수가 4점 올라갔어요.
+    </p>
+    <div class="progress"><span style="width: 82%"></span></div>
+    <div class="row">
+      <span class="cap" style="color: var(--leaf-600);">식단관리 점수 82 / 100</span>
+      <span class="cap" style="margin-left: auto; color: var(--ink-500);">2026.05.18</span>
+    </div>
+  </div>
+  <script>lucide.createIcons();</script>
+</body></html>

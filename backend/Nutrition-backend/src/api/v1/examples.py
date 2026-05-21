@@ -506,6 +506,87 @@ USER_SUPPLEMENT_LIST_RESPONSE_EXAMPLES = {
     }
 }
 
+SUPPLEMENT_IMPACT_PREVIEW_RESPONSE_EXAMPLES = {
+    "ready": {
+        "summary": "Deterministic supplement impact preview",
+        "value": {
+            "calculation_version": "supplement-impact-v1.0.0",
+            "reference_version": "2025",
+            "source_manifest_version": "2.0",
+            "data_status": "ready",
+            "current_supplement_contributions": [
+                {
+                    "nutrient_code": "vitamin_d_ug",
+                    "nutrient_name": "Vitamin D",
+                    "reference_unit": "ug",
+                    "total_daily_amount": 25.0,
+                    "original_unit_totals": {"ug": 25.0},
+                    "contribution_count": 1,
+                    "supplement_ids": ["22222222-2222-4222-8222-222222222222"],
+                    "items": [
+                        {
+                            "supplement_id": "22222222-2222-4222-8222-222222222222",
+                            "supplement_name": "Vitamin D 1000 IU",
+                            "ingredient_id": "44444444-4444-4444-8444-444444444444",
+                            "display_name": "Vitamin D",
+                            "nutrient_code": "vitamin_d_ug",
+                            "amount_per_serving": 25.0,
+                            "unit": "ug",
+                            "daily_servings": 1.0,
+                            "daily_amount": 25.0,
+                            "source": "user_confirmed",
+                            "confidence": 1.0,
+                        }
+                    ],
+                    "warnings": [],
+                }
+            ],
+            "deficiency_support_candidates": [],
+            "excess_or_duplicate_risks": [],
+            "missing_profile_fields": [],
+            "safe_user_message": (
+                "현재 입력 기준으로 우선 확인할 보충제 중복 또는 상한 위험이 없습니다."
+            ),
+            "clinical_disclaimer": (
+                "이 결과는 라벨과 사용자가 확인한 입력 기록 기준의 건강관리 참고 정보이며, "
+                "개인 건강 상태를 확정하지 않습니다."
+            ),
+            "warnings": [],
+            "requires_user_confirmation": False,
+        },
+    }
+}
+
+SUPPLEMENT_RECOMMENDATION_EXPLAIN_REQUEST_EXAMPLES = {
+    "deterministic_preview": {
+        "summary": "Explain deterministic supplement impact preview",
+        "value": {
+            "preview": SUPPLEMENT_IMPACT_PREVIEW_RESPONSE_EXAMPLES["ready"]["value"],
+            "locale": "ko-KR",
+            "use_local_llm": False,
+        },
+    }
+}
+
+SUPPLEMENT_RECOMMENDATION_EXPLAIN_RESPONSE_EXAMPLES = {
+    "safe_explanation": {
+        "summary": "Safe explanation",
+        "value": {
+            "safe_user_message": (
+                "현재 입력 기준으로 우선 확인할 보충제 중복 또는 상한 위험이 없습니다."
+            ),
+            "explanation_bullets": ["계산된 보충제 영양소는 1종입니다."],
+            "clinical_disclaimer": (
+                "이 결과는 라벨과 사용자가 확인한 입력 기록 기준의 건강관리 참고 정보이며, "
+                "개인 건강 상태를 확정하지 않습니다."
+            ),
+            "blocked_terms_detected": [],
+            "llm_used": False,
+            "warnings": [],
+        },
+    }
+}
+
 HEALTH_SYNC_REQUEST_EXAMPLES = {
     "ios_healthkit_daily_aggregate": {
         "summary": "Daily HealthKit aggregate",

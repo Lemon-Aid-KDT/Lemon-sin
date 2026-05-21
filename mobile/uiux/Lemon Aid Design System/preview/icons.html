@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { display: grid; gap: 12px; }
+  .brand-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .brand {
+    background: var(--paper);
+    border: 1px solid var(--ink-100);
+    border-radius: 18px;
+    padding: 14px;
+    display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center;
+  }
+  .brand svg { width: 60px; height: 60px; }
+  .brand .name { font: var(--t-h4); color: var(--ink-900); margin: 0; }
+  .brand .desc { font: var(--t-body-sm); color: var(--ink-500); margin: 2px 0 0; }
+  .lucide-row {
+    display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px;
+    background: var(--canvas);
+    border-radius: 16px;
+    padding: 14px 16px;
+    align-items: center;
+  }
+  .lucide-row .ico { display: flex; flex-direction: column; align-items: center; gap: 4px;
+                     color: var(--ink-700); }
+  .lucide-row .ico .nm { font: var(--t-caption); color: var(--ink-500); }
+  [data-lucide] { width: 22px; height: 22px; stroke-width: 1.75; }
+</style></head>
+<body class="preview compact" style="height: 280px;">
+  <div class="lbl" style="color: var(--ink-700);">Bespoke liquid-glass brand glyphs — 도움 · 성장 · 상쾌함</div>
+  <div class="brand-row">
+    <div class="brand">
+      <!-- Lemon slice -->
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="lemBg" cx="40%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#FFF49C"/>
+            <stop offset="60%" stop-color="#FFD63C"/>
+            <stop offset="100%" stop-color="#E6A800"/>
+          </radialGradient>
+          <linearGradient id="lemHL" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(255,255,255,0.85)"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+          </linearGradient>
+        </defs>
+        <circle cx="32" cy="32" r="26" fill="url(#lemBg)" stroke="#C99100" stroke-width="1.4"/>
+        <g stroke="#C99100" stroke-width="1.2" stroke-linecap="round" fill="rgba(255,255,255,0.35)">
+          <path d="M32 10 L32 54"/>
+          <path d="M10 32 L54 32"/>
+          <path d="M16 16 L48 48"/>
+          <path d="M48 16 L16 48"/>
+          <ellipse cx="32" cy="32" rx="6" ry="3" fill="#FFEE7A" stroke="none"/>
+        </g>
+        <path d="M18 18 Q24 16 30 14" stroke="url(#lemHL)" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <p class="name">도움</p>
+        <p class="desc">실질적인 도움 · 분석 · 권고.</p>
+      </div>
+    </div>
+    <div class="brand">
+      <!-- Leaf -->
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lf" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#A6E8AE"/>
+            <stop offset="60%" stop-color="#6FCB73"/>
+            <stop offset="100%" stop-color="#2EA354"/>
+          </linearGradient>
+        </defs>
+        <path d="M14 50 C 12 22, 30 8, 54 10 C 56 36, 38 56, 14 50 Z"
+              fill="url(#lf)" stroke="#176B3A" stroke-width="1.4"/>
+        <path d="M16 48 C 28 36, 40 24, 52 12"
+              stroke="rgba(255,255,255,0.7)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <path d="M20 44 L32 44 M26 36 L36 36 M30 28 L42 28 M36 20 L46 20"
+              stroke="rgba(255,255,255,0.45)" stroke-width="1" fill="none"/>
+      </svg>
+      <div>
+        <p class="name">성장</p>
+        <p class="desc">함께 나아가는 파트너 · 완료 상태.</p>
+      </div>
+    </div>
+    <div class="brand">
+      <!-- Drop -->
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="dr" x1="0.3" y1="0" x2="0.7" y2="1">
+            <stop offset="0%" stop-color="#FFF8C7"/>
+            <stop offset="55%" stop-color="#FFCE00"/>
+            <stop offset="100%" stop-color="#C99100"/>
+          </linearGradient>
+        </defs>
+        <path d="M32 8 C 18 26, 14 36, 14 42 a18 18 0 0 0 36 0 C 50 36, 46 26, 32 8 Z"
+              fill="url(#dr)" stroke="#C99100" stroke-width="1.4"/>
+        <ellipse cx="26" cy="34" rx="4" ry="8" fill="rgba(255,255,255,0.7)"
+                 transform="rotate(-22 26 34)"/>
+      </svg>
+      <div>
+        <p class="name">상쾌함</p>
+        <p class="desc">긍정적인 에너지 · 동기화.</p>
+      </div>
+    </div>
+  </div>
+  <div class="lbl" style="color: var(--ink-700); margin-top: 4px;">
+    Workhorse — Lucide via CDN at 1.75-stroke / currentColor.
+  </div>
+  <div class="lucide-row">
+    <div class="ico"><i data-lucide="camera"></i><span class="nm">camera</span></div>
+    <div class="ico"><i data-lucide="image"></i><span class="nm">image</span></div>
+    <div class="ico"><i data-lucide="pill"></i><span class="nm">pill</span></div>
+    <div class="ico"><i data-lucide="utensils"></i><span class="nm">meal</span></div>
+    <div class="ico"><i data-lucide="footprints"></i><span class="nm">walk</span></div>
+    <div class="ico"><i data-lucide="heart-pulse"></i><span class="nm">health</span></div>
+    <div class="ico"><i data-lucide="sparkles"></i><span class="nm">agent</span></div>
+    <div class="ico"><i data-lucide="shield-check"></i><span class="nm">consent</span></div>
+    <div class="ico"><i data-lucide="bell"></i><span class="nm">remind</span></div>
+    <div class="ico"><i data-lucide="settings-2"></i><span class="nm">tune</span></div>
+  </div>
+  <script>lucide.createIcons();</script>
+</body></html>

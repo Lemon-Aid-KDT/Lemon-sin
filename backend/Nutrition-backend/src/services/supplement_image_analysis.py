@@ -26,6 +26,7 @@ from src.llm.ollama import (
     OllamaStructuredOutputError,
 )
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.privacy import ConsentType
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 from src.security.auth import AuthenticatedUser
@@ -106,6 +107,7 @@ class SupplementImageAnalysisResult:
         reused_existing: Whether idempotency returned an existing preview.
         image_metadata: Validated image metadata.
         vision_region: Optional label-region ROI used by OCR.
+        image_quality_report: Optional deterministic image-quality report.
         ocr_result: Optional OCR output used by the parser.
         parser_used: Whether structured OCR text parsing was invoked.
         ocr_attempted: Whether a primary OCR adapter was configured and called.
@@ -117,6 +119,7 @@ class SupplementImageAnalysisResult:
     reused_existing: bool
     image_metadata: ValidatedSupplementImage
     vision_region: BoundingBox | None
+    image_quality_report: ImageQualityReport | None
     ocr_result: OCRResult | None
     parser_used: bool
     ocr_attempted: bool
@@ -261,6 +264,7 @@ async def analyze_supplement_image(
         reused_existing=intake.reused_existing,
         image_metadata=image_metadata,
         vision_region=vision_region,
+        image_quality_report=None,
         ocr_result=ocr_result,
         parser_used=parsed_record is not None,
         ocr_attempted=ocr_attempted,

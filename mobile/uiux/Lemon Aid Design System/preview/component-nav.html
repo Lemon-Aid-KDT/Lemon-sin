@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background: linear-gradient(140deg, #FFFDF6, #FFF0B0);
+         display: grid; gap: 14px; height: 380px; }
+  .top-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px;
+    background: rgba(255,253,246,0.72);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border-bottom: 1px solid rgba(27,19,0,0.06);
+    border-radius: 20px 20px 0 0;
+  }
+  .top-bar .back { color: var(--ink-700); display: flex; }
+  .top-bar .title { font: var(--t-h4); color: var(--ink-900); }
+  .top-bar .sub { font: var(--t-caption); color: var(--ink-500); }
+  .top-bar .actions { margin-left: auto; display: flex; gap: 4px; color: var(--ink-700); }
+  .top-bar .actions .btn { padding: 8px; border-radius: 12px;
+                           background: rgba(255,255,255,0.6);
+                           border: 1px solid rgba(255,255,255,0.9); }
+
+  .tabs {
+    display: flex; gap: 4px;
+    background: rgba(255,253,246,0.86);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.9);
+    box-shadow: var(--glass-shadow), var(--glass-inner-hl);
+    border-radius: 999px; padding: 6px;
+    width: max-content; margin: 0 auto;
+  }
+  .tabs .tab {
+    padding: 10px 18px; border-radius: 999px;
+    font: 600 14px/1 var(--font-body);
+    color: var(--ink-500); display: inline-flex; gap: 8px; align-items: center;
+  }
+  .tabs .tab.active {
+    background: var(--ink-900); color: var(--lemon-200);
+  }
+  .tabs .tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lemon-400); }
+
+  .seg { display: inline-flex; padding: 4px; background: var(--canvas);
+         border-radius: 12px; gap: 4px; align-self: flex-start; }
+  .seg .s { padding: 8px 14px; border-radius: 9px; font: var(--t-label); color: var(--ink-700); }
+  .seg .s.active { background: var(--paper); color: var(--ink-900);
+                   box-shadow: var(--shadow-1); }
+
+  [data-lucide] { width: 18px; height: 18px; stroke-width: 1.9; }
+  .group { font: var(--t-label); color: var(--ink-700); }
+  .spacer { height: 8px; }
+</style></head>
+<body class="preview compact">
+  <div class="group">App bar — sticky, frosted, hairline divider · iOS 26 large title cadence.</div>
+  <div class="top-bar">
+    <span class="back"><i data-lucide="chevron-left"></i></span>
+    <div>
+      <div class="title">오늘의 영양 상태</div>
+      <div class="sub">2026.05.18 · 09:24 갱신</div>
+    </div>
+    <div class="actions">
+      <span class="btn"><i data-lucide="refresh-ccw"></i></span>
+      <span class="btn"><i data-lucide="more-horizontal"></i></span>
+    </div>
+  </div>
+
+  <div class="group">Bottom tab bar — floating liquid-glass capsule (iOS 26 pattern).</div>
+  <div class="tabs">
+    <span class="tab active"><i data-lucide="layout-dashboard"></i>대시보드</span>
+    <span class="tab"><i data-lucide="camera"></i>분석</span>
+    <span class="tab"><i data-lucide="message-circle"></i>대화</span>
+    <span class="tab"><i data-lucide="shield-check"></i>동의</span>
+  </div>
+
+  <div class="group">Segmented control — for switching slices (e.g. 부족 / 과다 / 주의).</div>
+  <div class="seg">
+    <span class="s active">부족</span>
+    <span class="s">과다</span>
+    <span class="s">주의</span>
+    <span class="s">전체</span>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body></html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { background: linear-gradient(140deg, #FFFDF6, #FFF4B0);
+         display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+         height: 280px; align-items: center; }
+  .frame { background: rgba(255,255,255,0.55);
+          border: 1px solid rgba(255,255,255,0.9);
+          border-radius: 22px; padding: 10px;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          display: grid; gap: 4px; }
+  .frame img { width: 100%; aspect-ratio: 1; object-fit: contain;
+               filter: drop-shadow(0 10px 14px rgba(214,158,0,0.20)); }
+  .frame .label { font: var(--t-caption); color: var(--ink-700);
+                  text-align: center; letter-spacing: 0.02em;
+                  text-transform: uppercase; }
+  .progress { height: 6px; background: rgba(214,158,0,0.16);
+              border-radius: 999px; overflow: hidden; }
+  .progress > span { display: block; height: 100%;
+                    background: linear-gradient(90deg, var(--lemon-300), var(--leaf-400));
+                    border-radius: 999px; }
+</style></head>
+<body class="preview compact">
+  <div class="frame">
+    <img src="../assets/mascot/frames/00-empty-shell.png">
+    <div class="progress"><span style="width: 10%"></span></div>
+    <span class="label">0:00 · 대기</span>
+  </div>
+  <div class="frame">
+    <img src="../assets/mascot/frames/01-mid-rising.png">
+    <div class="progress"><span style="width: 48%"></span></div>
+    <span class="label">2:00 · 탄산 상승</span>
+  </div>
+  <div class="frame">
+    <img src="../assets/mascot/tablet-frames/02-charged.png">
+    <div class="progress"><span style="width: 80%"></span></div>
+    <span class="label">4:00 · 충전 완료</span>
+  </div>
+  <div class="frame">
+    <img src="../assets/mascot/frames/02-leaf-growth.png">
+    <div class="progress"><span style="width: 100%"></span></div>
+    <span class="label">5:30 · 잎사귀 성장</span>
+  </div>
+</body></html>

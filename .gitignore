@@ -244,7 +244,42 @@ data/raw/kdris/*
 !data/raw/kdris/2025/
 !data/raw/kdris/2025/**
 data/private/
+backend/data/private/
 data/processed/
+
+# External OCR tool/source checkout. Keep out of repo history.
+/PaddleOCR-main/
+/PaddleOCR-main.zip
+/sglang-main/
+/sglang-main.zip
+
+# Mascot binary asset bundles. Store originals out-of-repo; commit only tracked exports.
+/assets/mascot/*.zip
+/assets/mascot/Lemon-Aid_*/
+/assets/mascot/lemonaid_*/
+
+# Local development log artifacts
+/firepit-log.txt
+
+# Supplement label raw images and private workspaces. Only consent memos and
+# directory placeholders are tracked; raw image bytes never enter the repo.
+data/supplement_images/raw/friend_contributed/inbox/*
+!data/supplement_images/raw/friend_contributed/inbox/CONSENT.md
+!data/supplement_images/raw/friend_contributed/inbox/.gitkeep
+data/supplement_images/raw/friend_contributed/ingested/images/*
+!data/supplement_images/raw/friend_contributed/ingested/images/.gitkeep
+data/supplement_images/raw/friend_contributed/ingested/metadata.jsonl
+data/supplement_images/raw/web_crawl/*/images/*
+!data/supplement_images/raw/web_crawl/*/images/.gitkeep
+data/supplement_images/raw/web_crawl/*/metadata.jsonl
+data/supplement_images/raw/public_sources/*.jpg
+data/supplement_images/raw/public_sources/*.jpeg
+data/supplement_images/raw/public_sources/*.png
+data/supplement_images/raw/public_sources/*.webp
+data/supplement_images/private_workspace/
+data/supplement_images/interim/
+data/supplement_images/processed/
+data/supplement_images/quarantine/
 
 # Local databases
 *.db
@@ -292,14 +327,10 @@ node_modules/
 package-lock.json
 yarn.lock
 
-# -----------------------------------------------------------------------------
-# Large vendored assets we never want tracked (L3 defensive)
-# Source archives (zip/tar) are kept out so accidental `git add .` cannot ship
-# a 100 MB+ blob to the repo. PaddleOCR vendor drops are particularly common.
-# -----------------------------------------------------------------------------
-PaddleOCR-main.zip
-PaddleOCR-main/
-*.zip
-*.tar
-*.tar.gz
-*.tgz
+# === 통합 재구성 (2026-05-21) ===
+# 외부 3rd-party (Lemon-Aid 밖에 위치)
+../external/
+# 비밀 (Lemon-Aid 밖에 위치)
+../_private/
+# archive (Lemon-Aid 밖에 위치)
+../_archive/

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { display: grid; gap: 14px; }
+  .row-sw { display: grid; grid-template-columns: repeat(11, 1fr); gap: 10px; align-items: end; }
+  .sw { aspect-ratio: 1 / 1; border-radius: 14px; position: relative; }
+  .sw .tag { position: absolute; bottom: 6px; left: 8px; font: var(--t-caption);
+             color: rgba(255,255,255,0.92); text-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+  .sw.dark .tag { color: var(--ink-900); text-shadow: none; }
+  .group-title { font: var(--t-label); color: var(--ink-700); }
+</style></head>
+<body class="preview compact" style="height: 280px;">
+  <div class="spread">
+    <div class="group-title">Lemon — primary brand surfaces &amp; the wordmark "Lemon".</div>
+    <span class="tok">--lemon-50 → --lemon-600</span>
+  </div>
+  <div class="row-sw">
+    <div class="sw dark" style="background: #FFFEF2"><span class="tag">50</span></div>
+    <div class="sw dark" style="background: #FFF8C7"><span class="tag">100</span></div>
+    <div class="sw dark" style="background: #FFEE7A"><span class="tag">200</span></div>
+    <div class="sw dark" style="background: #FFDE3F"><span class="tag">300</span></div>
+    <div class="sw"      style="background: #FFCE00"><span class="tag" style="color:#3C2E00;text-shadow:none;">400 ★</span></div>
+    <div class="sw"      style="background: #F0B800"><span class="tag" style="color:#2A1F00;text-shadow:none;">500</span></div>
+    <div class="sw"      style="background: #C99100"><span class="tag">600</span></div>
+    <div class="sw" style="visibility:hidden"></div>
+    <div class="sw" style="background:#ECFBEE; border:1px solid var(--ink-100)"><span class="tag" style="color: var(--leaf-700); text-shadow: none;">leaf 50</span></div>
+    <div class="sw" style="background:#6FCB73"><span class="tag">leaf 300 ★</span></div>
+    <div class="sw" style="background:#1F8A4A"><span class="tag">leaf 600</span></div>
+  </div>
+  <div class="hairline"></div>
+  <div class="spread">
+    <div class="group-title">Leaf — growth &amp; success • lemon-aid wordmark "Aid".</div>
+    <span class="tok">--leaf-50 → --leaf-700</span>
+  </div>
+  <div class="row-sw">
+    <div class="sw dark" style="background:#ECFBEE"><span class="tag" style="color:var(--leaf-700);text-shadow:none;">50</span></div>
+    <div class="sw dark" style="background:#C9F2D0"><span class="tag" style="color:var(--leaf-700);text-shadow:none;">100</span></div>
+    <div class="sw" style="background:#94E2A2"><span class="tag">200</span></div>
+    <div class="sw" style="background:#6FCB73"><span class="tag">300 ★</span></div>
+    <div class="sw" style="background:#4FB964"><span class="tag">400</span></div>
+    <div class="sw" style="background:#2EA354"><span class="tag">500</span></div>
+    <div class="sw" style="background:#1F8A4A"><span class="tag">600</span></div>
+    <div class="sw" style="background:#176B3A"><span class="tag">700</span></div>
+    <div class="sw" style="visibility:hidden"></div>
+    <div class="sw" style="background:#4FC3F7"><span class="tag">sky 400</span></div>
+    <div class="sw" style="background:#2CA8E0"><span class="tag">sky 500</span></div>
+  </div>
+</body></html>

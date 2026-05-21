@@ -13,6 +13,11 @@ from src.config import Settings
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 
 PADDLE_OCR_PROVIDER = "paddleocr_local"
+PADDLE_MOBILE_TEXT_DETECTION_MODEL = "PP-OCRv5_mobile_det"
+PADDLE_MOBILE_TEXT_RECOGNITION_MODELS = {
+    "en": "en_PP-OCRv5_mobile_rec",
+    "korean": "korean_PP-OCRv5_mobile_rec",
+}
 PADDLE_TEXT_KEYS = {"text", "inferText"}
 PADDLE_SCORE_KEYS = {"score", "confidence", "inferConfidence"}
 LEGACY_TEXT_SCORE_PAIR_LENGTH = 2
@@ -106,13 +111,35 @@ def _get_paddle_predictor(*, language: str, device: str | None) -> PaddlePredict
     except ImportError as exc:
         raise OCRError("PaddleOCR is not installed. Install backend .[ocr-local].") from exc
 
-    kwargs: dict[str, object] = {"lang": language}
+    kwargs: dict[str, object] = {
+        "lang": language,
+        # Keep the local simulator smoke path lightweight. The selected gallery
+        # image is already upright, and PaddleOCR documents these preprocessors
+        # as optional for the Python OCR pipeline.
+        "text_detection_model_name": PADDLE_MOBILE_TEXT_DETECTION_MODEL,
+        "text_recognition_model_name": _mobile_text_recognition_model_name(language),
+        "use_doc_orientation_classify": False,
+        "use_doc_unwarping": False,
+        "use_textline_orientation": False,
+    }
     if device:
         kwargs["device"] = device
     try:
         return cast(PaddlePredictor, paddle_ocr_class(**kwargs))
     except Exception as exc:
         raise OCRError("PaddleOCR predictor initialization failed.") from exc
+
+
+def _mobile_text_recognition_model_name(language: str) -> str:
+    """Return a lightweight PP-OCRv5 recognition model for the OCR language.
+
+    Args:
+        language: PaddleOCR language code.
+
+    Returns:
+        Mobile recognition model name.
+    """
+    return PADDLE_MOBILE_TEXT_RECOGNITION_MODELS.get(language, "PP-OCRv5_mobile_rec")
 
 
 def _suffix_for_mime_type(mime_type: str) -> str:

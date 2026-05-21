@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { display: grid; gap: 14px; }
+  .row-sw { display: grid; grid-template-columns: repeat(9, 1fr); gap: 10px; }
+  .sw { aspect-ratio: 1 / 1; border-radius: 14px; position: relative; border: 1px solid rgba(27,19,0,0.06); }
+  .sw .tag { position: absolute; bottom: 6px; left: 8px; font: var(--t-caption); }
+  .group-title { font: var(--t-label); color: var(--ink-700); }
+</style></head>
+<body class="preview compact" style="height: 250px;">
+  <div class="spread">
+    <div class="group-title">Warm neutrals — backgrounds &amp; ink (never cool grey).</div>
+    <span class="tok">--canvas / --paper / --ink-*</span>
+  </div>
+  <div class="row-sw">
+    <div class="sw" style="background:#FBF8EC"><span class="tag" style="color: var(--ink-700)">canvas</span></div>
+    <div class="sw" style="background:#FFFDF6"><span class="tag" style="color: var(--ink-700)">paper</span></div>
+    <div class="sw" style="background:#EBE6D4"><span class="tag" style="color: var(--ink-700)">ink-100</span></div>
+    <div class="sw" style="background:#D8D3BE"><span class="tag" style="color: var(--ink-700)">ink-200</span></div>
+    <div class="sw" style="background:#ABA590"><span class="tag" style="color: #fff">ink-300</span></div>
+    <div class="sw" style="background:#6A6353"><span class="tag" style="color: #fff">ink-500</span></div>
+    <div class="sw" style="background:#3C3526"><span class="tag" style="color: #fff">ink-700</span></div>
+    <div class="sw" style="background:#1B1300"><span class="tag" style="color: #fff">ink-900</span></div>
+    <div class="sw" style="background:#000"><span class="tag" style="color: #fff">pure black</span></div>
+  </div>
+  <div class="hairline"></div>
+  <div class="row" style="gap: 22px; align-items: stretch;">
+    <div class="col" style="gap: 6px; flex: 1; padding: 12px 14px; background: var(--canvas); border-radius: 14px;">
+      <span class="cap">On canvas</span>
+      <h2 class="lm-h3" style="margin: 0;">오늘의 영양 상태</h2>
+      <p style="margin: 0;">단백질이 부족해요. 점심에 가벼운 단백질을 더해 보세요.</p>
+      <small>--ink-700 body on --canvas</small>
+    </div>
+    <div class="col" style="gap: 6px; flex: 1; padding: 12px 14px; background: var(--paper); border-radius: 14px; border: 1px solid var(--ink-100);">
+      <span class="cap">On paper</span>
+      <h2 class="lm-h3" style="margin: 0;">오늘의 영양 상태</h2>
+      <p style="margin: 0;">단백질이 부족해요. 점심에 가벼운 단백질을 더해 보세요.</p>
+      <small>--ink-700 body on --paper</small>
+    </div>
+  </div>
+</body></html>
