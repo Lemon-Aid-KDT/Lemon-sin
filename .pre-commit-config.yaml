@@ -22,6 +22,25 @@ repos:
   # PROJECT_GUIDE.md → guide.html 자동 동기화
   - repo: local
     hooks:
+      - id: protect-protected-branch
+        name: block direct commits on main/develop
+        entry: python scripts/git-hooks/guard_protected_branch.py --mode commit
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+      - id: protect-protected-branch-push
+        name: block direct pushes to main/develop
+        entry: python scripts/git-hooks/guard_protected_branch.py --mode pre-push
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [push]
+      - id: conventional-commit-message
+        name: validate Conventional Commits message
+        entry: python scripts/git-hooks/validate_commit_msg.py
+        language: system
+        stages: [commit-msg]
       - id: sync-guide
         name: sync guide.html with PROJECT_GUIDE.md
         entry: python scripts/sync_guide.py
