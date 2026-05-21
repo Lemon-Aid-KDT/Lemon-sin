@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lemon Aid · Web (반응형)</title>
+  <link rel="stylesheet" href="web-kit.css">
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+          integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+          integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+          integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/lucide@0.452.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ── Lucide queue (debounced) ─────────────────────────────
+    let lq = false;
+    const queueLucide = () => {
+      if (lq) return;
+      lq = true;
+      requestAnimationFrame(() => {
+        lq = false;
+        try { window.lucide && window.lucide.createIcons && window.lucide.createIcons(); }
+        catch (e) {}
+      });
+    };
+    const Icon = ({ name, size = 18, color, strokeWidth = 1.85, style = {} }) => {
+      useEffect(queueLucide, [name]);
+      return <i data-lucide={name} style={{
+        display: "inline-flex", alignItems: "center",
+        color: color || "currentColor",
+        width: size, height: size, strokeWidth, ...style,
+      }} />;
+    };
+
+    // ── Data ─────────────────────────────────────────────────
+    const SUPPLEMENTS = [
+      { id: "s1", name: "오메가-3 골드",    time: "아침",  count: 8 },
+      { id: "s2", name: "비타민 D 1000IU",   time: "점심",  count: 1 },
+      { id: "s3", name: "마그네슘 350",       time: "저녁",  count: 2 },
+    ];
+    const INGREDIENTS = [
+      { id: "i1", name: "비타민 D", amount: 800, unit: "IU", conf: 0.92, status: "ok" },
+      { id: "i2", name: "오메가-3 (EPA+DHA)", amount: 1000, unit: "mg", conf: 0.88, status: "ok" },
+      { id: "i3", name: "비타민 E", amount: 12, unit: "mg α-TE", conf: 0.62, status: "review" },
+      { id: "i4", name: "아연", amount: 15, unit: "mg", conf: 0.79, status: "dup" },
+    ];
+    const GALLERY = [
+      { id:"g1",  kind:"label", label:"오메가-3",      grad:["#FFE680","#FFB400"], fav:true },
+      { id:"g2",  kind:"label", label:"비타민 D",      grad:["#FFF4B0","#E89C00"] },
+      { id:"g3",  kind:"mascot", src:"../../assets/mascot/tablet-frames/00-idle.png" },
+      { id:"g4",  kind:"label", label:"마그네슘",      grad:["#D7F3DC","#6FCB73"] },
+      { id:"g5",  kind:"food",  label:"닭가슴살 샐러드", grad:["#FFE2AE","#E78A3A"], fav:true },
+      { id:"g6",  kind:"food",  label:"현미밥",        grad:["#F4E6BE","#C49443"] },
+      { id:"g7",  kind:"label", label:"프로바이오틱",   grad:["#FFF8C7","#FFCE00"] },
+      { id:"g8",  kind:"mascot", src:"../../assets/mascot/gold-poster.png" },
+      { id:"g9",  kind:"food",  label:"오트밀",        grad:["#F1E1B8","#A67B3E"] },
+      { id:"g10", kind:"label", label:"종합비타민",     grad:["#FFE680","#F0B800"], fav:true },
+      { id:"g11", kind:"food",  label:"구운 연어",      grad:["#FFD3B0","#D86A2A"] },
+      { id:"g12", kind:"mascot", src:"../../assets/mascot/tablet-frames/03-leaf-complete.png" },
+      { id:"g13", kind:"label", label:"콜라겐 펩타이드", grad:["#FFF8C7","#E0B055"] },
+      { id:"g14", kind:"food",  label:"두부",          grad:["#FFF4D8","#C0AB6B"] },
+      { id:"g15", kind:"label", label:"철분",          grad:["#FCD9C0","#C76A3A"] },
+      { id:"g16", kind:"food",  label:"바나나",        grad:["#FFF5C7","#E0B017"] },
+      { id:"g17", kind:"label", label:"칼슘 + D",      grad:["#E8F7FF","#4FA9F0"] },
+      { id:"g18", kind:"food",  label:"두유",          grad:["#FCF1E2","#B58A4A"] },
+    ];
+    const CONCERNS = [
+      { id:"fatigue", label:"피로감",       icon:"battery-low", grad:"linear-gradient(135deg,#BBE2FF,#4FA9F0)" },
+      { id:"chronic", label:"만성질환 관리", icon:"heart-pulse", grad:"linear-gradient(135deg,#FFB7B7,#E55E5E)" },
+      { id:"liver",   label:"간 건강",      icon:"leaf",         grad:"linear-gradient(135deg,#FFCDCD,#E55E5E)" },
+      { id:"chol",    label:"콜레스테롤",   icon:"droplet",      grad:"linear-gradient(135deg,#FFCDCD,#C8245F)" },
+      { id:"eye",     label:"눈 건강",      icon:"eye",          grad:"linear-gradient(135deg,#BBE2FF,#4FA9F0)" },
+      { id:"muscle",  label:"근육량",       icon:"dumbbell",     grad:"linear-gradient(135deg,#D7F3DC,#6FCB73)" },
+      { id:"bp",      label:"혈압",         icon:"activity",     grad:"linear-gradient(135deg,#FFD4DF,#E94B7B)" },
+      { id:"sleep",   label:"수면",         icon:"moon",         grad:"linear-gradient(135deg,#FFEACC,#FFAA2E)" },
+    ];
+
+    // ── Page label map ───────────────────────────────────────
+    const PAGES = [
+      { id: "home",     label: "오늘",     icon: "layout-dashboard" },
+      { id: "camera",   label: "카메라",   icon: "camera" },
+      { id: "gallery",  label: "갤러리",   icon: "images" },
+      { id: "chat",     label: "AI 대화",  icon: "message-circle" },
+      { id: "consent",  label: "설정",     icon: "shield-check" },
+      { id: "onboard",  label: "프로필",   icon: "user" },
+    ];
+
+    // ─────────────────────────────────────────────────────────
+    // App shell
+    // ─────────────────────────────────────────────────────────
+    function App() {
+      const initial = (location.hash || "").replace("#", "") || "home";
+      const [page, setPage] = useState(initial);
+
+      useEffect(() => {
+        const onHash = () => {
+          const r = (location.hash || "").replace("#", "");
+          if (r) setPage(r);
+        };
+        window.addEventListener("hashchange", onHash);
+        return () => window.removeEventListener("hashchange", onHash);
+      }, []);
+
+      const nav = (id) => {
+        setPage(id);
+        try { location.hash = id; } catch (e) {}
+      };
+
+      return (
+        <div className="lw-shell" data-page={page}>
+          <Sidebar page={page} nav={nav} />
+          <Topbar  page={page} nav={nav} />
+          <main className="lw-main">
+            {page === "home"     && <Home    nav={nav} />}
+            {page === "camera"   && <Camera  nav={nav} />}
+            {page === "gallery"  && <Gallery nav={nav} />}
+            {page === "chat"     && <Chat />}
+            {page === "consent"  && <Consent />}
+            {page === "onboard"  && <Onboard nav={nav} />}
+          </main>
+          <BottomTabs page={page} nav={nav} />
+        </div>
+      );
+    }
+
+    function Topbar({ page, nav }) {
+      const title = (PAGES.find(p => p.id === page) || PAGES[0]).label;
+      return (
+        <header className="lw-topbar">
+          <span className="wordmark">
+            <span className="lemon">Lemon</span>-<span className="aid">Aid</span>
+          </span>
+          <span style={{ font: "var(--t-caption)", color: "var(--ink-500)",
+                          letterSpacing: "0.06em", textTransform: "uppercase",
+                          marginLeft: 10 }}>{title}</span>
+          <span className="spacer" />
+          <div className="actions">
+            <button className="icon-btn" onClick={() => nav("chat")}
+                     aria-label="agent"><Icon name="sparkles" /></button>
+            <button className="icon-btn" aria-label="notifications"><Icon name="bell" /></button>
+            <span className="avatar">박</span>
+          </div>
+        </header>
+      );
+    }
+
+    function Sidebar({ page, nav }) {
+      return (
+        <aside className="lw-sidebar">
+          <div className="brand">🍋&nbsp;Aid</div>
+          <span className="group-label">MENU</span>
+          {PAGES.slice(0, 5).map(p => (
+            <button key={p.id}
+                    className={"nav-item " + (page === p.id ? "active" : "")}
+                    onClick={() => nav(p.id)}>
+              <Icon name={p.icon} size={22} />
+              <span className="lbl">{p.label}</span>
+            </button>
+          ))}
+          <span className="group-label">계정</span>
+          <button className={"nav-item " + (page === "onboard" ? "active" : "")}
+                  onClick={() => nav("onboard")}>
+            <Icon name="user" size={22} /><span className="lbl">프로필</span>
+          </button>
+        </aside>
+      );
+    }
+
+    function BottomTabs({ page, nav }) {
+      return (
+        <nav className="lw-tabbar" role="tablist">
+          {PAGES.slice(0, 5).map(p => (
+            <button key={p.id}
+                    className={"tab " + (page === p.id ? "active" : "")}
+                    onClick={() => nav(p.id)}>
+              <Icon name={p.icon} /> {p.label}
+            </button>
+          ))}
+        </nav>
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Home dashboard
+    // ─────────────────────────────────────────────────────────
+    function Home({ nav }) {
+      return (
+        <>
+          <div className="lw-hero">
+            <div className="lw-card glass">
+              <span className="lw-pill lemon"><Icon name="sparkles" size={12}/> 오늘 한 줄</span>
+              <h2 style={{ margin: "10px 0 6px", font: "800 28px/1.2 var(--font-body)",
+                            letterSpacing: "-0.01em" }}>
+                단백질이 살짝 부족해요.
+              </h2>
+              <p style={{ margin: 0, color: "var(--ink-700)", font: "var(--t-body-lg)" }}>
+                점심에 가벼운 단백질 한 조각을 더해 보세요. 어제보다 식단 점수가 4점 올라갔어요.
+              </p>
+              <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1, height: 8, borderRadius: 999,
+                                background: "rgba(214,158,0,0.18)", overflow: "hidden" }}>
+                  <div style={{ width: "82%", height: "100%",
+                                  background: "linear-gradient(90deg, var(--lemon-400), var(--leaf-400))" }} />
+                </div>
+                <span style={{ font: "700 18px/1 var(--font-display)",
+                                color: "var(--leaf-700)",
+                                fontVariantNumeric: "tabular-nums" }}>82 / 100</span>
+              </div>
+            </div>
+            <div className="lw-card" style={{ display: "grid", gap: 10 }}>
+              <span className="kicker" style={{ font: "var(--t-caption)",
+                                                  color: "var(--ink-500)",
+                                                  letterSpacing: "0.06em",
+                                                  textTransform: "uppercase" }}>QUICK ACTION</span>
+              <button className="lw-btn primary large block" onClick={() => nav("camera")}>
+                <Icon name="camera" /> 라벨 사진 분석하기
+              </button>
+              <button className="lw-btn secondary block" onClick={() => nav("gallery")}>
+                <Icon name="images" /> 갤러리에서 선택
+              </button>
+              <button className="lw-btn ghost block" onClick={() => nav("chat")}>
+                <Icon name="message-circle" /> AI 에이전트와 대화
+              </button>
+            </div>
+          </div>
+
+          <div className="lw-section-head">
+            <div>
+              <span className="kicker">DAILY SUMMARY</span>
+              <h2>다섯 가지 산출</h2>
+            </div>
+            <span className="more">전체 보기 ›</span>
+          </div>
+          <div className="lw-grid-4">
+            <Tile icon="leaf" iconBg="var(--leaf-50)" color="var(--leaf-600)"
+                  label="부족 영양소" value="3" unit="종" sub="단백질 · 칼슘 · 철" />
+            <Tile icon="alert-triangle" iconBg="var(--warning-soft)" color="#7A4200"
+                  label="과다 섭취" value="1" unit="종" sub="비타민 C 중복" />
+            <Tile icon="shield-alert" iconBg="var(--review-soft)" color="var(--review)"
+                  label="주의 성분" value="2" unit="건" sub="와파린 상호작용" />
+            <Tile icon="utensils" iconBg="var(--lemon-100)" color="var(--lemon-600)"
+                  label="식단관리 점수" value="82" unit="점" sub="어제 +4" />
+          </div>
+
+          <div className="lw-section-head">
+            <div>
+              <span className="kicker">REGISTERED</span>
+              <h2>등록한 영양제</h2>
+            </div>
+            <span className="more" onClick={() => nav("camera")}>+ 새로 추가</span>
+          </div>
+          {SUPPLEMENTS.map(s => (
+            <div key={s.id} className="lw-row">
+              <span style={{ width: 40, height: 40, borderRadius: 12,
+                              background: "var(--lemon-100)", color: "var(--lemon-600)",
+                              display: "grid", placeItems: "center" }}>
+                <Icon name="pill" size={20} />
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ font: "600 16px/1.2 var(--font-body)" }}>{s.name}</div>
+                <div style={{ font: "var(--t-body-sm)", color: "var(--ink-500)", marginTop: 2 }}>
+                  {s.time} · 성분 {s.count}개
+                </div>
+              </div>
+              <Icon name="chevron-right" color="var(--ink-300)" />
+            </div>
+          ))}
+
+          <div style={{ marginTop: 24 }}>
+            <div className="lw-disclaimer">
+              <Icon name="info" size={18} />
+              본 서비스의 정보는 일반적인 건강 관리를 위한 참고 자료입니다.
+              의사·약사·영양사의 진단이나 처방을 대체하지 않습니다.
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    const Tile = ({ icon, iconBg, color, label, value, unit, sub }) => (
+      <div className="lw-tile">
+        <div className="head">
+          <span className="ico" style={{ background: iconBg, color: color }}>
+            <Icon name={icon} size={16} />
+          </span>
+          <span className="meta">{label}</span>
+        </div>
+        <div className="num">{value}<span className="u">{unit}</span></div>
+        <div className="sub">{sub}</div>
+      </div>
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // Camera (web — file upload + simulated viewfinder)
+    // ─────────────────────────────────────────────────────────
+    function Camera({ nav }) {
+      const [stage, setStage] = useState("idle"); // idle | analyzing | ready
+      const fire = () => {
+        setStage("analyzing");
+        setTimeout(() => setStage("ready"), 1800);
+      };
+
+      if (stage === "analyzing") return <Analyzing />;
+      if (stage === "ready")     return <Ready nav={nav} restart={() => setStage("idle")} />;
+
+      return (
+        <>
+          <div className="lw-section-head">
+            <div>
+              <span className="kicker">PHOTO INTAKE</span>
+              <h2>영양제 라벨 분석</h2>
+            </div>
+          </div>
+          <div className="lw-upload">
+            <div className="lw-dropzone" onClick={fire}>
+              <div className="ico"><Icon name="upload-cloud" size={32} /></div>
+              <h3>라벨 사진을 끌어다 놓거나 클릭</h3>
+              <p>최대 10MB · JPG, PNG, HEIC</p>
+              <div style={{ marginTop: 20, display: "flex", gap: 10, justifyContent: "center" }}>
+                <button className="lw-btn primary"><Icon name="camera" />사진 촬영</button>
+                <button className="lw-btn secondary" onClick={(e) => { e.stopPropagation(); nav("gallery"); }}>
+                  <Icon name="images" />갤러리에서 선택
+                </button>
+              </div>
+            </div>
+            <div>
+              <div className="lw-card" style={{ marginBottom: 14 }}>
+                <h3 style={{ margin: "0 0 10px", font: "700 16px/1 var(--font-body)" }}>
+                  자동으로 추출되는 정보
+                </h3>
+                {[["pill","성분명과 함량"],
+                  ["calendar-clock","복용 횟수·시간대"],
+                  ["building-2","제조사·로트 번호"]].map(([ic, t]) => (
+                  <div key={t} style={{ display: "flex", gap: 10, padding: "8px 0",
+                                          alignItems: "center" }}>
+                    <Icon name={ic} color="var(--lemon-500)" />
+                    <span style={{ color: "var(--ink-700)" }}>{t}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="lw-disclaimer" style={{
+                background: "var(--lemon-100)", borderColor: "var(--lemon-200)",
+                color: "var(--lemon-600)",
+              }}>
+                <Icon name="sparkles" size={18} />
+                <b>승인 전 미리보기.</b>&nbsp;분석 결과는 저장 전에 다시 보여드릴게요. 직접 수정하신 항목만 저장됩니다.
+              </div>
+            </div>
+          </div>
+
+          <div className="lw-section-head">
+            <h2 style={{ fontSize: 18, marginTop: 8 }}>최근 분석</h2>
+          </div>
+          <div className="lw-grid-3">
+            {SUPPLEMENTS.map(s => (
+              <div key={s.id} className="lw-card" style={{ padding: 14 }}>
+                <span className="lw-pill success" style={{ marginBottom: 8 }}>적정</span>
+                <div style={{ font: "700 15px/1.2 var(--font-body)" }}>{s.name}</div>
+                <div style={{ font: "var(--t-body-sm)", color: "var(--ink-500)", marginTop: 4 }}>
+                  {s.time} · 성분 {s.count}개
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      );
+    }
+
+    const Analyzing = () => (
+      <div style={{ display: "grid", placeItems: "center", padding: "80px 16px", gap: 18 }}>
+        <img src="../../assets/mascot/tablet-frames/02-charged.png"
+              style={{ width: 220, height: 220, objectFit: "contain",
+                       filter: "drop-shadow(0 16px 22px rgba(214,158,0,0.30))" }} />
+        <h2 style={{ margin: 0, font: "800 26px/1.2 var(--font-display)" }}>라벨을 읽고 있어요</h2>
+        <p style={{ margin: 0, color: "var(--ink-500)" }}>병원 기록과 함께 살펴보고 있어요.</p>
+        <div style={{ width: 320, maxWidth: "90%", height: 6, borderRadius: 999,
+                       background: "var(--ink-100)", overflow: "hidden" }}>
+          <div style={{ width: "70%", height: "100%",
+                          background: "linear-gradient(90deg, var(--lemon-400), var(--leaf-400))",
+                          backgroundSize: "200% 100%",
+                          animation: "lw-fill 1.6s ease-in-out infinite" }} />
+        </div>
+        <style>{`@keyframes lw-fill { 0%,100% { background-position: 0 100%; } 50% { background-position: 0 0; } }`}</style>
+      </div>
+    );
+
+    const Ready = ({ nav, restart }) => (
+      <>
+        <div className="lw-card glass" style={{ marginBottom: 18 }}>
+          <span className="lw-pill lemon"><Icon name="check" size={12}/>분석 완료</span>
+          <h2 style={{ margin: "10px 0 4px", font: "800 28px/1.2 var(--font-body)" }}>
+            4개의 성분을 찾았어요.
+          </h2>
+          <p style={{ margin: 0, color: "var(--ink-700)" }}>
+            저장 전에 항목을 직접 확인해 주세요. 확신도가 낮은 두 항목은
+            <b style={{ color: "var(--review)" }}> 확인 필요</b>로 표시했어요.
+          </p>
+        </div>
+        <div className="lw-grid-2">
+          {INGREDIENTS.map(i => {
+            const tone = i.status === "ok" ? "success" : i.status === "review" ? "review" : "warn";
+            const lbl  = i.status === "ok" ? "충분" : i.status === "review" ? "확인 필요" : "중복";
+            return (
+              <div key={i.id} className="lw-row">
+                <div style={{ flex: 1 }}>
+                  <div style={{ font: "600 16px/1.2 var(--font-body)" }}>{i.name}</div>
+                  <div style={{ font: "var(--t-body-sm)", color: "var(--ink-500)", marginTop: 2 }}>
+                    {i.amount} {i.unit} · 확신도 {Math.round(i.conf * 100)}%
+                  </div>
+                </div>
+                <span className={"lw-pill " + tone}>{lbl}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 20, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="lw-btn ghost" onClick={restart}>다시 촬영</button>
+          <button className="lw-btn primary"><Icon name="check"/>저장 전 검토</button>
+        </div>
+      </>
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // Gallery
+    // ─────────────────────────────────────────────────────────
+    function Gallery({ nav }) {
+      const [selected, setSelected] = useState([]);
+      const [album, setAlbum] = useState("all");
+      const items = GALLERY.filter(g => {
+        if (album === "all") return true;
+        if (album === "favs") return !!g.fav;
+        if (album === "labels") return g.kind === "label";
+        if (album === "meals") return g.kind === "food";
+        return true;
+      });
+      const toggle = (id) =>
+        setSelected(arr => arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]);
+      return (
+        <>
+          <div className="lw-section-head">
+            <div>
+              <span className="kicker">PHOTOS</span>
+              <h2>갤러리에서 선택</h2>
+            </div>
+            <span className="more" style={{ cursor: "default", color: "var(--ink-500)" }}>
+              {selected.length > 0 ? `${selected.length}장 선택` : "다중 선택 가능"}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {[["all","모든 사진",GALLERY.length],
+              ["favs","즐겨찾기",GALLERY.filter(g=>g.fav).length],
+              ["labels","영양제 라벨",GALLERY.filter(g=>g.kind==="label").length],
+              ["meals","식단 사진",GALLERY.filter(g=>g.kind==="food").length],
+            ].map(([id,nm,ct]) => (
+              <button key={id} onClick={() => { setAlbum(id); setSelected([]); }}
+                      className={"lw-btn " + (album === id ? "primary" : "secondary")}
+                      style={{ padding: "8px 14px", fontSize: 13 }}>
+                {nm} <span style={{ opacity: 0.6, marginLeft: 4 }}>{ct}</span>
+              </button>
+            ))}
+          </div>
+          <div className="lw-photo-grid">
+            {items.map(item => {
+              const idx = selected.indexOf(item.id);
+              const isSel = idx !== -1;
+              return (
+                <div key={item.id}
+                      className={"lw-photo-cell " + (isSel ? "selected" : "")}
+                      onClick={() => toggle(item.id)}>
+                  {item.kind === "mascot"
+                    ? <img src={item.src} alt="" />
+                    : <div className="placeholder" style={{
+                        background: `linear-gradient(135deg, ${item.grad[0]}, ${item.grad[1]})`,
+                      }}>
+                        {item.kind === "label"
+                          ? <LabelMock label={item.label} />
+                          : <span style={{ color: "rgba(255,255,255,0.95)",
+                                            font: "700 13px/1.2 var(--font-body)",
+                                            textShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                                            textAlign: "center" }}>{item.label}</span>}
+                      </div>}
+                  {item.fav && <span className="heart"><Icon name="heart" size={14} strokeWidth={2.4} color="#fff"/></span>}
+                  <span className="badge">{isSel ? idx + 1 : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+          {selected.length > 0 && (
+            <div style={{
+              position: "sticky", bottom: 76, marginTop: 18,
+              padding: 14, background: "var(--paper)",
+              border: "1px solid var(--ink-100)", borderRadius: 16,
+              boxShadow: "var(--shadow-3)",
+              display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+            }}>
+              <Icon name="images" />
+              <span style={{ flex: 1, font: "600 14px/1.2 var(--font-body)" }}>
+                {selected.length}장의 사진이 선택됐어요
+              </span>
+              <button className="lw-btn ghost" onClick={() => setSelected([])}>전체 해제</button>
+              <button className="lw-btn primary" onClick={() => nav("camera")}>
+                <Icon name="sparkles"/> 선택한 사진 분석
+              </button>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    const LabelMock = ({ label }) => (
+      <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+        <rect x="22" y="20" width="56" height="62" rx="6" fill="rgba(255,255,255,0.94)"/>
+        <rect x="28" y="30" width="44" height="3" rx="1.5" fill="#1B1300" opacity="0.65"/>
+        <rect x="28" y="38" width="34" height="2" rx="1"   fill="#1B1300" opacity="0.35"/>
+        <text x="50" y="62" textAnchor="middle" fill="#1B1300" fontWeight="700" fontSize="9"
+               fontFamily="Pretendard, system-ui">{label}</text>
+        <rect x="28" y="68" width="44" height="3" rx="1.5" fill="#FFCE00"/>
+        <rect x="28" y="74" width="30" height="2" rx="1"   fill="#1B1300" opacity="0.25"/>
+      </svg>
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // Chat
+    // ─────────────────────────────────────────────────────────
+    function Chat() {
+      return (
+        <>
+          <div className="lw-section-head">
+            <div>
+              <span className="kicker">AGENT</span>
+              <h2>AI 에이전트와 대화</h2>
+            </div>
+          </div>
+          <div className="lw-chat">
+            <div className="lw-chat-list">
+              <div className="lw-card" style={{ padding: 10 }}>
+                <div className="it active">
+                  <span className="av"><Icon name="sparkles" size={16}/></span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="nm">레몬에이드 Agent</div>
+                    <div className="last">병원 기록을 함께 살펴드려요</div>
+                  </div>
+                </div>
+                <div className="it">
+                  <span className="av" style={{ background: "var(--info-soft)", color: "var(--info)" }}>
+                    <Icon name="briefcase-medical" size={16}/>
+                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="nm">약사 상담</div>
+                    <div className="last">처방전 상호작용 확인이 필요해요</div>
+                  </div>
+                </div>
+                <div className="it">
+                  <span className="av" style={{ background: "var(--leaf-100)", color: "var(--leaf-700)" }}>
+                    <Icon name="utensils" size={16}/>
+                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="nm">영양사 코칭</div>
+                    <div className="last">단백질 보충 식단 제안</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="lw-chat-pane">
+              <div style={{ textAlign: "center", marginBottom: 10 }}>
+                <span className="lw-pill info">
+                  <Icon name="info" size={12}/> AI는 거드는 손길 · 진단 아님
+                </span>
+              </div>
+              <div className="lw-bubbles">
+                <div className="lw-bubble agent">안녕하세요. 도움이 되는, 당신의 레몬에이드예요. 오늘은 어떤 도움이 필요하세요?</div>
+                <div className="lw-bubble user">오늘 점심에 비타민 D를 더 먹어도 될까요?</div>
+                <div className="lw-bubble agent">현재 등록한 영양제 두 종에서 비타민 D가 함께 들어 있어요. 하루 합계가 권장량의 92%여서 추가는 신중히 결정해 주세요. 자세한 상담은 약사님께 권해 드려요.</div>
+                <div className="lw-bubble user">그럼 식단으로 보충하는 방법은요?</div>
+                <div className="lw-bubble agent">햇빛에 노출된 표고버섯 · 연어 · 달걀 노른자가 도움돼요. 식단 점수도 올라가요.</div>
+              </div>
+              <div className="lw-composer">
+                <Icon name="paperclip" color="var(--ink-500)" />
+                <input placeholder="레몬에이드에게 질문해 보세요…" />
+                <button className="send" aria-label="send"><Icon name="arrow-up" strokeWidth={2.2}/></button>
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Consent / Settings
+    // ─────────────────────────────────────────────────────────
+    function Consent() {
+      const [c, setC] = useState({ ocr: true, health: true, hk: false, learn: false });
+      const set = k => setC(s => ({ ...s, [k]: !s[k] }));
+      const rows = [
+        ["ocr",    "라벨 이미지 OCR 처리",  "사진에서 텍스트만 추출합니다. 원본은 저장하지 않습니다.", true],
+        ["health", "민감 건강정보 분석",     "만성질환·복약 데이터를 함께 해석합니다.", true],
+        ["hk",     "HealthKit 연동",        "걸음수 · 심박수 · 체중 자동 수집", false],
+        ["learn",  "학습 데이터 저장",       "익명화된 OCR 미스매치 사례만 사용", false],
+      ];
+      return (
+        <>
+          <div className="lw-section-head">
+            <div>
+              <span className="kicker">SETTINGS</span>
+              <h2>동의 설정</h2>
+            </div>
+          </div>
+          <div className="lw-grid-2">
+            <div>
+              {rows.map(([k, label, sub, req]) => (
+                <div key={k} className="lw-row" onClick={() => set(k)} style={{ cursor: "pointer" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ font: "600 15px/1.2 var(--font-body)" }}>
+                      {req && <span style={{ color: "var(--lemon-600)", marginRight: 4 }}>(필수)</span>}
+                      {label}
+                    </div>
+                    <div style={{ font: "var(--t-body-sm)", color: "var(--ink-500)", marginTop: 2 }}>{sub}</div>
+                  </div>
+                  <ToggleSwitch on={c[k]} />
+                </div>
+              ))}
+            </div>
+            <div className="lw-card">
+              <h3 style={{ margin: "0 0 10px" }}>처리 원칙</h3>
+              <ul style={{ margin: 0, paddingLeft: 18, color: "var(--ink-700)",
+                            font: "var(--t-body)", lineHeight: 1.6 }}>
+                <li>단말에서 먼저 처리 · 외부 전송은 동의 우선</li>
+                <li>진단 · 처방 · 치료 안내 금지</li>
+                <li>복용 변경은 의사 · 약사와 상담</li>
+                <li>언제든 설정에서 동의 해제 가능</li>
+              </ul>
+              <div className="lw-disclaimer" style={{ marginTop: 14,
+                background: "var(--danger-soft)", borderColor: "#F4C6C2", color: "#8B1F18" }}>
+                <Icon name="shield-alert" size={18} />
+                <b>처방전·검사표는 사용자 확인 후에만 저장됩니다.</b>
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    const ToggleSwitch = ({ on }) => (
+      <span style={{ width: 44, height: 26, borderRadius: 999, position: "relative",
+                      background: on ? "var(--leaf-600)" : "var(--ink-200)",
+                      transition: "background 200ms", flexShrink: 0 }}>
+        <span style={{ position: "absolute", top: 2, left: on ? 20 : 2,
+                        width: 22, height: 22, borderRadius: 999, background: "white",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                        transition: "left 220ms cubic-bezier(0.32,0.72,0,1)" }} />
+      </span>
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // Onboarding (single-page form for web)
+    // ─────────────────────────────────────────────────────────
+    function Onboard({ nav }) {
+      const [data, setData] = useState({
+        name: "박준영", dob: "20010828",
+        gender: "m", purpose: "supplement",
+        concerns: ["chronic", "sleep"],
+        height: 175.2, weight: 73.6, target: 70.0,
+      });
+      const set = p => setData(d => ({ ...d, ...p }));
+      const toggle = id => set({ concerns: data.concerns.includes(id)
+        ? data.concerns.filter(x => x !== id)
+        : [...data.concerns, id] });
+      const pct = Math.min(1, [data.name, data.dob.length === 8, data.gender, data.purpose,
+                                 data.concerns.length, data.height, data.weight]
+                                .filter(Boolean).length / 7);
+      return (
+        <div className="lw-onboard">
+          <h1>
+            <span className="lemon">Lemon</span>-<span className="aid">Aid</span> 프로필
+          </h1>
+          <p className="sub">한 페이지에서 모든 정보를 빠르게 설정하고 카메라로 진입할 수 있어요.</p>
+
+          <div className="lw-progress"><div className="fill" style={{ width: `${pct*100}%` }}/></div>
+
+          <div className="lw-grid-2">
+            <div className="field">
+              <label>이름</label>
+              <input value={data.name} onChange={(e) => set({ name: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>생년월일 (YYYYMMDD)</label>
+              <input value={data.dob} onChange={(e) => set({ dob: e.target.value.replace(/\D/g,"").slice(0,8) })} />
+            </div>
+            <div className="field">
+              <label>성별</label>
+              <select value={data.gender} onChange={(e) => set({ gender: e.target.value })}>
+                <option value="m">남성</option>
+                <option value="f">여성</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>목적</label>
+              <select value={data.purpose} onChange={(e) => set({ purpose: e.target.value })}>
+                <option value="chronic">만성질환 관리</option>
+                <option value="supplement">영양제 섭취 관리</option>
+                <option value="diet">식단 관리 & 다이어트</option>
+                <option value="blood">혈당 관리</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>키 (cm)</label>
+              <input type="number" step="0.1" value={data.height}
+                      onChange={(e) => set({ height: +e.target.value })} />
+            </div>
+            <div className="field">
+              <label>현재 체중 (kg)</label>
+              <input type="number" step="0.1" value={data.weight}
+                      onChange={(e) => set({ weight: +e.target.value })} />
+            </div>
+          </div>
+
+          <h3 style={{ marginTop: 22, marginBottom: 10, font: "700 18px/1.2 var(--font-body)" }}>
+            건강 고민 <span style={{ color: "var(--ink-500)", font: "var(--t-label)" }}>최대 8개</span>
+          </h3>
+          <div className="concerns">
+            {CONCERNS.map(c => (
+              <div key={c.id} className={"concern " + (data.concerns.includes(c.id) ? "selected" : "")}
+                    onClick={() => toggle(c.id)}>
+                <span className="ico" style={{ background: c.grad }}>
+                  <Icon name={c.icon} size={22} color="#fff" strokeWidth={1.8}/>
+                </span>
+                <div style={{ font: "600 13px/1.2 var(--font-body)" }}>{c.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 24, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button className="lw-btn ghost" onClick={() => nav("home")}>나중에</button>
+            <button className="lw-btn primary large" onClick={() => nav("camera")}>
+              <Icon name="check"/> 저장하고 분석 시작
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Mount
+    ReactDOM.createRoot(document.getElementById("app")).render(<App />);
+  </script>
+</body>
+</html>

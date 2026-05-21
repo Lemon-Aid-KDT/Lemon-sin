@@ -1,0 +1,96 @@
+"""Lifespan side-effect tests for ``src.main`` startup hooks."""
+
+from __future__ import annotations
+
+import os
+from typing import Self, cast
+
+import pytest
+from fastapi import FastAPI
+from PIL import Image
+from src.config import Settings, get_settings
+from src.main import lifespan
+
+
+class _Sentinel:
+    """Placeholder app object passed to the lifespan context manager.
+
+    The real FastAPI application is unused by the current lifespan body, so a
+    simple sentinel keeps the test free of FastAPI construction cost.
+    """
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_exc_info: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_sets_paddle_disable_model_source_check_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify lifespan defaults the PaddleOCR connectivity-check env var to true."""
+    monkeypatch.delenv("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", raising=False)
+    get_settings.cache_clear()
+    try:
+        async with lifespan(cast(FastAPI, _Sentinel())):
+            assert os.environ.get("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK") == "true"
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_preserves_explicit_paddle_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify lifespan does not overwrite an explicit PADDLE env override.
+
+    Operators may set the env var to ``false`` directly when they need PaddleOCR
+    to attempt a model-source probe; the lifespan must respect that choice.
+    """
+    monkeypatch.setenv("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "false")
+    get_settings.cache_clear()
+    try:
+        async with lifespan(cast(FastAPI, _Sentinel())):
+            assert os.environ.get("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK") == "false"
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_applies_configured_pillow_pixel_limit() -> None:
+    """Verify lifespan applies the configured Pillow safety pixel limit."""
+    get_settings.cache_clear()
+    try:
+        async with lifespan(cast(FastAPI, _Sentinel())):
+            settings = Settings(_env_file=None)
+            assert settings.supplement_image_max_pixels == Image.MAX_IMAGE_PIXELS
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_logs_trusted_host_active_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify lifespan emits the active TrustedHost host list at startup.
+
+    The startup log makes the host policy visible to operators so a missing
+    ALLOWED_HOSTS env var cannot quietly degrade to the dev sentinel without
+    being seen in routine log inspection.
+    """
+    monkeypatch.setenv("ALLOWED_HOSTS", '["example.com"]')
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    get_settings.cache_clear()
+    try:
+        async with lifespan(cast(FastAPI, _Sentinel())):
+            pass
+    finally:
+        get_settings.cache_clear()
+
+    stdout = capsys.readouterr().out
+    assert "TrustedHost allowed_hosts" in stdout
+    assert "example.com" in stdout
+    assert "active=explicit" in stdout

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { background: linear-gradient(135deg, #FFF8C7, #FFE08A 70%);
+         display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+         height: 240px; align-items: stretch; }
+  .box {
+    border-radius: var(--r-xl);
+    padding: 14px 14px 12px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--paper);
+  }
+  .box .lbl { color: var(--ink-700); }
+  .box.s1 { box-shadow: var(--shadow-1); }
+  .box.s2 { box-shadow: var(--shadow-2); }
+  .box.s3 { box-shadow: var(--shadow-3); }
+  .box.glass { background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.42));
+               backdrop-filter: blur(18px) saturate(150%);
+               -webkit-backdrop-filter: blur(18px) saturate(150%);
+               box-shadow: var(--glass-shadow), var(--glass-inner-hl);
+               border: 1px solid rgba(255,255,255,0.85); }
+  .preview-tag { font: var(--t-label); color: var(--ink-900); }
+</style></head>
+<body class="preview compact">
+  <div class="box s1">
+    <span class="preview-tag">--shadow-1</span>
+    <span class="lbl">Hairline · sticky chrome.<br><span class="muted">0 1px 2px rgba(27,19,0,0.06)</span></span>
+  </div>
+  <div class="box s2">
+    <span class="preview-tag">--shadow-2</span>
+    <span class="lbl">Resting card · default.<br><span class="muted">12px y-blur, warm tint</span></span>
+  </div>
+  <div class="box s3">
+    <span class="preview-tag">--shadow-3</span>
+    <span class="lbl">Raised sheet · modal.<br><span class="muted">28px y-blur, 18% ink</span></span>
+  </div>
+  <div class="box glass">
+    <span class="preview-tag">.glass</span>
+    <span class="lbl">Liquid glass card.<br><span class="muted">backdrop blur(18) sat(150)</span></span>
+  </div>
+</body></html>

@@ -1,1 +1,0 @@
-External OCR was not executed because user consent is missing. Continue with user confirmation or manual OCR text.
