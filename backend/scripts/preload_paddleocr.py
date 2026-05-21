@@ -1,4 +1,4 @@
-"""Pre-warm the PaddleOCR Korean model cache during Docker image build.
+"""Pre-warm the configured PaddleOCR model cache during Docker image build.
 
 The first PaddleOCR call downloads the configured model bundle from an
 external host. In closed-network production environments, that fetch
@@ -18,6 +18,10 @@ import os
 import sys
 
 _DEFAULT_LANGUAGE = "korean"
+_MOBILE_TEXT_RECOGNITION_MODELS = {
+    "en": "en_PP-OCRv5_mobile_rec",
+    "korean": "korean_PP-OCRv5_mobile_rec",
+}
 
 
 def main() -> int:
@@ -40,7 +44,14 @@ def main() -> int:
     language = os.environ.get("LOCAL_OCR_LANGUAGE", _DEFAULT_LANGUAGE)
     sys.stdout.write(f"preload_paddleocr: warming model cache (lang={language})\n")
     try:
-        PaddleOCR(lang=language)
+        PaddleOCR(
+            lang=language,
+            text_detection_model_name="PP-OCRv5_mobile_det",
+            text_recognition_model_name=_mobile_text_recognition_model_name(language),
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
     except Exception as exc:
         sys.stdout.write(
             "preload_paddleocr: model warm-up failed "
@@ -49,6 +60,18 @@ def main() -> int:
         return 0
     sys.stdout.write("preload_paddleocr: model cache ready.\n")
     return 0
+
+
+def _mobile_text_recognition_model_name(language: str) -> str:
+    """Return a lightweight PP-OCRv5 recognition model for the OCR language.
+
+    Args:
+        language: PaddleOCR language code.
+
+    Returns:
+        Mobile recognition model name.
+    """
+    return _MOBILE_TEXT_RECOGNITION_MODELS.get(language, "PP-OCRv5_mobile_rec")
 
 
 if __name__ == "__main__":

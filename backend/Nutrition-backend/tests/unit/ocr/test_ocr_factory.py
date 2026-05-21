@@ -11,7 +11,9 @@ from src.llm.ollama_vision import OllamaVisionAssistAdapter
 from src.ocr.factory import (
     OCRConfigurationError,
     build_supplement_image_analysis_adapters,
+    build_supplement_image_analysis_adapters_for_provider,
     build_supplement_ocr_adapter,
+    is_external_ocr_pipeline_enabled,
 )
 from src.ocr.providers.clova import ClovaOCRAdapter
 from src.ocr.providers.google_vision import GoogleVisionOCRAdapter
@@ -121,6 +123,25 @@ def test_analysis_factory_builds_paddleocr_bundle_by_default() -> None:
     assert adapters.vision is None
     assert adapters.multimodal_ocr is None
     assert adapters.fallback_ocr_adapters == ()
+
+
+def test_provider_selector_forces_paddleocr_without_external_consent() -> None:
+    """Verify request-selected PaddleOCR keeps image bytes on the local path."""
+    settings = Settings(
+        _env_file=None,
+        ocr_primary_provider="google_vision",
+        allow_external_ocr=True,
+        google_vision_auth_mode="api_key",
+        allow_google_api_key_auth=True,
+        google_cloud_api_key=SecretStr("test-key"),
+        enable_local_ocr=True,
+    )
+
+    adapters = build_supplement_image_analysis_adapters_for_provider(settings, "paddleocr")
+
+    assert isinstance(adapters.ocr, PaddleOCRAdapter)
+    assert adapters.fallback_ocr_adapters == ()
+    assert is_external_ocr_pipeline_enabled(settings, "paddleocr") is False
 
 
 def test_analysis_factory_returns_intake_only_bundle_when_provider_disabled() -> None:

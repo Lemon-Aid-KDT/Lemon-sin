@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../ui_kits/mobile/mobile-kit.css">
+<style>
+  body {
+    margin: 0; padding: 0; height: 440px; overflow: hidden;
+    background: linear-gradient(135deg, #1F1A12, #0A0A0A 75%);
+    display: grid; grid-template-columns: 1.05fr 0.95fr;
+    align-items: stretch;
+    color: rgba(255,255,255,0.86);
+    font-family: var(--font-body);
+  }
+  .meta { padding: 28px 22px; }
+  .meta h3 { margin: 0 0 8px; font: 800 26px/1.1 var(--font-display);
+              letter-spacing: -0.01em;
+              background: linear-gradient(90deg, #FFE680, #F0B800);
+              -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .meta p { margin: 0 0 14px; color: rgba(255,255,255,0.65);
+             font: var(--t-body-sm); line-height: 1.55; }
+  .meta ul { margin: 0; padding-left: 18px; color: rgba(255,255,255,0.78);
+             font: var(--t-body-sm); }
+  .meta li { margin-bottom: 4px; }
+  .meta .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 999px;
+    background: rgba(255,206,0,0.15); color: #FFDE3F;
+    font: var(--t-caption); letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .phone {
+    width: 232px; height: 412px;
+    margin: 14px auto;
+    border-radius: 36px;
+    background: #0A0A0A;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 36px 60px rgba(0,0,0,0.45),
+                0 0 0 6px #1B1300,
+                0 0 0 7px rgba(255,255,255,0.04);
+  }
+  .phone .island {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 84px; height: 24px; border-radius: 12px; background: #000; z-index: 5;
+  }
+  .phone .time {
+    position: absolute; top: 12px; left: 18px; z-index: 4;
+    font: 700 12px/1 -apple-system; color: #fff;
+  }
+  .phone .battery {
+    position: absolute; top: 12px; right: 18px; z-index: 4;
+    width: 18px; height: 10px; border-radius: 2px;
+    border: 1px solid rgba(255,255,255,0.6);
+    box-shadow: 12px 0 0 -3px rgba(255,255,255,0.4) inset;
+  }
+
+  /* Local override for the embedded phone — bring everything to scale. */
+  .phone .lm-camera { font-size: 11px; }
+  .phone .lm-camera .top { padding: 32px 12px 8px; gap: 6px; }
+  .phone .lm-camera .top .pill { width: 28px; height: 28px; }
+  .phone .lm-camera .top .multi { padding: 6px 9px; font-size: 10px; }
+  .phone .lm-camera .guide { inset: 22% 14% 35%; }
+  .phone .lm-camera .guide-label { top: -22px; font-size: 9px; padding: 4px 6px; }
+  .phone .lm-camera .hint { font-size: 10px; bottom: 10px; }
+  .phone .lm-camera .mode-row { padding: 6px 0 4px; }
+  .phone .lm-camera .mode { font-size: 10px; padding: 4px 9px; }
+  .phone .lm-camera .action-row { grid-template-columns: 44px 1fr 44px;
+                                    padding: 2px 16px 40px; }
+  .phone .lm-camera .thumb { width: 38px; height: 38px; border-radius: 9px; }
+  .phone .lm-camera .shutter { width: 54px; height: 54px; border-width: 3px; }
+  .phone .lm-camera .shutter .inner { width: 42px; height: 42px; }
+  .phone .lm-camera .flip { width: 36px; height: 36px; }
+  .phone .lm-camera .tray { left: 14px; right: 14px; bottom: 96px; padding: 6px;
+                              border-radius: 12px; gap: 4px; }
+  .phone .lm-camera .tray .tray-thumb { width: 30px; height: 30px;
+                                          font-size: 10px; border-radius: 6px; }
+  .phone .lm-camera .tray .tray-thumb .x { width: 14px; height: 14px;
+                                              font-size: 8px; top: -3px; right: -3px; }
+  .phone .lm-camera .tray .confirm { padding: 5px 9px; font-size: 11px; }
+  .phone .lm-camera .tray .tray-label { font-size: 10px; }
+  .phone .home-bar {
+    position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+    width: 100px; height: 4px; border-radius: 100px; background: rgba(255,255,255,0.7);
+    z-index: 70;
+  }
+</style></head>
+<body>
+  <div class="meta">
+    <span class="badge">iOS · CAMERA</span>
+    <h3>한 번에 여러 라벨도 찍을 수 있어요.</h3>
+    <p>iOS 26 카메라 UX를 그대로 따른 라이브 뷰파인더. 라벨 자동 인식
+      가이드 안에 제품을 맞추기만 하면 됩니다.</p>
+    <ul>
+      <li>단일 · 다중 모드 전환 (상단 노란 캡슐)</li>
+      <li>플래시 off · on · auto</li>
+      <li>다중 모드: "방금 찍은 N장" 트레이 + 확인 액션</li>
+      <li>왼쪽 썸네일 탭 → 사진 라이브러리</li>
+      <li>완료 → mascot 5-step 분석 화면</li>
+    </ul>
+  </div>
+
+  <div>
+    <div class="phone">
+      <div class="island"></div>
+      <span class="time">9:41</span>
+      <span class="battery"></span>
+
+      <div class="lm-camera" style="position: absolute; inset: 0;">
+        <div class="viewfinder">
+          <div class="scene"><div class="pad"></div></div>
+          <div class="guide">
+            <span class="guide-corner tl"></span>
+            <span class="guide-corner tr"></span>
+            <span class="guide-corner bl"></span>
+            <span class="guide-corner br"></span>
+            <span class="guide-label">Label · 자동 인식 중</span>
+          </div>
+          <div class="hint">라벨 전체가 사각형 안에 들어오도록 맞춰 주세요</div>
+        </div>
+        <header class="top" style="position: absolute; left: 0; right: 0; top: 0;">
+          <span class="pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </span>
+          <span class="spacer"></span>
+          <span class="pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </span>
+          <span class="multi on">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12l10 5 10-5M2 17l10 5 10-5M12 2L2 7l10 5 10-5-10-5z"/></svg>
+            다중 · 2장
+          </span>
+        </header>
+
+        <div class="tray">
+          <span class="tray-label">방금 찍은 2장</span>
+          <span class="tray-thumb">1<span class="x">×</span></span>
+          <span class="tray-thumb">2<span class="x">×</span></span>
+          <button class="confirm">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-11"/></svg>
+            확인 (2)
+          </button>
+        </div>
+
+        <div class="mode-row">
+          <span class="mode">단일</span>
+          <span class="mode active">다중</span>
+        </div>
+
+        <div class="action-row">
+          <span class="thumb">
+            <img src="../assets/mascot/tablet-frames/03-leaf-complete.png" alt="">
+            <span class="count">2</span>
+          </span>
+          <span class="shutter multi"><span class="inner"></span></span>
+          <span class="flip">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 12a9 9 0 11-3-6.7M21 4v5h-5"/></svg>
+          </span>
+        </div>
+      </div>
+      <span class="home-bar"></span>
+    </div>
+  </div>
+</body></html>

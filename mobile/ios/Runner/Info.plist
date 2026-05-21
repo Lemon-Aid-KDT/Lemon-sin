@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Lemon Aid</string>
+	<string>Lemon Aid Mobile</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>lemon_aid</string>
+	<string>lemon_aid_mobile</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,6 +26,15 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Lemon Aid uses camera photos to create supplement label OCR previews for your review.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Lemon Aid uses selected supplement label images to create OCR previews for your review.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,23 +75,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<!-- ─── 카메라 / 사진 / 마이크 권한 (영양제·식단 사진 분석) ─── -->
-	<key>NSCameraUsageDescription</key>
-	<string>영양제 라벨과 식단 사진을 분석하기 위해 카메라가 필요해요.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>저장된 라벨·식단 사진을 분석하기 위해 권한이 필요해요.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>분석 결과 또는 저장한 사진을 갤러리에 보관하기 위해 권한이 필요해요.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>음성 입력으로 식단을 기록할 때 마이크가 필요해요.</string>
-	<!-- ─── ATS: localhost dev backend (HTTP) 허용 ─── -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<!-- ─── 다크모드 OFF (Pillyze 톤 일관성, IOS_SETUP.md §G) ─── -->
-	<key>UIUserInterfaceStyle</key>
-	<string>Light</string>
 </dict>
 </plist>

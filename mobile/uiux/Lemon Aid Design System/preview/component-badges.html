@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { display: grid; gap: 14px; }
+  .row-b { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font: 600 12px/1 var(--font-body);
+    background: var(--canvas);
+    color: var(--ink-700);
+    border: 1px solid var(--ink-200);
+  }
+  .badge.solid-success { background: var(--leaf-600); color: #fff; border-color: transparent; }
+  .badge.soft-success  { background: var(--success-soft); color: var(--leaf-700); border-color: var(--leaf-100); }
+  .badge.soft-warning  { background: var(--warning-soft); color: #7A4200; border-color: #F1D9A2; }
+  .badge.soft-review   { background: var(--review-soft);  color: var(--review); border-color: #F1D9A2; }
+  .badge.soft-danger   { background: var(--danger-soft);  color: var(--danger); border-color: #F4C6C2; }
+  .badge.soft-info     { background: var(--info-soft);    color: #155A78;       border-color: #BFE2F4; }
+  .badge.lemon         { background: var(--lemon-100);    color: var(--lemon-600); border-color: var(--lemon-200); }
+  .badge.with-dot::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  [data-lucide] { width: 12px; height: 12px; stroke-width: 2.2; }
+  .group { font: var(--t-label); color: var(--ink-700); }
+</style></head>
+<body class="preview compact" style="height: 280px;">
+  <div class="group">Status pills · feed the five OUTPUTS of an analysis.</div>
+  <div class="row-b">
+    <span class="badge soft-success"><i data-lucide="check"></i>적정 섭취</span>
+    <span class="badge soft-review"><i data-lucide="alert-circle"></i>확인 필요</span>
+    <span class="badge soft-warning"><i data-lucide="alert-triangle"></i>과다 섭취</span>
+    <span class="badge soft-danger"><i data-lucide="ban"></i>상호작용 차단</span>
+    <span class="badge soft-info"><i data-lucide="info"></i>새 데이터</span>
+    <span class="badge lemon"><i data-lucide="sparkles"></i>오늘 한 줄</span>
+  </div>
+  <div class="group">Ingredient chips · category + amount + confidence.</div>
+  <div class="row-b">
+    <span class="badge">Vitamin D · 800 IU</span>
+    <span class="badge soft-success">충분 · 92%</span>
+    <span class="badge">Omega-3 · 1,000 mg</span>
+    <span class="badge soft-review">확신도 64%</span>
+    <span class="badge">Zinc · 15 mg</span>
+    <span class="badge soft-warning">중복 · 다른 영양제와 겹침</span>
+  </div>
+  <div class="group">Counter pills · numeric.</div>
+  <div class="row-b">
+    <span class="badge solid-success">+3 부족 보완</span>
+    <span class="badge with-dot lemon">분석 8개</span>
+    <span class="badge with-dot soft-warning">주의 2건</span>
+    <span class="badge with-dot soft-danger">차단 1건</span>
+  </div>
+  <div class="group">Disclosure tag · agent boundary reminder.</div>
+  <div class="row-b">
+    <span class="badge soft-info"><i data-lucide="info"></i>AI는 거드는 손길 · 진단 아님</span>
+    <span class="badge"><i data-lucide="user-check"></i>승인 전 미리보기</span>
+  </div>
+  <script>lucide.createIcons();</script>
+</body></html>

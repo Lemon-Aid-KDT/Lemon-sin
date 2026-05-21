@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { display: grid; gap: 12px; }
+  .disclaimer {
+    display: flex; gap: 12px;
+    padding: 14px 16px;
+    background: var(--info-soft);
+    border: 1px solid #BFE2F4;
+    border-radius: 16px;
+    color: #155A78;
+  }
+  .disclaimer .ico { padding-top: 1px; }
+  .disclaimer .body { font: var(--t-body-sm); line-height: 1.6; }
+  .disclaimer .body b { color: #0B405A; font-weight: 600; }
+  .disclaimer.lemon { background: var(--lemon-100); border-color: var(--lemon-200); color: var(--lemon-600); }
+  .disclaimer.danger { background: var(--danger-soft); border-color: #F4C6C2; color: #8B1F18; }
+  [data-lucide] { width: 20px; height: 20px; stroke-width: 1.7; }
+  .group { font: var(--t-label); color: var(--ink-700); }
+</style></head>
+<body class="preview compact" style="height: 320px;">
+  <div class="group">Main disclaimer · placed at the bottom of every recommendation screen.</div>
+  <div class="disclaimer">
+    <span class="ico"><i data-lucide="info"></i></span>
+    <div class="body">
+      <b>본 서비스의 정보는 일반적인 건강 관리를 위한 참고 자료입니다.</b>
+      의사·약사·영양사의 진단이나 처방을 대체하지 않으며, 약을 복용 중이라면 영양제 추가 전 의료진과 상담하세요.
+    </div>
+  </div>
+
+  <div class="group">Approval-before-action · the agent always previews before saving.</div>
+  <div class="disclaimer lemon">
+    <span class="ico"><i data-lucide="sparkles"></i></span>
+    <div class="body">
+      <b>AI는 거드는 손길이에요.</b> 라벨을 분석한 결과를 먼저 보여드릴게요. 사용자가 확인한 항목만 저장됩니다.
+    </div>
+  </div>
+
+  <div class="group">Hard block · prescription / interaction risk — never auto-saved.</div>
+  <div class="disclaimer danger">
+    <span class="ico"><i data-lucide="shield-alert"></i></span>
+    <div class="body">
+      <b>이 영양제는 현재 복용 중인 약과 상호작용 위험이 있어요.</b>
+      등록을 잠시 멈추고 의사·약사와 상담해 주세요. 본 앱은 복용 변경을 직접 안내하지 않습니다.
+    </div>
+  </div>
+  <script>lucide.createIcons();</script>
+</body></html>

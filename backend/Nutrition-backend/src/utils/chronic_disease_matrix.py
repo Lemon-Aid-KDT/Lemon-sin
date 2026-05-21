@@ -38,7 +38,7 @@ _DEFAULT_MATRIX_PATH = (
 )
 """기본 매트릭스 JSON 위치 (저장소 루트 기준 상대 경로 환원).
 
-``parents[4]`` = ``yeong-Lemon-Aid/`` (utils → src → Nutrition-backend → backend → yeong-Lemon-Aid).
+``parents[4]`` = ``Lemon-Aid/`` (utils → src → Nutrition-backend → backend → Lemon-Aid).
 """
 
 

@@ -283,6 +283,16 @@ def _ocr_provider_warning_codes(codes: tuple[str, ...]) -> list[str]:
     return [code for code in codes if not code.startswith("image_quality:")]
 
 
+async def _commit_consent_read_transaction(session: AsyncSession) -> None:
+    """Close an implicit consent-read transaction before service-level writes.
+
+    Args:
+        session: Request-scoped async database session.
+    """
+    if session.in_transaction():
+        await session.commit()
+
+
 async def _require_sensitive_health_consent(
     session: AsyncSession,
     current_user: AuthenticatedUser,
@@ -398,6 +408,8 @@ async def analyze_supplement_label(
             missing_consents.append(consent_type)
             last_consent_error = exc
 
+    await _commit_consent_read_transaction(session)
+
     if missing_consents:
         missing_values = [consent.value for consent in missing_consents]
         await record_sensitive_audit_event(
@@ -430,6 +442,7 @@ async def analyze_supplement_label(
             current_user,
             settings,
         )
+        await _commit_consent_read_transaction(session)
         result = await analyze_supplement_image(
             session=session,
             user=current_user,

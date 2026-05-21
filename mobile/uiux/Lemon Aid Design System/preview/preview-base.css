@@ -1,0 +1,56 @@
+/* preview-base.css — shared chrome for Design System tab cards. */
+@import url("../colors_and_type.css");
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink-900);
+  font: var(--t-body);
+  -webkit-font-smoothing: antialiased;
+}
+body.preview {
+  padding: 20px 22px;
+  box-sizing: border-box;
+  width: 700px;
+  overflow: hidden;
+}
+body.preview.compact { padding: 16px 18px; }
+.row    { display: flex; align-items: center; gap: 16px; }
+.col    { display: flex; flex-direction: column; }
+.grid   { display: grid; gap: 12px; }
+.stack  { display: flex; flex-direction: column; gap: 12px; }
+.spread { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.muted  { color: var(--ink-500); }
+.cap    { font: var(--t-caption); color: var(--ink-500); }
+.lbl    { font: var(--t-label); color: var(--ink-500); }
+.hairline { height: 1px; background: var(--ink-100); }
+
+/* tiny utility chips for tokens / hex codes */
+.tok {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--t-mono);
+  color: var(--ink-500);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--canvas);
+  border: 1px solid var(--ink-100);
+  white-space: nowrap;
+}
+.swatch {
+  border-radius: 12px;
+  border: 1px solid rgba(27, 19, 0, 0.06);
+  box-shadow: var(--shadow-1);
+}
+
+/* Liquid-glass surface used by several cards */
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.42));
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: var(--glass-shadow), var(--glass-inner-hl);
+  border-radius: var(--r-xl);
+}

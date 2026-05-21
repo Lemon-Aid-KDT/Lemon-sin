@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { display: grid; gap: 10px; }
+  .lead   { font: 400 17px/1.55 "AtoZ", var(--font-body); color: var(--ink-700); margin: 0; }
+  .body   { font: 400 15px/1.55 "AtoZ", var(--font-body); color: var(--ink-700); margin: 0; }
+  .small  { font: 300 13px/1.50 "AtoZ", var(--font-body); color: var(--ink-500); margin: 0; }
+  .label  { font: 500 13px/1.30 "AtoZ", var(--font-body); color: var(--ink-500); margin: 0; }
+  .caption{ font: 500 11px/1.20 "AtoZ", var(--font-body); color: var(--ink-500); margin: 0;
+             letter-spacing: 0.04em; text-transform: uppercase; }
+  .mono   { font: var(--t-mono); color: var(--ink-700); margin: 0; }
+  .row-tok { display: flex; gap: 10px; align-items: baseline; margin-top: -2px; }
+</style></head>
+<body class="preview" style="height: 380px;">
+  <p class="lead">도움이 되는, 당신의 레몬에이드. 진단이 아닌 건강관리 보조를 위한 한 줄.</p>
+  <div class="row-tok"><span class="cap">Body LG · AtoZ 400 · 17/26</span><span class="tok">--t-body-lg</span></div>
+
+  <p class="body">사진 한 장으로 영양제 라벨을 분석하고, 부족한 영양소·과다 섭취·주의 성분을 함께 보여드립니다. 결과는 저장 전에 다시 검토하실 수 있어요.</p>
+  <div class="row-tok"><span class="cap">Body · AtoZ 400 · 15/23</span><span class="tok">--t-body</span></div>
+
+  <p class="small">본 정보는 의사·약사·영양사의 진단이나 처방을 대체하지 않습니다.</p>
+  <div class="row-tok"><span class="cap">Body SM · AtoZ 300 · 13/20</span><span class="tok">--t-body-sm</span></div>
+
+  <p class="label">Vitamin D · 권장 섭취량</p>
+  <div class="row-tok"><span class="cap">Label · AtoZ 500 · 13/17</span><span class="tok">--t-label</span></div>
+
+  <p class="caption">오늘 한 줄 · TODAY'S BRIEF</p>
+  <div class="row-tok"><span class="cap">Caption · AtoZ 500 · 11 / uppercase</span><span class="tok">--t-caption</span></div>
+
+  <p class="mono">analysisId: a8c4e9-2026-05-18-0421  ·  KDRI: VITD_AI_19_64</p>
+  <div class="row-tok"><span class="cap">Mono · SF Mono 13/20</span><span class="tok">--t-mono</span></div>
+</body></html>

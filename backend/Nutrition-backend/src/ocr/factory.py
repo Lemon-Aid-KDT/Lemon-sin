@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from src.config import Settings
 from src.llm.ollama_vision import OllamaVisionAssistAdapter
@@ -26,6 +27,31 @@ logger = logging.getLogger(__name__)
 
 class OCRConfigurationError(RuntimeError):
     """Raised when OCR settings request a provider that cannot be built."""
+
+
+SupplementOCRProviderSelector = Literal["configured", "google_vision", "paddleocr"]
+
+
+def is_external_ocr_pipeline_enabled(
+    settings: Settings,
+    provider_selector: SupplementOCRProviderSelector = "configured",
+) -> bool:
+    """Return whether the selected OCR chain may call an external provider.
+
+    Args:
+        settings: Runtime settings.
+        provider_selector: Per-request OCR provider selector. ``configured``
+            uses the settings-driven provider chain.
+
+    Returns:
+        True when the active OCR path may send image bytes to an external OCR
+        provider.
+    """
+    if provider_selector == "google_vision":
+        return True
+    if provider_selector == "paddleocr":
+        return False
+    return settings.ocr_primary_provider == "google_vision" or settings.enable_clova_ocr
 
 
 def build_supplement_ocr_adapter(settings: Settings) -> OCRAdapter | None:
@@ -69,6 +95,45 @@ def build_supplement_image_analysis_adapters(settings: Settings) -> SupplementIm
         multimodal_ocr=_build_multimodal_ocr_adapter(settings),
         fallback_ocr_adapters=tuple(_build_fallback_ocr_adapters(settings)),
     )
+
+
+def build_supplement_image_analysis_adapters_for_provider(
+    settings: Settings,
+    provider_selector: SupplementOCRProviderSelector,
+    *,
+    configured_adapters: SupplementImageAnalysisAdapters | None = None,
+) -> SupplementImageAnalysisAdapters:
+    """Build adapters constrained to a request-selected OCR provider.
+
+    Args:
+        settings: Runtime settings.
+        provider_selector: Provider selected by the multipart request.
+        configured_adapters: Already-built settings-driven adapter bundle used
+            when ``provider_selector`` is ``configured``.
+
+    Returns:
+        Adapter bundle for the selected OCR path.
+
+    Raises:
+        OCRConfigurationError: If the requested provider is not configured.
+    """
+    if provider_selector == "configured":
+        return configured_adapters or build_supplement_image_analysis_adapters(settings)
+    if provider_selector == "google_vision":
+        return SupplementImageAnalysisAdapters(
+            ocr=_build_google_vision_adapter(settings),
+            vision=_build_vision_adapter(settings),
+            multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            fallback_ocr_adapters=(),
+        )
+    if provider_selector == "paddleocr":
+        return SupplementImageAnalysisAdapters(
+            ocr=_build_paddleocr_primary_adapter(settings),
+            vision=_build_vision_adapter(settings),
+            multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            fallback_ocr_adapters=(),
+        )
+    raise OCRConfigurationError(f"Unsupported OCR provider selector: {provider_selector}")
 
 
 def _build_vision_adapter(settings: Settings) -> YoloLabelDetector | None:

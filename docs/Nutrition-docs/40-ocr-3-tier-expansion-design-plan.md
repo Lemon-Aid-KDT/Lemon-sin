@@ -1,25 +1,24 @@
 # 40. OCR 3-Tier 확장 상세 설계 및 구현 플랜
 
 > **문서 정보**
-> 버전: v1.1 | 작성일: 2026-05-18 | 상태: PaddleOCR primary 전환 반영 (docs/33 v1.3 align) | 작성자: yeong-tech
+> 버전: v1.0 | 작성일: 2026-05-15 | 상태: 브레인스토밍 확정안 + 구현 플랜 | 작성자: yeong-tech
 
 ---
 
 ## 0. 결론
 
-PaddleOCR primary 전환(docs/33 v1.3) 이후 다음 단계는 새로운 OCR 체인을 한 번에 켜는 작업이 아니라, 이미 존재하는 orchestration 지점에 **YOLO ROI**, **PaddleOCR primary OCR**, **Ollama local vision assist**, **Google Vision/CLOVA optional external fallback**, **fixture evaluation report**를 단계적으로 연결하는 작업이다.
+Google Vision MVP 이후 다음 단계는 새로운 OCR 체인을 한 번에 켜는 작업이 아니라, 이미 존재하는 orchestration 지점에 **YOLO ROI**, **Google Vision primary OCR**, **Ollama local vision assist**, **PaddleOCR/CLOVA optional fallback**, **fixture evaluation report**를 단계적으로 연결하는 작업이다.
 
 이번 문서의 운영 원칙은 다음과 같다.
 
-- PaddleOCR(`paddleocr_local`)이 default primary OCR이며 `OCR_PRIMARY_PROVIDER=paddleocr` + `ENABLE_LOCAL_OCR=true`가 운영 기본값이다.
-- Google Vision은 `ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의가 켜진 환경에서만 활성화되는 외부 비교/스모크 옵션이다.
+- Google Vision은 primary OCR 역할을 유지한다.
 - YOLO는 OCR 전처리용 ROI detector이며, OCR 또는 성분 추론 엔진으로 취급하지 않는다.
 - Ollama vision은 local-only fallback/verification 보조 채널이며, `OCRResult.confidence`를 만들어낸다고 가정하지 않는다.
 - PaddleOCR과 CLOVA의 우선순위는 정확도 수치를 임의로 확정하지 않고 fixture benchmark 결과로 재검토한다.
 - raw image와 raw OCR text는 저장하지 않고, preview와 hash/metrics만 남긴다.
 - fixture report가 나오기 전까지 정확도·latency는 **목표 또는 측정 항목**일 뿐, 달성 수치로 기록하지 않는다.
 
-### 0.1 2026-05-15 구현 반영 상태
+### 0.1 2026-05-16 구현 반영 상태
 
 이 문서 기준으로 1차 구현을 반영했다.
 
@@ -30,6 +29,7 @@ PaddleOCR primary 전환(docs/33 v1.3) 이후 다음 단계는 새로운 OCR 체
 | O3T-3 Ollama fallback/verification | 1차 완료 | 기존 fallback 정책을 route factory에 연결했고, `ENABLE_MULTIMODAL_VERIFICATION` sample 검증 경로와 mismatch warning code를 추가했다. |
 | O3T-4 PaddleOCR fallback | 1차 완료 | `PaddleOCRAdapter`를 optional dependency 기반 lazy-load adapter로 추가했다. 기본값은 off다. |
 | O3T-5 CLOVA fallback | 1차 완료 | `ClovaOCRAdapter`를 external OCR gate 뒤 optional fallback으로 추가했다. 기본값은 off다. |
+| P1-4 Layout Parser | 완료 | `parse_label_layout()`가 `OCRResult.pages`의 word 좌표를 y-band/x-gap 휴리스틱으로 섹션별 행/열 cell 배열인 `LabelLayout`으로 변환한다. 모델/네트워크/LLM은 사용하지 않는다. |
 | O3T-6 fixture report | 완료 | `backend/scripts/evaluate_ocr_three_tier.py`, manifest example, redacted report template을 추가했다. P1 fixture 평가 리포트 gate는 `docs/Nutrition-docs/43-ocr-3-tier-fixture-evaluation-report-plan.md`에서 상세화한다. |
 | O3T-7 발주처 review gate | 부분 완료 | OCR evaluation report template은 추가했다. provider sign-off 문서와 checklist 연결은 별도 문서 보강 단계로 남긴다. |
 
@@ -53,7 +53,7 @@ cd 03_lemon_healthcare/yeong-Lemon-Aid/backend
 | --- | --- | --- |
 | Primary OCR | `backend/Nutrition-backend/src/ocr/factory.py`에서 `OCR_PRIMARY_PROVIDER=google_vision`일 때 `GoogleVisionOCRAdapter`를 생성한다. | route-level adapter factory가 아직 primary OCR만 주입한다. vision/multimodal/local fallback adapter까지 한 번에 조립하는 factory가 필요하다. |
 | Analyze endpoint | `backend/Nutrition-backend/src/api/v1/supplements.py`의 `get_supplement_image_analysis_adapters()`는 `SupplementImageAnalysisAdapters(ocr=...)`만 반환한다. | `vision=YoloLabelDetector(...)`, `multimodal_ocr=OllamaVisionAssistAdapter(...)`, optional fallback provider 주입이 필요하다. |
-| YOLO ROI | `backend/Nutrition-backend/src/vision/yolo.py`와 `backend/Nutrition-backend/src/vision/ultralytics_runner.py`에 gated detector와 Ultralytics runner가 있다. | 실제 analyze path에서 adapter가 주입되지 않는다. 또한 primary OCR(PaddleOCR) 입력을 ROI crop으로 바꾸는 전처리 경로가 필요하다. |
+| YOLO ROI | `backend/Nutrition-backend/src/vision/yolo.py`와 `backend/Nutrition-backend/src/vision/ultralytics_runner.py`에 gated detector와 Ultralytics runner가 있다. | 실제 analyze path에서 adapter가 주입되지 않는다. 또한 Google Vision primary OCR 입력을 ROI crop으로 바꾸는 전처리 경로가 필요하다. |
 | ROI crop helper | `backend/Nutrition-backend/src/vision/preprocessing.py`에 `crop_image_to_bounding_box()`가 있다. | Ollama vision assist는 자체 crop을 하지만, Google Vision adapter는 현재 `label_region` metadata를 직접 crop하지 않는다. |
 | Ollama vision assist | `backend/Nutrition-backend/src/llm/ollama_vision.py`에 local-only OCR-like fallback adapter가 있다. 결과 confidence는 `None`이다. | route factory 주입, fallback 실패 처리, cross-check verification 모델이 필요하다. |
 | Fallback policy | `Settings.multimodal_ocr_assist_policy`는 `disabled`, `ocr_empty_only`, `low_confidence`를 지원한다. | PaddleOCR/CLOVA 후순위 fallback selector와 verification sample policy가 없다. |
@@ -72,8 +72,8 @@ cd 03_lemon_healthcare/yeong-Lemon-Aid/backend
 | Ollama vision | Ollama vision 모델은 메시지의 `images` 배열로 이미지 입력을 받을 수 있다. URL: <https://docs.ollama.com/capabilities/vision> | `OllamaVisionAssistAdapter`는 image bytes를 base64로 전달하는 현재 구조를 유지한다. |
 | Ollama structured output | Ollama는 `format`에 JSON 또는 JSON Schema를 넣는 structured output 패턴을 제공한다. URL: <https://docs.ollama.com/capabilities/structured-outputs> | visible text 후보와 verification 결과는 Pydantic schema로 검증한다. |
 | PaddleOCR | PaddleOCR 3.x 문서는 `PaddleOCR()` 파이프라인, `predict()` 사용, detection/recognition model dir와 device 설정을 제공한다. URL: <https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html> | PaddleOCR fallback은 optional dependency와 local model cache가 준비된 환경에서만 enable한다. |
-| NAVER Cloud CLOVA OCR | CLOVA OCR은 API Gateway invoke URL과 `X-OCR-SECRET`을 사용하며, image `data` 또는 `url`, `requestId`, `timestamp`, `images` 등을 요청 구조로 사용한다. URL: <https://guide.ncloud-docs.com/docs/en/clovaocr-example01>, <https://api-fin.ncloud-docs.com/docs/clova-ocr-template-api> | CLOVA는 external OCR consent, secret handling, vendor review가 끝난 뒤 optional fallback으로만 둔다. |
-| NAVER Cloud CLOVA 운영 제한 | CLOVA OCR prerequisite 문서는 계정별 권장 호출 성능, 회전 문서 주의, 전송 이미지/결과 저장 정책 관련 안내를 제공한다. URL: <https://guide.ncloud-docs.com/docs/en/clovaocr-spec> | CLOVA를 기본 fallback으로 켜지 않고, review gate에서 throughput·보관정책·동의 문구를 검토한다. |
+| NAVER Cloud CLOVA OCR | CLOVA OCR의 API URL은 OCR Builder에서 생성된 API Gateway Invoke URL이고, 요청 헤더는 `X-OCR-SECRET` Client Secret을 사용한다. General OCR은 `fields[].inferText`, `inferConfidence`, `boundingPoly.vertices`, `lineBreak`, `tables[].cells[]` 계열 응답 필드를 제공한다. URL: <https://api-gov.ncloud-docs.com/docs/ai-application-service-ocr>, <https://guide-gov.ncloud-docs.com/docs/clovaocr-example01>, <https://api.ncloud-docs.com/docs/ai-application-service-ocr-ocr> | CLOVA는 external OCR consent, backend-only secret handling, vendor review가 끝난 뒤 optional fallback으로만 둔다. Firebase/custom DNS 도메인은 CLOVA OCR Domain/API Gateway를 대체하지 않는다. |
+| NAVER Cloud CLOVA 운영 제한 | CLOVA 공통 응답 상태 코드는 401 Secret 검증 실패, 0023/0025 호출 제한, 5xx OCR 서비스 오류 등을 문서화한다. URL: <https://api-gov.ncloud-docs.com/docs/ai-application-service-ocr> | CLOVA를 기본 fallback으로 켜지 않고, review gate에서 quota·오류 처리·보관정책·동의 문구를 검토한다. |
 
 ---
 
@@ -112,13 +112,13 @@ Ollama vision assist는 두 모드로 분리한다.
 
 정확도 우선순위는 fixture benchmark 전에는 확정하지 않는다. 다만 운영 기본값은 다음처럼 둔다.
 
-1. PaddleOCR primary OCR (`paddleocr_local`)
+1. Google Vision primary OCR
 2. Ollama local vision fallback 또는 verification
-3. Google Vision external OCR (`ALLOW_EXTERNAL_OCR=true` + `EXTERNAL_OCR_PROCESSING` 동의 시에만)
-4. CLOVA OCR external fallback (기본 OFF + vendor review 필요)
+3. PaddleOCR local fallback
+4. CLOVA OCR external fallback
 5. manual confirmation
 
-이 순서의 이유는 정확도 확정이 아니라, 환자 정보의 외부 전송과 비용/secret/vendor 검토면에서 local primary를 먼저 활용하고 외부 provider는 명시 동의 게이트를 거친 뒤에만 활성화하는 것이 프로젝트 기본 안전 원칙과 맞기 때문이다. Google Vision과 CLOVA는 한국어 OCR 정확도 상한 측정 후보로 유지하되, external OCR consent와 발주처 vendor review가 끝나기 전에는 기본 off로 둔다.
+이 순서의 이유는 "PaddleOCR이 CLOVA보다 정확하다"는 확정이 아니라, 개인정보 외부 전송과 비용/secret/vendor 검토면에서 local fallback을 먼저 검토하는 것이 프로젝트 기본 안전 원칙과 맞기 때문이다. CLOVA는 한국어 OCR 후보로 유지하되, external OCR consent와 발주처 vendor review가 끝나기 전에는 기본 off로 둔다.
 
 ### 3.4 Fixture report
 
@@ -217,6 +217,8 @@ local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
 enable_clova_ocr: bool = False
 clova_ocr_api_url: str | None = None
 clova_ocr_secret: SecretStr | None = None
+clova_ocr_timeout_seconds: int = Field(default=15, ge=1, le=60)
+clova_ocr_max_retries: int = Field(default=1, ge=0, le=3)
 ```
 
 Production validator 추가 원칙:
@@ -458,7 +460,7 @@ optional 검증:
 ```bash
 cd 03_lemon_healthcare/yeong-Lemon-Aid/backend
 RUN_GOOGLE_VISION_SMOKE=1 .venv/bin/python -m pytest Nutrition-backend/tests/integration/ocr/test_google_vision_smoke.py -q --no-cov
-RUN_CLOVA_OCR_SMOKE=1 .venv/bin/python -m pytest Nutrition-backend/tests/integration/ocr/test_clova_smoke.py -q --no-cov
+RUN_CLOVA_OCR_LIVE_SMOKE=1 .venv/bin/python -m pytest Nutrition-backend/tests/integration/ocr/test_clova_smoke.py -q --no-cov
 ```
 
 fixture report:

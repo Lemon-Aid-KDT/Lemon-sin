@@ -1,13 +1,16 @@
 # 05. GitHub 협업 규칙 (GitHub Collaboration Guidelines)
 
 > **문서 정보**
-> 버전: v1.1 | 작성일: 2026-05-03 | 수정일: 2026-05-15 | 상태: 초안 | 작성자: 경북대학교 AI/빅데이터 전문가 양성 과정 — TBD팀
+> 버전: v1.2 | 작성일: 2026-05-03 | 수정일: 2026-05-21 | 상태: 운영 중 | 작성자: 경북대학교 AI/빅데이터 전문가 양성 과정 — Lemon Aid팀
+
+> ⚠️ **이 문서는 legacy detailed 레퍼런스입니다.** 2026-05-21부터 신규 협업 결정은 [`docs/team-collaboration/`](./team-collaboration/README.md) 폴더가 **우선**합니다. 두 문서가 충돌할 경우 team-collaboration 쪽이 정본(source of truth)입니다.
 
 ---
 
 ## 📋 한 줄 요약
 
 > 학생 팀 + 발주처 협업 + 다양한 GitHub 숙련도를 모두 고려해, **충돌 없이 코딩하고 발표 시 "협업 체계까지 갖춘 팀"이라는 인상을 주는 표준 + CI + Branch Protection + 린터** 통합 규칙.
+> **2026-05-21 업데이트**: `develop` 통합 브랜치를 정식 도입하고, 신규 작업은 단명 `<type>/<scope>-<주제>` 패턴으로 전환합니다. 기존 `<member>-<part>` 고정 브랜치는 점진적으로 마이그레이션합니다.
 
 ---
 
@@ -150,38 +153,43 @@
 
 ---
 
-## 2. 브랜치 전략 (팀원-파트 브랜치 Flow)
+## 2. 브랜치 전략 (Hybrid Flow — 단명 작업 브랜치 우선)
 
-첨부된 GitHub 브랜치 현황처럼, 이 프로젝트는 기능 단위 `feature/*` 브랜치를 계속 새로 만드는 방식보다 **팀원 이름 + 담당 파트**를 붙인 고정 작업 브랜치를 사용한다. 각 팀원은 자기 브랜치에서 작업하고, PR로 `develop` 또는 `main`에 통합한다.
+이 프로젝트는 두 가지 브랜치 패턴을 **공존**시키되, **신규 작업은 단명 `<type>/<scope>-<주제>` 패턴을 권장**한다. 기존 `<member>-<part>` 고정 브랜치는 점진적으로 새 패턴으로 마이그레이션한다.
+
+> 📖 신규 패턴 상세: [`team-collaboration/BRANCH_STRATEGY.md`](./team-collaboration/BRANCH_STRATEGY.md)
 
 ### 2.1 브랜치 종류
 
 ```
-main (production)
+main (production)                              ← 발표/시연용 안정 버전 (protected, 2명 승인)
   ↑
-  │ (release PR — 발표/시연 시점에만 머지)
+  │ (release PR — 매주 금 17:00 정기 머지)
   │
-develop (integration)
+develop (integration)                          ← 통합·테스트 브랜치 (protected, 1명 승인)
   ↑
-  │ (PR 머지)
+  │ (PR + CI green + 리뷰 1명 → Squash Merge)
   │
-<member>-<part>
+  ├─ <type>/<scope>-<주제>   ← 권장 (단명, 3-7일 안에 머지)
+  │   예: feat/mobile-dashboard-5tab-shell
+  │       fix/ocr-naver-chronic-snapshot
+  │       chore/infra-python-3.13-bump
+  │       docs/team-develop-rules
+  │
+  └─ <member>-<part>          ← 레거시 (점진적 마이그레이션)
+      예: changmin-aiagent, changmin-plan, taedong-design,
+          yeong-tech, jongpil-tech, sunghoon-database
 
-예:
-changmin-aiagent
-changmin-plan
-taedong-design
-yeong-tech
-jongpil-tech
-sunghoon-database
+hotfix/<scope>-<주제>          ← main 긴급 수정 → main + develop cherry-pick
 ```
 
-| 브랜치 | 역할 | 머지 대상 | 보호 수준 |
-|--------|------|---------|----------|
-| `main` | 발표·시연용 안정 버전 | 직접 푸시 금지 | 🔴 최고 (Branch Protection) |
-| `develop` | 통합 개발 브랜치 | 팀원 브랜치 PR 대상 | 🟡 중간 (CI 통과 + 1 리뷰) |
-| `<member>-<part>` | 팀원별 담당 파트 작업 브랜치 | develop으로 PR | — |
-| `hotfix-<이슈번호>-<설명>` | main 긴급 수정 | main + develop | — |
+| 브랜치 | 역할 | 머지 대상 | 머지 방식 | 보호 수준 |
+|--------|------|----------|-----------|----------|
+| `main` | 발표·시연용 안정 버전 | 직접 푸시 금지 | Merge commit (no-ff) | 🔴 최고 (2명 승인 + CI) |
+| `develop` | 통합 개발 브랜치 | 모든 작업 브랜치의 PR 대상 | Squash Merge | 🟡 중간 (1명 승인 + CI) |
+| `<type>/<scope>-<주제>` | **신규 권장** — 단명 작업 브랜치 | develop으로 PR | Squash Merge | — |
+| `<member>-<part>` | **레거시** — 팀원 고정 작업 브랜치 | develop으로 PR | Squash Merge | — |
+| `hotfix/<scope>-<주제>` | main 긴급 수정 | main + develop | Merge commit | — |
 
 ### 2.2 현재 팀 브랜치 기준
 
@@ -196,10 +204,34 @@ sunghoon-database
 
 ### 2.3 브랜치 네이밍 규칙
 
+#### 2.3.1 신규 권장 패턴 (단명 작업 브랜치)
+
+```
+형식: <type>/<scope>-<kebab-case-주제>
+
+예시:
+  feat/mobile-dashboard-5tab-shell
+  feat/nutrition-chronic-disease-matrix
+  fix/ocr-naver-chronic-snapshot-mismatch
+  chore/infra-python-3.13-bump
+  docs/team-develop-rules
+  refactor/backend-supplement-service-split
+  test/aiagent-meal-compliance
+```
+
+규칙:
+- `<type>`은 [§3.2 Type 종류](#32-type-종류)와 동일한 목록 사용
+- `<scope>`은 [§3.3 Scope](#33-scope-선택적)와 동일한 목록 사용 (예: `mobile`, `backend`, `nutrition`, `food`, `aiagent`, `ocr`, `db`, `auth`, `ux`, `infra`, `docs`, `team`, `data`)
+- `<주제>`는 kebab-case (소문자 + 하이픈), 작업자 이름 포함 금지
+- 3–7일 안에 머지 가능한 단위로 분할
+- 머지 후 브랜치는 즉시 삭제
+
+#### 2.3.2 레거시 패턴 (팀원-파트 고정 브랜치, 점진적 마이그레이션)
+
 ```
 형식: <member>-<part>
 
-예시:
+현재 사용 중:
   changmin-aiagent
   changmin-plan
   taedong-design
@@ -208,36 +240,42 @@ sunghoon-database
   sunghoon-database
 ```
 
-규칙:
-- 모두 **소문자** 사용
-- 단어 구분은 **하이픈(-)** 사용 (언더스코어 X)
-- 첫 단어는 팀원 이름 또는 GitHub에서 합의한 영문 식별자
-- 뒤 단어는 담당 파트명
-- 한 사람이 여러 파트를 맡으면 `changmin-aiagent`, `changmin-plan`처럼 브랜치를 분리
-- PR 제목과 커밋 메시지에서 세부 작업 내용을 설명하고, 브랜치명에는 큰 담당 파트만 적는다
-- 기존 `feature/*`, `docs/*`, `bugfix/*` 형식은 신규 작업에 사용하지 않는다
-- 긴급 수정만 `hotfix-<이슈번호>-<설명>` 형식을 예외적으로 사용한다
+이미 작업 중인 브랜치는 유지하되, **develop에 PR 머지한 다음 작업부터는 §2.3.1 패턴**으로 분기합니다.
+
+레거시 규칙 (계속 유지):
+- 모두 **소문자** 사용 / 단어 구분은 **하이픈(-)** / 언더스코어 X
+- 자기 담당 브랜치에서만 직접 push, 다른 사람 브랜치에는 직접 push 금지
+- `feature/*`, `docs/*`, `bugfix/*` 같은 옛 prefix는 신규 작업에 사용하지 않음
 
 ### 2.4 브랜치 라이프사이클
 
+#### 2.4.1 신규 패턴 라이프사이클 (권장)
+
 ```
-1. 자기 담당 브랜치 이동 → git switch yeong-tech
-2. 통합 브랜치 최신 내용 반영 → git fetch origin && git merge origin/develop
+1. develop 최신 동기화      → git fetch team && git switch develop && git pull team develop
+2. 단명 브랜치 분기         → git switch -c feat/<scope>-<주제> team/develop
+3. 작업·커밋               → 의미 단위로 git add -p / git commit
+4. develop 변경 동기화      → git fetch team && git rebase team/develop  (작업 중 정기적으로)
+5. 푸시                    → git push -u team feat/<scope>-<주제>
+6. PR 생성                 → gh pr create --base develop --fill
+7. CI 통과 + 리뷰 1명 승인  → Squash and Merge
+8. 원격·로컬 브랜치 삭제    → 다음 작업은 다시 1번부터
+```
+
+#### 2.4.2 레거시 패턴 라이프사이클 (마이그레이션 중)
+
+```
+1. 자기 담당 브랜치 이동    → git switch yeong-tech
+2. 통합 브랜치 최신 반영    → git fetch team && git rebase team/develop  (merge 대신 rebase 권장)
 3. 작업·커밋
-4. push → git push origin yeong-tech
-5. GitHub에서 PR 생성 (base: develop, compare: yeong-tech)
+4. push                    → git push team yeong-tech
+5. PR 생성 (base: develop, compare: yeong-tech)
 6. CI 통과 + 리뷰 통과
 7. Squash & Merge
-8. 자기 담당 브랜치는 삭제하지 않고 다음 작업에 계속 사용
+8. 다음 작업은 §2.4.1의 단명 브랜치 패턴으로 분기
 ```
 
-새 담당 브랜치가 필요한 경우:
-
-```bash
-git fetch origin
-git switch -c <member>-<part>
-git push -u origin <member>-<part>
-```
+> 📖 충돌 해결 / `--force-with-lease` 사용법 / reflog 복구: [`team-collaboration/MERGE_AND_CONFLICT.md`](./team-collaboration/MERGE_AND_CONFLICT.md)
 
 ---
 
@@ -265,24 +303,50 @@ git push -u origin <member>-<part>
 | `perf` | 성능 개선 | `perf(prediction): cache BMR calculation` |
 | `test` | 테스트 추가/수정 | `test(nutrition): add edge cases for BMI categories` |
 | `chore` | 빌드, 설정 등 | `chore(deps): upgrade fastapi to 0.110` |
-| `ci` | CI 설정 변경 | `ci: add docs lint workflow` |
+| `ci` | CI 설정 변경 | `ci(infra): add docs lint workflow` |
+| `build` | 빌드 시스템·외부 의존성 변경 | `build(mobile): pubspec.yaml dio 5.4 상향` |
+| `revert` | 이전 커밋 되돌리기 | `revert(ocr): textline_orientation 기본값 복구` |
+| `data` | 데이터셋·픽스처 추가/변경 | `data(ocr-eval): 16개 만성질환 픽스처 추가` |
+| `ops` | 운영·배포·모니터링 | `ops(ocr): 스테이징 vision api_key 모드 경고` |
+
+> 📖 type별 상세 가이드: [`team-collaboration/COMMIT_CONVENTION.md`](./team-collaboration/COMMIT_CONVENTION.md)
 
 ### 3.3 Scope (선택적)
 
-영역을 명시할 수 있습니다.
+영역을 명시할 수 있습니다. 두 가지 scope 체계가 공존하며, **도메인 scope를 우선**하되 인프라·UX 등 도메인 외 변경은 일반 scope를 사용합니다.
+
+#### 3.3.1 도메인 scope (제품 기능 영역)
 
 | Scope | 영역 |
 |-------|------|
 | `nutrition` | `backend/Nutrition-backend/`, `docs/Nutrition-docs/`, 영양제·영양 분석 |
 | `food` | `backend/food_image_analysis/`, `data/food_images/`, 음식 사진 분석 |
 | `aiagent` | `backend/ai_agent_chat/`, `docs/Chat-docs/`, AI agent chat |
-| `design` | `mobile/uiux/`, `frontend/`, `assets/`, UI/UX·시각 자산 |
+| `ocr` | OCR provider, Vision API, 영양 라벨 파싱 (Nutrition 하위지만 PR 단위가 클 때 분리) |
+| `auth` | OAuth, 세션, 이메일 인증, secure storage |
+
+#### 3.3.2 일반 scope (인프라·UX 영역)
+
+| Scope | 영역 |
+|-------|------|
 | `mobile` | `mobile/flutter_app/`, Flutter/Xcode 앱 |
-| `db` | 데이터베이스 |
+| `backend` | backend 전반 (한 영역에 국한되지 않을 때) |
+| `ai` | LLM 어댑터·프롬프트 (chat 외 사용처) |
+| `db` | 데이터베이스 스키마·마이그레이션 |
 | `data` | 데이터셋, manifests, splits, taxonomy |
-| `docs` | 문서 |
+| `design` / `ux` | `mobile/uiux/`, `frontend/`, `assets/`, 디자인 토큰 |
+| `docs` | 문서 (이 폴더 포함) |
+| `team` | 협업 규칙 (`docs/team-collaboration/`) |
 | `integration` | 통합 운영, 릴리스, 시연, cross-part coordination |
-| `ci` | CI/CD |
+| `infra` / `ci` | CI/CD, Docker, GitHub Actions, 배포 인프라 |
+| `test` | 테스트 인프라 전반 (단위 테스트는 해당 영역 scope) |
+
+#### 3.3.3 scope 선택 우선순위
+
+1. 변경이 단일 도메인에 국한 → 해당 **도메인 scope** (`nutrition`, `food`, `aiagent`, `ocr`, `auth`)
+2. 단일 도메인이지만 PR 단위가 너무 클 때 → 하위 scope 분리 (예: `nutrition` 전체 대신 `ocr`)
+3. 도메인을 가로지르는 인프라/UX → **일반 scope** (`mobile`, `infra`, `db`, `data`, `design` 등)
+4. 둘 다 해당될 때 → PR 본문에 보조 영역 명시, 제목에는 가장 핵심인 scope 하나만
 
 ### 3.4 좋은 커밋 vs 나쁜 커밋
 
@@ -666,15 +730,21 @@ GitHub Settings → Branches → Add rule:
 | `Require status checks to pass before merging` | ✅ |
 | `Required status checks` | 변경된 영역의 CI |
 
-### 9.3 팀원 담당 브랜치
+### 9.3 작업 브랜치 (신규/레거시 모두)
 
+#### 신규 단명 브랜치 (`<type>/<scope>-<주제>`)
+- 직접 push 허용 (보호 규칙 없음)
+- develop에 PR 머지 후 **즉시 삭제** (GitHub: Automatically delete head branches 활성화)
+- force push는 본인 브랜치에서만, `--force-with-lease` 사용
+
+#### 레거시 고정 브랜치 (`<member>-<part>`)
 `changmin-aiagent`, `changmin-plan`, `taedong-design`, `yeong-tech`, `jongpil-tech`, `sunghoon-database`는 개인 작업 브랜치이므로 직접 push를 허용한다. 단, 다음 규칙을 지킨다.
 
 - 자기 담당 브랜치에서만 직접 push한다.
 - 다른 팀원 브랜치에 직접 push하지 않는다.
 - `main`과 `develop`에는 직접 push하지 않는다.
-- 자기 브랜치가 오래되면 PR 전에 `develop`을 merge/rebase해 충돌을 먼저 해결한다.
-- 브랜치명은 담당 파트가 바뀌지 않는 한 유지한다.
+- 자기 브랜치가 오래되면 PR 전에 `develop`을 rebase(권장) 또는 merge해 충돌을 먼저 해결한다.
+- **신규 작업은 §2.3.1 패턴으로 분기**한다. 이미 작업 중인 변경만 기존 브랜치에서 마무리한다.
 
 ### 9.4 CODEOWNERS 파일
 
@@ -831,11 +901,25 @@ VS Code 추천 확장:
 
 | 버전 | 날짜 | 변경 사항 | 작성자 |
 |-----|------|---------|-------|
+| v1.2 | 2026-05-21 | develop 통합 브랜치 정식 도입, 단명 `<type>/<scope>-<주제>` 패턴 추가, type에 `build`/`revert`/`data`/`ops` 보강, scope를 도메인/일반으로 분리, `docs/team-collaboration/` 연계 | Lemon Aid 팀 |
 | v1.1 | 2026-05-15 | 팀원-파트 브랜치 Flow, Nutrition-backend 이동 후 폴더 트리, 공통 docs/Integration-docs 운영 기준 반영 | TBD |
 | v1.0 | 2026-05-03 | 초안 작성. 폴더구조·브랜치·커밋·PR·CI·Branch Protection 통합 | TBD |
 
 ## 🔗 관련 문서
 
+### 신규 협업 규칙 (정본 — 2026-05-21~)
+- [`team-collaboration/README.md`](./team-collaboration/README.md) — 인덱스
+- [`team-collaboration/BRANCH_STRATEGY.md`](./team-collaboration/BRANCH_STRATEGY.md) — 브랜치 전략
+- [`team-collaboration/COMMIT_CONVENTION.md`](./team-collaboration/COMMIT_CONVENTION.md) — 커밋 메시지
+- [`team-collaboration/PR_GUIDELINES.md`](./team-collaboration/PR_GUIDELINES.md) — PR 작성·리뷰
+- [`team-collaboration/DEVELOP_WORKFLOW.md`](./team-collaboration/DEVELOP_WORKFLOW.md) — develop 통합 흐름
+- [`team-collaboration/LOCAL_SETUP.md`](./team-collaboration/LOCAL_SETUP.md) — 로컬 hook/별칭
+- [`team-collaboration/MERGE_AND_CONFLICT.md`](./team-collaboration/MERGE_AND_CONFLICT.md) — 충돌 해결
+- [`team-collaboration/CODE_REVIEW_CHECKLIST.md`](./team-collaboration/CODE_REVIEW_CHECKLIST.md) — 리뷰 체크리스트
+- [`team-collaboration/CI_CD_GATES.md`](./team-collaboration/CI_CD_GATES.md) — 자동 게이트
+- [`team-collaboration/TEAM_QUICK_REFERENCE.md`](./team-collaboration/TEAM_QUICK_REFERENCE.md) — 한 페이지 치트시트
+
+### 팀 전체 요약 문서
 - [01. 프로젝트 개요](./01-project-overview.md)
 - [03. 기획 의도](./03-project-intent.md)
 - [06. 기술 스택](./06-tech-stack.md)
