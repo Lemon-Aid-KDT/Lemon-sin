@@ -82,6 +82,10 @@ curl http://127.0.0.1:11434/api/version
 ollama pull qwen3.5:9b      # 텍스트 (docs/12 §3 1차 기본)
 ollama pull gemma4:e4b      # 멀티모달 (docs/33 §5.3 Tier 3 이미지→텍스트)
 
+# GGUF 커스텀 모델 빌드 (Gemma 4 26B Mixture-of-Experts 모델)
+# 상세 다운로드 및 로컬 빌드 가이드는 아래 문서를 참고한다.
+# [dev-guides/31-gemma-4-gguf-setup-guide.md](./dev-guides/31-gemma-4-gguf-setup-guide.md)
+
 # 동작 확인
 curl http://127.0.0.1:11434/api/chat \
   -H "Content-Type: application/json" \
@@ -108,6 +112,8 @@ Invoke-WebRequest -Uri http://127.0.0.1:11434/api/version
 # 모델 풀 + 동작 확인
 ollama pull qwen3.5:9b
 ollama pull gemma4:e4b
+# Gemma 4 26B 로컬 커스텀 모델 빌드는 아래 가이드를 참고하여 진행
+# [dev-guides/31-gemma-4-gguf-setup-guide.md](./dev-guides/31-gemma-4-gguf-setup-guide.md)
 ollama list
 ```
 
@@ -116,8 +122,8 @@ ollama list
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen3.5:9b              # 텍스트 구조화 (Tier 3 B)
-OLLAMA_VISION_MODEL=gemma4:e4b       # 이미지→텍스트 (Tier 3 A)
+OLLAMA_MODEL=qwen3.5:9b              # 텍스트 구조화 (또는 로컬 빌드한 gemma-4-26b-it)
+OLLAMA_VISION_MODEL=gemma4:e4b       # 이미지→텍스트 (또는 로컬 빌드한 gemma-4-26b-it)
 OLLAMA_TIMEOUT_SEC=60
 OLLAMA_TEMPERATURE=0
 ALLOW_EXTERNAL_LLM=false
@@ -403,7 +409,7 @@ backend/src/llm/
 - [ ] `brew install ollama` + `brew services start ollama`
 - [ ] `ollama --version` 확인
 - [ ] MLX preview 성능 비교는 32GB 초과 Apple Silicon에서 별도 측정
-- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:e4b`
+- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:e4b` (또는 가이드 31에 따라 `gemma-4-26b-it` 커스텀 빌드)
 - [ ] §2.6 smoke 테스트 통과
 - [ ] [`backend/.env.example`](../backend/.env.example) → `.env` 복사 + Service Account JSON 경로 입력 ([docs/33 §4.4](./33-three-tier-ocr-pipeline-implementation-guide.md))
 - [ ] `pytest backend/tests` 그린
@@ -411,7 +417,7 @@ backend/src/llm/
 **Windows:**
 - [ ] `winget install Ollama.Ollama`
 - [ ] NVIDIA driver ≥ 525.60.13 확인 (`nvidia-smi`)
-- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:e4b`
+- [ ] `ollama pull qwen3.5:9b && ollama pull gemma4:e4b` (또는 가이드 31에 따라 `gemma-4-26b-it` 커스텀 빌드)
 - [ ] §2.6 smoke 테스트 통과
 - [ ] `.env` 동일 작성
 - [ ] `pytest backend/tests` 그린
