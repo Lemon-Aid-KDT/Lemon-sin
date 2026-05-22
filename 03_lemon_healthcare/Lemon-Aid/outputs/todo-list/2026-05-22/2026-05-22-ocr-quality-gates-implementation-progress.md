@@ -78,6 +78,22 @@
 - 기존 tracked OCR eval report 22개는 raw key는 없었지만 개발자 홈/외장 드라이브 경로가 남아 있어 `$LEMON_AID_ROOT`, `$LEMON_AID_BACKEND_ROOT`, `$NAVER_TAMPERMONKEY_SOURCE_ROOT` 또는 상대경로로 보정했다.
 - 2026-05-22 CLOVA baseline 산출물 4개도 scanner로 재검사했고 통과했다.
 
+### 3.6 PR Export Base Gate
+
+추가 파일:
+
+- `backend/scripts/check_pr_export_base.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_pr_export_base.py`
+
+변경:
+
+- PR/export base ref가 실제 Lemon Aid OCR backend tree를 포함하는지 검사한다.
+- base ref가 `.env` 또는 `outputs/generated/ocr-eval/`을 이미 tracking 중이면 실패한다.
+- 현재 팀 remote 검증 결과:
+  - `team/develop`은 skeleton 상태라 `backend/Nutrition-backend/src/ocr/field_extractor.py` 누락으로 실패한다.
+  - `team/feat/ocr-p1-5-followup`은 code-bearing branch지만 generated OCR eval artifacts를 tracking 중이라 실패한다.
+  - 따라서 첫 export PR 전에 code-bearing base cleanup 또는 `team/develop` 동기화가 필요하다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:

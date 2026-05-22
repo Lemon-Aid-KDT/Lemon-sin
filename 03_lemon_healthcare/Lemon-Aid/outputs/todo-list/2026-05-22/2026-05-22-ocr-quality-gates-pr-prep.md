@@ -3,7 +3,6 @@
 ## Current Branch
 
 - Branch: `feat/ocr-quality-gates`
-- Current head: `f4c0c98b docs(ocr): 로컬 경로 노출을 정리`
 - Internal base: `codex/p1-5-stabilization`
 - Remote target: `team/develop`
 - Merge rule: feature -> develop uses Squash
@@ -18,14 +17,17 @@ Observed state:
 
 - `team/develop` contains root-level skeleton folders such as `backend/src`, `backend/tests`, `mobile/lib`, and README/.gitkeep placeholders.
 - `team/develop` does not contain `backend/Nutrition-backend/src/ocr/field_extractor.py`.
-- `team/feat/ocr-p1-5-followup` does contain the `backend/Nutrition-backend` application tree.
+- `team/feat/ocr-p1-5-followup` does contain the `backend/Nutrition-backend` application tree, but it also tracks generated OCR eval artifacts under `outputs/generated/ocr-eval/`.
 - A trial export of PR 1 against `team/develop` failed because the target files do not exist in that index.
 - The temporary export worktree and branch created for that trial were removed.
+- `backend/scripts/check_pr_export_base.py` now automates this precheck:
+  - `team/develop` fails with missing `backend/Nutrition-backend/src/ocr/field_extractor.py`.
+  - `team/feat/ocr-p1-5-followup` fails with forbidden `outputs/generated/ocr-eval/` tracked files.
 
 Implication:
 
 - A small patch PR directly to `team/develop` is blocked until `team/develop` is synced with the Lemon Aid application tree.
-- If the team wants immediate review, target the already code-bearing branch `team/feat/ocr-p1-5-followup` or first merge/squash that branch into `team/develop`.
+- If the team wants immediate review, first create a code-bearing base branch that removes generated OCR eval artifacts, or sync/squash that cleaned application tree into `team/develop`.
 - Do not commit generated OCR eval artifacts from the existing team feature branch into new PRs.
 
 ## Branch Preservation
@@ -117,6 +119,7 @@ Candidate files:
 - `backend/scripts/run_naver_tampermonkey_ocr_eval.py`
 - `backend/scripts/smoke_supplement_analyze_api.py`
 - `backend/scripts/check_ocr_artifact_privacy.py`
+- `backend/scripts/check_pr_export_base.py`
 - `backend/Nutrition-backend/tests/unit/scripts/*`
 - `outputs/todo-list/2026-05-22/2026-05-22-clova-phase0-baseline-result.md`
 - `outputs/todo-list/2026-05-22/2026-05-22-ocr-quality-gates-implementation-progress.md`
@@ -238,9 +241,17 @@ git fetch team
 git merge-base team/develop HEAD
 # expected here: no output / non-zero because histories are unrelated
 
-git -C $MONOREPO_ROOT ls-tree -r --name-only team/develop -- backend/Nutrition-backend/src/ocr/field_extractor.py
-# currently empty; do not apply PR 1 to team/develop while this remains empty
+PYTHONPATH=backend/Nutrition-backend:backend \
+  $PYTHON_BIN backend/scripts/check_pr_export_base.py \
+  --repo-root $MONOREPO_ROOT \
+  --base-ref $CODE_BEARING_BASE_BRANCH
 ```
+
+The check must pass before creating an export worktree. It rejects:
+
+- skeleton bases missing `backend/Nutrition-backend/src/ocr/field_extractor.py`
+- bases that already track `outputs/generated/ocr-eval/`
+- bases that track `.env`
 
 Example export for PR 1:
 
@@ -275,5 +286,6 @@ Conflict resolution must preserve:
 - production/staging security validation guards
 - generated/private OCR artifacts excluded from Git
 - `backend/scripts/check_ocr_artifact_privacy.py` passes on any exported artifact files
+- `backend/scripts/check_pr_export_base.py` passes on the chosen base ref
 
 Push only after the exported team-root branch passes tests and the changed-file secret/path scan is empty.
