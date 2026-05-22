@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app_controller.dart';
@@ -29,6 +32,9 @@ class SupplementFlowScreen extends StatefulWidget {
 
 class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   static const double _lowConfidenceThreshold = 0.75;
+  static const MethodChannel _cameraPermissionChannel = MethodChannel(
+    'com.lemonaid.mobile/camera_permission',
+  );
 
   late final ImagePicker _imagePicker;
   final TextEditingController _ocrTextController = TextEditingController();
@@ -175,22 +181,31 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         );
         _stage = _SupplementFlowStage.imageSelected;
       });
+      await _refreshSelectedImageQuality(files.first.path);
     } catch (_) {
       // The plugin may be unavailable in widget tests; recovery is best-effort.
     }
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    if (source == ImageSource.camera &&
+        (Platform.isAndroid || Platform.isIOS)) {
+      final String cameraPermissionStatus = await _requestCameraPermission();
+      if (!mounted) {
+        return;
+      }
+      if (cameraPermissionStatus != _cameraPermissionGranted) {
+        _showSnackBar(_cameraPermissionMessage(cameraPermissionStatus));
+        return;
+      }
+    }
+
     XFile? image;
     try {
       image = await _imagePicker.pickImage(source: source);
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        _showSnackBar(
-          source == ImageSource.camera
-              ? '시뮬레이터에서는 실제 카메라를 사용할 수 없어요. 갤러리 사진으로 테스트해주세요.'
-              : '사진을 불러오지 못했어요. 다른 이미지로 다시 시도해주세요.',
-        );
+        _showSnackBar(_imagePickerErrorMessage(error, source));
       }
       return;
     }
@@ -206,6 +221,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       _seededAnalysisId = null;
     });
     widget.controller.clearSupplementFlow();
+    await _refreshSelectedImageQuality(selectedImage.path);
   }
 
   void _resetSelectedImage() {
@@ -217,11 +233,36 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     });
   }
 
+  Future<void> _refreshSelectedImageQuality(String imagePath) async {
+    final _LocalCaptureQualityReport report =
+        await _LocalCaptureQualityReport.analyzeFile(imagePath);
+    if (!mounted) {
+      return;
+    }
+    final _SelectedLabelImage? current = _selectedImage;
+    if (current == null || current.path != imagePath) {
+      return;
+    }
+    setState(() {
+      _selectedImage = current.copyWith(captureQualityReport: report);
+    });
+  }
+
   Future<void> _analyzeSelectedImage() async {
     final _SelectedLabelImage? image = _selectedImage;
     if (image == null) {
       _showSnackBar('Select a label image before analysis.');
       return;
+    }
+    final _LocalCaptureQualityReport? captureQualityReport =
+        image.captureQualityReport;
+    if (captureQualityReport != null && captureQualityReport.requiresReview) {
+      final bool proceed = await _confirmCaptureQualityBeforeAnalysis(
+        captureQualityReport,
+      );
+      if (!mounted || !proceed) {
+        return;
+      }
     }
     setState(() {
       _stage = _SupplementFlowStage.uploading;
@@ -242,6 +283,49 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
           ? _SupplementFlowStage.imageSelected
           : _SupplementFlowStage.confirmationRequired;
     });
+  }
+
+  Future<bool> _confirmCaptureQualityBeforeAnalysis(
+    _LocalCaptureQualityReport report,
+  ) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        final List<_LocalCaptureQualityIssue> issues = report.issues
+            .take(3)
+            .toList(growable: false);
+        return AlertDialog(
+          title: const Text('촬영 품질 확인'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('OCR 전에 이미지 품질을 다시 확인해주세요.'),
+              const SizedBox(height: 12),
+              for (final _LocalCaptureQualityIssue issue in issues)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    '${_captureQualityIssueLabel(issue.reasonCode)}: '
+                    '${_captureQualityGuidance(issue.reasonCode) ?? '이미지를 다시 확인해주세요.'}',
+                  ),
+                ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('다시 선택'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('그래도 분석'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
   }
 
   Future<void> _submitOcrText() async {
@@ -511,6 +595,50 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+
+  Future<String> _requestCameraPermission() async {
+    try {
+      final String? status = await _cameraPermissionChannel
+          .invokeMethod<String>('requestCameraPermission');
+      return status ?? _cameraPermissionDenied;
+    } on MissingPluginException {
+      return _cameraPermissionGranted;
+    } on PlatformException {
+      return _cameraPermissionDenied;
+    }
+  }
+
+  String _imagePickerErrorMessage(Object error, ImageSource source) {
+    if (error is PlatformException) {
+      switch (error.code) {
+        case 'camera_access_denied':
+          return _cameraPermissionDeniedMessage;
+        case 'camera_access_restricted':
+          return _cameraPermissionRestrictedMessage;
+        case 'photo_access_denied':
+          return '사진 접근 권한이 거부됐어요. 선택 가능한 사진을 허용하거나 다시 선택해주세요.';
+        case 'photo_access_restricted':
+          return '이 기기에서는 사진 접근이 제한돼 있어요. 다른 이미지를 선택해주세요.';
+      }
+    }
+    return source == ImageSource.camera
+        ? '시뮬레이터에서는 실제 카메라를 사용할 수 없어요. 갤러리 사진으로 테스트해주세요.'
+        : '사진을 불러오지 못했어요. 다른 이미지로 다시 시도해주세요.';
+  }
+}
+
+const String _cameraPermissionGranted = 'granted';
+const String _cameraPermissionDenied = 'denied';
+const String _cameraPermissionRestricted = 'restricted';
+const String _cameraPermissionDeniedMessage =
+    '카메라 권한이 거부됐어요. 설정에서 카메라 접근을 허용하거나 갤러리 사진으로 다시 시도해주세요.';
+const String _cameraPermissionRestrictedMessage =
+    '이 기기에서는 카메라 접근이 제한돼 있어요. 갤러리 사진으로 테스트해주세요.';
+
+String _cameraPermissionMessage(String status) {
+  return status == _cameraPermissionRestricted
+      ? _cameraPermissionRestrictedMessage
+      : _cameraPermissionDeniedMessage;
 }
 
 class _BlackConsentRequired extends StatelessWidget {
@@ -618,6 +746,15 @@ class _BlackCaptureSurface extends StatelessWidget {
               const _CaptureStatusPill(
                 icon: Icons.manage_search_rounded,
                 label: 'OCR 분석 중이에요',
+              ),
+            ],
+            if (image?.captureQualityReport != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _LocalCaptureQualityPanel(
+                  report: image!.captureQualityReport!,
+                ),
               ),
             ],
             const SizedBox(height: 18),
@@ -887,6 +1024,78 @@ class _CaptureStatusPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LocalCaptureQualityPanel extends StatelessWidget {
+  const _LocalCaptureQualityPanel({required this.report});
+
+  final _LocalCaptureQualityReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool needsReview = report.requiresReview;
+    final Color backgroundColor = needsReview
+        ? const Color(0xFF2C2412)
+        : const Color(0xFF14261D);
+    final Color borderColor = needsReview
+        ? const Color(0xFFFFC400)
+        : const Color(0xFF4DD07A);
+    final List<_LocalCaptureQualityIssue> issues = report.issues
+        .take(3)
+        .toList(growable: false);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor.withValues(alpha: 0.62)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  needsReview
+                      ? Icons.warning_amber_rounded
+                      : Icons.check_circle_outline_rounded,
+                  color: borderColor,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    needsReview ? '촬영 품질을 확인해주세요' : '촬영 품질 확인됨',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (issues.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              for (final _LocalCaptureQualityIssue issue in issues)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${_captureQualityIssueLabel(issue.reasonCode)}: '
+                    '${_captureQualityGuidance(issue.reasonCode) ?? '이미지를 다시 확인해주세요.'}',
+                    style: const TextStyle(
+                      color: Color(0xFFEDEDED),
+                      fontSize: 13,
+                      height: 1.28,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1368,6 +1577,13 @@ class _ImageRiskActionPanel extends StatelessWidget {
             .take(3)
             .toList(growable: false) ??
         const <String>[];
+    final List<String> guidance =
+        preview.imageQualityReport?.issues
+            .map(_imageQualityGuidance)
+            .whereType<String>()
+            .take(3)
+            .toList(growable: false) ??
+        const <String>[];
     return DecoratedBox(
       decoration: BoxDecoration(
         color: backgroundColor,
@@ -1408,6 +1624,7 @@ class _ImageRiskActionPanel extends StatelessWidget {
               if (preview.detectedProductRegions.isNotEmpty)
                 Text('Regions: ${preview.detectedProductRegions.length}'),
               if (reasons.isNotEmpty) Text('Reasons: ${reasons.join(', ')}'),
+              for (final String item in guidance) Text(item),
               if (preview.identityConflict != null)
                 Text(preview.identityConflict!.message),
             ],
@@ -1416,6 +1633,36 @@ class _ImageRiskActionPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _imageQualityGuidance(SupplementImageQualityIssue issue) {
+  return _captureQualityGuidance(issue.reasonCode);
+}
+
+String _captureQualityIssueLabel(String reasonCode) {
+  return switch (reasonCode) {
+    'blurred_text' => '초점 흐림',
+    'glare_or_reflection' => '반사광',
+    'skewed_label' => '기울기',
+    'cropped_label' => '잘림 가능성',
+    'low_resolution' || 'too_small_text' => '해상도 낮음',
+    'low_light' => '조도 낮음',
+    'low_contrast' => '대비 낮음',
+    _ => '품질 확인',
+  };
+}
+
+String? _captureQualityGuidance(String reasonCode) {
+  return switch (reasonCode) {
+    'blurred_text' => '초점을 맞추고 흔들림 없이 다시 촬영해주세요.',
+    'glare_or_reflection' => '반사광이 없도록 조명을 옆으로 두고 촬영해주세요.',
+    'skewed_label' => '라벨을 정면에 맞추고 기울기를 줄여주세요.',
+    'cropped_label' => '성분표 네 모서리가 모두 보이게 다시 촬영해주세요.',
+    'low_resolution' || 'too_small_text' => '라벨 글자가 크게 보이도록 가까이 촬영해주세요.',
+    'low_light' => '더 밝은 곳에서 촬영해주세요.',
+    'low_contrast' => '그림자나 어두운 배경을 피해서 촬영해주세요.',
+    _ => null,
+  };
 }
 
 class _OcrTextCard extends StatelessWidget {
@@ -2241,16 +2488,484 @@ List<String> _splitCsv(String value) {
       .toList(growable: false);
 }
 
+class _LocalCaptureQualityReport {
+  const _LocalCaptureQualityReport({
+    required this.status,
+    required this.issues,
+    required this.metrics,
+  });
+
+  static const int _minTotalPixels = 1000000;
+  static const int _minShortEdgePx = 900;
+  static const double _minEdgeVariance = 24;
+  static const double _minContrastStddev = 18;
+  static const double _glareBrightRatio = 0.72;
+  static const double _maxBorderInkRatio = 0.18;
+  static const double _skewedAspectRatio = 2.8;
+  static const int _analysisMaxEdgePx = 512;
+
+  final String status;
+  final List<_LocalCaptureQualityIssue> issues;
+  final Map<String, num> metrics;
+
+  bool get requiresReview => issues.isNotEmpty;
+
+  static Future<_LocalCaptureQualityReport> analyzeFile(
+    String imagePath,
+  ) async {
+    try {
+      final Uint8List bytes = File(imagePath).readAsBytesSync();
+      final _ImageDimensions? headerDimensions =
+          _decodeImageDimensionsFromHeaders(bytes);
+      if (headerDimensions != null &&
+          _dimensionIssues(headerDimensions).isNotEmpty) {
+        return _fromDimensionsOnly(headerDimensions);
+      }
+      final _ImageDimensions dimensions =
+          headerDimensions ?? await _decodeImageDimensions(bytes);
+      final int maxEdge = math.max(dimensions.width, dimensions.height);
+      final double scale = maxEdge > _analysisMaxEdgePx
+          ? _analysisMaxEdgePx / maxEdge
+          : 1;
+      final int analysisWidth = math.max(1, (dimensions.width * scale).round());
+      final int analysisHeight = math.max(
+        1,
+        (dimensions.height * scale).round(),
+      );
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: analysisWidth,
+        targetHeight: analysisHeight,
+      );
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      final ui.Image image = frame.image;
+      try {
+        final ByteData? byteData = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        if (byteData == null) {
+          return _LocalCaptureQualityReport(
+            status: 'needs_review',
+            issues: const <_LocalCaptureQualityIssue>[
+              _LocalCaptureQualityIssue(
+                reasonCode: 'quality_check_unavailable',
+                severity: 'review',
+              ),
+            ],
+            metrics: <String, num>{
+              'image_width': dimensions.width,
+              'image_height': dimensions.height,
+            },
+          );
+        }
+        return _LocalCaptureQualityReport._fromPixels(
+          pixels: byteData.buffer.asUint8List(),
+          analysisWidth: image.width,
+          analysisHeight: image.height,
+          originalWidth: dimensions.width,
+          originalHeight: dimensions.height,
+        );
+      } finally {
+        image.dispose();
+        codec.dispose();
+      }
+    } catch (_) {
+      return const _LocalCaptureQualityReport(
+        status: 'needs_review',
+        issues: <_LocalCaptureQualityIssue>[
+          _LocalCaptureQualityIssue(
+            reasonCode: 'quality_check_unavailable',
+            severity: 'review',
+          ),
+        ],
+        metrics: <String, num>{},
+      );
+    }
+  }
+
+  static Future<_ImageDimensions> _decodeImageDimensions(
+    Uint8List bytes,
+  ) async {
+    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    final ui.Image image = frame.image;
+    try {
+      return _ImageDimensions(width: image.width, height: image.height);
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
+  }
+
+  static _ImageDimensions? _decodeImageDimensionsFromHeaders(Uint8List bytes) {
+    if (_isPng(bytes)) {
+      return _ImageDimensions(
+        width: _readUint32(bytes, 16),
+        height: _readUint32(bytes, 20),
+      );
+    }
+    if (_isJpeg(bytes)) {
+      return _decodeJpegDimensions(bytes);
+    }
+    return null;
+  }
+
+  static bool _isPng(Uint8List bytes) {
+    return bytes.length >= 24 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0D &&
+        bytes[5] == 0x0A &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0x0A;
+  }
+
+  static bool _isJpeg(Uint8List bytes) {
+    return bytes.length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xD8;
+  }
+
+  static _ImageDimensions? _decodeJpegDimensions(Uint8List bytes) {
+    int offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] != 0xFF) {
+        offset += 1;
+        continue;
+      }
+      while (offset < bytes.length && bytes[offset] == 0xFF) {
+        offset += 1;
+      }
+      if (offset >= bytes.length) {
+        return null;
+      }
+      final int marker = bytes[offset];
+      offset += 1;
+      if (marker == 0xD9 || marker == 0xDA) {
+        return null;
+      }
+      if (offset + 1 >= bytes.length) {
+        return null;
+      }
+      final int segmentLength = _readUint16(bytes, offset);
+      if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+        return null;
+      }
+      if (_isJpegStartOfFrame(marker) && segmentLength >= 7) {
+        return _ImageDimensions(
+          height: _readUint16(bytes, offset + 3),
+          width: _readUint16(bytes, offset + 5),
+        );
+      }
+      offset += segmentLength;
+    }
+    return null;
+  }
+
+  static bool _isJpegStartOfFrame(int marker) {
+    return (marker >= 0xC0 && marker <= 0xC3) ||
+        (marker >= 0xC5 && marker <= 0xC7) ||
+        (marker >= 0xC9 && marker <= 0xCB) ||
+        (marker >= 0xCD && marker <= 0xCF);
+  }
+
+  static int _readUint16(Uint8List bytes, int offset) {
+    return (bytes[offset] << 8) | bytes[offset + 1];
+  }
+
+  static int _readUint32(Uint8List bytes, int offset) {
+    return (bytes[offset] << 24) |
+        (bytes[offset + 1] << 16) |
+        (bytes[offset + 2] << 8) |
+        bytes[offset + 3];
+  }
+
+  static List<_LocalCaptureQualityIssue> _dimensionIssues(
+    _ImageDimensions dimensions,
+  ) {
+    final int shortEdge = math.min(dimensions.width, dimensions.height);
+    final int totalPixels = dimensions.width * dimensions.height;
+    final double aspectRatio = math.max(
+      dimensions.width / dimensions.height,
+      dimensions.height / dimensions.width,
+    );
+    final List<_LocalCaptureQualityIssue> issues =
+        <_LocalCaptureQualityIssue>[];
+    if (totalPixels < _minTotalPixels || shortEdge < _minShortEdgePx) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'low_resolution',
+          severity: 'retake',
+        ),
+      );
+    }
+    if (aspectRatio >= _skewedAspectRatio) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'skewed_label',
+          severity: 'review',
+        ),
+      );
+    }
+    return issues;
+  }
+
+  static _LocalCaptureQualityReport _fromDimensionsOnly(
+    _ImageDimensions dimensions,
+  ) {
+    final int shortEdge = math.min(dimensions.width, dimensions.height);
+    final int totalPixels = dimensions.width * dimensions.height;
+    final double aspectRatio = math.max(
+      dimensions.width / dimensions.height,
+      dimensions.height / dimensions.width,
+    );
+    return _LocalCaptureQualityReport(
+      status: 'needs_review',
+      issues: List<_LocalCaptureQualityIssue>.unmodifiable(
+        _dimensionIssues(dimensions),
+      ),
+      metrics: <String, num>{
+        'image_width': dimensions.width,
+        'image_height': dimensions.height,
+        'total_pixels': totalPixels,
+        'short_edge_px': shortEdge,
+        'aspect_ratio': _roundQualityMetric(aspectRatio),
+      },
+    );
+  }
+
+  factory _LocalCaptureQualityReport._fromPixels({
+    required Uint8List pixels,
+    required int analysisWidth,
+    required int analysisHeight,
+    required int originalWidth,
+    required int originalHeight,
+  }) {
+    final List<double> luminance = _luminanceValues(pixels);
+    final double contrastStddev = _standardDeviation(luminance);
+    final double brightRatio = _brightPixelRatio(luminance);
+    final double borderInkRatio = _borderInkRatio(
+      luminance: luminance,
+      width: analysisWidth,
+      height: analysisHeight,
+    );
+    final double edgeVariance = _edgeVariance(
+      luminance: luminance,
+      width: analysisWidth,
+      height: analysisHeight,
+    );
+    final int shortEdge = math.min(originalWidth, originalHeight);
+    final int totalPixels = originalWidth * originalHeight;
+    final double aspectRatio = math.max(
+      originalWidth / originalHeight,
+      originalHeight / originalWidth,
+    );
+    final List<_LocalCaptureQualityIssue> issues =
+        <_LocalCaptureQualityIssue>[];
+    if (totalPixels < _minTotalPixels || shortEdge < _minShortEdgePx) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'low_resolution',
+          severity: 'retake',
+        ),
+      );
+    }
+    if (edgeVariance < _minEdgeVariance) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'blurred_text',
+          severity: 'retake',
+        ),
+      );
+    }
+    if (contrastStddev < _minContrastStddev) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'low_contrast',
+          severity: 'retake',
+        ),
+      );
+    }
+    if (brightRatio >= _glareBrightRatio &&
+        contrastStddev < _minContrastStddev * 1.5) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'glare_or_reflection',
+          severity: 'review',
+        ),
+      );
+    }
+    if (borderInkRatio >= _maxBorderInkRatio) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'cropped_label',
+          severity: 'retake',
+        ),
+      );
+    }
+    if (aspectRatio >= _skewedAspectRatio) {
+      issues.add(
+        const _LocalCaptureQualityIssue(
+          reasonCode: 'skewed_label',
+          severity: 'review',
+        ),
+      );
+    }
+    return _LocalCaptureQualityReport(
+      status: issues.isEmpty ? 'acceptable' : 'needs_review',
+      issues: List<_LocalCaptureQualityIssue>.unmodifiable(issues),
+      metrics: <String, num>{
+        'image_width': originalWidth,
+        'image_height': originalHeight,
+        'total_pixels': totalPixels,
+        'short_edge_px': shortEdge,
+        'edge_variance': _roundQualityMetric(edgeVariance),
+        'contrast_stddev': _roundQualityMetric(contrastStddev),
+        'bright_pixel_ratio': _roundQualityMetric(brightRatio),
+        'border_ink_ratio': _roundQualityMetric(borderInkRatio),
+        'aspect_ratio': _roundQualityMetric(aspectRatio),
+      },
+    );
+  }
+
+  static List<double> _luminanceValues(Uint8List pixels) {
+    final List<double> values = <double>[];
+    for (int index = 0; index + 2 < pixels.length; index += 4) {
+      final int red = pixels[index];
+      final int green = pixels[index + 1];
+      final int blue = pixels[index + 2];
+      values.add((red * 0.299) + (green * 0.587) + (blue * 0.114));
+    }
+    return values;
+  }
+
+  static double _brightPixelRatio(List<double> luminance) {
+    if (luminance.isEmpty) {
+      return 0;
+    }
+    final int brightPixels = luminance
+        .where((double value) => value >= 245)
+        .length;
+    return brightPixels / luminance.length;
+  }
+
+  static double _borderInkRatio({
+    required List<double> luminance,
+    required int width,
+    required int height,
+  }) {
+    if (width <= 0 || height <= 0 || luminance.isEmpty) {
+      return 0;
+    }
+    final int border = math.max(1, math.min(width, height) ~/ 20);
+    int darkPixels = 0;
+    int borderPixels = 0;
+    for (int y = 0; y < height; y += 1) {
+      for (int x = 0; x < width; x += 1) {
+        if (x >= border &&
+            x < width - border &&
+            y >= border &&
+            y < height - border) {
+          continue;
+        }
+        final double value = luminance[(y * width) + x];
+        if (value < 85) {
+          darkPixels += 1;
+        }
+        borderPixels += 1;
+      }
+    }
+    return borderPixels == 0 ? 0 : darkPixels / borderPixels;
+  }
+
+  static double _edgeVariance({
+    required List<double> luminance,
+    required int width,
+    required int height,
+  }) {
+    if (width < 3 || height < 3 || luminance.isEmpty) {
+      return 0;
+    }
+    final List<double> responses = <double>[];
+    for (int y = 1; y < height - 1; y += 2) {
+      for (int x = 1; x < width - 1; x += 2) {
+        final int index = (y * width) + x;
+        final double center = luminance[index] * 4;
+        final double neighbors =
+            luminance[index - 1] +
+            luminance[index + 1] +
+            luminance[index - width] +
+            luminance[index + width];
+        responses.add((center - neighbors).abs());
+      }
+    }
+    return _variance(responses);
+  }
+
+  static double _standardDeviation(List<double> values) {
+    return math.sqrt(_variance(values));
+  }
+
+  static double _variance(List<double> values) {
+    if (values.isEmpty) {
+      return 0;
+    }
+    final double mean =
+        values.reduce((double left, double right) => left + right) /
+        values.length;
+    final double sumOfSquares = values.fold<double>(
+      0,
+      (double total, double value) =>
+          total + math.pow(value - mean, 2).toDouble(),
+    );
+    return sumOfSquares / values.length;
+  }
+}
+
+class _LocalCaptureQualityIssue {
+  const _LocalCaptureQualityIssue({
+    required this.reasonCode,
+    required this.severity,
+  });
+
+  final String reasonCode;
+  final String severity;
+}
+
+class _ImageDimensions {
+  const _ImageDimensions({required this.width, required this.height});
+
+  final int width;
+  final int height;
+}
+
+num _roundQualityMetric(double value) {
+  return double.parse(value.toStringAsFixed(4));
+}
+
 class _SelectedLabelImage {
   const _SelectedLabelImage({
     required this.path,
     required this.source,
     required this.recoveredFromLostData,
+    this.captureQualityReport,
   });
 
   final String path;
   final String source;
   final bool recoveredFromLostData;
+  final _LocalCaptureQualityReport? captureQualityReport;
+
+  _SelectedLabelImage copyWith({
+    _LocalCaptureQualityReport? captureQualityReport,
+  }) {
+    return _SelectedLabelImage(
+      path: path,
+      source: source,
+      recoveredFromLostData: recoveredFromLostData,
+      captureQualityReport: captureQualityReport ?? this.captureQualityReport,
+    );
+  }
 }
 
 enum _SupplementFlowStage {

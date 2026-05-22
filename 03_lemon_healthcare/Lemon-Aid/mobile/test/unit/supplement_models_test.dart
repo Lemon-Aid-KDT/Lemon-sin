@@ -79,6 +79,20 @@ void main() {
               'confidence': 0.8,
             },
           ],
+          'provider_observations': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'provider': 'paddleocr_local',
+              'stage': 'primary',
+              'status': 'completed',
+              'latency_ms': 123,
+              'text_non_empty': true,
+              'parser_success': true,
+              'error_code': null,
+              'warning_codes': <String>[],
+              'raw_ocr_text_stored': false,
+              'raw_provider_payload_stored': false,
+            },
+          ],
           'image_quality_report': <String, dynamic>{
             'status': 'retake_recommended',
             'issues': <Map<String, dynamic>>[
@@ -151,6 +165,8 @@ void main() {
     expect(preview.precautions.single.category, 'pregnancy');
     expect(preview.functionalClaims.single.claimType, 'label_claim');
     expect(preview.evidenceSpans.single.textExcerpt, 'Vitamin D 25 ug');
+    expect(preview.providerObservations.single.provider, 'paddleocr_local');
+    expect(preview.providerObservations.single.rawOcrTextStored, isFalse);
     expect(preview.imageQualityReport?.issues.single.reasonCode, 'cover_only');
     expect(preview.actionRequired, 'additional_label_image_required');
     expect(preview.blocksRegistrationForImageRisk, isTrue);

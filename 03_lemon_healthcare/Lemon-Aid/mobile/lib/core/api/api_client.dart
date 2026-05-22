@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_error.dart';
+import 'certificate_pin_verifier.dart';
 
 /// Minimal HTTP client for the Lemon Healthcare `/api/v1` contract.
 class ApiClient {
@@ -11,17 +12,26 @@ class ApiClient {
   /// Args:
   ///   baseUrl: Backend API base URL ending at `/api/v1`.
   ///   bearerToken: Optional JWT bearer token.
+  ///   certificatePins: Optional release certificate pins.
+  ///   certificatePinVerifier: Verifier used when pins are configured.
   ///   httpClient: Injectable HTTP client for tests.
   ApiClient({
     required String baseUrl,
     String? bearerToken,
+    List<String> certificatePins = const <String>[],
+    CertificatePinVerifier? certificatePinVerifier,
     http.Client? httpClient,
   }) : _baseUrl = _normalizeBaseUrl(baseUrl),
        _bearerToken = bearerToken,
+       _certificatePins = List<String>.unmodifiable(certificatePins),
+       _certificatePinVerifier =
+           certificatePinVerifier ?? const PlatformCertificatePinVerifier(),
        _httpClient = httpClient ?? http.Client();
 
   final String _baseUrl;
   final String? _bearerToken;
+  final List<String> _certificatePins;
+  final CertificatePinVerifier _certificatePinVerifier;
   final http.Client _httpClient;
 
   /// Sends a JSON GET request and returns a decoded object map.
@@ -40,8 +50,10 @@ class ApiClient {
     String path, {
     Map<String, String>? queryParameters,
   }) async {
+    final Uri uri = _uri(path, queryParameters: queryParameters);
+    await _verifyCertificatePins(uri);
     final http.Response response = await _httpClient.get(
-      _uri(path, queryParameters: queryParameters),
+      uri,
       headers: _headers(),
     );
     return _decodeObject(response, expectedStatusCodes: const <int>{200});
@@ -65,6 +77,8 @@ class ApiClient {
     Map<String, dynamic>? body,
     Set<int> expectedStatusCodes = const <int>{200, 201},
   }) async {
+    final Uri uri = _uri(path);
+    await _verifyCertificatePins(uri);
     final Map<String, String> headers = _headers();
     Object? encodedBody;
     if (body != null) {
@@ -73,7 +87,7 @@ class ApiClient {
     }
 
     final http.Response response = await _httpClient.post(
-      _uri(path),
+      uri,
       headers: headers,
       body: encodedBody,
     );
@@ -102,11 +116,12 @@ class ApiClient {
     Map<String, String> fields = const <String, String>{},
     Set<int> expectedStatusCodes = const <int>{202},
   }) async {
-    final http.MultipartRequest request =
-        http.MultipartRequest('POST', _uri(path))
-          ..headers.addAll(_headers())
-          ..fields.addAll(fields)
-          ..files.add(await http.MultipartFile.fromPath(fileField, filePath));
+    final Uri uri = _uri(path);
+    await _verifyCertificatePins(uri);
+    final http.MultipartRequest request = http.MultipartRequest('POST', uri)
+      ..headers.addAll(_headers())
+      ..fields.addAll(fields)
+      ..files.add(await http.MultipartFile.fromPath(fileField, filePath));
 
     final http.StreamedResponse streamedResponse = await _httpClient.send(
       request,
@@ -155,6 +170,13 @@ class ApiClient {
       headers['Authorization'] = 'Bearer ${_bearerToken.trim()}';
     }
     return headers;
+  }
+
+  Future<void> _verifyCertificatePins(Uri uri) async {
+    if (_certificatePins.isEmpty) {
+      return;
+    }
+    await _certificatePinVerifier.verify(uri, _certificatePins);
   }
 
   Uri _uri(String path, {Map<String, String>? queryParameters}) {

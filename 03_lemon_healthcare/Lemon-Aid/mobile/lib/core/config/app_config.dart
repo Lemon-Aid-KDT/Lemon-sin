@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+final RegExp _certificatePinPattern = RegExp(r'^sha256/[A-Za-z0-9+/]{43}=$');
+
 /// Runtime configuration loaded from Flutter compile-time definitions.
 class AppConfig {
   /// Creates app configuration.
@@ -29,7 +31,9 @@ class AppConfig {
   factory AppConfig.fromEnvironment({bool releaseMode = kReleaseMode}) {
     const String rawBaseUrl = String.fromEnvironment(
       'LEMON_API_BASE_URL',
-      defaultValue: 'http://127.0.0.1:8000/api/v1',
+      defaultValue: kReleaseMode
+          ? 'https://api.lemonaid.invalid/api/v1'
+          : 'http://127.0.0.1:8000/api/v1',
     );
     const String rawToken = String.fromEnvironment('LEMON_API_TOKEN');
     const String rawCertificatePins = String.fromEnvironment(
@@ -86,6 +90,14 @@ class AppConfig {
     if (releaseMode && normalizedCertificatePins.isEmpty) {
       throw StateError(
         'LEMON_CERTIFICATE_PINS must be provided in release builds.',
+      );
+    }
+    if (releaseMode &&
+        normalizedCertificatePins.any(
+          (String pin) => !_certificatePinPattern.hasMatch(pin),
+        )) {
+      throw StateError(
+        'LEMON_CERTIFICATE_PINS must use sha256/<base64> certificate pins.',
       );
     }
 

@@ -32,6 +32,7 @@ class SupplementAnalysisPreview {
     required this.precautions,
     required this.functionalClaims,
     required this.evidenceSpans,
+    required this.providerObservations,
     required this.imageQualityReport,
     required this.analysisScope,
     required this.actionRequired,
@@ -81,6 +82,9 @@ class SupplementAnalysisPreview {
 
   /// Short redacted evidence excerpts.
   final List<SupplementPreviewEvidenceSpan> evidenceSpans;
+
+  /// Sanitized OCR provider routing observations.
+  final List<SupplementOcrProviderObservation> providerObservations;
 
   /// Redacted image-quality report returned by the backend.
   final SupplementImageQualityReport? imageQualityReport;
@@ -162,6 +166,10 @@ class SupplementAnalysisPreview {
           .whereType<Map<String, dynamic>>()
           .map(SupplementPreviewEvidenceSpan.fromJson)
           .toList(growable: false),
+      providerObservations: readOptionalList(json, 'provider_observations')
+          .whereType<Map<String, dynamic>>()
+          .map(SupplementOcrProviderObservation.fromJson)
+          .toList(growable: false),
       imageQualityReport:
           readOptionalObject(json, 'image_quality_report') == null
           ? null
@@ -236,6 +244,71 @@ class SupplementAnalysisPreview {
       return 'Image blocked';
     }
     return 'No image action';
+  }
+}
+
+/// Sanitized OCR provider routing observation.
+class SupplementOcrProviderObservation {
+  /// Creates an OCR provider observation.
+  const SupplementOcrProviderObservation({
+    required this.provider,
+    required this.stage,
+    required this.status,
+    required this.latencyMs,
+    required this.textNonEmpty,
+    required this.parserSuccess,
+    required this.errorCode,
+    required this.warningCodes,
+    required this.rawOcrTextStored,
+    required this.rawProviderPayloadStored,
+  });
+
+  /// OCR provider label.
+  final String provider;
+
+  /// Pipeline stage that called the provider.
+  final String stage;
+
+  /// Normalized call status.
+  final String status;
+
+  /// Provider call latency in milliseconds.
+  final int? latencyMs;
+
+  /// Whether the provider returned non-empty text.
+  final bool textNonEmpty;
+
+  /// Whether this result reached structured parsing.
+  final bool? parserSuccess;
+
+  /// Bounded provider error code.
+  final String? errorCode;
+
+  /// Bounded warning codes.
+  final List<String> warningCodes;
+
+  /// Raw OCR text storage flag. Expected false.
+  final bool rawOcrTextStored;
+
+  /// Raw provider payload storage flag. Expected false.
+  final bool rawProviderPayloadStored;
+
+  /// Parses a backend OCR provider observation.
+  factory SupplementOcrProviderObservation.fromJson(Map<String, dynamic> json) {
+    return SupplementOcrProviderObservation(
+      provider: readString(json, 'provider'),
+      stage: readString(json, 'stage'),
+      status: readString(json, 'status'),
+      latencyMs: readOptionalInt(json, 'latency_ms'),
+      textNonEmpty: json['text_non_empty'] == true,
+      parserSuccess: json['parser_success'] is bool
+          ? json['parser_success'] as bool
+          : null,
+      errorCode: readOptionalString(json, 'error_code'),
+      warningCodes: readOptionalStringList(json, 'warning_codes'),
+      rawOcrTextStored: json['raw_ocr_text_stored'] == true,
+      rawProviderPayloadStored: json['raw_provider_payload_stored'] == true,
+    );
   }
 }
 

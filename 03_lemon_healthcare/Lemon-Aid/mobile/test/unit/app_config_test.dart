@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/core/config/app_config.dart';
 
+const String pinPrimary = 'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+const String pinBackup = 'sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=';
+
 void main() {
   test('allows local development HTTP and token values', () {
     final AppConfig config = AppConfig.fromValues(
@@ -54,12 +57,23 @@ void main() {
   test('allows HTTPS release config with certificate pins', () {
     final AppConfig config = AppConfig.fromValues(
       apiBaseUrl: 'https://api.example.com/api/v1',
-      certificatePins: const <String>['pin-primary', 'pin-backup'],
+      certificatePins: const <String>[pinPrimary, pinBackup],
       releaseMode: true,
     );
 
     expect(config.apiBaseUrl, 'https://api.example.com/api/v1');
     expect(config.apiToken, isNull);
-    expect(config.certificatePins, const <String>['pin-primary', 'pin-backup']);
+    expect(config.certificatePins, const <String>[pinPrimary, pinBackup]);
+  });
+
+  test('rejects malformed release certificate pins', () {
+    expect(
+      () => AppConfig.fromValues(
+        apiBaseUrl: 'https://api.example.com/api/v1',
+        certificatePins: const <String>['pin-primary'],
+        releaseMode: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
   });
 }
