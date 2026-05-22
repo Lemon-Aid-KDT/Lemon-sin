@@ -260,7 +260,7 @@ def _add_observation(
         metrics.non_empty_count += 1
     if observation.get("parser_success") is True:
         metrics.parser_success_count += 1
-    if observation.get("error") is True:
+    if observation.get("error") is True or observation.get("status") == "error":
         metrics.errors += 1
 
     latency_ms = observation.get("latency_ms")

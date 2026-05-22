@@ -77,6 +77,34 @@ def test_evaluate_manifest_rejects_raw_ocr_text(tmp_path: Path) -> None:
         evaluate.evaluate_manifest(manifest_path)
 
 
+def test_evaluate_manifest_counts_status_error_observations(tmp_path: Path) -> None:
+    """Verify collector-style status errors are reflected in provider metrics."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "observations": [
+                    {
+                        "provider": "clova_ocr",
+                        "status": "error",
+                        "error_code": "ocr_error",
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    providers = summary["providers"]
+    assert isinstance(providers, dict)
+    clova_metrics = providers["clova_ocr"]
+    assert isinstance(clova_metrics, dict)
+    assert clova_metrics["calls"] == 1
+    assert clova_metrics["errors"] == 1
+
+
 def test_evaluate_manifest_records_llm_metrics_separately(tmp_path: Path) -> None:
     """Verify LLM parser metrics are aggregated independently from OCR matches."""
     manifest_path = tmp_path / "manifest.jsonl"
