@@ -116,6 +116,63 @@ def test_read_fixture_manifest_blocks_review_pii_for_external_provider(tmp_path:
         )
 
 
+def test_read_fixture_manifest_resolves_allowlisted_env_image_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify tokenized image roots avoid storing local absolute paths."""
+    image_root = tmp_path / "source"
+    image_path = image_root / "detail.jpg"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"not-real-image-but-sha-valid")
+    monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(image_root))
+    manifest_path = tmp_path / "manifest.jsonl"
+    row = {
+        "fixture_id": "detail-1",
+        "image_path": "$NAVER_TAMPERMONKEY_SOURCE_ROOT/detail.jpg",
+        "image_sha256": hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        "license_status": "team_approved",
+        "consent_status": "team_approved",
+        "contains_personal_data": False,
+        "external_transfer_allowed": True,
+        "local_processing_allowed": True,
+        "expected": {},
+    }
+    manifest_path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    fixtures = collector._read_fixture_manifest(
+        manifest_path,
+        providers=("paddleocr_local",),
+    )
+
+    assert fixtures[0].image_path == image_path.resolve()
+
+
+def test_read_fixture_manifest_rejects_unallowlisted_env_image_path(tmp_path: Path) -> None:
+    """Verify arbitrary env-variable paths are not accepted from manifests."""
+    image_path = tmp_path / "detail.jpg"
+    image_path.write_bytes(b"not-real-image-but-sha-valid")
+    manifest_path = tmp_path / "manifest.jsonl"
+    row = {
+        "fixture_id": "detail-1",
+        "image_path": "$HOME/detail.jpg",
+        "image_sha256": hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        "license_status": "team_approved",
+        "consent_status": "team_approved",
+        "contains_personal_data": False,
+        "external_transfer_allowed": True,
+        "local_processing_allowed": True,
+        "expected": {},
+    }
+    manifest_path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="env is not allowlisted"):
+        collector._read_fixture_manifest(
+            manifest_path,
+            providers=("paddleocr_local",),
+        )
+
+
 def test_pii_candidate_flags_are_bounded_tokens() -> None:
     """Verify local PII screening records flag names, not matched text."""
     flags = collector._pii_candidate_flags(

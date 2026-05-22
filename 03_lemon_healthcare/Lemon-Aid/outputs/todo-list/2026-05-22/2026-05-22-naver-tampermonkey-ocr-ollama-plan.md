@@ -114,7 +114,7 @@ manifest row 제안:
   "product_dir": "제품명_상품ID",
   "product_id": "6541443880",
   "section": "detail",
-  "image_path": "/Volumes/.../d_1779010492094_3.jpg",
+  "image_path": "$NAVER_TAMPERMONKEY_SOURCE_ROOT/[오메가3]/제품명_상품ID/상세페이지/d_1779010492094_3.jpg",
   "image_sha256": "<sha256>",
   "file_size_bytes": 123456,
   "mime_type": "image/jpeg",

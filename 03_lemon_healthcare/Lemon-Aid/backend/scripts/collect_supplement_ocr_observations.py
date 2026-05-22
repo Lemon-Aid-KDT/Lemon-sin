@@ -20,7 +20,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
 from PIL import Image
@@ -59,6 +59,14 @@ PROVIDER_OPT_IN_ENV: dict[ProviderName, str] = {
     "paddleocr_local": "RUN_PADDLEOCR_PROBE",
     "clova_ocr": "RUN_CLOVA_OCR_LIVE_SMOKE",
 }
+ALLOWED_IMAGE_PATH_ENV_VARS = frozenset(
+    {
+        "LEMON_OCR_FIXTURE_ROOT",
+        "NAVER_TAMPERMONKEY_SOURCE_ROOT",
+        "SUPPLEMENT_OCR_FIXTURE_ROOT",
+    }
+)
+ENV_IMAGE_PATH_PATTERN = re.compile(r"^\$(?P<name>[A-Z][A-Z0-9_]*)(?:/(?P<path>.*))?$")
 OPERATOR_ENV_ALLOWLIST = frozenset(
     {
         "ALLOW_EXTERNAL_OCR",
@@ -1073,7 +1081,7 @@ def _read_fixture_manifest(
         expected = row.get("expected", {})
         if not isinstance(expected, dict):
             raise ValueError(f"OCR fixture expected must be an object: {fixture_id}")
-        resolved_image_path = (manifest_path.parent / image_path).resolve()
+        resolved_image_path = _resolve_fixture_image_path(manifest_path, image_path)
         if not resolved_image_path.exists():
             raise ValueError(f"OCR fixture image is missing: {fixture_id}")
         actual_sha = hashlib.sha256(resolved_image_path.read_bytes()).hexdigest()
@@ -1088,6 +1096,39 @@ def _read_fixture_manifest(
             )
         )
     return fixtures
+
+
+def _resolve_fixture_image_path(manifest_path: Path, image_path: str) -> Path:
+    """Resolve a manifest image path without persisting operator-local roots.
+
+    Args:
+        manifest_path: Path to the fixture manifest being read.
+        image_path: Relative, absolute legacy, or allowlisted ``$ENV/path`` image path.
+
+    Returns:
+        Absolute resolved image path for runtime file loading.
+
+    Raises:
+        ValueError: If an environment-token path is unsupported, unset, or unsafe.
+    """
+    env_match = ENV_IMAGE_PATH_PATTERN.fullmatch(image_path)
+    if env_match:
+        env_name = env_match.group("name")
+        if env_name not in ALLOWED_IMAGE_PATH_ENV_VARS:
+            raise ValueError(f"OCR fixture image_path env is not allowlisted: {env_name}")
+        env_root = os.environ.get(env_name)
+        if not env_root:
+            raise ValueError(f"OCR fixture image_path env is not set: {env_name}")
+        relative_text = env_match.group("path") or ""
+        relative_path = PurePosixPath(relative_text)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise ValueError("OCR fixture image_path env suffix must stay under the image root.")
+        return (Path(env_root).expanduser() / Path(*relative_path.parts)).resolve()
+
+    path = Path(image_path)
+    if path.is_absolute():
+        return path.expanduser().resolve()
+    return (manifest_path.parent / path).resolve()
 
 
 def _validate_fixture_privacy(

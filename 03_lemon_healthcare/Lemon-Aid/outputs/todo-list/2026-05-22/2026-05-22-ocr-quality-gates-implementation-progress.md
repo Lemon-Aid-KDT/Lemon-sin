@@ -168,9 +168,33 @@
 
 보안 확인:
 
-- `data/ocr_eval/real_manifest.json`에서 `/Volumes/`, `/Users/`, `"gt_text"`, `"source_path"`, `"source_root"` exact pattern은 더 이상 발견되지 않는다.
+- `data/ocr_eval/real_manifest.json`에서 developer-home path, external-volume path, `"gt_text"`, `"source_path"`, `"source_root"` exact pattern은 더 이상 발견되지 않는다.
 - `check_ocr_artifact_privacy.py`가 real/synthetic manifests 3개를 모두 통과했다.
 - 이 작업은 이미지 파일 자체나 derived `gt_fields`를 삭제하지 않고, private provenance path와 raw full-label text만 제거했다.
+
+### 3.11 Naver Tampermonkey Manifest Path Tokenization
+
+수정 파일:
+
+- `backend/scripts/build_naver_tampermonkey_ocr_manifest.py`
+- `backend/scripts/collect_supplement_ocr_observations.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_build_naver_tampermonkey_ocr_manifest.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_collect_supplement_ocr_observations.py`
+- `outputs/todo-list/2026-05-22/2026-05-22-naver-tampermonkey-ocr-ollama-plan.md`
+
+변경:
+
+- Naver Tampermonkey manifest builder가 `image_path`에 developer-home 또는 external-volume 절대경로를 쓰지 않고 `$NAVER_TAMPERMONKEY_SOURCE_ROOT/...` 토큰 경로를 기록한다.
+- collector는 allowlisted image root env var만 runtime에 해석한다.
+- 허용 env var는 `NAVER_TAMPERMONKEY_SOURCE_ROOT`, `LEMON_OCR_FIXTURE_ROOT`, `SUPPLEMENT_OCR_FIXTURE_ROOT`로 제한했다.
+- env path suffix는 absolute path와 `..` traversal을 거부한다.
+- tracked plan 예시의 external-volume 경로도 env-token 예시로 보정했다.
+
+보안 확인:
+
+- manifest 자체는 operator-local absolute path를 저장하지 않는다.
+- collector 오류는 env var 이름만 출력하고 실제 env 값 또는 로컬 경로를 출력하지 않는다.
+- 기존 absolute image path manifest도 하위 호환을 위해 읽을 수 있지만, 새 builder 출력은 privacy scanner의 local-path rule을 통과하도록 설계했다.
 
 ### 4. Phase 0-alpha Field Extractor Patch
 

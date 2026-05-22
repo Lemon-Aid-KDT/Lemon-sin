@@ -75,6 +75,8 @@ def test_build_detail_manifest_normalizes_korean_paths(tmp_path: Path) -> None:
     assert row["section"] == "detail"
     assert row["category"] == "[오메가3]"
     assert row["product_id"] == "123456789"
+    assert str(row["image_path"]).startswith("$NAVER_TAMPERMONKEY_SOURCE_ROOT/")
+    assert str(source_root) not in str(row["image_path"])
     assert row["contains_personal_data"] is False
     assert row["external_transfer_allowed"] is True
     assert row["expected"] == {}
@@ -154,3 +156,26 @@ def test_reject_raw_fields_blocks_forbidden_keys() -> None:
     """Verify generated helper rejects forbidden raw payload fields."""
     with pytest.raises(ValueError, match="raw_ocr_text"):
         builder._reject_raw_fields({"nested": {"raw_ocr_text": "do not store"}})
+
+
+def test_invalid_image_root_env_var_is_rejected(tmp_path: Path) -> None:
+    """Verify image root token names must not be arbitrary shell text."""
+    source_root = tmp_path / "naver"
+    detail_image = source_root / "[오메가3]" / "제품A_123456789" / "상세페이지" / "d_1.jpg"
+    _write_image(detail_image)
+
+    with pytest.raises(ValueError, match="image_root_env_var"):
+        builder.build_naver_tampermonkey_manifest(
+            source_root=source_root,
+            output_dir=tmp_path / "out",
+            manifest_name="manifest-detail.jsonl",
+            inventory_name="inventory.json",
+            image_root_env_var="bad/value",
+            section="detail",
+            sample_size=1,
+            scan_limit=10,
+            seed=1,
+            min_width=100,
+            min_height=100,
+            max_bytes=1_000_000,
+        )

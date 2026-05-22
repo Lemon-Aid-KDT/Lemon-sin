@@ -38,6 +38,7 @@ DEFAULT_SOURCE_ROOT = Path(
         "data/private/naver_tampermonkey",
     )
 )
+DEFAULT_IMAGE_ROOT_ENV_VAR = "NAVER_TAMPERMONKEY_SOURCE_ROOT"
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
 ALLOWED_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 MAX_DECODED_PIXELS = 50_000_000
@@ -101,6 +102,7 @@ def main() -> None:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--manifest-name", default="manifest-detail-smoke-30.jsonl")
     parser.add_argument("--inventory-name", default="inventory.json")
+    parser.add_argument("--image-root-env-var", default=DEFAULT_IMAGE_ROOT_ENV_VAR)
     parser.add_argument("--section", choices=("detail", "review", "all"), default="detail")
     parser.add_argument("--sample-size", type=int, default=30)
     parser.add_argument("--scan-limit", type=int, default=200_000)
@@ -123,6 +125,7 @@ def main() -> None:
         output_dir=args.output_dir,
         manifest_name=args.manifest_name,
         inventory_name=args.inventory_name,
+        image_root_env_var=args.image_root_env_var,
         section=args.section,
         sample_size=args.sample_size,
         scan_limit=args.scan_limit,
@@ -141,6 +144,7 @@ def build_naver_tampermonkey_manifest(
     output_dir: Path,
     manifest_name: str,
     inventory_name: str,
+    image_root_env_var: str = DEFAULT_IMAGE_ROOT_ENV_VAR,
     section: ManifestSection,
     sample_size: int,
     scan_limit: int,
@@ -157,6 +161,8 @@ def build_naver_tampermonkey_manifest(
         output_dir: Destination for generated inventory and manifest files.
         manifest_name: JSONL manifest filename.
         inventory_name: JSON inventory filename.
+        image_root_env_var: Environment variable token used in ``image_path``
+            instead of writing the operator's absolute local source path.
         section: Section to include in the manifest.
         sample_size: Maximum number of manifest rows.
         scan_limit: Maximum number of files to inspect.
@@ -174,6 +180,7 @@ def build_naver_tampermonkey_manifest(
     """
     _validate_options(
         source_root=source_root,
+        image_root_env_var=image_root_env_var,
         sample_size=sample_size,
         scan_limit=scan_limit,
         min_width=min_width,
@@ -197,6 +204,7 @@ def build_naver_tampermonkey_manifest(
     )
     rows = build_manifest_rows(
         selected,
+        image_root_env_var=image_root_env_var,
         review_personal_data_cleared=review_personal_data_cleared,
     )
     inventory = {
@@ -388,12 +396,15 @@ def select_manifest_candidates(
 def build_manifest_rows(
     candidates: list[NaverImageCandidate],
     *,
+    image_root_env_var: str = DEFAULT_IMAGE_ROOT_ENV_VAR,
     review_personal_data_cleared: bool = False,
 ) -> list[dict[str, object]]:
     """Convert selected candidates into collector-compatible JSONL rows.
 
     Args:
         candidates: Selected candidates.
+        image_root_env_var: Environment variable token used to locate the
+            source root at runtime without storing its absolute path.
         review_personal_data_cleared: Whether review images are cleared as not personal data.
 
     Returns:
@@ -414,7 +425,7 @@ def build_manifest_rows(
             "product_dir": candidate.product_dir,
             "product_id": candidate.product_id,
             "section": section_token,
-            "image_path": str(candidate.path),
+            "image_path": _tokenized_image_path(image_root_env_var, candidate.relative_path),
             "image_sha256": image_sha256,
             "file_size_bytes": candidate.size_bytes,
             "mime_type": candidate.mime_type,
@@ -456,6 +467,7 @@ def build_manifest_rows(
 def _validate_options(
     *,
     source_root: Path,
+    image_root_env_var: str,
     sample_size: int,
     scan_limit: int,
     min_width: int,
@@ -465,6 +477,8 @@ def _validate_options(
     """Validate manifest build options."""
     if not source_root.expanduser().is_dir():
         raise ValueError(f"source_root is not a directory: {source_root}")
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", image_root_env_var):
+        raise ValueError("image_root_env_var must be an uppercase environment variable name.")
     if sample_size < 1 or scan_limit < 1:
         raise ValueError("sample_size and scan_limit must be positive.")
     if min_width < 1 or min_height < 1 or max_bytes < 1:
@@ -541,6 +555,19 @@ def _size_bucket(size_bytes: int) -> str:
 def _normalize_path_text(value: str) -> str:
     """Normalize macOS decomposed Korean path segments to NFC."""
     return unicodedata.normalize("NFC", value)
+
+
+def _tokenized_image_path(image_root_env_var: str, relative_path: Path) -> str:
+    """Return a runtime-resolvable image path without local absolute prefixes.
+
+    Args:
+        image_root_env_var: Environment variable that points to the source root.
+        relative_path: Path under the source root.
+
+    Returns:
+        ``$ENV_VAR/<relative path>`` for collector runtime expansion.
+    """
+    return f"${image_root_env_var}/{relative_path.as_posix()}"
 
 
 def _sha256_file(path: Path) -> str:
