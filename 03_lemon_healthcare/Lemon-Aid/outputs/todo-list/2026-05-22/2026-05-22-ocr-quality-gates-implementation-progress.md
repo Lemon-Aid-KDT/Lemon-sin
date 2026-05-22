@@ -235,9 +235,12 @@
 
 현재 브랜치 확인:
 
-- `git ls-files outputs/generated/ocr-eval | wc -l` 결과 tracked historical generated artifact는 22개다.
-- 삭제는 파일 추적 상태를 바꾸는 작업이므로 이번 slice에서는 실행하지 않았다.
-- 다음 cleanup slice에서 팀 승인 하에 `git rm --cached` 또는 별도 export branch 정리로 private artifact store 이전 여부를 결정해야 한다.
+- `git ls-files outputs/generated/ocr-eval` 결과는 비어 있다.
+- `git rm -r --cached outputs/generated/ocr-eval`로 22개 historical generated artifact의 Git 추적만 제거했다.
+- 공식 근거: Git `rm --cached` 문서는 working tree 파일을 유지하고 index에서만 제거하는 용도다. https://git-scm.com/docs/git-rm.html
+- `find outputs/generated/ocr-eval -type f | wc -l` 결과 로컬 generated artifact 62개는 작업 디스크에 남아 있다.
+- `check_ocr_artifact_privacy.py --check-tracked-generated --project-root .`는 이제 통과한다.
+- 이후 PR/export branch에서는 generated OCR evaluation artifact가 Git에 포함되지 않으며, 필요한 수치와 해석은 repo-local todo report에 redacted summary로만 남긴다.
 
 ### 4. Phase 0-alpha Field Extractor Patch
 
