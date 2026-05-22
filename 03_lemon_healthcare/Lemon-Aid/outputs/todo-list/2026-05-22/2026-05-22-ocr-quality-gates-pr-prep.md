@@ -21,6 +21,7 @@ Observed state:
 - A trial export of PR 1 against `team/develop` failed because the target files do not exist in that index.
 - The temporary export worktree and branch created for that trial were removed.
 - `backend/scripts/check_pr_export_base.py` now automates this precheck:
+  - `origin/feat/ocr-quality-gates` passes as the preserved current branch baseline.
   - `team/develop` fails with missing `backend/Nutrition-backend/src/ocr/field_extractor.py`.
   - `team/feat/ocr-p1-5-followup` fails with forbidden `outputs/generated/ocr-eval/` tracked files.
 
@@ -30,10 +31,31 @@ Implication:
 - If the team wants immediate review, first create a code-bearing base branch that removes generated OCR eval artifacts, or sync/squash that cleaned application tree into `team/develop`.
 - Do not commit generated OCR eval artifacts from the existing team feature branch into new PRs.
 
+## Current Export Gate Status
+
+Latest local evidence:
+
+```text
+origin/feat/ocr-quality-gates: pr_export_base_ok
+team/develop: missing backend/Nutrition-backend OCR source/test paths
+team/feat/ocr-p1-5-followup: forbidden tracked outputs/generated/ocr-eval paths
+git-tracked outputs/generated/ocr-eval count: 0
+current branch tracked generated artifact gate: ocr_artifact_privacy_ok files=0
+```
+
+This means the current branch is now clean enough to preserve as a safe internal
+baseline, but neither team target is ready for a small direct export PR:
+
+- `team/develop` must first receive the real Lemon Aid application tree.
+- `team/feat/ocr-p1-5-followup` must first drop generated OCR evaluation files
+  from Git tracking while keeping local generated outputs ignored.
+
 ## Branch Preservation
 
 - Local branch: `feat/ocr-quality-gates`
 - Preserved remote: `origin/feat/ocr-quality-gates`
+- Current generated OCR evaluation files are ignored local artifacts, not tracked
+  Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
 
 ## Current Recommendation
@@ -70,6 +92,23 @@ Reason:
 | `51e874c5 docs(ocr): 품질 게이트 진행 기록 갱신` | Supporting docs | implementation progress update |
 | `1ceaefc2 docs(ocr): 구현 계획 문서를 정리` | Supporting docs | repo-local plan cleanup |
 | `f4c0c98b docs(ocr): 로컬 경로 노출을 정리` | Supporting docs | private local path redaction |
+| `4ee57222 docs(ocr): PR export 절차를 보정` | Supporting docs | export procedure correction |
+| `4b1ecf25 docs(ocr): 팀 브랜치 동기화 조건을 기록` | Supporting docs | team branch synchronization condition |
+| `176f46e1 docs(ocr): 브랜치 보존 위치를 기록` | Supporting docs | branch preservation note |
+| `a2148df6 docs(ocr): 보존 브랜치 기록을 정리` | Supporting docs | preservation note cleanup |
+| `5c0e6611 docs(ocr): 과거 요약 경로 노출을 정리` | Supporting docs | old summary local path redaction |
+| `dbe649ee feat(ocr): artifact privacy gate를 추가` | Backend OCR quality gates | generated OCR artifact privacy scanner |
+| `8b6b1def fix(backend): 운영 rate limit gate를 보강` | Analyze API security | production/staging rate-limit validation |
+| `a7689938 test(ocr): PR export base gate를 추가` | Export readiness | code-bearing base and generated artifact precheck |
+| `89fef092 chore(backend): dev env doctor를 추가` | Backend tooling | local dev environment doctor |
+| `4b79ecf7 docs(backend): 구현 상태 map을 추가` | Supporting docs | implementation status map |
+| `a43f18eb docs(team): enforcement gap을 기록` | Team governance | enforced vs documented rule gap report |
+| `b32990ba fix(data): real OCR manifest 유출을 제거` | Data privacy | remove source path and label text from real manifest |
+| `b0c4d0b3 fix(ocr): manifest 경로 유출을 차단` | Operator eval tooling | tokenize private source roots in generated manifests |
+| `9ba4a053 fix(team): PR base 경로 검사를 보정` | Export readiness | support team-root and monorepo-prefixed path checks |
+| `1e04d877 test(ocr): generated artifact 추적 검사를 추가` | Artifact privacy | fail when generated OCR eval outputs are tracked |
+| `3e9cb4cf chore(ocr): generated artifact 추적을 제거` | Artifact privacy | stop tracking historical generated OCR eval outputs |
+| `c186ccec chore(team): commit type 목록을 동기화` | Team governance | sync enforced commit types with team docs |
 
 ## Suggested PR Split
 
@@ -226,6 +265,16 @@ raw_ocr_text_stored=false
 ingredient_name_exact_rate=0.0
 ```
 
+Export and artifact privacy:
+
+```text
+pr_export_base_ok ref=origin/feat/ocr-quality-gates
+team/develop fails with missing required OCR source/test paths
+team/feat/ocr-p1-5-followup fails with tracked outputs/generated/ocr-eval files
+git-tracked outputs/generated/ocr-eval count is 0 on the current branch
+ocr_artifact_privacy_ok files=0 with --check-tracked-generated
+```
+
 ## Export / PR Procedure
 
 Do not directly rebase this branch onto `team/develop`.
@@ -245,6 +294,11 @@ PYTHONPATH=backend/Nutrition-backend:backend \
   $PYTHON_BIN backend/scripts/check_pr_export_base.py \
   --repo-root $MONOREPO_ROOT \
   --base-ref $CODE_BEARING_BASE_BRANCH
+
+PYTHONPATH=backend/Nutrition-backend:backend \
+  $PYTHON_BIN backend/scripts/check_ocr_artifact_privacy.py \
+  --check-tracked-generated \
+  --project-root .
 ```
 
 The check must pass before creating an export worktree. It rejects:
