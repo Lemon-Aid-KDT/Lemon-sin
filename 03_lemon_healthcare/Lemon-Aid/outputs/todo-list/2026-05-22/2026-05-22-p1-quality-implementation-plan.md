@@ -190,6 +190,7 @@ provider별 observation은 같은 field를 사용한다.
 - 모바일이 이미지 선택 직후 local preflight로 resolution/angle 계열 경고를 즉시 표시하고, backend preview의 blur, angle, crop, glare, resolution 경고도 같은 안내 문구로 보여준다.
 - local preflight에서 문제가 감지되면 `분석하기` 전에 확인 dialog를 띄워 OCR provider 호출 전 UX gate를 강제한다.
 - provider routing은 외부 OCR gate 없이 이미지를 전송하지 않는다.
+- production은 process-local upload limiter만으로 부팅하지 않고 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 요구한다.
 - layout parser는 provider raw payload가 아니라 normalized DTO fixture로 회귀를 잡는다.
 - release build에서 HTTPS, certificate pin, no embedded token, camera/gallery permission이 검증된다.
 - certificate pin은 request-path native TLS handshake로 fail-closed 검증한다. 다만 현재 구현은 certificate DER fingerprint 방식이며, SPKI pinning과 production pin rotation 검증은 별도 hardening 항목으로 남긴다.
@@ -361,6 +362,7 @@ flutter test
 
 후속 hardening:
 
+- production에서 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 설정하기 전에 실제 ingress/API gateway/Redis rate-limit rule과 운영 증거를 남긴다.
 - 실제 Android 물리 기기에서 OS camera permission allow/deny/retry 흐름을 한 번 더 확인한다.
 - 실제 iOS 물리 기기에서 OS camera permission allow/deny/retry 흐름을 한 번 더 확인한다.
 - production/staging API 인증서 pin과 rotation/backup pin 운영 절차를 확정한 뒤 같은 live test를 내부 endpoint로 재실행한다.

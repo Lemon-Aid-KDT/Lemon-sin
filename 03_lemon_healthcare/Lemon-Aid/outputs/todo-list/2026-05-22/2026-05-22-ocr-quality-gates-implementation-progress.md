@@ -158,9 +158,11 @@ Official references:
 - `POST /api/v1/supplements/analyze`에 `supplement_image_upload` bucket fixed-window limiter를 적용했다.
 - 기본값:
   - `RATE_LIMIT_ENABLED=true`
+  - `RATE_LIMIT_EXTERNAL_ENFORCEMENT=false`
   - `RATE_LIMIT_WINDOW_SECONDS=60`
   - `SUPPLEMENT_IMAGE_UPLOAD_RATE_LIMIT=10`
 - staging/production에서는 `RATE_LIMIT_ENABLED=false`로 부팅하지 못하도록 `Settings.validate_runtime_security()`에 guard를 추가했다.
+- production에서는 process-local limiter만으로 부팅하지 못하도록 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 요구한다. 이 값은 ingress/API gateway/Redis 계층의 분산 rate limit가 별도로 강제된다는 운영 attestation이다.
 - subject key는 인증 전 미들웨어에서 검증되지 않은 `Authorization` header를 신뢰하지 않고 ASGI `client.host`를 SHA-256 digest로 감싸서 만든다.
 - 429 응답은 OpenAPI 예시와 맞춰 `detail.code="too_many_requests"`를 반환하고 `Retry-After` header를 포함한다.
 - `SecureHeadersMiddleware`가 429 응답에도 적용되는지 통합 테스트로 고정했다.
@@ -168,7 +170,7 @@ Official references:
 
 한계:
 
-- 현재 구현은 process-local limiter다. 단일 local/dev worker와 첫 비용폭주 차단에는 충분하지만, 다중 worker/다중 instance production에서는 Redis 또는 API gateway/ingress rate limit로 승격해야 한다.
+- 현재 앱 내부 구현은 process-local limiter다. 단일 local/dev worker와 첫 비용폭주 차단에는 충분하지만, 다중 worker/다중 instance production에서는 Redis 또는 API gateway/ingress rate limit가 반드시 외부에서 강제되어야 한다.
 - `X-Forwarded-For`류 proxy header는 신뢰하지 않는다. proxy chain 검증이 없는 상태에서 해당 header를 신뢰하면 spoofing 위험이 커진다.
 - 같은 NAT/proxy 뒤 사용자가 많은 production 환경에서는 client host 단위 제한이 거칠 수 있다. 인증 완료 후 principal 기반 limiter로 옮기거나 trusted gateway/Redis limiter를 붙이는 것이 다음 단계다.
 

@@ -148,6 +148,7 @@ Scope:
 - process-local fixed-window limiter for `POST /api/v1/supplements/analyze`
 - 429 response with `Retry-After`
 - staging/production fail-closed guard for disabled rate limit
+- production fail-closed guard requiring external ingress/API gateway/Redis rate-limit enforcement
 - hashed client-derived subject keys only
 - regression test that changing arbitrary `Authorization` headers cannot bypass the upload limit
 

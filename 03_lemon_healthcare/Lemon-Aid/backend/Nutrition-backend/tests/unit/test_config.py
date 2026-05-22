@@ -72,6 +72,7 @@ def _valid_production_kwargs() -> dict[str, Any]:
         "jwt_jwks_url": "https://auth.example.com/.well-known/jwks.json",
         "jwt_expected_token_type": "at+jwt",
         "privacy_hash_secret": "prod-privacy-hash-secret-at-least-32",
+        "rate_limit_external_enforcement": True,
         "kdris_data_version": "2025",
         "kdris_data_path": "data/nutrition_reference/kdris/kdris_2025.csv",
         "allow_sample_kdris": False,
@@ -114,6 +115,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.google_vision_timeout_seconds == 15
     assert settings.google_vision_max_retries == 2
     assert settings.rate_limit_enabled is True
+    assert settings.rate_limit_external_enforcement is False
     assert settings.rate_limit_window_seconds == 60
     assert settings.supplement_image_upload_rate_limit == 10
     assert settings.enable_multimodal_llm is False
@@ -157,7 +159,8 @@ def test_google_cloud_api_key_can_be_loaded_as_secret() -> None:
 def test_google_cloud_api_key_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
     """Verify Google Vision API key placeholders can be filled through dotenv."""
     env_file = tmp_path / ".env"
-    env_file.write_text("GOOGLE_CLOUD_API_KEY=test-dotenv-google-key\n", encoding="utf-8")
+    key_name = "GOOGLE_CLOUD_API_KEY"
+    env_file.write_text(f"{key_name}=test-dotenv-google-key\n", encoding="utf-8")
 
     settings = Settings(_env_file=env_file)
 
@@ -168,7 +171,8 @@ def test_google_cloud_api_key_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
 def test_empty_google_cloud_api_key_dotenv_value_is_ignored(tmp_path: Path) -> None:
     """Verify an empty local dotenv placeholder does not become an active secret."""
     env_file = tmp_path / ".env"
-    env_file.write_text("GOOGLE_CLOUD_API_KEY=\n", encoding="utf-8")
+    key_name = "GOOGLE_CLOUD_API_KEY"
+    env_file.write_text(f"{key_name}=\n", encoding="utf-8")
 
     settings = Settings(_env_file=env_file)
 
@@ -214,6 +218,15 @@ def test_production_rejects_external_llm() -> None:
     kwargs["allow_external_llm"] = True
 
     with pytest.raises(ValidationError, match="ALLOW_EXTERNAL_LLM"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_process_local_rate_limit_only() -> None:
+    """Verify production requires distributed rate-limit enforcement."""
+    kwargs = _valid_production_kwargs()
+    kwargs["rate_limit_external_enforcement"] = False
+
+    with pytest.raises(ValidationError, match="RATE_LIMIT_EXTERNAL_ENFORCEMENT"):
         Settings(**kwargs)
 
 
@@ -265,6 +278,16 @@ def test_staging_rejects_disabled_rate_limit() -> None:
             auth_mode="jwt",
             allowed_hosts=["api.example.com"],
             rate_limit_enabled=False,
+        )
+
+
+def test_rate_limit_external_enforcement_requires_app_limiter() -> None:
+    """Verify external rate-limit attestation cannot disable app defense in depth."""
+    with pytest.raises(ValidationError, match="RATE_LIMIT_ENABLED=true"):
+        Settings(
+            _env_file=None,
+            rate_limit_enabled=False,
+            rate_limit_external_enforcement=True,
         )
 
 

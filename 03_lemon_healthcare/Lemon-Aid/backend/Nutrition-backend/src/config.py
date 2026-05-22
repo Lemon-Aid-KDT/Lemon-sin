@@ -221,6 +221,8 @@ class Settings(BaseSettings):
         clova_ocr_secret: CLOVA OCR client secret.
         mfds_api_key: 식약처/공공데이터 API 키.
         rate_limit_enabled: Whether API rate limiting is enabled.
+        rate_limit_external_enforcement: Whether production also has a distributed
+            rate limiter at the ingress/API gateway/Redis layer.
         rate_limit_window_seconds: Fixed-window duration used by local rate limiting.
         supplement_image_upload_rate_limit: Maximum supplement image uploads per subject/window.
         supplement_image_max_bytes: Maximum uploaded supplement label image size.
@@ -324,6 +326,14 @@ class Settings(BaseSettings):
     mfds_api_key: SecretStr | None = Field(default=None)
 
     rate_limit_enabled: bool = Field(default=True)
+    rate_limit_external_enforcement: bool = Field(
+        default=False,
+        description=(
+            "Production attestation that a distributed ingress/API gateway/Redis "
+            "rate limiter protects high-cost OCR upload paths. The in-process "
+            "middleware remains enabled as defense in depth."
+        ),
+    )
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
     supplement_image_upload_rate_limit: int = Field(default=10, ge=1, le=1000)
     supplement_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
@@ -517,6 +527,10 @@ class Settings(BaseSettings):
             raise ValueError("ALLOWED_HOSTS must not contain wildcards in staging.")
         if self.environment in {"staging", "production"} and not self.rate_limit_enabled:
             raise ValueError("RATE_LIMIT_ENABLED=false is forbidden outside development.")
+        if self.rate_limit_external_enforcement and not self.rate_limit_enabled:
+            raise ValueError(
+                "RATE_LIMIT_ENABLED=true is required when " "RATE_LIMIT_EXTERNAL_ENFORCEMENT=true."
+            )
 
         if self.environment != "production":
             return self
@@ -535,6 +549,12 @@ class Settings(BaseSettings):
                 (
                     self.allow_external_llm,
                     "ALLOW_EXTERNAL_LLM=true is not allowed in production.",
+                ),
+                (
+                    not self.rate_limit_external_enforcement,
+                    "RATE_LIMIT_EXTERNAL_ENFORCEMENT=true is required in production; "
+                    "process-local rate limiting is not sufficient for multi-instance "
+                    "or gateway-fronted deployments.",
                 ),
                 (
                     self.ocr_primary_provider == "google_vision" and not self.allow_external_ocr,
