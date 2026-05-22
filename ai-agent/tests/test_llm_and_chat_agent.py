@@ -107,8 +107,11 @@ class LLMAndChatAgentTest(unittest.TestCase):
     def test_chat_agent_without_llm_uses_deterministic_fallback(self) -> None:
         answer = ChatAgent().answer("Why this?", _sample_result())
 
-        self.assertIn("current input", answer.lower())
-        self.assertIn("Trace:", answer)
+        self.assertIn("현재 입력 기준", answer)
+        self.assertIn("전문가와 상담", answer)
+        self.assertNotIn("For your question", answer)
+        self.assertNotIn("Trace:", answer)
+        self.assertNotIn("Source families:", answer)
         self.assertNotIn("diagnosis", answer.lower())
         self.assertNotIn("diabetes", answer.lower())
         self.assertNotIn("prescribe", answer.lower())
@@ -132,7 +135,7 @@ class LLMAndChatAgentTest(unittest.TestCase):
         answer = agent.answer("Why this?", _sample_result())
 
         self.assertNotEqual(answer, client.response_text)
-        self.assertIn("current input", answer.lower())
+        self.assertIn("현재 입력 기준", answer)
         self.assertTrue(agent.last_llm_warnings)
 
     def test_chat_agent_falls_back_when_llm_fails(self) -> None:
@@ -140,7 +143,7 @@ class LLMAndChatAgentTest(unittest.TestCase):
 
         answer = agent.answer("Why this?", _sample_result())
 
-        self.assertIn("current input", answer.lower())
+        self.assertIn("현재 입력 기준", answer)
         self.assertEqual(agent.last_llm_error, "local server unavailable")
 
     def test_chat_agent_sanitizes_trace_before_fallback_and_llm_prompt(self) -> None:
@@ -164,6 +167,44 @@ class LLMAndChatAgentTest(unittest.TestCase):
         self.assertNotIn("제품을 구매", prompt_text)
         self.assertNotIn("당뇨입니다", answer)
         self.assertNotIn("제품을 구매", answer)
+        self.assertTrue(agent.last_llm_warnings)
+
+    def test_chat_agent_uses_low_temperature_for_health_explanation(self) -> None:
+        client = _CapturingLLMClient()
+        agent = ChatAgent(llm_client=client)
+
+        agent.answer("Why this?", _sample_result())
+
+        self.assertIsNotNone(client.request)
+        self.assertEqual(client.request.temperature, 0.1)
+
+    def test_chat_agent_withholds_raw_ocr_image_and_prompt_trace(self) -> None:
+        result = DailyCoachingResult(
+            user_id="user-sensitive-trace",
+            date="2026-05-18",
+            findings=[],
+            recommendations=[],
+            actions=[],
+            safety_warnings=[],
+            trace=[
+                "raw_ocr_text: instant noodles sodium 2600mg",
+                "image_id: meal-image-1",
+                "raw_llm_response: internal chain output",
+                "full_prompt: hidden prompt content",
+            ],
+        )
+        client = _CapturingLLMClient()
+        agent = ChatAgent(llm_client=client)
+
+        answer = agent.answer("Why this?", result)
+        prompt_text = "\n".join(message.content for message in client.request.messages)
+
+        self.assertIn("trace item withheld by policy guard", prompt_text)
+        self.assertNotIn("instant noodles sodium 2600mg", prompt_text)
+        self.assertNotIn("meal-image-1", prompt_text)
+        self.assertNotIn("internal chain output", prompt_text)
+        self.assertNotIn("hidden prompt content", prompt_text)
+        self.assertNotIn("instant noodles sodium 2600mg", answer)
         self.assertTrue(agent.last_llm_warnings)
 
     def test_ollama_client_sends_chat_payload(self) -> None:

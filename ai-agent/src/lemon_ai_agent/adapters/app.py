@@ -138,8 +138,7 @@ class DailyHealthAgentAppAdapter:
             "chat_agent",
         ]
         agent_memory = self._build_agent_memory(agent_input)
-        if agent_memory.get("summaries"):
-            used_tools.append("agent_memory")
+        has_agent_memory = bool(agent_memory.get("summaries"))
 
         try:
             references = self._build_references(agent_input.payload)
@@ -149,7 +148,9 @@ class DailyHealthAgentAppAdapter:
                 trends=self._build_trends(agent_input.payload),
                 agent_memory=agent_memory,
             )
-            message = self._chat_agent.answer("Summarize today's coaching.", result)
+            if result.approval_status == "confirmed" and has_agent_memory:
+                used_tools.append("agent_memory")
+            message = self._chat_agent.answer_daily_summary(result)
             output = self._to_output(
                 agent_input=agent_input,
                 result=result,

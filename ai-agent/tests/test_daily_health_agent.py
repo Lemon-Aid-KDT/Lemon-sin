@@ -217,7 +217,7 @@ class DailyHealthAgentTest(unittest.TestCase):
         answer = ChatAgent().answer("Why did you recommend this?", result)
 
         self.assertIn("blood_glucose", " ".join(result.trace))
-        self.assertIn("recent flow", answer.lower())
+        self.assertIn("최근 흐름", answer)
         self.assertNotIn("diabetes", answer.lower())
         self.assertNotIn("diagnosis", answer.lower())
 

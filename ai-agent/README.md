@@ -160,3 +160,14 @@ Official SGLang references:
 - [SGLang GitHub](https://github.com/sgl-project/sglang)
 - [SGLang Structured Outputs](https://docs.sglang.io/docs/advanced_features/structured_outputs)
 - [SGLang Model Gateway](https://docs.sglang.io/docs/advanced_features/sgl_model_gateway)
+
+## 2026-05-22 update
+
+LLM Q&A now has a first-pass knowledge policy instead of relying on a plain
+source list. `ChatAgent` classifies questions, attaches source families and
+Korean response contracts to LLM prompts, and blocks normal LLM generation for
+emergency, mental-health risk, medication co-use, and personal dosage
+boundaries. App-generated daily coaching summaries use a dedicated nutrition
+summary policy rather than the free-form Q&A classifier. The implementation and
+MVP eval target are documented in
+[`docs/llm-qa-knowledge-system.md`](docs/llm-qa-knowledge-system.md).

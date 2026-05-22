@@ -26,6 +26,14 @@ PRODUCT_PROMOTION_TERMS = (
     "브랜드",
 )
 
+SENSITIVE_TRACE_MARKERS = (
+    "raw_ocr_text",
+    "image_id",
+    "raw_llm_response",
+    "full_prompt",
+    "prompt:",
+)
+
 
 @dataclass(frozen=True)
 class SafetyCheckResult:
@@ -61,7 +69,7 @@ class SafetyGuard:
         warnings: list[str] = []
 
         for item in trace:
-            result = self.check_text(item)
+            result = self._check_trace_item(item)
             if result.allowed:
                 safe_trace.append(item)
                 continue
@@ -70,3 +78,14 @@ class SafetyGuard:
             warnings.extend(f"Trace text blocked: {warning}" for warning in result.warnings)
 
         return safe_trace, warnings
+
+    def _check_trace_item(self, text: str) -> SafetyCheckResult:
+        result = self.check_text(text)
+        warnings = list(result.warnings)
+        lowered = text.lower()
+
+        for marker in SENSITIVE_TRACE_MARKERS:
+            if marker in lowered:
+                warnings.append("Sensitive trace detail detected")
+
+        return SafetyCheckResult(allowed=not warnings, warnings=warnings)

@@ -243,3 +243,24 @@ backend integration expects.
   - This package consumes and writes through protocols.
   - Backend table persistence for `agent_memory` and `agent_runs` remains the
     responsibility of the backend integration checkout.
+
+## 2026-05-22 LLM Q&A knowledge boundary
+
+`ChatAgent` now applies a lightweight Q&A knowledge policy before asking the
+LLM to draft user-facing text. The policy lives in
+[`llm-qa-knowledge-system.md`](llm-qa-knowledge-system.md) and
+`src/lemon_ai_agent/knowledge.py`.
+
+- User questions are classified into general information, nutrition analysis,
+  supplement, drug/interaction, chronic-condition context, emergency,
+  mental-health risk, or out-of-scope categories.
+- Each category maps to allowed source families and a fixed Korean response
+  contract.
+- App-generated daily coaching summaries use a dedicated daily-summary policy
+  instead of being classified as general Q&A.
+- Emergency, mental-health risk, medication co-use, and personal dosage
+  questions are answered by deterministic boundary text instead of free LLM
+  generation.
+- The MVP eval target is 230 Q&A cases across general medical, chronic
+  condition, nutrition/KDRIs, supplement, drug boundary, and escalation groups,
+  and tests verify classifier alignment with each expected category.

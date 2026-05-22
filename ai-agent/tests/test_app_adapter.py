@@ -11,7 +11,7 @@ from lemon_ai_agent.adapters import (  # noqa: E402
     DailyHealthAgentAppAdapter,
     InMemoryAgentRunLogger,
 )
-from lemon_ai_agent.llm import FakeLLMClient  # noqa: E402
+from lemon_ai_agent.llm import FakeLLMClient, LLMRequest  # noqa: E402
 
 
 class _MemoryWriter:
@@ -20,6 +20,16 @@ class _MemoryWriter:
 
     def write(self, user_id, result) -> None:
         self.records.append((user_id, result.approval_status))
+
+
+class _CapturingLLMClient:
+    def __init__(self) -> None:
+        self.request: LLMRequest | None = None
+        self.response_text = "현재 입력된 정보 기준으로 주의가 필요할 수 있습니다."
+
+    def generate(self, request: LLMRequest):
+        self.request = request
+        return FakeLLMClient(response_text=self.response_text).generate(request)
 
 
 def _agent_input(
@@ -135,6 +145,26 @@ class DailyHealthAgentAppAdapterTest(unittest.TestCase):
         self.assertEqual(output.actions, [])
         self.assertEqual(logger.records, [])
 
+    def test_unconfirmed_ocr_does_not_use_or_update_agent_memory(self) -> None:
+        memory = _MemoryWriter()
+        agent_input = _agent_input(request_id="req-preview-memory", user_confirmed=False)
+        agent_input.context["agent_memory"] = {
+            "summaries": [
+                {
+                    "memory_type": "nutrition_patterns",
+                    "summary_json": {
+                        "repeated_nutrient_patterns": {"protein": "3"}
+                    },
+                }
+            ]
+        }
+
+        output = DailyHealthAgentAppAdapter(memory_writer=memory).run(agent_input)
+
+        self.assertEqual(output.status, "preview")
+        self.assertNotIn("agent_memory", output.used_tools)
+        self.assertEqual(memory.records, [])
+
     def test_confirmed_result_can_update_memory_after_agent_run(self) -> None:
         memory = _MemoryWriter()
         output = DailyHealthAgentAppAdapter(memory_writer=memory).run(_agent_input())
@@ -213,6 +243,21 @@ class DailyHealthAgentAppAdapterTest(unittest.TestCase):
         self.assertEqual(output.message, client.response_text)
         self.assertEqual(logger.records[0].provider, "fake")
         self.assertEqual(logger.records[0].cost_usd, 0)
+
+    def test_daily_summary_uses_nutrition_policy_not_general_info(self) -> None:
+        client = _CapturingLLMClient()
+
+        output = DailyHealthAgentAppAdapter(llm_client=client).run(
+            _agent_input(request_id="req-daily-summary-policy")
+        )
+        prompt_text = "\n".join(message.content for message in client.request.messages)
+
+        self.assertEqual(output.message, client.response_text)
+        self.assertIn("Question category: nutrition_analysis", prompt_text)
+        self.assertIn("nutrition_reference", prompt_text)
+        self.assertIn("supplement_reference", prompt_text)
+        self.assertIn("chronic_condition", prompt_text)
+        self.assertNotIn("Question category: general_info", prompt_text)
 
 
 if __name__ == "__main__":
