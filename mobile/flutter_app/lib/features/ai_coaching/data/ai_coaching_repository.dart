@@ -6,7 +6,8 @@ class AiCoachingRepository {
   AiCoachingRepository({
     LemonApiClient? client,
     AppConfig? config,
-  }) : _client = client ?? LemonApiClient(config: config ?? AppConfig.fromEnvironment());
+  }) : _client = client ??
+            LemonApiClient(config: config ?? AppConfig.fromEnvironment());
 
   final LemonApiClient _client;
 
@@ -17,7 +18,9 @@ class AiCoachingRepository {
     );
   }
 
-  Future<DailyCoachingResponse> runDailyCoaching(DailyCoachingRequest request) async {
+  Future<DailyCoachingResponse> runDailyCoaching(
+    DailyCoachingRequest request,
+  ) async {
     final response = await _client.postJson(
       '/api/v1/ai-agent/daily-coaching',
       request.toJson(),

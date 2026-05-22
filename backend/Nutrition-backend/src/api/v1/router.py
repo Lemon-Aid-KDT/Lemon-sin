@@ -11,6 +11,7 @@ from src.api.v1 import (
     dashboard,
     health,
     nutrition,
+    notifications,
     predictions,
     privacy,
     regulated_inputs,
@@ -22,6 +23,7 @@ api_router.include_router(activity.router)
 api_router.include_router(ai_agent.router)
 api_router.include_router(predictions.router)
 api_router.include_router(nutrition.router)
+api_router.include_router(notifications.router)
 api_router.include_router(analysis_results.router)
 api_router.include_router(privacy.router)
 api_router.include_router(regulated_inputs.router)

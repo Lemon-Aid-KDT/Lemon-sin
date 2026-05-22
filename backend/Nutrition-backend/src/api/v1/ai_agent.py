@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from lemon_ai_agent.adapters import AgentInput, AgentOutput, DailyHealthAgentAppAdapter
+from lemon_ai_agent.agents.chatbot import ChatbotAgent
+from lemon_ai_agent.chat_session import (
+    ChatTurn as AgentChatTurn,
+    ChatbotRequest as AgentChatbotRequest,
+)
 from lemon_ai_agent.llm import LocalLLMClient, OllamaClient, SGLangClient
 from lemon_ai_agent.schemas import ReferenceRange
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.contract import P1_7_AI_AGENT_DAILY_COACHING_READY_STATUS, route_contract
@@ -47,6 +53,39 @@ DEFAULT_REFERENCE_RANGES = [
 ]
 
 
+class ChatTurnPayload(BaseModel):
+    """Client-supplied chatbot conversation turn."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+    created_at: str = Field(min_length=1, max_length=80)
+
+
+class ChatbotApiRequest(BaseModel):
+    """App-facing chatbot request payload."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    request_id: str = Field(min_length=1, max_length=120)
+    user_id: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=4000)
+    conversation: list[ChatTurnPayload] = Field(default_factory=list, max_length=24)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatbotApiResponse(BaseModel):
+    """App-facing chatbot response payload."""
+
+    request_id: str
+    message: str
+    provider: str
+    used_tools: list[str] = Field(default_factory=list)
+    safety_warnings: list[str] = Field(default_factory=list)
+    requires_user_approval: bool = False
+
+
 def _build_llm_client(settings: Settings) -> LocalLLMClient:
     """Build the configured local/self-hosted explanatory LLM client."""
     if settings.llm_provider == "sglang":
@@ -73,6 +112,9 @@ async def _require_sensitive_health_consent(
     current_user: AuthenticatedUser,
     http_request: Request,
     settings: Settings,
+    *,
+    blocked_action: str = "ai_agent_daily_coaching_blocked",
+    blocked_resource_type: str = "ai_agent_daily_coaching",
 ) -> None:
     """Require sensitive health analysis consent for AI coaching.
 
@@ -91,8 +133,8 @@ async def _require_sensitive_health_consent(
         await record_sensitive_audit_event(
             session,
             current_user,
-            action="ai_agent_daily_coaching_blocked",
-            resource_type="ai_agent_daily_coaching",
+            action=blocked_action,
+            resource_type=blocked_resource_type,
             resource_id=None,
             outcome="blocked",
             request=http_request,
@@ -107,6 +149,26 @@ async def _require_sensitive_health_consent(
                 "required_consents": [ConsentType.SENSITIVE_HEALTH_ANALYSIS.value],
             },
         ) from exc
+
+
+def _memory_summary_for_chat(memory_context: dict[str, object]) -> str:
+    """Return a short non-raw memory summary for chatbot grounding."""
+    summaries = memory_context.get("summaries")
+    if not isinstance(summaries, list) or not summaries:
+        return ""
+
+    summary = summaries[0]
+    if not isinstance(summary, dict):
+        return "최근 데일리 코칭 메모리를 참고했습니다."
+
+    summary_json = summary.get("summary_json")
+    if isinstance(summary_json, dict):
+        repeated = summary_json.get("repeated_nutrient_patterns")
+        if isinstance(repeated, dict) and repeated:
+            nutrients = ", ".join(str(key) for key in list(repeated.keys())[:3])
+            return f"최근 데일리 코칭 메모리에서 {nutrients} 패턴을 참고했습니다."
+
+    return "최근 데일리 코칭 메모리를 참고했습니다."
 
 
 @router.post(
@@ -193,3 +255,81 @@ async def run_daily_coaching(
         },
     )
     return output
+
+
+@router.post(
+    "/chat",
+    response_model=ChatbotApiResponse,
+    responses={
+        401: {"content": {"application/json": {"examples": UNAUTHORIZED_EXAMPLE}}},
+        403: {"content": {"application/json": {"examples": CONSENT_REQUIRED_EXAMPLE}}},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.ANALYSIS_WRITE,),
+        consents=(ConsentType.SENSITIVE_HEALTH_ANALYSIS,),
+        contract_status=P1_7_AI_AGENT_DAILY_COACHING_READY_STATUS,
+    ),
+)
+async def run_chatbot(
+    http_request: Request,
+    request: ChatbotApiRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ChatbotApiResponse:
+    """Run the safety-bounded Lemon Aid chatbot for the authenticated user."""
+    await _require_sensitive_health_consent(
+        session,
+        current_user,
+        http_request,
+        settings,
+        blocked_action="ai_agent_chat_blocked",
+        blocked_resource_type="ai_agent_chat",
+    )
+    memory_context = await load_agent_memory_context(session, current_user, settings)
+    context = dict(request.context)
+    context["agent_memory"] = memory_context
+    context.setdefault("daily_coaching_summary", _memory_summary_for_chat(memory_context))
+
+    llm_client = _build_llm_client(settings)
+    chatbot_response = ChatbotAgent(llm_client=llm_client).answer(
+        AgentChatbotRequest(
+            request_id=request.request_id,
+            user_id=current_user.subject,
+            message=request.message,
+            conversation=[
+                AgentChatTurn(
+                    role=turn.role,
+                    content=turn.content,
+                    created_at=turn.created_at,
+                )
+                for turn in request.conversation
+            ],
+            context=context,
+        )
+    )
+
+    used_tools = list(dict.fromkeys([*chatbot_response.used_tools, "agent_memory"]))
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="ai_agent_chat_completed",
+        resource_type="ai_agent_chat",
+        resource_id=chatbot_response.request_id,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "provider": chatbot_response.provider,
+            "requires_user_approval": chatbot_response.requires_user_approval,
+        },
+    )
+    return ChatbotApiResponse(
+        request_id=chatbot_response.request_id,
+        message=chatbot_response.message,
+        provider=chatbot_response.provider,
+        used_tools=used_tools,
+        safety_warnings=chatbot_response.safety_warnings,
+        requires_user_approval=chatbot_response.requires_user_approval,
+    )

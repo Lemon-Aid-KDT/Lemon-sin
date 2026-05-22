@@ -279,6 +279,7 @@ logs/
 tmp/
 temp/
 .cache/
+.local/
 *.bak
 *.backup
 

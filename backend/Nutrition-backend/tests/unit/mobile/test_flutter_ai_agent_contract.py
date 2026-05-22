@@ -21,6 +21,7 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         APP_ROOT / "lib" / "shared" / "models" / "agent_memory.dart",
         APP_ROOT / "lib" / "shared" / "models" / "analysis_result.dart",
         APP_ROOT / "lib" / "shared" / "models" / "supplement.dart",
+        APP_ROOT / "lib" / "shared" / "dev" / "dev_confirmed_samples.dart",
         APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart",
         APP_ROOT
         / "lib"
@@ -76,6 +77,68 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
         / "presentation"
         / "supplement_capture_screen.dart",
         APP_ROOT / "lib" / "shared" / "widgets" / "medical_disclaimer.dart",
+        APP_ROOT / "lib" / "shared" / "widgets" / "capture_frame_card.dart",
+        APP_ROOT / "lib" / "shared" / "widgets" / "lemon_main_shell.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "chat"
+        / "domain"
+        / "chat_models.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "chat"
+        / "data"
+        / "chat_repository.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "chat"
+        / "presentation"
+        / "chat_screen.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "notifications"
+        / "domain"
+        / "notification_models.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "notifications"
+        / "data"
+        / "notification_repository.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "notifications"
+        / "presentation"
+        / "notification_settings_screen.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "activity"
+        / "domain"
+        / "activity_models.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "activity"
+        / "data"
+        / "activity_repository.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "activity"
+        / "presentation"
+        / "activity_sync_screen.dart",
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "capture_result"
+        / "presentation"
+        / "capture_result_screen.dart",
     ]
 
     missing = [str(path.relative_to(REPO_ROOT)) for path in expected_paths if not path.exists()]
@@ -83,7 +146,7 @@ def test_flutter_ai_agent_shell_files_exist() -> None:
 
 
 def test_flutter_ai_agent_client_uses_backend_contract_paths() -> None:
-    """Verify the shell calls the real consent and daily-coaching endpoints."""
+    """Verify the shell calls the real consent, coaching, and chat endpoints."""
     repository = (
         APP_ROOT
         / "lib"
@@ -92,12 +155,17 @@ def test_flutter_ai_agent_client_uses_backend_contract_paths() -> None:
         / "data"
         / "ai_coaching_repository.dart"
     ).read_text(encoding="utf-8")
+    chat_repository = (
+        APP_ROOT / "lib" / "features" / "chat" / "data" / "chat_repository.dart"
+    ).read_text(encoding="utf-8")
     config = (APP_ROOT / "lib" / "core" / "config" / "app_config.dart").read_text(
         encoding="utf-8"
     )
 
     assert "/api/v1/me/privacy/consents/sensitive_health_analysis" in repository
     assert "/api/v1/ai-agent/daily-coaching" in repository
+    assert "/api/v1/me/privacy/consents/sensitive_health_analysis" in chat_repository
+    assert "/api/v1/ai-agent/chat" in chat_repository
     assert "LEMON_API_BASE_URL" in config
     assert "LEMON_AUTH_TOKEN" in config
 
@@ -137,15 +205,162 @@ def test_flutter_shell_routes_and_sensitive_storage_are_wired() -> None:
         / "presentation"
         / "supplement_capture_screen.dart"
     ).read_text(encoding="utf-8")
+    capture_frame = (
+        APP_ROOT / "lib" / "shared" / "widgets" / "capture_frame_card.dart"
+    ).read_text(encoding="utf-8")
 
     assert "path: '/coaching'" in app
+    assert "path: '/chat'" in app
+    assert "path: '/notifications'" in app
+    assert "path: '/activity'" in app
     assert "path: '/supplement-capture'" in app
     assert "path: '/food-capture'" in app
+    assert "path: '/entry-result'" in app
     assert "flutter_secure_storage" in pubspec
     assert "flutter_secure_storage" in token_store
     assert "Permission.camera.request()" in capture_screen
-    assert "ImageSource.camera" in capture_screen
-    assert "ImageSource.gallery" in capture_screen
+    assert "ImageSource.camera" in capture_frame
+    assert "ImageSource.gallery" in capture_frame
+
+
+def test_flutter_notification_settings_contract_is_wired() -> None:
+    """Verify notification settings models, repository, and route are present."""
+    app = (APP_ROOT / "lib" / "app.dart").read_text(encoding="utf-8")
+    dashboard = (
+        APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart"
+    ).read_text(encoding="utf-8")
+    models = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "notifications"
+        / "domain"
+        / "notification_models.dart"
+    ).read_text(encoding="utf-8")
+    repository = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "notifications"
+        / "data"
+        / "notification_repository.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "notifications"
+        / "presentation"
+        / "notification_settings_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "NotificationSettingsScreen" in app
+    assert "path: '/notifications'" in app
+    assert "context.go('/notifications')" in dashboard
+    assert "class ReminderPreference" in models
+    assert "ReminderCategory" in models
+    assert "supplement_reminder" in models
+    assert "meal_check_in" in models
+    assert "daily_coaching_prompt" in models
+    assert "safety_follow_up" in models
+    assert "/api/v1/notifications/reminders" in repository
+    assert "grantSensitiveHealthAnalysisConsent" in repository
+    assert "SwitchListTile" in screen
+    assert "DropdownButtonFormField" in screen
+    assert "TextField" in screen
+    assert "MedicalDisclaimer" in screen
+    assert "진단" not in screen
+    assert "처방" not in screen
+    assert "치료" not in screen
+
+
+def test_flutter_activity_context_is_manual_first_and_confirmed_only() -> None:
+    """Verify activity context uses confirmed manual data and has disabled bridge UI."""
+    app = (APP_ROOT / "lib" / "app.dart").read_text(encoding="utf-8")
+    dashboard = (
+        APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart"
+    ).read_text(encoding="utf-8")
+    models = (
+        APP_ROOT / "lib" / "features" / "activity" / "domain" / "activity_models.dart"
+    ).read_text(encoding="utf-8")
+    repository = (
+        APP_ROOT / "lib" / "features" / "activity" / "data" / "activity_repository.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "activity"
+        / "presentation"
+        / "activity_sync_screen.dart"
+    ).read_text(encoding="utf-8")
+    coaching_models = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "ai_coaching"
+        / "domain"
+        / "ai_coaching_models.dart"
+    ).read_text(encoding="utf-8")
+    store = (
+        APP_ROOT / "lib" / "shared" / "state" / "confirmed_entry_store.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "ActivitySyncScreen" in app
+    assert "path: '/activity'" in app
+    assert "context.go('/activity')" in dashboard
+    assert "class ConfirmedActivityEntry" in models
+    assert "steps" in models
+    assert "activeMinutes" in models
+    assert "activityEnergyKcal" in models
+    assert "workoutType" in models
+    assert "userConfirmed" in models
+    assert "'user_confirmed': true" in models
+    assert "sleep" not in models
+    assert "blood_glucose" not in models
+    assert "blood_pressure" not in models
+    assert "createManualActivity" in repository
+    assert "ConfirmedEntryStore.instance.addActivity" in screen
+    assert "HealthKit" in screen
+    assert "Health Connect" in screen
+    assert "onPressed: null" in screen
+    assert "activities.where" in coaching_models
+    assert "toAgentHealthTrendJson" in coaching_models
+    assert "addActivity" in store
+
+
+def test_flutter_chat_mvp_uses_safe_contract_and_navigation() -> None:
+    """Verify chat DTO, repository, and UI are wired to the chatbot endpoint."""
+    app = (APP_ROOT / "lib" / "app.dart").read_text(encoding="utf-8")
+    dashboard = (
+        APP_ROOT / "lib" / "features" / "dashboard" / "presentation" / "dashboard_screen.dart"
+    ).read_text(encoding="utf-8")
+    models = (
+        APP_ROOT / "lib" / "features" / "chat" / "domain" / "chat_models.dart"
+    ).read_text(encoding="utf-8")
+    repository = (
+        APP_ROOT / "lib" / "features" / "chat" / "data" / "chat_repository.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT / "lib" / "features" / "chat" / "presentation" / "chat_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "ChatScreen" in app
+    assert "path: '/chat'" in app
+    assert "context.go('/chat')" in dashboard
+    assert "class ChatTurn" in models
+    assert "class ChatbotRequest" in models
+    assert "class ChatbotResponse" in models
+    assert "requires_user_approval" in models
+    assert "usedAgentMemory" in models
+    assert "/api/v1/ai-agent/chat" in repository
+    assert "grantSensitiveHealthAnalysisConsent" in repository
+    assert "TextField" in screen
+    assert "IconButton" in screen
+    assert "provider" in screen
+    assert "memory" in screen
+    assert "MedicalDisclaimer" in screen
+    assert "error.toString()" not in screen
 
 
 def test_flutter_food_capture_collects_confirmed_input_without_nutrient_guessing() -> None:
@@ -160,6 +375,9 @@ def test_flutter_food_capture_collects_confirmed_input_without_nutrient_guessing
     screen = (
         APP_ROOT / "lib" / "features" / "food" / "presentation" / "food_capture_screen.dart"
     ).read_text(encoding="utf-8")
+    capture_frame = (
+        APP_ROOT / "lib" / "shared" / "widgets" / "capture_frame_card.dart"
+    ).read_text(encoding="utf-8")
 
     assert "FoodCaptureScreen" in app
     assert "context.go('/food-capture')" in dashboard
@@ -169,8 +387,8 @@ def test_flutter_food_capture_collects_confirmed_input_without_nutrient_guessing
     assert "'nutrients'" not in entry
     assert "food_recognition" not in entry
     assert "nutrition_lookup" not in entry
-    assert "ImageSource.camera" in screen
-    assert "ImageSource.gallery" in screen
+    assert "ImageSource.camera" in capture_frame
+    assert "ImageSource.gallery" in capture_frame
     assert "_confirmedForAgentPayload" in screen
     assert "userConfirmed" in screen
 
@@ -340,6 +558,10 @@ def test_flutter_daily_coaching_request_is_confirmed_only() -> None:
     assert "fromConfirmedInputs" in models
     assert "ConfirmedFoodEntry" in models
     assert "SupplementConfirmedInput" in models
+    assert "toAgentSupplementJson" in models
+    assert "'product_name': displayName" in supplement_preview
+    assert "'name': displayName" in supplement_preview
+    assert "'times_per_day'" in supplement_preview
     assert "'user_confirmed': true" in food_entry
     assert "'user_confirmed': true" in supplement_preview
     assert "'raw_ocr_text'" not in models
@@ -366,4 +588,32 @@ def test_flutter_ai_agent_screen_includes_disclaimer_and_no_raw_error_leak() -> 
 
     assert "MedicalDisclaimer" in screen
     assert "error.toString()" not in screen
+    assert "오늘의 요약" in screen
+    assert "권장 행동" in screen
+    assert "참고 및 주의" in screen
+    assert "_visibleSafetyWarnings" in screen
+    assert "Trace text blocked" not in screen
+    assert "Forbidden medical expression detected" not in screen
     assert "진단과 처방을 대체하지 않습니다" in disclaimer
+
+
+def test_flutter_dev_sample_is_debug_only_and_confirmed_only() -> None:
+    """Verify photo-free LLM demo seeds confirmed payloads only in debug UI."""
+    screen = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "ai_coaching"
+        / "presentation"
+        / "daily_coaching_screen.dart"
+    ).read_text(encoding="utf-8")
+    sample = (APP_ROOT / "lib" / "shared" / "dev" / "dev_confirmed_samples.dart").read_text(
+        encoding="utf-8"
+    )
+
+    assert "kDebugMode" in screen
+    assert "seedDevConfirmedEntries" in screen
+    assert "ConfirmedFoodEntry" in sample
+    assert "SupplementConfirmedInput" in sample
+    assert "nutrients" not in sample
+    assert "raw_ocr_text" not in sample

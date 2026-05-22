@@ -147,7 +147,7 @@ class DailyHealthAgentAppAdapter:
                 trends=self._build_trends(agent_input.payload),
                 agent_memory=self._build_agent_memory(agent_input),
             )
-            message = self._chat_agent.answer("Summarize today's coaching.", result)
+            message = self._chat_agent.answer("오늘 코칭 내용을 요약해 주세요.", result)
             output = self._to_output(
                 agent_input=agent_input,
                 result=result,

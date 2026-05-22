@@ -169,6 +169,34 @@ def _payload(*, user_confirmed: bool = True, unsafe_trend: bool = False) -> dict
     }
 
 
+def _chat_payload(*, preview_context: bool = False) -> dict[str, object]:
+    """Return a chatbot request payload.
+
+    Args:
+        preview_context: Whether the request contains preview-only client context.
+
+    Returns:
+        JSON request payload.
+    """
+    return {
+        "request_id": "chat-route-test",
+        "user_id": "client-supplied-user",
+        "message": "오늘 기록을 보고 먼저 확인할 점을 알려줘.",
+        "conversation": [
+            {
+                "role": "user",
+                "content": "점심과 영양제를 입력했어.",
+                "created_at": "2026-05-21T09:00:00+09:00",
+            }
+        ],
+        "context": {
+            "daily_coaching_summary": "나트륨 섭취가 반복적으로 높게 기록되었습니다.",
+            "preview_only": preview_context,
+            "internal_trace": "supplement totals: vitamin d=25mcg",
+        },
+    }
+
+
 def test_daily_coaching_returns_completed_result_for_confirmed_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -185,6 +213,22 @@ def test_daily_coaching_returns_completed_result_for_confirmed_input(
     assert body["approval_status"] == "confirmed"
     assert body["provider"] == "deterministic"
     assert body["debug_trace"] == []
+    assert set(
+        [
+            "message",
+            "findings",
+            "recommendations",
+            "safety_warnings",
+            "provider",
+            "used_tools",
+        ]
+    ).issubset(body)
+    assert "오늘의 요약" in body["message"]
+    assert "권장 행동" in body["message"]
+    assert "참고 및 주의" in body["message"]
+    assert "supplement totals" not in body["message"]
+    assert "nutrition findings" not in body["message"]
+    assert "Trace" not in body["message"]
     levels = {finding["nutrient"]: finding["level"] for finding in body["findings"]}
     assert levels["sodium"] == "risky"
     assert levels["protein"] == "low"
@@ -257,8 +301,10 @@ def test_daily_coaching_uses_sglang_provider_when_configured(
             captured["llm_request"] = request
             return LLMResponse(
                 text=(
-                    "Based on the current input, one nutrition item may need attention. "
-                    "Please review medical concerns with a qualified professional."
+                    "오늘의 요약: 현재 입력 기준으로 한 가지 영양 항목은 "
+                    "주의가 필요할 수 있습니다. 권장 행동: 확인된 권장 사항을 "
+                    "먼저 살펴보세요. 참고 및 주의: 의학적 판단이 필요한 경우 "
+                    "전문가와 상담해 주세요."
                 ),
                 provider="sglang",
                 model=self.model,
@@ -287,6 +333,9 @@ def test_daily_coaching_uses_sglang_provider_when_configured(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["provider"] == "sglang"
+    assert "오늘의 요약" in body["message"]
+    assert "supplement totals" not in body["message"]
+    assert "nutrition findings" not in body["message"]
     assert captured["sglang_client"] == {
         "model": "Qwen/Qwen2.5-0.5B-Instruct",
         "endpoint": "http://127.0.0.1:30000/v1",
@@ -294,6 +343,11 @@ def test_daily_coaching_uses_sglang_provider_when_configured(
         "timeout": settings.ollama_timeout_sec,
     }
     assert captured["llm_request"].messages[0].role == "system"
+    assert "Answer only in Korean" in captured["llm_request"].messages[0].content
+    assert "Do not mention or quote internal calculation logs" in captured[
+        "llm_request"
+    ].messages[0].content
+    assert "Trace summary" not in captured["llm_request"].messages[1].content
     assert captured["run_output"].provider == "sglang"
     assert captured["run_model"] == "Qwen/Qwen2.5-0.5B-Instruct"
 
@@ -378,3 +432,158 @@ def test_daily_coaching_sanitizes_unsafe_trend_text(
     assert "Trace text blocked" in body_text
     assert "diabetes" not in body_text
     assert "purchase this supplement" not in body_text
+
+
+def test_daily_coaching_activity_context_omits_raw_sensitive_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify activity context does not expose raw device-sensitive extras."""
+    payload = _payload()
+    payload["payload"]["health_trends"] = [
+        {
+            "metric": "activity_context",
+            "direction": "up",
+            "severity": "info",
+            "summary": "Confirmed activity entry: 7200 steps and 34 active minutes.",
+            "steps": 7200,
+            "active_minutes": 34,
+            "activity_energy_kcal": 220,
+            "workout_type": "walk",
+            "source": "manual",
+            "user_confirmed": True,
+            "route_location": "home to clinic",
+            "blood_pressure": "120/80",
+            "sleep": "7h",
+        }
+    ]
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+
+    response = _client().post("/api/v1/ai-agent/daily-coaching", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    body_text = str(body)
+    assert body["debug_trace"] == []
+    assert "route_location" not in body_text
+    assert "home to clinic" not in body_text
+    assert "blood_pressure" not in body_text
+    assert "120/80" not in body_text
+    assert "sleep" not in body_text
+
+
+def test_chat_route_uses_sglang_provider_and_agent_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify chatbot route reuses the local LLM and memory context safely."""
+    captured: dict[str, object] = {}
+
+    class _FakeSGLangClient:
+        """Network-free SGLang stand-in for chatbot route tests."""
+
+        def __init__(
+            self,
+            *,
+            model: str,
+            endpoint: str,
+            api_key: str | None,
+            timeout: float,
+        ) -> None:
+            self.model = model
+            captured["sglang_client"] = {
+                "model": model,
+                "endpoint": endpoint,
+                "api_key": api_key,
+                "timeout": timeout,
+            }
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            captured["llm_request"] = request
+            return LLMResponse(
+                text=(
+                    "오늘의 요약: 현재 입력 기준으로 확인된 기록을 함께 살펴봤습니다. "
+                    "권장 행동: 오늘 확정한 식사와 영양제 기록부터 점검해 주세요. "
+                    "참고 및 주의: 의학적 판단이 필요한 경우 전문가와 상담해 주세요."
+                ),
+                provider="sglang",
+                model=self.model,
+            )
+
+    settings = Settings(
+        _env_file=None,
+        llm_provider="sglang",
+        sglang_base_url="http://127.0.0.1:30000/v1",
+        sglang_model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+    monkeypatch.setattr(ai_agent, "SGLangClient", _FakeSGLangClient)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+
+    response = _client(settings=settings).post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["request_id"] == "chat-route-test"
+    assert body["provider"] == "sglang"
+    assert "오늘의 요약" in body["message"]
+    assert "권장 행동" in body["message"]
+    assert "참고 및 주의" in body["message"]
+    assert "agent_memory" in body["used_tools"]
+    assert "supplement totals" not in body["message"]
+    assert "internal_trace" not in body["message"]
+    assert captured["sglang_client"]["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
+    assert "Answer only in Korean" in captured["llm_request"].messages[0].content
+    assert "Internal context for grounding only" in captured[
+        "llm_request"
+    ].messages[1].content
+    assert "internal_trace" not in captured["llm_request"].messages[1].content
+    assert "supplement totals" not in captured["llm_request"].messages[1].content
+    assert "summary_json" not in captured["llm_request"].messages[1].content
+
+
+def test_chat_route_preview_context_does_not_persist_daily_coaching_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify chat preview context is not recorded as a completed coaching run."""
+    persisted: dict[str, int] = {"memory": 0, "run": 0}
+
+    async def _capture_memory_update(*_args: object, **_kwargs: object) -> None:
+        persisted["memory"] += 1
+
+    async def _capture_agent_run(*_args: object, **_kwargs: object) -> None:
+        persisted["run"] += 1
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "upsert_daily_coaching_memory", _capture_memory_update)
+    monkeypatch.setattr(ai_agent, "record_agent_run", _capture_agent_run)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(preview_context=True),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["provider"] == "deterministic"
+    assert body["requires_user_approval"] is False
+    assert persisted == {"memory": 0, "run": 0}
+
+
+def test_chat_route_requires_sensitive_health_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify chatbot route fails closed without sensitive-health consent."""
+    monkeypatch.setattr(ai_agent, "require_user_consent", _deny_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+
+    response = _client().post("/api/v1/ai-agent/chat", json=_chat_payload())
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["detail"]["code"] == "consent_required"

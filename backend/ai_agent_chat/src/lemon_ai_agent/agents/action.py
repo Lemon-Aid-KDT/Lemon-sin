@@ -17,11 +17,11 @@ class ActionAgent:
                         payload={"source": recommendation.title},
                     )
                 )
-            if recommendation.category == "consider_ingredient":
+            if recommendation.category in {"consider_ingredient", "reminder"}:
                 actions.append(
                     ProposedAction(
                         action_type="supplement_reminder",
-                        title=f"Review reminder for {recommendation.title}",
+                        title=f"알림 제안: {recommendation.title}",
                         payload={"source": recommendation.title},
                     )
                 )

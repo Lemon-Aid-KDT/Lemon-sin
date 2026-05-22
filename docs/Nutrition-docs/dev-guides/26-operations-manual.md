@@ -113,8 +113,10 @@ redis-cli -u $REDIS_URL ping
     `/api/v1/ai-agent/daily-coaching` 2회 호출, 로컬 SGLang provider 응답,
     두 번째 호출의 `used_tools` 내 `agent_memory` 재주입 확인.
 - [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
-- [ ] SGLang 운영 후보 상태 확인
+- [x] SGLang 운영 후보 상태 확인 (2026-05-20 재확인)
   - 기본 endpoint: `http://127.0.0.1:30000/v1`
+  - 현재 응답 모델: `Qwen/Qwen2.5-0.5B-Instruct`
+  - `GET /v1/models`와 `POST /v1/chat/completions`가 응답함
   - `ALLOW_EXTERNAL_LLM=false`에서는 `localhost`, `127.0.0.1`, `::1`만 허용
   - Windows 직접 설치가 `flashinfer_python` symlink 권한으로 막히면 WSL2 Linux 배포판,
     Docker, 또는 conda 기반 격리 환경에서 재시도
@@ -240,7 +242,7 @@ SGLANG_API_KEY=EMPTY \
 python backend/scripts/smoke_ai_agent_server.py
 # 2026-05-20 기준 first_provider=sglang, second_provider=sglang,
 # second_used_tools에 daily_health_agent, chat_agent, agent_memory 포함 확인
-# 2026-05-20 재검증: first_provider=sglang, second_provider=sglang,
+# 2026-05-20 23:19 KST 재검증: first_provider=sglang, second_provider=sglang,
 # second_used_tools에 daily_health_agent, nutrition_engine, supplement_engine,
 # safety_guard, chat_agent, agent_memory 포함 확인
 

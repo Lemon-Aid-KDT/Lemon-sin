@@ -13,7 +13,8 @@ class SupplementAnalysisPreview {
       analysisId: json['analysis_id'] as String? ?? '',
       status: json['status'] as String? ?? 'unknown',
       ocrProvider: json['ocr_provider'] as String? ?? 'unknown',
-      parsedProduct: SupplementParsedProduct.fromJson(_map(json['parsed_product'])),
+      parsedProduct:
+          SupplementParsedProduct.fromJson(_map(json['parsed_product'])),
       ingredientCandidates: _mapList(json['ingredient_candidates'])
           .map(SupplementIngredientCandidate.fromJson)
           .toList(growable: false),
@@ -102,12 +103,36 @@ class SupplementConfirmedInput {
     return <String, dynamic>{
       if (analysisId.isNotEmpty) 'analysis_id': analysisId,
       'display_name': displayName,
-      if (manufacturer != null && manufacturer!.isNotEmpty) 'manufacturer': manufacturer,
+      if (manufacturer != null && manufacturer!.isNotEmpty)
+        'manufacturer': manufacturer,
       'ingredients': ingredients
-          .map((SupplementConfirmedIngredientInput ingredient) => ingredient.toJson())
+          .map(
+            (SupplementConfirmedIngredientInput ingredient) =>
+                ingredient.toJson(),
+          )
           .toList(growable: false),
       'serving': serving.toJson(),
       if (intakeSchedule != null) 'intake_schedule': intakeSchedule!.toJson(),
+      'user_confirmed': true,
+    };
+  }
+
+  Map<String, dynamic> toAgentSupplementJson() {
+    return <String, dynamic>{
+      'product_name': displayName,
+      'ingredients': ingredients
+          .where(
+            (SupplementConfirmedIngredientInput ingredient) =>
+                ingredient.amount != null &&
+                ingredient.unit != null &&
+                ingredient.unit!.isNotEmpty,
+          )
+          .map(
+            (SupplementConfirmedIngredientInput ingredient) =>
+                ingredient.toAgentNutrientJson(),
+          )
+          .toList(growable: false),
+      'times_per_day': _positiveTimesPerDay(serving.dailyServings),
       'user_confirmed': true,
     };
   }
@@ -129,11 +154,20 @@ class SupplementConfirmedIngredientInput {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'display_name': displayName,
-      if (nutrientCode != null && nutrientCode!.isNotEmpty) 'nutrient_code': nutrientCode,
+      if (nutrientCode != null && nutrientCode!.isNotEmpty)
+        'nutrient_code': nutrientCode,
       if (amount != null) 'amount': amount,
       if (unit != null && unit!.isNotEmpty) 'unit': unit,
       'confidence': 1.0,
       'source': 'user_confirmed',
+    };
+  }
+
+  Map<String, dynamic> toAgentNutrientJson() {
+    return <String, dynamic>{
+      'name': displayName,
+      'amount': amount,
+      'unit': unit,
     };
   }
 }
@@ -207,4 +241,9 @@ double? _doubleOrNull(Object? value) {
     return double.tryParse(value);
   }
   return null;
+}
+
+int _positiveTimesPerDay(double dailyServings) {
+  final int rounded = dailyServings.round();
+  return rounded < 1 ? 1 : rounded;
 }

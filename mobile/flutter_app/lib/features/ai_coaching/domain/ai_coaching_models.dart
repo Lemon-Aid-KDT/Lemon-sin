@@ -1,3 +1,4 @@
+import '../../activity/domain/activity_models.dart';
 import '../../food/domain/confirmed_food_entry.dart';
 import '../../supplement/domain/supplement_analysis_preview.dart';
 
@@ -12,8 +13,10 @@ class DailyCoachingRequest {
   factory DailyCoachingRequest.fromConfirmedInputs({
     required List<ConfirmedFoodEntry> foods,
     required List<SupplementConfirmedInput> supplements,
+    List<ConfirmedActivityEntry> activities = const <ConfirmedActivityEntry>[],
   }) {
-    final String requestId = 'mobile-daily-coaching-${DateTime.now().millisecondsSinceEpoch}';
+    final String requestId =
+        'mobile-daily-coaching-${DateTime.now().millisecondsSinceEpoch}';
     return DailyCoachingRequest(
       requestId: requestId,
       userId: 'mobile-client-placeholder',
@@ -31,9 +34,19 @@ class DailyCoachingRequest {
             .map((ConfirmedFoodEntry food) => food.toAgentFoodJson())
             .toList(growable: false),
         'supplements': supplements
-            .map((SupplementConfirmedInput supplement) => supplement.toJson())
+            .map(
+              (SupplementConfirmedInput supplement) =>
+                  supplement.toAgentSupplementJson(),
+            )
             .toList(growable: false),
-        'health_trends': <Map<String, dynamic>>[],
+        'health_trends': activities.where(
+          (ConfirmedActivityEntry activity) => activity.userConfirmed,
+        )
+            .map(
+              (ConfirmedActivityEntry activity) =>
+                  activity.toAgentHealthTrendJson(),
+            )
+            .toList(growable: false),
       },
     );
   }
@@ -62,6 +75,7 @@ class DailyCoachingResponse {
     required this.provider,
     required this.usedTools,
     required this.findings,
+    required this.recommendations,
     required this.safetyWarnings,
   });
 
@@ -74,6 +88,7 @@ class DailyCoachingResponse {
       provider: json['provider'] as String? ?? 'unknown',
       usedTools: _stringList(json['used_tools']),
       findings: _mapList(json['findings']),
+      recommendations: _mapList(json['recommendations']),
       safetyWarnings: _stringList(json['safety_warnings']),
     );
   }
@@ -85,6 +100,7 @@ class DailyCoachingResponse {
   final String provider;
   final List<String> usedTools;
   final List<Map<String, dynamic>> findings;
+  final List<Map<String, dynamic>> recommendations;
   final List<String> safetyWarnings;
 
   bool get usedAgentMemory => usedTools.contains('agent_memory');

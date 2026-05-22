@@ -9,7 +9,8 @@ class SupplementCaptureRepository {
   SupplementCaptureRepository({
     LemonApiClient? client,
     AppConfig? config,
-  }) : _client = client ?? LemonApiClient(config: config ?? AppConfig.fromEnvironment());
+  }) : _client = client ??
+            LemonApiClient(config: config ?? AppConfig.fromEnvironment());
 
   final LemonApiClient _client;
 
@@ -30,14 +31,17 @@ class SupplementCaptureRepository {
   Future<SupplementAnalysisPreview> analyzeLabelImage(XFile image) async {
     final List<int> bytes = await image.readAsBytes();
     final FormData formData = FormData.fromMap(<String, dynamic>{
-      'client_request_id': 'mobile-supplement-${DateTime.now().millisecondsSinceEpoch}',
+      'client_request_id':
+          'mobile-supplement-${DateTime.now().millisecondsSinceEpoch}',
       'image': MultipartFile.fromBytes(bytes, filename: image.name),
     });
     final Response<Map<String, dynamic>> response = await _client.postMultipart(
       '/api/v1/supplements/analyze',
       formData,
     );
-    return SupplementAnalysisPreview.fromJson(response.data ?? <String, dynamic>{});
+    return SupplementAnalysisPreview.fromJson(
+      response.data ?? <String, dynamic>{},
+    );
   }
 
   Future<void> saveConfirmedSupplement(SupplementConfirmedInput input) async {
