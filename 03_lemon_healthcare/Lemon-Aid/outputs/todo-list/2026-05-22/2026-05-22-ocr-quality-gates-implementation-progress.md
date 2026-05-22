@@ -196,6 +196,27 @@
 - collector 오류는 env var 이름만 출력하고 실제 env 값 또는 로컬 경로를 출력하지 않는다.
 - 기존 absolute image path manifest도 하위 호환을 위해 읽을 수 있지만, 새 builder 출력은 privacy scanner의 local-path rule을 통과하도록 설계했다.
 
+### 3.12 PR Export Base Monorepo Path Guard
+
+수정 파일:
+
+- `backend/scripts/check_pr_export_base.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_pr_export_base.py`
+
+변경:
+
+- PR export base checker가 standalone team repo 형태의 `backend/...` 경로와 monorepo checkout 형태의 `03_lemon_healthcare/Lemon-Aid/backend/...` 경로를 모두 검사하도록 보강했다.
+- `--project-root` 옵션을 추가해 nested project root를 명시할 수 있게 했다.
+- CLI 기본 실행은 현재 directory를 project root로 보고 Git root는 `git rev-parse --show-toplevel`로 해석한다.
+- required path는 standalone path와 monorepo-prefixed path 중 하나라도 존재하면 통과한다.
+- forbidden prefix는 standalone path와 monorepo-prefixed path를 모두 검사해 generated OCR eval artifact tracking을 놓치지 않는다.
+
+보안 확인:
+
+- skeleton base를 code-bearing base로 오판하는 false positive를 줄인다.
+- monorepo-origin branch의 code path를 missing으로 오판하는 false negative를 줄인다.
+- generated OCR eval artifact는 standalone/team branch와 monorepo/origin branch 양쪽에서 모두 차단된다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:

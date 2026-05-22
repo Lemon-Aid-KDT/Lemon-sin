@@ -56,6 +56,7 @@ def check_base_ref(
     base_ref: str,
     required_paths: tuple[str, ...],
     forbidden_prefixes: tuple[str, ...],
+    project_root: Path | None = None,
 ) -> BaseCheckResult:
     """Check a base ref for required code paths and forbidden artifacts.
 
@@ -65,6 +66,9 @@ def check_base_ref(
         required_paths: Root-relative paths that must exist in the base ref.
         forbidden_prefixes: Root-relative file or directory prefixes that must
             not be tracked in the base ref.
+        project_root: Optional project directory under ``repo_root``. When
+            supplied, each path is checked both as a standalone-repo path and as
+            a monorepo-prefixed path.
 
     Returns:
         Structured check result.
@@ -73,20 +77,33 @@ def check_base_ref(
         RuntimeError: If ``base_ref`` is not a valid tree.
     """
     _require_git_tree(repo_root=repo_root, base_ref=base_ref)
+    project_root = project_root or repo_root
     missing_required_paths = tuple(
         path
         for path in required_paths
-        if not _tree_path_exists(repo_root=repo_root, base_ref=base_ref, path=path)
+        if not any(
+            _tree_path_exists(repo_root=repo_root, base_ref=base_ref, path=candidate_path)
+            for candidate_path in _candidate_tree_paths(
+                repo_root=repo_root,
+                project_root=project_root,
+                path=path,
+            )
+        )
     )
     forbidden_paths: list[str] = []
     for prefix in forbidden_prefixes:
-        forbidden_paths.extend(
-            _tracked_paths_under(
-                repo_root=repo_root,
-                base_ref=base_ref,
-                prefix=_normalize_forbidden_prefix(prefix),
+        for candidate_prefix in _candidate_tree_paths(
+            repo_root=repo_root,
+            project_root=project_root,
+            path=prefix,
+        ):
+            forbidden_paths.extend(
+                _tracked_paths_under(
+                    repo_root=repo_root,
+                    base_ref=base_ref,
+                    prefix=_normalize_forbidden_prefix(candidate_prefix),
+                )
             )
-        )
     return BaseCheckResult(
         base_ref=base_ref,
         missing_required_paths=missing_required_paths,
@@ -153,6 +170,28 @@ def _normalize_forbidden_prefix(prefix: str) -> str:
     return prefix.strip().lstrip("/")
 
 
+def _candidate_tree_paths(*, repo_root: Path, project_root: Path, path: str) -> tuple[str, ...]:
+    """Return standalone and monorepo-prefixed candidate tree paths.
+
+    Args:
+        repo_root: Git repository root.
+        project_root: Project directory that may live below ``repo_root``.
+        path: Project-relative or root-relative path.
+
+    Returns:
+        Unique candidate paths suitable for Git tree/pathspec checks.
+    """
+    normalized = _normalize_forbidden_prefix(path)
+    candidates = [normalized]
+    try:
+        project_prefix = project_root.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        project_prefix = Path()
+    if project_prefix.parts and not normalized.startswith(project_prefix.as_posix() + "/"):
+        candidates.append((project_prefix / normalized).as_posix())
+    return tuple(dict.fromkeys(candidates))
+
+
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run a Git command in the repository root.
 
@@ -171,8 +210,11 @@ def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _default_repo_root() -> Path:
-    """Return the current Git repository root.
+def _git_root_for_path(path: Path) -> Path:
+    """Return the Git repository root for a path.
+
+    Args:
+        path: Directory inside a Git worktree.
 
     Returns:
         Absolute repository root path.
@@ -181,7 +223,7 @@ def _default_repo_root() -> Path:
         RuntimeError: If the current directory is not inside a Git worktree.
     """
     result = subprocess.run(
-        ("git", "rev-parse", "--show-toplevel"),
+        ("git", "-C", str(path), "rev-parse", "--show-toplevel"),
         check=False,
         capture_output=True,
         text=True,
@@ -225,6 +267,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-ref", required=True)
     parser.add_argument("--repo-root", type=Path, default=None)
     parser.add_argument(
+        "--project-root",
+        type=Path,
+        default=None,
+        help=(
+            "Project directory to use for monorepo-prefixed path checks. "
+            "Defaults to the current directory when --repo-root is omitted."
+        ),
+    )
+    parser.add_argument(
         "--required-path",
         action="append",
         dest="required_paths",
@@ -240,12 +291,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    repo_root = args.repo_root.resolve() if args.repo_root else _default_repo_root()
+    input_root = args.repo_root.resolve() if args.repo_root else Path.cwd().resolve()
+    repo_root = _git_root_for_path(input_root)
+    if args.project_root is not None:
+        project_root = args.project_root.resolve()
+    elif args.repo_root is None:
+        project_root = Path.cwd().resolve()
+    else:
+        project_root = input_root
     required_paths = tuple(args.required_paths or DEFAULT_REQUIRED_PATHS)
     forbidden_prefixes = tuple(args.forbidden_prefixes or DEFAULT_FORBIDDEN_PREFIXES)
     try:
         result = check_base_ref(
             repo_root=repo_root,
+            project_root=project_root,
             base_ref=args.base_ref,
             required_paths=required_paths,
             forbidden_prefixes=forbidden_prefixes,
