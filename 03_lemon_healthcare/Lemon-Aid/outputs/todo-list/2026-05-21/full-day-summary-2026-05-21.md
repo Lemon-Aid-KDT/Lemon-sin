@@ -24,7 +24,7 @@
 
 | 항목 | 결과 |
 |---|---|
-| 로컬 작업 브랜치 | `/Users/yeong/99_me/00_github` 의 `codex/p1-5-stabilization` |
+| 로컬 작업 브랜치 | `$MONOREPO_ROOT` 의 `codex/p1-5-stabilization` |
 | 로컬 snapshot commit | `e1260140 chore(lemon): stabilize P1-5 workspace snapshot` |
 | 로컬 commit 범위 | `03_lemon_healthcare` 변경분만 포함, `00_plusultra/` untracked 는 제외 |
 | 로컬 commit 규모 | `1180 files changed`, `64006 insertions`, `40294 deletions` |
@@ -320,7 +320,7 @@ flutter run -d "iPhone 16e" \
 - **Push 방식**: force push 없이 fast-forward (`afc14f11..8f38df11`)
 - **Pre-push 검증**: pytest 740 passed + flutter analyze 0 + secret scan OK + `.env` 미트래킹 확인
 - **Post-push 검증**: `git ls-remote team refs/heads/feat/ocr-95-baseline-and-security-2026-05-20` 가 `8f38df1130ff6f48e932c7f749c5b635983c2f3d` 반환
-- **남은 로컬 상태**: `/Users/yeong/99_me/00_github` 기준 `00_plusultra/` 는 관련 없는 untracked 로 남겨둠
+- **남은 로컬 상태**: `$MONOREPO_ROOT` 기준 `00_plusultra/` 는 관련 없는 untracked 로 남겨둠
 
 ---
 
