@@ -1,0 +1,83 @@
+{
+  "schema_version": "supplement-parsed-snapshot-v2",
+  "requires_user_confirmation": true,
+  "source": {
+    "analysis_id": "11111111-1111-4111-8111-111111111111",
+    "ocr_provider": "manual",
+    "ocr_confidence": null,
+    "layout_available": true,
+    "raw_image_stored": false,
+    "raw_ocr_text_stored": false,
+    "raw_provider_payload_stored": false
+  },
+  "product": {
+    "product_name": "테스트 멀티비타민",
+    "manufacturer": "테스트 제조사",
+    "barcode_text": null,
+    "barcode_format": null
+  },
+  "serving": {
+    "serving_size_text": "1정",
+    "serving_amount": 1,
+    "serving_unit": "정",
+    "daily_servings": 1,
+    "evidence_refs": ["section:nutrition_function_info:serving"]
+  },
+  "label_sections": [
+    {
+      "section_type": "nutrition_function_info",
+      "anchor_text": "영양·기능정보",
+      "anchor_box": {
+        "page_index": 0,
+        "left": 20,
+        "top": 20,
+        "right": 180,
+        "bottom": 45
+      },
+      "rows": [
+        [
+          {
+            "row_index": 0,
+            "column_index": 0,
+            "text": "영양·기능정보",
+            "bounding_box": {
+              "page_index": 0,
+              "left": 20,
+              "top": 20,
+              "right": 180,
+              "bottom": 45
+            },
+            "confidence": 0.95,
+            "word_count": 1
+          }
+        ]
+      ]
+    }
+  ],
+  "ingredient_candidates": [
+    {
+      "display_name": "비타민 C",
+      "normalized_name": "비타민 C",
+      "nutrient_code_candidates": [],
+      "amount": 500,
+      "unit": "mg",
+      "daily_amount": 500,
+      "confidence": 0.9,
+      "source": "ocr_llm_preview",
+      "evidence_refs": ["section:nutrition_function_info:vitamin_c"]
+    }
+  ],
+  "intake_method": {
+    "text": "1일 1회",
+    "structured": {
+      "frequency": "daily",
+      "time_of_day": [],
+      "with_food": "unknown"
+    },
+    "evidence_refs": []
+  },
+  "precautions": [],
+  "functional_claims": [],
+  "low_confidence_fields": [],
+  "warnings": []
+}
