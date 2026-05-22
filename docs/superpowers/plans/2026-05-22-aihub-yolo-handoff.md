@@ -408,45 +408,44 @@ C:\Lemon-sin\backend\.venv\Scripts\yolo.exe
 
 ## 12. 현재 run 상태
 
-현재 진행 중인 정상 동작 확인용 run:
+### 12.1 탐색 run — 완료 (PC 전원 차단으로 종료)
 
 ```text
 D:\Deeplearning\lemon\runs\food_yolo\exp01_yolov8n_baseline_b48_w4_freshcache
 ```
 
-현재 run 설정:
+설정:
 
 | 항목 | 값 |
 | --- | --- |
 | model | `yolov8n.pt` |
-| epochs | 50 |
+| epochs | 50 (14 epoch에서 PC 차단으로 종료) |
 | imgsz | 640 |
 | batch | 48 |
 | workers | 4 |
 | cache | false |
 | device | 0 |
 | seed | 42 |
-| deterministic | false |
+| deterministic | **false** |
 | patience | 15 |
 | plots | false |
-| val | true |
-| amp | true |
 
-주의:
+이 run의 역할: 학습 루프, GPU, cache, validation 저장 정상 동작 확인. 최종 baseline 아님.
 
-- 사용자는 baseline 재현성을 위해 `deterministic=true`를 선호했다.
-- 하지만 현재 실제 실행 중인 run의 `args.yaml`은 `deterministic: false`다.
-- 따라서 이 run은 최종 baseline이 아니라 정상 동작 확인용 run으로 본다.
-- 이 run으로 학습 루프, GPU 사용, validation 저장, `best.pt`/`last.pt` 저장이 정상임을 확인한다.
-- 실제 baseline은 이 run 이후 `workers=8`, `cache=disk`, `deterministic=true`로 다시 실행할 계획이다.
-
-현재 기록된 마지막 결과:
+최종 결과 (epoch 14 기준):
 
 | epoch | precision | recall | mAP50 | mAP50-95 | train box | train cls | train dfl |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 11 | 0.76156 | 0.72832 | 0.79468 | 0.72881 | 0.63296 | 0.94570 | 1.15813 |
+| 14 | 0.78613 | 0.72689 | 0.80836 | 0.74648 | 0.61311 | 0.88106 | 1.14561 |
 
-현재 결과 파일:
+학습 곡선 (mAP50 추이):
+
+```text
+1→0.298, 2→0.490, 3→0.514, 4→0.640, 5→0.701, 6→0.726, 7→0.754,
+8→0.770, 9→0.781, 10→0.790, 11→0.795, 12→0.800, 13→0.803, 14→0.808
+```
+
+보존된 결과물:
 
 ```text
 D:\Deeplearning\lemon\runs\food_yolo\exp01_yolov8n_baseline_b48_w4_freshcache\results.csv
@@ -454,12 +453,16 @@ D:\Deeplearning\lemon\runs\food_yolo\exp01_yolov8n_baseline_b48_w4_freshcache\we
 D:\Deeplearning\lemon\runs\food_yolo\exp01_yolov8n_baseline_b48_w4_freshcache\weights\last.pt
 ```
 
-현재 GPU 사용 상태 확인 시점:
+### 12.2 다음 실행 예정 — 공식 baseline (두 컴퓨터 병렬)
 
-```text
-GPU memory: 약 7296 MB / 8151 MB
-GPU temperature: 약 53도
-```
+| 컴퓨터 | GPU | run name |
+| --- | --- | --- |
+| PC1 | RTX 5060 Laptop | `exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true` |
+| PC2 | RTX 4060 Laptop | `exp01_yolov8n_baseline_pc2_b48_w8_cache_disk_det_true` |
+
+공통 설정: `deterministic=true`, `cache=disk`, `workers=8`, `batch=48`, `seed=42`
+
+상세 명령어는 섹션 15.3과 섹션 19를 참조한다.
 
 ## 13. 이전 run 목록
 
@@ -472,7 +475,7 @@ GPU temperature: 약 53도
 | `exp01_yolov8n_baseline_w4` | 실패 | `workers=4`; `Fast image access` 후 hang |
 | `exp01_yolov8n_baseline_b48_w4_cleanboot_cachefalse` | 실패 | clean boot 후에도 hang; 이후 cache 손상 원인 확인 |
 | `exp01_yolov8n_baseline_cache_disk_b48_w4_cleanboot` | 중단 | `cache=disk`; 캐싱 시간이 과도하게 길어 중단 |
-| `exp01_yolov8n_baseline_b48_w4_freshcache` | 진행 중 | `labels.cache` fresh scan 후 정상 진행. 최종 baseline이 아니라 정상 동작 확인용 |
+| `exp01_yolov8n_baseline_b48_w4_freshcache` | 완료 (14 epoch, PC 전원 차단 종료) | `labels.cache` fresh scan 후 정상 진행. det=false 탐색 run. mAP50=0.808 @ epoch 14 |
 
 중단 run 폴더는 삭제하지 않는다. 정리가 필요하면 archive 폴더로 이동한다.
 
@@ -644,31 +647,23 @@ $yolo = "C:\Lemon-sin\backend\.venv\Scripts\yolo.exe"
 - 따라서 실제 baseline 시작 전 D드라이브 여유 공간, 캐싱 속도, epoch 진입 여부를 반드시 확인한다.
 - `Fast image access` 이후 hang이 발생하면 가장 먼저 `labels.cache` 손상 여부를 확인한다.
 
+**컴퓨터1 (RTX 5060 Laptop):**
+
 ```powershell
 $yolo = "C:\Lemon-sin\backend\.venv\Scripts\yolo.exe"
 
 & $yolo detect train `
   model=yolov8n.pt `
   data="D:\Deeplearning\lemon\data\processed\aihub_yolo_50\data.yaml" `
-  epochs=50 `
-  imgsz=640 `
-  batch=48 `
-  workers=8 `
-  cache=disk `
-  device=0 `
-  seed=42 `
-  deterministic=true `
-  patience=15 `
-  plots=false `
+  epochs=50 imgsz=640 batch=48 workers=8 cache=disk device=0 `
+  seed=42 deterministic=true patience=15 plots=false `
   project="D:\Deeplearning\lemon\runs\food_yolo" `
-  name=exp01_yolov8n_baseline_b48_w8_cache_disk_det_true
+  name=exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true
 ```
 
-OOM 발생 시:
+OOM 발생 시: `batch=32`, name에서 `b48` → `b32` 변경
 
-```powershell
-batch=32
-```
+컴퓨터2 baseline 명령은 섹션 19를 참조한다.
 
 hang 발생 시 가장 먼저 확인할 것:
 
@@ -720,16 +715,16 @@ $yolo = "C:\Lemon-sin\backend\.venv\Scripts\yolo.exe"
 | model size | `best.pt` 크기 |
 | epoch time | 학습 비용 기록 |
 
-현재 epoch 7 기준:
+탐색 run (det=false) 최종 수치 — epoch 14 기준:
 
 ```text
-precision: 0.70223
-recall: 0.70299
-mAP50: 0.75363
-mAP50-95: 0.68376
+precision: 0.78613
+recall: 0.72689
+mAP50: 0.80836
+mAP50-95: 0.74648
 ```
 
-이 수치는 최종 결과가 아니다. 학습이 계속 진행 중이므로 완료 후 다시 정리해야 한다.
+이 수치는 `deterministic=false` 탐색 run 기준이다. 공식 baseline (`pc1`, `pc2`) 완료 후 해당 수치로 교체한다.
 
 ## 18. 다음 모델링 실험 계획
 
@@ -875,23 +870,107 @@ iou=0.5 / 0.7
 - TTA는 정확도를 올릴 수 있지만 추론 속도가 느려진다.
 - 서비스형 모델에서는 속도와 정확도 균형이 중요하다.
 
-## 19. 다른 컴퓨터에서 다른 방식으로 모델을 돌릴 때 우선순위
+## 19. 병렬 학습 계획 (컴퓨터1 / 컴퓨터2)
 
-다른 컴퓨터가 더 좋은 GPU를 가지고 있다면 아래 순서를 추천한다.
+### 19.1 개요
 
-1. 현재 `yolov8n` baseline을 끝까지 완료한다.
-2. 같은 데이터로 `yolov8s`를 실행한다.
-3. `yolov8s` 결과가 의미 있게 좋으면 `yolov8m`을 검토한다.
-4. `imgsz=800` 실험은 모델 크기 실험 이후 진행한다.
-5. direct labeled real-world test는 학습보다 평가용으로 먼저 사용한다.
-6. 모델 성능 개선은 class별 AP와 confusion matrix를 본 뒤 결정한다.
+| 항목 | 컴퓨터1 (PC1) | 컴퓨터2 (PC2) |
+| --- | --- | --- |
+| GPU | RTX 5060 Laptop 8GB | RTX 4060 Laptop 8GB |
+| 역할 | 메인 베이스라인 + 이후 실험 | 독립 베이스라인 + 병렬 실험 |
+| baseline name | `..._pc1_...` | `..._pc2_...` |
+
+### 19.2 비교 원칙
+
+각 컴퓨터의 실험 효과는 **해당 컴퓨터의 baseline 대비**로만 비교한다.
+
+```text
+PC1 실험 효과 = PC1 exp02 결과 - PC1 baseline 결과
+PC2 실험 효과 = PC2 exp03 결과 - PC2 baseline 결과
+```
+
+PC1 baseline과 PC2 baseline을 직접 비교하지 않는다. GPU 아키텍처, PyTorch 버전, 드라이버 차이가 섞이기 때문이다.
+
+### 19.3 PC1 baseline 명령 (컴퓨터1에서 실행)
+
+```powershell
+$yolo = "C:\Lemon-sin\backend\.venv\Scripts\yolo.exe"
+
+& $yolo detect train `
+  model=yolov8n.pt `
+  data="D:\Deeplearning\lemon\data\processed\aihub_yolo_50\data.yaml" `
+  epochs=50 imgsz=640 batch=48 workers=8 cache=disk device=0 `
+  seed=42 deterministic=true patience=15 plots=false `
+  project="D:\Deeplearning\lemon\runs\food_yolo" `
+  name=exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true
+```
+
+OOM 발생 시 (`batch=32` fallback):
+
+```powershell
+  batch=32 `
+  name=exp01_yolov8n_baseline_pc1_b32_w8_cache_disk_det_true
+```
+
+### 19.4 PC2 baseline 명령 (컴퓨터2에서 실행)
+
+컴퓨터2에서 데이터셋을 같은 경로 `D:\Deeplearning\lemon\data\processed\aihub_yolo_50`에 복사했다는 전제.
+
+```powershell
+$yolo = "C:\Lemon-sin\backend\.venv\Scripts\yolo.exe"
+
+& $yolo detect train `
+  model=yolov8n.pt `
+  data="D:\Deeplearning\lemon\data\processed\aihub_yolo_50\data.yaml" `
+  epochs=50 imgsz=640 batch=48 workers=8 cache=disk device=0 `
+  seed=42 deterministic=true patience=15 plots=false `
+  project="D:\Deeplearning\lemon\runs\food_yolo" `
+  name=exp01_yolov8n_baseline_pc2_b48_w8_cache_disk_det_true
+```
+
+OOM 발생 시 (`batch=32` fallback):
+
+```powershell
+  batch=32 `
+  name=exp01_yolov8n_baseline_pc2_b32_w8_cache_disk_det_true
+```
+
+### 19.5 PC2 환경 준비 순서
+
+1. 데이터셋 복사: `D:\Deeplearning\lemon\data\processed\aihub_yolo_50` (약 240 GB — train/images 107 GB, val/images 14 GB, labels 포함)
+2. Python 3.13, PyTorch, Ultralytics 8.4.51 설치 (섹션 11 참조)
+3. `data.yaml` path 확인 — PC2에서 같은 D드라이브 경로를 쓰면 수정 불필요
+4. 경로가 다르면 `data.yaml`의 `path:` 수정
+5. `labels.cache` 없는 상태에서 첫 실행 (PC1 cache 복사 불필요, PC2가 자체 생성)
+
+### 19.6 cache=disk 주의사항
+
+- 첫 실행 시 약 133 GB `.npy` 파일 생성, 초기 캐싱 약 7~8시간 (CPU bound)
+- 이후 epoch당 약 20~25분
+- D드라이브 여유 공간 최소 150 GB 이상 확보 필요
+- `.npy` 파일 대량 삭제 시 PowerShell `Remove-Item`은 느림 → 아래 명령 사용:
+
+```powershell
+cmd /c "del /f /q /s D:\Deeplearning\lemon\data\processed\aihub_yolo_50\train\*.npy"
+```
+
+- `cache=disk`는 같은 데이터셋이면 model/batch/augmentation 변경 시 재사용 가능
+- `imgsz` 변경 시 재사용 여부 불확실 → 변경 전 확인
+
+### 19.7 baseline 완료 후 우선순위
+
+1. 두 컴퓨터 모두 baseline 완료 후 각각 validation plots 실행 (섹션 16 참조)
+2. class별 AP와 confusion matrix 분석
+3. 약한 클래스 식별 후 실험 설계
+4. PC1/PC2에 독립적으로 실험 배분
 
 바로 하지 말아야 할 것:
 
-- baseline 결과 없이 augmentation을 과하게 바꾸기
-- AIHub와 직접 라벨링 데이터를 무작정 섞기
-- class merge를 수치 없이 감으로 결정하기
-- raw zip이 삭제된 상태에서 재변환을 시도하기
+- baseline 없이 augmentation 변경
+- AIHub와 직접 라벨링 데이터 무작정 혼합
+- class merge를 수치 없이 감으로 결정
+- raw zip 삭제 상태에서 재변환 시도
+- PC1 결과와 PC2 결과를 baseline 보정 없이 직접 비교
 
 ## 20. Git 상태와 커밋 주의
 
@@ -952,4 +1031,4 @@ D:\Deeplearning\lemon\runs\food_yolo
 
 ## 22. 이 문서의 핵심 한 줄
 
-현재 프로젝트는 AIHub 50클래스 YOLO 데이터셋 변환을 끝내고 `yolov8n` baseline 학습을 진행 중이며, 가장 중요한 교훈은 `Fast image access` hang을 설정 문제가 아니라 손상된 `labels.cache` 문제로 식별했다는 점이다. 다른 컴퓨터에서는 데이터셋과 run 폴더를 별도로 옮기고, baseline 완료 후 class별 AP와 confusion matrix를 기준으로 다음 실험을 설계하면 된다.
+탐색 run(det=false)으로 14 epoch mAP50=0.808을 확인했고, 이제 컴퓨터1(RTX 5060)과 컴퓨터2(RTX 4060)가 각자 `deterministic=true, cache=disk, workers=8` 공식 baseline을 병렬 실행하는 단계다. 각 컴퓨터의 실험 효과는 반드시 해당 컴퓨터의 baseline 대비로만 측정하고, baseline 완료 후 class별 AP와 confusion matrix를 기준으로 다음 실험을 설계한다.
