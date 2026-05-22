@@ -32,7 +32,6 @@ Implication:
 
 - Local branch: `feat/ocr-quality-gates`
 - Preserved remote: `origin/feat/ocr-quality-gates`
-- Preserved head at the time of this note: `4b1ecf25 docs(ocr): 팀 브랜치 동기화 조건을 기록`
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
 
 ## Current Recommendation
