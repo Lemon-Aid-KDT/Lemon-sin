@@ -25,12 +25,11 @@
 
 - AIHub 50클래스 YOLO 데이터셋 변환은 완료됐다.
 - 현재 학습 데이터셋은 `D:\Deeplearning\lemon\data\processed\aihub_yolo_50`에 있다.
-- 현재 `exp01_yolov8n_baseline_b48_w4_freshcache` run은 정상 동작 확인용으로 진행 중이다.
-- 현재 run은 `deterministic=false`로 실행 중이므로 최종 baseline으로 확정하지 않는다.
-- 현재 run은 학습 루프, GPU 사용, cache 재생성, validation 저장이 정상 동작하는지 확인하는 용도다.
-- 정상 동작 확인 후 실제 baseline은 `workers=8`, `cache=disk`, `deterministic=true` 조건으로 다시 실행할 계획이다.
+- 탐색 run `exp01_yolov8n_baseline_b48_w4_freshcache`는 `deterministic=false`로 진행했으며, PC 전원 차단으로 14 epoch에서 종료됐다. 최종 mAP50: 0.8084. 학습 루프, GPU, validation 저장 정상 동작 확인 완료.
+- 이 탐색 run은 최종 baseline이 아니다. 실제 baseline은 `deterministic=true`, `cache=disk`, `workers=8` 조건으로 두 컴퓨터에서 각각 실행한다.
+- **병렬 학습 계획**: 컴퓨터1(RTX 5060 Laptop)과 컴퓨터2(RTX 4060 Laptop)가 동시에 각자의 baseline을 실행한다. 각 컴퓨터의 실험 효과는 해당 컴퓨터의 baseline 대비로만 비교한다.
 - `Fast image access` 이후 hang의 근본 원인은 `labels.cache` 손상으로 판단했다.
-- `cache=disk`는 현재 외장 D드라이브 환경에서 비효율적이었다.
+- `cache=disk`는 외장 D드라이브 환경에서 초기 캐싱에 7~8시간이 걸리지만, 이후 epoch당 20~25분으로 단축된다. 총 약 28~30시간 예상.
 - Training 원본 이미지 압축 세트 `TS.zip + TS.z01~TS.z07`은 공간 확보를 위해 삭제된 상태다.
 - Validation 원본 이미지 압축 `VS.zip`은 남아 있다.
 - 현재 학습은 원본 zip이 아니라 변환 완료된 YOLO 데이터셋만 참조한다.
