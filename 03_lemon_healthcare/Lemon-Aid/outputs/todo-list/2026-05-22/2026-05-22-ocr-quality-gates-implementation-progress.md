@@ -904,6 +904,54 @@ raw storage flags:
 - Gemma4 local parser 자체는 정상 동작한다.
 - 이미지 OCR 쪽은 fixture별 PaddleOCR 실패가 여전히 존재하므로, LLM parse 품질 이전에 provider/layout/OCR failure 분리를 계속 유지해야 한다.
 
+### 10.5 PaddleOCR Post-alpha 16-row Baseline
+
+산출물:
+
+- `outputs/generated/ocr-eval/2026-05-22-stage1-paddle-post-alpha/supplement-ocr-observations.jsonl`
+- `outputs/generated/ocr-eval/2026-05-22-stage1-paddle-post-alpha/manifest-with-paddle-observations.jsonl`
+- `outputs/generated/ocr-eval/2026-05-22-stage1-paddle-post-alpha/ocr-three-tier-evaluation.json`
+- `outputs/generated/ocr-eval/2026-05-22-stage1-paddle-post-alpha/ocr-three-tier-evaluation.md`
+- `outputs/todo-list/2026-05-22/2026-05-22-paddle-post-alpha-baseline-result.md`
+
+비교:
+
+| Metric | Stage0 chronic | Post-alpha PaddleOCR |
+| --- | ---: | ---: |
+| Fixture count | 16 | 16 |
+| Observation count | 16 | 16 |
+| Text non-empty rate | 0.875 | 0.875 |
+| Parser success rate | 0.875 | 0.875 |
+| Ingredient name exact rate | 0.0 | 0.9375 |
+| Average latency ms | 5787.0625 | 2173.9375 |
+| Errors | 0 | 2 |
+| Cardiovascular accuracy | 0.0 | 1.0 |
+| Diabetes accuracy | 0.0 | 1.0 |
+| Dyslipidemia accuracy | 0.0 | 1.0 |
+| Osteoporosis accuracy | 0.0 | 1.0 |
+
+해석:
+
+- 같은 16개 chronic fixture 기준 ingredient exact가 0.0에서 0.9375로 회복되어,
+  Phase 0-alpha 정규식/단위 parsing 패치가 회귀의 주 원인을 해결한 것으로
+  보인다.
+- Text non-empty와 parser success는 그대로라 provider 자체의 OCR 성공률 개선은
+  아니다.
+- 현재 field-level KPI `ingredient_name_exact_rate >= 0.95`에는 1개 fixture가
+  부족하다. 다음 tranche는 2개 `ocr_error` fixture와 1개 ingredient mismatch
+  fixture를 분리해서 봐야 한다.
+
+보안 확인:
+
+- generated observation/evaluation artifacts는 `.gitignore` 대상이며 PR에
+  포함하지 않는다.
+- observation JSONL, evaluator manifest, evaluation JSON을 raw/secret forbidden
+  key로 재귀 검사했고 발견되지 않았다.
+- evaluator manifest의 image path는 output dir 기준 상대경로로 작성해 local
+  absolute path를 저장하지 않았다.
+- generated report는 `raw_artifacts_stored=false`,
+  `raw_ocr_text_stored=false`를 유지한다.
+
 ## Security Review
 
 검사 범위:
@@ -1145,7 +1193,10 @@ flutter build ios --simulator --debug
    - backend quality/layout/provider routing and mobile release security are now separate commits, but the branch as a whole is larger than the team PR-size recommendation.
    - before opening PR, decide whether to keep this branch as an integration PR or cherry-pick commits into smaller branches.
 2. Do not commit generated CLOVA artifacts unless the team explicitly wants evaluation artifacts in repo.
-3. Run PaddleOCR baseline again and compare before/after field-level extractor behavior where applicable.
+3. PaddleOCR 16-row post-alpha baseline is done:
+   - `ingredient_name_exact_rate` improved from `0.0` to `0.9375`.
+   - generated artifacts remain ignored; durable summary is
+     `2026-05-22-paddle-post-alpha-baseline-result.md`.
 4. Start local Ollama with external model path before LLM parse:
 
 ```bash
