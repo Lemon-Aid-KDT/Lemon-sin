@@ -12,6 +12,7 @@ from decimal import Decimal
 from difflib import SequenceMatcher
 from http import HTTPStatus
 from random import random
+from time import perf_counter
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,8 +29,10 @@ from src.llm.ollama import (
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.privacy import ConsentType
+from src.models.schemas.supplement import SupplementOCRProviderObservation
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 from src.security.auth import AuthenticatedUser
+from src.services.supplement_image_quality import analyze_supplement_label_image_quality
 from src.services.supplement_intake import (
     SupplementImageValidationError,
     SupplementIntakeStoreResult,
@@ -45,7 +48,10 @@ from src.services.supplement_parser import (
 )
 from src.utils.image_safety import ImageSafetyError, strip_image_metadata
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
-from src.vision.preprocessing import VisionPreprocessingError, crop_image_to_bounding_box
+from src.vision.preprocessing import (
+    VisionPreprocessingError,
+    crop_image_to_bounding_box,
+)
 
 AUTOMATIC_OCR_UNAVAILABLE_WARNING = (
     "Automatic text extraction is unavailable. Continue by entering label details manually."
@@ -111,6 +117,7 @@ class SupplementImageAnalysisResult:
         ocr_result: Optional OCR output used by the parser.
         parser_used: Whether structured OCR text parsing was invoked.
         ocr_attempted: Whether a primary OCR adapter was configured and called.
+        ocr_provider_observations: Sanitized OCR provider call observations.
         ocr_warning_codes: Recoverable OCR/parser warning codes added to the preview.
         learning_image_object_created: Whether a learning image object row was created or reused.
     """
@@ -123,8 +130,40 @@ class SupplementImageAnalysisResult:
     ocr_result: OCRResult | None
     parser_used: bool
     ocr_attempted: bool
+    ocr_provider_observations: tuple[SupplementOCRProviderObservation, ...]
     ocr_warning_codes: tuple[str, ...]
     learning_image_object_created: bool
+
+
+@dataclass(frozen=True)
+class _OCRProviderCallObservation:
+    """Internal OCR provider call observation before parser outcome is known."""
+
+    provider: str
+    stage: str
+    status: str
+    latency_ms: int | None = None
+    text_non_empty: bool = False
+    parser_success: bool | None = None
+    error_code: str | None = None
+    warning_codes: tuple[str, ...] = ()
+
+    def to_schema(self) -> SupplementOCRProviderObservation:
+        """Convert to the public sanitized observation schema."""
+        return SupplementOCRProviderObservation.model_validate(
+            {
+                "provider": self.provider,
+                "stage": self.stage,
+                "status": self.status,
+                "latency_ms": self.latency_ms,
+                "text_non_empty": self.text_non_empty,
+                "parser_success": self.parser_success,
+                "error_code": self.error_code,
+                "warning_codes": list(self.warning_codes),
+                "raw_ocr_text_stored": False,
+                "raw_provider_payload_stored": False,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -134,6 +173,7 @@ class _OCRExtractionResult:
     ocr_result: OCRResult | None
     warning_code: str | None = None
     warning_message: str | None = None
+    provider_observations: tuple[_OCRProviderCallObservation, ...] = ()
 
 
 async def analyze_supplement_image(
@@ -185,8 +225,15 @@ async def analyze_supplement_image(
         active_adapters=active_adapters,
         settings=settings,
         needs_learning_image_bytes=learning_gate_allowed,
+        needs_image_quality_report=True,
         image_metadata=image_metadata,
     )
+    image_quality_report = _analyze_image_quality_if_available(
+        image_bytes=image_bytes,
+        image_metadata=image_metadata,
+    )
+    if image_quality_report is not None:
+        await _store_image_quality_report(session, intake.record, image_quality_report)
     vision_region = await _detect_label_region_if_enabled(
         image_bytes=image_bytes,
         settings=settings,
@@ -200,8 +247,9 @@ async def analyze_supplement_image(
         ocr_adapter=active_adapters.ocr,
         settings=settings,
     )
+    provider_observations = list(ocr_extraction.provider_observations)
     ocr_result = ocr_extraction.ocr_result
-    ocr_result = await _extract_multimodal_ocr_if_allowed(
+    multimodal_extraction = await _extract_multimodal_ocr_if_allowed(
         image_bytes=image_bytes,
         image_metadata=image_metadata,
         label_region=vision_region,
@@ -210,7 +258,9 @@ async def analyze_supplement_image(
         settings=settings,
         multimodal_adapter=active_adapters.multimodal_ocr,
     )
-    ocr_result = await _extract_secondary_ocr_if_allowed(
+    provider_observations.extend(multimodal_extraction.provider_observations)
+    ocr_result = multimodal_extraction.ocr_result
+    secondary_extraction = await _extract_secondary_ocr_if_allowed(
         image_bytes=image_bytes,
         image_metadata=image_metadata,
         label_region=vision_region,
@@ -218,6 +268,8 @@ async def analyze_supplement_image(
         primary_ocr_attempted=active_adapters.ocr is not None,
         fallback_adapters=active_adapters.fallback_ocr_adapters,
     )
+    provider_observations.extend(secondary_extraction.provider_observations)
+    ocr_result = secondary_extraction.ocr_result
     verification_warning_code, verification_warning_message = (
         await _verify_ocr_with_multimodal_if_allowed(
             image_bytes=image_bytes,
@@ -245,6 +297,17 @@ async def analyze_supplement_image(
     warning_messages = [message for code, message in warning_pairs if code and message]
     if warning_messages:
         await _store_preview_warnings(session, parsed_record or intake.record, warning_messages)
+    ocr_provider_observations = _mark_parser_success(
+        provider_observations,
+        ocr_result=ocr_result,
+        parser_success=parsed_record is not None,
+    )
+    if ocr_provider_observations:
+        await _store_ocr_provider_observations(
+            session,
+            parsed_record or intake.record,
+            ocr_provider_observations,
+        )
 
     learning_object = None
     if learning_object_store is not None:
@@ -264,10 +327,13 @@ async def analyze_supplement_image(
         reused_existing=intake.reused_existing,
         image_metadata=image_metadata,
         vision_region=vision_region,
-        image_quality_report=None,
+        image_quality_report=image_quality_report,
         ocr_result=ocr_result,
         parser_used=parsed_record is not None,
         ocr_attempted=ocr_attempted,
+        ocr_provider_observations=tuple(
+            observation.to_schema() for observation in ocr_provider_observations
+        ),
         ocr_warning_codes=warning_codes,
         learning_image_object_created=learning_object is not None,
     )
@@ -279,6 +345,7 @@ async def _read_validated_image_bytes_if_needed(
     active_adapters: SupplementImageAnalysisAdapters,
     settings: Settings,
     needs_learning_image_bytes: bool = False,
+    needs_image_quality_report: bool = False,
     image_metadata: ValidatedSupplementImage,
 ) -> bytes | None:
     """Read image bytes for adapters only when an adapter path may execute.
@@ -292,6 +359,7 @@ async def _read_validated_image_bytes_if_needed(
         active_adapters: Pipeline adapters requested for this call.
         settings: Runtime settings containing feature flags.
         needs_learning_image_bytes: Whether learning retention needs the original image bytes.
+        needs_image_quality_report: Whether deterministic quality analysis needs image bytes.
         image_metadata: Validated metadata used to authorize the MIME for stripping.
 
     Returns:
@@ -304,6 +372,7 @@ async def _read_validated_image_bytes_if_needed(
     needs_bytes = active_adapters.ocr is not None or settings.enable_vision_classifier
     needs_bytes = needs_bytes or bool(active_adapters.fallback_ocr_adapters)
     needs_bytes = needs_bytes or needs_learning_image_bytes
+    needs_bytes = needs_bytes or needs_image_quality_report
     needs_bytes = needs_bytes or (
         active_adapters.multimodal_ocr is not None and settings.enable_multimodal_llm
     )
@@ -319,6 +388,134 @@ async def _read_validated_image_bytes_if_needed(
             message="Uploaded label image cannot be normalized for downstream use.",
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
         ) from exc
+
+
+def _analyze_image_quality_if_available(
+    *,
+    image_bytes: bytes | None,
+    image_metadata: ValidatedSupplementImage,
+) -> ImageQualityReport | None:
+    """Build a deterministic image-quality report when sanitized bytes exist.
+
+    Args:
+        image_bytes: Sanitized image bytes, if loaded for the current pipeline.
+        image_metadata: Validated image metadata.
+
+    Returns:
+        Redacted image-quality report, or None when bytes are unavailable.
+    """
+    if image_bytes is None:
+        return None
+    return analyze_supplement_label_image_quality(image_bytes, image_metadata)
+
+
+async def _store_image_quality_report(
+    session: AsyncSession,
+    record: SupplementAnalysisRun,
+    report: ImageQualityReport,
+) -> None:
+    """Persist redacted image-quality metadata on the preview snapshot.
+
+    Args:
+        session: Request-scoped async database session.
+        record: Intake preview row.
+        report: Redacted deterministic quality report.
+    """
+    snapshot = dict(record.parsed_snapshot or {})
+    snapshot["image_quality_report"] = report.model_dump(mode="json")
+    snapshot.update(_image_quality_action_contract(report))
+    record.parsed_snapshot = snapshot
+    await session.commit()
+    await session.refresh(record)
+
+
+async def _store_ocr_provider_observations(
+    session: AsyncSession,
+    record: SupplementAnalysisRun,
+    observations: tuple[_OCRProviderCallObservation, ...],
+) -> None:
+    """Persist sanitized OCR provider routing observations.
+
+    Args:
+        session: Request-scoped async database session.
+        record: Preview row to update.
+        observations: Sanitized provider observations without raw OCR text or payloads.
+    """
+    snapshot = dict(record.parsed_snapshot or {})
+    snapshot["provider_observations"] = [
+        observation.to_schema().model_dump(mode="json") for observation in observations
+    ]
+    record.parsed_snapshot = snapshot
+    await session.commit()
+    await session.refresh(record)
+
+
+def _mark_parser_success(
+    observations: list[_OCRProviderCallObservation],
+    *,
+    ocr_result: OCRResult | None,
+    parser_success: bool,
+) -> tuple[_OCRProviderCallObservation, ...]:
+    """Mark the selected OCR provider observation with parser outcome."""
+    if ocr_result is None:
+        return tuple(observations)
+    selected_index = _selected_observation_index(observations, ocr_result.provider)
+    if selected_index is None:
+        return tuple(observations)
+    updated: list[_OCRProviderCallObservation] = []
+    for index, observation in enumerate(observations):
+        if index != selected_index:
+            updated.append(observation)
+            continue
+        updated.append(
+            _OCRProviderCallObservation(
+                provider=observation.provider,
+                stage=observation.stage,
+                status=observation.status,
+                latency_ms=observation.latency_ms,
+                text_non_empty=observation.text_non_empty,
+                parser_success=parser_success,
+                error_code=observation.error_code,
+                warning_codes=observation.warning_codes,
+            )
+        )
+    return tuple(updated)
+
+
+def _selected_observation_index(
+    observations: list[_OCRProviderCallObservation],
+    provider: str,
+) -> int | None:
+    """Return the latest completed non-empty observation for the selected provider."""
+    for index in range(len(observations) - 1, -1, -1):
+        observation = observations[index]
+        if (
+            observation.provider == provider
+            and observation.status == "completed"
+            and observation.text_non_empty
+        ):
+            return index
+    return None
+
+
+def _image_quality_action_contract(report: ImageQualityReport) -> dict[str, object]:
+    """Map quality status to the existing mobile image-risk contract."""
+    action_required = {
+        "acceptable": "none",
+        "needs_review": "review_required",
+        "retake_recommended": "retake_recommended",
+        "blocked": "blocked",
+    }[report.status]
+    missing_sections: list[str] = []
+    if any(reason in report.retake_reasons for reason in ("cropped_label", "partial_table")):
+        missing_sections.append("supplement_facts")
+    return {
+        "analysis_scope": "full_image_review",
+        "action_required": action_required,
+        "missing_required_sections": missing_sections,
+        "image_role": "unknown",
+        "source_type": "uploaded_image",
+    }
 
 
 async def _detect_label_region_if_enabled(
@@ -380,18 +577,24 @@ async def _extract_ocr_if_configured(
         label_region=label_region,
         settings=settings,
     )
-    try:
-        result = await ocr_adapter.extract_text(ocr_input)
-    except OCRError:
+    result, observation, error = await _call_ocr_adapter(
+        ocr_adapter,
+        ocr_input,
+        stage="primary",
+        warning_codes=(warning_code,) if warning_code else (),
+    )
+    if error is not None:
         return _OCRExtractionResult(
             ocr_result=None,
             warning_code=AUTOMATIC_OCR_UNAVAILABLE_CODE,
             warning_message=AUTOMATIC_OCR_UNAVAILABLE_WARNING,
+            provider_observations=(observation,),
         )
     return _OCRExtractionResult(
         ocr_result=result,
         warning_code=warning_code,
         warning_message=warning_message,
+        provider_observations=(observation,),
     )
 
 
@@ -426,7 +629,11 @@ def _prepare_primary_ocr_image_input(
     try:
         cropped_bytes = crop_image_to_bounding_box(image_bytes, label_region)
     except VisionPreprocessingError:
-        return original_input, OCR_ROI_CROP_UNAVAILABLE_CODE, OCR_ROI_CROP_UNAVAILABLE_WARNING
+        return (
+            original_input,
+            OCR_ROI_CROP_UNAVAILABLE_CODE,
+            OCR_ROI_CROP_UNAVAILABLE_WARNING,
+        )
 
     return (
         OCRImageInput(
@@ -441,6 +648,102 @@ def _prepare_primary_ocr_image_input(
     )
 
 
+async def _call_ocr_adapter(
+    adapter: OCRAdapter,
+    image: OCRImageInput,
+    *,
+    stage: str,
+    warning_codes: tuple[str, ...] = (),
+) -> tuple[OCRResult | None, _OCRProviderCallObservation, BaseException | None]:
+    """Call an OCR adapter and return sanitized routing metadata.
+
+    Args:
+        adapter: OCR adapter to call.
+        image: Validated OCR image input.
+        stage: Pipeline stage label.
+        warning_codes: Pre-existing warning codes tied to this call.
+
+    Returns:
+        OCR result, sanitized observation, and optional recoverable error.
+    """
+    start = perf_counter()
+    try:
+        result = await adapter.extract_text(image)
+    except (
+        OCRError,
+        OllamaClientError,
+        OllamaConfigurationError,
+        OllamaStructuredOutputError,
+    ) as exc:
+        return (
+            None,
+            _OCRProviderCallObservation(
+                provider=_adapter_label(adapter),
+                stage=stage,
+                status="error",
+                latency_ms=_elapsed_ms(start),
+                error_code=_ocr_error_code(exc),
+                warning_codes=warning_codes,
+            ),
+            exc,
+        )
+
+    observation = _OCRProviderCallObservation(
+        provider=result.provider or _adapter_label(adapter),
+        stage=stage,
+        status="completed",
+        latency_ms=_elapsed_ms(start),
+        text_non_empty=bool(result.text.strip()),
+        warning_codes=tuple(
+            _dedupe_strings((*warning_codes, *_ocr_observation_warning_codes(result)))
+        ),
+    )
+    return result, observation, None
+
+
+def _adapter_label(adapter: OCRAdapter) -> str:
+    """Return a bounded adapter label without inspecting provider secrets."""
+    label = getattr(adapter, "engine_name", None)
+    if isinstance(label, str) and label.strip():
+        return label.strip()[:80]
+    return adapter.__class__.__name__[:80]
+
+
+def _elapsed_ms(start: float) -> int:
+    """Return elapsed wall-clock milliseconds."""
+    return max(0, int((perf_counter() - start) * 1000))
+
+
+def _ocr_error_code(exc: BaseException) -> str:
+    """Return a bounded non-secret OCR error code."""
+    return exc.__class__.__name__[:80]
+
+
+def _ocr_observation_warning_codes(result: OCRResult) -> tuple[str, ...]:
+    """Return bounded warning codes for an OCR result."""
+    warnings: list[str] = []
+    if not result.text.strip():
+        warnings.append(OCR_TEXT_EMPTY_CODE)
+    if _is_low_confidence(result.confidence):
+        warnings.append("ocr_low_confidence")
+    return tuple(warnings)
+
+
+def _dedupe_strings(values: tuple[str | None, ...]) -> list[str]:
+    """Normalize and deduplicate short warning codes."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        stripped = value.strip()
+        if not stripped or stripped in seen:
+            continue
+        normalized.append(stripped)
+        seen.add(stripped)
+    return normalized
+
+
 async def _extract_multimodal_ocr_if_allowed(
     *,
     image_bytes: bytes | None,
@@ -450,7 +753,7 @@ async def _extract_multimodal_ocr_if_allowed(
     primary_ocr_attempted: bool,
     settings: Settings,
     multimodal_adapter: OCRAdapter | None,
-) -> OCRResult | None:
+) -> _OCRExtractionResult:
     """Run local vision LLM candidate extraction only as an OCR fallback.
 
     Args:
@@ -463,26 +766,34 @@ async def _extract_multimodal_ocr_if_allowed(
         multimodal_adapter: Optional local vision LLM adapter.
 
     Returns:
-        Primary OCR result, fallback candidate result, or None.
+        OCR extraction result with any provider observations.
     """
     if not primary_ocr_attempted:
-        return ocr_result
+        return _OCRExtractionResult(ocr_result=ocr_result)
     if ocr_result is not None and not _should_run_multimodal_fallback(ocr_result, settings):
-        return ocr_result
+        return _OCRExtractionResult(ocr_result=ocr_result)
     if not settings.enable_multimodal_llm or multimodal_adapter is None or image_bytes is None:
-        return ocr_result
-    try:
-        return await multimodal_adapter.extract_text(
-            OCRImageInput(
-                image_bytes=image_bytes,
-                mime_type=image_metadata.mime_type,
-                width=image_metadata.width,
-                height=image_metadata.height,
-                label_region=label_region,
-            )
+        return _OCRExtractionResult(ocr_result=ocr_result)
+    candidate, observation, error = await _call_ocr_adapter(
+        multimodal_adapter,
+        OCRImageInput(
+            image_bytes=image_bytes,
+            mime_type=image_metadata.mime_type,
+            width=image_metadata.width,
+            height=image_metadata.height,
+            label_region=label_region,
+        ),
+        stage="multimodal_fallback",
+    )
+    if error is not None:
+        return _OCRExtractionResult(
+            ocr_result=ocr_result,
+            provider_observations=(observation,),
         )
-    except (OCRError, OllamaClientError, OllamaConfigurationError, OllamaStructuredOutputError):
-        return ocr_result
+    return _OCRExtractionResult(
+        ocr_result=candidate,
+        provider_observations=(observation,),
+    )
 
 
 async def _extract_secondary_ocr_if_allowed(
@@ -493,7 +804,7 @@ async def _extract_secondary_ocr_if_allowed(
     ocr_result: OCRResult | None,
     primary_ocr_attempted: bool,
     fallback_adapters: tuple[OCRAdapter, ...],
-) -> OCRResult | None:
+) -> _OCRExtractionResult:
     """Run optional secondary OCR providers after primary/multimodal weakness.
 
     Args:
@@ -505,12 +816,12 @@ async def _extract_secondary_ocr_if_allowed(
         fallback_adapters: Optional secondary OCR fallback adapters.
 
     Returns:
-        Current OCR result or the first usable fallback result.
+        OCR extraction result with fallback provider observations.
     """
     if not primary_ocr_attempted or image_bytes is None or not fallback_adapters:
-        return ocr_result
+        return _OCRExtractionResult(ocr_result=ocr_result)
     if not _should_run_secondary_fallback(ocr_result):
-        return ocr_result
+        return _OCRExtractionResult(ocr_result=ocr_result)
 
     fallback_input = OCRImageInput(
         image_bytes=image_bytes,
@@ -519,14 +830,25 @@ async def _extract_secondary_ocr_if_allowed(
         height=image_metadata.height,
         label_region=label_region,
     )
+    observations: list[_OCRProviderCallObservation] = []
     for adapter in fallback_adapters:
-        try:
-            candidate = await adapter.extract_text(fallback_input)
-        except OCRError:
+        candidate, observation, error = await _call_ocr_adapter(
+            adapter,
+            fallback_input,
+            stage="secondary_fallback",
+        )
+        observations.append(observation)
+        if error is not None or candidate is None:
             continue
         if candidate.text.strip():
-            return candidate
-    return ocr_result
+            return _OCRExtractionResult(
+                ocr_result=candidate,
+                provider_observations=tuple(observations),
+            )
+    return _OCRExtractionResult(
+        ocr_result=ocr_result,
+        provider_observations=tuple(observations),
+    )
 
 
 async def _verify_ocr_with_multimodal_if_allowed(
@@ -572,7 +894,12 @@ async def _verify_ocr_with_multimodal_if_allowed(
                 label_region=label_region,
             )
         )
-    except (OCRError, OllamaClientError, OllamaConfigurationError, OllamaStructuredOutputError):
+    except (
+        OCRError,
+        OllamaClientError,
+        OllamaConfigurationError,
+        OllamaStructuredOutputError,
+    ):
         return None, None
 
     similarity = _normalized_text_similarity(ocr_result.text, candidate.text)
@@ -594,9 +921,15 @@ def _should_run_multimodal_fallback(ocr_result: OCRResult | None, settings: Sett
     if settings.multimodal_ocr_assist_policy == "disabled":
         return False
     if ocr_result is None:
-        return settings.multimodal_ocr_assist_policy in {"ocr_empty_only", "low_confidence"}
+        return settings.multimodal_ocr_assist_policy in {
+            "ocr_empty_only",
+            "low_confidence",
+        }
     if not ocr_result.text.strip():
-        return settings.multimodal_ocr_assist_policy in {"ocr_empty_only", "low_confidence"}
+        return settings.multimodal_ocr_assist_policy in {
+            "ocr_empty_only",
+            "low_confidence",
+        }
     if settings.multimodal_ocr_assist_policy != "low_confidence":
         return False
     return _is_low_confidence(ocr_result.confidence)

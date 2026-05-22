@@ -19,11 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.supplement import (
     MatchedSupplementCandidate,
     SupplementAnalysisPreview,
     SupplementAnalysisStatus,
     SupplementIngredientCandidate,
+    SupplementOCRProviderObservation,
     SupplementParsedProduct,
 )
 from src.security.auth import AuthenticatedUser
@@ -175,7 +177,9 @@ async def read_and_validate_supplement_image(
     )
 
 
-def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> SupplementAnalysisPreview:
+def supplement_analysis_run_to_preview(
+    record: SupplementAnalysisRun,
+) -> SupplementAnalysisPreview:
     """Convert an intake preview ORM row to its API response model.
 
     Args:
@@ -186,6 +190,7 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
     """
     parsed_snapshot = _dict_or_empty(record.parsed_snapshot)
     match_snapshot = _dict_or_empty(record.match_snapshot)
+    image_quality_report = _image_quality_report_from_snapshot(parsed_snapshot)
     return SupplementAnalysisPreview(
         analysis_id=record.id,
         status=SupplementAnalysisStatus(record.status),
@@ -201,6 +206,18 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
             for item in _dict_items(match_snapshot.get("matched_product_candidates"))
         ],
         low_confidence_fields=list(_string_items(parsed_snapshot.get("low_confidence_fields"))),
+        provider_observations=[
+            SupplementOCRProviderObservation.model_validate(item)
+            for item in _dict_items(parsed_snapshot.get("provider_observations"))
+        ],
+        image_quality_report=image_quality_report,
+        analysis_scope=_snapshot_string(parsed_snapshot, "analysis_scope", "unknown"),
+        action_required=_snapshot_string(parsed_snapshot, "action_required", "none"),
+        missing_required_sections=list(
+            _string_items(parsed_snapshot.get("missing_required_sections"))
+        ),
+        image_role=_snapshot_string(parsed_snapshot, "image_role", "unknown"),
+        source_type=_snapshot_string(parsed_snapshot, "source_type", "uploaded_image"),
         warnings=list(_string_items(record.warnings)),
         algorithm_version=record.algorithm_version,
         source_manifest_version=record.source_manifest_version,
@@ -368,7 +385,9 @@ def _validate_decodable_image(data: bytes, max_pixels: int) -> tuple[int, int]:
         ) from exc
 
 
-def _build_intake_parsed_snapshot(image_metadata: ValidatedSupplementImage) -> dict[str, Any]:
+def _build_intake_parsed_snapshot(
+    image_metadata: ValidatedSupplementImage,
+) -> dict[str, Any]:
     """Build a bounded sanitized parsed snapshot for intake-only previews.
 
     Args:
@@ -477,3 +496,41 @@ def _string_items(value: Any) -> Iterable[str]:
         for item in value:
             if isinstance(item, str):
                 yield item
+
+
+def _snapshot_string(
+    snapshot: dict[str, Any],
+    key: str,
+    default: str,
+) -> str:
+    """Return a bounded string from a parsed snapshot.
+
+    Args:
+        snapshot: Parsed snapshot dictionary.
+        key: Snapshot field name.
+        default: Fallback value.
+
+    Returns:
+        Snapshot string or fallback.
+    """
+    value = snapshot.get(key)
+    if isinstance(value, str) and value:
+        return value
+    return default
+
+
+def _image_quality_report_from_snapshot(
+    snapshot: dict[str, Any],
+) -> ImageQualityReport | None:
+    """Return a validated image-quality report from the snapshot.
+
+    Args:
+        snapshot: Parsed snapshot dictionary.
+
+    Returns:
+        Image quality report or None.
+    """
+    candidate = snapshot.get("image_quality_report")
+    if isinstance(candidate, dict):
+        return ImageQualityReport.model_validate(candidate)
+    return None

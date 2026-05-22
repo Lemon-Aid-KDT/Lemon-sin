@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
-from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
+from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_image_analysis import (
     OCR_VERIFICATION_MISMATCH_CODE,
@@ -114,9 +114,16 @@ class _FakePipelineSession:
 class _FakeOCRAdapter(OCRAdapter):
     """Fake OCR adapter returning configured text."""
 
-    def __init__(self, text: str, *, confidence: float | None = 0.88) -> None:
+    def __init__(
+        self,
+        text: str,
+        *,
+        confidence: float | None = 0.88,
+        provider: str = "fake-ocr",
+    ) -> None:
         self.text = text
         self.confidence = confidence
+        self.provider = provider
         self.received_image: OCRImageInput | None = None
         self.call_count = 0
 
@@ -131,7 +138,33 @@ class _FakeOCRAdapter(OCRAdapter):
         """
         self.call_count += 1
         self.received_image = image
-        return OCRResult(text=self.text, provider="fake-ocr", confidence=self.confidence)
+        return OCRResult(text=self.text, provider=self.provider, confidence=self.confidence)
+
+
+class _FailingOCRAdapter(OCRAdapter):
+    """Fake OCR adapter raising a recoverable OCR error."""
+
+    def __init__(self, *, provider: str = "failing-ocr") -> None:
+        self.provider = provider
+        self.call_count = 0
+
+    @property
+    def engine_name(self) -> str:
+        """Return a bounded adapter label for observation tests."""
+        return self.provider
+
+    async def extract_text(self, image: OCRImageInput) -> OCRResult:
+        """Raise a deterministic OCR error.
+
+        Args:
+            image: OCR image input.
+
+        Raises:
+            OCRError: Always raised for this fake adapter.
+        """
+        self.call_count += 1
+        assert image.image_bytes
+        raise OCRError("provider unavailable")
 
 
 class _FakeVisionAdapter(VisionAdapter):
@@ -301,9 +334,14 @@ async def test_analyze_supplement_image_defaults_to_intake_only() -> None:
     assert result.parser_used is False
     assert result.ocr_result is None
     assert result.vision_region is None
+    assert result.image_quality_report is not None
+    assert result.image_quality_report.status == "retake_recommended"
+    assert result.record.parsed_snapshot["image_quality_report"]["status"] == ("retake_recommended")
+    assert result.record.parsed_snapshot["action_required"] == "retake_recommended"
+    assert result.ocr_provider_observations == ()
     assert result.record.ocr_text_hash is None
     assert result.record.algorithm_version == "supplement-intake-v1.0.0"
-    assert fake_session.committed is False
+    assert fake_session.committed is True
 
 
 @pytest.mark.asyncio
@@ -330,6 +368,18 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert fake_parser.received_text == "비타민 D 1000\n비타민 D 25 ug"
     assert result.record.ocr_provider == "fake-ocr"
     assert result.record.parsed_snapshot["parsed_product"]["product_name"] == "비타민 D 1000"
+    assert result.record.parsed_snapshot["image_quality_report"]["status"] == ("retake_recommended")
+    assert result.record.parsed_snapshot["action_required"] == "retake_recommended"
+    assert result.record.parsed_snapshot["provider_observations"][0]["provider"] == "fake-ocr"
+    assert result.record.parsed_snapshot["provider_observations"][0]["stage"] == "primary"
+    assert result.record.parsed_snapshot["provider_observations"][0]["status"] == "completed"
+    assert result.record.parsed_snapshot["provider_observations"][0]["text_non_empty"] is True
+    assert result.record.parsed_snapshot["provider_observations"][0]["parser_success"] is True
+    assert result.record.parsed_snapshot["provider_observations"][0]["raw_ocr_text_stored"] is False
+    assert (
+        result.record.parsed_snapshot["provider_observations"][0]["raw_provider_payload_stored"]
+        is False
+    )
     assert result.record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
     assert fake_session.committed is True
 
@@ -509,6 +559,15 @@ async def test_analyze_supplement_image_calls_multimodal_when_ocr_is_empty() -> 
     assert result.record.parsed_snapshot["parser_metadata"]["input_provider"] == (
         "ollama_vision_assist"
     )
+    observations = result.record.parsed_snapshot["provider_observations"]
+    assert [(item["stage"], item["provider"]) for item in observations] == [
+        ("primary", "fake-ocr"),
+        ("multimodal_fallback", "ollama_vision_assist"),
+    ]
+    assert observations[0]["text_non_empty"] is False
+    assert observations[0]["parser_success"] is None
+    assert observations[1]["text_non_empty"] is True
+    assert observations[1]["parser_success"] is True
 
 
 @pytest.mark.asyncio
@@ -547,7 +606,7 @@ async def test_analyze_supplement_image_calls_secondary_fallback_after_low_confi
     """Verify optional secondary OCR providers can recover weak primary OCR."""
     fake_session = _FakePipelineSession()
     fake_ocr = _FakeOCRAdapter("흐린 텍스트", confidence=0.70)
-    fallback_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.83)
+    fallback_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.83, provider="fallback-ocr")
     fake_parser = _FakeParser(_parse_result())
 
     result = await analyze_supplement_image(
@@ -568,6 +627,40 @@ async def test_analyze_supplement_image_calls_secondary_fallback_after_low_confi
     assert fake_parser.received_text == "비타민 D 1000"
     assert result.ocr_result is not None
     assert result.ocr_result.confidence == 0.83
+    observations = result.record.parsed_snapshot["provider_observations"]
+    assert [(item["stage"], item["provider"]) for item in observations] == [
+        ("primary", "fake-ocr"),
+        ("secondary_fallback", "fallback-ocr"),
+    ]
+    assert observations[0]["warning_codes"] == ["ocr_low_confidence"]
+    assert observations[1]["parser_success"] is True
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_records_provider_error_observation() -> None:
+    """Verify OCR provider errors are tracked without raw provider payloads."""
+    fake_session = _FakePipelineSession()
+    failing_ocr = _FailingOCRAdapter()
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        _settings(),
+        adapters=SupplementImageAnalysisAdapters(ocr=failing_ocr),
+    )
+
+    assert failing_ocr.call_count == 1
+    assert result.ocr_result is None
+    assert result.parser_used is False
+    observation = result.record.parsed_snapshot["provider_observations"][0]
+    assert observation["provider"] == "failing-ocr"
+    assert observation["stage"] == "primary"
+    assert observation["status"] == "error"
+    assert observation["error_code"] == "OCRError"
+    assert observation["raw_ocr_text_stored"] is False
+    assert observation["raw_provider_payload_stored"] is False
 
 
 @pytest.mark.asyncio

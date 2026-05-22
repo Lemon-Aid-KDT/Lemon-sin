@@ -368,6 +368,39 @@ def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
         "parsed_product": {},
         "ingredient_candidates": [],
         "low_confidence_fields": ["label_text"],
+        "image_quality_report": {
+            "status": "retake_recommended",
+            "issues": [
+                {
+                    "reason_code": "low_resolution",
+                    "severity": "retake",
+                    "message": "Retake with a sharper image.",
+                    "evidence": {"short_edge_px": 320},
+                }
+            ],
+            "metrics": {"image_width": 320, "image_height": 240},
+            "detected_rois": [],
+            "retake_reasons": ["low_resolution"],
+        },
+        "analysis_scope": "full_image_review",
+        "action_required": "retake_recommended",
+        "provider_observations": [
+            {
+                "provider": "paddleocr_local",
+                "stage": "primary",
+                "status": "completed",
+                "latency_ms": 123,
+                "text_non_empty": True,
+                "parser_success": True,
+                "error_code": None,
+                "warning_codes": [],
+                "raw_ocr_text_stored": False,
+                "raw_provider_payload_stored": False,
+            }
+        ],
+        "missing_required_sections": ["supplement_facts"],
+        "image_role": "unknown",
+        "source_type": "uploaded_image",
         "intake": {"mime_type": "image/png", "size_bytes": 128},
     }
 
@@ -376,5 +409,10 @@ def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
 
     assert body["analysis_id"] == record.id
     assert body["low_confidence_fields"] == ["label_text"]
+    assert body["image_quality_report"]["status"] == "retake_recommended"
+    assert body["provider_observations"][0]["provider"] == "paddleocr_local"
+    assert body["provider_observations"][0]["raw_ocr_text_stored"] is False
+    assert body["action_required"] == "retake_recommended"
+    assert body["missing_required_sections"] == ["supplement_facts"]
     assert "image_sha256" not in body
     assert "intake" not in body

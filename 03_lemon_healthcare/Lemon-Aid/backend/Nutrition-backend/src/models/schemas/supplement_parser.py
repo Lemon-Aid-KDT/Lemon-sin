@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+SUPPLEMENT_PARSER_OUTPUT_V2: Literal["supplement-parser-output-v2"] = "supplement-parser-output-v2"
+
 
 class SupplementParserProduct(BaseModel):
     """Product-level facts extracted from supplement OCR text.

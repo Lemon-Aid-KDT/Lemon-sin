@@ -10,6 +10,9 @@ ImageQualityStatus = Literal["acceptable", "needs_review", "retake_recommended",
 ImageQualityReasonCode = Literal[
     "blurred_text",
     "glare_or_reflection",
+    "skewed_label",
+    "cropped_label",
+    "low_resolution",
     "low_light",
     "low_contrast",
     "too_small_text",
@@ -121,7 +124,10 @@ class ImageQualityReport(BaseModel):
         severities = {issue.severity for issue in self.issues}
         if "blocked" in severities and self.status != "blocked":
             raise ValueError("blocked issues require status='blocked'.")
-        if "retake" in severities and self.status not in {"retake_recommended", "blocked"}:
+        if "retake" in severities and self.status not in {
+            "retake_recommended",
+            "blocked",
+        }:
             raise ValueError("retake issues require retake_recommended or blocked status.")
         if severities and self.status == "acceptable":
             raise ValueError("acceptable reports cannot contain issues.")

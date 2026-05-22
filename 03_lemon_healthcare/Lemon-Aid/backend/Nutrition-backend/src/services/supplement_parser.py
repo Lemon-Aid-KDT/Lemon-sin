@@ -380,6 +380,18 @@ def _build_parsed_snapshot(
     intake = previous_snapshot.get("intake")
     if isinstance(intake, dict):
         snapshot["intake"] = intake
+    for key in (
+        "image_quality_report",
+        "provider_observations",
+        "analysis_scope",
+        "action_required",
+        "missing_required_sections",
+        "image_role",
+        "source_type",
+    ):
+        value = previous_snapshot.get(key)
+        if value is not None:
+            snapshot[key] = value
     return snapshot
 
 

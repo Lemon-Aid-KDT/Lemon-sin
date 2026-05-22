@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from io import BytesIO
@@ -23,6 +24,18 @@ from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
 from src.ocr.providers.paddle import PADDLE_OCR_PROVIDER
 from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
+
+RAW_FORBIDDEN_KEYS = frozenset(
+    {
+        "image_bytes",
+        "ocr_text",
+        "provider_payload",
+        "raw_image",
+        "raw_ocr_text",
+        "raw_provider_payload",
+        "request_headers",
+    }
+)
 
 
 class _TransactionContext:
@@ -59,6 +72,14 @@ class _FakeSupplementSession:
             Fake transaction context.
         """
         return _TransactionContext()
+
+    def in_transaction(self) -> bool:
+        """Return whether the fake session has an active transaction.
+
+        Returns:
+            False because this fake session does not model implicit transactions.
+        """
+        return False
 
     async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
         """Return the analysis row added by intake.
@@ -224,6 +245,22 @@ def _client(
     return TestClient(app)
 
 
+def _assert_no_forbidden_raw_fields(value: object) -> None:
+    """Verify API payloads do not expose raw OCR/image/provider fields.
+
+    Args:
+        value: JSON-compatible API payload.
+    """
+    if isinstance(value, dict):
+        forbidden = RAW_FORBIDDEN_KEYS.intersection(str(key) for key in value)
+        assert forbidden == frozenset()
+        for nested in value.values():
+            _assert_no_forbidden_raw_fields(nested)
+    elif isinstance(value, list):
+        for item in value:
+            _assert_no_forbidden_raw_fields(item)
+
+
 def test_analyze_supplement_label_runs_paddleocr_default_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -261,3 +298,20 @@ def test_analyze_supplement_label_runs_paddleocr_default_path(
     body = response.json()
     assert body["parsed_product"]["product_name"] == "비타민 D 1000"
     assert body["ingredient_candidates"][0]["display_name"] == "비타민 D"
+    _assert_no_forbidden_raw_fields(body)
+    assert fake_parser.received_text is not None
+    assert fake_parser.received_text not in json.dumps(body, ensure_ascii=False)
+    assert body["provider_observations"] == [
+        {
+            "provider": PADDLE_OCR_PROVIDER,
+            "stage": "primary",
+            "status": "completed",
+            "latency_ms": body["provider_observations"][0]["latency_ms"],
+            "text_non_empty": True,
+            "parser_success": True,
+            "error_code": None,
+            "warning_codes": [],
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+        }
+    ]

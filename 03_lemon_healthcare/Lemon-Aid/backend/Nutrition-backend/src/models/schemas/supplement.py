@@ -130,6 +130,41 @@ class SupplementBarcodeProviderObservation(BaseModel):
     item_count: int = Field(default=0, ge=0, le=1000)
 
 
+class SupplementOCRProviderObservation(BaseModel):
+    """Sanitized OCR provider observation for routing and quality audits.
+
+    Attributes:
+        provider: OCR provider label.
+        stage: Pipeline stage that called the provider.
+        status: Normalized call status.
+        latency_ms: Provider call latency in milliseconds.
+        text_non_empty: Whether the provider returned non-empty text.
+        parser_success: Whether this observation's result reached structured parsing.
+        error_code: Bounded non-secret error code when the provider fails.
+        warning_codes: Bounded warning codes such as empty text or low confidence.
+        raw_ocr_text_stored: Always false; raw OCR text is not persisted here.
+        raw_provider_payload_stored: Always false; provider payloads are not persisted.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    provider: str = Field(min_length=1, max_length=80)
+    stage: Literal[
+        "primary",
+        "multimodal_fallback",
+        "secondary_fallback",
+        "verification",
+    ]
+    status: Literal["completed", "error", "skipped"]
+    latency_ms: int | None = Field(default=None, ge=0)
+    text_non_empty: bool = False
+    parser_success: bool | None = None
+    error_code: str | None = Field(default=None, max_length=80)
+    warning_codes: list[str] = Field(default_factory=list, max_length=20)
+    raw_ocr_text_stored: Literal[False] = False
+    raw_provider_payload_stored: Literal[False] = False
+
+
 class SupplementBarcodeProductCandidate(BaseModel):
     """Official product candidate returned by barcode lookup.
 
@@ -465,6 +500,7 @@ class SupplementAnalysisPreview(BaseModel):
         precautions: Label-supported precaution candidates.
         functional_claims: Label-supported functional claim candidates.
         evidence_spans: Short redacted evidence excerpts.
+        provider_observations: Sanitized OCR provider routing observations.
         image_quality_report: Redacted image-quality report for OCR review UX.
         analysis_scope: Scope that the preview can safely represent.
         action_required: Next user action required before relying on the preview.
@@ -497,6 +533,7 @@ class SupplementAnalysisPreview(BaseModel):
     precautions: list[SupplementPreviewPrecaution] = Field(default_factory=list)
     functional_claims: list[SupplementPreviewFunctionalClaim] = Field(default_factory=list)
     evidence_spans: list[SupplementPreviewEvidenceSpan] = Field(default_factory=list)
+    provider_observations: list[SupplementOCRProviderObservation] = Field(default_factory=list)
     image_quality_report: ImageQualityReport | None = None
     analysis_scope: SupplementImageAnalysisScope = "unknown"
     action_required: SupplementImageRiskActionRequired = "none"
