@@ -30,6 +30,10 @@ Implication:
 - A small patch PR directly to `team/develop` is blocked until `team/develop` is synced with the Lemon Aid application tree.
 - If the team wants immediate review, first create a code-bearing base branch that removes generated OCR eval artifacts, or sync/squash that cleaned application tree into `team/develop`.
 - Do not commit generated OCR eval artifacts from the existing team feature branch into new PRs.
+- 2026-05-23 local cleanup branch `chore/ocr-clean-export-base` was created
+  from `team/feat/ocr-p1-5-followup`, removes generated OCR/live artifacts from
+  Git tracking, and passes the export base gate. It is preserved at
+  `origin/chore/ocr-clean-export-base`, not pushed to `team`.
 
 ## Current Export Gate Status
 
@@ -40,6 +44,7 @@ git fetch team completed on 2026-05-22
 origin/feat/ocr-quality-gates: pr_export_base_ok
 team/develop: missing backend/Nutrition-backend OCR source/test paths
 team/feat/ocr-p1-5-followup: 25 forbidden tracked outputs/generated/ocr-eval paths
+chore/ocr-clean-export-base: pr_export_base_ok
 git-tracked outputs/generated/ocr-eval count: 0
 current branch tracked generated artifact gate: ocr_artifact_privacy_ok files=0
 ```
@@ -50,11 +55,15 @@ baseline, but neither team target is ready for a small direct export PR:
 - `team/develop` must first receive the real Lemon Aid application tree.
 - `team/feat/ocr-p1-5-followup` must first drop generated OCR evaluation files
   from Git tracking while keeping local generated outputs ignored.
+- `origin/chore/ocr-clean-export-base` proves that this cleanup is viable:
+  generated/live OCR artifact tracking is removed and the branch passes
+  `check_pr_export_base.py`.
 
 ## Branch Preservation
 
 - Local branch: `feat/ocr-quality-gates`
 - Preserved remote: `origin/feat/ocr-quality-gates`
+- Clean base candidate: `origin/chore/ocr-clean-export-base`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.

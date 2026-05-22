@@ -656,6 +656,47 @@ black/ruff/ruff-format passed on branch protection audit script/tests
 - 공식 근거: GitHub repository rulesets REST API.
   https://docs.github.com/rest/repos/rules
 
+### 3.22 Clean Code-bearing Export Base
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-clean-export-base-result.md`
+
+생성 branch:
+
+- `chore/ocr-clean-export-base`
+- base: `team/feat/ocr-p1-5-followup` at `b5a9dec9`
+- preserved remote: `origin/chore/ocr-clean-export-base`
+
+변경:
+
+- `outputs/generated/ocr-eval/` tracked files 25개를 Git index에서 제거했다.
+- `outputs/evaluations/supplement-ocr/live/` tracked files 3개를 Git index에서
+  제거했다.
+- `.gitignore`에 generated OCR evaluation/live artifact ignore rule을 추가했다.
+
+검증:
+
+```text
+67b9bc46 chore(ocr): export base artifact 추적을 제거
+pr_export_base_ok ref=chore/ocr-clean-export-base
+ocr_artifact_privacy_ok files=0
+tracked generated/live OCR artifact count=0
+git diff --check passed
+git diff --cached --check passed
+secret pattern scan on .gitignore: no matches
+```
+
+보안 확인:
+
+- clean base 후보는 code-bearing OCR backend tree를 유지하면서 generated
+  OCR/live artifact tracking만 제거한다.
+- raw OCR text, provider payload, request headers, image bytes, secret values는
+  새 commit에 추가하지 않았다.
+- branch는 team remote가 아니라 personal `origin`에만 보존했다. team remote에
+  올리거나 PR base로 쓰려면 팀의 `team/develop` 동기화 전략과 branch protection
+  조치가 먼저 필요하다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1261,4 +1302,5 @@ ollama serve
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
    - root monorepo workflow paths and root backend CI security gates are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
    - public GitHub metadata shows `develop` and `main` branch protection is currently disabled and active branch rulesets are absent; repository-admin action is required
+   - clean code-bearing export base candidate now exists at `origin/chore/ocr-clean-export-base`, but team remote/base strategy is not decided
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
