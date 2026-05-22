@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import sys
+import types
+from typing import Any
+
 import pytest
 from src.config import Settings
 from src.ocr.base import OCRError, OCRImageInput
-from src.ocr.providers.paddle import PADDLE_OCR_PROVIDER, PaddleOCRAdapter
+from src.ocr.providers.paddle import (
+    PADDLE_OCR_PROVIDER,
+    PaddleOCRAdapter,
+    _get_paddle_predictor,
+)
 
 
 class _FakePaddlePredictor:
@@ -87,3 +95,103 @@ async def test_paddle_adapter_rejects_low_confidence_prediction() -> None:
 
     with pytest.raises(OCRError, match="confidence"):
         await adapter.extract_text(_image_input())
+
+
+class _RecordingFakePaddleOCR:
+    """Fake PaddleOCR class capturing constructor kwargs for assertions."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+    def predict(self, image_path: str) -> object:  # noqa: ARG002
+        """Return an empty prediction for kwarg-focused tests."""
+        return []
+
+
+@pytest.fixture
+def _fake_paddleocr_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace the ``paddleocr`` module with a kwargs-recording fake.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+
+    The lru_cache around ``_get_paddle_predictor`` is cleared before and after
+    so toggle states do not leak between tests.
+    """
+    fake_module = types.ModuleType("paddleocr")
+    fake_module.PaddleOCR = _RecordingFakePaddleOCR  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "paddleocr", fake_module)
+    _get_paddle_predictor.cache_clear()
+    yield
+    _get_paddle_predictor.cache_clear()
+
+
+def test_predictor_forwards_textline_orientation_when_disabled(
+    _fake_paddleocr_module: None,
+) -> None:
+    """Verify the default settings keep PaddleOCR textline orientation off."""
+    predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        use_textline_orientation=False,
+    )
+    assert predictor.kwargs["use_textline_orientation"] is False  # type: ignore[attr-defined]
+
+
+def test_predictor_forwards_textline_orientation_when_enabled(
+    _fake_paddleocr_module: None,
+) -> None:
+    """Verify operators can enable textline orientation for isolation runs."""
+    predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        use_textline_orientation=True,
+    )
+    assert predictor.kwargs["use_textline_orientation"] is True  # type: ignore[attr-defined]
+
+
+def test_predictor_caches_orientation_toggle_separately(
+    _fake_paddleocr_module: None,
+) -> None:
+    """Verify the toggle is part of the cache key so flipped runs do not collide."""
+    off = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        use_textline_orientation=False,
+    )
+    on = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        use_textline_orientation=True,
+    )
+    assert off is not on
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_propagates_textline_orientation_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the adapter forwards the settings flag into the cached predictor."""
+    fake_module = types.ModuleType("paddleocr")
+    fake_module.PaddleOCR = _RecordingFakePaddleOCR  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "paddleocr", fake_module)
+    _get_paddle_predictor.cache_clear()
+    try:
+        adapter = PaddleOCRAdapter(
+            Settings(
+                _env_file=None,
+                enable_local_ocr=True,
+                local_ocr_use_textline_orientation=True,
+            )
+        )
+        with pytest.raises(OCRError, match="readable text"):
+            await adapter.extract_text(_image_input())
+
+        predictor = _get_paddle_predictor(
+            language="korean",
+            device=None,
+            use_textline_orientation=True,
+        )
+        assert predictor.kwargs["use_textline_orientation"] is True  # type: ignore[attr-defined]
+    finally:
+        _get_paddle_predictor.cache_clear()
