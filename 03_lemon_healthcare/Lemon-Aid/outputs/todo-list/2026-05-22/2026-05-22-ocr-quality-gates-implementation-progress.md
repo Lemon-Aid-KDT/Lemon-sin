@@ -131,6 +131,25 @@
 - 성능 수치는 repo-local generated report에서 확인한 값만 기록했고, 없는 값은 만들지 않았다.
 - raw OCR/provider payload, request header, secret, local absolute path를 commit하지 않는 보안 gate를 같은 문서에 붙였다.
 
+### 3.9 Team Governance Enforcement Gap Report
+
+추가 파일:
+
+- `outputs/todo-list/2026-05-22/2026-05-22-team-governance-enforcement-gap-report.md`
+
+변경:
+
+- `docs/team-collaboration/` 규칙과 실제 `.pre-commit-config.yaml`, Git root `.github`, team remote branch 상태를 비교했다.
+- 현재 checkout에서 `pre-commit validate-config`는 통과하지만, `detect-secrets`는 `.secrets.baseline` 부재로 실패하고 `markdownlint`는 `.markdownlint.json` 부재와 기존 markdown findings로 실패함을 기록했다.
+- 현재 Git root Lemon CI workflow가 `03_lemon_healthcare/yeong-Lemon-Aid/...` 경로를 기준으로 하므로, 기본 작업 경로 `03_lemon_healthcare/Lemon-Aid/...`에는 그대로 적용되지 않는 gap을 기록했다.
+- `team/docs/team-collaboration-rules`에 PR template, team-policy workflow, hook scripts가 이미 있으나, 현재 code-bearing tree와 결합하려면 별도 governance PR이 필요하다고 정리했다.
+
+보안 확인:
+
+- `.env` 값은 읽지 않았다.
+- report에는 secret 값, raw OCR text, provider payload, request header, private image path를 포함하지 않았다.
+- missing secret baseline과 stale CI path를 유출/우회 위험으로 분리해 후속 P0/P1 PR 후보에 넣었다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
