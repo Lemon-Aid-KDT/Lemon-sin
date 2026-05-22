@@ -36,9 +36,10 @@ Implication:
 Latest local evidence:
 
 ```text
+git fetch team completed on 2026-05-22
 origin/feat/ocr-quality-gates: pr_export_base_ok
 team/develop: missing backend/Nutrition-backend OCR source/test paths
-team/feat/ocr-p1-5-followup: forbidden tracked outputs/generated/ocr-eval paths
+team/feat/ocr-p1-5-followup: 25 forbidden tracked outputs/generated/ocr-eval paths
 git-tracked outputs/generated/ocr-eval count: 0
 current branch tracked generated artifact gate: ocr_artifact_privacy_ok files=0
 ```
@@ -109,6 +110,18 @@ Reason:
 | `1e04d877 test(ocr): generated artifact 추적 검사를 추가` | Artifact privacy | fail when generated OCR eval outputs are tracked |
 | `3e9cb4cf chore(ocr): generated artifact 추적을 제거` | Artifact privacy | stop tracking historical generated OCR eval outputs |
 | `c186ccec chore(team): commit type 목록을 동기화` | Team governance | sync enforced commit types with team docs |
+| `08860ab7 docs(ocr): PR 준비 상태를 갱신` | Supporting docs | PR prep state and export procedure update |
+| `6fa42aa4 chore(team): secret scan hook을 복구` | Team governance | restore detect-secrets baseline hook behavior |
+| `f68e233a test(team): secret baseline 감사를 추가` | Team governance | bounded audit for historical secret candidates |
+| `8c3aed6d ci(team): team policy gate를 추가` | Team governance | standalone PR template, team policy workflow, validators |
+| `7c627258 test(infra): Lemon CI 경로 감사를 추가` | CI path audit | bounded audit for stale root workflow/dependabot/template paths |
+| `e219fd34 fix(backend): rate limit 운영 증거를 요구` | Analyze API security | require operational rate-limit proof in non-local environments |
+| `af387877 chore(ocr): live 평가 산출물 추적을 제거` | Artifact privacy | remove tracked live OCR smoke artifacts |
+| `19c9324a ci(infra): Lemon workflow 경로를 보정` | CI path audit | repair root workflow, dependabot, template, CODEOWNERS paths |
+| `7e203bf7 docs(team): credential 예시를 placeholder로 보정` | Team governance | rewrite credential-looking docs placeholders and refresh baseline |
+| `07abbf4e ci(infra): CI 보안 gate를 추가` | CI security | run policy, secret, OCR artifact, and path gates in backend CI |
+| `d6378ba5 chore(team): 보호 브랜치 push guard를 추가` | Team governance | local pre-push guard for `main`/`develop` direct updates |
+| `2febc8d4 docs(ocr): PaddleOCR baseline 결과를 기록` | Supporting docs | post-alpha PaddleOCR comparison summary without generated artifacts |
 
 ## Suggested PR Split
 
@@ -263,6 +276,19 @@ CLOVA:
 raw_artifacts_stored=false
 raw_ocr_text_stored=false
 ingredient_name_exact_rate=0.0
+```
+
+PaddleOCR post-alpha:
+
+```text
+16 observations, 14 completed, 2 errors
+raw_artifacts_stored=false
+raw_ocr_text_stored=false
+text_non_empty_rate=0.875
+parser_success_rate=0.875
+ingredient_name_exact_rate=0.9375
+accuracy_by_condition: cardiovascular=1.0, diabetes=1.0, dyslipidemia=1.0, osteoporosis=1.0
+artifact privacy scanner: ocr_artifact_privacy_ok files=4
 ```
 
 Export and artifact privacy:
