@@ -57,7 +57,10 @@ class TestExtractIngredients:
     def test_mixed_lines_preserve_parens(self) -> None:
         """``비타민 A (Vitamin A)`` 형태는 보존된다."""
         text = "- 비타민 A (Vitamin A): 800μg RAE\n- 셀레늄 (Selenium): 50μg"
-        assert extract_ingredients(text) == ["비타민 A (Vitamin A)", "셀레늄 (Selenium)"]
+        assert extract_ingredients(text) == [
+            "비타민 A (Vitamin A)",
+            "셀레늄 (Selenium)",
+        ]
 
     def test_skips_lines_without_colon_amount(self) -> None:
         """``이름: 숫자`` 패턴이 아니면 무시."""
@@ -119,15 +122,75 @@ class TestExtractFields:
         }
 
     def test_english_all_fields(self) -> None:
-        text = (
-            "Nutrition Facts\n"
-            "Vitamin C Complex\n"
-            "Ingredients\n"
-            "- Vitamin C: 1000mg"
-        )
+        text = "Nutrition Facts\n" "Vitamin C Complex\n" "Ingredients\n" "- Vitamin C: 1000mg"
         result = extract_fields(text)
         assert result == {
             "product_name": "Vitamin C Complex",
             "ingredients": ["Vitamin C"],
             "dosage": "1000mg",
         }
+
+
+class TestPaddleOCRRegressionShape:
+    """PaddleOCR 출력 변형에서 회귀가 났던 형식을 명시적으로 박아둔다.
+
+    P1-5 안정화 후 chronic 평가에서 ingredient_name_exact_rate=0% 가 관측되었다.
+    이 클래스는 ``INGREDIENT_LINE_PATTERN`` / ``DOSAGE_PATTERN`` 정규식이 PaddleOCR
+    이 흔히 내놓는 출력 형식을 계속 흡수하는지 회귀 testbed 로 잡아둔다.
+    """
+
+    def test_table_row_without_colon_is_matched(self) -> None:
+        """PaddleOCR 표 셀 출력 ``비타민 C  1000mg`` 도 ingredient 로 추출된다.
+
+        표 레이아웃을 평면화한 출력 (e.g. ``ppstructure`` 없이 ``ppocr`` 만
+        사용했을 때)에서 콜론 대신 두 칸 이상 공백이 separator 로 남는 경우를
+        흡수한다.
+        """
+        text = "성분\n비타민 C  1000mg\n비타민 D  25μg"
+        result = extract_ingredients(text)
+        assert result == ["비타민 C", "비타민 D"]
+
+    def test_table_row_pipe_separator_is_matched(self) -> None:
+        """파이프 구분자 표 출력 ``비타민 C | 1000mg`` 도 추출된다."""
+        text = "성분\n비타민 C | 1000mg"
+        result = extract_ingredients(text)
+        assert result == ["비타민 C"]
+
+    def test_single_space_product_like_line_is_not_matched(self) -> None:
+        """제품명처럼 보이는 ``비타민 C 1000mg`` 한 칸 구분은 과검출하지 않는다."""
+        text = "비타민 C 1000mg"
+        result = extract_ingredients(text)
+        assert result == []
+
+    def test_colon_with_surrounding_spaces_is_matched(self) -> None:
+        """``이름 : 1000mg`` (콜론 주변 공백) 변형은 정규식에서 잡혀야 한다.
+
+        ``INGREDIENT_LINE_PATTERN`` 의 ``\\s*:\\s*`` 가 양쪽 공백을 흡수하므로
+        PaddleOCR 가 콜론을 약간 띄워 출력하더라도 ingredient 가 추출된다.
+        """
+        text = "- 비타민 C : 1000mg"
+        result = extract_ingredients(text)
+        assert result == ["비타민 C"]
+
+    def test_dosage_pattern_misreads_comma_thousand_separator(self) -> None:
+        """``1,000mg`` 같은 천단위 콤마는 ``1000mg`` 으로 정규화한다."""
+        result = extract_dosage("- 비타민 C: 1,000mg")
+        assert result == "1000mg"
+
+    def test_dosage_pattern_misses_mcg_unit(self) -> None:
+        """``mcg`` 단위는 ``μg`` 로 정규화해 추출한다.
+
+        PaddleOCR 가 라벨의 ``μg`` 를 ``mcg`` 로 출력하는 경우를 GT 표기와
+        맞추기 위해 canonical ``μg`` 로 변환한다.
+        """
+        result = extract_dosage("- 비타민 D: 25mcg")
+        assert result == "25μg"
+
+    def test_dosage_pattern_misses_combined_units_lowercase(self) -> None:
+        """``μg rae`` (소문자 RAE)는 ``μg RAE`` 로 정규화한다.
+
+        OCR raw 가 ``25 μg rae`` 로 들어와도 GT(``μg RAE``) 와 같은 compound
+        unit 대소문자를 사용한다.
+        """
+        result = extract_dosage("비타민 A: 25 μg rae")
+        assert result == "25μg RAE"

@@ -34,40 +34,60 @@ DEFAULT_MFDS_CSV: Final[Path] = Path("data/mfds/functional_ingredients.csv")
 
 HEADER_KEYWORDS_KO: Final[frozenset[str]] = frozenset({"영양 정보", "성분", "성분 ingredients"})
 HEADER_KEYWORDS_EN: Final[frozenset[str]] = frozenset({"nutrition facts", "ingredients"})
-HEADER_KEYWORDS_MIXED: Final[frozenset[str]] = frozenset({
-    "영양 정보 / nutrition facts",
-})
+HEADER_KEYWORDS_MIXED: Final[frozenset[str]] = frozenset(
+    {
+        "영양 정보 / nutrition facts",
+    }
+)
+
+AMOUNT_PATTERN: Final[str] = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+"""Dosage amount token. Supports grouped thousands such as ``1,000mg``."""
+
+UNIT_PATTERN: Final[str] = r"""
+    mg\s+α-TE
+    |mg\s+NE
+    |μg\s+RAE
+    |ug\s+RAE
+    |mcg\s+RAE
+    |µg\s+RAE
+    |μg\s+DFE
+    |ug\s+DFE
+    |mcg\s+DFE
+    |µg\s+DFE
+    |μg
+    |ug
+    |mcg
+    |µg
+    |mg
+    |g
+    |IU
+    |kcal
+"""
+"""Dosage unit token. Longer compound units must appear before short units."""
 
 # dosage 정규식: 숫자(소수 가능) + 단위. KDRIs 의 모든 단위 형태를 커버.
-# PaddleOCR 가 'µ' 대신 'u' 로 인식하는 경우도 흡수.
+# PaddleOCR 가 'µ' 대신 'u'/'mcg' 로 인식하는 경우도 흡수.
 # 긴 단위(μg DFE 등)는 짧은 단위(μg) 보다 먼저 매칭되어야 한다 — 정규식은 alt 의
 # 첫 매치를 채택하므로 길이 내림차순 정렬.
 DOSAGE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"""
-    (?P<amount>\d+(?:\.\d+)?)      # 숫자
-    \s*
-    (?P<unit>
-        mg\s+α-TE
-        |mg\s+NE
-        |μg\s+RAE
-        |ug\s+RAE
-        |μg\s+DFE
-        |ug\s+DFE
-        |μg
-        |ug
-        |mg
-        |g
-        |IU
-        |kcal
-    )
-    """,
+    rf"(?P<amount>{AMOUNT_PATTERN})\s*(?P<unit>{UNIT_PATTERN})",
     re.IGNORECASE | re.VERBOSE,
 )
 
-# 줄 단위 ingredient 패턴: "- 이름: 함량" 또는 "이름: 함량" 또는 "이름 (English): 함량"
+# 줄 단위 ingredient 패턴:
+# "- 이름: 함량", "이름 | 함량", "이름  함량" 같은 table-flattened OCR row를 허용한다.
+# 단일 공백은 제품명("비타민 C 1000mg") 과 충돌하기 쉬워 제외한다.
 INGREDIENT_LINE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^\s*[-•]?\s*(?P<name>[^:]+?)\s*:\s*\d+",
+    rf"^\s*[-•]?\s*(?P<name>.+?)\s*(?::|：|\||\t+|\s{{2,}})\s*{AMOUNT_PATTERN}\s*(?:{UNIT_PATTERN})\b",
+    re.IGNORECASE | re.VERBOSE,
 )
+
+COMPOUND_UNIT_SUFFIXES: Final[dict[str, str]] = {
+    "α-te": "α-TE",
+    "ne": "NE",
+    "rae": "RAE",
+    "dfe": "DFE",
+}
 
 
 def _build_dictionary(mfds_csv: Path) -> dict[str, str]:
@@ -202,9 +222,52 @@ def extract_dosage(text: str) -> str | None:
     match = DOSAGE_PATTERN.search(text)
     if match is None:
         return None
-    amount = match.group("amount")
-    unit = match.group("unit")
+    amount = _normalize_dosage_amount(match.group("amount"))
+    unit = _normalize_dosage_unit(match.group("unit"))
     return f"{amount}{unit}"
+
+
+def _normalize_dosage_amount(value: str) -> str:
+    """Normalize a dosage amount captured from OCR text.
+
+    Args:
+        value: Raw regex amount group.
+
+    Returns:
+        Amount with thousands separators removed.
+    """
+    return value.replace(",", "")
+
+
+def _normalize_dosage_unit(value: str) -> str:
+    """Normalize OCR unit variants to stable KDRIs-style display.
+
+    Args:
+        value: Raw regex unit group.
+
+    Returns:
+        Canonical unit string such as ``"μg RAE"`` or the alpha-TE mg unit.
+    """
+    parts = value.replace("µ", "μ").split()
+    if not parts:
+        return value
+
+    base = parts[0]
+    if base.casefold() in {"ug", "mcg", "μg"}:
+        base = "μg"
+    elif base.casefold() == "iu":
+        base = "IU"
+    elif base.casefold() == "kcal":
+        base = "kcal"
+    else:
+        base = base.casefold()
+
+    if len(parts) == 1:
+        return base
+
+    suffix = " ".join(parts[1:]).casefold()
+    normalized_suffix = COMPOUND_UNIT_SUFFIXES.get(suffix, suffix.upper())
+    return f"{base} {normalized_suffix}"
 
 
 def extract_fields(
