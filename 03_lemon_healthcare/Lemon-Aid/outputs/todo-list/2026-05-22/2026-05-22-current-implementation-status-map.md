@@ -68,7 +68,10 @@
 - PR/export base는 `backend/scripts/check_pr_export_base.py`로 skeleton base와 generated OCR artifact tracked base를 거부한다.
 - backend dev-env doctor는 `.env` 내용을 열지 않고 tracked 여부만 확인한다.
 - Rate limit subject key는 검증되지 않은 `Authorization` header를 신뢰하지 않고 client host digest를 사용한다.
-- Production에서는 process-local limiter만으로 부팅하지 않도록 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true` attestation이 필요하다.
+- Production에서는 process-local limiter만으로 부팅하지 않도록
+  `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`와 함께 외부 계층 종류
+  (`RATE_LIMIT_EXTERNAL_PROVIDER`) 및 non-secret 운영 증거
+  (`RATE_LIMIT_EXTERNAL_POLICY_REF`)가 필요하다.
 
 ## 다음 검증 gate
 

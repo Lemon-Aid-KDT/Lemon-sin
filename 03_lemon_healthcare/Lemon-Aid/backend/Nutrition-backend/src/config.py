@@ -223,6 +223,10 @@ class Settings(BaseSettings):
         rate_limit_enabled: Whether API rate limiting is enabled.
         rate_limit_external_enforcement: Whether production also has a distributed
             rate limiter at the ingress/API gateway/Redis layer.
+        rate_limit_external_provider: External rate-limit enforcement layer type.
+        rate_limit_external_policy_ref: Non-secret operational evidence reference
+            for the external rate-limit policy, such as an infrastructure rule id
+            or runbook section.
         rate_limit_window_seconds: Fixed-window duration used by local rate limiting.
         supplement_image_upload_rate_limit: Maximum supplement image uploads per subject/window.
         supplement_image_max_bytes: Maximum uploaded supplement label image size.
@@ -332,6 +336,19 @@ class Settings(BaseSettings):
             "Production attestation that a distributed ingress/API gateway/Redis "
             "rate limiter protects high-cost OCR upload paths. The in-process "
             "middleware remains enabled as defense in depth."
+        ),
+    )
+    rate_limit_external_provider: Literal["none", "redis", "api_gateway", "ingress"] = Field(
+        default="none",
+        description="External rate-limit layer used when RATE_LIMIT_EXTERNAL_ENFORCEMENT=true.",
+    )
+    rate_limit_external_policy_ref: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Non-secret reference proving the external rate-limit rule exists "
+            "(for example an infrastructure rule id or runbook section)."
         ),
     )
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
@@ -529,8 +546,9 @@ class Settings(BaseSettings):
             raise ValueError("RATE_LIMIT_ENABLED=false is forbidden outside development.")
         if self.rate_limit_external_enforcement and not self.rate_limit_enabled:
             raise ValueError(
-                "RATE_LIMIT_ENABLED=true is required when " "RATE_LIMIT_EXTERNAL_ENFORCEMENT=true."
+                "RATE_LIMIT_ENABLED=true is required when RATE_LIMIT_EXTERNAL_ENFORCEMENT=true."
             )
+        self._validate_rate_limit_attestation()
 
         if self.environment != "production":
             return self
@@ -756,6 +774,36 @@ class Settings(BaseSettings):
         if errors:
             raise ValueError(" ".join(errors))
         return self
+
+    def _validate_rate_limit_attestation(self) -> None:
+        """Validate distributed rate-limit attestation metadata.
+
+        Raises:
+            ValueError: If external rate-limit settings are incomplete or
+                detached from the enforcement flag.
+        """
+        if self.rate_limit_external_enforcement:
+            if self.rate_limit_external_provider == "none":
+                raise ValueError(
+                    "RATE_LIMIT_EXTERNAL_PROVIDER must be one of redis, api_gateway, "
+                    "or ingress when RATE_LIMIT_EXTERNAL_ENFORCEMENT=true."
+                )
+            if not (self.rate_limit_external_policy_ref or "").strip():
+                raise ValueError(
+                    "RATE_LIMIT_EXTERNAL_POLICY_REF is required when "
+                    "RATE_LIMIT_EXTERNAL_ENFORCEMENT=true."
+                )
+            return
+        if self.rate_limit_external_provider != "none":
+            raise ValueError(
+                "RATE_LIMIT_EXTERNAL_ENFORCEMENT=true is required when "
+                "RATE_LIMIT_EXTERNAL_PROVIDER is not none."
+            )
+        if self.rate_limit_external_policy_ref:
+            raise ValueError(
+                "RATE_LIMIT_EXTERNAL_ENFORCEMENT=true is required when "
+                "RATE_LIMIT_EXTERNAL_POLICY_REF is set."
+            )
 
 
 @lru_cache

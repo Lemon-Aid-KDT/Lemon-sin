@@ -73,6 +73,8 @@ def _valid_production_kwargs() -> dict[str, Any]:
         "jwt_expected_token_type": "at+jwt",
         "privacy_hash_secret": "prod-privacy-hash-secret-at-least-32",
         "rate_limit_external_enforcement": True,
+        "rate_limit_external_provider": "api_gateway",
+        "rate_limit_external_policy_ref": "infra/runbooks/rate-limit.md#supplement-upload",
         "kdris_data_version": "2025",
         "kdris_data_path": "data/nutrition_reference/kdris/kdris_2025.csv",
         "allow_sample_kdris": False,
@@ -116,6 +118,8 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.google_vision_max_retries == 2
     assert settings.rate_limit_enabled is True
     assert settings.rate_limit_external_enforcement is False
+    assert settings.rate_limit_external_provider == "none"
+    assert settings.rate_limit_external_policy_ref is None
     assert settings.rate_limit_window_seconds == 60
     assert settings.supplement_image_upload_rate_limit == 10
     assert settings.enable_multimodal_llm is False
@@ -225,8 +229,28 @@ def test_production_rejects_process_local_rate_limit_only() -> None:
     """Verify production requires distributed rate-limit enforcement."""
     kwargs = _valid_production_kwargs()
     kwargs["rate_limit_external_enforcement"] = False
+    kwargs["rate_limit_external_provider"] = "none"
+    kwargs["rate_limit_external_policy_ref"] = None
 
     with pytest.raises(ValidationError, match="RATE_LIMIT_EXTERNAL_ENFORCEMENT"):
+        Settings(**kwargs)
+
+
+def test_external_rate_limit_attestation_requires_provider() -> None:
+    """Verify external rate-limit attestation includes the enforcement layer."""
+    kwargs = _valid_production_kwargs()
+    kwargs["rate_limit_external_provider"] = "none"
+
+    with pytest.raises(ValidationError, match="RATE_LIMIT_EXTERNAL_PROVIDER"):
+        Settings(**kwargs)
+
+
+def test_external_rate_limit_attestation_requires_policy_ref() -> None:
+    """Verify external rate-limit attestation includes non-secret evidence."""
+    kwargs = _valid_production_kwargs()
+    kwargs["rate_limit_external_policy_ref"] = None
+
+    with pytest.raises(ValidationError, match="RATE_LIMIT_EXTERNAL_POLICY_REF"):
         Settings(**kwargs)
 
 
@@ -288,6 +312,26 @@ def test_rate_limit_external_enforcement_requires_app_limiter() -> None:
             _env_file=None,
             rate_limit_enabled=False,
             rate_limit_external_enforcement=True,
+            rate_limit_external_provider="redis",
+            rate_limit_external_policy_ref="infra/rate-limit/supplement-upload",
+        )
+
+
+def test_rate_limit_external_provider_requires_attestation() -> None:
+    """Verify provider metadata cannot imply external enforcement by itself."""
+    with pytest.raises(ValidationError, match="RATE_LIMIT_EXTERNAL_ENFORCEMENT"):
+        Settings(
+            _env_file=None,
+            rate_limit_external_provider="redis",
+        )
+
+
+def test_rate_limit_external_policy_ref_requires_attestation() -> None:
+    """Verify policy evidence cannot be detached from external enforcement."""
+    with pytest.raises(ValidationError, match="RATE_LIMIT_EXTERNAL_ENFORCEMENT"):
+        Settings(
+            _env_file=None,
+            rate_limit_external_policy_ref="infra/rate-limit/supplement-upload",
         )
 
 

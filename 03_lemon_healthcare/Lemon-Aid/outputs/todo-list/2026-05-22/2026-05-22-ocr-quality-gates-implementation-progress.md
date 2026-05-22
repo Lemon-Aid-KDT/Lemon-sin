@@ -534,11 +534,13 @@ pre-commit ruff and ruff-format passed on changed backend Python files
 - `backend/Nutrition-backend/src/config.py`
 - `backend/Nutrition-backend/tests/integration/api/test_supplement_intake_api.py`
 - `backend/Nutrition-backend/tests/unit/test_config.py`
+- `backend/.env.example`
 
 Official references:
 
 - Starlette middleware docs: https://www.starlette.io/middleware/
 - FastAPI middleware execution order docs: https://fastapi.tiangolo.com/tutorial/middleware/
+- OWASP API4:2023 Unrestricted Resource Consumption: https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/
 
 변경:
 
@@ -546,18 +548,41 @@ Official references:
 - 기본값:
   - `RATE_LIMIT_ENABLED=true`
   - `RATE_LIMIT_EXTERNAL_ENFORCEMENT=false`
+  - `RATE_LIMIT_EXTERNAL_PROVIDER=none`
+  - `RATE_LIMIT_EXTERNAL_POLICY_REF=`
   - `RATE_LIMIT_WINDOW_SECONDS=60`
   - `SUPPLEMENT_IMAGE_UPLOAD_RATE_LIMIT=10`
 - staging/production에서는 `RATE_LIMIT_ENABLED=false`로 부팅하지 못하도록 `Settings.validate_runtime_security()`에 guard를 추가했다.
-- production에서는 process-local limiter만으로 부팅하지 못하도록 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 요구한다. 이 값은 ingress/API gateway/Redis 계층의 분산 rate limit가 별도로 강제된다는 운영 attestation이다.
+- production에서는 process-local limiter만으로 부팅하지 못하도록
+  `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 요구한다. 또한 단순 boolean
+  attestation으로는 운영 증거가 약하므로 `RATE_LIMIT_EXTERNAL_PROVIDER`
+  (`redis`, `api_gateway`, `ingress`)와 non-secret
+  `RATE_LIMIT_EXTERNAL_POLICY_REF`도 함께 요구한다.
+- `backend/.env.example`은 default provider가 `paddleocr`인 상태에서
+  `Settings(_env_file=...)`로 로드될 수 있도록 Google Vision auth default를
+  `adc`로 맞추고, API-key smoke는 `ALLOW_GOOGLE_API_KEY_AUTH=true`를 별도로
+  켜야 하는 opt-in으로 남겼다.
 - subject key는 인증 전 미들웨어에서 검증되지 않은 `Authorization` header를 신뢰하지 않고 ASGI `client.host`를 SHA-256 digest로 감싸서 만든다.
 - 429 응답은 OpenAPI 예시와 맞춰 `detail.code="too_many_requests"`를 반환하고 `Retry-After` header를 포함한다.
 - `SecureHeadersMiddleware`가 429 응답에도 적용되는지 통합 테스트로 고정했다.
 - 서로 다른 임의 `Authorization` header를 붙여도 같은 client host에서는 limit을 우회하지 못하도록 회귀 테스트를 추가했다.
 
+추가 검증:
+
+```text
+67 passed - test_config.py + test_security_middleware.py
+.env.example zsh syntax and Settings load passed
+black, ruff, ruff-format passed on config.py and test_config.py
+detect-secrets all-files passed after baseline line-number sync
+```
+
 한계:
 
-- 현재 앱 내부 구현은 process-local limiter다. 단일 local/dev worker와 첫 비용폭주 차단에는 충분하지만, 다중 worker/다중 instance production에서는 Redis 또는 API gateway/ingress rate limit가 반드시 외부에서 강제되어야 한다.
+- 현재 앱 내부 구현은 process-local limiter다. 단일 local/dev worker와 첫
+  비용폭주 차단에는 충분하지만, 다중 worker/다중 instance production에서는
+  Redis 또는 API gateway/ingress rate limit가 반드시 외부에서 강제되어야 한다.
+  이번 보강 뒤 production 부팅에는 해당 외부 계층의 종류와 non-secret
+  정책/런북 참조가 필요하다.
 - `X-Forwarded-For`류 proxy header는 신뢰하지 않는다. proxy chain 검증이 없는 상태에서 해당 header를 신뢰하면 spoofing 위험이 커진다.
 - 같은 NAT/proxy 뒤 사용자가 많은 production 환경에서는 client host 단위 제한이 거칠 수 있다. 인증 완료 후 principal 기반 limiter로 옮기거나 trusted gateway/Redis limiter를 붙이는 것이 다음 단계다.
 

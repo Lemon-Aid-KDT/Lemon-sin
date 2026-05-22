@@ -362,7 +362,7 @@ flutter test
 
 후속 hardening:
 
-- production에서 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 설정하기 전에 실제 ingress/API gateway/Redis rate-limit rule과 운영 증거를 남긴다.
+- production에서 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 설정하기 전에 실제 ingress/API gateway/Redis rate-limit rule과 운영 증거를 남긴다. 현재 runtime guard는 외부 계층 종류(`RATE_LIMIT_EXTERNAL_PROVIDER`)와 non-secret 증거 참조(`RATE_LIMIT_EXTERNAL_POLICY_REF`)를 함께 요구한다.
 - 실제 Android 물리 기기에서 OS camera permission allow/deny/retry 흐름을 한 번 더 확인한다.
 - 실제 iOS 물리 기기에서 OS camera permission allow/deny/retry 흐름을 한 번 더 확인한다.
 - production/staging API 인증서 pin과 rotation/backup pin 운영 절차를 확정한 뒤 같은 live test를 내부 endpoint로 재실행한다.
