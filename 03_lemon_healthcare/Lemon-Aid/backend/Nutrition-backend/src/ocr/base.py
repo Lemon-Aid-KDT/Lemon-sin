@@ -18,6 +18,84 @@ class OCRError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class OCRVertex:
+    """Single OCR coordinate vertex.
+
+    Attributes:
+        x: Horizontal coordinate in provider-normalized image space.
+        y: Vertical coordinate in provider-normalized image space.
+    """
+
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
+class OCRBoundingPoly:
+    """OCR word bounding polygon.
+
+    Attributes:
+        vertices: Polygon vertices around the detected OCR word.
+    """
+
+    vertices: tuple[OCRVertex, ...]
+
+
+@dataclass(frozen=True)
+class OCRWord:
+    """Coordinate-bearing OCR word.
+
+    Attributes:
+        text: Word text emitted by the OCR provider.
+        bounding_box: Optional bounding polygon. Missing boxes degrade layout parsing.
+        confidence: Optional provider word confidence from 0.0 to 1.0.
+    """
+
+    text: str
+    bounding_box: OCRBoundingPoly | None = None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class OCRParagraph:
+    """OCR paragraph containing words.
+
+    Attributes:
+        words: Provider-normalized OCR words.
+    """
+
+    words: tuple[OCRWord, ...]
+
+
+@dataclass(frozen=True)
+class OCRBlock:
+    """OCR block containing paragraphs.
+
+    Attributes:
+        paragraphs: Provider-normalized OCR paragraphs.
+        block_type: Optional provider block type.
+    """
+
+    paragraphs: tuple[OCRParagraph, ...]
+    block_type: str | None = None
+
+
+@dataclass(frozen=True)
+class OCRPage:
+    """OCR page layout metadata.
+
+    Attributes:
+        blocks: OCR blocks on the page.
+        width: Optional page width in provider coordinate units.
+        height: Optional page height in provider coordinate units.
+    """
+
+    blocks: tuple[OCRBlock, ...]
+    width: int | None = None
+    height: int | None = None
+
+
+@dataclass(frozen=True)
 class OCRImageInput:
     """Validated image payload passed to OCR providers.
 
@@ -44,11 +122,13 @@ class OCRResult:
         text: Extracted text. Empty text means the adapter did not produce usable OCR output.
         provider: Bounded provider label for audit and preview metadata.
         confidence: Optional OCR confidence from 0.0 to 1.0.
+        pages: Optional coordinate-bearing OCR layout pages.
     """
 
     text: str
     provider: str
     confidence: float | None = None
+    pages: tuple[OCRPage, ...] = ()
 
 
 class OCRAdapter(ABC):
