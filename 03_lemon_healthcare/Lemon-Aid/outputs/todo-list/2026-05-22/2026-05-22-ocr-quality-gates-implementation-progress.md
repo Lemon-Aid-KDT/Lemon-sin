@@ -150,6 +150,28 @@
 - report에는 secret 값, raw OCR text, provider payload, request header, private image path를 포함하지 않았다.
 - missing secret baseline과 stale CI path를 유출/우회 위험으로 분리해 후속 P0/P1 PR 후보에 넣었다.
 
+### 3.10 Real OCR Manifest Privacy Redaction
+
+수정 파일:
+
+- `data/ocr_eval/real_manifest.json`
+- `backend/scripts/check_ocr_artifact_privacy.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_ocr_artifact_privacy.py`
+
+변경:
+
+- tracked real manifest에서 외장 디스크 절대경로 `source_root`, item별 `source_path`, raw label/OCR text 성격의 `gt_text`를 제거했다.
+- 86개 item과 7개 human-labeled flag는 유지하고, committed manifest에는 relative `image_path`, `category`, derived `gt_fields`, bootstrap metadata만 남겼다.
+- real manifest top-level `privacy` block에 `source_root_stored=false`, `source_paths_stored=false`, `raw_label_text_stored=false`, `raw_ocr_text_stored=false`를 기록했다.
+- artifact privacy scanner가 `kind="real"` JSON manifest에서 `source_root`, `source_path`, `gt_text` 키를 금지하도록 보강했다.
+- synthetic manifest의 generated `gt_text`는 deterministic fixture text라 계속 허용하도록 회귀 테스트를 분리했다.
+
+보안 확인:
+
+- `data/ocr_eval/real_manifest.json`에서 `/Volumes/`, `/Users/`, `"gt_text"`, `"source_path"`, `"source_root"` exact pattern은 더 이상 발견되지 않는다.
+- `check_ocr_artifact_privacy.py`가 real/synthetic manifests 3개를 모두 통과했다.
+- 이 작업은 이미지 파일 자체나 derived `gt_fields`를 삭제하지 않고, private provenance path와 raw full-label text만 제거했다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:

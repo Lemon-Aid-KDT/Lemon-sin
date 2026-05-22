@@ -34,6 +34,13 @@ FORBIDDEN_JSON_KEYS = frozenset(
         "x_ocr_secret",
     }
 )
+REAL_MANIFEST_FORBIDDEN_JSON_KEYS = frozenset(
+    {
+        "gt_text",
+        "source_path",
+        "source_root",
+    }
+)
 TEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("developer_home_path", re.compile(r"/Users/[A-Za-z0-9._-]+")),
     ("external_volume_path", re.compile(r"/Volumes/[^\s`]+")),
@@ -141,7 +148,10 @@ def _scan_json_document(path: Path, text: str) -> list[PrivacyFinding]:
         payload = json.loads(text)
     except json.JSONDecodeError:
         return [PrivacyFinding(path, 1, "invalid_json", "JSON artifact is not parseable")]
-    return _scan_json_value(path, 1, payload)
+    findings = _scan_json_value(path, 1, payload)
+    if isinstance(payload, dict) and payload.get("kind") == "real":
+        findings.extend(_scan_json_value(path, 1, payload, REAL_MANIFEST_FORBIDDEN_JSON_KEYS))
+    return findings
 
 
 def _scan_jsonl_document(path: Path, text: str) -> list[PrivacyFinding]:
@@ -169,13 +179,19 @@ def _scan_jsonl_document(path: Path, text: str) -> list[PrivacyFinding]:
     return findings
 
 
-def _scan_json_value(path: Path, line: int, value: Any) -> list[PrivacyFinding]:
+def _scan_json_value(
+    path: Path,
+    line: int,
+    value: Any,
+    forbidden_keys: frozenset[str] = FORBIDDEN_JSON_KEYS,
+) -> list[PrivacyFinding]:
     """Recursively scan a parsed JSON value.
 
     Args:
         path: Artifact path.
         line: Source line number for this JSON value.
         value: Parsed JSON value.
+        forbidden_keys: Lowercase JSON keys that should not appear.
 
     Returns:
         Privacy findings for forbidden keys.
@@ -184,7 +200,7 @@ def _scan_json_value(path: Path, line: int, value: Any) -> list[PrivacyFinding]:
     if isinstance(value, dict):
         for key, nested in value.items():
             key_text = str(key)
-            if key_text.lower() in FORBIDDEN_JSON_KEYS:
+            if key_text.lower() in forbidden_keys:
                 findings.append(
                     PrivacyFinding(
                         path,
@@ -193,10 +209,10 @@ def _scan_json_value(path: Path, line: int, value: Any) -> list[PrivacyFinding]:
                         f"key={key_text}",
                     )
                 )
-            findings.extend(_scan_json_value(path, line, nested))
+            findings.extend(_scan_json_value(path, line, nested, forbidden_keys))
     elif isinstance(value, list):
         for item in value:
-            findings.extend(_scan_json_value(path, line, item))
+            findings.extend(_scan_json_value(path, line, item, forbidden_keys))
     return findings
 
 
