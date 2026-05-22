@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
+from types import ModuleType
 
-from scripts import check_ocr_artifact_privacy as privacy
+
+def _load_privacy_module() -> ModuleType:
+    """Load the repo-level OCR privacy script under test."""
+    module_path = Path(__file__).resolve().parents[4] / "scripts/check_ocr_artifact_privacy.py"
+    spec = importlib.util.spec_from_file_location("check_ocr_artifact_privacy", module_path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"missing module spec for {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["check_ocr_artifact_privacy"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+privacy = _load_privacy_module()
 
 
 def test_scan_accepts_redacted_observation_jsonl(tmp_path: Path) -> None:
@@ -145,6 +161,30 @@ def test_scan_tracked_generated_artifacts_rejects_git_tracked_report(
 
     assert [(finding.path.as_posix(), finding.code, finding.detail) for finding in findings] == [
         ("outputs/generated/ocr-eval/report.json", "tracked_generated_artifact", "git_tracked")
+    ]
+
+
+def test_scan_tracked_generated_artifacts_rejects_live_ocr_observations(
+    tmp_path: Path,
+) -> None:
+    """Verify live OCR evaluation observations cannot remain tracked."""
+    repo_root = _init_git_repo(tmp_path)
+    artifact = (
+        repo_root / "outputs/evaluations/supplement-ocr/live/2026-05-17-smoke/paddle/report.json"
+    )
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    _git(repo_root, "add", ".")
+    _git(repo_root, "commit", "-m", "seed")
+
+    findings = privacy.scan_tracked_generated_artifacts(project_root=repo_root)
+
+    assert [(finding.path.as_posix(), finding.code, finding.detail) for finding in findings] == [
+        (
+            "outputs/evaluations/supplement-ocr/live/2026-05-17-smoke/paddle/report.json",
+            "tracked_generated_artifact",
+            "git_tracked",
+        )
     ]
 
 

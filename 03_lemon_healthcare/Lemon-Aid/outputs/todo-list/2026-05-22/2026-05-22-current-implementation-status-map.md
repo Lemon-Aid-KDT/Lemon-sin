@@ -78,7 +78,7 @@
 | Gate | 목적 | 권장 명령/근거 |
 | --- | --- | --- |
 | Backend doctor | 새 작업자 환경 재현성 확인 | `PYTHONPATH=backend/Nutrition-backend:backend .venv/bin/python backend/scripts/check_backend_dev_env.py --repo-root .` |
-| OCR privacy scan | generated artifact 유출 방지 | `backend/scripts/check_ocr_artifact_privacy.py` |
+| OCR privacy scan | generated artifact 유출 방지 | `backend/scripts/check_ocr_artifact_privacy.py --check-tracked-generated --project-root .` |
 | PR base gate | team PR base 정합성 확인 | `backend/scripts/check_pr_export_base.py --base-ref <base>` |
 | Product API smoke | raw response field 유출 방지 | `backend/scripts/smoke_supplement_analyze_api.py` |
 | Field-level OCR KPI | parser/layout 개선 효과 확인 | 16 fixture evaluation, `field_match_ratio >= 0.95` 목표 |

@@ -63,7 +63,10 @@ TEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 SCAN_SUFFIXES = frozenset({".json", ".jsonl", ".md", ".txt", ".csv", ".tsv", ".log"})
-DEFAULT_TRACKED_GENERATED_PREFIXES = ("outputs/generated/ocr-eval/",)
+DEFAULT_TRACKED_GENERATED_PREFIXES = (
+    "outputs/generated/ocr-eval/",
+    "outputs/evaluations/supplement-ocr/live/",
+)
 
 
 @dataclass(frozen=True)

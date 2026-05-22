@@ -17,6 +17,7 @@
 # Keep durable summaries in outputs/todo-list; keep provider observations,
 # manifests, and machine-readable reports out of Git unless explicitly approved.
 outputs/generated/ocr-eval/
+outputs/evaluations/supplement-ocr/live/
 
 # Local database migration runner config. Commit a sanitized example instead.
 backend/alembic.ini

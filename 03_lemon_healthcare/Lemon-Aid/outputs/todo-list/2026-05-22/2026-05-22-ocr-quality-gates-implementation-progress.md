@@ -74,9 +74,18 @@
 변경:
 
 - generated OCR artifact 디렉터리에서 raw OCR key, provider payload key, request header, secret key, local absolute path를 재귀 검사한다.
-- `.gitignore`를 `outputs/generated/ocr-eval/` 전체 ignore로 넓혀, 새 provider observation/manifest/report가 실수로 PR에 포함되지 않게 했다.
+- `.gitignore`를 `outputs/generated/ocr-eval/`와
+  `outputs/evaluations/supplement-ocr/live/` 전체 ignore로 넓혀, 새 provider
+  observation/manifest/report가 실수로 PR에 포함되지 않게 했다.
 - 기존 tracked OCR eval report 22개는 raw key는 없었지만 개발자 홈/외장 드라이브 경로가 남아 있어 `$LEMON_AID_ROOT`, `$LEMON_AID_BACKEND_ROOT`, `$NAVER_TAMPERMONKEY_SOURCE_ROOT` 또는 상대경로로 보정했다.
+- 기존 tracked live smoke artifact 3개
+  (`outputs/evaluations/supplement-ocr/live/2026-05-17-smoke-3/...`)는 raw
+  key가 없음을 확인한 뒤 Git index에서 제거했다. 로컬 파일은 operator
+  artifact로 남기고, durable 수치는 todo report에 유지한다.
 - 2026-05-22 CLOVA baseline 산출물 4개도 scanner로 재검사했고 통과했다.
+- `check_ocr_artifact_privacy.py --check-tracked-generated`는 이제
+  `outputs/generated/ocr-eval/`와 `outputs/evaluations/supplement-ocr/live/`
+  둘 다 추적 여부를 검사한다.
 
 ### 3.6 PR Export Base Gate
 
@@ -1015,8 +1024,7 @@ ollama serve
 
 5. Re-run the 30-row PaddleOCR + Gemma4 runner if the team wants fresh post-rate-limit timestamps; existing 30-row result already has `llm_parse_success_rate=1.0` for OCR-success rows.
 6. Continue security review on the next tranche:
-   - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
-   - generated OCR evaluation artifacts are now ignored by default; decide separately whether historical tracked reports should remain in Git or move to a private artifact store
+   - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - optionally rewrite the 15 medium-severity documentation placeholders into clearer non-credential examples
    - fix stale root monorepo workflow paths now detected by `check_lemon_ci_paths.py`, or export the standalone team-policy assets into the team-root repo
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
