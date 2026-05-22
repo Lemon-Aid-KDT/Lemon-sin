@@ -357,6 +357,59 @@ pre-commit run detect-secrets --files audit script/test
   기준으로 새 secret을 막는 사용법으로 문서화되어 있다.
   https://github.com/Yelp/detect-secrets
 
+### 3.17 Standalone Team Policy Gate Assets
+
+추가 파일:
+
+- `.github/PULL_REQUEST_TEMPLATE.md`
+- `.github/workflows/team-policy.yml`
+- `scripts/git-hooks/validate_commit_msg.py`
+- `scripts/git-hooks/validate_team_policy.py`
+- `backend/scripts/check_team_policy_assets.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_team_policy_assets.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_validate_team_policy.py`
+
+변경:
+
+- `team/docs/team-collaboration-rules`의 team-policy 방향을 현재 Lemon-Aid
+  code-bearing tree에 맞게 standalone export용 자산으로 옮겼다.
+- PR template은 `develop` target, branch shape, Conventional Commit title,
+  pre-commit, secret, raw OCR text, provider payload, generated OCR artifact
+  체크를 포함한다.
+- team-policy workflow는 PR/push에서 branch/title policy와 policy asset
+  preflight를 실행한다.
+- `validate_commit_msg.py`는 `<type>(<scope>): <subject>` 형식, 허용
+  type/scope, 50자 이하 subject, 마침표 금지를 검증한다.
+- `validate_team_policy.py`는 worker-name branch를 막고 protected branch
+  direct push를 실패시킨다.
+- `check_team_policy_assets.py`는 PR template/workflow/hook scripts가
+  존재하고, stale `yeong-Lemon-Aid` 경로나 local absolute path, obvious
+  secret snippet이 들어가지 않았는지 검사한다.
+
+검증:
+
+```text
+team_policy_assets_ok files=4
+valid branch/title policy smoke passed
+invalid worker branch/title policy smoke failed as expected
+9 passed - test_check_team_policy_assets.py + test_validate_team_policy.py
+black --check and ruff check passed on policy scripts/tests
+pre-commit detect-secrets passed on policy assets
+check-yaml passed on team-policy workflow
+```
+
+보안 확인:
+
+- nested monorepo의 Git root `.github`는 이번 변경에서 직접 수정하지 않았다.
+- standalone team-root export 시 `.github`와 `scripts/git-hooks`가 실제 repo
+  root 자산으로 동작하도록 Lemon-Aid 내부에 추가했다.
+- workflow는 `permissions: contents: read`만 사용한다.
+- policy asset checker는 secret files를 읽지 않고 정책 파일 4개만 검사한다.
+- 공식 근거: GitHub는 `.github/PULL_REQUEST_TEMPLATE.md` 위치의 PR
+  template을 지원한다. https://docs.github.com/en/enterprise-cloud@latest/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository
+- 공식 근거: GitHub Actions `pull_request`/`push` branch filters and workflow
+  contexts are documented by GitHub. https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -885,5 +938,5 @@ ollama serve
    - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
    - generated OCR evaluation artifacts are now ignored by default; decide separately whether historical tracked reports should remain in Git or move to a private artifact store
    - optionally rewrite the 15 medium-severity documentation placeholders into clearer non-credential examples
-   - import non-bypassable team-policy CI for branch name, commit subject, PR template, and stale workflow path checks
+   - fix stale root monorepo workflow paths or export the standalone team-policy assets into the team-root repo
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided

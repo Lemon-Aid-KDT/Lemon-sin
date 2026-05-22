@@ -1,0 +1,37 @@
+name: Team Policy
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  team-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate policy assets
+        run: python backend/scripts/check_team_policy_assets.py --repo-root .
+
+      - name: Validate branch and title policy
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          TITLE="${PR_TITLE:-$HEAD_COMMIT_MESSAGE}"
+          BRANCH="${HEAD_REF:-$REF_NAME}"
+          BASE="${BASE_REF:-$REF_NAME}"
+          python scripts/git-hooks/validate_team_policy.py \
+            --event-name "$EVENT_NAME" \
+            --base "$BASE" \
+            --branch "$BRANCH" \
+            --title "$TITLE"

@@ -30,7 +30,7 @@
 | `git remote -v` | `team` remote는 `Lemon-Aid-KDT/Lemon-sin.git` |
 | `git ls-remote team refs/heads/develop refs/heads/main` | `develop`과 `main` 모두 `2f941020...` |
 | `git ls-remote team refs/heads/feat/ocr-p1-5-followup` | `b5a9dec9...` |
-| Lemon-Aid 내부 `.github` | 없음 |
+| Lemon-Aid 내부 `.github` | 있음, standalone export용 PR template/workflow |
 | Git root `.github/PULL_REQUEST_TEMPLATE.md` | 있음, monorepo P1 template |
 | Git root Lemon workflows | 있음, `yeong-Lemon-Aid` 경로 기준 |
 | `.secrets.baseline` | 있음, 33 files / 87 historical candidates |
@@ -44,10 +44,10 @@
 
 | Rule | Expected by team docs | Current enforcement | Gap | Risk |
 | --- | --- | --- | --- | --- |
-| Branch name | `<type>/<scope>-<subject>` with no worker-name branches | Current `.pre-commit-config.yaml` has no branch-name hook. Root CI has no team-policy workflow for current branch. | Not enforced locally or by current Lemon root CI. | Medium: worker-name or unscoped branches can enter review. |
+| Branch name | `<type>/<scope>-<subject>` with no worker-name branches | Lemon-Aid standalone export assets now include `.github/workflows/team-policy.yml` and `scripts/git-hooks/validate_team_policy.py`. Current Git root CI still has no active team-policy workflow for this nested branch. | Closed for team-root export; still not active in current monorepo root until workflow path is fixed. | Medium: current monorepo PRs can still miss this unless exported or root CI is updated. |
 | Commit type list | `feat fix docs style refactor perf test chore ci build revert data ops` | Updated: `conventional-pre-commit` args now include all documented types. | Closed for type allow-list. Scope and subject rules still need the team-policy validator. | Lower: documented valid commits no longer create `--no-verify` pressure. |
-| Commit subject | imperative, no period, <= 50 chars | Current third-party hook validates Conventional Commits type shape only. | Subject length/period/scope allow-list are not fully enforced. | Medium: squash titles can drift from documented format. |
-| PR template | `PR_GUIDELINES.md` says `.github/PULL_REQUEST_TEMPLATE.md` should include branch/pre-commit/CI/secret checks. | Git root has a generic P1 template. Lemon-Aid folder has no standalone `.github`. `team/docs/team-collaboration-rules` has a closer template. | Current template does not fully match team checklist and may not export cleanly to standalone team repo. | Medium: review evidence and secret/no-raw checks are easy to omit. |
+| Commit subject | imperative, no period, <= 50 chars | Lemon-Aid standalone export assets now include `scripts/git-hooks/validate_commit_msg.py` and team-policy CI calls it for PR titles. Current third-party local hook remains broader. | Closed for team-root export; local hook parity is optional follow-up. | Low-Medium: exported PR titles are covered, current monorepo local commits still rely on existing hook plus review. |
+| PR template | `PR_GUIDELINES.md` says `.github/PULL_REQUEST_TEMPLATE.md` should include branch/pre-commit/CI/secret checks. | Lemon-Aid now has `.github/PULL_REQUEST_TEMPLATE.md` with branch, title, pre-commit, secret, raw OCR, provider payload, and generated artifact checks. | Closed for team-root export; Git root template remains generic for nested monorepo PRs. | Low-Medium: export path is covered, root monorepo still needs template sync if used directly. |
 | CI workflow path | CI should run backend/mobile/docs gates for Lemon Aid. | Git root Lemon workflows point to `03_lemon_healthcare/yeong-Lemon-Aid/...`. Current work is under `03_lemon_healthcare/Lemon-Aid/...`. | CI path is stale for the current default Lemon-Aid location. | High: PR can appear green while current path is untested. |
 | Secret scan | `CI_CD_GATES.md` requires security gate and `.env`/secret protection. | Local pre-commit now resolves the baseline in both the current monorepo path and a standalone team-root export path. `.secrets.baseline` contains hashes for existing historical candidates, not raw values. `audit_detect_secrets_baseline.py` classifies all 87 findings without printing values. Root CI still has no Lemon-specific secret scan job beyond dependency audit/docs. | Local hook bootstrap and bounded baseline audit are closed; CI enforcement remains. | Medium: local contributors can run the hook, but CI still needs the non-bypassable version. |
 | Markdown lint | `.pre-commit-config.yaml` calls `markdownlint` with a repo config. | `.markdownlint.json` now exists and the hook resolves it in both current monorepo and standalone team-root paths. | Bootstrap closed with low-noise rules; stricter project-wide markdown cleanup remains separate. | Low-Medium: docs lint is reproducible, but intentionally not strict yet. |
@@ -67,8 +67,11 @@
 - `scripts/git-hooks/validate_team_policy.py`
 
 However, it is based on the skeleton team tree rather than the current
-code-bearing Lemon Aid application tree. Importing it into this work should be
-done as a separate small PR after choosing the correct base.
+code-bearing Lemon Aid application tree. The PR template, team-policy workflow,
+and branch/title validators have now been adapted inside the current Lemon-Aid
+folder for standalone team-root export. `guard_protected_branch.py` remains a
+lower-priority local hook candidate because CI-side protected-branch policy is
+the non-bypassable layer.
 
 ## Security / Leakage Review
 
@@ -93,10 +96,10 @@ done as a separate small PR after choosing the correct base.
 
 | Priority | PR | Scope |
 | --- | --- | --- |
-| P0 | `ci/team-policy-gates` | Add team-policy workflow and scripts from `team/docs/team-collaboration-rules`, then adapt paths to the current Lemon-Aid location. |
-| P1 | `docs(team): PR template을 동기화` | Replace or supplement the current generic PR template with the team checklist from `PR_GUIDELINES.md`. |
 | P1 | `ci(infra): Lemon workflow 경로를 보정` | Move `yeong-Lemon-Aid` workflow paths to the current default Lemon-Aid path or make path detection explicit. |
+| P1 | `chore(team): local protected branch hook을 검토` | Consider adding `guard_protected_branch.py` locally after CI policy is active. |
 | P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| Done | `ci(team): team policy gate를 추가` | Added standalone export PR template, team-policy workflow, branch/title validators, and asset checker. |
 | Done | `chore(team): secret scan baseline을 추가` | Added `.secrets.baseline`; `pre-commit run detect-secrets --all-files` passes. |
 | Done | `test(team): secret baseline 후보를 감사` | Added bounded audit helper; 87 candidates classify to 72 low / 15 medium / 0 high. |
 | Done | `chore(team): markdownlint 설정을 추가` | Added `.markdownlint.json`; `pre-commit run markdownlint --all-files` passes. |
