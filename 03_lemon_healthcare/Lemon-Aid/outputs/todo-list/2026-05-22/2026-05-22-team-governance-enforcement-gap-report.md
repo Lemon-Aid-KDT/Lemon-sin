@@ -45,15 +45,15 @@
 
 | Rule | Expected by team docs | Current enforcement | Gap | Risk |
 | --- | --- | --- | --- | --- |
-| Branch name | `<type>/<scope>-<subject>` with no worker-name branches | Lemon-Aid standalone export assets now include `.github/workflows/team-policy.yml` and `scripts/git-hooks/validate_team_policy.py`. Current Git root CI still has no active team-policy workflow for this nested branch. | Closed for team-root export; still not active in current monorepo root until workflow path is fixed. | Medium: current monorepo PRs can still miss this unless exported or root CI is updated. |
+| Branch name | `<type>/<scope>-<subject>` with no worker-name branches | Lemon-Aid standalone export assets include `.github/workflows/team-policy.yml` and `scripts/git-hooks/validate_team_policy.py`. Git root backend CI now invokes the validator for PR events. | Closed for PRs that run the current root backend CI. | Lower: direct push protection still depends on repository settings. |
 | Commit type list | `feat fix docs style refactor perf test chore ci build revert data ops` | Updated: `conventional-pre-commit` args now include all documented types. | Closed for type allow-list. Scope and subject rules still need the team-policy validator. | Lower: documented valid commits no longer create `--no-verify` pressure. |
-| Commit subject | imperative, no period, <= 50 chars | Lemon-Aid standalone export assets now include `scripts/git-hooks/validate_commit_msg.py` and team-policy CI calls it for PR titles. Current third-party local hook remains broader. | Closed for team-root export; local hook parity is optional follow-up. | Low-Medium: exported PR titles are covered, current monorepo local commits still rely on existing hook plus review. |
+| Commit subject | imperative, no period, <= 50 chars | Lemon-Aid standalone export assets include `scripts/git-hooks/validate_commit_msg.py`, and Git root backend CI now validates PR titles through `validate_team_policy.py`. Current third-party local hook remains broader. | Closed for PR title gate; local hook parity is optional follow-up. | Low: local commits still rely on existing hook plus review, but PR title is CI-gated. |
 | PR template | `PR_GUIDELINES.md` says `.github/PULL_REQUEST_TEMPLATE.md` should include branch/pre-commit/CI/secret checks. | Lemon-Aid now has `.github/PULL_REQUEST_TEMPLATE.md` with branch, title, pre-commit, secret, raw OCR, provider payload, and generated artifact checks. | Closed for team-root export; Git root template remains generic for nested monorepo PRs. | Low-Medium: export path is covered, root monorepo still needs template sync if used directly. |
 | CI workflow path | CI should run backend/mobile/docs gates for Lemon Aid. | Git root Lemon workflows, dependabot, PR template, and CODEOWNERS now point to `03_lemon_healthcare/Lemon-Aid/...`. `check_lemon_ci_paths.py` also scans CODEOWNERS. | Closed for current monorepo root. | Lower: path drift is now covered by an explicit bounded audit. |
-| Secret scan | `CI_CD_GATES.md` requires security gate and `.env`/secret protection. | Local pre-commit now resolves the baseline in both the current monorepo path and a standalone team-root export path. `.secrets.baseline` contains hashes for existing historical candidates, not raw values. `audit_detect_secrets_baseline.py` classifies all 72 remaining findings without printing values. Root CI still has no Lemon-specific secret scan job beyond dependency audit/docs. | Local hook bootstrap and bounded baseline audit are closed; CI enforcement remains. | Medium: local contributors can run the hook, but CI still needs the non-bypassable version. |
+| Secret scan | `CI_CD_GATES.md` requires security gate and `.env`/secret protection. | Local pre-commit resolves the baseline in both the current monorepo path and a standalone team-root export path. Git root backend CI now runs `detect-secrets-hook`, baseline audit, OCR artifact tracking audit, CI path audit, and team-policy asset audit. | Closed for current root backend CI. | Lower: keep baseline audit in future doc/code changes. |
 | Markdown lint | `.pre-commit-config.yaml` calls `markdownlint` with a repo config. | `.markdownlint.json` now exists and the hook resolves it in both current monorepo and standalone team-root paths. | Bootstrap closed with low-noise rules; stricter project-wide markdown cleanup remains separate. | Low-Medium: docs lint is reproducible, but intentionally not strict yet. |
 | Large file limit | `CI_CD_GATES.md` shows 2MB example. | Current `.pre-commit-config.yaml` uses `--maxkb=5000`; team docs branch uses 2000. | Limit differs between docs/current/team docs branch. | Low-Medium: OCR artifacts or screenshots may exceed intended limit. |
-| `--no-verify` ban | Docs ban usage. | Git cannot technically prevent user-supplied `--no-verify` locally. No CI team-policy equivalent exists in this branch. | Needs CI-side policy and review checklist, not only local hooks. | Medium: local-only gate can be bypassed. |
+| `--no-verify` ban | Docs ban usage. | Git cannot technically prevent user-supplied `--no-verify` locally. Root backend CI now reruns the important secret, OCR artifact, path, and PR policy gates without relying on local hooks. | Closed for covered CI gates; literal local `--no-verify` usage remains a review/process rule. | Low-Medium: direct pushes still require branch protection. |
 | Force push ban | Docs allow only safe force-with-lease and branch protection denies force pushes on protected branches. | Branch protection settings are not inspectable from this checkout. Root CI does not validate force-push settings. | External GitHub setting remains unverified. | Medium: requires admin/API verification. |
 | Team integration base | PR target should be `develop`; feature to `develop` squash. | `team/develop` is skeleton and lacks current OCR backend tree; `team/feat/ocr-p1-5-followup` is code-bearing but tracks generated OCR eval artifacts. | Team PR export remains blocked until a clean code-bearing base exists or `develop` is synced. | High: wrong base can leak generated artifacts or create unreviewable PRs. |
 
@@ -88,8 +88,9 @@ the non-bypassable layer.
 - The bounded baseline audit currently reports 0 high-severity manual-review
   items. It classifies all 72 remaining findings as low severity after
   documentation placeholders were rewritten to explicit non-credential examples.
-- Current docs and hooks still rely on local discipline for `--no-verify`; CI
-  should own the non-bypassable version of this policy.
+- Current docs and hooks still ban `--no-verify`; root backend CI now owns the
+  non-bypassable version for secret scan, baseline audit, OCR artifact
+  tracking, CI path audit, and PR branch/title policy.
 - Stale workflow and CODEOWNERS paths are security issues because a changed
   protected path can bypass intended lint/test/secret gates and reviewer
   ownership.
@@ -102,6 +103,7 @@ the non-bypassable layer.
 | --- | --- | --- |
 | P1 | `chore(team): local protected branch hook을 검토` | Consider adding `guard_protected_branch.py` locally after CI policy is active. |
 | P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| Done | `ci(infra): CI 보안 gate를 추가` | Root backend CI now reruns team policy, secret baseline, OCR artifact, and CI path gates. |
 | Done | `ci(infra): Lemon workflow 경로를 보정` | Root workflows, dependabot, PR template, and CODEOWNERS now point to the current default Lemon-Aid path, and `check_lemon_ci_paths.py --project-root .` passes. |
 | Done | `test(infra): Lemon CI 경로 감사를 추가` | Added bounded audit for stale root workflow/dependabot/PR-template paths. |
 | Done | `ci(team): team policy gate를 추가` | Added standalone export PR template, team-policy workflow, branch/title validators, and asset checker. |
@@ -115,6 +117,6 @@ the non-bypassable layer.
 
 Keep CI/team-policy changes separate from the OCR quality-gate slices. The
 local hook bootstrap, standalone team-policy assets, and current monorepo root
-`.github` paths are repaired. The next safe governance PR can focus on
-non-bypassable CI policy for `--no-verify`-sensitive checks and optional local
-protected-branch hook parity.
+`.github` paths and CI-owned security gates are repaired. The next safe
+governance PR can focus on optional local protected-branch hook parity and any
+repository-admin verification for branch protection or force-push settings.

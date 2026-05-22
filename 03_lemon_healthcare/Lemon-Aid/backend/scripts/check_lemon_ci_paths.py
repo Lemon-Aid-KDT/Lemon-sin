@@ -19,6 +19,14 @@ LOCAL_ABSOLUTE_PATH_MARKERS = (
     "/" + "Users/",
     "/" + "Volumes/",
 )
+BACKEND_POLICY_REQUIRED_SNIPPETS = (
+    "backend/scripts/check_team_policy_assets.py",
+    "backend/scripts/check_lemon_ci_paths.py",
+    "backend/scripts/audit_detect_secrets_baseline.py",
+    "backend/scripts/check_ocr_artifact_privacy.py",
+    "detect-secrets-hook",
+    "scripts/git-hooks/validate_team_policy.py",
+)
 
 
 @dataclass(frozen=True)
@@ -133,6 +141,12 @@ def _check_file(
     for index, marker in enumerate(LOCAL_ABSOLUTE_PATH_MARKERS, start=1):
         if marker in text:
             findings.append(CiPathFinding(display_path, "local_absolute_path", f"marker={index}"))
+    if path.name == "17-lemon-backend-ci.yml":
+        for index, snippet in enumerate(BACKEND_POLICY_REQUIRED_SNIPPETS, start=1):
+            if snippet not in text:
+                findings.append(
+                    CiPathFinding(display_path, "missing_backend_policy_gate", f"marker={index}")
+                )
     return findings
 
 

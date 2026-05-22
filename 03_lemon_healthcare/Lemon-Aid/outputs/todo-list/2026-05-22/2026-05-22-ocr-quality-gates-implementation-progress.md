@@ -493,6 +493,63 @@ pre-commit ruff and ruff-format passed on changed backend Python files
   workflow가 실행되므로, stale path는 intended gate bypass로 이어질 수 있다.
   공식 근거: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 
+### 3.19 Root Backend CI Security Gates
+
+수정 파일:
+
+- Git root `.github/workflows/17-lemon-backend-ci.yml`
+- `backend/requirements-dev.txt`
+- `backend/scripts/check_lemon_ci_paths.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_lemon_ci_paths.py`
+- `outputs/todo-list/2026-05-22/2026-05-22-team-governance-enforcement-gap-report.md`
+
+변경:
+
+- root backend CI에 `Run Lemon policy and privacy gates` step을 추가했다.
+- root backend CI의 `DATABASE_URL`/`TEST_DATABASE_URL`은 workflow env에
+  `user:password@host` 형태로 고정하지 않고 `Export CI database URLs` step에서
+  CI database env로 조립한다.
+- CI step은 project root에서 다음을 직접 실행한다:
+  - `check_team_policy_assets.py --repo-root .`
+  - `check_lemon_ci_paths.py --project-root .`
+  - `audit_detect_secrets_baseline.py --repo-root . --fail-on-manual-review`
+  - `check_ocr_artifact_privacy.py --check-tracked-generated --project-root .`
+  - `detect-secrets-hook --baseline .secrets.baseline` against tracked files
+  - PR event에서만 `validate_team_policy.py`로 branch/title policy 확인
+- `backend/requirements-dev.txt`에 `detect-secrets>=1.5,<2.0`을 추가해 CI의
+  direct secret hook 실행 의존성을 명시했다.
+- `check_lemon_ci_paths.py`는 이제 root backend CI에서 위 보안/policy gate
+  marker가 빠지면 `missing_backend_policy_gate`로 실패한다.
+
+검증:
+
+```text
+7 passed - test_check_lemon_ci_paths.py
+team_policy_assets_ok files=4
+lemon_ci_paths_ok project_path=03_lemon_healthcare/Lemon-Aid
+detect_secrets_baseline_audit files=18 findings=72 manual_review=0 cleartext_values_printed=false
+ocr_artifact_privacy_ok files=0
+detect_secrets_hook_ok files=1030
+team_policy_ok
+yaml_parse_ok files=1
+black/ruff/ruff-format passed on check_lemon_ci_paths.py and tests
+```
+
+보안 확인:
+
+- CI gate는 read-only `permissions: contents: read` workflow 안에서 동작한다.
+- root workflow에는 CI용 DB URL을 credential-like DSN literal로 남기지 않는다.
+- secret baseline audit와 OCR artifact audit는 raw candidate value, raw OCR
+  text, provider payload, request header를 출력하지 않는다.
+- `validate_team_policy.py`는 push event에서 protected branch direct push를
+  판별할 수 있지만, backend CI에서는 정상 merge 후 push event를 깨지 않기
+  위해 PR event에서만 branch/title policy를 실행한다. protected branch/force
+  push 차단은 GitHub repository setting으로 별도 검증해야 한다.
+- 공식 근거: GitHub Actions `permissions` and `defaults.run.working-directory`
+  syntax are documented by GitHub. https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions
+- 공식 근거: `detect-secrets` documents baseline and hook usage in the Yelp
+  repository. https://github.com/Yelp/detect-secrets
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1045,5 +1102,6 @@ ollama serve
 6. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
-   - root monorepo workflow paths are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
+   - root monorepo workflow paths and root backend CI security gates are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
+   - protected branch and force-push settings still require GitHub repository-admin verification outside this checkout
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided

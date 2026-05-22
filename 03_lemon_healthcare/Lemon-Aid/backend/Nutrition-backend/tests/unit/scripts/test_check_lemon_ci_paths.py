@@ -42,7 +42,9 @@ def test_check_ci_paths_rejects_stale_workflow_path(tmp_path: Path) -> None:
 
     findings = checker.check_ci_paths(repo_root=repo_root, project_root=project_root)
 
-    assert [(item.path, item.code, item.detail) for item in findings] == [
+    result = [(item.path, item.code, item.detail) for item in findings]
+
+    assert result[:2] == [
         (
             ".github/workflows/17-lemon-backend-ci.yml",
             "missing_current_project_path",
@@ -54,6 +56,7 @@ def test_check_ci_paths_rejects_stale_workflow_path(tmp_path: Path) -> None:
             "marker=1",
         ),
     ]
+    assert result[2:] == _missing_backend_policy_gate_findings()
 
 
 def test_check_ci_paths_rejects_stale_optional_policy_file(tmp_path: Path) -> None:
@@ -72,6 +75,24 @@ def test_check_ci_paths_rejects_stale_optional_policy_file(tmp_path: Path) -> No
     assert [(item.path, item.code, item.detail) for item in findings] == [
         (".github/PULL_REQUEST_TEMPLATE.md", "stale_project_path", "marker=1")
     ]
+
+
+def test_check_ci_paths_rejects_missing_backend_policy_gate(tmp_path: Path) -> None:
+    """Verify root backend CI keeps non-bypassable team/security gates."""
+    checker = _load_checker()
+    repo_root = tmp_path / "repo"
+    project_root = repo_root / "03_lemon_healthcare/Lemon-Aid"
+    _write_lemon_workflows(repo_root, "03_lemon_healthcare/Lemon-Aid")
+    _write(
+        repo_root / ".github/workflows/17-lemon-backend-ci.yml",
+        "working-directory: 03_lemon_healthcare/Lemon-Aid/backend\n",
+    )
+
+    findings = checker.check_ci_paths(repo_root=repo_root, project_root=project_root)
+
+    assert [(item.path, item.code, item.detail) for item in findings] == (
+        _missing_backend_policy_gate_findings()
+    )
 
 
 def test_check_ci_paths_rejects_stale_codeowners_path(tmp_path: Path) -> None:
@@ -146,15 +167,39 @@ def _write_lemon_workflows(repo_root: Path, project_path: str) -> None:
         repo_root: Test repository root.
         project_path: Expected Lemon Aid project path marker.
     """
+    _write(
+        repo_root / ".github/workflows/17-lemon-backend-ci.yml",
+        "\n".join(
+            [
+                f"working-directory: {project_path}/backend",
+                "python backend/scripts/check_team_policy_assets.py --repo-root .",
+                "python backend/scripts/check_lemon_ci_paths.py --project-root .",
+                "python backend/scripts/audit_detect_secrets_baseline.py",
+                "python backend/scripts/check_ocr_artifact_privacy.py",
+                "detect-secrets-hook --baseline .secrets.baseline",
+                "python scripts/git-hooks/validate_team_policy.py",
+            ]
+        ),
+    )
     for name, suffix in (
-        ("17-lemon-backend-ci.yml", "backend"),
         ("17-lemon-mobile-ci.yml", "mobile/flutter_app"),
         ("17-lemon-docs-ci.yml", "docs"),
     ):
         _write(
-            repo_root / ".github/workflows" / name,
-            f"working-directory: {project_path}/{suffix}\n",
+            repo_root / ".github/workflows" / name, f"working-directory: {project_path}/{suffix}\n"
         )
+
+
+def _missing_backend_policy_gate_findings() -> list[tuple[str, str, str]]:
+    """Return expected missing backend policy gate findings."""
+    return [
+        (
+            ".github/workflows/17-lemon-backend-ci.yml",
+            "missing_backend_policy_gate",
+            f"marker={index}",
+        )
+        for index in range(1, 7)
+    ]
 
 
 def _write(path: Path, text: str) -> None:

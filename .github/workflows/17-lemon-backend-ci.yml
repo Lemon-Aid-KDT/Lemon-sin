@@ -17,8 +17,9 @@ defaults:
 
 env:
   PYTHONPATH: Nutrition-backend:food_image_analysis/src:ai_agent_chat/src
-  DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci
-  TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci
+  CI_DATABASE_USER: postgres
+  CI_DATABASE_PASSWORD: postgres
+  CI_DATABASE_NAME: lemon_ci
 
 jobs:
   backend-quality:
@@ -59,6 +60,57 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+
+      - name: Run Lemon policy and privacy gates
+        working-directory: 03_lemon_healthcare/Lemon-Aid
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          python backend/scripts/check_team_policy_assets.py --repo-root .
+          python backend/scripts/check_lemon_ci_paths.py --project-root .
+          python backend/scripts/audit_detect_secrets_baseline.py \
+            --repo-root . \
+            --fail-on-manual-review
+          python backend/scripts/check_ocr_artifact_privacy.py \
+            --check-tracked-generated \
+            --project-root .
+          python - <<'PY'
+          import subprocess
+
+          files = [
+              path
+              for path in subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+              if path != ".secrets.baseline"
+          ]
+          subprocess.run(
+              ["detect-secrets-hook", "--baseline", ".secrets.baseline", *files],
+              check=True,
+          )
+          PY
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            TITLE="${PR_TITLE:-$HEAD_COMMIT_MESSAGE}"
+            BRANCH="${HEAD_REF:-$REF_NAME}"
+            BASE="${BASE_REF:-$REF_NAME}"
+            python scripts/git-hooks/validate_team_policy.py \
+              --event-name "$EVENT_NAME" \
+              --base "$BASE" \
+              --branch "$BRANCH" \
+              --title "$TITLE"
+          fi
+
+      - name: Export CI database URLs
+        run: |
+          DB_AUTH="${CI_DATABASE_USER}:${CI_DATABASE_PASSWORD}"
+          DB_URL="postgresql+asyncpg://${DB_AUTH}@localhost:5432/${CI_DATABASE_NAME}"
+          {
+            echo "DATABASE_URL=${DB_URL}"
+            echo "TEST_DATABASE_URL=${DB_URL}"
+          } >> "$GITHUB_ENV"
 
       - name: Check formatting
         run: |
