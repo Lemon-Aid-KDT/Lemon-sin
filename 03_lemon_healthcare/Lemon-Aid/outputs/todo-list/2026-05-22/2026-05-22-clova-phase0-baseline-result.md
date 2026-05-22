@@ -2,7 +2,7 @@
 
 ## Scope
 
-- 실행 루트: `/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid`
+- 실행 루트: `$LEMON_AID_ROOT`
 - 브랜치: `feat/ocr-quality-gates`
 - 승인 범위: archive의 16개 supplement fixture 이미지를 NAVER CLOVA OCR로 1회 전송
 - 원칙: raw OCR text, raw provider payload, request header, secret, image bytes는 출력/저장하지 않음
@@ -16,11 +16,11 @@
 ## Inputs
 
 - Collector manifest:
-  `/Users/yeong/99_me/00_github/03_lemon_healthcare/_archive/yeong-Lemon-Aid/data/supplement_images/private_workspace/stage0_naver_chronic/manifest.json`
+  `$LEMON_HEALTHCARE_ROOT/_archive/yeong-Lemon-Aid/data/supplement_images/private_workspace/stage0_naver_chronic/manifest.json`
 - Evaluation manifest seed:
-  `/Users/yeong/99_me/00_github/03_lemon_healthcare/_archive/yeong-Lemon-Aid/data/supplement_images/private_workspace/stage0_naver_chronic/manifest-three-tier.jsonl`
+  `$LEMON_HEALTHCARE_ROOT/_archive/yeong-Lemon-Aid/data/supplement_images/private_workspace/stage0_naver_chronic/manifest-three-tier.jsonl`
 - Env file:
-  `/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid/.env`
+  `$LEMON_AID_ENV_FILE`
 
 `manifest-three-tier.jsonl`은 `image_sha256`, `license_status`, `consent_status`가 없어 collector 입력으로는 부적합했다. collector는 privacy metadata가 있는 `manifest.json`으로 실행했고, 평가는 three-tier expected/chronic 기준 manifest에 redacted observation만 붙여 수행했다.
 
@@ -90,10 +90,10 @@ Interpretation:
 
 이번 baseline은 OCR provider-only 평가라 Ollama LLM parsing을 실행하지 않았다.
 
-확인 결과 `/Volumes/Corsair EX300U Media/.ollama/models/manifests/registry.ollama.ai/library` 아래에 `gemma4/e4b`, `gemma4/latest`, `gemma4/26b`, `gemma4/e2b` manifest가 있다. 현재 `ollama list`는 빈 목록을 반환하므로, 다음 LLM parse 단계에서는 아래처럼 모델 경로를 지정한 Ollama server를 먼저 띄워야 한다.
+확인 결과 `$OLLAMA_MODELS_DIR/manifests/registry.ollama.ai/library` 아래에 `gemma4/e4b`, `gemma4/latest`, `gemma4/26b`, `gemma4/e2b` manifest가 있다. 현재 `ollama list`는 빈 목록을 반환하므로, 다음 LLM parse 단계에서는 아래처럼 모델 경로를 지정한 Ollama server를 먼저 띄워야 한다.
 
 ```bash
-OLLAMA_MODELS="/Volumes/Corsair EX300U Media/.ollama/models" \
+OLLAMA_MODELS="$OLLAMA_MODELS_DIR" \
 OLLAMA_HOST=127.0.0.1:11435 \
 ollama serve
 ```

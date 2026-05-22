@@ -244,17 +244,17 @@ Note:
 사용자 지정 모델 경로:
 
 ```text
-/Volumes/Corsair EX300U Media/.ollama/models/manifests/registry.ollama.ai/library
+$OLLAMA_MODELS_DIR/manifests/registry.ollama.ai/library
 ```
 
 확인:
 
 - `gemma4/e4b`, `gemma4/latest`, `gemma4/26b`, `gemma4/e2b` manifest가 존재한다.
-- `/Volumes/Corsair EX300U Media/.ollama/models` 전체 크기는 약 `140G`다.
+- `$OLLAMA_MODELS_DIR` 전체 크기는 약 `140G`다.
 - 아래 서버 실행 후 `/api/tags`에서 `gemma4:e4b`가 확인됐다.
 
 ```bash
-OLLAMA_MODELS="/Volumes/Corsair EX300U Media/.ollama/models" \
+OLLAMA_MODELS="$OLLAMA_MODELS_DIR" \
 OLLAMA_HOST=127.0.0.1:11435 \
 ollama serve
 ```
@@ -563,7 +563,7 @@ flutter build ios --simulator --debug
 4. Start local Ollama with external model path before LLM parse:
 
 ```bash
-OLLAMA_MODELS="/Volumes/Corsair EX300U Media/.ollama/models" \
+OLLAMA_MODELS="$OLLAMA_MODELS_DIR" \
 OLLAMA_HOST=127.0.0.1:11435 \
 ollama serve
 ```
