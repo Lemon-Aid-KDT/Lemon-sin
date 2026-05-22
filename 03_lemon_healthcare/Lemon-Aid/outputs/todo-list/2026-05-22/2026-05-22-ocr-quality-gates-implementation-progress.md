@@ -371,8 +371,10 @@ pre-commit run detect-secrets --files audit script/test
 
 추가 파일:
 
+- `.pre-commit-config.yaml`
 - `.github/PULL_REQUEST_TEMPLATE.md`
 - `.github/workflows/team-policy.yml`
+- `scripts/git-hooks/guard_protected_branch.py`
 - `scripts/git-hooks/validate_commit_msg.py`
 - `scripts/git-hooks/validate_team_policy.py`
 - `backend/scripts/check_team_policy_assets.py`
@@ -391,17 +393,22 @@ pre-commit run detect-secrets --files audit script/test
 - `validate_commit_msg.py`는 `<type>(<scope>): <subject>` 형식, 허용
   type/scope, 50자 이하 subject, 마침표 금지를 검증한다.
 - `validate_team_policy.py`는 worker-name branch를 막고 protected branch
-  direct push를 실패시킨다.
+  direct push를 CI event 기준에서 실패시킨다.
+- `guard_protected_branch.py`는 local pre-push hook에서 `main`/`develop`
+  remote ref update/delete를 막는다.
 - `check_team_policy_assets.py`는 PR template/workflow/hook scripts가
   존재하고, stale `yeong-Lemon-Aid` 경로나 local absolute path, obvious
   secret snippet이 들어가지 않았는지 검사한다.
+- `.pre-commit-config.yaml`은 `guard-protected-branch` local hook을
+  `pre-push` stage에 연결한다.
 
 검증:
 
 ```text
-team_policy_assets_ok files=4
+team_policy_assets_ok files=6
 valid branch/title policy smoke passed
 invalid worker branch/title policy smoke failed as expected
+11 passed - test_guard_protected_branch.py + test_check_team_policy_assets.py
 9 passed - test_check_team_policy_assets.py + test_validate_team_policy.py
 black --check and ruff check passed on policy scripts/tests
 pre-commit detect-secrets passed on policy assets
@@ -414,11 +421,15 @@ check-yaml passed on team-policy workflow
 - standalone team-root export 시 `.github`와 `scripts/git-hooks`가 실제 repo
   root 자산으로 동작하도록 Lemon-Aid 내부에 추가했다.
 - workflow는 `permissions: contents: read`만 사용한다.
-- policy asset checker는 secret files를 읽지 않고 정책 파일 4개만 검사한다.
+- policy asset checker는 secret files를 읽지 않고 정책 파일 6개만 검사한다.
+- Git `pre-push` hook은 local-only 보조 방어선이며, GitHub branch
+  protection이 최종 방어선이다.
 - 공식 근거: GitHub는 `.github/PULL_REQUEST_TEMPLATE.md` 위치의 PR
   template을 지원한다. https://docs.github.com/en/enterprise-cloud@latest/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository
 - 공식 근거: GitHub Actions `pull_request`/`push` branch filters and workflow
   contexts are documented by GitHub. https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow
+- 공식 근거: Git `pre-push` hook receives push ref updates on stdin and
+  aborts push on non-zero exit. https://git-scm.com/docs/githooks#_pre_push
 
 ### 3.18 Root Lemon CI Path Audit
 
@@ -525,7 +536,7 @@ pre-commit ruff and ruff-format passed on changed backend Python files
 
 ```text
 7 passed - test_check_lemon_ci_paths.py
-team_policy_assets_ok files=4
+team_policy_assets_ok files=6
 lemon_ci_paths_ok project_path=03_lemon_healthcare/Lemon-Aid
 detect_secrets_baseline_audit files=18 findings=72 manual_review=0 cleartext_values_printed=false
 ocr_artifact_privacy_ok files=0
@@ -549,6 +560,51 @@ black/ruff/ruff-format passed on check_lemon_ci_paths.py and tests
   syntax are documented by GitHub. https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions
 - 공식 근거: `detect-secrets` documents baseline and hook usage in the Yelp
   repository. https://github.com/Yelp/detect-secrets
+
+### 3.20 Local Protected Branch Push Guard
+
+추가/수정 파일:
+
+- `scripts/git-hooks/guard_protected_branch.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_guard_protected_branch.py`
+- `backend/scripts/check_team_policy_assets.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_team_policy_assets.py`
+- `.pre-commit-config.yaml`
+- `docs/team-collaboration/LOCAL_SETUP.md`
+
+변경:
+
+- local `pre-push` hook용 `guard_protected_branch.py`를 추가했다.
+- Git pre-push stdin의 `<local-ref> <local-sha> <remote-ref> <remote-sha>`
+  update line을 파싱해 `refs/heads/main`, `refs/heads/develop` update/delete를
+  실패시킨다.
+- stdin이 없는 수동 실행에서도 현재 branch가 `main`/`develop`이면 실패한다.
+- `.pre-commit-config.yaml`에 `guard-protected-branch` local hook을
+  `pre-push` stage로 연결했다.
+- `check_team_policy_assets.py`는 이제 `.pre-commit-config.yaml`과
+  `guard_protected_branch.py` marker를 필수 정책 자산으로 검사한다.
+- `docs/team-collaboration/LOCAL_SETUP.md`에 pre-push hook 확인/설치 절차를
+  추가했다.
+
+검증:
+
+```text
+11 passed - test_guard_protected_branch.py + test_check_team_policy_assets.py
+team_policy_assets_ok files=6
+feature_guard_exit=0
+protected_guard_exit=1
+pre-commit validate-config passed
+black/ruff/ruff-format passed on guard and asset-check scripts/tests
+```
+
+보안 확인:
+
+- hook error output은 branch name과 bounded reason만 출력하고 remote URL,
+  local absolute path, secret value를 출력하지 않는다.
+- 로컬 hook은 `git push --no-verify`로 우회 가능하므로 CI gate와 GitHub branch
+  protection을 대체하지 않는다.
+- 공식 근거: Git `pre-push` hook stdin and non-zero exit behavior are
+  documented by Git. https://git-scm.com/docs/githooks#_pre_push
 
 ### 4. Phase 0-alpha Field Extractor Patch
 

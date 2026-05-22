@@ -112,5 +112,17 @@ repos:
           - data
           - ops
 
+  # ---------------------------------------------------------------------------
+  # Git policy: protected branch push guard
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: guard-protected-branch
+        name: guard protected branches
+        entry: bash -c 'root=.; prefix=03_lemon_healthcare/Lemon-Aid; if [ -d "$prefix" ]; then root=$prefix; fi; cd "$root" && python scripts/git-hooks/guard_protected_branch.py' --
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
 # Flutter/Dart는 별도 pre-commit 통합이 어려우므로
 # IDE 저장 시 자동 포매팅 + CI에서 검증하는 방식 권장

@@ -20,6 +20,7 @@
 공식 문서 확인:
 
 - pre-commit hook/stage 개념: https://pre-commit.com/
+- Git pre-push hook stdin/exit behavior: https://git-scm.com/docs/githooks#_pre_push
 - GitHub pull request template 위치: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository
 - GitHub protected branches/status check/force push 설정: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
 
@@ -70,9 +71,9 @@
 However, it is based on the skeleton team tree rather than the current
 code-bearing Lemon Aid application tree. The PR template, team-policy workflow,
 and branch/title validators have now been adapted inside the current Lemon-Aid
-folder for standalone team-root export. `guard_protected_branch.py` remains a
-lower-priority local hook candidate because CI-side protected-branch policy is
-the non-bypassable layer.
+folder for standalone team-root export. `guard_protected_branch.py` has also
+been adapted as a local `pre-push` guard. It remains a bypassable local helper,
+so CI-side gates and GitHub branch protection remain the non-bypassable layers.
 
 ## Security / Leakage Review
 
@@ -91,6 +92,10 @@ the non-bypassable layer.
 - Current docs and hooks still ban `--no-verify`; root backend CI now owns the
   non-bypassable version for secret scan, baseline audit, OCR artifact
   tracking, CI path audit, and PR branch/title policy.
+- The local protected-branch guard blocks direct `main`/`develop` push lines in
+  Git `pre-push` stdin and prints only bounded branch/reason messages. It does
+  not print remote URLs, local absolute paths, request headers, provider
+  payloads, raw OCR text, or secret values.
 - Stale workflow and CODEOWNERS paths are security issues because a changed
   protected path can bypass intended lint/test/secret gates and reviewer
   ownership.
@@ -101,8 +106,8 @@ the non-bypassable layer.
 
 | Priority | PR | Scope |
 | --- | --- | --- |
-| P1 | `chore(team): local protected branch hook을 검토` | Consider adding `guard_protected_branch.py` locally after CI policy is active. |
 | P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| Done | `chore(team): 보호 브랜치 push guard를 추가` | Added `guard_protected_branch.py`, pre-commit `pre-push` wiring, asset checks, and LOCAL_SETUP guidance. |
 | Done | `ci(infra): CI 보안 gate를 추가` | Root backend CI now reruns team policy, secret baseline, OCR artifact, and CI path gates. |
 | Done | `ci(infra): Lemon workflow 경로를 보정` | Root workflows, dependabot, PR template, and CODEOWNERS now point to the current default Lemon-Aid path, and `check_lemon_ci_paths.py --project-root .` passes. |
 | Done | `test(infra): Lemon CI 경로 감사를 추가` | Added bounded audit for stale root workflow/dependabot/PR-template paths. |
@@ -117,6 +122,7 @@ the non-bypassable layer.
 
 Keep CI/team-policy changes separate from the OCR quality-gate slices. The
 local hook bootstrap, standalone team-policy assets, and current monorepo root
-`.github` paths and CI-owned security gates are repaired. The next safe
-governance PR can focus on optional local protected-branch hook parity and any
-repository-admin verification for branch protection or force-push settings.
+`.github` paths, local protected-branch hook parity, and CI-owned security gates
+are repaired. The next safe governance work is repository-admin verification for
+branch protection or force-push settings, plus any stricter markdownlint cleanup
+that the team wants to handle separately.

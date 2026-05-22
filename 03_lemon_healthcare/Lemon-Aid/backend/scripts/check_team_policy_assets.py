@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REQUIRED_FILES = (
+    ".pre-commit-config.yaml",
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/workflows/team-policy.yml",
+    "scripts/git-hooks/guard_protected_branch.py",
     "scripts/git-hooks/validate_commit_msg.py",
     "scripts/git-hooks/validate_team_policy.py",
 )
@@ -29,6 +31,16 @@ WORKFLOW_REQUIRED_SNIPPETS = (
     "scripts/git-hooks/validate_team_policy.py",
     "github.head_ref",
     "github.base_ref",
+)
+GUARD_REQUIRED_SNIPPETS = (
+    "PROTECTED_BRANCHES",
+    "parse_pre_push_stdin",
+    "validate_push",
+)
+PRE_COMMIT_REQUIRED_SNIPPETS = (
+    "guard-protected-branch",
+    "scripts/git-hooks/guard_protected_branch.py",
+    "pre-push",
 )
 FORBIDDEN_SNIPPETS = (
     "yeong-Lemon-Aid",
@@ -84,6 +96,20 @@ def check_assets(repo_root: Path) -> list[TeamPolicyAssetFinding]:
             repo_root=repo_root,
             relative_path=".github/workflows/team-policy.yml",
             snippets=WORKFLOW_REQUIRED_SNIPPETS,
+        )
+    )
+    findings.extend(
+        _check_required_snippets(
+            repo_root=repo_root,
+            relative_path="scripts/git-hooks/guard_protected_branch.py",
+            snippets=GUARD_REQUIRED_SNIPPETS,
+        )
+    )
+    findings.extend(
+        _check_required_snippets(
+            repo_root=repo_root,
+            relative_path=".pre-commit-config.yaml",
+            snippets=PRE_COMMIT_REQUIRED_SNIPPETS,
         )
     )
     for relative_path in REQUIRED_FILES:

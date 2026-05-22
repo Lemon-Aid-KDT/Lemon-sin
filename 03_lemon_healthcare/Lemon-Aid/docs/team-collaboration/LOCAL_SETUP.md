@@ -52,6 +52,25 @@ pre-commit run --all-files
 
 > 🎯 이 단계가 빠지면 CI가 빨간색이 됩니다. **반드시 실행하세요**.
 
+### 1-3-1. 보호 브런치 push guard 확인
+
+`pre-push` hook은 `main`/`develop` 직접 push 실수를 막습니다. Git 공식
+문서 기준 `pre-push` hook은 push 직전에 실행되며, 실패하면 push가 중단됩니다.
+다만 로컬 hook은 사용자가 우회할 수 있으므로 GitHub branch protection이 최종
+방어선입니다.
+
+```bash
+# pre-commit pre-push hook 등록 확인
+pre-commit install --hook-type pre-push
+
+# 현재 브런치가 main/develop이 아니면 통과해야 함
+pre-commit run guard-protected-branch --hook-stage pre-push
+
+# pre-commit을 쓰지 않는 환경의 직접 hook 설치 대안
+chmod +x scripts/git-hooks/guard_protected_branch.py
+ln -sf ../../scripts/git-hooks/guard_protected_branch.py .git/hooks/pre-push
+```
+
 ### 1-4. `.env` 파일 준비
 
 ```bash

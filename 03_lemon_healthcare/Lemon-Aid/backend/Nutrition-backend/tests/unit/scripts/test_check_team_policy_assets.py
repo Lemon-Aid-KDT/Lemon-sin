@@ -27,6 +27,18 @@ def test_check_assets_rejects_missing_template(tmp_path: Path) -> None:
     ]
 
 
+def test_check_assets_rejects_missing_pre_commit_config(tmp_path: Path) -> None:
+    """Verify local hook config remains part of the policy assets."""
+    _write_policy_files(tmp_path)
+    (tmp_path / ".pre-commit-config.yaml").unlink()
+
+    findings = assets.check_assets(tmp_path)
+
+    assert [(finding.path, finding.code, finding.detail) for finding in findings] == [
+        (".pre-commit-config.yaml", "missing_required_file", "file_absent")
+    ]
+
+
 def test_check_assets_rejects_stale_workflow_path(tmp_path: Path) -> None:
     """Verify stale local workflow paths are blocked."""
     _write_policy_files(tmp_path)
@@ -40,12 +52,63 @@ def test_check_assets_rejects_stale_workflow_path(tmp_path: Path) -> None:
     ]
 
 
+def test_check_assets_rejects_incomplete_protected_branch_guard(tmp_path: Path) -> None:
+    """Verify protected branch guard markers are required."""
+    _write_policy_files(tmp_path)
+    (tmp_path / "scripts/git-hooks/guard_protected_branch.py").write_text(
+        "PROTECTED_BRANCHES = {'develop', 'main'}\n",
+        encoding="utf-8",
+    )
+
+    findings = assets.check_assets(tmp_path)
+
+    assert [(finding.path, finding.code, finding.detail) for finding in findings] == [
+        (
+            "scripts/git-hooks/guard_protected_branch.py",
+            "missing_required_snippet",
+            "marker=2",
+        ),
+        (
+            "scripts/git-hooks/guard_protected_branch.py",
+            "missing_required_snippet",
+            "marker=3",
+        ),
+    ]
+
+
+def test_check_assets_rejects_missing_pre_push_hook_config(tmp_path: Path) -> None:
+    """Verify pre-push protected branch hook config is required."""
+    _write_policy_files(tmp_path)
+    (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n",
+        encoding="utf-8",
+    )
+
+    findings = assets.check_assets(tmp_path)
+
+    assert [(finding.path, finding.code, finding.detail) for finding in findings] == [
+        (".pre-commit-config.yaml", "missing_required_snippet", "marker=1"),
+        (".pre-commit-config.yaml", "missing_required_snippet", "marker=2"),
+        (".pre-commit-config.yaml", "missing_required_snippet", "marker=3"),
+    ]
+
+
 def _write_policy_files(repo_root: Path) -> None:
     """Write minimal valid policy assets.
 
     Args:
         repo_root: Fixture repo root.
     """
+    _write(
+        repo_root / ".pre-commit-config.yaml",
+        "\n".join(
+            [
+                "id: guard-protected-branch",
+                "entry: python scripts/git-hooks/guard_protected_branch.py",
+                "stages: [pre-push]",
+            ]
+        ),
+    )
     _write(
         repo_root / ".github/PULL_REQUEST_TEMPLATE.md",
         "\n".join(
@@ -70,6 +133,16 @@ def _write_policy_files(repo_root: Path) -> None:
                 "scripts/git-hooks/validate_team_policy.py",
                 "github.head_ref",
                 "github.base_ref",
+            ]
+        ),
+    )
+    _write(
+        repo_root / "scripts/git-hooks/guard_protected_branch.py",
+        "\n".join(
+            [
+                "PROTECTED_BRANCHES = {'develop', 'main'}",
+                "def parse_pre_push_stdin(text): pass",
+                "def validate_push(updates): pass",
             ]
         ),
     )
