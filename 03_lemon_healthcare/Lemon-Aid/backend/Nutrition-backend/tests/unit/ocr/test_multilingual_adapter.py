@@ -7,7 +7,7 @@ Reference:
 from __future__ import annotations
 
 import pytest
-from src.ocr.base import OCRAdapter, OCRResult
+from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
 from src.ocr.exceptions import OCRApiError, OCRError
 from src.ocr.multilingual_adapter import MultilingualOCRAdapter
 
@@ -32,11 +32,21 @@ class _FakeAdapter(OCRAdapter):
     def engine_name(self) -> str:
         return self._engine
 
-    async def extract_text(self, image_bytes: bytes) -> OCRResult:
+    async def extract_text(self, _image: OCRImageInput) -> OCRResult:
         self.call_count += 1
         if self._raises is not None:
             raise self._raises
-        return OCRResult(text=self._text, confidence=self._confidence, engine=self._engine)
+        return OCRResult(text=self._text, confidence=self._confidence, provider=self._engine)
+
+
+def _image_input() -> OCRImageInput:
+    """Return a minimal validated OCR image input."""
+    return OCRImageInput(
+        image_bytes=b"image",
+        mime_type="image/png",
+        width=1,
+        height=1,
+    )
 
 
 class TestEngineName:
@@ -60,10 +70,10 @@ class TestBothSucceed:
         secondary = _FakeAdapter(engine="en", text="Vitamin C", confidence=0.70)
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
-        result = await adapter.extract_text(b"image")
+        result = await adapter.extract_text(_image_input())
 
         assert result.text == "비타민 C"
-        assert result.engine == "ko"
+        assert result.provider == "ko"
         assert primary.call_count == 1
         assert secondary.call_count == 1
 
@@ -74,10 +84,10 @@ class TestBothSucceed:
         secondary = _FakeAdapter(engine="en", text="Vitamin C", confidence=0.95)
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
-        result = await adapter.extract_text(b"image")
+        result = await adapter.extract_text(_image_input())
 
         assert result.text == "Vitamin C"
-        assert result.engine == "en"
+        assert result.provider == "en"
 
     @pytest.mark.asyncio
     async def test_tie_breaks_toward_primary(self) -> None:
@@ -86,9 +96,9 @@ class TestBothSucceed:
         secondary = _FakeAdapter(engine="en", text="Vitamin", confidence=0.85)
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
-        result = await adapter.extract_text(b"image")
+        result = await adapter.extract_text(_image_input())
 
-        assert result.engine == "ko"
+        assert result.provider == "ko"
 
 
 class TestOneSideFails:
@@ -100,10 +110,10 @@ class TestOneSideFails:
         secondary = _FakeAdapter(engine="en", text="Vitamin C", confidence=0.8)
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
-        result = await adapter.extract_text(b"image")
+        result = await adapter.extract_text(_image_input())
 
         assert result.text == "Vitamin C"
-        assert result.engine == "en"
+        assert result.provider == "en"
 
     @pytest.mark.asyncio
     async def test_secondary_fails_returns_primary(self) -> None:
@@ -111,10 +121,10 @@ class TestOneSideFails:
         secondary = _FakeAdapter(engine="en", raises=OCRApiError("en", "boom"))
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
-        result = await adapter.extract_text(b"image")
+        result = await adapter.extract_text(_image_input())
 
         assert result.text == "비타민 C"
-        assert result.engine == "ko"
+        assert result.provider == "ko"
 
 
 class TestBothFail:
@@ -127,7 +137,7 @@ class TestBothFail:
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
         with pytest.raises(OCRError):
-            await adapter.extract_text(b"image")
+            await adapter.extract_text(_image_input())
 
     @pytest.mark.asyncio
     async def test_both_fail_with_generic_exception_wraps_to_api_error(self) -> None:
@@ -137,7 +147,7 @@ class TestBothFail:
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
         with pytest.raises(OCRApiError):
-            await adapter.extract_text(b"image")
+            await adapter.extract_text(_image_input())
 
 
 class TestParallelExecution:
@@ -150,7 +160,7 @@ class TestParallelExecution:
         secondary = _FakeAdapter(engine="en", confidence=0.5)
         adapter = MultilingualOCRAdapter(primary=primary, secondary=secondary)
 
-        await adapter.extract_text(b"image")
+        await adapter.extract_text(_image_input())
 
         assert primary.call_count == 1
         assert secondary.call_count == 1

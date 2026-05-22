@@ -64,18 +64,23 @@ class _FakeHTTPClient:
         return _FakeResponse(self.payload, self.status_code)
 
 
-def _settings(*, allow_external_ocr: bool = True) -> Settings:
+def _settings(
+    *,
+    allow_external_ocr: bool = True,
+    enable_clova_ocr: bool = False,
+) -> Settings:
     """Return CLOVA provider settings.
 
     Args:
         allow_external_ocr: Whether external OCR is allowed.
+        enable_clova_ocr: Whether fallback auto-run is enabled.
 
     Returns:
         Settings object.
     """
     return Settings(
         _env_file=None,
-        enable_clova_ocr=True,
+        enable_clova_ocr=enable_clova_ocr,
         allow_external_ocr=allow_external_ocr,
         clova_ocr_api_url="https://example.apigw.ntruss.com/custom/v1/infer",
         clova_ocr_secret=SecretStr("test-secret"),

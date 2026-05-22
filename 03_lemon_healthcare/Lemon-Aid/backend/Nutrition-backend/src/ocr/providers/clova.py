@@ -57,7 +57,7 @@ class ClovaHTTPClient(Protocol):
 
 
 class ClovaOCRAdapter(OCRAdapter):
-    """External CLOVA OCR adapter used only as an explicit fallback.
+    """External CLOVA OCR adapter used for explicit primary or fallback OCR.
 
     The adapter sends image bytes to NAVER Cloud CLOVA OCR, so callers must keep
     ``ALLOW_EXTERNAL_OCR`` and external OCR consent gates enforced before use.
@@ -150,8 +150,6 @@ def _validate_clova_settings(settings: Settings) -> None:
     Raises:
         OCRError: If required external OCR settings are missing.
     """
-    if not settings.enable_clova_ocr:
-        raise OCRError("ENABLE_CLOVA_OCR=true is required for CLOVA fallback.")
     if not settings.allow_external_ocr:
         raise OCRError("ALLOW_EXTERNAL_OCR=true is required for CLOVA OCR.")
     if not settings.clova_ocr_api_url:

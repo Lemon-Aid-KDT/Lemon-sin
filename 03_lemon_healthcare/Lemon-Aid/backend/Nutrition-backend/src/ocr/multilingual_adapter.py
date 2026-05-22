@@ -8,7 +8,7 @@ Brand-New-update OCR 95% 목표용 어댑터.
     있는 쪽을 채택하면 정확도가 향상된다.
 
 비용:
-    메모리: 두 PaddleOCR 인스턴스를 보유 (약 1GB × 2 ≈ 2GB).
+    메모리: 두 PaddleOCR 인스턴스를 보유 (약 1GB x 2 ≈ 2GB).
     레이턴시: ``asyncio.gather`` 로 병렬 실행 → 최대 어댑터 latency ≈ wall-clock.
 
 선택 규칙:
@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from src.ocr.base import OCRAdapter, OCRResult
+from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
 from src.ocr.exceptions import OCRApiError, OCRError
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class MultilingualOCRAdapter(OCRAdapter):
         >>> ko = PaddleOCRAdapter(lang="korean")
         >>> en = PaddleOCRAdapter(lang="en")
         >>> multi = MultilingualOCRAdapter(primary=ko, secondary=en)
-        >>> result = await multi.extract_text(image_bytes)
+        >>> result = await multi.extract_text(ocr_image)
     """
 
     def __init__(self, primary: OCRAdapter, secondary: OCRAdapter) -> None:
@@ -61,13 +61,13 @@ class MultilingualOCRAdapter(OCRAdapter):
     @property
     def engine_name(self) -> str:
         """``"multi:<primary>+<secondary>"`` 형식."""
-        return f"multi:{self._primary.engine_name}+{self._secondary.engine_name}"
+        return f"multi:{_adapter_label(self._primary)}+{_adapter_label(self._secondary)}"
 
-    async def extract_text(self, image_bytes: bytes) -> OCRResult:
+    async def extract_text(self, image: OCRImageInput) -> OCRResult:
         """두 어댑터를 병렬 호출 후 confidence 높은 결과를 반환.
 
         Args:
-            image_bytes: 전처리된 이미지 바이트.
+            image: Validated OCR image input.
 
         Returns:
             confidence 가 더 높은 어댑터의 ``OCRResult``. engine 필드는 선택된
@@ -77,8 +77,8 @@ class MultilingualOCRAdapter(OCRAdapter):
         Raises:
             OCRError: 두 어댑터가 모두 실패한 경우.
         """
-        primary_task = asyncio.create_task(self._primary.extract_text(image_bytes))
-        secondary_task = asyncio.create_task(self._secondary.extract_text(image_bytes))
+        primary_task = asyncio.create_task(self._primary.extract_text(image))
+        secondary_task = asyncio.create_task(self._secondary.extract_text(image))
 
         primary_result, secondary_result = await asyncio.gather(
             primary_task,
@@ -94,7 +94,7 @@ class MultilingualOCRAdapter(OCRAdapter):
             logger.info(
                 "Multilingual OCR completed",
                 extra={
-                    "chosen_engine": chosen.engine,
+                    "chosen_provider": chosen.provider,
                     "primary_confidence": primary_result.confidence,
                     "secondary_confidence": secondary_result.confidence,
                 },
@@ -130,7 +130,10 @@ class MultilingualOCRAdapter(OCRAdapter):
         # primary 의 예외를 재발생; OCRApiError 면 그대로, 아니면 OCRError 로 래핑
         if isinstance(primary_result, OCRError):
             raise primary_result
-        raise OCRApiError(self._primary.engine_name, str(primary_result))
+        raise OCRApiError(
+            _adapter_label(self._primary),
+            primary_result.__class__.__name__,
+        )
 
     @staticmethod
     def _pick_higher_confidence(a: OCRResult, b: OCRResult) -> OCRResult:
@@ -143,6 +146,14 @@ class MultilingualOCRAdapter(OCRAdapter):
         Returns:
             confidence 가 높은 쪽. 동률이면 ``a``.
         """
-        if b.confidence > a.confidence:
+        if (b.confidence or 0.0) > (a.confidence or 0.0):
             return b
         return a
+
+
+def _adapter_label(adapter: OCRAdapter) -> str:
+    """Return a bounded adapter label for diagnostics."""
+    label = getattr(adapter, "engine_name", None)
+    if isinstance(label, str) and label:
+        return label
+    return adapter.__class__.__name__
