@@ -47,7 +47,7 @@ repos:
   # Python: Ruff (린터 + import 정렬)
   # ---------------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.4
+    rev: v0.15.14
     hooks:
       - id: ruff
         files: ^(03_lemon_healthcare/Lemon-Aid/)?backend/.*\.py$

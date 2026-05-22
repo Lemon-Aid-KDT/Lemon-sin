@@ -39,6 +39,7 @@
 | `pre-commit validate-config` | 통과 |
 | `pre-commit run detect-secrets --all-files` | 통과 |
 | `pre-commit run markdownlint --all-files` | 통과 |
+| `backend/scripts/check_lemon_ci_paths.py --project-root .` | 실패, stale root Lemon CI/policy path 8건 |
 
 ## Gap Table
 
@@ -91,14 +92,17 @@ the non-bypassable layer.
   should own the non-bypassable version of this policy.
 - Stale workflow paths are a security issue because a changed protected path can
   bypass intended lint/test/secret gates.
+- `check_lemon_ci_paths.py` now detects the stale root `.github` issue without
+  printing workflow contents, local absolute roots, or secret values.
 
 ## Recommended Follow-up PR Split
 
 | Priority | PR | Scope |
 | --- | --- | --- |
-| P1 | `ci(infra): Lemon workflow 경로를 보정` | Move `yeong-Lemon-Aid` workflow paths to the current default Lemon-Aid path or make path detection explicit. |
+| P1 | `ci(infra): Lemon workflow 경로를 보정` | Move root `.github` references from `yeong-Lemon-Aid` to the current default Lemon-Aid path, then make `check_lemon_ci_paths.py --project-root .` pass. |
 | P1 | `chore(team): local protected branch hook을 검토` | Consider adding `guard_protected_branch.py` locally after CI policy is active. |
 | P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| Done | `test(infra): Lemon CI 경로 감사를 추가` | Added bounded audit for stale root workflow/dependabot/PR-template paths. |
 | Done | `ci(team): team policy gate를 추가` | Added standalone export PR template, team-policy workflow, branch/title validators, and asset checker. |
 | Done | `chore(team): secret scan baseline을 추가` | Added `.secrets.baseline`; `pre-commit run detect-secrets --all-files` passes. |
 | Done | `test(team): secret baseline 후보를 감사` | Added bounded audit helper; 87 candidates classify to 72 low / 15 medium / 0 high. |
@@ -108,6 +112,7 @@ the non-bypassable layer.
 ## Current Decision
 
 Keep CI/team-policy changes separate from the OCR quality-gate slices. The
-local hook bootstrap is now repaired, but the next safe governance PR still
-needs to import the team-policy validator and PR template, then fix stale
-workflow paths.
+local hook bootstrap and standalone team-policy assets are repaired. The next
+safe governance PR should either fix the root monorepo `.github` paths until
+`check_lemon_ci_paths.py --project-root .` passes, or export the standalone
+assets into the team-root repository where those root paths do not apply.

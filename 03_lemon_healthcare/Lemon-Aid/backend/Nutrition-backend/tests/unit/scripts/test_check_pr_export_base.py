@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
+import sys
 from pathlib import Path
-
-from scripts import check_pr_export_base as checker
+from types import ModuleType
 
 
 def test_check_base_ref_accepts_code_bearing_clean_ref(tmp_path: Path) -> None:
@@ -174,3 +175,22 @@ def _git(repo_root: Path, *args: str) -> None:
         *args: Git arguments after ``git``.
     """
     subprocess.run(("git", "-C", str(repo_root), *args), check=True, capture_output=True)
+
+
+def _load_checker() -> ModuleType:
+    """Load the backend script without relying on PYTHONPATH layout.
+
+    Returns:
+        Loaded ``check_pr_export_base`` module.
+    """
+    module_path = Path(__file__).resolve().parents[4] / "scripts/check_pr_export_base.py"
+    spec = importlib.util.spec_from_file_location("check_pr_export_base", module_path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"missing module spec for {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["check_pr_export_base"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+checker = _load_checker()

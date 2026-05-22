@@ -410,6 +410,61 @@ check-yaml passed on team-policy workflow
 - 공식 근거: GitHub Actions `pull_request`/`push` branch filters and workflow
   contexts are documented by GitHub. https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow
 
+### 3.18 Root Lemon CI Path Audit
+
+추가 파일:
+
+- `backend/scripts/check_lemon_ci_paths.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_lemon_ci_paths.py`
+
+변경:
+
+- 현재 Lemon-Aid project root를 Git root 기준 상대경로로 계산하고, Git root
+  `.github/workflows/17-lemon-*.yml`이 그 경로를 가리키는지 검사한다.
+- stale `03_lemon_healthcare/yeong-Lemon-Aid` 경로, local absolute path
+  marker, Lemon workflow 누락을 bounded finding으로 출력한다.
+- optional policy file인 `.github/dependabot.yml`과
+  `.github/PULL_REQUEST_TEMPLATE.md`도 stale path만 검사한다.
+- file content, secret, request header, OCR raw text는 출력하지 않는다.
+- 같은 script-test 계열인 `test_check_pr_export_base.py`도 PYTHONPATH layout에
+  의존하지 않도록 file-based module loader로 맞췄다.
+- `.pre-commit-config.yaml`의 `ruff-pre-commit` rev를 `v0.15.14`로 올려
+  `backend/pyproject.toml`의 Python 3.13 target을 hook에서도 파싱하게 했다.
+  tag 존재는 `git ls-remote --tags`로 확인했다.
+
+현재 root `.github` 검사 결과:
+
+```text
+.github/workflows/17-lemon-backend-ci.yml: missing_current_project_path expected_project_path
+.github/workflows/17-lemon-backend-ci.yml: stale_project_path marker=1
+.github/workflows/17-lemon-docs-ci.yml: missing_current_project_path expected_project_path
+.github/workflows/17-lemon-docs-ci.yml: stale_project_path marker=1
+.github/workflows/17-lemon-mobile-ci.yml: missing_current_project_path expected_project_path
+.github/workflows/17-lemon-mobile-ci.yml: stale_project_path marker=1
+.github/dependabot.yml: stale_project_path marker=1
+.github/PULL_REQUEST_TEMPLATE.md: stale_project_path marker=1
+```
+
+검증:
+
+```text
+5 passed - test_check_lemon_ci_paths.py
+6 passed - test_check_pr_export_base.py
+black --check passed on check_lemon_ci_paths.py and test_check_lemon_ci_paths.py
+ruff check passed on check_lemon_ci_paths.py and test_check_lemon_ci_paths.py
+pre-commit ruff and ruff-format passed on changed backend Python files
+```
+
+보안 확인:
+
+- script는 `.github` policy/workflow 파일만 읽고 `.env`나 credential file은
+  읽지 않는다.
+- output은 path, finding code, marker index로 제한되어 local absolute root나
+  secret value를 출력하지 않는다.
+- GitHub Actions에서 `branches`와 `paths` filter를 함께 쓰면 둘 다 만족할 때만
+  workflow가 실행되므로, stale path는 intended gate bypass로 이어질 수 있다.
+  공식 근거: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -938,5 +993,5 @@ ollama serve
    - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
    - generated OCR evaluation artifacts are now ignored by default; decide separately whether historical tracked reports should remain in Git or move to a private artifact store
    - optionally rewrite the 15 medium-severity documentation placeholders into clearer non-credential examples
-   - fix stale root monorepo workflow paths or export the standalone team-policy assets into the team-root repo
+   - fix stale root monorepo workflow paths now detected by `check_lemon_ci_paths.py`, or export the standalone team-policy assets into the team-root repo
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
