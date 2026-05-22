@@ -118,6 +118,19 @@
 - doctor는 `.env`, request header, OCR artifact, provider payload, application settings를 열지 않는다.
 - CLI output은 project-relative path와 count 중심으로 제한하고, 로컬 절대경로나 secret 값을 출력하지 않는다.
 
+### 3.8 Current Implementation Status Map
+
+추가 파일:
+
+- `outputs/todo-list/2026-05-22/2026-05-22-current-implementation-status-map.md`
+
+변경:
+
+- `src/main.py`와 `src/api/v1/router.py` 기준으로 현재 등록된 FastAPI router를 정리했다.
+- OCR provider, regulated intake, supplement intake, prediction, learning/vector, YOLO ROI, Ollama/Gemma4, mobile release safety 상태를 `implemented`, `feature-gated`, `smoke-only`, `not-production-ready`로 분리했다.
+- 성능 수치는 repo-local generated report에서 확인한 값만 기록했고, 없는 값은 만들지 않았다.
+- raw OCR/provider payload, request header, secret, local absolute path를 commit하지 않는 보안 gate를 같은 문서에 붙였다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
