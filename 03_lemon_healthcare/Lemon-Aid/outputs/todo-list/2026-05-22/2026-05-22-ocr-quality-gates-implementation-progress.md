@@ -94,6 +94,30 @@
   - `team/feat/ocr-p1-5-followup`은 code-bearing branch지만 generated OCR eval artifacts를 tracking 중이라 실패한다.
   - 따라서 첫 export PR 전에 code-bearing base cleanup 또는 `team/develop` 동기화가 필요하다.
 
+### 3.7 Backend Dev Env Doctor
+
+추가/수정 파일:
+
+- `backend/scripts/check_backend_dev_env.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_backend_dev_env.py`
+- `docs/team-collaboration/LOCAL_SETUP.md`
+
+변경:
+
+- `LOCAL_SETUP.md`의 backend 설치 명령을 실제 `backend/requirements-dev.txt` 기준으로 보정했다.
+- doctor는 `.env` 값을 읽지 않고 다음 항목만 확인한다.
+  - 필수 backend path 존재 여부
+  - `backend/pyproject.toml`의 `requires-python`과 현재 Python 버전
+  - `backend/requirements-dev.txt`의 runtime include와 pytest/black/ruff/mypy/pip-audit 선언
+  - 현재 interpreter에서 focused backend 검증 도구 import 가능 여부
+  - `.env`, `.venv`, coverage/htmlcov 같은 local-only artifact가 Git에 tracked되어 있는지 여부
+- 실제 checkout에서 `backend_dev_env_ok checks=5`를 확인했다.
+
+보안 확인:
+
+- doctor는 `.env`, request header, OCR artifact, provider payload, application settings를 열지 않는다.
+- CLI output은 project-relative path와 count 중심으로 제한하고, 로컬 절대경로나 secret 값을 출력하지 않는다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -457,6 +481,23 @@ PYTHONPATH=backend/Nutrition-backend:backend \
   backend/Nutrition-backend/tests/integration/api/test_supplement_intake_api.py \
   -q --no-cov
 # 153 passed in 1.59s
+```
+
+Backend dev-env doctor:
+
+```bash
+PYTHONPATH=backend/Nutrition-backend:backend \
+/private/tmp/lemon-p1-quality-venv/bin/python \
+  backend/scripts/check_backend_dev_env.py --repo-root .
+# backend_dev_env_ok checks=5
+```
+
+```bash
+PYTHONPATH=backend/Nutrition-backend:backend \
+/private/tmp/lemon-p1-quality-venv/bin/python -m pytest \
+  backend/Nutrition-backend/tests/unit/scripts/test_check_backend_dev_env.py \
+  -q --no-cov
+# 4 passed
 ```
 
 ```bash

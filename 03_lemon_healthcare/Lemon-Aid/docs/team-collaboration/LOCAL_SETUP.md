@@ -29,10 +29,14 @@ python3 -m venv .venv
 source .venv/bin/activate  # zsh/bash
 # Windows: .venv\Scripts\activate
 
-# 의존성 설치
+# backend 검증 의존성 설치
 pip install -U pip
-pip install -r backend/requirements.txt    # 또는 본인 영역
+pip install -r backend/requirements-dev.txt
 pip install pre-commit
+
+# backend doctor: .env 값을 읽지 않고 Python/tool/Git artifact 상태만 확인
+PYTHONPATH=backend/Nutrition-backend:backend \
+  .venv/bin/python backend/scripts/check_backend_dev_env.py --repo-root .
 ```
 
 ### 1-3. pre-commit 설치 (필수)
@@ -58,6 +62,30 @@ cp mobile/.env.example mobile/.env
 ```
 
 `.env`는 절대 커밋하지 않습니다 (`.gitignore`에 포함됨).
+`backend/scripts/check_backend_dev_env.py`는 `.env` 내용을 읽지 않고, `.env`가 Git에 tracked된 상태인지 여부만 검사합니다.
+
+### 1-4-1. backend focused 검증
+
+backend 기능 PR을 열기 전에는 최소한 아래 focused gate를 실행합니다.
+
+```bash
+PYTHONPATH=backend/Nutrition-backend:backend \
+  .venv/bin/python -m pytest \
+  backend/Nutrition-backend/tests/unit/ocr/test_field_extractor.py \
+  -q --no-cov
+
+.venv/bin/python -m black --check \
+  backend/scripts/check_backend_dev_env.py \
+  backend/Nutrition-backend/tests/unit/scripts/test_check_backend_dev_env.py
+
+.venv/bin/python -m ruff check --ignore RUF001 \
+  backend/scripts/check_backend_dev_env.py \
+  backend/Nutrition-backend/tests/unit/scripts/test_check_backend_dev_env.py
+
+git diff --check
+```
+
+OCR/보안 관련 PR은 해당 기능 테스트와 함께 forbidden raw key/path scan도 추가합니다.
 
 ### 1-5. 모바일 (Flutter) 환경
 
@@ -260,6 +288,10 @@ gh auth status
 # 4) Python/Flutter
 python3 --version
 flutter --version
+
+# 5) backend doctor
+PYTHONPATH=backend/Nutrition-backend:backend \
+  .venv/bin/python backend/scripts/check_backend_dev_env.py --repo-root .
 ```
 
 ---
