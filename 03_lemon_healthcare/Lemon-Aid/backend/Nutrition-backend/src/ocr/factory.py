@@ -29,7 +29,7 @@ class OCRConfigurationError(RuntimeError):
     """Raised when OCR settings request a provider that cannot be built."""
 
 
-SupplementOCRProviderSelector = Literal["configured", "google_vision", "paddleocr"]
+SupplementOCRProviderSelector = Literal["configured", "google_vision", "paddleocr", "clova"]
 
 
 def is_external_ocr_pipeline_enabled(
@@ -49,9 +49,11 @@ def is_external_ocr_pipeline_enabled(
     """
     if provider_selector == "google_vision":
         return True
+    if provider_selector == "clova":
+        return True
     if provider_selector == "paddleocr":
         return False
-    return settings.ocr_primary_provider == "google_vision" or settings.enable_clova_ocr
+    return settings.ocr_primary_provider in {"google_vision", "clova"} or settings.enable_clova_ocr
 
 
 def build_supplement_ocr_adapter(settings: Settings) -> OCRAdapter | None:
@@ -72,12 +74,16 @@ def build_supplement_ocr_adapter(settings: Settings) -> OCRAdapter | None:
         return _build_paddleocr_primary_adapter(settings)
     if settings.ocr_primary_provider == "google_vision":
         return _build_google_vision_adapter(settings)
+    if settings.ocr_primary_provider == "clova":
+        return _build_clova_primary_adapter(settings)
     raise OCRConfigurationError(
         f"Unsupported OCR_PRIMARY_PROVIDER: {settings.ocr_primary_provider}"
     )
 
 
-def build_supplement_image_analysis_adapters(settings: Settings) -> SupplementImageAnalysisAdapters:
+def build_supplement_image_analysis_adapters(
+    settings: Settings,
+) -> SupplementImageAnalysisAdapters:
     """Build the complete supplement image analysis adapter set.
 
     Args:
@@ -133,6 +139,13 @@ def build_supplement_image_analysis_adapters_for_provider(
             multimodal_ocr=_build_multimodal_ocr_adapter(settings),
             fallback_ocr_adapters=(),
         )
+    if provider_selector == "clova":
+        return SupplementImageAnalysisAdapters(
+            ocr=_build_clova_primary_adapter(settings),
+            vision=_build_vision_adapter(settings),
+            multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            fallback_ocr_adapters=(),
+        )
     raise OCRConfigurationError(f"Unsupported OCR provider selector: {provider_selector}")
 
 
@@ -150,7 +163,9 @@ def _build_vision_adapter(settings: Settings) -> YoloLabelDetector | None:
     return YoloLabelDetector(settings)
 
 
-def _build_multimodal_ocr_adapter(settings: Settings) -> OllamaVisionAssistAdapter | None:
+def _build_multimodal_ocr_adapter(
+    settings: Settings,
+) -> OllamaVisionAssistAdapter | None:
     """Build the local Ollama vision assist adapter when a policy can call it.
 
     Args:
@@ -195,8 +210,9 @@ def _build_paddleocr_primary_adapter(settings: Settings) -> PaddleOCRAdapter:
 def _build_fallback_ocr_adapters(settings: Settings) -> list[OCRAdapter]:
     """Build optional secondary OCR fallback adapters in configured order.
 
-    PaddleOCR is omitted from the secondary list when it is already the primary
-    provider, so the same adapter is never invoked twice in a single pipeline.
+    PaddleOCR and CLOVA are each omitted from the secondary list when already
+    selected as the primary provider, so the same adapter is never invoked
+    twice in a single pipeline.
 
     Args:
         settings: Runtime settings.
@@ -207,9 +223,34 @@ def _build_fallback_ocr_adapters(settings: Settings) -> list[OCRAdapter]:
     adapters: list[OCRAdapter] = []
     if settings.enable_local_ocr and settings.ocr_primary_provider != "paddleocr":
         adapters.append(PaddleOCRAdapter(settings))
-    if settings.enable_clova_ocr:
+    if settings.enable_clova_ocr and settings.ocr_primary_provider != "clova":
         adapters.append(ClovaOCRAdapter(settings))
     return adapters
+
+
+def _build_clova_primary_adapter(settings: Settings) -> ClovaOCRAdapter:
+    """Build NAVER Cloud CLOVA OCR as the primary OCR adapter.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        CLOVA OCR adapter.
+
+    Raises:
+        OCRConfigurationError: If external OCR gates or CLOVA credentials are missing.
+    """
+    if not settings.allow_external_ocr:
+        raise OCRConfigurationError(
+            "ALLOW_EXTERNAL_OCR=true is required when OCR_PRIMARY_PROVIDER=clova."
+        )
+    if not settings.clova_ocr_api_url:
+        raise OCRConfigurationError(
+            "CLOVA_OCR_API_URL is required when OCR_PRIMARY_PROVIDER=clova."
+        )
+    if settings.clova_ocr_secret is None:
+        raise OCRConfigurationError("CLOVA_OCR_SECRET is required when OCR_PRIMARY_PROVIDER=clova.")
+    return ClovaOCRAdapter(settings)
 
 
 def _build_google_vision_adapter(settings: Settings) -> GoogleVisionOCRAdapter:

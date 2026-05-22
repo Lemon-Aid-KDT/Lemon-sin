@@ -18,7 +18,11 @@ DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 DEFAULT_JWT_ALGORITHMS = ["RS256"]
 DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
-DEFAULT_VISION_ROI_ALLOWED_CLASSES = ["supplement_label", "supplement_bottle", "blister_pack"]
+DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
+    "supplement_label",
+    "supplement_bottle",
+    "blister_pack",
+]
 # Deliberately insecure development sentinel; production validation rejects this exact value.
 DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -109,7 +113,9 @@ def _failed_checks(checks: tuple[tuple[bool, str], ...]) -> list[str]:
     return [message for failed, message in checks if failed]
 
 
-def _missing_required_field_errors(fields: tuple[tuple[str, str | None], ...]) -> list[str]:
+def _missing_required_field_errors(
+    fields: tuple[tuple[str, str | None], ...],
+) -> list[str]:
     """Return production errors for missing required fields.
 
     Args:
@@ -291,7 +297,9 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
-    ocr_primary_provider: Literal["none", "google_vision", "paddleocr"] = Field(default="paddleocr")
+    ocr_primary_provider: Literal["none", "google_vision", "paddleocr", "clova"] = Field(
+        default="paddleocr"
+    )
     allow_external_ocr: bool = Field(default=False)
     google_vision_auth_mode: Literal["api_key", "adc"] = Field(default="adc")
     allow_google_api_key_auth: bool = Field(
@@ -394,6 +402,15 @@ class Settings(BaseSettings):
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
     local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    local_ocr_use_textline_orientation: bool = Field(
+        default=False,
+        description=(
+            "Whether PaddleOCR's textline orientation classifier is enabled. "
+            "Default false matches the P1-5 isolation finding (commit 101df18e). "
+            "Set true to re-measure tilted smartphone captures during OCR "
+            "regression investigations."
+        ),
+    )
     paddle_disable_model_source_check: bool = Field(
         default=True,
         description=(
@@ -538,6 +555,18 @@ class Settings(BaseSettings):
                     "GOOGLE_APPLICATION_CREDENTIALS file-based credentials are not allowed for Google Vision in production.",
                 ),
                 (
+                    self.ocr_primary_provider == "clova" and not self.allow_external_ocr,
+                    "ALLOW_EXTERNAL_OCR=true is required when OCR_PRIMARY_PROVIDER=clova in production.",
+                ),
+                (
+                    self.ocr_primary_provider == "clova" and not self.clova_ocr_api_url,
+                    "CLOVA_OCR_API_URL is required when OCR_PRIMARY_PROVIDER=clova in production.",
+                ),
+                (
+                    self.ocr_primary_provider == "clova" and self.clova_ocr_secret is None,
+                    "CLOVA_OCR_SECRET is required when OCR_PRIMARY_PROVIDER=clova in production.",
+                ),
+                (
                     self.ocr_roi_preprocessing_policy != "disabled"
                     and not self.enable_vision_classifier,
                     "OCR_ROI_PREPROCESSING_POLICY requires ENABLE_VISION_CLASSIFIER=true.",
@@ -563,8 +592,14 @@ class Settings(BaseSettings):
                     self.enable_clova_ocr and self.clova_ocr_secret is None,
                     "CLOVA_OCR_SECRET is required when ENABLE_CLOVA_OCR=true in production.",
                 ),
-                (not self.allowed_origins, "ALLOWED_ORIGINS must be explicit in production."),
-                (not self.allowed_hosts, "ALLOWED_HOSTS must be explicit in production."),
+                (
+                    not self.allowed_origins,
+                    "ALLOWED_ORIGINS must be explicit in production.",
+                ),
+                (
+                    not self.allowed_hosts,
+                    "ALLOWED_HOSTS must be explicit in production.",
+                ),
                 (
                     _contains_wildcard(self.allowed_origins),
                     "ALLOWED_ORIGINS must not contain wildcards in production.",
@@ -577,7 +612,10 @@ class Settings(BaseSettings):
                     _contains_wildcard(self.allowed_hosts),
                     "ALLOWED_HOSTS must not contain wildcards in production.",
                 ),
-                (self.auth_mode != "jwt", "AUTH_MODE=jwt is required for production user apps."),
+                (
+                    self.auth_mode != "jwt",
+                    "AUTH_MODE=jwt is required for production user apps.",
+                ),
                 (
                     _is_non_https_url(self.jwt_jwks_url),
                     "JWT_JWKS_URL must use https in production.",
@@ -586,7 +624,10 @@ class Settings(BaseSettings):
                     _is_non_https_url(self.oidc_discovery_url),
                     "OIDC_DISCOVERY_URL must use https in production.",
                 ),
-                (not self.jwt_algorithms, "JWT_ALGORITHMS must be explicit in production."),
+                (
+                    not self.jwt_algorithms,
+                    "JWT_ALGORITHMS must be explicit in production.",
+                ),
                 (
                     not set(self.jwt_algorithms).issubset(ASYMMETRIC_JWT_ALGORITHMS),
                     "JWT_ALGORITHMS must use supported asymmetric signing algorithms.",

@@ -55,8 +55,10 @@ def _valid_production_kwargs() -> dict[str, Any]:
     """Return a valid production settings baseline.
 
     Returns:
-        Keyword arguments accepted by Settings. ``_env_file=None`` keeps local
-        operator ``.env`` files from changing production validation tests.
+        Keyword arguments accepted by Settings. ``_env_file=None`` ensures the
+        tests do not pick up an operator's local ``.env`` (which may carry
+        opt-in values like ``OCR_PRIMARY_PROVIDER=clova``) and force a
+        deterministic baseline.
     """
     return {
         "_env_file": None,
@@ -401,6 +403,51 @@ def test_production_rejects_clova_ocr_without_external_gate() -> None:
     kwargs["clova_ocr_secret"] = "secret"
 
     with pytest.raises(ValidationError, match="ALLOW_EXTERNAL_OCR"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_clova_primary_without_external_gate() -> None:
+    """Verify CLOVA primary requires ALLOW_EXTERNAL_OCR in production."""
+    kwargs = _valid_production_kwargs()
+    kwargs["ocr_primary_provider"] = "clova"
+    kwargs["enable_local_ocr"] = False
+    kwargs["clova_ocr_api_url"] = "https://example.apigw.ntruss.com/custom/v1/infer"
+    kwargs["clova_ocr_secret"] = "secret"
+
+    with pytest.raises(
+        ValidationError,
+        match="ALLOW_EXTERNAL_OCR=true is required when OCR_PRIMARY_PROVIDER=clova",
+    ):
+        Settings(**kwargs)
+
+
+def test_production_rejects_clova_primary_without_api_url() -> None:
+    """Verify CLOVA primary requires CLOVA_OCR_API_URL in production."""
+    kwargs = _valid_production_kwargs()
+    kwargs["ocr_primary_provider"] = "clova"
+    kwargs["enable_local_ocr"] = False
+    kwargs["allow_external_ocr"] = True
+    kwargs["clova_ocr_secret"] = "secret"
+
+    with pytest.raises(
+        ValidationError,
+        match="CLOVA_OCR_API_URL is required when OCR_PRIMARY_PROVIDER=clova",
+    ):
+        Settings(**kwargs)
+
+
+def test_production_rejects_clova_primary_without_secret() -> None:
+    """Verify CLOVA primary requires CLOVA_OCR_SECRET in production."""
+    kwargs = _valid_production_kwargs()
+    kwargs["ocr_primary_provider"] = "clova"
+    kwargs["enable_local_ocr"] = False
+    kwargs["allow_external_ocr"] = True
+    kwargs["clova_ocr_api_url"] = "https://example.apigw.ntruss.com/custom/v1/infer"
+
+    with pytest.raises(
+        ValidationError,
+        match="CLOVA_OCR_SECRET is required when OCR_PRIMARY_PROVIDER=clova",
+    ):
         Settings(**kwargs)
 
 
