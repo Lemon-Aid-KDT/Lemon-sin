@@ -23,6 +23,8 @@
 - Git pre-push hook stdin/exit behavior: https://git-scm.com/docs/githooks#_pre_push
 - GitHub pull request template 위치: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository
 - GitHub protected branches/status check/force push 설정: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
+- GitHub protected branches REST API: https://docs.github.com/en/rest/branches/branch-protection
+- GitHub repository rulesets REST API: https://docs.github.com/rest/repos/rules
 
 ## Evidence
 
@@ -37,6 +39,8 @@
 | `.secrets.baseline` | 있음, 18 files / 72 historical candidates |
 | `.markdownlint.json` | 있음, low-noise bootstrap rules |
 | installed Git hooks | Git root `.git/hooks/pre-commit`, `commit-msg`, `pre-push` 없음 |
+| GitHub public branch protection | `develop`/`main` 모두 `protected=false`, `protection.enabled=false`, required status checks off |
+| GitHub public repository rulesets | `total=0`, `active_branch=0` |
 | `pre-commit validate-config` | 통과 |
 | `pre-commit run detect-secrets --all-files` | 통과 |
 | `pre-commit run markdownlint --all-files` | 통과 |
@@ -55,7 +59,7 @@
 | Markdown lint | `.pre-commit-config.yaml` calls `markdownlint` with a repo config. | `.markdownlint.json` now exists and the hook resolves it in both current monorepo and standalone team-root paths. | Bootstrap closed with low-noise rules; stricter project-wide markdown cleanup remains separate. | Low-Medium: docs lint is reproducible, but intentionally not strict yet. |
 | Large file limit | `CI_CD_GATES.md` shows 2MB example. | Current `.pre-commit-config.yaml` uses `--maxkb=5000`; team docs branch uses 2000. | Limit differs between docs/current/team docs branch. | Low-Medium: OCR artifacts or screenshots may exceed intended limit. |
 | `--no-verify` ban | Docs ban usage. | Git cannot technically prevent user-supplied `--no-verify` locally. Root backend CI now reruns the important secret, OCR artifact, path, and PR policy gates without relying on local hooks. | Closed for covered CI gates; literal local `--no-verify` usage remains a review/process rule. | Low-Medium: direct pushes still require branch protection. |
-| Force push ban | Docs allow only safe force-with-lease and branch protection denies force pushes on protected branches. | Branch protection settings are not inspectable from this checkout. Root CI does not validate force-push settings. | External GitHub setting remains unverified. | Medium: requires admin/API verification. |
+| Force push ban | Docs allow only safe force-with-lease and branch protection denies force pushes on protected branches. | Public GitHub branch metadata currently reports `develop` and `main` as unprotected, with no active branch rulesets. Root CI does not validate force-push settings. | Open: repository admin must enable branch protection or rulesets. | High: repository settings do not currently provide the final non-bypassable layer. |
 | Team integration base | PR target should be `develop`; feature to `develop` squash. | `team/develop` is skeleton and lacks current OCR backend tree; `team/feat/ocr-p1-5-followup` is code-bearing but tracks generated OCR eval artifacts. | Team PR export remains blocked until a clean code-bearing base exists or `develop` is synced. | High: wrong base can leak generated artifacts or create unreviewable PRs. |
 
 ## Existing Candidate From Team Branch
@@ -96,6 +100,11 @@ so CI-side gates and GitHub branch protection remain the non-bypassable layers.
   Git `pre-push` stdin and prints only bounded branch/reason messages. It does
   not print remote URLs, local absolute paths, request headers, provider
   payloads, raw OCR text, or secret values.
+- `backend/scripts/check_github_branch_protection.py` now confirms via public
+  GitHub branch metadata that `develop` and `main` are not protected, required
+  status checks are off, and public repository rulesets are absent. The command
+  prints bounded findings only and does not print raw API JSON or account
+  metadata.
 - Stale workflow and CODEOWNERS paths are security issues because a changed
   protected path can bypass intended lint/test/secret gates and reviewer
   ownership.
@@ -107,6 +116,7 @@ so CI-side gates and GitHub branch protection remain the non-bypassable layers.
 | Priority | PR | Scope |
 | --- | --- | --- |
 | P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| P1 | `ops(team): GitHub 보호 브랜치를 활성화` | Repository admin must enable branch protection or rulesets for `develop` and `main`, then rerun `check_github_branch_protection.py`. |
 | Done | `chore(team): 보호 브랜치 push guard를 추가` | Added `guard_protected_branch.py`, pre-commit `pre-push` wiring, asset checks, and LOCAL_SETUP guidance. |
 | Done | `ci(infra): CI 보안 gate를 추가` | Root backend CI now reruns team policy, secret baseline, OCR artifact, and CI path gates. |
 | Done | `ci(infra): Lemon workflow 경로를 보정` | Root workflows, dependabot, PR template, and CODEOWNERS now point to the current default Lemon-Aid path, and `check_lemon_ci_paths.py --project-root .` passes. |
@@ -123,6 +133,7 @@ so CI-side gates and GitHub branch protection remain the non-bypassable layers.
 Keep CI/team-policy changes separate from the OCR quality-gate slices. The
 local hook bootstrap, standalone team-policy assets, and current monorepo root
 `.github` paths, local protected-branch hook parity, and CI-owned security gates
-are repaired. The next safe governance work is repository-admin verification for
-branch protection or force-push settings, plus any stricter markdownlint cleanup
-that the team wants to handle separately.
+are repaired. Public GitHub metadata now shows that repository-admin branch
+protection or active branch rulesets are still missing for `develop` and `main`;
+that is the remaining non-bypassable governance control before team merge flow
+can be considered protected.

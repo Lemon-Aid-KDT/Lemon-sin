@@ -71,6 +71,10 @@ Reason:
 - `team/develop` and this monorepo branch have no merge base, so a direct rebase is not a valid PR-prep step.
 - `team/develop` uses the Lemon Aid app at repository root, while this branch stores the app under `03_lemon_healthcare/Lemon-Aid/`.
 - The safer review path is to export each logical slice into a fresh team-root branch based on `team/develop`.
+- Public GitHub branch metadata currently reports `develop` and `main` as
+  unprotected with required status checks off and no active branch rulesets, so
+  repository-admin protection remains required before relying on the documented
+  team merge policy.
 
 ## Actual Commit Slices
 

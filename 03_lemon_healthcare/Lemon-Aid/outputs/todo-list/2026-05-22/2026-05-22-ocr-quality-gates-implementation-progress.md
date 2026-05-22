@@ -606,6 +606,56 @@ black/ruff/ruff-format passed on guard and asset-check scripts/tests
 - 공식 근거: Git `pre-push` hook stdin and non-zero exit behavior are
   documented by Git. https://git-scm.com/docs/githooks#_pre_push
 
+### 3.21 GitHub Branch Protection Audit
+
+추가 파일:
+
+- `backend/scripts/check_github_branch_protection.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_github_branch_protection.py`
+- `outputs/todo-list/2026-05-23/2026-05-23-github-branch-protection-audit.md`
+
+변경:
+
+- GitHub public branch metadata로 `develop`/`main`의 `protected` flag,
+  `protection.enabled`, public required status check enforcement를 검사하는
+  operator gate를 추가했다.
+- Repository rulesets endpoint는 raw ruleset content를 출력하지 않고 total
+  count와 active branch ruleset count만 요약한다.
+- `gh auth status`는 local token invalid 상태라 admin-only protection detail은
+  조회하지 못했다.
+
+실제 결과:
+
+```text
+develop: branch_unprotected protected=false
+develop: branch_protection_disabled protection.enabled=false
+develop: required_status_checks_not_enforced enforcement=off
+main: branch_unprotected protected=false
+main: branch_protection_disabled protection.enabled=false
+main: required_status_checks_not_enforced enforcement=off
+github_branch_protection_failed repo=Lemon-Aid-KDT/Lemon-sin branches=2 rulesets=total=0 active_branch=0
+```
+
+검증:
+
+```text
+4 passed - test_check_github_branch_protection.py
+black/ruff/ruff-format passed on branch protection audit script/tests
+```
+
+보안 확인:
+
+- script output은 branch name, stable finding code, boolean/count detail만
+  출력한다.
+- raw GitHub API JSON, account email, token, request header, secret, raw OCR
+  text, provider payload는 출력하거나 저장하지 않는다.
+- public metadata 기준 `develop`과 `main`은 현재 보호되지 않으므로 local hook과
+  CI gate만으로는 direct push/force push 우회 위험을 닫았다고 볼 수 없다.
+- 공식 근거: GitHub protected branches REST API.
+  https://docs.github.com/en/rest/branches/branch-protection
+- 공식 근거: GitHub repository rulesets REST API.
+  https://docs.github.com/rest/repos/rules
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1210,5 +1260,5 @@ ollama serve
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
    - root monorepo workflow paths and root backend CI security gates are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
-   - protected branch and force-push settings still require GitHub repository-admin verification outside this checkout
+   - public GitHub metadata shows `develop` and `main` branch protection is currently disabled and active branch rulesets are absent; repository-admin action is required
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
