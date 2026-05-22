@@ -9,14 +9,30 @@
 
 ## Current Recommendation
 
-Do not make one broad commit from the full dirty worktree yet.
+Do not open this branch as one broad PR without an explicit reviewer agreement.
 
 Reason:
 
-- Current tracked diff is about 2,800 added lines across backend, mobile, and docs.
-- Untracked code includes backend scripts, parser/layout fixtures, mobile certificate pin files, and todo-list docs.
+- The dirty worktree has been split into logical commits, but the accumulated branch still spans backend OCR parsing, API security, mobile release security, and operator evaluation scripts.
+- The team guidance recommends small PRs near 500 lines where practical.
 - Generated OCR eval artifacts were intentionally ignored via `.gitignore` and should remain out of the PR unless the team explicitly asks for them.
-- A single PR would be hard to review against the team guidance of keeping PRs near 500 lines.
+- A single integration PR is possible for end-to-end traceability, but the safer review path is cherry-picking grouped commits into smaller branches.
+
+## Actual Commit Slices
+
+| Commit | Suggested PR | Scope |
+| --- | --- | --- |
+| `3d044dce fix(ocr): 성분 표 셀 파싱을 보정` | Field extractor regression | colon-less/pipe table cells, comma dosage, `mcg` normalization |
+| `4e4bc9c1 feat(backend): 분석 업로드 제한을 추가` | Analyze API security | upload rate limit, fail-closed config, arbitrary bearer bypass regression |
+| `fcf7d02a feat(ocr): CLOVA primary와 토글을 추가` | Provider routing infra | CLOVA primary selector and Paddle textline orientation toggle |
+| `473bedf9 feat(ocr): API smoke helper를 추가` | Product API smoke | loopback-only smoke helper with raw-field scan |
+| `62635c63 feat(ocr): collector privacy gate를 보강` | Collector privacy | PII local-only review handling and redacted LLM summary |
+| `fb9a3afd feat(ocr): 라벨 레이아웃 DTO를 추가` | Layout DTO | coordinate-bearing OCR pages and layout fixture |
+| `b2603aa7 feat(ocr): 이미지 품질 관측치를 추가` | Image quality preview | deterministic capture quality report and provider observations |
+| `bc2b4062 fix(ocr): 어댑터 입력 계약을 보정` | Adapter compatibility | CLOVA primary validation and multilingual adapter contract |
+| `2dfe412e feat(mobile): 릴리스 보안 게이트를 추가` | Mobile release security | certificate pins, camera permission channel, local capture warning |
+| `20cb69e5 feat(data): Naver OCR 평가 스크립트 추가` | Operator eval tooling | Naver manifest/runner/evaluator with external-transfer guards |
+| `815190fa test(ocr): 레이아웃 snapshot fixture 추가` | Snapshot fixtures | synthetic layout snapshot fixture |
 
 ## Suggested PR Split
 

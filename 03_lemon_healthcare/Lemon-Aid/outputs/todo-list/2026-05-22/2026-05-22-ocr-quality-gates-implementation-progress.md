@@ -368,8 +368,8 @@ raw storage flags:
 - Untracked secret-like filename scan returned no matches.
 - Focused secret pattern scan found only documented placeholders/test fixtures:
   - placeholder certificate pins with `A...`/`B...`
-  - `LEMON_API_TOKEN=<dev-token>`
-  - test-only `GOOGLE_CLOUD_API_KEY=test-dotenv-google-key`
+  - `LEMON_API_TOKEN` placeholder
+  - test-only `GOOGLE_CLOUD_API_KEY` placeholder
 
 금지 키 검사 범주:
 
@@ -454,7 +454,7 @@ git diff --check
 
 ```bash
 rg -n --hidden --glob '!outputs/generated/**' --glob '!**/.git/**' --glob '!mobile/uiux/**' \
-  '(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_\-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|CLOVA_OCR_SECRET=\S+|GOOGLE_CLOUD_API_KEY=\S+|LEMON_API_TOKEN=\S+|LEMON_CERTIFICATE_PINS=sha256/[A-Za-z0-9+/]{43}=)' \
+  '(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_\-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|CLOVA_OCR_SECRET\s*=\s*\S+|GOOGLE_CLOUD_API_KEY\s*=\s*\S+|LEMON_API_TOKEN\s*=\s*\S+|LEMON_CERTIFICATE_PINS\s*=\s*sha256/[A-Za-z0-9+/]{43}=)' \
   backend mobile outputs/todo-list/2026-05-22 config
 # matches were placeholders/test fixtures only, no live secret value found
 ```
@@ -499,11 +499,65 @@ flutter build ios --debug --simulator
 # pass
 ```
 
+## Latest Commit Split
+
+추가로 dirty backend/mobile/script 변경분을 다음 slice로 나눠 커밋했다.
+
+| Commit | Scope | 핵심 |
+| --- | --- | --- |
+| `fb9a3afd feat(ocr): 라벨 레이아웃 DTO를 추가` | backend OCR layout | `OCRResult.pages` DTO, label layout schema, layout parser regression fixture |
+| `b2603aa7 feat(ocr): 이미지 품질 관측치를 추가` | backend preview quality | OCR 전 image quality report, sanitized provider observations, API raw-field regression tests |
+| `bc2b4062 fix(ocr): 어댑터 입력 계약을 보정` | OCR adapters | CLOVA primary validation 보정, multilingual adapter `OCRImageInput` 계약 정리, generic exception message redaction |
+| `2dfe412e feat(mobile): 릴리스 보안 게이트를 추가` | mobile release/security | certificate pin preflight, release config pin format validation, native camera permission channel, local capture quality warning |
+| `20cb69e5 feat(data): Naver OCR 평가 스크립트 추가` | operator data/eval | Naver Tampermonkey manifest, provider runner, comparison evaluator, external-transfer guard |
+| `815190fa test(ocr): 레이아웃 snapshot fixture 추가` | test fixture | synthetic V2 layout snapshot fixture |
+
+추가 검증:
+
+```bash
+PYTHONPATH=backend/Nutrition-backend:backend \
+/private/tmp/lemon-p1-quality-venv/bin/python -m pytest \
+  backend/Nutrition-backend/tests/unit/parsing/test_layout_parser.py \
+  backend/Nutrition-backend/tests/unit/services/test_supplement_image_quality.py \
+  backend/Nutrition-backend/tests/unit/services/test_supplement_image_analysis.py \
+  backend/Nutrition-backend/tests/unit/services/test_supplement_intake.py \
+  backend/Nutrition-backend/tests/integration/api/test_supplement_analyze_paddleocr_default.py \
+  backend/Nutrition-backend/tests/integration/api/test_supplement_analyze_google_vision.py \
+  backend/Nutrition-backend/tests/unit/ocr/test_clova_provider.py \
+  backend/Nutrition-backend/tests/unit/ocr/test_multilingual_adapter.py \
+  backend/Nutrition-backend/tests/unit/scripts/test_build_naver_tampermonkey_ocr_manifest.py \
+  backend/Nutrition-backend/tests/unit/scripts/test_evaluate_naver_tampermonkey_ocr.py \
+  backend/Nutrition-backend/tests/unit/scripts/test_run_naver_tampermonkey_ocr_eval.py \
+  backend/Nutrition-backend/tests/unit/models/test_supplement_snapshot_schema.py \
+  -q --no-cov
+# pass in focused runs
+```
+
+```bash
+flutter test \
+  test/unit/app_config_test.dart \
+  test/unit/api_client_certificate_pin_test.dart \
+  test/unit/release_security_config_test.dart \
+  test/unit/supplement_models_test.dart \
+  test/supplement_flow_image_picker_test.dart
+# 31 passed
+
+flutter analyze
+# No issues found
+
+flutter build apk --debug --flavor dev
+# pass
+
+flutter build ios --simulator --debug
+# pass
+```
+
 ## Remaining Work
 
 1. Decide PR contents:
-   - field_extractor Phase 0-alpha is already isolated in commit `3d044dce`.
-   - recommended next split: quality-gate tooling/evaluator fix, analyze rate-limit gate, mobile release security as separate review slices.
+   - field_extractor Phase 0-alpha is isolated in commit `3d044dce`.
+   - backend quality/layout/provider routing and mobile release security are now separate commits, but the branch as a whole is larger than the team PR-size recommendation.
+   - before opening PR, decide whether to keep this branch as an integration PR or cherry-pick commits into smaller branches.
 2. Do not commit generated CLOVA artifacts unless the team explicitly wants evaluation artifacts in repo.
 3. Run PaddleOCR baseline again and compare before/after field-level extractor behavior where applicable.
 4. Start local Ollama with external model path before LLM parse:
@@ -518,4 +572,4 @@ ollama serve
 6. Continue security review on the next tranche:
    - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
    - decide whether generated OCR evaluation artifacts should remain untracked or be moved into an ignored/private artifact store
-   - split the current large dirty worktree into reviewable PR slices
+   - rebase against `team/develop` only after the working tree is clean and the target PR split is decided

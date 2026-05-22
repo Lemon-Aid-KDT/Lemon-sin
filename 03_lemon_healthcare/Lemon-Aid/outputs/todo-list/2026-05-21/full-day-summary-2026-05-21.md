@@ -7,7 +7,7 @@
 
 ## 0. Executive Summary
 
-본 세션에서 다음 **4개 핵심 마일스톤**을 완료하고 GitHub 팀 repo의 `feat/ocr-95-baseline-and-security-2026-05-20` branch 로 push 했다.
+본 세션에서 다음 **4개 핵심 마일스톤**을 완료하고 GitHub 팀 repo의 `feat/ocr-95-baseline-and-security-2026-05-20` branch 로 push 했다. 이후 추가로 로컬 `codex/p1-5-stabilization` snapshot commit 과 팀 repo root export push 를 완료해, 현재 GitHub branch tip 이 `8f38df11` 로 갱신되었다.
 
 | 마일스톤 | 결과 | 신호등 |
 |---|---|---|
@@ -19,6 +19,22 @@
 **수치 요약**: 740 pytest passed (회귀 0, +9 신규) · Flutter analyze 에러 0 · iOS Bundle launched (PID 52896) · Backend uvicorn 가동 중 (HTTP 200, 15ms response).
 
 핵심 메시지(CLAUDE.md): **"필라이즈가 못하는 만성질환자 + 의료데이터 영역으로 차별화"** — `chronic_disease_indications` + `purpose_targets` 가 백엔드 → comprehensive → Flutter 5-card 5번 카드까지 일관되게 흐른다.
+
+### 0.1 추가 반영 — 로컬 stabilization commit + 팀 GitHub push
+
+| 항목 | 결과 |
+|---|---|
+| 로컬 작업 브랜치 | `/Users/yeong/99_me/00_github` 의 `codex/p1-5-stabilization` |
+| 로컬 snapshot commit | `e1260140 chore(lemon): stabilize P1-5 workspace snapshot` |
+| 로컬 commit 범위 | `03_lemon_healthcare` 변경분만 포함, `00_plusultra/` untracked 는 제외 |
+| 로컬 commit 규모 | `1180 files changed`, `64006 insertions`, `40294 deletions` |
+| 팀 repo publish commit | `8f38df11 chore(lemon): publish P1-5 stabilization snapshot` |
+| 팀 repo 대상 | `https://github.com/Lemon-Aid-KDT/Lemon-sin.git` 의 `feat/ocr-95-baseline-and-security-2026-05-20` |
+| push 방식 | force push 없이 `afc14f11..8f38df11` fast-forward |
+| 팀 repo export 범위 | `e1260140:03_lemon_healthcare/Lemon-Aid` subtree 를 `Lemon-sin` repository root 로 export |
+| push 검증 | `git ls-remote team refs/heads/feat/ocr-95-baseline-and-security-2026-05-20` 가 `8f38df1130ff6f48e932c7f749c5b635983c2f3d` 반환 |
+
+주의: export commit 은 서로 다른 repository root 구조를 맞추기 위한 publish-only commit 이다. 로컬 monorepo 에서는 `Lemon-Aid` 가 `03_lemon_healthcare/Lemon-Aid/` 아래에 있고, 팀 repo `Lemon-sin` 에서는 동일 내용이 repository root 의 `backend/`, `mobile/`, `docs/`, `outputs/` 등으로 배치된다.
 
 ---
 
@@ -260,6 +276,22 @@ flutter run -d "iPhone 16e" \
 - `outputs/todo-list/2026-05-21/b-persona-accuracy-report.md`
 - `outputs/todo-list/2026-05-21/full-day-summary-2026-05-21.md` (본 파일)
 
+### Commit 13: `chore(lemon): stabilize P1-5 workspace snapshot`
+- **로컬 hash**: `e1260140`
+- **브랜치**: `codex/p1-5-stabilization`
+- **목적**: `03_lemon_healthcare` 하위의 Lemon Healthcare 안정화 snapshot 을 하나의 재현 가능한 commit 으로 고정
+- **범위**: backend, mobile, docs, data, outputs, records 를 포함한 `03_lemon_healthcare` 변경분
+- **제외**: 관련 없는 `00_plusultra/` untracked 파일군은 staging/commit 에 포함하지 않음
+- **검증 메모**: commit 전 `git diff --cached --check` 는 기존 whitespace 경고와 merge/conflict 설명 문서의 conflict-marker 예시를 보고했으며, 별도 코드 수정 없이 기록 후 진행
+
+### Publish commit: `chore(lemon): publish P1-5 stabilization snapshot`
+- **팀 repo hash**: `8f38df11`
+- **대상 remote/branch**: `team/feat/ocr-95-baseline-and-security-2026-05-20`
+- **parent**: `afc14f11 docs(todo-list): 2026-05-21 OCR + chronic + mobile integration reports`
+- **source tree**: `e1260140:03_lemon_healthcare/Lemon-Aid`
+- **목적**: 로컬 monorepo subtree 를 팀 repo root 구조로 맞춰 export 하면서 기존 팀 branch history 를 보존
+- **push 결과**: `afc14f11..8f38df11` fast-forward 완료, 강제 push 없음
+
 ---
 
 ## 7. 다음 단계 (사용자 액션)
@@ -282,8 +314,13 @@ flutter run -d "iPhone 16e" \
 
 - **Branch**: `feat/ocr-95-baseline-and-security-2026-05-20`
 - **Remote**: `https://github.com/Lemon-Aid-KDT/Lemon-sin.git`
-- **Commits**: 위 §6 의 12개 논리적 단위
+- **기존 원격 tip**: `afc14f11`
+- **최신 원격 tip**: `8f38df11`
+- **Commits**: 위 §6 의 12개 논리적 단위 + 로컬 snapshot commit `e1260140` + 팀 repo publish commit `8f38df11`
+- **Push 방식**: force push 없이 fast-forward (`afc14f11..8f38df11`)
 - **Pre-push 검증**: pytest 740 passed + flutter analyze 0 + secret scan OK + `.env` 미트래킹 확인
+- **Post-push 검증**: `git ls-remote team refs/heads/feat/ocr-95-baseline-and-security-2026-05-20` 가 `8f38df1130ff6f48e932c7f749c5b635983c2f3d` 반환
+- **남은 로컬 상태**: `/Users/yeong/99_me/00_github` 기준 `00_plusultra/` 는 관련 없는 untracked 로 남겨둠
 
 ---
 
