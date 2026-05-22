@@ -217,6 +217,28 @@
 - monorepo-origin branch의 code path를 missing으로 오판하는 false negative를 줄인다.
 - generated OCR eval artifact는 standalone/team branch와 monorepo/origin branch 양쪽에서 모두 차단된다.
 
+### 3.13 Current Branch Tracked Generated Artifact Gate
+
+수정 파일:
+
+- `backend/scripts/check_ocr_artifact_privacy.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_ocr_artifact_privacy.py`
+
+변경:
+
+- artifact privacy checker에 `--check-tracked-generated` 옵션을 추가했다.
+- 기본 forbidden tracked prefix는 `outputs/generated/ocr-eval/`이다.
+- 검사는 `git ls-files -- <prefix>` 기준으로 project-root에서 현재 index가 generated OCR artifact를 추적하는지 확인한다.
+- 공식 근거: Git `ls-files` 문서의 tracked/index file listing 동작을 기준으로 했다. https://git-scm.com/docs/git-ls-files.html
+- ignored/untracked generated artifact는 로컬 산출물로 허용하지만, Git-tracked 상태이면 `tracked_generated_artifact git_tracked`로 실패한다.
+- 이 gate는 파일 내용을 출력하지 않고 project-relative path와 bounded code만 출력한다.
+
+현재 브랜치 확인:
+
+- `git ls-files outputs/generated/ocr-eval | wc -l` 결과 tracked historical generated artifact는 22개다.
+- 삭제는 파일 추적 상태를 바꾸는 작업이므로 이번 slice에서는 실행하지 않았다.
+- 다음 cleanup slice에서 팀 승인 하에 `git rm --cached` 또는 별도 export branch 정리로 private artifact store 이전 여부를 결정해야 한다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:

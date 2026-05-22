@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from scripts import check_ocr_artifact_privacy as privacy
@@ -127,3 +128,73 @@ def test_main_reports_success_for_empty_directory(tmp_path: Path, capsys) -> Non
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "ocr_artifact_privacy_ok files=1" in captured.out
+
+
+def test_scan_tracked_generated_artifacts_rejects_git_tracked_report(
+    tmp_path: Path,
+) -> None:
+    """Verify generated OCR eval artifacts cannot remain tracked."""
+    repo_root = _init_git_repo(tmp_path)
+    artifact = repo_root / "outputs/generated/ocr-eval/report.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    _git(repo_root, "add", ".")
+    _git(repo_root, "commit", "-m", "seed")
+
+    findings = privacy.scan_tracked_generated_artifacts(project_root=repo_root)
+
+    assert [(finding.path.as_posix(), finding.code, finding.detail) for finding in findings] == [
+        ("outputs/generated/ocr-eval/report.json", "tracked_generated_artifact", "git_tracked")
+    ]
+
+
+def test_scan_tracked_generated_artifacts_allows_ignored_untracked_report(
+    tmp_path: Path,
+) -> None:
+    """Verify ignored generated artifacts may exist locally without being tracked."""
+    repo_root = _init_git_repo(tmp_path)
+    (repo_root / ".gitignore").write_text("outputs/generated/ocr-eval/\n", encoding="utf-8")
+    artifact = repo_root / "outputs/generated/ocr-eval/report.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    _git(repo_root, "add", ".gitignore")
+    _git(repo_root, "commit", "-m", "seed")
+
+    assert privacy.scan_tracked_generated_artifacts(project_root=repo_root) == []
+
+
+def test_main_reports_tracked_generated_artifact(tmp_path: Path, capsys) -> None:
+    """Verify the CLI reports tracked generated artifacts with bounded details."""
+    repo_root = _init_git_repo(tmp_path)
+    artifact = repo_root / "outputs/generated/ocr-eval/report.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    _git(repo_root, "add", ".")
+    _git(repo_root, "commit", "-m", "seed")
+
+    exit_code = privacy.main(
+        [
+            "--project-root",
+            str(repo_root),
+            "--check-tracked-generated",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "tracked_generated_artifact git_tracked" in captured.err
+
+
+def _init_git_repo(tmp_path: Path) -> Path:
+    """Create a minimal Git repo for tracked artifact tests."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _git(repo_root, "init")
+    _git(repo_root, "config", "user.email", "test@example.com")
+    _git(repo_root, "config", "user.name", "Test User")
+    return repo_root
+
+
+def _git(repo_root: Path, *args: str) -> None:
+    """Run Git in a temporary test repo."""
+    subprocess.run(("git", "-C", str(repo_root), *args), check=True, capture_output=True)

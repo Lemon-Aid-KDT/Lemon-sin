@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -62,6 +63,7 @@ TEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 SCAN_SUFFIXES = frozenset({".json", ".jsonl", ".md", ".txt", ".csv", ".tsv", ".log"})
+DEFAULT_TRACKED_GENERATED_PREFIXES = ("outputs/generated/ocr-eval/",)
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,52 @@ def scan_paths(paths: list[Path]) -> list[PrivacyFinding]:
     findings: list[PrivacyFinding] = []
     for path in iter_artifact_files(paths):
         findings.extend(scan_file(path))
+    return findings
+
+
+def scan_tracked_generated_artifacts(
+    *,
+    project_root: Path,
+    prefixes: tuple[str, ...] = DEFAULT_TRACKED_GENERATED_PREFIXES,
+) -> list[PrivacyFinding]:
+    """Scan Git-tracked generated OCR artifact paths.
+
+    Args:
+        project_root: Project directory used as the Git command working directory.
+        prefixes: Project-relative generated artifact prefixes that must not be tracked.
+
+    Returns:
+        Privacy findings for tracked generated artifact paths.
+    """
+    findings: list[PrivacyFinding] = []
+    for prefix in prefixes:
+        result = subprocess.run(
+            ("git", "-C", str(project_root), "ls-files", "--", prefix),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            findings.append(
+                PrivacyFinding(
+                    Path(prefix),
+                    1,
+                    "git_ls_files_failed",
+                    "unable_to_list_tracked_paths",
+                )
+            )
+            continue
+        for line in result.stdout.splitlines():
+            tracked_path = line.strip()
+            if tracked_path:
+                findings.append(
+                    PrivacyFinding(
+                        Path(tracked_path),
+                        1,
+                        "tracked_generated_artifact",
+                        "git_tracked",
+                    )
+                )
     return findings
 
 
@@ -244,13 +292,41 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code. Zero means no findings.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("paths", nargs="+", type=Path)
+    parser.add_argument("paths", nargs="*", type=Path)
+    parser.add_argument(
+        "--check-tracked-generated",
+        action="store_true",
+        help="Fail if generated OCR evaluation artifacts are tracked by Git.",
+    )
+    parser.add_argument(
+        "--project-root",
+        type=Path,
+        default=Path.cwd(),
+        help="Project directory for Git-tracked generated artifact checks.",
+    )
+    parser.add_argument(
+        "--tracked-generated-prefix",
+        action="append",
+        dest="tracked_generated_prefixes",
+        default=None,
+        help="Project-relative generated artifact prefix that must not be tracked.",
+    )
     args = parser.parse_args(argv)
+    if not args.paths and not args.check_tracked_generated:
+        parser.error("provide artifact paths or --check-tracked-generated")
 
     files = list(iter_artifact_files(args.paths))
     findings = []
     for path in files:
         findings.extend(scan_file(path))
+    if args.check_tracked_generated:
+        prefixes = tuple(args.tracked_generated_prefixes or DEFAULT_TRACKED_GENERATED_PREFIXES)
+        findings.extend(
+            scan_tracked_generated_artifacts(
+                project_root=args.project_root.resolve(),
+                prefixes=prefixes,
+            )
+        )
     if findings:
         for finding in findings:
             print(
