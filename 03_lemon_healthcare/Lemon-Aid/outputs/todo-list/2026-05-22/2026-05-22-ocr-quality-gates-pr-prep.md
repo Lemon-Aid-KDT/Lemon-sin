@@ -10,6 +10,24 @@
 - Commit rule: `<type>(<scope>): <한글/영문 명령형>`, no period, max 50 chars
 - Direct rebase status: `git merge-base team/develop HEAD` returns no merge base
 
+## Team Remote Reality Check
+
+`team/develop` is not currently synced with the working Lemon Aid code tree used by this branch.
+
+Observed state:
+
+- `team/develop` contains root-level skeleton folders such as `backend/src`, `backend/tests`, `mobile/lib`, and README/.gitkeep placeholders.
+- `team/develop` does not contain `backend/Nutrition-backend/src/ocr/field_extractor.py`.
+- `team/feat/ocr-p1-5-followup` does contain the `backend/Nutrition-backend` application tree.
+- A trial export of PR 1 against `team/develop` failed because the target files do not exist in that index.
+- The temporary export worktree and branch created for that trial were removed.
+
+Implication:
+
+- A small patch PR directly to `team/develop` is blocked until `team/develop` is synced with the Lemon Aid application tree.
+- If the team wants immediate review, target the already code-bearing branch `team/feat/ocr-p1-5-followup` or first merge/squash that branch into `team/develop`.
+- Do not commit generated OCR eval artifacts from the existing team feature branch into new PRs.
+
 ## Current Recommendation
 
 Do not open this branch as one broad PR, and do not run a direct `git rebase team/develop` on this branch.
@@ -201,7 +219,9 @@ ingredient_name_exact_rate=0.0
 
 Do not directly rebase this branch onto `team/develop`.
 
-The team PR branch should be created from `team/develop`, then each selected slice should be applied with paths made relative to `03_lemon_healthcare/Lemon-Aid/`.
+The preferred team PR branch should be created from `team/develop` only after `team/develop` contains the real Lemon Aid application tree.
+
+Until then, use this procedure only against a code-bearing base branch such as `team/feat/ocr-p1-5-followup`, or treat it as blocked pending team/develop synchronization.
 
 Pre-checks:
 
@@ -210,16 +230,16 @@ git fetch team
 git merge-base team/develop HEAD
 # expected here: no output / non-zero because histories are unrelated
 
-git -C $MONOREPO_ROOT ls-tree -d --name-only team/develop
-# expected team root contains backend, mobile, docs, scripts
+git -C $MONOREPO_ROOT ls-tree -r --name-only team/develop -- backend/Nutrition-backend/src/ocr/field_extractor.py
+# currently empty; do not apply PR 1 to team/develop while this remains empty
 ```
 
 Example export for PR 1:
 
 ```bash
-git worktree add -b fix/ocr-field-extractor-regression \
+git worktree add -b feat/ocr-field-extractor-regression \
   $EXPORT_WORKTREE \
-  team/develop
+  $CODE_BEARING_BASE_BRANCH
 
 git -C $MONOREPO_ROOT diff --binary \
   --relative=03_lemon_healthcare/Lemon-Aid \
