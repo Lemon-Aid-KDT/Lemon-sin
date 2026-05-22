@@ -12,16 +12,25 @@ repos:
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace            # 줄 끝 공백 제거
+        files: &lemon_aid_files ^(03_lemon_healthcare/Lemon-Aid/)?(backend|mobile|docs|assets|data|outputs|scripts|PROJECT_GUIDE\.md|README\.md|guide\.html|\.gitignore|\.pre-commit-config\.yaml|\.markdownlint\.json|\.secrets\.baseline)
         exclude: \.md$                      # Markdown 줄바꿈 보존
       - id: end-of-file-fixer               # 파일 끝 개행
+        files: *lemon_aid_files
       - id: check-yaml                      # YAML 문법 검증
+        files: *lemon_aid_files
       - id: check-toml                      # TOML 문법 검증
+        files: *lemon_aid_files
       - id: check-json                      # JSON 문법 검증
+        files: *lemon_aid_files
       - id: check-added-large-files         # 큰 파일 커밋 방지
+        files: *lemon_aid_files
         args: ['--maxkb=5000']              # 5MB 초과 차단
       - id: check-merge-conflict            # 머지 충돌 마커 검출
+        files: *lemon_aid_files
       - id: detect-private-key              # 개인 키 검출
+        files: *lemon_aid_files
       - id: mixed-line-ending               # 줄바꿈 통일
+        files: *lemon_aid_files
         args: ['--fix=lf']
 
   # ---------------------------------------------------------------------------
@@ -31,7 +40,7 @@ repos:
     rev: 24.4.2
     hooks:
       - id: black
-        files: ^backend/.*\.py$
+        files: ^(03_lemon_healthcare/Lemon-Aid/)?backend/.*\.py$
         args: ['--line-length=100']
 
   # ---------------------------------------------------------------------------
@@ -41,10 +50,10 @@ repos:
     rev: v0.4.4
     hooks:
       - id: ruff
-        files: ^backend/.*\.py$
+        files: ^(03_lemon_healthcare/Lemon-Aid/)?backend/.*\.py$
         args: ['--fix']
       - id: ruff-format
-        files: ^backend/.*\.py$
+        files: ^(03_lemon_healthcare/Lemon-Aid/)?backend/.*\.py$
 
   # ---------------------------------------------------------------------------
   # Python: mypy (타입 체크)
@@ -53,7 +62,7 @@ repos:
     rev: v1.10.0
     hooks:
       - id: mypy
-        files: ^backend/(supplement_analysis|food_image_analysis|ai_agent_chat)/src/.*\.py$
+        files: ^(03_lemon_healthcare/Lemon-Aid/)?backend/(supplement_analysis|food_image_analysis|ai_agent_chat)/src/.*\.py$
         args: ['--ignore-missing-imports']
         additional_dependencies:
           - pydantic
@@ -66,7 +75,8 @@ repos:
     rev: v0.40.0
     hooks:
       - id: markdownlint
-        args: ['--config', '.markdownlint.json']
+        entry: bash -c 'root=.; prefix=03_lemon_healthcare/Lemon-Aid; if [ -d "$prefix" ]; then root=$prefix; fi; args=(); for f in "$@"; do case "$f" in "$prefix"/*) args+=("${f#"$prefix"/}") ;; *) args+=("$f") ;; esac; done; cd "$root" && markdownlint --config .markdownlint.json "${args[@]}"' --
+        files: ^(03_lemon_healthcare/Lemon-Aid/)?(backend|mobile|docs|outputs|PROJECT_GUIDE\.md|README\.md).*\.(md|markdown)$
 
   # ---------------------------------------------------------------------------
   # 보안: 비밀 정보 검출
@@ -75,8 +85,9 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: ['--baseline', '.secrets.baseline']
-        exclude: ^(\.git/|\.venv/|node_modules/)
+        entry: bash -c 'root=.; prefix=03_lemon_healthcare/Lemon-Aid; if [ -d "$prefix" ]; then root=$prefix; fi; args=(); for f in "$@"; do case "$f" in "$prefix"/*) args+=("${f#"$prefix"/}") ;; *) args+=("$f") ;; esac; done; cd "$root" && detect-secrets-hook --baseline .secrets.baseline "${args[@]}"' --
+        files: *lemon_aid_files
+        exclude: ^(03_lemon_healthcare/Lemon-Aid/)?(\.git/|\.venv/|node_modules/|\.secrets\.baseline$)
 
   # ---------------------------------------------------------------------------
   # 커밋 메시지 컨벤션 검증 (Conventional Commits)

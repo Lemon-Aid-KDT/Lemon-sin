@@ -33,12 +33,12 @@
 | Lemon-Aid 내부 `.github` | 없음 |
 | Git root `.github/PULL_REQUEST_TEMPLATE.md` | 있음, monorepo P1 template |
 | Git root Lemon workflows | 있음, `yeong-Lemon-Aid` 경로 기준 |
-| `.secrets.baseline` | 없음 |
-| `.markdownlint.json` | 없음 |
+| `.secrets.baseline` | 있음, 33 files / 87 historical candidates |
+| `.markdownlint.json` | 있음, low-noise bootstrap rules |
 | installed Git hooks | Git root `.git/hooks/pre-commit`, `commit-msg`, `pre-push` 없음 |
 | `pre-commit validate-config` | 통과 |
-| `pre-commit run detect-secrets --all-files` | 실패: `.secrets.baseline` missing |
-| `pre-commit run markdownlint --all-files` | 실패: `.markdownlint.json` missing + broad markdown lint findings |
+| `pre-commit run detect-secrets --all-files` | 통과 |
+| `pre-commit run markdownlint --all-files` | 통과 |
 
 ## Gap Table
 
@@ -49,8 +49,8 @@
 | Commit subject | imperative, no period, <= 50 chars | Current third-party hook validates Conventional Commits type shape only. | Subject length/period/scope allow-list are not fully enforced. | Medium: squash titles can drift from documented format. |
 | PR template | `PR_GUIDELINES.md` says `.github/PULL_REQUEST_TEMPLATE.md` should include branch/pre-commit/CI/secret checks. | Git root has a generic P1 template. Lemon-Aid folder has no standalone `.github`. `team/docs/team-collaboration-rules` has a closer template. | Current template does not fully match team checklist and may not export cleanly to standalone team repo. | Medium: review evidence and secret/no-raw checks are easy to omit. |
 | CI workflow path | CI should run backend/mobile/docs gates for Lemon Aid. | Git root Lemon workflows point to `03_lemon_healthcare/yeong-Lemon-Aid/...`. Current work is under `03_lemon_healthcare/Lemon-Aid/...`. | CI path is stale for the current default Lemon-Aid location. | High: PR can appear green while current path is untested. |
-| Secret scan | `CI_CD_GATES.md` requires security gate and `.env`/secret protection. | Local pre-commit has `detect-secrets --baseline .secrets.baseline`, but baseline file is missing. Root CI has no Lemon-specific secret scan job beyond dependency audit/docs. | Secret hook is configured but currently not runnable. | High: contributors can miss local secret scan, and CI may not compensate. |
-| Markdown lint | `.pre-commit-config.yaml` calls `markdownlint --config .markdownlint.json`. | `.markdownlint.json` is missing. | Configured hook fails before meaningful team docs linting. | Medium: all-files pre-commit is not reproducible. |
+| Secret scan | `CI_CD_GATES.md` requires security gate and `.env`/secret protection. | Local pre-commit now resolves the baseline in both the current monorepo path and a standalone team-root export path. `.secrets.baseline` contains hashes for existing historical candidates, not raw values. Root CI still has no Lemon-specific secret scan job beyond dependency audit/docs. | Local hook bootstrap is closed; CI enforcement and historical candidate audit remain. | Medium: local contributors can run the hook, but CI still needs the non-bypassable version. |
+| Markdown lint | `.pre-commit-config.yaml` calls `markdownlint` with a repo config. | `.markdownlint.json` now exists and the hook resolves it in both current monorepo and standalone team-root paths. | Bootstrap closed with low-noise rules; stricter project-wide markdown cleanup remains separate. | Low-Medium: docs lint is reproducible, but intentionally not strict yet. |
 | Large file limit | `CI_CD_GATES.md` shows 2MB example. | Current `.pre-commit-config.yaml` uses `--maxkb=5000`; team docs branch uses 2000. | Limit differs between docs/current/team docs branch. | Low-Medium: OCR artifacts or screenshots may exceed intended limit. |
 | `--no-verify` ban | Docs ban usage. | Git cannot technically prevent user-supplied `--no-verify` locally. No CI team-policy equivalent exists in this branch. | Needs CI-side policy and review checklist, not only local hooks. | Medium: local-only gate can be bypassed. |
 | Force push ban | Docs allow only safe force-with-lease and branch protection denies force pushes on protected branches. | Branch protection settings are not inspectable from this checkout. Root CI does not validate force-push settings. | External GitHub setting remains unverified. | Medium: requires admin/API verification. |
@@ -75,8 +75,12 @@ done as a separate small PR after choosing the correct base.
 - No secret values were read from `.env`.
 - This report only records filenames, branch names, command outcomes, and
   bounded error classes.
-- The missing `.secrets.baseline` makes the configured secret hook fail before
-  scanning actual files.
+- The secret baseline records existing historical candidates by detector type,
+  filename, line number, and hashed secret only. It does not store cleartext
+  candidate values.
+- The generated baseline is not a proof that all historical candidates are safe;
+  it is a bootstrap that makes new secret regressions locally detectable while
+  the historical audit is handled separately.
 - Current docs and hooks still rely on local discipline for `--no-verify`; CI
   should own the non-bypassable version of this policy.
 - Stale workflow paths are a security issue because a changed protected path can
@@ -87,14 +91,17 @@ done as a separate small PR after choosing the correct base.
 | Priority | PR | Scope |
 | --- | --- | --- |
 | P0 | `ci/team-policy-gates` | Add team-policy workflow and scripts from `team/docs/team-collaboration-rules`, then adapt paths to the current Lemon-Aid location. |
-| P0 | `chore(team): secret scan baseline을 추가` | Add or regenerate `.secrets.baseline` after a full review; do not include real secret values. |
 | P1 | `docs(team): PR template을 동기화` | Replace or supplement the current generic PR template with the team checklist from `PR_GUIDELINES.md`. |
 | P1 | `ci(infra): Lemon workflow 경로를 보정` | Move `yeong-Lemon-Aid` workflow paths to the current default Lemon-Aid path or make path detection explicit. |
-| P1 | `chore(team): markdownlint 설정을 추가` | Add `.markdownlint.json` or remove the configured hook until a project-wide rule set exists. |
+| P1 | `test(team): secret baseline 후보를 감사` | Review the 87 baseline candidates and replace real credentials if any are confirmed. |
+| P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| Done | `chore(team): secret scan baseline을 추가` | Added `.secrets.baseline`; `pre-commit run detect-secrets --all-files` passes. |
+| Done | `chore(team): markdownlint 설정을 추가` | Added `.markdownlint.json`; `pre-commit run markdownlint --all-files` passes. |
 | Done | `chore(team): pre-commit type 목록을 문서와 맞춤` | Allowed `build`, `revert`, `data`, `ops`; scope and subject constraints still belong in the team-policy validator. |
 
 ## Current Decision
 
-Do not change CI or hooks in the same PR as OCR quality gates. The next safe
-step is a dedicated governance PR that first imports the team-policy validator
-and PR template, then separately fixes stale workflow paths and secret scanning.
+Keep CI/team-policy changes separate from the OCR quality-gate slices. The
+local hook bootstrap is now repaired, but the next safe governance PR still
+needs to import the team-policy validator and PR template, then fix stale
+workflow paths.

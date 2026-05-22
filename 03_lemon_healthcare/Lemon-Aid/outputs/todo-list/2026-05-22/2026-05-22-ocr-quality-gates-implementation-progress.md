@@ -263,6 +263,49 @@
 - 이번 변경은 type allow-list mismatch만 닫는다.
 - scope allow-list, subject 길이, 마침표 금지는 별도 team-policy validator에서 계속 다뤄야 한다.
 
+### 3.15 Secret Scan and Markdownlint Bootstrap
+
+수정 파일:
+
+- `.pre-commit-config.yaml`
+- `.secrets.baseline`
+- `.markdownlint.json`
+- `outputs/todo-list/2026-05-22/2026-05-22-team-governance-enforcement-gap-report.md`
+
+변경:
+
+- `detect-secrets` baseline을 추가해 local secret hook이 missing baseline
+  error로 즉시 실패하던 상태를 닫았다.
+- baseline은 현재 Lemon-Aid tracked files에서 나온 33 files / 87 historical
+  candidates를 detector type, filename, line number, hashed secret 형태로만
+  기록한다.
+- `.markdownlint.json`을 low-noise bootstrap rules로 추가해 configured hook이
+  missing config error로 실패하지 않게 했다.
+- `.pre-commit-config.yaml`의 file hooks가 현재 상위 Git root의 다른
+  프로젝트가 아니라 Lemon-Aid 경로만 보도록 path filter를 추가했다.
+- hook entry는 현재 monorepo path와 향후 standalone team-root export path에서
+  Lemon-Aid root로 이동한 뒤 project-relative file path로 검사하게 했다.
+
+검증:
+
+```text
+pre-commit validate-config .pre-commit-config.yaml
+pre-commit run detect-secrets --all-files
+pre-commit run markdownlint --all-files
+```
+
+보안 확인:
+
+- baseline/config 변경분에서 local absolute path prefix, auth header,
+  private key, explicit secret assignment 패턴은 발견되지 않았다.
+- baseline은 cleartext candidate value를 저장하지 않는 hash 기반 gate다.
+- 다만 baseline이 모든 historical candidate가 안전하다는 증명은 아니므로,
+  87개 후보의 별도 audit은 후속 governance PR로 남긴다.
+- 공식 근거: `detect-secrets scan > .secrets.baseline`은 baseline 생성
+  quickstart로 문서화되어 있다. https://github.com/Yelp/detect-secrets
+- 공식 근거: `markdownlint-cli`는 `.markdownlint.json` 등 config file을
+  지원한다. https://www.npmjs.com/package/markdownlint-cli
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -790,4 +833,6 @@ ollama serve
 6. Continue security review on the next tranche:
    - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
    - generated OCR evaluation artifacts are now ignored by default; decide separately whether historical tracked reports should remain in Git or move to a private artifact store
+   - audit the 87 historical `detect-secrets` baseline candidates and rotate/remove anything confirmed as real credential material
+   - import non-bypassable team-policy CI for branch name, commit subject, PR template, and stale workflow path checks
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
