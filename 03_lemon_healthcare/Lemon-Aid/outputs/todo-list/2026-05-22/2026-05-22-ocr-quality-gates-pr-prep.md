@@ -28,6 +28,13 @@ Implication:
 - If the team wants immediate review, target the already code-bearing branch `team/feat/ocr-p1-5-followup` or first merge/squash that branch into `team/develop`.
 - Do not commit generated OCR eval artifacts from the existing team feature branch into new PRs.
 
+## Branch Preservation
+
+- Local branch: `feat/ocr-quality-gates`
+- Preserved remote: `origin/feat/ocr-quality-gates`
+- Preserved head at the time of this note: `4b1ecf25 docs(ocr): 팀 브랜치 동기화 조건을 기록`
+- Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
+
 ## Current Recommendation
 
 Do not open this branch as one broad PR, and do not run a direct `git rebase team/develop` on this branch.
