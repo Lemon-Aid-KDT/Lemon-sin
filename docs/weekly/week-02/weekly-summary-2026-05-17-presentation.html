@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lemon Aid Week 02 음식·영양제 입력 브리핑</title>
+  <style>
+    @page { size: 16in 9in; margin: 0; }
+
+    :root {
+      --ink: #172033;
+      --muted: #657185;
+      --subtle: #8c98aa;
+      --line: rgba(130, 148, 174, 0.24);
+      --glass: rgba(255, 255, 255, 0.74);
+      --glass-strong: rgba(255, 255, 255, 0.9);
+      --blue: #246bfe;
+      --mint: #00a878;
+      --amber: #c98206;
+      --blue-soft: rgba(36, 107, 254, 0.12);
+      --mint-soft: rgba(0, 168, 120, 0.12);
+      --amber-soft: rgba(250, 176, 45, 0.17);
+      --shadow: 0 26px 70px rgba(52, 73, 101, 0.15);
+      --title-size: clamp(1.72rem, 5.4vw, 4.7rem);
+      --h2-size: clamp(1.42rem, 3.45vw, 3.18rem);
+      --h3-size: clamp(0.94rem, 1.55vw, 1.25rem);
+      --body-size: clamp(0.78rem, 1.18vw, 1.08rem);
+      --small-size: clamp(0.66rem, 0.92vw, 0.86rem);
+      --slide-padding: clamp(1rem, 4vw, 4.6rem);
+      --content-gap: clamp(0.62rem, 1.85vw, 1.8rem);
+      --element-gap: clamp(0.38rem, 1vw, 0.92rem);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      overflow-x: hidden;
+      margin: 0;
+    }
+
+    html {
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-height: 100%;
+      background: #eef2f7;
+      color: var(--ink);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .slide {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      page-break-after: always;
+      break-after: page;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(245, 248, 252, 0.92)),
+        linear-gradient(90deg, rgba(36, 107, 254, 0.06), transparent 44%, rgba(0, 168, 120, 0.055));
+    }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.7), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.64)),
+        repeating-linear-gradient(90deg, rgba(94, 114, 143, 0.06) 0 1px, transparent 1px 8.5vw);
+      pointer-events: none;
+    }
+
+    .slide-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      max-height: 100%;
+      overflow: hidden;
+      padding: var(--slide-padding);
+      position: relative;
+      z-index: 1;
+      gap: var(--content-gap);
+    }
+
+    .topline {
+      position: absolute;
+      z-index: 2;
+      left: var(--slide-padding);
+      right: var(--slide-padding);
+      top: clamp(0.7rem, 1.7vw, 1.35rem);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--subtle);
+      font-size: var(--small-size);
+      font-weight: 800;
+    }
+
+    .topline span { white-space: nowrap; }
+
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+
+    h1 {
+      max-width: 12ch;
+      font-size: var(--title-size);
+      line-height: 1.02;
+      font-weight: 900;
+    }
+
+    h2 {
+      max-width: 17ch;
+      font-size: var(--h2-size);
+      line-height: 1.1;
+      font-weight: 900;
+    }
+
+    h3 {
+      font-size: var(--h3-size);
+      line-height: 1.28;
+      font-weight: 850;
+    }
+
+    p {
+      color: var(--muted);
+      font-size: var(--body-size);
+      line-height: 1.58;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
+    strong { color: var(--blue); font-weight: 900; }
+
+    code {
+      padding: 0.08em 0.36em;
+      border-radius: 0.45em;
+      background: rgba(36, 107, 254, 0.08);
+      color: #1559d6;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 0.92em;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      gap: 0.42rem;
+      min-height: clamp(1.45rem, 2vw, 1.85rem);
+      padding: 0.38rem 0.78rem;
+      border: 1px solid rgba(36, 107, 254, 0.2);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--blue);
+      font-size: var(--small-size);
+      font-weight: 900;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .eyebrow.mint { border-color: rgba(0, 168, 120, 0.24); color: var(--mint); }
+    .eyebrow.amber { border-color: rgba(201, 130, 6, 0.28); color: var(--amber); }
+
+    .hero-copy {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.62fr);
+      gap: clamp(1rem, 5vw, 4.7rem);
+      align-items: end;
+    }
+
+    .lead {
+      max-width: 45rem;
+      font-size: clamp(0.95rem, 1.55vw, 1.38rem);
+      line-height: 1.55;
+      color: #4c5b70;
+    }
+
+    .glass {
+      border: 1px solid var(--line);
+      border-radius: clamp(1rem, 2vw, 1.65rem);
+      background: var(--glass);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px) saturate(1.45);
+      -webkit-backdrop-filter: blur(22px) saturate(1.45);
+    }
+
+    .metric {
+      padding: clamp(0.9rem, 2vw, 1.5rem);
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .metric b {
+      font-size: clamp(1.9rem, 5vw, 4.2rem);
+      line-height: 0.95;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: var(--small-size);
+      line-height: 1.42;
+      font-weight: 750;
+    }
+
+    .statement {
+      max-width: 62rem;
+      padding: clamp(1rem, 2.8vw, 2.2rem);
+      border-left: 0.36rem solid var(--blue);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 255, 0.78));
+    }
+
+    .statement p {
+      color: #263248;
+      font-size: clamp(1.05rem, 2.2vw, 1.95rem);
+      line-height: 1.42;
+      font-weight: 850;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: var(--element-gap);
+    }
+
+    .flow-card,
+    .info-card,
+    .decision-card {
+      min-width: 0;
+      padding: clamp(0.75rem, 1.55vw, 1.2rem);
+      border: 1px solid var(--line);
+      border-radius: clamp(0.85rem, 1.4vw, 1.2rem);
+      background: rgba(255, 255, 255, 0.68);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .flow-card b,
+    .info-card b,
+    .decision-card b {
+      display: block;
+      margin-bottom: 0.42rem;
+      color: var(--ink);
+      font-size: var(--h3-size);
+      line-height: 1.25;
+      font-weight: 900;
+    }
+
+    .flow-card span,
+    .info-card span,
+    .decision-card span {
+      display: block;
+      color: var(--muted);
+      font-size: var(--small-size);
+      line-height: 1.43;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
+    .phase-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: var(--element-gap);
+      align-items: stretch;
+    }
+
+    .phase {
+      padding: clamp(0.9rem, 2vw, 1.55rem);
+    }
+
+    .phase .label {
+      display: inline-block;
+      margin-bottom: 0.7rem;
+      color: var(--blue);
+      font-size: var(--small-size);
+      font-weight: 900;
+    }
+
+    .phase h3 {
+      font-size: clamp(1.05rem, 2.1vw, 1.9rem);
+      line-height: 1.18;
+    }
+
+    .phase p { margin-top: 0.75rem; }
+
+    .status-list {
+      display: grid;
+      gap: 0.52rem;
+    }
+
+    .status {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.55rem;
+      align-items: start;
+      padding: clamp(0.62rem, 1.1vw, 0.92rem);
+      border: 1px solid var(--line);
+      border-radius: 0.9rem;
+      background: rgba(255, 255, 255, 0.64);
+    }
+
+    .dot {
+      width: 0.62rem;
+      height: 0.62rem;
+      margin-top: 0.32rem;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .dot.mint { background: var(--mint); }
+    .dot.amber { background: var(--amber); }
+
+    .status span {
+      color: var(--muted);
+      font-size: var(--small-size);
+      line-height: 1.42;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
+    .map {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--element-gap);
+    }
+
+    .map .info-card {
+      min-height: clamp(8rem, 19vh, 11.5rem);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.36rem;
+      margin-top: 0.65rem;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.4rem;
+      padding: 0.26rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(36, 107, 254, 0.09);
+      color: #1559d6;
+      font-size: clamp(0.6rem, 0.78vw, 0.74rem);
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .tag.mint { background: var(--mint-soft); color: #00795c; }
+    .tag.amber { background: var(--amber-soft); color: #9b6400; }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+      gap: clamp(1rem, 3vw, 2.5rem);
+      align-items: center;
+    }
+
+    .stack {
+      display: grid;
+      gap: var(--element-gap);
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--element-gap);
+    }
+
+    .decision-card {
+      min-height: clamp(7.1rem, 18vh, 10.3rem);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .decision-card small {
+      margin-top: 0.7rem;
+      color: var(--amber);
+      font-size: var(--small-size);
+      font-weight: 900;
+    }
+
+    .priority {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--element-gap);
+    }
+
+    .priority .info-card {
+      min-height: clamp(6.3rem, 14vh, 8.7rem);
+      background: rgba(255, 255, 255, 0.74);
+    }
+
+    .progress {
+      position: fixed;
+      z-index: 20;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 4px;
+      background: rgba(123, 141, 164, 0.18);
+    }
+
+    .progress span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--mint));
+      transition: width 260ms ease;
+    }
+
+    .pager {
+      position: fixed;
+      right: clamp(0.75rem, 2vw, 1.6rem);
+      bottom: clamp(0.7rem, 1.5vw, 1.2rem);
+      z-index: 21;
+      padding: 0.42rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.74);
+      color: var(--muted);
+      font-size: var(--small-size);
+      font-weight: 900;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 520ms ease, transform 520ms ease;
+    }
+
+    .slide.active .reveal {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .slide.active .reveal:nth-child(2) { transition-delay: 60ms; }
+    .slide.active .reveal:nth-child(3) { transition-delay: 120ms; }
+    .slide.active .reveal:nth-child(4) { transition-delay: 180ms; }
+
+    @media (max-width: 900px) {
+      .hero-copy,
+      .split,
+      .phase-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .map,
+      .decision-grid,
+      .priority {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metric { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      :root {
+        --title-size: clamp(1.62rem, 8.6vw, 2.8rem);
+        --h2-size: clamp(1.26rem, 6.7vw, 2.1rem);
+      }
+
+      .topline span:last-child { display: none; }
+      .flow,
+      .map,
+      .decision-grid,
+      .priority {
+        grid-template-columns: 1fr;
+      }
+
+      .slide-content { justify-content: center; }
+      .flow-card:nth-child(n+4),
+      .map .info-card:nth-child(n+5),
+      .decision-card:nth-child(n+5),
+      .priority .info-card:nth-child(n+5) {
+        display: none;
+      }
+    }
+
+    @media (max-height: 700px) {
+      :root {
+        --slide-padding: clamp(0.75rem, 3vw, 2rem);
+        --content-gap: clamp(0.4rem, 1.35vw, 1rem);
+        --title-size: clamp(1.25rem, 4.5vw, 2.9rem);
+        --h2-size: clamp(1.05rem, 3vw, 2rem);
+        --body-size: clamp(0.7rem, 1.08vw, 0.94rem);
+      }
+
+      .map .info-card,
+      .decision-card {
+        min-height: 0;
+      }
+    }
+
+    @media (max-height: 600px) {
+      :root {
+        --slide-padding: clamp(0.5rem, 2.5vw, 1.4rem);
+        --content-gap: clamp(0.3rem, 1vw, 0.7rem);
+        --title-size: clamp(1.1rem, 4vw, 2rem);
+        --body-size: clamp(0.66rem, 1vw, 0.82rem);
+      }
+
+      .topline,
+      .pager {
+        display: none;
+      }
+
+      .flow-card:nth-child(n+4),
+      .map .info-card:nth-child(n+4),
+      .decision-card:nth-child(n+5),
+      .priority .info-card:nth-child(n+4),
+      .tag-row {
+        display: none;
+      }
+    }
+
+    @media (max-height: 500px) {
+      :root {
+        --slide-padding: clamp(0.4rem, 2vw, 0.9rem);
+        --title-size: clamp(1rem, 3.5vw, 1.5rem);
+        --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+        --body-size: clamp(0.62rem, 0.9vw, 0.76rem);
+      }
+    }
+
+    @media print {
+      html, body {
+        width: 16in;
+        height: 9in;
+        overflow: visible;
+        background: #fff;
+      }
+
+      .slide {
+        width: 16in;
+        height: 9in;
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .slide:last-of-type { page-break-after: auto; break-after: auto; }
+      .progress, .pager { display: none; }
+      .reveal { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+      }
+
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1; transform: none; }
+    }
+
+    /* Toss clean app tone */
+    :root {
+      --ink: #191f28;
+      --muted: #4e5968;
+      --subtle: #8b95a1;
+      --line: #d8dee8;
+      --glass: #ffffff;
+      --glass-strong: #ffffff;
+      --blue: #2563eb;
+      --mint: #0f766e;
+      --amber: #b45309;
+      --blue-soft: #edf4ff;
+      --mint-soft: #edf7f5;
+      --amber-soft: #fff7ed;
+      --shadow: 0 10px 24px rgba(25, 31, 40, 0.07);
+      --title-size: clamp(1.85rem, 5.4vw, 4.8rem);
+      --h2-size: clamp(1.45rem, 3.4vw, 3.05rem);
+      --h3-size: clamp(1.05rem, 1.65vw, 1.42rem);
+      --body-size: clamp(0.9rem, 1.28vw, 1.16rem);
+      --small-size: clamp(0.78rem, 0.98vw, 0.94rem);
+      --slide-padding: clamp(1rem, 4.1vw, 4.8rem);
+      --content-gap: clamp(0.62rem, 1.75vw, 1.75rem);
+      --element-gap: clamp(0.45rem, 1.1vw, 0.95rem);
+    }
+
+    body {
+      background: #f6f8fb;
+      color: var(--ink);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    }
+
+    .slide {
+      background: #f6f8fb;
+    }
+
+    .slide::before {
+      content: none;
+    }
+
+    .topline {
+      color: #6b7684;
+      font-weight: 800;
+    }
+
+    h1 {
+      max-width: 12.5ch;
+      color: var(--ink);
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      max-width: 18ch;
+      color: var(--ink);
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    h3,
+    .flow-card b,
+    .info-card b,
+    .decision-card b {
+      color: var(--ink);
+      font-weight: 850;
+    }
+
+    p,
+    .flow-card span,
+    .info-card span,
+    .decision-card span,
+    .status span,
+    .metric span {
+      color: var(--muted);
+    }
+
+    strong {
+      color: var(--blue);
+      font-weight: 900;
+    }
+
+    code {
+      background: var(--blue-soft);
+      color: #1b64da;
+      border-radius: 8px;
+    }
+
+    .eyebrow {
+      min-height: 2rem;
+      padding: 0.48rem 0.86rem;
+      border: 0;
+      border-radius: 10px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-weight: 900;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .eyebrow.mint {
+      border: 0;
+      background: var(--mint-soft);
+      color: var(--mint);
+    }
+
+    .eyebrow.amber {
+      border: 0;
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .lead {
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .glass,
+    .flow-card,
+    .info-card,
+    .decision-card,
+    .status {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      box-shadow: var(--shadow);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .metric,
+    .phase,
+    .statement {
+      border-radius: 18px;
+    }
+
+    .metric b {
+      color: var(--ink);
+      font-weight: 900;
+    }
+
+    .statement {
+      border-left: 0;
+      background: #ffffff;
+      padding: clamp(1.15rem, 3vw, 2.5rem);
+    }
+
+    .statement p {
+      color: var(--ink);
+      font-weight: 850;
+    }
+
+    .statement::before {
+      content: "";
+      display: block;
+      width: 3rem;
+      height: 0.38rem;
+      margin-bottom: clamp(0.8rem, 1.6vw, 1.2rem);
+      border-radius: 8px;
+      background: var(--blue);
+    }
+
+    .flow-card,
+    .info-card,
+    .decision-card,
+    .status {
+      border-radius: 16px;
+    }
+
+    .phase .label {
+      color: var(--blue);
+      font-weight: 900;
+    }
+
+    .dot {
+      background: var(--blue);
+    }
+
+    .dot.mint {
+      background: var(--mint);
+    }
+
+    .dot.amber {
+      background: var(--amber);
+    }
+
+    .tag {
+      min-height: 1.55rem;
+      border-radius: 8px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-style: normal;
+    }
+
+    .tag.mint {
+      background: var(--mint-soft);
+      color: var(--mint);
+    }
+
+    .tag.amber {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .progress {
+      height: 5px;
+      background: #e5e8eb;
+    }
+
+    .progress span {
+      background: var(--blue);
+    }
+
+    .pager {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: #6b7684;
+      box-shadow: 0 6px 18px rgba(25, 31, 40, 0.08);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    @media (max-width: 900px) {
+      .flow-card,
+      .info-card,
+      .decision-card,
+      .status {
+        border-radius: 18px;
+      }
+    }
+
+    @media (max-height: 600px) {
+      .metric,
+      .statement,
+      .phase {
+        border-radius: 18px;
+      }
+    }
+
+    @media (max-height: 430px) {
+      :root {
+        --slide-padding: clamp(0.3rem, 1.7vw, 0.72rem);
+        --content-gap: 0.32rem;
+        --element-gap: 0.32rem;
+        --h2-size: clamp(0.92rem, 2.25vw, 1.15rem);
+        --h3-size: clamp(0.7rem, 1.2vw, 0.82rem);
+        --body-size: clamp(0.58rem, 0.88vw, 0.7rem);
+        --small-size: clamp(0.52rem, 0.76vw, 0.62rem);
+      }
+
+      .flow-card,
+      .info-card,
+      .decision-card,
+      .status,
+      .phase {
+        padding: 0.5rem;
+        border-radius: 14px;
+      }
+
+      .statement {
+        padding: 0.7rem;
+      }
+
+      .statement::before {
+        width: 2rem;
+        height: 0.25rem;
+        margin-bottom: 0.42rem;
+      }
+
+      .phase p,
+      #slide-11 .lead,
+      .status-list .status:nth-child(n+2) {
+        display: none;
+      }
+
+      .decision-card small {
+        margin-top: 0.28rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main aria-label="Lemon Aid Week 02 음식·영양제 입력 브리핑">
+    <section class="slide active" id="slide-1" aria-label="이번 주 주제">
+      <div class="topline"><span>Lemon Aid Weekly</span><span>2026.05.11 - 2026.05.17</span></div>
+      <div class="slide-content">
+        <div class="hero-copy">
+          <div class="stack">
+            <span class="eyebrow reveal">Week 02 Briefing</span>
+            <h1 class="reveal">입력 인텔리전스</h1>
+            <p class="lead reveal">음식 이미지와 영양제 라벨 이미지를 검증 가능한 건강 데이터로 전환하는 기반을 설계했습니다.</p>
+          </div>
+          <div class="metric glass reveal">
+            <b>2</b>
+            <span>Food Recognition · Supplement OCR<br>공통 기준은 검증과 승인</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-2" aria-label="이번 주 한 줄 결론">
+      <div class="topline"><span>Conclusion</span><span>02 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow reveal">한 줄 결론</span>
+        <div class="statement glass reveal">
+          <p>이번 주의 핵심 산출물은 인식 기능 자체보다, 인식 결과를 <strong>신뢰도 · 근거 · 승인 상태를 가진 데이터</strong>로 전환하는 구조입니다.</p>
+        </div>
+        <p class="lead reveal">candidate extraction · evidence trace · review gate · confirmed record</p>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-3" aria-label="전체 지도">
+      <div class="topline"><span>Input Flow</span><span>03 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow mint reveal">Architecture</span>
+        <h2 class="reveal">도메인별 파이프라인</h2>
+        <div class="phase-grid reveal">
+          <div class="phase glass">
+            <span class="label">음식 사진</span>
+            <h3>인식 후보에서 섭취 데이터까지</h3>
+            <p>비전 모델이 음식 후보를 생성하고, 영양 기준 데이터와 섭취량 보정 과정을 거쳐 기록 가능 상태로 전환합니다.</p>
+          </div>
+          <div class="phase glass">
+            <span class="label">영양제 라벨</span>
+            <h3>라벨 OCR에서 성분 검토까지</h3>
+            <p>라벨 영역을 읽고 성분·함량 후보를 구조화한 뒤, 사용자가 승인하기 전까지 복용 기록과 분리합니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-4" aria-label="음식 사진 후보">
+      <div class="topline"><span>Food Input</span><span>04 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow reveal">Food Recognition</span>
+        <h2 class="reveal">식품 인식 파이프라인</h2>
+        <div class="phase-grid">
+          <div class="phase glass reveal">
+            <span class="label">Input</span>
+            <h3>사용자 촬영 이미지</h3>
+            <p>접시, 포장, 혼합 음식 사진을 입력으로 받아 음식 영역과 후보 class를 분리합니다.</p>
+          </div>
+          <div class="phase glass reveal">
+            <span class="label">Output</span>
+            <h3>다중 후보와 신뢰도</h3>
+            <p>결과는 확정 기록이 아니라 화면 검토용 후보입니다. 낮은 신뢰도와 class 충돌은 review 대상으로 남깁니다.</p>
+          </div>
+        </div>
+        <div class="status-list reveal">
+          <div class="status"><i class="dot"></i><span><strong>이번 주 정리:</strong> 비전 모델 응답을 음식 후보, 위치 정보, 신뢰도, review flag로 정규화하는 흐름을 확인했습니다.</span></div>
+          <div class="status"><i class="dot mint"></i><span><strong>기술 축:</strong> YOLO 계열 모델, Google Cloud Vision 후보, 초기 20개 음식 class</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-5" aria-label="음식 영양 매칭">
+      <div class="topline"><span>Food Nutrition</span><span>05 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow mint reveal">Nutrition Mapping</span>
+        <h2 class="reveal">영양 데이터 정규화</h2>
+        <div class="decision-grid reveal">
+          <div class="decision-card"><b>100g 기준값</b><span>식품 후보에 표준 영양 프로필을 먼저 매칭합니다.</span><small>baseline</small></div>
+          <div class="decision-card"><b>섭취량 보정</b><span>사용자 입력량에 따라 열량과 주요 영양소를 재계산합니다.</span><small>portion-aware</small></div>
+          <div class="decision-card"><b>검토 상태</b><span>음식명·분량 불확실성은 저장 전 검토 상태로 유지합니다.</span><small>review gate</small></div>
+          <div class="decision-card"><b>기록 전환</b><span>승인된 항목만 섭취 기록과 Agent context로 전달합니다.</span><small>confirmed</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-6" aria-label="음식 데이터 계획">
+      <div class="topline"><span>Food Data</span><span>06 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow amber reveal">Data Strategy</span>
+        <h2 class="reveal">식품 데이터 확보 전략</h2>
+        <div class="priority reveal">
+          <div class="info-card"><b>공개 데이터</b><span>AI Hub 이미지를 기준 데이터로 삼아 class 정의와 품질 기준을 정렬합니다.</span></div>
+          <div class="info-card"><b>실사용자 사진</b><span>실제 촬영 환경의 조명, 각도, 혼합 음식 변수를 별도 검증 축으로 둡니다.</span></div>
+          <div class="info-card"><b>라벨링 검증</b><span>100장 단위로 bbox 라벨링과 export 흐름을 먼저 검증합니다.</span></div>
+          <div class="info-card"><b>모델 확장</b><span>초기 class 품질을 확인한 뒤 YOLOv8과 DETR 계열 비교로 확장합니다.</span></div>
+        </div>
+        <p class="lead reveal">목표는 모델 성능 수치보다, 데이터 수집·라벨링·검증 루프를 재현 가능하게 만드는 것입니다.</p>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-7" aria-label="영양제 분석 구현">
+      <div class="topline"><span>Supplement OCR</span><span>07 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow reveal">Supplement OCR</span>
+        <h2 class="reveal">라벨 인식 파이프라인</h2>
+        <div class="phase-grid reveal">
+          <div class="phase glass">
+            <span class="label">Input</span>
+            <h3>라벨 이미지와 관심 영역</h3>
+            <p>영양성분표, 원재료명, 섭취 방법 등 분석 가치가 높은 영역을 분리해 OCR 품질을 관리합니다.</p>
+          </div>
+          <div class="phase glass">
+            <span class="label">Output</span>
+            <h3>텍스트 블록과 성분 후보</h3>
+            <p>성분명, 함량, 단위 후보를 원문 근거와 함께 반환해 검토 화면에서 추적 가능하게 만듭니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-8" aria-label="영양제 Preview">
+      <div class="topline"><span>Supplement Review</span><span>08 / 13</span></div>
+      <div class="slide-content split">
+        <div class="stack">
+        <span class="eyebrow mint reveal">Analysis Preview</span>
+        <h2 class="reveal">승인 전 분석 계층</h2>
+          <p class="lead reveal">성분 후보, 함량 후보, 주의 후보를 기록 저장과 분리된 preview 상태로 관리합니다.</p>
+        </div>
+        <div class="status-list reveal">
+          <div class="status"><i class="dot"></i><span>성분명과 함량은 editable candidate로 노출해 OCR 오인식과 단위 오류를 교정할 수 있게 합니다.</span></div>
+          <div class="status"><i class="dot mint"></i><span>주의 후보는 확정 판단이 아니라, 사용자 검토와 전문가 상담 안내가 필요한 정보로 제한합니다.</span></div>
+          <div class="status"><i class="dot amber"></i><span>승인 전 preview는 복용 기록, 알림, Agent context에 side effect를 만들지 않습니다.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-9" aria-label="영양제 도구와 검증">
+      <div class="topline"><span>Supplement Tools</span><span>09 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow amber reveal">Provider Strategy</span>
+        <h2 class="reveal">OCR·후처리 도구 전략</h2>
+        <div class="decision-grid reveal">
+          <div class="decision-card"><b>Google Vision</b><span>실제 라벨 OCR 품질을 빠르게 확인하기 위한 cloud 후보입니다.</span><small>consent gate</small></div>
+          <div class="decision-card"><b>PaddleOCR</b><span>로컬 실행 가능성을 확보하기 위한 대체 후보입니다.</span><small>runtime cost</small></div>
+          <div class="decision-card"><b>Ollama</b><span>OCR 결과를 성분 후보로 구조화하는 후처리 후보입니다.</span><small>normalization</small></div>
+          <div class="decision-card"><b>검증 기준</b><span>정답 단정이 아니라 원문 근거, confidence, 사용자 승인 흐름을 우선합니다.</span><small>traceability</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-10" aria-label="공통 사용자 기반">
+      <div class="topline"><span>User Base</span><span>10 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow reveal">Platform Base</span>
+        <h2 class="reveal">Identity · Profile · Consent</h2>
+        <div class="priority reveal">
+          <div class="info-card"><b>Identity</b><span>음식 기록과 영양제 기록을 사용자 단위로 분리하고 재연결합니다.</span></div>
+          <div class="info-card"><b>Profile</b><span>질환, 복용 약, 목표 정보를 안전한 컨텍스트로 관리합니다.</span></div>
+          <div class="info-card"><b>Consent</b><span>외부 OCR, 민감 건강 정보 활용, 기록 저장 범위를 분리합니다.</span></div>
+          <div class="info-card"><b>Audit</b><span>사용자 승인과 데이터 전환 시점을 추적 가능한 이벤트로 남깁니다.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-11" aria-label="안전 기준">
+      <div class="topline"><span>Safety</span><span>11 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow amber reveal">Safety Gate</span>
+        <h2 class="reveal">승인 기반 저장 정책</h2>
+        <div class="decision-grid reveal">
+          <div class="decision-card"><b>Review-first</b><span>음식과 영양제 모두 승인 전에는 건강 기록으로 전환하지 않습니다.</span><small>save gate</small></div>
+          <div class="decision-card"><b>Data minimization</b><span>라벨 원문과 provider raw payload는 기본 저장 대상에서 제외합니다.</span><small>privacy</small></div>
+          <div class="decision-card"><b>Medical boundary</b><span>주의 후보는 정보 제공 범위로 제한하고 의학적 확정 표현을 피합니다.</span><small>safety copy</small></div>
+          <div class="decision-card"><b>Consent audit</b><span>외부 분석 도구 사용과 사용자 승인 이력을 분리해 추적합니다.</span><small>governance</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-12" aria-label="다음 연결">
+      <div class="topline"><span>Integration</span><span>12 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow reveal">Integration</span>
+        <h2 class="reveal">제품 통합 계약</h2>
+        <div class="flow reveal">
+          <div class="flow-card"><b>Capture</b><span>촬영 진입점에서 음식과 영양제 분석 흐름을 분기합니다.</span></div>
+          <div class="flow-card"><b>Preview</b><span>후보, 근거, confidence, review 상태를 일관된 UI로 제공합니다.</span></div>
+          <div class="flow-card"><b>Commit</b><span>사용자 승인 이후에만 섭취·복용 기록으로 저장합니다.</span></div>
+          <div class="flow-card"><b>Context</b><span>확정 기록만 Agent 설명과 후속 액션의 입력으로 사용합니다.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-13" aria-label="다음 주 기준과 closing">
+      <div class="topline"><span>Next Week</span><span>13 / 13</span></div>
+      <div class="slide-content">
+        <span class="eyebrow mint reveal">Next Milestone</span>
+        <h2 class="reveal">다음 주 검증 기준</h2>
+        <div class="priority reveal">
+          <div class="info-card"><b>1. Food PoC</b><span>100장 수준의 음식 사진으로 후보 생성, 영양 매칭, 수정 흐름을 검증합니다.</span></div>
+          <div class="info-card"><b>2. Label E2E</b><span>실제 영양제 라벨로 OCR, 성분 후보, 승인 화면을 연결합니다.</span></div>
+          <div class="info-card"><b>3. UI Contract</b><span>capture에서 preview, commit까지 하나의 제품 흐름으로 고정합니다.</span></div>
+          <div class="info-card"><b>4. Safety Copy</b><span>영양·복약 주의 문구를 정보 제공과 상담 권장 범위로 검수합니다.</span></div>
+        </div>
+        <p class="lead reveal">도메인은 분리하고, 승인·저장·Agent 연결 기준은 하나로 맞춥니다.</p>
+      </div>
+    </section>
+  </main>
+  <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+  <div class="pager" aria-live="polite"><span id="pageNow">1</span> / <span id="pageTotal">13</span></div>
+  <script>
+    class PresentationController {
+      constructor() {
+        this.slides = Array.from(document.querySelectorAll(".slide"));
+        this.progress = document.getElementById("progressBar");
+        this.pageNow = document.getElementById("pageNow");
+        this.pageTotal = document.getElementById("pageTotal");
+        this.index = 0;
+        this.locked = false;
+        this.touchStartY = 0;
+        this.pageTotal.textContent = String(this.slides.length);
+        this.bind();
+        this.observe();
+        this.update();
+      }
+
+      bind() {
+        window.addEventListener("keydown", (event) => {
+          const nextKeys = ["ArrowDown", "ArrowRight", "PageDown", " "];
+          const prevKeys = ["ArrowUp", "ArrowLeft", "PageUp"];
+          if (nextKeys.includes(event.key)) {
+            event.preventDefault();
+            this.go(this.index + 1);
+          }
+          if (prevKeys.includes(event.key)) {
+            event.preventDefault();
+            this.go(this.index - 1);
+          }
+          if (event.key === "Home") this.go(0);
+          if (event.key === "End") this.go(this.slides.length - 1);
+        });
+
+        window.addEventListener("wheel", (event) => {
+          if (Math.abs(event.deltaY) < 18 || this.locked) return;
+          this.locked = true;
+          this.go(this.index + (event.deltaY > 0 ? 1 : -1));
+          window.setTimeout(() => { this.locked = false; }, 620);
+        }, { passive: true });
+
+        window.addEventListener("touchstart", (event) => {
+          this.touchStartY = event.changedTouches[0].clientY;
+        }, { passive: true });
+
+        window.addEventListener("touchend", (event) => {
+          const delta = this.touchStartY - event.changedTouches[0].clientY;
+          if (Math.abs(delta) > 42) this.go(this.index + (delta > 0 ? 1 : -1));
+        }, { passive: true });
+      }
+
+      observe() {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            this.index = this.slides.indexOf(entry.target);
+            this.update();
+          });
+        }, { threshold: 0.62 });
+        this.slides.forEach((slide) => observer.observe(slide));
+      }
+
+      go(target) {
+        const next = Math.max(0, Math.min(this.slides.length - 1, target));
+        this.slides[next].scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      update() {
+        this.slides.forEach((slide, current) => slide.classList.toggle("active", current === this.index));
+        this.pageNow.textContent = String(this.index + 1);
+        this.progress.style.width = `${((this.index + 1) / this.slides.length) * 100}%`;
+      }
+    }
+
+    new PresentationController();
+  </script>
+</body>
+</html>

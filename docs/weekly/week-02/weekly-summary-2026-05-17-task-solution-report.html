@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>음식·영양제 과제 해결 전략 보고서</title>
+  <style>
+    @page { size: A4 landscape; margin: 10mm; }
+
+    :root {
+      --ink: #172033;
+      --body: #465366;
+      --muted: #6c7787;
+      --line: #d9dee7;
+      --soft-line: #e9edf3;
+      --bg: #f5f6f8;
+      --paper: #ffffff;
+      --food: #0f766e;
+      --food-bg: #f0fdfa;
+      --supplement: #7c3aed;
+      --supplement-bg: #f5f3ff;
+      --notice: #92400e;
+      --notice-bg: #fffbeb;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      margin: 0;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      line-height: 1.58;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
+    .sheet {
+      width: min(100%, 297mm);
+      min-height: 210mm;
+      margin: 0 auto;
+      padding: 12mm 13mm;
+      background: var(--paper);
+      box-shadow: 0 18px 44px rgba(23, 32, 51, 0.10);
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: end;
+      padding-bottom: 14px;
+      border-bottom: 2px solid var(--ink);
+    }
+
+    p, h1, h2, h3 { margin: 0; }
+
+    .eyebrow {
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 29px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .summary {
+      margin-top: 14px;
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--ink);
+      background: #fbfcfe;
+    }
+
+    .summary p {
+      color: #263145;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .section {
+      margin-top: 15px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 23px;
+      height: 23px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    h2 {
+      font-size: 16px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    p, li, td, th {
+      color: var(--body);
+      font-size: 11.5px;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li + li { margin-top: 3px; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .panel {
+      min-width: 0;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .panel.food { border-top: 4px solid var(--food); }
+    .panel.supplement { border-top: 4px solid var(--supplement); }
+
+    .panel.food h3 { color: var(--food); }
+    .panel.supplement h3 { color: var(--supplement); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .step {
+      min-width: 0;
+      padding: 7px;
+      border: 1px solid var(--soft-line);
+      background: #fbfcfe;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--ink);
+      font-size: 11.5px;
+      line-height: 1.3;
+    }
+
+    .step span {
+      display: block;
+      color: var(--muted);
+      font-size: 10.5px;
+      line-height: 1.45;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--ink);
+      background: #f8fafc;
+      font-weight: 800;
+    }
+
+    .compare th:nth-child(2) { color: var(--food); background: var(--food-bg); }
+    .compare th:nth-child(3) { color: var(--supplement); background: var(--supplement-bg); }
+
+    .merge {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.15fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .merge-box {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .merge-box.food { background: var(--food-bg); }
+    .merge-box.supplement { background: var(--supplement-bg); }
+    .merge-box.confirmed { border-color: #d6c3a1; background: var(--notice-bg); }
+
+    .merge-box strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    .merge-box p {
+      font-size: 11px;
+    }
+
+    .note {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid #ead7aa;
+      color: var(--notice);
+      background: var(--notice-bg);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .status-item {
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+    }
+
+    .status-item strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--ink);
+      font-size: 11.5px;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 14px;
+      padding-top: 9px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    code {
+      padding: 1px 4px;
+      border: 1px solid var(--soft-line);
+      color: var(--ink);
+      background: #f8fafc;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    a {
+      color: #1d4ed8;
+      text-decoration: none;
+      font-weight: 750;
+    }
+
+    @media (max-width: 900px) {
+      .sheet {
+        width: 100%;
+        min-height: auto;
+        padding: 22px;
+        box-shadow: none;
+      }
+
+      header,
+      .two-col,
+      .merge,
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .meta {
+        text-align: left;
+        white-space: normal;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .sheet { padding: 16px; }
+      h1 { font-size: 23px; }
+      .flow { grid-template-columns: 1fr; }
+      th, td { padding: 6px; }
+      .footer { flex-direction: column; gap: 4px; }
+    }
+
+    @media print {
+      html, body { background: #fff; }
+      .sheet {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+      a { color: var(--ink); }
+    }
+  </style>
+</head>
+<body>
+  <article class="sheet" aria-label="음식·영양제 과제 해결 전략 보고서">
+    <header>
+      <div>
+        <p class="eyebrow">LEMON AID WEEK 02 TASK SOLUTION REPORT</p>
+        <h1>음식·영양제 과제 해결 전략 보고서</h1>
+      </div>
+      <div class="meta">
+        기준 기간: 2026.05.11 - 2026.05.17<br>
+        목적: 과제별 해결 구조와 기술 선택 이유 정리
+      </div>
+    </header>
+
+    <section class="summary" aria-label="Executive Summary">
+      <p>음식 과제와 영양제 과제는 입력 데이터, 오인식 원인, 검증 기준이 다르므로 저장 전 preview 흐름을 분리한다. 두 흐름은 사용자가 확인한 뒤에만 <code>confirmed health record</code> 기준으로 DB에서 연결되며, 그 전까지 OCR·AI 결과는 후보와 근거로만 취급한다.</p>
+    </section>
+
+    <section class="section">
+      <div class="section-title">
+        <span class="num">01</span>
+        <h2>두 과제를 분리해서 푸는 이유</h2>
+      </div>
+      <table class="compare">
+        <thead>
+          <tr>
+            <th>구분</th>
+            <th>음식 과제</th>
+            <th>영양제 과제</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>입력 불확실성</td>
+            <td>사진 각도, 여러 음식 동시 노출, 조리 상태, 실제 섭취량이 결과를 흔든다.</td>
+            <td>라벨 OCR 오인식, 성분명 표기 차이, 함량·단위 누락 또는 줄바꿈이 결과를 흔든다.</td>
+          </tr>
+          <tr>
+            <td>검증 방식</td>
+            <td>식품 후보와 100g 기준 영양 프로필을 맞춘 뒤 사용자가 양을 보정해야 한다.</td>
+            <td>성분명, 함량, 단위를 원문 근거와 함께 보여주고 사용자가 확인해야 한다.</td>
+          </tr>
+          <tr>
+            <td>안전 경계</td>
+            <td>섭취 기록 후보이며, 건강 판단이나 식단 처방처럼 표현하지 않는다.</td>
+            <td>주의 후보는 확정 판단이 아니며, 필요 시 전문가 상담을 권장하는 정보 제공으로 둔다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="two-col">
+        <div class="panel food">
+          <h3>음식 과제 해결 방식</h3>
+          <p>해결해야 하는 문제는 사진 한 장에서 바로 섭취 기록을 확정하는 것이 아니라, 사용자가 확인할 수 있는 음식 후보와 영양 계산 근거를 만드는 것이다.</p>
+          <div class="flow" aria-label="음식 처리 흐름">
+            <div class="step"><strong>사진 인식</strong><span>음식 후보, confidence, 복수 후보를 분리한다.</span></div>
+            <div class="step"><strong>영양 매칭</strong><span>100g 기준 영양 프로필과 출처를 연결한다.</span></div>
+            <div class="step"><strong>섭취량 보정</strong><span>사용자 입력량으로 kcal와 영양소를 재계산한다.</span></div>
+            <div class="step"><strong>확인 후 저장</strong><span>사용자 확인 뒤 섭취 기록 후보를 저장한다.</span></div>
+          </div>
+          <h3>사용 기술과 이유</h3>
+          <ul>
+            <li>이미지 모델은 음식 후보를 빠르게 좁히기 위한 1차 분류 도구로 사용한다.</li>
+            <li>100g 기준 데이터셋은 모델 출력보다 재현 가능한 영양 계산 근거로 둔다.</li>
+            <li>preview 구조는 사진 기반 입력의 불확실성을 사용자가 보정할 수 있게 한다.</li>
+          </ul>
+        </div>
+
+        <div class="panel supplement">
+          <h3>영양제 과제 해결 방식</h3>
+          <p>해결해야 하는 문제는 라벨 이미지를 복용 기록으로 바로 바꾸는 것이 아니라, OCR 결과를 성분 후보와 원문 근거가 있는 검토 대상으로 구조화하는 것이다.</p>
+          <div class="flow" aria-label="영양제 처리 흐름">
+            <div class="step"><strong>라벨 OCR</strong><span>제품명, 성분 영역, 원문 텍스트 후보를 추출한다.</span></div>
+            <div class="step"><strong>성분 구조화</strong><span>성분명, 함량, 단위, confidence를 분리한다.</span></div>
+            <div class="step"><strong>주의 후보</strong><span>복약·질환 관련 가능성을 검토 대상으로 표시한다.</span></div>
+            <div class="step"><strong>확인 후 저장</strong><span>사용자 확인 뒤 복용 기록 후보를 저장한다.</span></div>
+          </div>
+          <h3>사용 기술과 이유</h3>
+          <ul>
+            <li>OCR은 라벨 원문을 확보하기 위한 도구이며, 오인식 가능성을 전제로 둔다.</li>
+            <li>LLM 또는 parser 후처리는 성분 후보 구조화에 한정하고, 확정 판단으로 쓰지 않는다.</li>
+            <li>preview 구조는 OCR 오인식과 건강 문구 리스크를 저장 전에 차단하기 위해 둔다.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">
+        <span class="num">02</span>
+        <h2>DB 병합 기준</h2>
+      </div>
+      <div class="merge">
+        <div class="merge-box food">
+          <strong>Food Preview</strong>
+          <p>음식 후보, 100g 영양값, 섭취량 보정값, 사용자가 수정한 값을 별도 preview로 유지한다.</p>
+        </div>
+        <div class="merge-box supplement">
+          <strong>Supplement Preview</strong>
+          <p>OCR 원문 근거, 성분명·함량·단위 후보, 주의 후보를 별도 preview로 유지한다.</p>
+        </div>
+        <div class="merge-box confirmed">
+          <strong>Confirmed Health Record</strong>
+          <p><code>user_confirmed</code> 이후에만 사용자, 기록 유형, 원문 근거, 확인 상태, audit 기준으로 DB에서 연결한다.</p>
+        </div>
+      </div>
+      <p class="note">핵심 기준: preview 단계에서는 음식과 영양제를 합치지 않는다. 사용자 확인 전 결과는 저장 기록, 알림, Agent action의 근거로 확정하지 않는다.</p>
+    </section>
+
+    <section class="section">
+      <div class="section-title">
+        <span class="num">03</span>
+        <h2>현재 상태와 남은 결정</h2>
+      </div>
+      <div class="status-grid">
+        <div class="status-item">
+          <strong>구현 상태</strong>
+          <p>주간 기록 기준으로 인증, OCR provider 비교, 영양제 preview 모델, Agent 검증 계약이 병렬로 정리되었다. 한 화면 end-to-end 완료로 과장하지 않는다.</p>
+        </div>
+        <div class="status-item">
+          <strong>검증 상태</strong>
+          <p>음식은 100장 수준 이미지 PoC, 영양제는 실제 라벨 OCR E2E, 공통은 <code>preview -> confirmed -> saved</code> 상태 계약 검증이 필요하다.</p>
+        </div>
+        <div class="status-item">
+          <strong>다음 결정</strong>
+          <p>초기 음식 class 범위, OCR provider와 외부 전송 동의, raw OCR/provider payload 저장 정책, 안전 문구 검수 기준을 고정해야 한다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">
+        <span class="num">04</span>
+        <h2>다음 주 검증 기준</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>영역</th>
+            <th>검증할 흐름</th>
+            <th>완료 기준</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>음식</td>
+            <td>100장 이미지 PoC로 음식 후보, 영양 프로필 매칭, 섭취량 보정, 사용자 확인을 점검한다.</td>
+            <td>후보 실패와 낮은 confidence가 preview에서 분리되고, 사용자가 수정할 수 있다.</td>
+          </tr>
+          <tr>
+            <td>영양제</td>
+            <td>실제 라벨 이미지로 OCR, 성분 후보 추출, 함량·단위 정규화, 주의 후보 표시를 점검한다.</td>
+            <td>원문 근거와 후보가 함께 표시되고, 사용자 확인 전 저장 기록으로 확정되지 않는다.</td>
+          </tr>
+          <tr>
+            <td>공통</td>
+            <td>preview, user_confirmed, saved 상태 전환을 UI, API, DB, Agent 입력에서 같은 의미로 사용한다.</td>
+            <td>확인되지 않은 후보는 side effect를 만들지 않고, 확인 이력은 audit 기준으로 남는다.</td>
+          </tr>
+          <tr>
+            <td>안전</td>
+            <td>raw OCR text, provider payload, 이미지, 건강 정보의 저장·로그·삭제 정책과 문구를 검수한다.</td>
+            <td>진단·치료·처방처럼 보이는 단정 표현 없이 정보 제공과 전문가 상담 권장 경계를 유지한다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="footer">
+      <span>기존 one-page 보고서와 별도 생성한 과제 해결 전략 보고서</span>
+      <span>근거: Week 02 Daily 요약 및 주간 브리핑</span>
+    </div>
+  </article>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lemon Aid Week 02 One-page Report</title>
+  <style>
+    @page { size: A4 landscape; margin: 10mm; }
+
+    :root {
+      --ink: #1f2937;
+      --muted: #5f6b7a;
+      --subtle: #8a94a3;
+      --line: #d7dde6;
+      --bg: #f3f5f8;
+      --paper: #ffffff;
+      --blue: #1d4ed8;
+      --teal: #0f766e;
+      --amber: #a16207;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      line-height: 1.48;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
+    .sheet {
+      width: min(100%, 297mm);
+      min-height: 210mm;
+      margin: 0 auto;
+      padding: 10mm 12mm;
+      background: var(--paper);
+      box-shadow: 0 18px 42px rgba(31, 41, 55, 0.12);
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: end;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--ink);
+    }
+
+    .kicker {
+      margin: 0 0 8px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: 28px;
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .summary {
+      margin-top: 10px;
+      padding: 8px 11px;
+      border-left: 4px solid var(--blue);
+      background: #f7f9fc;
+    }
+
+    .summary p {
+      color: #263241;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 9px 12px;
+      margin-top: 10px;
+    }
+
+    section {
+      min-width: 0;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+    }
+
+    section.full {
+      grid-column: 1 / -1;
+    }
+
+    h2 {
+      margin-bottom: 6px;
+      font-size: 13.5px;
+      line-height: 1.25;
+    }
+
+    h2 span {
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    h3 {
+      margin: 7px 0 2px;
+      color: var(--ink);
+      font-size: 12.5px;
+      line-height: 1.35;
+    }
+
+    p, li, td, th {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    ul, ol {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li + li {
+      margin-top: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 5px 7px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--ink);
+      background: #f7f9fc;
+      font-weight: 800;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      background: #fff;
+    }
+
+    .tag.blue { color: var(--blue); border-color: #bfcef8; }
+    .tag.teal { color: var(--teal); border-color: #b9d7d3; }
+    .tag.amber { color: var(--amber); border-color: #e7d4a3; }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      color: var(--subtle);
+      font-size: 11px;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 750;
+    }
+
+    @media (max-width: 900px) {
+      .sheet {
+        width: 100%;
+        min-height: auto;
+        padding: 22px;
+        box-shadow: none;
+      }
+
+      header,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .meta {
+        text-align: left;
+        white-space: normal;
+      }
+    }
+
+    @media print {
+      html, body { background: #fff; }
+      .sheet {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+      a { color: var(--ink); }
+    }
+  </style>
+</head>
+<body>
+  <article class="sheet" aria-label="Lemon Aid Week 02 one-page report">
+    <header>
+      <div>
+        <p class="kicker">LEMON AID WEEK 02 REPORT</p>
+        <h1>음식·영양제 입력 파이프라인 주간 보고</h1>
+      </div>
+      <div class="meta">
+        기준 기간: 2026.05.11 - 2026.05.17<br>
+        근거 Daily: 05.13 - 05.17
+      </div>
+    </header>
+
+    <div class="summary">
+      <p>이번 주 핵심은 이미지 인식 기능 자체보다, 음식 사진과 영양제 라벨 사진을 후보·근거·확인 상태를 가진 건강 데이터로 전환하는 기반을 정리한 것이다. 두 입력 도메인은 분리하되, 사용자 확인 전에는 기록과 Agent 입력으로 확정하지 않는 기준을 공통으로 둔다.</p>
+    </div>
+
+    <div class="grid">
+      <section>
+        <h2><span>01</span><br>음식 입력</h2>
+        <p>음식 사진은 식품 후보를 찾고, 100g 기준 영양 프로필과 사용자 섭취량 보정을 거쳐 섭취 기록 후보로 전환한다.</p>
+        <h3>이번 주 정리</h3>
+        <ul>
+          <li>음식 후보, 위치 정보, confidence, review flag를 분리하는 흐름 정리</li>
+          <li>100g 기준 영양값과 사용자 입력량 기반 재계산 방향 정리</li>
+          <li>AI Hub와 실사용 사진을 함께 쓰는 라벨링 검증 계획 정리</li>
+        </ul>
+        <div class="tag-row">
+          <span class="tag blue">YOLO / GCV 후보</span>
+          <span class="tag teal">100g Nutrition</span>
+          <span class="tag amber">Roboflow 100장 검증</span>
+        </div>
+      </section>
+
+      <section>
+        <h2><span>02</span><br>영양제 입력</h2>
+        <p>영양제 라벨은 OCR 결과를 성분명·함량·단위 후보로 구조화하고, 주의 후보는 확정 판단이 아닌 검토 대상으로 분리한다.</p>
+        <h3>이번 주 정리</h3>
+        <ul>
+          <li>라벨 OCR 결과를 preview 상태로 유지하는 분석 흐름 정리</li>
+          <li>Google Vision, PaddleOCR, LLM 후처리 후보 비교 축 정리</li>
+          <li>사용자 확인 전 복용 기록과 Agent context로 넘기지 않는 기준 정리</li>
+        </ul>
+        <div class="tag-row">
+          <span class="tag blue">Google Vision</span>
+          <span class="tag teal">PaddleOCR</span>
+          <span class="tag amber">Review Gate</span>
+        </div>
+      </section>
+
+      <section>
+        <h2><span>03</span><br>공통 기반</h2>
+        <p>로그인, 프로필, 동의 상태는 음식·영양제 입력을 사용자 단위로 안전하게 연결하기 위한 기반이다. 이는 복약 주의 기능 완료가 아니라, 확인된 입력만 저장하고 이후 Agent 설명에 연결하기 위한 전제 조건이다.</p>
+        <h3>정리된 기준</h3>
+        <ul>
+          <li>사용자별 기록 분리와 refresh token 기반 인증 흐름</li>
+          <li>만성질환, 복용 약, 목표 정보를 안전한 context로 관리</li>
+          <li>외부 OCR 전송, 민감 건강 정보 활용, 사용자 확인 이력 분리</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2><span>04</span><br>안전 기준</h2>
+        <p>OCR/AI 결과는 후보이며, 건강 기록으로 확정되기 전 사용자의 확인 단계를 거쳐야 한다. 주의 문구는 현재 입력 정보 기준의 정보 제공으로 제한한다.</p>
+        <h3>필수 원칙</h3>
+        <ul>
+          <li>preview 상태에서는 저장, 알림, Agent action side effect 차단</li>
+          <li>raw OCR text와 provider payload는 기본 저장 대상에서 제외</li>
+          <li>영양·복약 주의 표현은 의학적 확정처럼 보이지 않게 검수</li>
+        </ul>
+      </section>
+
+      <section class="full">
+        <h2><span>05</span><br>다음 주 검증 기준</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>우선순위</th>
+              <th>검증 기준</th>
+              <th>결정 필요</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>음식 입력 PoC</td>
+              <td>100장 수준 이미지로 후보 생성, 영양 매칭, 섭취량 수정, 사용자 확인 흐름 검증</td>
+              <td>초기 class 범위와 라벨링 기준</td>
+            </tr>
+            <tr>
+              <td>영양제 라벨 E2E</td>
+              <td>실제 라벨 이미지로 OCR, 성분 후보, preview 화면, 사용자 확인까지 연결</td>
+              <td>OCR provider와 외부 전송 동의 기준</td>
+            </tr>
+            <tr>
+              <td>공통 상태 계약</td>
+              <td>preview -> user_confirmed -> saved 전환 기준을 UI, DB, Agent 입력에서 동일하게 적용</td>
+              <td>저장 필드, audit 기준, 안전 문구</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <div class="footer">
+      <span>근거: 2026-05-13, 05-14, 05-15, 05-16, 05-17 Daily</span>
+      <span>05-11, 05-12 Daily 없음</span>
+    </div>
+  </article>
+</body>
+</html>
