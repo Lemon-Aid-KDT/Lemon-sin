@@ -96,6 +96,10 @@ repos:
           - test
           - chore
           - ci
+          - build
+          - revert
+          - data
+          - ops
 
 # Flutter/Dart는 별도 pre-commit 통합이 어려우므로
 # IDE 저장 시 자동 포매팅 + CI에서 검증하는 방식 권장

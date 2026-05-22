@@ -45,7 +45,7 @@
 | Rule | Expected by team docs | Current enforcement | Gap | Risk |
 | --- | --- | --- | --- | --- |
 | Branch name | `<type>/<scope>-<subject>` with no worker-name branches | Current `.pre-commit-config.yaml` has no branch-name hook. Root CI has no team-policy workflow for current branch. | Not enforced locally or by current Lemon root CI. | Medium: worker-name or unscoped branches can enter review. |
-| Commit type list | `feat fix docs style refactor perf test chore ci build revert data ops` | `conventional-pre-commit` args only include `feat fix docs style refactor perf test chore ci`. | `build`, `revert`, `data`, `ops` are documented but rejected by local commit-msg hook. | High: documented valid commits fail locally, causing `--no-verify` pressure. |
+| Commit type list | `feat fix docs style refactor perf test chore ci build revert data ops` | Updated: `conventional-pre-commit` args now include all documented types. | Closed for type allow-list. Scope and subject rules still need the team-policy validator. | Lower: documented valid commits no longer create `--no-verify` pressure. |
 | Commit subject | imperative, no period, <= 50 chars | Current third-party hook validates Conventional Commits type shape only. | Subject length/period/scope allow-list are not fully enforced. | Medium: squash titles can drift from documented format. |
 | PR template | `PR_GUIDELINES.md` says `.github/PULL_REQUEST_TEMPLATE.md` should include branch/pre-commit/CI/secret checks. | Git root has a generic P1 template. Lemon-Aid folder has no standalone `.github`. `team/docs/team-collaboration-rules` has a closer template. | Current template does not fully match team checklist and may not export cleanly to standalone team repo. | Medium: review evidence and secret/no-raw checks are easy to omit. |
 | CI workflow path | CI should run backend/mobile/docs gates for Lemon Aid. | Git root Lemon workflows point to `03_lemon_healthcare/yeong-Lemon-Aid/...`. Current work is under `03_lemon_healthcare/Lemon-Aid/...`. | CI path is stale for the current default Lemon-Aid location. | High: PR can appear green while current path is untested. |
@@ -91,7 +91,7 @@ done as a separate small PR after choosing the correct base.
 | P1 | `docs(team): PR template을 동기화` | Replace or supplement the current generic PR template with the team checklist from `PR_GUIDELINES.md`. |
 | P1 | `ci(infra): Lemon workflow 경로를 보정` | Move `yeong-Lemon-Aid` workflow paths to the current default Lemon-Aid path or make path detection explicit. |
 | P1 | `chore(team): markdownlint 설정을 추가` | Add `.markdownlint.json` or remove the configured hook until a project-wide rule set exists. |
-| P2 | `chore(team): pre-commit type 목록을 문서와 맞춤` | Allow `build`, `revert`, `data`, `ops`; enforce scope and subject constraints with the local script. |
+| Done | `chore(team): pre-commit type 목록을 문서와 맞춤` | Allowed `build`, `revert`, `data`, `ops`; scope and subject constraints still belong in the team-policy validator. |
 
 ## Current Decision
 

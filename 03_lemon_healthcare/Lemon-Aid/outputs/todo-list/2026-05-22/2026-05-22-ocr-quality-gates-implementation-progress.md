@@ -242,6 +242,27 @@
 - `check_ocr_artifact_privacy.py --check-tracked-generated --project-root .`는 이제 통과한다.
 - 이후 PR/export branch에서는 generated OCR evaluation artifact가 Git에 포함되지 않으며, 필요한 수치와 해석은 repo-local todo report에 redacted summary로만 남긴다.
 
+### 3.14 Commit Type Enforcement Sync
+
+수정 파일:
+
+- `.pre-commit-config.yaml`
+- `outputs/todo-list/2026-05-22/2026-05-22-team-governance-enforcement-gap-report.md`
+
+변경:
+
+- 팀 문서 `COMMIT_CONVENTION.md`의 허용 type 목록과 local `conventional-pre-commit` hook args를 맞췄다.
+- 기존 local hook은 `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`만 허용했다.
+- `build`, `revert`, `data`, `ops`를 추가해 문서상 유효한 커밋이 local hook에서 거부되지 않게 했다.
+- 공식 근거: `conventional-pre-commit`은 hook args로 허용 type 목록을 전달한다. https://github.com/compilerla/conventional-pre-commit
+- 공식 근거: pre-commit config의 `args`는 hook에 전달되는 static arguments다. https://pre-commit.com/
+
+보안/운영 확인:
+
+- documented valid commit type이 local hook에서 막히면 `--no-verify` 사용 압력이 생긴다.
+- 이번 변경은 type allow-list mismatch만 닫는다.
+- scope allow-list, subject 길이, 마침표 금지는 별도 team-policy validator에서 계속 다뤄야 한다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
