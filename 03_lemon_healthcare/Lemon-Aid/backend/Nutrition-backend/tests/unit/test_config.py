@@ -55,9 +55,11 @@ def _valid_production_kwargs() -> dict[str, Any]:
     """Return a valid production settings baseline.
 
     Returns:
-        Keyword arguments accepted by Settings.
+        Keyword arguments accepted by Settings. ``_env_file=None`` keeps local
+        operator ``.env`` files from changing production validation tests.
     """
     return {
+        "_env_file": None,
         "environment": "production",
         "database_url": "postgresql+asyncpg://lemon_prod:secret@db.example.com:5432/lemon",
         "allowed_origins": ["https://app.example.com"],
@@ -109,6 +111,9 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.google_vision_language_hints == []
     assert settings.google_vision_timeout_seconds == 15
     assert settings.google_vision_max_retries == 2
+    assert settings.rate_limit_enabled is True
+    assert settings.rate_limit_window_seconds == 60
+    assert settings.supplement_image_upload_rate_limit == 10
     assert settings.enable_multimodal_llm is False
     assert settings.multimodal_ocr_assist_policy == "disabled"
     assert settings.enable_multimodal_verification is False
@@ -247,6 +252,18 @@ def test_staging_rejects_auth_mode_disabled() -> None:
     """Verify ``AUTH_MODE=disabled`` is forbidden outside development environments."""
     with pytest.raises(ValidationError, match="AUTH_MODE=disabled is forbidden"):
         Settings(_env_file=None, environment="staging", auth_mode="disabled")
+
+
+def test_staging_rejects_disabled_rate_limit() -> None:
+    """Verify staging cannot boot with API rate limiting disabled."""
+    with pytest.raises(ValidationError, match="RATE_LIMIT_ENABLED"):
+        Settings(
+            _env_file=None,
+            environment="staging",
+            auth_mode="jwt",
+            allowed_hosts=["api.example.com"],
+            rate_limit_enabled=False,
+        )
 
 
 def test_production_rejects_auth_mode_disabled_via_staging_guard() -> None:

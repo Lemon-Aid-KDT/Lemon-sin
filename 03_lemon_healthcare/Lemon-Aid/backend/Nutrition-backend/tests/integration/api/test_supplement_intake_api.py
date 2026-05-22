@@ -51,6 +51,7 @@ class _FakeSupplementSession:
     def __init__(self, existing: SupplementAnalysisRun | None = None) -> None:
         self.existing = existing
         self.added_analysis: SupplementAnalysisRun | None = None
+        self.added_analysis_count = 0
         self.added_audits: list[AuditLog] = []
         self.committed = False
 
@@ -61,6 +62,14 @@ class _FakeSupplementSession:
             Fake async transaction context.
         """
         return _TransactionContext()
+
+    def in_transaction(self) -> bool:
+        """Return whether the fake session has an active transaction.
+
+        Returns:
+            False because this fake session does not model implicit transactions.
+        """
+        return False
 
     async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
         """Return a fake existing row for idempotency lookup.
@@ -83,6 +92,7 @@ class _FakeSupplementSession:
             None.
         """
         if isinstance(record, SupplementAnalysisRun):
+            self.added_analysis_count += 1
             self.added_analysis = record
             return
         if isinstance(record, AuditLog):
@@ -214,8 +224,20 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
     """
 
 
+def _empty_analysis_adapters() -> SupplementImageAnalysisAdapters:
+    """Return an intake-only adapter bundle.
+
+    Returns:
+        Empty supplement image analysis adapters.
+    """
+    return SupplementImageAnalysisAdapters()
+
+
 def _settings(
     *,
+    rate_limit_enabled: bool = True,
+    rate_limit_window_seconds: int = 60,
+    supplement_image_upload_rate_limit: int = 10,
     supplement_image_max_bytes: int = 5 * 1024 * 1024,
     supplement_image_max_pixels: int = 12_000_000,
     supplement_preview_ttl_minutes: int = 30,
@@ -223,6 +245,9 @@ def _settings(
     """Return settings for route tests.
 
     Args:
+        rate_limit_enabled: Whether API rate limiting is active.
+        rate_limit_window_seconds: Fixed-window duration for local limits.
+        supplement_image_upload_rate_limit: Upload requests allowed per subject/window.
         supplement_image_max_bytes: Maximum image byte size.
         supplement_image_max_pixels: Maximum decoded image pixels.
         supplement_preview_ttl_minutes: Preview TTL in minutes.
@@ -231,6 +256,10 @@ def _settings(
         Settings object.
     """
     return Settings(
+        _env_file=None,
+        rate_limit_enabled=rate_limit_enabled,
+        rate_limit_window_seconds=rate_limit_window_seconds,
+        supplement_image_upload_rate_limit=supplement_image_upload_rate_limit,
         supplement_image_max_bytes=supplement_image_max_bytes,
         supplement_image_max_pixels=supplement_image_max_pixels,
         supplement_preview_ttl_minutes=supplement_preview_ttl_minutes,
@@ -242,11 +271,13 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
 ) -> None:
     """Verify supplement analyze performs image intake and returns a preview."""
     fake_session = _FakeSupplementSession()
+    settings = _settings()
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
-    app = create_app()
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
-        lambda: SupplementImageAnalysisAdapters()
+        _empty_analysis_adapters
     )
     client = TestClient(app)
 
@@ -280,9 +311,11 @@ def test_analyze_supplement_label_requires_ocr_consent(
 ) -> None:
     """Verify supplement image intake fails closed without OCR consent."""
     fake_session = _FakeSupplementSession()
+    settings = _settings()
     monkeypatch.setattr(supplements, "require_user_consent", _deny_consent)
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
-    app = create_app()
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
@@ -301,9 +334,11 @@ def test_analyze_supplement_label_rejects_media_type_spoofing(
 ) -> None:
     """Verify content-type and image bytes must agree."""
     fake_session = _FakeSupplementSession()
+    settings = _settings()
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
-    app = create_app()
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
@@ -315,6 +350,81 @@ def test_analyze_supplement_label_rejects_media_type_spoofing(
     assert response.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
     assert response.json()["detail"]["code"] == "unsupported_media_type"
     assert fake_session.added_analysis is None
+
+
+def test_analyze_supplement_label_rate_limits_repeated_uploads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify repeated supplement image uploads are blocked before handler work."""
+    fake_session = _FakeSupplementSession()
+    settings = _settings(
+        rate_limit_window_seconds=60,
+        supplement_image_upload_rate_limit=1,
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
+        _empty_analysis_adapters
+    )
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={"client_request_id": "client-1"},
+    )
+    second_response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={"client_request_id": "client-2"},
+    )
+
+    assert first_response.status_code == status.HTTP_202_ACCEPTED
+    assert second_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert second_response.json()["detail"]["code"] == "too_many_requests"
+    assert second_response.json()["detail"]["bucket"] == "supplement_image_upload"
+    assert int(second_response.headers["Retry-After"]) >= 1
+    assert second_response.headers["X-Content-Type-Options"] == "nosniff"
+    assert fake_session.added_analysis_count == 1
+
+
+def test_analyze_supplement_label_rate_limit_ignores_unverified_auth_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify arbitrary Authorization changes cannot bypass local upload limits."""
+    fake_session = _FakeSupplementSession()
+    settings = _settings(
+        rate_limit_window_seconds=60,
+        supplement_image_upload_rate_limit=1,
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
+        _empty_analysis_adapters
+    )
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={"client_request_id": "client-1"},
+        headers={"Authorization": "Bearer attacker-token-1"},
+    )
+    second_response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={"client_request_id": "client-2"},
+        headers={"Authorization": "Bearer attacker-token-2"},
+    )
+
+    assert first_response.status_code == status.HTTP_202_ACCEPTED
+    assert second_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert second_response.json()["detail"]["code"] == "too_many_requests"
+    assert fake_session.added_analysis_count == 1
 
 
 def test_analyze_supplement_label_rejects_oversized_image(
@@ -345,9 +455,11 @@ def test_analyze_supplement_label_rejects_idempotency_conflict(
 ) -> None:
     """Verify a client idempotency key cannot be reused for another image."""
     fake_session = _FakeSupplementSession(existing=_existing_run(image_sha256="b" * 64))
+    settings = _settings()
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
-    app = create_app()
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     client = TestClient(app)
 

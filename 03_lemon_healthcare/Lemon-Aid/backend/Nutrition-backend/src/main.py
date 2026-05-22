@@ -15,6 +15,7 @@ from src.api.v1.examples import HEALTH_RESPONSE_EXAMPLES
 from src.api.v1.router import api_router
 from src.config import Settings, get_settings
 from src.db.session import dispose_engine
+from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.secure_headers import SecureHeadersMiddleware
 from src.utils.image_safety import configure_pillow_limits
 from src.utils.logger import setup_logging
@@ -59,6 +60,7 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
     Returns:
         None.
     """
+    app.add_middleware(RateLimitMiddleware, settings=settings)
     # Always install TrustedHostMiddleware. Staging/production validators require
     # explicit ALLOWED_HOSTS; in development we fall back to a TestClient-safe
     # sentinel so the middleware can never silently fail-open.

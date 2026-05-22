@@ -214,6 +214,9 @@ class Settings(BaseSettings):
         clova_ocr_api_url: CLOVA OCR API Gateway invoke URL.
         clova_ocr_secret: CLOVA OCR client secret.
         mfds_api_key: 식약처/공공데이터 API 키.
+        rate_limit_enabled: Whether API rate limiting is enabled.
+        rate_limit_window_seconds: Fixed-window duration used by local rate limiting.
+        supplement_image_upload_rate_limit: Maximum supplement image uploads per subject/window.
         supplement_image_max_bytes: Maximum uploaded supplement label image size.
         supplement_image_max_pixels: Maximum decoded supplement label image pixels.
         supplement_preview_ttl_minutes: Minutes before an intake-only preview expires.
@@ -312,6 +315,9 @@ class Settings(BaseSettings):
     clova_ocr_secret: SecretStr | None = Field(default=None)
     mfds_api_key: SecretStr | None = Field(default=None)
 
+    rate_limit_enabled: bool = Field(default=True)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    supplement_image_upload_rate_limit: int = Field(default=10, ge=1, le=1000)
     supplement_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     supplement_image_max_pixels: int = Field(default=12_000_000, ge=1, le=25_000_000)
     supplement_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
@@ -492,6 +498,8 @@ class Settings(BaseSettings):
             raise ValueError("ALLOWED_HOSTS must be explicit in staging.")
         if self.environment == "staging" and _contains_wildcard(self.allowed_hosts):
             raise ValueError("ALLOWED_HOSTS must not contain wildcards in staging.")
+        if self.environment in {"staging", "production"} and not self.rate_limit_enabled:
+            raise ValueError("RATE_LIMIT_ENABLED=false is forbidden outside development.")
 
         if self.environment != "production":
             return self
