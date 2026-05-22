@@ -169,7 +169,11 @@ def _payload(*, user_confirmed: bool = True, unsafe_trend: bool = False) -> dict
     }
 
 
-def _chat_payload(*, preview_context: bool = False) -> dict[str, object]:
+def _chat_payload(
+    *,
+    message: str = "오늘 기록을 보고 먼저 확인할 점을 알려줘.",
+    preview_context: bool = False,
+) -> dict[str, object]:
     """Return a chatbot request payload.
 
     Args:
@@ -181,7 +185,7 @@ def _chat_payload(*, preview_context: bool = False) -> dict[str, object]:
     return {
         "request_id": "chat-route-test",
         "user_id": "client-supplied-user",
-        "message": "오늘 기록을 보고 먼저 확인할 점을 알려줘.",
+        "message": message,
         "conversation": [
             {
                 "role": "user",
@@ -533,10 +537,14 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
     assert "권장 행동" in body["message"]
     assert "참고 및 주의" in body["message"]
     assert "agent_memory" in body["used_tools"]
+    assert "knowledge_policy" in body["used_tools"]
     assert "supplement totals" not in body["message"]
     assert "internal_trace" not in body["message"]
     assert captured["sglang_client"]["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
     assert "Answer only in Korean" in captured["llm_request"].messages[0].content
+    assert "Question category:" in captured["llm_request"].messages[1].content
+    assert "Allowed source families:" in captured["llm_request"].messages[1].content
+    assert "Response contract:" in captured["llm_request"].messages[1].content
     assert "Internal context for grounding only" in captured[
         "llm_request"
     ].messages[1].content
@@ -574,6 +582,113 @@ def test_chat_route_preview_context_does_not_persist_daily_coaching_run(
     assert body["provider"] == "deterministic"
     assert body["requires_user_approval"] is False
     assert persisted == {"memory": 0, "run": 0}
+
+
+def test_chat_route_drug_boundary_does_not_call_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify medication and supplement co-use questions stop before LLM generation."""
+    captured: dict[str, object] = {"generate_called": False}
+
+    class _FakeSGLangClient:
+        """SGLang stand-in that must not generate for boundary questions."""
+
+        def __init__(
+            self,
+            *,
+            model: str,
+            endpoint: str,
+            api_key: str | None,
+            timeout: float,
+        ) -> None:
+            captured["model"] = model
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            captured["generate_called"] = True
+            raise AssertionError("boundary response should not call LLM")
+
+    settings = Settings(
+        _env_file=None,
+        llm_provider="sglang",
+        sglang_base_url="http://127.0.0.1:30000/v1",
+        sglang_model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+    monkeypatch.setattr(ai_agent, "SGLangClient", _FakeSGLangClient)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+
+    response = _client(settings=settings).post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="혈압약을 먹는데 이 영양제를 같이 먹어도 돼?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["provider"] == "deterministic"
+    assert body["requires_user_approval"] is False
+    assert "knowledge_policy" in body["used_tools"]
+    assert "의사" in body["message"]
+    assert "약사" in body["message"]
+    assert "먹어도 됩니다" not in body["message"]
+    assert "Drug interaction boundary applied" in body["safety_warnings"]
+    assert captured["generate_called"] is False
+
+
+def test_chat_route_escalation_boundaries_do_not_call_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify emergency and mental-health risk route to deterministic resources."""
+    captured: dict[str, int] = {"generate_calls": 0}
+
+    class _FakeSGLangClient:
+        """SGLang stand-in that must not generate for escalation questions."""
+
+        def __init__(
+            self,
+            *,
+            model: str,
+            endpoint: str,
+            api_key: str | None,
+            timeout: float,
+        ) -> None:
+            pass
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            captured["generate_calls"] += 1
+            raise AssertionError("escalation response should not call LLM")
+
+    settings = Settings(
+        _env_file=None,
+        llm_provider="sglang",
+        sglang_base_url="http://127.0.0.1:30000/v1",
+        sglang_model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+    monkeypatch.setattr(ai_agent, "SGLangClient", _FakeSGLangClient)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+
+    emergency = _client(settings=settings).post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="가슴이 아프고 숨이 차"),
+    )
+    mental = _client(settings=settings).post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="살 빼려고 계속 굶을래"),
+    )
+
+    assert emergency.status_code == status.HTTP_200_OK
+    assert mental.status_code == status.HTTP_200_OK
+    emergency_body = emergency.json()
+    mental_body = mental.json()
+    assert "119" in emergency_body["message"]
+    assert "E-Gen" in emergency_body["message"]
+    assert "109" in mental_body["message"]
+    assert "체중 관리 조언보다 현재 안전 확인" in mental_body["message"]
+    assert "Emergency escalation boundary applied" in emergency_body["safety_warnings"]
+    assert "Mental health escalation boundary applied" in mental_body["safety_warnings"]
+    assert captured["generate_calls"] == 0
 
 
 def test_chat_route_requires_sensitive_health_consent(

@@ -51,6 +51,7 @@ def test_chatbot_without_llm_returns_safe_korean_fallback() -> None:
 
     assert response.request_id == "chatbot-test-1"
     assert response.provider == "deterministic"
+    assert "knowledge_policy" in response.used_tools
     assert "오늘의 요약" in response.message
     assert "권장 행동" in response.message
     assert "참고 및 주의" in response.message
@@ -70,14 +71,18 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
     system_prompt = client.request.messages[0].content
     user_prompt = client.request.messages[1].content
     assert "Answer only in Korean" in system_prompt
-    assert "오늘의 요약" in system_prompt
-    assert "권장 행동" in system_prompt
-    assert "참고 및 주의" in system_prompt
+    assert "response contract sections" in system_prompt
     assert "Do not mention or quote internal calculation logs" in system_prompt
     assert "supplement totals" in system_prompt
+    assert "Question category: supplement_question" in user_prompt
+    assert "supplement_reference" in user_prompt
+    assert "nutrition_reference" in user_prompt
+    assert "data/nutrition_reference/kdris" in user_prompt
+    assert "기능성 표시 범위" in user_prompt
     assert "Internal context for grounding only" in user_prompt
     assert "internal_trace" not in user_prompt
     assert "supplement totals" not in user_prompt
+    assert client.request.temperature == 0.1
 
 
 def test_chatbot_unsafe_llm_output_falls_back_to_safe_message() -> None:
@@ -92,3 +97,52 @@ def test_chatbot_unsafe_llm_output_falls_back_to_safe_message() -> None:
     assert "당뇨입니다" not in response.message
     assert "구매하세요" not in response.message
     assert "Forbidden medical expression detected" in response.safety_warnings
+
+
+def test_chatbot_drug_question_returns_boundary_without_llm() -> None:
+    """Verify medication co-use questions never ask the LLM for allow/ban text."""
+    client = _CapturingLLMClient()
+    request = ChatbotRequest(
+        request_id="chatbot-drug-boundary",
+        user_id="local-dev-user",
+        message="혈압약을 먹는데 이 영양제를 같이 먹어도 돼?",
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(request)
+
+    assert response.provider == "deterministic"
+    assert client.request is None
+    assert "의사" in response.message
+    assert "약사" in response.message
+    assert "먹어도 됩니다" not in response.message
+    assert "금지로 판정하지 않습니다" in response.message
+    assert "Drug interaction boundary applied" in response.safety_warnings
+
+
+def test_chatbot_emergency_and_mental_health_questions_escalate_without_llm() -> None:
+    """Verify emergency and self-harm risk stop normal coaching."""
+    emergency_client = _CapturingLLMClient()
+    emergency = ChatbotAgent(llm_client=emergency_client).answer(
+        ChatbotRequest(
+            request_id="chatbot-emergency-boundary",
+            user_id="local-dev-user",
+            message="가슴이 아프고 숨이 차",
+        )
+    )
+    mental_client = _CapturingLLMClient()
+    mental = ChatbotAgent(llm_client=mental_client).answer(
+        ChatbotRequest(
+            request_id="chatbot-mental-boundary",
+            user_id="local-dev-user",
+            message="살 빼려고 계속 굶을래",
+        )
+    )
+
+    assert emergency_client.request is None
+    assert mental_client.request is None
+    assert "119" in emergency.message
+    assert "E-Gen" in emergency.message
+    assert "109" in mental.message
+    assert "체중 관리 조언보다 현재 안전 확인" in mental.message
+    assert "Emergency escalation boundary applied" in emergency.safety_warnings
+    assert "Mental health escalation boundary applied" in mental.safety_warnings
