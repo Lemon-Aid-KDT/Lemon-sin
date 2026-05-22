@@ -306,6 +306,57 @@ pre-commit run markdownlint --all-files
 - 공식 근거: `markdownlint-cli`는 `.markdownlint.json` 등 config file을
   지원한다. https://www.npmjs.com/package/markdownlint-cli
 
+### 3.16 Detect-Secrets Baseline Audit
+
+추가 파일:
+
+- `backend/scripts/audit_detect_secrets_baseline.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_audit_detect_secrets_baseline.py`
+
+변경:
+
+- `.secrets.baseline` 후보를 값 출력 없이 detector type, file, line,
+  category, severity로 분류하는 bounded audit helper를 추가했다.
+- 분류 로직은 test fixture, env example, content hash, design asset,
+  framework identifier, local dev sentinel, sample key parameter, docs
+  placeholder를 구분한다.
+- report renderer는 candidate line content를 출력하지 않는다.
+
+현재 감사 결과:
+
+```text
+detect_secrets_baseline_audit files=33 findings=87 manual_review=0 cleartext_values_printed=false
+low=72 medium=15 high=0
+content_hash=18
+design_asset=36
+documented_placeholder=15
+env_example_placeholder=1
+framework_identifier=3
+local_dev_default=3
+sample_key_parameter=1
+test_fixture=10
+```
+
+검증:
+
+```text
+4 passed - test_audit_detect_secrets_baseline.py
+pre-commit run detect-secrets --files audit script/test
+```
+
+보안 확인:
+
+- audit CLI output에는 hashed secret, source line content, auth header,
+  provider payload, raw OCR text가 포함되지 않는다.
+- `--fail-on-manual-review` 옵션으로 high-severity 미분류 후보가 생기면
+  CI/수동 게이트에서 실패시킬 수 있다.
+- 현재 automated audit 기준 high-severity manual review item은 0개다.
+- medium documentation placeholder 15건은 문서 맥락상 값 출력 없이 남겼고,
+  후속 PR에서 문서 예시값을 더 명확한 placeholder로 바꿀 수 있다.
+- 공식 근거: `detect-secrets-hook --baseline .secrets.baseline`은 baseline
+  기준으로 새 secret을 막는 사용법으로 문서화되어 있다.
+  https://github.com/Yelp/detect-secrets
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -833,6 +884,6 @@ ollama serve
 6. Continue security review on the next tranche:
    - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
    - generated OCR evaluation artifacts are now ignored by default; decide separately whether historical tracked reports should remain in Git or move to a private artifact store
-   - audit the 87 historical `detect-secrets` baseline candidates and rotate/remove anything confirmed as real credential material
+   - optionally rewrite the 15 medium-severity documentation placeholders into clearer non-credential examples
    - import non-bypassable team-policy CI for branch name, commit subject, PR template, and stale workflow path checks
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
