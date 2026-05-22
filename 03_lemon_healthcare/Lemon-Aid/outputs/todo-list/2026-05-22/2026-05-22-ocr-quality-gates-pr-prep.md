@@ -116,13 +116,14 @@ Candidate files:
 - `backend/scripts/evaluate_naver_tampermonkey_ocr.py`
 - `backend/scripts/run_naver_tampermonkey_ocr_eval.py`
 - `backend/scripts/smoke_supplement_analyze_api.py`
+- `backend/scripts/check_ocr_artifact_privacy.py`
 - `backend/Nutrition-backend/tests/unit/scripts/*`
 - `outputs/todo-list/2026-05-22/2026-05-22-clova-phase0-baseline-result.md`
 - `outputs/todo-list/2026-05-22/2026-05-22-ocr-quality-gates-implementation-progress.md`
 
 Exclude:
 
-- `outputs/generated/ocr-eval/2026-05-22-*`
+- `outputs/generated/ocr-eval/`
 - raw OCR text
 - secrets, `.env`, request headers, provider payloads
 
@@ -272,5 +273,6 @@ Conflict resolution must preserve:
 - `ALLOW_EXTERNAL_LLM=false` local Ollama default
 - production/staging security validation guards
 - generated/private OCR artifacts excluded from Git
+- `backend/scripts/check_ocr_artifact_privacy.py` passes on any exported artifact files
 
 Push only after the exported team-root branch passes tests and the changed-file secret/path scan is empty.

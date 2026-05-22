@@ -13,8 +13,10 @@
 .env.production
 .env.development
 
-# Generated OCR evaluation artifacts for local/private smoke runs
-outputs/generated/ocr-eval/2026-05-22-*
+# Generated OCR evaluation artifacts for local/private smoke runs.
+# Keep durable summaries in outputs/todo-list; keep provider observations,
+# manifests, and machine-readable reports out of Git unless explicitly approved.
+outputs/generated/ocr-eval/
 
 # Local database migration runner config. Commit a sanitized example instead.
 backend/alembic.ini

@@ -64,6 +64,20 @@
 - evaluator가 legacy `error: true`뿐 아니라 collector-style `status: "error"`도 provider error count에 반영한다.
 - CLOVA baseline의 1건 error가 JSON report에 `errors=1`로 반영되도록 회귀 테스트를 추가했다.
 
+### 3.5 Generated Artifact Privacy Gate
+
+추가 파일:
+
+- `backend/scripts/check_ocr_artifact_privacy.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_ocr_artifact_privacy.py`
+
+변경:
+
+- generated OCR artifact 디렉터리에서 raw OCR key, provider payload key, request header, secret key, local absolute path를 재귀 검사한다.
+- `.gitignore`를 `outputs/generated/ocr-eval/` 전체 ignore로 넓혀, 새 provider observation/manifest/report가 실수로 PR에 포함되지 않게 했다.
+- 기존 tracked OCR eval report 22개는 raw key는 없었지만 개발자 홈/외장 드라이브 경로가 남아 있어 `$LEMON_AID_ROOT`, `$LEMON_AID_BACKEND_ROOT`, `$NAVER_TAMPERMONKEY_SOURCE_ROOT` 또는 상대경로로 보정했다.
+- 2026-05-22 CLOVA baseline 산출물 4개도 scanner로 재검사했고 통과했다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -571,5 +585,5 @@ ollama serve
 5. Re-run the 30-row PaddleOCR + Gemma4 runner if the team wants fresh post-rate-limit timestamps; existing 30-row result already has `llm_parse_success_rate=1.0` for OCR-success rows.
 6. Continue security review on the next tranche:
    - decide whether process-local rate-limit is enough for current deployment or must move to Redis/API gateway before production
-   - decide whether generated OCR evaluation artifacts should remain untracked or be moved into an ignored/private artifact store
+   - generated OCR evaluation artifacts are now ignored by default; decide separately whether historical tracked reports should remain in Git or move to a private artifact store
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided
