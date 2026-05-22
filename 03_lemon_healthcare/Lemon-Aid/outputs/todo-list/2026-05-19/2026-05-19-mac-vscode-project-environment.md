@@ -392,7 +392,7 @@ Other development:
 ```env
 ENVIRONMENT=development
 DEPLOYMENT_EXPOSURE=local
-DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
+DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 AUTH_MODE=disabled
 LLM_PROVIDER=ollama
@@ -475,7 +475,7 @@ LOCAL_OCR_LANGUAGE=korean
 현재 개발 DB 기본 URL은 `.env.example` 기준:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
+DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 ```
 

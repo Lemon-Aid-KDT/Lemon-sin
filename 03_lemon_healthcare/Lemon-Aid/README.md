@@ -185,7 +185,7 @@ http://127.0.0.1:8000/docs
 
 ```dotenv
 ENVIRONMENT=development
-DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
+DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 
 LLM_PROVIDER=ollama

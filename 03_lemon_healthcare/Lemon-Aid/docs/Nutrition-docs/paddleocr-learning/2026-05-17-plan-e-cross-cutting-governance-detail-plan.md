@@ -159,7 +159,7 @@ python scripts/evaluate_release_governance.py --manifest path/to/redacted-govern
           "dataset_checksum": "dataset-checksum",
           "config_checksum": "config-checksum",
           "model_checksum": "model-checksum",
-          "code_commit": "abcdef123456",
+          "code_commit": "example-commit-sha",
           "source_doc_urls": ["https://www.nist.gov/itl/ai-risk-management-framework"],
           "metrics_summary": {"numeric_exact_rate": 0.7},
           "approval_status": "approved",

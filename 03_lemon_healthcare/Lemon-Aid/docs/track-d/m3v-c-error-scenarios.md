@@ -38,7 +38,7 @@ cd 03_lemon_healthcare/yeong-Vision-Nutrition/backend
 # 토큰 발급 (예시 — 실 경로는 backend auth flow 따름)
 TOKEN=$(curl -sS -X POST http://localhost:8000/api/v1/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"email":"test@example.com","password":"secret"}' \
+    -d '{"email":"user@example.invalid","password":"<demo-password>"}' \
     | jq -r .access_token)
 export TOKEN
 

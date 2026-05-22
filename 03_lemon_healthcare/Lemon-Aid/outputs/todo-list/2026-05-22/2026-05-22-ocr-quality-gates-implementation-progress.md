@@ -287,7 +287,7 @@
 
 - `detect-secrets` baseline을 추가해 local secret hook이 missing baseline
   error로 즉시 실패하던 상태를 닫았다.
-- baseline은 현재 Lemon-Aid tracked files에서 나온 33 files / 87 historical
+- baseline은 현재 Lemon-Aid tracked files에서 나온 18 files / 72 historical
   candidates를 detector type, filename, line number, hashed secret 형태로만
   기록한다.
 - `.markdownlint.json`을 low-noise bootstrap rules로 추가해 configured hook이
@@ -311,7 +311,7 @@ pre-commit run markdownlint --all-files
   private key, explicit secret assignment 패턴은 발견되지 않았다.
 - baseline은 cleartext candidate value를 저장하지 않는 hash 기반 gate다.
 - 다만 baseline이 모든 historical candidate가 안전하다는 증명은 아니므로,
-  87개 후보의 별도 audit은 후속 governance PR로 남긴다.
+  남은 후보의 별도 audit은 계속 유지한다.
 - 공식 근거: `detect-secrets scan > .secrets.baseline`은 baseline 생성
   quickstart로 문서화되어 있다. https://github.com/Yelp/detect-secrets
 - 공식 근거: `markdownlint-cli`는 `.markdownlint.json` 등 config file을
@@ -336,11 +336,10 @@ pre-commit run markdownlint --all-files
 현재 감사 결과:
 
 ```text
-detect_secrets_baseline_audit files=33 findings=87 manual_review=0 cleartext_values_printed=false
-low=72 medium=15 high=0
+detect_secrets_baseline_audit files=18 findings=72 manual_review=0 cleartext_values_printed=false
+low=72 medium=0 high=0
 content_hash=18
 design_asset=36
-documented_placeholder=15
 env_example_placeholder=1
 framework_identifier=3
 local_dev_default=3
@@ -362,8 +361,8 @@ pre-commit run detect-secrets --files audit script/test
 - `--fail-on-manual-review` 옵션으로 high-severity 미분류 후보가 생기면
   CI/수동 게이트에서 실패시킬 수 있다.
 - 현재 automated audit 기준 high-severity manual review item은 0개다.
-- medium documentation placeholder 15건은 문서 맥락상 값 출력 없이 남겼고,
-  후속 PR에서 문서 예시값을 더 명확한 placeholder로 바꿀 수 있다.
+- medium documentation placeholder 15건은 명시적 non-credential 예시로
+  바꾸고, `.secrets.baseline`을 tracked Lemon-Aid files 기준으로 재생성했다.
 - 공식 근거: `detect-secrets-hook --baseline .secrets.baseline`은 baseline
   기준으로 새 secret을 막는 사용법으로 문서화되어 있다.
   https://github.com/Yelp/detect-secrets
@@ -1045,6 +1044,6 @@ ollama serve
 5. Re-run the 30-row PaddleOCR + Gemma4 runner if the team wants fresh post-rate-limit timestamps; existing 30-row result already has `llm_parse_success_rate=1.0` for OCR-success rows.
 6. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
-   - optionally rewrite the 15 medium-severity documentation placeholders into clearer non-credential examples
+   - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
    - root monorepo workflow paths are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided

@@ -214,7 +214,9 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
 
     # DB (Phase 1 후반부터 사용)
-    database_url: str = Field(default="postgresql+asyncpg://lemon:lemon@localhost:5432/lemon")
+    database_url: str = Field(
+        default="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/lemon"
+    )
     redis_url: str = Field(default="redis://localhost:6379/0")
 
     # LLM (Phase 2부터 사용)
@@ -299,7 +301,7 @@ ENVIRONMENT=development
 LOG_LEVEL=DEBUG
 
 # Database (Phase 1 후반부터)
-DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
+DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 
 # LLM (Phase 2부터)

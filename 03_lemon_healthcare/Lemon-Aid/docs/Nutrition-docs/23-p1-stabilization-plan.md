@@ -126,7 +126,7 @@ COVERAGE_FILE=/private/tmp/lemon_p1_coverage \
 - working directory: `03_lemon_healthcare/yeong-Lemon-Aid/backend`
 - Python matrix: `3.11`, `3.13`
 - dependency file: `requirements.txt`, `requirements-dev.txt`
-- PostgreSQL service: `postgres:16`, DB smoke job uses `DATABASE_URL` and `TEST_DATABASE_URL` both with `postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_test`
+- PostgreSQL service: `postgres:16`, DB smoke job uses `DATABASE_URL` and `TEST_DATABASE_URL` with CI-provided database credentials
 
 P1 안정화 중 바꿀 수 없는 항목:
 

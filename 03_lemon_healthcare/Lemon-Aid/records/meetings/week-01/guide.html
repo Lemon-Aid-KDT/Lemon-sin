@@ -3398,7 +3398,7 @@ flutter run
 ### A.2 환경 변수 (`backend/.env`)
 
 ```
-DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
+DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 
 ANTHROPIC_API_KEY=sk-ant-...

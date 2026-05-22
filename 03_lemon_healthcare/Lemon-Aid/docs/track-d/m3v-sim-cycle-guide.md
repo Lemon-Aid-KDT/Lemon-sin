@@ -44,7 +44,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 # 1.3 .env 설정 (없으면 .env.example 복사 + JWT_SECRET_KEY 채움)
 cp .env.example .env  # 이미 있으면 skip
 # 편집: JWT_SECRET_KEY=$(openssl rand -hex 32)
-# 편집: DATABASE_URL=postgresql+asyncpg://lemon:devonly@localhost:5436/lemon
+# 편집: DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5436/lemon
 
 # 1.4 DB 마이그레이션
 alembic upgrade head

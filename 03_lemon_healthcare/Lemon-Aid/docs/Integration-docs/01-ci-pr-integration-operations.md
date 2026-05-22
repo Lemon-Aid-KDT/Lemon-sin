@@ -34,13 +34,13 @@ Live PostgreSQL checks require a running PostgreSQL database and the same
 async SQLAlchemy URL used by CI:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
+DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
+TEST_DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
 PYTHONPATH=Nutrition-backend:food_image_analysis/src:ai_agent_chat/src \
   alembic upgrade head
 
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
+DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
+TEST_DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
 PYTHONPATH=Nutrition-backend:food_image_analysis/src:ai_agent_chat/src \
   .venv/bin/python -m pytest Nutrition-backend/tests/integration/db/test_db_session.py -q --no-cov
 ```

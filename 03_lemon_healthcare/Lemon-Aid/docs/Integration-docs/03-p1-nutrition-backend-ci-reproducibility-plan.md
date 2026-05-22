@@ -65,7 +65,8 @@ Observed local checks:
 
 ## Implementation Update (2026-05-15)
 
-- Root backend CI now uses `postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci`.
+- Root backend CI now uses a PostgreSQL async URL assembled from CI database
+  service credentials.
 - Root backend CI now exports `TEST_DATABASE_URL` so `test_db_session.py` runs instead of skipping in GitHub Actions.
 - `actions/setup-python` pip cache now hashes both `requirements.txt` and `requirements-dev.txt`.
 - OpenAPI contract tests now run as a dedicated fail-fast CI step before Alembic.
@@ -91,7 +92,8 @@ Pre-implementation gap:
 
 - `Nutrition-backend/src/config.py` requires `postgresql+asyncpg://...` for
   `DATABASE_URL`.
-- The P1 CI design must use `postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci`.
+- The P1 CI design must use a PostgreSQL async URL assembled from CI database
+  service credentials.
 - The live DB smoke test must receive `TEST_DATABASE_URL`; otherwise
   `Nutrition-backend/tests/integration/db/test_db_session.py` skips and GitHub
   CI does not actually prove PostgreSQL connectivity.
@@ -201,8 +203,8 @@ Use the same async PostgreSQL driver required by `Settings` and the DB layer:
 ```yaml
 env:
   PYTHONPATH: Nutrition-backend:food_image_analysis/src:ai_agent_chat/src
-  DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci
-  TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci
+  DATABASE_URL: postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci
+  TEST_DATABASE_URL: postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci
 ```
 
 Why:
@@ -361,8 +363,9 @@ Target file:
 
 Change:
 
-- Replace `DATABASE_URL` with `postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci`.
-- Add `TEST_DATABASE_URL` with the same URL.
+- Replace `DATABASE_URL` with a PostgreSQL async URL built from CI database
+  service credentials.
+- Add `TEST_DATABASE_URL` with the same credential source.
 
 Acceptance:
 
@@ -453,7 +456,7 @@ PYTHONPATH=Nutrition-backend:food_image_analysis/src:ai_agent_chat/src \
   Nutrition-backend/tests/integration/api/test_openapi_examples.py \
   -q --no-cov
 
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
+TEST_DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
   .venv/bin/python -m pytest \
   Nutrition-backend/tests/integration/db/test_db_session.py \
   -q --no-cov
@@ -491,12 +494,12 @@ PYTHONPATH=Nutrition-backend:food_image_analysis/src:ai_agent_chat/src \
 Live PostgreSQL smoke requires a running PostgreSQL instance:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
+DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
+TEST_DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
 PYTHONPATH=Nutrition-backend:food_image_analysis/src:ai_agent_chat/src \
   alembic upgrade head
 
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lemon_ci \
+TEST_DATABASE_URL="postgresql+asyncpg://${CI_DB_USER}:${CI_DB_PASSWORD}@localhost:5432/lemon_ci" \
   ./.venv/bin/python -m pytest \
   Nutrition-backend/tests/integration/db/test_db_session.py \
   -q --no-cov
