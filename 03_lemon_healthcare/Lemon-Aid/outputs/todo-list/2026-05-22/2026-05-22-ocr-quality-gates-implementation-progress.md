@@ -697,6 +697,48 @@ secret pattern scan on .gitignore: no matches
   올리거나 PR base로 쓰려면 팀의 `team/develop` 동기화 전략과 branch protection
   조치가 먼저 필요하다.
 
+### 3.23 PR 1 Field Extractor Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-pr1-field-extractor-export-result.md`
+
+생성 branch:
+
+- base: `origin/chore/ocr-clean-export-base`
+- export branch: `origin/fix/ocr-field-extractor-shapes`
+- patch commit: `9fac120b fix(ocr): 성분 표 셀 파싱을 보정`
+
+변경:
+
+- PR split 계획의 첫 번째 slice인 field extractor regression patch를 clean
+  code-bearing base 위에 독립 branch로 분리했다.
+- 변경 파일은 `field_extractor.py`와 `test_field_extractor.py` 2개로 제한했다.
+- branch diff는 `2 files changed, 115 insertions(+), 56 deletions(-)`다.
+
+검증:
+
+```text
+27 passed - test_field_extractor.py
+black --check passed on changed files
+ruff check --ignore RUF001 passed on changed files
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+secret pattern scan on changed files: no matches
+git diff --check passed
+git diff --cached --check passed
+clean_base_is_ancestor=0
+```
+
+보안 확인:
+
+- deterministic parser와 unit tests만 바꿨다.
+- network call, external OCR/LLM call, file write, subprocess, credential read를
+  추가하지 않는다.
+- raw OCR text, provider payload, request headers, image bytes, secret values를
+  commit에 추가하지 않는다.
+- PR branch는 clean export base를 parent로 하므로 generated OCR/live artifacts가
+  Git-tracked 상태가 아니다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1281,6 +1323,8 @@ flutter build ios --simulator --debug
 
 1. Decide PR contents:
    - field_extractor Phase 0-alpha is isolated in commit `3d044dce`.
+   - PR 1 export candidate is now preserved as `origin/fix/ocr-field-extractor-shapes`
+     on top of `origin/chore/ocr-clean-export-base`.
    - backend quality/layout/provider routing and mobile release security are now separate commits, but the branch as a whole is larger than the team PR-size recommendation.
    - before opening PR, decide whether to keep this branch as an integration PR or cherry-pick commits into smaller branches.
 2. Do not commit generated CLOVA artifacts unless the team explicitly wants evaluation artifacts in repo.

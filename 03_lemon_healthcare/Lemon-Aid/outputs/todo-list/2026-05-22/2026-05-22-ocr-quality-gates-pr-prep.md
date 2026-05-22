@@ -64,6 +64,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - Local branch: `feat/ocr-quality-gates`
 - Preserved remote: `origin/feat/ocr-quality-gates`
 - Clean base candidate: `origin/chore/ocr-clean-export-base`
+- PR 1 export candidate: `origin/fix/ocr-field-extractor-shapes`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -142,10 +143,22 @@ Reason:
 
 This is the safest first PR because it is small, deterministic, and directly targets the chronic 0% regression symptom.
 
-Created commit:
+Exported branch:
 
 ```text
-3d044dce fix(ocr): 성분 표 셀 파싱을 보정
+origin/fix/ocr-field-extractor-shapes
+```
+
+Base branch:
+
+```text
+origin/chore/ocr-clean-export-base
+```
+
+Created commit on export branch:
+
+```text
+9fac120b fix(ocr): 성분 표 셀 파싱을 보정
 ```
 
 Candidate files:
@@ -165,6 +178,10 @@ Validation:
 
 ```text
 27 passed - backend/Nutrition-backend/tests/unit/ocr/test_field_extractor.py
+black --check passed
+ruff check --ignore RUF001 passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+secret pattern scan on changed files: no matches
 ```
 
 ### PR 2 - Backend OCR Quality Gates
