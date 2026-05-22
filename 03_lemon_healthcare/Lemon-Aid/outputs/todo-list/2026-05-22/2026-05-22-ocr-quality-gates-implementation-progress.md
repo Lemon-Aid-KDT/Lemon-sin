@@ -152,6 +152,8 @@
 - 현재 checkout에서 `pre-commit validate-config`는 통과하지만, `detect-secrets`는 `.secrets.baseline` 부재로 실패하고 `markdownlint`는 `.markdownlint.json` 부재와 기존 markdown findings로 실패함을 기록했다.
 - 현재 Git root Lemon CI workflow가 `03_lemon_healthcare/yeong-Lemon-Aid/...` 경로를 기준으로 하므로, 기본 작업 경로 `03_lemon_healthcare/Lemon-Aid/...`에는 그대로 적용되지 않는 gap을 기록했다.
 - `team/docs/team-collaboration-rules`에 PR template, team-policy workflow, hook scripts가 이미 있으나, 현재 code-bearing tree와 결합하려면 별도 governance PR이 필요하다고 정리했다.
+- 후속 수정으로 Git root Lemon workflow, dependabot, PR template, CODEOWNERS를
+  `03_lemon_healthcare/Lemon-Aid/...` 기준으로 보정했다.
 
 보안 확인:
 
@@ -433,7 +435,8 @@ check-yaml passed on team-policy workflow
 - stale `03_lemon_healthcare/yeong-Lemon-Aid` 경로, local absolute path
   marker, Lemon workflow 누락을 bounded finding으로 출력한다.
 - optional policy file인 `.github/dependabot.yml`과
-  `.github/PULL_REQUEST_TEMPLATE.md`도 stale path만 검사한다.
+  `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`도 stale path만
+  검사한다.
 - file content, secret, request header, OCR raw text는 출력하지 않는다.
 - 같은 script-test 계열인 `test_check_pr_export_base.py`도 PYTHONPATH layout에
   의존하지 않도록 file-based module loader로 맞췄다.
@@ -452,6 +455,23 @@ check-yaml passed on team-policy workflow
 .github/workflows/17-lemon-mobile-ci.yml: stale_project_path marker=1
 .github/dependabot.yml: stale_project_path marker=1
 .github/PULL_REQUEST_TEMPLATE.md: stale_project_path marker=1
+```
+
+후속 수정:
+
+- Git root `.github/workflows/17-lemon-backend-ci.yml`,
+  `.github/workflows/17-lemon-docs-ci.yml`,
+  `.github/workflows/17-lemon-mobile-ci.yml`의 working directory, cache path,
+  docs glob을 현재 `03_lemon_healthcare/Lemon-Aid/...`로 보정했다.
+- Git root `.github/dependabot.yml`, `.github/PULL_REQUEST_TEMPLATE.md`,
+  `.github/CODEOWNERS`도 같은 현재 경로로 보정했다.
+- `CODEOWNERS` stale path는 reviewer ownership 우회로 이어질 수 있어
+  `check_lemon_ci_paths.py`의 optional policy scan에 포함했다.
+
+후속 검사 결과:
+
+```text
+lemon_ci_paths_ok project_path=03_lemon_healthcare/Lemon-Aid
 ```
 
 검증:
@@ -1026,5 +1046,5 @@ ollama serve
 6. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - optionally rewrite the 15 medium-severity documentation placeholders into clearer non-credential examples
-   - fix stale root monorepo workflow paths now detected by `check_lemon_ci_paths.py`, or export the standalone team-policy assets into the team-root repo
+   - root monorepo workflow paths are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
    - rebase against `team/develop` only after the working tree is clean and the target PR split is decided

@@ -22,6 +22,10 @@ def test_check_ci_paths_accepts_current_project_markers(tmp_path: Path) -> None:
         repo_root / ".github/PULL_REQUEST_TEMPLATE.md",
         "Check affected areas under 03_lemon_healthcare/Lemon-Aid.\n",
     )
+    _write(
+        repo_root / ".github/CODEOWNERS",
+        "/03_lemon_healthcare/Lemon-Aid/backend/ @team\n",
+    )
 
     assert checker.check_ci_paths(repo_root=repo_root, project_root=project_root) == []
 
@@ -67,6 +71,24 @@ def test_check_ci_paths_rejects_stale_optional_policy_file(tmp_path: Path) -> No
 
     assert [(item.path, item.code, item.detail) for item in findings] == [
         (".github/PULL_REQUEST_TEMPLATE.md", "stale_project_path", "marker=1")
+    ]
+
+
+def test_check_ci_paths_rejects_stale_codeowners_path(tmp_path: Path) -> None:
+    """Verify stale CODEOWNERS paths are blocked from review ownership rules."""
+    checker = _load_checker()
+    repo_root = tmp_path / "repo"
+    project_root = repo_root / "03_lemon_healthcare/Lemon-Aid"
+    _write_lemon_workflows(repo_root, "03_lemon_healthcare/Lemon-Aid")
+    _write(
+        repo_root / ".github/CODEOWNERS",
+        "/03_lemon_healthcare/yeong-Lemon-Aid/backend/ @team\n",
+    )
+
+    findings = checker.check_ci_paths(repo_root=repo_root, project_root=project_root)
+
+    assert [(item.path, item.code, item.detail) for item in findings] == [
+        (".github/CODEOWNERS", "stale_project_path", "marker=1")
     ]
 
 

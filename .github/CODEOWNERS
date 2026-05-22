@@ -4,16 +4,16 @@
 # Lemon Healthcare docs and generated guide.
 /03_lemon_healthcare/PROJECT_GUIDE.md @HorangEe02
 /03_lemon_healthcare/guide.html @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/PROJECT_GUIDE.md @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/README.md @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/docs/ @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/docs/Integration-docs/ @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/PROJECT_GUIDE.md @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/README.md @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/docs/ @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/docs/Integration-docs/ @HorangEe02
 
 # Lemon Healthcare runtime and release gates.
-/03_lemon_healthcare/yeong-Lemon-Aid/backend/ @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/mobile/ @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/config/ @HorangEe02
-/03_lemon_healthcare/yeong-Lemon-Aid/data/ @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/backend/ @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/mobile/ @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/config/ @HorangEe02
+/03_lemon_healthcare/Lemon-Aid/data/ @HorangEe02
 
 # Repository automation.
 /.github/ @HorangEe02

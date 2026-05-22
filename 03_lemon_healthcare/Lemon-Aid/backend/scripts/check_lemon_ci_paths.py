@@ -10,6 +10,7 @@ from pathlib import Path
 
 LEMON_WORKFLOW_GLOB = "17-lemon-*.y*ml"
 OPTIONAL_POLICY_FILES = (
+    ".github/CODEOWNERS",
     ".github/dependabot.yml",
     ".github/PULL_REQUEST_TEMPLATE.md",
 )

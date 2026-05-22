@@ -33,7 +33,7 @@ updates:
 
   # Lemon Healthcare Backend Python
   - package-ecosystem: pip
-    directory: /03_lemon_healthcare/yeong-Lemon-Aid/backend
+    directory: /03_lemon_healthcare/Lemon-Aid/backend
     schedule:
       interval: weekly
       day: monday

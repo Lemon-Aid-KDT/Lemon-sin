@@ -32,14 +32,14 @@
 | `git ls-remote team refs/heads/feat/ocr-p1-5-followup` | `b5a9dec9...` |
 | Lemon-Aid 내부 `.github` | 있음, standalone export용 PR template/workflow |
 | Git root `.github/PULL_REQUEST_TEMPLATE.md` | 있음, monorepo P1 template |
-| Git root Lemon workflows | 있음, `yeong-Lemon-Aid` 경로 기준 |
+| Git root Lemon workflows | 있음, 현재 `Lemon-Aid` 경로 기준으로 보정 |
 | `.secrets.baseline` | 있음, 33 files / 87 historical candidates |
 | `.markdownlint.json` | 있음, low-noise bootstrap rules |
 | installed Git hooks | Git root `.git/hooks/pre-commit`, `commit-msg`, `pre-push` 없음 |
 | `pre-commit validate-config` | 통과 |
 | `pre-commit run detect-secrets --all-files` | 통과 |
 | `pre-commit run markdownlint --all-files` | 통과 |
-| `backend/scripts/check_lemon_ci_paths.py --project-root .` | 실패, stale root Lemon CI/policy path 8건 |
+| `backend/scripts/check_lemon_ci_paths.py --project-root .` | 통과, Git root Lemon CI/policy path 6 files 검사 |
 
 ## Gap Table
 
@@ -49,7 +49,7 @@
 | Commit type list | `feat fix docs style refactor perf test chore ci build revert data ops` | Updated: `conventional-pre-commit` args now include all documented types. | Closed for type allow-list. Scope and subject rules still need the team-policy validator. | Lower: documented valid commits no longer create `--no-verify` pressure. |
 | Commit subject | imperative, no period, <= 50 chars | Lemon-Aid standalone export assets now include `scripts/git-hooks/validate_commit_msg.py` and team-policy CI calls it for PR titles. Current third-party local hook remains broader. | Closed for team-root export; local hook parity is optional follow-up. | Low-Medium: exported PR titles are covered, current monorepo local commits still rely on existing hook plus review. |
 | PR template | `PR_GUIDELINES.md` says `.github/PULL_REQUEST_TEMPLATE.md` should include branch/pre-commit/CI/secret checks. | Lemon-Aid now has `.github/PULL_REQUEST_TEMPLATE.md` with branch, title, pre-commit, secret, raw OCR, provider payload, and generated artifact checks. | Closed for team-root export; Git root template remains generic for nested monorepo PRs. | Low-Medium: export path is covered, root monorepo still needs template sync if used directly. |
-| CI workflow path | CI should run backend/mobile/docs gates for Lemon Aid. | Git root Lemon workflows point to `03_lemon_healthcare/yeong-Lemon-Aid/...`. Current work is under `03_lemon_healthcare/Lemon-Aid/...`. | CI path is stale for the current default Lemon-Aid location. | High: PR can appear green while current path is untested. |
+| CI workflow path | CI should run backend/mobile/docs gates for Lemon Aid. | Git root Lemon workflows, dependabot, PR template, and CODEOWNERS now point to `03_lemon_healthcare/Lemon-Aid/...`. `check_lemon_ci_paths.py` also scans CODEOWNERS. | Closed for current monorepo root. | Lower: path drift is now covered by an explicit bounded audit. |
 | Secret scan | `CI_CD_GATES.md` requires security gate and `.env`/secret protection. | Local pre-commit now resolves the baseline in both the current monorepo path and a standalone team-root export path. `.secrets.baseline` contains hashes for existing historical candidates, not raw values. `audit_detect_secrets_baseline.py` classifies all 87 findings without printing values. Root CI still has no Lemon-specific secret scan job beyond dependency audit/docs. | Local hook bootstrap and bounded baseline audit are closed; CI enforcement remains. | Medium: local contributors can run the hook, but CI still needs the non-bypassable version. |
 | Markdown lint | `.pre-commit-config.yaml` calls `markdownlint` with a repo config. | `.markdownlint.json` now exists and the hook resolves it in both current monorepo and standalone team-root paths. | Bootstrap closed with low-noise rules; stricter project-wide markdown cleanup remains separate. | Low-Medium: docs lint is reproducible, but intentionally not strict yet. |
 | Large file limit | `CI_CD_GATES.md` shows 2MB example. | Current `.pre-commit-config.yaml` uses `--maxkb=5000`; team docs branch uses 2000. | Limit differs between docs/current/team docs branch. | Low-Medium: OCR artifacts or screenshots may exceed intended limit. |
@@ -90,18 +90,19 @@ the non-bypassable layer.
   placeholders as medium severity without printing candidate values.
 - Current docs and hooks still rely on local discipline for `--no-verify`; CI
   should own the non-bypassable version of this policy.
-- Stale workflow paths are a security issue because a changed protected path can
-  bypass intended lint/test/secret gates.
-- `check_lemon_ci_paths.py` now detects the stale root `.github` issue without
-  printing workflow contents, local absolute roots, or secret values.
+- Stale workflow and CODEOWNERS paths are security issues because a changed
+  protected path can bypass intended lint/test/secret gates and reviewer
+  ownership.
+- `check_lemon_ci_paths.py` now detects stale root `.github` CI/policy paths
+  without printing workflow contents, local absolute roots, or secret values.
 
 ## Recommended Follow-up PR Split
 
 | Priority | PR | Scope |
 | --- | --- | --- |
-| P1 | `ci(infra): Lemon workflow 경로를 보정` | Move root `.github` references from `yeong-Lemon-Aid` to the current default Lemon-Aid path, then make `check_lemon_ci_paths.py --project-root .` pass. |
 | P1 | `chore(team): local protected branch hook을 검토` | Consider adding `guard_protected_branch.py` locally after CI policy is active. |
 | P2 | `style(docs): markdownlint 규칙을 단계적으로 강화` | Tighten markdownlint beyond the bootstrap rules after legacy docs cleanup. |
+| Done | `ci(infra): Lemon workflow 경로를 보정` | Root workflows, dependabot, PR template, and CODEOWNERS now point to the current default Lemon-Aid path, and `check_lemon_ci_paths.py --project-root .` passes. |
 | Done | `test(infra): Lemon CI 경로 감사를 추가` | Added bounded audit for stale root workflow/dependabot/PR-template paths. |
 | Done | `ci(team): team policy gate를 추가` | Added standalone export PR template, team-policy workflow, branch/title validators, and asset checker. |
 | Done | `chore(team): secret scan baseline을 추가` | Added `.secrets.baseline`; `pre-commit run detect-secrets --all-files` passes. |
@@ -112,7 +113,7 @@ the non-bypassable layer.
 ## Current Decision
 
 Keep CI/team-policy changes separate from the OCR quality-gate slices. The
-local hook bootstrap and standalone team-policy assets are repaired. The next
-safe governance PR should either fix the root monorepo `.github` paths until
-`check_lemon_ci_paths.py --project-root .` passes, or export the standalone
-assets into the team-root repository where those root paths do not apply.
+local hook bootstrap, standalone team-policy assets, and current monorepo root
+`.github` paths are repaired. The next safe governance PR can focus on
+non-bypassable CI policy for `--no-verify`-sensitive checks and optional local
+protected-branch hook parity.
