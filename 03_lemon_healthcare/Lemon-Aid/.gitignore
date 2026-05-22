@@ -7,10 +7,14 @@
 # Environment Variables & Secrets (CRITICAL - NEVER COMMIT)
 # -----------------------------------------------------------------------------
 .env
+.env.backup-*
 .env.local
 .env.*.local
 .env.production
 .env.development
+
+# Generated OCR evaluation artifacts for local/private smoke runs
+outputs/generated/ocr-eval/2026-05-22-*
 api-key/
 *.pem
 *.key
