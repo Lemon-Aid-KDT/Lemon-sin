@@ -65,6 +65,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - Preserved remote: `origin/feat/ocr-quality-gates`
 - Clean base candidate: `origin/chore/ocr-clean-export-base`
 - PR 1 export candidate: `origin/fix/ocr-field-extractor-shapes`
+- PR 2a export candidate: `origin/test/ocr-artifact-privacy-gate`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -192,6 +193,17 @@ Suggested commit:
 feat(ocr): 품질 게이트 도구를 추가
 ```
 
+Current first sub-slice:
+
+```text
+origin/test/ocr-artifact-privacy-gate
+98d51c7c test(ocr): artifact privacy gate를 추가
+```
+
+This sub-slice is intentionally narrower than the whole PR 2 list. It adds only
+the generated OCR artifact privacy scanner and its tests, because this gate is
+needed before exporting any larger OCR evaluation tooling.
+
 Candidate files:
 
 - `backend/scripts/collect_supplement_ocr_observations.py`
@@ -211,6 +223,16 @@ Exclude:
 - `outputs/generated/ocr-eval/`
 - raw OCR text
 - secrets, `.env`, request headers, provider payloads
+
+PR 2a validation:
+
+```text
+10 passed - test_check_ocr_artifact_privacy.py
+black --check passed
+ruff check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+secret pattern scan on changed source files: no matches
+```
 
 ### PR 3 - Analyze API Security Gate
 

@@ -739,6 +739,47 @@ clean_base_is_ancestor=0
 - PR branch는 clean export base를 parent로 하므로 generated OCR/live artifacts가
   Git-tracked 상태가 아니다.
 
+### 3.24 Artifact Privacy Gate Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-artifact-privacy-gate-export-result.md`
+
+생성 branch:
+
+- base: `origin/chore/ocr-clean-export-base`
+- export branch: `origin/test/ocr-artifact-privacy-gate`
+- patch commit: `98d51c7c test(ocr): artifact privacy gate를 추가`
+
+변경:
+
+- backend OCR quality gates를 작게 나누기 위해 generated OCR artifact privacy
+  scanner와 tests만 별도 branch로 분리했다.
+- 변경 파일은 `check_ocr_artifact_privacy.py`와
+  `test_check_ocr_artifact_privacy.py` 2개로 제한했다.
+- branch diff는 `2 files changed, 585 insertions(+)`다.
+
+검증:
+
+```text
+10 passed - test_check_ocr_artifact_privacy.py
+black --check passed on changed files
+ruff check passed on changed files
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+secret pattern scan on changed source files: no matches
+git diff --check passed
+git diff --cached --check passed
+```
+
+보안 확인:
+
+- generated OCR observations, raw OCR text, provider payloads, request headers,
+  image bytes, `.env`, secret values를 branch에 추가하지 않았다.
+- scanner output은 bounded finding code/path 중심이며 matched sensitive text를
+  출력하지 않는다.
+- secret assignment detection test는 credential-like string을 runtime에 조립해
+  repo source에 연속 credential assignment literal을 남기지 않는다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1325,6 +1366,8 @@ flutter build ios --simulator --debug
    - field_extractor Phase 0-alpha is isolated in commit `3d044dce`.
    - PR 1 export candidate is now preserved as `origin/fix/ocr-field-extractor-shapes`
      on top of `origin/chore/ocr-clean-export-base`.
+   - artifact privacy gate export candidate is now preserved as
+     `origin/test/ocr-artifact-privacy-gate`.
    - backend quality/layout/provider routing and mobile release security are now separate commits, but the branch as a whole is larger than the team PR-size recommendation.
    - before opening PR, decide whether to keep this branch as an integration PR or cherry-pick commits into smaller branches.
 2. Do not commit generated CLOVA artifacts unless the team explicitly wants evaluation artifacts in repo.
