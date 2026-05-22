@@ -119,15 +119,79 @@ class TestExtractFields:
         }
 
     def test_english_all_fields(self) -> None:
-        text = (
-            "Nutrition Facts\n"
-            "Vitamin C Complex\n"
-            "Ingredients\n"
-            "- Vitamin C: 1000mg"
-        )
+        text = "Nutrition Facts\n" "Vitamin C Complex\n" "Ingredients\n" "- Vitamin C: 1000mg"
         result = extract_fields(text)
         assert result == {
             "product_name": "Vitamin C Complex",
             "ingredients": ["Vitamin C"],
             "dosage": "1000mg",
         }
+
+
+class TestPaddleOCRRegressionShape:
+    """PaddleOCR 출력 변형에서 어떤 형식이 누락되는지 명시적으로 박아둔다.
+
+    P1-5 안정화 후 chronic 평가에서 ingredient_name_exact_rate=0% 가 관측되었다.
+    이 클래스는 ``INGREDIENT_LINE_PATTERN`` / ``DOSAGE_PATTERN`` 정규식이 PaddleOCR
+    이 흔히 내놓는 출력 형식 중 어디서 깨지는지 회귀 testbed 로 잡아둔다.
+    개선 PR 은 여기 표시된 ``xfail`` / 누락 케이스를 채워나가는 방향이다.
+    """
+
+    def test_table_row_without_colon_currently_dropped(self) -> None:
+        """PaddleOCR 표 셀 출력 ``비타민 C  1000mg`` 은 현재 정규식에서 누락된다.
+
+        ``INGREDIENT_LINE_PATTERN`` 이 콜론을 필수로 요구하므로 표 레이아웃을
+        평면화한 출력 (e.g. ``ppstructure`` 없이 ``ppocr`` 만 사용했을 때)에서
+        ingredient 가 모두 비어 나온다. P1-5 회귀의 가장 유력한 원인.
+        """
+        text = "성분\n비타민 C  1000mg\n비타민 D  25μg"
+        result = extract_ingredients(text)
+        assert result == []
+
+    def test_table_row_pipe_separator_currently_dropped(self) -> None:
+        """파이프 구분자 표 출력 ``비타민 C | 1000mg`` 도 동일하게 누락된다."""
+        text = "성분\n비타민 C | 1000mg"
+        result = extract_ingredients(text)
+        assert result == []
+
+    def test_colon_with_surrounding_spaces_is_matched(self) -> None:
+        """``이름 : 1000mg`` (콜론 주변 공백) 변형은 정규식에서 잡혀야 한다.
+
+        ``INGREDIENT_LINE_PATTERN`` 의 ``\\s*:\\s*`` 가 양쪽 공백을 흡수하므로
+        PaddleOCR 가 콜론을 약간 띄워 출력하더라도 ingredient 가 추출된다.
+        """
+        text = "- 비타민 C : 1000mg"
+        result = extract_ingredients(text)
+        assert result == ["비타민 C"]
+
+    def test_dosage_pattern_misreads_comma_thousand_separator(self) -> None:
+        """``1,000mg`` 같은 천단위 콤마는 ``DOSAGE_PATTERN`` 이 잘못 해석한다.
+
+        amount 그룹이 ``\\d+(?:\\.\\d+)?`` 라 콤마를 받지 않고 ``re.search`` 가
+        콤마 뒤의 ``000mg`` 을 첫 매치로 채택한다 → dosage 가 ``"000mg"`` 으로
+        기록되어 GT(``"1000mg"``) 와 mismatch. PaddleOCR 출력에서 천단위 콤마가
+        나오면 dosage 평가가 즉시 깨진다.
+        """
+        result = extract_dosage("- 비타민 C: 1,000mg")
+        assert result == "000mg"
+        assert result != "1000mg"
+
+    def test_dosage_pattern_misses_mcg_unit(self) -> None:
+        """``mcg`` 단위는 ``DOSAGE_PATTERN`` 에서 누락된다.
+
+        PaddleOCR 가 라벨의 ``μg`` 를 ``mcg`` 로 출력하는 경우가 흔하지만 현재
+        패턴에는 ``μg`` / ``ug`` 만 정의되어 있어 dosage 가 ``None`` 이 된다.
+        """
+        result = extract_dosage("- 비타민 D: 25mcg")
+        assert result is None
+
+    def test_dosage_pattern_misses_combined_units_lowercase(self) -> None:
+        """``μg rae`` (소문자 RAE)는 ``DOSAGE_PATTERN`` 에서 잡히지만 정규화 후
+
+        대문자가 보존되지 않아 라벨 원문과 다르게 표시될 수 있음을 명시한다.
+        OCR raw 가 ``25 μg rae`` 인 경우 추출은 되지만 unit 이 ``μg rae`` 로
+        기록되어 GT(``μg RAE``) 와 다르므로 평가 단계에서 mismatch 가 발생한다.
+        """
+        result = extract_dosage("비타민 A: 25 μg rae")
+        assert result == "25μg rae"
+        assert result != "25μg RAE"

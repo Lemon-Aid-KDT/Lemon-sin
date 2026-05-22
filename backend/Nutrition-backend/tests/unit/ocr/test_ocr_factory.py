@@ -254,3 +254,69 @@ def test_analysis_factory_builds_optional_fallback_adapters() -> None:
 
     assert isinstance(adapters.fallback_ocr_adapters[0], PaddleOCRAdapter)
     assert isinstance(adapters.fallback_ocr_adapters[1], ClovaOCRAdapter)
+
+
+def _clova_primary_settings(**overrides: object) -> Settings:
+    """Build Settings with CLOVA-as-primary credentials wired in.
+
+    Args:
+        **overrides: Per-test field overrides.
+
+    Returns:
+        Settings instance ready for CLOVA primary OCR tests.
+    """
+    defaults: dict[str, object] = {
+        "_env_file": None,
+        "ocr_primary_provider": "clova",
+        "allow_external_ocr": True,
+        "clova_ocr_api_url": "https://example.apigw.ntruss.com/custom/v1/infer",
+        "clova_ocr_secret": SecretStr("secret"),
+    }
+    defaults.update(overrides)
+    return Settings(**defaults)
+
+
+def test_factory_builds_clova_primary_when_selected() -> None:
+    """Verify CLOVA primary returns a ClovaOCRAdapter when credentials are present."""
+    adapter = build_supplement_ocr_adapter(_clova_primary_settings())
+    assert isinstance(adapter, ClovaOCRAdapter)
+
+
+def test_factory_clova_primary_requires_external_ocr_gate() -> None:
+    """Verify CLOVA primary refuses to build when ALLOW_EXTERNAL_OCR is unset."""
+    with pytest.raises(OCRConfigurationError, match="ALLOW_EXTERNAL_OCR"):
+        build_supplement_ocr_adapter(_clova_primary_settings(allow_external_ocr=False))
+
+
+def test_factory_clova_primary_requires_api_url() -> None:
+    """Verify CLOVA primary refuses to build without an API URL."""
+    with pytest.raises(OCRConfigurationError, match="CLOVA_OCR_API_URL"):
+        build_supplement_ocr_adapter(_clova_primary_settings(clova_ocr_api_url=None))
+
+
+def test_factory_clova_primary_requires_secret() -> None:
+    """Verify CLOVA primary refuses to build without a client secret."""
+    with pytest.raises(OCRConfigurationError, match="CLOVA_OCR_SECRET"):
+        build_supplement_ocr_adapter(_clova_primary_settings(clova_ocr_secret=None))
+
+
+def test_analysis_factory_skips_clova_fallback_when_primary() -> None:
+    """Verify CLOVA is not duplicated in the fallback list when already primary."""
+    adapters = build_supplement_image_analysis_adapters(
+        _clova_primary_settings(enable_clova_ocr=True)
+    )
+
+    assert isinstance(adapters.ocr, ClovaOCRAdapter)
+    assert all(not isinstance(item, ClovaOCRAdapter) for item in adapters.fallback_ocr_adapters)
+
+
+def test_provider_selector_builds_clova_adapter_for_request() -> None:
+    """Verify request-selected CLOVA produces a CLOVA-only bundle without fallbacks."""
+    adapters = build_supplement_image_analysis_adapters_for_provider(
+        _clova_primary_settings(),
+        "clova",
+    )
+
+    assert isinstance(adapters.ocr, ClovaOCRAdapter)
+    assert adapters.fallback_ocr_adapters == ()
+    assert is_external_ocr_pipeline_enabled(_clova_primary_settings(), "clova") is True

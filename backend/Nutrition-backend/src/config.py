@@ -288,7 +288,9 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
-    ocr_primary_provider: Literal["none", "google_vision", "paddleocr"] = Field(default="paddleocr")
+    ocr_primary_provider: Literal["none", "google_vision", "paddleocr", "clova"] = Field(
+        default="paddleocr"
+    )
     allow_external_ocr: bool = Field(default=False)
     google_vision_auth_mode: Literal["api_key", "adc"] = Field(default="adc")
     allow_google_api_key_auth: bool = Field(
@@ -388,6 +390,15 @@ class Settings(BaseSettings):
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
     local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    local_ocr_use_textline_orientation: bool = Field(
+        default=False,
+        description=(
+            "Whether PaddleOCR's textline orientation classifier is enabled. "
+            "Default false matches the P1-5 isolation finding (commit 101df18e). "
+            "Set true to re-measure tilted smartphone captures during OCR "
+            "regression investigations."
+        ),
+    )
     paddle_disable_model_source_check: bool = Field(
         default=True,
         description=(
@@ -528,6 +539,18 @@ class Settings(BaseSettings):
                     self.ocr_primary_provider == "google_vision"
                     and bool(self.google_application_credentials),
                     "GOOGLE_APPLICATION_CREDENTIALS file-based credentials are not allowed for Google Vision in production.",
+                ),
+                (
+                    self.ocr_primary_provider == "clova" and not self.allow_external_ocr,
+                    "ALLOW_EXTERNAL_OCR=true is required when OCR_PRIMARY_PROVIDER=clova in production.",
+                ),
+                (
+                    self.ocr_primary_provider == "clova" and not self.clova_ocr_api_url,
+                    "CLOVA_OCR_API_URL is required when OCR_PRIMARY_PROVIDER=clova in production.",
+                ),
+                (
+                    self.ocr_primary_provider == "clova" and self.clova_ocr_secret is None,
+                    "CLOVA_OCR_SECRET is required when OCR_PRIMARY_PROVIDER=clova in production.",
                 ),
                 (
                     self.ocr_roi_preprocessing_policy != "disabled"

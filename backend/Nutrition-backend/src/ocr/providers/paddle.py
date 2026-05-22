@@ -74,6 +74,7 @@ class PaddleOCRAdapter(OCRAdapter):
         predictor = self._predictor or _get_paddle_predictor(
             language=self._settings.local_ocr_language,
             device=self._settings.local_ocr_device,
+            use_textline_orientation=self._settings.local_ocr_use_textline_orientation,
         )
         suffix = _suffix_for_mime_type(image.mime_type)
         with TemporaryDirectory(prefix="lemon-paddleocr-") as temporary_directory:
@@ -92,13 +93,21 @@ class PaddleOCRAdapter(OCRAdapter):
         return OCRResult(text=text, provider=PADDLE_OCR_PROVIDER, confidence=confidence)
 
 
-@lru_cache(maxsize=4)
-def _get_paddle_predictor(*, language: str, device: str | None) -> PaddlePredictor:
+@lru_cache(maxsize=8)
+def _get_paddle_predictor(
+    *,
+    language: str,
+    device: str | None,
+    use_textline_orientation: bool = False,
+) -> PaddlePredictor:
     """Load and cache the PaddleOCR predictor.
 
     Args:
         language: OCR language setting.
         device: Optional runtime device such as ``cpu`` or ``gpu:0``.
+        use_textline_orientation: Whether to enable PaddleOCR's textline
+            orientation classifier. Cached separately per toggle so isolation
+            measurements can flip the flag without polluting the prior cache.
 
     Returns:
         PaddleOCR predictor.
@@ -113,14 +122,11 @@ def _get_paddle_predictor(*, language: str, device: str | None) -> PaddlePredict
 
     kwargs: dict[str, object] = {
         "lang": language,
-        # Keep the local simulator smoke path lightweight. The selected gallery
-        # image is already upright, and PaddleOCR documents these preprocessors
-        # as optional for the Python OCR pipeline.
         "text_detection_model_name": PADDLE_MOBILE_TEXT_DETECTION_MODEL,
         "text_recognition_model_name": _mobile_text_recognition_model_name(language),
         "use_doc_orientation_classify": False,
         "use_doc_unwarping": False,
-        "use_textline_orientation": False,
+        "use_textline_orientation": use_textline_orientation,
     }
     if device:
         kwargs["device"] = device
