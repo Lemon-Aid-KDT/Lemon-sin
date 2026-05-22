@@ -1,0 +1,156 @@
+"""Tests for Naver Tampermonkey OCR manifest generation."""
+
+from __future__ import annotations
+
+import json
+import unicodedata
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+from scripts import build_naver_tampermonkey_ocr_manifest as builder
+
+
+def _write_image(path: Path, *, size: tuple[int, int] = (640, 480)) -> None:
+    """Write a deterministic test image.
+
+    Args:
+        path: Destination path.
+        size: Image size.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, "white").save(path, format="JPEG")
+
+
+def _jsonl_rows(path: Path) -> list[dict[str, object]]:
+    """Read JSONL rows from a test artifact."""
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+
+
+def test_build_detail_manifest_normalizes_korean_paths(tmp_path: Path) -> None:
+    """Verify detail images are classified through NFC-normalized path parts."""
+    source_root = tmp_path / "naver"
+    detail_marker = unicodedata.normalize("NFD", "상세페이지")
+    review_marker = unicodedata.normalize("NFD", "리뷰")
+    detail_image = (
+        source_root
+        / unicodedata.normalize("NFD", "[오메가3]")
+        / unicodedata.normalize("NFD", "제품A_123456789")
+        / detail_marker
+        / "d_1.jpg"
+    )
+    review_image = (
+        source_root
+        / unicodedata.normalize("NFD", "[오메가3]")
+        / unicodedata.normalize("NFD", "제품A_123456789")
+        / review_marker
+        / "r_1.jpg"
+    )
+    _write_image(detail_image)
+    _write_image(review_image)
+
+    output_dir = tmp_path / "out"
+    summary = builder.build_naver_tampermonkey_manifest(
+        source_root=source_root,
+        output_dir=output_dir,
+        manifest_name="manifest-detail.jsonl",
+        inventory_name="inventory.json",
+        section="detail",
+        sample_size=10,
+        scan_limit=20,
+        seed=7,
+        min_width=100,
+        min_height=100,
+        max_bytes=1_000_000,
+    )
+
+    assert summary["manifest_row_count"] == 1
+    rows = _jsonl_rows(output_dir / "manifest-detail.jsonl")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["fixture_id"] == "naver-tm-detail-000001"
+    assert row["section"] == "detail"
+    assert row["category"] == "[오메가3]"
+    assert row["product_id"] == "123456789"
+    assert row["contains_personal_data"] is False
+    assert row["external_transfer_allowed"] is True
+    assert row["expected"] == {}
+    dumped = json.dumps(row, ensure_ascii=False)
+    assert "raw_ocr_text" not in dumped
+    assert "provider_payload" not in dumped
+
+    inventory = json.loads((output_dir / "inventory.json").read_text(encoding="utf-8"))
+    assert inventory["section_counts"]["detail"] == 1
+    assert inventory["section_counts"]["review"] == 1
+    assert inventory["category_count"] == 1
+    assert inventory["product_dir_count"] == 1
+    assert inventory["raw_ocr_text_stored"] is False
+
+
+def test_review_manifest_defaults_to_local_pii_screening(tmp_path: Path) -> None:
+    """Verify review images can be emitted for local-only PII screening."""
+    source_root = tmp_path / "naver"
+    review_image = source_root / "[비타민C]" / "제품B_99999" / "리뷰" / "r_1.jpg"
+    _write_image(review_image)
+    output_dir = tmp_path / "out"
+
+    builder.build_naver_tampermonkey_manifest(
+        source_root=source_root,
+        output_dir=output_dir,
+        manifest_name="manifest-review.jsonl",
+        inventory_name="inventory.json",
+        section="review",
+        sample_size=1,
+        scan_limit=10,
+        seed=1,
+        min_width=100,
+        min_height=100,
+        max_bytes=1_000_000,
+    )
+
+    rows = _jsonl_rows(output_dir / "manifest-review.jsonl")
+    assert rows[0]["section"] == "review"
+    assert rows[0]["contains_personal_data"] is None
+    assert rows[0]["pii_screening_status"] == "pending_local_screening"
+    assert rows[0]["external_transfer_allowed"] is False
+    assert rows[0]["local_processing_allowed"] is True
+
+
+def test_review_manifest_marks_external_transfer_disallowed_when_cleared(
+    tmp_path: Path,
+) -> None:
+    """Verify cleared review rows are local-only by default."""
+    source_root = tmp_path / "naver"
+    review_image = source_root / "[비타민C]" / "제품B_99999" / "리뷰" / "r_1.jpg"
+    _write_image(review_image)
+    output_dir = tmp_path / "out"
+
+    builder.build_naver_tampermonkey_manifest(
+        source_root=source_root,
+        output_dir=output_dir,
+        manifest_name="manifest-review.jsonl",
+        inventory_name="inventory.json",
+        section="review",
+        sample_size=1,
+        scan_limit=10,
+        seed=1,
+        min_width=100,
+        min_height=100,
+        max_bytes=1_000_000,
+        review_personal_data_cleared=True,
+    )
+
+    rows = _jsonl_rows(output_dir / "manifest-review.jsonl")
+    assert rows[0]["section"] == "review"
+    assert rows[0]["contains_personal_data"] is False
+    assert rows[0]["pii_screening_status"] == "operator_cleared_review_local_only"
+    assert rows[0]["external_transfer_allowed"] is False
+
+
+def test_reject_raw_fields_blocks_forbidden_keys() -> None:
+    """Verify generated helper rejects forbidden raw payload fields."""
+    with pytest.raises(ValueError, match="raw_ocr_text"):
+        builder._reject_raw_fields({"nested": {"raw_ocr_text": "do not store"}})
