@@ -874,6 +874,51 @@ generated output git status: ignored
 - generated artifact는 ignored local output으로만 유지하고, durable 기록은
   redacted todo report에 남겼다.
 
+### 3.27 Analyze API Security Gate Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-analyze-api-security-gate-export-result.md`
+
+생성 branch:
+
+- base: `origin/chore/ocr-clean-export-base`
+- export branch: `origin/feat/backend-analyze-rate-limit-gate`
+- patch commit: `db3b5391 feat(backend): 분석 업로드 제한을 추가`
+
+변경:
+
+- `POST /api/v1/supplements/analyze`에 process-local fixed-window upload
+  limiter를 추가했다.
+- limit 초과 시 `429`와 `Retry-After`를 반환한다.
+- limiter key는 raw client 값을 저장하지 않고 hashed client-derived subject만
+  사용한다.
+- 임의 `Authorization` header 변경으로 upload limit을 우회할 수 없다는
+  회귀 테스트를 추가했다.
+- staging/production에서 `RATE_LIMIT_ENABLED=false`를 거부한다.
+- production에서는 ingress/API gateway/Redis 같은 external rate-limit
+  enforcement provider와 non-secret policy reference가 없으면 boot를 거부한다.
+
+검증:
+
+```text
+70 passed - test_supplement_intake_api.py and test_config.py
+black --check passed on changed Python files
+ruff check --ignore RUF001 passed on changed Python files
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+added-line secret pattern scan: no real secret assignments found
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payloads, request headers,
+  image bytes, `.env`, secret values를 branch에 추가하지 않았다.
+- test fixture credential-looking strings는 `noncredential-fixture-value`로
+  정리했다.
+- 이 clean export base에는 `.secrets.baseline`이 아직 없어서 baseline 기반
+  detect-secrets hook은 별도 governance branch/PR 전제 조건으로 남아 있다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1464,6 +1509,8 @@ flutter build ios --simulator --debug
      `origin/test/ocr-artifact-privacy-gate`.
    - PR export base gate candidate is now preserved as
      `origin/test/ocr-pr-export-base-gate`.
+   - Analyze API security gate candidate is now preserved as
+     `origin/feat/backend-analyze-rate-limit-gate`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

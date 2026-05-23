@@ -67,6 +67,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 1 export candidate: `origin/fix/ocr-field-extractor-shapes`
 - PR 2a export candidate: `origin/test/ocr-artifact-privacy-gate`
 - Export readiness gate candidate: `origin/test/ocr-pr-export-base-gate`
+- PR 3 export candidate: `origin/feat/backend-analyze-rate-limit-gate`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -277,11 +278,30 @@ Suggested commit:
 feat(backend): 분석 업로드 제한을 추가
 ```
 
+Exported branch:
+
+```text
+origin/feat/backend-analyze-rate-limit-gate
+```
+
+Base branch:
+
+```text
+origin/chore/ocr-clean-export-base
+```
+
+Created commit on export branch:
+
+```text
+db3b5391 feat(backend): 분석 업로드 제한을 추가
+```
+
 Candidate files:
 
 - `backend/Nutrition-backend/src/middleware/rate_limit.py`
 - `backend/Nutrition-backend/src/main.py`
 - `backend/Nutrition-backend/src/config.py`
+- `backend/.env.example`
 - `backend/Nutrition-backend/tests/integration/api/test_supplement_intake_api.py`
 - `backend/Nutrition-backend/tests/unit/test_config.py`
 
@@ -293,6 +313,20 @@ Scope:
 - production fail-closed guard requiring external ingress/API gateway/Redis rate-limit enforcement
 - hashed client-derived subject keys only
 - regression test that changing arbitrary `Authorization` headers cannot bypass the upload limit
+
+Validation:
+
+```text
+70 passed - test_supplement_intake_api.py and test_config.py
+black --check passed
+ruff check --ignore RUF001 passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+added-line secret pattern scan: no real secret assignments found
+```
+
+Note: this export base does not include `.secrets.baseline`, so the baseline
+backed detect-secrets hook remains a separate governance prerequisite.
 
 ### PR 4 - Mobile Release Security
 
