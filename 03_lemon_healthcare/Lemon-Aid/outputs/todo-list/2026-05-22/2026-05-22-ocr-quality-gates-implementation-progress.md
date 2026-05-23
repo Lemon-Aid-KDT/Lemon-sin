@@ -1125,6 +1125,57 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
   image bytes, `.env`, generated OCR artifact는 추가하지 않았다.
 - 검증 과정에서 external OCR/LLM 호출은 수행하지 않았다.
 
+### 3.32 Mobile Provider Observations Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-provider-observations-export-result.md`
+
+공식 근거:
+
+- Dart named parameters:
+  <https://dart.dev/language/functions#named-parameters>
+- Dart collections:
+  <https://dart.dev/language/collections>
+- Flutter testing overview:
+  <https://docs.flutter.dev/testing/overview>
+
+생성 branch:
+
+- base: `origin/fix/mobile-certificate-pin-wiring`
+- export branch: `origin/feat/mobile-provider-observations`
+- patch commit: `9966ec7c feat(mobile): OCR 관측 모델을 추가`
+
+변경:
+
+- `SupplementAnalysisPreview`가 optional `provider_observations`를 읽도록
+  모바일 모델을 확장했다.
+- `SupplementOcrProviderObservation`은 provider, stage, status, latency,
+  bounded warning/error code, parser/text boolean, raw-storage flag만 담는다.
+- 단위 테스트에서 `raw_ocr_text_stored=false`와
+  `raw_provider_payload_stored=false`가 보존되는지 확인했다.
+- 큰 Flutter OCR preview UI 변경은 다음 slice로 분리했다.
+
+검증:
+
+```text
+flutter test test/unit/supplement_models_test.dart: 2 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider raw payload, request headers,
+  image bytes, `.env`, secret values를 추가하지 않았다.
+- 모델은 image path, OCR text, provider request/response body, header를 담지
+  않고 bounded metadata만 읽는다.
+- `flutter test`가 임시 worktree에서 dependency를 resolve했지만 생성된
+  dependency/build 파일은 stage하지 않았다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1725,6 +1776,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-camera-permission-gate`.
    - Mobile certificate pin wiring fix candidate is now preserved as
      `origin/fix/mobile-certificate-pin-wiring`.
+   - Mobile provider observations candidate is now preserved as
+     `origin/feat/mobile-provider-observations`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

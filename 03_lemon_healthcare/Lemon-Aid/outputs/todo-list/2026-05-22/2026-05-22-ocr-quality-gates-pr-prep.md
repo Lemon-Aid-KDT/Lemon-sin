@@ -72,6 +72,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 4b export candidate: `origin/feat/mobile-native-security-gate`
 - PR 4c export candidate: `origin/feat/mobile-camera-permission-gate`
 - PR 4d corrective candidate: `origin/fix/mobile-certificate-pin-wiring`
+- PR 5a export candidate: `origin/feat/mobile-provider-observations`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -450,6 +451,42 @@ PR 4d validation:
 
 ```text
 22 passed - release security, app config, and API pin tests
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+### PR 5 - Mobile OCR Preview Model/UI
+
+Current first sub-slice:
+
+```text
+origin/feat/mobile-provider-observations
+9966ec7c feat(mobile): OCR 관측 모델을 추가
+```
+
+This branch stacks on `origin/fix/mobile-certificate-pin-wiring` and adds only
+mobile model parsing for sanitized `provider_observations`. It intentionally
+excludes the larger Flutter preview UI screen changes so review can verify the
+data boundary first.
+
+Candidate files:
+
+- `mobile/lib/features/supplements/supplement_models.dart`
+- `mobile/test/unit/supplement_models_test.dart`
+
+Scope:
+
+- parse optional OCR provider observations in `SupplementAnalysisPreview`
+- preserve bounded provider status, latency, warning, and raw-storage flags
+- test that raw OCR/provider payload storage flags remain false
+
+PR 5a validation:
+
+```text
+2 passed - supplement_models_test.dart
 flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
 detect-secrets-hook changed files: passed
