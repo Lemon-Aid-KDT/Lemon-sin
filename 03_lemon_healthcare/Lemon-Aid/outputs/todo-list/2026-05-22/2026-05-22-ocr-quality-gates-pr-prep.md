@@ -76,6 +76,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 5b export candidate: `origin/feat/mobile-image-picker-permission-ui`
 - PR 5c export candidate: `origin/feat/mobile-capture-quality-warning`
 - PR 5d export candidate: `origin/feat/mobile-capture-quality-metrics`
+- PR 5e export candidate: `origin/feat/mobile-preview-metadata-summary`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -594,6 +595,43 @@ PR 5d validation:
 ```text
 5 passed - supplement_flow_capture_quality_test.dart
 7 passed - image picker permission and capture quality widget tests
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current fifth sub-slice:
+
+```text
+origin/feat/mobile-preview-metadata-summary
+77f9c279 feat(mobile): OCR 품질 요약을 표시
+```
+
+This branch stacks on `origin/feat/mobile-capture-quality-metrics` and shows
+sanitized image-quality/provider-observation metadata in the confirmation card.
+It intentionally does not render raw OCR text, provider payloads, request
+headers, or image bytes.
+
+Candidate files:
+
+- `mobile/lib/features/supplements/supplement_flow_screen.dart`
+- `mobile/test/supplement_flow_preview_metadata_test.dart`
+
+Scope:
+
+- show compact `OCR 품질 요약` in the preview card
+- display bounded image-quality status, size, ROI count, and issue labels
+- display bounded provider status, stage, latency, text/parser flags, warning
+  codes, and raw-storage boolean status
+- test that raw-key strings are absent from the rendered screen
+
+PR 5e validation:
+
+```text
+1 passed - supplement_flow_preview_metadata_test.dart
+10 passed - preview metadata, image picker permission, capture quality, and supplement model tests
 flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
 detect-secrets-hook changed files: passed

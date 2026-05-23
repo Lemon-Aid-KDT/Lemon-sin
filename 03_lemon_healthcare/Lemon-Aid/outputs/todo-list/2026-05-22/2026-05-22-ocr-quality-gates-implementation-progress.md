@@ -1333,6 +1333,58 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
 - app state에는 bounded numeric metrics와 warning reason code만 남긴다.
 - external OCR/LLM 호출을 추가하지 않았다.
 
+### 3.36 Mobile Preview Metadata Summary Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-preview-metadata-summary-result.md`
+
+공식 근거:
+
+- Flutter widget testing:
+  <https://docs.flutter.dev/cookbook/testing/widget/introduction>
+- Flutter `Card`:
+  <https://api.flutter.dev/flutter/material/Card-class.html>
+- Flutter `Text`:
+  <https://api.flutter.dev/flutter/widgets/Text-class.html>
+
+생성 branch:
+
+- base: `origin/feat/mobile-capture-quality-metrics`
+- export branch: `origin/feat/mobile-preview-metadata-summary`
+- patch commit: `77f9c279 feat(mobile): OCR 품질 요약을 표시`
+
+변경:
+
+- confirmation preview card가 sanitized `image_quality_report`와
+  `provider_observations`를 `OCR 품질 요약`으로 표시한다.
+- image quality summary는 status, image size, ROI count, mapped issue label만
+  표시한다.
+- provider observation summary는 provider, stage, status, latency,
+  text/parser boolean, warning code, raw-storage boolean status만 표시한다.
+- widget test가 `raw_ocr_text`, `provider_payload`, `authorization` 문자열이
+  화면에 렌더링되지 않는지 확인한다.
+
+검증:
+
+```text
+flutter test test/supplement_flow_preview_metadata_test.dart: 1 passed
+flutter test preview metadata + image picker permission + capture quality + supplement models: 10 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payload, request headers,
+  image bytes, `.env`, secret values를 추가하지 않았다.
+- UI는 이미 sanitize된 model field만 소비하고 file/image/provider response,
+  header, environment variable을 읽지 않는다.
+- test는 synthetic in-memory JSON만 사용한다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1941,6 +1993,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-capture-quality-warning`.
    - Mobile capture quality metrics candidate is now preserved as
      `origin/feat/mobile-capture-quality-metrics`.
+   - Mobile preview metadata summary candidate is now preserved as
+     `origin/feat/mobile-preview-metadata-summary`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.
