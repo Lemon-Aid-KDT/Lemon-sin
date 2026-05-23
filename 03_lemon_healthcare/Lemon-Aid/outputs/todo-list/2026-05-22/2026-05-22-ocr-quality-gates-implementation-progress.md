@@ -959,6 +959,67 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
   image bytes, `.env`, secret values를 branch에 추가하지 않았다.
 - 테스트 pin 값은 deterministic placeholder이며 실제 운영 인증서 pin이 아니다.
 
+### 3.29 Mobile Native Security Gate Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-native-security-gate-export-result.md`
+
+공식 근거:
+
+- Android `HttpsURLConnection` hostname verifier:
+  <https://developer.android.com/reference/javax/net/ssl/HttpsURLConnection>
+- Android network security config:
+  <https://developer.android.com/training/articles/security-config>
+- Apple `SecPolicyCreateSSL`:
+  <https://developer.apple.com/documentation/security/secpolicycreatessl%28_%3A_%3A%29>
+- Apple `SecTrustEvaluateWithError`:
+  <https://developer.apple.com/documentation/security/sectrustevaluatewitherror%28_%3A_%3A%29>
+- Flutter `MethodChannel`:
+  <https://api.flutter.dev/flutter/services/MethodChannel-class.html>
+
+생성 branch:
+
+- base: `origin/feat/mobile-release-security-core`
+- export branch: `origin/feat/mobile-native-security-gate`
+- patch commit: `ca860026 feat(mobile): native 보안 gate를 추가`
+
+변경:
+
+- Android release activity를 `com.example` package 밖의
+  `com.lemonaid.mobile.MainActivity`로 이동했다.
+- Android native verifier가 SSL socket handshake, default hostname verifier,
+  SHA-256 certificate pin 비교를 수행한다.
+- iOS native verifier가 `SecPolicyCreateSSL`, `SecTrustSetPolicies`,
+  `SecTrustEvaluateWithError`, SHA-256 certificate pin 비교를 수행한다.
+- release artifact scanner를 추가해 localhost/emulator loopback/ngrok 문자열이
+  built artifact에 남아 있으면 실패하게 했다.
+- camera permission / OCR preview UI 변경은 이번 보안 slice에서 제외했다.
+
+검증:
+
+```text
+flutter test release_security_config/app_config/api_client_certificate_pin: 17 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+release artifact verifier safe-file smoke passed
+debug APK verifier negative smoke failed as expected on local dev URLs
+flutter build apk --debug --flavor dev passed
+flutter build ios --simulator --debug passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payloads, request headers,
+  image bytes, `.env`, secret values를 branch에 추가하지 않았다.
+- native error output은 bounded code/message만 반환하고 certificate bytes,
+  headers, pin 값, secret 값을 출력하지 않는다.
+- build 산출물과 iOS Pods/symlink/ephemeral 경로는 ignored 상태이며 stage하지
+  않았다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1553,6 +1614,8 @@ flutter build ios --simulator --debug
      `origin/feat/backend-analyze-rate-limit-gate`.
    - Mobile release security core candidate is now preserved as
      `origin/feat/mobile-release-security-core`.
+   - Mobile native security gate candidate is now preserved as
+     `origin/feat/mobile-native-security-gate`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

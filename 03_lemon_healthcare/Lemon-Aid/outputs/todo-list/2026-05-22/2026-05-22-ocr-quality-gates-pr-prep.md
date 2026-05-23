@@ -69,6 +69,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - Export readiness gate candidate: `origin/test/ocr-pr-export-base-gate`
 - PR 3 export candidate: `origin/feat/backend-analyze-rate-limit-gate`
 - PR 4a export candidate: `origin/feat/mobile-release-security-core`
+- PR 4b export candidate: `origin/feat/mobile-native-security-gate`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -378,6 +379,31 @@ PR 4a validation:
 11 passed - app_config and api_client_certificate_pin tests
 flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current second sub-slice:
+
+```text
+origin/feat/mobile-native-security-gate
+ca860026 feat(mobile): native 보안 gate를 추가
+```
+
+This branch stacks on `origin/feat/mobile-release-security-core` and adds the
+Android/iOS native verifier plus release artifact scanner. It intentionally
+excludes camera permission and OCR preview UI changes.
+
+PR 4b validation:
+
+```text
+17 passed - release security, app config, and API pin tests
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+flutter build apk --debug --flavor dev: passed
+flutter build ios --simulator --debug: passed
+release artifact verifier safe-file smoke: passed
+debug APK verifier negative smoke: failed as expected on local dev URLs
 detect-secrets-hook changed files: passed
 check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
 ```
