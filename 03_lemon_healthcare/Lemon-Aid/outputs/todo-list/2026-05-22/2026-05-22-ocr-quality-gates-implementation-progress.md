@@ -1176,6 +1176,57 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
 - `flutter test`가 임시 worktree에서 dependency를 resolve했지만 생성된
   dependency/build 파일은 stage하지 않았다.
 
+### 3.33 Mobile Image Picker Permission UI Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-image-picker-permission-ui-result.md`
+
+공식 근거:
+
+- `image_picker` package:
+  <https://pub.dev/packages/image_picker>
+- Flutter `MethodChannel`:
+  <https://api.flutter.dev/flutter/services/MethodChannel-class.html>
+- Flutter `PlatformException`:
+  <https://api.flutter.dev/flutter/services/PlatformException-class.html>
+
+생성 branch:
+
+- base: `origin/feat/mobile-provider-observations`
+- export branch: `origin/feat/mobile-image-picker-permission-ui`
+- patch commit: `8913bcd1 feat(mobile): 이미지 선택 권한 안내를 추가`
+
+변경:
+
+- camera 선택 전 Android/iOS에서 기존 native
+  `com.lemonaid.mobile/camera_permission` channel을 확인한다.
+- `MissingPluginException`은 widget test와 local unsupported plugin 환경에서
+  비차단으로 처리한다.
+- image picker `PlatformException` code를 camera/gallery 권한 재시도 안내로
+  변환한다.
+- widget test는 synthetic exception만 사용하고 실제 camera/gallery 파일을
+  읽지 않는다.
+
+검증:
+
+```text
+flutter test test/supplement_flow_image_picker_permission_test.dart: 2 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payload, request headers,
+  image bytes, `.env`, secret values를 추가하지 않았다.
+- permission UI는 bounded state/error message만 표시한다.
+- local capture quality analysis와 image decoding logic은 다음 slice로
+  분리했다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1778,6 +1829,8 @@ flutter build ios --simulator --debug
      `origin/fix/mobile-certificate-pin-wiring`.
    - Mobile provider observations candidate is now preserved as
      `origin/feat/mobile-provider-observations`.
+   - Mobile image picker permission UI candidate is now preserved as
+     `origin/feat/mobile-image-picker-permission-ui`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

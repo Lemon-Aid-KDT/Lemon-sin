@@ -73,6 +73,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 4c export candidate: `origin/feat/mobile-camera-permission-gate`
 - PR 4d corrective candidate: `origin/fix/mobile-certificate-pin-wiring`
 - PR 5a export candidate: `origin/feat/mobile-provider-observations`
+- PR 5b export candidate: `origin/feat/mobile-image-picker-permission-ui`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -487,6 +488,39 @@ PR 5a validation:
 
 ```text
 2 passed - supplement_models_test.dart
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current second sub-slice:
+
+```text
+origin/feat/mobile-image-picker-permission-ui
+8913bcd1 feat(mobile): 이미지 선택 권한 안내를 추가
+```
+
+This branch stacks on `origin/feat/mobile-provider-observations` and adds only
+bounded image picker permission/error feedback. It intentionally excludes local
+capture quality analysis and warning UI.
+
+Candidate files:
+
+- `mobile/lib/features/supplements/supplement_flow_screen.dart`
+- `mobile/test/supplement_flow_image_picker_permission_test.dart`
+
+Scope:
+
+- call the existing native camera permission channel before camera image pick
+- map camera/gallery `PlatformException` codes to bounded retry guidance
+- keep widget tests synthetic with no real camera/gallery/OCR data
+
+PR 5b validation:
+
+```text
+2 passed - supplement_flow_image_picker_permission_test.dart
 flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
 detect-secrets-hook changed files: passed
