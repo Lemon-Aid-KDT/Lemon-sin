@@ -25,8 +25,15 @@ IMAGE_INPUT_ERROR_CODES = {
     "image_decode_error",
     "image_missing",
     "image_read_error",
+    "image_write_error",
     "invalid_image",
     "missing_image",
+}
+PROVIDER_SETUP_ERROR_CODES = {
+    "local_ocr_disabled",
+    "ocr_dependency_missing",
+    "ocr_provider_initialization",
+    "provider_configuration_error",
 }
 PACKAGING_TOKEN_PATTERNS = (
     # Bad auto-seeds observed in 16 chronic fixtures: "g (", "g X30포(", "g(".
@@ -571,10 +578,13 @@ def _provider_error_stage(
         error_code: Bounded normalized error code.
 
     Returns:
-        One of ``image_input``, ``parser``, ``ocr_provider``, or ``unknown``.
+        One of ``image_input``, ``provider_setup``, ``parser``,
+        ``ocr_provider``, or ``unknown``.
     """
     if error_code in IMAGE_INPUT_ERROR_CODES:
         return "image_input"
+    if error_code in PROVIDER_SETUP_ERROR_CODES:
+        return "provider_setup"
     if observation.get("text_non_empty") is True and observation.get("parser_success") is not True:
         return "parser"
     if (

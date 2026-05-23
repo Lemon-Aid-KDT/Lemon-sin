@@ -23,7 +23,7 @@ from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 NUTRITION_BACKEND_ROOT = BACKEND_ROOT / "Nutrition-backend"
@@ -1238,10 +1238,18 @@ def _load_image_input(image_path: Path) -> OCRImageInput:
     Raises:
         RuntimeError: If the image cannot be decoded.
     """
-    image_bytes = image_path.read_bytes()
-    with Image.open(BytesIO(image_bytes)) as image:
-        width, height = image.size
-        mime_type = Image.MIME.get(image.format or "", "image/png")
+    try:
+        image_bytes = image_path.read_bytes()
+    except FileNotFoundError as exc:
+        raise OCRError("OCR fixture image is missing.") from exc
+    except PermissionError as exc:
+        raise OCRError("OCR fixture image cannot be read.") from exc
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+            mime_type = Image.MIME.get(image.format or "", "image/png")
+    except (OSError, UnidentifiedImageError) as exc:
+        raise OCRError("OCR fixture image cannot be decoded.") from exc
     return OCRImageInput(
         image_bytes=image_bytes,
         mime_type=mime_type,
@@ -1374,8 +1382,13 @@ def _safe_ocr_error_code(message: str) -> str:
         "authentication": "ocr_authentication_error",
         "transport": "ocr_transport_error",
         "invalid json": "ocr_invalid_json",
+        "ocr fixture image is missing": "image_missing",
+        "ocr fixture image cannot be read": "image_read_error",
+        "ocr fixture image cannot be decoded": "image_decode_error",
         "paddleocr is not installed": "ocr_dependency_missing",
         "paddleocr predictor initialization failed": "ocr_provider_initialization",
+        "paddleocr provider prediction failed": "ocr_provider_prediction_failed",
+        "paddleocr temporary image write failed": "image_write_error",
         "paddleocr returned no readable text": "ocr_empty_text",
         "paddleocr confidence is below": "ocr_low_confidence",
         "enable_local_ocr=true is required": "local_ocr_disabled",

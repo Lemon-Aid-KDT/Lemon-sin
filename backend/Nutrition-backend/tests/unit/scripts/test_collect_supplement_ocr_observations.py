@@ -235,6 +235,8 @@ def test_safe_error_code_sanitizes_http_status() -> None:
             "ocr_dependency_missing",
         ),
         ("PaddleOCR predictor initialization failed.", "ocr_provider_initialization"),
+        ("PaddleOCR provider prediction failed.", "ocr_provider_prediction_failed"),
+        ("PaddleOCR temporary image write failed.", "image_write_error"),
         ("PaddleOCR returned no readable text.", "ocr_empty_text"),
         (
             "PaddleOCR confidence is below LOCAL_OCR_CONFIDENCE_THRESHOLD.",
@@ -244,6 +246,9 @@ def test_safe_error_code_sanitizes_http_status() -> None:
             "ENABLE_LOCAL_OCR=true is required for PaddleOCR fallback.",
             "local_ocr_disabled",
         ),
+        ("OCR fixture image is missing.", "image_missing"),
+        ("OCR fixture image cannot be read.", "image_read_error"),
+        ("OCR fixture image cannot be decoded.", "image_decode_error"),
     ],
 )
 def test_safe_error_code_maps_paddleocr_failures_without_details(

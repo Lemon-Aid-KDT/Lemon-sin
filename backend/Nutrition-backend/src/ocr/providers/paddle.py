@@ -79,8 +79,14 @@ class PaddleOCRAdapter(OCRAdapter):
         suffix = _suffix_for_mime_type(image.mime_type)
         with TemporaryDirectory(prefix="lemon-paddleocr-") as temporary_directory:
             image_path = Path(temporary_directory) / f"supplement_label{suffix}"
-            image_path.write_bytes(image.image_bytes)
-            prediction = predictor.predict(str(image_path))
+            try:
+                image_path.write_bytes(image.image_bytes)
+            except OSError as exc:
+                raise OCRError("PaddleOCR temporary image write failed.") from exc
+            try:
+                prediction = predictor.predict(str(image_path))
+            except Exception as exc:
+                raise OCRError("PaddleOCR provider prediction failed.") from exc
 
         fragments, scores = _collect_text_and_scores(prediction)
         text = "\n".join(fragments).strip()

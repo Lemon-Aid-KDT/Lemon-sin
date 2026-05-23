@@ -36,6 +36,21 @@ class _FakePaddlePredictor:
         return self.prediction
 
 
+class _FailingPaddlePredictor:
+    """Fake PaddleOCR predictor raising a provider exception."""
+
+    def predict(self, image_path: str) -> object:  # noqa: ARG002
+        """Raise a fake provider failure.
+
+        Args:
+            image_path: Temporary image path.
+
+        Raises:
+            RuntimeError: Always raised to simulate provider failure.
+        """
+        raise RuntimeError("provider internals should stay hidden")
+
+
 def _image_input() -> OCRImageInput:
     """Return a minimal OCR image input.
 
@@ -95,6 +110,20 @@ async def test_paddle_adapter_rejects_low_confidence_prediction() -> None:
 
     with pytest.raises(OCRError, match="confidence"):
         await adapter.extract_text(_image_input())
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_wraps_provider_prediction_failure() -> None:
+    """Verify provider exceptions become bounded OCR errors."""
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True),
+        predictor=_FailingPaddlePredictor(),
+    )
+
+    with pytest.raises(OCRError, match="provider prediction failed") as exc_info:
+        await adapter.extract_text(_image_input())
+
+    assert "provider internals" not in str(exc_info.value)
 
 
 class _RecordingFakePaddleOCR:
