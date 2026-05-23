@@ -1866,6 +1866,13 @@ raw storage flags:
   payload에 쓰기 전에 거부한다.
 - env-token image path는 allowlisted root만 해석하고 `..` traversal을
   거부한다.
+- collector의 `_safe_ocr_error_code()`가 PaddleOCR known failure message를
+  bounded code로 매핑하도록 보강했다:
+  - `ocr_dependency_missing`
+  - `ocr_provider_initialization`
+  - `ocr_empty_text`
+  - `ocr_low_confidence`
+  - `local_ocr_disabled`
 
 실제 30-row 결과:
 
@@ -1888,15 +1895,20 @@ raw storage flags:
 - error group의 평균 edge variance와 contrast가 completed group보다 낮지
   않으므로 다음 isolation은 PaddleOCR model/runtime, recognition model 한계,
   또는 detail-page layout 특성을 봐야 한다.
+- bounded failure-code mapping 적용 후 4개 error fixture만 재실행했을 때
+  모두 `ocr_low_confidence`로 분류됐다.
 
 검증:
 
 ```text
 pytest test_summarize_ocr_error_quality.py: 3 passed
+pytest test_collect_supplement_ocr_observations.py + summary tests: 16 passed
 black --check changed files: passed
 ruff check changed files: passed
 summarize_ocr_error_quality.py real run: error_fixture_count=4
 check_ocr_artifact_privacy.py error-quality-summary: ocr_artifact_privacy_ok files=2
+collect_supplement_ocr_observations.py 4-row subset: ocr_low_confidence=4
+check_ocr_artifact_privacy.py categorized subset: ocr_artifact_privacy_ok files=2
 ```
 
 보안 확인:
@@ -2199,8 +2211,9 @@ ollama serve
      `/private/tmp/lemon-p1-quality-venv` is not sufficient for PaddleOCR.
 6. 4개 30-row `ocr_error` fixture의 image-quality triage is done:
    - All 4 are `acceptable` under the deterministic quality gate.
-   - Next step is bounded PaddleOCR failure categorization without raw text or
-     exception-message persistence.
+   - Bounded failure-code rerun maps all 4 to `ocr_low_confidence`.
+   - Next step is textline-orientation and confidence-threshold sensitivity on
+     the same 4 fixtures without raw text or exception-message persistence.
 6. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes

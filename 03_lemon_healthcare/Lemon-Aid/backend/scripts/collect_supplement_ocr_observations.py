@@ -1347,6 +1347,11 @@ def _safe_ocr_error_code(message: str) -> str:
         "authentication": "ocr_authentication_error",
         "transport": "ocr_transport_error",
         "invalid json": "ocr_invalid_json",
+        "paddleocr is not installed": "ocr_dependency_missing",
+        "paddleocr predictor initialization failed": "ocr_provider_initialization",
+        "paddleocr returned no readable text": "ocr_empty_text",
+        "paddleocr confidence is below": "ocr_low_confidence",
+        "enable_local_ocr=true is required": "local_ocr_disabled",
     }
     for needle, code in mapped.items():
         if needle in message_token:

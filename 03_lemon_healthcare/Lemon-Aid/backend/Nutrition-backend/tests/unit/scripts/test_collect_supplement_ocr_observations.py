@@ -202,3 +202,30 @@ def test_safe_error_code_sanitizes_http_status() -> None:
     error = collector.OCRError("Google Vision OCR request failed: status 403.")
 
     assert collector._safe_error_code(error) == "ocr_http_status_403"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (
+            "PaddleOCR is not installed. Install backend .[ocr-local].",
+            "ocr_dependency_missing",
+        ),
+        ("PaddleOCR predictor initialization failed.", "ocr_provider_initialization"),
+        ("PaddleOCR returned no readable text.", "ocr_empty_text"),
+        (
+            "PaddleOCR confidence is below LOCAL_OCR_CONFIDENCE_THRESHOLD.",
+            "ocr_low_confidence",
+        ),
+        (
+            "ENABLE_LOCAL_OCR=true is required for PaddleOCR fallback.",
+            "local_ocr_disabled",
+        ),
+    ],
+)
+def test_safe_error_code_maps_paddleocr_failures_without_details(
+    message: str,
+    expected: str,
+) -> None:
+    """Verify PaddleOCR failures become stable bounded categories."""
+    assert collector._safe_error_code(collector.OCRError(message)) == expected

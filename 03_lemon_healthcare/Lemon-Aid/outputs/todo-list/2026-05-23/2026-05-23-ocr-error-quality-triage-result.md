@@ -47,6 +47,30 @@ Average metrics:
 | `completed` | 2071.0164 | 62.9965 | 0.5263 | 0.0181 |
 | `error` | 2821.5474 | 71.4943 | 0.4713 | 0.0148 |
 
+## Bounded Failure Category Rerun
+
+After adding stable PaddleOCR failure-code mapping, the 4 error fixtures were
+rerun as a local-only subset:
+
+```text
+outputs/generated/ocr-eval/2026-05-23-naver-tampermonkey/runner-paddle-detail-ocr-errors-4-categorized/
+```
+
+Result:
+
+| Fixture | Error code |
+| --- | --- |
+| `naver-tm-detail-000007` | `ocr_low_confidence` |
+| `naver-tm-detail-000013` | `ocr_low_confidence` |
+| `naver-tm-detail-000029` | `ocr_low_confidence` |
+| `naver-tm-detail-000030` | `ocr_low_confidence` |
+
+The subset artifact passed the existing privacy scanner:
+
+```text
+ocr_artifact_privacy_ok files=2
+```
+
 ## Interpretation
 
 - The 4 `ocr_error` rows are not explained by the current deterministic
@@ -54,9 +78,11 @@ Average metrics:
 - All 30 detail images are 1000x1000 and all 30 receive `acceptable` image
   quality status under the current thresholds.
 - The error group has higher average edge variance and contrast than the
-  completed group, so the next isolation should focus on PaddleOCR
-  model/runtime behavior, recognition model limits, or detail-page layout
-  characteristics rather than generic blur/glare/crop/low-resolution issues.
+  completed group.
+- The 4 subset rerun now maps to `ocr_low_confidence`, so the next isolation
+  should compare recognition model, confidence threshold, textline orientation,
+  and layout/preprocessing options rather than generic blur/glare/crop or
+  low-resolution issues.
 
 ## Security Review
 
@@ -74,15 +100,18 @@ Average metrics:
 
 ```text
 pytest test_summarize_ocr_error_quality.py: 3 passed
+pytest test_collect_supplement_ocr_observations.py + summary tests: 16 passed
 black --check changed files: passed
 ruff check changed files: passed
 summarize_ocr_error_quality.py real run: error_fixture_count=4
+collect_supplement_ocr_observations.py 4-row subset: ocr_low_confidence=4
 check_ocr_artifact_privacy.py error-quality-summary: ocr_artifact_privacy_ok files=2
+check_ocr_artifact_privacy.py categorized subset: ocr_artifact_privacy_ok files=2
 ```
 
 ## Next
 
-The next tranche should capture bounded PaddleOCR failure categories for these
-4 fixtures without persisting exception messages or raw OCR text. A safe version
-would map local exceptions to stable codes such as dependency, decoder,
-detector, recognizer, or empty-result failures.
+The next tranche should run the same 4 low-confidence fixtures with controlled
+PaddleOCR toggles, starting with textline orientation and confidence-threshold
+sensitivity. Raw OCR text should stay transient; only error code, confidence
+bucket, and bounded metric summaries should be persisted.
