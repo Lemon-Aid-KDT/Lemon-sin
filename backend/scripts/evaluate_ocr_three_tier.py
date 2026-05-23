@@ -25,6 +25,15 @@ EXPECTED_WARNING_QUALITY_CODES = {
     "compound_expected_ingredient_name",
 }
 EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
+OCR_LLM_PREVIEW_SOURCE = "ocr_llm_preview"
+MIN_SCOREABLE_OCR_LLM_EXPECTED_CONFIDENCE = 0.85
+NON_INGREDIENT_HEADING_NAMES = {
+    "ingredient",
+    "ingredients",
+    "nutrition facts",
+    "other ingredients",
+    "supplement facts",
+}
 MIN_EXPECTED_NAME_PART_CHARS = 2
 MAX_EXPECTED_NAME_PART_CHARS = 80
 IMAGE_INPUT_ERROR_CODES = {
@@ -364,11 +373,12 @@ def _expected_ingredient_quality(
             if not normalized_name:
                 continue
             names.add(normalized_name)
-            if _is_packaging_quantity_token(name):
+            exclusion_code = _expected_scoreable_exclusion_code(name, ingredient)
+            if exclusion_code is not None:
                 warnings.append(
                     _expected_quality_warning(
                         fixture_id=fixture_id,
-                        code="packaging_token_expected_ingredient",
+                        code=exclusion_code,
                         ingredient_index=index,
                     )
                 )
@@ -501,6 +511,58 @@ def _is_packaging_quantity_token(value: str) -> bool:
     return any(
         re.fullmatch(pattern, normalized, re.IGNORECASE) for pattern in PACKAGING_TOKEN_PATTERNS
     )
+
+
+def _expected_scoreable_exclusion_code(
+    name: str,
+    ingredient: dict[str, object],
+) -> str | None:
+    """Return why an expected ingredient should not be scoreable.
+
+    Args:
+        name: Candidate expected ingredient name.
+        ingredient: Full expected ingredient row.
+
+    Returns:
+        Bounded warning code, or None when the row is scoreable.
+    """
+    if _is_packaging_quantity_token(name):
+        return "packaging_token_expected_ingredient"
+    if _is_non_ingredient_heading_name(name):
+        return "non_ingredient_heading_expected"
+    if _is_low_confidence_ocr_llm_expected(ingredient):
+        return "low_confidence_expected_ingredient"
+    return None
+
+
+def _is_non_ingredient_heading_name(value: str) -> bool:
+    """Return whether an expected name is a label heading, not an ingredient.
+
+    Args:
+        value: Expected ingredient candidate.
+
+    Returns:
+        True for section headings that should not enter scoreable KPI denominators.
+    """
+    return _normalize_token(value) in NON_INGREDIENT_HEADING_NAMES
+
+
+def _is_low_confidence_ocr_llm_expected(ingredient: dict[str, object]) -> bool:
+    """Return whether a provisional OCR LLM expected row is too weak to score.
+
+    Args:
+        ingredient: Expected ingredient row from the manifest.
+
+    Returns:
+        True when an ``ocr_llm_preview`` row is below the scoreable confidence
+        floor. Human-reviewed rows are not filtered by this helper.
+    """
+    if ingredient.get("source") != OCR_LLM_PREVIEW_SOURCE:
+        return False
+    confidence = ingredient.get("confidence")
+    if not isinstance(confidence, int | float):
+        return False
+    return float(confidence) < MIN_SCOREABLE_OCR_LLM_EXPECTED_CONFIDENCE
 
 
 def _add_observation(

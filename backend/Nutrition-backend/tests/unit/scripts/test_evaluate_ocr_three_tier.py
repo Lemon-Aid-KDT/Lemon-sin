@@ -276,6 +276,68 @@ def test_evaluate_manifest_excludes_packaging_tokens_from_scoreable_metric(
     ]
 
 
+def test_evaluate_manifest_excludes_low_quality_expected_rows_from_scoreable_metric(
+    tmp_path: Path,
+) -> None:
+    """Verify weak preview expected rows and headings do not lower scoreable accuracy."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-low-quality",
+                "expected": {
+                    "ingredients": [
+                        {
+                            "display_name": "Ubiquinol",
+                            "source": "ocr_llm_preview",
+                            "confidence": 0.95,
+                        },
+                        {
+                            "display_name": "Other ingredients",
+                            "source": "ocr_llm_preview",
+                            "confidence": 0.9,
+                        },
+                        {
+                            "display_name": "Mixed Tocopherols",
+                            "source": "ocr_llm_preview",
+                            "confidence": 0.5,
+                        },
+                    ]
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "latency_ms": 100,
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "Ubiquinol"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 0.3333
+    assert metrics["scoreable_ingredient_name_exact_rate"] == 1.0
+    assert summary["scoreable_fixture_count"] == 1
+    assert summary["expected_quality_warnings"] == [
+        {
+            "code": "non_ingredient_heading_expected",
+            "fixture_id": "fixture-low-quality",
+            "ingredient_index": 1,
+        },
+        {
+            "code": "low_confidence_expected_ingredient",
+            "fixture_id": "fixture-low-quality",
+            "ingredient_index": 2,
+        },
+    ]
+
+
 def test_evaluate_manifest_marks_provisional_expected_quality(
     tmp_path: Path,
 ) -> None:

@@ -266,6 +266,43 @@ def test_matched_expected_ingredients_splits_compound_v3_names() -> None:
     ]
 
 
+def test_matched_expected_ingredients_uses_bounded_name_aliases() -> None:
+    """Verify expected ingredient aliases match OCR variants without raw storage."""
+    normalized_text = collector._normalize_text(
+        "비타민 K2 100 ug / 마카 400 mg / Olive Oil / EPA DHA"
+    )
+    expected = {
+        "ingredients": [
+            {"display_name": "초임계비타민K2"},
+            {"display_name": "검은 마카", "amount": 400, "unit": "mg"},
+            {"display_name": "Extra virgin olive oil"},
+            {"display_name": "Omega-3 Fatty Acids (EPA & DHA)"},
+        ]
+    }
+
+    parsed = collector._matched_expected_ingredients(normalized_text, expected)
+
+    assert parsed == [
+        {"name": "초임계비타민K2"},
+        {"name": "검은 마카", "amount": 400, "unit": "mg"},
+        {"name": "Extra virgin olive oil"},
+        {"name": "Omega-3 Fatty Acids (EPA & DHA)"},
+    ]
+    serialized = json.dumps(parsed, ensure_ascii=False).lower()
+    assert "raw_ocr_text" not in serialized
+    assert "provider_payload" not in serialized
+
+
+def test_matched_expected_ingredients_does_not_overmatch_generic_oil_alias() -> None:
+    """Verify descriptor aliases do not collapse to broad generic words."""
+    normalized_text = collector._normalize_text("fish oil 1000 mg")
+    expected = {"ingredients": [{"display_name": "Extra virgin olive oil"}]}
+
+    parsed = collector._matched_expected_ingredients(normalized_text, expected)
+
+    assert parsed == []
+
+
 def test_expected_ingredient_names_do_not_split_dose_bearing_rows() -> None:
     """Verify dose-bearing ingredient rows keep one expected display name."""
     names = collector._expected_ingredient_names(

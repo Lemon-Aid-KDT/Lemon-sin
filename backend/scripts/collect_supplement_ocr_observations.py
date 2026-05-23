@@ -120,6 +120,21 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?P<unit>mg|g|mcg|μg|ug|㎍|iu|IU|%)\b"
 )
 EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
+INGREDIENT_MATCH_SEPARATOR_PATTERN = re.compile(r"[^0-9A-Za-z가-힣]+")
+INGREDIENT_PARENTHESES_PATTERN = re.compile(r"\((?P<inner>[^)]{2,80})\)")
+KOREAN_INGREDIENT_DESCRIPTOR_PREFIXES = (
+    "초임계",
+    "검은",
+    "블랙",
+    "유기농",
+    "식물성",
+    "저분자",
+)
+ENGLISH_INGREDIENT_DESCRIPTOR_PREFIXES = (
+    "extra virgin ",
+    "natural ",
+    "mixed ",
+)
 PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Reject auto-seed contaminants observed in chronic fixtures: "g (", "g X30포(".
     re.compile(
@@ -1364,12 +1379,18 @@ def _matched_expected_ingredients(
     """
     parsed: list[dict[str, object]] = []
     seen_names: set[str] = set()
+    match_text = _normalize_ingredient_match_token(normalized_text)
+    compact_match_text = match_text.replace(" ", "")
     for ingredient in _expected_ingredients(expected):
         for name in _expected_ingredient_names(ingredient):
             normalized_name = _normalize_text(name)
             if not normalized_name or normalized_name in seen_names:
                 continue
-            if normalized_name not in normalized_text:
+            if not _ingredient_name_visible(
+                name,
+                match_text=match_text,
+                compact_match_text=compact_match_text,
+            ):
                 continue
             seen_names.add(normalized_name)
             observed: dict[str, object] = {"name": name}
@@ -1381,6 +1402,101 @@ def _matched_expected_ingredients(
                 observed["unit"] = unit
             parsed.append(observed)
     return parsed
+
+
+def _ingredient_name_visible(
+    name: str,
+    *,
+    match_text: str,
+    compact_match_text: str,
+) -> bool:
+    """Return whether an expected ingredient name is visible in OCR text.
+
+    Args:
+        name: Expected ingredient display name.
+        match_text: Punctuation-normalized OCR text kept only in memory.
+        compact_match_text: Space-free normalized OCR text.
+
+    Returns:
+        True when the exact name or a bounded semantic alias is visible.
+    """
+    for variant in _ingredient_name_match_variants(name):
+        if variant in match_text or variant.replace(" ", "") in compact_match_text:
+            return True
+    return False
+
+
+def _ingredient_name_match_variants(name: str) -> tuple[str, ...]:
+    """Return bounded OCR-match variants for one expected ingredient name.
+
+    Args:
+        name: Expected ingredient display name.
+
+    Returns:
+        Normalized variants. These are used only for transient matching and are
+        never persisted as raw OCR evidence.
+    """
+    normalized = _normalize_ingredient_match_token(name)
+    if not normalized:
+        return ()
+    variants: list[str] = [normalized]
+    compact = normalized.replace(" ", "")
+    if compact:
+        variants.append(compact)
+
+    for match in INGREDIENT_PARENTHESES_PATTERN.finditer(name):
+        inner = _normalize_ingredient_match_token(match.group("inner").replace("&", " "))
+        if _looks_like_expected_name_part(inner):
+            variants.append(inner)
+
+    without_parentheses = _normalize_ingredient_match_token(
+        INGREDIENT_PARENTHESES_PATTERN.sub("", name)
+    )
+    if without_parentheses and without_parentheses != normalized:
+        variants.append(without_parentheses)
+
+    for prefix in KOREAN_INGREDIENT_DESCRIPTOR_PREFIXES:
+        if compact.startswith(prefix) and len(compact) > len(prefix) + 1:
+            variants.append(compact.removeprefix(prefix))
+
+    for prefix in ENGLISH_INGREDIENT_DESCRIPTOR_PREFIXES:
+        if normalized.startswith(prefix) and len(normalized) > len(prefix) + 3:
+            variants.append(normalized.removeprefix(prefix))
+
+    return tuple(_dedupe_match_variants(variants))
+
+
+def _normalize_ingredient_match_token(value: object) -> str:
+    """Normalize text for transient ingredient-name matching.
+
+    Args:
+        value: Candidate text-like value.
+
+    Returns:
+        Case-folded token with punctuation collapsed to spaces.
+    """
+    normalized = _normalize_text(value).replace("&", " ")
+    return " ".join(INGREDIENT_MATCH_SEPARATOR_PATTERN.sub(" ", normalized).split())
+
+
+def _dedupe_match_variants(values: list[str]) -> list[str]:
+    """Return unique, bounded ingredient match variants.
+
+    Args:
+        values: Candidate normalized variants.
+
+    Returns:
+        Variants in stable order.
+    """
+    deduped: list[str] = []
+    for value in values:
+        stripped = value.strip()
+        if not stripped or stripped in deduped:
+            continue
+        if len(stripped) < AUTO_EXPECTED_MIN_INGREDIENT_NAME_CHARS:
+            continue
+        deduped.append(stripped)
+    return deduped
 
 
 def _parsed_values_grounded(normalized_text: str, ingredients: list[dict[str, object]]) -> bool:
