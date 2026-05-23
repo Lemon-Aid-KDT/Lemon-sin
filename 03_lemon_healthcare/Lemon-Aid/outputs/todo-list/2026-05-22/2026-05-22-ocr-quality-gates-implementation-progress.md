@@ -1020,6 +1020,64 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
 - build 산출물과 iOS Pods/symlink/ephemeral 경로는 ignored 상태이며 stage하지
   않았다.
 
+### 3.30 Mobile Camera Permission Gate Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-camera-permission-gate-export-result.md`
+
+공식 근거:
+
+- Android `Manifest.permission.CAMERA`:
+  <https://developer.android.com/reference/android/Manifest.permission.html>
+- Android `Activity.requestPermissions`:
+  <https://developer.android.com/reference/android/app/Activity.html>
+- Android `<uses-feature>`:
+  <https://developer.android.com/guide/topics/manifest/uses-feature-element>
+- Apple `AVCaptureDevice.authorizationStatus(for:)`:
+  <https://developer.apple.com/documentation/avfoundation/avcapturedevice/1624613-authorizationstatus>
+- Flutter `MethodChannel`:
+  <https://api.flutter.dev/flutter/services/MethodChannel-class.html>
+
+생성 branch:
+
+- base: `origin/feat/mobile-native-security-gate`
+- export branch: `origin/feat/mobile-camera-permission-gate`
+- patch commit: `cb3b1c76 feat(mobile): camera 권한 gate를 추가`
+
+변경:
+
+- Android manifest에 `android.hardware.camera`를 `required=false`로 선언했다.
+- Android native channel `com.lemonaid.mobile/camera_permission`이
+  `Manifest.permission.CAMERA`를 확인하고 필요 시 요청한다.
+- Android 동시 권한 요청은 bounded `permission_request_in_progress` error로
+  거부한다.
+- iOS native channel이 `AVCaptureDevice.authorizationStatus(for: .video)`와
+  `requestAccess(for: .video)`로 `granted`, `denied`, `restricted` 상태를
+  반환한다.
+- broad gallery permission은 계속 manifest에 없도록 static test로 고정했다.
+
+검증:
+
+```text
+flutter test release_security_config/app_config/api_client_certificate_pin: 21 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+flutter build apk --debug --flavor dev passed
+flutter build ios --simulator --debug passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payloads, request headers,
+  image bytes, `.env`, secret values를 branch에 추가하지 않았다.
+- permission channel은 bounded state/error만 반환하고 image path, camera frame,
+  OCR text, user identifier를 노출하지 않는다.
+- Flutter OCR preview UI와 camera/gallery quality warning은 다음 slice로 남겼다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1616,6 +1674,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-release-security-core`.
    - Mobile native security gate candidate is now preserved as
      `origin/feat/mobile-native-security-gate`.
+   - Mobile camera permission gate candidate is now preserved as
+     `origin/feat/mobile-camera-permission-gate`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.
