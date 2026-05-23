@@ -1785,6 +1785,60 @@ raw storage flags:
 - generated report는 `raw_artifacts_stored=false`,
   `raw_ocr_text_stored=false`를 유지한다.
 
+### 10.6 PaddleOCR + Gemma4 30-row Rerun
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-paddle-gemma4-detail-smoke-result.md`
+
+공식 근거:
+
+- Ollama list models API: <https://docs.ollama.com/api/tags>
+- Ollama API reference: <https://docs.ollama.com/api>
+- PaddleOCR installation documentation:
+  <https://www.paddleocr.ai/main/en/version3.x/installation.html>
+
+확인:
+
+- 외장 모델 root `/Volumes/Corsair EX300U Media/.ollama/models`는 `140G`다.
+- `127.0.0.1:11435` Ollama server에서 `gemma4:e4b` 포함 17개 model이
+  확인됐다.
+- `/private/tmp/lemon-p1-quality-venv/bin/python`에는 `paddleocr`가 없어
+  첫 30-row run은 모두 `ocr_error`였다. 이 run은 환경 진단 산출물로만
+  취급한다.
+- OCR dependency가 있는
+  `/Users/yeong/99_me/00_github/03_lemon_healthcare/_archive/yeong-Lemon-Aid/backend/.venv/bin/python`
+  으로 재실행한 결과를 accepted baseline으로 기록한다.
+
+정상 재실행 산출물:
+
+- `outputs/generated/ocr-eval/2026-05-23-naver-tampermonkey/runner-paddle-detail-smoke-30-gemma4-ocrvenv/`
+
+핵심 지표:
+
+| Metric | Value |
+| --- | ---: |
+| Fixture count | 30 |
+| Completed rows | 26 |
+| Error rows | 4 |
+| Completed rate | 0.8667 |
+| Text non-empty rate | 0.8667 |
+| Parser success rate | 0.8667 |
+| LLM parse attempts | 26 |
+| LLM parse success rate | 1.0 |
+| Latency p50 ms | 2277.5 |
+| Latency p95 ms | 5103.0 |
+
+보안 확인:
+
+- `check_ocr_artifact_privacy.py`로 정상 재실행 산출물 3개를 검사했고
+  `ocr_artifact_privacy_ok files=3`을 확인했다.
+- generated report는 `raw_artifacts_stored=false`,
+  `raw_ocr_text_stored=false`, `raw_provider_payload_stored=false`,
+  `raw_model_response_stored=false`다.
+- 외부 OCR/LLM provider는 사용하지 않았고, Ollama는 loopback
+  `127.0.0.1:11435`만 사용했다.
+
 ## Security Review
 
 검사 범위:
@@ -2069,7 +2123,12 @@ OLLAMA_HOST=127.0.0.1:11435 \
 ollama serve
 ```
 
-5. Re-run the 30-row PaddleOCR + Gemma4 runner if the team wants fresh post-rate-limit timestamps; existing 30-row result already has `llm_parse_success_rate=1.0` for OCR-success rows.
+5. Re-run the 30-row PaddleOCR + Gemma4 runner if the team wants fresh post-rate-limit timestamps:
+   - Fresh 2026-05-23 rerun is documented in
+     `2026-05-23-paddle-gemma4-detail-smoke-result.md`.
+   - OCR-success rows remain `llm_parse_success_rate=1.0`.
+   - Use an OCR dependency venv with `paddleocr` installed; the generic
+     `/private/tmp/lemon-p1-quality-venv` is not sufficient for PaddleOCR.
 6. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
