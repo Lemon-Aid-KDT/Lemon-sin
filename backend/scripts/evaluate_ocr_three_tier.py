@@ -17,9 +17,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 RAW_FORBIDDEN_KEYS = {"image_bytes", "raw_image", "raw_ocr_text", "ocr_text"}
+BOUNDED_CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$", re.IGNORECASE)
 PENDING_REVIEW_WARNING = "ground_truth_pending_human_review"
 PROVISIONAL_VERIFICATION_STATUS = "provisional"
 AUTO_EXPECTED_WARNING = "auto_expected_requires_human_verification"
+IMAGE_INPUT_ERROR_CODES = {
+    "image_decode_error",
+    "image_missing",
+    "image_read_error",
+    "invalid_image",
+    "missing_image",
+}
 PACKAGING_TOKEN_PATTERNS = (
     # Bad auto-seeds observed in 16 chronic fixtures: "g (", "g X30포(", "g(".
     r"^(?:g|mg|kg|ml|l)\s*(?:x\s*)?\d*\s*(?:포|정|캡슐|개입)?\s*\(?$",
@@ -61,6 +69,10 @@ class ProviderMetrics:
     ingredient_total_by_condition: dict[str, int] = field(default_factory=dict)
     scoreable_ingredient_matches_by_condition: dict[str, int] = field(default_factory=dict)
     scoreable_ingredient_total_by_condition: dict[str, int] = field(default_factory=dict)
+    # Bounded error diagnostics. These never include raw provider messages.
+    error_codes: dict[str, int] = field(default_factory=dict)
+    error_stages: dict[str, int] = field(default_factory=dict)
+    error_fixture_ids: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
         """Return serializable metrics.
@@ -109,6 +121,9 @@ class ProviderMetrics:
                 )
                 for condition, total in sorted(self.scoreable_ingredient_total_by_condition.items())
             },
+            "error_codes": dict(sorted(self.error_codes.items())),
+            "error_stages": dict(sorted(self.error_stages.items())),
+            "error_fixture_ids": sorted(self.error_fixture_ids),
         }
 
 
@@ -199,6 +214,7 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
             _add_observation(
                 accumulator,
                 observation=observation,
+                fixture_id=row.get("fixture_id"),
                 expected_names=expected_quality.names,
                 scoreable_expected_names=expected_quality.scoreable_names,
                 expected_conditions=expected_conditions,
@@ -419,6 +435,7 @@ def _add_observation(
     accumulator: EvaluationAccumulator,
     *,
     observation: dict[str, object],
+    fixture_id: object,
     expected_names: set[str],
     scoreable_expected_names: set[str],
     expected_conditions: list[str] | None = None,
@@ -428,6 +445,7 @@ def _add_observation(
     Args:
         accumulator: Mutable aggregate state.
         observation: Observation row.
+        fixture_id: Parent fixture id. Used only for bounded diagnostics.
         expected_names: Expected normalized ingredient names.
         scoreable_expected_names: Quality-filtered expected ingredient names.
         expected_conditions: Chronic-disease indications declared in the V3
@@ -447,6 +465,11 @@ def _add_observation(
         metrics.parser_success_count += 1
     if observation.get("error") is True or observation.get("status") == "error":
         metrics.errors += 1
+        _add_provider_error_diagnostics(
+            metrics,
+            observation=observation,
+            fixture_id=fixture_id,
+        )
 
     latency_ms = observation.get("latency_ms")
     if isinstance(latency_ms, int | float) and latency_ms >= 0:
@@ -496,6 +519,71 @@ def _add_observation(
     _accumulate_language_metric(metrics, observation, "cer_en")
     _accumulate_language_metric(metrics, observation, "wer_ko")
     _accumulate_language_metric(metrics, observation, "wer_en")
+
+
+def _add_provider_error_diagnostics(
+    metrics: ProviderMetrics,
+    *,
+    observation: dict[str, object],
+    fixture_id: object,
+) -> None:
+    """Add bounded error diagnostics for one failed observation.
+
+    Args:
+        metrics: Mutable aggregate metrics container.
+        observation: Failed provider observation.
+        fixture_id: Parent fixture id. Only stable fixture identifiers are stored.
+    """
+    code = _bounded_error_code(observation.get("error_code"))
+    metrics.error_codes[code] = metrics.error_codes.get(code, 0) + 1
+    stage = _provider_error_stage(observation=observation, error_code=code)
+    metrics.error_stages[stage] = metrics.error_stages.get(stage, 0) + 1
+    if isinstance(fixture_id, str) and fixture_id and fixture_id not in metrics.error_fixture_ids:
+        metrics.error_fixture_ids.append(fixture_id)
+
+
+def _bounded_error_code(value: object) -> str:
+    """Return a stable bounded error code.
+
+    Args:
+        value: Candidate error code.
+
+    Returns:
+        A normalized code safe to serialize in reports.
+    """
+    if not isinstance(value, str):
+        return "missing_error_code"
+    code = value.strip().casefold()
+    if not BOUNDED_CODE_PATTERN.fullmatch(code):
+        return "unclassified_error_code"
+    return code
+
+
+def _provider_error_stage(
+    *,
+    observation: dict[str, object],
+    error_code: str,
+) -> str:
+    """Infer the failing OCR pipeline stage from bounded observation fields.
+
+    Args:
+        observation: Failed provider observation.
+        error_code: Bounded normalized error code.
+
+    Returns:
+        One of ``image_input``, ``parser``, ``ocr_provider``, or ``unknown``.
+    """
+    if error_code in IMAGE_INPUT_ERROR_CODES:
+        return "image_input"
+    if observation.get("text_non_empty") is True and observation.get("parser_success") is not True:
+        return "parser"
+    if (
+        observation.get("text_non_empty") is False
+        or observation.get("layout_available") is False
+        or error_code in {"ocr_error", "provider_error"}
+    ):
+        return "ocr_provider"
+    return "unknown"
 
 
 def _ingredient_match_count(
@@ -695,26 +783,104 @@ def _render_markdown(summary: dict[str, object]) -> str:
         "| Provider | Calls | Text non-empty | Parser success | Avg latency ms | Ingredient name exact | Scoreable ingredient exact | Errors | LLM attempts | LLM parse success | LLM ingredient exact |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
+    provider_metrics = _provider_metric_items(summary)
+    _append_provider_metric_rows(lines, provider_metrics)
+    _append_provider_error_diagnostics(lines, provider_metrics)
+    _append_language_metric_rows(lines, provider_metrics)
+    _append_condition_metric_sections(lines, provider_metrics)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _provider_metric_items(summary: dict[str, object]) -> list[tuple[str, dict[str, object]]]:
+    """Return provider metric rows from a summary object.
+
+    Args:
+        summary: Evaluation summary.
+
+    Returns:
+        Provider name and metric dictionaries.
+    """
     providers = summary.get("providers", {})
-    if isinstance(providers, dict):
-        for provider, raw_metrics in providers.items():
-            if not isinstance(raw_metrics, dict):
-                continue
-            lines.append(
-                "| {provider} | {calls} | {text_rate} | {parser_rate} | {latency} | {ingredient_rate} | {scoreable_rate} | {errors} | {llm_attempts} | {llm_parse_rate} | {llm_ingredient_rate} |".format(
-                    provider=provider,
-                    calls=raw_metrics.get("calls"),
-                    text_rate=raw_metrics.get("text_non_empty_rate"),
-                    parser_rate=raw_metrics.get("parser_success_rate"),
-                    latency=raw_metrics.get("average_latency_ms"),
-                    ingredient_rate=raw_metrics.get("ingredient_name_exact_rate"),
-                    scoreable_rate=raw_metrics.get("scoreable_ingredient_name_exact_rate"),
-                    errors=raw_metrics.get("errors"),
-                    llm_attempts=raw_metrics.get("llm_parse_attempt_count"),
-                    llm_parse_rate=raw_metrics.get("llm_parse_success_rate"),
-                    llm_ingredient_rate=raw_metrics.get("llm_ingredient_name_exact_rate"),
-                )
+    if not isinstance(providers, dict):
+        return []
+    return [
+        (provider, raw_metrics)
+        for provider, raw_metrics in providers.items()
+        if isinstance(provider, str) and isinstance(raw_metrics, dict)
+    ]
+
+
+def _append_provider_metric_rows(
+    lines: list[str],
+    provider_metrics: list[tuple[str, dict[str, object]]],
+) -> None:
+    """Append provider metric table rows.
+
+    Args:
+        lines: Mutable Markdown lines.
+        provider_metrics: Provider metric rows.
+    """
+    for provider, raw_metrics in provider_metrics:
+        lines.append(
+            "| {provider} | {calls} | {text_rate} | {parser_rate} | {latency} | {ingredient_rate} | {scoreable_rate} | {errors} | {llm_attempts} | {llm_parse_rate} | {llm_ingredient_rate} |".format(
+                provider=provider,
+                calls=raw_metrics.get("calls"),
+                text_rate=raw_metrics.get("text_non_empty_rate"),
+                parser_rate=raw_metrics.get("parser_success_rate"),
+                latency=raw_metrics.get("average_latency_ms"),
+                ingredient_rate=raw_metrics.get("ingredient_name_exact_rate"),
+                scoreable_rate=raw_metrics.get("scoreable_ingredient_name_exact_rate"),
+                errors=raw_metrics.get("errors"),
+                llm_attempts=raw_metrics.get("llm_parse_attempt_count"),
+                llm_parse_rate=raw_metrics.get("llm_parse_success_rate"),
+                llm_ingredient_rate=raw_metrics.get("llm_ingredient_name_exact_rate"),
             )
+        )
+
+
+def _append_provider_error_diagnostics(
+    lines: list[str],
+    provider_metrics: list[tuple[str, dict[str, object]]],
+) -> None:
+    """Append bounded provider error diagnostics.
+
+    Args:
+        lines: Mutable Markdown lines.
+        provider_metrics: Provider metric rows.
+    """
+    lines.extend(
+        [
+            "",
+            "## Provider Error Diagnostics",
+            "",
+            "Bounded diagnostics only. Raw OCR text, provider payloads, and provider error messages are not stored.",
+            "",
+            "| Provider | Error codes | Error stages | Fixture ids |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for provider, raw_metrics in provider_metrics:
+        lines.append(
+            "| {provider} | {codes} | {stages} | {fixtures} |".format(
+                provider=provider,
+                codes=_format_mapping(raw_metrics.get("error_codes")),
+                stages=_format_mapping(raw_metrics.get("error_stages")),
+                fixtures=_format_list(raw_metrics.get("error_fixture_ids")),
+            )
+        )
+
+
+def _append_language_metric_rows(
+    lines: list[str],
+    provider_metrics: list[tuple[str, dict[str, object]]],
+) -> None:
+    """Append language-segmented metric rows.
+
+    Args:
+        lines: Mutable Markdown lines.
+        provider_metrics: Provider metric rows.
+    """
     lines.extend(
         [
             "",
@@ -724,19 +890,28 @@ def _render_markdown(summary: dict[str, object]) -> str:
             "| --- | ---: | ---: | ---: | ---: |",
         ]
     )
-    if isinstance(providers, dict):
-        for provider, raw_metrics in providers.items():
-            if not isinstance(raw_metrics, dict):
-                continue
-            lines.append(
-                "| {provider} | {cer_ko} | {cer_en} | {wer_ko} | {wer_en} |".format(
-                    provider=provider,
-                    cer_ko=raw_metrics.get("cer_ko_avg"),
-                    cer_en=raw_metrics.get("cer_en_avg"),
-                    wer_ko=raw_metrics.get("wer_ko_avg"),
-                    wer_en=raw_metrics.get("wer_en_avg"),
-                )
+    for provider, raw_metrics in provider_metrics:
+        lines.append(
+            "| {provider} | {cer_ko} | {cer_en} | {wer_ko} | {wer_en} |".format(
+                provider=provider,
+                cer_ko=raw_metrics.get("cer_ko_avg"),
+                cer_en=raw_metrics.get("cer_en_avg"),
+                wer_ko=raw_metrics.get("wer_ko_avg"),
+                wer_en=raw_metrics.get("wer_en_avg"),
             )
+        )
+
+
+def _append_condition_metric_sections(
+    lines: list[str],
+    provider_metrics: list[tuple[str, dict[str, object]]],
+) -> None:
+    """Append chronic-condition metric sections.
+
+    Args:
+        lines: Mutable Markdown lines.
+        provider_metrics: Provider metric rows.
+    """
     lines.extend(
         [
             "",
@@ -748,27 +923,67 @@ def _render_markdown(summary: dict[str, object]) -> str:
             "",
         ]
     )
-    if isinstance(providers, dict):
-        for provider, raw_metrics in providers.items():
-            if not isinstance(raw_metrics, dict):
-                continue
-            condition_map = raw_metrics.get("accuracy_by_condition")
-            if not isinstance(condition_map, dict) or not condition_map:
-                continue
-            lines.append(f"### {provider}")
-            lines.append("")
-            scoreable_condition_map = raw_metrics.get("scoreable_accuracy_by_condition")
-            if not isinstance(scoreable_condition_map, dict):
-                scoreable_condition_map = {}
-            lines.append("| Chronic condition | accuracy | scoreable accuracy |")
-            lines.append("| --- | ---: | ---: |")
-            for condition, accuracy in sorted(condition_map.items()):
-                lines.append(
-                    f"| {condition} | {accuracy} | {scoreable_condition_map.get(condition)} |"
-                )
-            lines.append("")
+    for provider, raw_metrics in provider_metrics:
+        _append_one_condition_metric_section(lines, provider, raw_metrics)
+
+
+def _append_one_condition_metric_section(
+    lines: list[str],
+    provider: str,
+    raw_metrics: dict[str, object],
+) -> None:
+    """Append one provider's chronic-condition metric section when present.
+
+    Args:
+        lines: Mutable Markdown lines.
+        provider: Provider name.
+        raw_metrics: Provider metric dictionary.
+    """
+    condition_map = raw_metrics.get("accuracy_by_condition")
+    if not isinstance(condition_map, dict) or not condition_map:
+        return
+    lines.append(f"### {provider}")
     lines.append("")
-    return "\n".join(lines)
+    scoreable_condition_map = raw_metrics.get("scoreable_accuracy_by_condition")
+    if not isinstance(scoreable_condition_map, dict):
+        scoreable_condition_map = {}
+    lines.append("| Chronic condition | accuracy | scoreable accuracy |")
+    lines.append("| --- | ---: | ---: |")
+    for condition, accuracy in sorted(condition_map.items()):
+        lines.append(f"| {condition} | {accuracy} | {scoreable_condition_map.get(condition)} |")
+    lines.append("")
+
+
+def _format_mapping(value: object) -> str:
+    """Format a small diagnostic mapping for Markdown.
+
+    Args:
+        value: Candidate mapping.
+
+    Returns:
+        Bounded Markdown cell text.
+    """
+    if not isinstance(value, dict) or not value:
+        return ""
+    parts = []
+    for key, count in sorted(value.items()):
+        if isinstance(key, str) and isinstance(count, int):
+            parts.append(f"{key}:{count}")
+    return ", ".join(parts)
+
+
+def _format_list(value: object) -> str:
+    """Format a small diagnostic list for Markdown.
+
+    Args:
+        value: Candidate list.
+
+    Returns:
+        Bounded Markdown cell text.
+    """
+    if not isinstance(value, list) or not value:
+        return ""
+    return ", ".join(item for item in value if isinstance(item, str))
 
 
 if __name__ == "__main__":

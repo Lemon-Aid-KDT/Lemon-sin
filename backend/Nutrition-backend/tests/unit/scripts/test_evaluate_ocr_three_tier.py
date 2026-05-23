@@ -104,6 +104,55 @@ def test_evaluate_manifest_counts_status_error_observations(tmp_path: Path) -> N
     assert isinstance(clova_metrics, dict)
     assert clova_metrics["calls"] == 1
     assert clova_metrics["errors"] == 1
+    assert clova_metrics["error_codes"] == {"ocr_error": 1}
+    assert clova_metrics["error_stages"] == {"ocr_provider": 1}
+    assert clova_metrics["error_fixture_ids"] == ["fixture-1"]
+
+
+def test_evaluate_manifest_bounds_error_diagnostics(tmp_path: Path) -> None:
+    """Verify provider diagnostics classify failures without leaking raw messages."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-image",
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "error",
+                        "error_code": "image_missing",
+                    }
+                ],
+            },
+            {
+                "fixture_id": "fixture-parser",
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "error",
+                        "error_code": "Google Vision OCR provider error: PERMISSION_DENIED",
+                        "text_non_empty": True,
+                        "parser_success": False,
+                    }
+                ],
+            },
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["errors"] == 2
+    assert metrics["error_codes"] == {
+        "image_missing": 1,
+        "unclassified_error_code": 1,
+    }
+    assert metrics["error_stages"] == {"image_input": 1, "parser": 1}
+    assert metrics["error_fixture_ids"] == ["fixture-image", "fixture-parser"]
+    markdown = evaluate._render_markdown(summary)
+    assert "Provider Error Diagnostics" in markdown
+    assert "PERMISSION_DENIED" not in markdown
 
 
 def test_evaluate_manifest_records_llm_metrics_separately(tmp_path: Path) -> None:
