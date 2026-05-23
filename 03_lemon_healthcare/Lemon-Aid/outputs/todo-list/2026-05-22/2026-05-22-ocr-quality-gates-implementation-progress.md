@@ -1227,6 +1227,58 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
 - local capture quality analysis와 image decoding logic은 다음 slice로
   분리했다.
 
+### 3.34 Mobile Capture Quality Warning Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-capture-quality-warning-result.md`
+
+공식 근거:
+
+- Flutter `instantiateImageCodec`:
+  <https://api.flutter.dev/flutter/dart-ui/instantiateImageCodec.html>
+- Dart `File.readAsBytesSync`:
+  <https://api.dart.dev/dart-io/File/readAsBytesSync.html>
+- Flutter widget testing:
+  <https://docs.flutter.dev/testing/overview>
+
+생성 branch:
+
+- base: `origin/feat/mobile-image-picker-permission-ui`
+- export branch: `origin/feat/mobile-capture-quality-warning`
+- patch commit: `198aaa68 feat(mobile): 촬영 품질 경고를 추가`
+
+변경:
+
+- selected/recovered image에 local capture quality report를 붙인다.
+- PNG header 또는 Flutter image codec에서 width/height만 읽고,
+  low-resolution issue를 bounded reason code로 표시한다.
+- 저해상도 이미지에서 `분석하기`를 누르면 backend OCR upload 전에
+  confirmation dialog를 먼저 띄운다.
+- widget test는 runtime temporary PNG를 생성하고 test 종료 시 삭제한다.
+- blur, glare, crop, skew metric은 다음 branch로 분리했다.
+
+검증:
+
+```text
+flutter test test/supplement_flow_capture_quality_test.dart: 1 passed
+flutter test image picker permission + capture quality tests: 3 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payload, request headers,
+  image bytes, `.env`, secret values를 추가하지 않았다.
+- app state에는 width, height, total pixels, short-edge pixels, status,
+  reason code 같은 bounded metrics만 남긴다.
+- quality gate는 OCR upload 전에 실행되며 external OCR/LLM 호출을 추가하지
+  않는다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1831,6 +1883,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-provider-observations`.
    - Mobile image picker permission UI candidate is now preserved as
      `origin/feat/mobile-image-picker-permission-ui`.
+   - Mobile capture quality warning candidate is now preserved as
+     `origin/feat/mobile-capture-quality-warning`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

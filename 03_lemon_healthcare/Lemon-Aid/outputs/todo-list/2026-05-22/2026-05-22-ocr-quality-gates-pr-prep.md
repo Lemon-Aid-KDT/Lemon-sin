@@ -74,6 +74,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 4d corrective candidate: `origin/fix/mobile-certificate-pin-wiring`
 - PR 5a export candidate: `origin/feat/mobile-provider-observations`
 - PR 5b export candidate: `origin/feat/mobile-image-picker-permission-ui`
+- PR 5c export candidate: `origin/feat/mobile-capture-quality-warning`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -521,6 +522,41 @@ PR 5b validation:
 
 ```text
 2 passed - supplement_flow_image_picker_permission_test.dart
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current third sub-slice:
+
+```text
+origin/feat/mobile-capture-quality-warning
+198aaa68 feat(mobile): 촬영 품질 경고를 추가
+```
+
+This branch stacks on `origin/feat/mobile-image-picker-permission-ui` and adds
+only a low-resolution local capture quality warning before OCR upload. It does
+not add blur/glare/crop/skew heuristics yet.
+
+Candidate files:
+
+- `mobile/lib/features/supplements/supplement_flow_screen.dart`
+- `mobile/test/supplement_flow_capture_quality_test.dart`
+
+Scope:
+
+- compute bounded local image dimensions and low-resolution issue code
+- show capture-quality warning in the preview surface
+- block backend analysis until the user confirms low-quality upload
+- keep tests on temporary generated PNG files, not committed image fixtures
+
+PR 5c validation:
+
+```text
+1 passed - supplement_flow_capture_quality_test.dart
+3 passed - image picker permission and capture quality widget tests
 flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
 detect-secrets-hook changed files: passed
