@@ -66,6 +66,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - Clean base candidate: `origin/chore/ocr-clean-export-base`
 - PR 1 export candidate: `origin/fix/ocr-field-extractor-shapes`
 - PR 2a export candidate: `origin/test/ocr-artifact-privacy-gate`
+- Export readiness gate candidate: `origin/test/ocr-pr-export-base-gate`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -231,6 +232,40 @@ PR 2a validation:
 black --check passed
 ruff check passed
 check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+secret pattern scan on changed source files: no matches
+```
+
+### PR 2b - PR Export Base Gate
+
+Current sub-slice:
+
+```text
+origin/test/ocr-pr-export-base-gate
+ea7a9006 test(ocr): PR export base gate를 추가
+```
+
+Candidate files:
+
+- `backend/scripts/check_pr_export_base.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_pr_export_base.py`
+
+Scope:
+
+- require code-bearing OCR backend paths in the base ref
+- reject `.env` tracking in the base ref
+- reject `outputs/generated/ocr-eval/` tracking in the base ref
+- support both team-root and monorepo-prefixed layouts
+- keep CLI output bounded
+
+Validation:
+
+```text
+6 passed - test_check_pr_export_base.py
+black --check passed
+ruff check passed
+chore/ocr-clean-export-base: pr_export_base_ok
+team/develop: missing required OCR source/test paths
+team/feat/ocr-p1-5-followup: forbidden tracked outputs/generated/ocr-eval paths
 secret pattern scan on changed source files: no matches
 ```
 

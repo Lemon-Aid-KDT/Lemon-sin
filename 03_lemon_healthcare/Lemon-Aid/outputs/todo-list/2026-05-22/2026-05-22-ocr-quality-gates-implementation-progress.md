@@ -780,6 +780,100 @@ git diff --cached --check passed
 - secret assignment detection test는 credential-like string을 runtime에 조립해
   repo source에 연속 credential assignment literal을 남기지 않는다.
 
+### 3.25 PR Export Base Gate Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-pr-export-base-gate-result.md`
+
+생성 branch:
+
+- base: `origin/chore/ocr-clean-export-base`
+- export branch: `origin/test/ocr-pr-export-base-gate`
+- patch commit: `ea7a9006 test(ocr): PR export base gate를 추가`
+
+변경:
+
+- PR split/export 전에 base ref가 code-bearing OCR backend tree를 갖는지,
+  `.env` 또는 generated OCR artifact를 tracking하지 않는지 검사하는 gate를
+  독립 branch로 분리했다.
+- 변경 파일은 `check_pr_export_base.py`와 `test_check_pr_export_base.py` 2개로
+  제한했다.
+- branch diff는 `2 files changed, 516 insertions(+)`다.
+
+검증:
+
+```text
+6 passed - test_check_pr_export_base.py
+black --check passed on changed files
+ruff check passed on changed files
+chore/ocr-clean-export-base: pr_export_base_ok
+team/develop: missing backend/Nutrition-backend OCR source/test paths
+team/feat/ocr-p1-5-followup: forbidden tracked outputs/generated/ocr-eval paths
+secret pattern scan on changed source files: no matches
+git diff --check passed
+git diff --cached --check passed
+```
+
+보안 확인:
+
+- script는 Git tree/ref metadata만 검사하고 `.env` 값이나 generated artifact
+  content를 읽지 않는다.
+- output은 ref, finding code, project-relative path로 제한한다.
+- raw OCR text, provider payload, request headers, image bytes, secret values를
+  branch에 추가하지 않았다.
+
+### 3.26 CLOVA Phase 0 Baseline Rerun
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-clova-phase0-baseline-rerun-result.md`
+
+생성된 local-only 산출물:
+
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/supplement-ocr-observations.jsonl`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/manifest-with-clova-observations.jsonl`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/ocr-three-tier-evaluation.json`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/ocr-three-tier-evaluation.md`
+
+결과:
+
+```text
+fixture_count=16
+observation_count=16
+clova_calls=16
+completed=15
+errors=1
+error_fixture=naver-live-0009
+text_non_empty_rate=0.9375
+parser_success_rate=0.6875
+ingredient_name_exact_rate=0.5
+average_latency_ms=1816.75
+raw_artifacts_stored=false
+raw_ocr_text_stored=false
+```
+
+검증:
+
+```text
+observation JSONL forbidden raw key scan passed
+evaluation manifest forbidden raw key scan passed
+focused OCR/config regression tests: 120 passed
+black --check passed
+ruff check --ignore RUF001 passed
+git diff --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+generated output git status: ignored
+```
+
+보안 확인:
+
+- 사용자 외부 전송 승인 후 16개 fixture만 NAVER CLOVA OCR로 전송했다.
+- OCR 원문, provider raw payload, request headers, image bytes, `.env`, secret
+  values는 출력하거나 저장하지 않았다.
+- generated artifact는 ignored local output으로만 유지하고, durable 기록은
+  redacted todo report에 남겼다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1368,6 +1462,11 @@ flutter build ios --simulator --debug
      on top of `origin/chore/ocr-clean-export-base`.
    - artifact privacy gate export candidate is now preserved as
      `origin/test/ocr-artifact-privacy-gate`.
+   - PR export base gate candidate is now preserved as
+     `origin/test/ocr-pr-export-base-gate`.
+   - CLOVA 2026-05-23 rerun result is documented in
+     `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
+     artifacts remain ignored local outputs.
    - backend quality/layout/provider routing and mobile release security are now separate commits, but the branch as a whole is larger than the team PR-size recommendation.
    - before opening PR, decide whether to keep this branch as an integration PR or cherry-pick commits into smaller branches.
 2. Do not commit generated CLOVA artifacts unless the team explicitly wants evaluation artifacts in repo.
