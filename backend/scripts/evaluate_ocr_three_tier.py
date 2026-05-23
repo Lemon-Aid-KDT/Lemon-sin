@@ -21,6 +21,9 @@ BOUNDED_CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$", re.IGNORECASE)
 PENDING_REVIEW_WARNING = "ground_truth_pending_human_review"
 PROVISIONAL_VERIFICATION_STATUS = "provisional"
 AUTO_EXPECTED_WARNING = "auto_expected_requires_human_verification"
+EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
+MIN_EXPECTED_NAME_PART_CHARS = 2
+MAX_EXPECTED_NAME_PART_CHARS = 80
 IMAGE_INPUT_ERROR_CODES = {
     "image_decode_error",
     "image_missing",
@@ -334,8 +337,16 @@ def _expected_ingredient_quality(
     for index, ingredient in enumerate(ingredients):
         if not isinstance(ingredient, dict):
             continue
-        name = _expected_ingredient_display_name(ingredient)
-        if isinstance(name, str):
+        names_for_ingredient = _expected_ingredient_display_names(ingredient)
+        if len(names_for_ingredient) > 1:
+            warnings.append(
+                _expected_quality_warning(
+                    fixture_id=fixture_id,
+                    code="compound_expected_ingredient_name",
+                    ingredient_index=index,
+                )
+            )
+        for name in names_for_ingredient:
             normalized_name = _normalize_token(name)
             if not normalized_name:
                 continue
@@ -358,20 +369,57 @@ def _expected_ingredient_quality(
     )
 
 
-def _expected_ingredient_display_name(ingredient: dict[str, object]) -> str | None:
-    """Return the best expected ingredient name from legacy or V3 shapes.
+def _expected_ingredient_display_names(ingredient: dict[str, object]) -> list[str]:
+    """Return expected ingredient names from legacy or V3 shapes.
 
     Args:
         ingredient: Expected ingredient object.
 
     Returns:
-        Ingredient display name, if present.
+        One or more ingredient display names.
     """
     for key in ("name", "display_name", "normalized_name"):
         value = ingredient.get(key)
         if isinstance(value, str) and value.strip():
-            return value
-    return None
+            return _split_expected_ingredient_name(value.strip(), ingredient)
+    return []
+
+
+def _split_expected_ingredient_name(value: str, ingredient: dict[str, object]) -> list[str]:
+    """Split bounded compound expected names when no dose is attached.
+
+    Args:
+        value: Expected ingredient display name.
+        ingredient: Full expected ingredient row.
+
+    Returns:
+        A list of names. Dose-bearing rows are kept as one item.
+    """
+    if ingredient.get("amount") is not None or ingredient.get("unit") is not None:
+        return [value]
+    parts = [
+        part.strip()
+        for part in EXPECTED_NAME_SEPARATOR_PATTERN.split(value)
+        if _looks_like_expected_name_part(part)
+    ]
+    return parts if len(parts) > 1 else [value]
+
+
+def _looks_like_expected_name_part(value: str) -> bool:
+    """Return whether a split expected-name part is safe to score.
+
+    Args:
+        value: Candidate expected-name fragment.
+
+    Returns:
+        True for bounded alphabetic ingredient-name fragments.
+    """
+    stripped = value.strip()
+    return (
+        MIN_EXPECTED_NAME_PART_CHARS <= len(stripped) <= MAX_EXPECTED_NAME_PART_CHARS
+        and bool(re.search(r"[A-Za-z가-힣]", stripped))
+        and not _is_packaging_quantity_token(stripped)
+    )
 
 
 def _expected_is_provisional(value: dict[str, object]) -> bool:

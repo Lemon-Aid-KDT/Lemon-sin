@@ -353,6 +353,90 @@ def test_evaluate_manifest_reads_v3_display_and_normalized_names(
     assert metrics["scoreable_accuracy_by_condition"] == {"diabetes": 1.0}
 
 
+def test_evaluate_manifest_splits_compound_v3_expected_names(
+    tmp_path: Path,
+) -> None:
+    """Verify comma-joined V3 expected names are scored individually."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-compound-v3",
+                "expected": {
+                    "ingredients": [
+                        {"display_name": "비타민K,비타민D,비타민B6"},
+                    ],
+                    "chronic_disease_indications": ["osteoporosis"],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [
+                            {"name": "비타민K"},
+                            {"name": "비타민D"},
+                        ],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 0.6667
+    assert metrics["scoreable_ingredient_name_exact_rate"] == 0.6667
+    assert metrics["scoreable_accuracy_by_condition"] == {"osteoporosis": 0.6667}
+    assert summary["expected_quality_warnings"] == [
+        {
+            "code": "compound_expected_ingredient_name",
+            "fixture_id": "fixture-compound-v3",
+            "ingredient_index": 0,
+        }
+    ]
+
+
+def test_evaluate_manifest_does_not_split_dose_bearing_expected_name(
+    tmp_path: Path,
+) -> None:
+    """Verify dose-bearing expected rows keep one exact-match target."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-dose-bearing",
+                "expected": {
+                    "ingredients": [
+                        {"display_name": "비타민K,비타민D", "amount": 1000, "unit": "mg"},
+                    ],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [
+                            {"name": "비타민K"},
+                            {"name": "비타민D"},
+                        ],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 0.0
+    assert metrics["scoreable_ingredient_name_exact_rate"] == 0.0
+    assert summary["expected_quality_warnings"] == []
+
+
 def test_evaluate_manifest_llm_failure_counted(tmp_path: Path) -> None:
     """Verify LLM parser failures contribute to attempt count but not success count."""
     manifest_path = tmp_path / "manifest.jsonl"

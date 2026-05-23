@@ -248,6 +248,33 @@ def test_build_reference_text_reads_v3_name_fields() -> None:
     assert reference == "비타민 C 1000 mg zinc"
 
 
+def test_matched_expected_ingredients_splits_compound_v3_names() -> None:
+    """Verify comma-joined V3 expected names are matched individually."""
+    normalized_text = collector._normalize_text("비타민K 비타민D 엽산")
+    expected = {
+        "ingredients": [
+            {"display_name": "비타민K,비타민D,비타민B6,엽산,비타민B12"},
+        ]
+    }
+
+    parsed = collector._matched_expected_ingredients(normalized_text, expected)
+
+    assert parsed == [
+        {"name": "비타민K"},
+        {"name": "비타민D"},
+        {"name": "엽산"},
+    ]
+
+
+def test_expected_ingredient_names_do_not_split_dose_bearing_rows() -> None:
+    """Verify dose-bearing ingredient rows keep one expected display name."""
+    names = collector._expected_ingredient_names(
+        {"display_name": "비타민K,비타민D", "amount": 1000, "unit": "mg"}
+    )
+
+    assert names == ["비타민K,비타민D"]
+
+
 def test_safe_error_code_preserves_google_status_without_details() -> None:
     """Verify provider error status is useful but bounded."""
     error = collector.OCRError("Google Vision OCR provider error: PERMISSION_DENIED")

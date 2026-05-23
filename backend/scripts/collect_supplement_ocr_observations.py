@@ -119,6 +119,7 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
     r"(?P<unit>mg|g|mcg|μg|ug|㎍|iu|IU|%)\b"
 )
+EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
 PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Reject auto-seed contaminants observed in chronic fixtures: "g (", "g X30포(".
     re.compile(
@@ -543,8 +544,7 @@ def _build_reference_text(expected: dict[str, object]) -> str:
     """
     parts: list[str] = []
     for ingredient in _expected_ingredients(expected):
-        name = _expected_ingredient_name(ingredient)
-        if name:
+        for name in _expected_ingredient_names(ingredient):
             parts.append(name)
         amount = ingredient.get("amount")
         if amount is not None:
@@ -1293,20 +1293,60 @@ def _expected_ingredients(expected: dict[str, object]) -> list[dict[str, object]
     return [item for item in ingredients if isinstance(item, dict)]
 
 
-def _expected_ingredient_name(ingredient: dict[str, object]) -> str | None:
-    """Return a displayable expected ingredient name across manifest schemas.
+def _expected_ingredient_names(ingredient: dict[str, object]) -> list[str]:
+    """Return displayable expected ingredient names across manifest schemas.
 
     Args:
         ingredient: Expected ingredient row from a fixture manifest.
 
     Returns:
-        Ingredient name, or ``None`` when no supported name field exists.
+        One or more ingredient names, or an empty list when no supported name
+        field exists.
     """
     for key in ("name", "display_name", "normalized_name"):
         value = ingredient.get(key)
         if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+            return _split_expected_ingredient_name(value.strip(), ingredient)
+    return []
+
+
+def _split_expected_ingredient_name(value: str, ingredient: dict[str, object]) -> list[str]:
+    """Split bounded compound expected names when no dose is attached.
+
+    Args:
+        value: Expected ingredient name.
+        ingredient: Full expected ingredient row.
+
+    Returns:
+        A list of display names. Dose-bearing rows are kept as one name.
+    """
+    if ingredient.get("amount") is not None or ingredient.get("unit") is not None:
+        return [value]
+    parts = [
+        part.strip()
+        for part in EXPECTED_NAME_SEPARATOR_PATTERN.split(value)
+        if _looks_like_expected_name_part(part)
+    ]
+    return parts if len(parts) > 1 else [value]
+
+
+def _looks_like_expected_name_part(value: str) -> bool:
+    """Return whether a compound expected-name part is safe to emit.
+
+    Args:
+        value: Candidate split name.
+
+    Returns:
+        True for bounded alphabetic ingredient-name fragments.
+    """
+    stripped = value.strip()
+    return (
+        AUTO_EXPECTED_MIN_INGREDIENT_NAME_CHARS
+        <= len(stripped)
+        <= AUTO_EXPECTED_MAX_INGREDIENT_NAME_CHARS
+        and bool(re.search(r"[A-Za-z가-힣]", stripped))
+        and not _looks_like_packaging_quantity_token(stripped)
+    )
 
 
 def _matched_expected_ingredients(
@@ -1323,18 +1363,23 @@ def _matched_expected_ingredients(
         Redacted parsed ingredient summaries.
     """
     parsed: list[dict[str, object]] = []
+    seen_names: set[str] = set()
     for ingredient in _expected_ingredients(expected):
-        name = _expected_ingredient_name(ingredient)
-        if not name or _normalize_text(name) not in normalized_text:
-            continue
-        observed: dict[str, object] = {"name": name}
-        amount = ingredient.get("amount")
-        unit = ingredient.get("unit")
-        if amount is not None and _normalize_text(amount) in normalized_text:
-            observed["amount"] = amount
-        if isinstance(unit, str) and _normalize_text(unit) in normalized_text:
-            observed["unit"] = unit
-        parsed.append(observed)
+        for name in _expected_ingredient_names(ingredient):
+            normalized_name = _normalize_text(name)
+            if not normalized_name or normalized_name in seen_names:
+                continue
+            if normalized_name not in normalized_text:
+                continue
+            seen_names.add(normalized_name)
+            observed: dict[str, object] = {"name": name}
+            amount = ingredient.get("amount")
+            unit = ingredient.get("unit")
+            if amount is not None and _normalize_text(amount) in normalized_text:
+                observed["amount"] = amount
+            if isinstance(unit, str) and _normalize_text(unit) in normalized_text:
+                observed["unit"] = unit
+            parsed.append(observed)
     return parsed
 
 
