@@ -60,12 +60,6 @@ class _ThrowingRepository implements LemonAidRepository {
   ) async => _throw();
 
   @override
-  Future<SupplementAnalysisPreview> parseOcrText({
-    required String analysisId,
-    required SupplementOCRTextParseRequest request,
-  }) async => _throw();
-
-  @override
   Future<UserSupplementResponse> registerSupplement(
     UserSupplementCreate request,
   ) async => _throw();

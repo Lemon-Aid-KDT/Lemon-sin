@@ -899,34 +899,6 @@ class SupplementPreviewFunctionalClaim {
   }
 }
 
-/// Request payload for parsing OCR text against an existing preview.
-class SupplementOCRTextParseRequest {
-  /// Creates an OCR text parse request.
-  const SupplementOCRTextParseRequest({
-    required this.ocrText,
-    this.ocrProvider = 'manual_demo',
-    this.ocrConfidence,
-  });
-
-  /// Raw OCR text held transiently by the client.
-  final String ocrText;
-
-  /// Provider label sent to the backend.
-  final String ocrProvider;
-
-  /// Optional provider confidence.
-  final double? ocrConfidence;
-
-  /// Serializes the request to backend JSON.
-  Map<String, dynamic> toJson() {
-    return <String, dynamic>{
-      'ocr_text': ocrText,
-      'ocr_provider': ocrProvider,
-      'ocr_confidence': ocrConfidence,
-    };
-  }
-}
-
 /// User-confirmed supplement registration request.
 class UserSupplementCreate {
   /// Creates a user-confirmed supplement registration request.

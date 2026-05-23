@@ -340,14 +340,6 @@ class _ConsentReadyRepository implements LemonAidRepository {
   }
 
   @override
-  Future<SupplementAnalysisPreview> parseOcrText({
-    required String analysisId,
-    required SupplementOCRTextParseRequest request,
-  }) {
-    throw UnimplementedError();
-  }
-
-  @override
   Future<SupplementImpactPreviewResponse> previewSupplementImpact(
     SupplementImpactPreviewRequest request,
   ) {

@@ -17,12 +17,6 @@ abstract class LemonAidRepository {
   /// Uploads a selected supplement label image for preview analysis.
   Future<SupplementAnalysisPreview> analyzeSupplementImage(String imagePath);
 
-  /// Parses user-reviewed OCR text for an existing preview.
-  Future<SupplementAnalysisPreview> parseOcrText({
-    required String analysisId,
-    required SupplementOCRTextParseRequest request,
-  });
-
   /// Persists a user-confirmed supplement.
   Future<UserSupplementResponse> registerSupplement(
     UserSupplementCreate request,
@@ -98,19 +92,6 @@ class BackendLemonAidRepository implements LemonAidRepository {
         'client_request_id': clientRequestId,
         'ocr_provider': 'paddleocr',
       },
-    );
-    return SupplementAnalysisPreview.fromJson(json);
-  }
-
-  @override
-  Future<SupplementAnalysisPreview> parseOcrText({
-    required String analysisId,
-    required SupplementOCRTextParseRequest request,
-  }) async {
-    final Map<String, dynamic> json = await _apiClient.postJson(
-      '/supplements/analyses/$analysisId/ocr-text',
-      body: request.toJson(),
-      expectedStatusCodes: const <int>{200},
     );
     return SupplementAnalysisPreview.fromJson(json);
   }

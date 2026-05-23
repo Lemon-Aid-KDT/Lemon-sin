@@ -22,6 +22,7 @@ P1의 목적은 OCR 모델을 바로 교체하기 전에 입력 품질, provider
 | Flutter release mode | https://docs.flutter.dev/testing/build-modes, https://api.flutter.dev/flutter/foundation/kReleaseMode-constant.html | release mode는 배포용 최적화 빌드이므로 HTTPS/token/pin policy를 `kReleaseMode` 기반 config validation에 둔다. |
 | Flutter error handling | https://docs.flutter.dev/testing/errors | framework/runtime error text는 로그나 widget에 노출될 수 있으므로 mobile UI state에는 bounded user-safe message만 보존한다. |
 | Dart `Object.toString` | https://api.flutter.dev/flutter/dart-core/Object/toString.html | arbitrary exception `toString()`은 debugging text를 포함할 수 있으므로 user-facing API error message로 직접 쓰지 않는다. |
+| Flutter text input/button | https://api.flutter.dev/flutter/material/TextField-class.html, https://api.flutter.dev/flutter/material/FilledButton-class.html | 공개 product UI에서 raw OCR text를 받는 `TextField`/manual parse button을 제거해 privacy-preserving OCR boundary를 유지한다. |
 | Android network security config | https://developer.android.com/training/articles/security-config | Android pin-set과 debug override를 release safety 검증 항목으로 둔다. |
 | PaddleOCR 3.x | https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html | local PaddleOCR 기본값과 `use_textline_orientation`/model/device 옵션을 provider routing 비교 기준으로 사용한다. |
 | Google Cloud Vision OCR | https://cloud.google.com/vision/docs/ocr | 외부 OCR은 `DOCUMENT_TEXT_DETECTION` 계열이며, 이미지 전송 opt-in과 credential gate가 필요하다. |
@@ -36,6 +37,20 @@ P1의 목적은 OCR 모델을 바로 교체하기 전에 입력 품질, provider
 | 2 | `refactor/ocr-provider-routing` | PaddleOCR 기본 유지, Google/CLOVA external gate, provider metrics schema | PR #3의 CLOVA primary 변경이 base에 들어온 뒤 진행해야 충돌이 작다. |
 | 3 | `test/ocr-layout-regression` | normalized DTO fixture 기반 `OCRResult -> LabelLayout` 회귀 확대 | PR #3의 `OCRResult.pages` DTO가 선행되어야 한다. |
 | 4 | `test/mobile-release-safety` | HTTPS, certificate pin, release token, iOS/Android permission flow 검증 | 모바일 build/device gate가 필요해 별도 PR로 분리한다. |
+
+### 3.1 Current Branch 보안 보강
+
+- `feat/ocr-quality-gates` 현재 변경분은 공개 Flutter supplement flow의 raw OCR
+  text review/input card를 제거한다.
+- mobile controller/repository/model의 manual `parseOcrText` 경로와
+  `/ocr-text` endpoint wiring을 제거해 이미지 업로드, sanitized preview,
+  사용자 확인 등록 흐름만 남긴다.
+- `backend/scripts/check_mobile_ocr_ui_privacy.py`는 `parseOcrText`,
+  `SupplementOCRTextParseRequest`, `/ocr-text`, raw OCR/provider/request/header
+  marker가 `mobile/lib/**/*.dart`에 재도입되는 것을 막는다.
+- 안전한 `raw_ocr_text_stored=false`, `raw_provider_payload_stored=false`
+  metadata는 유지하고, OCR 원문/provider raw payload/image bytes/secret 값은
+  코드와 산출물에 저장하지 않는다.
 
 ## 4. Capture Quality Gate 상세 플랜
 

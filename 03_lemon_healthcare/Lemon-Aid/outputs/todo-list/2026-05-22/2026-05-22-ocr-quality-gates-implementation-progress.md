@@ -1480,39 +1480,42 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
 
 공식 근거:
 
+- Flutter `TextField`:
+  <https://api.flutter.dev/flutter/material/TextField-class.html>
+- Flutter `FilledButton`:
+  <https://api.flutter.dev/flutter/material/FilledButton-class.html>
 - Python `argparse`: <https://docs.python.org/3/library/argparse.html>
 - Python `pathlib`: <https://docs.python.org/3/library/pathlib.html>
 - Python `re`: <https://docs.python.org/3/library/re.html>
 
-생성 branch:
+현재 branch:
 
-- base: `origin/feat/mobile-preview-metadata-summary`
-- export branch: `origin/test/mobile-ui-privacy-gate`
-- patch commit: `73e1e112 test(mobile): OCR UI privacy gate를 추가`
+- integration branch: `feat/ocr-quality-gates`
+- 선행 export candidate: `origin/test/mobile-ui-privacy-gate`
+- 이전 static-gate-only commit: `73e1e112 test(mobile): OCR UI privacy gate를 추가`
 
 변경:
 
-- `mobile/lib/**/*.dart` runtime source에서 raw OCR/provider leakage marker를
-  검사하는 static gate를 추가했다.
+- 공개 Flutter supplement flow에서 raw OCR text를 직접 입력/표시하던
+  `_OcrTextCard`, `_ocrTextController`, `_submitOcrText()`를 제거했다.
+- mobile controller/repository/model에서 manual `parseOcrText` 경로와
+  `SupplementOCRTextParseRequest`를 제거했다.
+- static gate가 `parseOcrText`, `SupplementOCRTextParseRequest`,
+  `/ocr-text` endpoint literal, raw OCR/provider leakage marker를 검사한다.
 - `raw_ocr_text`, `provider_payload`, `raw_provider_payload`,
   `request_headers`, `image_bytes`, OCR/provider secret-style key와 대응
   camelCase identifier를 차단한다.
 - backend의 안전한 boolean metadata인 `raw_ocr_text_stored`,
   `raw_provider_payload_stored`는 허용한다.
-- 정상 API 인증용 `Authorization` header는 OCR UI payload leakage가 아니라
-  별도 auth 영역이므로 이 gate의 forbidden pattern에서 제외했다.
+- 정상 API 인증용 `Authorization` header와 API error sanitizer marker는
+  OCR UI payload leakage가 아니라 별도 auth/redaction 영역이므로 false
+  positive로 처리하지 않는다.
 
 검증:
 
 ```text
-pytest test_check_mobile_ocr_ui_privacy.py: 7 passed
-check_mobile_ocr_ui_privacy.py --project-root /private/tmp/lemon-mobile-ui-privacy-gate:
-  mobile_ocr_ui_privacy_ok files=18
-black --check changed files: passed
-ruff check changed files: passed
-detect-secrets-hook changed files: passed
-check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
-git diff --check: passed
+pytest test_check_mobile_ocr_ui_privacy.py: 8 passed
+check_mobile_ocr_ui_privacy.py --project-root .: mobile_ocr_ui_privacy_ok files=18
 ```
 
 보안 확인:
@@ -1521,10 +1524,9 @@ git diff --check: passed
   image bytes, `.env`, secret values를 추가하지 않았다.
 - scanner finding output은 path, line, code, 고정 detail만 출력하며 matched
   source line을 출력하지 않는다.
-- `ocr_text` request key는 현재 manual parse request에서 transient
-  client-to-backend field로 쓰이므로 금지하지 않았다. API response raw-field
-  leakage는 기존 product API smoke helper와 artifact privacy gate로 계속
-  검사한다.
+- 공개 모바일 UI에는 raw OCR text review/input card가 남아 있지 않다.
+- API response raw-field leakage는 기존 product API smoke helper,
+  mobile API error privacy gate, artifact privacy gate로 계속 검사한다.
 
 ### 4. Phase 0-alpha Field Extractor Patch
 

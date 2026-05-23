@@ -108,27 +108,6 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  /// Parses user-reviewed OCR text for the current preview.
-  Future<void> parseOcrText(String ocrText) async {
-    final SupplementAnalysisPreview? preview = _analysisPreview;
-    if (preview == null) {
-      _apiError = const ApiError(
-        statusCode: 0,
-        message: 'Upload an image before submitting OCR text.',
-      );
-      notifyListeners();
-      return;
-    }
-
-    await _run(() async {
-      _analysisPreview = await _repository.parseOcrText(
-        analysisId: preview.analysisId,
-        request: SupplementOCRTextParseRequest(ocrText: ocrText),
-      );
-      _notice = 'OCR text was parsed. Confirm fields before registration.';
-    });
-  }
-
   /// Registers a user-confirmed supplement and refreshes dashboard summary.
   Future<void> registerSupplement(UserSupplementCreate request) async {
     await _run(() async {

@@ -9,7 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../app_controller.dart';
 import 'supplement_models.dart';
 
-/// Supplement capture, OCR text review, and registration screen.
+/// Supplement capture, preview confirmation, and registration screen.
 class SupplementFlowScreen extends StatefulWidget {
   /// Creates the supplement flow screen.
   const SupplementFlowScreen({
@@ -37,7 +37,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   );
 
   late final ImagePicker _imagePicker;
-  final TextEditingController _ocrTextController = TextEditingController();
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _manufacturerController = TextEditingController();
   final TextEditingController _servingAmountController =
@@ -65,7 +64,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
 
   @override
   void dispose() {
-    _ocrTextController.dispose();
     _displayNameController.dispose();
     _manufacturerController.dispose();
     _servingAmountController.dispose();
@@ -119,12 +117,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
             ),
             const SizedBox(height: 16),
             _PreviewCard(preview: preview),
-            const SizedBox(height: 16),
-            _OcrTextCard(
-              controller: _ocrTextController,
-              busy: widget.controller.busy,
-              onSubmit: _submitOcrText,
-            ),
             const SizedBox(height: 16),
             _RegistrationCard(
               displayNameController: _displayNameController,
@@ -328,26 +320,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     return confirmed == true;
   }
 
-  Future<void> _submitOcrText() async {
-    final String ocrText = _ocrTextController.text.trim();
-    if (ocrText.isEmpty) {
-      _showSnackBar('Enter OCR text before parsing.');
-      return;
-    }
-    setState(() {
-      _stage = _SupplementFlowStage.structuring;
-    });
-    await widget.controller.parseOcrText(ocrText);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _stage = widget.controller.analysisPreview == null
-          ? _SupplementFlowStage.imageSelected
-          : _SupplementFlowStage.confirmationRequired;
-    });
-  }
-
   Future<void> _registerSupplement() async {
     final String displayName = _displayNameController.text.trim();
     if (displayName.isEmpty) {
@@ -419,7 +391,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       });
       return;
     }
-    _ocrTextController.clear();
     _seededAnalysisId = null;
     if (!mounted) {
       return;
@@ -1663,52 +1634,6 @@ String? _captureQualityGuidance(String reasonCode) {
     'low_contrast' => '그림자나 어두운 배경을 피해서 촬영해주세요.',
     _ => null,
   };
-}
-
-class _OcrTextCard extends StatelessWidget {
-  const _OcrTextCard({
-    required this.controller,
-    required this.busy,
-    required this.onSubmit,
-  });
-
-  final TextEditingController controller;
-  final bool busy;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'OCR text review',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              minLines: 4,
-              maxLines: 8,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Paste or edit OCR text from the supplement label.',
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: busy ? null : onSubmit,
-              icon: const Icon(Icons.text_fields),
-              label: const Text('Parse OCR text'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _RegistrationCard extends StatelessWidget {
