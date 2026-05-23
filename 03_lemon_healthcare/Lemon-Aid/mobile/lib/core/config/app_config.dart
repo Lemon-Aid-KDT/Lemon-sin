@@ -100,6 +100,11 @@ class AppConfig {
         'LEMON_CERTIFICATE_PINS must use sha256/<base64> certificate pins.',
       );
     }
+    if (releaseMode && normalizedCertificatePins.toSet().length < 2) {
+      throw StateError(
+        'LEMON_CERTIFICATE_PINS must include at least two unique pins for rotation.',
+      );
+    }
 
     return AppConfig(
       apiBaseUrl: normalizedBaseUrl,

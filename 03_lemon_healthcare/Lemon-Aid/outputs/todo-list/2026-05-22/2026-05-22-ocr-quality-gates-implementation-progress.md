@@ -1126,6 +1126,49 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
   image bytes, `.env`, generated OCR artifact는 추가하지 않았다.
 - 검증 과정에서 external OCR/LLM 호출은 수행하지 않았다.
 
+### 3.31.1 Mobile Certificate Pin Rotation Gate
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-certificate-pin-rotation-gate-result.md`
+
+공식 근거:
+
+- Dart `String.fromEnvironment`:
+  <https://api.dart.dev/dart-core/String/String.fromEnvironment.html>
+- Flutter build modes:
+  <https://docs.flutter.dev/testing/build-modes>
+- Flutter `kReleaseMode`:
+  <https://api.flutter.dev/flutter/foundation/kReleaseMode-constant.html>
+
+변경:
+
+- release `AppConfig`가 `LEMON_CERTIFICATE_PINS`에 최소 2개 고유 pin을
+  요구하도록 보강했다.
+- 단일 pin 또는 같은 pin 2개는 release mode에서 fail-closed한다.
+- local/debug mode와 request-path native pin verification 계약은 그대로 둔다.
+
+검증:
+
+```text
+flutter test app_config/api_client_certificate_pin/release_security_config: 23 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+markdownlint changed docs: passed
+detect-secrets changed docs/code: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+git diff --check: passed
+```
+
+보안 확인:
+
+- 기존 gap은 release artifact가 단일 pin으로도 생성될 수 있어 인증서 교체 또는
+  pin rotation 실패 시 배포 사고로 이어질 수 있는 점이었다.
+- 이번 변경은 실제 certificate pin 값, request header, OCR 원문, provider
+  payload, image bytes, `.env`, secret value를 추가하지 않는다.
+- 현재 native verifier는 여전히 certificate DER fingerprint 방식이다. SPKI
+  pinning 전환은 플랫폼별 key DER canonicalization을 별도 검증한 뒤 진행한다.
+
 ### 3.32 Mobile Provider Observations Export Branch
 
 추가 산출물:

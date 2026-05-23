@@ -18,6 +18,8 @@ P1의 목적은 OCR 모델을 바로 교체하기 전에 입력 품질, provider
 | Apple AVFoundation authorization | https://developer.apple.com/documentation/avfoundation/capture_setup/requesting_authorization_to_capture_and_save_media, https://developer.apple.com/documentation/avfoundation/avcapturedevice/1624613-authorizationstatus | iOS camera 사용 전 `AVCaptureDevice.authorizationStatus(for: .video)`를 확인하고 `.notDetermined`일 때 `requestAccess(for:)`로 prompt를 띄운다. |
 | Dart TLS/certificate context | https://api.dart.dev/dart-io/HttpClient/HttpClient.html | release client hardening은 `SecurityContext`/`HttpClient` 계층 또는 플랫폼 network security config와 연결한다. |
 | Dart bad certificate callback | https://api.dart.dev/dart-io/HttpClient/badCertificateCallback.html | `badCertificateCallback`은 인증 실패 certificate에서 호출되는 API라, 정상 chain에 대한 SPKI pin enforcement 대체재로 과대해석하지 않는다. |
+| Dart compile-time environment | https://api.dart.dev/dart-core/String/String.fromEnvironment.html | `LEMON_API_BASE_URL`, `LEMON_API_TOKEN`, `LEMON_CERTIFICATE_PINS`는 Dart compilation configuration environment로 주입되므로 release validation이 boot 전 fail-closed해야 한다. |
+| Flutter release mode | https://docs.flutter.dev/testing/build-modes, https://api.flutter.dev/flutter/foundation/kReleaseMode-constant.html | release mode는 배포용 최적화 빌드이므로 HTTPS/token/pin policy를 `kReleaseMode` 기반 config validation에 둔다. |
 | Android network security config | https://developer.android.com/training/articles/security-config | Android pin-set과 debug override를 release safety 검증 항목으로 둔다. |
 | PaddleOCR 3.x | https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html | local PaddleOCR 기본값과 `use_textline_orientation`/model/device 옵션을 provider routing 비교 기준으로 사용한다. |
 | Google Cloud Vision OCR | https://cloud.google.com/vision/docs/ocr | 외부 OCR은 `DOCUMENT_TEXT_DETECTION` 계열이며, 이미지 전송 opt-in과 credential gate가 필요하다. |
@@ -158,7 +160,7 @@ provider별 observation은 같은 field를 사용한다.
 |---|---|
 | `LEMON_API_BASE_URL` | release에서 HTTPS 필수, `/api/v1` suffix 필수 |
 | release token | `LEMON_API_TOKEN` embedding 금지 |
-| certificate pin | release에서 `LEMON_CERTIFICATE_PINS` 필수 |
+| certificate pin | release에서 `LEMON_CERTIFICATE_PINS` 최소 2개 고유 pin 필수 |
 | Android camera | `CAMERA` permission과 camera feature filtering 확인 |
 | Android gallery | Photo Picker 동작 확인, broad media permission 최소화 |
 | iOS camera/photo | `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription` 확인 |
@@ -166,9 +168,13 @@ provider별 observation은 같은 field를 사용한다.
 
 ### 7.2 현 상태
 
-- `AppConfig`는 release HTTPS, token 금지, certificate pin 필수 테스트를 이미 갖고 있다.
+- `AppConfig`는 release HTTPS, token 금지, certificate pin 최소 2개 고유값 필수
+  테스트를 갖고 있다.
 - 현재 branch의 certificate pin 검증은 release config와 artifact 확인에 더해, API request 직전 Flutter `MethodChannel`로 Android/iOS native TLS handshake를 수행해 server certificate chain 중 하나가 설정 pin과 일치하는지 확인한다.
-- pin 값은 `sha256/<base64>` 형식의 certificate DER SHA-256 fingerprint로 검증한다. SPKI pinning은 아직 구현하지 않았으므로, production 적용 전 실제 인증서 fingerprint와 rotation/backup pin 운영 절차를 별도로 확정해야 한다.
+- pin 값은 `sha256/<base64>` 형식의 certificate DER SHA-256 fingerprint로
+  검증한다. release config는 rotation/backup 사고를 줄이기 위해 최소 2개
+  고유 pin을 강제한다. SPKI pinning은 아직 구현하지 않았으므로, production
+  적용 전 실제 인증서 fingerprint와 SPKI 전환 여부는 별도로 확정해야 한다.
 - 실제 `flutter build apk --release --flavor prod`를 호출했을 때 `LEMON_ANDROID_APPLICATION_ID`가 production reverse-domain 값으로 설정되지 않으면 Gradle이 fail-closed로 막는 것을 확인했다.
 - Android `MainActivity`를 `com.example` 패키지 밖인 `com.lemonaid.mobile.MainActivity`로 이동했고, release APK의 package/activity가 AAPT에서 `com.lemonaid.mobile`로 확인된다.
 - Android manifest 정적 테스트를 추가해 `CAMERA` 권한은 선언하되 `android.hardware.camera`는 `required=false`로 둔다. broad gallery 권한(`READ_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`)은 선언하지 않음을 검증한다.
@@ -192,8 +198,11 @@ provider별 observation은 같은 field를 사용한다.
 - provider routing은 외부 OCR gate 없이 이미지를 전송하지 않는다.
 - production은 process-local upload limiter만으로 부팅하지 않고 `RATE_LIMIT_EXTERNAL_ENFORCEMENT=true`를 요구한다.
 - layout parser는 provider raw payload가 아니라 normalized DTO fixture로 회귀를 잡는다.
-- release build에서 HTTPS, certificate pin, no embedded token, camera/gallery permission이 검증된다.
-- certificate pin은 request-path native TLS handshake로 fail-closed 검증한다. 다만 현재 구현은 certificate DER fingerprint 방식이며, SPKI pinning과 production pin rotation 검증은 별도 hardening 항목으로 남긴다.
+- release build에서 HTTPS, 최소 2개 고유 certificate pin, no embedded token,
+  camera/gallery permission이 검증된다.
+- certificate pin은 request-path native TLS handshake로 fail-closed 검증한다.
+  다만 현재 구현은 certificate DER fingerprint 방식이며, SPKI pinning은 별도
+  hardening 항목으로 남긴다.
 
 ## 10. 2026-05-22 검증 결과
 

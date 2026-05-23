@@ -54,6 +54,40 @@ void main() {
     );
   });
 
+  test('requires backup certificate pin in release builds', () {
+    expect(
+      () => AppConfig.fromValues(
+        apiBaseUrl: 'https://api.example.com/api/v1',
+        certificatePins: const <String>[pinPrimary],
+        releaseMode: true,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (StateError error) => error.message,
+          'message',
+          contains('at least two unique pins'),
+        ),
+      ),
+    );
+  });
+
+  test('rejects duplicate release certificate pins', () {
+    expect(
+      () => AppConfig.fromValues(
+        apiBaseUrl: 'https://api.example.com/api/v1',
+        certificatePins: const <String>[pinPrimary, pinPrimary],
+        releaseMode: true,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (StateError error) => error.message,
+          'message',
+          contains('at least two unique pins'),
+        ),
+      ),
+    );
+  });
+
   test('allows HTTPS release config with certificate pins', () {
     final AppConfig config = AppConfig.fromValues(
       apiBaseUrl: 'https://api.example.com/api/v1',
