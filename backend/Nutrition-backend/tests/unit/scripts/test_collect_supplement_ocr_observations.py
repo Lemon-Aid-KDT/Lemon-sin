@@ -213,6 +213,41 @@ def test_extract_ingredient_candidates_rejects_packaging_quantity_tokens() -> No
     ]
 
 
+def test_matched_expected_ingredients_reads_v3_name_fields() -> None:
+    """Verify V3 expected display/normalized names are matched safely."""
+    normalized_text = collector._normalize_text("비타민 C 1000 mg zinc 15 mg")
+    expected = {
+        "ingredients": [
+            {"display_name": "비타민 C", "amount": 1000, "unit": "mg"},
+            {"normalized_name": "zinc", "amount": 15, "unit": "mg"},
+        ]
+    }
+
+    parsed = collector._matched_expected_ingredients(normalized_text, expected)
+
+    assert parsed == [
+        {"name": "비타민 C", "amount": 1000, "unit": "mg"},
+        {"name": "zinc", "amount": 15, "unit": "mg"},
+    ]
+    serialized = json.dumps(parsed, ensure_ascii=False).lower()
+    assert "raw_ocr_text" not in serialized
+    assert "provider_payload" not in serialized
+
+
+def test_build_reference_text_reads_v3_name_fields() -> None:
+    """Verify language metrics can use V3 expected names without raw text."""
+    reference = collector._build_reference_text(
+        {
+            "ingredients": [
+                {"display_name": "비타민 C", "amount": 1000, "unit": "mg"},
+                {"normalized_name": "zinc"},
+            ]
+        }
+    )
+
+    assert reference == "비타민 C 1000 mg zinc"
+
+
 def test_safe_error_code_preserves_google_status_without_details() -> None:
     """Verify provider error status is useful but bounded."""
     error = collector.OCRError("Google Vision OCR provider error: PERMISSION_DENIED")

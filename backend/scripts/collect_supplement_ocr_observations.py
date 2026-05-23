@@ -543,12 +543,12 @@ def _build_reference_text(expected: dict[str, object]) -> str:
     """
     parts: list[str] = []
     for ingredient in _expected_ingredients(expected):
-        name = ingredient.get("name")
-        if isinstance(name, str) and name:
+        name = _expected_ingredient_name(ingredient)
+        if name:
             parts.append(name)
         amount = ingredient.get("amount")
-        if isinstance(amount, str) and amount:
-            parts.append(amount)
+        if amount is not None:
+            parts.append(str(amount))
         unit = ingredient.get("unit")
         if isinstance(unit, str) and unit:
             parts.append(unit)
@@ -1293,6 +1293,22 @@ def _expected_ingredients(expected: dict[str, object]) -> list[dict[str, object]
     return [item for item in ingredients if isinstance(item, dict)]
 
 
+def _expected_ingredient_name(ingredient: dict[str, object]) -> str | None:
+    """Return a displayable expected ingredient name across manifest schemas.
+
+    Args:
+        ingredient: Expected ingredient row from a fixture manifest.
+
+    Returns:
+        Ingredient name, or ``None`` when no supported name field exists.
+    """
+    for key in ("name", "display_name", "normalized_name"):
+        value = ingredient.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _matched_expected_ingredients(
     normalized_text: str,
     expected: dict[str, object],
@@ -1308,8 +1324,8 @@ def _matched_expected_ingredients(
     """
     parsed: list[dict[str, object]] = []
     for ingredient in _expected_ingredients(expected):
-        name = ingredient.get("name")
-        if not isinstance(name, str) or _normalize_text(name) not in normalized_text:
+        name = _expected_ingredient_name(ingredient)
+        if not name or _normalize_text(name) not in normalized_text:
             continue
         observed: dict[str, object] = {"name": name}
         amount = ingredient.get("amount")
