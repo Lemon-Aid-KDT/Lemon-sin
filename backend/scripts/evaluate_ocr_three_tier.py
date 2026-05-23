@@ -21,6 +21,8 @@ BOUNDED_CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$", re.IGNORECASE)
 PENDING_REVIEW_WARNING = "ground_truth_pending_human_review"
 PROVISIONAL_VERIFICATION_STATUS = "provisional"
 AUTO_EXPECTED_WARNING = "auto_expected_requires_human_verification"
+EXPECTED_INGREDIENTS_MISSING_WARNING = "expected_ingredients_missing"
+SCOREABLE_EXPECTED_INGREDIENTS_MISSING_WARNING = "scoreable_expected_ingredients_missing"
 EXPECTED_WARNING_QUALITY_CODES = {
     "compound_expected_ingredient_name",
 }
@@ -180,6 +182,8 @@ class EvaluationAccumulator:
     scoreable_fixture_count: int = 0
     provisional_fixture_count: int = 0
     expected_quality_warnings: list[dict[str, object]] = field(default_factory=list)
+    scoreable_fixture_ids: list[str] = field(default_factory=list)
+    unscoreable_fixture_ids: list[str] = field(default_factory=list)
     providers: dict[str, ProviderMetrics] = field(
         default_factory=lambda: defaultdict(ProviderMetrics)
     )
@@ -226,6 +230,9 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
         expected_quality = _expected_ingredient_quality(row.get("expected"), row.get("fixture_id"))
         if expected_quality.scoreable_names:
             accumulator.scoreable_fixture_count += 1
+            _append_fixture_id(accumulator.scoreable_fixture_ids, row.get("fixture_id"))
+        else:
+            _append_fixture_id(accumulator.unscoreable_fixture_ids, row.get("fixture_id"))
         if expected_quality.is_provisional:
             accumulator.provisional_fixture_count += 1
         accumulator.expected_quality_warnings.extend(expected_quality.warnings)
@@ -255,6 +262,11 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
         "scoreable_fixture_count": accumulator.scoreable_fixture_count,
         "provisional_fixture_count": accumulator.provisional_fixture_count,
         "expected_quality_warnings": accumulator.expected_quality_warnings,
+        "expected_quality_warning_counts": _quality_warning_counts(
+            accumulator.expected_quality_warnings
+        ),
+        "scoreable_fixture_ids": sorted(accumulator.scoreable_fixture_ids),
+        "unscoreable_fixture_ids": sorted(accumulator.unscoreable_fixture_ids),
         "providers": {
             provider: metrics.as_dict()
             for provider, metrics in sorted(accumulator.providers.items())
@@ -326,8 +338,71 @@ def _expected_ingredient_quality(
             is_provisional=False,
         )
 
-    warnings: list[dict[str, object]] = []
     is_provisional = _expected_is_provisional(value)
+    warnings = _expected_fixture_quality_warnings(
+        expected=value,
+        fixture_id=fixture_id,
+        is_provisional=is_provisional,
+    )
+
+    ingredients = value.get("ingredients")
+    if not isinstance(ingredients, list):
+        warnings.append(
+            _expected_quality_warning(
+                fixture_id=fixture_id,
+                code=EXPECTED_INGREDIENTS_MISSING_WARNING,
+            )
+        )
+        return ExpectedIngredientQuality(
+            names=set(),
+            scoreable_names=set(),
+            warnings=warnings,
+            is_provisional=is_provisional,
+        )
+    if not ingredients:
+        warnings.append(
+            _expected_quality_warning(
+                fixture_id=fixture_id,
+                code=EXPECTED_INGREDIENTS_MISSING_WARNING,
+            )
+        )
+    names, scoreable_names = _collect_expected_ingredient_name_sets(
+        ingredients=ingredients,
+        fixture_id=fixture_id,
+        warnings=warnings,
+    )
+    if names and not scoreable_names:
+        warnings.append(
+            _expected_quality_warning(
+                fixture_id=fixture_id,
+                code=SCOREABLE_EXPECTED_INGREDIENTS_MISSING_WARNING,
+            )
+        )
+    return ExpectedIngredientQuality(
+        names=names,
+        scoreable_names=scoreable_names,
+        warnings=warnings,
+        is_provisional=is_provisional,
+    )
+
+
+def _expected_fixture_quality_warnings(
+    *,
+    expected: dict[str, object],
+    fixture_id: object,
+    is_provisional: bool,
+) -> list[dict[str, object]]:
+    """Return bounded fixture-level expected-quality warnings.
+
+    Args:
+        expected: Expected fixture object.
+        fixture_id: Fixture identifier.
+        is_provisional: Whether the expected data still needs human review.
+
+    Returns:
+        Warning rows.
+    """
+    warnings: list[dict[str, object]] = []
     if is_provisional:
         warnings.append(
             _expected_quality_warning(
@@ -335,7 +410,7 @@ def _expected_ingredient_quality(
                 code="provisional_expected_fixture",
             )
         )
-    expected_warnings = value.get("warnings")
+    expected_warnings = expected.get("warnings")
     if isinstance(expected_warnings, list):
         for warning in expected_warnings:
             if warning in EXPECTED_WARNING_QUALITY_CODES:
@@ -345,15 +420,25 @@ def _expected_ingredient_quality(
                         code=warning,
                     )
                 )
+    return warnings
 
-    ingredients = value.get("ingredients")
-    if not isinstance(ingredients, list):
-        return ExpectedIngredientQuality(
-            names=set(),
-            scoreable_names=set(),
-            warnings=warnings,
-            is_provisional=is_provisional,
-        )
+
+def _collect_expected_ingredient_name_sets(
+    *,
+    ingredients: list[object],
+    fixture_id: object,
+    warnings: list[dict[str, object]],
+) -> tuple[set[str], set[str]]:
+    """Collect legacy and scoreable expected ingredient name sets.
+
+    Args:
+        ingredients: Expected ingredient rows.
+        fixture_id: Fixture identifier for bounded warnings.
+        warnings: Mutable warning rows.
+
+    Returns:
+        All normalized expected names and scoreable normalized names.
+    """
     names: set[str] = set()
     scoreable_names: set[str] = set()
     for index, ingredient in enumerate(ingredients):
@@ -384,12 +469,7 @@ def _expected_ingredient_quality(
                 )
                 continue
             scoreable_names.add(normalized_name)
-    return ExpectedIngredientQuality(
-        names=names,
-        scoreable_names=scoreable_names,
-        warnings=warnings,
-        is_provisional=is_provisional,
-    )
+    return names, scoreable_names
 
 
 def _expected_ingredient_display_names(ingredient: dict[str, object]) -> list[str]:
@@ -494,6 +574,35 @@ def _expected_quality_warning(
     if ingredient_index is not None:
         warning["ingredient_index"] = ingredient_index
     return warning
+
+
+def _quality_warning_counts(warnings: list[dict[str, object]]) -> dict[str, int]:
+    """Return bounded warning counts by code.
+
+    Args:
+        warnings: Expected-quality warning rows.
+
+    Returns:
+        Warning counts keyed by bounded code.
+    """
+    counts: dict[str, int] = {}
+    for warning in warnings:
+        code = warning.get("code")
+        if not isinstance(code, str):
+            continue
+        counts[code] = counts.get(code, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _append_fixture_id(target: list[str], fixture_id: object) -> None:
+    """Append a stable fixture id to a bounded diagnostics list.
+
+    Args:
+        target: Mutable fixture-id list.
+        fixture_id: Candidate fixture identifier.
+    """
+    if isinstance(fixture_id, str) and fixture_id and fixture_id not in target:
+        target.append(fixture_id)
 
 
 def _is_packaging_quantity_token(value: str) -> bool:
@@ -917,18 +1026,61 @@ def _render_markdown(summary: dict[str, object]) -> str:
         f"- Raw image artifacts stored: `{summary['raw_artifacts_stored']}`",
         f"- Raw OCR text stored: `{summary['raw_ocr_text_stored']}`",
         "",
-        "## Provider Metrics",
-        "",
-        "| Provider | Calls | Text non-empty | Parser success | Avg latency ms | Ingredient name exact | Scoreable ingredient exact | Errors | LLM attempts | LLM parse success | LLM ingredient exact |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     provider_metrics = _provider_metric_items(summary)
+    _append_expected_quality_diagnostics(lines, summary)
+    lines.extend(
+        [
+            "## Provider Metrics",
+            "",
+            "| Provider | Calls | Text non-empty | Parser success | Avg latency ms | Ingredient name exact | Scoreable ingredient exact | Errors | LLM attempts | LLM parse success | LLM ingredient exact |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
     _append_provider_metric_rows(lines, provider_metrics)
     _append_provider_error_diagnostics(lines, provider_metrics)
     _append_language_metric_rows(lines, provider_metrics)
     _append_condition_metric_sections(lines, provider_metrics)
     lines.append("")
     return "\n".join(lines)
+
+
+def _append_expected_quality_diagnostics(
+    lines: list[str],
+    summary: dict[str, object],
+) -> None:
+    """Append bounded expected-quality diagnostics to the Markdown report.
+
+    Args:
+        lines: Markdown line accumulator.
+        summary: Evaluation summary.
+    """
+    counts = summary.get("expected_quality_warning_counts")
+    if isinstance(counts, dict) and counts:
+        lines.extend(
+            [
+                "## Expected Quality Diagnostics",
+                "",
+                "| Warning code | Count |",
+                "| --- | ---: |",
+            ]
+        )
+        for code, count in sorted(counts.items()):
+            if isinstance(code, str) and isinstance(count, int):
+                lines.append(f"| `{code}` | {count} |")
+        lines.append("")
+
+    unscoreable_fixture_ids = summary.get("unscoreable_fixture_ids")
+    if isinstance(unscoreable_fixture_ids, list) and unscoreable_fixture_ids:
+        bounded_ids = [item for item in unscoreable_fixture_ids if isinstance(item, str) and item][
+            :20
+        ]
+        lines.extend(
+            [
+                f"- Unscoreable fixture ids: `{', '.join(bounded_ids)}`",
+                "",
+            ]
+        )
 
 
 def _provider_metric_items(summary: dict[str, object]) -> list[tuple[str, dict[str, object]]]:

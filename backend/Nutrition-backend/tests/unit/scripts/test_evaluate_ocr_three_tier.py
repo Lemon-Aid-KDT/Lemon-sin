@@ -338,6 +338,46 @@ def test_evaluate_manifest_excludes_low_quality_expected_rows_from_scoreable_met
     ]
 
 
+def test_evaluate_manifest_reports_unscoreable_fixture_quality(
+    tmp_path: Path,
+) -> None:
+    """Verify missing expected ingredients are exposed as bounded diagnostics."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-no-expected",
+                "expected": {"ingredients": []},
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "error",
+                        "error_code": "ocr_empty_text",
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+
+    assert summary["scoreable_fixture_count"] == 0
+    assert summary["scoreable_fixture_ids"] == []
+    assert summary["unscoreable_fixture_ids"] == ["fixture-no-expected"]
+    assert summary["expected_quality_warning_counts"] == {"expected_ingredients_missing": 1}
+    assert summary["expected_quality_warnings"] == [
+        {
+            "code": "expected_ingredients_missing",
+            "fixture_id": "fixture-no-expected",
+        }
+    ]
+    markdown = evaluate._render_markdown(summary)
+    assert "Expected Quality Diagnostics" in markdown
+    assert "fixture-no-expected" in markdown
+    assert "ocr_text" not in markdown.lower()
+
+
 def test_evaluate_manifest_marks_provisional_expected_quality(
     tmp_path: Path,
 ) -> None:
