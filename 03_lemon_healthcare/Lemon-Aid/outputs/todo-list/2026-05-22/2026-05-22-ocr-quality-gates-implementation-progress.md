@@ -1839,6 +1839,74 @@ raw storage flags:
 - 외부 OCR/LLM provider는 사용하지 않았고, Ollama는 loopback
   `127.0.0.1:11435`만 사용했다.
 
+### 10.7 OCR Error Image-Quality Triage
+
+추가/수정 파일:
+
+- `backend/scripts/summarize_ocr_error_quality.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_summarize_ocr_error_quality.py`
+- `outputs/todo-list/2026-05-23/2026-05-23-ocr-error-quality-triage-result.md`
+
+공식 근거:
+
+- Python `argparse`: <https://docs.python.org/3/library/argparse.html>
+- Python `json`: <https://docs.python.org/3/library/json.html>
+- Python `pathlib`: <https://docs.python.org/3/library/pathlib.html>
+- Pillow `ImageDraw`: <https://pillow.readthedocs.io/en/stable/reference/ImageDraw.html>
+
+변경:
+
+- redacted manifest와 redacted observation JSONL을 join해서 OCR error row의
+  deterministic image-quality metric을 다시 계산하는 operator script를
+  추가했다.
+- 출력은 fixture id, category, OCR status/error code, quality status,
+  bounded issue code, numeric metric으로 제한한다.
+- `image_path`, `source_path`, `product_dir`, raw OCR text, provider payload,
+  raw model response, request header, image bytes, secret-style key는 summary
+  payload에 쓰기 전에 거부한다.
+- env-token image path는 allowlisted root만 해석하고 `..` traversal을
+  거부한다.
+
+실제 30-row 결과:
+
+| OCR status | Quality status | Count |
+| --- | --- | ---: |
+| `completed` | `acceptable` | 26 |
+| `error` | `acceptable` | 4 |
+
+4개 `ocr_error` fixture:
+
+- `naver-tm-detail-000007` `[남성_쏘팔메토]`
+- `naver-tm-detail-000013` `[멀티비타민]`
+- `naver-tm-detail-000029` `[여성영양제]`
+- `naver-tm-detail-000030` `[오메가3]`
+
+해석:
+
+- 현재 deterministic capture-quality gate 기준으로는 4개 error가
+  blur/glare/crop/low-resolution 문제로 설명되지 않는다.
+- error group의 평균 edge variance와 contrast가 completed group보다 낮지
+  않으므로 다음 isolation은 PaddleOCR model/runtime, recognition model 한계,
+  또는 detail-page layout 특성을 봐야 한다.
+
+검증:
+
+```text
+pytest test_summarize_ocr_error_quality.py: 3 passed
+black --check changed files: passed
+ruff check changed files: passed
+summarize_ocr_error_quality.py real run: error_fixture_count=4
+check_ocr_artifact_privacy.py error-quality-summary: ocr_artifact_privacy_ok files=2
+```
+
+보안 확인:
+
+- generated summary JSON/MD는 ignored local artifact이며 Git에 tracking하지
+  않는다.
+- summary artifact 2개를 artifact privacy scanner로 검사했고 통과했다.
+- raw OCR text, provider payload, raw model response, request header, image
+  bytes, `.env`, secret value를 출력/저장/commit하지 않았다.
+
 ## Security Review
 
 검사 범위:
@@ -2129,6 +2197,10 @@ ollama serve
    - OCR-success rows remain `llm_parse_success_rate=1.0`.
    - Use an OCR dependency venv with `paddleocr` installed; the generic
      `/private/tmp/lemon-p1-quality-venv` is not sufficient for PaddleOCR.
+6. 4개 30-row `ocr_error` fixture의 image-quality triage is done:
+   - All 4 are `acceptable` under the deterministic quality gate.
+   - Next step is bounded PaddleOCR failure categorization without raw text or
+     exception-message persistence.
 6. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
