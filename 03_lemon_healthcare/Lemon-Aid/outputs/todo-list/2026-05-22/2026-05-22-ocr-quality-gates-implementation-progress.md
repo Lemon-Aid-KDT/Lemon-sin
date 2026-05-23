@@ -1385,6 +1385,60 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
   header, environment variable을 읽지 않는다.
 - test는 synthetic in-memory JSON만 사용한다.
 
+### 3.37 Mobile UI Privacy Gate Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-ui-privacy-gate-result.md`
+
+공식 근거:
+
+- Python `argparse`: <https://docs.python.org/3/library/argparse.html>
+- Python `pathlib`: <https://docs.python.org/3/library/pathlib.html>
+- Python `re`: <https://docs.python.org/3/library/re.html>
+
+생성 branch:
+
+- base: `origin/feat/mobile-preview-metadata-summary`
+- export branch: `origin/test/mobile-ui-privacy-gate`
+- patch commit: `73e1e112 test(mobile): OCR UI privacy gate를 추가`
+
+변경:
+
+- `mobile/lib/**/*.dart` runtime source에서 raw OCR/provider leakage marker를
+  검사하는 static gate를 추가했다.
+- `raw_ocr_text`, `provider_payload`, `raw_provider_payload`,
+  `request_headers`, `image_bytes`, OCR/provider secret-style key와 대응
+  camelCase identifier를 차단한다.
+- backend의 안전한 boolean metadata인 `raw_ocr_text_stored`,
+  `raw_provider_payload_stored`는 허용한다.
+- 정상 API 인증용 `Authorization` header는 OCR UI payload leakage가 아니라
+  별도 auth 영역이므로 이 gate의 forbidden pattern에서 제외했다.
+
+검증:
+
+```text
+pytest test_check_mobile_ocr_ui_privacy.py: 7 passed
+check_mobile_ocr_ui_privacy.py --project-root /private/tmp/lemon-mobile-ui-privacy-gate:
+  mobile_ocr_ui_privacy_ok files=18
+black --check changed files: passed
+ruff check changed files: passed
+detect-secrets-hook changed files: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+git diff --check: passed
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payload, request headers,
+  image bytes, `.env`, secret values를 추가하지 않았다.
+- scanner finding output은 path, line, code, 고정 detail만 출력하며 matched
+  source line을 출력하지 않는다.
+- `ocr_text` request key는 현재 manual parse request에서 transient
+  client-to-backend field로 쓰이므로 금지하지 않았다. API response raw-field
+  leakage는 기존 product API smoke helper와 artifact privacy gate로 계속
+  검사한다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1995,6 +2049,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-capture-quality-metrics`.
    - Mobile preview metadata summary candidate is now preserved as
      `origin/feat/mobile-preview-metadata-summary`.
+   - Mobile UI privacy gate candidate is now preserved as
+     `origin/test/mobile-ui-privacy-gate`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

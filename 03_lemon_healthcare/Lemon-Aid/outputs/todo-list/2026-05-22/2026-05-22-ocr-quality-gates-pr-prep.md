@@ -77,6 +77,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 5c export candidate: `origin/feat/mobile-capture-quality-warning`
 - PR 5d export candidate: `origin/feat/mobile-capture-quality-metrics`
 - PR 5e export candidate: `origin/feat/mobile-preview-metadata-summary`
+- PR 5f gate candidate: `origin/test/mobile-ui-privacy-gate`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -636,6 +637,43 @@ flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
 detect-secrets-hook changed files: passed
 git diff --cached --check: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current sixth sub-slice:
+
+```text
+origin/test/mobile-ui-privacy-gate
+73e1e112 test(mobile): OCR UI privacy gate를 추가
+```
+
+This branch stacks on `origin/feat/mobile-preview-metadata-summary` and adds a
+static gate for mobile runtime source. It blocks raw OCR text, provider payload,
+request header, image byte, and OCR/provider secret-style markers from
+`mobile/lib/**/*.dart` while allowing the backend's safe
+`raw_ocr_text_stored` and `raw_provider_payload_stored` boolean flags.
+
+Candidate files:
+
+- `backend/scripts/check_mobile_ocr_ui_privacy.py`
+- `backend/Nutrition-backend/tests/unit/scripts/test_check_mobile_ocr_ui_privacy.py`
+
+Scope:
+
+- scan mobile runtime Dart source for high-risk OCR raw/provider leakage keys
+- report bounded path/line/code findings without echoing matched source text
+- keep tests/docs outside the default runtime scan to avoid negative-assertion
+  false positives
+
+PR 5f validation:
+
+```text
+7 passed - test_check_mobile_ocr_ui_privacy.py
+check_mobile_ocr_ui_privacy.py: mobile_ocr_ui_privacy_ok files=18
+black --check passed
+ruff check passed
+detect-secrets-hook changed files passed
+git diff --check passed
 check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
 ```
 
