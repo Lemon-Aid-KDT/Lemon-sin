@@ -1078,6 +1078,53 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
   OCR text, user identifier를 노출하지 않는다.
 - Flutter OCR preview UI와 camera/gallery quality warning은 다음 slice로 남겼다.
 
+### 3.31 Mobile Certificate Pin Wiring Fix
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-certificate-pin-wiring-result.md`
+
+공식 근거:
+
+- Dart named parameters:
+  <https://dart.dev/language/functions#named-parameters>
+- Flutter testing overview:
+  <https://docs.flutter.dev/testing/overview>
+
+생성 branch:
+
+- base: `origin/feat/mobile-camera-permission-gate`
+- export branch: `origin/fix/mobile-certificate-pin-wiring`
+- patch commit: `420da8ed fix(mobile): 인증서 pin 설정을 연결`
+
+변경:
+
+- `ApiClient` 생성 시 `certificatePins: config.certificatePins`를 넘기도록
+  실제 app entrypoint wiring을 보정했다.
+- release certificate pin gate가 injectable test path에만 머무르지 않고
+  production `main()` path에서도 활성화되도록 했다.
+- static release security test가 `mobile/lib/main.dart`의 pin wiring을
+  검증하도록 추가했다.
+
+검증:
+
+```text
+flutter test release_security_config/app_config/api_client_certificate_pin: 22 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- 기존 gap은 certificate pin 검증 기능이 존재해도 실제 app entrypoint에서
+  연결되지 않아 API traffic pin preflight가 생략될 수 있는 문제였다.
+- secret 값, certificate pin 값, request header, OCR 원문, provider payload,
+  image bytes, `.env`, generated OCR artifact는 추가하지 않았다.
+- 검증 과정에서 external OCR/LLM 호출은 수행하지 않았다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1676,6 +1723,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-native-security-gate`.
    - Mobile camera permission gate candidate is now preserved as
      `origin/feat/mobile-camera-permission-gate`.
+   - Mobile certificate pin wiring fix candidate is now preserved as
+     `origin/fix/mobile-certificate-pin-wiring`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

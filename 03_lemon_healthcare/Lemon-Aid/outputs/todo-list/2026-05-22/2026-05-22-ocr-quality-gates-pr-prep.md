@@ -71,6 +71,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 4a export candidate: `origin/feat/mobile-release-security-core`
 - PR 4b export candidate: `origin/feat/mobile-native-security-gate`
 - PR 4c export candidate: `origin/feat/mobile-camera-permission-gate`
+- PR 4d corrective candidate: `origin/fix/mobile-certificate-pin-wiring`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -429,6 +430,30 @@ dart format changed Dart files: passed
 flutter build apk --debug --flavor dev: passed
 flutter build ios --simulator --debug: passed
 detect-secrets-hook changed files: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current fourth corrective sub-slice:
+
+```text
+origin/fix/mobile-certificate-pin-wiring
+420da8ed fix(mobile): 인증서 pin 설정을 연결
+```
+
+This branch stacks on `origin/feat/mobile-camera-permission-gate` and fixes a
+runtime wiring gap: the release certificate pins were defined and verifiable,
+but `mobile/lib/main.dart` did not pass `config.certificatePins` into
+`ApiClient`. Without this corrective branch, the production app entrypoint could
+skip the certificate pin path even though the lower-level verifier exists.
+
+PR 4d validation:
+
+```text
+22 passed - release security, app config, and API pin tests
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check: passed
 check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
 ```
 
