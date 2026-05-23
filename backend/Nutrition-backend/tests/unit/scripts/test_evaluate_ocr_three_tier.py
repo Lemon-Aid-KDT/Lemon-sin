@@ -147,25 +147,38 @@ def test_evaluate_manifest_bounds_error_diagnostics(tmp_path: Path) -> None:
                     }
                 ],
             },
+            {
+                "fixture_id": "fixture-empty",
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "error",
+                        "error_code": "ocr_empty_text",
+                    }
+                ],
+            },
         ],
     )
 
     summary = evaluate.evaluate_manifest(manifest_path)
     metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
     assert isinstance(metrics, dict)
-    assert metrics["errors"] == 3
+    assert metrics["errors"] == 4
     assert metrics["error_codes"] == {
         "image_missing": 1,
         "ocr_dependency_missing": 1,
+        "ocr_empty_text": 1,
         "unclassified_error_code": 1,
     }
     assert metrics["error_stages"] == {
         "image_input": 1,
+        "ocr_output": 1,
         "parser": 1,
         "provider_setup": 1,
     }
     assert metrics["error_fixture_ids"] == [
         "fixture-dependency",
+        "fixture-empty",
         "fixture-image",
         "fixture-parser",
     ]

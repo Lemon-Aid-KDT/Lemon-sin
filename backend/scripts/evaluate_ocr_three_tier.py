@@ -35,6 +35,10 @@ PROVIDER_SETUP_ERROR_CODES = {
     "ocr_provider_initialization",
     "provider_configuration_error",
 }
+OCR_OUTPUT_ERROR_CODES = {
+    "ocr_empty_text",
+    "ocr_low_confidence",
+}
 PACKAGING_TOKEN_PATTERNS = (
     # Bad auto-seeds observed in 16 chronic fixtures: "g (", "g X30포(", "g(".
     r"^(?:g|mg|kg|ml|l)\s*(?:x\s*)?\d*\s*(?:포|정|캡슐|개입)?\s*\(?$",
@@ -578,13 +582,15 @@ def _provider_error_stage(
         error_code: Bounded normalized error code.
 
     Returns:
-        One of ``image_input``, ``provider_setup``, ``parser``,
-        ``ocr_provider``, or ``unknown``.
+        One of ``image_input``, ``provider_setup``, ``ocr_output``,
+        ``parser``, ``ocr_provider``, or ``unknown``.
     """
     if error_code in IMAGE_INPUT_ERROR_CODES:
         return "image_input"
     if error_code in PROVIDER_SETUP_ERROR_CODES:
         return "provider_setup"
+    if error_code in OCR_OUTPUT_ERROR_CODES:
+        return "ocr_output"
     if observation.get("text_non_empty") is True and observation.get("parser_success") is not True:
         return "parser"
     if (
