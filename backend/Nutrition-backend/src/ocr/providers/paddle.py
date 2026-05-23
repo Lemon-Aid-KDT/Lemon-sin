@@ -10,7 +10,18 @@ from tempfile import TemporaryDirectory
 from typing import Any, Protocol, cast
 
 from src.config import Settings
-from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.ocr.base import (
+    OCRAdapter,
+    OCRBlock,
+    OCRBoundingPoly,
+    OCRError,
+    OCRImageInput,
+    OCRPage,
+    OCRParagraph,
+    OCRResult,
+    OCRVertex,
+    OCRWord,
+)
 
 PADDLE_OCR_PROVIDER = "paddleocr_local"
 PADDLE_MOBILE_TEXT_DETECTION_MODEL = "PP-OCRv5_mobile_det"
@@ -21,6 +32,8 @@ PADDLE_MOBILE_TEXT_RECOGNITION_MODELS = {
 PADDLE_TEXT_KEYS = {"text", "inferText"}
 PADDLE_SCORE_KEYS = {"score", "confidence", "inferConfidence"}
 LEGACY_TEXT_SCORE_PAIR_LENGTH = 2
+MIN_POLYGON_COORDINATES = 2
+MIN_POLYGON_VERTICES = 2
 
 
 class PaddlePredictor(Protocol):
@@ -96,7 +109,12 @@ class PaddleOCRAdapter(OCRAdapter):
         confidence = _average_scores(scores)
         if confidence is not None and confidence < self._settings.local_ocr_confidence_threshold:
             raise OCRError("PaddleOCR confidence is below LOCAL_OCR_CONFIDENCE_THRESHOLD.")
-        return OCRResult(text=text, provider=PADDLE_OCR_PROVIDER, confidence=confidence)
+        return OCRResult(
+            text=text,
+            provider=PADDLE_OCR_PROVIDER,
+            confidence=confidence,
+            pages=_collect_layout_pages(prediction),
+        )
 
 
 @lru_cache(maxsize=8)
@@ -183,6 +201,154 @@ def _collect_text_and_scores(value: object) -> tuple[list[str], list[float]]:
     scores: list[float] = []
     _walk_prediction(value, fragments=fragments, scores=scores)
     return _dedupe_preserve_order(fragments), scores
+
+
+def _collect_layout_pages(value: object) -> tuple[OCRPage, ...]:
+    """Collect coordinate-bearing OCR pages from PaddleOCR output.
+
+    Args:
+        value: PaddleOCR output in dict/list/object form.
+
+    Returns:
+        OCR pages built from text-line polygons, if present.
+    """
+    pages: list[OCRPage] = []
+    _walk_prediction_for_pages(value, pages=pages)
+    return tuple(pages)
+
+
+def _walk_prediction_for_pages(value: object, *, pages: list[OCRPage]) -> None:
+    """Recursively walk PaddleOCR output looking for text-line polygons.
+
+    Args:
+        value: Provider output fragment.
+        pages: Mutable page accumulator.
+    """
+    if isinstance(value, dict):
+        page = _page_from_mapping(value)
+        if page is not None:
+            pages.append(page)
+        for nested_value in value.values():
+            _walk_prediction_for_pages(nested_value, pages=pages)
+        return
+
+    if isinstance(value, list | tuple):
+        for item in value:
+            _walk_prediction_for_pages(item, pages=pages)
+        return
+
+    json_value = getattr(value, "json", None)
+    if isinstance(json_value, dict):
+        _walk_prediction_for_pages(json_value, pages=pages)
+        return
+    if callable(json_value):
+        try:
+            parsed = json_value()
+        except Exception:
+            parsed = None
+        if parsed is not None:
+            _walk_prediction_for_pages(parsed, pages=pages)
+            return
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            parsed = to_dict()
+        except Exception:
+            parsed = None
+        if parsed is not None:
+            _walk_prediction_for_pages(parsed, pages=pages)
+
+
+def _page_from_mapping(value: dict[object, object]) -> OCRPage | None:
+    """Build one OCR page from common PaddleOCR 3.x result fields.
+
+    Args:
+        value: Result mapping.
+
+    Returns:
+        OCR page, or ``None`` when required text/polygon fields are missing.
+    """
+    raw_texts = value.get("rec_texts")
+    raw_polys = value.get("rec_polys")
+    if not isinstance(raw_texts, list):
+        return None
+    polygons = _polygon_values(raw_polys)
+    if not polygons:
+        return None
+    scores = _score_values(
+        value.get("rec_scores") if isinstance(value.get("rec_scores"), list) else []
+    )
+    words: list[OCRWord] = []
+    for index, text in enumerate(raw_texts):
+        if not isinstance(text, str) or not text.strip() or index >= len(polygons):
+            continue
+        poly = _bounding_poly_from_points(polygons[index])
+        if poly is None:
+            continue
+        words.append(
+            OCRWord(
+                text=text.strip(),
+                bounding_box=poly,
+                confidence=scores[index] if index < len(scores) else None,
+            )
+        )
+    if not words:
+        return None
+    return OCRPage(
+        blocks=(
+            OCRBlock(
+                paragraphs=(OCRParagraph(words=tuple(words)),),
+                block_type="textline",
+            ),
+        ),
+    )
+
+
+def _polygon_values(value: object) -> list[object]:
+    """Return a list-like polygon collection from PaddleOCR output.
+
+    Args:
+        value: Candidate polygon container.
+
+    Returns:
+        Polygon values.
+    """
+    if isinstance(value, list | tuple):
+        return list(value)
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        try:
+            converted = tolist()
+        except Exception:
+            return []
+        if isinstance(converted, list):
+            return converted
+    return []
+
+
+def _bounding_poly_from_points(value: object) -> OCRBoundingPoly | None:
+    """Build an OCR bounding polygon from a PaddleOCR polygon value.
+
+    Args:
+        value: Candidate point sequence.
+
+    Returns:
+        Bounding polygon, or ``None`` when points are malformed.
+    """
+    points = _polygon_values(value)
+    vertices: list[OCRVertex] = []
+    for point in points:
+        coordinates = _polygon_values(point)
+        if len(coordinates) < MIN_POLYGON_COORDINATES:
+            return None
+        x, y = coordinates[:MIN_POLYGON_COORDINATES]
+        if not isinstance(x, int | float) or not isinstance(y, int | float):
+            return None
+        vertices.append(OCRVertex(x=float(x), y=float(y)))
+    return (
+        OCRBoundingPoly(vertices=tuple(vertices)) if len(vertices) >= MIN_POLYGON_VERTICES else None
+    )
 
 
 def _walk_prediction(value: object, *, fragments: list[str], scores: list[float]) -> None:

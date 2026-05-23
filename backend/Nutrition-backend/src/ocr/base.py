@@ -18,6 +18,84 @@ class OCRError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class OCRVertex:
+    """Single OCR coordinate vertex.
+
+    Attributes:
+        x: Horizontal coordinate in provider-normalized image space.
+        y: Vertical coordinate in provider-normalized image space.
+    """
+
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
+class OCRBoundingPoly:
+    """OCR word bounding polygon.
+
+    Attributes:
+        vertices: Polygon vertices around the detected OCR word.
+    """
+
+    vertices: tuple[OCRVertex, ...]
+
+
+@dataclass(frozen=True)
+class OCRWord:
+    """Coordinate-bearing OCR word.
+
+    Attributes:
+        text: Word text emitted by the OCR provider.
+        bounding_box: Optional bounding polygon. Missing boxes degrade layout parsing.
+        confidence: Optional provider word confidence from 0.0 to 1.0.
+    """
+
+    text: str
+    bounding_box: OCRBoundingPoly | None = None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class OCRParagraph:
+    """OCR paragraph containing words.
+
+    Attributes:
+        words: Provider-normalized OCR words.
+    """
+
+    words: tuple[OCRWord, ...]
+
+
+@dataclass(frozen=True)
+class OCRBlock:
+    """OCR block containing paragraphs.
+
+    Attributes:
+        paragraphs: Provider-normalized OCR paragraphs.
+        block_type: Optional provider block type.
+    """
+
+    paragraphs: tuple[OCRParagraph, ...]
+    block_type: str | None = None
+
+
+@dataclass(frozen=True)
+class OCRPage:
+    """OCR page layout metadata.
+
+    Attributes:
+        blocks: OCR blocks on the page.
+        width: Optional page width in provider coordinate units.
+        height: Optional page height in provider coordinate units.
+    """
+
+    blocks: tuple[OCRBlock, ...]
+    width: int | None = None
+    height: int | None = None
+
+
+@dataclass(frozen=True)
 class OCRImageInput:
     """Validated image payload passed to OCR providers.
 
@@ -37,104 +115,6 @@ class OCRImageInput:
 
 
 @dataclass(frozen=True)
-class OCRVertex:
-    """One OCR bounding polygon vertex.
-
-    Attributes:
-        x: Horizontal coordinate.
-        y: Vertical coordinate.
-    """
-
-    x: float
-    y: float
-
-
-@dataclass(frozen=True)
-class OCRBoundingPoly:
-    """OCR bounding polygon normalized across providers.
-
-    Attributes:
-        vertices: Provider-returned vertices in provider order.
-    """
-
-    vertices: tuple[OCRVertex, ...]
-
-
-@dataclass(frozen=True)
-class OCRWord:
-    """One OCR word with layout metadata.
-
-    Attributes:
-        text: Word text assembled from provider symbols.
-        confidence: Optional word confidence from 0.0 to 1.0.
-        bounding_box: Optional word bounding polygon.
-        block_index: Zero-based block index on the page.
-        paragraph_index: Zero-based paragraph index in the block.
-        word_index: Zero-based word index in the paragraph.
-    """
-
-    text: str
-    confidence: float | None
-    bounding_box: OCRBoundingPoly | None
-    block_index: int
-    paragraph_index: int
-    word_index: int
-
-
-@dataclass(frozen=True)
-class OCRParagraph:
-    """One OCR paragraph with child words.
-
-    Attributes:
-        text: Paragraph text assembled from child words.
-        confidence: Optional paragraph confidence from 0.0 to 1.0.
-        bounding_box: Optional paragraph bounding polygon.
-        words: Words in provider order.
-    """
-
-    text: str
-    confidence: float | None
-    bounding_box: OCRBoundingPoly | None
-    words: tuple[OCRWord, ...]
-
-
-@dataclass(frozen=True)
-class OCRBlock:
-    """One OCR block with paragraph hierarchy.
-
-    Attributes:
-        text: Block text assembled from child paragraphs.
-        confidence: Optional block confidence from 0.0 to 1.0.
-        bounding_box: Optional block bounding polygon.
-        block_type: Provider block type such as ``TEXT`` when present.
-        paragraphs: Paragraphs in provider order.
-    """
-
-    text: str
-    confidence: float | None
-    bounding_box: OCRBoundingPoly | None
-    block_type: str | None
-    paragraphs: tuple[OCRParagraph, ...]
-
-
-@dataclass(frozen=True)
-class OCRPage:
-    """One OCR page containing layout blocks.
-
-    Attributes:
-        width: Page width in provider units, usually pixels for images.
-        height: Page height in provider units, usually pixels for images.
-        confidence: Optional page confidence from 0.0 to 1.0.
-        blocks: Blocks in provider order.
-    """
-
-    width: int | None
-    height: int | None
-    confidence: float | None
-    blocks: tuple[OCRBlock, ...]
-
-
-@dataclass(frozen=True)
 class OCRResult:
     """Text extracted from a supplement label image.
 
@@ -142,8 +122,7 @@ class OCRResult:
         text: Extracted text. Empty text means the adapter did not produce usable OCR output.
         provider: Bounded provider label for audit and preview metadata.
         confidence: Optional OCR confidence from 0.0 to 1.0.
-        pages: Optional OCR layout hierarchy. Empty means the provider returned flat text
-            only or layout parsing was unavailable.
+        pages: Optional coordinate-bearing OCR layout pages.
     """
 
     text: str

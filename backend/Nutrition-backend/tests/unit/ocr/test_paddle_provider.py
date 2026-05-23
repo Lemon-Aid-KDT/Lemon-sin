@@ -14,6 +14,7 @@ from src.ocr.providers.paddle import (
     PaddleOCRAdapter,
     _get_paddle_predictor,
 )
+from src.parsing.layout_parser import parse_label_layout
 
 
 class _FakePaddlePredictor:
@@ -82,6 +83,53 @@ async def test_paddle_adapter_flattens_prediction_text_and_scores() -> None:
     assert result.text == "비타민 D 1000\n비타민 D 25 ug"
     assert result.confidence == pytest.approx(0.90)
     assert predictor.received_path is not None
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_projects_rec_polys_to_layout_pages() -> None:
+    """Verify PaddleOCR text-line polygons feed the layout parser contract."""
+    predictor = _FakePaddlePredictor(
+        [
+            {
+                "rec_texts": ["Supplement Facts", "Vitamin D 25 mcg"],
+                "rec_scores": [0.93, 0.91],
+                "rec_polys": [
+                    [[10, 10], [190, 10], [190, 30], [10, 30]],
+                    [[10, 45], [170, 45], [170, 65], [10, 65]],
+                ],
+            }
+        ]
+    )
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_image_input())
+
+    assert len(result.pages) == 1
+    words = result.pages[0].blocks[0].paragraphs[0].words
+    assert [word.text for word in words] == ["Supplement Facts", "Vitamin D 25 mcg"]
+    assert words[0].confidence == pytest.approx(0.93)
+    layout = parse_label_layout(result)
+    assert layout.sections
+    assert "layout_unavailable" not in layout.warnings
+    assert "raw_ocr_text" not in repr(result.pages).lower()
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_omits_layout_pages_without_rec_polys() -> None:
+    """Verify text extraction still works when PaddleOCR omits polygons."""
+    predictor = _FakePaddlePredictor([{"rec_texts": ["비타민 D 25 mcg"], "rec_scores": [0.91]}])
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_image_input())
+
+    assert result.text == "비타민 D 25 mcg"
+    assert result.pages == ()
 
 
 @pytest.mark.asyncio
