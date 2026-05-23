@@ -21,6 +21,9 @@ BOUNDED_CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$", re.IGNORECASE)
 PENDING_REVIEW_WARNING = "ground_truth_pending_human_review"
 PROVISIONAL_VERIFICATION_STATUS = "provisional"
 AUTO_EXPECTED_WARNING = "auto_expected_requires_human_verification"
+EXPECTED_WARNING_QUALITY_CODES = {
+    "compound_expected_ingredient_name",
+}
 EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
 MIN_EXPECTED_NAME_PART_CHARS = 2
 MAX_EXPECTED_NAME_PART_CHARS = 80
@@ -323,6 +326,16 @@ def _expected_ingredient_quality(
                 code="provisional_expected_fixture",
             )
         )
+    expected_warnings = value.get("warnings")
+    if isinstance(expected_warnings, list):
+        for warning in expected_warnings:
+            if warning in EXPECTED_WARNING_QUALITY_CODES:
+                warnings.append(
+                    _expected_quality_warning(
+                        fixture_id=fixture_id,
+                        code=warning,
+                    )
+                )
 
     ingredients = value.get("ingredients")
     if not isinstance(ingredients, list):

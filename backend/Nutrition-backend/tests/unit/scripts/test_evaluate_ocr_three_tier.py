@@ -437,6 +437,45 @@ def test_evaluate_manifest_does_not_split_dose_bearing_expected_name(
     assert summary["expected_quality_warnings"] == []
 
 
+def test_evaluate_manifest_forwards_expected_quality_warning_codes(
+    tmp_path: Path,
+) -> None:
+    """Verify expected-level quality warnings are retained as bounded rows."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-builder-warning",
+                "expected": {
+                    "ingredients": [
+                        {"display_name": "비타민K"},
+                        {"display_name": "비타민D"},
+                    ],
+                    "warnings": ["compound_expected_ingredient_name"],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "비타민K"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+
+    assert summary["expected_quality_warnings"] == [
+        {
+            "code": "compound_expected_ingredient_name",
+            "fixture_id": "fixture-builder-warning",
+        }
+    ]
+
+
 def test_evaluate_manifest_llm_failure_counted(tmp_path: Path) -> None:
     """Verify LLM parser failures contribute to attempt count but not success count."""
     manifest_path = tmp_path / "manifest.jsonl"

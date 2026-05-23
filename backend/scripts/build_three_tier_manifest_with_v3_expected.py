@@ -10,12 +10,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+PACKAGE_ROOT = SCRIPT_DIR.parent / "Nutrition-backend"
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from pydantic import ValidationError  # noqa: E402
+from src.models.schemas.supplement_snapshot import (  # noqa: E402
+    SupplementParsedSnapshotV3,
+)
+
 PENDING_REVIEW_WARNING = "ground_truth_pending_human_review"
-V3_SCHEMA_VERSION = "supplement-parsed-snapshot-v3"
+COMPOUND_EXPECTED_WARNING = "compound_expected_ingredient_name"
+EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
+MIN_EXPECTED_NAME_PART_CHARS = 2
+MAX_EXPECTED_NAME_PART_CHARS = 80
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -152,8 +167,8 @@ def _load_projected_v3_expected(
         raise ValueError(f"missing V3 expected snapshot for fixture_id={fixture_id}")
     try:
         payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        snapshot = _validate_v3_snapshot_payload(payload)
-    except (json.JSONDecodeError, ValueError) as exc:
+        snapshot = SupplementParsedSnapshotV3.model_validate(payload)
+    except (json.JSONDecodeError, ValidationError) as exc:
         raise ValueError(f"invalid V3 expected snapshot for fixture_id={fixture_id}") from exc
     return _project_v3_expected(snapshot_id=snapshot_id, snapshot=snapshot)
 
@@ -175,126 +190,123 @@ def _v3_snapshot_id_for_fixture(fixture_id: str) -> str:
 def _project_v3_expected(
     *,
     snapshot_id: str,
-    snapshot: dict[str, Any],
+    snapshot: SupplementParsedSnapshotV3,
 ) -> dict[str, Any]:
     """Project a validated V3 snapshot into evaluator expected shape.
 
     Args:
         snapshot_id: V3 snapshot id without extension.
-        snapshot: Validated V3 snapshot payload.
+        snapshot: Validated V3 snapshot model.
 
     Returns:
         Redacted expected object. Evidence spans and local file paths are not included.
     """
-    warnings = list(snapshot["warnings"])
+    warnings = list(snapshot.warnings)
+    ingredients = _project_v3_ingredients(snapshot.ingredients, warnings=warnings)
     is_provisional = PENDING_REVIEW_WARNING in warnings
     return {
         "expected_source": "v3_snapshot",
         "expected_snapshot_id": snapshot_id,
-        "expected_snapshot_schema": snapshot["schema_version"],
+        "expected_snapshot_schema": snapshot.schema_version,
         "verification_status": "provisional" if is_provisional else "verified",
-        "ingredients": [
-            {
-                "display_name": ingredient["display_name"],
-                "normalized_name": ingredient.get("normalized_name"),
-                "amount": ingredient.get("amount"),
-                "unit": ingredient.get("unit"),
-                "source": ingredient["source"],
-                "confidence": ingredient["confidence"],
-            }
-            for ingredient in snapshot["ingredients"]
-        ],
-        "chronic_disease_indications": list(snapshot["chronic_disease_indications"]),
+        "ingredients": ingredients,
+        "chronic_disease_indications": list(snapshot.chronic_disease_indications),
         "warnings": warnings,
     }
 
 
-def _validate_v3_snapshot_payload(value: Any) -> dict[str, Any]:
-    """Validate the V3 fields needed for redacted evaluation projection.
-
-    This local validation avoids importing the full application schema in
-    export branches whose model dependencies may be split across PRs.
+def _project_v3_ingredients(
+    ingredients: list[Any],
+    *,
+    warnings: list[str],
+) -> list[dict[str, Any]]:
+    """Project V3 ingredients and split bounded compound name rows.
 
     Args:
-        value: Parsed V3 snapshot JSON payload.
+        ingredients: Validated V3 snapshot ingredient objects.
+        warnings: Mutable expected-level warning list.
 
     Returns:
-        Validated payload.
-
-    Raises:
-        ValueError: If required redacted fields are missing or malformed.
+        Redacted expected ingredient rows for evaluator input.
     """
-    if not isinstance(value, dict):
-        raise ValueError("V3 snapshot must be an object")
-    _reject_raw_fields(value)
-    if value.get("schema_version") != V3_SCHEMA_VERSION:
-        raise ValueError("unexpected V3 schema_version")
-    warnings = value.get("warnings")
-    if not _is_string_list(warnings):
-        raise ValueError("V3 warnings must be a string list")
-    chronic_conditions = value.get("chronic_disease_indications")
-    if not _is_string_list(chronic_conditions):
-        raise ValueError("V3 chronic_disease_indications must be a string list")
-    source = value.get("source")
-    if isinstance(source, dict):
-        for raw_flag in (
-            "raw_image_stored",
-            "raw_ocr_text_stored",
-            "raw_provider_payload_stored",
-            "raw_model_response_stored",
-        ):
-            if source.get(raw_flag) is not False:
-                raise ValueError(f"V3 source {raw_flag} must be false")
-    ingredients = value.get("ingredients")
-    if not isinstance(ingredients, list):
-        raise ValueError("V3 ingredients must be a list")
-    for index, ingredient in enumerate(ingredients):
-        if not isinstance(ingredient, dict):
-            raise ValueError(f"V3 ingredient[{index}] must be an object")
-        _validate_v3_ingredient(ingredient, index)
-    return value
+    projected: list[dict[str, Any]] = []
+    for ingredient in ingredients:
+        names = _split_expected_ingredient_name(
+            ingredient.display_name,
+            amount=ingredient.amount,
+            unit=ingredient.unit,
+        )
+        if len(names) > 1 and COMPOUND_EXPECTED_WARNING not in warnings:
+            warnings.append(COMPOUND_EXPECTED_WARNING)
+        for name in names:
+            projected.append(
+                {
+                    "display_name": name,
+                    "normalized_name": (
+                        ingredient.normalized_name
+                        if len(names) == 1
+                        else _normalize_expected_name(name)
+                    ),
+                    "amount": ingredient.amount,
+                    "unit": ingredient.unit,
+                    "source": ingredient.source,
+                    "confidence": ingredient.confidence,
+                }
+            )
+    return projected
 
 
-def _validate_v3_ingredient(ingredient: dict[str, Any], index: int) -> None:
-    """Validate fields needed from one V3 ingredient.
+def _split_expected_ingredient_name(
+    value: str,
+    *,
+    amount: object,
+    unit: object,
+) -> list[str]:
+    """Split a dose-free compound ingredient display name.
 
     Args:
-        ingredient: Candidate V3 ingredient payload.
-        index: Ingredient index for bounded error messages.
-
-    Raises:
-        ValueError: If required fields are malformed.
-    """
-    display_name = ingredient.get("display_name")
-    if not isinstance(display_name, str) or not display_name.strip():
-        raise ValueError(f"V3 ingredient[{index}].display_name must be non-empty")
-    normalized_name = ingredient.get("normalized_name")
-    if normalized_name is not None and not isinstance(normalized_name, str):
-        raise ValueError(f"V3 ingredient[{index}].normalized_name must be string or null")
-    amount = ingredient.get("amount")
-    if amount is not None and (isinstance(amount, bool) or not isinstance(amount, int | float)):
-        raise ValueError(f"V3 ingredient[{index}].amount must be numeric or null")
-    unit = ingredient.get("unit")
-    if unit is not None and not isinstance(unit, str):
-        raise ValueError(f"V3 ingredient[{index}].unit must be string or null")
-    source = ingredient.get("source")
-    if not isinstance(source, str) or not source:
-        raise ValueError(f"V3 ingredient[{index}].source must be non-empty string")
-    confidence = ingredient.get("confidence")
-    if isinstance(confidence, bool) or not isinstance(confidence, int | float):
-        raise ValueError(f"V3 ingredient[{index}].confidence must be numeric")
-
-
-def _is_string_list(value: Any) -> bool:
-    """Return whether value is a list of strings.
-
-    Args:
-        value: Candidate value.
+        value: Ingredient display name.
+        amount: Parsed amount from the V3 snapshot.
+        unit: Parsed unit from the V3 snapshot.
 
     Returns:
-        True if value is a list and every item is a string.
+        One or more bounded display names.
     """
-    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+    if amount is not None or unit is not None:
+        return [value]
+    parts = [
+        part.strip()
+        for part in EXPECTED_NAME_SEPARATOR_PATTERN.split(value)
+        if _looks_like_expected_name_part(part)
+    ]
+    return parts if len(parts) > 1 else [value]
+
+
+def _looks_like_expected_name_part(value: str) -> bool:
+    """Return whether a split name part is safe to project.
+
+    Args:
+        value: Candidate expected-name fragment.
+
+    Returns:
+        True for bounded alphabetic ingredient-name fragments.
+    """
+    stripped = value.strip()
+    return MIN_EXPECTED_NAME_PART_CHARS <= len(stripped) <= MAX_EXPECTED_NAME_PART_CHARS and bool(
+        re.search(r"[A-Za-z가-힣]", stripped)
+    )
+
+
+def _normalize_expected_name(value: str) -> str:
+    """Normalize a projected expected ingredient name.
+
+    Args:
+        value: Display name.
+
+    Returns:
+        Case-folded whitespace-normalized name.
+    """
+    return " ".join(value.casefold().split())
 
 
 def _reject_raw_fields(value: Any) -> None:
