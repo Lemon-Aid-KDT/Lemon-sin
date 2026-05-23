@@ -75,6 +75,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 5a export candidate: `origin/feat/mobile-provider-observations`
 - PR 5b export candidate: `origin/feat/mobile-image-picker-permission-ui`
 - PR 5c export candidate: `origin/feat/mobile-capture-quality-warning`
+- PR 5d export candidate: `origin/feat/mobile-capture-quality-metrics`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -557,6 +558,42 @@ PR 5c validation:
 ```text
 1 passed - supplement_flow_capture_quality_test.dart
 3 passed - image picker permission and capture quality widget tests
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+Current fourth sub-slice:
+
+```text
+origin/feat/mobile-capture-quality-metrics
+b44a6a3c feat(mobile): 촬영 품질 metric을 확장
+```
+
+This branch stacks on `origin/feat/mobile-capture-quality-warning` and adds
+local blur/glare/crop/skew warning heuristics. It keeps the branch as a
+preflight warning only and makes no OCR accuracy claim.
+
+Candidate files:
+
+- `mobile/lib/features/supplements/supplement_flow_screen.dart`
+- `mobile/test/supplement_flow_capture_quality_test.dart`
+
+Scope:
+
+- compute bounded edge variance, contrast, bright-pixel ratio, border-ink ratio,
+  and aspect ratio metrics
+- show warning reason codes for blur, glare, crop, skew, low contrast, and low
+  resolution
+- keep runtime-generated PNG fixture tests out of Git artifacts
+
+PR 5d validation:
+
+```text
+5 passed - supplement_flow_capture_quality_test.dart
+7 passed - image picker permission and capture quality widget tests
 flutter analyze changed Dart files: No issues found
 dart format changed Dart files: passed
 detect-secrets-hook changed files: passed

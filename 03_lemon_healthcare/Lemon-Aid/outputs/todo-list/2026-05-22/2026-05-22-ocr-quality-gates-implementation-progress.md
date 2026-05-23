@@ -1279,6 +1279,60 @@ check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok fi
 - quality gate는 OCR upload 전에 실행되며 external OCR/LLM 호출을 추가하지
   않는다.
 
+### 3.35 Mobile Capture Quality Metrics Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-capture-quality-metrics-result.md`
+
+공식 근거:
+
+- Flutter `instantiateImageCodec`:
+  <https://api.flutter.dev/flutter/dart-ui/instantiateImageCodec.html>
+- Dart `File.readAsBytesSync`:
+  <https://api.dart.dev/dart-io/File/readAsBytesSync.html>
+- Flutter widget testing:
+  <https://docs.flutter.dev/cookbook/testing/widget/introduction>
+- OpenCV Laplacian image filtering reference:
+  <https://docs.opencv.org/3.4/d4/d86/group__imgproc__filter.html>
+
+생성 branch:
+
+- base: `origin/feat/mobile-capture-quality-warning`
+- export branch: `origin/feat/mobile-capture-quality-metrics`
+- patch commit: `b44a6a3c feat(mobile): 촬영 품질 metric을 확장`
+
+변경:
+
+- image decode를 bounded max edge로 줄인 뒤 local pixel metric을 계산한다.
+- warning reason code에 `blurred_text`, `glare_or_reflection`,
+  `cropped_label`, `skewed_label`, `low_contrast`를 추가했다.
+- blur risk는 Laplacian-style edge variance proxy로 시작하며, OCR 성능 개선
+  claim은 하지 않는다.
+- widget test가 low resolution, blur, glare, crop, skew를 runtime temporary
+  PNG로 검증한다.
+
+검증:
+
+```text
+flutter test test/supplement_flow_capture_quality_test.dart: 5 passed
+flutter test image picker permission + capture quality tests: 7 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payload, request headers,
+  committed image bytes, `.env`, secret values를 추가하지 않았다.
+- runtime image bytes는 local metric 계산에만 쓰고 model state, output file,
+  log, repo artifact에 저장하지 않는다.
+- app state에는 bounded numeric metrics와 warning reason code만 남긴다.
+- external OCR/LLM 호출을 추가하지 않았다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1885,6 +1939,8 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-image-picker-permission-ui`.
    - Mobile capture quality warning candidate is now preserved as
      `origin/feat/mobile-capture-quality-warning`.
+   - Mobile capture quality metrics candidate is now preserved as
+     `origin/feat/mobile-capture-quality-metrics`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.
