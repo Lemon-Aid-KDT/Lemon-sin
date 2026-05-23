@@ -1169,6 +1169,49 @@ git diff --check: passed
 - 현재 native verifier는 여전히 certificate DER fingerprint 방식이다. SPKI
   pinning 전환은 플랫폼별 key DER canonicalization을 별도 검증한 뒤 진행한다.
 
+### 3.31.2 Mobile API Error Privacy Gate
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-api-error-privacy-gate-result.md`
+
+공식 근거:
+
+- Dart `jsonDecode` tutorial:
+  <https://dart.dev/learn/tutorial/data-and-json>
+- Flutter error handling:
+  <https://docs.flutter.dev/testing/errors>
+- Dart `Object.toString`:
+  <https://api.flutter.dev/flutter/dart-core/Object/toString.html>
+
+변경:
+
+- `ApiError.fromBody()`가 backend raw response body를 사용자 표시 message로
+  보존하지 않도록 했다.
+- backend `detail.message`와 string `detail`은 짧고 민감 marker가 없는 경우만
+  표시한다.
+- `raw_ocr_text`, `ocr_text`, `provider_payload`, `request_headers`,
+  `image_bytes`, authorization/bearer, secret/API key, local path marker가
+  포함된 error detail은 `Request failed.`로 대체한다.
+- unsafe `detail.code`는 drop하고, controller의 unexpected/format exception도
+  generic message로 대체한다.
+
+검증:
+
+```text
+flutter test api_error/app_controller_error_privacy/widget: 9 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+```
+
+보안 확인:
+
+- 기존 gap은 backend 또는 proxy가 raw OCR/provider/request data를 error body에
+  넣는 경우 모바일 `ErrorPanel`에 그대로 표시될 수 있는 점이었다.
+- consent-required safe error code/message/required consent 흐름은 유지했다.
+- raw OCR text, provider payload, request header, image bytes, `.env`, secret
+  value를 코드나 테스트 산출물에 추가하지 않았다.
+
 ### 3.32 Mobile Provider Observations Export Branch
 
 추가 산출물:

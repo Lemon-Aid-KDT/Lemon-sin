@@ -212,10 +212,16 @@ class AppController extends ChangeNotifier {
       await task();
     } on ApiError catch (error) {
       _apiError = error;
-    } on FormatException catch (error) {
-      _apiError = ApiError(statusCode: 0, message: error.message);
+    } on FormatException {
+      _apiError = const ApiError(
+        statusCode: 0,
+        message: 'Invalid response from server.',
+      );
     } catch (error) {
-      _apiError = ApiError(statusCode: 0, message: error.toString());
+      _apiError = const ApiError(
+        statusCode: 0,
+        message: 'Unexpected error occurred.',
+      );
     } finally {
       _busy = false;
       notifyListeners();

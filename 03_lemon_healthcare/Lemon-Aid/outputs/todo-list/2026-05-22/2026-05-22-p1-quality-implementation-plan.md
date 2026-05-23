@@ -20,6 +20,8 @@ P1의 목적은 OCR 모델을 바로 교체하기 전에 입력 품질, provider
 | Dart bad certificate callback | https://api.dart.dev/dart-io/HttpClient/badCertificateCallback.html | `badCertificateCallback`은 인증 실패 certificate에서 호출되는 API라, 정상 chain에 대한 SPKI pin enforcement 대체재로 과대해석하지 않는다. |
 | Dart compile-time environment | https://api.dart.dev/dart-core/String/String.fromEnvironment.html | `LEMON_API_BASE_URL`, `LEMON_API_TOKEN`, `LEMON_CERTIFICATE_PINS`는 Dart compilation configuration environment로 주입되므로 release validation이 boot 전 fail-closed해야 한다. |
 | Flutter release mode | https://docs.flutter.dev/testing/build-modes, https://api.flutter.dev/flutter/foundation/kReleaseMode-constant.html | release mode는 배포용 최적화 빌드이므로 HTTPS/token/pin policy를 `kReleaseMode` 기반 config validation에 둔다. |
+| Flutter error handling | https://docs.flutter.dev/testing/errors | framework/runtime error text는 로그나 widget에 노출될 수 있으므로 mobile UI state에는 bounded user-safe message만 보존한다. |
+| Dart `Object.toString` | https://api.flutter.dev/flutter/dart-core/Object/toString.html | arbitrary exception `toString()`은 debugging text를 포함할 수 있으므로 user-facing API error message로 직접 쓰지 않는다. |
 | Android network security config | https://developer.android.com/training/articles/security-config | Android pin-set과 debug override를 release safety 검증 항목으로 둔다. |
 | PaddleOCR 3.x | https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html | local PaddleOCR 기본값과 `use_textline_orientation`/model/device 옵션을 provider routing 비교 기준으로 사용한다. |
 | Google Cloud Vision OCR | https://cloud.google.com/vision/docs/ocr | 외부 OCR은 `DOCUMENT_TEXT_DETECTION` 계열이며, 이미지 전송 opt-in과 credential gate가 필요하다. |
@@ -183,6 +185,10 @@ provider별 observation은 같은 field를 사용한다.
 - `image_picker`의 `PlatformException.code`를 기준으로 camera/photo 권한 거부와 제한 상태를 구분해, 사용자가 설정 허용 또는 갤러리 재시도 경로를 바로 알 수 있게 했다.
 - Android는 `MainActivity`의 `MethodChannel("com.lemonaid.mobile/camera_permission")`로 `Manifest.permission.CAMERA`를 먼저 요청하고, denied이면 `image_picker` camera intent를 열지 않고 앱 내부 SnackBar를 표시한다.
 - iOS는 `AppDelegate`의 동일 `MethodChannel`에서 `AVCaptureDevice.authorizationStatus(for: .video)`와 `requestAccess(for: .video)`를 처리해, denied/restricted 상태를 Flutter UX 메시지로 일관되게 연결한다.
+- mobile `ApiError`는 backend raw response body나 arbitrary exception
+  `toString()`을 사용자 표시 message로 보존하지 않는다. consent-required 같은
+  bounded detail은 유지하되, OCR/provider/header/secret/local-path marker가 있는
+  detail은 generic message로 대체한다.
 
 ## 8. 즉시 다음 작업
 
@@ -203,6 +209,8 @@ provider별 observation은 같은 field를 사용한다.
 - certificate pin은 request-path native TLS handshake로 fail-closed 검증한다.
   다만 현재 구현은 certificate DER fingerprint 방식이며, SPKI pinning은 별도
   hardening 항목으로 남긴다.
+- mobile UI error state는 raw backend body, raw OCR text, provider payload,
+  request header, arbitrary exception string을 직접 표시하지 않는다.
 
 ## 10. 2026-05-22 검증 결과
 
