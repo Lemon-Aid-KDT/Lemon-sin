@@ -919,6 +919,46 @@ added-line secret pattern scan: no real secret assignments found
 - 이 clean export base에는 `.secrets.baseline`이 아직 없어서 baseline 기반
   detect-secrets hook은 별도 governance branch/PR 전제 조건으로 남아 있다.
 
+### 3.28 Mobile Release Security Core Export Branch
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-mobile-release-security-core-export-result.md`
+
+생성 branch:
+
+- base: `origin/chore/ocr-clean-export-base`
+- export branch: `origin/feat/mobile-release-security-core`
+- patch commit: `a71b464c feat(mobile): 인증서 pin gate를 추가`
+
+변경:
+
+- `ApiClient`가 GET, JSON POST, multipart upload 전에 configured certificate
+  pins를 검증하도록 했다.
+- release `AppConfig`가 누락되거나 malformed된 `sha256/<base64>` pin을
+  거부한다.
+- native verifier plugin이 없거나 pin mismatch가 발생하면 network dispatch
+  전에 fail-closed한다.
+- 변경 범위는 Dart API/config/test 5개 파일로 제한했고, native Android/iOS
+  verifier와 release artifact check는 다음 mobile security slice로 남겼다.
+
+검증:
+
+```text
+flutter test app_config and api_client_certificate_pin: 11 passed
+flutter analyze changed Dart files: No issues found
+dart format --output=none --set-exit-if-changed changed Dart files: passed
+detect-secrets-hook changed files: passed
+git diff --cached --check passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
+
+보안 확인:
+
+- generated OCR artifacts, raw OCR text, provider payloads, request headers,
+  image bytes, `.env`, secret values를 branch에 추가하지 않았다.
+- 테스트 pin 값은 deterministic placeholder이며 실제 운영 인증서 pin이 아니다.
+
 ### 4. Phase 0-alpha Field Extractor Patch
 
 커밋:
@@ -1511,6 +1551,8 @@ flutter build ios --simulator --debug
      `origin/test/ocr-pr-export-base-gate`.
    - Analyze API security gate candidate is now preserved as
      `origin/feat/backend-analyze-rate-limit-gate`.
+   - Mobile release security core candidate is now preserved as
+     `origin/feat/mobile-release-security-core`.
    - CLOVA 2026-05-23 rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.

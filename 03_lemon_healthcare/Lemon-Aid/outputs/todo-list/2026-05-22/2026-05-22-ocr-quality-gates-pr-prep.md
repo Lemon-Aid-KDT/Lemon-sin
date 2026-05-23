@@ -68,6 +68,7 @@ baseline, but neither team target is ready for a small direct export PR:
 - PR 2a export candidate: `origin/test/ocr-artifact-privacy-gate`
 - Export readiness gate candidate: `origin/test/ocr-pr-export-base-gate`
 - PR 3 export candidate: `origin/feat/backend-analyze-rate-limit-gate`
+- PR 4a export candidate: `origin/feat/mobile-release-security-core`
 - Current generated OCR evaluation files are ignored local artifacts, not tracked
   Git content on this branch.
 - Team PR not opened yet because `team/develop` is not a code-bearing base for the OCR patch slices.
@@ -336,6 +337,18 @@ Suggested commit:
 feat(mobile): 릴리스 보안 게이트를 추가
 ```
 
+Current first sub-slice:
+
+```text
+origin/feat/mobile-release-security-core
+a71b464c feat(mobile): 인증서 pin gate를 추가
+```
+
+This sub-slice keeps the first mobile security PR below the team size
+recommendation and covers Dart/API release certificate pin enforcement only.
+The Android/iOS native verifier and release artifact checks remain a separate
+follow-up slice.
+
 Candidate files:
 
 - `mobile/lib/core/config/app_config.dart`
@@ -358,6 +371,16 @@ Scope:
 - iOS SSL hostname policy before certificate pin match
 - Android cleartext block
 - iOS ATS arbitrary-load block
+
+PR 4a validation:
+
+```text
+11 passed - app_config and api_client_certificate_pin tests
+flutter analyze changed Dart files: No issues found
+dart format changed Dart files: passed
+detect-secrets-hook changed files: passed
+check_ocr_artifact_privacy --check-tracked-generated: ocr_artifact_privacy_ok files=0
+```
 
 ## Validation Already Run
 
