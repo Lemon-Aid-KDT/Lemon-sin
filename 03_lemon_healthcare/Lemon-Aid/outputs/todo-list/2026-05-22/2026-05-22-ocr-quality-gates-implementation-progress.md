@@ -823,7 +823,7 @@ git diff --cached --check passed
 - raw OCR text, provider payload, request headers, image bytes, secret values를
   branch에 추가하지 않았다.
 
-### 3.26 CLOVA Phase 0 Baseline Rerun
+### 3.26 CLOVA Phase 0 Baseline Approved Rerun
 
 추가 산출물:
 
@@ -831,24 +831,24 @@ git diff --cached --check passed
 
 생성된 local-only 산출물:
 
-- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/supplement-ocr-observations.jsonl`
-- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/manifest-with-clova-observations.jsonl`
-- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/ocr-three-tier-evaluation.json`
-- `outputs/generated/ocr-eval/2026-05-23-stage1-clova/ocr-three-tier-evaluation.md`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova-approved/supplement-ocr-observations.jsonl`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova-approved/manifest-with-clova-observations.jsonl`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova-approved/ocr-three-tier-evaluation.json`
+- `outputs/generated/ocr-eval/2026-05-23-stage1-clova-approved/ocr-three-tier-evaluation.md`
 
 결과:
 
 ```text
 fixture_count=16
+missing_image_count=0
 observation_count=16
 clova_calls=16
 completed=15
 errors=1
-error_fixture=naver-live-0009
 text_non_empty_rate=0.9375
 parser_success_rate=0.6875
 ingredient_name_exact_rate=0.5
-average_latency_ms=1816.75
+average_latency_ms=1747.9375
 raw_artifacts_stored=false
 raw_ocr_text_stored=false
 ```
@@ -858,6 +858,7 @@ raw_ocr_text_stored=false
 ```text
 observation JSONL forbidden raw key scan passed
 evaluation manifest forbidden raw key scan passed
+artifact privacy scanner: ocr_artifact_privacy_ok files=4
 focused OCR/config regression tests: 120 passed
 black --check passed
 ruff check --ignore RUF001 passed
@@ -1919,6 +1920,59 @@ check_ocr_artifact_privacy.py categorized subset: ocr_artifact_privacy_ok files=
 - raw OCR text, provider payload, raw model response, request header, image
   bytes, `.env`, secret value를 출력/저장/commit하지 않았다.
 
+### 10.8 PaddleOCR Low-Confidence Sensitivity
+
+추가 산출물:
+
+- `outputs/todo-list/2026-05-23/2026-05-23-paddle-low-confidence-sensitivity-result.md`
+
+공식 근거:
+
+- PaddleOCR installation documentation:
+  <https://www.paddleocr.ai/main/en/version3.x/installation.html>
+- PaddleOCR pipeline usage documentation:
+  <https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html>
+- Ollama API reference: <https://docs.ollama.com/api>
+
+실험 범위:
+
+- 대상: `ocr_low_confidence` 4개 fixture
+- provider: local `paddleocr_local`
+- LLM check: threshold `0.50` run만 local Ollama `gemma4:e4b`
+- 외부 OCR/LLM 전송 없음
+
+결과:
+
+| Run | Textline | Threshold | Completed | Error | Notes |
+| --- | --- | ---: | ---: | ---: | --- |
+| baseline | off | 0.75 | 0 | 4 | current default |
+| textline-on | on | 0.75 | 0 | 4 | no improvement |
+| threshold-0.70 | off | 0.70 | 1 | 3 | only one passes |
+| threshold-0.60 | off | 0.60 | 3 | 1 | one remains low |
+| threshold-0.50 | off | 0.50 | 4 | 0 | all pass OCR |
+| textline-on-threshold-0.50 | on | 0.50 | 3 | 1 | worse than threshold-only |
+| threshold-0.50-gemma4 | off | 0.50 | 4 | 0 | LLM parse 4/4 completed |
+
+해석:
+
+- textline orientation만으로는 default threshold `0.75`의 low-confidence
+  failure를 해결하지 못했다.
+- threshold `0.50`에서는 4개 모두 completed가 되고, local Gemma4 structured
+  parse도 4/4 completed다.
+- 다만 4개 모두 `layout_unavailable`이고 한 row는 parsed ingredient count가
+  0이라, production default threshold를 바로 낮추기는 이르다.
+- 다음 단계는 threshold `0.50` 결과를 field-level exactness로 비교하고,
+  product runtime default 변경이 아니라 evaluation/operator gate 또는
+  feature-gated path로 제한하는 것이다.
+
+보안 확인:
+
+- generated observations 7개 파일을 묶어 artifact privacy scanner로 검사했고
+  `ocr_artifact_privacy_ok files=7`을 확인했다.
+- raw OCR text, provider payload, raw model response, request header, image
+  bytes, `.env`, source path, secret value를 출력/저장/commit하지 않았다.
+- local Ollama `127.0.0.1:11435` server는 run 후 종료했다.
+
 ## Security Review
 
 검사 범위:
@@ -2185,7 +2239,7 @@ flutter build ios --simulator --debug
      `origin/feat/mobile-preview-metadata-summary`.
    - Mobile UI privacy gate candidate is now preserved as
      `origin/test/mobile-ui-privacy-gate`.
-   - CLOVA 2026-05-23 rerun result is documented in
+   - CLOVA 2026-05-23 approved rerun result is documented in
      `2026-05-23-clova-phase0-baseline-rerun-result.md`; generated JSONL/JSON/MD
      artifacts remain ignored local outputs.
    - backend quality/layout/provider routing and mobile release security are now separate commits, but the branch as a whole is larger than the team PR-size recommendation.
@@ -2214,7 +2268,12 @@ ollama serve
    - Bounded failure-code rerun maps all 4 to `ocr_low_confidence`.
    - Next step is textline-orientation and confidence-threshold sensitivity on
      the same 4 fixtures without raw text or exception-message persistence.
-6. Continue security review on the next tranche:
+7. 4개 `ocr_low_confidence` fixture sensitivity is done:
+   - Textline orientation alone did not improve default `0.75` threshold.
+   - Threshold `0.50` completes all 4 OCR rows.
+   - Threshold `0.50` plus local Gemma4 gives LLM parse completed 4/4, but one
+     row has zero parsed ingredients and all rows remain `layout_unavailable`.
+8. Continue security review on the next tranche:
    - generated OCR evaluation artifacts are now ignored by default; continue sending durable summaries to repo-local todo reports, not provider observation JSONL
    - documentation placeholders that looked like credentials are now rewritten; keep the bounded baseline audit in future doc changes
    - root monorepo workflow paths and root backend CI security gates are now fixed; export standalone team-policy assets into the team-root repo only if the team moves away from this monorepo layout
