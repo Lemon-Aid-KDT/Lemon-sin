@@ -55,6 +55,7 @@ def test_evaluate_manifest_returns_redacted_provider_metrics(tmp_path: Path) -> 
     assert google_metrics["calls"] == 1
     assert google_metrics["text_non_empty_rate"] == 1.0
     assert google_metrics["ingredient_name_exact_rate"] == 1.0
+    assert google_metrics["scoreable_ingredient_name_exact_rate"] == 1.0
     assert summary["missing_image_count"] == 1
     assert summary["raw_artifacts_stored"] is False
     assert summary["raw_ocr_text_stored"] is False
@@ -75,6 +76,34 @@ def test_evaluate_manifest_rejects_raw_ocr_text(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="raw_ocr_text"):
         evaluate.evaluate_manifest(manifest_path)
+
+
+def test_evaluate_manifest_counts_status_error_observations(tmp_path: Path) -> None:
+    """Verify collector-style status errors are reflected in provider metrics."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "observations": [
+                    {
+                        "provider": "clova_ocr",
+                        "status": "error",
+                        "error_code": "ocr_error",
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    providers = summary["providers"]
+    assert isinstance(providers, dict)
+    clova_metrics = providers["clova_ocr"]
+    assert isinstance(clova_metrics, dict)
+    assert clova_metrics["calls"] == 1
+    assert clova_metrics["errors"] == 1
 
 
 def test_evaluate_manifest_records_llm_metrics_separately(tmp_path: Path) -> None:
@@ -118,6 +147,129 @@ def test_evaluate_manifest_records_llm_metrics_separately(tmp_path: Path) -> Non
     assert metrics["llm_ingredient_name_exact_rate"] == 1.0
     assert metrics["llm_parse_attempt_count"] == 1
     assert metrics["llm_parse_success_rate"] == 1.0
+
+
+def test_evaluate_manifest_excludes_packaging_tokens_from_scoreable_metric(
+    tmp_path: Path,
+) -> None:
+    """Verify bad auto-seeded package counts do not lower scoreable accuracy."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-packaging",
+                "expected": {
+                    "ingredients": [
+                        {"name": "식물성 멜라토닌"},
+                        {"name": "정x 3개입("},
+                    ]
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "latency_ms": 100,
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "식물성 멜라토닌"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 0.5
+    assert metrics["scoreable_ingredient_name_exact_rate"] == 1.0
+    assert summary["scoreable_fixture_count"] == 1
+    warnings = summary["expected_quality_warnings"]
+    assert isinstance(warnings, list)
+    assert warnings == [
+        {
+            "code": "packaging_token_expected_ingredient",
+            "fixture_id": "fixture-packaging",
+            "ingredient_index": 1,
+        }
+    ]
+
+
+def test_evaluate_manifest_marks_provisional_expected_quality(
+    tmp_path: Path,
+) -> None:
+    """Verify provisional expected fixtures are counted separately."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-provisional",
+                "expected": {
+                    "verification_status": "provisional",
+                    "warnings": ["ground_truth_pending_human_review"],
+                    "ingredients": [{"name": "비타민 D"}],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "비타민 D"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    assert summary["provisional_fixture_count"] == 1
+    warnings = summary["expected_quality_warnings"]
+    assert isinstance(warnings, list)
+    assert warnings[0] == {
+        "code": "provisional_expected_fixture",
+        "fixture_id": "fixture-provisional",
+    }
+
+
+def test_evaluate_manifest_reads_v3_display_and_normalized_names(
+    tmp_path: Path,
+) -> None:
+    """Verify V3 expected snapshots can provide display or normalized names."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-v3",
+                "expected": {
+                    "ingredients": [
+                        {"display_name": "비타민 C"},
+                        {"normalized_name": "zinc"},
+                    ],
+                    "chronic_disease_indications": ["diabetes"],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [
+                            {"name": "비타민 C"},
+                            {"name": "zinc"},
+                        ],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 1.0
+    assert metrics["scoreable_ingredient_name_exact_rate"] == 1.0
+    assert metrics["scoreable_accuracy_by_condition"] == {"diabetes": 1.0}
 
 
 def test_evaluate_manifest_llm_failure_counted(tmp_path: Path) -> None:
