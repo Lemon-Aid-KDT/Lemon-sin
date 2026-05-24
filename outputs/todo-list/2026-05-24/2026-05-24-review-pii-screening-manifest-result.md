@@ -6,6 +6,8 @@
 - 이 단계는 OCR/LLM 호출, DB write, 외부 전송을 하지 않는다.
 - review row는 모두 `contains_personal_data=null`, `pii_screening_status=pending_local_screening`, `external_transfer_allowed=false`로 고정된다.
 - product directory 원문은 저장하지 않고 `product_dir_hash`만 저장한다.
+- 정상 실행 summary는 생성 artifact의 절대 경로를 출력하지 않고 파일명만 남긴다.
+- CLI 실패도 Python traceback 대신 redacted JSON summary만 출력/저장한다.
 
 ## 구현 파일
 
@@ -34,14 +36,17 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 ## 보안 점검
 
 - privacy gate: `file_count=2`, `json_value_count=4,233,882`, `finding_count=0`, `passed=true`
+- CLI 실패 summary privacy gate: `file_count=1`, `json_value_count=25`, `finding_count=0`, `passed=true`
 - raw OCR text/provider payload/model response/request header/image bytes/secret key 저장 없음
-- `/Users`, `/Volumes`, `file://` 로컬 절대경로 literal 없음
+- `/private`, `/Users`, `/Volumes`, `file://` 로컬 절대경로 literal 없음
 - `product_dir` 원문 key 없음
 - `image_path`는 local-only tool resolution을 위한 `$NAVER_TAMPERMONKEY_SOURCE_ROOT/...` token path만 저장한다.
+- `manifest_name` / `summary_name`은 filename만 허용해 output directory escape를 막는다.
+- CLI 실패 summary는 `source_root_hash`, `source_root_exists`, safe `error_code`, bounded safe `error_message`만 남기며 traceback과 로컬 경로 literal을 출력하지 않는다.
 
 ## 검증
 
-- review PII manifest + OCR manifest + privacy unit tests: `17 passed`
+- review PII manifest + OCR manifest + privacy unit tests: `19 passed`
 - black check: pass
 - ruff check: pass
 - `git diff --check`: pass
