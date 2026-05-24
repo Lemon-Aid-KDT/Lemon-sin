@@ -377,6 +377,17 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - ROI 이후 남은 retry manifest는 1 row이며 category는 `zinc`, suggested action은 `inspect_image_quality_or_layout_model`이다.
 - privacy scan: ROI crop output directory non-strict finding 0, ROI summary/JSONL strict literal-key finding 0, ROI reconciled output directory finding 0, 공개 가능한 summary/report strict literal-key finding 0.
 
+최신 DB labeling/review queue 반영:
+
+- ROI crop 병합 후 최신 120개 observation을 DB-labeling staging에 다시 병합했다.
+- DB-labeling staging 결과: staging row 120, matched observation 120, status completed 119/error 1, rows with OCR observations 120, rows with LLM ingredients 114, unmatched observation 0.
+- review ingest 결과: row 120, review required 120, DB import ready 0, rows with LLM ingredient candidates 114, total ingredient candidates 362.
+- review decision template 결과: row 120, rows with candidate hints 114, total candidate hints 334, decision batch importable false.
+- candidate hint가 없는 human-review row는 6개다: `naver-tm-detail-000015` vitamin_a, `naver-tm-detail-000064` melatonin_sleep, `naver-tm-detail-000065` ashwagandha_stress, `naver-tm-detail-000076` iron, `naver-tm-detail-000091` joint_msm_chondroitin, `naver-tm-detail-000112` zinc.
+- `naver-tm-detail-000112`는 최신 OCR retry에서도 error로 남은 유일한 fixture이므로, 다음 작업은 해당 원본 이미지를 사람이 확인해 manual ingredient entry 또는 fixture 제외 여부를 결정하는 것이다.
+- DB staging, merged staging, review ingest, review decision template artifact privacy scan finding 0.
+- 공개 가능한 summary JSON 4종 strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -389,5 +400,6 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
 - PP-StructureV3 probe는 PaddleOCR가 반환할 수 있는 raw JSON/Markdown/table HTML을 저장하지 않고, layout/table/OCR count만 저장한다.
 - ROI crop retry는 파생 crop image를 temp directory에만 만들고 최종 artifact에는 crop hash/count/profile만 기록한다.
+- DB-labeling staging/review ingest/decision template은 모두 human review gate이며 production DB write를 수행하지 않는다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
