@@ -198,13 +198,22 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 43개 staging + OCR observation merge: matched observation 43, completed 36, error 7, unmatched 0
 - EX400U Ollama model root에서 `gemma4:e4b` 존재 확인
 - 8개 Gemma4 smoke 평가: completed 0.875, LLM parse attempt 7, LLM parse success 1.0, avg structured ingredient count 2.7143, error `ocr_low_confidence` 1
+- batch-001 Gemma4 재평가: sandbox 내부 Python `httpx`는 local Ollama 접속이 제한되어 `ollama_client`로 실패했으나, sandbox 밖 재실행에서 completed 0.875, LLM parse attempt 7, LLM parse success 1.0, avg structured ingredient count 2.7143, error `ocr_low_confidence` 1을 확인했다.
 - 120개 full OCR+Gemma4 평가는 fixture별 structured output 호출 시간이 길어 중단했다. 이후 전체 실행은 category-balanced batch 단위와 `--resume` 기준으로 나누어 진행한다.
+
+구현된 batch 실행 보강:
+
+- `backend/scripts/split_naver_tampermonkey_manifest_batches.py`
+- redacted Tampermonkey manifest를 작은 JSONL batch로 나눠 기존 OCR runner의 `--resume` 재시도 단위로 사용한다.
+- summary에는 batch 파일명, row count, section/category count, path hash만 기록한다.
+- raw OCR text, provider payload, raw model response, image bytes, request headers, local path literal은 recursive gate에서 거부한다.
+- 이 보강으로 120개 full OCR+Gemma4는 batch 단위로 나누어 실패/timeout fixture만 재개할 수 있다.
 
 판단:
 
 - folder-name category labeling과 웹 근거 taxonomy mapping은 현재 43개 category 전체에서 매핑 누락 없이 동작한다.
 - 43개 OCR-only 기준에서 실패 7개는 `ocr_low_confidence`로 분리되며, raw OCR text 저장 없이 report에서 확인 가능하다.
-- Gemma4 parser 연결은 EX400U 모델 경로 기준 smoke에서 정상 동작했다.
+- Gemma4 parser 연결은 EX400U 모델 경로 기준 smoke와 batch-001 sandbox 밖 재실행에서 정상 동작했다.
 - 이 확장 fixture set은 human-verified ingredient exact KPI가 아니라 OCR/DB-labeling coverage KPI로 봐야 한다. ingredient exact 95% 판단은 별도 human-verified expected가 붙은 fixture에서만 수행한다.
 
 ## 이번 변경의 보안 점검
