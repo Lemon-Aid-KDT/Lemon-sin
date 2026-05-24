@@ -388,6 +388,16 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - DB staging, merged staging, review ingest, review decision template artifact privacy scan finding 0.
 - 공개 가능한 summary JSON 4종 strict literal-key scan finding 0.
 
+구현된 manual-review gap queue 보강:
+
+- `backend/scripts/export_naver_tampermonkey_manual_review_gap_queue.py`
+- review ingest 120개 중 ingredient candidate가 없거나 OCR error가 남은 row만 operator triage queue로 분리한다.
+- output은 importable decision batch가 아니며 DB write를 수행하지 않는다.
+- 실제 결과: input row 120, gap row 6, reason `ingredient_candidate_count_zero` 6, `llm_zero_ingredient_candidates` 5, `ocr_provider_error` 1.
+- gap category: vitamin_a 1, melatonin_sleep 1, ashwagandha_stress 1, iron 1, joint_msm_chondroitin 1, zinc 1.
+- operator action: 5건은 `review_ocr_summary_and_enter_manual_ingredients`, 1건은 `inspect_source_image_and_enter_manual_ingredients`.
+- gap queue privacy scan finding 0, gap queue summary/JSONL strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -401,5 +411,6 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - PP-StructureV3 probe는 PaddleOCR가 반환할 수 있는 raw JSON/Markdown/table HTML을 저장하지 않고, layout/table/OCR count만 저장한다.
 - ROI crop retry는 파생 crop image를 temp directory에만 만들고 최종 artifact에는 crop hash/count/profile만 기록한다.
 - DB-labeling staging/review ingest/decision template은 모두 human review gate이며 production DB write를 수행하지 않는다.
+- manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
