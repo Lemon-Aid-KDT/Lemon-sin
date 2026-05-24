@@ -20,10 +20,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 NUTRITION_BACKEND_ROOT = BACKEND_ROOT / "Nutrition-backend"
@@ -37,12 +37,11 @@ from src.llm.ollama import (  # noqa: E402
     OllamaStructuredOutputError,
     OllamaSupplementParser,
 )
-from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult  # noqa: E402
+from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult  # noqa: E402
 from src.ocr.factory import (  # noqa: E402
     OCRConfigurationError,
     build_supplement_image_analysis_adapters_for_provider,
 )
-from src.ocr.providers.clova import ClovaOCRAdapter  # noqa: E402
 from src.ocr.providers.paddle import PaddleOCRAdapter  # noqa: E402
 from src.parsing.layout_parser import parse_label_layout  # noqa: E402
 from src.utils.text_metrics import language_segmented_error_rates  # noqa: E402
@@ -60,6 +59,14 @@ PROVIDER_OPT_IN_ENV: dict[ProviderName, str] = {
     "paddleocr_local": "RUN_PADDLEOCR_PROBE",
     "clova_ocr": "RUN_CLOVA_OCR_LIVE_SMOKE",
 }
+ALLOWED_IMAGE_PATH_ENV_VARS = frozenset(
+    {
+        "LEMON_OCR_FIXTURE_ROOT",
+        "NAVER_TAMPERMONKEY_SOURCE_ROOT",
+        "SUPPLEMENT_OCR_FIXTURE_ROOT",
+    }
+)
+ENV_IMAGE_PATH_PATTERN = re.compile(r"^\$(?P<name>[A-Z][A-Z0-9_]*)(?:/(?P<path>.*))?$")
 OPERATOR_ENV_ALLOWLIST = frozenset(
     {
         "ALLOW_EXTERNAL_OCR",
@@ -111,6 +118,50 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
     r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
     r"(?P<unit>mg|g|mcg|μg|ug|㎍|iu|IU|%)\b"
+)
+EXPECTED_NAME_SEPARATOR_PATTERN = re.compile(r"\s*(?:,|\uff0c|\u3001)\s*")
+INGREDIENT_MATCH_SEPARATOR_PATTERN = re.compile(r"[^0-9A-Za-z가-힣]+")
+INGREDIENT_PARENTHESES_PATTERN = re.compile(r"\((?P<inner>[^)]{2,80})\)")
+KOREAN_INGREDIENT_DESCRIPTOR_PREFIXES = (
+    "초임계",
+    "검은",
+    "블랙",
+    "유기농",
+    "식물성",
+    "저분자",
+)
+ENGLISH_INGREDIENT_DESCRIPTOR_PREFIXES = (
+    "extra virgin ",
+    "natural ",
+    "mixed ",
+)
+PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Reject auto-seed contaminants observed in chronic fixtures: "g (", "g X30포(".
+    re.compile(
+        r"^(?:g|mg|kg|ml|l)\s*(?:x\s*)?\d*\s*(?:포|정|캡슐|개입)?\s*\(?$",
+        re.IGNORECASE,
+    ),
+    # Reject tablet-count fragments such as "정(" and "정x 3개입(".
+    re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
+    re.compile(r"^\d+\s*(?:정|포|캡슐|개입)\s*\(?$", re.IGNORECASE),
+)
+PII_CANDIDATE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "email_candidate",
+        re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),
+    ),
+    (
+        "phone_candidate",
+        re.compile(r"\b(?:01[016789]|0\d{1,2})[-.\s]?\d{3,4}[-.\s]?\d{4}\b"),
+    ),
+    (
+        "order_number_candidate",
+        re.compile(r"(?:주문\s*번호|주문번호|배송\s*번호|운송장)\D{0,12}\d{6,}"),
+    ),
+    (
+        "address_candidate",
+        re.compile(r"(?:주소|배송지|수령지|[가-힣]{2,}(?:로|길)\s*\d{1,4})"),
+    ),
 )
 
 
@@ -208,7 +259,8 @@ def main() -> None:
             "Opt-in: send each non-empty OCR text to the local OllamaSupplementParser "
             "and record redacted llm_parsed_ingredients on each completed observation. "
             "Raw OCR text and raw model responses are never written; only structured "
-            "ingredient display_name/normalized_name/amount/unit are stored."
+            "ingredient display_name/amount/unit/confidence fields are stored. "
+            "Review rows pending PII screening are skipped before LLM handoff."
         ),
     )
     parser.add_argument(
@@ -296,7 +348,7 @@ async def collect_observations_with_auto_expected(
     Returns:
         Collection result containing redacted observations and optional manifest.
     """
-    fixtures = _read_fixture_manifest(manifest_path)
+    fixtures = _read_fixture_manifest(manifest_path, providers=providers)
     operator_env = _load_operator_env_file(env_file)
     with _temporary_operator_env(operator_env):
         settings = (
@@ -385,6 +437,9 @@ async def _observe_provider(
         latency_ms=latency_ms,
     )
     if llm_parser is not None and row.get("text_non_empty"):
+        if _requires_local_pii_screening(fixture):
+            row["llm_parse_status"] = "skipped_pii_screening_required"
+            return ProviderObservationResult(row=row, ocr_result=result)
         await _attach_llm_parse(row=row, ocr_result=result, llm_parser=llm_parser)
     _attach_language_metrics(row=row, ocr_result=result, expected=fixture.expected)
     return ProviderObservationResult(row=row, ocr_result=result)
@@ -416,11 +471,13 @@ def _build_provider_adapter(provider: ProviderName, settings: Settings) -> OCRAd
             raise OCRConfigurationError("ENABLE_LOCAL_OCR=true is required for PaddleOCR.")
         return PaddleOCRAdapter(settings)
     if provider == "clova_ocr":
-        if not settings.allow_external_ocr:
-            raise OCRConfigurationError("ALLOW_EXTERNAL_OCR=true is required for CLOVA OCR.")
-        if not settings.enable_clova_ocr:
-            raise OCRConfigurationError("ENABLE_CLOVA_OCR=true is required for CLOVA OCR.")
-        return ClovaOCRAdapter(settings)
+        adapter = build_supplement_image_analysis_adapters_for_provider(
+            settings,
+            "clova",
+        ).ocr
+        if adapter is None:
+            raise OCRConfigurationError("CLOVA adapter is not configured.")
+        return adapter
     raise OCRConfigurationError(f"Unsupported provider: {provider}")
 
 
@@ -439,7 +496,7 @@ async def _attach_llm_parse(
 
     Notes:
         Raw OCR text and raw Ollama responses are never persisted. Only the
-        structured ingredient display_name/normalized_name/amount/unit and the
+        structured ingredient display_name/amount/unit/confidence and the
         ingredient_count are written to ``row``. Failure modes are recorded as a
         safe ``llm_parse_error_code`` token only.
     """
@@ -467,23 +524,23 @@ async def _attach_llm_parse(
         return
 
     ingredients: list[dict[str, object]] = []
-    for ingredient in parse_result.ingredients:
+    for ingredient in parse_result.ingredient_candidates:
         ingredients.append(
             {
                 "display_name": ingredient.display_name,
-                "normalized_name": ingredient.normalized_name or ingredient.display_name.lower(),
+                "nutrient_code": ingredient.nutrient_code,
                 "amount": ingredient.amount,
                 "unit": ingredient.unit,
-                "daily_amount": ingredient.daily_amount,
                 "confidence": ingredient.confidence,
+                "source": ingredient.source,
             }
         )
     row["llm_parse_status"] = "completed"
     row["llm_parsed_ingredients"] = ingredients
     row["llm_parsed_ingredient_count"] = len(ingredients)
-    if parse_result.product.product_name:
+    if parse_result.parsed_product.product_name:
         row["llm_parsed_product_name_present"] = True
-    if parse_result.serving.serving_size_text:
+    if parse_result.parsed_product.serving_size:
         row["llm_parsed_serving_size_text_present"] = True
 
 
@@ -502,12 +559,11 @@ def _build_reference_text(expected: dict[str, object]) -> str:
     """
     parts: list[str] = []
     for ingredient in _expected_ingredients(expected):
-        name = ingredient.get("name")
-        if isinstance(name, str) and name:
+        for name in _expected_ingredient_names(ingredient):
             parts.append(name)
         amount = ingredient.get("amount")
-        if isinstance(amount, str) and amount:
-            parts.append(amount)
+        if amount is not None:
+            parts.append(str(amount))
         unit = ingredient.get("unit")
         if isinstance(unit, str) and unit:
             parts.append(unit)
@@ -568,7 +624,13 @@ def _completed_observation(
     layout_available = bool(layout and layout.sections)
     if not layout_available:
         warning_codes.append("layout_unavailable")
-    return _observation(
+    pii_screening_required = _requires_local_pii_screening(fixture)
+    pii_candidate_flags = _pii_candidate_flags(result.text) if pii_screening_required else []
+    if pii_screening_required:
+        warning_codes.append("review_pii_screening_required")
+    if pii_candidate_flags:
+        warning_codes.append("pii_candidate_detected")
+    row = _observation(
         fixture_id=fixture.fixture_id,
         provider=provider,
         status="completed",
@@ -588,6 +650,10 @@ def _completed_observation(
         evidence_grounded=evidence_grounded,
         warning_codes=warning_codes,
     )
+    if pii_screening_required:
+        row["pii_screening_status"] = "completed_local_screening"
+        row["pii_candidate_flags"] = pii_candidate_flags
+    return row
 
 
 def _observation(
@@ -924,9 +990,26 @@ def _clean_ingredient_name(value: str) -> str:
         return ""
     if _looks_like_non_product_heading(cleaned):
         return ""
+    if _looks_like_packaging_quantity_token(cleaned):
+        return ""
     if not re.search(r"[A-Za-z가-힣]", cleaned):
         return ""
     return cleaned
+
+
+def _looks_like_packaging_quantity_token(value: str) -> bool:
+    """Return whether a candidate is a package quantity, not an ingredient.
+
+    Args:
+        value: Cleaned ingredient candidate.
+
+    Returns:
+        True when the value is a bounded package/serving-count fragment.
+    """
+    normalized = _normalize_text(value)
+    if not normalized:
+        return False
+    return any(pattern.fullmatch(normalized) for pattern in PACKAGING_QUANTITY_PATTERNS)
 
 
 def _parse_amount(value: str) -> int | float:
@@ -960,6 +1043,22 @@ def _normalize_unit(value: str) -> str:
     return normalized.casefold() if normalized != "%" else "%"
 
 
+def _pii_candidate_flags(ocr_text: str) -> list[str]:
+    """Return bounded PII candidate flags without exposing matched text.
+
+    Args:
+        ocr_text: Raw OCR text kept only in process memory.
+
+    Returns:
+        Stable flag names for possible PII tokens.
+    """
+    flags: list[str] = []
+    for flag, pattern in PII_CANDIDATE_PATTERNS:
+        if pattern.search(ocr_text):
+            flags.append(flag)
+    return flags
+
+
 def _looks_like_non_product_heading(value: str) -> bool:
     """Return whether text is a generic label heading, not a product/ingredient.
 
@@ -986,11 +1085,16 @@ def _looks_like_non_product_heading(value: str) -> bool:
     return any(token in normalized for token in heading_tokens)
 
 
-def _read_fixture_manifest(manifest_path: Path) -> list[FixtureCase]:
+def _read_fixture_manifest(
+    manifest_path: Path,
+    *,
+    providers: tuple[ProviderName, ...],
+) -> list[FixtureCase]:
     """Read and validate fixture manifest rows.
 
     Args:
         manifest_path: JSON or JSONL manifest path.
+        providers: Providers requested for this run.
 
     Returns:
         Fixture cases.
@@ -1015,12 +1119,11 @@ def _read_fixture_manifest(manifest_path: Path) -> list[FixtureCase]:
             raise ValueError(f"OCR fixture has unsupported license_status: {fixture_id}")
         if row.get("consent_status") not in ALLOWED_CONSENT_STATUS:
             raise ValueError(f"OCR fixture has unsupported consent_status: {fixture_id}")
-        if row.get("contains_personal_data") is not False:
-            raise ValueError(f"OCR fixture must set contains_personal_data=false: {fixture_id}")
+        _validate_fixture_privacy(row=row, providers=providers, fixture_id=fixture_id)
         expected = row.get("expected", {})
         if not isinstance(expected, dict):
             raise ValueError(f"OCR fixture expected must be an object: {fixture_id}")
-        resolved_image_path = (manifest_path.parent / image_path).resolve()
+        resolved_image_path = _resolve_fixture_image_path(manifest_path, image_path)
         if not resolved_image_path.exists():
             raise ValueError(f"OCR fixture image is missing: {fixture_id}")
         actual_sha = hashlib.sha256(resolved_image_path.read_bytes()).hexdigest()
@@ -1035,6 +1138,86 @@ def _read_fixture_manifest(manifest_path: Path) -> list[FixtureCase]:
             )
         )
     return fixtures
+
+
+def _resolve_fixture_image_path(manifest_path: Path, image_path: str) -> Path:
+    """Resolve a manifest image path without persisting operator-local roots.
+
+    Args:
+        manifest_path: Path to the fixture manifest being read.
+        image_path: Relative, absolute legacy, or allowlisted ``$ENV/path`` image path.
+
+    Returns:
+        Absolute resolved image path for runtime file loading.
+
+    Raises:
+        ValueError: If an environment-token path is unsupported, unset, or unsafe.
+    """
+    env_match = ENV_IMAGE_PATH_PATTERN.fullmatch(image_path)
+    if env_match:
+        env_name = env_match.group("name")
+        if env_name not in ALLOWED_IMAGE_PATH_ENV_VARS:
+            raise ValueError(f"OCR fixture image_path env is not allowlisted: {env_name}")
+        env_root = os.environ.get(env_name)
+        if not env_root:
+            raise ValueError(f"OCR fixture image_path env is not set: {env_name}")
+        relative_text = env_match.group("path") or ""
+        relative_path = PurePosixPath(relative_text)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise ValueError("OCR fixture image_path env suffix must stay under the image root.")
+        resolved_root = Path(env_root).expanduser().resolve()
+        resolved_path = (resolved_root / Path(*relative_path.parts)).resolve()
+        try:
+            resolved_path.relative_to(resolved_root)
+        except ValueError as exc:
+            raise ValueError(
+                "OCR fixture image_path env suffix must resolve under the image root."
+            ) from exc
+        return resolved_path
+
+    path = Path(image_path)
+    if path.is_absolute():
+        return path.expanduser().resolve()
+    return (manifest_path.parent / path).resolve()
+
+
+def _validate_fixture_privacy(
+    *,
+    row: dict[str, object],
+    providers: tuple[ProviderName, ...],
+    fixture_id: object,
+) -> None:
+    """Validate row-level privacy policy for the requested providers.
+
+    Args:
+        row: Manifest row.
+        providers: Providers requested for the current collector run.
+        fixture_id: Fixture id used in error messages.
+
+    Raises:
+        ValueError: If a row can leak personal data to an external provider.
+    """
+    if row.get("contains_personal_data") is False:
+        return
+    if _row_requires_local_pii_screening(row) and providers == ("paddleocr_local",):
+        return
+    raise ValueError(f"OCR fixture must be non-personal or local PII-screening only: {fixture_id}")
+
+
+def _requires_local_pii_screening(fixture: FixtureCase) -> bool:
+    """Return whether a fixture is a review row pending local-only PII screening."""
+    return _row_requires_local_pii_screening(fixture.manifest_row)
+
+
+def _row_requires_local_pii_screening(row: dict[str, object]) -> bool:
+    """Return whether a manifest row is restricted to local PII screening."""
+    return (
+        row.get("section") == "review"
+        and row.get("contains_personal_data") is None
+        and row.get("pii_screening_status") == "pending_local_screening"
+        and row.get("external_transfer_allowed") is False
+        and row.get("local_processing_allowed") is True
+    )
 
 
 def _manifest_rows(manifest_path: Path) -> list[dict[str, object]]:
@@ -1078,10 +1261,18 @@ def _load_image_input(image_path: Path) -> OCRImageInput:
     Raises:
         RuntimeError: If the image cannot be decoded.
     """
-    image_bytes = image_path.read_bytes()
-    with Image.open(BytesIO(image_bytes)) as image:
-        width, height = image.size
-        mime_type = Image.MIME.get(image.format or "", "image/png")
+    try:
+        image_bytes = image_path.read_bytes()
+    except FileNotFoundError as exc:
+        raise OCRError("OCR fixture image is missing.") from exc
+    except PermissionError as exc:
+        raise OCRError("OCR fixture image cannot be read.") from exc
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            width, height = image.size
+            mime_type = Image.MIME.get(image.format or "", "image/png")
+    except (OSError, UnidentifiedImageError) as exc:
+        raise OCRError("OCR fixture image cannot be decoded.") from exc
     return OCRImageInput(
         image_bytes=image_bytes,
         mime_type=mime_type,
@@ -1125,6 +1316,62 @@ def _expected_ingredients(expected: dict[str, object]) -> list[dict[str, object]
     return [item for item in ingredients if isinstance(item, dict)]
 
 
+def _expected_ingredient_names(ingredient: dict[str, object]) -> list[str]:
+    """Return displayable expected ingredient names across manifest schemas.
+
+    Args:
+        ingredient: Expected ingredient row from a fixture manifest.
+
+    Returns:
+        One or more ingredient names, or an empty list when no supported name
+        field exists.
+    """
+    for key in ("name", "display_name", "normalized_name"):
+        value = ingredient.get(key)
+        if isinstance(value, str) and value.strip():
+            return _split_expected_ingredient_name(value.strip(), ingredient)
+    return []
+
+
+def _split_expected_ingredient_name(value: str, ingredient: dict[str, object]) -> list[str]:
+    """Split bounded compound expected names when no dose is attached.
+
+    Args:
+        value: Expected ingredient name.
+        ingredient: Full expected ingredient row.
+
+    Returns:
+        A list of display names. Dose-bearing rows are kept as one name.
+    """
+    if ingredient.get("amount") is not None or ingredient.get("unit") is not None:
+        return [value]
+    parts = [
+        part.strip()
+        for part in EXPECTED_NAME_SEPARATOR_PATTERN.split(value)
+        if _looks_like_expected_name_part(part)
+    ]
+    return parts if len(parts) > 1 else [value]
+
+
+def _looks_like_expected_name_part(value: str) -> bool:
+    """Return whether a compound expected-name part is safe to emit.
+
+    Args:
+        value: Candidate split name.
+
+    Returns:
+        True for bounded alphabetic ingredient-name fragments.
+    """
+    stripped = value.strip()
+    return (
+        AUTO_EXPECTED_MIN_INGREDIENT_NAME_CHARS
+        <= len(stripped)
+        <= AUTO_EXPECTED_MAX_INGREDIENT_NAME_CHARS
+        and bool(re.search(r"[A-Za-z가-힣]", stripped))
+        and not _looks_like_packaging_quantity_token(stripped)
+    )
+
+
 def _matched_expected_ingredients(
     normalized_text: str,
     expected: dict[str, object],
@@ -1139,19 +1386,125 @@ def _matched_expected_ingredients(
         Redacted parsed ingredient summaries.
     """
     parsed: list[dict[str, object]] = []
+    seen_names: set[str] = set()
+    match_text = _normalize_ingredient_match_token(normalized_text)
+    compact_match_text = match_text.replace(" ", "")
     for ingredient in _expected_ingredients(expected):
-        name = ingredient.get("name")
-        if not isinstance(name, str) or _normalize_text(name) not in normalized_text:
-            continue
-        observed: dict[str, object] = {"name": name}
-        amount = ingredient.get("amount")
-        unit = ingredient.get("unit")
-        if amount is not None and _normalize_text(amount) in normalized_text:
-            observed["amount"] = amount
-        if isinstance(unit, str) and _normalize_text(unit) in normalized_text:
-            observed["unit"] = unit
-        parsed.append(observed)
+        for name in _expected_ingredient_names(ingredient):
+            normalized_name = _normalize_text(name)
+            if not normalized_name or normalized_name in seen_names:
+                continue
+            if not _ingredient_name_visible(
+                name,
+                match_text=match_text,
+                compact_match_text=compact_match_text,
+            ):
+                continue
+            seen_names.add(normalized_name)
+            observed: dict[str, object] = {"name": name}
+            amount = ingredient.get("amount")
+            unit = ingredient.get("unit")
+            if amount is not None and _normalize_text(amount) in normalized_text:
+                observed["amount"] = amount
+            if isinstance(unit, str) and _normalize_text(unit) in normalized_text:
+                observed["unit"] = unit
+            parsed.append(observed)
     return parsed
+
+
+def _ingredient_name_visible(
+    name: str,
+    *,
+    match_text: str,
+    compact_match_text: str,
+) -> bool:
+    """Return whether an expected ingredient name is visible in OCR text.
+
+    Args:
+        name: Expected ingredient display name.
+        match_text: Punctuation-normalized OCR text kept only in memory.
+        compact_match_text: Space-free normalized OCR text.
+
+    Returns:
+        True when the exact name or a bounded semantic alias is visible.
+    """
+    for variant in _ingredient_name_match_variants(name):
+        if variant in match_text or variant.replace(" ", "") in compact_match_text:
+            return True
+    return False
+
+
+def _ingredient_name_match_variants(name: str) -> tuple[str, ...]:
+    """Return bounded OCR-match variants for one expected ingredient name.
+
+    Args:
+        name: Expected ingredient display name.
+
+    Returns:
+        Normalized variants. These are used only for transient matching and are
+        never persisted as raw OCR evidence.
+    """
+    normalized = _normalize_ingredient_match_token(name)
+    if not normalized:
+        return ()
+    variants: list[str] = [normalized]
+    compact = normalized.replace(" ", "")
+    if compact:
+        variants.append(compact)
+
+    for match in INGREDIENT_PARENTHESES_PATTERN.finditer(name):
+        inner = _normalize_ingredient_match_token(match.group("inner").replace("&", " "))
+        if _looks_like_expected_name_part(inner):
+            variants.append(inner)
+
+    without_parentheses = _normalize_ingredient_match_token(
+        INGREDIENT_PARENTHESES_PATTERN.sub("", name)
+    )
+    if without_parentheses and without_parentheses != normalized:
+        variants.append(without_parentheses)
+
+    for prefix in KOREAN_INGREDIENT_DESCRIPTOR_PREFIXES:
+        if compact.startswith(prefix) and len(compact) > len(prefix) + 1:
+            variants.append(compact.removeprefix(prefix))
+
+    for prefix in ENGLISH_INGREDIENT_DESCRIPTOR_PREFIXES:
+        if normalized.startswith(prefix) and len(normalized) > len(prefix) + 3:
+            variants.append(normalized.removeprefix(prefix))
+
+    return tuple(_dedupe_match_variants(variants))
+
+
+def _normalize_ingredient_match_token(value: object) -> str:
+    """Normalize text for transient ingredient-name matching.
+
+    Args:
+        value: Candidate text-like value.
+
+    Returns:
+        Case-folded token with punctuation collapsed to spaces.
+    """
+    normalized = _normalize_text(value).replace("&", " ")
+    return " ".join(INGREDIENT_MATCH_SEPARATOR_PATTERN.sub(" ", normalized).split())
+
+
+def _dedupe_match_variants(values: list[str]) -> list[str]:
+    """Return unique, bounded ingredient match variants.
+
+    Args:
+        values: Candidate normalized variants.
+
+    Returns:
+        Variants in stable order.
+    """
+    deduped: list[str] = []
+    for value in values:
+        stripped = value.strip()
+        if not stripped or stripped in deduped:
+            continue
+        if len(stripped) < AUTO_EXPECTED_MIN_INGREDIENT_NAME_CHARS:
+            continue
+        deduped.append(stripped)
+    return deduped
 
 
 def _parsed_values_grounded(normalized_text: str, ingredients: list[dict[str, object]]) -> bool:
@@ -1195,7 +1548,40 @@ def _safe_error_code(exc: Exception) -> str:
     """
     if isinstance(exc, OCRConfigurationError):
         return "provider_configuration_error"
+    if isinstance(exc, OCRError):
+        return _safe_ocr_error_code(str(exc))
     return f"{exc.__class__.__name__.casefold()}".replace(" ", "_")
+
+
+def _safe_ocr_error_code(message: str) -> str:
+    """Map sanitized OCR error text to a bounded error code."""
+    if "Google Vision OCR provider error:" in message:
+        status = message.rsplit(":", 1)[-1].strip().casefold()
+        status_token = re.sub(r"[^a-z0-9]+", "_", status).strip("_") or "unknown"
+        return f"ocr_provider_error_{status_token}"
+    status_match = re.search(r"status\s+(\d{3})", message)
+    if status_match:
+        return f"ocr_http_status_{status_match.group(1)}"
+    message_token = message.casefold()
+    mapped = {
+        "authentication": "ocr_authentication_error",
+        "transport": "ocr_transport_error",
+        "invalid json": "ocr_invalid_json",
+        "ocr fixture image is missing": "image_missing",
+        "ocr fixture image cannot be read": "image_read_error",
+        "ocr fixture image cannot be decoded": "image_decode_error",
+        "paddleocr is not installed": "ocr_dependency_missing",
+        "paddleocr predictor initialization failed": "ocr_provider_initialization",
+        "paddleocr provider prediction failed": "ocr_provider_prediction_failed",
+        "paddleocr temporary image write failed": "image_write_error",
+        "paddleocr returned no readable text": "ocr_empty_text",
+        "paddleocr confidence is below": "ocr_low_confidence",
+        "enable_local_ocr=true is required": "local_ocr_disabled",
+    }
+    for needle, code in mapped.items():
+        if needle in message_token:
+            return code
+    return "ocr_error"
 
 
 def _parse_providers(value: str) -> tuple[ProviderName, ...]:
