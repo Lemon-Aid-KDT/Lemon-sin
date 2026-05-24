@@ -92,6 +92,29 @@ def test_export_review_decision_templates_with_safe_contract(
     assert row["schema_version"] == exporter.SCHEMA_VERSION
     assert "review_decision" not in row
     assert row["review_task_id"] == "d" * 64
+    decision_entry_template = row["decision_entry_template"]
+    assert isinstance(decision_entry_template, dict)
+    assert decision_entry_template["review_task_id"] == "d" * 64
+    assert decision_entry_template["fixture_id"] == "naver-tm-detail-000001"
+    assert decision_entry_template["decision_batch_importable"] is False
+    decision_stub = decision_entry_template["review_decision"]
+    assert isinstance(decision_stub, dict)
+    assert decision_stub["status"] is None
+    assert decision_stub["reviewer_id"] is None
+    assert decision_stub["reviewed_at"] is None
+    assert decision_stub["display_name"] is None
+    assert decision_stub["attest_pii_screening_completed"] is False
+    assert decision_stub["attest_no_raw_ocr_text"] is False
+    assert decision_stub["attest_not_clinical_recommendation"] is False
+    assert decision_stub["ingredients"] == [
+        {
+            "display_name": None,
+            "nutrient_code": None,
+            "amount": None,
+            "unit": None,
+            "source": "human_reviewed",
+        }
+    ]
     contract = row["review_decision_contract"]
     assert isinstance(contract, dict)
     assert contract["reviewer_id_required_prefix"] == "operator_"

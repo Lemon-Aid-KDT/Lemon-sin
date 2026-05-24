@@ -412,6 +412,9 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - `backend/scripts/export_naver_tampermonkey_review_decision_template.py --gap-queue`
 - 기존 120개 review decision template exporter에 gap queue filter를 추가해 수동 검수 gap row만 decision template로 내보낸다.
 - gap context에는 bounded reason/action/count만 포함하고 raw OCR text, provider payload, model response, image bytes, local path literal은 포함하지 않는다.
+- 각 row에는 사람이 decision JSONL을 작성할 때 복사할 수 있는 `decision_entry_template` skeleton을 포함한다.
+- skeleton은 `review_decision` 값을 top-level에 두지 않고 null/false placeholder를 사용하므로 그대로 import하면 실패한다.
+- approved ingredient skeleton의 `source`는 `human_reviewed`로 고정하고 amount는 null placeholder로 둔다.
 - 실제 결과: gap decision template row 6, rows with candidate hints 0, total candidate hints 0, decision batch importable false.
 - gap decision template artifact privacy scan finding 0, strict literal-key scan finding 0.
 
@@ -451,7 +454,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - ROI crop retry는 파생 crop image를 temp directory에만 만들고 최종 artifact에는 crop hash/count/profile만 기록한다.
 - DB-labeling staging/review ingest/decision template은 모두 human review gate이며 production DB write를 수행하지 않는다.
 - manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
-- manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count만 노출한다.
+- manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count와 non-importable decision skeleton만 노출한다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id만 허용해 model-only approval 우회를 막는다.
 - approved DB import exporter는 human-reviewed source와 numeric amount만 허용해 OCR/LLM provenance나 free-form amount가 DB import 후보에 섞이지 않게 한다.
 - gap-scoped import gate는 6개 gap decision 완료 여부를 별도 count로 검증하고 production DB write를 수행하지 않는다.

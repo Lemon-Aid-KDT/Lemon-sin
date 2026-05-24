@@ -251,6 +251,7 @@ def _template_row(
         "fixture_id": _required_str(row, "fixture_id"),
         "category_key": category_key,
         "review_decision_contract": REVIEW_DECISION_CONTRACT,
+        "decision_entry_template": _decision_entry_template(row),
         "candidate_context": {
             "ingredient_candidates": _candidate_ingredients(
                 row.get("ingredient_candidates"),
@@ -264,6 +265,34 @@ def _template_row(
         template["gap_context"] = gap_context
     _reject_unsafe_payload(template)
     return template
+
+
+def _decision_entry_template(row: dict[str, object]) -> dict[str, object]:
+    """Return a non-importable review decision skeleton for operators."""
+    return {
+        "review_task_id": _required_str(row, "review_task_id"),
+        "fixture_id": _required_str(row, "fixture_id"),
+        "review_decision": {
+            "status": None,
+            "reviewer_id": None,
+            "reviewed_at": None,
+            "display_name": None,
+            "ingredients": [
+                {
+                    "display_name": None,
+                    "nutrient_code": None,
+                    "amount": None,
+                    "unit": None,
+                    "source": validator.APPROVED_INGREDIENT_SOURCE,
+                }
+            ],
+            "reason_codes": [],
+            "attest_pii_screening_completed": False,
+            "attest_no_raw_ocr_text": False,
+            "attest_not_clinical_recommendation": False,
+        },
+        "decision_batch_importable": False,
+    }
 
 
 def _read_gap_contexts(path: Path) -> dict[str, dict[str, object]]:
