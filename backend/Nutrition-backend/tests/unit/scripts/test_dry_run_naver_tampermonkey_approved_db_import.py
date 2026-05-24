@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -164,6 +165,12 @@ def test_build_dry_run_import_plan_rejects_raw_and_local_path_literals(
     with pytest.raises(ValueError, match="local path literal"):
         dry_run.build_dry_run_import_plan(input_path=input_path_2)
 
+    input_path_3 = tmp_path / "approved-private-local.jsonl"
+    _write_jsonl(input_path_3, [_approved_row(product_name="/private/tmp/a.jpg")])
+
+    with pytest.raises(ValueError, match="local path literal"):
+        dry_run.build_dry_run_import_plan(input_path=input_path_3)
+
 
 def test_build_dry_run_import_plan_rejects_invalid_ingredient_amount(
     tmp_path: Path,
@@ -184,3 +191,43 @@ def test_build_dry_run_import_plan_rejects_invalid_ingredient_amount(
 
     with pytest.raises(ValueError, match="Numeric"):
         dry_run.build_dry_run_import_plan(input_path=input_path)
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    input_path = tmp_path / "missing-approved.jsonl"
+    output_path = tmp_path / "dry-run-plan.jsonl"
+    summary_path = tmp_path / "dry-run-summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "dry_run_naver_tampermonkey_approved_db_import.py",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_path),
+            "--summary",
+            str(summary_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        dry_run.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_read_error"
+    assert summary["error_message"] == "Local file read failed."
+    assert summary["db_write_performed"] is False
+    assert summary["local_path_literals_stored"] is False
+    assert not output_path.exists()

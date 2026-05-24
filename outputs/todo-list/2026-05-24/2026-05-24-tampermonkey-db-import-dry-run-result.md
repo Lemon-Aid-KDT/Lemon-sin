@@ -5,6 +5,7 @@
 - `naver-tampermonkey-approved-db-import-v1`을 실제 DB write 전에 검증하는 dry-run importer를 추가했다.
 - 이 단계는 데이터베이스 연결을 열지 않고, `SupplementProduct`와 `SupplementProductIngredient` ORM metadata의 table name, conflict key, string length, amount boundary를 검증한다.
 - 현재 approved import artifact는 승인 row가 0개라서 dry-run plan도 0개이다. 이는 정상 fail-closed 상태다.
+- CLI 실패도 Python traceback 대신 redacted JSON summary만 출력/저장한다.
 
 ## Changed Files
 
@@ -15,6 +16,7 @@
   - ingredient `amount`는 ORM `Numeric(14, 6)` 경계에 맞게 non-negative, scale 6 이하, integer digits 8 이하만 허용한다.
   - 출력 plan은 `dry_run_only=true`, `db_write_performed=false`로 고정한다.
   - `source_payload` 원문 대신 deterministic hash만 dry-run plan에 기록한다.
+  - 실패 summary는 `input_name`, safe `error_code`, bounded safe `error_message`만 남기며 traceback과 `/private`, `/Users`, `/Volumes` 로컬 경로 literal을 출력하지 않는다.
 - `backend/scripts/export_naver_tampermonkey_approved_db_import.py`
   - dry-run에서 발견한 실제 DB 컬럼 경계 문제를 보정했다.
   - `SupplementProduct.source_manifest_version`은 `String(32)`라서, 승인 export의 값은 `naver-tm-review-ingest-v1`로 축약한다.
@@ -54,6 +56,7 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 
 - 이 dry-run은 DB session, DB URL, SQL execution을 사용하지 않는다.
 - generated dry-run artifact에서 forbidden raw keys와 `/Users`, `/Volumes`, `file://` literal이 없는지 확인했다.
+- CLI 실패 summary에서 forbidden raw keys와 `/private`, `/Users`, `/Volumes`, `file://` literal이 없는지 확인했다.
 - raw OCR text, provider payload, request headers, model raw response, image bytes, secret key, local path literal, product directory literal key를 재귀적으로 차단한다.
 - approved row라도 `import_gate.ready_for_db_import`, `human_review_approved`, `pii_screening_completed`가 모두 true가 아니면 실패한다.
 - clinical recommendation flag가 false/forbidden true가 아니면 실패한다.
@@ -70,7 +73,7 @@ PYTHONPATH=backend /private/tmp/lemon-p1-quality-venv/bin/python -m pytest \
 Result:
 
 ```text
-13 passed in 0.24s
+14 passed in 0.24s
 ```
 
 ```bash
