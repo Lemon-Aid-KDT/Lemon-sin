@@ -295,3 +295,37 @@ def test_apply_review_decisions_rejects_pii_pending_approval(tmp_path: Path) -> 
             decisions_path=decisions_path,
             output_name="review-with-decisions.jsonl",
         )
+
+
+def test_apply_review_decisions_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures print a redacted JSON summary instead of traceback paths."""
+    missing_review = tmp_path / "missing-review.jsonl"
+    missing_decisions = tmp_path / "missing-decisions.jsonl"
+    output_path = tmp_path / "review-with-decisions.jsonl"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "apply_naver_tampermonkey_review_decisions.py",
+            "--review-ingest",
+            str(missing_review),
+            "--decisions",
+            str(missing_decisions),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        applier.main()
+
+    assert exc_info.value.code == 1
+    stdout = capsys.readouterr().out
+    summary = json.loads(stdout)
+    assert summary["status"] == "error"
+    assert summary["error_message"] == "Local file operation failed."
+    assert str(tmp_path) not in stdout
+    assert "/private/" not in stdout

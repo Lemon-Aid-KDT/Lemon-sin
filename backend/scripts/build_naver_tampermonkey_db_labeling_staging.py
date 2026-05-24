@@ -18,6 +18,14 @@ from pathlib import Path, PurePosixPath
 SCHEMA_VERSION = "naver-tampermonkey-db-labeling-staging-v1"
 SHA256_HEX_LENGTH = 64
 ALLOWED_IMAGE_ROOT_TOKENS = frozenset({"$NAVER_TAMPERMONKEY_SOURCE_ROOT"})
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -65,24 +73,41 @@ def main() -> None:
         else output_path.with_suffix(output_path.suffix + ".summary.json")
     )
 
-    rows = build_staging_rows(
-        manifest_path=manifest_path,
-        source_run_id=args.source_run_id,
-    )
-    summary = build_summary(rows=rows, manifest_path=manifest_path)
-    _reject_raw_fields({"rows": rows, "summary": summary})
+    try:
+        rows = build_staging_rows(
+            manifest_path=manifest_path,
+            source_run_id=args.source_run_id,
+        )
+        summary = build_summary(rows=rows, manifest_path=manifest_path)
+        _reject_raw_fields({"rows": rows, "summary": summary})
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        failure = _failure_summary(
+            manifest_path=manifest_path,
+            output_path=output_path,
+            error=exc,
+        )
+        try:
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
 
 
 def build_staging_rows(
@@ -145,6 +170,34 @@ def build_summary(
         "raw_model_response_stored": False,
         "product_dir_literals_stored": False,
     }
+
+
+def _failure_summary(
+    *,
+    manifest_path: Path,
+    output_path: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted CLI failure summary without filesystem literals."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "manifest_name": manifest_path.name,
+        "manifest_path_hash": _sha256_text(str(manifest_path.expanduser())),
+        "output_name": output_path.name,
+        "output_path_hash": _sha256_text(str(output_path.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "row_count": 0,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "product_dir_literals_stored": False,
+    }
+    _reject_raw_fields(summary)
+    return summary
 
 
 def _staging_row_from_manifest_row(
@@ -254,6 +307,8 @@ def _required_str(row: dict[str, object], key: str) -> str:
     value = row.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Manifest row requires string field: {key}")
+    if any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
     return value.strip()
 
 
@@ -269,7 +324,12 @@ def _required_sha256(row: dict[str, object], key: str) -> str:
 
 def _optional_str(value: object) -> str | None:
     """Return a stripped optional string."""
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    stripped = value.strip()
+    if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+    return stripped
 
 
 def _optional_hash(value: object) -> str | None:
@@ -289,7 +349,10 @@ def _normalized_string_list(value: object) -> list[str]:
     """Return a sorted unique list of non-empty strings."""
     if not isinstance(value, list):
         return []
-    return sorted({item.strip() for item in value if isinstance(item, str) and item.strip()})
+    strings = {item.strip() for item in value if isinstance(item, str) and item.strip()}
+    if any(marker in item for item in strings for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+    return sorted(strings)
 
 
 def _reject_raw_fields(value: object) -> None:
@@ -303,6 +366,35 @@ def _reject_raw_fields(value: object) -> None:
     elif isinstance(value, list):
         for item in value:
             _reject_raw_fields(item)
+    elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a bounded non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_operation_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        message = "Local file operation failed."
+    elif isinstance(exc, json.JSONDecodeError):
+        message = "JSON decode failed."
+    else:
+        message = str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

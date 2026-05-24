@@ -9,6 +9,7 @@ request headers, image bytes, local paths, free-text review notes, or secrets.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from datetime import UTC, datetime
@@ -80,23 +81,37 @@ def main() -> None:
         if args.summary is not None
         else output_path.with_suffix(output_path.suffix + ".summary.json")
     )
-    rows, summary = export_review_decision_template_rows(
-        input_path=args.input.expanduser().resolve(),
-        max_candidates=args.max_candidates,
-    )
-    _reject_unsafe_payload({"rows": rows, "summary": summary})
+    input_path = args.input.expanduser().resolve()
+    try:
+        rows, summary = export_review_decision_template_rows(
+            input_path=input_path,
+            max_candidates=args.max_candidates,
+        )
+        _reject_unsafe_payload({"rows": rows, "summary": summary})
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        failure = _failure_summary(input_path=input_path, output_path=output_path, error=exc)
+        try:
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
 
 
 def export_review_decision_template_rows(
@@ -149,6 +164,40 @@ def export_review_decision_template_rows(
     }
     _reject_unsafe_payload({"rows": rows, "summary": summary})
     return rows, summary
+
+
+def _failure_summary(
+    *,
+    input_path: Path,
+    output_path: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted CLI failure summary."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "input_name": input_path.name,
+        "input_path_hash": _sha256_text(str(input_path.expanduser())),
+        "output_name": output_path.name,
+        "output_path_hash": _sha256_text(str(output_path.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "row_count": 0,
+        "rows_with_candidate_hints": 0,
+        "total_candidate_hints": 0,
+        "decision_batch_importable": False,
+        "requires_human_review": True,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "free_text_review_notes_stored": False,
+        "clinical_recommendations_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
 
 
 def _template_row(row: dict[str, object], *, max_candidates: int) -> dict[str, object]:
@@ -296,6 +345,38 @@ def _non_negative_int(value: object) -> int:
 def _reject_unsafe_payload(value: object) -> None:
     """Reject raw keys, local path literals, and sensitive literal keys recursively."""
     validator._reject_unsafe_payload(value)
+
+
+def _sha256_text(value: str) -> str:
+    """Return a SHA-256 digest for a UTF-8 text value."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a bounded non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_operation_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        message = "Local file operation failed."
+    elif isinstance(exc, json.JSONDecodeError):
+        message = "JSON decode failed."
+    else:
+        message = str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

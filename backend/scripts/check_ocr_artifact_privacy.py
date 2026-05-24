@@ -9,6 +9,7 @@ database connection, call OCR providers, or call LLM services.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,7 +41,14 @@ LITERAL_FORBIDDEN_KEYS = frozenset(
         "product_dir",
     }
 )
-LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "file://", "\\Users\\", "\\Volumes\\")
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 
 
 @dataclass(frozen=True)
@@ -84,14 +92,24 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run the privacy check and print a JSON summary."""
     args = parse_args()
-    summary = check_artifact_privacy(
-        paths=[path.expanduser().resolve() for path in args.path],
-        extensions=tuple(args.extension or DEFAULT_EXTENSIONS),
-        allow_missing=args.allow_missing,
-        strict_literal_keys=args.strict_literal_keys,
-    )
+    paths = [path.expanduser().resolve() for path in args.path]
+    try:
+        summary = check_artifact_privacy(
+            paths=paths,
+            extensions=tuple(args.extension or DEFAULT_EXTENSIONS),
+            allow_missing=args.allow_missing,
+            strict_literal_keys=args.strict_literal_keys,
+        )
+    except (OSError, ValueError) as exc:
+        summary = _failure_summary(
+            paths=paths,
+            extensions=tuple(args.extension or DEFAULT_EXTENSIONS),
+            allow_missing=args.allow_missing,
+            strict_literal_keys=args.strict_literal_keys,
+            error=exc,
+        )
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
-    if summary["finding_count"]:
+    if summary["finding_count"] or summary.get("status") == "error":
         raise SystemExit(1)
 
 
@@ -137,7 +155,8 @@ def check_artifact_privacy(
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "paths_checked": [str(path) for path in paths],
+        "path_names": [path.name for path in paths],
+        "path_hashes": [_sha256_text(str(path.expanduser())) for path in paths],
         "extensions": list(normalized_extensions),
         "strict_literal_keys": strict_literal_keys,
         "file_count": len(files),
@@ -165,7 +184,7 @@ def _collect_files(
         if not path.exists():
             if allow_missing:
                 continue
-            raise FileNotFoundError(path)
+            raise FileNotFoundError("Artifact path is missing.")
         if path.is_file():
             if path.suffix in extensions:
                 files.append(path)
@@ -189,7 +208,7 @@ def _scan_file(path: Path, *, strict_literal_keys: bool) -> tuple[list[PrivacyFi
             except json.JSONDecodeError as exc:
                 findings.append(
                     PrivacyFinding(
-                        path=str(path),
+                        path=path.name,
                         location=f"line:{line_number}",
                         reason=f"invalid_jsonl:{exc.msg}",
                     )
@@ -207,7 +226,7 @@ def _scan_file(path: Path, *, strict_literal_keys: bool) -> tuple[list[PrivacyFi
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        return [PrivacyFinding(path=str(path), location="$", reason=f"invalid_json:{exc.msg}")], 0
+        return [PrivacyFinding(path=path.name, location="$", reason=f"invalid_json:{exc.msg}")], 0
     values_seen += _scan_value(
         value,
         findings=findings,
@@ -236,7 +255,7 @@ def _scan_value(
             if key_lower in RAW_FORBIDDEN_KEYS:
                 findings.append(
                     PrivacyFinding(
-                        path=str(path),
+                        path=path.name,
                         location=nested_location,
                         reason=f"forbidden_raw_key:{key_text}",
                     )
@@ -244,7 +263,7 @@ def _scan_value(
             if strict_literal_keys and key_lower in LITERAL_FORBIDDEN_KEYS:
                 findings.append(
                     PrivacyFinding(
-                        path=str(path),
+                        path=path.name,
                         location=nested_location,
                         reason=f"forbidden_literal_key:{key_text}",
                     )
@@ -268,7 +287,7 @@ def _scan_value(
     elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
         findings.append(
             PrivacyFinding(
-                path=str(path),
+                path=path.name,
                 location=location,
                 reason="local_path_literal",
             )
@@ -283,6 +302,60 @@ def _normalize_extensions(values: tuple[str, ...]) -> tuple[str, ...]:
     if unsupported:
         raise ValueError(f"Unsupported extension(s): {unsupported}")
     return normalized
+
+
+def _failure_summary(
+    *,
+    paths: list[Path],
+    extensions: tuple[str, ...],
+    allow_missing: bool,
+    strict_literal_keys: bool,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted privacy-check failure summary."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": "error",
+        "path_names": [path.name for path in paths],
+        "path_hashes": [_sha256_text(str(path.expanduser())) for path in paths],
+        "extensions": list(extensions),
+        "allow_missing": allow_missing,
+        "strict_literal_keys": strict_literal_keys,
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "file_count": 0,
+        "json_value_count": 0,
+        "finding_count": 0,
+        "passed": False,
+        "findings": [],
+        "db_write_performed": False,
+        "external_transfer_performed": False,
+    }
+
+
+def _sha256_text(value: str) -> str:
+    """Return a SHA-256 digest for a UTF-8 text value."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a bounded non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_operation_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    message = "Local file operation failed." if isinstance(exc, OSError) else str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

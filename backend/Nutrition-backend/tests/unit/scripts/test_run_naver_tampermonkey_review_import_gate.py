@@ -188,3 +188,37 @@ def test_review_import_gate_rejects_unsafe_decision_payloads(tmp_path: Path) -> 
         )
 
     assert not list(output_dir.glob("*.jsonl"))
+
+
+def test_review_import_gate_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures print a redacted JSON summary instead of traceback paths."""
+    missing_review = tmp_path / "missing-review.jsonl"
+    missing_decisions = tmp_path / "missing-decisions.jsonl"
+    output_dir = tmp_path / "gate"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_naver_tampermonkey_review_import_gate.py",
+            "--review-ingest",
+            str(missing_review),
+            "--decisions",
+            str(missing_decisions),
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        gate_runner.main()
+
+    assert exc_info.value.code == 1
+    stdout = capsys.readouterr().out
+    summary = json.loads(stdout)
+    assert summary["status"] == "error"
+    assert summary["error_message"] == "Local file operation failed."
+    assert str(tmp_path) not in stdout
+    assert "/private/" not in stdout

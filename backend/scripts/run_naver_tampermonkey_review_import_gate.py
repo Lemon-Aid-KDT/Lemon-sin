@@ -15,6 +15,7 @@ under the requested output directory.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from datetime import UTC, datetime
@@ -64,17 +65,30 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run all review import gates and write a final summary."""
     args = parse_args()
-    summary = run_review_import_gate(
-        review_ingest_path=args.review_ingest.expanduser().resolve(),
-        decisions_path=args.decisions.expanduser().resolve(),
-        output_dir=args.output_dir.expanduser().resolve(),
-        artifact_prefix=args.artifact_prefix,
-        overwrite_existing=args.overwrite_existing,
-        allow_unmatched_decisions=args.allow_unmatched_decisions,
-        require_reviewed=args.require_reviewed,
-        require_all_approved=args.require_all_approved,
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    review_ingest_path = args.review_ingest.expanduser().resolve()
+    decisions_path = args.decisions.expanduser().resolve()
+    output_dir = args.output_dir.expanduser().resolve()
+    try:
+        summary = run_review_import_gate(
+            review_ingest_path=review_ingest_path,
+            decisions_path=decisions_path,
+            output_dir=output_dir,
+            artifact_prefix=args.artifact_prefix,
+            overwrite_existing=args.overwrite_existing,
+            allow_unmatched_decisions=args.allow_unmatched_decisions,
+            require_reviewed=args.require_reviewed,
+            require_all_approved=args.require_all_approved,
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        failure = _failure_summary(
+            review_ingest_path=review_ingest_path,
+            decisions_path=decisions_path,
+            output_dir=output_dir,
+            error=exc,
+        )
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
 
 
 def run_review_import_gate(
@@ -191,6 +205,48 @@ def run_review_import_gate(
     return gate_summary
 
 
+def _failure_summary(
+    *,
+    review_ingest_path: Path,
+    decisions_path: Path,
+    output_dir: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted CLI failure summary without filesystem literals."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "review_ingest_name": review_ingest_path.name,
+        "review_ingest_path_hash": _sha256_text(str(review_ingest_path.expanduser())),
+        "decisions_name": decisions_path.name,
+        "decisions_path_hash": _sha256_text(str(decisions_path.expanduser())),
+        "output_dir_name": output_dir.name,
+        "output_dir_path_hash": _sha256_text(str(output_dir.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "review_row_count": 0,
+        "decision_row_count": 0,
+        "matched_decision_count": 0,
+        "pending_count": 0,
+        "approved_row_count": 0,
+        "planned_product_upsert_count": 0,
+        "planned_ingredient_row_count": 0,
+        "dry_run_only": True,
+        "db_write_performed": False,
+        "external_transfer_performed": False,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "free_text_review_notes_stored": False,
+        "clinical_recommendations_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     """Write JSONL rows after final unsafe-payload rejection."""
     _reject_unsafe_payload(rows)
@@ -241,6 +297,38 @@ def _reject_unsafe_payload(value: object) -> None:
             _reject_unsafe_payload(item)
     elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
         raise ValueError("Payload contains local path literal.")
+
+
+def _sha256_text(value: str) -> str:
+    """Return a SHA-256 digest for a UTF-8 text value."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a bounded non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_operation_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        message = "Local file operation failed."
+    elif isinstance(exc, json.JSONDecodeError):
+        message = "JSON decode failed."
+    else:
+        message = str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

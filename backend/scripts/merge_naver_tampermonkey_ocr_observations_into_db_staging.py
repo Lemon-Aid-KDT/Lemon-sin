@@ -10,6 +10,7 @@ candidates are carried forward.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from collections import Counter
@@ -22,6 +23,14 @@ EXPECTED_STAGING_SCHEMA_VERSION = "naver-tampermonkey-db-labeling-staging-v1"
 MAX_TOKEN_LENGTH = 80
 MAX_INGREDIENTS_PER_OBSERVATION = 64
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -35,6 +44,14 @@ RAW_FORBIDDEN_KEYS = frozenset(
         "raw_provider_payload",
         "request_headers",
         "service_key",
+    }
+)
+LITERAL_FORBIDDEN_KEYS = frozenset(
+    {
+        "absolute_path",
+        "image_path",
+        "local_path",
+        "product_dir",
     }
 )
 
@@ -68,23 +85,45 @@ def main() -> None:
         if args.summary is not None
         else output_path.with_suffix(output_path.suffix + ".summary.json")
     )
-    merged_rows, summary = merge_staging_with_observations(
-        staging_path=args.staging.expanduser().resolve(),
-        observation_paths=[path.expanduser().resolve() for path in args.observations],
-        allow_unmatched_observations=args.allow_unmatched_observations,
-    )
-    _reject_raw_fields({"rows": merged_rows, "summary": summary})
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in merged_rows),
-        encoding="utf-8",
-    )
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    staging_path = args.staging.expanduser().resolve()
+    observation_paths = [path.expanduser().resolve() for path in args.observations]
+    try:
+        merged_rows, summary = merge_staging_with_observations(
+            staging_path=staging_path,
+            observation_paths=observation_paths,
+            allow_unmatched_observations=args.allow_unmatched_observations,
+        )
+        _reject_raw_fields({"rows": merged_rows, "summary": summary})
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "".join(
+                json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in merged_rows
+            ),
+            encoding="utf-8",
+        )
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        failure = _failure_summary(
+            staging_path=staging_path,
+            observation_paths=observation_paths,
+            output_path=output_path,
+            error=exc,
+        )
+        try:
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
 
 
 def merge_staging_with_observations(
@@ -168,6 +207,43 @@ def merge_staging_with_observations(
     }
     _reject_raw_fields({"rows": merged_rows, "summary": summary})
     return merged_rows, summary
+
+
+def _failure_summary(
+    *,
+    staging_path: Path,
+    observation_paths: Sequence[Path],
+    output_path: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted CLI failure summary without filesystem literals."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "staging_name": staging_path.name,
+        "staging_path_hash": _sha256_text(str(staging_path.expanduser())),
+        "observation_file_count": len(observation_paths),
+        "observation_names": [path.name for path in observation_paths],
+        "observation_path_hashes": [
+            _sha256_text(str(path.expanduser())) for path in observation_paths
+        ],
+        "output_name": output_path.name,
+        "output_path_hash": _sha256_text(str(output_path.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "staging_row_count": 0,
+        "observation_count": 0,
+        "matched_observation_count": 0,
+        "unmatched_observation_count": 0,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+    }
+    _reject_raw_fields(summary)
+    return summary
 
 
 def _summarize_observation(
@@ -266,7 +342,7 @@ def _read_jsonl_objects(path: Path) -> list[dict[str, object]]:
             continue
         row = json.loads(line)
         if not isinstance(row, dict):
-            raise ValueError(f"JSONL rows must be objects: {path}")
+            raise ValueError("JSONL rows must be objects.")
         _reject_raw_fields(row)
         rows.append(row)
     return rows
@@ -321,6 +397,8 @@ def _required_str(row: dict[str, object], key: str) -> str:
     value = row.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Row requires string field: {key}")
+    if any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
     return value.strip()
 
 
@@ -346,7 +424,10 @@ def _optional_string(value: object) -> str | None:
     """Return a stripped optional string."""
     if not isinstance(value, str) or not value.strip():
         return None
-    return value.strip()
+    stripped = value.strip()
+    if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+    return stripped
 
 
 def _safe_token_list(value: object) -> list[str]:
@@ -364,14 +445,54 @@ def _safe_token_list(value: object) -> list[str]:
 def _reject_raw_fields(value: object) -> None:
     """Reject raw OCR/image/provider/model fields before writing artifacts."""
     if isinstance(value, dict):
-        forbidden = RAW_FORBIDDEN_KEYS.intersection(str(key).lower() for key in value)
+        lowered_keys = {str(key).lower() for key in value}
+        forbidden = RAW_FORBIDDEN_KEYS.intersection(lowered_keys)
+        literal_forbidden = LITERAL_FORBIDDEN_KEYS.intersection(lowered_keys)
         if forbidden:
             raise ValueError(f"Payload contains forbidden raw field(s): {sorted(forbidden)}")
+        if literal_forbidden:
+            raise ValueError(
+                f"Payload contains forbidden literal field(s): {sorted(literal_forbidden)}"
+            )
         for nested in value.values():
             _reject_raw_fields(nested)
     elif isinstance(value, list | tuple):
         for item in value:
             _reject_raw_fields(item)
+    elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+
+
+def _sha256_text(value: str) -> str:
+    """Return a SHA-256 digest for a UTF-8 text value."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a bounded non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_operation_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        message = "Local file operation failed."
+    elif isinstance(exc, json.JSONDecodeError):
+        message = "JSON decode failed."
+    else:
+        message = str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

@@ -115,7 +115,17 @@ def test_build_staging_rows_rejects_local_absolute_image_path(tmp_path: Path) ->
     row = _manifest_row(image_path=str(tmp_path / "detail.jpg"))
     manifest_path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="allowed token root"):
+    with pytest.raises(ValueError, match="local path literal"):
+        staging.build_staging_rows(manifest_path=manifest_path)
+
+
+def test_build_staging_rows_rejects_local_literal_metadata(tmp_path: Path) -> None:
+    """Verify local model or media paths cannot be hashed into staging rows."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    row = _manifest_row(product_dir="/Volumes/Corsair EX400U Media/.ollama/models")
+    manifest_path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="local path literal"):
         staging.build_staging_rows(manifest_path=manifest_path)
 
 
@@ -150,3 +160,34 @@ def test_build_summary_reports_no_raw_artifacts(tmp_path: Path) -> None:
     assert summary["category_counts"] == {"omega_3": 1}
     assert summary["raw_ocr_text_stored"] is False
     assert summary["product_dir_literals_stored"] is False
+
+
+def test_build_staging_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures print a redacted JSON summary instead of traceback paths."""
+    missing_path = tmp_path / "missing.jsonl"
+    output_path = tmp_path / "out.jsonl"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_naver_tampermonkey_db_labeling_staging.py",
+            "--manifest",
+            str(missing_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        staging.main()
+
+    assert exc_info.value.code == 1
+    stdout = capsys.readouterr().out
+    summary = json.loads(stdout)
+    assert summary["status"] == "error"
+    assert summary["error_message"] == "Local file operation failed."
+    assert str(tmp_path) not in stdout
+    assert "/private/" not in stdout

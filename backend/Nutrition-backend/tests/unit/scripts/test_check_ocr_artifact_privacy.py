@@ -49,6 +49,9 @@ def test_check_artifact_privacy_passes_redacted_json_and_jsonl(tmp_path: Path) -
     assert summary["file_count"] == 2
     assert summary["finding_count"] == 0
     assert summary["passed"] is True
+    assert summary["path_names"] == [tmp_path.name]
+    assert "path_hashes" in summary
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
     assert summary["db_write_performed"] is False
     assert summary["external_transfer_performed"] is False
 
@@ -83,13 +86,18 @@ def test_check_artifact_privacy_rejects_local_path_literals(tmp_path: Path) -> N
     """Verify generated artifacts cannot store local absolute paths."""
     _write_jsonl(
         tmp_path / "bad.jsonl",
-        [{"image_ref": "/Volumes/Corsair EX400U Media/raw.jpg"}],
+        [
+            {"image_ref": "/Volumes/Corsair EX400U Media/raw.jpg"},
+            {"image_ref": "/private/tmp/raw.jpg"},
+        ],
     )
 
     summary = privacy.check_artifact_privacy(paths=[tmp_path])
 
     assert summary["passed"] is False
-    assert summary["findings"][0]["reason"] == "local_path_literal"
+    assert summary["finding_count"] == 2
+    assert {finding["reason"] for finding in summary["findings"]} == {"local_path_literal"}
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
 
 
 def test_check_artifact_privacy_reports_invalid_jsonl(tmp_path: Path) -> None:
@@ -112,3 +120,31 @@ def test_check_artifact_privacy_handles_missing_paths(tmp_path: Path) -> None:
     summary = privacy.check_artifact_privacy(paths=[missing], allow_missing=True)
     assert summary["file_count"] == 0
     assert summary["passed"] is True
+
+
+def test_check_artifact_privacy_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures print a redacted JSON summary instead of traceback paths."""
+    missing = tmp_path / "missing"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_ocr_artifact_privacy.py",
+            "--path",
+            str(missing),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        privacy.main()
+
+    assert exc_info.value.code == 1
+    stdout = capsys.readouterr().out
+    summary = json.loads(stdout)
+    assert summary["status"] == "error"
+    assert summary["error_message"] == "Local file operation failed."
+    assert str(tmp_path) not in stdout
+    assert "/private/" not in stdout

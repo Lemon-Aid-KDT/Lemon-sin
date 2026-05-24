@@ -122,6 +122,32 @@ def test_merge_rejects_raw_observation_fields(tmp_path: Path) -> None:
         )
 
 
+def test_merge_rejects_local_path_literals(tmp_path: Path) -> None:
+    """Verify local model/media path literals cannot enter merged staging."""
+    staging_path = tmp_path / "staging.jsonl"
+    observations_path = tmp_path / "observations.jsonl"
+    _write_jsonl(staging_path, [_staging_row()])
+    _write_jsonl(
+        observations_path,
+        [
+            _observation_row(
+                llm_parsed_ingredients=[
+                    {
+                        "display_name": "/Volumes/Corsair EX400U Media/.ollama/models",
+                        "source": "ollama_structured",
+                    }
+                ]
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="local path literal"):
+        merger.merge_staging_with_observations(
+            staging_path=staging_path,
+            observation_paths=[observations_path],
+        )
+
+
 def test_merge_rejects_unmatched_observations_by_default(tmp_path: Path) -> None:
     """Verify cross-manifest observation rows fail closed."""
     staging_path = tmp_path / "staging.jsonl"
@@ -212,3 +238,37 @@ def test_merge_preserves_review_pii_flags_without_llm_ingredients(tmp_path: Path
     observation = rows[0]["ocr_observation_summaries"][0]  # type: ignore[index]
     assert observation["pii_candidate_flags"] == ["address_candidate"]
     assert "llm_parsed_ingredients" not in observation
+
+
+def test_merge_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures print a redacted JSON summary instead of traceback paths."""
+    missing_staging = tmp_path / "missing-staging.jsonl"
+    missing_observation = tmp_path / "missing-observations.jsonl"
+    output_path = tmp_path / "merged.jsonl"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "merge_naver_tampermonkey_ocr_observations_into_db_staging.py",
+            "--staging",
+            str(missing_staging),
+            "--observations",
+            str(missing_observation),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        merger.main()
+
+    assert exc_info.value.code == 1
+    stdout = capsys.readouterr().out
+    summary = json.loads(stdout)
+    assert summary["status"] == "error"
+    assert summary["error_message"] == "Local file operation failed."
+    assert str(tmp_path) not in stdout
+    assert "/private/" not in stdout

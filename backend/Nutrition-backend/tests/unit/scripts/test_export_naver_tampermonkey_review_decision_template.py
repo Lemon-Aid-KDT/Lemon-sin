@@ -152,3 +152,34 @@ def test_export_review_decision_templates_rejects_duplicate_review_ids(
 
     with pytest.raises(ValueError, match="Duplicate review_task_id"):
         exporter.export_review_decision_template_rows(input_path=input_path)
+
+
+def test_export_review_decision_template_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures print a redacted JSON summary instead of traceback paths."""
+    missing_input = tmp_path / "missing-review.jsonl"
+    output_path = tmp_path / "template.jsonl"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "export_naver_tampermonkey_review_decision_template.py",
+            "--input",
+            str(missing_input),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        exporter.main()
+
+    assert exc_info.value.code == 1
+    stdout = capsys.readouterr().out
+    summary = json.loads(stdout)
+    assert summary["status"] == "error"
+    assert summary["error_message"] == "Local file operation failed."
+    assert str(tmp_path) not in stdout
+    assert "/private/" not in stdout
