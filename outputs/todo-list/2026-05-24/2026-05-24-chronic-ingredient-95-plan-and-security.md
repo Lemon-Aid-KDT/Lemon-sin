@@ -65,6 +65,15 @@
 - `validate_ground_truth.py` 또는 동등 validator에서 chronic 16개 V3 human-labeled count가 16으로 출력
 - `expected_quality_warnings`에서 human-review pending 계열 warning이 0
 
+구현된 검수 템플릿:
+
+- `backend/scripts/export_chronic_ingredient_review_template.py`
+- V3 snapshot 16개를 사람이 검수할 JSONL 템플릿으로 내보낸다.
+- 템플릿은 importable decision batch가 아니며 `requires_human_review=true`를 유지한다.
+- `naver-chronic-NNNN` expected와 `naver-live-NNNN` observation id를 고정 매핑한다.
+- 현재 expected ingredient와 redacted structured observation hints만 포함하고, raw OCR text, provider payload, image bytes, request headers, local path, free-text notes는 포함하지 않는다.
+- 현재 실행 결과: 16 rows, pending 16, current expected hint 보유 7 rows, observation hint 보유 5 rows.
+
 ### 2. parser_success_rate 0.5625와 errors 2/16 원인 조사
 
 현재 관측:
