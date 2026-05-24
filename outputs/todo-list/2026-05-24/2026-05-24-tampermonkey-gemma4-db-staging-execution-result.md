@@ -128,3 +128,35 @@ git diff --check: pass
 
 - Python `asyncio.sleep()`은 현재 task를 delay 동안 suspend해 다른 task 실행을 허용한다: https://docs.python.org/3/library/asyncio-task.html#sleeping
 - Ollama structured outputs는 JSON schema를 `format`에 전달하고 결과를 검증하는 방식을 문서화한다: https://docs.ollama.com/capabilities/structured-outputs
+
+## 후속 보강 2 - structured output prompt 경량화
+
+`ollama_structured_output` 4건을 줄이기 위해 Ollama parser prompt를 경량화했다.
+
+- JSON schema는 계속 Ollama Chat API payload의 `format` 필드로 전달한다.
+- user prompt에는 전체 schema 문자열을 다시 붙이지 않고, 짧은 output contract summary만 넣는다.
+- OCR text가 `12,000`자를 넘으면 head `8,000`자와 tail `4,000`자를 유지하고 middle만 생략한다.
+- 이 생략은 request memory 안에서만 수행되며 raw OCR text나 생략된 middle text를 저장하지 않는다.
+
+기존 `ollama_structured_output` fixture 4건만 재실행한 smoke 결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| fixture_count | 4 |
+| completed_count | 4 |
+| llm_parse_success_count | 3 |
+| llm_parse_success_rate | 0.75 |
+| remaining_ollama_structured_output | 1 |
+| ingredient_count_avg | 7.0 |
+
+검증:
+
+```text
+test_ollama_parser.py + collector/merge focused tests: 47 passed
+LLM parser + Tampermonkey OCR script tests: 68 passed
+black --check: pass
+ruff --ignore RUF001: pass
+structured-output retry smoke privacy scan: pass files=3 json_values=4
+```
+
+남은 1건은 prompt 크기보다 실제 schema 적합성 문제일 수 있으므로, 다음 단계에서 schema를 더 완화하지 않고 operator review 대상으로 분리하거나 별도 model fallback 후보로 비교한다.

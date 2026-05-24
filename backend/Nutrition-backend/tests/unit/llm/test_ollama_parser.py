@@ -10,6 +10,8 @@ import httpx
 import pytest
 from src.config import Settings
 from src.llm.ollama import (
+    MAX_OLLAMA_OCR_PROMPT_CHARS,
+    TRUNCATED_OCR_TEXT_MARKER,
     OllamaChatClient,
     OllamaClientError,
     OllamaConfigurationError,
@@ -170,6 +172,28 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     assert fake_client.request_json["options"] == {"temperature": 0.0}
     assert result.parsed_product.product_name == "비타민 D 1000"
     assert result.ingredient_candidates[0].source == "ollama_structured"
+
+
+@pytest.mark.asyncio
+async def test_ollama_parser_bounds_long_ocr_text_in_prompt() -> None:
+    """Verify long OCR text is compacted before local structured-output calls."""
+    response_content = json.dumps({"ingredient_candidates": []}, ensure_ascii=False)
+    fake_client = _FakeHTTPClient({"message": {"content": response_content}})
+    long_ocr_text = "비타민 D 25 ug\n" + ("middle-noise-line\n" * 1200) + "마그네슘 100 mg\n"
+
+    await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text(long_ocr_text)
+
+    assert fake_client.request_json is not None
+    assert fake_client.request_json["format"]["type"] == "object"
+    user_prompt = fake_client.request_json["messages"][1]["content"]
+    assert len(user_prompt) < len(long_ocr_text)
+    assert TRUNCATED_OCR_TEXT_MARKER in user_prompt
+    assert "비타민 D 25 ug" in user_prompt
+    assert "마그네슘 100 mg" in user_prompt
+    assert len(user_prompt) < MAX_OLLAMA_OCR_PROMPT_CHARS + 1_000
 
 
 @pytest.mark.asyncio
