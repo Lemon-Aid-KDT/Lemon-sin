@@ -45,11 +45,12 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 
 ## Security Review
 
-- Generated review ingest JSONL에서 forbidden raw keys와 `/Users`, `/Volumes`, `file://` literal이 없는지 확인했다.
+- Generated review ingest JSONL에서 forbidden raw keys와 `/private`, `/Users`, `/Volumes`, `file://` literal이 없는지 확인했다.
 - `product_dir` literal key는 입력 단계에서 실패 처리한다. output에는 `product_dir_hash`만 남긴다.
 - `image_path`와 같은 원본 경로 key도 입력 단계에서 실패 처리한다. output에는 `image.root_token`, `image_ref_hash`, `image_sha256`만 남긴다.
 - 성분 후보는 `display_name`, `nutrient_code`, `amount`, `unit`, `confidence`, `source`, `provider`로 제한한다.
 - 임상 추천으로 오용되지 않도록 `is_clinical_recommendation=false`, `clinical_recommendation_forbidden=true`를 명시했다.
+- CLI 실패 summary는 traceback이나 입력/output 절대경로 대신 `input_name`, `output_name`, hashed path id, bounded `error_code`/`error_message`만 남긴다.
 
 ## Verification
 
@@ -64,7 +65,7 @@ PYTHONPATH=backend /private/tmp/lemon-p1-quality-venv/bin/python -m pytest \
 Result:
 
 ```text
-17 passed in 0.04s
+18 passed in 0.04s
 ```
 
 ```bash
@@ -82,6 +83,9 @@ Result:
 ```text
 black: 2 files would be left unchanged
 ruff: All checks passed
+CLI failure redaction probe: pass
+artifact privacy gate: pass
+detect-secrets scan: pass
 ```
 
 ## Next Steps

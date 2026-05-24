@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,10 @@ def test_export_review_ingest_rejects_local_path_literals(tmp_path: Path) -> Non
     with pytest.raises(ValueError, match="local path literal"):
         review_ingest.export_review_ingest_rows(input_path=input_path)
 
+    _write_jsonl(input_path, [_input_row(notes="/private/tmp/image.jpg")])
+    with pytest.raises(ValueError, match="local path literal"):
+        review_ingest.export_review_ingest_rows(input_path=input_path)
+
 
 def test_export_review_ingest_rejects_product_dir_literal_key(tmp_path: Path) -> None:
     """Verify product directory literals are rejected even when they are relative."""
@@ -205,3 +210,42 @@ def test_export_review_ingest_allows_pii_pending_review_without_llm_candidates(
         "pii_status_not_cleared",
     ]
     assert "pii_screening_required" in review_task["reasons"]
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    output_path = tmp_path / "review-ingest.jsonl"
+    summary_path = tmp_path / "review-ingest.summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "export_naver_tampermonkey_review_ingest.py",
+            "--input",
+            str(tmp_path / "missing-input.jsonl"),
+            "--output",
+            str(output_path),
+            "--summary",
+            str(summary_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        review_ingest.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_error"
+    assert summary["input_name"] == "missing-input.jsonl"
+    assert summary["output_name"] == "review-ingest.jsonl"
+    assert summary["raw_ocr_text_stored"] is False
+    assert summary["local_path_literals_stored"] is False
