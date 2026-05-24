@@ -72,6 +72,17 @@ RAW_FORBIDDEN_KEYS = frozenset(
         "service_key",
     }
 )
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
+DEFAULT_MANIFEST_NAME = "manifest-detail-smoke-30.jsonl"
+DEFAULT_INVENTORY_NAME = "inventory.json"
+DEFAULT_CATEGORY_LABELS_NAME = "category-labels.json"
 
 Section = Literal["detail", "review", "unknown"]
 ManifestSection = Literal["detail", "review", "all"]
@@ -111,9 +122,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
     parser.add_argument("--output-dir", required=True, type=Path)
-    parser.add_argument("--manifest-name", default="manifest-detail-smoke-30.jsonl")
-    parser.add_argument("--inventory-name", default="inventory.json")
-    parser.add_argument("--category-labels-name", default="category-labels.json")
+    parser.add_argument("--manifest-name", default=DEFAULT_MANIFEST_NAME)
+    parser.add_argument("--inventory-name", default=DEFAULT_INVENTORY_NAME)
+    parser.add_argument("--category-labels-name", default=DEFAULT_CATEGORY_LABELS_NAME)
     parser.add_argument("--category-taxonomy", type=Path, default=DEFAULT_CATEGORY_TAXONOMY_PATH)
     parser.add_argument("--image-root-env-var", default=DEFAULT_IMAGE_ROOT_ENV_VAR)
     parser.add_argument("--section", choices=("detail", "review", "all"), default="detail")
@@ -133,23 +144,41 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
-    summary = build_naver_tampermonkey_manifest(
-        source_root=args.source_root,
-        output_dir=args.output_dir,
-        manifest_name=args.manifest_name,
-        inventory_name=args.inventory_name,
-        category_labels_name=args.category_labels_name,
-        category_taxonomy_path=args.category_taxonomy,
-        image_root_env_var=args.image_root_env_var,
-        section=args.section,
-        sample_size=args.sample_size,
-        scan_limit=args.scan_limit,
-        seed=args.seed,
-        min_width=args.min_width,
-        min_height=args.min_height,
-        max_bytes=args.max_bytes,
-        review_personal_data_cleared=args.review_personal_data_cleared,
-    )
+    try:
+        summary = build_naver_tampermonkey_manifest(
+            source_root=args.source_root,
+            output_dir=args.output_dir,
+            manifest_name=args.manifest_name,
+            inventory_name=args.inventory_name,
+            category_labels_name=args.category_labels_name,
+            category_taxonomy_path=args.category_taxonomy,
+            image_root_env_var=args.image_root_env_var,
+            section=args.section,
+            sample_size=args.sample_size,
+            scan_limit=args.scan_limit,
+            seed=args.seed,
+            min_width=args.min_width,
+            min_height=args.min_height,
+            max_bytes=args.max_bytes,
+            review_personal_data_cleared=args.review_personal_data_cleared,
+        )
+    except (OSError, ValueError) as exc:
+        failure = _failure_summary(
+            source_root=args.source_root,
+            manifest_name=args.manifest_name,
+            inventory_name=args.inventory_name,
+            category_labels_name=args.category_labels_name,
+            error=exc,
+        )
+        output_dir = args.output_dir.expanduser().resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        failure_inventory_name = _fallback_inventory_name(args.inventory_name)
+        (output_dir / failure_inventory_name).write_text(
+            json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
@@ -159,7 +188,7 @@ def build_naver_tampermonkey_manifest(
     output_dir: Path,
     manifest_name: str,
     inventory_name: str,
-    category_labels_name: str = "category-labels.json",
+    category_labels_name: str = DEFAULT_CATEGORY_LABELS_NAME,
     category_taxonomy_path: Path | None = DEFAULT_CATEGORY_TAXONOMY_PATH,
     image_root_env_var: str = DEFAULT_IMAGE_ROOT_ENV_VAR,
     section: ManifestSection,
@@ -194,11 +223,17 @@ def build_naver_tampermonkey_manifest(
         review_personal_data_cleared: Whether review images are cleared for external eligibility.
 
     Returns:
-        Redacted summary with generated artifact paths and counts.
+        Redacted summary with generated artifact filenames and counts.
 
     Raises:
         ValueError: If inputs are invalid.
     """
+    safe_manifest_name = _safe_output_filename(manifest_name, field_name="manifest_name")
+    safe_inventory_name = _safe_output_filename(inventory_name, field_name="inventory_name")
+    safe_category_labels_name = _safe_output_filename(
+        category_labels_name,
+        field_name="category_labels_name",
+    )
     _validate_options(
         source_root=source_root,
         image_root_env_var=image_root_env_var,
@@ -258,16 +293,17 @@ def build_naver_tampermonkey_manifest(
         "raw_artifacts_stored": False,
         "raw_ocr_text_stored": False,
         "raw_provider_payload_stored": False,
+        "local_path_literals_stored": False,
     }
-    _reject_raw_fields(inventory)
-    _reject_raw_fields(category_labels)
+    _reject_unsafe_payload(inventory)
+    _reject_unsafe_payload(category_labels)
     for row in rows:
-        _reject_raw_fields(row)
+        _reject_unsafe_payload(row)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = output_dir / manifest_name
-    inventory_path = output_dir / inventory_name
-    category_labels_path = output_dir / category_labels_name
+    manifest_path = output_dir / safe_manifest_name
+    inventory_path = output_dir / safe_inventory_name
+    category_labels_path = output_dir / safe_category_labels_name
     manifest_path.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
@@ -281,9 +317,9 @@ def build_naver_tampermonkey_manifest(
         encoding="utf-8",
     )
     return {
-        "manifest": str(manifest_path),
-        "inventory": str(inventory_path),
-        "category_labels": str(category_labels_path),
+        "manifest_name": safe_manifest_name,
+        "inventory_name": safe_inventory_name,
+        "category_labels_name": safe_category_labels_name,
         "manifest_row_count": len(rows),
         "candidate_count": len(candidates),
         "category_label_count": len(category_labels["labels"]),
@@ -291,6 +327,7 @@ def build_naver_tampermonkey_manifest(
         "raw_artifacts_stored": False,
         "raw_ocr_text_stored": False,
         "raw_provider_payload_stored": False,
+        "local_path_literals_stored": False,
     }
 
 
@@ -561,11 +598,11 @@ def load_category_taxonomy(path: Path | None) -> dict[str, object]:
         return {"schema_version": None, "categories": {}}
     resolved = path.expanduser().resolve()
     if not resolved.is_file():
-        raise ValueError(f"category_taxonomy_path is not a file: {path}")
+        raise ValueError("category_taxonomy_path is not a file.")
     try:
         payload = json.loads(resolved.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"category_taxonomy_path is not valid JSON: {path}") from exc
+        raise ValueError("category_taxonomy_path is not valid JSON.") from exc
     if not isinstance(payload, dict) or not isinstance(payload.get("categories"), dict):
         raise ValueError("category taxonomy must contain a categories object.")
     return payload
@@ -687,7 +724,7 @@ def _validate_options(
 ) -> None:
     """Validate manifest build options."""
     if not source_root.expanduser().is_dir():
-        raise ValueError(f"source_root is not a directory: {source_root}")
+        raise ValueError("source_root is not a directory.")
     if not re.fullmatch(r"[A-Z][A-Z0-9_]*", image_root_env_var):
         raise ValueError("image_root_env_var must be an uppercase environment variable name.")
     if sample_size < 1 or scan_limit < 1:
@@ -844,17 +881,120 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _failure_summary(
+    *,
+    source_root: Path,
+    manifest_name: str,
+    inventory_name: str,
+    category_labels_name: str,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted manifest-generation failure summary."""
+    summary = {
+        "schema_version": "naver-tampermonkey-ocr-manifest-failure-v1",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "source_root_hash": _sha256_text(str(source_root.expanduser())),
+        "source_root_exists": _safe_path_exists(source_root),
+        "manifest_name": _safe_name_or_default(manifest_name, DEFAULT_MANIFEST_NAME),
+        "inventory_name": _safe_name_or_default(inventory_name, DEFAULT_INVENTORY_NAME),
+        "category_labels_name": _safe_name_or_default(
+            category_labels_name,
+            DEFAULT_CATEGORY_LABELS_NAME,
+        ),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "files_seen": 0,
+        "candidate_count": 0,
+        "manifest_row_count": 0,
+        "category_label_count": 0,
+        "unmapped_category_count": 0,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
+def _safe_output_filename(value: str, *, field_name: str) -> str:
+    """Return a filename that cannot escape the requested output directory."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty filename.")
+    stripped = value.strip()
+    if (
+        stripped in {".", ".."}
+        or "/" in stripped
+        or "\\" in stripped
+        or Path(stripped).name != stripped
+        or any(marker in stripped for marker in LOCAL_PATH_MARKERS)
+    ):
+        raise ValueError(f"{field_name} must be a filename, not a path.")
+    return stripped
+
+
+def _safe_name_or_default(value: str, default: str) -> str:
+    """Return a safe filename for failure summaries without raising."""
+    try:
+        return _safe_output_filename(value, field_name="filename")
+    except ValueError:
+        return default
+
+
+def _fallback_inventory_name(value: str) -> str:
+    """Return a safe inventory filename even when user input is invalid."""
+    return _safe_name_or_default(value, DEFAULT_INVENTORY_NAME)
+
+
+def _safe_path_exists(path: Path) -> bool:
+    """Return whether a path exists without exposing path details."""
+    try:
+        return path.expanduser().exists()
+    except OSError:
+        return False
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        return "Local file operation failed."
+    message = str(exc).strip()
+    if not message:
+        return "Validation failed."
+    if any(marker in message for marker in LOCAL_PATH_MARKERS):
+        return "Validation failed."
+    if "/" in message or "\\" in message:
+        return "Validation failed."
+    return message[:200]
+
+
 def _reject_raw_fields(value: object) -> None:
     """Reject raw OCR/image/provider/model fields before writing artifacts."""
+    _reject_unsafe_payload(value)
+
+
+def _reject_unsafe_payload(value: object) -> None:
+    """Reject raw fields and local path literals before writing artifacts."""
     if isinstance(value, dict):
         forbidden = RAW_FORBIDDEN_KEYS.intersection(str(key).lower() for key in value)
         if forbidden:
             raise ValueError(f"Payload contains forbidden raw field(s): {sorted(forbidden)}")
         for nested in value.values():
-            _reject_raw_fields(nested)
+            _reject_unsafe_payload(nested)
     elif isinstance(value, list):
         for item in value:
-            _reject_raw_fields(item)
+            _reject_unsafe_payload(item)
+    elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
 
 
 if __name__ == "__main__":

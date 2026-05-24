@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import unicodedata
 from pathlib import Path
 
@@ -68,6 +69,14 @@ def test_build_detail_manifest_normalizes_korean_paths(tmp_path: Path) -> None:
     )
 
     assert summary["manifest_row_count"] == 1
+    assert summary["manifest_name"] == "manifest-detail.jsonl"
+    assert summary["inventory_name"] == "inventory.json"
+    assert summary["category_labels_name"] == builder.DEFAULT_CATEGORY_LABELS_NAME
+    serialized_summary = json.dumps(summary, ensure_ascii=False)
+    assert str(tmp_path) not in serialized_summary
+    assert "manifest" not in summary
+    assert "inventory" not in summary
+    assert "category_labels" not in summary
     rows = _jsonl_rows(output_dir / "manifest-detail.jsonl")
     assert len(rows) == 1
     row = rows[0]
@@ -167,6 +176,128 @@ def test_reject_raw_fields_blocks_forbidden_keys() -> None:
     """Verify generated helper rejects forbidden raw payload fields."""
     with pytest.raises(ValueError, match="raw_ocr_text"):
         builder._reject_raw_fields({"nested": {"raw_ocr_text": "do not store"}})
+    with pytest.raises(ValueError, match="local path"):
+        builder._reject_unsafe_payload({"image_path": "/private/tmp/raw.jpg"})
+
+
+def test_output_names_must_be_filenames(tmp_path: Path) -> None:
+    """Verify output names cannot escape the requested output directory."""
+    source_root = tmp_path / "naver"
+    detail_image = source_root / "[오메가3]" / "제품A_123456789" / "상세페이지" / "d_1.jpg"
+    _write_image(detail_image)
+
+    with pytest.raises(ValueError, match="manifest_name"):
+        builder.build_naver_tampermonkey_manifest(
+            source_root=source_root,
+            output_dir=tmp_path / "out",
+            manifest_name="../manifest-detail.jsonl",
+            inventory_name="inventory.json",
+            section="detail",
+            sample_size=1,
+            scan_limit=10,
+            seed=1,
+            min_width=100,
+            min_height=100,
+            max_bytes=1_000_000,
+        )
+
+    with pytest.raises(ValueError, match="inventory_name"):
+        builder.build_naver_tampermonkey_manifest(
+            source_root=source_root,
+            output_dir=tmp_path / "out",
+            manifest_name="manifest-detail.jsonl",
+            inventory_name="nested/inventory.json",
+            section="detail",
+            sample_size=1,
+            scan_limit=10,
+            seed=1,
+            min_width=100,
+            min_height=100,
+            max_bytes=1_000_000,
+        )
+
+    with pytest.raises(ValueError, match="category_labels_name"):
+        builder.build_naver_tampermonkey_manifest(
+            source_root=source_root,
+            output_dir=tmp_path / "out",
+            manifest_name="manifest-detail.jsonl",
+            inventory_name="inventory.json",
+            category_labels_name="nested/category-labels.json",
+            section="detail",
+            sample_size=1,
+            scan_limit=10,
+            seed=1,
+            min_width=100,
+            min_height=100,
+            max_bytes=1_000_000,
+        )
+
+
+def test_missing_source_root_error_does_not_include_path(tmp_path: Path) -> None:
+    """Verify direct validation errors avoid local source path literals."""
+    source_root = tmp_path / "missing-source"
+
+    with pytest.raises(ValueError) as exc_info:
+        builder.build_naver_tampermonkey_manifest(
+            source_root=source_root,
+            output_dir=tmp_path / "out",
+            manifest_name="manifest-detail.jsonl",
+            inventory_name="inventory.json",
+            section="detail",
+            sample_size=1,
+            scan_limit=10,
+            seed=1,
+            min_width=100,
+            min_height=100,
+            max_bytes=1_000_000,
+        )
+
+    assert str(tmp_path) not in str(exc_info.value)
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures write redacted inventory without traceback or local paths."""
+    source_root = tmp_path / "missing-source"
+    output_dir = tmp_path / "out"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_naver_tampermonkey_ocr_manifest.py",
+            "--source-root",
+            str(source_root),
+            "--output-dir",
+            str(output_dir),
+            "--inventory-name",
+            "../unsafe-inventory.json",
+            "--manifest-name",
+            "manifest-detail.jsonl",
+            "--section",
+            "detail",
+            "--sample-size",
+            "1",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        builder.main()
+
+    printed = capsys.readouterr().out
+    summary_path = output_dir / builder.DEFAULT_INVENTORY_NAME
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "validation_error"
+    assert summary["inventory_name"] == builder.DEFAULT_INVENTORY_NAME
+    assert summary["raw_ocr_text_stored"] is False
+    assert summary["local_path_literals_stored"] is False
 
 
 def test_unknown_category_gets_stable_folder_only_db_label(tmp_path: Path) -> None:

@@ -86,6 +86,9 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 ## 보안/유출 확인
 
 - generated artifact에는 `/Volumes/...` 외장 절대경로를 저장하지 않고 `$NAVER_TAMPERMONKEY_SOURCE_ROOT/...` token path만 저장한다.
+- CLI 정상 summary는 `manifest_name`, `inventory_name`, `category_labels_name`만 출력하며 output 절대경로를 출력하지 않는다.
+- `manifest_name` / `inventory_name` / `category_labels_name`은 filename만 허용해 output directory escape를 막는다.
+- CLI 실패 summary는 safe `error_code`, bounded `error_message`, hashed `source_root_hash`만 남기며 traceback과 로컬 경로 literal을 출력하지 않는다.
 - OCR 원문, provider raw payload, model raw response, request header, image bytes, `.env`, secret 값은 생성하지 않았다.
 - 리뷰 이미지는 이번 manifest 범위에서 제외했고, 기존 정책대로 review row는 외부 전송 전 local PII screening이 필요하다.
 
@@ -93,7 +96,9 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 
 ```text
 json taxonomy validation: pass
-focused builder tests: 7 passed
+focused builder tests: 10 passed
+CLI failure redaction probe: pass
+artifact privacy gate: pass
 absolute path / raw-key grep: no external path hit; only *_stored=false flags present
 ```
 
