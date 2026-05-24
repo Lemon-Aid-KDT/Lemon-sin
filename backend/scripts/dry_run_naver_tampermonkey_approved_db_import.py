@@ -266,6 +266,7 @@ def _ingredient_plan(
         raise ValueError("Approved import row requires at least one ingredient.")
     ingredients: list[dict[str, object]] = []
     seen_sort_orders: set[int] = set()
+    seen_ingredient_keys: set[tuple[str, str]] = set()
     for item in raw_ingredients:
         if not isinstance(item, dict):
             raise ValueError("Ingredient rows must be objects.")
@@ -275,18 +276,24 @@ def _ingredient_plan(
         seen_sort_orders.add(sort_order)
         source_payload = _required_dict(item, "source_payload")
         amount = _decimal_or_none(item.get("amount"))
+        standard_name = _bounded_string_for_column(
+            SupplementProductIngredient,
+            "standard_name",
+            item.get("standard_name"),
+            required=True,
+        )
+        nutrient_code = _bounded_string_for_column(
+            SupplementProductIngredient,
+            "nutrient_code",
+            item.get("nutrient_code"),
+        )
+        dedupe_key = (_normalize_text(str(standard_name)), nutrient_code or "")
+        if dedupe_key in seen_ingredient_keys:
+            raise ValueError("Ingredient identities must be unique per product.")
+        seen_ingredient_keys.add(dedupe_key)
         ingredient = {
-            "standard_name": _bounded_string_for_column(
-                SupplementProductIngredient,
-                "standard_name",
-                item.get("standard_name"),
-                required=True,
-            ),
-            "nutrient_code": _bounded_string_for_column(
-                SupplementProductIngredient,
-                "nutrient_code",
-                item.get("nutrient_code"),
-            ),
+            "standard_name": standard_name,
+            "nutrient_code": nutrient_code,
             "amount": str(amount) if amount is not None else None,
             "unit": _bounded_string_for_column(
                 SupplementProductIngredient,
@@ -430,6 +437,11 @@ def _hash_json(value: object) -> str:
     _reject_unsafe_payload(value)
     encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _normalize_text(value: str) -> str:
+    """Return a conservative de-duplication key."""
+    return " ".join(value.casefold().split())[:MAX_TOKEN_LENGTH]
 
 
 def _reject_unsafe_payload(value: object) -> None:

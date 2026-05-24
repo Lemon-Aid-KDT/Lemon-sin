@@ -208,6 +208,33 @@ def test_build_dry_run_import_plan_rejects_invalid_ingredient_amount(
         dry_run.build_dry_run_import_plan(input_path=input_path)
 
 
+def test_build_dry_run_import_plan_rejects_duplicate_ingredients(
+    tmp_path: Path,
+) -> None:
+    """Verify handcrafted approved imports cannot duplicate child identities."""
+    input_path = tmp_path / "approved.jsonl"
+    base_ingredient = {
+        "standard_name": "Omega-3",
+        "nutrient_code": "omega_3",
+        "amount": 1000.0,
+        "unit": "mg",
+        "sort_order": 0,
+        "source_payload": {"reviewer_id": "operator_1"},
+    }
+    duplicate_ingredient = {
+        **base_ingredient,
+        "standard_name": " omega-3 ",
+        "sort_order": 1,
+    }
+    _write_jsonl(
+        input_path,
+        [_approved_row(ingredients=[base_ingredient, duplicate_ingredient])],
+    )
+
+    with pytest.raises(ValueError, match="unique per product"):
+        dry_run.build_dry_run_import_plan(input_path=input_path)
+
+
 def test_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

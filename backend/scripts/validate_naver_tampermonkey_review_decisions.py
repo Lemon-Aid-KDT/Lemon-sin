@@ -262,14 +262,19 @@ def _validate_approved_decision(row: dict[str, object], decision: dict[str, obje
         raise ValueError("Approved review decisions require reviewed ingredients.")
     if len(ingredients) > MAX_INGREDIENTS_PER_PRODUCT:
         raise ValueError("Approved review decision has too many ingredients.")
+    seen_ingredient_keys: set[tuple[str, str]] = set()
     for ingredient in ingredients:
         if not isinstance(ingredient, dict):
             raise ValueError("Approved review ingredients must be objects.")
         _reject_unsafe_payload(ingredient)
-        _required_string(ingredient, "display_name", max_length=160)
+        display_name = _required_string(ingredient, "display_name", max_length=160)
         nutrient_code = ingredient.get("nutrient_code")
         if nutrient_code is not None:
-            _safe_token(nutrient_code)
+            nutrient_code = _safe_token(nutrient_code)
+        dedupe_key = (_normalize_ingredient_name(display_name), nutrient_code or "")
+        if dedupe_key in seen_ingredient_keys:
+            raise ValueError("Approved review ingredients must be unique per product.")
+        seen_ingredient_keys.add(dedupe_key)
         source = ingredient.get("source")
         if source is not None and _safe_token(source) != APPROVED_INGREDIENT_SOURCE:
             raise ValueError("Approved review ingredient source must be human_reviewed.")
@@ -325,6 +330,11 @@ def _required_timezone_aware_iso_datetime(row: dict[str, object], key: str) -> s
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError(f"Row requires timezone-aware ISO datetime field: {key}")
     return value
+
+
+def _normalize_ingredient_name(value: str) -> str:
+    """Return a conservative ingredient de-duplication key."""
+    return " ".join(value.casefold().split())[:MAX_TEXT_LENGTH]
 
 
 def _safe_token(value: object) -> str | None:

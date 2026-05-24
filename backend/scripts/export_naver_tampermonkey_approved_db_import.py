@@ -293,13 +293,19 @@ def _approved_ingredients(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     ingredients: list[dict[str, object]] = []
+    seen_ingredient_keys: set[tuple[str, str]] = set()
     for item in value[:MAX_INGREDIENTS_PER_PRODUCT]:
         if not isinstance(item, dict):
             continue
         display_name = _required_bounded_string(item, "display_name", max_length=160)
+        nutrient_code = _optional_safe_token(item.get("nutrient_code"))
+        dedupe_key = (_normalize_text(display_name), nutrient_code or "")
+        if dedupe_key in seen_ingredient_keys:
+            raise ValueError("Approved DB import ingredients must be unique per product.")
+        seen_ingredient_keys.add(dedupe_key)
         ingredient: dict[str, object] = {
             "standard_name": display_name,
-            "nutrient_code": _optional_safe_token(item.get("nutrient_code")),
+            "nutrient_code": nutrient_code,
             "amount": _approved_ingredient_amount(item.get("amount")),
             "unit": _optional_string(item.get("unit"), max_length=40),
             "source": _approved_ingredient_source(item.get("source")),

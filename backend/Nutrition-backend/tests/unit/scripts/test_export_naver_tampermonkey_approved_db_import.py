@@ -225,6 +225,19 @@ def test_export_rejects_non_human_ingredient_source(tmp_path: Path) -> None:
         approved_export.export_approved_db_import_rows(input_path=input_path)
 
 
+def test_export_rejects_duplicate_approved_ingredients(tmp_path: Path) -> None:
+    """Verify approved DB import candidates cannot duplicate child identities."""
+    input_path = tmp_path / "review-ingest.jsonl"
+    decision = _decision()
+    ingredient = dict(decision["ingredients"][0])  # type: ignore[index]
+    duplicate = {**ingredient, "display_name": " omega-3 "}
+    decision["ingredients"] = [ingredient, duplicate]
+    _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+    with pytest.raises(ValueError, match="unique per product"):
+        approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
 def test_export_rejects_non_numeric_ingredient_amount(tmp_path: Path) -> None:
     """Verify direct export never converts bool/string amounts into numbers."""
     for index, value in enumerate(("1000", True)):
