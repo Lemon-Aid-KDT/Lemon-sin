@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,7 @@ def test_apply_pii_screening_decisions_rejects_unsafe_decisions(tmp_path: Path) 
         (_decision(raw_ocr_text="secret"), "raw_ocr_text"),
         (_decision(review_note="free text"), "free-text"),
         (_decision(reviewer_id="/Volumes/Corsair/user"), "local path"),
+        (_decision(reviewer_id="/private/tmp/user"), "local path"),
         (_decision(reviewer_id="ollama_gemma4"), "operator_ prefix"),
         (_decision(extracted_name="홍길동"), "unsupported field"),
     ]:
@@ -211,3 +213,49 @@ def test_apply_pii_screening_decisions_rejects_duplicate_decisions(tmp_path: Pat
             manifest_path=manifest_path,
             decisions_path=decisions_path,
         )
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    manifest_path = tmp_path / "missing-manifest.jsonl"
+    decisions_path = tmp_path / "missing-decisions.jsonl"
+    output_path = tmp_path / "cleared.jsonl"
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply_naver_tampermonkey_review_pii_screening_decisions.py",
+            "--manifest",
+            str(manifest_path),
+            "--decisions",
+            str(decisions_path),
+            "--output",
+            str(output_path),
+            "--summary",
+            str(summary_path),
+            "--require-all-reviewed",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        applier.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_read_error"
+    assert summary["error_message"] == "Local file read failed."
+    assert summary["require_all_reviewed"] is True
+    assert summary["db_write_performed"] is False
+    assert summary["external_transfer_performed"] is False
+    assert summary["local_path_literals_stored"] is False
+    assert not output_path.exists()
