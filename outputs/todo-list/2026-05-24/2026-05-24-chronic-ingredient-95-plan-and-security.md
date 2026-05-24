@@ -228,12 +228,23 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 실제 full batch 결과에서 review row 18개 생성: `ocr_error` 13, `llm_parse_error` 5, missing category 0, strict privacy scan finding 0.
 - suggested action: `inspect_image_quality_or_preprocess` 13, `retry_structured_parser_or_schema_prompt` 5.
 
+구현된 retry manifest 보강:
+
+- `backend/scripts/export_naver_tampermonkey_ocr_retry_manifest.py`
+- failure review queue와 원본 batch manifest를 fixture id로 조인해 collector-compatible retry manifest를 생성한다.
+- OCR 재시도와 LLM 구조화 재시도를 `failure_kind`로 분리할 수 있다.
+- retry row에는 원본 manifest metadata와 bounded `retry_metadata`만 붙이고, raw OCR text, provider payload, raw model response, image bytes, request headers, local path literal은 recursive gate에서 거부한다.
+- 실제 full batch failure queue에서 OCR low confidence retry manifest 13 rows, LLM structured-output retry manifest 5 rows를 생성했다.
+- retry manifest는 collector 입력으로 다시 쓰기 위해 `image_path` token key가 필요하므로 strict literal-key scan 대상이 아니다.
+- 전체 retry manifest directory는 non-strict privacy scan finding 0으로 raw/local-path value 미저장을 확인했고, 공개 가능한 summary JSON 2개는 strict literal-key scan finding 0으로 확인했다.
+
 판단:
 
 - folder-name category labeling과 웹 근거 taxonomy mapping은 현재 43개 category 전체에서 매핑 누락 없이 동작한다.
 - 120개 full batch 기준에서 OCR 실패 13개는 `ocr_low_confidence`로 분리되며, raw OCR text 저장 없이 report와 review queue에서 확인 가능하다.
 - Gemma4 parser 연결은 EX400U 모델 경로 기준 smoke와 batch-001 sandbox 밖 재실행에서 정상 동작했다.
 - Gemma4 parser는 full batch에서 102/107 성공했으며, 남은 5개는 `ollama_structured_output`으로 분리되어 prompt/schema retry 보강 후보가 되었다.
+- retry manifest 기준 다음 실행 단위는 OCR 저신뢰 13건의 image quality/preprocess 또는 Paddle 설정 비교, LLM 구조화 실패 5건의 prompt/schema retry이다.
 - 이 확장 fixture set은 human-verified ingredient exact KPI가 아니라 OCR/DB-labeling coverage KPI로 봐야 한다. ingredient exact 95% 판단은 별도 human-verified expected가 붙은 fixture에서만 수행한다.
 
 ## 이번 변경의 보안 점검
