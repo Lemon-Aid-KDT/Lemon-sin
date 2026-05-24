@@ -398,6 +398,14 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - operator action: 5건은 `review_ocr_summary_and_enter_manual_ingredients`, 1건은 `inspect_source_image_and_enter_manual_ingredients`.
 - gap queue privacy scan finding 0, gap queue summary/JSONL strict literal-key scan finding 0.
 
+구현된 manual-review gap decision template 보강:
+
+- `backend/scripts/export_naver_tampermonkey_review_decision_template.py --gap-queue`
+- 기존 120개 review decision template exporter에 gap queue filter를 추가해 수동 검수 gap row만 decision template로 내보낸다.
+- gap context에는 bounded reason/action/count만 포함하고 raw OCR text, provider payload, model response, image bytes, local path literal은 포함하지 않는다.
+- 실제 결과: gap decision template row 6, rows with candidate hints 0, total candidate hints 0, decision batch importable false.
+- gap decision template artifact privacy scan finding 0, strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -412,5 +420,6 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - ROI crop retry는 파생 crop image를 temp directory에만 만들고 최종 artifact에는 crop hash/count/profile만 기록한다.
 - DB-labeling staging/review ingest/decision template은 모두 human review gate이며 production DB write를 수행하지 않는다.
 - manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
+- manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count만 노출한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.

@@ -23,6 +23,7 @@ from scripts import validate_naver_tampermonkey_review_decisions as validator  #
 
 SCHEMA_VERSION = "naver-tampermonkey-review-decision-template-v1"
 EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
+EXPECTED_GAP_QUEUE_SCHEMA_VERSION = "naver-tampermonkey-manual-review-gap-v1"
 DEFAULT_MAX_CANDIDATES = 12
 MAX_TEXT_LENGTH = validator.MAX_TEXT_LENGTH
 MAX_INGREDIENT_NAME_LENGTH = 160
@@ -69,6 +70,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_CANDIDATES,
         help="Maximum safe ingredient candidate hints per review row.",
     )
+    parser.add_argument(
+        "--gap-queue",
+        type=Path,
+        default=None,
+        help="Optional manual-review gap queue JSONL. When set, export only those review rows.",
+    )
     return parser.parse_args()
 
 
@@ -86,6 +93,9 @@ def main() -> None:
         rows, summary = export_review_decision_template_rows(
             input_path=input_path,
             max_candidates=args.max_candidates,
+            gap_queue_path=(
+                args.gap_queue.expanduser().resolve() if args.gap_queue is not None else None
+            ),
         )
         _reject_unsafe_payload({"rows": rows, "summary": summary})
 
@@ -118,12 +128,14 @@ def export_review_decision_template_rows(
     *,
     input_path: Path,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    gap_queue_path: Path | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     """Return safe review decision template rows for a review ingest artifact.
 
     Args:
         input_path: Review ingest JSONL path.
         max_candidates: Maximum candidate hints retained per row.
+        gap_queue_path: Optional manual-review gap queue for narrowing rows.
 
     Returns:
         Template rows and a redacted summary.
@@ -134,7 +146,25 @@ def export_review_decision_template_rows(
     """
     candidate_limit = _candidate_limit(max_candidates)
     input_rows = _read_input_rows(input_path)
-    rows = [_template_row(row, max_candidates=candidate_limit) for row in input_rows]
+    gap_contexts = _read_gap_contexts(gap_queue_path) if gap_queue_path is not None else None
+    if gap_contexts is not None:
+        input_by_review_id = {_required_str(row, "review_task_id"): row for row in input_rows}
+        missing_ids = sorted(set(gap_contexts) - set(input_by_review_id))
+        if missing_ids:
+            raise ValueError(f"Gap queue review_task_id is not in review ingest: {missing_ids[0]}")
+        input_rows = [input_by_review_id[review_task_id] for review_task_id in sorted(gap_contexts)]
+    rows = [
+        _template_row(
+            row,
+            max_candidates=candidate_limit,
+            gap_context=(
+                gap_contexts.get(_required_str(row, "review_task_id"))
+                if gap_contexts is not None
+                else None
+            ),
+        )
+        for row in input_rows
+    ]
     total_candidates = sum(
         len(row["candidate_context"]["ingredient_candidates"])  # type: ignore[index]
         for row in rows
@@ -152,6 +182,9 @@ def export_review_decision_template_rows(
         "rows_with_candidate_hints": rows_with_candidates,
         "total_candidate_hints": total_candidates,
         "max_candidates_per_row": candidate_limit,
+        "gap_queue_name": gap_queue_path.name if gap_queue_path is not None else None,
+        "gap_queue_row_count": len(gap_contexts) if gap_contexts is not None else None,
+        "gap_queue_filter_applied": gap_contexts is not None,
         "decision_batch_importable": False,
         "requires_human_review": True,
         "raw_artifacts_stored": False,
@@ -200,7 +233,12 @@ def _failure_summary(
     return summary
 
 
-def _template_row(row: dict[str, object], *, max_candidates: int) -> dict[str, object]:
+def _template_row(
+    row: dict[str, object],
+    *,
+    max_candidates: int,
+    gap_context: dict[str, object] | None = None,
+) -> dict[str, object]:
     """Return one safe review template row."""
     _validate_review_row(row)
     category_key = _required_safe_token(row, "category_key")
@@ -219,8 +257,34 @@ def _template_row(row: dict[str, object], *, max_candidates: int) -> dict[str, o
             "ingredient_candidate_count": _non_negative_int(row.get("ingredient_candidate_count")),
         },
     }
+    if gap_context is not None:
+        template["gap_context"] = gap_context
     _reject_unsafe_payload(template)
     return template
+
+
+def _read_gap_contexts(path: Path) -> dict[str, dict[str, object]]:
+    """Read a safe manual-review gap queue keyed by review task id."""
+    contexts: dict[str, dict[str, object]] = {}
+    for row in _read_input_rows(path):
+        if row.get("schema_version") != EXPECTED_GAP_QUEUE_SCHEMA_VERSION:
+            raise ValueError("Gap queue rows must use manual-review gap schema.")
+        if row.get("requires_human_review") is not True:
+            raise ValueError("Gap queue rows must require human review.")
+        if row.get("decision_batch_importable") is not False:
+            raise ValueError("Gap queue rows must not be importable decision batches.")
+        if row.get("db_write_performed") is not False:
+            raise ValueError("Gap queue rows must not perform DB writes.")
+        review_task_id = _required_str(row, "review_task_id")
+        if review_task_id in contexts:
+            raise ValueError(f"Duplicate review_task_id in gap queue: {review_task_id}")
+        contexts[review_task_id] = {
+            "gap_reasons": _safe_token_list(row.get("gap_reasons")),
+            "suggested_operator_actions": _safe_token_list(row.get("suggested_operator_actions")),
+            "ingredient_candidate_count": _non_negative_int(row.get("ingredient_candidate_count")),
+            "ocr_observation_count": _non_negative_int(row.get("ocr_observation_count")),
+        }
+    return contexts
 
 
 def _candidate_ingredients(value: object, *, max_candidates: int) -> list[dict[str, object]]:
@@ -311,6 +375,18 @@ def _required_safe_token(row: dict[str, object], key: str) -> str:
 def _optional_safe_token(value: object) -> str | None:
     """Return a bounded safe token or None."""
     return validator._safe_token(value)
+
+
+def _safe_token_list(value: object) -> list[str]:
+    """Return sorted unique safe tokens from a list value."""
+    if not isinstance(value, list):
+        return []
+    tokens: list[str] = []
+    for item in value:
+        token = _optional_safe_token(item)
+        if token is not None:
+            tokens.append(token)
+    return sorted(set(tokens))
 
 
 def _optional_string(value: object, *, max_length: int = MAX_TEXT_LENGTH) -> str | None:

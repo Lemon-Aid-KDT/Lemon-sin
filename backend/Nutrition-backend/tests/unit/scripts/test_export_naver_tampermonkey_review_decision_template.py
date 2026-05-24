@@ -48,6 +48,33 @@ def _review_row(**overrides: object) -> dict[str, object]:
     return row
 
 
+def _gap_queue_row(**overrides: object) -> dict[str, object]:
+    """Return a minimal manual-review gap queue row."""
+    row: dict[str, object] = {
+        "schema_version": "naver-tampermonkey-manual-review-gap-v1",
+        "review_task_id": "d" * 64,
+        "fixture_id": "naver-tm-detail-000001",
+        "category_key": "omega_3",
+        "gap_reasons": ["ingredient_candidate_count_zero"],
+        "suggested_operator_actions": [
+            "enter_manual_ingredients_or_mark_not_scoreable",
+            "do_not_copy_ocr_output",
+        ],
+        "ingredient_candidate_count": 0,
+        "ocr_observation_count": 1,
+        "requires_human_review": True,
+        "decision_batch_importable": False,
+        "db_write_performed": False,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+    }
+    row.update(overrides)
+    return row
+
+
 def test_export_review_decision_templates_with_safe_contract(
     tmp_path: Path,
 ) -> None:
@@ -167,6 +194,81 @@ def test_export_review_decision_templates_rejects_non_object_rows_without_path_l
     assert str(tmp_path) not in str(exc_info.value)
     assert str(input_path) not in str(exc_info.value)
     assert str(exc_info.value) == "JSONL rows must be objects."
+
+
+def test_export_review_decision_templates_filters_manual_gap_queue(
+    tmp_path: Path,
+) -> None:
+    """Verify gap queue filtering exports only manual-review gap rows."""
+    input_path = tmp_path / "review.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(
+        input_path,
+        [
+            _review_row(),
+            _review_row(
+                review_task_id="e" * 64,
+                fixture_id="naver-tm-detail-000002",
+                ingredient_candidates=[{"display_name": "Vitamin D"}],
+            ),
+        ],
+    )
+    _write_jsonl(gap_path, [_gap_queue_row()])
+
+    rows, summary = exporter.export_review_decision_template_rows(
+        input_path=input_path,
+        gap_queue_path=gap_path,
+    )
+
+    assert summary["row_count"] == 1
+    assert summary["gap_queue_filter_applied"] is True
+    assert summary["gap_queue_row_count"] == 1
+    assert summary["gap_queue_name"] == "gap.jsonl"
+    assert rows[0]["review_task_id"] == "d" * 64
+    assert rows[0]["gap_context"] == {
+        "gap_reasons": ["ingredient_candidate_count_zero"],
+        "suggested_operator_actions": [
+            "do_not_copy_ocr_output",
+            "enter_manual_ingredients_or_mark_not_scoreable",
+        ],
+        "ingredient_candidate_count": 0,
+        "ocr_observation_count": 1,
+    }
+    serialized = json.dumps(rows, ensure_ascii=False).lower()
+    assert '"raw_ocr_text"' not in serialized
+    assert "/volumes/" not in serialized
+
+
+def test_export_review_decision_templates_rejects_unmatched_gap_queue(
+    tmp_path: Path,
+) -> None:
+    """Verify gap queue rows must match review ingest ids."""
+    input_path = tmp_path / "review.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(input_path, [_review_row()])
+    _write_jsonl(gap_path, [_gap_queue_row(review_task_id="e" * 64)])
+
+    with pytest.raises(ValueError, match="not in review ingest"):
+        exporter.export_review_decision_template_rows(
+            input_path=input_path,
+            gap_queue_path=gap_path,
+        )
+
+
+def test_export_review_decision_templates_rejects_unsafe_gap_queue(
+    tmp_path: Path,
+) -> None:
+    """Verify unsafe manual gap queues cannot shape review templates."""
+    input_path = tmp_path / "review.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(input_path, [_review_row()])
+    _write_jsonl(gap_path, [_gap_queue_row(raw_ocr_text="forbidden")])
+
+    with pytest.raises(ValueError, match="raw_ocr_text"):
+        exporter.export_review_decision_template_rows(
+            input_path=input_path,
+            gap_queue_path=gap_path,
+        )
 
 
 def test_export_review_decision_template_main_error_is_redacted(
