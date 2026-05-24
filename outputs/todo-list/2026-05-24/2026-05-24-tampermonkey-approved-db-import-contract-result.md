@@ -44,9 +44,10 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 
 - unapproved review queue row는 DB import 후보로 자동 승격되지 않는다.
 - 승인 row라도 PII clearance와 3개 safety attestation이 없으면 실패한다.
-- raw OCR text, provider payload, request headers, model raw response, image bytes, secret key, local path literal, product directory literal key를 재귀적으로 차단한다.
+- raw OCR text, provider payload, request headers, model raw response, image bytes, secret key, `/private`/`/Users`/`/Volumes`/`file://` local path literal, product directory literal key를 재귀적으로 차단한다.
 - 출력 source payload는 fixture id, review task id, image hashes, category tags, reviewer id, reviewed timestamp, count metadata만 보존한다.
 - 출력 ingredient는 사람이 검수한 `review_decision.ingredients`만 사용한다. LLM 후보를 자동 승격하지 않는다.
+- CLI 실패 summary는 traceback이나 입력/output 절대경로 대신 `input_name`, `output_name`, hashed path id, bounded `error_code`/`error_message`만 남긴다.
 
 ## Verification
 
@@ -62,7 +63,7 @@ PYTHONPATH=backend /private/tmp/lemon-p1-quality-venv/bin/python -m pytest \
 Result:
 
 ```text
-23 passed in 0.07s
+25 passed in 0.04s
 ```
 
 ```bash
@@ -80,6 +81,9 @@ Result:
 ```text
 black: 2 files would be left unchanged
 ruff: All checks passed
+CLI failure redaction probe: pass
+artifact privacy gate: pass
+detect-secrets scan: pass
 ```
 
 ## Next Steps

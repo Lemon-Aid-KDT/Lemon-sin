@@ -22,7 +22,14 @@ MAX_TOKEN_LENGTH = 80
 MAX_TEXT_LENGTH = 200
 MAX_INGREDIENTS_PER_PRODUCT = 128
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
-LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "file://", "\\Users\\", "\\Volumes\\")
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -70,29 +77,47 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Write approved DB import rows and a redacted summary."""
     args = parse_args()
+    input_path = args.input.expanduser().resolve()
     output_path = args.output.expanduser().resolve()
     summary_path = (
         args.summary.expanduser().resolve()
         if args.summary is not None
         else output_path.with_suffix(output_path.suffix + ".summary.json")
     )
-    rows, summary = export_approved_db_import_rows(
-        input_path=args.input.expanduser().resolve(),
-        require_all_approved=args.require_all_approved,
-    )
-    _reject_unsafe_payload({"rows": rows, "summary": summary})
+    try:
+        rows, summary = export_approved_db_import_rows(
+            input_path=input_path,
+            require_all_approved=args.require_all_approved,
+        )
+        _reject_unsafe_payload({"rows": rows, "summary": summary})
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        failure = _failure_summary(
+            input_path=input_path,
+            output_path=output_path,
+            error=exc,
+        )
+        try:
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
 
 
 def export_approved_db_import_rows(
@@ -154,6 +179,38 @@ def export_approved_db_import_rows(
     }
     _reject_unsafe_payload({"rows": approved_rows, "summary": summary})
     return approved_rows, summary
+
+
+def _failure_summary(
+    *,
+    input_path: Path,
+    output_path: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted CLI failure summary."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "input_name": input_path.name,
+        "input_path_hash": _sha256_text(str(input_path.expanduser())),
+        "output_name": output_path.name,
+        "output_path_hash": _sha256_text(str(output_path.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "input_row_count": 0,
+        "approved_row_count": 0,
+        "skipped_unapproved_count": 0,
+        "skipped_rejected_count": 0,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "clinical_recommendations_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
 
 
 def _approved_import_row(
@@ -257,7 +314,7 @@ def _read_input_rows(path: Path) -> list[dict[str, object]]:
             continue
         row = json.loads(line)
         if not isinstance(row, dict):
-            raise ValueError(f"JSONL rows must be objects: {path}")
+            raise ValueError("JSONL rows must be objects.")
         _reject_unsafe_payload(row)
         rows.append(row)
     return rows
@@ -269,6 +326,38 @@ def _source_product_id(row: dict[str, object]) -> str:
     fixture_id = _required_str(row, "fixture_id")
     image_sha256 = _nested_string(row, "image", "image_sha256") or ""
     return hashlib.sha256(f"{review_task_id}|{fixture_id}|{image_sha256}".encode()).hexdigest()
+
+
+def _sha256_text(value: str) -> str:
+    """Return SHA-256 for redacted path identifiers."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        message = "Local file operation failed."
+    elif isinstance(exc, json.JSONDecodeError):
+        message = "JSON decode failed."
+    else:
+        message = str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
 
 
 def _require_attestation(row: dict[str, object], key: str) -> None:

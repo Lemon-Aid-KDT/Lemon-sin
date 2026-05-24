@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -223,3 +224,51 @@ def test_export_rejects_raw_and_local_path_literals(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="local path literal"):
         approved_export.export_approved_db_import_rows(input_path=input_path_2)
+
+    input_path_3 = tmp_path / "review-ingest-private-path.jsonl"
+    _write_jsonl(
+        input_path_3,
+        [_review_row(review_decision=_decision(display_name="/private/tmp/a.jpg"))],
+    )
+
+    with pytest.raises(ValueError, match="local path literal"):
+        approved_export.export_approved_db_import_rows(input_path=input_path_3)
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    output_path = tmp_path / "approved-db-import.jsonl"
+    summary_path = tmp_path / "approved-db-import.summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "export_naver_tampermonkey_approved_db_import.py",
+            "--input",
+            str(tmp_path / "missing-review-ingest.jsonl"),
+            "--output",
+            str(output_path),
+            "--summary",
+            str(summary_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        approved_export.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_error"
+    assert summary["input_name"] == "missing-review-ingest.jsonl"
+    assert summary["output_name"] == "approved-db-import.jsonl"
+    assert summary["raw_ocr_text_stored"] is False
+    assert summary["local_path_literals_stored"] is False
