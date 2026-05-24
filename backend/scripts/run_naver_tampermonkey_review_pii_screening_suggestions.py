@@ -45,10 +45,18 @@ LOCAL_OLLAMA_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 ALLOWED_IMAGE_PATH_ENV_VARS = frozenset({"NAVER_TAMPERMONKEY_SOURCE_ROOT"})
 ENV_IMAGE_PATH_PATTERN = re.compile(r"^\$(?P<name>[A-Z][A-Z0-9_]*)(?:/(?P<path>.*))?$")
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
-LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "file://", "\\Users\\", "\\Volumes\\")
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 RAW_FORBIDDEN_KEYS = pii_manifest.RAW_FORBIDDEN_KEYS
 MAX_IMAGE_BYTES = 15_000_000
 MAX_ROWS_DEFAULT = 0
+MAX_UNCONFIRMED_RUN_ROWS = 100
 
 STATUS_SUGGESTIONS = tuple(sorted(suggestion_exporter.ALLOWED_SUGGESTION_STATUSES))
 CONFIDENCE_BUCKETS = tuple(sorted(suggestion_exporter.ALLOWED_CONFIDENCE_BUCKETS))
@@ -147,6 +155,11 @@ def parse_args() -> argparse.Namespace:
         help="Maximum rows to process. Use 0 to process every manifest row.",
     )
     parser.add_argument("--max-image-bytes", type=int, default=MAX_IMAGE_BYTES)
+    parser.add_argument(
+        "--allow-large-run",
+        action="store_true",
+        help=("Required for non-dry-run processing above " f"{MAX_UNCONFIRMED_RUN_ROWS} rows."),
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -160,15 +173,31 @@ def main() -> None:
         if args.summary
         else output_path.with_suffix(output_path.suffix + ".summary.json")
     )
-    result = run_review_pii_screening_suggestions(
-        manifest_path=args.manifest.expanduser().resolve(),
-        model=args.model,
-        ollama_base_url=args.ollama_base_url,
-        timeout_sec=args.timeout_sec,
-        limit=args.limit,
-        max_image_bytes=args.max_image_bytes,
-        dry_run=args.dry_run,
-    )
+    try:
+        result = run_review_pii_screening_suggestions(
+            manifest_path=args.manifest.expanduser().resolve(),
+            model=args.model,
+            ollama_base_url=args.ollama_base_url,
+            timeout_sec=args.timeout_sec,
+            limit=args.limit,
+            max_image_bytes=args.max_image_bytes,
+            allow_large_run=args.allow_large_run,
+            dry_run=args.dry_run,
+        )
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        failure = _failure_summary(
+            manifest_path=args.manifest,
+            model=args.model,
+            ollama_base_url=args.ollama_base_url,
+            error=exc,
+        )
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in result.rows),
@@ -189,6 +218,7 @@ def run_review_pii_screening_suggestions(
     timeout_sec: float = 120.0,
     limit: int = MAX_ROWS_DEFAULT,
     max_image_bytes: int = MAX_IMAGE_BYTES,
+    allow_large_run: bool = False,
     dry_run: bool = False,
     http_client: _PostClient | None = None,
 ) -> RunResult:
@@ -201,6 +231,8 @@ def run_review_pii_screening_suggestions(
         timeout_sec: HTTP timeout per image.
         limit: Maximum manifest rows to process; ``0`` means all rows.
         max_image_bytes: Per-image byte ceiling.
+        allow_large_run: Explicit approval for non-dry-run batches above the
+            unconfirmed row threshold.
         dry_run: Whether to build only the redacted plan.
         http_client: Optional sync test client.
 
@@ -220,6 +252,11 @@ def run_review_pii_screening_suggestions(
     )
     manifest_rows = _read_manifest_rows(manifest_path)
     selected_rows = manifest_rows if limit == 0 else manifest_rows[:limit]
+    _validate_large_run_approval(
+        selected_row_count=len(selected_rows),
+        allow_large_run=allow_large_run,
+        dry_run=dry_run,
+    )
     endpoint = _ollama_endpoint(ollama_base_url)
     schema = _suggestion_response_schema()
     rows: list[dict[str, object]] = []
@@ -237,6 +274,7 @@ def run_review_pii_screening_suggestions(
             status_counts=status_counts,
             error_counts=error_counts,
             dry_run=True,
+            allow_large_run=allow_large_run,
         )
         return RunResult(rows=rows, summary=summary)
 
@@ -281,6 +319,7 @@ def run_review_pii_screening_suggestions(
         status_counts=status_counts,
         error_counts=error_counts,
         dry_run=False,
+        allow_large_run=allow_large_run,
     )
     _reject_unsafe_payload(summary)
     return RunResult(rows=rows, summary=summary)
@@ -362,6 +401,7 @@ def _summary(
     status_counts: Counter[str],
     error_counts: Counter[str],
     dry_run: bool,
+    allow_large_run: bool,
 ) -> dict[str, object]:
     """Return a redacted run summary."""
     parsed = urlparse(ollama_base_url)
@@ -373,6 +413,8 @@ def _summary(
         "selected_row_count": len(selected_rows),
         "suggestion_row_count": len(rows),
         "dry_run": dry_run,
+        "large_run_threshold": MAX_UNCONFIRMED_RUN_ROWS,
+        "large_run_approved": allow_large_run,
         "model": model,
         "ollama_base_host": parsed.hostname or "",
         "status_suggestion_counts": dict(sorted(status_counts.items())),
@@ -389,6 +431,41 @@ def _summary(
         "free_text_notes_stored": False,
         "local_path_literals_stored": False,
     }
+
+
+def _failure_summary(
+    *,
+    manifest_path: Path,
+    model: str,
+    ollama_base_url: str,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted failure summary for CLI errors."""
+    parsed = urlparse(ollama_base_url)
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "manifest_name": manifest_path.name,
+        "model": model,
+        "ollama_base_host": parsed.hostname or "",
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "suggestion_row_count": 0,
+        "decision_importable_rows": 0,
+        "operator_decision_required_rows": 0,
+        "external_transfer_allowed_rows": 0,
+        "db_write_performed": False,
+        "external_transfer_performed": False,
+        "raw_artifacts_stored": False,
+        "raw_image_stored": False,
+        "request_payload_stored": False,
+        "raw_model_response_stored": False,
+        "free_text_notes_stored": False,
+        "local_path_literals_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
 
 
 def _read_manifest_rows(path: Path) -> list[dict[str, object]]:
@@ -484,6 +561,18 @@ def _validate_runner_options(
         raise ValueError("limit must be zero or positive.")
     if max_image_bytes <= 0:
         raise ValueError("max_image_bytes must be positive.")
+
+
+def _validate_large_run_approval(
+    *,
+    selected_row_count: int,
+    allow_large_run: bool,
+    dry_run: bool,
+) -> None:
+    """Require an explicit operator opt-in before large non-dry-run batches."""
+    if dry_run or allow_large_run or selected_row_count <= MAX_UNCONFIRMED_RUN_ROWS:
+        return
+    raise ValueError("Large PII suggestion runs require --allow-large-run or a smaller --limit.")
 
 
 def _ollama_endpoint(base_url: str) -> str:
@@ -617,6 +706,22 @@ def _safe_error_code(exc: BaseException) -> str:
     if isinstance(exc, OSError):
         return "local_image_read_error"
     return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, httpx.HTTPError):
+        return "Local Ollama request failed."
+    if isinstance(exc, OSError):
+        return "Local image read failed."
+    message = str(exc).strip()
+    if not message:
+        return "Validation failed."
+    if any(marker in message for marker in LOCAL_PATH_MARKERS):
+        return "Validation failed."
+    if "/" in message or "\\" in message:
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +78,17 @@ def _manifest_row() -> dict[str, object]:
         "local_processing_allowed": True,
         "operator_decision_required": True,
     }
+
+
+def _manifest_rows(count: int) -> list[dict[str, object]]:
+    """Return multiple local-only review PII screening rows."""
+    rows: list[dict[str, object]] = []
+    for index in range(1, count + 1):
+        row = _manifest_row()
+        row["fixture_id"] = f"naver-tm-review-pii-{index:06d}"
+        row["image_ref_hash"] = f"{index:064x}"[-64:]
+        rows.append(row)
+    return rows
 
 
 def _response_content(**overrides: object) -> str:
@@ -228,6 +240,95 @@ def test_run_review_pii_screening_suggestions_dry_run_skips_model_call(tmp_path:
     assert result.summary["selected_row_count"] == 1
     assert result.summary["suggestion_row_count"] == 0
     assert result.summary["request_payload_stored"] is False
+
+
+def test_run_review_pii_screening_suggestions_dry_run_can_plan_large_batch(
+    tmp_path: Path,
+) -> None:
+    """Verify large dry-runs stay allowed and redacted."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_jsonl(
+        manifest_path,
+        _manifest_rows(runner.MAX_UNCONFIRMED_RUN_ROWS + 1),
+    )
+
+    result = runner.run_review_pii_screening_suggestions(
+        manifest_path=manifest_path,
+        dry_run=True,
+    )
+
+    assert result.rows == []
+    assert result.summary["selected_row_count"] == runner.MAX_UNCONFIRMED_RUN_ROWS + 1
+    assert result.summary["large_run_threshold"] == runner.MAX_UNCONFIRMED_RUN_ROWS
+    assert result.summary["large_run_approved"] is False
+    assert result.summary["request_payload_stored"] is False
+
+
+def test_run_review_pii_screening_suggestions_rejects_large_batch_without_approval(
+    tmp_path: Path,
+) -> None:
+    """Verify non-dry-run batches require explicit large-run approval."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_jsonl(
+        manifest_path,
+        _manifest_rows(runner.MAX_UNCONFIRMED_RUN_ROWS + 1),
+    )
+    fake_client = _FakeClient(_ollama_response(_response_content()))
+
+    with pytest.raises(ValueError, match="--allow-large-run"):
+        runner.run_review_pii_screening_suggestions(
+            manifest_path=manifest_path,
+            http_client=fake_client,
+        )
+
+    assert fake_client.requests == []
+
+
+def test_main_large_batch_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    output_path = tmp_path / "suggestions.jsonl"
+    summary_path = tmp_path / "summary.json"
+    _write_jsonl(
+        manifest_path,
+        _manifest_rows(runner.MAX_UNCONFIRMED_RUN_ROWS + 1),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_naver_tampermonkey_review_pii_screening_suggestions.py",
+            "--manifest",
+            str(manifest_path),
+            "--output",
+            str(output_path),
+            "--summary",
+            str(summary_path),
+            "--limit",
+            str(runner.MAX_UNCONFIRMED_RUN_ROWS + 1),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        runner.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "validation_error"
+    assert summary["error_message"] == (
+        "Large PII suggestion runs require --allow-large-run or a smaller --limit."
+    )
+    assert summary["raw_model_response_stored"] is False
+    assert not output_path.exists()
 
 
 def test_run_review_pii_screening_suggestions_rejects_remote_ollama_url(tmp_path: Path) -> None:
