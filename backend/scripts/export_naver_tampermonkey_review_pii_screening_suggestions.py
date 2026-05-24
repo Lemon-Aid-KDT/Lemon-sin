@@ -61,7 +61,14 @@ DECISION_LIKE_KEYS = frozenset(
 )
 FREE_TEXT_KEYS = frozenset({"comment", "comments", "note", "notes", "review_note"})
 RAW_FORBIDDEN_KEYS = pii_manifest.RAW_FORBIDDEN_KEYS
-LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "file://", "\\Users\\", "\\Volumes\\")
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 MAX_STRING_FIELD_LENGTH = 240
 
@@ -91,11 +98,25 @@ def main() -> None:
         if args.summary
         else output_path.with_suffix(output_path.suffix + ".summary.json")
     )
-    rows, summary = export_review_pii_screening_suggestions(
-        manifest_path=args.manifest.expanduser().resolve(),
-        suggestions_path=args.suggestions.expanduser().resolve(),
-        allow_unmatched_suggestions=args.allow_unmatched_suggestions,
-    )
+    try:
+        rows, summary = export_review_pii_screening_suggestions(
+            manifest_path=args.manifest.expanduser().resolve(),
+            suggestions_path=args.suggestions.expanduser().resolve(),
+            allow_unmatched_suggestions=args.allow_unmatched_suggestions,
+        )
+    except (OSError, ValueError) as exc:
+        failure = _failure_summary(
+            manifest_path=args.manifest,
+            suggestions_path=args.suggestions,
+            error=exc,
+        )
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows),
@@ -177,6 +198,45 @@ def export_review_pii_screening_suggestions(
     }
     _reject_unsafe_payload({"rows": exported_rows, "summary": summary})
     return exported_rows, summary
+
+
+def _failure_summary(
+    *,
+    manifest_path: Path,
+    suggestions_path: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted suggestion export failure summary."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "manifest_name": manifest_path.name,
+        "suggestions_name": suggestions_path.name,
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "manifest_row_count": 0,
+        "suggestion_row_count": 0,
+        "exported_suggestion_count": 0,
+        "pending_without_suggestion_count": 0,
+        "unmatched_suggestion_count": 0,
+        "status_suggestion_counts": {},
+        "confidence_bucket_counts": {},
+        "decision_importable_rows": 0,
+        "operator_decision_required_rows": 0,
+        "external_transfer_allowed_rows": 0,
+        "db_write_performed": False,
+        "external_transfer_performed": False,
+        "ocr_or_llm_call_performed": False,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "free_text_notes_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
 
 
 def _suggestion_row(
@@ -388,6 +448,27 @@ def _reject_unsafe_payload(value: object) -> None:
             _reject_unsafe_payload(item)
     elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
         raise ValueError("Payload contains local path literal.")
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_read_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        return "Local file read failed."
+    message = str(exc).strip()
+    if not message:
+        return "Validation failed."
+    if any(marker in message for marker in LOCAL_PATH_MARKERS):
+        return "Validation failed."
+    if "/" in message or "\\" in message:
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

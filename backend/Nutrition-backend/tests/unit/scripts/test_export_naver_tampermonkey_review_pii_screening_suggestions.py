@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -121,6 +122,7 @@ def test_export_review_pii_screening_suggestions_handles_empty_batch(tmp_path: P
         (_suggestion(review_note="contains text"), "free-text"),
         (_suggestion(raw_model_response="secret"), "raw_model_response"),
         (_suggestion(model_id="/Volumes/Corsair/model"), "local path"),
+        (_suggestion(model_id="/private/tmp/model"), "local path"),
     ],
 )
 def test_export_review_pii_screening_suggestions_rejects_unsafe_payloads(
@@ -169,3 +171,47 @@ def test_export_review_pii_screening_suggestions_rejects_duplicate_ids(tmp_path:
             manifest_path=manifest_path,
             suggestions_path=suggestions_path,
         )
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    manifest_path = tmp_path / "missing-manifest.jsonl"
+    suggestions_path = tmp_path / "missing-suggestions.jsonl"
+    output_path = tmp_path / "suggestions-export.jsonl"
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "export_naver_tampermonkey_review_pii_screening_suggestions.py",
+            "--manifest",
+            str(manifest_path),
+            "--suggestions",
+            str(suggestions_path),
+            "--output",
+            str(output_path),
+            "--summary",
+            str(summary_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        exporter.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_read_error"
+    assert summary["error_message"] == "Local file read failed."
+    assert summary["decision_importable_rows"] == 0
+    assert summary["external_transfer_performed"] is False
+    assert summary["local_path_literals_stored"] is False
+    assert not output_path.exists()
