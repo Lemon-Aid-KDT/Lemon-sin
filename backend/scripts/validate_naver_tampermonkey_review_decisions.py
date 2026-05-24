@@ -1,0 +1,320 @@
+"""Validate review UI decisions before approved DB import export.
+
+The validator reads ``naver-tampermonkey-review-ingest-v1`` rows and checks any
+attached ``review_decision`` objects. It is intentionally read-only: no DB write,
+no OCR call, and no artifact mutation. Pending rows are allowed by default so the
+operator can validate an in-progress review queue.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from collections import Counter
+from datetime import UTC, datetime
+from pathlib import Path
+
+SCHEMA_VERSION = "naver-tampermonkey-review-decision-validation-v1"
+EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
+MAX_TOKEN_LENGTH = 80
+MAX_TEXT_LENGTH = 200
+MAX_INGREDIENTS_PER_PRODUCT = 128
+SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "file://", "\\Users\\", "\\Volumes\\")
+ALLOWED_DECISION_STATUSES = frozenset({"approved", "rejected", "needs_changes"})
+APPROVED_ATTESTATIONS = (
+    "attest_pii_screening_completed",
+    "attest_no_raw_ocr_text",
+    "attest_not_clinical_recommendation",
+)
+FREE_TEXT_DECISION_KEYS = frozenset(
+    {
+        "comment",
+        "comments",
+        "free_text_note",
+        "note",
+        "notes",
+        "raw_note",
+        "review_note",
+        "reviewer_note",
+    }
+)
+RAW_FORBIDDEN_KEYS = frozenset(
+    {
+        "api_key",
+        "authorization",
+        "image_bytes",
+        "ocr_text",
+        "provider_payload",
+        "raw_image",
+        "raw_model_response",
+        "raw_ocr_text",
+        "raw_provider_payload",
+        "request_headers",
+        "service_key",
+    }
+)
+LITERAL_FORBIDDEN_KEYS = frozenset(
+    {
+        "absolute_path",
+        "image_path",
+        "local_path",
+        "product_dir",
+    }
+)
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for review decision validation."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument(
+        "--summary",
+        type=Path,
+        default=None,
+        help="Optional summary JSON path. When omitted, only stdout is written.",
+    )
+    parser.add_argument(
+        "--require-reviewed",
+        action="store_true",
+        help="Fail when rows are still missing review_decision.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Validate review decisions and write a redacted summary."""
+    args = parse_args()
+    summary = validate_review_decisions(
+        input_path=args.input.expanduser().resolve(),
+        require_reviewed=args.require_reviewed,
+    )
+    if args.summary is not None:
+        summary_path = args.summary.expanduser().resolve()
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def validate_review_decisions(
+    *,
+    input_path: Path,
+    require_reviewed: bool = False,
+) -> dict[str, object]:
+    """Validate review UI decision payloads.
+
+    Args:
+        input_path: Review ingest JSONL path.
+        require_reviewed: Whether every row must include a decision.
+
+    Returns:
+        Redacted validation summary.
+
+    Raises:
+        ValueError: If any decision is unsafe, malformed, or violates approval
+            gates.
+    """
+    rows = _read_rows(input_path)
+    status_counts: Counter[str] = Counter()
+    pending_count = 0
+    approved_ingredient_count = 0
+    for row in rows:
+        _validate_row_schema(row)
+        decision = row.get("review_decision")
+        if decision is None:
+            pending_count += 1
+            status_counts["pending"] += 1
+            continue
+        if not isinstance(decision, dict):
+            raise ValueError("review_decision must be an object.")
+        status = _validate_decision(row, decision)
+        status_counts[status] += 1
+        if status == "approved":
+            approved_ingredient_count += len(decision.get("ingredients", []))  # type: ignore[arg-type]
+
+    if require_reviewed and pending_count:
+        raise ValueError("Review decision validation requires every row to be reviewed.")
+
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "input_name": input_path.name,
+        "row_count": len(rows),
+        "pending_count": pending_count,
+        "decision_status_counts": dict(sorted(status_counts.items())),
+        "approved_ingredient_count": approved_ingredient_count,
+        "require_reviewed": require_reviewed,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "free_text_review_notes_stored": False,
+        "clinical_recommendations_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
+def _validate_row_schema(row: dict[str, object]) -> None:
+    """Validate the review ingest row envelope."""
+    _reject_unsafe_payload(row)
+    if row.get("schema_version") != EXPECTED_INPUT_SCHEMA_VERSION:
+        raise ValueError("Review decision input rows must use review ingest schema.")
+    if row.get("requires_human_review") is not True:
+        raise ValueError("Review ingest rows must require human review.")
+    if row.get("is_clinical_recommendation") is not False:
+        raise ValueError("Review ingest rows must not be clinical recommendations.")
+    if row.get("clinical_recommendation_forbidden") is not True:
+        raise ValueError("Review ingest rows must keep clinical recommendation forbidden.")
+
+
+def _validate_decision(row: dict[str, object], decision: dict[str, object]) -> str:
+    """Validate one review decision object and return its status."""
+    _reject_unsafe_payload(decision)
+    _reject_free_text_notes(decision)
+    status = _required_safe_token(decision, "status")
+    if status not in ALLOWED_DECISION_STATUSES:
+        raise ValueError(f"Unsupported review decision status: {status}")
+    _required_safe_token(decision, "reviewer_id")
+    _required_string(decision, "reviewed_at")
+    if status == "approved":
+        _validate_approved_decision(row, decision)
+    else:
+        reason_codes = _safe_token_list(decision.get("reason_codes"))
+        if not reason_codes:
+            raise ValueError(f"{status} review decisions require reason_codes.")
+        if decision.get("ingredients"):
+            raise ValueError(f"{status} review decisions cannot include import ingredients.")
+    return status
+
+
+def _validate_approved_decision(row: dict[str, object], decision: dict[str, object]) -> None:
+    """Validate approval-only safety gates and reviewed ingredients."""
+    if row.get("contains_personal_data") is not False:
+        raise ValueError("Approved review decisions require PII clearance.")
+    for key in APPROVED_ATTESTATIONS:
+        if decision.get(key) is not True:
+            raise ValueError(f"Approved review decision requires attestation: {key}")
+    _required_string(decision, "display_name")
+    ingredients = decision.get("ingredients")
+    if not isinstance(ingredients, list) or not ingredients:
+        raise ValueError("Approved review decisions require reviewed ingredients.")
+    if len(ingredients) > MAX_INGREDIENTS_PER_PRODUCT:
+        raise ValueError("Approved review decision has too many ingredients.")
+    for ingredient in ingredients:
+        if not isinstance(ingredient, dict):
+            raise ValueError("Approved review ingredients must be objects.")
+        _reject_unsafe_payload(ingredient)
+        _required_string(ingredient, "display_name", max_length=160)
+        nutrient_code = ingredient.get("nutrient_code")
+        if nutrient_code is not None:
+            _safe_token(nutrient_code)
+        amount = ingredient.get("amount")
+        if amount is not None and (
+            not isinstance(amount, int | float | str) or str(amount).startswith("-")
+        ):
+            raise ValueError("Approved review ingredient amount must be non-negative.")
+        unit = ingredient.get("unit")
+        if unit is not None:
+            _required_string(ingredient, "unit", max_length=40)
+
+
+def _read_rows(path: Path) -> list[dict[str, object]]:
+    """Read review ingest JSONL rows and reject unsafe payloads."""
+    rows: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError(f"JSONL rows must be objects: {path}")
+        _reject_unsafe_payload(row)
+        rows.append(row)
+    return rows
+
+
+def _required_safe_token(row: dict[str, object], key: str) -> str:
+    """Return a required bounded token field."""
+    value = row.get(key)
+    token = _safe_token(value)
+    if token is None:
+        raise ValueError(f"Row requires safe token field: {key}")
+    return token
+
+
+def _safe_token(value: object) -> str | None:
+    """Return a bounded token string or None."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    stripped = value.strip()
+    if len(stripped) > MAX_TOKEN_LENGTH or not SAFE_TOKEN_PATTERN.fullmatch(stripped):
+        raise ValueError(f"Unsafe token value: {stripped[:MAX_TOKEN_LENGTH]}")
+    return stripped
+
+
+def _safe_token_list(value: object) -> list[str]:
+    """Return sorted unique safe tokens from a list value."""
+    if not isinstance(value, list):
+        return []
+    tokens: list[str] = []
+    for item in value:
+        token = _safe_token(item)
+        if token is not None:
+            tokens.append(token)
+    return sorted(set(tokens))
+
+
+def _required_string(
+    row: dict[str, object],
+    key: str,
+    *,
+    max_length: int = MAX_TEXT_LENGTH,
+) -> str:
+    """Return a required bounded string field."""
+    value = row.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Row requires string field: {key}")
+    stripped = value.strip()
+    if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+    if len(stripped) > max_length:
+        raise ValueError(f"Row string field is too long: {key}")
+    return stripped
+
+
+def _reject_free_text_notes(value: dict[str, object]) -> None:
+    """Reject free-text review notes that could accidentally store sensitive text."""
+    keys = {str(key).lower() for key in value}
+    forbidden = FREE_TEXT_DECISION_KEYS.intersection(keys)
+    if forbidden:
+        raise ValueError(f"Review decision contains free-text note field(s): {sorted(forbidden)}")
+
+
+def _reject_unsafe_payload(value: object) -> None:
+    """Reject raw keys, local path literals, and sensitive literal keys recursively."""
+    if isinstance(value, dict):
+        lowered_keys = {str(key).lower() for key in value}
+        forbidden = RAW_FORBIDDEN_KEYS.intersection(lowered_keys)
+        literal_forbidden = LITERAL_FORBIDDEN_KEYS.intersection(lowered_keys)
+        if forbidden:
+            raise ValueError(f"Payload contains forbidden raw field(s): {sorted(forbidden)}")
+        if literal_forbidden:
+            raise ValueError(
+                f"Payload contains forbidden literal field(s): {sorted(literal_forbidden)}"
+            )
+        for nested in value.values():
+            _reject_unsafe_payload(nested)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            _reject_unsafe_payload(item)
+    elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+
+
+if __name__ == "__main__":
+    main()
