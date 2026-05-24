@@ -229,3 +229,46 @@ def test_render_markdown_omits_raw_content() -> None:
     assert "## Size Bucket Metrics" in markdown
     assert "raw_ocr_text" not in markdown
     assert "secret" not in markdown
+
+
+def test_render_markdown_escapes_table_cells() -> None:
+    """Verify manifest/provider labels cannot break Markdown table structure."""
+    markdown = evaluate.render_markdown(
+        {
+            "generated_at": "2026-05-22T00:00:00+00:00",
+            "manifest_name": "manifest.jsonl",
+            "fixture_count": 1,
+            "observation_count": 1,
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "raw_model_response_stored": False,
+            "providers": {
+                "paddle|local": {
+                    "call_count": 1,
+                    "completed_rate": 1.0,
+                    "text_non_empty_rate": 1.0,
+                    "llm_parse_success_rate": 1.0,
+                    "latency_ms_p50": 100,
+                    "latency_ms_p95": 100,
+                }
+            },
+            "by_section": {},
+            "by_category": {
+                "[오메가|3]\n<script>": {
+                    "paddle|local": {
+                        "call_count": 1,
+                        "completed_rate": 1.0,
+                        "text_non_empty_rate": 1.0,
+                        "llm_parse_success_rate": 1.0,
+                    }
+                }
+            },
+            "by_product": {},
+            "by_mime_type": {},
+            "by_size_bucket": {},
+        }
+    )
+
+    assert "paddle\\|local" in markdown
+    assert "[오메가\\|3] &lt;script&gt;" in markdown
+    assert "<script>" not in markdown

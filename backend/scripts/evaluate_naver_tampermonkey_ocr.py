@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 from collections import Counter
 from dataclasses import dataclass, field
@@ -327,13 +328,13 @@ def render_markdown(summary: dict[str, object]) -> str:
                 continue
             lines.append(
                 "| {provider} | {calls} | {completed} | {text_rate} | {llm_rate} | {p50} | {p95} |".format(
-                    provider=provider,
-                    calls=value.get("call_count"),
-                    completed=value.get("completed_rate"),
-                    text_rate=value.get("text_non_empty_rate"),
-                    llm_rate=value.get("llm_parse_success_rate"),
-                    p50=value.get("latency_ms_p50"),
-                    p95=value.get("latency_ms_p95"),
+                    provider=_markdown_cell(provider),
+                    calls=_markdown_cell(value.get("call_count")),
+                    completed=_markdown_cell(value.get("completed_rate")),
+                    text_rate=_markdown_cell(value.get("text_non_empty_rate")),
+                    llm_rate=_markdown_cell(value.get("llm_parse_success_rate")),
+                    p50=_markdown_cell(value.get("latency_ms_p50")),
+                    p95=_markdown_cell(value.get("latency_ms_p95")),
                 )
             )
     _append_group_metrics(
@@ -396,14 +397,22 @@ def _append_group_metrics(
                 continue
             lines.append(
                 "| {group} | {provider} | {calls} | {completed} | {text_rate} | {llm_rate} |".format(
-                    group=group,
-                    provider=provider,
-                    calls=value.get("call_count"),
-                    completed=value.get("completed_rate"),
-                    text_rate=value.get("text_non_empty_rate"),
-                    llm_rate=value.get("llm_parse_success_rate"),
+                    group=_markdown_cell(group),
+                    provider=_markdown_cell(provider),
+                    calls=_markdown_cell(value.get("call_count")),
+                    completed=_markdown_cell(value.get("completed_rate")),
+                    text_rate=_markdown_cell(value.get("text_non_empty_rate")),
+                    llm_rate=_markdown_cell(value.get("llm_parse_success_rate")),
                 )
             )
+
+
+def _markdown_cell(value: object) -> str:
+    """Return one safe GitHub Markdown table cell value."""
+    if value is None:
+        return ""
+    text = " ".join(str(value).splitlines())
+    return html.escape(text, quote=False).replace("|", r"\|")
 
 
 def _collect_observation_rows(
