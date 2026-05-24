@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,7 +40,7 @@ def test_build_provider_runs_allows_local_paddle_with_llm_parse(tmp_path: Path) 
         output_root=tmp_path / "out",
         providers=("paddleocr",),
         env_file=tmp_path / ".env",
-        python_executable=Path("/tmp/ocr-python"),
+        python_executable=Path("/private/tmp/ocr-python"),
         llm_parse=True,
         allow_external_providers=False,
         allow_review_external=False,
@@ -48,11 +49,14 @@ def test_build_provider_runs_allows_local_paddle_with_llm_parse(tmp_path: Path) 
     assert len(runs) == 1
     run = runs[0]
     assert run.provider_id == "paddleocr_local"
-    assert run.command[0] == "/tmp/ocr-python"
-    assert run.python_executable == Path("/tmp/ocr-python")
+    assert run.command[0] == "/private/tmp/ocr-python"
+    assert run.python_executable == Path("/private/tmp/ocr-python")
     assert run.env_overrides["RUN_PADDLEOCR_PROBE"] == "1"
     assert "--llm-parse" in run.command
     redacted = json.dumps(run.redacted(), ensure_ascii=False)
+    assert "/private/tmp" not in redacted
+    assert str(tmp_path) not in redacted
+    assert ".env" not in redacted
     assert "api_key" not in redacted.lower()
     assert "secret" not in redacted.lower()
 
@@ -117,6 +121,84 @@ def test_parse_provider_aliases_rejects_unknown_alias() -> None:
     """Verify unsupported provider aliases fail closed."""
     with pytest.raises(ValueError, match="Unsupported provider alias"):
         runner.parse_provider_aliases("paddleocr,unknown")
+
+
+def test_main_dry_run_output_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify dry-run CLI output does not expose local paths or env filenames."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_jsonl(
+        manifest_path,
+        [
+            {
+                "fixture_id": "detail-1",
+                "section": "detail",
+                "contains_personal_data": False,
+                "external_transfer_allowed": True,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_naver_tampermonkey_ocr_eval.py",
+            "--manifest",
+            str(manifest_path),
+            "--output-root",
+            str(tmp_path / "out"),
+            "--env-file",
+            str(tmp_path / ".env"),
+            "--python-executable",
+            "/private/tmp/ocr-python",
+            "--dry-run",
+        ],
+    )
+
+    runner.main()
+
+    printed = capsys.readouterr().out
+    payload = json.loads(printed)
+    assert payload["runs"][0]["output_dir_name"] == "paddleocr-observations"
+    assert payload["runs"][0]["python_executable_name"] == "ocr-python"
+    assert "/private/tmp" not in printed
+    assert str(tmp_path) not in printed
+    assert ".env" not in printed
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_naver_tampermonkey_ocr_eval.py",
+            "--manifest",
+            str(tmp_path / "missing-manifest.jsonl"),
+            "--output-root",
+            str(tmp_path / "out"),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        runner.main()
+
+    printed = capsys.readouterr().out
+    payload = json.loads(printed)
+    assert exc_info.value.code == 1
+    assert payload["status"] == "error"
+    assert payload["error_code"] == "local_file_error"
+    assert payload["manifest_name"] == "missing-manifest.jsonl"
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert "/private/tmp" not in printed
 
 
 def test_run_provider_evaluations_resumes_complete_output(tmp_path: Path) -> None:
@@ -206,3 +288,25 @@ def test_run_provider_evaluations_reruns_not_run_output(tmp_path: Path) -> None:
     assert result.completed_runs == [run]
     assert result.executed_runs == [run]
     assert result.resumed_runs == []
+
+
+def test_run_comparison_report_returns_names_without_paths(tmp_path: Path) -> None:
+    """Verify comparison report summaries do not expose output paths."""
+    commands: list[list[str]] = []
+
+    def fake_runner(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    report = runner.run_comparison_report(
+        manifest_path=tmp_path / "manifest.jsonl",
+        output_root=tmp_path / "out",
+        observation_dirs=[tmp_path / "paddleocr-observations"],
+        runner=fake_runner,
+    )
+
+    assert commands
+    assert report["json_name"] == runner.DEFAULT_REPORT_JSON_NAME
+    assert report["markdown_name"] == runner.DEFAULT_REPORT_MARKDOWN_NAME
+    serialized = json.dumps(report, ensure_ascii=False)
+    assert str(tmp_path) not in serialized

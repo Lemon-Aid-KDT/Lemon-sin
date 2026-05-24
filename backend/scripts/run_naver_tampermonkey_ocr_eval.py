@@ -8,6 +8,7 @@ or raw OCR text.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -40,6 +41,17 @@ RAW_FORBIDDEN_KEYS = frozenset(
         "service_key",
     }
 )
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
+PATH_VALUE_FLAGS = frozenset({"--manifest", "--output-dir", "--env-file"})
+DEFAULT_REPORT_JSON_NAME = "naver-ocr-provider-comparison.json"
+DEFAULT_REPORT_MARKDOWN_NAME = "naver-ocr-provider-comparison.md"
 
 
 @dataclass(frozen=True)
@@ -64,14 +76,18 @@ class ProviderRun:
 
     def redacted(self) -> dict[str, object]:
         """Return a JSON-safe, non-secret run description."""
-        return {
+        payload = {
             "alias": self.alias,
             "provider_id": self.provider_id,
-            "output_dir": str(self.output_dir),
-            "python_executable": str(self.python_executable),
-            "command": list(self.command),
+            "output_dir_name": self.output_dir.name,
+            "output_dir_hash": _sha256_text(str(self.output_dir.expanduser())),
+            "python_executable_name": self.python_executable.name,
+            "python_executable_hash": _sha256_text(str(self.python_executable.expanduser())),
+            "command": _redacted_command(self.command),
             "env_overrides": dict(sorted(self.env_overrides.items())),
         }
+        _reject_unsafe_payload(payload)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -140,39 +156,55 @@ def main() -> None:
     parser.add_argument("--skip-evaluate", action="store_true")
     args = parser.parse_args()
 
-    aliases = parse_provider_aliases(args.providers)
-    runs = build_provider_runs(
-        manifest_path=args.manifest,
-        output_root=args.output_root,
-        providers=aliases,
-        env_file=args.env_file,
-        python_executable=args.python_executable,
-        llm_parse=args.llm_parse,
-        allow_external_providers=args.allow_external_providers,
-        allow_review_external=args.allow_review_external,
-    )
-    if args.dry_run:
-        print(json.dumps({"runs": [run.redacted() for run in runs]}, ensure_ascii=False, indent=2))
-        return
-
-    execution = run_provider_evaluations(
-        runs,
-        resume=args.resume,
-        manifest_rows=_read_manifest_rows(args.manifest),
-    )
-    summary: dict[str, object] = {
-        "completed_runs": [run.redacted() for run in execution.completed_runs],
-        "executed_runs": [run.redacted() for run in execution.executed_runs],
-        "resumed_runs": [run.redacted() for run in execution.resumed_runs],
-    }
-    if execution.completed_runs and not args.skip_evaluate:
-        report = run_comparison_report(
+    try:
+        aliases = parse_provider_aliases(args.providers)
+        runs = build_provider_runs(
             manifest_path=args.manifest,
             output_root=args.output_root,
-            observation_dirs=[run.output_dir for run in execution.completed_runs],
+            providers=aliases,
+            env_file=args.env_file,
+            python_executable=args.python_executable,
+            llm_parse=args.llm_parse,
+            allow_external_providers=args.allow_external_providers,
+            allow_review_external=args.allow_review_external,
         )
-        summary["report"] = report
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+        if args.dry_run:
+            print(
+                json.dumps(
+                    {"runs": [run.redacted() for run in runs]},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+        execution = run_provider_evaluations(
+            runs,
+            resume=args.resume,
+            manifest_rows=_read_manifest_rows(args.manifest),
+        )
+        summary: dict[str, object] = {
+            "completed_runs": [run.redacted() for run in execution.completed_runs],
+            "executed_runs": [run.redacted() for run in execution.executed_runs],
+            "resumed_runs": [run.redacted() for run in execution.resumed_runs],
+        }
+        if execution.completed_runs and not args.skip_evaluate:
+            report = run_comparison_report(
+                manifest_path=args.manifest,
+                output_root=args.output_root,
+                observation_dirs=[run.output_dir for run in execution.completed_runs],
+            )
+            summary["report"] = report
+        _reject_unsafe_payload(summary)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
+        failure = _failure_summary(
+            manifest_path=args.manifest,
+            output_root=args.output_root,
+            error=exc,
+        )
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
 
 
 def parse_provider_aliases(value: str) -> tuple[ProviderAlias, ...]:
@@ -337,8 +369,9 @@ def run_comparison_report(
         command.extend(["--observation-dir", str(directory)])
     runner(command, check=True, cwd=str(BACKEND_ROOT.parent), text=True)
     return {
-        "json": str(output_root / "naver-ocr-provider-comparison.json"),
-        "markdown": str(output_root / "naver-ocr-provider-comparison.md"),
+        "json_name": DEFAULT_REPORT_JSON_NAME,
+        "markdown_name": DEFAULT_REPORT_MARKDOWN_NAME,
+        "output_root_hash": _sha256_text(str(output_root.expanduser())),
     }
 
 
@@ -450,17 +483,119 @@ def _validate_manifest_external_transfer(rows: Sequence[dict[str, object]]) -> N
             raise ValueError("External provider rows require external_transfer_allowed=true.")
 
 
+def _failure_summary(
+    *,
+    manifest_path: Path,
+    output_root: Path,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted runner failure summary."""
+    summary = {
+        "status": "error",
+        "manifest_name": manifest_path.name,
+        "manifest_path_hash": _sha256_text(str(manifest_path.expanduser())),
+        "output_root_name": output_root.name,
+        "output_root_hash": _sha256_text(str(output_root.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
+def _redacted_command(command: Sequence[str]) -> list[str]:
+    """Return command tokens without local executable or artifact paths."""
+    redacted: list[str] = []
+    previous_flag: str | None = None
+    for index, token in enumerate(command):
+        if previous_flag in PATH_VALUE_FLAGS:
+            redacted.append("<env_file>" if previous_flag == "--env-file" else Path(token).name)
+            previous_flag = None
+            continue
+        if token in PATH_VALUE_FLAGS:
+            redacted.append(token)
+            previous_flag = token
+            continue
+        if index == 0:
+            redacted.append(Path(token).name or "<python>")
+            continue
+        if _looks_like_path(token):
+            redacted.append(Path(token).name or "<path>")
+            continue
+        redacted.append(token)
+    _reject_unsafe_payload(redacted)
+    return redacted
+
+
+def _looks_like_path(value: str) -> bool:
+    """Return whether a command token resembles a local path."""
+    return (
+        any(marker in value for marker in LOCAL_PATH_MARKERS)
+        or value.startswith(".")
+        or "/" in value
+        or "\\" in value
+    )
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a non-sensitive CLI error code."""
+    if isinstance(exc, subprocess.CalledProcessError):
+        return "subprocess_error"
+    if isinstance(exc, OSError):
+        return "local_file_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, subprocess.CalledProcessError):
+        message = "Provider runner subprocess failed."
+    elif isinstance(exc, OSError):
+        message = "Local file operation failed."
+    elif isinstance(exc, json.JSONDecodeError):
+        message = "JSON decode failed."
+    else:
+        message = str(exc).strip()
+    if (
+        not message
+        or any(marker in message for marker in LOCAL_PATH_MARKERS)
+        or "/" in message
+        or "\\" in message
+    ):
+        return "Validation failed."
+    return message[:200]
+
+
+def _sha256_text(value: str) -> str:
+    """Return SHA-256 for redacted path identifiers."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def _reject_raw_fields(value: object) -> None:
     """Reject raw OCR/image/provider/model fields before running providers."""
+    _reject_unsafe_payload(value)
+
+
+def _reject_unsafe_payload(value: object) -> None:
+    """Reject raw fields and local path literals before public output."""
     if isinstance(value, dict):
         forbidden = RAW_FORBIDDEN_KEYS.intersection(str(key).lower() for key in value)
         if forbidden:
             raise ValueError(f"Payload contains forbidden raw field(s): {sorted(forbidden)}")
         for nested in value.values():
-            _reject_raw_fields(nested)
+            _reject_unsafe_payload(nested)
     elif isinstance(value, list):
         for item in value:
-            _reject_raw_fields(item)
+            _reject_unsafe_payload(item)
+    elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
 
 
 if __name__ == "__main__":

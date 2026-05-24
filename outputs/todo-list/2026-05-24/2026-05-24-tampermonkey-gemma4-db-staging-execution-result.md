@@ -178,3 +178,20 @@ CLI failure redaction probe: pass
 artifact privacy gate: pass
 detect-secrets scan: pass
 ```
+
+## 후속 보강 4 - runner dry-run redaction
+
+provider runner wrapper가 dry-run/summary에서 collector command 절대경로, Python 실행 파일 경로, output root 경로, env file 경로를 노출하지 않도록 보강했다.
+
+- 실제 subprocess command는 내부에서만 절대경로를 유지한다.
+- 공개 summary의 run plan은 `output_dir_name`, `output_dir_hash`, `python_executable_name`, `python_executable_hash`만 남긴다.
+- `--env-file` 값은 filename도 출력하지 않고 `<env_file>` 토큰으로 대체한다.
+- wrapper 실패는 traceback 대신 redacted failure summary로 출력한다.
+
+보강 검증:
+
+```text
+test_run_naver_tampermonkey_ocr_eval.py: 9 passed
+dry-run redaction probe: pass
+CLI failure redaction probe: pass
+```
