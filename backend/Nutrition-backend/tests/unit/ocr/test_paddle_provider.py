@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import sys
 import types
+from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import pytest
+from PIL import Image
 from src.config import Settings
 from src.ocr.base import OCRError, OCRImageInput
 from src.ocr.providers.paddle import (
@@ -36,6 +39,22 @@ class _FakePaddlePredictor:
         return self.prediction
 
 
+class _ReadingFakePaddlePredictor(_FakePaddlePredictor):
+    """Fake predictor that records temporary OCR input bytes."""
+
+    def __init__(self, prediction: object) -> None:
+        """Initialize prediction and captured-byte storage."""
+        super().__init__(prediction)
+        self.received_bytes: bytes | None = None
+
+    def predict(self, image_path: str) -> object:
+        """Capture temporary file bytes and return configured prediction data."""
+        self.received_path = image_path
+        with Path(image_path).open("rb") as file:
+            self.received_bytes = file.read()
+        return self.prediction
+
+
 def _image_input() -> OCRImageInput:
     """Return a minimal OCR image input.
 
@@ -47,6 +66,18 @@ def _image_input() -> OCRImageInput:
         mime_type="image/png",
         width=10,
         height=8,
+    )
+
+
+def _valid_png_image_input() -> OCRImageInput:
+    """Return a valid PNG OCR image input for preprocessing tests."""
+    buffer = BytesIO()
+    Image.new("RGB", (20, 12), (240, 240, 240)).save(buffer, format="PNG")
+    return OCRImageInput(
+        image_bytes=buffer.getvalue(),
+        mime_type="image/png",
+        width=20,
+        height=12,
     )
 
 
@@ -67,6 +98,44 @@ async def test_paddle_adapter_flattens_prediction_text_and_scores() -> None:
     assert result.text == "비타민 D 1000\n비타민 D 25 ug"
     assert result.confidence == pytest.approx(0.90)
     assert predictor.received_path is not None
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_preprocess_mode_reencodes_temp_png_only() -> None:
+    """Verify opt-in preprocessing changes only the local temporary OCR input."""
+    predictor = _ReadingFakePaddlePredictor([{"rec_texts": ["아연 10 mg"], "rec_scores": [0.91]}])
+    adapter = PaddleOCRAdapter(
+        Settings(
+            _env_file=None,
+            enable_local_ocr=True,
+            local_ocr_preprocess_mode="autocontrast",
+        ),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_valid_png_image_input())
+
+    assert result.text == "아연 10 mg"
+    assert predictor.received_path is not None
+    assert predictor.received_path.endswith(".png")
+    assert predictor.received_bytes is not None
+    assert predictor.received_bytes.startswith(b"\x89PNG")
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_preprocess_failure_is_bounded() -> None:
+    """Verify invalid images fail with a bounded preprocessing error."""
+    adapter = PaddleOCRAdapter(
+        Settings(
+            _env_file=None,
+            enable_local_ocr=True,
+            local_ocr_preprocess_mode="grayscale_autocontrast",
+        ),
+        predictor=_FakePaddlePredictor([]),
+    )
+
+    with pytest.raises(OCRError, match="preprocessing failed"):
+        await adapter.extract_text(_image_input())
 
 
 @pytest.mark.asyncio

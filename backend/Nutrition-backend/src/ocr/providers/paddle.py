@@ -11,6 +11,7 @@ from typing import Any, Protocol, cast
 
 from src.config import Settings
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.ocr.preprocessing import OCRPreprocessingError, preprocess_local_ocr_image
 
 PADDLE_OCR_PROVIDER = "paddleocr_local"
 PADDLE_MOBILE_TEXT_DETECTION_MODEL = "PP-OCRv5_mobile_det"
@@ -76,10 +77,19 @@ class PaddleOCRAdapter(OCRAdapter):
             device=self._settings.local_ocr_device,
             use_textline_orientation=self._settings.local_ocr_use_textline_orientation,
         )
-        suffix = _suffix_for_mime_type(image.mime_type)
+        try:
+            image_bytes, mime_type = preprocess_local_ocr_image(
+                image.image_bytes,
+                mime_type=image.mime_type,
+                mode=self._settings.local_ocr_preprocess_mode,
+            )
+        except OCRPreprocessingError as exc:
+            raise OCRError("PaddleOCR preprocessing failed.") from exc
+
+        suffix = _suffix_for_mime_type(mime_type)
         with TemporaryDirectory(prefix="lemon-paddleocr-") as temporary_directory:
             image_path = Path(temporary_directory) / f"supplement_label{suffix}"
-            image_path.write_bytes(image.image_bytes)
+            image_path.write_bytes(image_bytes)
             prediction = predictor.predict(str(image_path))
 
         fragments, scores = _collect_text_and_scores(prediction)

@@ -233,6 +233,7 @@ class Settings(BaseSettings):
         local_ocr_language: Language setting passed to local OCR providers.
         local_ocr_device: Optional local OCR runtime device selector.
         local_ocr_confidence_threshold: Minimum confidence for local OCR fallback candidates.
+        local_ocr_preprocess_mode: Optional local OCR-only image preprocessing mode.
         enable_clova_ocr: Whether NAVER Cloud CLOVA OCR fallback may run.
         vision_roi_min_confidence: Minimum detection confidence accepted for a YOLO ROI.
         vision_roi_allowed_classes: Allowed non-text object labels accepted from YOLO.
@@ -390,6 +391,17 @@ class Settings(BaseSettings):
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
     local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    local_ocr_preprocess_mode: Literal[
+        "none",
+        "autocontrast",
+        "grayscale_autocontrast",
+    ] = Field(
+        default="none",
+        description=(
+            "Opt-in local PaddleOCR input preprocessing for diagnostic reruns. "
+            "The default keeps provider input bytes unchanged."
+        ),
+    )
     local_ocr_use_textline_orientation: bool = Field(
         default=False,
         description=(

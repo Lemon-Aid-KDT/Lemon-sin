@@ -290,10 +290,29 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
   - `naver-tm-detail-000112`: zinc, brightness bright, contrast low, squareish, small, `try_glare_or_overexposure_review`, `try_contrast_autocontrast`
 - 판단: 2건은 이미지 품질 bucket만으로는 설명되지 않아 PP-OCRv5 server 또는 layout model 비교 후보이고, 2건은 glare/contrast 전처리 후보이다.
 
+구현된 local OCR 전처리 opt-in 보강:
+
+- `LOCAL_OCR_PREPROCESS_MODE`를 추가했다. 기본값은 `none`이며 기존 PaddleOCR 입력 바이트를 변경하지 않는다.
+- 허용 mode:
+  - `none`: 기존 동작 유지
+  - `autocontrast`: EXIF 방향 보정 후 RGB autocontrast 적용, temp PNG로만 전달
+  - `grayscale_autocontrast`: EXIF 방향 보정 후 grayscale autocontrast 적용, temp PNG로만 전달
+- 전처리 이미지는 PaddleOCR adapter의 `TemporaryDirectory` 안에서만 사용하고 artifact로 저장하지 않는다.
+- runner/collector child env allowlist에 `LOCAL_OCR_PREPROCESS_MODE`만 추가했으며, unrelated parent secret 미전파 정책은 유지했다.
+- 실제 잔여 `ocr_low_confidence` 4건에 대해 `LOCAL_OCR_USE_TEXTLINE_ORIENTATION=true`, `LOCAL_OCR_CONFIDENCE_THRESHOLD=0.60` 조건에서 비교했다.
+- 결과:
+  - `autocontrast`: call 4, completed 0, error `ocr_low_confidence` 4
+  - `grayscale_autocontrast`: call 4, completed 1, error `ocr_low_confidence` 3, 복구 fixture `naver-tm-detail-000030`
+- privacy scan:
+  - 두 retry output directory non-strict finding 0
+  - 공개 가능한 report JSON strict literal-key finding 0
+- 판단: 과노출 계열 중 1건은 grayscale autocontrast로 복구 가능하다. 남은 3건(`naver-tm-detail-000007`, `naver-tm-detail-000050`, `naver-tm-detail-000112`)은 동일 전처리로 해결되지 않으므로 PP-OCRv5 server model 또는 layout/region 분리 비교 후보로 남긴다.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
 - OCR retry에 필요한 `LOCAL_OCR_USE_TEXTLINE_ORIENTATION`, `LOCAL_OCR_CONFIDENCE_THRESHOLD`만 runner allowlist에 추가하고 unrelated parent secret 미전파 테스트를 유지한다.
+- OCR 전처리 retry에 필요한 `LOCAL_OCR_PREPROCESS_MODE`만 runner/collector allowlist에 추가하고, 전처리 이미지는 temp file로만 사용한다.
 - retry reconcile은 raw OCR text, raw provider payload, raw model response, image bytes, request headers, local path literal을 recursive gate로 거부한다.
 - image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
