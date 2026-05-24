@@ -10,6 +10,9 @@
 - Pydantic Models / validating data: https://docs.pydantic.dev/latest/concepts/models/
 - Pydantic `model_validate_json` API: https://docs.pydantic.dev/latest/api/base_model/#pydantic.main.BaseModel.model_validate_json
 - Python subprocess `env` 동작: https://docs.python.org/3/library/subprocess.html#subprocess.run
+- Pillow Image module: https://pillow.readthedocs.io/en/stable/reference/Image.html
+- Pillow ImageOps module: https://pillow.readthedocs.io/en/stable/reference/ImageOps.html
+- Pillow ImageStat module: https://pillow.readthedocs.io/en/stable/reference/ImageStat.html
 
 문서 기준 판단:
 
@@ -18,6 +21,7 @@
 3. Ollama는 기본 로컬 API가 `http://localhost:11434/api`이고 Chat API와 structured output schema를 지원한다. OCR 원문은 artifact에 저장하지 않고 메모리 안에서만 `/api/chat` 호출 입력으로 사용한다.
 4. Python `subprocess.run(env=...)`는 지정한 mapping이 child process 환경으로 쓰인다. provider runner는 부모 환경 전체를 넘기면 불필요한 secret 전파 위험이 있으므로 allowlist 방식으로 제한한다.
 5. Pydantic V2는 JSON 입력을 `model_validate_json()`으로 schema 검증할 수 있다. Ollama 응답은 raw model response로 저장하지 않고 메모리 안에서 허용 필드만 정규화한 뒤 다시 JSON-mode validation을 통과한 구조만 artifact에 기록한다.
+6. Pillow `Image`/`ImageOps`/`ImageStat`는 이미지 decode, EXIF 방향 보정, grayscale 통계 산출을 지원한다. 잔여 OCR 저신뢰 fixture는 raw image나 local path를 저장하지 않고 width/height, 밝기, 대비 bucket만 산출해 전처리 후보와 모델 비교 후보를 나눈다.
 
 ## 현재 기준선
 
@@ -271,10 +275,26 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 120개 DB-labeling staging 생성 및 reconciled observation merge 결과: staging row 120, matched observation 120, rows with OCR observations 120, rows with LLM ingredients 111, unmatched 0.
 - reconciled output directory privacy scan finding 0, summary/report strict literal-key scan finding 0.
 
+구현된 image quality diagnostic 보강:
+
+- `backend/scripts/export_naver_tampermonkey_ocr_image_quality_diagnostics.py`
+- manifest의 tokenized image path를 런타임 env에서만 해석하고, 출력 artifact에는 `image_path`, `product_dir`, local absolute path를 저장하지 않는다.
+- Pillow `ImageOps.exif_transpose`, grayscale 변환, `ImageStat` 기반 brightness/contrast 통계로 bounded bucket을 만든다.
+- output row에는 fixture id, provider, category key, image sha256, dimension, megapixel/aspect/brightness/contrast bucket, suggested preprocess action만 기록한다.
+- raw OCR text, provider payload, raw model response, image bytes, request headers, local path literal은 input/output recursive gate에서 거부한다.
+- 실제 reconciled 120개 결과의 잔여 `ocr_low_confidence` 4건 진단 결과: diagnostic row 4, decode error 0, strict privacy scan finding 0.
+- bucket 분리:
+  - `naver-tm-detail-000007`: saw_palmetto, brightness normal, contrast high, squareish, small, `try_ppocrv5_server_or_layout_model`
+  - `naver-tm-detail-000030`: omega_3, brightness bright, contrast normal, squareish, small, `try_glare_or_overexposure_review`
+  - `naver-tm-detail-000050`: saw_palmetto, brightness normal, contrast normal, squareish, small, `try_ppocrv5_server_or_layout_model`
+  - `naver-tm-detail-000112`: zinc, brightness bright, contrast low, squareish, small, `try_glare_or_overexposure_review`, `try_contrast_autocontrast`
+- 판단: 2건은 이미지 품질 bucket만으로는 설명되지 않아 PP-OCRv5 server 또는 layout model 비교 후보이고, 2건은 glare/contrast 전처리 후보이다.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
 - OCR retry에 필요한 `LOCAL_OCR_USE_TEXTLINE_ORIENTATION`, `LOCAL_OCR_CONFIDENCE_THRESHOLD`만 runner allowlist에 추가하고 unrelated parent secret 미전파 테스트를 유지한다.
 - retry reconcile은 raw OCR text, raw provider payload, raw model response, image bytes, request headers, local path literal을 recursive gate로 거부한다.
+- image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
