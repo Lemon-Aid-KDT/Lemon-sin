@@ -236,7 +236,7 @@ def _approved_import_row(
         raise ValueError(f"Approved DB import requires reviewed ingredients: {fixture_id}")
     display_name = _required_bounded_string(decision, "display_name")
     reviewer_id = _required_operator_reviewer_id(decision)
-    reviewed_at = _required_bounded_string(decision, "reviewed_at")
+    reviewed_at = _required_timezone_aware_iso_datetime(decision, "reviewed_at")
     category_key = _optional_safe_token(decision.get("category_key")) or _required_safe_token(
         row, "category_key"
     )
@@ -392,6 +392,19 @@ def _required_operator_reviewer_id(row: dict[str, object]) -> str:
     if not OPERATOR_REVIEWER_ID_PATTERN.fullmatch(reviewer_id):
         raise ValueError("reviewer_id must use the operator_ prefix.")
     return reviewer_id
+
+
+def _required_timezone_aware_iso_datetime(row: dict[str, object], key: str) -> str:
+    """Return a required timezone-aware ISO datetime string."""
+    value = _required_bounded_string(row, key)
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(f"Row requires timezone-aware ISO datetime field: {key}") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"Row requires timezone-aware ISO datetime field: {key}")
+    return value
 
 
 def _optional_safe_token(value: object) -> str | None:

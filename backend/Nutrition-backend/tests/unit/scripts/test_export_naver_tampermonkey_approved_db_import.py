@@ -193,6 +193,25 @@ def test_export_rejects_model_only_reviewer_id(tmp_path: Path) -> None:
         approved_export.export_approved_db_import_rows(input_path=input_path)
 
 
+@pytest.mark.parametrize(
+    "reviewed_at",
+    [
+        "2026-05-24T14:30:00",
+        "not-a-date",
+    ],
+)
+def test_export_rejects_non_timezone_aware_reviewed_at(
+    tmp_path: Path,
+    reviewed_at: str,
+) -> None:
+    """Verify direct approved export requires an unambiguous review timestamp."""
+    input_path = tmp_path / "review-ingest.jsonl"
+    _write_jsonl(input_path, [_review_row(review_decision=_decision(reviewed_at=reviewed_at))])
+
+    with pytest.raises(ValueError, match="timezone-aware ISO datetime field: reviewed_at"):
+        approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
 def test_export_rejects_non_human_ingredient_source(tmp_path: Path) -> None:
     """Verify approved DB import cannot preserve OCR or LLM ingredient source."""
     input_path = tmp_path / "review-ingest.jsonl"
