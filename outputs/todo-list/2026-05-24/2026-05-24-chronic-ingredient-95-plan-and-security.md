@@ -470,6 +470,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - DB-labeling staging/review ingest/decision template은 모두 human review gate이며 production DB write를 수행하지 않는다.
 - manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
 - manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count, non-importable decision skeleton, validator와 같은 reviewed_at/ingredient identity contract만 노출한다.
+- review decision apply gate는 decision row의 top-level `fixture_id`가 review ingest row의 `fixture_id`와 일치해야 같은 `review_task_id`에 붙일 수 있다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id와 timezone-aware ISO `reviewed_at`만 허용해 model-only approval 또는 시간대가 불명확한 review decision 우회를 막는다.
 - approved DB import exporter는 human-reviewed source, numeric amount, product 안 unique ingredient identity만 허용해 OCR/LLM provenance, free-form amount, duplicate child row가 DB import 후보에 섞이지 않게 한다.
 - dry-run approved DB import gate는 duplicate source product key와 duplicate ingredient identity를 DB write 전에 차단한다.
@@ -499,6 +500,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - readiness gate: `ready_for_db_import=false`, `human_review_required=true`, blocker `manual_gap_review_pending`, `no_approved_import_rows`, `ocr_provider_errors_present`, `review_rows_not_db_import_ready`; `--require-db-ready` fails as expected.
 - review decision gate: `ollama_gemma4` 같은 model-only reviewer id, naive/invalid `reviewed_at`, duplicate approved ingredient는 validation 및 direct approved export에서 실패하도록 테스트로 고정했다.
 - review decision template gate: timezone-aware `reviewed_at`과 unique approved ingredient identity 요구사항을 template contract에 노출하도록 테스트로 고정했다.
+- review decision apply gate: 같은 `review_task_id`라도 decision row `fixture_id`가 review ingest `fixture_id`와 다르면 실패하도록 테스트로 고정했다.
 - dry-run DB import gate: duplicate source product key와 duplicate ingredient identity는 ORM dry-run plan 생성 전에 실패하도록 테스트로 고정했다.
 - DB write approval gate: `ollama_gemma4` 같은 model-only reviewer id와 naive/non-UTC `approved_at`은 최종 DB write preflight에서 실패하도록 테스트로 고정했다.
 - privacy scan: 2026-05-25 generated output strict literal-key scan finding 0; category-label/inventory strict scan finding 0.

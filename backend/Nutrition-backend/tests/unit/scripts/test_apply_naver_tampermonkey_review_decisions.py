@@ -203,6 +203,26 @@ def test_apply_review_decisions_rejects_unmatched_and_duplicate_decisions(
         )
 
 
+def test_apply_review_decisions_rejects_fixture_id_mismatch(
+    tmp_path: Path,
+) -> None:
+    """Verify decision rows must target the matched fixture, not just review id."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(
+        decisions_path,
+        [_decision_row(fixture_id="naver-tm-detail-999999")],
+    )
+
+    with pytest.raises(ValueError, match="review ingest fixture_id"):
+        applier.apply_review_decisions(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_name="review-with-decisions.jsonl",
+        )
+
+
 def test_apply_review_decisions_rejects_existing_decision_without_overwrite(
     tmp_path: Path,
 ) -> None:

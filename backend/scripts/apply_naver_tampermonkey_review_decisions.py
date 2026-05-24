@@ -15,6 +15,7 @@ import hashlib
 import json
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +30,14 @@ EXPECTED_REVIEW_INGEST_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
 RAW_FORBIDDEN_KEYS = validator.RAW_FORBIDDEN_KEYS
 LITERAL_FORBIDDEN_KEYS = validator.LITERAL_FORBIDDEN_KEYS
 LOCAL_PATH_MARKERS = validator.LOCAL_PATH_MARKERS
+
+
+@dataclass(frozen=True)
+class DecisionRecord:
+    """Decision row plus the fixture id it was authored for."""
+
+    fixture_id: str
+    decision: dict[str, object]
 
 
 def parse_args() -> argparse.Namespace:
@@ -147,12 +156,13 @@ def apply_review_decisions(
 
     for row in review_rows:
         review_task_id = _required_str(row, "review_task_id")
-        decision = decisions.get(review_task_id)
+        decision_record = decisions.get(review_task_id)
         merged_row = dict(row)
-        if decision is not None:
+        if decision_record is not None:
             if "review_decision" in merged_row and not overwrite_existing:
                 raise ValueError(f"Review row already has review_decision: {review_task_id}")
-            merged_row["review_decision"] = decision
+            _validate_decision_fixture_match(row=row, decision_record=decision_record)
+            merged_row["review_decision"] = decision_record.decision
             matched_decision_ids.add(review_task_id)
         _reject_unsafe_payload(merged_row)
         merged_rows.append(merged_row)
@@ -289,21 +299,20 @@ def _read_review_ingest_rows(path: Path) -> list[dict[str, object]]:
     return rows
 
 
-def _read_decision_rows(path: Path) -> dict[str, dict[str, object]]:
+def _read_decision_rows(path: Path) -> dict[str, DecisionRecord]:
     """Read decision JSONL rows keyed by review task id."""
-    decisions: dict[str, dict[str, object]] = {}
+    decisions: dict[str, DecisionRecord] = {}
     for row in _read_jsonl_objects(path):
         review_task_id = _required_str(row, "review_task_id")
         if review_task_id in decisions:
             raise ValueError(f"Duplicate review decision for review_task_id: {review_task_id}")
+        row_fixture_id = _required_str(row, "fixture_id")
         decision = row.get("review_decision")
         if not isinstance(decision, dict):
             raise ValueError("Decision rows require object field: review_decision")
-        row_fixture_id = row.get("fixture_id")
         decision_fixture_id = decision.get("fixture_id")
         if (
-            isinstance(row_fixture_id, str)
-            and isinstance(decision_fixture_id, str)
+            isinstance(decision_fixture_id, str)
             and row_fixture_id.strip() != decision_fixture_id.strip()
         ):
             raise ValueError("Decision fixture_id does not match row fixture_id.")
@@ -316,8 +325,22 @@ def _read_decision_rows(path: Path) -> dict[str, dict[str, object]]:
         )
         clean_decision["status"] = status
         _reject_unsafe_payload(clean_decision)
-        decisions[review_task_id] = clean_decision
+        decisions[review_task_id] = DecisionRecord(
+            fixture_id=row_fixture_id,
+            decision=clean_decision,
+        )
     return decisions
+
+
+def _validate_decision_fixture_match(
+    *,
+    row: dict[str, object],
+    decision_record: DecisionRecord,
+) -> None:
+    """Validate that a decision row was authored for the matched review row."""
+    row_fixture_id = _required_str(row, "fixture_id")
+    if decision_record.fixture_id != row_fixture_id:
+        raise ValueError("Decision fixture_id does not match review ingest fixture_id.")
 
 
 def _minimal_validation_row(row: dict[str, object]) -> dict[str, object]:
@@ -325,6 +348,7 @@ def _minimal_validation_row(row: dict[str, object]) -> dict[str, object]:
     return {
         "schema_version": EXPECTED_REVIEW_INGEST_SCHEMA_VERSION,
         "review_task_id": _required_str(row, "review_task_id"),
+        "fixture_id": _required_str(row, "fixture_id"),
         "requires_human_review": True,
         "contains_personal_data": row.get("contains_personal_data", False),
         "is_clinical_recommendation": False,
