@@ -264,6 +264,53 @@ def test_review_import_gate_requires_gap_rows_reviewed(tmp_path: Path) -> None:
         )
 
 
+def test_review_import_gate_keeps_rejected_gap_rows_out_of_import(
+    tmp_path: Path,
+) -> None:
+    """Verify reviewed but rejected gap rows do not become DB import candidates."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    rejected_decision = _decision_row()
+    rejected_decision["review_decision"] = {
+        "status": "rejected",
+        "reviewer_id": "operator_1",
+        "reviewed_at": "2026-05-24T14:30:00+09:00",
+        "reason_codes": ["not_scoreable"],
+    }
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [rejected_decision])
+    _write_jsonl(gap_path, [_gap_queue_row()])
+
+    summary = gate_runner.run_review_import_gate(
+        review_ingest_path=review_path,
+        decisions_path=decisions_path,
+        output_dir=tmp_path / "reviewed-gate",
+        artifact_prefix="rejected-gap",
+        gap_queue_path=gap_path,
+        require_gap_reviewed=True,
+    )
+
+    assert summary["gap_reviewed_count"] == 1
+    assert summary["gap_pending_count"] == 0
+    assert summary["gap_approved_count"] == 0
+    assert summary["gap_decision_status_counts"] == {"rejected": 1}
+    assert summary["approved_row_count"] == 0
+    assert summary["planned_product_upsert_count"] == 0
+    assert summary["db_write_performed"] is False
+
+    with pytest.raises(ValueError, match="approved"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "approved-gate",
+            artifact_prefix="rejected-gap-approved",
+            gap_queue_path=gap_path,
+            require_gap_reviewed=True,
+            require_gap_approved=True,
+        )
+
+
 def test_review_import_gate_rejects_unmatched_gap_queue(tmp_path: Path) -> None:
     """Verify gap queues must reference review ingest rows."""
     review_path = tmp_path / "review.jsonl"

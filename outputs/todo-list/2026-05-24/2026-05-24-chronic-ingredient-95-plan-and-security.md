@@ -438,6 +438,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 114개 일반 review row는 pending으로 남기면서 6개 gap decision batch만 DB import dry-run gate로 검증할 수 있다.
 - 실제 empty decision gate 결과: review row 120, gap row 6, gap pending 6, approved row 0, planned product upsert 0, DB write false.
 - `--require-gap-reviewed`를 켠 empty decision gate는 `Gap review queue requires every gap row to be reviewed.`로 실패해, 6개 gap decision이 비어 있으면 통과하지 않는다.
+- rejected gap decision은 reviewed로는 인정되지만 approved/import candidate로는 넘어가지 않으며, `--require-gap-approved`에서는 실패하도록 테스트로 고정했다.
 - `--restrict-decisions-to-gap`을 켠 empty decision gate 결과: non-gap decision 0, gap pending 6, DB write false.
 - gap-scoped import gate artifact privacy scan finding 0, strict literal-key scan finding 0.
 
