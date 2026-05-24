@@ -12,6 +12,7 @@ from src.models.db.supplement import SupplementProduct
 
 from scripts import check_ocr_artifact_privacy as privacy_check
 from scripts import dry_run_naver_tampermonkey_approved_db_import as dry_run
+from scripts import export_naver_tampermonkey_db_write_approval_template as template_exporter
 from scripts import run_naver_tampermonkey_approved_db_import as importer
 
 
@@ -176,6 +177,27 @@ def test_build_import_preflight_rejects_failed_privacy_summary(tmp_path: Path) -
     )
 
     with pytest.raises(ValueError, match="Privacy summary"):
+        importer.build_import_preflight(
+            approved_input_path=paths["approved"],
+            dry_run_plan_path=paths["plan"],
+            dry_run_summary_path=paths["dry_summary"],
+            privacy_summary_path=paths["privacy"],
+            approval_log_path=paths["approval"],
+        )
+
+
+def test_build_import_preflight_rejects_non_importable_template(tmp_path: Path) -> None:
+    """Verify approval templates cannot be used as approval logs directly."""
+    paths = _prepare_evidence(tmp_path)
+    template, _summary = template_exporter.export_db_write_approval_template(
+        approved_input_path=paths["approved"],
+        dry_run_plan_path=paths["plan"],
+        dry_run_summary_path=paths["dry_summary"],
+        privacy_summary_path=paths["privacy"],
+    )
+    _write_json(paths["approval"], template)
+
+    with pytest.raises(ValueError, match="Approval log contains unsupported"):
         importer.build_import_preflight(
             approved_input_path=paths["approved"],
             dry_run_plan_path=paths["plan"],

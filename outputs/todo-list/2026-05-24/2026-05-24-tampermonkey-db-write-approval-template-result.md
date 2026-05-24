@@ -21,13 +21,14 @@
 - DB session, OCR provider, Ollama, 외부 API를 호출하지 않는다.
 - raw OCR text, provider payload, request header, image bytes, model raw response, local path literal을 저장하지 않는다.
 - template 자체를 import 불가능하게 만들어 operator가 그대로 `--approval-log`로 쓰는 실수를 막는다.
+- DB write runner 테스트에서 template 파일을 approval log로 쓰면 실패하는 조건을 직접 검증한다.
 
 ## Verification
 
 Result:
 
 ```text
-39 passed in 0.35s
+40 passed in 0.36s
 black: 2 files would be left unchanged
 ruff: All checks passed
 git diff --check: passed
