@@ -229,6 +229,7 @@ def _approved_import_row(
 ) -> dict[str, object]:
     """Convert one approved review row into a DB import candidate."""
     _reject_unsafe_payload({"row": row, "decision": decision})
+    validator.reject_executable_text_payload(decision)
     if row.get("schema_version") != EXPECTED_INPUT_SCHEMA_VERSION:
         raise ValueError("Approved import input rows must use review ingest schema.")
     fixture_id = _required_str(row, "fixture_id")
@@ -451,6 +452,7 @@ def _optional_string(value: object, *, max_length: int = MAX_TEXT_LENGTH) -> str
     stripped = value.strip()
     if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
         raise ValueError("Payload contains local path literal.")
+    validator.reject_executable_text_value(stripped)
     return stripped[:max_length]
 
 

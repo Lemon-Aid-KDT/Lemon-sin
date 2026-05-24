@@ -268,6 +268,48 @@ def test_build_dry_run_import_plan_rejects_packaging_quantity_ingredient_names(
         dry_run.build_dry_run_import_plan(input_path=input_path)
 
 
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"product_name": "<script>alert(1)</script>"},
+        {
+            "ingredients": [
+                {
+                    "standard_name": "javascript:alert(1)",
+                    "nutrient_code": "omega_3",
+                    "amount": 1000.0,
+                    "unit": "mg",
+                    "sort_order": 0,
+                    "source_payload": {"reviewer_id": "operator_1"},
+                }
+            ]
+        },
+        {
+            "ingredients": [
+                {
+                    "standard_name": "Omega-3",
+                    "nutrient_code": "omega_3",
+                    "amount": 1000.0,
+                    "unit": "https://example.test/unit",
+                    "sort_order": 0,
+                    "source_payload": {"reviewer_id": "operator_1"},
+                }
+            ]
+        },
+    ],
+)
+def test_build_dry_run_import_plan_rejects_executable_reviewed_text(
+    tmp_path: Path,
+    override: dict[str, object],
+) -> None:
+    """Verify handcrafted approved imports cannot carry executable text."""
+    input_path = tmp_path / "approved.jsonl"
+    _write_jsonl(input_path, [_approved_row(**override)])
+
+    with pytest.raises(ValueError, match="executable or URL-like"):
+        dry_run.build_dry_run_import_plan(input_path=input_path)
+
+
 def test_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -128,6 +128,7 @@ def test_export_review_decision_templates_with_safe_contract(
     assert contract["approved_ingredient_amount_type"] == "number_or_null"
     assert contract["approved_ingredient_source_required"] == "human_reviewed"
     assert contract["approved_ingredient_packaging_quantity_text_allowed"] is False
+    assert contract["reviewed_text_executable_or_url_content_allowed"] is False
     assert contract["approved_attestations_required"] == [
         "attest_pii_screening_completed",
         "attest_no_raw_ocr_text",
@@ -185,6 +186,26 @@ def test_export_review_decision_templates_rejects_unsafe_input(
 
     with pytest.raises(ValueError, match="local path literal"):
         exporter.export_review_decision_template_rows(input_path=local_path)
+
+
+@pytest.mark.parametrize(
+    "display_name",
+    [
+        "<script>alert(1)</script>",
+        "javascript:alert(1)",
+        "https://example.test/product",
+    ],
+)
+def test_export_review_decision_templates_rejects_executable_candidate_text(
+    tmp_path: Path,
+    display_name: str,
+) -> None:
+    """Verify unsafe candidate hints do not enter operator review templates."""
+    input_path = tmp_path / "unsafe-candidate.jsonl"
+    _write_jsonl(input_path, [_review_row(ingredient_candidates=[{"display_name": display_name}])])
+
+    with pytest.raises(ValueError, match="executable or URL-like"):
+        exporter.export_review_decision_template_rows(input_path=input_path)
 
 
 def test_export_review_decision_templates_requires_human_review_rows(

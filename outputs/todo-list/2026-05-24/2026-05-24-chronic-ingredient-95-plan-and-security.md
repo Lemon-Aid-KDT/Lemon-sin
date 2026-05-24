@@ -10,6 +10,7 @@
 - Pydantic Models / validating data: https://docs.pydantic.dev/latest/concepts/models/
 - Pydantic `model_validate_json` API: https://docs.pydantic.dev/latest/api/base_model/#pydantic.main.BaseModel.model_validate_json
 - Python subprocess `env` 동작: https://docs.python.org/3/library/subprocess.html#subprocess.run
+- OWASP Cross Site Scripting Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
 - Pillow Image module: https://pillow.readthedocs.io/en/stable/reference/Image.html
 - Pillow ImageOps module: https://pillow.readthedocs.io/en/stable/reference/ImageOps.html
 - Pillow ImageStat module: https://pillow.readthedocs.io/en/stable/reference/ImageStat.html
@@ -22,6 +23,7 @@
 4. Python `subprocess.run(env=...)`는 지정한 mapping이 child process 환경으로 쓰인다. provider runner는 부모 환경 전체를 넘기면 불필요한 secret 전파 위험이 있으므로 allowlist 방식으로 제한한다.
 5. Pydantic V2는 JSON 입력을 `model_validate_json()`으로 schema 검증할 수 있다. Ollama 응답은 raw model response로 저장하지 않고 메모리 안에서 허용 필드만 정규화한 뒤 다시 JSON-mode validation을 통과한 구조만 artifact에 기록한다.
 6. Pillow `Image`/`ImageOps`/`ImageStat`는 이미지 decode, EXIF 방향 보정, grayscale 통계 산출을 지원한다. 잔여 OCR 저신뢰 fixture는 raw image나 local path를 저장하지 않고 width/height, 밝기, 대비 bucket만 산출해 전처리 후보와 모델 비교 후보를 나눈다.
+7. OWASP XSS Prevention Cheat Sheet는 브라우저 출력 context에 맞춘 output encoding을 핵심 방어로 둔다. DB import 전 검수 문자열 gate는 최종 UI escaping을 대체하지 않지만, HTML tag, script protocol, URL-like 값이 reference label로 저장되는 경로를 줄이는 defense-in-depth로 둔다.
 
 ## 현재 기준선
 
@@ -430,9 +432,11 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - approved ingredient의 `amount`는 숫자 또는 null만 허용하고 string/bool amount는 실패 처리한다.
 - approved ingredient는 normalized display name과 nutrient code 기준으로 product 안에서 중복될 수 없다.
 - approved ingredient의 display name은 `g X30포(`, `정x 3개입(`, `1000mg`, `60 capsules` 같은 포장 수량/용량-only 문자열이면 실패 처리한다.
+- review decision과 approved import의 검수 문자열은 HTML angle bracket, script/data/vbscript protocol, URL-like 값, control character를 포함하면 실패 처리한다.
 - gap decision template contract에도 `reviewer_id_required_prefix=operator_`를 명시했다.
 - gap decision template contract에도 `reviewed_at_required_format=timezone_aware_iso8601`과 unique ingredient identity 기준을 명시했다.
 - gap decision template contract에도 `approved_ingredient_source_required=human_reviewed`, `approved_ingredient_amount_type=number_or_null`, `approved_ingredient_packaging_quantity_text_allowed=false`를 명시했다.
+- gap decision template contract에도 `reviewed_text_executable_or_url_content_allowed=false`를 명시했다.
 
 구현된 gap-scoped import gate 보강:
 
@@ -475,6 +479,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id와 timezone-aware ISO `reviewed_at`만 허용해 model-only approval 또는 시간대가 불명확한 review decision 우회를 막는다.
 - approved DB import exporter는 human-reviewed source, numeric amount, product 안 unique ingredient identity만 허용해 OCR/LLM provenance, free-form amount, duplicate child row가 DB import 후보에 섞이지 않게 한다.
 - review decision validator, approved DB import exporter, dry-run approved DB import gate는 포장 수량/용량-only 문자열이 human-approved ingredient로 들어오면 실패시켜 auto-seed 오염이 DB 라벨로 승격되는 경로를 막는다.
+- review decision validator, approved DB import exporter, dry-run approved DB import gate, review decision template exporter는 HTML/URL/script-like/control-character 문자열이 검수명, 제조사명, 성분명, 단위명, candidate hint로 저장되는 것을 차단한다.
 - dry-run approved DB import gate는 duplicate source product key와 duplicate ingredient identity를 DB write 전에 차단한다.
 - DB write approval log도 `operator_` reviewer id와 UTC ISO-8601 `approved_at`만 허용해 model-only 또는 시간대가 불명확한 approval log가 최종 DB write preflight를 통과하지 못하게 한다.
 - gap-scoped import gate는 6개 gap decision 완료 여부를 별도 count로 검증하고 production DB write를 수행하지 않는다.
@@ -502,7 +507,8 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - readiness gate: `ready_for_db_import=false`, `human_review_required=true`, blocker `manual_gap_review_pending`, `no_approved_import_rows`, `ocr_provider_errors_present`, `review_rows_not_db_import_ready`; `--require-db-ready` fails as expected.
 - review decision gate: `ollama_gemma4` 같은 model-only reviewer id, naive/invalid `reviewed_at`, duplicate approved ingredient는 validation 및 direct approved export에서 실패하도록 테스트로 고정했다.
 - review decision gate: `g X30포(`, `정x 3개입(`, `1000mg`, `60 capsules` 같은 포장 수량/용량-only 성분명은 validation, direct approved export, dry-run import plan에서 실패하도록 테스트로 고정했다.
-- review decision template gate: timezone-aware `reviewed_at`, unique approved ingredient identity, packaging quantity ingredient 금지 요구사항을 template contract에 노출하도록 테스트로 고정했다.
+- review decision gate: HTML tag, script protocol, URL-like value, control character 계열 검수 문자열은 validation, direct approved export, dry-run import plan, decision template candidate export에서 실패하도록 테스트로 고정했다.
+- review decision template gate: timezone-aware `reviewed_at`, unique approved ingredient identity, packaging quantity ingredient 금지, executable/URL-like text 금지 요구사항을 template contract에 노출하도록 테스트로 고정했다.
 - review decision apply gate: 같은 `review_task_id`라도 decision row `fixture_id`가 review ingest `fixture_id`와 다르면 실패하도록 테스트로 고정했다.
 - dry-run DB import gate: duplicate source product key와 duplicate ingredient identity는 ORM dry-run plan 생성 전에 실패하도록 테스트로 고정했다.
 - DB write approval gate: `ollama_gemma4` 같은 model-only reviewer id와 naive/non-UTC `approved_at`은 최종 DB write preflight에서 실패하도록 테스트로 고정했다.

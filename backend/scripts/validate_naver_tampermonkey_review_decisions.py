@@ -53,6 +53,12 @@ PACKAGING_QUANTITY_INGREDIENT_PATTERNS: tuple[re.Pattern[str], ...] = (
         re.IGNORECASE,
     ),
 )
+EXECUTABLE_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"[\x00-\x1f\x7f]"),
+    re.compile(r"[<>]"),
+    re.compile(r"\b(?:javascript|data|vbscript)\s*:", re.IGNORECASE),
+    re.compile(r"\b(?:https?://|www\.)", re.IGNORECASE),
+)
 FREE_TEXT_DECISION_KEYS = frozenset(
     {
         "comment",
@@ -248,6 +254,7 @@ def _validate_row_schema(row: dict[str, object]) -> None:
 def _validate_decision(row: dict[str, object], decision: dict[str, object]) -> str:
     """Validate one review decision object and return its status."""
     _reject_unsafe_payload(decision)
+    reject_executable_text_payload(decision)
     _reject_free_text_notes(decision)
     status = _required_safe_token(decision, "status")
     if status not in ALLOWED_DECISION_STATUSES:
@@ -368,6 +375,32 @@ def reject_packaging_quantity_ingredient_name(value: str) -> None:
         raise ValueError("Approved review ingredient name must not be packaging quantity text.")
 
 
+def reject_executable_text_payload(value: object) -> None:
+    """Reject HTML, script-protocol, URL, or control-character text recursively.
+
+    Args:
+        value: Review decision payload or a bounded reviewed string.
+
+    Raises:
+        ValueError: If the payload contains text that could become executable
+            when later rendered by an unsafe UI sink.
+    """
+    if isinstance(value, dict):
+        for nested in value.values():
+            reject_executable_text_payload(nested)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            reject_executable_text_payload(item)
+    elif isinstance(value, str):
+        reject_executable_text_value(value)
+
+
+def reject_executable_text_value(value: str) -> None:
+    """Reject one reviewed text value that looks executable or URL-like."""
+    if any(pattern.search(value) for pattern in EXECUTABLE_TEXT_PATTERNS):
+        raise ValueError("Reviewed text contains executable or URL-like content.")
+
+
 def _looks_like_packaging_quantity_ingredient(value: str) -> bool:
     """Return whether text is package/count-only noise instead of an ingredient."""
     normalized = _normalize_ingredient_name(value).replace(chr(0xD7), "x")
@@ -411,6 +444,7 @@ def _required_string(
     stripped = value.strip()
     if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
         raise ValueError("Payload contains local path literal.")
+    reject_executable_text_value(stripped)
     if len(stripped) > max_length:
         raise ValueError(f"Row string field is too long: {key}")
     return stripped

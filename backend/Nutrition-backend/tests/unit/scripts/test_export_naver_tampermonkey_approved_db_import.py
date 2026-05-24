@@ -263,6 +263,27 @@ def test_export_rejects_packaging_quantity_ingredient_names(
         approved_export.export_approved_db_import_rows(input_path=input_path)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("display_name", "<img src=x onerror=alert(1)>"),
+        ("manufacturer", "javascript:alert(1)"),
+        ("manufacturer", "https://example.test/product"),
+    ],
+)
+def test_export_rejects_executable_review_decision_text(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    """Verify approved DB export blocks HTML, script protocols, and URLs."""
+    input_path = tmp_path / "review-ingest.jsonl"
+    _write_jsonl(input_path, [_review_row(review_decision=_decision(**{field: value}))])
+
+    with pytest.raises(ValueError, match="executable or URL-like"):
+        approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
 def test_export_rejects_non_numeric_ingredient_amount(tmp_path: Path) -> None:
     """Verify direct export never converts bool/string amounts into numbers."""
     for index, value in enumerate(("1000", True)):

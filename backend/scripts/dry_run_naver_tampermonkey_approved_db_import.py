@@ -387,6 +387,7 @@ def _bounded_string_for_column(
     stripped = value.strip()
     if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
         raise ValueError("Payload contains local path literal.")
+    validator.reject_executable_text_value(stripped)
     max_length = _string_column_length(model, column_name)
     if max_length is not None and len(stripped) > max_length:
         raise ValueError(f"Column value exceeds {model.__name__}.{column_name} length.")
