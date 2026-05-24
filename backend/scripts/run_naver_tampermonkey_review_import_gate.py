@@ -31,6 +31,7 @@ from scripts import export_naver_tampermonkey_approved_db_import as approved_exp
 from scripts import validate_naver_tampermonkey_review_decisions as validator  # noqa: E402
 
 SCHEMA_VERSION = "naver-tampermonkey-review-import-gate-v1"
+EXPECTED_GAP_QUEUE_SCHEMA_VERSION = "naver-tampermonkey-manual-review-gap-v1"
 RAW_FORBIDDEN_KEYS = validator.RAW_FORBIDDEN_KEYS
 LITERAL_FORBIDDEN_KEYS = validator.LITERAL_FORBIDDEN_KEYS
 LOCAL_PATH_MARKERS = validator.LOCAL_PATH_MARKERS
@@ -59,6 +60,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fail unless every reviewed row is approved for DB import.",
     )
+    parser.add_argument(
+        "--gap-queue",
+        type=Path,
+        default=None,
+        help="Optional manual-review gap queue JSONL for gap-scoped strict checks.",
+    )
+    parser.add_argument(
+        "--require-gap-reviewed",
+        action="store_true",
+        help="Fail unless every row in --gap-queue has a review decision.",
+    )
+    parser.add_argument(
+        "--require-gap-approved",
+        action="store_true",
+        help="Fail unless every row in --gap-queue has an approved review decision.",
+    )
     return parser.parse_args()
 
 
@@ -78,6 +95,11 @@ def main() -> None:
             allow_unmatched_decisions=args.allow_unmatched_decisions,
             require_reviewed=args.require_reviewed,
             require_all_approved=args.require_all_approved,
+            gap_queue_path=(
+                args.gap_queue.expanduser().resolve() if args.gap_queue is not None else None
+            ),
+            require_gap_reviewed=args.require_gap_reviewed,
+            require_gap_approved=args.require_gap_approved,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -101,6 +123,9 @@ def run_review_import_gate(
     allow_unmatched_decisions: bool = False,
     require_reviewed: bool = False,
     require_all_approved: bool = False,
+    gap_queue_path: Path | None = None,
+    require_gap_reviewed: bool = False,
+    require_gap_approved: bool = False,
 ) -> dict[str, object]:
     """Run the full review-to-import gate and write generated artifacts.
 
@@ -113,6 +138,9 @@ def run_review_import_gate(
         allow_unmatched_decisions: Whether decisions absent from review ingest are ignored.
         require_reviewed: Whether every output review row must have a decision.
         require_all_approved: Whether every review row must export as approved.
+        gap_queue_path: Optional manual-review gap queue JSONL.
+        require_gap_reviewed: Whether every gap queue row must have a decision.
+        require_gap_approved: Whether every gap queue row must be approved.
 
     Returns:
         Final gate summary.
@@ -149,6 +177,13 @@ def run_review_import_gate(
         require_reviewed=require_reviewed,
     )
     _write_json(validation_summary_path, validation_summary)
+
+    gap_review_summary = _gap_review_summary(
+        rows=applied_rows,
+        gap_queue_path=gap_queue_path,
+        require_gap_reviewed=require_gap_reviewed,
+        require_gap_approved=require_gap_approved,
+    )
 
     approved_rows, approved_summary = approved_export.export_approved_db_import_rows(
         input_path=applied_path,
@@ -189,6 +224,14 @@ def run_review_import_gate(
         "planned_ingredient_row_count": dry_run_summary["planned_ingredient_row_count"],
         "require_reviewed": require_reviewed,
         "require_all_approved": require_all_approved,
+        "gap_queue_name": gap_review_summary["gap_queue_name"],
+        "gap_queue_row_count": gap_review_summary["gap_queue_row_count"],
+        "gap_reviewed_count": gap_review_summary["gap_reviewed_count"],
+        "gap_pending_count": gap_review_summary["gap_pending_count"],
+        "gap_approved_count": gap_review_summary["gap_approved_count"],
+        "gap_decision_status_counts": gap_review_summary["gap_decision_status_counts"],
+        "require_gap_reviewed": require_gap_reviewed,
+        "require_gap_approved": require_gap_approved,
         "dry_run_only": True,
         "db_write_performed": False,
         "external_transfer_performed": False,
@@ -203,6 +246,94 @@ def run_review_import_gate(
     _reject_unsafe_payload(gate_summary)
     _write_json(gate_summary_path, gate_summary)
     return gate_summary
+
+
+def _gap_review_summary(
+    *,
+    rows: list[dict[str, object]],
+    gap_queue_path: Path | None,
+    require_gap_reviewed: bool,
+    require_gap_approved: bool,
+) -> dict[str, object]:
+    """Return strict review coverage metrics for a manual gap queue."""
+    if gap_queue_path is None:
+        if require_gap_reviewed or require_gap_approved:
+            raise ValueError("Gap review requirements need --gap-queue.")
+        return {
+            "gap_queue_name": None,
+            "gap_queue_row_count": 0,
+            "gap_reviewed_count": 0,
+            "gap_pending_count": 0,
+            "gap_approved_count": 0,
+            "gap_decision_status_counts": {},
+        }
+
+    gap_ids = _read_gap_queue_review_ids(gap_queue_path)
+    rows_by_review_id = {_required_str(row, "review_task_id"): row for row in rows}
+    missing_ids = sorted(set(gap_ids) - set(rows_by_review_id))
+    if missing_ids:
+        raise ValueError(f"Gap queue review_task_id is not in review ingest: {missing_ids[0]}")
+
+    status_counts: dict[str, int] = {}
+    reviewed_count = 0
+    approved_count = 0
+    for review_task_id in gap_ids:
+        row = rows_by_review_id[review_task_id]
+        decision = row.get("review_decision")
+        if decision is None:
+            status = "pending"
+        elif isinstance(decision, dict):
+            status = validator._validate_decision(row, decision)
+            reviewed_count += 1
+            if status == "approved":
+                approved_count += 1
+        else:
+            raise ValueError("review_decision must be an object.")
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    pending_count = len(gap_ids) - reviewed_count
+    if require_gap_reviewed and pending_count:
+        raise ValueError("Gap review queue requires every gap row to be reviewed.")
+    if require_gap_approved and approved_count != len(gap_ids):
+        raise ValueError("Gap review queue requires every gap row to be approved.")
+
+    summary = {
+        "gap_queue_name": gap_queue_path.name,
+        "gap_queue_row_count": len(gap_ids),
+        "gap_reviewed_count": reviewed_count,
+        "gap_pending_count": pending_count,
+        "gap_approved_count": approved_count,
+        "gap_decision_status_counts": dict(sorted(status_counts.items())),
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
+def _read_gap_queue_review_ids(path: Path) -> list[str]:
+    """Read a manual-review gap queue and return sorted review task ids."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError("Gap queue JSONL rows must be objects.")
+        _reject_unsafe_payload(row)
+        if row.get("schema_version") != EXPECTED_GAP_QUEUE_SCHEMA_VERSION:
+            raise ValueError("Gap queue rows must use manual-review gap schema.")
+        if row.get("requires_human_review") is not True:
+            raise ValueError("Gap queue rows must require human review.")
+        if row.get("decision_batch_importable") is not False:
+            raise ValueError("Gap queue rows must not be importable decision batches.")
+        if row.get("db_write_performed") is not False:
+            raise ValueError("Gap queue rows must not perform DB writes.")
+        review_task_id = _required_str(row, "review_task_id")
+        if review_task_id in seen:
+            raise ValueError(f"Duplicate review_task_id in gap queue: {review_task_id}")
+        seen.add(review_task_id)
+        ids.append(review_task_id)
+    return sorted(ids)
 
 
 def _failure_summary(
@@ -276,6 +407,17 @@ def _safe_artifact_prefix(value: str) -> str:
     if any(char not in allowed for char in stripped):
         raise ValueError("artifact_prefix must contain only safe filename characters.")
     return stripped[:80]
+
+
+def _required_str(row: dict[str, object], key: str) -> str:
+    """Return a required non-empty string field without local path literals."""
+    value = row.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Row requires string field: {key}")
+    stripped = value.strip()
+    if any(marker in stripped for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
+    return stripped
 
 
 def _reject_unsafe_payload(value: object) -> None:

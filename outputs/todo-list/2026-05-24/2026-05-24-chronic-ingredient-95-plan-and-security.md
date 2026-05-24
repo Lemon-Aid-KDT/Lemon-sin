@@ -414,6 +414,15 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - `ollama_gemma4` 같은 model-only reviewer id는 validation 단계와 direct approved export 단계 모두에서 실패한다.
 - gap decision template contract에도 `reviewer_id_required_prefix=operator_`를 명시했다.
 
+구현된 gap-scoped import gate 보강:
+
+- `backend/scripts/run_naver_tampermonkey_review_import_gate.py --gap-queue`
+- `--require-gap-reviewed`, `--require-gap-approved`로 120개 전체가 아닌 manual-review gap row만 엄격 검수할 수 있다.
+- 114개 일반 review row는 pending으로 남기면서 6개 gap decision batch만 DB import dry-run gate로 검증할 수 있다.
+- 실제 empty decision gate 결과: review row 120, gap row 6, gap pending 6, approved row 0, planned product upsert 0, DB write false.
+- `--require-gap-reviewed`를 켠 empty decision gate는 `Gap review queue requires every gap row to be reviewed.`로 실패해, 6개 gap decision이 비어 있으면 통과하지 않는다.
+- gap-scoped import gate artifact privacy scan finding 0, strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -430,5 +439,6 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
 - manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count만 노출한다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id만 허용해 model-only approval 우회를 막는다.
+- gap-scoped import gate는 6개 gap decision 완료 여부를 별도 count로 검증하고 production DB write를 수행하지 않는다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.

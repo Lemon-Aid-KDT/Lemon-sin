@@ -73,6 +73,30 @@ def _decision_row(**overrides: object) -> dict[str, object]:
     return row
 
 
+def _gap_queue_row(**overrides: object) -> dict[str, object]:
+    """Return a minimal manual-review gap queue row."""
+    row: dict[str, object] = {
+        "schema_version": "naver-tampermonkey-manual-review-gap-v1",
+        "review_task_id": "d" * 64,
+        "fixture_id": "naver-tm-detail-000001",
+        "category_key": "omega_3",
+        "gap_reasons": ["ingredient_candidate_count_zero"],
+        "suggested_operator_actions": ["inspect_source_image_and_enter_manual_ingredients"],
+        "ingredient_candidate_count": 0,
+        "ocr_observation_count": 1,
+        "requires_human_review": True,
+        "decision_batch_importable": False,
+        "db_write_performed": False,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+    }
+    row.update(overrides)
+    return row
+
+
 def test_review_import_gate_allows_empty_decision_batch(tmp_path: Path) -> None:
     """Verify the gate keeps pending review rows out of DB import plans."""
     review_path = tmp_path / "review.jsonl"
@@ -101,6 +125,103 @@ def test_review_import_gate_allows_empty_decision_batch(tmp_path: Path) -> None:
     serialized = json.dumps(summary, ensure_ascii=False).lower()
     assert '"raw_ocr_text"' not in serialized
     assert "/volumes/" not in serialized
+
+
+def test_review_import_gate_can_require_gap_rows_only(tmp_path: Path) -> None:
+    """Verify gap-scoped strict mode does not require all review rows."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    output_dir = tmp_path / "gate"
+    _write_jsonl(
+        review_path,
+        [
+            _review_row(),
+            _review_row(
+                review_task_id="e" * 64,
+                fixture_id="naver-tm-detail-000002",
+                category_key="vitamin_d",
+            ),
+        ],
+    )
+    _write_jsonl(decisions_path, [_decision_row()])
+    _write_jsonl(gap_path, [_gap_queue_row()])
+
+    summary = gate_runner.run_review_import_gate(
+        review_ingest_path=review_path,
+        decisions_path=decisions_path,
+        output_dir=output_dir,
+        artifact_prefix="gap",
+        gap_queue_path=gap_path,
+        require_gap_reviewed=True,
+        require_gap_approved=True,
+    )
+
+    assert summary["review_row_count"] == 2
+    assert summary["pending_count"] == 1
+    assert summary["gap_queue_row_count"] == 1
+    assert summary["gap_reviewed_count"] == 1
+    assert summary["gap_pending_count"] == 0
+    assert summary["gap_approved_count"] == 1
+    assert summary["gap_decision_status_counts"] == {"approved": 1}
+    assert summary["approved_row_count"] == 1
+    assert summary["planned_product_upsert_count"] == 1
+    assert summary["db_write_performed"] is False
+
+
+def test_review_import_gate_requires_gap_rows_reviewed(tmp_path: Path) -> None:
+    """Verify gap-scoped strict mode fails when a gap row is still pending."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [])
+    _write_jsonl(gap_path, [_gap_queue_row()])
+
+    with pytest.raises(ValueError, match="every gap row"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "gate",
+            gap_queue_path=gap_path,
+            require_gap_reviewed=True,
+        )
+
+
+def test_review_import_gate_rejects_unmatched_gap_queue(tmp_path: Path) -> None:
+    """Verify gap queues must reference review ingest rows."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [])
+    _write_jsonl(gap_path, [_gap_queue_row(review_task_id="e" * 64)])
+
+    with pytest.raises(ValueError, match="not in review ingest"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "gate",
+            gap_queue_path=gap_path,
+        )
+
+
+def test_review_import_gate_rejects_unsafe_gap_queue(tmp_path: Path) -> None:
+    """Verify unsafe gap queues cannot drive scoped import gates."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [])
+    _write_jsonl(gap_path, [_gap_queue_row(raw_ocr_text="forbidden")])
+
+    with pytest.raises(ValueError, match="raw_ocr_text"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "gate",
+            gap_queue_path=gap_path,
+        )
 
 
 def test_review_import_gate_exports_approved_rows_to_dry_run_plan(tmp_path: Path) -> None:
