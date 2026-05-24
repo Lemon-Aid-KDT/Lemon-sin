@@ -55,10 +55,15 @@ review/import 계열 strict scan:
 - `backend/scripts/run_naver_tampermonkey_review_pii_screening_suggestions.py`
 - `backend/scripts/apply_naver_tampermonkey_review_pii_screening_decisions.py`
 
+Ground-truth snapshot validator도 오류 report에 입력 절대경로와 raw validation input이 섞이지 않도록 보강했다. `validate_ground_truth.py`는 이제 파일명과 `path_hash`만 출력하고, read/parse/schema 오류는 bounded error type과 validation location 중심으로 보고한다.
+
+- `backend/scripts/validate_ground_truth.py`
+
 ## 검증
 
 - privacy/import focused unit tests: `42 passed`
 - JSONL non-object path redaction focused unit tests: `71 passed`
+- ground-truth validator redaction focused unit tests: `17 passed`
 - failure summary strict privacy probe: `file_count=4`, `finding_count=0`, `passed=true`
 - black check: pass
 - ruff check: pass

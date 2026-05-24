@@ -208,3 +208,32 @@ class TestValidateGroundTruth:
         # 파일 자체는 v2 인덱스에서 +1 되지 않음 (read_or_parse 단계에서 실패)
         assert len(summary.errors) == 1
         assert "read_or_parse_error" in summary.errors[0][1]
+        rendered = validate_ground_truth.render_report(summary, target_count=30)
+        assert "broken.snapshot_v2.json" in rendered
+        assert str(tmp_path) not in rendered
+
+    def test_missing_directory_error_does_not_expose_local_path(self, tmp_path: Path) -> None:
+        """존재하지 않는 expected-dir 절대경로는 report 에 출력하지 않는다."""
+        missing_dir = tmp_path / "missing-expected"
+        summary = validate_ground_truth.validate_directory(missing_dir)
+        assert len(summary.errors) == 1
+        assert summary.errors[0][1] == "directory_not_found"
+        rendered = validate_ground_truth.render_report(summary, target_count=30)
+        assert "missing-expected" in rendered
+        assert str(tmp_path) not in rendered
+
+    def test_schema_error_does_not_embed_raw_input_value(self, tmp_path: Path) -> None:
+        """Pydantic schema 오류는 raw 입력값 대신 type/loc 만 출력한다."""
+        secret_like_path = "/Volumes/Corsair EX400U Media/private-label.jpg"
+        self._write_v2(
+            tmp_path / "invalid.snapshot_v2.json",
+            {
+                "schema_version": "supplement-parsed-snapshot-v2",
+                "fixture_id": secret_like_path,
+            },
+        )
+        summary = validate_ground_truth.validate_directory(tmp_path)
+        rendered = validate_ground_truth.render_report(summary, target_count=30)
+        assert "schema_validation" in rendered
+        assert secret_like_path not in rendered
+        assert str(tmp_path) not in rendered

@@ -21,6 +21,7 @@ Reference:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import dataclass, field
@@ -61,7 +62,8 @@ class ValidationSummary:
         v3_total: V3 snapshot 파일 총 수.
         v3_valid: schema validation 을 통과한 V3 파일 수.
         v3_human_labeled: 사람 검수가 완료된 V3 파일 수.
-        errors: ``(file_path, error_message)`` 형식의 오류 리스트.
+        errors: ``(file_ref, error_message)`` 형식의 오류 리스트. ``file_ref`` 는
+            로컬 절대경로 대신 파일명과 path hash 만 담는다.
     """
 
     v2_total: int = 0
@@ -109,10 +111,10 @@ def _validate_file(path: Path, summary: ValidationSummary) -> None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        summary.errors.append((str(path), f"read_or_parse_error: {exc}"))
+        summary.errors.append((_redacted_path_ref(path), _redacted_read_error(exc)))
         return
     if not isinstance(payload, dict):
-        summary.errors.append((str(path), "top-level JSON must be an object"))
+        summary.errors.append((_redacted_path_ref(path), "top-level JSON must be an object"))
         return
     is_v3 = path.name.endswith(".snapshot_v3.json")
     if is_v3:
@@ -127,7 +129,7 @@ def _validate_file(path: Path, summary: ValidationSummary) -> None:
             SupplementParsedSnapshotV2.model_validate(payload)
             summary.v2_valid += 1
     except ValidationError as exc:
-        summary.errors.append((str(path), f"schema_validation: {exc.errors()[:3]}"))
+        summary.errors.append((_redacted_path_ref(path), _redacted_validation_error(exc)))
         return
     if _is_human_labeled(payload):
         if is_v3:
@@ -147,11 +149,63 @@ def validate_directory(expected_dir: Path) -> ValidationSummary:
     """
     summary = ValidationSummary()
     if not expected_dir.exists():
-        summary.errors.append((str(expected_dir), "directory_not_found"))
+        summary.errors.append((_redacted_path_ref(expected_dir), "directory_not_found"))
         return summary
     for path in sorted(expected_dir.glob("*.snapshot_v*.json")):
         _validate_file(path, summary)
     return summary
+
+
+def _redacted_path_ref(path: Path) -> str:
+    """Return a stable non-sensitive path reference.
+
+    Args:
+        path: Local path that may contain user, volume, or temporary directory
+            names.
+
+    Returns:
+        File or directory basename plus a short hash of the expanded path.
+    """
+    name = path.name or "path"
+    path_hash = hashlib.sha256(str(path.expanduser()).encode("utf-8")).hexdigest()[:12]
+    return f"{name} [path_hash={path_hash}]"
+
+
+def _redacted_read_error(exc: OSError | json.JSONDecodeError) -> str:
+    """Return a read/parse error without embedding local paths.
+
+    Args:
+        exc: Exception raised while reading or parsing JSON.
+
+    Returns:
+        Bounded error summary safe for CLI output and reports.
+    """
+    if isinstance(exc, json.JSONDecodeError):
+        return (
+            f"read_or_parse_error: JSONDecodeError:{exc.msg} " f"line={exc.lineno} col={exc.colno}"
+        )
+    return f"read_or_parse_error: {type(exc).__name__}"
+
+
+def _redacted_validation_error(exc: ValidationError) -> str:
+    """Return schema validation details without raw input values.
+
+    Args:
+        exc: Pydantic validation error.
+
+    Returns:
+        Error type and location details for at most three validation issues.
+    """
+    details: list[dict[str, object]] = []
+    for error in exc.errors()[:3]:
+        loc = ".".join(str(part) for part in error.get("loc", ()))
+        details.append(
+            {
+                "type": error.get("type", "unknown"),
+                "loc": loc,
+            }
+        )
+    return f"schema_validation: {details}"
 
 
 def _format_progress_line(human_labeled: int, target: int) -> str:
