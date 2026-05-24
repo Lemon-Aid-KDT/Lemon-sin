@@ -1128,6 +1128,7 @@ def _looks_like_non_product_heading(value: str) -> bool:
         "원재료명",
         "기능 정보",
         "기능정보",
+        "건강기능식품",
     )
     return any(token in normalized for token in heading_tokens)
 

@@ -304,6 +304,7 @@ def test_extract_ingredient_candidates_rejects_packaging_quantity_tokens() -> No
             [
                 "정x 3개입( 72g",
                 "g X30포( 180g",
+                "건강기능식품 500mg",
                 "비타민 D 25mcg",
             ]
         )

@@ -34,9 +34,11 @@ DEFAULT_MFDS_CSV: Final[Path] = Path("data/mfds/functional_ingredients.csv")
 
 HEADER_KEYWORDS_KO: Final[frozenset[str]] = frozenset({"영양 정보", "성분", "성분 ingredients"})
 HEADER_KEYWORDS_EN: Final[frozenset[str]] = frozenset({"nutrition facts", "ingredients"})
-HEADER_KEYWORDS_MIXED: Final[frozenset[str]] = frozenset({
-    "영양 정보 / nutrition facts",
-})
+HEADER_KEYWORDS_MIXED: Final[frozenset[str]] = frozenset(
+    {
+        "영양 정보 / nutrition facts",
+    }
+)
 
 # dosage 정규식: 숫자(소수 가능) + 단위. KDRIs 의 모든 단위 형태를 커버.
 # PaddleOCR 가 'µ' 대신 'u' 로 인식하는 경우도 흡수.
@@ -44,17 +46,21 @@ HEADER_KEYWORDS_MIXED: Final[frozenset[str]] = frozenset({
 # 첫 매치를 채택하므로 길이 내림차순 정렬.
 DOSAGE_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"""
-    (?P<amount>\d+(?:\.\d+)?)      # 숫자
+    (?P<amount>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)      # 숫자
     \s*
     (?P<unit>
         mg\s+α-TE
         |mg\s+NE
+        |mcg\s+RAE
         |μg\s+RAE
         |ug\s+RAE
+        |mcg\s+DFE
         |μg\s+DFE
         |ug\s+DFE
+        |mcg
         |μg
         |ug
+        |㎍
         |mg
         |g
         |IU
@@ -64,9 +70,17 @@ DOSAGE_PATTERN: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# 줄 단위 ingredient 패턴: "- 이름: 함량" 또는 "이름: 함량" 또는 "이름 (English): 함량"
+# 줄 단위 ingredient 패턴:
+# "- 이름: 함량", "이름 | 함량", "이름  함량" 형태를 모두 허용한다.
 INGREDIENT_LINE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^\s*[-•]?\s*(?P<name>[^:]+?)\s*:\s*\d+",
+    r"""
+    ^\s*[-•]?\s*
+    (?P<name>[^:：|]+?)
+    \s*(?:[:：|]|\s{2,})\s*
+    \d[\d,.]*\s*
+    (?:mg|g|mcg|μg|ug|㎍|IU|iu|%)
+    """,
+    re.VERBOSE,
 )
 
 
@@ -202,9 +216,37 @@ def extract_dosage(text: str) -> str | None:
     match = DOSAGE_PATTERN.search(text)
     if match is None:
         return None
-    amount = match.group("amount")
-    unit = match.group("unit")
+    amount = match.group("amount").replace(",", "")
+    unit = _normalize_dosage_unit(match.group("unit"))
     return f"{amount}{unit}"
+
+
+def _normalize_dosage_unit(unit: str) -> str:
+    """대표 dosage 단위 표기를 정규화한다.
+
+    Args:
+        unit: 정규식에 매칭된 단위 문자열.
+
+    Returns:
+        RAE/DFE/IU 같은 대문자 suffix 를 복원한 단위.
+    """
+    normalized = " ".join(unit.split())
+    lowered = normalized.casefold()
+    suffixes = {
+        "rae": "RAE",
+        "dfe": "DFE",
+        "ne": "NE",
+        "α-te": "α-TE",
+    }
+    if lowered == "iu":
+        return "IU"
+    if lowered == "kcal":
+        return "kcal"
+    for suffix, canonical in suffixes.items():
+        marker = f" {suffix}"
+        if lowered.endswith(marker):
+            return f"{normalized[: -len(marker)]} {canonical}"
+    return normalized
 
 
 def extract_fields(

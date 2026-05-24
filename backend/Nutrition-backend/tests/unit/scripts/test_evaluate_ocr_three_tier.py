@@ -63,6 +63,42 @@ def test_evaluate_manifest_returns_redacted_provider_metrics(tmp_path: Path) -> 
     assert summary["raw_ocr_text_stored"] is False
 
 
+def test_evaluate_manifest_resolves_allowlisted_env_image_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify env-token image references do not create false missing-image counts."""
+    image_root = tmp_path / "images"
+    image_root.mkdir()
+    image_path = image_root / "fixture.jpg"
+    image_path.write_bytes(b"image-bytes")
+    monkeypatch.setenv("SUPPLEMENT_OCR_FIXTURE_ROOT", str(image_root))
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "image_path": "$SUPPLEMENT_OCR_FIXTURE_ROOT/fixture.jpg",
+                "expected": {"ingredients": [{"name": "vitamin c"}]},
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "vitamin c"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+
+    assert summary["missing_image_count"] == 0
+    assert str(image_root) not in json.dumps(summary, ensure_ascii=False)
+
+
 def test_evaluate_manifest_rejects_raw_ocr_text(tmp_path: Path) -> None:
     """Verify raw OCR text cannot enter report manifests."""
     manifest_path = tmp_path / "manifest.jsonl"
@@ -143,6 +179,78 @@ def test_evaluate_manifest_records_llm_metrics_separately(tmp_path: Path) -> Non
     assert metrics["llm_ingredient_name_exact_rate"] == 1.0
     assert metrics["llm_parse_attempt_count"] == 1
     assert metrics["llm_parse_success_rate"] == 1.0
+
+
+def test_evaluate_manifest_reports_scoreable_ingredient_metric(tmp_path: Path) -> None:
+    """Verify package-count expected contaminants do not define the scoreable KPI."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "expected": {
+                    "verification_status": "provisional",
+                    "warnings": ["auto_expected_requires_human_verification"],
+                    "ingredients": [
+                        {"name": "비타민 D"},
+                        {"name": "g X30포("},
+                        {"name": "건강기능식품"},
+                    ],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "latency_ms": 100,
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "비타민 D"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 0.3333
+    assert metrics["scoreable_ingredient_name_exact_rate"] == 1.0
+    assert summary["scoreable_fixture_count"] == 1
+    assert summary["provisional_fixture_count"] == 1
+    assert summary["expected_quality_warnings"] == {
+        "auto_expected_requires_human_verification": 1,
+        "invalid_generic_heading_ingredient": 1,
+        "invalid_packaging_quantity_ingredient": 1,
+    }
+
+
+def test_evaluate_manifest_counts_error_status_rows(tmp_path: Path) -> None:
+    """Verify provider error observations are reflected in aggregate error count."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "expected": {"ingredients": [{"name": "비타민 D"}]},
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "error",
+                        "error_code": "ocr_empty_text",
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["calls"] == 1
+    assert metrics["errors"] == 1
+    assert metrics["ingredient_name_exact_rate"] == 0.0
 
 
 def test_evaluate_manifest_llm_failure_counted(tmp_path: Path) -> None:
