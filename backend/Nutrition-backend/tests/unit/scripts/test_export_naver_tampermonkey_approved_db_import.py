@@ -177,6 +177,22 @@ def test_export_rejects_approved_rows_without_attestation(tmp_path: Path) -> Non
         approved_export.export_approved_db_import_rows(input_path=input_path)
 
 
+def test_export_rejects_model_only_reviewer_id(tmp_path: Path) -> None:
+    """Verify direct approved export keeps the human reviewer gate."""
+    input_path = tmp_path / "review-ingest.jsonl"
+    _write_jsonl(
+        input_path,
+        [
+            _review_row(
+                review_decision=_decision(reviewer_id="ollama_gemma4"),
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="operator_ prefix"):
+        approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
 def test_export_rejects_uncleared_pii_rows_even_when_approved(tmp_path: Path) -> None:
     """Verify approved DB import still requires PII clearance."""
     input_path = tmp_path / "review-ingest.jsonl"

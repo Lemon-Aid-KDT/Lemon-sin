@@ -94,6 +94,7 @@ def test_export_review_decision_templates_with_safe_contract(
     assert row["review_task_id"] == "d" * 64
     contract = row["review_decision_contract"]
     assert isinstance(contract, dict)
+    assert contract["reviewer_id_required_prefix"] == "operator_"
     assert contract["approved_attestations_required"] == [
         "attest_pii_screening_completed",
         "attest_no_raw_ocr_text",

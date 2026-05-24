@@ -30,6 +30,7 @@ MAX_INGREDIENT_NAME_LENGTH = 160
 LOCAL_PATH_MARKERS = validator.LOCAL_PATH_MARKERS
 REVIEW_DECISION_CONTRACT = {
     "allowed_statuses": sorted(validator.ALLOWED_DECISION_STATUSES),
+    "reviewer_id_required_prefix": "operator_",
     "approved_required_fields": [
         "status",
         "reviewer_id",

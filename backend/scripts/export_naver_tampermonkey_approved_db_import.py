@@ -22,6 +22,7 @@ MAX_TOKEN_LENGTH = 80
 MAX_TEXT_LENGTH = 200
 MAX_INGREDIENTS_PER_PRODUCT = 128
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+OPERATOR_REVIEWER_ID_PATTERN = re.compile(r"^operator_[A-Za-z0-9_.:-]{1,71}$")
 LOCAL_PATH_MARKERS = (
     "/private/",
     "/Users/",
@@ -233,7 +234,7 @@ def _approved_import_row(
     if not ingredients:
         raise ValueError(f"Approved DB import requires reviewed ingredients: {fixture_id}")
     display_name = _required_bounded_string(decision, "display_name")
-    reviewer_id = _required_safe_token(decision, "reviewer_id")
+    reviewer_id = _required_operator_reviewer_id(decision)
     reviewed_at = _required_bounded_string(decision, "reviewed_at")
     category_key = _optional_safe_token(decision.get("category_key")) or _required_safe_token(
         row, "category_key"
@@ -382,6 +383,14 @@ def _required_safe_token(row: dict[str, object], key: str) -> str:
     if value is None:
         raise ValueError(f"Row requires safe token field: {key}")
     return value
+
+
+def _required_operator_reviewer_id(row: dict[str, object]) -> str:
+    """Return a reviewer id that represents an operator, not a model."""
+    reviewer_id = _required_safe_token(row, "reviewer_id")
+    if not OPERATOR_REVIEWER_ID_PATTERN.fullmatch(reviewer_id):
+        raise ValueError("reviewer_id must use the operator_ prefix.")
+    return reviewer_id
 
 
 def _optional_safe_token(value: object) -> str | None:

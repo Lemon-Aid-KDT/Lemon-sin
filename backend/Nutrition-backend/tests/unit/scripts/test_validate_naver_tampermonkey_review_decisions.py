@@ -120,6 +120,22 @@ def test_validate_accepts_approved_decisions_with_attestations(tmp_path: Path) -
     assert summary["clinical_recommendations_stored"] is False
 
 
+def test_validate_rejects_model_only_reviewer_id(tmp_path: Path) -> None:
+    """Verify model-only reviewer ids cannot satisfy the human review gate."""
+    input_path = tmp_path / "review.jsonl"
+    _write_jsonl(
+        input_path,
+        [
+            _review_row(
+                review_decision=_approved_decision(reviewer_id="ollama_gemma4"),
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="operator_ prefix"):
+        validator.validate_review_decisions(input_path=input_path)
+
+
 def test_validate_rejects_approved_decision_without_attestation(tmp_path: Path) -> None:
     """Verify approval cannot omit safety attestations."""
     input_path = tmp_path / "review.jsonl"
