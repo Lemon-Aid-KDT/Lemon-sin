@@ -225,6 +225,101 @@ def test_evaluate_manifest_reports_scoreable_ingredient_metric(tmp_path: Path) -
     }
 
 
+def test_kpi_gate_fails_when_scoreable_denominator_is_too_small(tmp_path: Path) -> None:
+    """Verify provisional tiny-denominator metrics cannot pass the official KPI."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "expected": {
+                    "verification_status": "provisional",
+                    "warnings": ["auto_expected_requires_human_verification"],
+                    "ingredients": [{"name": "비타민 D"}],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": "비타민 D"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    gate = evaluate.evaluate_kpi_gate(
+        summary,
+        evaluate.KpiGateConfig(
+            provider="paddleocr_local",
+            require_scoreable_fixtures=16,
+            require_no_provisional=True,
+            min_scoreable_ingredient_rate=0.95,
+        ),
+    )
+
+    assert gate is not None
+    assert gate["passed"] is False
+    assert gate["provider"] == "paddleocr_local"
+    assert gate["failures"] == [
+        {
+            "code": "scoreable_fixture_count_below_required",
+            "required": 16,
+            "actual": 1,
+        },
+        {
+            "code": "provisional_fixture_count_nonzero",
+            "required": 0,
+            "actual": 1,
+        },
+    ]
+
+
+def test_kpi_gate_passes_verified_scoreable_threshold(tmp_path: Path) -> None:
+    """Verify a fully scoreable verified fixture set can pass the KPI gate."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    rows: list[dict[str, object]] = []
+    for index in range(2):
+        ingredient = f"비타민 {index}"
+        rows.append(
+            {
+                "fixture_id": f"fixture-{index}",
+                "expected": {
+                    "verification_status": "verified",
+                    "warnings": [],
+                    "ingredients": [{"name": ingredient}],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [{"name": ingredient}],
+                    }
+                ],
+            }
+        )
+    _write_manifest(manifest_path, rows)
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    gate = evaluate.evaluate_kpi_gate(
+        summary,
+        evaluate.KpiGateConfig(
+            provider="paddleocr_local",
+            require_scoreable_fixtures=2,
+            require_no_provisional=True,
+            min_scoreable_ingredient_rate=0.95,
+        ),
+    )
+
+    assert gate is not None
+    assert gate["passed"] is True
+    assert gate["failures"] == []
+
+
 def test_evaluate_manifest_counts_error_status_rows(tmp_path: Path) -> None:
     """Verify provider error observations are reflected in aggregate error count."""
     manifest_path = tmp_path / "manifest.jsonl"

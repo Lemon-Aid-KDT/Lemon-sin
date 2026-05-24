@@ -188,14 +188,63 @@ class ExpectedIngredientQuality:
     is_provisional: bool
 
 
+@dataclass(frozen=True)
+class KpiGateConfig:
+    """Thresholds for official ingredient KPI acceptance.
+
+    Attributes:
+        provider: Provider id to evaluate.
+        require_scoreable_fixtures: Minimum number of verified scoreable
+            fixtures required before the KPI can be accepted.
+        require_no_provisional: Whether provisional expected fixtures fail the
+            gate.
+        min_scoreable_ingredient_rate: Minimum scoreable ingredient exact rate.
+    """
+
+    provider: str | None
+    require_scoreable_fixtures: int | None
+    require_no_provisional: bool
+    min_scoreable_ingredient_rate: float | None
+
+
 def main() -> None:
     """Run the report generator from CLI arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--kpi-provider",
+        help="Provider id to use for KPI gate checks, e.g. paddleocr_local.",
+    )
+    parser.add_argument(
+        "--require-scoreable-fixtures",
+        type=int,
+        default=None,
+        help="Fail when fewer scoreable fixtures are available.",
+    )
+    parser.add_argument(
+        "--require-no-provisional",
+        action="store_true",
+        help="Fail when any expected fixture remains provisional.",
+    )
+    parser.add_argument(
+        "--min-scoreable-ingredient-rate",
+        type=float,
+        default=None,
+        help="Fail when provider scoreable ingredient exact rate is below this value.",
+    )
     args = parser.parse_args()
 
     summary = evaluate_manifest(args.manifest)
+    gate_config = KpiGateConfig(
+        provider=args.kpi_provider,
+        require_scoreable_fixtures=args.require_scoreable_fixtures,
+        require_no_provisional=args.require_no_provisional,
+        min_scoreable_ingredient_rate=args.min_scoreable_ingredient_rate,
+    )
+    kpi_gate = evaluate_kpi_gate(summary, gate_config)
+    if kpi_gate is not None:
+        summary["kpi_gate"] = kpi_gate
     args.output_dir.mkdir(parents=True, exist_ok=True)
     json_path = args.output_dir / "ocr-three-tier-evaluation.json"
     markdown_path = args.output_dir / "ocr-three-tier-evaluation.md"
@@ -204,6 +253,8 @@ def main() -> None:
         encoding="utf-8",
     )
     markdown_path.write_text(_render_markdown(summary), encoding="utf-8")
+    if isinstance(kpi_gate, dict) and kpi_gate.get("passed") is False:
+        raise SystemExit(1)
 
 
 def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
@@ -269,6 +320,123 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
         "raw_artifacts_stored": False,
         "raw_ocr_text_stored": False,
     }
+
+
+def evaluate_kpi_gate(
+    summary: dict[str, object],
+    config: KpiGateConfig,
+) -> dict[str, object] | None:
+    """Evaluate official KPI gate thresholds against a summary.
+
+    Args:
+        summary: Evaluation summary returned by ``evaluate_manifest``.
+        config: Gate thresholds. When all fields are unset, no gate is returned.
+
+    Returns:
+        Gate result dictionary, or ``None`` when no gate option was requested.
+    """
+    if (
+        config.provider is None
+        and config.require_scoreable_fixtures is None
+        and not config.require_no_provisional
+        and config.min_scoreable_ingredient_rate is None
+    ):
+        return None
+
+    failures: list[dict[str, object]] = []
+    if config.require_scoreable_fixtures is not None:
+        current = _safe_int(summary.get("scoreable_fixture_count"))
+        if current < config.require_scoreable_fixtures:
+            failures.append(
+                {
+                    "code": "scoreable_fixture_count_below_required",
+                    "required": config.require_scoreable_fixtures,
+                    "actual": current,
+                }
+            )
+    if config.require_no_provisional:
+        current = _safe_int(summary.get("provisional_fixture_count"))
+        if current > 0:
+            failures.append(
+                {
+                    "code": "provisional_fixture_count_nonzero",
+                    "required": 0,
+                    "actual": current,
+                }
+            )
+
+    provider_metrics = _kpi_provider_metrics(summary, config.provider)
+    provider = config.provider or provider_metrics[0]
+    metrics = provider_metrics[1]
+    if metrics is None:
+        failures.append(
+            {
+                "code": "provider_missing",
+                "provider": provider or "unspecified",
+            }
+        )
+    elif config.min_scoreable_ingredient_rate is not None:
+        raw_rate = metrics.get("scoreable_ingredient_name_exact_rate")
+        if not isinstance(raw_rate, int | float):
+            failures.append(
+                {
+                    "code": "scoreable_ingredient_name_exact_rate_missing",
+                    "provider": provider,
+                }
+            )
+        elif float(raw_rate) < config.min_scoreable_ingredient_rate:
+            failures.append(
+                {
+                    "code": "scoreable_ingredient_name_exact_rate_below_min",
+                    "provider": provider,
+                    "required": config.min_scoreable_ingredient_rate,
+                    "actual": round(float(raw_rate), 4),
+                }
+            )
+
+    return {
+        "schema_version": "ocr-kpi-gate-v1",
+        "passed": not failures,
+        "provider": provider,
+        "require_scoreable_fixtures": config.require_scoreable_fixtures,
+        "require_no_provisional": config.require_no_provisional,
+        "min_scoreable_ingredient_rate": config.min_scoreable_ingredient_rate,
+        "failures": failures,
+    }
+
+
+def _kpi_provider_metrics(
+    summary: dict[str, object],
+    provider: str | None,
+) -> tuple[str | None, dict[str, object] | None]:
+    """Return provider metrics for KPI checks.
+
+    Args:
+        summary: Evaluation summary.
+        provider: Requested provider id, or ``None`` to auto-select when there
+            is exactly one provider.
+
+    Returns:
+        ``(provider_id, metrics)`` pair. ``metrics`` is ``None`` when the
+        provider cannot be selected.
+    """
+    providers = summary.get("providers")
+    if not isinstance(providers, dict):
+        return provider, None
+    if provider is not None:
+        metrics = providers.get(provider)
+        return provider, metrics if isinstance(metrics, dict) else None
+    if len(providers) != 1:
+        return None, None
+    selected_provider, metrics = next(iter(providers.items()))
+    return selected_provider, metrics if isinstance(metrics, dict) else None
+
+
+def _safe_int(value: object) -> int:
+    """Return a non-negative integer for summary count comparisons."""
+    if isinstance(value, int) and value >= 0:
+        return value
+    return 0
 
 
 def _sha256_text(value: str) -> str:
@@ -867,6 +1035,23 @@ def _render_markdown(summary: dict[str, object]) -> str:
                     llm_ingredient_rate=raw_metrics.get("llm_ingredient_name_exact_rate"),
                 )
             )
+    kpi_gate = summary.get("kpi_gate")
+    if isinstance(kpi_gate, dict):
+        failures = kpi_gate.get("failures")
+        failure_count = len(failures) if isinstance(failures, list) else 0
+        lines.extend(
+            [
+                "",
+                "## KPI Gate",
+                "",
+                f"- Passed: `{kpi_gate.get('passed')}`",
+                f"- Provider: `{kpi_gate.get('provider')}`",
+                f"- Required scoreable fixtures: `{kpi_gate.get('require_scoreable_fixtures')}`",
+                f"- Require no provisional expected: `{kpi_gate.get('require_no_provisional')}`",
+                f"- Minimum scoreable ingredient exact rate: `{kpi_gate.get('min_scoreable_ingredient_rate')}`",
+                f"- Failure count: `{failure_count}`",
+            ]
+        )
     lines.extend(
         [
             "",

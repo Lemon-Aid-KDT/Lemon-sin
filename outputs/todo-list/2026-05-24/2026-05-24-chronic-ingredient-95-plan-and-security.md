@@ -130,6 +130,20 @@
 - `scoreable_fixture_count = 16`이고 `scoreable_ingredient_name_exact_rate >= 0.95`: 학습 불필요. parser/labeling pipeline 안정화로 진행.
 - `scoreable_fixture_count = 16`이고 `scoreable_ingredient_name_exact_rate < 0.95`: failure bucket을 나눈 뒤 PP-StructureV3 또는 model fine-tune 검토.
 
+구현된 gate:
+
+```bash
+PYTHONPATH=backend:backend/Nutrition-backend python backend/scripts/evaluate_ocr_three_tier.py \
+  --manifest <redacted-manifest-with-observations.jsonl> \
+  --output-dir <redacted-output-dir> \
+  --kpi-provider paddleocr_local \
+  --require-scoreable-fixtures 16 \
+  --require-no-provisional \
+  --min-scoreable-ingredient-rate 0.95
+```
+
+이 gate는 summary에 `kpi_gate`를 기록하고 실패 시 exit code 1로 종료한다. 현재 provisional 16개 상태에서는 `scoreable_fixture_count_below_required`, `provisional_fixture_count_nonzero`가 나와야 정상이다.
+
 ### 5. 95% 미만일 때만 PaddleOCR/레이아웃/모델 fine-tune 검토
 
 분기:
