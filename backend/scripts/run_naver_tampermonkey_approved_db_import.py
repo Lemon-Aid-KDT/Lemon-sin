@@ -15,7 +15,7 @@ import hashlib
 import json
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -419,13 +419,12 @@ def _validate_approval_log(
     for key in APPROVAL_REQUIRED_TRUE_FIELDS:
         if approval_log.get(key) is not True:
             raise ValueError(f"Approval log failed required attestation: {key}")
-    for key in ("reviewer_id", "approved_at"):
-        value = approval_log.get(key)
-        if not isinstance(value, str) or not SAFE_TOKEN_PATTERN.fullmatch(value):
-            raise ValueError(f"Approval log requires safe token field: {key}")
-    reviewer_id = str(approval_log["reviewer_id"])
+    reviewer_id = approval_log.get("reviewer_id")
+    if not isinstance(reviewer_id, str) or not SAFE_TOKEN_PATTERN.fullmatch(reviewer_id):
+        raise ValueError("Approval log requires safe token field: reviewer_id")
     if not reviewer_id.startswith(APPROVAL_REVIEWER_ID_PREFIX):
         raise ValueError(f"Approval log reviewer_id must start with {APPROVAL_REVIEWER_ID_PREFIX}")
+    _validate_approved_at_utc(approval_log.get("approved_at"))
     expected_hashes = {
         "approved_input_sha256": _sha256_file(approved_input_path),
         "dry_run_plan_sha256": _sha256_file(dry_run_plan_path),
@@ -439,6 +438,19 @@ def _validate_approval_log(
         raise ValueError("Approval log product count mismatch.")
     if approval_log.get("planned_ingredient_row_count") != planned_ingredient_count:
         raise ValueError("Approval log ingredient count mismatch.")
+
+
+def _validate_approved_at_utc(value: object) -> None:
+    """Validate DB-write approval timestamp as an aware UTC datetime."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Approval log approved_at must be UTC ISO-8601.")
+    normalized = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError("Approval log approved_at must be UTC ISO-8601.") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise ValueError("Approval log approved_at must be UTC ISO-8601.")
 
 
 def _required_ingredients(row: dict[str, object]) -> list[dict[str, object]]:

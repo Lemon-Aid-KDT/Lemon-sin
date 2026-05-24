@@ -205,6 +205,34 @@ def test_build_import_preflight_rejects_model_only_db_write_reviewer(
         )
 
 
+@pytest.mark.parametrize(
+    "approved_at",
+    [
+        "2026-05-24T14:40:00",
+        "2026-05-24T23:40:00+09:00",
+        "not-a-date",
+    ],
+)
+def test_build_import_preflight_rejects_non_utc_approval_timestamp(
+    tmp_path: Path,
+    approved_at: str,
+) -> None:
+    """Verify DB-write approval timestamps must be UTC ISO-8601."""
+    paths = _prepare_evidence(
+        tmp_path,
+        approval_overrides={"approved_at": approved_at},
+    )
+
+    with pytest.raises(ValueError, match="approved_at must be UTC ISO-8601"):
+        importer.build_import_preflight(
+            approved_input_path=paths["approved"],
+            dry_run_plan_path=paths["plan"],
+            dry_run_summary_path=paths["dry_summary"],
+            privacy_summary_path=paths["privacy"],
+            approval_log_path=paths["approval"],
+        )
+
+
 def test_build_import_preflight_rejects_non_importable_template(tmp_path: Path) -> None:
     """Verify approval templates cannot be used as approval logs directly."""
     paths = _prepare_evidence(tmp_path)
