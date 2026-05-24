@@ -363,6 +363,20 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 해석: PP-StructureV3가 텍스트 후보 자체는 내부 OCR count로 보지만, 영양성분표를 독립 table/text layout region으로 분리하지 못했다. 따라서 남은 2건은 일반 OCR/preprocess/server profile 추가 반복보다 ROI crop, 상세 이미지 영역 분할, human review label 보강 후보로 돌리는 것이 합리적이다.
 - privacy scan: probe output directory non-strict finding 0, summary/JSONL strict literal-key finding 0.
 
+구현된 ROI crop retry 보강:
+
+- `backend/scripts/run_naver_tampermonkey_roi_crop_ocr_eval.py`
+- 원본 fixture 이미지를 런타임에서만 열고, `TemporaryDirectory` 안에 crop PNG를 만든 뒤 기존 redacted collector에 넘긴다.
+- 최종 산출물에는 crop image, temp manifest, raw OCR text, raw model response를 저장하지 않고 `roi_crop_profile`, crop hash, crop dimension, provider status, bounded LLM parsed ingredient count만 남긴다.
+- 기본 profile은 `full_x2`, `full_x2_gray`, `top_half_x2_gray`, `middle_half_x2_gray`, `bottom_half_x2_gray`, `center_80_x2_gray` 6개다.
+- `server_detection` + 2x crop 조합은 PaddleOCR native runtime이 JSON summary 없이 종료되어, 운영 기본값으로 두지 않고 mobile profile에서 ROI 효과를 확인했다.
+- 실제 잔여 `ocr_low_confidence` 2건에 대해 mobile profile + 기본 6개 crop을 실행했다: crop observation 12, completed 5, error 7, source fixture with completed crop 1.
+- Gemma4 parse 포함 재실행 결과: LLM parse completed 5, `naver-tm-detail-000007`은 `middle_half_x2_gray`가 최종 reconcile에서 선택됐고 ingredient count 3으로 구조화됐다.
+- `naver-tm-detail-000112`는 모든 crop profile에서 계속 `ocr_low_confidence`로 남았다.
+- ROI crop 결과를 기존 120개 reconciled observation에 병합한 최신 평가: fixture 120, observation 120, completed 119, error 1, text non-empty rate 0.9917, parser success rate 0.9917, LLM parse success rate 1.0, remaining error `ocr_low_confidence` 1.
+- ROI 이후 남은 retry manifest는 1 row이며 category는 `zinc`, suggested action은 `inspect_image_quality_or_layout_model`이다.
+- privacy scan: ROI crop output directory non-strict finding 0, ROI summary/JSONL strict literal-key finding 0, ROI reconciled output directory finding 0, 공개 가능한 summary/report strict literal-key finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -374,5 +388,6 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - reconciled failure retry manifest exporter도 source manifest와 observation을 모두 recursive privacy gate로 검사하고, summary에는 path hash/name만 기록한다.
 - image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
 - PP-StructureV3 probe는 PaddleOCR가 반환할 수 있는 raw JSON/Markdown/table HTML을 저장하지 않고, layout/table/OCR count만 저장한다.
+- ROI crop retry는 파생 crop image를 temp directory에만 만들고 최종 artifact에는 crop hash/count/profile만 기록한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
