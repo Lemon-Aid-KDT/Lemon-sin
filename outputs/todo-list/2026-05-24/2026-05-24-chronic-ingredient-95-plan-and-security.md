@@ -6,7 +6,7 @@
 - PaddleOCR PP-StructureV3 Pipeline Usage Tutorial: https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/PP-StructureV3.html
 - Ollama API Introduction: https://docs.ollama.com/api/introduction
 - Ollama Chat API: https://docs.ollama.com/api/chat
-- Ollama Structured Outputs: https://ollama.com/blog/structured-outputs
+- Ollama Structured Outputs: https://docs.ollama.com/capabilities/structured-outputs
 - Pydantic Models / validating data: https://docs.pydantic.dev/latest/concepts/models/
 - Pydantic `model_validate_json` API: https://docs.pydantic.dev/latest/api/base_model/#pydantic.main.BaseModel.model_validate_json
 - Python subprocess `env` 동작: https://docs.python.org/3/library/subprocess.html#subprocess.run
@@ -350,6 +350,19 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 공개 가능한 report JSON/MD 및 retry summary JSON strict literal-key scan finding 0.
 - `paddleocr.PPStructureV3` import는 현재 OCR venv에서 가능함을 확인했다. 공식 문서상 PP-StructureV3는 layout region detection, table recognition, reading order recovery를 포함하므로, 남은 2건은 일반 OCR model/preprocess retry가 아니라 PP-StructureV3/layout PoC 또는 human review로 넘기는 것이 맞다.
 
+구현된 PP-StructureV3 redacted layout probe 보강:
+
+- `backend/scripts/run_naver_tampermonkey_ppstructure_probe.py`
+- 공식 문서의 `PPStructureV3().predict(...)` 통합 경로를 사용하되, 예제처럼 raw JSON/Markdown/table HTML을 저장하지 않고 layout/table/OCR count만 기록한다.
+- probe output row에는 fixture id, category key, image hash, layout box count, layout label count, table/text/figure region count, overall OCR detection/text count, bounded layout score만 저장한다.
+- raw OCR text, Markdown, table HTML, provider payload, raw model response, image bytes, request headers, local path literal은 input/output recursive gate에서 거부한다.
+- 테스트 fixture는 fake PP-StructureV3 result에 raw text와 table HTML이 들어 있어도 output에 저장되지 않는지 검증한다.
+- 실제 잔여 `ocr_low_confidence` 2건에 대해 `--use-textline-orientation`으로 sandbox 밖 probe를 실행했다.
+- 결과: probe row 2, status completed 2, category `saw_palmetto` 1, `zinc` 1, layout label `image` 2, table region 0, text region 0, figure region 2.
+- 세부 count: `naver-tm-detail-000007`은 overall OCR detection/text count 81, `naver-tm-detail-000112`는 24였지만 layout은 둘 다 `image` 1개로만 분류됐다.
+- 해석: PP-StructureV3가 텍스트 후보 자체는 내부 OCR count로 보지만, 영양성분표를 독립 table/text layout region으로 분리하지 못했다. 따라서 남은 2건은 일반 OCR/preprocess/server profile 추가 반복보다 ROI crop, 상세 이미지 영역 분할, human review label 보강 후보로 돌리는 것이 합리적이다.
+- privacy scan: probe output directory non-strict finding 0, summary/JSONL strict literal-key finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -360,5 +373,6 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - retry reconcile의 source label은 경로 component가 길어도 hash 기반 공개 token으로 축약하고, local absolute path는 summary에 쓰지 않는다.
 - reconciled failure retry manifest exporter도 source manifest와 observation을 모두 recursive privacy gate로 검사하고, summary에는 path hash/name만 기록한다.
 - image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
+- PP-StructureV3 probe는 PaddleOCR가 반환할 수 있는 raw JSON/Markdown/table HTML을 저장하지 않고, layout/table/OCR count만 저장한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
