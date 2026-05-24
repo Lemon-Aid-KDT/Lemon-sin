@@ -69,6 +69,14 @@ REASON_CODE_OPTIONS = (
     "image_unreadable",
     "local_model_uncertain",
 )
+ALLOWED_MODEL_RESPONSE_KEYS = frozenset(
+    {
+        "status_suggestion",
+        "confidence_bucket",
+        "evidence_codes",
+        "reason_codes",
+    }
+)
 
 SYSTEM_PROMPT = """
 You are a local privacy screening assistant for supplement review images.
@@ -301,6 +309,7 @@ def _call_ollama_for_suggestion(
     if not isinstance(parsed, dict):
         raise ValueError("Ollama PII suggestion response must be a JSON object.")
     _reject_unsafe_payload(parsed)
+    _reject_unexpected_model_response_keys(parsed)
     suggestion = {
         "model_id": model,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -524,6 +533,15 @@ def _required_choice(
     return value
 
 
+def _reject_unexpected_model_response_keys(row: dict[str, object]) -> None:
+    """Reject model output fields outside the suggestion schema."""
+    unexpected = sorted({str(key).lower() for key in row} - ALLOWED_MODEL_RESPONSE_KEYS)
+    if unexpected:
+        raise ValueError(
+            f"Ollama PII suggestion response contains unsupported field: {unexpected[0]}"
+        )
+
+
 def _required_str(row: Mapping[str, object], key: str) -> str:
     """Return a required bounded string field."""
     value = row.get(key)
@@ -560,11 +578,15 @@ def _safe_token_list(value: object) -> list[str]:
     if not isinstance(value, list):
         raise ValueError("Token lists must be arrays.")
     tokens: list[str] = []
+    seen: set[str] = set()
     for item in value:
         token = _safe_token(item)
         if token is None:
             raise ValueError("Token lists require non-empty safe string values.")
+        if token in seen:
+            continue
         tokens.append(token)
+        seen.add(token)
     return tokens
 
 

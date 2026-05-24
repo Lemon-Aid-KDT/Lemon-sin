@@ -180,6 +180,36 @@ def test_run_review_pii_screening_suggestions_output_matches_export_contract(
     assert exported[0]["operator_decision_required"] is True
 
 
+def test_run_review_pii_screening_suggestions_deduplicates_model_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify repeated allowed model tokens are stored once."""
+    image = tmp_path / "source" / "review.jpg"
+    image.parent.mkdir()
+    image.write_bytes(b"review-image")
+    monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(image.parent))
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_jsonl(manifest_path, [_manifest_row()])
+    fake_client = _FakeClient(
+        _ollama_response(
+            _response_content(
+                evidence_codes=["uncertain", "product_only", "uncertain"],
+                reason_codes=["operator_required", "operator_required"],
+            )
+        )
+    )
+
+    result = runner.run_review_pii_screening_suggestions(
+        manifest_path=manifest_path,
+        http_client=fake_client,
+    )
+
+    suggestion = result.rows[0]["pii_screening_suggestion"]
+    assert suggestion["evidence_codes"] == ["uncertain", "product_only"]  # type: ignore[index]
+    assert suggestion["reason_codes"] == ["operator_required"]  # type: ignore[index]
+
+
 def test_run_review_pii_screening_suggestions_dry_run_skips_model_call(tmp_path: Path) -> None:
     """Verify dry-run writes only a redacted execution plan."""
     manifest_path = tmp_path / "manifest.jsonl"
@@ -226,6 +256,26 @@ def test_run_review_pii_screening_suggestions_rejects_raw_model_fields(
     fake_client = _FakeClient(_ollama_response(_response_content(raw_model_response="secret")))
 
     with pytest.raises(ValueError, match="raw_model_response"):
+        runner.run_review_pii_screening_suggestions(
+            manifest_path=manifest_path,
+            http_client=fake_client,
+        )
+
+
+def test_run_review_pii_screening_suggestions_rejects_unexpected_response_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify model output cannot include ignored free-form PII fields."""
+    image = tmp_path / "source" / "review.jpg"
+    image.parent.mkdir()
+    image.write_bytes(b"review-image")
+    monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(image.parent))
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_jsonl(manifest_path, [_manifest_row()])
+    fake_client = _FakeClient(_ollama_response(_response_content(person_name="hong_gildong")))
+
+    with pytest.raises(ValueError, match="unsupported field"):
         runner.run_review_pii_screening_suggestions(
             manifest_path=manifest_path,
             http_client=fake_client,
