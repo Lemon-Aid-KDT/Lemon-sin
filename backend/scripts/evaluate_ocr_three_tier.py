@@ -9,13 +9,27 @@ or raw OCR text from being written into artifacts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-RAW_FORBIDDEN_KEYS = {"image_bytes", "raw_image", "raw_ocr_text", "ocr_text"}
+RAW_FORBIDDEN_KEYS = {
+    "api_key",
+    "authorization",
+    "image_bytes",
+    "ocr_text",
+    "provider_payload",
+    "raw_image",
+    "raw_model_response",
+    "raw_ocr_text",
+    "raw_provider_payload",
+    "request_headers",
+    "secret",
+    "service_key",
+}
 
 
 @dataclass
@@ -154,7 +168,8 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
 
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        "manifest": str(manifest_path),
+        "manifest": manifest_path.name,
+        "manifest_path_hash": _sha256_text(str(manifest_path.expanduser())),
         "fixture_count": accumulator.fixture_count,
         "missing_image_count": accumulator.missing_image_count,
         "observation_count": accumulator.observation_count,
@@ -165,6 +180,18 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
         "raw_artifacts_stored": False,
         "raw_ocr_text_stored": False,
     }
+
+
+def _sha256_text(value: str) -> str:
+    """Return the SHA-256 hash of a non-persisted local string.
+
+    Args:
+        value: Text to hash.
+
+    Returns:
+        Hex-encoded SHA-256 digest.
+    """
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _read_manifest_rows(manifest_path: Path) -> list[dict[str, object]]:

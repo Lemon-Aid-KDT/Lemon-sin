@@ -55,6 +55,9 @@ def test_evaluate_manifest_returns_redacted_provider_metrics(tmp_path: Path) -> 
     assert google_metrics["calls"] == 1
     assert google_metrics["text_non_empty_rate"] == 1.0
     assert google_metrics["ingredient_name_exact_rate"] == 1.0
+    assert summary["manifest"] == "manifest.jsonl"
+    assert "manifest_path_hash" in summary
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
     assert summary["missing_image_count"] == 1
     assert summary["raw_artifacts_stored"] is False
     assert summary["raw_ocr_text_stored"] is False
@@ -74,6 +77,28 @@ def test_evaluate_manifest_rejects_raw_ocr_text(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="raw_ocr_text"):
+        evaluate.evaluate_manifest(manifest_path)
+
+
+def test_evaluate_manifest_rejects_provider_payload(tmp_path: Path) -> None:
+    """Verify provider payloads cannot enter report manifests."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "observations": [
+                    {
+                        "provider": "google_vision_document",
+                        "provider_payload": {"raw": "do-not-store"},
+                    }
+                ],
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="provider_payload"):
         evaluate.evaluate_manifest(manifest_path)
 
 

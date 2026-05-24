@@ -59,11 +59,16 @@ Ground-truth snapshot validator도 오류 report에 입력 절대경로와 raw v
 
 - `backend/scripts/validate_ground_truth.py`
 
+3-tier OCR evaluator도 generated JSON/Markdown report에 manifest 절대경로를 저장하지 않도록 보강했다. `manifest`는 basename만 유지하고, 추적용 값은 `manifest_path_hash`로 분리한다. 입력 observation 에 `provider_payload`, `raw_provider_payload`, `request_headers`, `raw_model_response`, secret 계열 key가 있으면 평가를 중단한다.
+
+- `backend/scripts/evaluate_ocr_three_tier.py`
+
 ## 검증
 
 - privacy/import focused unit tests: `42 passed`
 - JSONL non-object path redaction focused unit tests: `71 passed`
 - ground-truth validator redaction focused unit tests: `17 passed`
+- ground-truth + 3-tier evaluator focused unit tests: `27 passed`
 - failure summary strict privacy probe: `file_count=4`, `finding_count=0`, `passed=true`
 - black check: pass
 - ruff check: pass
