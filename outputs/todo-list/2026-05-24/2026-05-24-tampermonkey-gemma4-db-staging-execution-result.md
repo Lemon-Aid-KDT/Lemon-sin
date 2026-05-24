@@ -160,3 +160,21 @@ structured-output retry smoke privacy scan: pass files=3 json_values=4
 ```
 
 남은 1건은 prompt 크기보다 실제 schema 적합성 문제일 수 있으므로, 다음 단계에서 schema를 더 완화하지 않고 operator review 대상으로 분리하거나 별도 model fallback 후보로 비교한다.
+
+## 후속 보강 3 - evaluator redaction
+
+provider comparison evaluator가 정상/실패 summary에서 manifest/output 절대경로를 노출하지 않도록 보강했다.
+
+- 정상 summary는 `manifest_name`과 `manifest_path_hash`만 남기고 `manifest` 절대경로는 저장하지 않는다.
+- CLI 출력은 `json_name`, `markdown_name`만 출력한다.
+- manifest/observation 읽기 실패는 traceback 대신 redacted failure report를 JSON/Markdown으로 생성한다.
+- observation/manifest 입력에 `/private`, `/Users`, `/Volumes`, `file://` local path literal이 섞이면 저장 전에 실패한다.
+
+보강 검증:
+
+```text
+test_evaluate_naver_tampermonkey_ocr.py: 5 passed
+CLI failure redaction probe: pass
+artifact privacy gate: pass
+detect-secrets scan: pass
+```

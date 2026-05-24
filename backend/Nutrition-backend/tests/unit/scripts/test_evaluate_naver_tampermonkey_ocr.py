@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,9 @@ def test_evaluate_manifest_aggregates_provider_section_and_category(
 
     assert summary["fixture_count"] == 2
     assert summary["observation_count"] == 2
+    assert summary["manifest_name"] == "manifest.jsonl"
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert "manifest" not in summary
     assert summary["raw_ocr_text_stored"] is False
     providers = summary["providers"]
     assert isinstance(providers, dict)
@@ -128,12 +132,74 @@ def test_evaluate_rejects_raw_ocr_text(tmp_path: Path) -> None:
         )
 
 
+def test_evaluate_rejects_local_path_literals(tmp_path: Path) -> None:
+    """Verify local absolute path strings cannot enter evaluation artifacts."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    obs_path = tmp_path / "obs.jsonl"
+    _write_jsonl(manifest_path, [{"fixture_id": "detail-1", "section": "detail"}])
+    _write_jsonl(
+        obs_path,
+        [
+            {
+                "fixture_id": "detail-1",
+                "provider": "paddleocr_local",
+                "status": "completed",
+                "error_code": "/private/tmp/leak",
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="local path"):
+        evaluate.evaluate_manifest(
+            manifest_path=manifest_path,
+            observation_paths=(obs_path,),
+        )
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures write redacted reports without traceback or local paths."""
+    manifest_path = tmp_path / "missing-manifest.jsonl"
+    output_dir = tmp_path / "out"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "evaluate_naver_tampermonkey_ocr.py",
+            "--manifest",
+            str(manifest_path),
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        evaluate.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads((output_dir / evaluate.DEFAULT_JSON_NAME).read_text(encoding="utf-8"))
+    markdown = (output_dir / evaluate.DEFAULT_MARKDOWN_NAME).read_text(encoding="utf-8")
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert str(tmp_path) not in markdown
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_error"
+    assert summary["manifest_name"] == "missing-manifest.jsonl"
+    assert summary["raw_ocr_text_stored"] is False
+    assert summary["local_path_literals_stored"] is False
+
+
 def test_render_markdown_omits_raw_content() -> None:
     """Verify Markdown renderer reports only aggregate metrics."""
     markdown = evaluate.render_markdown(
         {
             "generated_at": "2026-05-22T00:00:00+00:00",
-            "manifest": "manifest.jsonl",
+            "manifest_name": "manifest.jsonl",
             "fixture_count": 1,
             "observation_count": 1,
             "raw_ocr_text_stored": False,

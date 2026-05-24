@@ -8,6 +8,7 @@ provider payloads, request headers, image bytes, and raw model responses.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass, field
@@ -37,6 +38,16 @@ RAW_FORBIDDEN_KEYS = frozenset(
         "service_key",
     }
 )
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
+DEFAULT_JSON_NAME = "naver-ocr-provider-comparison.json"
+DEFAULT_MARKDOWN_NAME = "naver-ocr-provider-comparison.md"
 MEDIAN_PERCENTILE = 50
 PERCENTILE_SCALE = 100
 NEAREST_RANK_OFFSET = 0.5
@@ -160,17 +171,39 @@ def main() -> None:
         help="Direct observation JSONL path.",
     )
     args = parser.parse_args()
-    summary = evaluate_manifest(
-        manifest_path=args.manifest,
-        observation_dirs=tuple(args.observation_dir),
-        observation_paths=tuple(args.observations),
+    json_path = args.output_dir / DEFAULT_JSON_NAME
+    md_path = args.output_dir / DEFAULT_MARKDOWN_NAME
+    try:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        summary = evaluate_manifest(
+            manifest_path=args.manifest,
+            observation_dirs=tuple(args.observation_dir),
+            observation_paths=tuple(args.observations),
+        )
+        json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", "utf-8")
+        md_path.write_text(render_markdown(summary), "utf-8")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        failure = _failure_summary(manifest_path=args.manifest, error=exc)
+        try:
+            args.output_dir.mkdir(parents=True, exist_ok=True)
+            json_path.write_text(
+                json.dumps(failure, ensure_ascii=False, indent=2) + "\n",
+                "utf-8",
+            )
+            md_path.write_text(render_markdown(failure), "utf-8")
+        except OSError:
+            pass
+        print(json.dumps(failure, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
+    print(
+        json.dumps(
+            {
+                "json_name": DEFAULT_JSON_NAME,
+                "markdown_name": DEFAULT_MARKDOWN_NAME,
+            },
+            ensure_ascii=False,
+        )
     )
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = args.output_dir / "naver-ocr-provider-comparison.json"
-    md_path = args.output_dir / "naver-ocr-provider-comparison.md"
-    json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", "utf-8")
-    md_path.write_text(render_markdown(summary), "utf-8")
-    print(json.dumps({"json": str(json_path), "markdown": str(md_path)}, ensure_ascii=False))
 
 
 def evaluate_manifest(
@@ -237,7 +270,8 @@ def evaluate_manifest(
 
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        "manifest": str(manifest_path),
+        "manifest_name": manifest_path.name,
+        "manifest_path_hash": _sha256_text(str(manifest_path.expanduser())),
         "fixture_count": len(manifest_rows),
         "observation_count": len(observations),
         "missing_manifest_observation_count": missing_manifest_rows,
@@ -246,6 +280,7 @@ def evaluate_manifest(
         "raw_ocr_text_stored": False,
         "raw_provider_payload_stored": False,
         "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
         "providers": _bucket_map(provider_buckets),
         "by_section": {key: _bucket_map(value) for key, value in sorted(section_buckets.items())},
         "by_category": {key: _bucket_map(value) for key, value in sorted(category_buckets.items())},
@@ -273,7 +308,8 @@ def render_markdown(summary: dict[str, object]) -> str:
         "# Naver Tampermonkey OCR Provider Comparison",
         "",
         f"- Generated at: `{summary.get('generated_at')}`",
-        f"- Manifest: `{summary.get('manifest')}`",
+        f"- Status: `{summary.get('status', 'completed')}`",
+        f"- Manifest: `{summary.get('manifest_name')}`",
         f"- Fixtures: `{summary.get('fixture_count')}`",
         f"- Observations: `{summary.get('observation_count')}`",
         f"- Raw OCR text stored: `{summary.get('raw_ocr_text_stored')}`",
@@ -421,8 +457,8 @@ def _read_jsonl_rows(path: Path) -> list[dict[str, object]]:
             continue
         parsed = json.loads(line)
         if not isinstance(parsed, dict):
-            raise ValueError(f"Observation row must be an object: {path}")
-        _reject_raw_fields(parsed)
+            raise ValueError("Observation row must be an object.")
+        _reject_unsafe_payload(parsed)
         rows.append(parsed)
     return rows
 
@@ -486,17 +522,83 @@ def _percentile(values: list[float], percentile: int) -> float | None:
     return round(float(ordered[index]), 4)
 
 
+def _failure_summary(*, manifest_path: Path, error: BaseException) -> dict[str, object]:
+    """Return a redacted evaluator failure summary."""
+    summary = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "manifest_name": manifest_path.name,
+        "manifest_path_hash": _sha256_text(str(manifest_path.expanduser())),
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "fixture_count": 0,
+        "observation_count": 0,
+        "missing_manifest_observation_count": 0,
+        "source_doc_urls": list(SOURCE_DOC_URLS),
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "providers": {},
+        "by_section": {},
+        "by_category": {},
+        "by_product": {},
+        "by_mime_type": {},
+        "by_size_bucket": {},
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "json_decode_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        return "Local file operation failed."
+    if isinstance(exc, json.JSONDecodeError):
+        return "JSON decode failed."
+    message = str(exc).strip()
+    if not message:
+        return "Validation failed."
+    if any(marker in message for marker in LOCAL_PATH_MARKERS):
+        return "Validation failed."
+    if "/" in message or "\\" in message:
+        return "Validation failed."
+    return message[:200]
+
+
+def _sha256_text(value: str) -> str:
+    """Return SHA-256 for redacted path identifiers."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def _reject_raw_fields(value: object) -> None:
     """Reject raw OCR/image/provider/model fields recursively."""
+    _reject_unsafe_payload(value)
+
+
+def _reject_unsafe_payload(value: object) -> None:
+    """Reject raw OCR fields and local path literals recursively."""
     if isinstance(value, dict):
         forbidden = RAW_FORBIDDEN_KEYS.intersection(str(key).lower() for key in value)
         if forbidden:
             raise ValueError(f"Payload contains forbidden raw field(s): {sorted(forbidden)}")
         for nested in value.values():
-            _reject_raw_fields(nested)
+            _reject_unsafe_payload(nested)
     elif isinstance(value, list):
         for item in value:
-            _reject_raw_fields(item)
+            _reject_unsafe_payload(item)
+    elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
+        raise ValueError("Payload contains local path literal.")
 
 
 if __name__ == "__main__":
