@@ -290,13 +290,48 @@ def test_run_provider_evaluations_reruns_not_run_output(tmp_path: Path) -> None:
     assert result.resumed_runs == []
 
 
+def test_run_provider_evaluations_captures_child_output(tmp_path: Path) -> None:
+    """Verify provider subprocess output is captured instead of streamed."""
+    run = runner.ProviderRun(
+        alias="paddleocr",
+        provider_id="paddleocr_local",
+        output_dir=tmp_path / "paddleocr-observations",
+        python_executable=Path("/tmp/ocr-python"),
+        command=("/tmp/ocr-python", "collector.py"),
+        env_overrides={},
+    )
+    kwargs_seen: list[dict[str, object]] = []
+
+    def fake_runner(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        kwargs_seen.append(kwargs)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="/private/tmp/should-not-stream",
+            stderr="secret-like child stderr",
+        )
+
+    result = runner.run_provider_evaluations(
+        [run],
+        runner=fake_runner,
+    )
+
+    assert result.executed_runs == [run]
+    assert kwargs_seen[0]["capture_output"] is True
+    assert kwargs_seen[0]["text"] is True
+    assert kwargs_seen[0]["check"] is True
+
+
 def test_run_comparison_report_returns_names_without_paths(tmp_path: Path) -> None:
     """Verify comparison report summaries do not expose output paths."""
-    commands: list[list[str]] = []
+    calls: list[tuple[list[str], dict[str, object]]] = []
 
-    def fake_runner(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        commands.append(command)
-        return subprocess.CompletedProcess(command, 0)
+    def fake_runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout="/private/tmp/leak")
 
     report = runner.run_comparison_report(
         manifest_path=tmp_path / "manifest.jsonl",
@@ -305,7 +340,8 @@ def test_run_comparison_report_returns_names_without_paths(tmp_path: Path) -> No
         runner=fake_runner,
     )
 
-    assert commands
+    assert calls
+    assert calls[0][1]["capture_output"] is True
     assert report["json_name"] == runner.DEFAULT_REPORT_JSON_NAME
     assert report["markdown_name"] == runner.DEFAULT_REPORT_MARKDOWN_NAME
     serialized = json.dumps(report, ensure_ascii=False)

@@ -326,6 +326,7 @@ def run_provider_evaluations(
         runner(
             list(run.command),
             check=True,
+            capture_output=True,
             cwd=str(BACKEND_ROOT.parent),
             env=env,
             text=True,
@@ -367,7 +368,13 @@ def run_comparison_report(
     ]
     for directory in observation_dirs:
         command.extend(["--observation-dir", str(directory)])
-    runner(command, check=True, cwd=str(BACKEND_ROOT.parent), text=True)
+    runner(
+        command,
+        check=True,
+        capture_output=True,
+        cwd=str(BACKEND_ROOT.parent),
+        text=True,
+    )
     return {
         "json_name": DEFAULT_REPORT_JSON_NAME,
         "markdown_name": DEFAULT_REPORT_MARKDOWN_NAME,
