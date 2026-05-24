@@ -21,7 +21,14 @@ MAX_TOKEN_LENGTH = 80
 MAX_TEXT_LENGTH = 200
 MAX_INGREDIENTS_PER_PRODUCT = 128
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
-LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "file://", "\\Users\\", "\\Volumes\\")
+LOCAL_PATH_MARKERS = (
+    "/private/",
+    "/Users/",
+    "/Volumes/",
+    "file://",
+    "\\Users\\",
+    "\\Volumes\\",
+)
 ALLOWED_DECISION_STATUSES = frozenset({"approved", "rejected", "needs_changes"})
 APPROVED_ATTESTATIONS = (
     "attest_pii_screening_completed",
@@ -86,10 +93,26 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Validate review decisions and write a redacted summary."""
     args = parse_args()
-    summary = validate_review_decisions(
-        input_path=args.input.expanduser().resolve(),
-        require_reviewed=args.require_reviewed,
-    )
+    try:
+        summary = validate_review_decisions(
+            input_path=args.input.expanduser().resolve(),
+            require_reviewed=args.require_reviewed,
+        )
+    except (OSError, ValueError) as exc:
+        summary = _failure_summary(
+            input_path=args.input,
+            require_reviewed=args.require_reviewed,
+            error=exc,
+        )
+        if args.summary is not None:
+            summary_path = args.summary.expanduser().resolve()
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(
+                json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(1) from None
     if args.summary is not None:
         summary_path = args.summary.expanduser().resolve()
         summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,6 +171,37 @@ def validate_review_decisions(
         "decision_status_counts": dict(sorted(status_counts.items())),
         "approved_ingredient_count": approved_ingredient_count,
         "require_reviewed": require_reviewed,
+        "raw_artifacts_stored": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "raw_model_response_stored": False,
+        "local_path_literals_stored": False,
+        "free_text_review_notes_stored": False,
+        "clinical_recommendations_stored": False,
+    }
+    _reject_unsafe_payload(summary)
+    return summary
+
+
+def _failure_summary(
+    *,
+    input_path: Path,
+    require_reviewed: bool,
+    error: BaseException,
+) -> dict[str, object]:
+    """Return a redacted validation failure summary for CLI errors."""
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": "error",
+        "input_name": input_path.name,
+        "error_code": _safe_error_code(error),
+        "error_message": _safe_public_error_message(error),
+        "require_reviewed": require_reviewed,
+        "row_count": 0,
+        "pending_count": 0,
+        "decision_status_counts": {},
+        "approved_ingredient_count": 0,
         "raw_artifacts_stored": False,
         "raw_ocr_text_stored": False,
         "raw_provider_payload_stored": False,
@@ -314,6 +368,27 @@ def _reject_unsafe_payload(value: object) -> None:
             _reject_unsafe_payload(item)
     elif isinstance(value, str) and any(marker in value for marker in LOCAL_PATH_MARKERS):
         raise ValueError("Payload contains local path literal.")
+
+
+def _safe_error_code(exc: BaseException) -> str:
+    """Return a non-sensitive CLI error code."""
+    if isinstance(exc, OSError):
+        return "local_file_read_error"
+    return "validation_error"
+
+
+def _safe_public_error_message(exc: BaseException) -> str:
+    """Return a bounded public error message without filesystem details."""
+    if isinstance(exc, OSError):
+        return "Local file read failed."
+    message = str(exc).strip()
+    if not message:
+        return "Validation failed."
+    if any(marker in message for marker in LOCAL_PATH_MARKERS):
+        return "Validation failed."
+    if "/" in message or "\\" in message:
+        return "Validation failed."
+    return message[:200]
 
 
 if __name__ == "__main__":

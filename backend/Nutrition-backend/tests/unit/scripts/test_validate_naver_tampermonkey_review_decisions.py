@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -220,3 +221,50 @@ def test_validate_rejects_local_path_literals(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="local path literal"):
         validator.validate_review_decisions(input_path=input_path)
+
+    input_path_2 = tmp_path / "review-private-local.jsonl"
+    _write_jsonl(
+        input_path_2,
+        [_review_row(review_decision=_approved_decision(display_name="/private/tmp/a.jpg"))],
+    )
+
+    with pytest.raises(ValueError, match="local path literal"):
+        validator.validate_review_decisions(input_path=input_path_2)
+
+
+def test_main_error_is_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI failures do not print tracebacks or local paths."""
+    input_path = tmp_path / "missing-review-ingest.jsonl"
+    summary_path = tmp_path / "validation-summary.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "validate_naver_tampermonkey_review_decisions.py",
+            "--input",
+            str(input_path),
+            "--summary",
+            str(summary_path),
+            "--require-reviewed",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        validator.main()
+
+    printed = capsys.readouterr().out
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert exc_info.value.code == 1
+    assert "Traceback" not in printed
+    assert str(tmp_path) not in printed
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+    assert summary["status"] == "error"
+    assert summary["error_code"] == "local_file_read_error"
+    assert summary["error_message"] == "Local file read failed."
+    assert summary["require_reviewed"] is True
+    assert summary["raw_model_response_stored"] is False
+    assert summary["local_path_literals_stored"] is False
