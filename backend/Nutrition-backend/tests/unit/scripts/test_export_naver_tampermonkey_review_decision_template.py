@@ -118,6 +118,13 @@ def test_export_review_decision_templates_with_safe_contract(
     contract = row["review_decision_contract"]
     assert isinstance(contract, dict)
     assert contract["reviewer_id_required_prefix"] == "operator_"
+    assert contract["reviewed_at_required_format"] == "timezone_aware_iso8601"
+    assert contract["approved_ingredient_display_name_max_length"] == 160
+    assert contract["approved_ingredient_max_count"] == 128
+    assert contract["approved_ingredient_identity_unique_by"] == [
+        "normalized_display_name",
+        "nutrient_code",
+    ]
     assert contract["approved_ingredient_amount_type"] == "number_or_null"
     assert contract["approved_ingredient_source_required"] == "human_reviewed"
     assert contract["approved_attestations_required"] == [

@@ -430,6 +430,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - approved ingredient의 `amount`는 숫자 또는 null만 허용하고 string/bool amount는 실패 처리한다.
 - approved ingredient는 normalized display name과 nutrient code 기준으로 product 안에서 중복될 수 없다.
 - gap decision template contract에도 `reviewer_id_required_prefix=operator_`를 명시했다.
+- gap decision template contract에도 `reviewed_at_required_format=timezone_aware_iso8601`과 unique ingredient identity 기준을 명시했다.
 - gap decision template contract에도 `approved_ingredient_source_required=human_reviewed`, `approved_ingredient_amount_type=number_or_null`을 명시했다.
 
 구현된 gap-scoped import gate 보강:
@@ -468,7 +469,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - ROI crop retry는 파생 crop image를 temp directory에만 만들고 최종 artifact에는 crop hash/count/profile만 기록한다.
 - DB-labeling staging/review ingest/decision template은 모두 human review gate이며 production DB write를 수행하지 않는다.
 - manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
-- manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count와 non-importable decision skeleton만 노출한다.
+- manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count, non-importable decision skeleton, validator와 같은 reviewed_at/ingredient identity contract만 노출한다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id와 timezone-aware ISO `reviewed_at`만 허용해 model-only approval 또는 시간대가 불명확한 review decision 우회를 막는다.
 - approved DB import exporter는 human-reviewed source, numeric amount, product 안 unique ingredient identity만 허용해 OCR/LLM provenance, free-form amount, duplicate child row가 DB import 후보에 섞이지 않게 한다.
 - dry-run approved DB import gate는 duplicate source product key와 duplicate ingredient identity를 DB write 전에 차단한다.
@@ -497,6 +498,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - gap strict gate: empty decisions with `--restrict-decisions-to-gap` produces approved row 0 and DB write false; adding `--require-gap-reviewed` fails with `Gap review queue requires every gap row to be reviewed.` as expected.
 - readiness gate: `ready_for_db_import=false`, `human_review_required=true`, blocker `manual_gap_review_pending`, `no_approved_import_rows`, `ocr_provider_errors_present`, `review_rows_not_db_import_ready`; `--require-db-ready` fails as expected.
 - review decision gate: `ollama_gemma4` 같은 model-only reviewer id, naive/invalid `reviewed_at`, duplicate approved ingredient는 validation 및 direct approved export에서 실패하도록 테스트로 고정했다.
+- review decision template gate: timezone-aware `reviewed_at`과 unique approved ingredient identity 요구사항을 template contract에 노출하도록 테스트로 고정했다.
 - dry-run DB import gate: duplicate source product key와 duplicate ingredient identity는 ORM dry-run plan 생성 전에 실패하도록 테스트로 고정했다.
 - DB write approval gate: `ollama_gemma4` 같은 model-only reviewer id와 naive/non-UTC `approved_at`은 최종 DB write preflight에서 실패하도록 테스트로 고정했다.
 - privacy scan: 2026-05-25 generated output strict literal-key scan finding 0; category-label/inventory strict scan finding 0.
