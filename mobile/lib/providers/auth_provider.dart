@@ -56,6 +56,7 @@ class AuthState {
     this.isSubmitting = false,
     this.pendingOAuthName,
     this.pendingOAuthEmail,
+    this.pendingOAuthIsNew,
   });
 
   final AuthStatus status;
@@ -64,6 +65,8 @@ class AuthState {
   // OAuth 신규 사용자 signup_flow 프리필용 — 한 번 쓰면 비움.
   final String? pendingOAuthName;
   final String? pendingOAuthEmail;
+  // 백엔드 'is_new_user' — 신규 가입자 판정. null 이면 백엔드 미지원 → 로컬 플래그 fallback.
+  final bool? pendingOAuthIsNew;
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
   bool get isReady => status != AuthStatus.unknown;
@@ -75,6 +78,7 @@ class AuthState {
     bool clearError = false,
     String? pendingOAuthName,
     String? pendingOAuthEmail,
+    bool? pendingOAuthIsNew,
     bool clearPendingOAuth = false,
   }) {
     return AuthState(
@@ -83,6 +87,7 @@ class AuthState {
       isSubmitting: isSubmitting ?? this.isSubmitting,
       pendingOAuthName: clearPendingOAuth ? null : (pendingOAuthName ?? this.pendingOAuthName),
       pendingOAuthEmail: clearPendingOAuth ? null : (pendingOAuthEmail ?? this.pendingOAuthEmail),
+      pendingOAuthIsNew: clearPendingOAuth ? null : (pendingOAuthIsNew ?? this.pendingOAuthIsNew),
     );
   }
 
@@ -180,7 +185,7 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
       final kakaoToken = await _oauth.signInWithKakao();
-      await _auth.loginWithKakao(kakaoToken);
+      final tokens = await _auth.loginWithKakao(kakaoToken);
       // 카카오 사용자 프로필 별도 조회 — signup_flow 프리필용 (실패 OK)
       final profile = await _oauth.fetchKakaoProfile();
       state = state.copyWith(
@@ -189,6 +194,7 @@ class AuthController extends StateNotifier<AuthState> {
         clearError: true,
         pendingOAuthName: profile?.name,
         pendingOAuthEmail: profile?.email,
+        pendingOAuthIsNew: tokens.isNewUser,
       );
       return true;
     } on OAuthFailure catch (e) {
@@ -221,13 +227,14 @@ class AuthController extends StateNotifier<AuthState> {
         state = state.copyWith(isSubmitting: false, errorMessage: '구글 로그인이 취소됐어요');
         return false;
       }
-      await _auth.loginWithGoogle(result.idToken);
+      final tokens = await _auth.loginWithGoogle(result.idToken);
       state = state.copyWith(
         isSubmitting: false,
         status: AuthStatus.authenticated,
         clearError: true,
         pendingOAuthName: result.profile.name,
         pendingOAuthEmail: result.profile.email,
+        pendingOAuthIsNew: tokens.isNewUser,
       );
       return true;
     } on OAuthFailure catch (e) {

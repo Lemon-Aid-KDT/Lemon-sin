@@ -28,6 +28,7 @@ import '../screens/raffle_screen.dart';
 import '../screens/health_screen.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/common/main_shell.dart';
+import 'page_transitions.dart';
 import '../devtools/tokens_preview.dart';
 
 /// 앱 라우트 경로
@@ -101,7 +102,7 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoute.splash,
       name: 'splash',
-      builder: (context, state) => const SplashScreen(),
+      pageBuilder: (context, state) => fadePage(state, const SplashScreen()),
     ),
 
     // 인증 흐름 (§3.4)
@@ -109,7 +110,7 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoute.login,
       name: 'login',
-      builder: (context, state) => const LoginScreenV3(),
+      pageBuilder: (context, state) => fadePage(state, const LoginScreenV3()),
     ),
     GoRoute(
       path: AppRoute.signup,
@@ -120,14 +121,17 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
       //   - consented=1 : 약관 사전 동의 (step 10 약관 화면 스킵)
       //   - mk=1      : 마케팅 동의 여부
       //   - name/email: 프리필
-      builder: (context, state) {
+      pageBuilder: (context, state) {
         final qp = state.uri.queryParameters;
-        return SignupFlowScreen(
-          oauthMode: qp['oauth'] == '1',
-          preConsented: qp['consented'] == '1',
-          marketingAgreed: qp['mk'] == '1',
-          prefillName: qp['name'],
-          prefillEmail: qp['email'],
+        return slidePage(
+          state,
+          SignupFlowScreen(
+            oauthMode: qp['oauth'] == '1',
+            preConsented: qp['consented'] == '1',
+            marketingAgreed: qp['mk'] == '1',
+            prefillName: qp['name'],
+            prefillEmail: qp['email'],
+          ),
         );
       },
     ),
@@ -135,98 +139,80 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: '/signup-legacy',
       name: 'signup-legacy',
-      builder: (context, state) => const SignupScreen(),
+      pageBuilder: (context, state) => slidePage(state, const SignupScreen()),
     ),
     GoRoute(
       path: AppRoute.verifyEmail,
       name: 'verifyEmail',
-      builder: (context, state) => VerifyEmailScreen(
-        email: state.uri.queryParameters['email'],
+      pageBuilder: (context, state) => slidePage(
+        state,
+        VerifyEmailScreen(email: state.uri.queryParameters['email']),
       ),
     ),
     GoRoute(
       path: AppRoute.consent,
       name: 'consent',
-      builder: (context, state) => const ConsentScreen(),
+      pageBuilder: (context, state) => modalPage(state, const ConsentScreen()),
     ),
     GoRoute(
       path: AppRoute.onboarding,
       name: 'onboarding',
-      builder: (context, state) => const OnboardingScreen(),
+      pageBuilder: (context, state) =>
+          slidePage(state, const OnboardingScreen()),
     ),
 
     // 메인 화면 (§3.5)
     GoRoute(
       path: AppRoute.home,
       name: 'home',
-      builder: (context, state) => const DashboardScreen(),
+      pageBuilder: (context, state) => fadePage(state, const DashboardScreen()),
     ),
     GoRoute(
       path: AppRoute.camera,
       name: 'camera',
-      builder: (context, state) => const CameraScreen(),
+      pageBuilder: (context, state) => modalPage(state, const CameraScreen()),
     ),
-    GoRoute(
-      path: AppRoute.analysisResult,
-      name: 'analysisResult',
-      builder: (context, state) {
-        final mode = state.uri.queryParameters['mode'] ?? 'supplement';
-        return AnalysisResultScreen(mode: mode);
-      },
-    ),
-    GoRoute(
-      path: '/health-profile',
-      name: 'healthProfile',
-      builder: (context, state) {
-        final tab = state.uri.queryParameters['tab'] ?? 'disease';
-        return HealthProfileScreen(initialTab: tab);
-      },
-    ),
-    GoRoute(
-      path: '/notifications',
-      name: 'notifications',
-      builder: (context, state) => const NotificationsScreen(),
-    ),
-    GoRoute(
-      path: '/calendar',
-      name: 'calendar',
-      builder: (context, state) => const CalendarScreen(),
-    ),
+    // analysis-result / health-profile / notifications / calendar 는
+    // StatefulShellRoute 의 sub-route 로 이동 (하단 탭바 유지).
+    // → 아래 5탭 셸 branch 안에 정의됨.
     GoRoute(
       path: AppRoute.dashboard,
       name: 'dashboard',
-      builder: (context, state) => const DashboardScreen(),
+      pageBuilder: (context, state) =>
+          fadePage(state, const DashboardScreen()),
     ),
     // PREVIEW — Dashboard v3 (LADS §13). Claude Design Export ZIP 도착 시 본 화면 교체.
     GoRoute(
       path: AppRoute.dashboardV3,
       name: 'dashboardV3',
-      builder: (context, state) => const DashboardScreenV3(),
+      pageBuilder: (context, state) =>
+          fadePage(state, const DashboardScreenV3()),
     ),
     GoRoute(
       path: AppRoute.chat,
       name: 'chat',
-      builder: (context, state) => const ChatScreen(),
+      pageBuilder: (context, state) => slidePage(state, const ChatScreen()),
     ),
     GoRoute(
       path: AppRoute.score,
       name: 'score',
-      builder: (context, state) => const ScoreScreen(),
+      pageBuilder: (context, state) => slidePage(state, const ScoreScreen()),
     ),
     GoRoute(
       path: AppRoute.raffle,
       name: 'raffle',
-      builder: (context, state) => const RaffleScreen(),
+      pageBuilder: (context, state) => slidePage(state, const RaffleScreen()),
     ),
     GoRoute(
       path: AppRoute.health,
       name: 'health',
-      builder: (context, state) => const HealthScreen(),
+      pageBuilder: (context, state) => slidePage(state, const HealthScreen()),
     ),
     GoRoute(
       path: AppRoute.settings,
       name: 'settings',
-      builder: (context, state) => const SettingsScreen(),
+      pageBuilder: (context, state) =>
+          slidePage(state, const SettingsScreen()),
     ),
 
     // ─── 메인 5 탭 셸 (CLAUDE.md §4.2 — 가안) ───
@@ -248,6 +234,45 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
               path: '/shell/home',
               name: 'shellHome',
               builder: (context, state) => const DashboardScreen(),
+              // 홈에서 들어가는 상세 화면 — 셸 안이라 하단 탭바 유지
+              routes: <RouteBase>[
+                // 과거 기록 조회 — 메인과 같은 구성, 풀스크린
+                GoRoute(
+                  path: 'record',
+                  name: 'dayRecord',
+                  pageBuilder: (context, state) {
+                    final dateStr = state.uri.queryParameters['date'];
+                    final date = dateStr != null
+                        ? DateTime.tryParse(dateStr)
+                        : null;
+                    return slidePage(
+                      state,
+                      DashboardScreen(recordDate: date),
+                    );
+                  },
+                ),
+                GoRoute(
+                  path: 'analysis-result',
+                  name: 'shellAnalysisResult',
+                  pageBuilder: (context, state) {
+                    final mode =
+                        state.uri.queryParameters['mode'] ?? 'supplement';
+                    return modalPage(state, AnalysisResultScreen(mode: mode));
+                  },
+                ),
+                GoRoute(
+                  path: 'notifications',
+                  name: 'shellNotifications',
+                  pageBuilder: (context, state) =>
+                      slidePage(state, const NotificationsScreen()),
+                ),
+                GoRoute(
+                  path: 'calendar',
+                  name: 'shellCalendar',
+                  pageBuilder: (context, state) =>
+                      slidePage(state, const CalendarScreen()),
+                ),
+              ],
             ),
           ],
         ),
@@ -284,6 +309,18 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
               path: '/shell/settings',
               name: 'shellSettings',
               builder: (context, state) => const SettingsScreen(),
+              // 설정에서 들어가는 상세 화면 — 셸 안이라 하단 탭바 유지
+              routes: <RouteBase>[
+                GoRoute(
+                  path: 'health-profile',
+                  name: 'shellHealthProfile',
+                  pageBuilder: (context, state) {
+                    final tab = state.uri.queryParameters['tab'] ?? 'disease';
+                    return slidePage(
+                        state, HealthProfileScreen(initialTab: tab));
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -294,7 +331,7 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoute.tokensPreview,
       name: 'tokensPreview',
-      builder: (context, state) => const TokensPreview(),
+      pageBuilder: (context, state) => fadePage(state, const TokensPreview()),
     ),
   ],
 

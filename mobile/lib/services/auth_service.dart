@@ -17,9 +17,16 @@ import 'token_storage.dart';
 
 /// 인증 토큰 쌍.
 class AuthTokens {
-  const AuthTokens({required this.access, required this.refresh});
+  const AuthTokens({
+    required this.access,
+    required this.refresh,
+    this.isNewUser,
+  });
   final String access;
   final String refresh;
+  // 백엔드 OAuth 응답의 'is_new_user' — 신규 가입자면 true.
+  // 백엔드가 아직 안 내려주면 null → 호출 측이 로컬 플래그로 fallback.
+  final bool? isNewUser;
 }
 
 /// 인증 실패 — 화면에서 잡아 SnackBar / 에러 라벨 표시.
@@ -203,7 +210,13 @@ class AuthService {
           _storage.writePair(access: access, refresh: refresh),
           _storage.writeLastProvider(provider),
         ]);
-        return AuthTokens(access: access, refresh: refresh);
+        // 백엔드가 'is_new_user' 내려주면 사용 — 없으면 null
+        final isNew = data['is_new_user'];
+        return AuthTokens(
+          access: access,
+          refresh: refresh,
+          isNewUser: isNew is bool ? isNew : null,
+        );
       }
     }
     throw _failureFromResponse(resp, fallbackMessage);

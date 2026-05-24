@@ -362,12 +362,12 @@ class _AnimatedCharState extends State<_AnimatedChar>
         TweenSequenceItem(tween: Tween(begin: 0.65, end: 0.0), weight: 65),
       ]).animate(CurvedAnimation(parent: _dc, curve: Curves.easeOut));
 
-      // 글자 색이 점 박힐 때 노란색으로 잠깐 번쩍 (0 → 1 → 0)
+      // 글자 색이 점 박힐 때 노란(브랜드)으로 변하고 그대로 유지 (0 → 1)
       _charColorMix = TweenSequence<double>([
         TweenSequenceItem(tween: Tween(begin: 0.0, end: 0.0), weight: 25),
-        TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
-        TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 60),
-      ]).animate(CurvedAnimation(parent: _dc, curve: Curves.easeOut));
+        TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 35),
+        TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 40),
+      ]).animate(CurvedAnimation(parent: _dc, curve: Curves.easeOutCubic));
 
       Future.delayed(const Duration(milliseconds: 140), () {
         if (mounted) _dc.forward();
@@ -397,13 +397,21 @@ class _AnimatedCharState extends State<_AnimatedChar>
     return AnimatedBuilder(
       animation: Listenable.merge([_c, _dc]),
       builder: (_, __) {
-        // 일반 글자 색 ↔ 노란 (점 박힐 때 잠깐)
+        // 일반 글자 색 ↔ 브랜드 노랑 (악센트 글자는 변하고 유지)
         final baseColor = const Color(0xFF4E5968);
         const accentColor = Color(0xFFE0A700);
         final mix = _charColorMix.value.clamp(0.0, 1.0);
         final textColor = widget.accent
             ? Color.lerp(baseColor, accentColor, mix)
             : baseColor;
+        // 악센트 글자는 색 변하면서 두께도 같이 굵어짐 (w500 → w800)
+        final FontWeight charWeight = widget.accent
+            ? (mix > 0.6
+                ? FontWeight.w800
+                : mix > 0.25
+                    ? FontWeight.w700
+                    : FontWeight.w500)
+            : FontWeight.w500;
 
         return Opacity(
           opacity: _opacity.value.clamp(0.0, 1.0),
@@ -425,7 +433,7 @@ class _AnimatedCharState extends State<_AnimatedChar>
                         style: TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 17,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: charWeight,
                           color: textColor,
                           height: 1.45,
                           letterSpacing: -0.4,

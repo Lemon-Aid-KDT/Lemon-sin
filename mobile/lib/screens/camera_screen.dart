@@ -26,6 +26,25 @@ import '../utils/device_env.dart';
 
 enum _CaptureMode { supplement, meal }
 
+// ═══════════════════════════════════════════
+// 카메라 화면 UI 톤 — LADS Flat 2.0 + Soft UI.
+// 검정 배경 위라 surface/그림자 톤을 별도로 통일.
+// ═══════════════════════════════════════════
+class _CamTone {
+  // 떠있는 컨트롤(버튼·칩) 공통 표면색 — 반투명 검정 + 미세 보더
+  static final Color surface = Colors.black.withValues(alpha: 0.42);
+  static final Color surfaceStrong = Colors.black.withValues(alpha: 0.55);
+  static final Color border = Colors.white.withValues(alpha: 0.14);
+  // Soft UI — 떠있는 요소의 부드러운 그림자
+  static final List<BoxShadow> softShadow = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.30),
+      blurRadius: 14,
+      offset: const Offset(0, 4),
+    ),
+  ];
+}
+
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -254,7 +273,7 @@ class _CameraScreenState extends State<CameraScreen>
     if (_captured == null) return;
     HapticFeedback.mediumImpact();
     final modeArg = _mode == _CaptureMode.supplement ? 'supplement' : 'meal';
-    context.push('/analysis-result?mode=$modeArg');
+    context.push('/shell/home/analysis-result?mode=$modeArg');
   }
 
   @override
@@ -268,10 +287,45 @@ class _CameraScreenState extends State<CameraScreen>
         if (mounted) _initCamera();
       });
     }
-    return Scaffold(
+    // 시스템 바 스타일 명시 — 카메라 화면은 검정 풀스크린.
+    // (안드로이드 에뮬이 카메라 인디케이터를 테두리로 잘못 그리는 현상 완화)
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: Scaffold(
       backgroundColor: Colors.black,
       // 풀스크린 — body 가 화면 끝까지. SafeArea 는 컨트롤 위젯 안에서 처리.
-      body: _captured == null ? _buildCapture() : _buildPreview(),
+      // 촬영 ↔ 미리보기 전환은 페이드 + 미세 스케일 (토스 톤 — "딱" 안 바뀜)
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOutQuart,
+        switchOutCurve: Curves.easeInQuart,
+        transitionBuilder: (child, anim) {
+          return FadeTransition(
+            opacity: anim,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 1.03, end: 1.0).animate(anim),
+              child: child,
+            ),
+          );
+        },
+        child: _captured == null
+            ? KeyedSubtree(
+                key: const ValueKey('capture'),
+                child: _buildCapture(),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('preview'),
+                child: _buildPreview(),
+              ),
+      ),
+      ),
     );
   }
 
@@ -410,12 +464,18 @@ class _TopBar extends StatelessWidget {
         children: [
           _RoundIcon(icon: closeIcon, onTap: onClose),
           const Spacer(),
-          Text(
-            title ?? '$modeLabel 촬영',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
+          // 제목 — 모드 바뀔 때 부드럽게 전환
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: Text(
+              title ?? '$modeLabel 촬영',
+              key: ValueKey(title ?? modeLabel),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+              ),
             ),
           ),
           const Spacer(),
@@ -426,31 +486,56 @@ class _TopBar extends StatelessWidget {
               onTap: onFlip!,
             )
           else
-            const SizedBox(width: 48, height: 48),
+            const SizedBox(width: 44, height: 44),
         ],
       ),
     );
   }
 }
 
-class _RoundIcon extends StatelessWidget {
+// 상단 원형 아이콘 버튼 — 글래스 톤 + press 피드백 (LADS / 애플 카메라 톤)
+class _RoundIcon extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
   const _RoundIcon({required this.icon, required this.onTap});
 
   @override
+  State<_RoundIcon> createState() => _RoundIconState();
+}
+
+class _RoundIconState extends State<_RoundIcon> {
+  bool _pressed = false;
+
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.10),
-          shape: BoxShape.circle,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onTap();
+      },
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.90 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _CamTone.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: _CamTone.border, width: 1),
+            boxShadow: _CamTone.softShadow,
+          ),
+          alignment: Alignment.center,
+          child: Icon(widget.icon, color: Colors.white, size: 21),
         ),
-        alignment: Alignment.center,
-        child: Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }
@@ -505,24 +590,32 @@ class _FullScreenPreview extends StatelessWidget {
     }
     final size = c.value.previewSize;
     if (size == null) {
-      return Container(color: Colors.black);
+      // previewSize 아직 안 옴 — 잠깐 로딩 표시 (검정 무한 방지)
+      return Container(
+        color: Colors.black,
+        alignment: Alignment.center,
+        child: _SpinnerWithLabel(label: '카메라 준비 중이에요'),
+      );
     }
     // 풀스크린 cover — 안드로이드 previewSize 는 가로 좌표계라 세로 화면 그릴 때 swap.
     // FittedBox(cover, center) 가 정중앙 기준으로 양쪽 똑같이 자름.
     //
-    // 에뮬/실기기 동일 — 정상 cover, 보정 없음.
-    // 에뮬에서 사람이 우측에 보이는 건 노트북 웹캠 구도 문제.
-    // 실기기 (휴대폰) 에서는 사용자가 휴대폰을 들고 피사체를 가운데에 두는 거라
-    // 코드 보정 불필요.
+    // 검정 → 카메라 영상 전환을 페이드 인 (토스 톤 — "딱" 안 켜짐).
     return ClipRect(
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: size.height,
-            height: size.width,
-            child: CameraPreview(c),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutQuart,
+        builder: (ctx, v, child) => Opacity(opacity: v, child: child),
+        child: SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            child: SizedBox(
+              width: size.height,
+              height: size.width,
+              child: CameraPreview(c),
+            ),
           ),
         ),
       ),
@@ -536,28 +629,31 @@ class _GuideOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hint = mode == _CaptureMode.supplement
-        ? '성분표를 화면 안에 또렷하게 맞춰주세요'
-        : '음식 전체가 화면 안에 들어오게 맞춰주세요';
-
     return IgnorePointer(
       child: LayoutBuilder(
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
-          final rect = _guideRect(size);
+          // 둥근 박스(마스크·흰 외곽) = 영양제 크기로 고정
+          final outerRect = _guideRect(size, _CaptureMode.supplement);
+          // 노란 코너 = 둥근 박스 '안쪽'에 여백 두고 배치 (실제 촬영 영역).
+          //   - 영양제: 박스에서 패딩만큼 균등 축소 (세로 직사각)
+          //   - 식단:   그 안에 들어가는 최대 정사각 (가운데 정렬)
+          final innerTarget = _innerRect(outerRect, mode);
 
           return Stack(
             children: [
+              // ① 마스크 — 영양제 크기 고정
               Positioned.fill(
                 child: CustomPaint(
                   painter: _GuideMaskPainter(
-                    guideRect: rect,
+                    guideRect: outerRect,
                     radius: AppRadius.lg,
                   ),
                 ),
               ),
+              // ② 흰 외곽 둥근 박스 — 영양제 크기 고정
               Positioned.fromRect(
-                rect: rect,
+                rect: outerRect,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -566,61 +662,38 @@ class _GuideOverlay extends StatelessWidget {
                       width: 1,
                     ),
                   ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        top: 14,
-                        left: 14,
-                        child: _Corner(corner: _CornerType.tl),
-                      ),
-                      Positioned(
-                        top: 14,
-                        right: 14,
-                        child: _Corner(corner: _CornerType.tr),
-                      ),
-                      Positioned(
-                        bottom: 14,
-                        left: 14,
-                        child: _Corner(corner: _CornerType.bl),
-                      ),
-                      Positioned(
-                        bottom: 14,
-                        right: 14,
-                        child: _Corner(corner: _CornerType.br),
-                      ),
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: Container(
-                          margin: const EdgeInsets.all(AppSpace.lg),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpace.lg,
-                            vertical: AppSpace.md,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.58),
-                            borderRadius: BorderRadius.circular(AppRadius.full),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.18),
-                            ),
-                          ),
-                          child: Text(
-                            hint,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
+              // ③ 노란 코너 — 모드별 rect 로 부드럽게 변형
+              TweenAnimationBuilder<Rect?>(
+                tween: RectTween(end: innerTarget),
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutQuart,
+                builder: (context, rect, _) {
+                  final r = rect ?? innerTarget;
+                  return Positioned.fromRect(
+                    rect: r,
+                    child: Stack(
+                      children: const [
+                        Positioned(
+                            top: 0, left: 0,
+                            child: _Corner(corner: _CornerType.tl)),
+                        Positioned(
+                            top: 0, right: 0,
+                            child: _Corner(corner: _CornerType.tr)),
+                        Positioned(
+                            bottom: 0, left: 0,
+                            child: _Corner(corner: _CornerType.bl)),
+                        Positioned(
+                            bottom: 0, right: 0,
+                            child: _Corner(corner: _CornerType.br)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              // 안내 문구는 _buildCapture 에서 하단 컨트롤 바로 위에 별도 배치
+              // (여기 두면 프레임/컨트롤과 겹침)
             ],
           );
         },
@@ -628,18 +701,20 @@ class _GuideOverlay extends StatelessWidget {
     );
   }
 
-  Rect _guideRect(Size size) {
-    final aspect = mode == _CaptureMode.supplement ? 0.72 : 1.0;
+  // 가이드 사각 계산.
+  //   - 둥근 외곽 박스: 항상 supplement 모드로 호출 → 영양제 크기 고정
+  //   - 노란 코너: 현재 mode 로 호출 → 모드별 비율
+  // 위치·여백·최대 크기는 동일. aspect(비율) 만 모드별로 다름.
+  Rect _guideRect(Size size, _CaptureMode forMode) {
+    final aspect = forMode == _CaptureMode.supplement ? 0.72 : 1.0;
     final topReserved = math.min(112.0, size.height * 0.18);
     final bottomReserved = math.min(212.0, size.height * 0.28);
     final usableHeight =
         math.max(220.0, size.height - topReserved - bottomReserved);
     final maxWidth =
         math.max(1.0, math.min(size.width - (AppSpace.page * 2), 420.0));
-    final maxHeight = math.min(
-      usableHeight,
-      mode == _CaptureMode.supplement ? 520.0 : 420.0,
-    );
+    // 영양제 기준 최대 높이로 통일
+    final maxHeight = math.min(usableHeight, 520.0);
 
     var width = math.min(maxWidth, maxHeight * aspect);
     var height = width / aspect;
@@ -649,9 +724,28 @@ class _GuideOverlay extends StatelessWidget {
     }
 
     return Rect.fromCenter(
-      center: Offset(size.width / 2, topReserved + usableHeight / 2),
+      // 프레임 전체를 10px 위로
+      center: Offset(size.width / 2, topReserved + usableHeight / 2 - 10),
       width: width,
       height: height,
+    );
+  }
+
+  // 노란 코너 사각 — 둥근 외곽 박스(outer) 안쪽 영역.
+  //   - 영양제: outer 에서 패딩만큼 균등 축소
+  //   - 식단:   그 축소된 영역 안에 들어가는 최대 정사각 (중앙 정렬)
+  Rect _innerRect(Rect outer, _CaptureMode forMode) {
+    const pad = 24.0; // 둥근 박스 ↔ 노란 코너 사이 여백
+    final inset = outer.deflate(pad);
+    if (forMode == _CaptureMode.supplement) {
+      return inset; // 세로 직사각 그대로
+    }
+    // 식단 — inset 안에 들어가는 최대 정사각
+    final side = math.min(inset.width, inset.height);
+    return Rect.fromCenter(
+      center: inset.center,
+      width: side,
+      height: side,
     );
   }
 }
@@ -743,6 +837,52 @@ class _ErrorBox extends StatelessWidget {
   }
 }
 
+// 안내 문구 칩 — 가이드 프레임 바깥 아래 (LADS 톤)
+class _HintChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _HintChip({super.key, required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      // 화면 가로폭 가득 — 토글 버튼과 같은 폭. 텍스트는 가운데.
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.lg,
+        vertical: AppSpace.sm + 3,
+      ),
+      decoration: BoxDecoration(
+        color: _CamTone.surfaceStrong,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: _CamTone.border, width: 1),
+        boxShadow: _CamTone.softShadow,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: AppColor.brand, size: 16),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 enum _CornerType { tl, tr, bl, br }
 
 class _Corner extends StatelessWidget {
@@ -751,10 +891,10 @@ class _Corner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const len = 32.0;
-    const thick = 4.0;
+    const len = 30.0;
+    const thick = 3.5;
     final color = AppColor.brand;
-    const radius = Radius.circular(2);
+    const radius = Radius.circular(6);
     BorderSide side(bool show) =>
         show ? BorderSide(color: color, width: thick) : BorderSide.none;
     Border border;
@@ -780,7 +920,10 @@ class _Corner extends StatelessWidget {
     return Container(
       width: len,
       height: len,
-      decoration: BoxDecoration(border: border, borderRadius: br),
+      decoration: BoxDecoration(
+        border: border,
+        borderRadius: br,
+      ),
     );
   }
 }
@@ -810,7 +953,7 @@ class _BottomControls extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(
         AppSpace.page,
-        AppSpace.xxl,
+        AppSpace.xl,   // 칩 위 여백 — 그라데 때문에 좁아보여 한 단계 키움
         AppSpace.page,
         AppSpace.lg,
       ),
@@ -827,27 +970,53 @@ class _BottomControls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _ModeSegment(mode: mode, onChange: onModeChange),
+          // 안내 칩 — 모드 토글 위. 가이드 프레임/컨트롤과 안 겹침.
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            switchInCurve: Curves.easeOutQuart,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.25),
+                  end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: _HintChip(
+              key: ValueKey(mode),
+              icon: mode == _CaptureMode.supplement
+                  ? Icons.description_rounded
+                  : Icons.restaurant_rounded,
+              text: mode == _CaptureMode.supplement
+                  ? '성분표를 테두리 안에 맞춰주세요'
+                  : '음식이 테두리 안에 들어오게 맞춰주세요',
+            ),
+          ),
           const SizedBox(height: AppSpace.lg),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 72,
-                child: Align(
-                  alignment: Alignment.centerRight,
+          _ModeSegment(mode: mode, onChange: onModeChange),
+          const SizedBox(height: AppSpace.xl),
+          // 셔터 정중앙 · 갤러리 좌측 끝 · 우측 균형 빈자리
+          // Stack 으로 셔터를 화면 정중앙에 고정, 갤러리는 좌측에.
+          SizedBox(
+            height: 72,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // 정중앙 — 셔터
+                _ShutterButton(
+                  onTap: enabled ? onShutter : () {},
+                  loading: loading,
+                  enabled: enabled,
+                ),
+                // 좌측 끝 — 갤러리 (가이드 프레임 좌측선과 정렬)
+                Align(
+                  alignment: Alignment.centerLeft,
                   child: _GalleryButton(onTap: onGallery),
                 ),
-              ),
-              const SizedBox(width: AppSpace.xl),
-              _ShutterButton(
-                onTap: enabled ? onShutter : () {},
-                loading: loading,
-                enabled: enabled,
-              ),
-              const SizedBox(width: AppSpace.xl),
-              const SizedBox(width: 72),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -855,6 +1024,7 @@ class _BottomControls extends StatelessWidget {
   }
 }
 
+// 모드 토글 — 노란 알약이 슥 미끄러지는 슬라이딩 인디케이터 (토스 톤)
 class _ModeSegment extends StatelessWidget {
   final _CaptureMode mode;
   final ValueChanged<_CaptureMode> onChange;
@@ -862,23 +1032,70 @@ class _ModeSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget item(_CaptureMode m, String label) {
-      final active = m == mode;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => onChange(m),
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            height: 48,
-            decoration: BoxDecoration(
-              color: active ? AppColor.brand : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppRadius.full),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              label,
+    final isSupplement = mode == _CaptureMode.supplement;
+    // maxWidth 제약 제거 — 좌우 끝까지 늘려서 가이드 프레임 폭과 정렬.
+    // (_BottomControls 의 좌우 page 패딩 = 가이드 프레임 여백과 동일)
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _CamTone.surfaceStrong,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: _CamTone.border, width: 1),
+        boxShadow: _CamTone.softShadow,
+      ),
+      child: LayoutBuilder(
+            builder: (ctx, box) {
+              final pillW = box.maxWidth / 2;
+              return SizedBox(
+                height: 48,
+                child: Stack(
+                  children: [
+                    // 슬라이딩 노란 알약 — 선택에 따라 좌/우로 미끄러짐
+                    AnimatedAlign(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutQuart,
+                      alignment: isSupplement
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight,
+                      child: Container(
+                        width: pillW,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColor.brand,
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.full),
+                        ),
+                      ),
+                    ),
+                    // 글자 2개 — 알약 위에 고정, 색만 부드럽게 전환
+                    Row(
+                      children: [
+                        _modeLabel('영양제', isSupplement,
+                            () => onChange(_CaptureMode.supplement)),
+                        _modeLabel('식단', !isSupplement,
+                            () => onChange(_CaptureMode.meal)),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+    );
+  }
+
+  Widget _modeLabel(String text, bool active, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          height: 48,
+          child: Center(
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutQuart,
               style: TextStyle(
                 color: active
                     ? AppColor.ink
@@ -886,27 +1103,8 @@ class _ModeSegment extends StatelessWidget {
                 fontSize: 17,
                 fontWeight: active ? FontWeight.w800 : FontWeight.w600,
               ),
+              child: Text(text),
             ),
-          ),
-        ),
-      );
-    }
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(AppRadius.full),
-          ),
-          child: Row(
-            children: [
-              item(_CaptureMode.supplement, '영양제'),
-              item(_CaptureMode.meal, '식단'),
-            ],
           ),
         ),
       ),
@@ -914,7 +1112,8 @@ class _ModeSegment extends StatelessWidget {
   }
 }
 
-class _ShutterButton extends StatelessWidget {
+// 셔터 — 누를 때 scale down (토스/애플 press 피드백)
+class _ShutterButton extends StatefulWidget {
   final VoidCallback onTap;
   final bool loading;
   final bool enabled;
@@ -925,54 +1124,79 @@ class _ShutterButton extends StatelessWidget {
   });
 
   @override
+  State<_ShutterButton> createState() => _ShutterButtonState();
+}
+
+class _ShutterButtonState extends State<_ShutterButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final opacity = enabled ? 1.0 : 0.4;
+    final opacity = widget.enabled ? 1.0 : 0.4;
     return Semantics(
       button: true,
       label: '사진 촬영',
       child: Opacity(
         opacity: opacity,
         child: GestureDetector(
-          onTap: loading ? null : onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 84,
-            height: 84,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 4),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColor.brandTint, AppColor.brand],
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColor.brand.withValues(alpha: 0.35),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
+          onTap: widget.loading ? null : widget.onTap,
+          onTapDown: (_) => _setPressed(true),
+          onTapUp: (_) => _setPressed(false),
+          onTapCancel: () => _setPressed(false),
+          child: AnimatedScale(
+            // 누를 때 0.92 로 줄었다 복귀 — press 피드백
+            scale: _pressed ? 0.92 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 4),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColor.brandTint, AppColor.brand],
                     ),
-                  ],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColor.brand.withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  // 로딩 스피너 페이드 인/아웃
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: widget.loading
+                        ? const Center(
+                            key: ValueKey('spin'),
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.6,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    AppColor.ink),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('idle')),
+                  ),
                 ),
-                child: loading
-                    ? const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.6,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(AppColor.ink),
-                          ),
-                        ),
-                      )
-                    : null,
               ),
             ),
           ),
@@ -982,9 +1206,21 @@ class _ShutterButton extends StatelessWidget {
   }
 }
 
-class _GalleryButton extends StatelessWidget {
+// 갤러리 버튼 — 글래스 톤 + press 피드백 (LADS / 토스 톤)
+class _GalleryButton extends StatefulWidget {
   final VoidCallback onTap;
   const _GalleryButton({required this.onTap});
+
+  @override
+  State<_GalleryButton> createState() => _GalleryButtonState();
+}
+
+class _GalleryButtonState extends State<_GalleryButton> {
+  bool _pressed = false;
+
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -992,20 +1228,32 @@ class _GalleryButton extends StatelessWidget {
       button: true,
       label: '갤러리에서 선택',
       child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.photo_library_rounded,
-            color: Colors.white,
-            size: 24,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          widget.onTap();
+        },
+        onTapDown: (_) => _set(true),
+        onTapUp: (_) => _set(false),
+        onTapCancel: () => _set(false),
+        child: AnimatedScale(
+          scale: _pressed ? 0.92 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: _CamTone.surface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: _CamTone.border, width: 1),
+              boxShadow: _CamTone.softShadow,
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.photo_library_rounded,
+              color: Colors.white,
+              size: 23,
+            ),
           ),
         ),
       ),
@@ -1073,8 +1321,9 @@ class _GhostButton extends StatelessWidget {
       child: Container(
         height: 56,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: _CamTone.surface,
           borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: _CamTone.border, width: 1),
         ),
         alignment: Alignment.center,
         child: Row(

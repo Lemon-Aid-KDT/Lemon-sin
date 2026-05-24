@@ -48,21 +48,24 @@ class SettingsScreen extends ConsumerWidget {
                         iconColor: const Color(0xFF22B07D),
                         label: '만성질환·복약 정보',
                         sub: '복약 교차 점검에 쓰여요',
-                        onTap: () => context.push('/health-profile'),
+                        onTap: () =>
+                            context.push('/shell/settings/health-profile'),
                       ),
                       _SettingsTile(
                         icon: Icons.flag_rounded,
                         iconColor: const Color(0xFF4D7BFF),
                         label: '관심 목적',
                         sub: '당뇨 · 혈압 · 체중 관리',
-                        onTap: () => context.push('/health-profile?tab=goal'),
+                        onTap: () => context.push(
+                            '/shell/settings/health-profile?tab=goal'),
                       ),
                       _SettingsTile(
                         icon: Icons.straighten_rounded,
                         iconColor: const Color(0xFFFF9500),
                         label: '신체 정보',
                         sub: '키·몸무게·성별·나이',
-                        onTap: () => context.push('/health-profile?tab=body'),
+                        onTap: () => context.push(
+                            '/shell/settings/health-profile?tab=body'),
                       ),
                     ]),
 

@@ -65,7 +65,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
               focusedMonth: _focusedMonth,
               selected: _selected,
               recordedDays: _recordedDays,
-              onTap: (d) => setState(() => _selected = d),
+              onTap: (d) {
+                setState(() => _selected = d);
+                // 미래가 아니면 그 날 기록 페이지로 이동
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
+                if (!d.isAfter(today)) {
+                  context.push(
+                    '/shell/home/record'
+                    '?date=${d.toIso8601String().substring(0, 10)}',
+                  );
+                }
+              },
             ),
             const SizedBox(height: AppSpace.lg),
             Expanded(child: _DaySummary(date: _selected)),

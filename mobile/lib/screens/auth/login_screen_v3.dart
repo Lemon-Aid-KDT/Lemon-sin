@@ -539,12 +539,26 @@ Future<void> _startSignupWithConsent(BuildContext context) async {
   context.push('${AppRoute.signup}?consented=1&mk=$mk');
 }
 
-// OAuth 성공 후 신규/재방문 분기
+// OAuth 성공 후 신규/재방문 분기.
+//   1순위: 백엔드 is_new_user (정확 — 재설치·다른기기 무관)
+//   2순위: 로컬 signup_complete 플래그 (백엔드 미지원 시 fallback)
 Future<void> _routeAfterOAuth(BuildContext context, WidgetRef ref) async {
   try {
-    final done = await TokenStorage().isSignupComplete();
+    final auth0 = ref.read(authControllerProvider);
+    final bool isNewUser;
+    if (auth0.pendingOAuthIsNew != null) {
+      // 백엔드가 명확히 알려줌 — 그대로 신뢰
+      isNewUser = auth0.pendingOAuthIsNew!;
+      // 재방문 사용자면 로컬 플래그도 보정해둠 (다음부터 빠름)
+      if (!isNewUser) {
+        await TokenStorage().markSignupComplete();
+      }
+    } else {
+      // 백엔드 미지원 — 로컬 플래그 fallback
+      isNewUser = !(await TokenStorage().isSignupComplete());
+    }
     if (!context.mounted) return;
-    if (!done) {
+    if (isNewUser) {
       // 신규 OAuth 사용자 → 약관 모달 먼저 → 동의 시 회원가입 진입
       final consent = await showConsentModal(context);
       if (!context.mounted) return;

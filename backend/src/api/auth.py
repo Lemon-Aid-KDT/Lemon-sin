@@ -199,8 +199,17 @@ async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     return MessageResponse(message="로그아웃되었습니다.")
 
 
-async def _issue_tokens(user: User, db: AsyncSession) -> TokenResponse:
-    """소셜 로그인 공통: JWT 토큰 발급 및 last_login_at 갱신"""
+async def _issue_tokens(
+    user: User,
+    db: AsyncSession,
+    *,
+    is_new_user: bool = False,
+) -> TokenResponse:
+    """소셜 로그인 공통: JWT 토큰 발급 및 last_login_at 갱신.
+
+    is_new_user: 이번 요청에서 처음 가입한 사용자면 True.
+        프론트가 회원가입 10-step 진입 여부를 이 값으로 판단.
+    """
     access_token = create_access_token(user.id)
     refresh_token_str, expires_at = create_refresh_token(user.id)
     db.add(RefreshToken(
@@ -211,7 +220,11 @@ async def _issue_tokens(user: User, db: AsyncSession) -> TokenResponse:
     ))
     user.last_login_at = datetime.now(UTC)
     await db.flush()
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token_str)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token_str,
+        is_new_user=is_new_user,
+    )
 
 
 @router.post("/google", response_model=TokenResponse)
@@ -238,10 +251,10 @@ async def google_login(body: SocialLoginRequest, db: AsyncSession = Depends(get_
     email = data.get("email")
     display_name = data.get("name")
 
-    # 1. 같은 google_id 면 기존 사용자 → 로그인 (자동 매칭)
+    # 1. 같은 google_id 면 기존 사용자 → 로그인 (자동 매칭). is_new_user=False
     user = await db.scalar(select(User).where(User.google_id == google_id))
     if user:
-        return await _issue_tokens(user, db)
+        return await _issue_tokens(user, db, is_new_user=False)
 
     # 2. 신규 가입 — 같은 이메일이 다른 방식으로 이미 있으면 차단 (정책 2026-05-13)
     if email:
@@ -252,12 +265,12 @@ async def google_login(body: SocialLoginRequest, db: AsyncSession = Depends(get_
                 detail=_duplicate_email_message(existing),
             )
 
-    # 3. 진짜 신규 — 생성
+    # 3. 진짜 신규 — 생성. is_new_user=True → 프론트가 회원가입 10-step 진입
     user = User(google_id=google_id, email=email, display_name=display_name)
     db.add(user)
     await db.flush()
 
-    return await _issue_tokens(user, db)
+    return await _issue_tokens(user, db, is_new_user=True)
 
 
 @router.post("/kakao", response_model=TokenResponse)
@@ -281,10 +294,10 @@ async def kakao_login(body: SocialLoginRequest, db: AsyncSession = Depends(get_d
     email = kakao_account.get("email")
     nickname = kakao_account.get("profile", {}).get("nickname")
 
-    # 1. 같은 kakao_id 면 기존 사용자 → 로그인 (자동 매칭)
+    # 1. 같은 kakao_id 면 기존 사용자 → 로그인 (자동 매칭). is_new_user=False
     user = await db.scalar(select(User).where(User.kakao_id == kakao_id))
     if user:
-        return await _issue_tokens(user, db)
+        return await _issue_tokens(user, db, is_new_user=False)
 
     # 2. 신규 가입 — 같은 이메일이 다른 방식으로 이미 있으면 차단 (정책 2026-05-13)
     #    카카오 이메일 동의 미수락 시 email=None — 그땐 차단 안 함 (kakao_id 만으로 신규 생성)
@@ -296,9 +309,9 @@ async def kakao_login(body: SocialLoginRequest, db: AsyncSession = Depends(get_d
                 detail=_duplicate_email_message(existing),
             )
 
-    # 3. 진짜 신규 — 생성
+    # 3. 진짜 신규 — 생성. is_new_user=True → 프론트가 회원가입 10-step 진입
     user = User(kakao_id=kakao_id, email=email, display_name=nickname)
     db.add(user)
     await db.flush()
 
-    return await _issue_tokens(user, db)
+    return await _issue_tokens(user, db, is_new_user=True)

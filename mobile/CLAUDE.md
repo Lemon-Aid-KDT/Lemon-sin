@@ -283,6 +283,55 @@
      - [ ] `SafeArea` 감쌌는가?
      - [ ] 시뮬레이터 3 사이즈에서 시각 점검했는가?
 
+8. **모션 / 애니메이션 — 현업 기준 (절대 어기지 말 것).**
+   - 모든 화면·상호작용은 **사용자 입장에서 부드럽게 움직이는 현업 수준** 으로 만든다.
+     기준점: **토스 · 애플 (iOS) · Pillyze** 같은 톤.
+   - **상태 변화는 즉각 전환 금지 — 항상 애니메이션.**
+     - 화면 전환, 탭 전환, 토글, 카드 등장/사라짐, 리스트 갱신, 로딩→완료
+     - "딱" 바뀌면 안 됨. 자연스럽게 흐르듯.
+   - **모든 화면 전환(라우팅) 도 애니메이션 필수.**
+     - go_router `pageBuilder` 에서 `CustomTransitionPage` 사용 — 기본 전환은
+       페이드+슬라이드 (iOS 톤). push = 우→좌 슬라이드 + 페이드, 모달성 화면 =
+       아래→위 슬라이드. 전환 없는 즉각 교체 금지.
+     - 전환 시간 300~400ms, `Curves.easeOutQuart`.
+   - **표준 커브 / 시간** (디자인 토큰화 권장 — `AppMotion`):
+     - 마이크로 인터랙션 (토글·버튼 눌림): 150~200ms, `Curves.easeOutCubic`
+     - 컨텐츠 전환 (카드 등장·페이드): 250~350ms, `Curves.easeOutQuart`
+     - 화면 단위 전환: 300~400ms
+     - 톡톡 튀는 강조 (성공·완료): `Curves.easeOutBack` 또는 `elasticOut` (절제해서)
+   - **권장 위젯**: `AnimatedContainer`, `AnimatedSwitcher`, `AnimatedOpacity`,
+     `AnimatedAlign`, `AnimatedPositioned`, `TweenAnimationBuilder`, `Hero`,
+     암묵적 애니메이션 우선. 복잡하면 `AnimationController`.
+   - **누르는 모든 것에 피드백** — `HapticFeedback` (selectionClick / lightImpact)
+     + 시각 반응 (scale down 0.96 같은 press 효과).
+   - **stagger** — 여러 요소 동시 등장 시 80~130ms 간격 순차 등장 (한꺼번에 X).
+   - **과하면 안 됨** — 화려함이 목적이 아니라 "자연스러움". 시니어 사용자 고려.
+     움직임이 정보 전달을 방해하면 뺀다.
+   - 새 화면·위젯 만들 때 — "이게 토스였으면 어떻게 움직였을까?" 를 항상 자문한다.
+
+9. **레몬 마스코트 — 15 포즈 (2026-05-22 도입).**
+   - 에셋: `mobile/assets/mascot/poses/<pose>.png` (2x: `poses/2x/`)
+   - 코드: `utils/mascot_poses.dart` — `MascotPose` enum + `MascotFor` 추천 매핑.
+     캐릭터 쓸 땐 **항상 이 파일 통해서** — 직접 경로 박지 말 것.
+   - **15 포즈와 의미** (`MascotPose.<이름>`):
+     - `find` 돋보기 — 검색·탐색·분석 중 / `hello` 인사 — 환영·온보딩
+     - `help` 도움 — 안내·가이드 / `happy` 행복 — 좋은 결과·칭찬
+     - `solve` 해결 — 완료 / `wow` 놀람 — 발견·강조
+     - `curious` 호기심 — 질문·챗봇 / `thinking` 생각 — 로딩·분석 중
+     - `fresh` 상큼 — 건강·활력 / `thanks` 감사 — 감사 인사
+     - `working` 작업 — 처리 중 / `resting` 휴식 — 빈 상태·여유
+     - `celebrate` 축하 — 성취·가입완료 / `fighting` 파이팅 — 응원
+     - `cool` 멋짐 — 자신감·프로필
+   - **화면별 추천** (`MascotFor.<용도>`): `greeting(hour)` 시간대별 인사,
+     `onboarding` / `signupDone` / `analyzing` / `analysisGood` / `chat` /
+     `emptyState` / `profile` / `scoreGood` / `camera`.
+   - **운영 규칙**:
+     - 같은 화면·맥락엔 항상 같은 포즈 (일관성). 추천 매핑을 우선 따른다.
+     - 빈 상태(분석 0건 등)엔 마스코트 + 안내 문구 = 친근하게.
+     - 캐릭터 등장도 모션 룸(§8) 적용 — 톡 튀거나 부드럽게 fade-in.
+     - 사용자가 "여기 캐릭터 쓰자" 하면 — 맥락 보고 `MascotFor` 또는
+       `MascotPose` 중 맞는 포즈를 **먼저 제안**한다.
+
 ---
 
 ## 8. UX_DIARY 챕터 색인

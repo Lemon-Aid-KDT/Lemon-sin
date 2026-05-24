@@ -12,6 +12,14 @@
 # 단, 템플릿은 OK
 !.env.example
 
+# ── 키 압축본 / 인계 패키지 (절대 커밋 금지) ────
+*.env.zip
+.env.zip
+env.zip
+*secret*.zip
+HANDOFF_ML*/
+*ALL_KEYS*
+
 # ── API 키 / 인증 정보 ─────────────────────────
 *.pem
 *.key
