@@ -209,6 +209,15 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - raw OCR text, provider payload, raw model response, image bytes, request headers, local path literal은 recursive gate에서 거부한다.
 - 이 보강으로 120개 full OCR+Gemma4는 batch 단위로 나누어 실패/timeout fixture만 재개할 수 있다.
 
+구현된 batch orchestration 보강:
+
+- `backend/scripts/run_naver_tampermonkey_batch_ocr_eval.py`
+- splitter가 만든 batch JSONL을 읽어 기존 `run_naver_tampermonkey_ocr_eval.py`를 batch별 subprocess로 순차 실행한다.
+- batch별 stdout/stderr는 캡처만 하고 저장하지 않으며, summary에는 batch name, path hash, return code, provider run count만 기록한다.
+- child env는 allowlist로 제한하고 manifest에서 실제 참조한 image-root env만 전달한다.
+- 실패 batch는 `--continue-on-error` 여부에 따라 중단 또는 계속 진행하며, `--resume`으로 완료 batch를 재사용한다.
+- 실제 120개 batch directory dry-run 결과: planned batch 15, first `ex400u-detail-batch-001.jsonl`, last `ex400u-detail-batch-015.jsonl`, privacy scan finding 0.
+
 판단:
 
 - folder-name category labeling과 웹 근거 taxonomy mapping은 현재 43개 category 전체에서 매핑 누락 없이 동작한다.
