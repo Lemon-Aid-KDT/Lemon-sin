@@ -221,8 +221,8 @@ async def test_ollama_parser_rejects_malformed_json_content() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ollama_parser_rejects_non_null_nutrient_code() -> None:
-    """Verify the LLM cannot invent internal nutrient codes."""
+async def test_ollama_parser_discards_non_null_nutrient_code() -> None:
+    """Verify the LLM cannot persist invented internal nutrient codes."""
     response_content = json.dumps(
         {
             "ingredient_candidates": [
@@ -237,16 +237,66 @@ async def test_ollama_parser_rejects_non_null_nutrient_code() -> None:
     )
     fake_client = _FakeHTTPClient({"message": {"content": response_content}})
 
-    with pytest.raises(OllamaStructuredOutputError):
-        await OllamaSupplementParser(
-            _settings(),
-            http_client=fake_client,
-        ).parse_supplement_ocr_text("비타민 D")
+    result = await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text("비타민 D")
+
+    assert result.ingredient_candidates[0].nutrient_code is None
 
 
 @pytest.mark.asyncio
-async def test_ollama_parser_rejects_invalid_confidence() -> None:
-    """Verify out-of-range LLM confidence values are rejected."""
+async def test_ollama_parser_normalizes_common_model_shape_aliases() -> None:
+    """Verify common model output aliases are normalized before validation."""
+    response_content = json.dumps(
+        {
+            "product": {
+                "product_name": "오메가3",
+                "serving_size": "1 capsule",
+                "raw_ocr_text": "must not persist",
+            },
+            "ingredients": [
+                {
+                    "name": "EPA",
+                    "quantity": "180",
+                    "units": "mg",
+                    "nutrient_code": "EPA",
+                    "source": "model_generated",
+                    "extra": "ignored",
+                }
+            ],
+            "low_confidence_fields": "ingredient_candidates[0].confidence",
+            "warnings": ["needs_review"],
+            "raw_model_response": "must not persist",
+        },
+        ensure_ascii=False,
+    )
+    fake_client = _FakeHTTPClient({"message": {"content": response_content}})
+
+    result = await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text("EPA 180 mg")
+
+    ingredient = result.ingredient_candidates[0]
+    assert result.parsed_product.product_name == "오메가3"
+    assert result.parsed_product.serving_size == "1 capsule"
+    assert ingredient.display_name == "EPA"
+    assert ingredient.amount == 180
+    assert ingredient.unit == "mg"
+    assert ingredient.nutrient_code is None
+    assert ingredient.confidence == 0.0
+    assert ingredient.source == "ollama_structured"
+    assert result.low_confidence_fields == ["ingredient_candidates[0].confidence"]
+    assert result.warnings == ["needs_review"]
+    serialized = result.model_dump_json()
+    assert "raw_ocr_text" not in serialized
+    assert "raw_model_response" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_ollama_parser_downgrades_invalid_confidence() -> None:
+    """Verify malformed confidence does not invalidate visible ingredients."""
     response_content = json.dumps(
         {
             "ingredient_candidates": [
@@ -260,11 +310,45 @@ async def test_ollama_parser_rejects_invalid_confidence() -> None:
     )
     fake_client = _FakeHTTPClient({"message": {"content": response_content}})
 
-    with pytest.raises(OllamaStructuredOutputError):
-        await OllamaSupplementParser(
-            _settings(),
-            http_client=fake_client,
-        ).parse_supplement_ocr_text("비타민 D")
+    result = await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text("비타민 D")
+
+    assert result.ingredient_candidates[0].confidence == 0.0
+
+
+@pytest.mark.asyncio
+async def test_ollama_parser_decodes_fenced_json_content() -> None:
+    """Verify common fenced JSON responses are decoded without storing raw text."""
+    response_content = (
+        "```json\n"
+        + json.dumps(
+            {
+                "ingredient_candidates": [
+                    {
+                        "display_name": "마그네슘",
+                        "amount": "100",
+                        "unit": "mg",
+                        "confidence": "0.7",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+        + "\n```"
+    )
+    fake_client = _FakeHTTPClient({"message": {"content": response_content}})
+
+    result = await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text("마그네슘 100 mg")
+
+    ingredient = result.ingredient_candidates[0]
+    assert ingredient.display_name == "마그네슘"
+    assert ingredient.amount == 100
+    assert ingredient.confidence == 0.7
 
 
 @pytest.mark.asyncio

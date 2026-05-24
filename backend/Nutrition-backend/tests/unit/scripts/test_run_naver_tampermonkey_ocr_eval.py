@@ -340,6 +340,8 @@ def test_run_provider_evaluations_uses_sanitized_child_env(
     )
     monkeypatch.setenv("UNRELATED_SECRET_TOKEN", "should-not-reach-child")
     monkeypatch.setenv("ENABLE_LOCAL_OCR", "false")
+    monkeypatch.setenv("LOCAL_OCR_CONFIDENCE_THRESHOLD", "0.65")
+    monkeypatch.setenv("LOCAL_OCR_USE_TEXTLINE_ORIENTATION", "true")
     monkeypatch.setenv("OLLAMA_MODEL", "gemma4:e4b")
     monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(tmp_path / "fixtures"))
     kwargs_seen: list[dict[str, object]] = []
@@ -367,6 +369,8 @@ def test_run_provider_evaluations_uses_sanitized_child_env(
     assert "UNRELATED_SECRET_TOKEN" not in env
     assert env["RUN_PADDLEOCR_PROBE"] == "1"
     assert env["ENABLE_LOCAL_OCR"] == "true"
+    assert env["LOCAL_OCR_CONFIDENCE_THRESHOLD"] == "0.65"
+    assert env["LOCAL_OCR_USE_TEXTLINE_ORIENTATION"] == "true"
     assert env["OLLAMA_MODEL"] == "gemma4:e4b"
     assert env["NAVER_TAMPERMONKEY_SOURCE_ROOT"] == str(tmp_path / "fixtures")
     assert env["PYTHONPATH"] == str(runner.NUTRITION_BACKEND_ROOT)

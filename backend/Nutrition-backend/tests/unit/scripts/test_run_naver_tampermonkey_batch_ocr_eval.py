@@ -100,6 +100,7 @@ def test_run_batch_evaluations_uses_sanitized_env_and_counts_runs(
         command=("/private/tmp/python", "run_naver_tampermonkey_ocr_eval.py"),
     )
     monkeypatch.setenv("UNRELATED_SECRET_TOKEN", "should-not-reach-child")
+    monkeypatch.setenv("LOCAL_OCR_USE_TEXTLINE_ORIENTATION", "true")
     monkeypatch.setenv("OLLAMA_MODEL", "gemma4:e4b")
     monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(tmp_path / "fixtures"))
     calls: list[dict[str, object]] = []
@@ -131,6 +132,7 @@ def test_run_batch_evaluations_uses_sanitized_env_and_counts_runs(
     env = calls[0]["env"]
     assert isinstance(env, dict)
     assert "UNRELATED_SECRET_TOKEN" not in env
+    assert env["LOCAL_OCR_USE_TEXTLINE_ORIENTATION"] == "true"
     assert env["OLLAMA_MODEL"] == "gemma4:e4b"
     assert env["NAVER_TAMPERMONKEY_SOURCE_ROOT"] == str(tmp_path / "fixtures")
     serialized = json.dumps(summary, ensure_ascii=False)

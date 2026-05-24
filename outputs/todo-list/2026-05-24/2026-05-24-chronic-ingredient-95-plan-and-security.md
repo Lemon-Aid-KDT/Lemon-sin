@@ -7,6 +7,8 @@
 - Ollama API Introduction: https://docs.ollama.com/api/introduction
 - Ollama Chat API: https://docs.ollama.com/api/chat
 - Ollama Structured Outputs: https://ollama.com/blog/structured-outputs
+- Pydantic Models / validating data: https://docs.pydantic.dev/latest/concepts/models/
+- Pydantic `model_validate_json` API: https://docs.pydantic.dev/latest/api/base_model/#pydantic.main.BaseModel.model_validate_json
 - Python subprocess `env` 동작: https://docs.python.org/3/library/subprocess.html#subprocess.run
 
 문서 기준 판단:
@@ -15,6 +17,7 @@
 2. PP-StructureV3는 table recognition, layout region detection, reading order 복원에 초점이 있으므로 표 형태 성분표가 주 원인이면 fine-tune보다 먼저 PoC 대상으로 둔다.
 3. Ollama는 기본 로컬 API가 `http://localhost:11434/api`이고 Chat API와 structured output schema를 지원한다. OCR 원문은 artifact에 저장하지 않고 메모리 안에서만 `/api/chat` 호출 입력으로 사용한다.
 4. Python `subprocess.run(env=...)`는 지정한 mapping이 child process 환경으로 쓰인다. provider runner는 부모 환경 전체를 넘기면 불필요한 secret 전파 위험이 있으므로 allowlist 방식으로 제한한다.
+5. Pydantic V2는 JSON 입력을 `model_validate_json()`으로 schema 검증할 수 있다. Ollama 응답은 raw model response로 저장하지 않고 메모리 안에서 허용 필드만 정규화한 뒤 다시 JSON-mode validation을 통과한 구조만 artifact에 기록한다.
 
 ## 현재 기준선
 
@@ -247,8 +250,19 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - retry manifest 기준 다음 실행 단위는 OCR 저신뢰 13건의 image quality/preprocess 또는 Paddle 설정 비교, LLM 구조화 실패 5건의 prompt/schema retry이다.
 - 이 확장 fixture set은 human-verified ingredient exact KPI가 아니라 OCR/DB-labeling coverage KPI로 봐야 한다. ingredient exact 95% 판단은 별도 human-verified expected가 붙은 fixture에서만 수행한다.
 
+추가 retry 실행 결과:
+
+- OCR low-confidence 13건 textline orientation ON 재실행: completed 0, error 13, error `ocr_low_confidence` 13.
+- OCR low-confidence 13건 textline orientation ON + diagnostic threshold 0.60 재실행: completed 9, error 4, text non-empty 0.6923, parser success 0.6923, LLM parse success 1.0.
+- LLM structured-output 5건 기존 schema 재실행: completed 5, OCR parser success 1.0, LLM parse success 0.0, error `ollama_structured_output` 5.
+- LLM structured-output 5건 schema-safe normalization 적용 후 재실행: completed 5, LLM parse success 1.0, parsed ingredient counts `[5, 9, 2, 7, 4]`.
+- 새 LLM parser normalization은 raw model response를 저장하지 않고, common alias, code-fenced JSON, optional numeric/string bounds, hallucinated `nutrient_code` discard, fixed `source=ollama_structured`, invalid/missing confidence `0.0` sentinel만 적용한다.
+- retry 산출물 privacy scan: 전체 retry output non-strict finding 0, report JSON strict literal-key finding 0.
+- 판단: LLM 구조화 실패 5건은 parser normalization으로 해소됐다. OCR 13건 중 9건은 threshold 진단상 OCR text는 존재하므로 human review 또는 confidence policy 분기 대상이고, 남은 4건은 image quality/preprocess, PP-OCRv5 server model, PP-StructureV3 후보로 남는다.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
+- OCR retry에 필요한 `LOCAL_OCR_USE_TEXTLINE_ORIENTATION`, `LOCAL_OCR_CONFIDENCE_THRESHOLD`만 runner allowlist에 추가하고 unrelated parent secret 미전파 테스트를 유지한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
