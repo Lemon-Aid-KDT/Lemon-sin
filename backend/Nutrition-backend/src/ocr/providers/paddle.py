@@ -15,6 +15,8 @@ from src.ocr.preprocessing import OCRPreprocessingError, preprocess_local_ocr_im
 
 PADDLE_OCR_PROVIDER = "paddleocr_local"
 PADDLE_MOBILE_TEXT_DETECTION_MODEL = "PP-OCRv5_mobile_det"
+PADDLE_SERVER_TEXT_DETECTION_MODEL = "PP-OCRv5_server_det"
+PADDLE_SERVER_TEXT_RECOGNITION_MODEL = "PP-OCRv5_server_rec"
 PADDLE_MOBILE_TEXT_RECOGNITION_MODELS = {
     "en": "en_PP-OCRv5_mobile_rec",
     "korean": "korean_PP-OCRv5_mobile_rec",
@@ -75,6 +77,7 @@ class PaddleOCRAdapter(OCRAdapter):
         predictor = self._predictor or _get_paddle_predictor(
             language=self._settings.local_ocr_language,
             device=self._settings.local_ocr_device,
+            model_profile=self._settings.local_ocr_model_profile,
             use_textline_orientation=self._settings.local_ocr_use_textline_orientation,
         )
         try:
@@ -108,6 +111,7 @@ def _get_paddle_predictor(
     *,
     language: str,
     device: str | None,
+    model_profile: str = "mobile",
     use_textline_orientation: bool = False,
 ) -> PaddlePredictor:
     """Load and cache the PaddleOCR predictor.
@@ -115,6 +119,8 @@ def _get_paddle_predictor(
     Args:
         language: OCR language setting.
         device: Optional runtime device such as ``cpu`` or ``gpu:0``.
+        model_profile: OCR model profile. ``server_detection`` upgrades only
+            detection while keeping the language-specific mobile recognizer.
         use_textline_orientation: Whether to enable PaddleOCR's textline
             orientation classifier. Cached separately per toggle so isolation
             measurements can flip the flag without polluting the prior cache.
@@ -132,8 +138,11 @@ def _get_paddle_predictor(
 
     kwargs: dict[str, object] = {
         "lang": language,
-        "text_detection_model_name": PADDLE_MOBILE_TEXT_DETECTION_MODEL,
-        "text_recognition_model_name": _mobile_text_recognition_model_name(language),
+        "text_detection_model_name": _text_detection_model_name(model_profile),
+        "text_recognition_model_name": _text_recognition_model_name(
+            language=language,
+            model_profile=model_profile,
+        ),
         "use_doc_orientation_classify": False,
         "use_doc_unwarping": False,
         "use_textline_orientation": use_textline_orientation,
@@ -144,6 +153,35 @@ def _get_paddle_predictor(
         return cast(PaddlePredictor, paddle_ocr_class(**kwargs))
     except Exception as exc:
         raise OCRError("PaddleOCR predictor initialization failed.") from exc
+
+
+def _text_detection_model_name(model_profile: str) -> str:
+    """Return the PaddleOCR detection model name for a model profile.
+
+    Args:
+        model_profile: Operator-selected local OCR model profile.
+
+    Returns:
+        PaddleOCR text detection model name.
+    """
+    if model_profile in {"server_detection", "server"}:
+        return PADDLE_SERVER_TEXT_DETECTION_MODEL
+    return PADDLE_MOBILE_TEXT_DETECTION_MODEL
+
+
+def _text_recognition_model_name(*, language: str, model_profile: str) -> str:
+    """Return the PaddleOCR recognition model name for a model profile.
+
+    Args:
+        language: PaddleOCR language code.
+        model_profile: Operator-selected local OCR model profile.
+
+    Returns:
+        PaddleOCR text recognition model name.
+    """
+    if model_profile == "server":
+        return PADDLE_SERVER_TEXT_RECOGNITION_MODEL
+    return _mobile_text_recognition_model_name(language)
 
 
 def _mobile_text_recognition_model_name(language: str) -> str:

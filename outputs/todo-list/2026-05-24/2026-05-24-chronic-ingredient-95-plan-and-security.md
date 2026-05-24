@@ -308,12 +308,39 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
   - 공개 가능한 report JSON strict literal-key finding 0
 - 판단: 과노출 계열 중 1건은 grayscale autocontrast로 복구 가능하다. 남은 3건(`naver-tm-detail-000007`, `naver-tm-detail-000050`, `naver-tm-detail-000112`)은 동일 전처리로 해결되지 않으므로 PP-OCRv5 server model 또는 layout/region 분리 비교 후보로 남긴다.
 
+구현된 PaddleOCR model profile 비교 보강:
+
+- `LOCAL_OCR_MODEL_PROFILE`을 추가했다. 기본값은 `mobile`이며 기존 PP-OCRv5 mobile detection + language-specific mobile recognition 동작을 유지한다.
+- 허용 profile:
+  - `mobile`: 기존 `PP-OCRv5_mobile_det` + `korean_PP-OCRv5_mobile_rec`
+  - `server_detection`: `PP-OCRv5_server_det` + `korean_PP-OCRv5_mobile_rec`
+  - `server`: `PP-OCRv5_server_det` + `PP-OCRv5_server_rec`
+- 공식 PaddleOCR 문서상 PP-OCRv5 server detection은 higher accuracy 후보이고, 한국어 recognition은 `korean_PP-OCRv5_mobile_rec`가 별도 모델로 제공되므로 한국어 라벨 비교의 1차 후보는 `server_detection`으로 제한했다.
+- predictor cache key에 model profile을 포함해 mobile/server 비교가 같은 predictor를 재사용하지 않게 했다.
+- runner/collector child env allowlist에 `LOCAL_OCR_MODEL_PROFILE`만 추가했고, unrelated parent secret 미전파 정책은 유지했다.
+- 실제 잔여 `ocr_low_confidence` 4건에 대해 `LOCAL_OCR_MODEL_PROFILE=server_detection`, `LOCAL_OCR_USE_TEXTLINE_ORIENTATION=true`, `LOCAL_OCR_CONFIDENCE_THRESHOLD=0.60`, `OLLAMA_MODEL=gemma4:e4b` 조건으로 sandbox 밖 Python collector 재실행을 수행했다.
+- 결과: call 4, completed 2, error 2, text non-empty 0.5, parser success 0.5, LLM parse success 1.0, avg structured ingredient count 3.5.
+- 복구 fixture: `naver-tm-detail-000030`, `naver-tm-detail-000050`.
+- 잔여 실패 fixture: `naver-tm-detail-000007`, `naver-tm-detail-000112`, error `ocr_low_confidence`.
+- retry output directory non-strict privacy scan finding 0, 공개 가능한 report JSON/MD strict literal-key scan finding 0.
+
+최신 120개 EX400U reconciled 평가:
+
+- base batch 120 + LLM sanitized-schema retry 5 + OCR threshold retry 13 + grayscale retry 4 + server-detection retry 4를 fixture/provider 단위로 reconcile했다.
+- source label이 긴 retry 경로에서 120자 token 제한에 걸리는 버그를 발견해, local path를 저장하지 않는 hash 기반 source label fallback을 추가했다.
+- reconcile 결과: input file 19, input observation 146, duplicate group 18, output observation 120, status completed 118, error 2, LLM completed 118.
+- 평가 결과: fixture 120, observation 120, completed rate 0.9833, text non-empty rate 0.9833, parser success rate 0.9833, LLM parse success rate 1.0, ingredient count avg 3.0678, remaining error `ocr_low_confidence` 2.
+- 잔여 실패 fixture는 `naver-tm-detail-000007`, `naver-tm-detail-000112`이며, 다음 후보는 PP-StructureV3/layout 분리 또는 human review 대상이다.
+- reconciled output directory privacy scan finding 0, 공개 가능한 summary/report strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
 - OCR retry에 필요한 `LOCAL_OCR_USE_TEXTLINE_ORIENTATION`, `LOCAL_OCR_CONFIDENCE_THRESHOLD`만 runner allowlist에 추가하고 unrelated parent secret 미전파 테스트를 유지한다.
 - OCR 전처리 retry에 필요한 `LOCAL_OCR_PREPROCESS_MODE`만 runner/collector allowlist에 추가하고, 전처리 이미지는 temp file로만 사용한다.
+- PaddleOCR model profile 비교에 필요한 `LOCAL_OCR_MODEL_PROFILE`만 runner/collector allowlist에 추가하고, 기본값은 기존 mobile profile로 유지한다.
 - retry reconcile은 raw OCR text, raw provider payload, raw model response, image bytes, request headers, local path literal을 recursive gate로 거부한다.
+- retry reconcile의 source label은 경로 component가 길어도 hash 기반 공개 token으로 축약하고, local absolute path는 summary에 쓰지 않는다.
 - image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.

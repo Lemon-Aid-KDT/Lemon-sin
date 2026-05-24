@@ -20,6 +20,8 @@ from pathlib import Path
 SCHEMA_VERSION = "naver-tampermonkey-ocr-observation-reconcile-v1"
 DEFAULT_SUMMARY_SUFFIX = ".summary.json"
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
+MAX_SAFE_TOKEN_LENGTH = 120
+SOURCE_LABEL_HASH_CHARS = 12
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -302,7 +304,18 @@ def _safe_source_label(path: Path) -> str:
         parts.insert(0, path.parent.name)
     if path.parent.parent.name and path.parent.parent.name != path.parent.name:
         parts.insert(0, path.parent.parent.name)
-    return _safe_filename(":".join(parts))
+    label = ":".join(parts)
+    try:
+        return _safe_filename(label)
+    except ValueError:
+        digest = _sha256_text(label)[:SOURCE_LABEL_HASH_CHARS]
+        suffix = _safe_filename(path.name)
+        prefix = f"source-{digest}:"
+        available = MAX_SAFE_TOKEN_LENGTH - len(prefix)
+        if len(suffix) > available:
+            suffix_digest = _sha256_text(suffix)[:SOURCE_LABEL_HASH_CHARS]
+            suffix = f"{suffix[: available - SOURCE_LABEL_HASH_CHARS - 1]}:{suffix_digest}"
+        return _safe_token(f"{prefix}{suffix}")
 
 
 def _reject_unsafe_payload(value: object) -> None:

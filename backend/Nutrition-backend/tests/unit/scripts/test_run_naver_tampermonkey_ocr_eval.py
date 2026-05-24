@@ -341,6 +341,7 @@ def test_run_provider_evaluations_uses_sanitized_child_env(
     monkeypatch.setenv("UNRELATED_SECRET_TOKEN", "should-not-reach-child")
     monkeypatch.setenv("ENABLE_LOCAL_OCR", "false")
     monkeypatch.setenv("LOCAL_OCR_CONFIDENCE_THRESHOLD", "0.65")
+    monkeypatch.setenv("LOCAL_OCR_MODEL_PROFILE", "server_detection")
     monkeypatch.setenv("LOCAL_OCR_PREPROCESS_MODE", "autocontrast")
     monkeypatch.setenv("LOCAL_OCR_USE_TEXTLINE_ORIENTATION", "true")
     monkeypatch.setenv("OLLAMA_MODEL", "gemma4:e4b")
@@ -371,6 +372,7 @@ def test_run_provider_evaluations_uses_sanitized_child_env(
     assert env["RUN_PADDLEOCR_PROBE"] == "1"
     assert env["ENABLE_LOCAL_OCR"] == "true"
     assert env["LOCAL_OCR_CONFIDENCE_THRESHOLD"] == "0.65"
+    assert env["LOCAL_OCR_MODEL_PROFILE"] == "server_detection"
     assert env["LOCAL_OCR_PREPROCESS_MODE"] == "autocontrast"
     assert env["LOCAL_OCR_USE_TEXTLINE_ORIENTATION"] == "true"
     assert env["OLLAMA_MODEL"] == "gemma4:e4b"

@@ -111,6 +111,30 @@ def test_reconcile_observations_keeps_better_ingredient_count_on_tie(tmp_path: P
     assert next(iter(summary["selected_source_counts"])).endswith(":second.jsonl")  # type: ignore[arg-type]
 
 
+def test_reconcile_observations_hashes_long_source_labels(tmp_path: Path) -> None:
+    """Verify long retry output paths do not break redacted source accounting."""
+    long_dir = (
+        tmp_path
+        / "retry-runs-gemma4-e4b-live"
+        / "ocr-low-confidence-reconciled-4-server-detection-gemma4-escalated"
+        / "paddleocr-observations"
+    )
+    path = long_dir / "supplement-ocr-observations.jsonl"
+    _write_jsonl(path, [_observation("fixture-1")])
+
+    rows, summary = reconciler.reconcile_observations(observation_paths=[path])
+
+    assert len(rows) == 1
+    source_counts = summary["selected_source_counts"]
+    assert isinstance(source_counts, dict)
+    assert list(source_counts.values()) == [1]
+    source_label = next(iter(source_counts))
+    assert source_label.startswith("source-")
+    assert len(source_label) <= 120
+    serialized = json.dumps(summary, ensure_ascii=False)
+    assert str(tmp_path) not in serialized
+
+
 def test_reconcile_observations_rejects_raw_fields(tmp_path: Path) -> None:
     """Verify raw OCR text cannot enter reconciled artifacts."""
     path = tmp_path / "observations.jsonl"

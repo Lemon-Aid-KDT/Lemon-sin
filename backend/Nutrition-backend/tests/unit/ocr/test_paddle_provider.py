@@ -13,7 +13,10 @@ from PIL import Image
 from src.config import Settings
 from src.ocr.base import OCRError, OCRImageInput
 from src.ocr.providers.paddle import (
+    PADDLE_MOBILE_TEXT_DETECTION_MODEL,
     PADDLE_OCR_PROVIDER,
+    PADDLE_SERVER_TEXT_DETECTION_MODEL,
+    PADDLE_SERVER_TEXT_RECOGNITION_MODEL,
     PaddleOCRAdapter,
     _get_paddle_predictor,
 )
@@ -205,6 +208,8 @@ def test_predictor_forwards_textline_orientation_when_disabled(
         use_textline_orientation=False,
     )
     assert predictor.kwargs["use_textline_orientation"] is False  # type: ignore[attr-defined]
+    assert predictor.kwargs["text_detection_model_name"] == PADDLE_MOBILE_TEXT_DETECTION_MODEL  # type: ignore[attr-defined]
+    assert predictor.kwargs["text_recognition_model_name"] == "korean_PP-OCRv5_mobile_rec"  # type: ignore[attr-defined]
 
 
 def test_predictor_forwards_textline_orientation_when_enabled(
@@ -217,6 +222,52 @@ def test_predictor_forwards_textline_orientation_when_enabled(
         use_textline_orientation=True,
     )
     assert predictor.kwargs["use_textline_orientation"] is True  # type: ignore[attr-defined]
+
+
+def test_predictor_server_detection_profile_keeps_korean_mobile_recognition(
+    _fake_paddleocr_module: None,
+) -> None:
+    """Verify server detection can be isolated from Korean recognition changes."""
+    predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        model_profile="server_detection",
+    )
+
+    assert predictor.kwargs["text_detection_model_name"] == PADDLE_SERVER_TEXT_DETECTION_MODEL  # type: ignore[attr-defined]
+    assert predictor.kwargs["text_recognition_model_name"] == "korean_PP-OCRv5_mobile_rec"  # type: ignore[attr-defined]
+
+
+def test_predictor_server_profile_uses_server_detection_and_recognition(
+    _fake_paddleocr_module: None,
+) -> None:
+    """Verify the explicit server profile changes both PaddleOCR model stages."""
+    predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        model_profile="server",
+    )
+
+    assert predictor.kwargs["text_detection_model_name"] == PADDLE_SERVER_TEXT_DETECTION_MODEL  # type: ignore[attr-defined]
+    assert predictor.kwargs["text_recognition_model_name"] == PADDLE_SERVER_TEXT_RECOGNITION_MODEL  # type: ignore[attr-defined]
+
+
+def test_predictor_cache_separates_model_profiles(
+    _fake_paddleocr_module: None,
+) -> None:
+    """Verify profile comparisons do not reuse a prior cached predictor."""
+    mobile_predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        model_profile="mobile",
+    )
+    server_detection_predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        model_profile="server_detection",
+    )
+
+    assert mobile_predictor is not server_detection_predictor
 
 
 def test_predictor_caches_orientation_toggle_separately(

@@ -233,6 +233,7 @@ class Settings(BaseSettings):
         local_ocr_language: Language setting passed to local OCR providers.
         local_ocr_device: Optional local OCR runtime device selector.
         local_ocr_confidence_threshold: Minimum confidence for local OCR fallback candidates.
+        local_ocr_model_profile: Local PaddleOCR model profile used for diagnostic comparisons.
         local_ocr_preprocess_mode: Optional local OCR-only image preprocessing mode.
         enable_clova_ocr: Whether NAVER Cloud CLOVA OCR fallback may run.
         vision_roi_min_confidence: Minimum detection confidence accepted for a YOLO ROI.
@@ -391,6 +392,13 @@ class Settings(BaseSettings):
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
     local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    local_ocr_model_profile: Literal["mobile", "server_detection", "server"] = Field(
+        default="mobile",
+        description=(
+            "PaddleOCR model profile for controlled diagnostic reruns. The default "
+            "keeps PP-OCRv5 mobile detection and language-specific mobile recognition."
+        ),
+    )
     local_ocr_preprocess_mode: Literal[
         "none",
         "autocontrast",
