@@ -94,6 +94,7 @@ def test_export_review_decision_templates_with_safe_contract(
     assert row["review_task_id"] == "d" * 64
     decision_entry_template = row["decision_entry_template"]
     assert isinstance(decision_entry_template, dict)
+    assert decision_entry_template["schema_version"] == "naver-tampermonkey-review-decision-v1"
     assert decision_entry_template["review_task_id"] == "d" * 64
     assert decision_entry_template["fixture_id"] == "naver-tm-detail-000001"
     assert decision_entry_template["decision_batch_importable"] is False
@@ -117,6 +118,9 @@ def test_export_review_decision_templates_with_safe_contract(
     ]
     contract = row["review_decision_contract"]
     assert isinstance(contract, dict)
+    assert contract["decision_row_schema_version_required"] == (
+        "naver-tampermonkey-review-decision-v1"
+    )
     assert contract["reviewer_id_required_prefix"] == "operator_"
     assert contract["reviewed_at_required_format"] == "timezone_aware_iso8601"
     assert contract["approved_ingredient_display_name_max_length"] == 160

@@ -61,6 +61,7 @@ def _review_row(**overrides: object) -> dict[str, object]:
 def _decision_row(**overrides: object) -> dict[str, object]:
     """Return a valid approved decision row."""
     row: dict[str, object] = {
+        "schema_version": "naver-tampermonkey-review-decision-v1",
         "review_task_id": "d" * 64,
         "fixture_id": "naver-tm-detail-000001",
         "review_decision": {
@@ -203,6 +204,25 @@ def test_apply_review_decisions_rejects_unmatched_and_duplicate_decisions(
         )
 
 
+def test_apply_review_decisions_rejects_missing_decision_schema_version(
+    tmp_path: Path,
+) -> None:
+    """Verify decision batches must declare the importable decision schema."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    decision = _decision_row()
+    decision.pop("schema_version")
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [decision])
+
+    with pytest.raises(ValueError, match="review decision schema"):
+        applier.apply_review_decisions(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_name="review-with-decisions.jsonl",
+        )
+
+
 def test_apply_review_decisions_rejects_fixture_id_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -311,7 +331,7 @@ def test_apply_review_decisions_rejects_template_rows(tmp_path: Path) -> None:
         ],
     )
 
-    with pytest.raises(ValueError, match="review_decision"):
+    with pytest.raises(ValueError, match="review decision schema"):
         applier.apply_review_decisions(
             review_ingest_path=review_path,
             decisions_path=decisions_path,
@@ -330,6 +350,7 @@ def test_apply_review_decisions_rejects_unedited_decision_skeleton(
         decisions_path,
         [
             {
+                "schema_version": "naver-tampermonkey-review-decision-v1",
                 "review_task_id": "d" * 64,
                 "fixture_id": "naver-tm-detail-000001",
                 "review_decision": {

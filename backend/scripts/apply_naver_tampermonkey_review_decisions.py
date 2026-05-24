@@ -27,6 +27,7 @@ from scripts import validate_naver_tampermonkey_review_decisions as validator  #
 
 SCHEMA_VERSION = "naver-tampermonkey-review-decision-apply-v1"
 EXPECTED_REVIEW_INGEST_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
+EXPECTED_DECISION_SCHEMA_VERSION = "naver-tampermonkey-review-decision-v1"
 RAW_FORBIDDEN_KEYS = validator.RAW_FORBIDDEN_KEYS
 LITERAL_FORBIDDEN_KEYS = validator.LITERAL_FORBIDDEN_KEYS
 LOCAL_PATH_MARKERS = validator.LOCAL_PATH_MARKERS
@@ -303,6 +304,8 @@ def _read_decision_rows(path: Path) -> dict[str, DecisionRecord]:
     """Read decision JSONL rows keyed by review task id."""
     decisions: dict[str, DecisionRecord] = {}
     for row in _read_jsonl_objects(path):
+        if row.get("schema_version") != EXPECTED_DECISION_SCHEMA_VERSION:
+            raise ValueError("Decision rows must use review decision schema.")
         review_task_id = _required_str(row, "review_task_id")
         if review_task_id in decisions:
             raise ValueError(f"Duplicate review decision for review_task_id: {review_task_id}")

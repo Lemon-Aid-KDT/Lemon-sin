@@ -24,12 +24,14 @@ from scripts import validate_naver_tampermonkey_review_decisions as validator  #
 SCHEMA_VERSION = "naver-tampermonkey-review-decision-template-v1"
 EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
 EXPECTED_GAP_QUEUE_SCHEMA_VERSION = "naver-tampermonkey-manual-review-gap-v1"
+DECISION_ROW_SCHEMA_VERSION = "naver-tampermonkey-review-decision-v1"
 DEFAULT_MAX_CANDIDATES = 12
 MAX_TEXT_LENGTH = validator.MAX_TEXT_LENGTH
 MAX_INGREDIENT_NAME_LENGTH = 160
 LOCAL_PATH_MARKERS = validator.LOCAL_PATH_MARKERS
 REVIEW_DECISION_CONTRACT = {
     "allowed_statuses": sorted(validator.ALLOWED_DECISION_STATUSES),
+    "decision_row_schema_version_required": DECISION_ROW_SCHEMA_VERSION,
     "reviewer_id_required_prefix": "operator_",
     "approved_required_fields": [
         "status",
@@ -279,6 +281,7 @@ def _template_row(
 def _decision_entry_template(row: dict[str, object]) -> dict[str, object]:
     """Return a non-importable review decision skeleton for operators."""
     return {
+        "schema_version": DECISION_ROW_SCHEMA_VERSION,
         "review_task_id": _required_str(row, "review_task_id"),
         "fixture_id": _required_str(row, "fixture_id"),
         "review_decision": {

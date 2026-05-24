@@ -433,9 +433,11 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - approved ingredient는 normalized display name과 nutrient code 기준으로 product 안에서 중복될 수 없다.
 - approved ingredient의 display name은 `g X30포(`, `정x 3개입(`, `1000mg`, `60 capsules` 같은 포장 수량/용량-only 문자열이면 실패 처리한다.
 - review decision과 approved import의 검수 문자열은 HTML angle bracket, script/data/vbscript protocol, URL-like 값, control character를 포함하면 실패 처리한다.
+- import 가능한 decision row는 top-level `schema_version=naver-tampermonkey-review-decision-v1`을 요구해 template row 또는 임의 JSONL을 decision batch로 쓰는 실수를 차단한다.
 - gap decision template contract에도 `reviewer_id_required_prefix=operator_`를 명시했다.
 - gap decision template contract에도 `reviewed_at_required_format=timezone_aware_iso8601`과 unique ingredient identity 기준을 명시했다.
 - gap decision template contract에도 `approved_ingredient_source_required=human_reviewed`, `approved_ingredient_amount_type=number_or_null`, `approved_ingredient_packaging_quantity_text_allowed=false`를 명시했다.
+- gap decision template contract에도 `decision_row_schema_version_required=naver-tampermonkey-review-decision-v1`을 명시하고 skeleton row에 같은 schema version을 넣는다.
 - gap decision template contract에도 `reviewed_text_executable_or_url_content_allowed=false`를 명시했다.
 
 구현된 gap-scoped import gate 보강:
@@ -476,6 +478,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - manual-review gap queue는 review ingest에서 안전한 hash/count/status만 복사하고 import 가능한 decision payload를 만들지 않는다.
 - manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count, non-importable decision skeleton, validator와 같은 reviewed_at/ingredient identity contract만 노출한다.
 - review decision apply gate는 decision row의 top-level `fixture_id`가 review ingest row의 `fixture_id`와 일치해야 같은 `review_task_id`에 붙일 수 있다.
+- review decision apply/import gate는 decision row schema version을 요구하고, gap queue의 `review_task_id`와 `fixture_id`가 review ingest와 함께 일치해야 gap-scoped strict gate를 진행한다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id와 timezone-aware ISO `reviewed_at`만 허용해 model-only approval 또는 시간대가 불명확한 review decision 우회를 막는다.
 - approved DB import exporter는 human-reviewed source, numeric amount, product 안 unique ingredient identity만 허용해 OCR/LLM provenance, free-form amount, duplicate child row가 DB import 후보에 섞이지 않게 한다.
 - review decision validator, approved DB import exporter, dry-run approved DB import gate는 포장 수량/용량-only 문자열이 human-approved ingredient로 들어오면 실패시켜 auto-seed 오염이 DB 라벨로 승격되는 경로를 막는다.
@@ -508,6 +511,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - review decision gate: `ollama_gemma4` 같은 model-only reviewer id, naive/invalid `reviewed_at`, duplicate approved ingredient는 validation 및 direct approved export에서 실패하도록 테스트로 고정했다.
 - review decision gate: `g X30포(`, `정x 3개입(`, `1000mg`, `60 capsules` 같은 포장 수량/용량-only 성분명은 validation, direct approved export, dry-run import plan에서 실패하도록 테스트로 고정했다.
 - review decision gate: HTML tag, script protocol, URL-like value, control character 계열 검수 문자열은 validation, direct approved export, dry-run import plan, decision template candidate export에서 실패하도록 테스트로 고정했다.
+- review decision gate: missing decision schema version과 gap queue fixture mismatch는 apply/import gate에서 실패하도록 테스트로 고정했다.
 - review decision template gate: timezone-aware `reviewed_at`, unique approved ingredient identity, packaging quantity ingredient 금지, executable/URL-like text 금지 요구사항을 template contract에 노출하도록 테스트로 고정했다.
 - review decision apply gate: 같은 `review_task_id`라도 decision row `fixture_id`가 review ingest `fixture_id`와 다르면 실패하도록 테스트로 고정했다.
 - dry-run DB import gate: duplicate source product key와 duplicate ingredient identity는 ORM dry-run plan 생성 전에 실패하도록 테스트로 고정했다.

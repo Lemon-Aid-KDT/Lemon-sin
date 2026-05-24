@@ -46,6 +46,7 @@ def _review_row(**overrides: object) -> dict[str, object]:
 def _decision_row(**overrides: object) -> dict[str, object]:
     """Return a valid approved decision row."""
     row: dict[str, object] = {
+        "schema_version": "naver-tampermonkey-review-decision-v1",
         "review_task_id": "d" * 64,
         "fixture_id": "naver-tm-detail-000001",
         "review_decision": {
@@ -206,6 +207,25 @@ def test_review_import_gate_can_restrict_decisions_to_gap_queue(tmp_path: Path) 
         )
 
 
+def test_review_import_gate_rejects_decision_rows_without_schema_version(
+    tmp_path: Path,
+) -> None:
+    """Verify gate-scoped decision batches must declare the decision schema."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    decision = _decision_row()
+    decision.pop("schema_version")
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [decision])
+
+    with pytest.raises(ValueError, match="review decision schema"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "gate",
+        )
+
+
 def test_review_import_gate_reports_non_gap_decision_count(tmp_path: Path) -> None:
     """Verify non-gap decisions are counted when restriction is disabled."""
     review_path = tmp_path / "review.jsonl"
@@ -321,6 +341,24 @@ def test_review_import_gate_rejects_unmatched_gap_queue(tmp_path: Path) -> None:
     _write_jsonl(gap_path, [_gap_queue_row(review_task_id="e" * 64)])
 
     with pytest.raises(ValueError, match="not in review ingest"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "gate",
+            gap_queue_path=gap_path,
+        )
+
+
+def test_review_import_gate_rejects_gap_queue_fixture_mismatch(tmp_path: Path) -> None:
+    """Verify gap queues cannot retarget a review id to a different fixture."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(decisions_path, [])
+    _write_jsonl(gap_path, [_gap_queue_row(fixture_id="naver-tm-detail-999999")])
+
+    with pytest.raises(ValueError, match="fixture_id"):
         gate_runner.run_review_import_gate(
             review_ingest_path=review_path,
             decisions_path=decisions_path,

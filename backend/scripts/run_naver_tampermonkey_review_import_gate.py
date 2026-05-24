@@ -32,6 +32,7 @@ from scripts import validate_naver_tampermonkey_review_decisions as validator  #
 
 SCHEMA_VERSION = "naver-tampermonkey-review-import-gate-v1"
 EXPECTED_GAP_QUEUE_SCHEMA_VERSION = "naver-tampermonkey-manual-review-gap-v1"
+EXPECTED_DECISION_SCHEMA_VERSION = apply_decisions.EXPECTED_DECISION_SCHEMA_VERSION
 RAW_FORBIDDEN_KEYS = validator.RAW_FORBIDDEN_KEYS
 LITERAL_FORBIDDEN_KEYS = validator.LITERAL_FORBIDDEN_KEYS
 LOCAL_PATH_MARKERS = validator.LOCAL_PATH_MARKERS
@@ -160,6 +161,10 @@ def run_review_import_gate(
     output_dir.mkdir(parents=True, exist_ok=True)
     if restrict_decisions_to_gap and gap_queue_path is None:
         raise ValueError("Decision gap restriction needs --gap-queue.")
+    _validate_gap_queue_fixture_scope(
+        review_ingest_path=review_ingest_path,
+        gap_queue_path=gap_queue_path,
+    )
     decision_scope_summary = _decision_scope_summary(
         decisions_path=decisions_path,
         gap_queue_path=gap_queue_path,
@@ -293,12 +298,32 @@ def _read_decision_review_ids(path: Path) -> list[str]:
         if not isinstance(row, dict):
             raise ValueError("Decision JSONL rows must be objects.")
         _reject_unsafe_payload(row)
+        if row.get("schema_version") != EXPECTED_DECISION_SCHEMA_VERSION:
+            raise ValueError("Decision rows must use review decision schema.")
         review_task_id = _required_str(row, "review_task_id")
         if review_task_id in seen:
             raise ValueError(f"Duplicate review decision for review_task_id: {review_task_id}")
         seen.add(review_task_id)
         ids.append(review_task_id)
     return sorted(ids)
+
+
+def _validate_gap_queue_fixture_scope(
+    *,
+    review_ingest_path: Path,
+    gap_queue_path: Path | None,
+) -> None:
+    """Validate that gap queue ids and fixture ids match the review ingest."""
+    if gap_queue_path is None:
+        return
+    review_fixtures = _read_review_ingest_fixture_ids(review_ingest_path)
+    gap_records = _read_gap_queue_review_records(gap_queue_path)
+    for review_task_id, gap_fixture_id in gap_records.items():
+        review_fixture_id = review_fixtures.get(review_task_id)
+        if review_fixture_id is None:
+            raise ValueError(f"Gap queue review_task_id is not in review ingest: {review_task_id}")
+        if review_fixture_id != gap_fixture_id:
+            raise ValueError("Gap queue fixture_id does not match review ingest fixture_id.")
 
 
 def _gap_review_summary(
@@ -321,11 +346,16 @@ def _gap_review_summary(
             "gap_decision_status_counts": {},
         }
 
-    gap_ids = _read_gap_queue_review_ids(gap_queue_path)
+    gap_records = _read_gap_queue_review_records(gap_queue_path)
+    gap_ids = sorted(gap_records)
     rows_by_review_id = {_required_str(row, "review_task_id"): row for row in rows}
     missing_ids = sorted(set(gap_ids) - set(rows_by_review_id))
     if missing_ids:
         raise ValueError(f"Gap queue review_task_id is not in review ingest: {missing_ids[0]}")
+    for review_task_id, gap_fixture_id in gap_records.items():
+        row_fixture_id = _required_str(rows_by_review_id[review_task_id], "fixture_id")
+        if row_fixture_id != gap_fixture_id:
+            raise ValueError("Gap queue fixture_id does not match review ingest fixture_id.")
 
     status_counts: dict[str, int] = {}
     reviewed_count = 0
@@ -364,7 +394,12 @@ def _gap_review_summary(
 
 def _read_gap_queue_review_ids(path: Path) -> list[str]:
     """Read a manual-review gap queue and return sorted review task ids."""
-    ids: list[str] = []
+    return sorted(_read_gap_queue_review_records(path))
+
+
+def _read_gap_queue_review_records(path: Path) -> dict[str, str]:
+    """Read a manual-review gap queue and return review id to fixture id."""
+    records: dict[str, str] = {}
     seen: set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.strip().startswith("#"):
@@ -385,8 +420,27 @@ def _read_gap_queue_review_ids(path: Path) -> list[str]:
         if review_task_id in seen:
             raise ValueError(f"Duplicate review_task_id in gap queue: {review_task_id}")
         seen.add(review_task_id)
-        ids.append(review_task_id)
-    return sorted(ids)
+        records[review_task_id] = _required_str(row, "fixture_id")
+    return records
+
+
+def _read_review_ingest_fixture_ids(path: Path) -> dict[str, str]:
+    """Read review ingest row ids and fixture ids for scope validation."""
+    records: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError("Review ingest JSONL rows must be objects.")
+        _reject_unsafe_payload(row)
+        if row.get("schema_version") != apply_decisions.EXPECTED_REVIEW_INGEST_SCHEMA_VERSION:
+            raise ValueError("Review ingest rows must use review ingest schema.")
+        review_task_id = _required_str(row, "review_task_id")
+        if review_task_id in records:
+            raise ValueError(f"Duplicate review_task_id in review ingest: {review_task_id}")
+        records[review_task_id] = _required_str(row, "fixture_id")
+    return records
 
 
 def _failure_summary(
