@@ -232,6 +232,19 @@ def test_validate_rejects_local_path_literals(tmp_path: Path) -> None:
         validator.validate_review_decisions(input_path=input_path_2)
 
 
+def test_validate_rejects_non_object_rows_without_path_leak(tmp_path: Path) -> None:
+    """Verify direct validation errors do not include the input path."""
+    input_path = tmp_path / "review.jsonl"
+    input_path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        validator.validate_review_decisions(input_path=input_path)
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(input_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

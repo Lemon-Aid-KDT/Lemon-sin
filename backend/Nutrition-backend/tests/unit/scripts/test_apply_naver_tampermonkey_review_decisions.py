@@ -297,6 +297,27 @@ def test_apply_review_decisions_rejects_pii_pending_approval(tmp_path: Path) -> 
         )
 
 
+def test_apply_review_decisions_rejects_non_object_rows_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    """Verify direct decision-apply errors do not include the input path."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    review_path.write_text("[]\n", encoding="utf-8")
+    _write_jsonl(decisions_path, [])
+
+    with pytest.raises(ValueError) as exc_info:
+        applier.apply_review_decisions(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_name="review-with-decisions.jsonl",
+        )
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(review_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_apply_review_decisions_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

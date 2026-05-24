@@ -154,6 +154,21 @@ def test_export_review_decision_templates_rejects_duplicate_review_ids(
         exporter.export_review_decision_template_rows(input_path=input_path)
 
 
+def test_export_review_decision_templates_rejects_non_object_rows_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    """Verify direct template export errors do not include the input path."""
+    input_path = tmp_path / "review.jsonl"
+    input_path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        exporter.export_review_decision_template_rows(input_path=input_path)
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(input_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_export_review_decision_template_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

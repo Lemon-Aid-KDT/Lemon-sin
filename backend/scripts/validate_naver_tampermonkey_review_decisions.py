@@ -286,7 +286,7 @@ def _read_rows(path: Path) -> list[dict[str, object]]:
             continue
         row = json.loads(line)
         if not isinstance(row, dict):
-            raise ValueError(f"JSONL rows must be objects: {path}")
+            raise ValueError("JSONL rows must be objects.")
         _reject_unsafe_payload(row)
         rows.append(row)
     return rows

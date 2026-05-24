@@ -173,6 +173,26 @@ def test_export_review_pii_screening_suggestions_rejects_duplicate_ids(tmp_path:
         )
 
 
+def test_export_review_pii_screening_suggestions_rejects_non_object_rows_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    """Verify direct export errors do not include the input path."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    suggestions_path = tmp_path / "suggestions.jsonl"
+    manifest_path.write_text("[]\n", encoding="utf-8")
+    _write_jsonl(suggestions_path, [])
+
+    with pytest.raises(ValueError) as exc_info:
+        exporter.export_review_pii_screening_suggestions(
+            manifest_path=manifest_path,
+            suggestions_path=suggestions_path,
+        )
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(manifest_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

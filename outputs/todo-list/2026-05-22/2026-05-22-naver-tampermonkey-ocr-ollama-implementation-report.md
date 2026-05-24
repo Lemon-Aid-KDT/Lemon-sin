@@ -89,16 +89,16 @@ Inventory 결과:
 
 ## Ollama 모델 경로
 
-사용자 환경의 Ollama 모델은 기본 `~/.ollama`가 아니라 다음 외장 경로에 있다.
+사용자 환경의 Ollama 모델은 기본 `~/.ollama`가 아니라 현재 EX400U 외장 경로에 있다.
 
 ```text
-$OLLAMA_MODELS_DIR
+/Volumes/Corsair EX400U Media/.ollama/models
 ```
 
 따라서 이번 검증은 별도 포트의 임시 Ollama 서버를 다음 환경으로 실행했다.
 
 ```bash
-OLLAMA_MODELS="$OLLAMA_MODELS_DIR" \
+OLLAMA_MODELS="/Volumes/Corsair EX400U Media/.ollama/models" \
 OLLAMA_HOST=127.0.0.1:11435 \
 ollama serve
 ```
@@ -220,7 +220,7 @@ raw_forbidden=false checked_json_values=10994 files=18
 권장 다음 명령 예시:
 
 ```bash
-OLLAMA_MODELS="$OLLAMA_MODELS_DIR" \
+OLLAMA_MODELS="/Volumes/Corsair EX400U Media/.ollama/models" \
 OLLAMA_HOST=127.0.0.1:11435 \
 ollama serve
 

@@ -7,6 +7,7 @@
 - `--strict-literal-keys` 모드는 review/import 계열 산출물처럼 `image_path`, `product_dir` key 자체도 없어야 하는 경우에 사용한다.
 - 2026-05-24 추가 보강으로 privacy checker summary도 입력 절대경로 대신 `path_names`/`path_hashes`만 출력한다.
 - macOS 임시 경로인 `/private/`도 로컬 경로 literal로 차단한다.
+- 로컬 Ollama 모델 저장소는 현재 EX400U 경로를 사용하며, `backend/.env.example`에는 `OLLAMA_MODELS` shell override 키만 일반화해 추가했다.
 - DB write, OCR/LLM 호출, 외부 전송은 없다.
 
 ## 구현 파일
@@ -46,9 +47,18 @@ review/import 계열 strict scan:
 - `backend/scripts/export_naver_tampermonkey_review_decision_template.py`
 - `backend/scripts/run_naver_tampermonkey_review_import_gate.py`
 
+직접 함수 호출 경로에서도 JSONL row가 object가 아닐 때 입력 JSONL 절대경로가 `ValueError` 메시지에 섞이지 않도록 다음 스크립트의 오류 메시지를 일반화했다.
+
+- `backend/scripts/validate_naver_tampermonkey_review_decisions.py`
+- `backend/scripts/dry_run_naver_tampermonkey_approved_db_import.py`
+- `backend/scripts/export_naver_tampermonkey_review_pii_screening_suggestions.py`
+- `backend/scripts/run_naver_tampermonkey_review_pii_screening_suggestions.py`
+- `backend/scripts/apply_naver_tampermonkey_review_pii_screening_decisions.py`
+
 ## 검증
 
 - privacy/import focused unit tests: `42 passed`
+- JSONL non-object path redaction focused unit tests: `71 passed`
 - failure summary strict privacy probe: `file_count=4`, `finding_count=0`, `passed=true`
 - black check: pass
 - ruff check: pass

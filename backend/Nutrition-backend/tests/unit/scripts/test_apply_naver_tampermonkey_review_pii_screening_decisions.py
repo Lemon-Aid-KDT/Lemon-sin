@@ -215,6 +215,26 @@ def test_apply_pii_screening_decisions_rejects_duplicate_decisions(tmp_path: Pat
         )
 
 
+def test_apply_pii_screening_decisions_rejects_non_object_rows_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    """Verify direct decision-apply errors do not include the input path."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    manifest_path.write_text("[]\n", encoding="utf-8")
+    _write_jsonl(decisions_path, [])
+
+    with pytest.raises(ValueError) as exc_info:
+        applier.apply_pii_screening_decisions(
+            manifest_path=manifest_path,
+            decisions_path=decisions_path,
+        )
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(manifest_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

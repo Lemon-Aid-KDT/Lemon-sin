@@ -172,6 +172,21 @@ def test_build_dry_run_import_plan_rejects_raw_and_local_path_literals(
         dry_run.build_dry_run_import_plan(input_path=input_path_3)
 
 
+def test_build_dry_run_import_plan_rejects_non_object_rows_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    """Verify direct dry-run errors do not include the input path."""
+    input_path = tmp_path / "approved.jsonl"
+    input_path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        dry_run.build_dry_run_import_plan(input_path=input_path)
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(input_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_build_dry_run_import_plan_rejects_invalid_ingredient_amount(
     tmp_path: Path,
 ) -> None:

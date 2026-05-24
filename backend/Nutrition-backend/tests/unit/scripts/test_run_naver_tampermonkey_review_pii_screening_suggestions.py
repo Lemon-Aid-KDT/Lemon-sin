@@ -284,6 +284,21 @@ def test_run_review_pii_screening_suggestions_rejects_large_batch_without_approv
     assert fake_client.requests == []
 
 
+def test_run_review_pii_screening_suggestions_rejects_non_object_rows_without_path_leak(
+    tmp_path: Path,
+) -> None:
+    """Verify direct runner errors do not include the input path."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    manifest_path.write_text("[]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        runner.run_review_pii_screening_suggestions(manifest_path=manifest_path)
+
+    assert str(tmp_path) not in str(exc_info.value)
+    assert str(manifest_path) not in str(exc_info.value)
+    assert str(exc_info.value) == "JSONL rows must be objects."
+
+
 def test_main_large_batch_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
