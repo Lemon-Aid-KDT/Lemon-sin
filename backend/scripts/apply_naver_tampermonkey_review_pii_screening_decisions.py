@@ -45,6 +45,7 @@ ALLOWED_DECISION_KEYS = frozenset(
     }
 )
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
+OPERATOR_REVIEWER_ID_PATTERN = re.compile(r"^operator_[A-Za-z0-9_.:-]{1,71}$")
 ENV_IMAGE_PATH_PATTERN = re.compile(r"^\$(?P<name>[A-Z][A-Z0-9_]*)(?:/(?P<path>.*))?$")
 ALLOWED_IMAGE_PATH_ENV_VARS = frozenset({"NAVER_TAMPERMONKEY_SOURCE_ROOT"})
 RAW_FORBIDDEN_KEYS = pii_manifest.RAW_FORBIDDEN_KEYS
@@ -185,7 +186,7 @@ def _cleared_ocr_row(
         "product": row.get("product") if isinstance(row.get("product"), dict) else {},
         "pii_screening": {
             "status": "cleared",
-            "reviewer_id": _required_safe_token(decision, "reviewer_id"),
+            "reviewer_id": _required_operator_reviewer_id(decision),
             "reviewed_at": _required_str(decision, "reviewed_at"),
         },
     }
@@ -236,7 +237,7 @@ def _validate_decision(decision: dict[str, object]) -> None:
     status = _required_safe_token(decision, "status")
     if status not in ALLOWED_STATUSES:
         raise ValueError(f"Unsupported PII screening status: {status}")
-    _required_safe_token(decision, "reviewer_id")
+    _required_operator_reviewer_id(decision)
     _required_str(decision, "reviewed_at")
     if status == "cleared":
         for key in REQUIRED_CLEARED_ATTESTATIONS:
@@ -299,6 +300,14 @@ def _required_safe_token(row: dict[str, object], key: str) -> str:
     if token is None:
         raise ValueError(f"Row requires safe token field: {key}")
     return token
+
+
+def _required_operator_reviewer_id(row: dict[str, object]) -> str:
+    """Return a reviewer id that represents a human/operator approval."""
+    reviewer_id = _required_safe_token(row, "reviewer_id")
+    if not OPERATOR_REVIEWER_ID_PATTERN.fullmatch(reviewer_id):
+        raise ValueError("PII screening reviewer_id must use the operator_ prefix.")
+    return reviewer_id
 
 
 def _safe_token(value: object) -> str | None:

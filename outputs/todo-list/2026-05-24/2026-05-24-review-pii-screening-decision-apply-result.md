@@ -5,6 +5,7 @@
 - local-only review PII screening manifest에 operator decision JSONL을 적용하는 gate를 추가했다.
 - `cleared` decision과 필수 no-PII attestations가 모두 있는 row만 후속 OCR manifest로 승격한다.
 - `contains_personal_data`, `needs_redaction`, decision 없음, 알 수 없는 decision key, free-text note, raw/local path literal은 fail-closed 처리한다.
+- `reviewer_id`는 `operator_` prefix가 있는 사람/operator ID만 허용한다. EX400U Ollama/Gemma4 같은 로컬 모델 suggestion은 직접 `cleared` 승격 권한이 없다.
 - 이 단계는 OCR/LLM 호출, DB write, 외부 전송을 하지 않는다.
 
 ## 구현 파일
@@ -42,6 +43,7 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 - raw OCR text/provider payload/model response/request header/image bytes/secret key 저장 없음
 - `/Users`, `/Volumes`, `file://` 로컬 절대경로 literal 없음
 - 후속 OCR manifest는 empty-decision 기준 0 rows이며, 사람 검수 전에는 어떤 review 이미지도 처리 대상으로 승격하지 않는다.
+- 모델/자동화가 작성한 `reviewer_id=ollama_gemma4` 형태의 decision은 `operator_` prefix gate에서 실패한다.
 
 ## Ollama 경로 확인
 
@@ -52,7 +54,7 @@ outputs/generated/ocr-eval/2026-05-24-stage14-tampermonkey-folder-category-label
 ## 검증
 
 - focused tests: `40 passed`
-- apply script unit tests: `8 passed`
+- apply script unit tests: `8 passed` (`operator_` reviewer gate 포함)
 - black check: pass
 - ruff check: pass
 - strict privacy scan: pass
