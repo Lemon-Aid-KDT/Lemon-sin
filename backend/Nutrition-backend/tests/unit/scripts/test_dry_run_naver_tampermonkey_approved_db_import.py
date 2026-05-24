@@ -235,6 +235,39 @@ def test_build_dry_run_import_plan_rejects_duplicate_ingredients(
         dry_run.build_dry_run_import_plan(input_path=input_path)
 
 
+@pytest.mark.parametrize(
+    "standard_name",
+    [
+        "g X30포(",
+        "정x 3개입(",
+        "1000mg",
+        "60 capsules",
+    ],
+)
+def test_build_dry_run_import_plan_rejects_packaging_quantity_ingredient_names(
+    tmp_path: Path,
+    standard_name: str,
+) -> None:
+    """Verify handcrafted approved imports cannot bypass package-count checks."""
+    input_path = tmp_path / "approved.jsonl"
+    row = _approved_row(
+        ingredients=[
+            {
+                "standard_name": standard_name,
+                "nutrient_code": "omega_3",
+                "amount": 1000.0,
+                "unit": "mg",
+                "sort_order": 0,
+                "source_payload": {"reviewer_id": "operator_1"},
+            }
+        ]
+    )
+    _write_jsonl(input_path, [row])
+
+    with pytest.raises(ValueError, match="packaging quantity"):
+        dry_run.build_dry_run_import_plan(input_path=input_path)
+
+
 def test_main_error_is_redacted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

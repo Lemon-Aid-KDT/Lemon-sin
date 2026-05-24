@@ -37,6 +37,22 @@ APPROVED_ATTESTATIONS = (
     "attest_no_raw_ocr_text",
     "attest_not_clinical_recommendation",
 )
+PACKAGING_QUANTITY_INGREDIENT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"^(?:g|mg|kg|ml|l)\s*(?:x\s*)?\d*\s*(?:포|정|캡슐|캡셀|개입)?\s*\(?$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\d+(?:[,.]\d+)?\s*(?:mg|g|kg|ml|l|mcg|μg|ug|㎍|iu|%)\s*\(?$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
+    re.compile(
+        r"^(?:1일|일일|하루|daily)?\s*\d+\s*"
+        r"(?:정|포|캡슐|캡셀|개입|tablet|tablets|capsule|capsules|softgel|softgels|count)\s*\(?$",
+        re.IGNORECASE,
+    ),
+)
 FREE_TEXT_DECISION_KEYS = frozenset(
     {
         "comment",
@@ -268,6 +284,7 @@ def _validate_approved_decision(row: dict[str, object], decision: dict[str, obje
             raise ValueError("Approved review ingredients must be objects.")
         _reject_unsafe_payload(ingredient)
         display_name = _required_string(ingredient, "display_name", max_length=160)
+        reject_packaging_quantity_ingredient_name(display_name)
         nutrient_code = ingredient.get("nutrient_code")
         if nutrient_code is not None:
             nutrient_code = _safe_token(nutrient_code)
@@ -335,6 +352,28 @@ def _required_timezone_aware_iso_datetime(row: dict[str, object], key: str) -> s
 def _normalize_ingredient_name(value: str) -> str:
     """Return a conservative ingredient de-duplication key."""
     return " ".join(value.casefold().split())[:MAX_TEXT_LENGTH]
+
+
+def reject_packaging_quantity_ingredient_name(value: str) -> None:
+    """Reject package-count or dosage-only text masquerading as an ingredient.
+
+    Args:
+        value: Human-reviewed ingredient display name.
+
+    Raises:
+        ValueError: If the display name is only a packaging quantity, serving
+            count, or dosage fragment rather than a nutritional ingredient.
+    """
+    if _looks_like_packaging_quantity_ingredient(value):
+        raise ValueError("Approved review ingredient name must not be packaging quantity text.")
+
+
+def _looks_like_packaging_quantity_ingredient(value: str) -> bool:
+    """Return whether text is package/count-only noise instead of an ingredient."""
+    normalized = _normalize_ingredient_name(value).replace(chr(0xD7), "x")
+    if not normalized:
+        return False
+    return any(pattern.fullmatch(normalized) for pattern in PACKAGING_QUANTITY_INGREDIENT_PATTERNS)
 
 
 def _safe_token(value: object) -> str | None:

@@ -12,8 +12,15 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from scripts import validate_naver_tampermonkey_review_decisions as validator  # noqa: E402
 
 SCHEMA_VERSION = "naver-tampermonkey-approved-db-import-v1"
 EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
@@ -298,6 +305,7 @@ def _approved_ingredients(value: object) -> list[dict[str, object]]:
         if not isinstance(item, dict):
             continue
         display_name = _required_bounded_string(item, "display_name", max_length=160)
+        validator.reject_packaging_quantity_ingredient_name(display_name)
         nutrient_code = _optional_safe_token(item.get("nutrient_code"))
         dedupe_key = (_normalize_text(display_name), nutrient_code or "")
         if dedupe_key in seen_ingredient_keys:

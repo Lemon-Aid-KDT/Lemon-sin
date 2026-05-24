@@ -23,6 +23,8 @@ from sqlalchemy import String
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 NUTRITION_BACKEND_ROOT = BACKEND_ROOT / "Nutrition-backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 if str(NUTRITION_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(NUTRITION_BACKEND_ROOT))
 
@@ -30,6 +32,8 @@ from src.models.db.supplement import (  # noqa: E402
     SupplementProduct,
     SupplementProductIngredient,
 )
+
+from scripts import validate_naver_tampermonkey_review_decisions as validator  # noqa: E402
 
 SCHEMA_VERSION = "naver-tampermonkey-approved-db-import-dry-run-v1"
 EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-approved-db-import-v1"
@@ -282,6 +286,7 @@ def _ingredient_plan(
             item.get("standard_name"),
             required=True,
         )
+        validator.reject_packaging_quantity_ingredient_name(str(standard_name))
         nutrient_code = _bounded_string_for_column(
             SupplementProductIngredient,
             "nutrient_code",

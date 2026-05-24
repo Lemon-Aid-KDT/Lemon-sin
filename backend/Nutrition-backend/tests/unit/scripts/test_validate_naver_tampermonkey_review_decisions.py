@@ -195,6 +195,31 @@ def test_validate_rejects_duplicate_approved_ingredients(tmp_path: Path) -> None
         validator.validate_review_decisions(input_path=input_path)
 
 
+@pytest.mark.parametrize(
+    "display_name",
+    [
+        "g X30포(",
+        "정x 3개입(",
+        "1000mg",
+        "60 capsules",
+    ],
+)
+def test_validate_rejects_packaging_quantity_ingredient_names(
+    tmp_path: Path,
+    display_name: str,
+) -> None:
+    """Verify approved ingredients cannot be package counts or dosage-only text."""
+    input_path = tmp_path / "review.jsonl"
+    decision = _approved_decision()
+    ingredients = [dict(item) for item in decision["ingredients"]]  # type: ignore[index]
+    ingredients[0]["display_name"] = display_name
+    decision["ingredients"] = ingredients
+    _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+    with pytest.raises(ValueError, match="packaging quantity"):
+        validator.validate_review_decisions(input_path=input_path)
+
+
 def test_validate_rejects_string_or_bool_ingredient_amount(tmp_path: Path) -> None:
     """Verify approved ingredient amounts stay numeric, not free text."""
     for index, value in enumerate(("1000", True)):

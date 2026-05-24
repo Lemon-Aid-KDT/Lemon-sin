@@ -55,6 +55,7 @@ REVIEW_DECISION_CONTRACT = {
     ],
     "approved_ingredient_amount_type": "number_or_null",
     "approved_ingredient_source_required": "human_reviewed",
+    "approved_ingredient_packaging_quantity_text_allowed": False,
     "free_text_notes_allowed": False,
     "raw_ocr_text_allowed": False,
     "provider_payload_allowed": False,

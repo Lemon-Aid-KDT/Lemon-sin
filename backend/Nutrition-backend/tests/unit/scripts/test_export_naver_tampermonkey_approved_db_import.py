@@ -238,6 +238,31 @@ def test_export_rejects_duplicate_approved_ingredients(tmp_path: Path) -> None:
         approved_export.export_approved_db_import_rows(input_path=input_path)
 
 
+@pytest.mark.parametrize(
+    "display_name",
+    [
+        "g X30포(",
+        "정x 3개입(",
+        "1000mg",
+        "60 capsules",
+    ],
+)
+def test_export_rejects_packaging_quantity_ingredient_names(
+    tmp_path: Path,
+    display_name: str,
+) -> None:
+    """Verify approved DB import candidates reject package-count ingredients."""
+    input_path = tmp_path / "review-ingest.jsonl"
+    decision = _decision()
+    ingredients = [dict(item) for item in decision["ingredients"]]  # type: ignore[index]
+    ingredients[0]["display_name"] = display_name
+    decision["ingredients"] = ingredients
+    _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+    with pytest.raises(ValueError, match="packaging quantity"):
+        approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
 def test_export_rejects_non_numeric_ingredient_amount(tmp_path: Path) -> None:
     """Verify direct export never converts bool/string amounts into numbers."""
     for index, value in enumerate(("1000", True)):

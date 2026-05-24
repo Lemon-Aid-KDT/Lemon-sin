@@ -127,6 +127,7 @@ def test_export_review_decision_templates_with_safe_contract(
     ]
     assert contract["approved_ingredient_amount_type"] == "number_or_null"
     assert contract["approved_ingredient_source_required"] == "human_reviewed"
+    assert contract["approved_ingredient_packaging_quantity_text_allowed"] is False
     assert contract["approved_attestations_required"] == [
         "attest_pii_screening_completed",
         "attest_no_raw_ocr_text",
