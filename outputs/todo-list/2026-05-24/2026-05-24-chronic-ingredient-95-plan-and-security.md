@@ -333,6 +333,23 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 잔여 실패 fixture는 `naver-tm-detail-000007`, `naver-tm-detail-000112`이며, 다음 후보는 PP-StructureV3/layout 분리 또는 human review 대상이다.
 - reconciled output directory privacy scan finding 0, 공개 가능한 summary/report strict literal-key scan finding 0.
 
+구현된 reconciled failure retry manifest 보강:
+
+- `backend/scripts/export_naver_tampermonkey_reconciled_failure_retry_manifest.py`
+- source manifest와 reconciled observation JSONL을 fixture id로 조인해, 현재 남은 실패만 collector-compatible retry manifest로 내보낸다.
+- base failure review queue가 아니라 retry 이후 최종 reconciled output을 기준으로 하므로 재실험 대상이 중복되지 않는다.
+- `ocr_error`, `llm_parse_error`, `all` failure kind filter를 지원한다.
+- raw OCR text, provider payload, raw model response, image bytes, request headers, local path literal은 input/output recursive gate에서 거부한다.
+- 실제 최신 120개 reconciled 결과에서 남은 OCR error 2건만 retry manifest로 추출했다: `saw_palmetto` 1, `zinc` 1, error `ocr_low_confidence` 2, skipped missing fixture 0.
+
+추가 model/preprocess 비교 결과:
+
+- `LOCAL_OCR_MODEL_PROFILE=server`, `LOCAL_OCR_USE_TEXTLINE_ORIENTATION=true`, `LOCAL_OCR_CONFIDENCE_THRESHOLD=0.60`, preprocess `none`: call 2, completed 0, error `ocr_low_confidence` 2.
+- 동일 server profile + `LOCAL_OCR_PREPROCESS_MODE=grayscale_autocontrast`: call 2, completed 0, error `ocr_low_confidence` 2.
+- 두 retry output directory 및 retry manifest directory privacy scan finding 0.
+- 공개 가능한 report JSON/MD 및 retry summary JSON strict literal-key scan finding 0.
+- `paddleocr.PPStructureV3` import는 현재 OCR venv에서 가능함을 확인했다. 공식 문서상 PP-StructureV3는 layout region detection, table recognition, reading order recovery를 포함하므로, 남은 2건은 일반 OCR model/preprocess retry가 아니라 PP-StructureV3/layout PoC 또는 human review로 넘기는 것이 맞다.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -341,6 +358,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - PaddleOCR model profile 비교에 필요한 `LOCAL_OCR_MODEL_PROFILE`만 runner/collector allowlist에 추가하고, 기본값은 기존 mobile profile로 유지한다.
 - retry reconcile은 raw OCR text, raw provider payload, raw model response, image bytes, request headers, local path literal을 recursive gate로 거부한다.
 - retry reconcile의 source label은 경로 component가 길어도 hash 기반 공개 token으로 축약하고, local absolute path는 summary에 쓰지 않는다.
+- reconciled failure retry manifest exporter도 source manifest와 observation을 모두 recursive privacy gate로 검사하고, summary에는 path hash/name만 기록한다.
 - image quality diagnostic은 EX400U source root를 런타임 env로만 사용하고, generated artifact에는 path hash/name과 bounded image-quality bucket만 기록한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
