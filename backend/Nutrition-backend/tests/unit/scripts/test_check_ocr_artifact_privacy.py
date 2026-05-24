@@ -56,6 +56,55 @@ def test_check_artifact_privacy_passes_redacted_json_and_jsonl(tmp_path: Path) -
     assert summary["external_transfer_performed"] is False
 
 
+def test_check_artifact_privacy_scans_markdown_reports(tmp_path: Path) -> None:
+    """Verify Markdown reports are scanned by the default artifact gate."""
+    (tmp_path / "report.md").write_text(
+        "\n".join(
+            [
+                "# OCR report",
+                "- Raw OCR text stored: `False`",
+                "- raw_ocr_text_stored=false",
+                "- No raw provider payload is stored.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    summary = privacy.check_artifact_privacy(paths=[tmp_path])
+
+    assert summary["file_count"] == 1
+    assert summary["finding_count"] == 0
+    assert summary["passed"] is True
+
+
+def test_check_artifact_privacy_rejects_markdown_raw_tokens(tmp_path: Path) -> None:
+    """Verify Markdown reports cannot contain raw payload field tokens."""
+    (tmp_path / "report.md").write_text(
+        "provider_payload: should not be present\n",
+        encoding="utf-8",
+    )
+
+    summary = privacy.check_artifact_privacy(paths=[tmp_path])
+
+    assert summary["passed"] is False
+    assert summary["finding_count"] == 1
+    assert summary["findings"][0]["reason"] == "forbidden_raw_token:provider_payload"
+
+
+def test_check_artifact_privacy_rejects_markdown_local_paths(tmp_path: Path) -> None:
+    """Verify Markdown reports cannot contain local filesystem literals."""
+    (tmp_path / "report.md").write_text(
+        "source=/Volumes/Corsair EX400U Media/raw.jpg\n",
+        encoding="utf-8",
+    )
+
+    summary = privacy.check_artifact_privacy(paths=[tmp_path])
+
+    assert summary["passed"] is False
+    assert summary["findings"][0]["reason"] == "local_path_literal"
+    assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+
+
 def test_check_artifact_privacy_strict_mode_rejects_literal_keys(
     tmp_path: Path,
 ) -> None:

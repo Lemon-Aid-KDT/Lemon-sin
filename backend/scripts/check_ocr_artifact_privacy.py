@@ -1,9 +1,10 @@
 """Check OCR evaluation artifacts for raw text, secrets, and local paths.
 
 This script is a local/CI gate for generated OCR artifacts. It parses JSON and
-JSONL files structurally, rejects forbidden raw payload keys, and scans bounded
-string values for local filesystem literals. It does not upload files, open a
-database connection, call OCR providers, or call LLM services.
+JSONL files structurally, scans Markdown reports textually, rejects forbidden
+raw payload keys, and scans bounded string values for local filesystem literals.
+It does not upload files, open a database connection, call OCR providers, or
+call LLM services.
 """
 
 from __future__ import annotations
@@ -11,12 +12,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "ocr-artifact-privacy-check-v1"
-DEFAULT_EXTENSIONS = (".json", ".jsonl")
+DEFAULT_EXTENSIONS = (".json", ".jsonl", ".md")
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -49,6 +51,13 @@ LOCAL_PATH_MARKERS = (
     "\\Users\\",
     "\\Volumes\\",
 )
+MARKDOWN_FORBIDDEN_TOKENS = tuple(sorted(RAW_FORBIDDEN_KEYS - {"secret"}))
+MARKDOWN_FORBIDDEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])("
+    + "|".join(re.escape(key) for key in MARKDOWN_FORBIDDEN_TOKENS)
+    + r")(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -74,7 +83,7 @@ def parse_args() -> argparse.Namespace:
         "--extension",
         action="append",
         choices=DEFAULT_EXTENSIONS,
-        help="File extension to scan. Defaults to JSON and JSONL.",
+        help="File extension to scan. Defaults to JSON, JSONL, and Markdown.",
     )
     parser.add_argument(
         "--allow-missing",
@@ -196,9 +205,11 @@ def _collect_files(
 
 
 def _scan_file(path: Path, *, strict_literal_keys: bool) -> tuple[list[PrivacyFinding], int]:
-    """Scan one JSON or JSONL artifact."""
+    """Scan one JSON, JSONL, or Markdown artifact."""
     findings: list[PrivacyFinding] = []
     values_seen = 0
+    if path.suffix == ".md":
+        return _scan_markdown_file(path)
     if path.suffix == ".jsonl":
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
@@ -235,6 +246,30 @@ def _scan_file(path: Path, *, strict_literal_keys: bool) -> tuple[list[PrivacyFi
         strict_literal_keys=strict_literal_keys,
     )
     return findings, values_seen
+
+
+def _scan_markdown_file(path: Path) -> tuple[list[PrivacyFinding], int]:
+    """Scan one Markdown report for raw-key tokens and local path literals."""
+    findings: list[PrivacyFinding] = []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for line_number, line in enumerate(lines, 1):
+        if any(marker in line for marker in LOCAL_PATH_MARKERS):
+            findings.append(
+                PrivacyFinding(
+                    path=path.name,
+                    location=f"line:{line_number}",
+                    reason="local_path_literal",
+                )
+            )
+        for match in MARKDOWN_FORBIDDEN_PATTERN.finditer(line):
+            findings.append(
+                PrivacyFinding(
+                    path=path.name,
+                    location=f"line:{line_number}",
+                    reason=f"forbidden_raw_token:{match.group(1).lower()}",
+                )
+            )
+    return findings, len(lines)
 
 
 def _scan_value(
