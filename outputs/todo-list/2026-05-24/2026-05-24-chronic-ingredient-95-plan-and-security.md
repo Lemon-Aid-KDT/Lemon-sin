@@ -260,9 +260,21 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - retry 산출물 privacy scan: 전체 retry output non-strict finding 0, report JSON strict literal-key finding 0.
 - 판단: LLM 구조화 실패 5건은 parser normalization으로 해소됐다. OCR 13건 중 9건은 threshold 진단상 OCR text는 존재하므로 human review 또는 confidence policy 분기 대상이고, 남은 4건은 image quality/preprocess, PP-OCRv5 server model, PP-StructureV3 후보로 남는다.
 
+구현된 retry observation reconcile 보강:
+
+- `backend/scripts/reconcile_naver_tampermonkey_ocr_observations.py`
+- base batch observation과 retry observation을 `fixture_id/provider`별로 1개 대표 row로 병합한다.
+- 선택 기준은 `completed` > `error` > `not_run`, LLM completed, parser success, text non-empty, ingredient count, 입력 순서 순이다.
+- 이 단계가 없으면 evaluator가 base와 retry를 중복 호출로 합산하므로 120개 기준 coverage를 정확히 볼 수 없다.
+- 실제 base 120 + LLM retry 5 + OCR retry 13 reconcile 결과: input observation 138, duplicate group 18, output observation 120, completed 116, error 4, LLM completed 116.
+- reconciled 120개 평가 결과: fixture 120, observation 120, completed rate 0.9667, text non-empty rate 0.9667, parser success rate 0.9667, LLM parse success rate 1.0, ingredient count avg 3.0603, remaining error `ocr_low_confidence` 4.
+- 120개 DB-labeling staging 생성 및 reconciled observation merge 결과: staging row 120, matched observation 120, rows with OCR observations 120, rows with LLM ingredients 111, unmatched 0.
+- reconciled output directory privacy scan finding 0, summary/report strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
 - OCR retry에 필요한 `LOCAL_OCR_USE_TEXTLINE_ORIENTATION`, `LOCAL_OCR_CONFIDENCE_THRESHOLD`만 runner allowlist에 추가하고 unrelated parent secret 미전파 테스트를 유지한다.
+- retry reconcile은 raw OCR text, raw provider payload, raw model response, image bytes, request headers, local path literal을 recursive gate로 거부한다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
