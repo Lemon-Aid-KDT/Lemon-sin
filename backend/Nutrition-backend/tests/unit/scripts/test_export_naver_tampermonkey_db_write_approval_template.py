@@ -111,6 +111,8 @@ def test_export_db_write_approval_template_is_non_importable(tmp_path: Path) -> 
     assert template["schema_version"] == exporter.SCHEMA_VERSION
     assert template["approval_log_schema_version"] == "naver-tampermonkey-db-write-approval-v1"
     assert template["approved_for_db_write"] is False
+    assert template["reviewer_id"] == "operator_REQUIRED_SAFE_TOKEN"
+    assert template["reviewer_id_required_prefix"] == "operator_"
     assert template["attest_dry_run_reviewed"] is False
     assert template["template_importable"] is False
     assert len(str(template["approved_input_sha256"])) == 64

@@ -40,6 +40,7 @@ from scripts import dry_run_naver_tampermonkey_approved_db_import as dry_run  # 
 
 SCHEMA_VERSION = "naver-tampermonkey-approved-db-import-write-v1"
 APPROVAL_LOG_SCHEMA_VERSION = "naver-tampermonkey-db-write-approval-v1"
+APPROVAL_REVIEWER_ID_PREFIX = "operator_"
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 LOCAL_PATH_MARKERS = dry_run.LOCAL_PATH_MARKERS
 RAW_FORBIDDEN_KEYS = dry_run.RAW_FORBIDDEN_KEYS
@@ -422,6 +423,9 @@ def _validate_approval_log(
         value = approval_log.get(key)
         if not isinstance(value, str) or not SAFE_TOKEN_PATTERN.fullmatch(value):
             raise ValueError(f"Approval log requires safe token field: {key}")
+    reviewer_id = str(approval_log["reviewer_id"])
+    if not reviewer_id.startswith(APPROVAL_REVIEWER_ID_PREFIX):
+        raise ValueError(f"Approval log reviewer_id must start with {APPROVAL_REVIEWER_ID_PREFIX}")
     expected_hashes = {
         "approved_input_sha256": _sha256_file(approved_input_path),
         "dry_run_plan_sha256": _sha256_file(dry_run_plan_path),

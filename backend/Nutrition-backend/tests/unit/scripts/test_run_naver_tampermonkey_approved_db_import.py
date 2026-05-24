@@ -186,6 +186,25 @@ def test_build_import_preflight_rejects_failed_privacy_summary(tmp_path: Path) -
         )
 
 
+def test_build_import_preflight_rejects_model_only_db_write_reviewer(
+    tmp_path: Path,
+) -> None:
+    """Verify DB-write approval requires an operator reviewer id."""
+    paths = _prepare_evidence(
+        tmp_path,
+        approval_overrides={"reviewer_id": "ollama_gemma4"},
+    )
+
+    with pytest.raises(ValueError, match="reviewer_id must start with operator_"):
+        importer.build_import_preflight(
+            approved_input_path=paths["approved"],
+            dry_run_plan_path=paths["plan"],
+            dry_run_summary_path=paths["dry_summary"],
+            privacy_summary_path=paths["privacy"],
+            approval_log_path=paths["approval"],
+        )
+
+
 def test_build_import_preflight_rejects_non_importable_template(tmp_path: Path) -> None:
     """Verify approval templates cannot be used as approval logs directly."""
     paths = _prepare_evidence(tmp_path)

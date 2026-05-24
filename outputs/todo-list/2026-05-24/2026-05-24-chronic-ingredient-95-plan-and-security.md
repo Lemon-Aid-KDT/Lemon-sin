@@ -469,6 +469,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - manual-review gap decision template은 gap queue를 필터로만 사용하고 bounded reason/action/count와 non-importable decision skeleton만 노출한다.
 - review decision validator와 approved DB import exporter는 `operator_` reviewer id만 허용해 model-only approval 우회를 막는다.
 - approved DB import exporter는 human-reviewed source와 numeric amount만 허용해 OCR/LLM provenance나 free-form amount가 DB import 후보에 섞이지 않게 한다.
+- DB write approval log도 `operator_` reviewer id만 허용해 model-only approval log가 최종 DB write preflight를 통과하지 못하게 한다.
 - gap-scoped import gate는 6개 gap decision 완료 여부를 별도 count로 검증하고 production DB write를 수행하지 않는다.
 - gap-scoped import gate의 restricted mode는 비-gap approval이 같은 decision batch에 섞여 import dry-run으로 넘어가는 것을 차단한다.
 - review-readiness summary gate는 EX400U OCR coverage와 DB import 가능 상태를 분리하고, summary JSON만 읽어 raw OCR/이미지/모델 응답이 재노출될 통로를 만들지 않는다.
@@ -492,4 +493,5 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - gap reasons: `ingredient_candidate_count_zero` 6, `llm_zero_ingredient_candidates` 5, `ocr_provider_error` 1.
 - gap strict gate: empty decisions with `--restrict-decisions-to-gap` produces approved row 0 and DB write false; adding `--require-gap-reviewed` fails with `Gap review queue requires every gap row to be reviewed.` as expected.
 - readiness gate: `ready_for_db_import=false`, `human_review_required=true`, blocker `manual_gap_review_pending`, `no_approved_import_rows`, `ocr_provider_errors_present`, `review_rows_not_db_import_ready`; `--require-db-ready` fails as expected.
+- DB write approval gate: `ollama_gemma4` 같은 model-only reviewer id는 최종 DB write preflight에서 실패하도록 테스트로 고정했다.
 - privacy scan: 2026-05-25 generated output strict literal-key scan finding 0; category-label/inventory strict scan finding 0.
