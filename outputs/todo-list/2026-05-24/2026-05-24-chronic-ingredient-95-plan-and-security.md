@@ -442,6 +442,16 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - `--restrict-decisions-to-gap`을 켠 empty decision gate 결과: non-gap decision 0, gap pending 6, DB write false.
 - gap-scoped import gate artifact privacy scan finding 0, strict literal-key scan finding 0.
 
+구현된 review-readiness summary gate 보강:
+
+- `backend/scripts/summarize_naver_tampermonkey_review_readiness.py`
+- redacted summary JSON만 읽고 OCR JSONL row, source image, raw OCR text, provider payload, model response, local path, DB record는 읽지 않는다.
+- EX400U coverage 지표와 DB import readiness를 분리해 `ready_for_db_import`, `human_review_required`, `blocking_reasons`를 산출한다.
+- `--require-db-ready`를 켜면 manual review gap 또는 승인 row 부족 상태에서 exit code 1로 실패한다.
+- 실제 최신 EX400U 결과: fixture 120, observation 120, completed 119, error 1, gap pending 6, approved row 0, DB import ready row 0.
+- readiness 결과: `ready_for_db_import=false`, blocker `manual_gap_review_pending`, `no_approved_import_rows`, `ocr_provider_errors_present`, `review_rows_not_db_import_ready`.
+- readiness artifact privacy scan finding 0, strict literal-key scan finding 0.
+
 ## 이번 변경의 보안 점검
 
 - subprocess child env를 allowlist로 제한해 부모 환경 secret 전파 위험을 줄인다.
@@ -461,6 +471,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - approved DB import exporter는 human-reviewed source와 numeric amount만 허용해 OCR/LLM provenance나 free-form amount가 DB import 후보에 섞이지 않게 한다.
 - gap-scoped import gate는 6개 gap decision 완료 여부를 별도 count로 검증하고 production DB write를 수행하지 않는다.
 - gap-scoped import gate의 restricted mode는 비-gap approval이 같은 decision batch에 섞여 import dry-run으로 넘어가는 것을 차단한다.
+- review-readiness summary gate는 EX400U OCR coverage와 DB import 가능 상태를 분리하고, summary JSON만 읽어 raw OCR/이미지/모델 응답이 재노출될 통로를 만들지 않는다.
 - evaluator diagnostic counters는 token allowlist를 적용해 local path/secret 형태 값을 public artifact에 쓰지 않는다.
 - raw OCR text, raw provider payload, raw model response, image bytes 저장 정책은 변경하지 않는다.
 
@@ -480,4 +491,5 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - review gate: review required 120, DB import ready 0, manual-review gap row 6.
 - gap reasons: `ingredient_candidate_count_zero` 6, `llm_zero_ingredient_candidates` 5, `ocr_provider_error` 1.
 - gap strict gate: empty decisions with `--restrict-decisions-to-gap` produces approved row 0 and DB write false; adding `--require-gap-reviewed` fails with `Gap review queue requires every gap row to be reviewed.` as expected.
+- readiness gate: `ready_for_db_import=false`, `human_review_required=true`, blocker `manual_gap_review_pending`, `no_approved_import_rows`, `ocr_provider_errors_present`, `review_rows_not_db_import_ready`; `--require-db-ready` fails as expected.
 - privacy scan: 2026-05-25 generated output strict literal-key scan finding 0; category-label/inventory strict scan finding 0.
