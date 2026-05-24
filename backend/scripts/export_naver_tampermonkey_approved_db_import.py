@@ -21,6 +21,7 @@ SOURCE_MANIFEST_VERSION = "naver-tm-review-ingest-v1"
 MAX_TOKEN_LENGTH = 80
 MAX_TEXT_LENGTH = 200
 MAX_INGREDIENTS_PER_PRODUCT = 128
+APPROVED_INGREDIENT_SOURCE = "human_reviewed"
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 OPERATOR_REVIEWER_ID_PATTERN = re.compile(r"^operator_[A-Za-z0-9_.:-]{1,71}$")
 LOCAL_PATH_MARKERS = (
@@ -299,9 +300,9 @@ def _approved_ingredients(value: object) -> list[dict[str, object]]:
         ingredient: dict[str, object] = {
             "standard_name": display_name,
             "nutrient_code": _optional_safe_token(item.get("nutrient_code")),
-            "amount": _optional_non_negative_number(item.get("amount")),
+            "amount": _approved_ingredient_amount(item.get("amount")),
             "unit": _optional_string(item.get("unit"), max_length=40),
-            "source": _optional_safe_token(item.get("source")) or "human_reviewed",
+            "source": _approved_ingredient_source(item.get("source")),
         }
         ingredients.append({key: val for key, val in ingredient.items() if val is not None})
     return ingredients
@@ -428,9 +429,29 @@ def _optional_string(value: object, *, max_length: int = MAX_TEXT_LENGTH) -> str
 
 def _optional_non_negative_number(value: object) -> float | None:
     """Return a non-negative number or None."""
+    if isinstance(value, bool):
+        return None
     if isinstance(value, int | float) and value >= 0:
         return float(value)
     return None
+
+
+def _approved_ingredient_amount(value: object) -> float | None:
+    """Return an approved ingredient amount or reject malformed values."""
+    if value is None:
+        return None
+    amount = _optional_non_negative_number(value)
+    if amount is None:
+        raise ValueError("Approved DB import ingredient amount must be a non-negative number.")
+    return amount
+
+
+def _approved_ingredient_source(value: object) -> str:
+    """Return the only source allowed for approved human-review ingredients."""
+    source = _optional_safe_token(value)
+    if source is not None and source != APPROVED_INGREDIENT_SOURCE:
+        raise ValueError("Approved DB import ingredient source must be human_reviewed.")
+    return APPROVED_INGREDIENT_SOURCE
 
 
 def _non_negative_int(value: object) -> int:

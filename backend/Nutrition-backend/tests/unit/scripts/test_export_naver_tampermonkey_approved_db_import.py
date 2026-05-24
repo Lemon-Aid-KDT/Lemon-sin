@@ -193,6 +193,33 @@ def test_export_rejects_model_only_reviewer_id(tmp_path: Path) -> None:
         approved_export.export_approved_db_import_rows(input_path=input_path)
 
 
+def test_export_rejects_non_human_ingredient_source(tmp_path: Path) -> None:
+    """Verify approved DB import cannot preserve OCR or LLM ingredient source."""
+    input_path = tmp_path / "review-ingest.jsonl"
+    decision = _decision()
+    ingredients = [dict(item) for item in decision["ingredients"]]  # type: ignore[index]
+    ingredients[0]["source"] = "ollama_structured"
+    decision["ingredients"] = ingredients
+    _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+    with pytest.raises(ValueError, match="source must be human_reviewed"):
+        approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
+def test_export_rejects_non_numeric_ingredient_amount(tmp_path: Path) -> None:
+    """Verify direct export never converts bool/string amounts into numbers."""
+    for index, value in enumerate(("1000", True)):
+        input_path = tmp_path / f"review-ingest-{index}.jsonl"
+        decision = _decision()
+        ingredients = [dict(item) for item in decision["ingredients"]]  # type: ignore[index]
+        ingredients[0]["amount"] = value
+        decision["ingredients"] = ingredients
+        _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+        with pytest.raises(ValueError, match="non-negative number"):
+            approved_export.export_approved_db_import_rows(input_path=input_path)
+
+
 def test_export_rejects_uncleared_pii_rows_even_when_approved(tmp_path: Path) -> None:
     """Verify approved DB import still requires PII clearance."""
     input_path = tmp_path / "review-ingest.jsonl"

@@ -20,6 +20,7 @@ EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
 MAX_TOKEN_LENGTH = 80
 MAX_TEXT_LENGTH = 200
 MAX_INGREDIENTS_PER_PRODUCT = 128
+APPROVED_INGREDIENT_SOURCE = "human_reviewed"
 SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 OPERATOR_REVIEWER_ID_PATTERN = re.compile(r"^operator_[A-Za-z0-9_.:-]{1,71}$")
 LOCAL_PATH_MARKERS = (
@@ -269,11 +270,14 @@ def _validate_approved_decision(row: dict[str, object], decision: dict[str, obje
         nutrient_code = ingredient.get("nutrient_code")
         if nutrient_code is not None:
             _safe_token(nutrient_code)
+        source = ingredient.get("source")
+        if source is not None and _safe_token(source) != APPROVED_INGREDIENT_SOURCE:
+            raise ValueError("Approved review ingredient source must be human_reviewed.")
         amount = ingredient.get("amount")
         if amount is not None and (
-            not isinstance(amount, int | float | str) or str(amount).startswith("-")
+            isinstance(amount, bool) or not isinstance(amount, int | float) or amount < 0
         ):
-            raise ValueError("Approved review ingredient amount must be non-negative.")
+            raise ValueError("Approved review ingredient amount must be a non-negative number.")
         unit = ingredient.get("unit")
         if unit is not None:
             _required_string(ingredient, "unit", max_length=40)

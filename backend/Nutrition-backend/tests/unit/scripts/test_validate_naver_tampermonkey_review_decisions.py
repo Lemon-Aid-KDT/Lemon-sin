@@ -75,6 +75,7 @@ def _approved_decision(**overrides: object) -> dict[str, object]:
                 "nutrient_code": "omega_3",
                 "amount": 1000,
                 "unit": "mg",
+                "source": "human_reviewed",
             }
         ],
     }
@@ -144,6 +145,33 @@ def test_validate_rejects_approved_decision_without_attestation(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="attest_not_clinical_recommendation"):
         validator.validate_review_decisions(input_path=input_path)
+
+
+def test_validate_rejects_non_human_ingredient_source(tmp_path: Path) -> None:
+    """Verify approved ingredients cannot keep OCR or LLM provenance."""
+    input_path = tmp_path / "review.jsonl"
+    decision = _approved_decision()
+    ingredients = [dict(item) for item in decision["ingredients"]]  # type: ignore[index]
+    ingredients[0]["source"] = "ollama_structured"
+    decision["ingredients"] = ingredients
+    _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+    with pytest.raises(ValueError, match="source must be human_reviewed"):
+        validator.validate_review_decisions(input_path=input_path)
+
+
+def test_validate_rejects_string_or_bool_ingredient_amount(tmp_path: Path) -> None:
+    """Verify approved ingredient amounts stay numeric, not free text."""
+    for index, value in enumerate(("1000", True)):
+        input_path = tmp_path / f"review-{index}.jsonl"
+        decision = _approved_decision()
+        ingredients = [dict(item) for item in decision["ingredients"]]  # type: ignore[index]
+        ingredients[0]["amount"] = value
+        decision["ingredients"] = ingredients
+        _write_jsonl(input_path, [_review_row(review_decision=decision)])
+
+        with pytest.raises(ValueError, match="non-negative number"):
+            validator.validate_review_decisions(input_path=input_path)
 
 
 def test_validate_rejects_approved_pii_pending_rows(tmp_path: Path) -> None:

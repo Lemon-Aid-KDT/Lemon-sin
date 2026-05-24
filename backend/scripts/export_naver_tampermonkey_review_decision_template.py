@@ -46,6 +46,8 @@ REVIEW_DECISION_CONTRACT = {
         "reason_codes",
     ],
     "approved_attestations_required": list(validator.APPROVED_ATTESTATIONS),
+    "approved_ingredient_amount_type": "number_or_null",
+    "approved_ingredient_source_required": "human_reviewed",
     "free_text_notes_allowed": False,
     "raw_ocr_text_allowed": False,
     "provider_payload_allowed": False,
