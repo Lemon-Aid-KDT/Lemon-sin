@@ -17,6 +17,7 @@ from pathlib import Path
 
 SCHEMA_VERSION = "naver-tampermonkey-approved-db-import-v1"
 EXPECTED_INPUT_SCHEMA_VERSION = "naver-tampermonkey-review-ingest-v1"
+SOURCE_MANIFEST_VERSION = "naver-tm-review-ingest-v1"
 MAX_TOKEN_LENGTH = 80
 MAX_TEXT_LENGTH = 200
 MAX_INGREDIENTS_PER_PRODUCT = 128
@@ -189,7 +190,7 @@ def _approved_import_row(
         "normalized_product_name": _normalize_text(display_name),
         "manufacturer": _optional_string(decision.get("manufacturer")),
         "category": category_key,
-        "source_manifest_version": EXPECTED_INPUT_SCHEMA_VERSION,
+        "source_manifest_version": SOURCE_MANIFEST_VERSION,
         "is_active": True,
         "is_clinical_recommendation": False,
         "clinical_recommendation_forbidden": True,

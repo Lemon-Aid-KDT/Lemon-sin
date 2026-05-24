@@ -112,6 +112,7 @@ def test_export_approved_review_rows_to_db_import_candidates(tmp_path: Path) -> 
     assert rows[0]["product_name"] == "Omega-3 1000"
     assert rows[0]["normalized_product_name"] == "omega-3 1000"
     assert rows[0]["category"] == "omega_3"
+    assert rows[0]["source_manifest_version"] == "naver-tm-review-ingest-v1"
     assert rows[0]["is_clinical_recommendation"] is False
     assert rows[0]["clinical_recommendation_forbidden"] is True
     assert rows[0]["ingredients"] == [
