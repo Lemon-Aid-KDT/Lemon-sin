@@ -199,7 +199,8 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - EX400U Ollama model root에서 `gemma4:e4b` 존재 확인
 - 8개 Gemma4 smoke 평가: completed 0.875, LLM parse attempt 7, LLM parse success 1.0, avg structured ingredient count 2.7143, error `ocr_low_confidence` 1
 - batch-001 Gemma4 재평가: sandbox 내부 Python `httpx`는 local Ollama 접속이 제한되어 `ollama_client`로 실패했으나, sandbox 밖 재실행에서 completed 0.875, LLM parse attempt 7, LLM parse success 1.0, avg structured ingredient count 2.7143, error `ocr_low_confidence` 1을 확인했다.
-- 120개 full OCR+Gemma4 평가는 fixture별 structured output 호출 시간이 길어 중단했다. 이후 전체 실행은 category-balanced batch 단위와 `--resume` 기준으로 나누어 진행한다.
+- 120개 full batch OCR+Gemma4 평가: batch 15/15 completed, observation 120, completed 107, error 13, text non-empty 0.8917, parser success 0.8917, LLM parse attempt 107, LLM parse success 0.9533, avg structured ingredient count 2.9706, error `ocr_low_confidence` 13, LLM error `ollama_structured_output` 5
+- 기존 120개 단일 full OCR+Gemma4 평가는 fixture별 structured output 호출 시간이 길어 중단했으나, batch runner 도입 후 15개 batch 전체 실행을 완료했다.
 
 구현된 batch 실행 보강:
 
@@ -218,11 +219,21 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 실패 batch는 `--continue-on-error` 여부에 따라 중단 또는 계속 진행하며, `--resume`으로 완료 batch를 재사용한다.
 - 실제 120개 batch directory dry-run 결과: planned batch 15, first `ex400u-detail-batch-001.jsonl`, last `ex400u-detail-batch-015.jsonl`, privacy scan finding 0.
 
+구현된 OCR failure review 보강:
+
+- `backend/scripts/export_naver_tampermonkey_ocr_failure_review_template.py`
+- batch manifest와 batch observation을 fixture id로 조인해 실패 검수 큐를 생성한다.
+- review row에는 fixture id, batch name, provider, section, category key, failure kind, bounded error code, suggested next action만 기록한다.
+- raw OCR text, provider payload, raw model response, image bytes, request headers, local path literal은 recursive gate에서 거부한다.
+- 실제 full batch 결과에서 review row 18개 생성: `ocr_error` 13, `llm_parse_error` 5, missing category 0, strict privacy scan finding 0.
+- suggested action: `inspect_image_quality_or_preprocess` 13, `retry_structured_parser_or_schema_prompt` 5.
+
 판단:
 
 - folder-name category labeling과 웹 근거 taxonomy mapping은 현재 43개 category 전체에서 매핑 누락 없이 동작한다.
-- 43개 OCR-only 기준에서 실패 7개는 `ocr_low_confidence`로 분리되며, raw OCR text 저장 없이 report에서 확인 가능하다.
+- 120개 full batch 기준에서 OCR 실패 13개는 `ocr_low_confidence`로 분리되며, raw OCR text 저장 없이 report와 review queue에서 확인 가능하다.
 - Gemma4 parser 연결은 EX400U 모델 경로 기준 smoke와 batch-001 sandbox 밖 재실행에서 정상 동작했다.
+- Gemma4 parser는 full batch에서 102/107 성공했으며, 남은 5개는 `ollama_structured_output`으로 분리되어 prompt/schema retry 보강 후보가 되었다.
 - 이 확장 fixture set은 human-verified ingredient exact KPI가 아니라 OCR/DB-labeling coverage KPI로 봐야 한다. ingredient exact 95% 판단은 별도 human-verified expected가 붙은 fixture에서만 수행한다.
 
 ## 이번 변경의 보안 점검
