@@ -74,6 +74,18 @@
 - 현재 expected ingredient와 redacted structured observation hints만 포함하고, raw OCR text, provider payload, image bytes, request headers, local path, free-text notes는 포함하지 않는다.
 - 현재 실행 결과: 16 rows, pending 16, current expected hint 보유 7 rows, observation hint 보유 5 rows.
 
+구현된 검수 반영 gate:
+
+- `backend/scripts/apply_chronic_ingredient_review_decisions.py`
+- `chronic-ingredient-review-decision-v1` JSONL만 입력으로 허용하고, 템플릿 row를 그대로 import하려는 시도는 실패 처리한다.
+- 원본 expected directory를 직접 수정하지 않고 별도 output directory에 V3 snapshot copy를 생성한다.
+- `verified` decision만 `ingredients[].source=manual`, `confidence=1.0`으로 반영하고 `ground_truth_pending_human_review`, `auto_expected_requires_human_verification` warning을 제거한다.
+- `needs_changes`, `not_scoreable` decision은 pending warning을 유지하므로 scoreable KPI denominator에 들어가지 않는다.
+- `reviewer_id`는 `operator_*` 형식만 허용하며 `ollama_gemma4` 같은 model-only reviewer id는 거부한다.
+- verified decision은 `human_verified_from_local_fixture`, `no_raw_ocr_text_copied`, `no_provider_payload_copied`, `no_secret_or_local_path_copied` attestation이 모두 true여야 한다.
+- raw OCR text, provider payload, raw model response, image bytes, request headers, free-text notes, local path literal, secret-like key는 recursive gate에서 거부한다.
+- output snapshot은 `SupplementParsedSnapshotV3.model_validate`로 검증한 뒤에만 write 대상이 된다.
+
 ### 2. parser_success_rate 0.5625와 errors 2/16 원인 조사
 
 현재 관측:
@@ -169,6 +181,31 @@ fine-tune 착수 조건:
 - human-verified 16개 또는 확장 fixture set에서 동일 recognition miss가 반복됨
 - PP-StructureV3/layout parser 및 alias 보정으로도 95% 미달
 - 학습 데이터는 human-verified transcript만 사용
+
+## EX400U Tampermonkey/Naver 확장 fixture 테스트
+
+사용자 요청에 따라 기존 16개 chronic fixture 대신 operator-provided EX400U
+Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
+웹 근거 taxonomy는 `ocr_fixture_chronic_supplement_categories.json`에 기록된
+공식 source URL 기반 category mapping을 사용했다.
+
+검증 결과:
+
+- 120개 detail manifest 생성: candidate 130303, category label 43, unmapped category 0
+- generated manifest/inventory/category-label artifact privacy scan: finding 0
+- 43개 category-balanced OCR-only 평가: completed 36/43, text non-empty 0.8372, parser success 0.8372, error `ocr_low_confidence` 7
+- 43개 DB labeling staging 생성: row 43, review row 0, external allowed row 43, product_dir literal 저장 false
+- 43개 staging + OCR observation merge: matched observation 43, completed 36, error 7, unmatched 0
+- EX400U Ollama model root에서 `gemma4:e4b` 존재 확인
+- 8개 Gemma4 smoke 평가: completed 0.875, LLM parse attempt 7, LLM parse success 1.0, avg structured ingredient count 2.7143, error `ocr_low_confidence` 1
+- 120개 full OCR+Gemma4 평가는 fixture별 structured output 호출 시간이 길어 중단했다. 이후 전체 실행은 category-balanced batch 단위와 `--resume` 기준으로 나누어 진행한다.
+
+판단:
+
+- folder-name category labeling과 웹 근거 taxonomy mapping은 현재 43개 category 전체에서 매핑 누락 없이 동작한다.
+- 43개 OCR-only 기준에서 실패 7개는 `ocr_low_confidence`로 분리되며, raw OCR text 저장 없이 report에서 확인 가능하다.
+- Gemma4 parser 연결은 EX400U 모델 경로 기준 smoke에서 정상 동작했다.
+- 이 확장 fixture set은 human-verified ingredient exact KPI가 아니라 OCR/DB-labeling coverage KPI로 봐야 한다. ingredient exact 95% 판단은 별도 human-verified expected가 붙은 fixture에서만 수행한다.
 
 ## 이번 변경의 보안 점검
 
