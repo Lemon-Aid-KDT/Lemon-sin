@@ -76,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fail unless every row in --gap-queue has an approved review decision.",
     )
+    parser.add_argument(
+        "--restrict-decisions-to-gap",
+        action="store_true",
+        help="Fail when the decision batch contains rows outside --gap-queue.",
+    )
     return parser.parse_args()
 
 
@@ -100,6 +105,7 @@ def main() -> None:
             ),
             require_gap_reviewed=args.require_gap_reviewed,
             require_gap_approved=args.require_gap_approved,
+            restrict_decisions_to_gap=args.restrict_decisions_to_gap,
         )
         print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -126,6 +132,7 @@ def run_review_import_gate(
     gap_queue_path: Path | None = None,
     require_gap_reviewed: bool = False,
     require_gap_approved: bool = False,
+    restrict_decisions_to_gap: bool = False,
 ) -> dict[str, object]:
     """Run the full review-to-import gate and write generated artifacts.
 
@@ -141,6 +148,7 @@ def run_review_import_gate(
         gap_queue_path: Optional manual-review gap queue JSONL.
         require_gap_reviewed: Whether every gap queue row must have a decision.
         require_gap_approved: Whether every gap queue row must be approved.
+        restrict_decisions_to_gap: Whether decision rows must all be in gap queue.
 
     Returns:
         Final gate summary.
@@ -150,6 +158,13 @@ def run_review_import_gate(
     """
     safe_prefix = _safe_artifact_prefix(artifact_prefix)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if restrict_decisions_to_gap and gap_queue_path is None:
+        raise ValueError("Decision gap restriction needs --gap-queue.")
+    decision_scope_summary = _decision_scope_summary(
+        decisions_path=decisions_path,
+        gap_queue_path=gap_queue_path,
+        restrict_decisions_to_gap=restrict_decisions_to_gap,
+    )
 
     applied_path = output_dir / f"{safe_prefix}-review-ingest-with-decisions.jsonl"
     applied_summary_path = output_dir / f"{safe_prefix}-review-ingest-with-decisions.summary.json"
@@ -232,6 +247,8 @@ def run_review_import_gate(
         "gap_decision_status_counts": gap_review_summary["gap_decision_status_counts"],
         "require_gap_reviewed": require_gap_reviewed,
         "require_gap_approved": require_gap_approved,
+        "restrict_decisions_to_gap": restrict_decisions_to_gap,
+        "non_gap_decision_count": decision_scope_summary["non_gap_decision_count"],
         "dry_run_only": True,
         "db_write_performed": False,
         "external_transfer_performed": False,
@@ -246,6 +263,42 @@ def run_review_import_gate(
     _reject_unsafe_payload(gate_summary)
     _write_json(gate_summary_path, gate_summary)
     return gate_summary
+
+
+def _decision_scope_summary(
+    *,
+    decisions_path: Path,
+    gap_queue_path: Path | None,
+    restrict_decisions_to_gap: bool,
+) -> dict[str, object]:
+    """Validate decision row scope against an optional manual gap queue."""
+    decision_ids = set(_read_decision_review_ids(decisions_path))
+    if gap_queue_path is None:
+        return {"non_gap_decision_count": 0}
+    gap_ids = set(_read_gap_queue_review_ids(gap_queue_path))
+    non_gap_ids = sorted(decision_ids - gap_ids)
+    if restrict_decisions_to_gap and non_gap_ids:
+        raise ValueError(f"Decision review_task_id is outside gap queue: {non_gap_ids[0]}")
+    return {"non_gap_decision_count": len(non_gap_ids)}
+
+
+def _read_decision_review_ids(path: Path) -> list[str]:
+    """Read decision row ids while rejecting unsafe payloads."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError("Decision JSONL rows must be objects.")
+        _reject_unsafe_payload(row)
+        review_task_id = _required_str(row, "review_task_id")
+        if review_task_id in seen:
+            raise ValueError(f"Duplicate review decision for review_task_id: {review_task_id}")
+        seen.add(review_task_id)
+        ids.append(review_task_id)
+    return sorted(ids)
 
 
 def _gap_review_summary(

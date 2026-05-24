@@ -169,6 +169,82 @@ def test_review_import_gate_can_require_gap_rows_only(tmp_path: Path) -> None:
     assert summary["db_write_performed"] is False
 
 
+def test_review_import_gate_can_restrict_decisions_to_gap_queue(tmp_path: Path) -> None:
+    """Verify gap-only mode rejects approval rows outside the gap queue."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(
+        review_path,
+        [
+            _review_row(),
+            _review_row(
+                review_task_id="e" * 64,
+                fixture_id="naver-tm-detail-000002",
+                category_key="vitamin_d",
+            ),
+        ],
+    )
+    _write_jsonl(
+        decisions_path,
+        [
+            _decision_row(
+                review_task_id="e" * 64,
+                fixture_id="naver-tm-detail-000002",
+            )
+        ],
+    )
+    _write_jsonl(gap_path, [_gap_queue_row()])
+
+    with pytest.raises(ValueError, match="outside gap queue"):
+        gate_runner.run_review_import_gate(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_dir=tmp_path / "gate",
+            gap_queue_path=gap_path,
+            restrict_decisions_to_gap=True,
+        )
+
+
+def test_review_import_gate_reports_non_gap_decision_count(tmp_path: Path) -> None:
+    """Verify non-gap decisions are counted when restriction is disabled."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "decisions.jsonl"
+    gap_path = tmp_path / "gap.jsonl"
+    _write_jsonl(
+        review_path,
+        [
+            _review_row(),
+            _review_row(
+                review_task_id="e" * 64,
+                fixture_id="naver-tm-detail-000002",
+                category_key="vitamin_d",
+            ),
+        ],
+    )
+    _write_jsonl(
+        decisions_path,
+        [
+            _decision_row(
+                review_task_id="e" * 64,
+                fixture_id="naver-tm-detail-000002",
+            )
+        ],
+    )
+    _write_jsonl(gap_path, [_gap_queue_row()])
+
+    summary = gate_runner.run_review_import_gate(
+        review_ingest_path=review_path,
+        decisions_path=decisions_path,
+        output_dir=tmp_path / "gate",
+        artifact_prefix="scope",
+        gap_queue_path=gap_path,
+    )
+
+    assert summary["non_gap_decision_count"] == 1
+    assert summary["restrict_decisions_to_gap"] is False
+
+
 def test_review_import_gate_requires_gap_rows_reviewed(tmp_path: Path) -> None:
     """Verify gap-scoped strict mode fails when a gap row is still pending."""
     review_path = tmp_path / "review.jsonl"
