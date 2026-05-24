@@ -115,6 +115,9 @@ app.*.symbols
 # Coverage
 coverage/
 
+# OCR evaluation artifacts may contain provider-derived observations.
+outputs/generated/ocr-eval/
+
 # -----------------------------------------------------------------------------
 # iOS
 # -----------------------------------------------------------------------------
