@@ -415,6 +415,7 @@ Tampermonkey/Naver source root의 folder-name labeled fixture를 사용했다.
 - 각 row에는 사람이 decision JSONL을 작성할 때 복사할 수 있는 `decision_entry_template` skeleton을 포함한다.
 - skeleton은 `review_decision` 값을 top-level에 두지 않고 null/false placeholder를 사용하므로 그대로 import하면 실패한다.
 - approved ingredient skeleton의 `source`는 `human_reviewed`로 고정하고 amount는 null placeholder로 둔다.
+- apply gate 테스트에서 template row 자체와 unedited skeleton row가 decision input으로 들어와도 실패하는 것을 고정했다.
 - 실제 결과: gap decision template row 6, rows with candidate hints 0, total candidate hints 0, decision batch importable false.
 - gap decision template artifact privacy scan finding 0, strict literal-key scan finding 0.
 

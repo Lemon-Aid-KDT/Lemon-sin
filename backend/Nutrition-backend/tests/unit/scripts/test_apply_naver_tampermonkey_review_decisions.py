@@ -273,6 +273,77 @@ def test_apply_review_decisions_rejects_unsafe_decision_payloads(tmp_path: Path)
         )
 
 
+def test_apply_review_decisions_rejects_template_rows(tmp_path: Path) -> None:
+    """Verify operator templates cannot be imported as decision rows."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "template-as-decisions.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(
+        decisions_path,
+        [
+            {
+                "schema_version": "naver-tampermonkey-review-decision-template-v1",
+                "review_task_id": "d" * 64,
+                "fixture_id": "naver-tm-detail-000001",
+                "decision_entry_template": _decision_row(),
+                "decision_batch_importable": False,
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="review_decision"):
+        applier.apply_review_decisions(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_name="review-with-decisions.jsonl",
+        )
+
+
+def test_apply_review_decisions_rejects_unedited_decision_skeleton(
+    tmp_path: Path,
+) -> None:
+    """Verify null placeholder skeletons fail before import."""
+    review_path = tmp_path / "review.jsonl"
+    decisions_path = tmp_path / "skeleton-decisions.jsonl"
+    _write_jsonl(review_path, [_review_row()])
+    _write_jsonl(
+        decisions_path,
+        [
+            {
+                "review_task_id": "d" * 64,
+                "fixture_id": "naver-tm-detail-000001",
+                "review_decision": {
+                    "status": None,
+                    "reviewer_id": None,
+                    "reviewed_at": None,
+                    "display_name": None,
+                    "ingredients": [
+                        {
+                            "display_name": None,
+                            "nutrient_code": None,
+                            "amount": None,
+                            "unit": None,
+                            "source": "human_reviewed",
+                        }
+                    ],
+                    "reason_codes": [],
+                    "attest_pii_screening_completed": False,
+                    "attest_no_raw_ocr_text": False,
+                    "attest_not_clinical_recommendation": False,
+                },
+                "decision_batch_importable": False,
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="status"):
+        applier.apply_review_decisions(
+            review_ingest_path=review_path,
+            decisions_path=decisions_path,
+            output_name="review-with-decisions.jsonl",
+        )
+
+
 def test_apply_review_decisions_rejects_pii_pending_approval(tmp_path: Path) -> None:
     """Verify merged validation catches PII-pending review row approvals."""
     review_path = tmp_path / "review.jsonl"
