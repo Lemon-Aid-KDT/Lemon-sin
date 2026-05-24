@@ -100,6 +100,12 @@ class ProviderMetrics:
     ingredient_total_by_condition: dict[str, int] = field(default_factory=dict)
     scoreable_matches_by_condition: dict[str, int] = field(default_factory=dict)
     scoreable_total_by_condition: dict[str, int] = field(default_factory=dict)
+    status_counts: dict[str, int] = field(default_factory=dict)
+    error_code_counts: dict[str, int] = field(default_factory=dict)
+    warning_code_counts: dict[str, int] = field(default_factory=dict)
+    pii_screening_status_counts: dict[str, int] = field(default_factory=dict)
+    llm_parse_status_counts: dict[str, int] = field(default_factory=dict)
+    llm_parse_error_code_counts: dict[str, int] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, object]:
         """Return serializable metrics.
@@ -148,6 +154,12 @@ class ProviderMetrics:
                 )
                 for condition, total in sorted(self.scoreable_total_by_condition.items())
             },
+            "status_counts": dict(sorted(self.status_counts.items())),
+            "error_code_counts": dict(sorted(self.error_code_counts.items())),
+            "warning_code_counts": dict(sorted(self.warning_code_counts.items())),
+            "pii_screening_status_counts": dict(sorted(self.pii_screening_status_counts.items())),
+            "llm_parse_status_counts": dict(sorted(self.llm_parse_status_counts.items())),
+            "llm_parse_error_code_counts": dict(sorted(self.llm_parse_error_code_counts.items())),
         }
 
 
@@ -513,6 +525,7 @@ def _add_observation(
     accumulator.observation_count += 1
     metrics = accumulator.providers[provider]
     metrics.calls += 1
+    _add_observation_diagnostics(metrics, observation)
 
     if observation.get("text_non_empty") is True:
         metrics.non_empty_count += 1
@@ -561,6 +574,61 @@ def _add_observation(
     _accumulate_language_metric(metrics, observation, "cer_en")
     _accumulate_language_metric(metrics, observation, "wer_ko")
     _accumulate_language_metric(metrics, observation, "wer_en")
+
+
+def _add_observation_diagnostics(
+    metrics: ProviderMetrics,
+    observation: dict[str, object],
+) -> None:
+    """Add bounded non-sensitive diagnostic counters for one observation.
+
+    Args:
+        metrics: Mutable provider metrics.
+        observation: One redacted observation row.
+    """
+    _increment_token_count(metrics.status_counts, observation.get("status"))
+    _increment_token_count(metrics.error_code_counts, observation.get("error_code"))
+    _increment_token_count(
+        metrics.pii_screening_status_counts,
+        observation.get("pii_screening_status"),
+    )
+    _increment_token_count(metrics.llm_parse_status_counts, observation.get("llm_parse_status"))
+    _increment_token_count(
+        metrics.llm_parse_error_code_counts,
+        observation.get("llm_parse_error_code"),
+    )
+    warning_codes = observation.get("warning_codes")
+    if isinstance(warning_codes, list):
+        for warning_code in warning_codes:
+            _increment_token_count(metrics.warning_code_counts, warning_code)
+
+
+def _increment_token_count(counter: dict[str, int], value: object) -> None:
+    """Increment one bounded token counter value when present.
+
+    Args:
+        counter: Mutable counter dictionary.
+        value: Candidate diagnostic token.
+    """
+    if not isinstance(value, str) or not value:
+        return
+    token = _safe_diagnostic_token(value)
+    counter[token] = counter.get(token, 0) + 1
+
+
+def _safe_diagnostic_token(value: str) -> str:
+    """Return a bounded token suitable for public diagnostic artifacts.
+
+    Args:
+        value: Candidate diagnostic token.
+
+    Returns:
+        Original token when it is short and identifier-like; otherwise a
+        generic replacement token.
+    """
+    if re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", value):
+        return value
+    return "unsafe_token"
 
 
 def _add_ingredient_accuracy(

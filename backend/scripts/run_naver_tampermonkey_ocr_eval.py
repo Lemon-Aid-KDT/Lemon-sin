@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -52,6 +53,55 @@ LOCAL_PATH_MARKERS = (
 PATH_VALUE_FLAGS = frozenset({"--manifest", "--output-dir", "--env-file"})
 DEFAULT_REPORT_JSON_NAME = "naver-ocr-provider-comparison.json"
 DEFAULT_REPORT_MARKDOWN_NAME = "naver-ocr-provider-comparison.md"
+BASE_CHILD_ENV_KEYS = frozenset(
+    {
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "PATH",
+        "REQUESTS_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+    }
+)
+COLLECTOR_OPERATOR_ENV_KEYS = frozenset(
+    {
+        "ALLOW_EXTERNAL_LLM",
+        "ALLOW_EXTERNAL_OCR",
+        "CLOVA_OCR_API_URL",
+        "CLOVA_OCR_SECRET",
+        "ENABLE_CLOVA_OCR",
+        "ENABLE_LOCAL_OCR",
+        "GOOGLE_CLOUD_API_KEY",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_VISION_AUTH_MODE",
+        "GOOGLE_VISION_FEATURE",
+        "GOOGLE_VISION_LANGUAGE_HINTS",
+        "GOOGLE_VISION_LOCATION",
+        "GOOGLE_VISION_MAX_RETRIES",
+        "GOOGLE_VISION_TIMEOUT_SECONDS",
+        "OCR_PRIMARY_PROVIDER",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
+        "OLLAMA_TEMPERATURE",
+        "OLLAMA_TIMEOUT_SEC",
+        "OLLAMA_VISION_MODEL",
+        "RUN_CLOVA_OCR_LIVE_SMOKE",
+        "RUN_GOOGLE_VISION_SMOKE",
+        "RUN_PADDLEOCR_PROBE",
+    }
+)
+ALLOWED_IMAGE_PATH_ENV_VARS = frozenset(
+    {
+        "LEMON_OCR_FIXTURE_ROOT",
+        "NAVER_TAMPERMONKEY_SOURCE_ROOT",
+        "SUPPLEMENT_OCR_FIXTURE_ROOT",
+    }
+)
+ENV_IMAGE_PATH_PATTERN = re.compile(r"^\$(?P<name>[A-Z][A-Z0-9_]*)(?:/(?P<path>.*))?$")
 
 
 @dataclass(frozen=True)
@@ -320,9 +370,10 @@ def run_provider_evaluations(
             completed.append(run)
             resumed.append(run)
             continue
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(NUTRITION_BACKEND_ROOT)
-        env.update(run.env_overrides)
+        env = _collector_child_env(
+            manifest_rows=manifest_rows,
+            env_overrides=run.env_overrides,
+        )
         runner(
             list(run.command),
             check=True,
@@ -338,6 +389,69 @@ def run_provider_evaluations(
         executed_runs=executed,
         resumed_runs=resumed,
     )
+
+
+def _collector_child_env(
+    *,
+    manifest_rows: Sequence[dict[str, object]],
+    env_overrides: dict[str, str],
+) -> dict[str, str]:
+    """Build a minimal environment for the collector subprocess.
+
+    Args:
+        manifest_rows: Manifest rows used to preserve only referenced fixture
+            root environment variables.
+        env_overrides: Explicit provider opt-in variables owned by this runner.
+
+    Returns:
+        Sanitized child process environment.
+    """
+    child_env: dict[str, str] = {}
+    _copy_present_env(child_env, BASE_CHILD_ENV_KEYS)
+    _copy_present_env(child_env, COLLECTOR_OPERATOR_ENV_KEYS)
+    _copy_present_env(child_env, _manifest_image_root_env_names(manifest_rows))
+    child_env["PYTHONPATH"] = str(NUTRITION_BACKEND_ROOT)
+    child_env.update(env_overrides)
+    return child_env
+
+
+def _copy_present_env(destination: dict[str, str], keys: set[str] | frozenset[str]) -> None:
+    """Copy selected string environment variables when present."""
+    for key in sorted(keys):
+        value = os.environ.get(key)
+        if value is not None:
+            destination[key] = value
+
+
+def _manifest_image_root_env_names(rows: Sequence[dict[str, object]]) -> set[str]:
+    """Return allowlisted image-root env vars referenced by manifest rows.
+
+    Args:
+        rows: Redacted manifest rows.
+
+    Returns:
+        Environment variable names that are safe and necessary for resolving
+        tokenized image paths such as ``$NAVER_TAMPERMONKEY_SOURCE_ROOT/a.jpg``.
+    """
+    env_names: set[str] = set()
+    for row in rows:
+        _collect_env_image_path_name(row.get("image_path"), env_names)
+        source_metadata = row.get("source_metadata")
+        if isinstance(source_metadata, dict):
+            _collect_env_image_path_name(source_metadata.get("image_path"), env_names)
+    return env_names
+
+
+def _collect_env_image_path_name(value: object, env_names: set[str]) -> None:
+    """Collect a safe environment-token name from one image path value."""
+    if not isinstance(value, str):
+        return
+    match = ENV_IMAGE_PATH_PATTERN.fullmatch(value)
+    if not match:
+        return
+    env_name = match.group("name")
+    if env_name in ALLOWED_IMAGE_PATH_ENV_VARS:
+        env_names.add(env_name)
 
 
 def run_comparison_report(

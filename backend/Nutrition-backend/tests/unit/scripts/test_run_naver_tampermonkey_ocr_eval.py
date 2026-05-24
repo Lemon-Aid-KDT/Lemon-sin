@@ -325,6 +325,87 @@ def test_run_provider_evaluations_captures_child_output(tmp_path: Path) -> None:
     assert kwargs_seen[0]["check"] is True
 
 
+def test_run_provider_evaluations_uses_sanitized_child_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify unrelated parent secrets are not propagated to collectors."""
+    run = runner.ProviderRun(
+        alias="paddleocr",
+        provider_id="paddleocr_local",
+        output_dir=tmp_path / "paddleocr-observations",
+        python_executable=Path("/tmp/ocr-python"),
+        command=("/tmp/ocr-python", "collector.py"),
+        env_overrides={"RUN_PADDLEOCR_PROBE": "1", "ENABLE_LOCAL_OCR": "true"},
+    )
+    monkeypatch.setenv("UNRELATED_SECRET_TOKEN", "should-not-reach-child")
+    monkeypatch.setenv("ENABLE_LOCAL_OCR", "false")
+    monkeypatch.setenv("OLLAMA_MODEL", "gemma4:e4b")
+    monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(tmp_path / "fixtures"))
+    kwargs_seen: list[dict[str, object]] = []
+
+    def fake_runner(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        kwargs_seen.append(kwargs)
+        return subprocess.CompletedProcess(command, 0)
+
+    runner.run_provider_evaluations(
+        [run],
+        manifest_rows=[
+            {
+                "fixture_id": "detail-1",
+                "image_path": "$NAVER_TAMPERMONKEY_SOURCE_ROOT/a.jpg",
+            }
+        ],
+        runner=fake_runner,
+    )
+
+    env = kwargs_seen[0]["env"]
+    assert isinstance(env, dict)
+    assert "UNRELATED_SECRET_TOKEN" not in env
+    assert env["RUN_PADDLEOCR_PROBE"] == "1"
+    assert env["ENABLE_LOCAL_OCR"] == "true"
+    assert env["OLLAMA_MODEL"] == "gemma4:e4b"
+    assert env["NAVER_TAMPERMONKEY_SOURCE_ROOT"] == str(tmp_path / "fixtures")
+    assert env["PYTHONPATH"] == str(runner.NUTRITION_BACKEND_ROOT)
+
+
+def test_run_provider_evaluations_does_not_copy_unused_image_root_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify fixture roots are forwarded only when the manifest references them."""
+    run = runner.ProviderRun(
+        alias="paddleocr",
+        provider_id="paddleocr_local",
+        output_dir=tmp_path / "paddleocr-observations",
+        python_executable=Path("/tmp/ocr-python"),
+        command=("/tmp/ocr-python", "collector.py"),
+        env_overrides={},
+    )
+    monkeypatch.setenv("NAVER_TAMPERMONKEY_SOURCE_ROOT", str(tmp_path / "fixtures"))
+    kwargs_seen: list[dict[str, object]] = []
+
+    def fake_runner(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        kwargs_seen.append(kwargs)
+        return subprocess.CompletedProcess(command, 0)
+
+    runner.run_provider_evaluations(
+        [run],
+        manifest_rows=[{"fixture_id": "detail-1", "image_path": "images/a.jpg"}],
+        runner=fake_runner,
+    )
+
+    env = kwargs_seen[0]["env"]
+    assert isinstance(env, dict)
+    assert "NAVER_TAMPERMONKEY_SOURCE_ROOT" not in env
+
+
 def test_run_comparison_report_returns_names_without_paths(tmp_path: Path) -> None:
     """Verify comparison report summaries do not expose output paths."""
     calls: list[tuple[list[str], dict[str, object]]] = []

@@ -251,6 +251,50 @@ def test_evaluate_manifest_counts_error_status_rows(tmp_path: Path) -> None:
     assert metrics["calls"] == 1
     assert metrics["errors"] == 1
     assert metrics["ingredient_name_exact_rate"] == 0.0
+    assert metrics["status_counts"] == {"error": 1}
+    assert metrics["error_code_counts"] == {"ocr_empty_text": 1}
+
+
+def test_evaluate_manifest_reports_bounded_diagnostic_counters(tmp_path: Path) -> None:
+    """Verify parser diagnostics are aggregated without accepting unsafe tokens."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "expected": {"ingredients": [{"name": "vitamin c"}]},
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "completed",
+                        "text_non_empty": True,
+                        "parser_success": False,
+                        "warning_codes": [
+                            "layout_unavailable",
+                            "/private/tmp/raw-path-should-not-appear",
+                        ],
+                        "pii_screening_status": "completed_local_screening",
+                        "llm_parse_status": "error",
+                        "llm_parse_error_code": "ollama_client",
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["status_counts"] == {"completed": 1}
+    assert metrics["warning_code_counts"] == {
+        "layout_unavailable": 1,
+        "unsafe_token": 1,
+    }
+    assert metrics["pii_screening_status_counts"] == {"completed_local_screening": 1}
+    assert metrics["llm_parse_status_counts"] == {"error": 1}
+    assert metrics["llm_parse_error_code_counts"] == {"ollama_client": 1}
+    assert "/private/tmp" not in json.dumps(metrics, ensure_ascii=False)
 
 
 def test_evaluate_manifest_llm_failure_counted(tmp_path: Path) -> None:
