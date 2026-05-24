@@ -35,6 +35,35 @@ class _SuccessfulParser:
         )
 
 
+class _TransientClientParser(_SuccessfulParser):
+    """Fake parser that fails with a transient client error before success."""
+
+    def __init__(self, failures_before_success: int) -> None:
+        """Initialize the number of transient client failures."""
+        self.failures_before_success = failures_before_success
+        self.calls = 0
+
+    async def parse_supplement_ocr_text(self, ocr_text: str) -> SupplementStructuredParseResult:
+        """Raise transient client errors before returning a schema-valid result."""
+        self.calls += 1
+        if self.calls <= self.failures_before_success:
+            raise collector.OllamaClientError("transport unavailable")
+        return await super().parse_supplement_ocr_text(ocr_text)
+
+
+class _AlwaysClientErrorParser:
+    """Fake parser that always fails with a local Ollama client error."""
+
+    def __init__(self) -> None:
+        """Initialize call accounting."""
+        self.calls = 0
+
+    async def parse_supplement_ocr_text(self, _ocr_text: str) -> SupplementStructuredParseResult:
+        """Raise a client error without exposing OCR text."""
+        self.calls += 1
+        raise collector.OllamaClientError("transport unavailable")
+
+
 @pytest.mark.asyncio
 async def test_attach_llm_parse_records_schema_v2_candidates() -> None:
     """Verify LLM parse observations follow SupplementStructuredParseResult."""
@@ -64,6 +93,51 @@ async def test_attach_llm_parse_records_schema_v2_candidates() -> None:
     serialized = json.dumps(row, ensure_ascii=False).lower()
     assert "raw_ocr_text" not in serialized
     assert "raw_model_response" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_attach_llm_parse_retries_transient_client_error() -> None:
+    """Verify transient Ollama transport failures are retried without raw text."""
+    row: dict[str, object] = {}
+    parser = _TransientClientParser(failures_before_success=1)
+
+    await collector._attach_llm_parse(
+        row=row,
+        ocr_result=collector.OCRResult(text="synthetic OCR text", provider="paddleocr_local"),
+        llm_parser=parser,  # type: ignore[arg-type]
+        retry_delays_seconds=(0.0,),
+    )
+
+    assert parser.calls == 2
+    assert row["llm_parse_status"] == "completed"
+    assert row["llm_parse_attempt_count"] == 2
+    assert row["llm_parse_retry_count"] == 1
+    assert row["llm_parsed_ingredient_count"] == 1
+    serialized = json.dumps(row, ensure_ascii=False).lower()
+    assert "synthetic ocr text" not in serialized
+    assert "raw_model_response" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_attach_llm_parse_records_bounded_retry_failure() -> None:
+    """Verify exhausted Ollama retries record only bounded failure metadata."""
+    row: dict[str, object] = {}
+    parser = _AlwaysClientErrorParser()
+
+    await collector._attach_llm_parse(
+        row=row,
+        ocr_result=collector.OCRResult(text="synthetic OCR text", provider="paddleocr_local"),
+        llm_parser=parser,  # type: ignore[arg-type]
+        retry_delays_seconds=(0.0, 0.0),
+    )
+
+    assert parser.calls == 3
+    assert row == {
+        "llm_parse_status": "error",
+        "llm_parse_error_code": "ollama_client",
+        "llm_parse_attempt_count": 3,
+        "llm_parse_retry_count": 2,
+    }
 
 
 def _write_manifest_with_image(

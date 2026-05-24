@@ -102,3 +102,29 @@ unmatched_observation_count=0
 3. `ollama_structured_output` 4건은 Gemma4가 schema를 못 맞춘 케이스라 prompt/schema 축소, OCR text length cap, retry with lower context payload를 분리 검토한다.
 4. OCR low confidence 9건은 상세페이지 이미지 형태를 별도 분석해 crop/resize 또는 CLOVA 비교 대상으로 분리한다.
 5. `naver-tampermonkey-db-labeling-with-ocr-v1`은 아직 DB import job에 연결하지 않았고, 다음 단계에서 review UI ingest contract와 함께 확정한다.
+
+## 후속 보강 - 2026-05-24
+
+`ollama_client` 18건 재발을 줄이기 위해 collector에 bounded retry를 추가했다.
+
+- `OllamaClientError`만 재시도한다.
+- 기본 재시도 delay는 `0.25s`, `1.0s`이며 최대 3회 attempt다.
+- `OllamaConfigurationError`와 `OllamaStructuredOutputError`는 재시도하지 않는다. 설정 오류와 schema 실패는 반복 호출보다 설정/prompt/schema를 수정해야 하는 문제이기 때문이다.
+- observation에는 `llm_parse_attempt_count`, `llm_parse_retry_count` 숫자만 추가한다.
+- DB staging merge도 두 숫자 필드만 allowlist로 전달한다.
+- OCR 원문, Ollama raw response, provider payload, request header, image bytes, secret 값은 계속 저장하지 않는다.
+
+보강 검증:
+
+```text
+test_collect_supplement_ocr_observations.py + test_merge_naver_tampermonkey_ocr_observations_into_db_staging.py: 34 passed
+focused Tampermonkey OCR script tests: 55 passed
+black --check: pass
+ruff --ignore RUF001: pass
+git diff --check: pass
+```
+
+참고 공식 문서:
+
+- Python `asyncio.sleep()`은 현재 task를 delay 동안 suspend해 다른 task 실행을 허용한다: https://docs.python.org/3/library/asyncio-task.html#sleeping
+- Ollama structured outputs는 JSON schema를 `format`에 전달하고 결과를 검증하는 방식을 문서화한다: https://docs.ollama.com/capabilities/structured-outputs

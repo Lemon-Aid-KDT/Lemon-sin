@@ -16,7 +16,7 @@ import os
 import re
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
@@ -163,6 +163,7 @@ PII_CANDIDATE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"(?:주소|배송지|수령지|[가-힣]{2,}(?:로|길)\s*\d{1,4})"),
     ),
 )
+LLM_PARSE_RETRY_DELAYS_SECONDS = (0.25, 1.0)
 
 
 @dataclass(frozen=True)
@@ -486,6 +487,7 @@ async def _attach_llm_parse(
     row: dict[str, object],
     ocr_result: OCRResult,
     llm_parser: OllamaSupplementParser,
+    retry_delays_seconds: Sequence[float] = LLM_PARSE_RETRY_DELAYS_SECONDS,
 ) -> None:
     """Run the local LLM parser on OCR text and attach a redacted ingredient list.
 
@@ -493,35 +495,57 @@ async def _attach_llm_parse(
         row: Completed observation row to mutate in place.
         ocr_result: PaddleOCR/CLOVA/Google Vision result with in-memory text.
         llm_parser: Local OllamaSupplementParser instance.
+        retry_delays_seconds: Bounded retry delays for transient local Ollama
+            transport failures.
 
     Notes:
         Raw OCR text and raw Ollama responses are never persisted. Only the
         structured ingredient display_name/amount/unit/confidence and the
-        ingredient_count are written to ``row``. Failure modes are recorded as a
-        safe ``llm_parse_error_code`` token only.
+        ingredient_count are written to ``row``. Failure modes and retry counts
+        are recorded as safe bounded tokens/integers only.
     """
     text = (ocr_result.text or "").strip()
     if not text:
         row["llm_parse_status"] = "skipped_empty_text"
         return
-    try:
-        parse_result = await llm_parser.parse_supplement_ocr_text(text)
-    except OllamaConfigurationError:
-        row["llm_parse_status"] = "error"
-        row["llm_parse_error_code"] = "ollama_configuration"
-        return
-    except OllamaStructuredOutputError:
-        row["llm_parse_status"] = "error"
-        row["llm_parse_error_code"] = "ollama_structured_output"
-        return
-    except OllamaClientError:
-        row["llm_parse_status"] = "error"
-        row["llm_parse_error_code"] = "ollama_client"
-        return
-    except Exception as exc:  # pragma: no cover - defensive
-        row["llm_parse_status"] = "error"
-        row["llm_parse_error_code"] = f"unexpected:{type(exc).__name__}"
-        return
+    retry_delays = tuple(max(0.0, float(delay)) for delay in retry_delays_seconds)
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            parse_result = await llm_parser.parse_supplement_ocr_text(text)
+            break
+        except OllamaConfigurationError:
+            _attach_llm_parse_error(
+                row=row,
+                error_code="ollama_configuration",
+                attempts=attempts,
+            )
+            return
+        except OllamaStructuredOutputError:
+            _attach_llm_parse_error(
+                row=row,
+                error_code="ollama_structured_output",
+                attempts=attempts,
+            )
+            return
+        except OllamaClientError:
+            if attempts <= len(retry_delays):
+                await asyncio.sleep(retry_delays[attempts - 1])
+                continue
+            _attach_llm_parse_error(
+                row=row,
+                error_code="ollama_client",
+                attempts=attempts,
+            )
+            return
+        except Exception as exc:  # pragma: no cover - defensive
+            _attach_llm_parse_error(
+                row=row,
+                error_code=f"unexpected:{type(exc).__name__}",
+                attempts=attempts,
+            )
+            return
 
     ingredients: list[dict[str, object]] = []
     for ingredient in parse_result.ingredient_candidates:
@@ -536,12 +560,35 @@ async def _attach_llm_parse(
             }
         )
     row["llm_parse_status"] = "completed"
+    row["llm_parse_attempt_count"] = attempts
+    if attempts > 1:
+        row["llm_parse_retry_count"] = attempts - 1
     row["llm_parsed_ingredients"] = ingredients
     row["llm_parsed_ingredient_count"] = len(ingredients)
     if parse_result.parsed_product.product_name:
         row["llm_parsed_product_name_present"] = True
     if parse_result.parsed_product.serving_size:
         row["llm_parsed_serving_size_text_present"] = True
+
+
+def _attach_llm_parse_error(
+    *,
+    row: dict[str, object],
+    error_code: str,
+    attempts: int,
+) -> None:
+    """Attach a redacted local LLM parse error summary.
+
+    Args:
+        row: Observation row to mutate in place.
+        error_code: Bounded parser error code.
+        attempts: Number of parser attempts performed.
+    """
+    row["llm_parse_status"] = "error"
+    row["llm_parse_error_code"] = error_code
+    row["llm_parse_attempt_count"] = attempts
+    if attempts > 1:
+        row["llm_parse_retry_count"] = attempts - 1
 
 
 def _build_reference_text(expected: dict[str, object]) -> str:

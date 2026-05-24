@@ -199,6 +199,8 @@ def _summarize_observation(
     _copy_optional_token(observation, row, "text_hash")
     if llm_status is not None:
         row["llm_parse_status"] = llm_status
+    _copy_optional_int(observation, row, "llm_parse_attempt_count")
+    _copy_optional_int(observation, row, "llm_parse_retry_count")
     if ingredients:
         row["llm_parsed_ingredients"] = ingredients
         row["llm_parsed_ingredient_count"] = len(ingredients)

@@ -54,6 +54,8 @@ def _observation_row(**overrides: object) -> dict[str, object]:
         "latency_ms": 1234.5,
         "text_hash": "abc123",
         "llm_parse_status": "completed",
+        "llm_parse_attempt_count": 2,
+        "llm_parse_retry_count": 1,
         "llm_parsed_ingredients": [
             {
                 "display_name": "오메가3",
@@ -87,6 +89,8 @@ def test_merge_carries_only_redacted_ocr_and_llm_fields(tmp_path: Path) -> None:
     assert rows[0]["ocr_observation_count"] == 1
     observation = rows[0]["ocr_observation_summaries"][0]  # type: ignore[index]
     assert observation["provider"] == "paddleocr_local"
+    assert observation["llm_parse_attempt_count"] == 2
+    assert observation["llm_parse_retry_count"] == 1
     assert observation["llm_parsed_ingredient_count"] == 1
     assert observation["llm_parsed_ingredients"] == [
         {
