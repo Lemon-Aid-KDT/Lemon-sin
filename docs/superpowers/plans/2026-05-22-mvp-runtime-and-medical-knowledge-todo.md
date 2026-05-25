@@ -197,6 +197,8 @@ python backend\scripts\smoke_ai_agent_server.py `
       오타를 종료코드 실패로 판정한다.
 - [x] `--require-ollama` strict gate로 개발용 Ollama port와 configured model 존재를
       종료코드 실패/성공으로 판정한다.
+- [x] `--require-ollama-parser-smoke` strict gate로 local Ollama structured parser
+      경로를 실제 OCR sample 기반 종료코드 실패/성공으로 판정한다.
 
 ## 아직 외부 준비가 필요한 항목
 
@@ -212,9 +214,9 @@ python backend\scripts\smoke_ai_agent_server.py `
   backlog source라서 `not_reviewed`가 정상이다. 사용자-facing retrieval에
   연결하려면 별도 source review가 필요하다.
 - Ollama live readiness: 2026-05-25 Windows Ollama 0.24.0 설치와
-  `qwen3.5:9b` pull 이후 `--require-ollama`가 통과했다. `/api/chat` non-streaming
-  smoke와 `RUN_OLLAMA_TESTS=true` 기반 `OllamaSupplementParser` structured-output
-  live pytest도 통과했다.
+  `qwen3.5:9b` pull 이후 `--require-ollama --require-ollama-parser-smoke`가 통과했다.
+  `/api/chat` non-streaming smoke와 `RUN_OLLAMA_TESTS=true` 기반
+  `OllamaSupplementParser` structured-output live pytest도 통과했다.
 
 ## KDCA key 수령 후 바로 실행할 명령
 
@@ -253,13 +255,14 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py `
 - 개발용 Ollama를 재확인하려면 Ollama 서버가 켜져 있는 상태에서 다음을 실행한다:
 
 ```powershell
-python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama
+python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama --require-ollama-parser-smoke
 ```
 
 기대 결과:
 
 - `Ollama port 127.0.0.1:11434: ok`
 - `OLLAMA_MODEL: ok`
+- `Ollama parser smoke: ok`
 - `Required Ollama runtime is not ready` 메시지가 없어야 함
 
 2026-05-25 검증 결과: `qwen3.5:9b` 기준 위 조건이 통과했고,

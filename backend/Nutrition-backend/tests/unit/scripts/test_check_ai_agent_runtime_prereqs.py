@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from textwrap import dedent
+from types import SimpleNamespace
 
 from src.config import Settings
 
@@ -156,6 +157,56 @@ def test_exit_code_fails_required_medical_sources_and_ollama() -> None:
     )
 
     assert exit_code == 1
+
+
+def test_exit_code_fails_required_ollama_parser_smoke() -> None:
+    """Verify parser-smoke mode controls the exit code when explicitly required."""
+    args = prereqs._parse_args(["--require-ollama-parser-smoke"])
+
+    exit_code = prereqs._exit_code(
+        args,
+        postgres_ready=True,
+        sglang_ready=True,
+        medical_source_failures=[],
+        ollama_failure=None,
+        ollama_parser_smoke_failure="parser_smoke_failed",
+    )
+
+    assert exit_code == 1
+
+
+def test_ollama_parser_smoke_failure_passes_expected_result(monkeypatch) -> None:
+    """Verify the parser smoke helper accepts the expected structured result."""
+
+    async def fake_smoke(_settings: Settings) -> SimpleNamespace:
+        return SimpleNamespace(
+            ingredient_candidates=[
+                SimpleNamespace(amount=25.0, unit="mcg"),
+            ]
+        )
+
+    monkeypatch.setattr(prereqs, "_run_ollama_parser_smoke", fake_smoke)
+
+    failure = prereqs._ollama_parser_smoke_failure(Settings(_env_file=None))
+
+    assert failure is None
+
+
+def test_ollama_parser_smoke_failure_reports_unexpected_result(monkeypatch) -> None:
+    """Verify the parser smoke helper fails closed on unexpected output."""
+
+    async def fake_smoke(_settings: Settings) -> SimpleNamespace:
+        return SimpleNamespace(
+            ingredient_candidates=[
+                SimpleNamespace(amount=10.0, unit="mg"),
+            ]
+        )
+
+    monkeypatch.setattr(prereqs, "_run_ollama_parser_smoke", fake_smoke)
+
+    failure = prereqs._ollama_parser_smoke_failure(Settings(_env_file=None))
+
+    assert failure == "unexpected_result"
 
 
 def test_required_medical_source_failures_report_unknown_source() -> None:

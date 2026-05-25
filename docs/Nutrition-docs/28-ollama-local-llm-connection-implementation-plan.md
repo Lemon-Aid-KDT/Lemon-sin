@@ -78,7 +78,9 @@
 - 실제 local Ollama smoke test는 opt-in gate로 유지한다. 2026-05-25 Windows
   Ollama 0.24.0 + `qwen3.5:9b`에서 `/api/chat` non-streaming smoke와
   `RUN_OLLAMA_TESTS=true` 기반 `OllamaSupplementParser` structured-output live
-  pytest가 통과했다.
+  pytest가 통과했다. 같은 parser path는
+  `backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama-parser-smoke`
+  strict gate로도 실행할 수 있다.
 
 ## 4. 설계 원칙
 

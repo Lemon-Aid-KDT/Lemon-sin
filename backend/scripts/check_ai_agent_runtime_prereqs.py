@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import os
@@ -21,12 +22,15 @@ BACKEND_DIR = SCRIPT_DIR.parent
 NUTRITION_BACKEND_DIR = BACKEND_DIR / "Nutrition-backend"
 AI_AGENT_CHAT_SRC_DIR = BACKEND_DIR / "ai_agent_chat" / "src"
 DEFAULT_POSTGRES_SMOKE_PORT = 55432
+OLLAMA_PARSER_SMOKE_EXPECTED_AMOUNT = 25.0
 for import_path in (NUTRITION_BACKEND_DIR, AI_AGENT_CHAT_SRC_DIR):
     import_path_text = str(import_path)
     if import_path_text not in sys.path:
         sys.path.insert(0, import_path_text)
 
 from src.config import Settings  # noqa: E402
+from src.llm.ollama import OllamaSupplementParser  # noqa: E402
+from src.models.schemas.supplement_parser import SupplementStructuredParseResult  # noqa: E402
 from src.services.medical_source_readiness import build_medical_source_readiness  # noqa: E402
 
 
@@ -97,6 +101,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     ollama_failure = _ollama_readiness_failure(settings) if args.require_ollama else None
     if ollama_failure:
         print(f"Required Ollama runtime is not ready: ollama={ollama_failure}")
+    ollama_parser_smoke_failure = (
+        _ollama_parser_smoke_failure(settings)
+        if args.require_ollama_parser_smoke and not ollama_failure
+        else None
+    )
+    if ollama_parser_smoke_failure:
+        print(
+            "Required Ollama parser smoke is not ready: "
+            f"ollama_parser={ollama_parser_smoke_failure}"
+        )
+    elif args.require_ollama_parser_smoke:
+        print("Ollama parser smoke: ok")
 
     return _exit_code(
         args,
@@ -104,6 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sglang_ready=sglang_ready,
         medical_source_failures=medical_source_failures,
         ollama_failure=ollama_failure,
+        ollama_parser_smoke_failure=ollama_parser_smoke_failure,
     )
 
 
@@ -138,6 +155,11 @@ def _parse_args(argv: Sequence[str] | None) -> Namespace:
         help="Fail if the configured local Ollama server or model is not available.",
     )
     parser.add_argument(
+        "--require-ollama-parser-smoke",
+        action="store_true",
+        help="Fail unless local Ollama can parse a small supplement OCR sample.",
+    )
+    parser.add_argument(
         "--require-postgres-smoke",
         action="store_true",
         help="Fail if PostgreSQL migration smoke prerequisites are not ready.",
@@ -157,6 +179,7 @@ def _exit_code(
     sglang_ready: bool,
     medical_source_failures: Sequence[str],
     ollama_failure: str | None,
+    ollama_parser_smoke_failure: str | None = None,
 ) -> int:
     """Return success unless a caller-requested strict gate failed."""
     if args.require_postgres_smoke and not postgres_ready:
@@ -166,6 +189,8 @@ def _exit_code(
     if medical_source_failures:
         return 1
     if ollama_failure:
+        return 1
+    if args.require_ollama_parser_smoke and ollama_parser_smoke_failure:
         return 1
     return 0
 
@@ -268,6 +293,32 @@ def _ollama_readiness_failure(
     if settings.ollama_model not in model_names:
         return "model_missing"
     return None
+
+
+def _ollama_parser_smoke_failure(settings: Settings) -> str | None:
+    """Return a stable failure code when the live Ollama parser smoke fails."""
+    try:
+        result = asyncio.run(_run_ollama_parser_smoke(settings))
+    except (RuntimeError, ValueError, OSError):
+        return "parser_smoke_failed"
+    if not result.ingredient_candidates:
+        return "no_ingredients"
+    first_ingredient = result.ingredient_candidates[0]
+    if (
+        first_ingredient.amount != OLLAMA_PARSER_SMOKE_EXPECTED_AMOUNT
+        or first_ingredient.unit not in {"mcg", "ug"}
+    ):
+        return "unexpected_result"
+    return None
+
+
+async def _run_ollama_parser_smoke(settings: Settings) -> SupplementStructuredParseResult:
+    """Run a minimal structured-output parse through local Ollama."""
+    return await OllamaSupplementParser(settings).parse_supplement_ocr_text(
+        "Product: Lemon Vitamin D. "
+        "Ingredient: Vitamin D 25 mcg. "
+        "Serving: 1 tablet once daily."
+    )
 
 
 def _ollama_model_names(settings: Settings) -> tuple[str, ...]:

@@ -42,5 +42,5 @@ async def test_real_ollama_parser_returns_schema_valid_result() -> None:
     first_ingredient = result.ingredient_candidates[0]
     assert "vitamin" in first_ingredient.display_name.lower()
     assert first_ingredient.amount == 25
-    assert first_ingredient.unit in {"mcg", "ug", "µg"}
+    assert first_ingredient.unit in {"mcg", "ug"}
     assert first_ingredient.source == "ollama_structured"

@@ -118,7 +118,7 @@ redis-cli -u $REDIS_URL ping
   - 개발용 Ollama runtime까지 필수로 확인할 때는 `OLLAMA_MODEL`에 맞는 모델을
     로컬 Ollama에 받은 뒤 다음처럼 strict gate를 켠다:
     ```bash
-    python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama
+    python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama --require-ollama-parser-smoke
     ```
     이 모드는 `127.0.0.1:11434` 포트가 닫혀 있거나 `/api/tags`에 설정 모델이
     없으면 실패한다.
@@ -167,7 +167,7 @@ redis-cli -u $REDIS_URL ping
 - [x] Ollama 서버 상태 확인 (2026-05-25)
   - Windows Ollama 0.24.0 설치, `qwen3.5:9b` pull 완료.
   - `127.0.0.1:11434` 포트와 `/api/tags`에서 `qwen3.5:9b` 확인.
-  - `python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` 통과.
+  - `python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama --require-ollama-parser-smoke` 통과.
   - `/api/chat` non-streaming smoke와 `OllamaSupplementParser` structured-output live
     smoke 통과. Vitamin D 25 mcg OCR 예시가 schema-validated JSON으로 파싱됨.
   - 반복 실행 명령:
