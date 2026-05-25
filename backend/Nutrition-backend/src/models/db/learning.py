@@ -43,7 +43,7 @@ class PGVectorType(UserDefinedType[tuple[float, ...]]):
             The pgvector column type name.
         """
         _ = kw
-        return "vector"
+        return "extensions.vector"
 
 
 class LearningImageObject(TimestampMixin, Base):
@@ -85,8 +85,10 @@ class LearningImageObject(TimestampMixin, Base):
         CheckConstraint(
             (
                 "status IN ("
-                "'awaiting_confirmation', 'ready', 'embedded', "
-                "'deleted', 'cancelled', 'failed'"
+                "'awaiting_confirmation', 'pending_auto_filter', 'pending_manual_review', "
+                "'approved_for_embedding', 'ready', 'embedded', "
+                "'deleted', 'cancelled', 'failed', 'rejected_by_auto_filter', "
+                "'rejected_by_review'"
                 ")"
             ),
             name="learning_image_object_status_allowed",

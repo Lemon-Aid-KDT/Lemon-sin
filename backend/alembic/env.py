@@ -56,6 +56,8 @@ def do_run_migrations(connection: Connection) -> None:
     Returns:
         None.
     """
+    _ensure_revision_id_capacity(connection)
+    connection.commit()
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -64,6 +66,29 @@ def do_run_migrations(connection: Connection) -> None:
 
     with context.begin_transaction():
         context.run_migrations()
+
+
+def _ensure_revision_id_capacity(connection: Connection) -> None:
+    """Allow descriptive Alembic revision IDs to be persisted.
+
+    Alembic's default version table uses ``VARCHAR(32)``. This project already
+    uses descriptive revision IDs such as ``0005_create_learning_vector_tables``,
+    so a real PostgreSQL migration smoke must widen the column before Alembic
+    writes the next head.
+
+    Args:
+        connection: Synchronous Alembic connection.
+    """
+    connection.exec_driver_sql("""
+        CREATE TABLE IF NOT EXISTS alembic_version (
+            version_num VARCHAR(255) NOT NULL,
+            CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+        )
+        """)
+    connection.exec_driver_sql("""
+        ALTER TABLE alembic_version
+        ALTER COLUMN version_num TYPE VARCHAR(255)
+        """)
 
 
 async def run_async_migrations() -> None:

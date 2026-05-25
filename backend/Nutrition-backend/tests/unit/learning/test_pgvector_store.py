@@ -24,7 +24,7 @@ def _record(**metadata: object) -> VectorRecord:
 
 
 def test_vector_literal_serializes_finite_values() -> None:
-    """Verify vectors are serialized for CAST(:embedding AS vector)."""
+    """Verify vectors are serialized for pgvector casts."""
     assert vector_literal((1.0, 2.5)) == "[1.0,2.5]"
 
 

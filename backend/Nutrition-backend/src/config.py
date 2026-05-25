@@ -464,6 +464,20 @@ class Settings(BaseSettings):
         le=730,
         description="영양제 이미지 보유 일수. 0 = 분석 직후 즉시 삭제(docs/17 §5).",
     )
+    require_learning_manual_review: bool = Field(
+        default=True,
+        description=(
+            "Require operator review before user opt-in learning images can enter "
+            "embedding jobs. Keep true for private Supabase storage deployments."
+        ),
+    )
+    enable_learning_auto_filter: bool = Field(
+        default=True,
+        description=(
+            "Run deterministic safety/quality filters before operator review or "
+            "embedding job creation for user opt-in learning images."
+        ),
+    )
     learning_object_storage_provider: Literal["disabled", "local", "s3"] = Field(
         default="disabled",
         description="학습 이미지 object storage provider. 기본값 disabled.",
@@ -502,6 +516,24 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LEARNING_OBJECT_STORAGE_BUCKET is required when "
                 "LEARNING_OBJECT_STORAGE_PROVIDER=s3."
+            )
+        if (
+            self.environment in {"staging", "production"}
+            and self.enable_image_learning_pipeline
+            and not self.require_learning_manual_review
+        ):
+            raise ValueError(
+                "REQUIRE_LEARNING_MANUAL_REVIEW=true is required when image learning "
+                "is enabled outside development."
+            )
+        if (
+            self.enable_image_learning_pipeline
+            and not self.enable_learning_auto_filter
+            and not self.require_learning_manual_review
+        ):
+            raise ValueError(
+                "ENABLE_LEARNING_AUTO_FILTER=true or REQUIRE_LEARNING_MANUAL_REVIEW=true "
+                "is required when image learning is enabled."
             )
 
         if self.environment in {"staging", "production"} and self.auth_mode == "disabled":

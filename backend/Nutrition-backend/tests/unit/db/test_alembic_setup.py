@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0008_health_daily_summaries_hypertable"]
+    assert script.get_heads() == ["0009_harden_learning_vector_supabase_access"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,18 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0008_health_daily_summaries_hypertable"]
+    assert script.get_heads() == ["0009_harden_learning_vector_supabase_access"]
+
+
+def test_alembic_env_widens_revision_id_capacity() -> None:
+    """Verify live migration smoke can store descriptive revision ids."""
+    env_path = BACKEND_ROOT / "alembic" / "env.py"
+    env_source = env_path.read_text(encoding="utf-8")
+
+    assert "_ensure_revision_id_capacity(connection)" in env_source
+    assert "connection.commit()" in env_source
+    assert "version_num VARCHAR(255)" in env_source
+    assert "ALTER COLUMN version_num TYPE VARCHAR(255)" in env_source
 
 
 def test_initial_migration_file_exists() -> None:
@@ -69,6 +80,16 @@ def test_learning_vector_migration_file_exists() -> None:
     assert migration_path.is_file()
 
 
+def test_learning_vector_migration_uses_supabase_extension_schema() -> None:
+    """Verify pgvector is not installed in the public schema."""
+    migration_path = BACKEND_ROOT / "alembic" / "versions" / "0005_create_learning_vector_tables.py"
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "CREATE SCHEMA IF NOT EXISTS extensions" in migration
+    assert "CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions" in migration
+    assert "extensions.vector" in migration
+
+
 def test_regulated_ocr_intake_migration_file_exists() -> None:
     """Verify the regulated OCR intake migration file exists."""
     migration_path = (
@@ -94,3 +115,36 @@ def test_health_daily_summaries_hypertable_migration_file_exists() -> None:
     )
 
     assert migration_path.is_file()
+
+
+def test_learning_vector_supabase_access_migration_file_exists() -> None:
+    """Verify the Supabase access hardening migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0009_harden_learning_vector_supabase_access.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_learning_vector_supabase_access_migration_is_fail_closed() -> None:
+    """Verify learning/vector tables are not exposed to Supabase API roles."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0009_harden_learning_vector_supabase_access.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    for table_name in (
+        "learning_image_objects",
+        "image_embedding_jobs",
+        "image_embedding_records",
+    ):
+        assert "public.{table_name}" in migration
+        assert table_name in migration
+
+    assert "ENABLE ROW LEVEL SECURITY" in migration
+    assert "FROM PUBLIC" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "'pending_auto_filter'" in migration
+    assert "'pending_manual_review'" in migration
+    assert "'rejected_by_auto_filter'" in migration
+    assert "GRANT " not in migration

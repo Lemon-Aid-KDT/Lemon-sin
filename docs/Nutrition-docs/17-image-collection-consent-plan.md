@@ -131,8 +131,11 @@
 | `enable_pgvector_storage` | `false` | 게이트 #3 통과 | 기능 C 부속 인프라 |
 | `embedding_model` | `"clip-ViT-B-32"` | `enable_image_learning_pipeline` 와 동시 운용 | 기능 C 임베딩 모델 태그 |
 | `image_retention_days` | `0` | 동의 매트릭스 §3에 따라 운영자가 설정 | 보유 기간 제어(0 = 즉시 삭제) |
+| `enable_learning_auto_filter` | `true` | 사용자 opt-in 후 raw key·PII-like text·성분 signal 자동 필터 통과 | unsafe/low-signal metadata 차단 |
+| `require_learning_manual_review` | `true` | 자동 필터 통과 후 operator 검수 통과 전까지 유지 | 학습 embedding job 생성 차단 |
 
 학습 재사용은 `image_learning_dataset` 별도 동의, `ocr_image_processing`, `data_retention` 세 동의가 모두 활성화된 경우에만 `src/learning/consent_gate.py` 를 통과한다.
+기존 Supabase Storage를 사용할 때는 public bucket을 금지하고, S3-compatible private bucket 또는 동등한 private object storage만 허용한다. DB에는 object URI, hash, 보유 기한, 자동 필터/검수 상태만 저장하고 raw OCR text와 provider raw payload는 저장하지 않는다. 자동 필터를 운영상 사용할 수 없는 경우에도 `require_learning_manual_review=true` 를 유지해 수동 검수 장벽을 둔다.
 
 플래그를 운영 환경에서 변경하는 경우 변경 이력을 본 문서 §10에 추가한다.
 

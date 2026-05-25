@@ -52,8 +52,7 @@ class PgvectorStore(VectorStore):
         validate_vector_record(record, self._expected_dimensions)
         embedding_literal = vector_literal(record.embedding)
         metadata_json = json.dumps(record.metadata, ensure_ascii=False, sort_keys=True)
-        statement = text(
-            """
+        statement = text("""
             INSERT INTO image_embedding_records (
                 owner_subject_hash,
                 analysis_id,
@@ -71,7 +70,7 @@ class PgvectorStore(VectorStore):
                 :image_sha256,
                 :embedding_model,
                 :embedding_dimensions,
-                CAST(:embedding AS vector),
+                CAST(:embedding AS extensions.vector),
                 CAST(:metadata AS jsonb)
             )
             ON CONFLICT (
@@ -87,8 +86,7 @@ class PgvectorStore(VectorStore):
                 metadata = EXCLUDED.metadata,
                 deleted_at = NULL,
                 updated_at = now()
-            """
-        )
+            """)
         try:
             await self._session.execute(
                 statement,
@@ -155,7 +153,7 @@ def validate_vector_metadata(metadata: dict[str, Any]) -> None:
 
 
 def vector_literal(vector: tuple[float, ...]) -> str:
-    """Serialize a finite vector for PostgreSQL `CAST(:embedding AS vector)`.
+    """Serialize a finite vector for PostgreSQL pgvector casts.
 
     Args:
         vector: Dense vector values.

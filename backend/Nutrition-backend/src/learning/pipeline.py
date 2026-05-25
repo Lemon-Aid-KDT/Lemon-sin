@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -29,9 +31,50 @@ from src.security.subjects import build_owner_subject
 from src.services.supplement_intake import ValidatedSupplementImage
 
 LEARNING_IMAGE_STATUS_AWAITING_CONFIRMATION = "awaiting_confirmation"
+LEARNING_IMAGE_STATUS_PENDING_AUTO_FILTER = "pending_auto_filter"
+LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW = "pending_manual_review"
+LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER = "rejected_by_auto_filter"
 LEARNING_IMAGE_STATUS_READY = "ready"
 LEARNING_IMAGE_STATUS_DELETED = "deleted"
 IMAGE_EMBEDDING_JOB_STATUS_PENDING = "pending"
+FORBIDDEN_LEARNING_METADATA_KEYS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "credential",
+        "credentials",
+        "image_base64",
+        "image_bytes",
+        "ocr_text",
+        "provider_payload",
+        "raw_image",
+        "raw_image_bytes",
+        "raw_llm_response",
+        "raw_ocr_text",
+        "raw_provider_payload",
+        "request_headers",
+        "secret",
+        "service_key",
+    }
+)
+PII_LIKE_TEXT_PATTERN = re.compile(
+    r"(?P<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|" r"(?P<phone>\+?\d[\d\s().-]{7,}\d)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class LearningMetadataAutoFilterDecision:
+    """Decision returned by the learning metadata auto-filter.
+
+    Attributes:
+        allowed: Whether the metadata may continue to review or embedding.
+        reason: Stable reason string safe for logs and tests.
+    """
+
+    allowed: bool
+    reason: str
 
 
 async def collect_active_learning_consents(
@@ -165,12 +208,14 @@ async def enqueue_learning_embedding_job_for_confirmation(
         session: Request-scoped async database session.
         user: Authenticated owner.
         analysis_id: Source supplement analysis id.
-        metadata_snapshot: User-confirmed structured metadata.
+        metadata_snapshot: User-confirmed structured metadata. This is only written to
+            an embedding job after the manual-review gate is open.
         settings: Runtime settings.
         granted_consents: Active user consents at confirmation time.
 
     Returns:
-        Persisted embedding job, or None when no retained image object is eligible.
+        Persisted embedding job, or None when no retained image object is eligible
+        or manual review is still required.
     """
     if analysis_id is None:
         return None
@@ -200,6 +245,51 @@ async def enqueue_learning_embedding_job_for_confirmation(
     if existing is not None:
         return existing
 
+    return await _stage_embedding_job_after_learning_filters(
+        session=session,
+        image_object=image_object,
+        analysis_id=analysis_id,
+        owner_subject_hash=owner_subject_hash,
+        metadata_snapshot=metadata_snapshot,
+        settings=settings,
+    )
+
+
+async def _stage_embedding_job_after_learning_filters(
+    *,
+    session: AsyncSession,
+    image_object: LearningImageObject,
+    analysis_id: UUID,
+    owner_subject_hash: str,
+    metadata_snapshot: dict[str, Any],
+    settings: Settings,
+) -> ImageEmbeddingJob | None:
+    """Apply auto-filter/review gates and optionally enqueue an embedding job.
+
+    Args:
+        session: Request-scoped async database session.
+        image_object: Retained image object selected for learning.
+        analysis_id: Source supplement analysis id.
+        owner_subject_hash: HMAC of the owner subject.
+        metadata_snapshot: User-confirmed structured metadata.
+        settings: Runtime settings.
+
+    Returns:
+        Persisted embedding job, or None when review/filter gates stop the item.
+    """
+    if settings.enable_learning_auto_filter:
+        image_object.status = LEARNING_IMAGE_STATUS_PENDING_AUTO_FILTER
+        filter_decision = evaluate_learning_metadata_auto_filter(metadata_snapshot)
+        if not filter_decision.allowed:
+            image_object.status = LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER
+            await session.commit()
+            return None
+
+    if settings.require_learning_manual_review:
+        image_object.status = LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+        await session.commit()
+        return None
+
     now = datetime.now(UTC)
     image_object.status = LEARNING_IMAGE_STATUS_READY
     job = ImageEmbeddingJob(
@@ -216,6 +306,45 @@ async def enqueue_learning_embedding_job_for_confirmation(
     await session.commit()
     await session.refresh(job)
     return job
+
+
+def evaluate_learning_metadata_auto_filter(
+    metadata_snapshot: dict[str, Any],
+) -> LearningMetadataAutoFilterDecision:
+    """Screen confirmed metadata before learning review or embedding.
+
+    The filter is intentionally deterministic and conservative: it rejects
+    obvious raw payload keys, PII-like strings, and records without ingredient
+    signal. It does not replace operator review.
+
+    Args:
+        metadata_snapshot: User-confirmed structured supplement metadata.
+
+    Returns:
+        Auto-filter decision safe to log without raw OCR text.
+    """
+    if _contains_forbidden_metadata_key(metadata_snapshot):
+        return LearningMetadataAutoFilterDecision(
+            allowed=False,
+            reason="forbidden_metadata_key",
+        )
+    if _contains_pii_like_text(metadata_snapshot):
+        return LearningMetadataAutoFilterDecision(
+            allowed=False,
+            reason="pii_like_text",
+        )
+    ingredients = metadata_snapshot.get("ingredients")
+    if not isinstance(ingredients, list) or not ingredients:
+        return LearningMetadataAutoFilterDecision(
+            allowed=False,
+            reason="missing_ingredient_signal",
+        )
+    if not any(_has_ingredient_signal(item) for item in ingredients):
+        return LearningMetadataAutoFilterDecision(
+            allowed=False,
+            reason="missing_ingredient_signal",
+        )
+    return LearningMetadataAutoFilterDecision(allowed=True, reason="passed")
 
 
 def build_confirmed_supplement_learning_metadata(
@@ -404,3 +533,60 @@ def _decimal_to_string(value: Decimal | None) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _contains_forbidden_metadata_key(value: Any) -> bool:
+    """Check nested metadata for raw payload, credential, or secret keys.
+
+    Args:
+        value: Candidate nested metadata value.
+
+    Returns:
+        True when a forbidden key is present.
+    """
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if str(key).casefold() in FORBIDDEN_LEARNING_METADATA_KEYS:
+                return True
+            if _contains_forbidden_metadata_key(nested):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_forbidden_metadata_key(item) for item in value)
+    return False
+
+
+def _contains_pii_like_text(value: Any) -> bool:
+    """Check nested metadata strings for email or phone-number-like text.
+
+    Args:
+        value: Candidate nested metadata value.
+
+    Returns:
+        True when a PII-like string is present.
+    """
+    if isinstance(value, str):
+        return bool(PII_LIKE_TEXT_PATTERN.search(value))
+    if isinstance(value, dict):
+        return any(_contains_pii_like_text(nested) for nested in value.values())
+    if isinstance(value, list):
+        return any(_contains_pii_like_text(item) for item in value)
+    return False
+
+
+def _has_ingredient_signal(value: Any) -> bool:
+    """Return whether an ingredient item has a stable name or nutrient code.
+
+    Args:
+        value: Ingredient metadata candidate.
+
+    Returns:
+        True when the item has a non-empty display name or nutrient code.
+    """
+    if not isinstance(value, dict):
+        return False
+    display_name = value.get("display_name")
+    nutrient_code = value.get("nutrient_code")
+    return bool(
+        (isinstance(display_name, str) and display_name.strip())
+        or (isinstance(nutrient_code, str) and nutrient_code.strip())
+    )

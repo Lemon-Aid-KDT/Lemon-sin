@@ -478,6 +478,34 @@ def test_s3_learning_object_storage_requires_bucket() -> None:
         Settings(_env_file=None, learning_object_storage_provider="s3")
 
 
+def test_staging_requires_manual_review_when_image_learning_enabled() -> None:
+    """Verify deployed image learning cannot bypass operator review."""
+    with pytest.raises(ValidationError, match="REQUIRE_LEARNING_MANUAL_REVIEW"):
+        Settings(
+            _env_file=None,
+            environment="staging",
+            auth_mode="jwt",
+            allowed_hosts=["staging.example.com"],
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+            require_learning_manual_review=False,
+        )
+
+
+def test_learning_requires_auto_filter_or_manual_review() -> None:
+    """Verify learning cannot bypass both automatic filtering and review."""
+    with pytest.raises(ValidationError, match="ENABLE_LEARNING_AUTO_FILTER"):
+        Settings(
+            _env_file=None,
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+            enable_learning_auto_filter=False,
+            require_learning_manual_review=False,
+        )
+
+
 @pytest.mark.parametrize(
     ("setting_name", "error_message"),
     (

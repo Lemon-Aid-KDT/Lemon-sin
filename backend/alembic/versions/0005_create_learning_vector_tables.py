@@ -34,12 +34,13 @@ class PGVectorType(sa.types.UserDefinedType[tuple[float, ...]]):
             The pgvector type name.
         """
         _ = kw
-        return "vector"
+        return "extensions.vector"
 
 
 def upgrade() -> None:
     """Apply this migration."""
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    op.execute("CREATE SCHEMA IF NOT EXISTS extensions")
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions")
     op.create_table(
         "learning_image_objects",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
