@@ -133,10 +133,9 @@ redis-cli -u $REDIS_URL ping
   python backend/scripts/smoke_ai_agent_server.py \
     --server-url http://127.0.0.1:18081 \
     --database-url postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev \
-    --skip-db-upgrade \
     --sglang-base-url http://127.0.0.1:30000/v1 \
     --sglang-model Qwen/Qwen2.5-0.5B-Instruct \
-    --timeout 90
+    --timeout 120
   ```
   - Docker Desktop 시작 뒤 기존 `lemon-sglang` 컨테이너가
     `127.0.0.1:30000`을 publish했고, `/v1/models`가
@@ -144,7 +143,9 @@ redis-cli -u $REDIS_URL ping
   - standalone `ai-agent.tests.test_sglang_live_smoke`도
     `RUN_SGLANG_SMOKE=1` 기준 `OK`로 통과했다.
   - backend smoke 결과는 `first_provider=sglang`, `second_provider=sglang`,
-    `second_used_tools` 내 `agent_memory` 포함이다.
+    `chat_provider=sglang`, `second_used_tools`와 `chat_used_tools` 내
+    `agent_memory` 포함이다.
+  - `--skip-db-upgrade`는 대상 DB가 Alembic head임을 이미 확인한 경우에만 사용한다.
 - [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
 - [x] SGLang 운영 후보 상태 확인 (2026-05-20 재확인)
   - 기본 endpoint: `http://127.0.0.1:30000/v1`
@@ -279,7 +280,7 @@ python backend/scripts/smoke_ai_agent_server.py
 # second_used_tools에 daily_health_agent, nutrition_engine, supplement_engine,
 # safety_guard, chat_agent, agent_memory 포함 확인
 # 2026-05-25 재검증: Docker Desktop + lemon-sglang container 기준 first_provider=sglang,
-# second_provider=sglang, second_used_tools에 agent_memory 포함 확인
+# second_provider=sglang, chat_provider=sglang, second/chat used_tools에 agent_memory 포함 확인
 
 # 2. 스테이징 환경 배포 + 검증
 make deploy-staging

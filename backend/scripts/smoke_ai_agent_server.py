@@ -55,6 +55,11 @@ def main() -> int:
             _daily_coaching_payload("server-smoke-2"),
             timeout=args.timeout,
         )
+        chat = _post_json(
+            f"{args.server_url}/api/v1/ai-agent/chat",
+            _chat_payload("server-chat-smoke"),
+            timeout=args.timeout,
+        )
     finally:
         if process is not None:
             _stop_server(process)
@@ -70,6 +75,14 @@ def main() -> int:
         second.get("provider") in {"sglang", "deterministic"},
         "unexpected provider in coaching response",
     )
+    _assert_response(
+        chat.get("provider") in {"sglang", "deterministic"},
+        "unexpected provider in chatbot response",
+    )
+    _assert_response(
+        "agent_memory" in chat.get("used_tools", []),
+        "chatbot request did not include agent_memory in used_tools",
+    )
 
     print(
         json.dumps(
@@ -78,6 +91,7 @@ def main() -> int:
                 sglang_check=sglang_check,
                 first=first,
                 second=second,
+                chat=chat,
             ),
             ensure_ascii=False,
             indent=2,
@@ -116,6 +130,7 @@ def _summary_payload(
     sglang_check: str,
     first: dict[str, Any],
     second: dict[str, Any],
+    chat: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "status": "ok",
@@ -126,6 +141,8 @@ def _summary_payload(
         "first_provider": first.get("provider"),
         "second_provider": second.get("provider"),
         "second_used_tools": second.get("used_tools", []),
+        "chat_provider": chat.get("provider"),
+        "chat_used_tools": chat.get("used_tools", []),
     }
 
 
@@ -287,6 +304,37 @@ def _daily_coaching_payload(request_id: str) -> dict[str, Any]:
                     "summary": "Meal score has dropped for 7 days.",
                 }
             ],
+        },
+    }
+
+
+def _chat_payload(request_id: str) -> dict[str, Any]:
+    return {
+        "request_id": request_id,
+        "user_id": "client-supplied-user",
+        "message": "오늘 점심 나트륨이 높았는데 저녁은 어떻게 조절하면 좋을까?",
+        "conversation": [
+            {
+                "role": "user",
+                "content": "점심에 라면을 먹었어.",
+                "created_at": "2026-05-20T12:30:00+09:00",
+            }
+        ],
+        "context": {
+            "profile": {
+                "age": 52,
+                "gender": "male",
+                "chronic_conditions": ["hypertension"],
+            },
+            "latest_confirmed_entries": {
+                "foods": [
+                    {
+                        "name": "instant noodles",
+                        "meal_type": "lunch",
+                        "nutrients": [{"name": "sodium", "amount": 2600, "unit": "mg"}],
+                    }
+                ]
+            },
         },
     }
 

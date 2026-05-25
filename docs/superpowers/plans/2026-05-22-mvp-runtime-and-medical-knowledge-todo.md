@@ -107,12 +107,14 @@ $env:TEST_DATABASE_URL="postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agen
 $env:SGLANG_BASE_URL="http://127.0.0.1:30000/v1"
 $env:SGLANG_MODEL="Qwen/Qwen2.5-0.5B-Instruct"
 $env:SGLANG_API_KEY="EMPTY"
-python backend\scripts\smoke_ai_agent_server.py --skip-db-upgrade
+python backend\scripts\smoke_ai_agent_server.py
 ```
 
 이 스크립트는 FastAPI boot, 민감 건강 분석 동의 생성,
-`/api/v1/ai-agent/daily-coaching`, SGLang 또는 deterministic provider 동작,
-`agent_memory` 재주입을 확인한다. Flutter 브라우저 CORS 확인을 대체하지는 않는다.
+`/api/v1/ai-agent/daily-coaching`, `/api/v1/ai-agent/chat`, SGLang 또는
+deterministic provider 동작, `agent_memory` 재주입을 확인한다. `--skip-db-upgrade`는
+대상 DB schema가 이미 Alembic head임을 확인한 경우에만 사용한다. Flutter 브라우저
+CORS 확인을 대체하지는 않는다.
 
 이미 `scripts/start_ai_agent_dev_stack.ps1`로 FastAPI가 떠 있고 SGLang 서버만 아직
 준비되지 않은 경우에는 deterministic fallback 배관만 먼저 확인할 수 있다.
@@ -241,16 +243,16 @@ cd C:\MyWorkspace\lemon_aid\ai-agent-backend-integration
 python backend\scripts\smoke_ai_agent_server.py `
   --server-url http://127.0.0.1:18081 `
   --database-url postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev `
-  --skip-db-upgrade `
   --sglang-base-url http://127.0.0.1:30000/v1 `
   --sglang-model Qwen/Qwen2.5-0.5B-Instruct `
-  --timeout 90
+  --timeout 120
 ```
 
 검증 결과:
 
 - standalone SGLang live smoke: `Ran 1 test ... OK`
-- backend smoke: `first_provider=sglang`, `second_provider=sglang`
+- backend smoke: `first_provider=sglang`, `second_provider=sglang`, `chat_provider=sglang`
 - backend smoke: `second_used_tools`에 `agent_memory` 포함
+- backend smoke: `chat_used_tools`에 `agent_memory` 포함
 - preflight: SGLang port/env와 PostgreSQL port/env는 `ok`
 - 아직 남은 API key readiness: `KDCA_HEALTHINFO_API_KEY`, 필요 시 `MFDS_DATA_API_KEY`

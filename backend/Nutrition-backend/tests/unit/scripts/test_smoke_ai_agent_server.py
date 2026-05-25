@@ -42,9 +42,21 @@ def test_smoke_summary_marks_sglang_check_skipped() -> None:
         sglang_check="skipped",
         first={"provider": "deterministic"},
         second={"provider": "deterministic", "used_tools": ["agent_memory"]},
+        chat={"provider": "sglang", "used_tools": ["chat_agent", "agent_memory"]},
     )
 
     assert summary["status"] == "ok"
     assert summary["sglang_check"] == "skipped"
     assert summary["first_provider"] == "deterministic"
     assert summary["second_used_tools"] == ["agent_memory"]
+    assert summary["chat_provider"] == "sglang"
+    assert summary["chat_used_tools"] == ["chat_agent", "agent_memory"]
+
+
+def test_chat_payload_uses_health_management_question() -> None:
+    """Verify smoke exercises the chatbot route without triggering deterministic boundaries."""
+    payload = smoke._chat_payload("server-chat-smoke")
+
+    assert payload["request_id"] == "server-chat-smoke"
+    assert payload["message"] == "오늘 점심 나트륨이 높았는데 저녁은 어떻게 조절하면 좋을까?"
+    assert payload["context"]["profile"]["chronic_conditions"] == ["hypertension"]
