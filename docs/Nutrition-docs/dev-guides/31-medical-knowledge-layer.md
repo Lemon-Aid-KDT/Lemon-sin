@@ -227,8 +227,9 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
       context 밖 판단을 금지하고, daily-coaching prompt는 supplied findings/recommendations
       밖 판단을 금지한다. `SafetyGuard.check_grounding()`은 출력 후에도 "연구에 따르면",
       "임상시험", "입증", "혈압을 낮춥니다" 같은 근거·효과 주장이 grounding context에
-      없으면 deterministic fallback으로 되돌린다. 전체 medical fact verification은
-      RAG/live retrieval 연결 전 추가 게이트로 남긴다.]
+      없으면 deterministic fallback으로 되돌린다. 또한 grounding context에 없는
+      용량·검사값 같은 numeric medical claim도 fallback 처리한다. 전체 medical fact
+      verification은 RAG/live retrieval 연결 전 추가 게이트로 남긴다.]
 - [x] LLM이 단정 표현을 만들면 SafetyGuard fallback을 사용한다.
 - [x] UI는 raw trace, raw findings, internal policy string을 숨긴다.
 - [x] fine-tuning backlog는 tone, structure, safe refusal pattern으로 제한한다.

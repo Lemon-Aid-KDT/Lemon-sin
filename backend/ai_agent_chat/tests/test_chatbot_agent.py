@@ -116,6 +116,21 @@ def test_chatbot_unsupported_evidence_claim_falls_back() -> None:
     assert "Unsupported medical fact detected" in response.safety_warnings
 
 
+def test_chatbot_unsupported_numeric_claim_falls_back() -> None:
+    """Verify LLM cannot invent dosage or lab-value claims in chat."""
+    client = _CapturingLLMClient(
+        text="Vitamin D 4000 IU is safe for everyone and LDL 130 mg/dL is high."
+    )
+    agent = ChatbotAgent(llm_client=client)
+
+    response = agent.answer(_request())
+
+    assert response.provider == "deterministic"
+    assert "4000 IU" not in response.message
+    assert "130 mg/dL" not in response.message
+    assert "Unsupported numeric medical claim detected" in response.safety_warnings
+
+
 def test_chatbot_chronic_condition_diagnosis_text_falls_back() -> None:
     """Verify chronic-condition certainty from the LLM is not user-facing."""
     client = _CapturingLLMClient(text="고혈압입니다. 나트륨을 완전히 금지하세요.")

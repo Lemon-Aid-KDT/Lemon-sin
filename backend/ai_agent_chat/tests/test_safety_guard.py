@@ -47,11 +47,33 @@ def test_safety_guard_blocks_unsupported_evidence_claims() -> None:
     assert "Unsupported medical fact detected" in result.warnings
 
 
+def test_safety_guard_blocks_unsupported_numeric_health_claims() -> None:
+    """Verify LLM output cannot invent dosage or lab-value claims."""
+    result = SafetyGuard().check_grounding(
+        "Vitamin D 4000 IU is safe for everyone and LDL 130 mg/dL is high.",
+        allowed_context="The user reported taking vitamin D but no dosage or lab values were supplied.",
+    )
+
+    assert result.allowed is False
+    assert "Unsupported numeric medical claim detected" in result.warnings
+
+
 def test_safety_guard_allows_grounded_evidence_terms() -> None:
     """Verify evidence terms are allowed when already present in context."""
     result = SafetyGuard().check_grounding(
         "현재 메모에 따르면 임상시험 관련 자료는 사용하지 않습니다.",
         allowed_context="임상시험 관련 자료는 사용하지 않습니다.",
+    )
+
+    assert result.allowed is True
+    assert result.warnings == []
+
+
+def test_safety_guard_allows_grounded_numeric_health_claims() -> None:
+    """Verify supplied amounts can be repeated when already present in context."""
+    result = SafetyGuard().check_grounding(
+        "The confirmed intake includes vitamin D 25 mcg.",
+        allowed_context="Confirmed findings: vitamin D adequate 25 mcg.",
     )
 
     assert result.allowed is True

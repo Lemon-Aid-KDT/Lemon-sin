@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 FORBIDDEN_TERMS = (
@@ -48,6 +49,11 @@ UNSUPPORTED_EVIDENCE_TERMS = (
     "study shows",
 )
 
+NUMERIC_MEDICAL_CLAIM_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)?\s*(?:mg/dl|mg|mcg|µg|ug|iu|g|kcal|mmhg|%)\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class SafetyCheckResult:
@@ -82,6 +88,11 @@ class SafetyGuard:
             lowered_term = term.lower()
             if lowered_term in lowered_text and lowered_term not in lowered_context:
                 warnings.append("Unsupported medical fact detected")
+
+        for claim in NUMERIC_MEDICAL_CLAIM_PATTERN.findall(text):
+            if claim.lower() not in lowered_context:
+                warnings.append("Unsupported numeric medical claim detected")
+                break
 
         return SafetyCheckResult(allowed=not warnings, warnings=warnings)
 
