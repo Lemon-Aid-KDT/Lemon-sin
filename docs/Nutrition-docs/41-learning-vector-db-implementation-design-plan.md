@@ -582,6 +582,17 @@ retention cleanup 출력도 object URI, SDK exception message, secret 값을 표
 
 ```bash
 PYTHONPATH=backend/Nutrition-backend \
+.venv/bin/python backend/scripts/retry_failed_learning_image_deletions.py --limit 100
+```
+
+사용자 삭제 또는 동의 철회 중 private Storage 삭제가 실패한 image object는
+DB row를 즉시 제거하지 않고 `status=failed` 상태로 보존한다. 재시도 runner 출력은
+provider, limit, scanned/deleted/failure count만 표시하고 object URI, owner hash,
+SDK exception message, secret 값은 표시하지 않는다. 실패 row의 object URI는 backend
+operator retry를 위해 DB 내부에만 남기며, manual review/export artifact에는 포함하지 않는다.
+
+```bash
+PYTHONPATH=backend/Nutrition-backend \
 .venv/bin/python backend/scripts/export_learning_manual_review_queue.py \
   --output outputs/generated/learning/manual-review-queue.jsonl \
   --limit 100

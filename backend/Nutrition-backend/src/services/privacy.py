@@ -464,12 +464,18 @@ async def revoke_consent(
                 object_store=build_learning_object_store(settings),
             )
             event_metadata["learning_deleted_counts"] = learning_deleted_counts
+        learning_delete_failed = bool(
+            event_metadata.get("learning_deleted_counts", {}).get(
+                "learning_image_object_delete_failures",
+                0,
+            )
+        )
         audit_log = _build_audit_log(
             user=user,
             action="consent_revoked",
             resource_type="consent",
             resource_id=consent_type.value,
-            outcome="success",
+            outcome="failed" if learning_delete_failed else "success",
             request=request,
             settings=settings,
             event_metadata=event_metadata,
@@ -764,6 +770,10 @@ async def create_delete_all_user_data_request(
             "user_supplements": len(user_supplements),
             **learning_deleted_counts,
         }
+        if learning_deleted_counts["learning_image_object_delete_failures"]:
+            deletion_request.status = DeletionRequestStatus.FAILED.value
+            deletion_request.completed_at = None
+            deletion_request.failure_reason = "learning_image_object_delete_failed"
         session.add(deletion_request)
         session.add(
             _build_audit_log(
@@ -771,7 +781,11 @@ async def create_delete_all_user_data_request(
                 action="user_data_deleted",
                 resource_type="user_data",
                 resource_id=str(deletion_request.id),
-                outcome="success",
+                outcome=(
+                    "failed"
+                    if learning_deleted_counts["learning_image_object_delete_failures"]
+                    else "success"
+                ),
                 request=request,
                 settings=settings,
                 event_metadata={"deleted_counts": deletion_request.deleted_counts},

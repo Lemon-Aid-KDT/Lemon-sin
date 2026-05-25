@@ -7,19 +7,24 @@ from uuid import UUID, uuid4
 
 import pytest
 from src.config import Settings
+from src.learning.object_storage import LearningObjectStorageError
 from src.learning.pipeline import (
     IMAGE_EMBEDDING_JOB_STATUS_PENDING,
+    LEARNING_IMAGE_STATUS_DELETED,
+    LEARNING_IMAGE_STATUS_FAILED,
     LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW,
     LEARNING_IMAGE_STATUS_READY,
     LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER,
     LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW,
     approve_learning_image_object_after_manual_review,
+    delete_learning_artifacts_for_owner,
     enqueue_learning_embedding_job_for_confirmation,
     evaluate_learning_metadata_auto_filter,
     evaluate_learning_metadata_storage_filter,
     reject_learning_image_object_after_manual_review,
+    retry_failed_learning_image_object_deletions,
 )
-from src.models.db.learning import ImageEmbeddingJob, LearningImageObject
+from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser
 
@@ -66,6 +71,91 @@ class _FakeSession:
         Args:
             _record: ORM record.
         """
+
+
+class _FakeScalarResult:
+    """Fake SQLAlchemy scalar result for predefined records."""
+
+    def __init__(self, records: list[object]) -> None:
+        """Initialize scalar rows.
+
+        Args:
+            records: Predefined ORM records.
+        """
+        self._records = records
+
+    def all(self) -> list[object]:
+        """Return predefined rows.
+
+        Returns:
+            Predefined ORM records.
+        """
+        return self._records
+
+
+class _FakeDeletionSession:
+    """Fake async session for deletion and retry tests."""
+
+    def __init__(self, records_by_model: dict[type[object], list[object]]) -> None:
+        """Initialize model-specific query rows.
+
+        Args:
+            records_by_model: Rows returned by model selected in SQLAlchemy statements.
+        """
+        self.records_by_model = records_by_model
+        self.deleted: list[object] = []
+        self.commit_count = 0
+
+    async def scalars(self, statement: object) -> _FakeScalarResult:
+        """Return rows for the selected ORM entity.
+
+        Args:
+            statement: SQLAlchemy select statement.
+
+        Returns:
+            Fake scalar result for the selected model.
+        """
+        model = statement.column_descriptions[0].get("entity")
+        return _FakeScalarResult(self.records_by_model.get(model, []))
+
+    async def delete(self, record: object) -> None:
+        """Capture ORM rows deleted by the helper.
+
+        Args:
+            record: ORM record passed to delete.
+        """
+        self.deleted.append(record)
+
+    async def commit(self) -> None:
+        """Track commit calls."""
+        self.commit_count += 1
+
+
+class _FakeLearningObjectStore:
+    """Fake object store with optional delete failures."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        """Initialize the fake object store.
+
+        Args:
+            fail: Whether delete_image should raise a sanitized storage error.
+        """
+        self.fail = fail
+        self.deleted: list[tuple[str, str | None]] = []
+
+    async def delete_image(self, object_uri: str, version_id: str | None = None) -> None:
+        """Delete or fail without exposing object details in test output.
+
+        Args:
+            object_uri: Private object URI.
+            version_id: Optional object version.
+
+        Raises:
+            LearningObjectStorageError: When fail=True.
+        """
+        if self.fail:
+            raise LearningObjectStorageError("sensitive object URI should not be printed")
+        self.deleted.append((object_uri, version_id))
 
 
 def _user() -> AuthenticatedUser:
@@ -135,6 +225,50 @@ def _image_object(analysis_id: UUID) -> LearningImageObject:
         retained_until=datetime.now(UTC) + timedelta(days=30),
         status="awaiting_confirmation",
         consent_snapshot={"consents": []},
+    )
+
+
+def _embedding_job(image_object: LearningImageObject) -> ImageEmbeddingJob:
+    """Build an embedding job tied to a learning image object.
+
+    Args:
+        image_object: Source learning image object.
+
+    Returns:
+        Embedding job ORM object.
+    """
+    return ImageEmbeddingJob(
+        id=uuid4(),
+        image_object_id=image_object.id,
+        analysis_id=image_object.analysis_id,
+        owner_subject_hash=image_object.owner_subject_hash,
+        embedding_model="clip-test",
+        status=IMAGE_EMBEDDING_JOB_STATUS_PENDING,
+        attempt_count=0,
+        next_run_at=datetime.now(UTC),
+        metadata_snapshot={"display_name": "Vitamin C"},
+    )
+
+
+def _embedding_record(image_object: LearningImageObject) -> ImageEmbeddingRecord:
+    """Build an embedding vector record tied to a learning image object.
+
+    Args:
+        image_object: Source learning image object.
+
+    Returns:
+        Embedding record ORM object.
+    """
+    return ImageEmbeddingRecord(
+        id=uuid4(),
+        owner_subject_hash=image_object.owner_subject_hash,
+        analysis_id=image_object.analysis_id,
+        image_object_id=image_object.id,
+        image_sha256=image_object.image_sha256,
+        embedding_model="clip-test",
+        embedding_dimensions=3,
+        embedding=(0.1, 0.2, 0.3),
+        embedding_metadata={"display_name": "Vitamin C"},
     )
 
 
@@ -370,4 +504,80 @@ async def test_manual_review_rejection_marks_image_object_rejected() -> None:
     assert rejected is True
     assert image_object.status == LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW
     assert session.added == []
+    assert session.commit_count == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_learning_artifacts_retains_image_row_when_object_delete_fails() -> None:
+    """Verify private object delete failures preserve DB rows for retry."""
+    image_object = _image_object(uuid4())
+    embedding_job = _embedding_job(image_object)
+    embedding_record = _embedding_record(image_object)
+    session = _FakeDeletionSession(
+        {
+            LearningImageObject: [image_object],
+            ImageEmbeddingJob: [embedding_job],
+            ImageEmbeddingRecord: [embedding_record],
+        }
+    )
+    object_store = _FakeLearningObjectStore(fail=True)
+
+    counts = await delete_learning_artifacts_for_owner(
+        session=session,  # type: ignore[arg-type]
+        owner_subject_hash=image_object.owner_subject_hash,
+        object_store=object_store,  # type: ignore[arg-type]
+    )
+
+    assert counts == {
+        "learning_image_objects": 0,
+        "image_embedding_jobs": 1,
+        "image_embedding_records": 1,
+        "learning_image_object_blobs": 0,
+        "learning_image_object_delete_failures": 1,
+        "learning_image_objects_retained_for_retry": 1,
+    }
+    assert image_object.status == LEARNING_IMAGE_STATUS_FAILED
+    assert object_store.deleted == []
+    assert session.deleted == [embedding_job, embedding_record]
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_learning_image_object_deletions_removes_object_and_row() -> None:
+    """Verify retry cleanup deletes both the private object and retained DB row."""
+    image_object = _image_object(uuid4())
+    image_object.status = LEARNING_IMAGE_STATUS_FAILED
+    session = _FakeDeletionSession({LearningImageObject: [image_object]})
+    object_store = _FakeLearningObjectStore()
+
+    result = await retry_failed_learning_image_object_deletions(
+        session=session,  # type: ignore[arg-type]
+        object_store=object_store,  # type: ignore[arg-type]
+    )
+
+    assert result == {"scanned": 1, "deleted": 1, "failures": 0}
+    assert image_object.status == LEARNING_IMAGE_STATUS_DELETED
+    assert image_object.deleted_at is not None
+    assert object_store.deleted == [(image_object.object_uri, image_object.object_version_id)]
+    assert session.deleted == [image_object]
+    assert session.commit_count == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_learning_image_object_deletions_keeps_row_on_failure() -> None:
+    """Verify retry failures keep rows queryable for later operator retries."""
+    image_object = _image_object(uuid4())
+    image_object.status = LEARNING_IMAGE_STATUS_FAILED
+    session = _FakeDeletionSession({LearningImageObject: [image_object]})
+    object_store = _FakeLearningObjectStore(fail=True)
+
+    result = await retry_failed_learning_image_object_deletions(
+        session=session,  # type: ignore[arg-type]
+        object_store=object_store,  # type: ignore[arg-type]
+    )
+
+    assert result == {"scanned": 1, "deleted": 0, "failures": 1}
+    assert image_object.status == LEARNING_IMAGE_STATUS_FAILED
+    assert image_object.deleted_at is None
+    assert object_store.deleted == []
+    assert session.deleted == []
     assert session.commit_count == 1

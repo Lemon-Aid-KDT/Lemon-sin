@@ -38,6 +38,7 @@ LEARNING_IMAGE_STATUS_APPROVED_FOR_EMBEDDING = "approved_for_embedding"
 LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW = "rejected_by_review"
 LEARNING_IMAGE_STATUS_READY = "ready"
 LEARNING_IMAGE_STATUS_DELETED = "deleted"
+LEARNING_IMAGE_STATUS_FAILED = "failed"
 IMAGE_EMBEDDING_JOB_STATUS_PENDING = "pending"
 FORBIDDEN_LEARNING_METADATA_KEYS = frozenset(
     {
@@ -581,8 +582,10 @@ async def delete_learning_artifacts_for_owner(
         ).all()
     )
 
+    deleted_rows = 0
     deleted_objects = 0
     object_delete_failures = 0
+    retained_for_retry = 0
     for job in jobs:
         await session.delete(job)
     for record in records:
@@ -597,14 +600,19 @@ async def delete_learning_artifacts_for_owner(
                 deleted_objects += 1
             except LearningObjectStorageError:
                 object_delete_failures += 1
+                retained_for_retry += 1
+                image_object.status = LEARNING_IMAGE_STATUS_FAILED
+                continue
         await session.delete(image_object)
+        deleted_rows += 1
 
     return {
-        "learning_image_objects": len(image_objects),
+        "learning_image_objects": deleted_rows,
         "image_embedding_jobs": len(jobs),
         "image_embedding_records": len(records),
         "learning_image_object_blobs": deleted_objects,
         "learning_image_object_delete_failures": object_delete_failures,
+        "learning_image_objects_retained_for_retry": retained_for_retry,
     }
 
 
@@ -648,6 +656,57 @@ async def delete_expired_learning_image_objects(
         deleted += 1
     await session.commit()
     return deleted
+
+
+async def retry_failed_learning_image_object_deletions(
+    *,
+    session: AsyncSession,
+    object_store: LearningImageObjectStore,
+    now: datetime | None = None,
+    limit: int = 100,
+) -> dict[str, int]:
+    """Retry deletion for learning image objects retained after delete failures.
+
+    Args:
+        session: Worker-scoped async database session.
+        object_store: Object storage adapter.
+        now: Optional current time override.
+        limit: Maximum failed objects to process.
+
+    Returns:
+        Sanitized retry counts.
+    """
+    cutoff = now or datetime.now(UTC)
+    image_objects = list(
+        (
+            await session.scalars(
+                select(LearningImageObject)
+                .where(
+                    LearningImageObject.status == LEARNING_IMAGE_STATUS_FAILED,
+                    LearningImageObject.deleted_at.is_(None),
+                )
+                .limit(limit)
+            )
+        ).all()
+    )
+    deleted = 0
+    failures = 0
+    for image_object in image_objects:
+        try:
+            await object_store.delete_image(image_object.object_uri, image_object.object_version_id)
+        except LearningObjectStorageError:
+            failures += 1
+            continue
+        image_object.status = LEARNING_IMAGE_STATUS_DELETED
+        image_object.deleted_at = cutoff
+        await session.delete(image_object)
+        deleted += 1
+    await session.commit()
+    return {
+        "scanned": len(image_objects),
+        "deleted": deleted,
+        "failures": failures,
+    }
 
 
 def _consent_snapshot(consents: tuple[ConsentType, ...]) -> dict[str, Any]:

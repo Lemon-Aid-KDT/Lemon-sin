@@ -13,6 +13,7 @@ from fastapi import Request
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.learning.object_storage import LearningObjectStorageError
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
@@ -171,8 +172,13 @@ class _FakeDeletionSession:
 class _FakeLearningObjectStore:
     """Fake learning object store that records deletes."""
 
-    def __init__(self) -> None:
-        """Initialize captured object deletes."""
+    def __init__(self, *, fail: bool = False) -> None:
+        """Initialize captured object deletes.
+
+        Args:
+            fail: Whether delete_image should raise a storage error.
+        """
+        self.fail = fail
         self.deleted: list[tuple[str, str | None]] = []
 
     async def delete_image(self, object_uri: str, version_id: str | None = None) -> None:
@@ -184,7 +190,12 @@ class _FakeLearningObjectStore:
 
         Returns:
             None.
+
+        Raises:
+            LearningObjectStorageError: When fail=True.
         """
+        if self.fail:
+            raise LearningObjectStorageError("sensitive object URI should not be printed")
         self.deleted.append((object_uri, version_id))
 
 
@@ -307,6 +318,7 @@ async def test_revoke_image_learning_consent_deletes_learning_artifacts(
         "image_embedding_records": 1,
         "learning_image_object_blobs": 1,
         "learning_image_object_delete_failures": 0,
+        "learning_image_objects_retained_for_retry": 0,
     }
     serialized_metadata = str(audit_log.event_metadata)
     assert image_object.object_uri not in serialized_metadata
@@ -473,6 +485,7 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
         "image_embedding_records": 0,
         "learning_image_object_blobs": 0,
         "learning_image_object_delete_failures": 0,
+        "learning_image_objects_retained_for_retry": 0,
         "learning_image_objects": 0,
         "regulated_documents": 1,
         "supplement_analysis_runs": 1,
@@ -481,3 +494,92 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
     }
     assert fake_session.added[0] is deletion_request
     assert isinstance(fake_session.added[1], AuditLog)
+
+
+@pytest.mark.asyncio
+async def test_delete_all_user_data_marks_failed_when_learning_object_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify delete-all requests fail closed when private object deletion fails."""
+    owner_subject = "https://auth.example.com/::user_123"
+    now = datetime.now(UTC)
+    image_object = LearningImageObject(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        analysis_id=uuid4(),
+        image_sha256="b" * 64,
+        object_uri="s3://learning-images/private/object.png",
+        object_storage_provider="supabase_s3",
+        object_version_id="version-1",
+        image_mime_type="image/png",
+        image_size_bytes=1024,
+        retained_until=now + timedelta(days=30),
+        status="ready",
+        consent_snapshot={"consents": []},
+    )
+    embedding_job = ImageEmbeddingJob(
+        id=uuid4(),
+        image_object_id=image_object.id,
+        analysis_id=image_object.analysis_id,
+        owner_subject_hash=image_object.owner_subject_hash,
+        embedding_model="clip-test",
+        status="pending",
+        attempt_count=0,
+        next_run_at=now,
+        metadata_snapshot={"display_name": "Vitamin C"},
+    )
+    embedding_record = ImageEmbeddingRecord(
+        id=uuid4(),
+        owner_subject_hash=image_object.owner_subject_hash,
+        analysis_id=image_object.analysis_id,
+        image_object_id=image_object.id,
+        image_sha256=image_object.image_sha256,
+        embedding_model="clip-test",
+        embedding_dimensions=3,
+        embedding=(0.1, 0.2, 0.3),
+        embedding_metadata={"display_name": "Vitamin C"},
+    )
+    consent_record = ConsentRecord(
+        id=uuid4(),
+        owner_subject=owner_subject,
+        consent_type="image_learning_dataset",
+        policy_version="2026-05-24",
+        granted=True,
+        occurred_at=now,
+    )
+    fake_session = _FakeDeletionSession(
+        {
+            ImageEmbeddingJob: [embedding_job],
+            ImageEmbeddingRecord: [embedding_record],
+            LearningImageObject: [image_object],
+            ConsentRecord: [consent_record],
+        }
+    )
+    fake_store = _FakeLearningObjectStore(fail=True)
+    monkeypatch.setattr(
+        "src.services.privacy.build_learning_object_store",
+        lambda _settings: fake_store,
+    )
+    settings = Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
+
+    deletion_request = await create_delete_all_user_data_request(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _request(),
+        settings,
+    )
+
+    assert deletion_request.status == "failed"
+    assert deletion_request.completed_at is None
+    assert deletion_request.failure_reason == "learning_image_object_delete_failed"
+    assert deletion_request.deleted_counts["learning_image_objects"] == 0
+    assert deletion_request.deleted_counts["learning_image_object_delete_failures"] == 1
+    assert deletion_request.deleted_counts["learning_image_objects_retained_for_retry"] == 1
+    assert image_object.status == "failed"
+    assert fake_session.deleted == [embedding_job, embedding_record, consent_record]
+    audit_log = fake_session.added[1]
+    assert isinstance(audit_log, AuditLog)
+    assert audit_log.outcome == "failed"
+    serialized_metadata = str(audit_log.event_metadata)
+    assert image_object.object_uri not in serialized_metadata
+    assert "owner_subject_hash" not in serialized_metadata
