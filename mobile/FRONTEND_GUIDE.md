@@ -75,6 +75,20 @@ iOS Simulator can validate the app build and gallery-based OCR flow, but direct
 camera capture requires a physical iPhone with Developer Mode enabled. Android
 emulator local backend smoke should keep using `10.0.2.2`.
 
+Before a physical-device smoke run, use the repo preflight from the project
+root:
+
+```bash
+python backend/scripts/check_mobile_ngrok_camera_readiness.py \
+  --require-gateway \
+  --require-ngrok \
+  --require-physical-device
+```
+
+This check fails closed when the backend, token-gated gateway, matching ngrok
+tunnel, or physical device is missing. It prints only sanitized counts and
+status flags.
+
 ## Imported UIUX Assets
 
 The app imports reusable assets only:

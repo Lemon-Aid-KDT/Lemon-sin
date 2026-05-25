@@ -139,7 +139,23 @@ flutter run -d emulator-5554 --flavor dev \
 8. Request local LLM explanation through the existing recommendation explanation
    flow when Ollama is enabled on the backend.
 
-## 8. Known Limits
+## 8. Readiness Preflight
+
+Before a physical-device camera test, run the sanitized readiness preflight:
+
+```bash
+python backend/scripts/check_mobile_ngrok_camera_readiness.py \
+  --require-gateway \
+  --require-ngrok \
+  --require-physical-device
+```
+
+For a non-blocking status check while setup is still in progress, omit the
+`--require-*` flags. The script prints counts and booleans only; it does not
+print public ngrok URLs, gateway tokens, bearer tokens, OCR payloads, image
+bytes, or object URIs.
+
+## 9. Known Limits
 
 | Limit | Current state | Action |
 | --- | --- | --- |
@@ -148,7 +164,7 @@ flutter run -d emulator-5554 --flavor dev \
 | Existing authenticated ngrok tunnel | Basic-auth protected tunnels return `401` to the app unless credentials are embedded. | Start a fresh development tunnel to the local gateway. |
 | Release auth | `LEMON_API_TOKEN` and `LEMON_DEV_GATEWAY_TOKEN` are local-smoke only. | Never embed tokens in release builds. |
 
-## 9. Current Verification Evidence
+## 10. Current Verification Evidence
 
 Verified on 2026-05-25 from
 `/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid`:
@@ -161,6 +177,9 @@ Verified on 2026-05-25 from
 | Gateway token rejection | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <wrong-token>' http://127.0.0.1:8010/health` | `401 Unauthorized` |
 | Gateway token success | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <local-smoke-token>' http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
 | Gateway unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_dev_mobile_ngrok_backend_gateway.py -q --no-cov` | `4` tests passed; token opt-in, 401 rejection, Host rewrite, token stripping, and POST body forwarding covered without opening test sockets |
+| Readiness preflight unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_check_mobile_ngrok_camera_readiness.py -q --no-cov` | `5` tests passed; device parsing, ngrok gateway matching, optional incomplete status, required failure status, and sanitized formatting covered |
+| Readiness preflight with backend up | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=incomplete`, backend `200`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
+| Readiness preflight with live services stopped | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=failed`, backend `unreachable`, gateway `unreachable`, physical devices `0`, ngrok gateway matches `0` |
 | iOS simulator availability | `flutter devices` after booting `iPhone 17` | Simulator visible as `C98610F7-7B4C-4202-A18C-498F43A20AA0` |
 | iOS simulator gateway app run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1` | App installed and launched; gateway logged sanitized `GET 200` calls |
 | iOS simulator token-gated app run | Same simulator run plus `--dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; token-required gateway logged sanitized `GET 200` calls |
