@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0009_harden_learning_vector_supabase_access"]
+    assert script.get_heads() == ["0010_revoke_learning_api_grants"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0009_harden_learning_vector_supabase_access"]
+    assert script.get_heads() == ["0010_revoke_learning_api_grants"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -147,4 +147,36 @@ def test_learning_vector_supabase_access_migration_is_fail_closed() -> None:
     assert "'pending_auto_filter'" in migration
     assert "'pending_manual_review'" in migration
     assert "'rejected_by_auto_filter'" in migration
+    assert "GRANT " not in migration
+
+
+def test_learning_vector_remote_grant_revoke_migration_file_exists() -> None:
+    """Verify the remote Supabase drift hardening migration file exists."""
+    migration_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "0010_revoke_learning_api_grants_and_public_definers.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_learning_vector_remote_grant_revoke_migration_is_fail_closed() -> None:
+    """Verify remote drift migration revokes Data API and public definer access."""
+    migration_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "0010_revoke_learning_api_grants_and_public_definers.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "REVOKE ALL PRIVILEGES ON TABLE" in migration
+    assert "public.learning_image_objects" in migration
+    assert "public.image_embedding_jobs" in migration
+    assert "public.image_embedding_records" in migration
+    assert "REVOKE EXECUTE ON FUNCTION" in migration
+    assert "rls_auto_enable" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
     assert "GRANT " not in migration

@@ -26,6 +26,7 @@ LEARNING_VECTOR_TABLES = (
     "image_embedding_records",
 )
 SUPABASE_API_ROLES = ("PUBLIC", "anon", "authenticated", "service_role")
+SUPABASE_CLIENT_EXECUTE_ROLES = ("PUBLIC", "anon", "authenticated", "service_role")
 FORBIDDEN_COLUMNS = (
     "image_bytes",
     "raw_image",
@@ -79,6 +80,7 @@ async def collect_security_report() -> dict[str, Any]:
             table_reports = []
             unsafe_privileges = []
             forbidden_columns = []
+            unsafe_security_definer_functions = []
             for table_name in LEARNING_VECTOR_TABLES:
                 table_reports.append(
                     await _table_security_report(connection, table_name=table_name)
@@ -89,6 +91,9 @@ async def collect_security_report() -> dict[str, Any]:
                 forbidden_columns.extend(
                     await _forbidden_columns(connection, table_name=table_name)
                 )
+            unsafe_security_definer_functions.extend(
+                await _unsafe_security_definer_functions(connection)
+            )
     finally:
         await engine.dispose()
 
@@ -98,6 +103,7 @@ async def collect_security_report() -> dict[str, Any]:
         and all(table["exists"] and table["rls_enabled"] for table in table_reports)
         and not unsafe_privileges
         and not forbidden_columns
+        and not unsafe_security_definer_functions
     )
     return {
         "schema_version": SCHEMA_VERSION,
@@ -109,6 +115,8 @@ async def collect_security_report() -> dict[str, Any]:
         "unsafe_privileges": unsafe_privileges,
         "forbidden_column_count": len(forbidden_columns),
         "forbidden_columns": forbidden_columns,
+        "unsafe_security_definer_function_count": len(unsafe_security_definer_functions),
+        "unsafe_security_definer_functions": unsafe_security_definer_functions,
         "raw_image_bytes_stored_in_db": False,
         "raw_ocr_text_stored_in_db": False,
     }
@@ -222,6 +230,55 @@ async def _forbidden_columns(connection: Any, *, table_name: str) -> list[dict[s
         {
             "table": table_name,
             "column": str(row["column_name"]),
+        }
+        for row in rows
+    ]
+
+
+async def _unsafe_security_definer_functions(connection: Any) -> list[dict[str, str]]:
+    """Return public SECURITY DEFINER functions executable by Supabase API roles.
+
+    Args:
+        connection: Async SQLAlchemy connection.
+
+    Returns:
+        Unsafe function grants.
+    """
+    rows = (
+        (
+            await connection.execute(
+                text("""
+                SELECT
+                    n.nspname AS schema_name,
+                    p.proname AS function_name,
+                    pg_get_function_identity_arguments(p.oid) AS arguments,
+                    COALESCE(grantee.rolname, 'PUBLIC') AS role_name
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                CROSS JOIN LATERAL aclexplode(
+                    COALESCE(p.proacl, acldefault('f', p.proowner))
+                ) AS acl
+                LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+                WHERE n.nspname = 'public'
+                  AND p.prosecdef
+                  AND acl.privilege_type = 'EXECUTE'
+                  AND (
+                    acl.grantee = 0
+                    OR grantee.rolname IN ('anon', 'authenticated', 'service_role')
+                  )
+                ORDER BY n.nspname, p.proname, role_name
+                """),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return [
+        {
+            "schema": str(row["schema_name"]),
+            "function": str(row["function_name"]),
+            "arguments": str(row["arguments"]),
+            "grantee": str(row["role_name"]),
         }
         for row in rows
     ]

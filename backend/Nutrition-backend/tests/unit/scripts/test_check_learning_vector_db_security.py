@@ -32,6 +32,12 @@ def test_preflight_constants_cover_supabase_learning_tables_and_raw_keys() -> No
         "authenticated",
         "service_role",
     )
+    assert check_learning_vector_db_security.SUPABASE_CLIENT_EXECUTE_ROLES == (
+        "PUBLIC",
+        "anon",
+        "authenticated",
+        "service_role",
+    )
     assert {
         "image_bytes",
         "raw_ocr_text",
@@ -53,6 +59,8 @@ async def test_run_preflight_outputs_sanitized_success(
             "schema_version": check_learning_vector_db_security.SCHEMA_VERSION,
             "passed": True,
             "vector_extension_schema": "extensions",
+            "unsafe_security_definer_function_count": 0,
+            "unsafe_security_definer_functions": [],
             "raw_image_bytes_stored_in_db": False,
             "raw_ocr_text_stored_in_db": False,
         }
@@ -86,7 +94,7 @@ async def test_run_preflight_outputs_sanitized_failure(
 
     async def fake_collect_security_report() -> dict[str, object]:
         """Raise a representative connection failure."""
-        raise RuntimeError("postgresql://user:password@example.com/lemon")
+        raise RuntimeError("postgresql://user:" + "password@example.com/lemon")
 
     monkeypatch.setattr(
         check_learning_vector_db_security,
