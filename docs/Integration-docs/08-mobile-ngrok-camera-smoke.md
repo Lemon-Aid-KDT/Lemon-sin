@@ -1,6 +1,6 @@
 # 08. Mobile ngrok Camera Smoke Runbook
 
-> Status: implementation ready, physical device smoke pending
+> Status: simulator gateway smoke verified, physical device/ngrok live smoke pending
 > Date: 2026-05-25
 > Scope: Flutter supplement label camera capture, local ngrok HTTPS tunnel, and
 > backend OCR endpoint smoke on `feat/db-internal-learning-pipeline`
@@ -137,3 +137,26 @@ flutter run -d emulator-5554 --flavor dev \
 | Physical iPhone visibility | The device must be unlocked, trusted, paired, and Developer Mode enabled. | Re-run `flutter devices` before smoke. |
 | Existing authenticated ngrok tunnel | Basic-auth protected tunnels return `401` to the app unless credentials are embedded. | Start a fresh development tunnel to the local gateway. |
 | Release auth | `LEMON_API_TOKEN` is local-smoke only. | Never embed tokens in release builds. |
+
+## 9. Current Verification Evidence
+
+Verified on 2026-05-25 from
+`/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid`:
+
+| Requirement | Evidence | Result |
+| --- | --- | --- |
+| Branch and remote | `HEAD` and `origin/feat/db-internal-learning-pipeline` both at `091e7a266a0e10be49238c18936dd08f8be48fb3` | Passed |
+| Local backend | `curl -i http://127.0.0.1:8000/health` | `200`, `{"status":"ok","version":"0.1.0"}` |
+| Gateway health | `curl -i http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
+| iOS simulator availability | `flutter devices` after booting `iPhone 17` | Simulator visible as `C98610F7-7B4C-4202-A18C-498F43A20AA0` |
+| iOS simulator gateway app run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1` | App installed and launched; gateway logged sanitized `GET 200` calls |
+| iOS simulator screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-gateway-smoke.png` | Dashboard rendered live summary updated at `2026-05-25 15:58:15.939646` |
+| iOS simulator direct camera | `xcrun simctl help io` | Not supported; available operations are enumerate, poll, recordVideo, screenshot |
+| Physical iPhone detection | `flutter devices` | Not detected; wireless discovery reports Developer Mode/unlock/cable/LAN requirement |
+| Existing ngrok tunnel | `curl http://127.0.0.1:4040/api/tunnels` | Tunnel points to `http://localhost:8765`, not the backend gateway |
+| Existing ngrok backend access | `curl -H 'ngrok-skip-browser-warning: true' <current-ngrok-origin>/health` | `401 Unauthorized`; unsuitable for mobile app without embedding credentials |
+
+Public ngrok live smoke is intentionally not marked complete here. Starting a
+fresh public tunnel exposes local backend endpoints through a third-party
+service, so it should be run only with explicit operator approval and no secrets,
+raw OCR payloads, image bytes, or object URIs in logs.
