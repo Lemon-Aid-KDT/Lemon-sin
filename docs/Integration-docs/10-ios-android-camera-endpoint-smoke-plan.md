@@ -224,14 +224,29 @@ git status --short --ignored .env
 
 Observed on 2026-05-25 after implementation:
 
-- `flutter devices` sees `iPhone 17 Pro` Simulator and no booted Android
-  emulator.
+- `flutter devices` initially saw `iPhone 17 Pro` Simulator and no booted
+  Android emulator.
 - `flutter emulators` lists `lemon_pixel_8_api_36` and
   `plusultra_pixel_8_api_36` as available Android emulators.
+- Direct Android SDK launch of `lemon_pixel_8_api_36` brought up
+  `emulator-5554`.
+- `adb shell getprop sys.boot_completed` returned `1`.
+- `adb shell pm list features` included:
+  - `android.hardware.camera`
+  - `android.hardware.camera.any`
+  - `android.hardware.camera.front`
+  - `android.hardware.camera.autofocus`
+  - `android.hardware.camera.flash`
+- `flutter run -d emulator-5554 --no-resident --flavor dev
+  --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1` built,
+  installed, and launched the app on the Android Emulator.
+- Host backend preflight returned HTTP `200` for `/health` and
+  `/api/v1/me/privacy/consents`.
 - Flutter reports the user's physical iPhone over wireless discovery, but it is
   not currently ready for deployment until the device is unlocked, attached or
   paired on the same LAN, and opted into Developer Mode.
 
-This means the code/build path is verified locally, but a physical-phone camera
-smoke still needs the device trust/Developer Mode setup and a live backend or
-token-gated ngrok gateway.
+This means the iOS Simulator run path, Android Emulator run path, Android camera
+feature exposure, and host backend preflight are verified locally. A
+physical-phone camera smoke still needs the device trust/Developer Mode setup
+and a live backend or token-gated ngrok gateway.
