@@ -190,11 +190,12 @@ python backend\scripts\smoke_ai_agent_server.py `
 
 ## 아직 외부 준비가 필요한 항목
 
-- SGLang live smoke: `127.0.0.1:30000` 서버, `RUN_SGLANG_SMOKE=1`,
-  `SGLANG_MODEL` 설정이 필요하다.
-- PostgreSQL migration live smoke: 현재 dev DB 포트 `127.0.0.1:55432`는 열려
-  있지만 `RUN_POSTGRES_MIGRATION_SMOKE=1`과 `TEST_DATABASE_URL`을 명시해야
-  preflight가 live smoke 준비 완료로 판단한다.
+- SGLang live smoke: 2026-05-25 재검증 완료. Docker Desktop을 시작하면 기존
+  `lemon-sglang` 컨테이너가 `127.0.0.1:30000`에 올라오고, `Qwen/Qwen2.5-0.5B-Instruct`
+  기준 standalone ai-agent live smoke와 backend FastAPI smoke가 모두 통과했다.
+- PostgreSQL migration live smoke: 2026-05-25 `RUN_POSTGRES_MIGRATION_SMOKE=1`,
+  `TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev`
+  기준 1 passed로 재검증했다.
 - source API key: `KDCA_HEALTHINFO_API_KEY`, `MFDS_DATA_API_KEY`가 설정되면
   `kdca-healthinfo`, `mfds-drug-safety` readiness가 `ok`가 되어야 한다.
 - Semantic Scholar: `SEMANTIC_SCHOLAR_API_KEY`가 설정되어도 현재는 research
@@ -218,5 +219,38 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py
 - `medical source kdca-healthinfo: ok`
 - `medical source kdris-2025: ok`
 - `medical source semantic-scholar: missing (not_reviewed)`는 정상
-- SGLang live smoke와 PostgreSQL migration smoke는 별도 opt-in 준비 전까지
-  계속 `missing`으로 남을 수 있음
+- SGLang live smoke와 PostgreSQL migration smoke는 2026-05-25에 opt-in 환경변수
+  기준 통과했다. Docker Desktop 또는 `lemon-sglang` 컨테이너가 꺼져 있으면
+  다시 `missing`으로 보일 수 있다.
+
+## 2026-05-25 live smoke 재검증 기록
+
+```powershell
+cd C:\MyWorkspace\lemon_aid
+Start-Process -FilePath "C:\Program Files\Docker\Docker\Docker Desktop.exe" -WindowStyle Hidden
+curl.exe -sS http://127.0.0.1:30000/v1/models
+
+cd C:\MyWorkspace\lemon_aid\changmin-aiagent
+$env:RUN_SGLANG_SMOKE="1"
+$env:SGLANG_BASE_URL="http://127.0.0.1:30000/v1"
+$env:SGLANG_MODEL="Qwen/Qwen2.5-0.5B-Instruct"
+$env:SGLANG_API_KEY="EMPTY"
+python -m unittest ai-agent.tests.test_sglang_live_smoke
+
+cd C:\MyWorkspace\lemon_aid\ai-agent-backend-integration
+python backend\scripts\smoke_ai_agent_server.py `
+  --server-url http://127.0.0.1:18081 `
+  --database-url postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev `
+  --skip-db-upgrade `
+  --sglang-base-url http://127.0.0.1:30000/v1 `
+  --sglang-model Qwen/Qwen2.5-0.5B-Instruct `
+  --timeout 90
+```
+
+검증 결과:
+
+- standalone SGLang live smoke: `Ran 1 test ... OK`
+- backend smoke: `first_provider=sglang`, `second_provider=sglang`
+- backend smoke: `second_used_tools`에 `agent_memory` 포함
+- preflight: SGLang port/env와 PostgreSQL port/env는 `ok`
+- 아직 남은 API key readiness: `KDCA_HEALTHINFO_API_KEY`, 필요 시 `MFDS_DATA_API_KEY`
