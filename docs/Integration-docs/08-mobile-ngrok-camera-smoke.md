@@ -1,0 +1,139 @@
+# 08. Mobile ngrok Camera Smoke Runbook
+
+> Status: implementation ready, physical device smoke pending
+> Date: 2026-05-25
+> Scope: Flutter supplement label camera capture, local ngrok HTTPS tunnel, and
+> backend OCR endpoint smoke on `feat/db-internal-learning-pipeline`
+
+## 1. Objective
+
+This runbook lets the mobile app test the real camera-to-OCR path from a phone
+without weakening backend `TrustedHost` rules or committing transient tunnel
+URLs. The app still calls the existing backend route:
+
+- `POST /api/v1/supplements/analyze`
+- multipart field: `image`
+- form fields: `client_request_id`, `ocr_provider`
+
+YOLO ROI and Ollama vision assist remain backend runtime settings. The mobile
+app only selects the OCR provider in debug builds.
+
+## 2. Official References Checked
+
+| Area | Source | Design implication |
+| --- | --- | --- |
+| Flutter camera plugin | https://pub.dev/packages/camera | Use `availableCameras`, `CameraController`, `CameraPreview`, and `takePicture` for direct capture. |
+| Flutter camera cookbook | https://docs.flutter.dev/cookbook/plugins/picture-using-camera | Initialize a `CameraController`, display a preview, and handle the returned `XFile` from `takePicture`. |
+| Apple camera permission | https://developer.apple.com/documentation/bundleresources/information-property-list/nscamerausagedescription | Keep `NSCameraUsageDescription` in `Info.plist` for camera access. |
+| ngrok HTTP endpoints | https://ngrok.com/docs/http | A public HTTPS endpoint forwards requests to a local upstream service. |
+| ngrok agent CLI | https://ngrok.com/docs/agent/cli/ | Use `ngrok http <port>` for local HTTP tunnel smoke. |
+| Android emulator networking | https://developer.android.com/studio/run/emulator-networking-address | Android emulator reaches the host machine through `10.0.2.2`; physical phones need LAN or HTTPS tunnel access. |
+
+## 3. Local Backend Preflight
+
+Start the backend with the normal local OCR/YOLO/Ollama settings needed for the
+test. Verify the backend without exposing any secrets:
+
+```bash
+curl -sS http://127.0.0.1:8000/health
+curl -sS http://127.0.0.1:8000/api/v1/me/privacy/consents
+```
+
+Expected result: both requests return HTTP `200`. Do not print `.env`, provider
+payloads, raw OCR output, image bytes, object URIs, or bearer tokens in logs.
+
+## 4. ngrok Host-Rewriting Gateway
+
+FastAPI `TrustedHost` should not be widened to arbitrary ngrok domains for local
+smoke testing. Instead, run the local-only gateway:
+
+```bash
+python backend/scripts/dev_mobile_ngrok_backend_gateway.py \
+  --listen-port 8010 \
+  --backend-url http://127.0.0.1:8000
+```
+
+Then verify the gateway:
+
+```bash
+curl -sS http://127.0.0.1:8010/health
+curl -sS http://127.0.0.1:8010/api/v1/me/privacy/consents
+```
+
+The gateway forwards request bodies but logs only method and status. It does not
+log image bytes, OCR text, provider payloads, object URIs, or secrets.
+
+## 5. Public Tunnel
+
+Start a fresh tunnel to the gateway:
+
+```bash
+ngrok http 8010 --web-addr 127.0.0.1:4041
+```
+
+Fetch the assigned URL from the local ngrok API:
+
+```bash
+curl -sS http://127.0.0.1:4041/api/tunnels
+```
+
+Use only the returned HTTPS origin for the current smoke run. Do not commit the
+random URL. Do not reuse a tunnel that is protected by basic auth unless the app
+has a separate safe auth path; credentials must not be embedded in the app.
+
+## 6. Flutter Runs
+
+For a physical iPhone:
+
+```bash
+cd mobile
+flutter run -d <ios-device-id> \
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+```
+
+For a physical Android phone:
+
+```bash
+cd mobile
+flutter run -d <android-device-id> --flavor dev \
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+```
+
+For iOS Simulator build/gallery smoke:
+
+```bash
+cd mobile
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  flutter build ios --simulator --debug \
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+```
+
+For Android emulator local backend smoke without ngrok:
+
+```bash
+cd mobile
+flutter run -d emulator-5554 --flavor dev \
+  --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1
+```
+
+## 7. Manual Test Steps
+
+1. Connect a physical phone and confirm it appears in `flutter devices`.
+2. Open the supplement capture flow.
+3. Select the debug OCR provider: `configured`, `paddleocr`, `google_vision`, or
+   `clova`.
+4. Tap camera, align the full supplement label inside the guide, and capture.
+5. Analyze the image.
+6. Review OCR text and low-confidence fields before saving.
+7. Register the supplement.
+8. Request local LLM explanation through the existing recommendation explanation
+   flow when Ollama is enabled on the backend.
+
+## 8. Known Limits
+
+| Limit | Current state | Action |
+| --- | --- | --- |
+| iOS Simulator camera | Simulator can build and use gallery fallback, but real camera capture needs hardware. | Use a physical iPhone for direct capture. |
+| Physical iPhone visibility | The device must be unlocked, trusted, paired, and Developer Mode enabled. | Re-run `flutter devices` before smoke. |
+| Existing authenticated ngrok tunnel | Basic-auth protected tunnels return `401` to the app unless credentials are embedded. | Start a fresh development tunnel to the local gateway. |
+| Release auth | `LEMON_API_TOKEN` is local-smoke only. | Never embed tokens in release builds. |

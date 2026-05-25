@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -95,7 +96,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         stage: _stage,
         ocrProvider: _ocrProvider,
         onOcrProviderChanged: _setOcrProvider,
-        onCamera: () => _pickImage(ImageSource.camera),
+        onCamera: _captureLiveImage,
         onGallery: () => _pickImage(ImageSource.gallery),
         onAnalyze: _analyzeSelectedImage,
         onRetake: _resetSelectedImage,
@@ -201,16 +202,55 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     }
     if (image == null) return;
     final XFile selectedImage = image;
+    _setSelectedImage(
+      path: selectedImage.path,
+      source: source == ImageSource.camera ? 'camera' : 'gallery',
+    );
+  }
+
+  Future<void> _captureLiveImage() async {
+    String? imagePath;
+    try {
+      imagePath = await Navigator.of(context).push<String>(
+        MaterialPageRoute<String>(
+          fullscreenDialog: true,
+          builder: (BuildContext context) {
+            return const _LiveCameraCaptureScreen();
+          },
+        ),
+      );
+    } on camera.CameraException catch (error) {
+      _showSnackBar(_cameraErrorMessage(error.code));
+      return;
+    }
+    if (imagePath == null || !mounted) {
+      return;
+    }
+    _setSelectedImage(path: imagePath, source: 'camera');
+  }
+
+  void _setSelectedImage({required String path, required String source}) {
     setState(() {
       _selectedImage = _SelectedLabelImage(
-        path: selectedImage.path,
-        source: source == ImageSource.camera ? 'camera' : 'gallery',
+        path: path,
+        source: source,
         recoveredFromLostData: false,
       );
       _stage = _SupplementFlowStage.imageSelected;
       _seededAnalysisId = null;
     });
     widget.controller.clearSupplementFlow();
+  }
+
+  String _cameraErrorMessage(String code) {
+    return switch (code) {
+      'CameraAccessDenied' ||
+      'CameraAccessDeniedWithoutPrompt' ||
+      'CameraAccessRestricted' => '카메라 권한을 허용해야 라벨을 직접 촬영할 수 있어요.',
+      'NoCameraAvailable' =>
+        '이 실행 환경에서는 카메라를 찾을 수 없어요. 실제 기기에서 촬영하거나 갤러리를 사용해주세요.',
+      _ => '카메라를 열지 못했어요. 실제 기기 권한과 연결 상태를 확인해주세요.',
+    };
   }
 
   void _resetSelectedImage() {
@@ -822,6 +862,344 @@ class _CaptureTopBar extends StatelessWidget {
   }
 }
 
+class _LiveCameraCaptureScreen extends StatefulWidget {
+  const _LiveCameraCaptureScreen();
+
+  @override
+  State<_LiveCameraCaptureScreen> createState() =>
+      _LiveCameraCaptureScreenState();
+}
+
+class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
+    with WidgetsBindingObserver {
+  camera.CameraController? _controller;
+  List<camera.CameraDescription> _cameras = const <camera.CameraDescription>[];
+  int _cameraIndex = 0;
+  bool _initializing = true;
+  bool _takingPicture = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeCamera();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _disposeController();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final camera.CameraController? controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    if (state == AppLifecycleState.inactive) {
+      _disposeController();
+    } else if (state == AppLifecycleState.resumed) {
+      _initializeSelectedCamera();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final camera.CameraController? controller = _controller;
+    final bool previewReady =
+        controller != null && controller.value.isInitialized;
+
+    return ColoredBox(
+      color: Colors.black,
+      child: SafeArea(
+        child: Column(
+          children: <Widget>[
+            _CaptureTopBar(
+              title: '라벨 직접 촬영',
+              closeIcon: Icons.close_rounded,
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: previewReady
+                    ? _LiveCameraPreview(controller: controller)
+                    : _CameraUnavailableFrame(
+                        initializing: _initializing,
+                        message: _errorMessage,
+                      ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: _CaptureStatusPill(
+                icon: Icons.center_focus_strong_rounded,
+                label: '영양제 라벨 전체가 노란 가이드 안에 들어오게 맞춰주세요',
+              ),
+            ),
+            const SizedBox(height: 18),
+            _LiveCameraControls(
+              busy: _initializing || _takingPicture,
+              canCapture: previewReady,
+              canSwitch: _cameras.length > 1,
+              onCapture: _takePicture,
+              onSwitchCamera: _switchCamera,
+            ),
+            const SizedBox(height: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _initializeCamera() async {
+    setState(() {
+      _initializing = true;
+      _errorMessage = null;
+    });
+    try {
+      final List<camera.CameraDescription> cameras = await camera
+          .availableCameras();
+      if (cameras.isEmpty) {
+        throw camera.CameraException(
+          'NoCameraAvailable',
+          'No camera was reported by the current device.',
+        );
+      }
+      _cameras = cameras;
+      _cameraIndex = _preferredCameraIndex(cameras);
+      await _initializeSelectedCamera();
+    } on camera.CameraException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _initializing = false;
+        _errorMessage = _cameraErrorMessage(error.code);
+      });
+    }
+  }
+
+  Future<void> _initializeSelectedCamera() async {
+    await _disposeController();
+    if (_cameras.isEmpty) {
+      return;
+    }
+    setState(() {
+      _initializing = true;
+      _errorMessage = null;
+    });
+    final camera.CameraController controller = camera.CameraController(
+      _cameras[_cameraIndex],
+      camera.ResolutionPreset.high,
+      enableAudio: false,
+      imageFormatGroup: camera.ImageFormatGroup.jpeg,
+    );
+    _controller = controller;
+    try {
+      await controller.initialize();
+      if (!mounted) return;
+      setState(() {
+        _initializing = false;
+      });
+    } on camera.CameraException catch (error) {
+      await controller.dispose();
+      if (!mounted) return;
+      setState(() {
+        _controller = null;
+        _initializing = false;
+        _errorMessage = _cameraErrorMessage(error.code);
+      });
+    }
+  }
+
+  Future<void> _takePicture() async {
+    final camera.CameraController? controller = _controller;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        _takingPicture) {
+      return;
+    }
+    setState(() {
+      _takingPicture = true;
+    });
+    try {
+      final camera.XFile image = await controller.takePicture();
+      if (!mounted) return;
+      Navigator.of(context).pop(image.path);
+    } on camera.CameraException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _takingPicture = false;
+        _errorMessage = _cameraErrorMessage(error.code);
+      });
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2 || _initializing || _takingPicture) {
+      return;
+    }
+    _cameraIndex = (_cameraIndex + 1) % _cameras.length;
+    await _initializeSelectedCamera();
+  }
+
+  int _preferredCameraIndex(List<camera.CameraDescription> cameras) {
+    final int backCameraIndex = cameras.indexWhere(
+      (camera.CameraDescription description) =>
+          description.lensDirection == camera.CameraLensDirection.back,
+    );
+    return backCameraIndex < 0 ? 0 : backCameraIndex;
+  }
+
+  Future<void> _disposeController() async {
+    final camera.CameraController? controller = _controller;
+    _controller = null;
+    await controller?.dispose();
+  }
+
+  String _cameraErrorMessage(String code) {
+    return switch (code) {
+      'CameraAccessDenied' ||
+      'CameraAccessDeniedWithoutPrompt' ||
+      'CameraAccessRestricted' => '카메라 권한을 허용해야 직접 촬영할 수 있어요.',
+      'NoCameraAvailable' =>
+        '이 실행 환경에서는 카메라를 찾을 수 없어요. 실제 기기에서 촬영하거나 갤러리를 사용해주세요.',
+      _ => '카메라를 열지 못했어요. 실제 기기 권한과 연결 상태를 확인해주세요.',
+    };
+  }
+}
+
+class _LiveCameraPreview extends StatelessWidget {
+  const _LiveCameraPreview({required this.controller});
+
+  final camera.CameraController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: controller.value.previewSize?.height ?? 1,
+              height: controller.value.previewSize?.width ?? 1,
+              child: camera.CameraPreview(controller),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF2B2B2B), width: 1.4),
+              borderRadius: BorderRadius.circular(28),
+            ),
+          ),
+          const _GuideCorners(),
+        ],
+      ),
+    );
+  }
+}
+
+class _CameraUnavailableFrame extends StatelessWidget {
+  const _CameraUnavailableFrame({
+    required this.initializing,
+    required this.message,
+  });
+
+  final bool initializing;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF2B2B2B), width: 1.4),
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    if (initializing)
+                      const CircularProgressIndicator(color: Color(0xFFFFC400))
+                    else
+                      const Icon(
+                        Icons.no_photography_outlined,
+                        color: Color(0xFF777777),
+                        size: 56,
+                      ),
+                    const SizedBox(height: 14),
+                    Text(
+                      initializing
+                          ? '카메라를 준비하고 있어요'
+                          : message ?? '카메라를 사용할 수 없어요.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFC8C8C8),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const _GuideCorners(),
+      ],
+    );
+  }
+}
+
+class _LiveCameraControls extends StatelessWidget {
+  const _LiveCameraControls({
+    required this.busy,
+    required this.canCapture,
+    required this.canSwitch,
+    required this.onCapture,
+    required this.onSwitchCamera,
+  });
+
+  final bool busy;
+  final bool canCapture;
+  final bool canSwitch;
+  final VoidCallback onCapture;
+  final VoidCallback onSwitchCamera;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: <Widget>[
+          _SquareCaptureButton(
+            icon: Icons.cameraswitch_rounded,
+            tooltip: '카메라 전환',
+            onPressed: !busy && canSwitch ? onSwitchCamera : null,
+          ),
+          const Spacer(),
+          _ShutterButton(onPressed: !busy && canCapture ? onCapture : null),
+          const Spacer(),
+          const SizedBox(width: 64, height: 64),
+        ],
+      ),
+    );
+  }
+}
+
 class _RoundCaptureIcon extends StatelessWidget {
   const _RoundCaptureIcon({required this.icon, required this.onTap});
 
@@ -1139,10 +1517,15 @@ class _PreviewControls extends StatelessWidget {
 }
 
 class _SquareCaptureButton extends StatelessWidget {
-  const _SquareCaptureButton({required this.icon, required this.onPressed});
+  const _SquareCaptureButton({
+    required this.icon,
+    required this.onPressed,
+    this.tooltip = '갤러리',
+  });
 
   final IconData icon;
   final VoidCallback? onPressed;
+  final String tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -1150,7 +1533,7 @@ class _SquareCaptureButton extends StatelessWidget {
       width: 64,
       height: 64,
       child: IconButton(
-        tooltip: '갤러리',
+        tooltip: tooltip,
         onPressed: onPressed,
         style: IconButton.styleFrom(
           backgroundColor: const Color(0xFF1B1B1B),

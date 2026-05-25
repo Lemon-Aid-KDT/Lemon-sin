@@ -11,3 +11,4 @@ Final integration, deployment, and demo documents belong here.
 - [05-p2-mobile-device-build-run-plan.md](./05-p2-mobile-device-build-run-plan.md): P2 Android/iOS debug build, simulator/emulator run, and runtime smoke plan.
 - [06-phase5-mobile-ux-integration-design-plan.md](./06-phase5-mobile-ux-integration-design-plan.md): Phase 5 mobile supplement-label UX, section review, confidence handling, and supplement impact screen design.
 - [07-phase6-release-signing-auth-api-url-design-plan.md](./07-phase6-release-signing-auth-api-url-design-plan.md): Phase 6 release signing, mobile flavor/API URL, backend auth, rate limit, and provider readiness gate design.
+- [08-mobile-ngrok-camera-smoke.md](./08-mobile-ngrok-camera-smoke.md): Mobile physical-device camera, ngrok gateway, and backend OCR smoke runbook.
