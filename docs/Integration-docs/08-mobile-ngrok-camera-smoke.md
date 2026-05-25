@@ -160,6 +160,7 @@ Verified on 2026-05-25 from
 | Gateway token enforcement | `curl -i http://127.0.0.1:8010/health` with token-required gateway | `401 Unauthorized` without `X-Lemon-Dev-Gateway-Token` |
 | Gateway token rejection | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <wrong-token>' http://127.0.0.1:8010/health` | `401 Unauthorized` |
 | Gateway token success | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <local-smoke-token>' http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
+| Gateway unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_dev_mobile_ngrok_backend_gateway.py -q --no-cov` | `4` tests passed; token opt-in, 401 rejection, Host rewrite, token stripping, and POST body forwarding covered without opening test sockets |
 | iOS simulator availability | `flutter devices` after booting `iPhone 17` | Simulator visible as `C98610F7-7B4C-4202-A18C-498F43A20AA0` |
 | iOS simulator gateway app run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1` | App installed and launched; gateway logged sanitized `GET 200` calls |
 | iOS simulator token-gated app run | Same simulator run plus `--dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; token-required gateway logged sanitized `GET 200` calls |
