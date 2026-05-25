@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../utils/design_tokens_v2.dart';
+import 'quick_action_palette.dart';
 
 class MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -66,6 +67,36 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  // 중앙 FAB — 빠른 액션 팔레트 5개 펼침
+  void _openActionPalette() {
+    HapticFeedback.mediumImpact();
+    showQuickActionPalette(
+      context,
+      onAction: (action) {
+        switch (action) {
+          case QuickAction.supplementShot:
+            // 영양제 촬영 — 카메라 탭으로
+            _goBranch(_cameraBranchIndex);
+            break;
+          case QuickAction.mealShot:
+            // 식단 촬영 — 카메라 탭으로 (모드 구분은 카메라 화면 내부)
+            _goBranch(_cameraBranchIndex);
+            break;
+          case QuickAction.medication:
+            // 복약 기록 — 캘린더(복약 화면 생기면 교체)
+            context.push('/shell/home/calendar');
+            break;
+          case QuickAction.water:
+            // 물 섭취 — TODO: 물 기록 기능
+            break;
+          case QuickAction.manualInput:
+            // 직접 입력 — TODO: 수동 입력 화면
+            break;
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final int currentIndex = widget.navigationShell.currentIndex;
@@ -115,7 +146,7 @@ class _MainShellState extends State<MainShell> {
               rightTabs: _rightTabs,
               currentIndex: currentIndex,
               onTabTap: _goBranch,
-              onCameraTap: () => _goBranch(_cameraBranchIndex),
+              onCameraTap: _openActionPalette,
               cameraActive: currentIndex == _cameraBranchIndex,
             ),
     );

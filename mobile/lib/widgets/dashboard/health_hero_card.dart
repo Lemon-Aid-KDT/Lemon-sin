@@ -36,9 +36,20 @@ class HealthHeroCard extends StatefulWidget {
   final int fatG, fatTargetG;
   final VoidCallback? onTapScore;
   final VoidCallback? onTapDetail;
+  // 날짜 네비게이션 — 카드 맨 위 캡슐
+  final DateTime date;
+  final bool isToday;
+  final VoidCallback? onPrevDay;
+  final VoidCallback? onNextDay;   // null 이면 비활성 (미래)
+  final VoidCallback? onTapDate;   // 날짜 텍스트 탭 → 캘린더
 
-  const HealthHeroCard({
+  HealthHeroCard({
     super.key,
+    DateTime? date,
+    this.isToday = true,
+    this.onPrevDay,
+    this.onNextDay,
+    this.onTapDate,
     this.healthScore = 78,
     this.consumedKcal = 600,
     this.targetKcal = 1500,
@@ -54,7 +65,7 @@ class HealthHeroCard extends StatefulWidget {
     this.fatTargetG = 40,
     this.onTapScore,
     this.onTapDetail,
-  });
+  }) : date = date ?? DateTime.now();
 
   @override
   State<HealthHeroCard> createState() => _HealthHeroCardState();
@@ -131,10 +142,26 @@ class _HealthHeroCardState extends State<HealthHeroCard>
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+        // 상단·좌우 여유 — 위는 더 넉넉히 (날짜 네비 숨쉬게)
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.cardInside + 2,
+          AppSpace.lg + 4,
+          AppSpace.cardInside + 2,
+          AppSpace.cardInside + 4,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─── 날짜 네비게이션 — ‹ 5월 24일 일 ▾ › ───
+            _DateNav(
+              date: widget.date,
+              isToday: widget.isToday,
+              onPrev: widget.onPrevDay,
+              onNext: widget.onNextDay,
+              onTapDate: widget.onTapDate,
+            ),
+            const SizedBox(height: AppSpace.xl),
+
             // ─── 상단: 인사 + 테마 칩 ───
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -348,6 +375,119 @@ class _HealthHeroCardState extends State<HealthHeroCard>
 // ═══════════════════════════════════════════
 // 테마 칩 — 누르면 캐릭터 포즈 순환 (확인용)
 // ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+// 날짜 네비게이션 — ‹  5월 24일 일 [오늘] ▾  ›
+//   카드 맨 위. 화살표로 하루 이동, 가운데 탭 → 캘린더.
+// ═══════════════════════════════════════════
+class _DateNav extends StatelessWidget {
+  final DateTime date;
+  final bool isToday;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  final VoidCallback? onTapDate;
+  const _DateNav({
+    required this.date,
+    required this.isToday,
+    this.onPrev,
+    this.onNext,
+    this.onTapDate,
+  });
+
+  static const _wd = ['월', '화', '수', '목', '금', '토', '일'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _NavArrow(icon: Icons.chevron_left_rounded, onTap: onPrev),
+        const SizedBox(width: AppSpace.sm),
+        // 가운데 날짜 캡슐 — 탭하면 캘린더
+        Pressable(
+          onTap: onTapDate,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.lg, vertical: 9,
+            ),
+            decoration: BoxDecoration(
+              color: AppColor.sunken,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.event_note_rounded,
+                    color: AppColor.inkSecondary, size: 15),
+                const SizedBox(width: 5),
+                Text(
+                  '${date.month}월 ${date.day}일 ${_wd[date.weekday - 1]}',
+                  style: const TextStyle(
+                    color: AppColor.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                if (isToday)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColor.brand,
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                    ),
+                    child: const Text(
+                      '오늘',
+                      style: TextStyle(
+                        color: AppColor.ink,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                Icon(Icons.keyboard_arrow_down_rounded,
+                    color: AppColor.inkTertiary, size: 17),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpace.sm),
+        _NavArrow(icon: Icons.chevron_right_rounded, onTap: onNext),
+      ],
+    );
+  }
+}
+
+// 날짜 이동 화살표 — null 이면 비활성(흐림)
+class _NavArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _NavArrow({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        width: 32, height: 32,
+        decoration: BoxDecoration(
+          color: AppColor.sunken,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          size: 20,
+          color: AppColor.ink.withValues(alpha: enabled ? 0.8 : 0.25),
+        ),
+      ),
+    );
+  }
+}
+
 class _ThemeChip extends StatelessWidget {
   final VoidCallback onTap;
   const _ThemeChip({required this.onTap});

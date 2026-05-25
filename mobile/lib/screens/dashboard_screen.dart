@@ -114,6 +114,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           gap: AppSpace.md,
           children: [
             HealthHeroCard(
+              date: _selectedDate,
+              isToday: _isToday,
+              onPrevDay: () => _selectDate(
+                _selectedDate.subtract(const Duration(days: 1)),
+              ),
+              onNextDay: _isToday
+                  ? null
+                  : () => _selectDate(
+                        _selectedDate.add(const Duration(days: 1)),
+                      ),
+              onTapDate: () => context.push('/shell/home/calendar'),
               onTapScore: () => context.go('/shell/score'),
               onTapDetail: () =>
                   context.push('/shell/home/analysis-result?mode=meal'),
@@ -276,90 +287,8 @@ class _BrandHeader extends StatelessWidget {
                   ],
                 ),
 
-              const SizedBox(height: AppSpace.lg),
-
-              // ─── 메인 = 날짜 라벨 + 이번 주 strip ───
-              if (!isRecordMode) ...[
-                const SizedBox(height: AppSpace.md),
-                // 선택 날짜 라벨 + (과거면) 오늘로 버튼
-                Row(
-                  children: [
-                    Icon(
-                      isToday
-                          ? Icons.today_rounded
-                          : Icons.event_note_rounded,
-                      color: AppColor.ink.withOpacity(0.7), size: 16,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      '${selectedDate.month}월 ${selectedDate.day}일'
-                      ' ${weekdayLabels[selectedDate.weekday - 1]}요일',
-                      style: const TextStyle(
-                        color: AppColor.ink,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // 오늘 = 검정 '오늘' 칩 / 과거 = 탭하면 오늘로 가는 칩
-                    if (isToday)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColor.ink,
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.full),
-                        ),
-                        child: const Text(
-                          '오늘',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      )
-                    else
-                      _TodayButton(onTap: onGoToday),
-                  ],
-                ),
-                const SizedBox(height: AppSpace.md),
-                // 이번 주 strip — 날짜 탭하면 그 자리에서 본문 교체
-                Row(
-                  children: [
-                    for (int i = 0; i < 7; i++)
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            weekdayLabels[i],
-                            style: AppText.caption.copyWith(
-                              color: AppColor.ink.withOpacity(0.75),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: AppSpace.sm),
-                Row(
-                  children: [
-                    for (int i = 0; i < 7; i++)
-                      Expanded(
-                        child: _DateBubble(
-                          date: days[i],
-                          selected: _isSameDay(days[i], selectedDate),
-                          isToday: _isSameDay(days[i], today),
-                          isFuture: days[i].isAfter(today),
-                          onTap: () => onSelectDate(days[i]),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+              // 메인 = 노란 헤더는 워드마크 + 아이콘만 (심플).
+              // 날짜 네비는 히어로 카드 맨 위로 이동.
 
               // ─── 기록 모드 = 주 이동 + 날짜 strip ───
               if (isRecordMode) ...[
