@@ -14,9 +14,16 @@ FORBIDDEN_TERMS = (
     "치료",
     "처방",
     "복용해도 됩니다",
+    "복용량을 바꾸",
+    "약을 중단",
+    "약을 끊",
+    "용량을 늘리",
+    "용량을 줄이",
     "당뇨입니다",
     "고혈압입니다",
     "신장질환입니다",
+    "take more of this medicine",
+    "stop taking your medicine",
 )
 
 PRODUCT_PROMOTION_TERMS = (

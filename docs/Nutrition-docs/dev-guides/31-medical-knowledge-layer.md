@@ -209,7 +209,9 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 
 ## 9. 검증 체크리스트
 
-- [ ] 어떤 출력도 Lemon Aid가 진단, 치료, 처방, 복약 변경을 한다고 표현하지 않는다.
+- [x] 어떤 출력도 Lemon Aid가 진단, 치료, 처방, 복약 변경을 한다고 표현하지 않는다.
+      `ai_agent_chat/tests/test_safety_guard.py`가 진단·치료·약 중단·복용량 변경
+      지시형 표현을 `SafetyGuard`에서 차단하는지 검증한다.
 - [ ] 만성질환 context는 명시 동의 뒤에만 사용한다.
 - [x] user-provided disease status를 confirmed medical fact로 조용히 승격하지 않는다.
 - [x] 의료 사실 source family는 reviewed source record와 연결된다.
@@ -225,7 +227,7 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 - source review와 expiry check 책임자를 정한다.
 - source metadata를 chatbot card footer에 넣을지 detail sheet에 넣을지 정한다.
 - chatbot과 daily-coaching snapshot에 금지 표현 자동 검사를 추가한다.
-  [부분 완료: chatbot LLM 출력과 daily-coaching adapter/Flutter contract에서 raw trace와
-  위험 단정 표현 회귀 테스트를 유지한다.]
+  [완료: chatbot LLM 출력, daily-coaching adapter/Flutter contract, `SafetyGuard`
+  회귀 테스트에서 raw trace, 위험 단정 표현, 약 중단·복용량 변경 지시를 차단한다.]
 - production-like response에 RAG index를 연결하기 전에 live retrieval 실패, rate limit,
   stale-source 자동 갱신 정책을 정의한다.
