@@ -210,7 +210,8 @@ such as `launched`, `developer_mode_or_trust_required`, `signing_error`, or
 
 | Limit | Current state | Action |
 | --- | --- | --- |
-| iOS Simulator camera | Simulator can build and use gallery fallback, but real camera capture needs hardware. | Use a physical iPhone for direct capture. |
+| iOS Simulator camera | The app now probes `availableCameras()` at runtime; when no iOS camera is reported, gallery fallback still exercises the same OCR endpoint. | Use a physical iPhone for direct capture when the probe reports no cameras. |
+| Android Emulator camera | Android Emulator can use a configured AVD camera or virtual-scene image, but an AVD with cameras disabled will report no usable camera. | Configure Device Manager camera settings, then use the in-app camera refresh button or gallery fallback. |
 | Physical iPhone visibility | The device must be unlocked, trusted, paired, and Developer Mode enabled. | Re-run `flutter devices` before smoke. |
 | Existing authenticated ngrok tunnel | Basic-auth protected tunnels return `401` to the app unless credentials are embedded. | Start a fresh development tunnel to the local gateway. |
 | Release auth | `LEMON_API_TOKEN` and `LEMON_DEV_GATEWAY_TOKEN` are local-smoke only. | Never embed tokens in release builds. |

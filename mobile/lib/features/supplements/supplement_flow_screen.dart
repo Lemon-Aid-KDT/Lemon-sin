@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../app_controller.dart';
 import '../../shared/theme/lemon_design_tokens.dart';
+import 'camera_readiness.dart';
 import 'supplement_models.dart';
 
 /// Supplement capture, OCR text review, and registration screen.
@@ -16,8 +17,10 @@ class SupplementFlowScreen extends StatefulWidget {
     required this.controller,
     this.onClose,
     ImagePicker? imagePicker,
+    CameraReadinessProbe? cameraReadinessProbe,
     super.key,
-  }) : _imagePicker = imagePicker;
+  }) : _imagePicker = imagePicker,
+       _cameraReadinessProbe = cameraReadinessProbe;
 
   /// App flow controller.
   final AppController controller;
@@ -25,6 +28,7 @@ class SupplementFlowScreen extends StatefulWidget {
   /// Called when the fullscreen capture flow should return to the dashboard.
   final VoidCallback? onClose;
   final ImagePicker? _imagePicker;
+  final CameraReadinessProbe? _cameraReadinessProbe;
 
   @override
   State<SupplementFlowScreen> createState() => _SupplementFlowScreenState();
@@ -34,6 +38,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   static const double _lowConfidenceThreshold = 0.75;
 
   late final ImagePicker _imagePicker;
+  late final CameraReadinessProbe _cameraReadinessProbe;
   final TextEditingController _ocrTextController = TextEditingController();
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _manufacturerController = TextEditingController();
@@ -50,12 +55,18 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   String? _seededAnalysisId;
   _SelectedLabelImage? _selectedImage;
   _SupplementFlowStage _stage = _SupplementFlowStage.idle;
+  CameraReadinessSnapshot _cameraReadiness = CameraReadinessSnapshot.probing(
+    platform: defaultTargetPlatform,
+  );
   String _ocrProvider = 'configured';
 
   @override
   void initState() {
     super.initState();
     _imagePicker = widget._imagePicker ?? ImagePicker();
+    _cameraReadinessProbe =
+        widget._cameraReadinessProbe ?? const CameraReadinessProbe();
+    _refreshCameraReadiness();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _recoverLostImage();
     });
@@ -94,8 +105,10 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         busy: widget.controller.busy,
         selectedImage: _selectedImage,
         stage: _stage,
+        cameraReadiness: _cameraReadiness,
         ocrProvider: _ocrProvider,
         onOcrProviderChanged: _setOcrProvider,
+        onRefreshCameraReadiness: _refreshCameraReadiness,
         onCamera: _captureLiveImage,
         onGallery: () => _pickImage(ImageSource.gallery),
         onAnalyze: _analyzeSelectedImage,
@@ -186,6 +199,22 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     }
   }
 
+  Future<void> _refreshCameraReadiness() async {
+    setState(() {
+      _cameraReadiness = CameraReadinessSnapshot.probing(
+        platform: defaultTargetPlatform,
+      );
+    });
+    final CameraReadinessSnapshot snapshot = await _cameraReadinessProbe
+        .check();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _cameraReadiness = snapshot;
+    });
+  }
+
   Future<void> _pickImage(ImageSource source) async {
     XFile? image;
     try {
@@ -209,6 +238,10 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   }
 
   Future<void> _captureLiveImage() async {
+    if (!_cameraReadiness.canOpenCamera) {
+      _showSnackBar(_cameraReadiness.guidance);
+      return;
+    }
     String? imagePath;
     try {
       imagePath = await Navigator.of(context).push<String>(
@@ -220,6 +253,12 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         ),
       );
     } on camera.CameraException catch (error) {
+      setState(() {
+        _cameraReadiness = CameraReadinessSnapshot.fromError(
+          platform: defaultTargetPlatform,
+          error: error,
+        );
+      });
       _showSnackBar(_cameraErrorMessage(error.code));
       return;
     }
@@ -618,8 +657,10 @@ class _BlackCaptureSurface extends StatelessWidget {
     required this.busy,
     required this.selectedImage,
     required this.stage,
+    required this.cameraReadiness,
     required this.ocrProvider,
     required this.onOcrProviderChanged,
+    required this.onRefreshCameraReadiness,
     required this.onCamera,
     required this.onGallery,
     required this.onAnalyze,
@@ -630,8 +671,10 @@ class _BlackCaptureSurface extends StatelessWidget {
   final bool busy;
   final _SelectedLabelImage? selectedImage;
   final _SupplementFlowStage stage;
+  final CameraReadinessSnapshot cameraReadiness;
   final String ocrProvider;
   final ValueChanged<String> onOcrProviderChanged;
+  final VoidCallback onRefreshCameraReadiness;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onAnalyze;
@@ -664,7 +707,10 @@ class _BlackCaptureSurface extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: image == null
-                    ? const _SimulatorCameraFrame()
+                    ? _CameraEnvironmentFrame(
+                        readiness: cameraReadiness,
+                        onRefresh: onRefreshCameraReadiness,
+                      )
                     : SupplementLabelPreviewFrame(imagePath: image.path),
               ),
             ),
@@ -687,6 +733,8 @@ class _BlackCaptureSurface extends StatelessWidget {
             if (image == null)
               _CaptureControls(
                 busy: busy,
+                canOpenCamera: cameraReadiness.canOpenCamera,
+                preferGalleryFallback: cameraReadiness.preferGalleryFallback,
                 onCamera: onCamera,
                 onGallery: onGallery,
               )
@@ -1224,11 +1272,19 @@ class _RoundCaptureIcon extends StatelessWidget {
   }
 }
 
-class _SimulatorCameraFrame extends StatelessWidget {
-  const _SimulatorCameraFrame();
+class _CameraEnvironmentFrame extends StatelessWidget {
+  const _CameraEnvironmentFrame({
+    required this.readiness,
+    required this.onRefresh,
+  });
+
+  final CameraReadinessSnapshot readiness;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
+    final bool ready = readiness.kind == CameraReadinessKind.ready;
+    final bool checking = readiness.kind == CameraReadinessKind.probing;
     return Stack(
       children: <Widget>[
         Positioned.fill(
@@ -1241,36 +1297,57 @@ class _SimulatorCameraFrame extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  SizedBox(
-                    width: 82,
-                    height: 82,
-                    child: Image.asset(
-                      LemonAssets.mascotWorking,
-                      fit: BoxFit.contain,
-                      errorBuilder:
-                          (
-                            BuildContext context,
-                            Object error,
-                            StackTrace? stackTrace,
-                          ) {
-                            return const Icon(
-                              Icons.no_photography_outlined,
-                              color: Color(0xFF777777),
-                              size: 56,
-                            );
-                          },
+                  if (checking)
+                    const SizedBox.square(
+                      dimension: 56,
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFFC400),
+                      ),
+                    )
+                  else
+                    Icon(
+                      ready
+                          ? Icons.camera_alt_rounded
+                          : Icons.photo_library_outlined,
+                      color: ready
+                          ? const Color(0xFFFFC400)
+                          : const Color(0xFF777777),
+                      size: 58,
                     ),
-                  ),
                   const SizedBox(height: 14),
-                  const Text(
-                    '시뮬레이터에서는 카메라를 사용할 수 없어요',
+                  Text(
+                    readiness.title,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFFC8C8C8),
-                      fontSize: 15,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 30),
+                    child: Text(
+                      readiness.guidance,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFC8C8C8),
+                        fontSize: 14,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                  if (!ready) ...<Widget>[
+                    const SizedBox(height: 14),
+                    TextButton.icon(
+                      onPressed: checking ? null : onRefresh,
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFFFC400),
+                      ),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('카메라 다시 확인'),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1283,7 +1360,7 @@ class _SimulatorCameraFrame extends StatelessWidget {
           bottom: 28,
           child: _CaptureStatusPill(
             icon: Icons.photo_library_outlined,
-            label: '갤러리 사진으로 OCR을 테스트해주세요',
+            label: '갤러리와 직접 촬영 모두 같은 OCR endpoint로 분석돼요',
           ),
         ),
       ],
@@ -1432,11 +1509,15 @@ class _CaptureStatusPill extends StatelessWidget {
 class _CaptureControls extends StatelessWidget {
   const _CaptureControls({
     required this.busy,
+    required this.canOpenCamera,
+    required this.preferGalleryFallback,
     required this.onCamera,
     required this.onGallery,
   });
 
   final bool busy;
+  final bool canOpenCamera;
+  final bool preferGalleryFallback;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
 
@@ -1451,9 +1532,19 @@ class _CaptureControls extends StatelessWidget {
             onPressed: busy ? null : onGallery,
           ),
           const Spacer(),
-          _ShutterButton(onPressed: busy ? null : onCamera),
+          _ShutterButton(onPressed: busy || !canOpenCamera ? null : onCamera),
           const Spacer(),
-          const SizedBox(width: 64, height: 64),
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: preferGalleryFallback
+                ? IconButton(
+                    tooltip: '카메라 연결 재확인 필요',
+                    onPressed: null,
+                    icon: const Icon(Icons.info_outline_rounded),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );

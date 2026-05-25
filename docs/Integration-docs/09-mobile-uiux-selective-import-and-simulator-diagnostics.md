@@ -13,6 +13,8 @@
 | --- | --- | --- |
 | Flutter CLI | https://docs.flutter.dev/reference/flutter-cli | `flutter devices` and `flutter run` are the supported command-line entry points for local device/simulator runs. |
 | Flutter camera plugin | https://pub.dev/packages/camera | Current direct-camera flow should stay on the `camera` plugin rather than a fake mobile endpoint. |
+| Flutter image picker | https://pub.dev/packages/image_picker | Gallery fallback should keep testing the same OCR endpoint when direct camera is unavailable. |
+| Android Emulator camera | https://developer.android.com/studio/run/emulator-use-camera | Android Studio Emulator can support camera and virtual-scene image testing when the AVD camera is configured. |
 | Android emulator loopback | https://developer.android.com/studio/run/emulator-networking-address | Android emulator local backend smoke uses `10.0.2.2`. |
 
 ## 1. Current Finding
@@ -161,6 +163,9 @@ These are safe candidates because they preserve the backend contract:
 - add a lightweight dashboard visual pass that still renders live
   `DashboardSummary`;
 - add screenshots to the runbook after physical-device smoke succeeds.
+- keep `CameraReadinessProbe` runtime-based so iOS Simulator, Android Emulator,
+  and physical devices expose the correct camera/gallery test path before
+  endpoint upload.
 
 Avoid these changes in this branch unless a separate release/backend PR is planned:
 
@@ -200,7 +205,9 @@ extractable, so tokens must stay outside Flutter assets.
 ### 6.1 iOS Simulator
 
 Purpose: verify install identity, dashboard contract, gallery OCR flow, and
-review/registration UI. Direct camera is not available in iOS Simulator.
+review/registration UI. The app probes `camera.availableCameras()` at runtime;
+if the iOS Simulator reports no cameras, gallery fallback still calls the same
+backend OCR endpoint.
 
 ```bash
 cd mobile
@@ -214,6 +221,7 @@ Expected checks:
 - current app bundle is `com.example.lemonAidMobile`;
 - dashboard loads through `/api/v1/me/privacy/consents`;
 - supplement capture opens;
+- the capture surface shows camera readiness and a refresh action;
 - gallery image can be selected;
 - debug OCR provider selector forwards the selected provider;
 - analysis enters the existing review/registration steps.
@@ -221,6 +229,9 @@ Expected checks:
 ### 6.2 Android Emulator
 
 Purpose: verify host loopback and backend contract without a public tunnel.
+Configure the AVD camera in Android Studio Device Manager first if direct
+capture is required; otherwise gallery fallback remains valid for endpoint
+testing.
 
 ```bash
 cd mobile
@@ -231,6 +242,8 @@ flutter run -d emulator-5554 --flavor dev \
 Expected checks:
 
 - dashboard launch contract succeeds;
+- camera readiness reports Android camera connected when the AVD camera is
+  enabled;
 - supplement gallery flow can call `POST /api/v1/supplements/analyze`;
 - no release token is embedded.
 
