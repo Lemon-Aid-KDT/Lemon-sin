@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[5]
 APP_ROOT = REPO_ROOT / "mobile" / "flutter_app"
 
@@ -352,6 +351,8 @@ def test_flutter_chat_mvp_uses_safe_contract_and_navigation() -> None:
     assert "class ChatbotRequest" in models
     assert "class ChatbotResponse" in models
     assert "requires_user_approval" in models
+    assert "source_families" in models
+    assert "sourceFamilies" in models
     assert "usedAgentMemory" in models
     assert "/api/v1/ai-agent/chat" in repository
     assert "grantSensitiveHealthAnalysisConsent" in repository

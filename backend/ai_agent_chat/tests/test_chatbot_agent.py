@@ -52,6 +52,7 @@ def test_chatbot_without_llm_returns_safe_korean_fallback() -> None:
     assert response.request_id == "chatbot-test-1"
     assert response.provider == "deterministic"
     assert "knowledge_policy" in response.used_tools
+    assert response.source_families == ["supplement_reference", "nutrition_reference"]
     assert "오늘의 요약" in response.message
     assert "권장 행동" in response.message
     assert "참고 및 주의" in response.message
@@ -66,6 +67,7 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
     response = ChatbotAgent(llm_client=client).answer(_request())
 
     assert response.provider == "fake"
+    assert response.source_families == ["supplement_reference", "nutrition_reference"]
     assert response.message.startswith("오늘의 요약")
     assert client.request is not None
     system_prompt = client.request.messages[0].content
@@ -146,6 +148,11 @@ def test_chatbot_drug_question_returns_boundary_without_llm() -> None:
     response = ChatbotAgent(llm_client=client).answer(request)
 
     assert response.provider == "deterministic"
+    assert response.source_families == [
+        "supplement_reference",
+        "drug_safety_boundary",
+        "chronic_condition",
+    ]
     assert client.request is None
     assert "의사" in response.message
     assert "약사" in response.message

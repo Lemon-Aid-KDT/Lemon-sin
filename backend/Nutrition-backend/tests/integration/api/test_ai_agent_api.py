@@ -538,6 +538,7 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
     assert "참고 및 주의" in body["message"]
     assert "agent_memory" in body["used_tools"]
     assert "knowledge_policy" in body["used_tools"]
+    assert body["source_families"] == ["general_medical"]
     assert "supplement totals" not in body["message"]
     assert "internal_trace" not in body["message"]
     assert captured["sglang_client"]["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
@@ -628,6 +629,11 @@ def test_chat_route_drug_boundary_does_not_call_llm(
     assert body["provider"] == "deterministic"
     assert body["requires_user_approval"] is False
     assert "knowledge_policy" in body["used_tools"]
+    assert body["source_families"] == [
+        "supplement_reference",
+        "drug_safety_boundary",
+        "chronic_condition",
+    ]
     assert "의사" in body["message"]
     assert "약사" in body["message"]
     assert "먹어도 됩니다" not in body["message"]

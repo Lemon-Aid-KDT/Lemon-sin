@@ -237,6 +237,8 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 - reviewed source record의 첫 만성질환 topic은 KDCA 고혈압/당뇨/신장질환 맥락으로 시작한다.
 - source review와 expiry check 책임자를 정한다.
 - source metadata를 chatbot card footer에 넣을지 detail sheet에 넣을지 정한다.
+  [부분 완료: backend `/api/v1/ai-agent/chat` 응답은 `source_families`를 포함하고,
+  Flutter `ChatbotResponse`도 이를 파싱한다. 실제 화면 노출 위치는 UI 결정으로 남긴다.]
 - chatbot과 daily-coaching snapshot에 금지 표현 자동 검사를 추가한다.
   [완료: chatbot LLM 출력, daily-coaching adapter/Flutter contract, `SafetyGuard`
   회귀 테스트에서 raw trace, 위험 단정 표현, 약 중단·복용량 변경 지시를 차단한다.]

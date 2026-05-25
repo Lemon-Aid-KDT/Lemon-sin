@@ -2975,7 +2975,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | 영양제 매칭/등록 API | 구현 완료 | matching service, 등록/list/detail/delete, user confirmation, audit/consent 연결 |
 | 부족 영양소/대시보드 API | 구현 완료 | latest nutrition diagnosis, dashboard summary, supplement/health/activity snapshot 통합 |
 | HealthKit/Health Connect sync | 백엔드 구현 | daily aggregate sync, client batch idempotency, summary upsert, consent/audit 연결 |
-| AI Agent daily coaching/chat | 구현·live 검증 완료 | `/api/v1/ai-agent/daily-coaching`, `/api/v1/ai-agent/chat`, `agent_memory` context, Q&A knowledge policy, emergency/drug/mental-health boundary, Ollama/SGLang provider 경로. 2026-05-25 SGLang live smoke에서 daily-coaching 2회와 chatbot 1회 모두 `sglang` provider로 응답하고 memory 재주입을 확인 |
+| AI Agent daily coaching/chat | 구현·live 검증 완료 | `/api/v1/ai-agent/daily-coaching`, `/api/v1/ai-agent/chat`, `agent_memory` context, Q&A knowledge policy, `source_families` metadata, emergency/drug/mental-health boundary, Ollama/SGLang provider 경로. 2026-05-25 SGLang live smoke에서 daily-coaching 2회와 chatbot 1회 모두 `sglang` provider로 응답하고 memory 재주입을 확인 |
 | 모바일 MVP | 연결 완료 | `mobile/flutter_app` Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, secure token store, Dio API client, Android emulator-safe local base URL, daily-coaching DTO/repository, taedong-compatible loose models, 영양제 촬영 permission/image picker + `/api/v1/supplements/analyze` multipart preview 연결 + confirmed `/api/v1/supplements` 저장 flow, 음식 사진/수동 입력 confirmed payload, debug-only confirmed sample seeding, `ConfirmedEntryStore` 앱 세션 handoff, 면책 고지, Python contract test, Flutter analyze/test |
 
 ### B.2 현재 주요 API 표면

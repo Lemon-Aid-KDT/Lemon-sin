@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_healthcare/features/ai_coaching/domain/ai_coaching_models.dart';
 import 'package:lemon_healthcare/features/activity/domain/activity_models.dart';
+import 'package:lemon_healthcare/features/chat/domain/chat_models.dart';
 import 'package:lemon_healthcare/features/food/domain/confirmed_food_entry.dart';
 import 'package:lemon_healthcare/features/supplement/domain/supplement_analysis_preview.dart';
 import 'package:lemon_healthcare/shared/dev/dev_confirmed_samples.dart';
@@ -169,5 +170,29 @@ void main() {
     expect(payload.toString().contains('route'), isFalse);
     expect(payload.toString().contains('blood_glucose'), isFalse);
     expect(payload.toString().contains('blood_pressure'), isFalse);
+  });
+
+  test('chatbot response parses source families', () {
+    final ChatbotResponse response = ChatbotResponse.fromJson(
+      <String, dynamic>{
+        'request_id': 'chat-response-1',
+        'message': '오늘의 요약: 현재 입력 기준입니다.',
+        'provider': 'sglang',
+        'used_tools': <String>['chatbot_agent', 'agent_memory'],
+        'safety_warnings': <String>[],
+        'source_families': <String>[
+          'supplement_reference',
+          'nutrition_reference',
+        ],
+        'requires_user_approval': false,
+      },
+    );
+
+    expect(response.requestId, 'chat-response-1');
+    expect(response.usedAgentMemory, isTrue);
+    expect(response.sourceFamilies, <String>[
+      'supplement_reference',
+      'nutrition_reference',
+    ]);
   });
 }

@@ -8,8 +8,10 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from lemon_ai_agent.adapters import AgentInput, AgentOutput, DailyHealthAgentAppAdapter
 from lemon_ai_agent.agents.chatbot import ChatbotAgent
 from lemon_ai_agent.chat_session import (
-    ChatTurn as AgentChatTurn,
     ChatbotRequest as AgentChatbotRequest,
+)
+from lemon_ai_agent.chat_session import (
+    ChatTurn as AgentChatTurn,
 )
 from lemon_ai_agent.llm import LocalLLMClient, OllamaClient, SGLangClient
 from lemon_ai_agent.schemas import ReferenceRange
@@ -83,6 +85,7 @@ class ChatbotApiResponse(BaseModel):
     provider: str
     used_tools: list[str] = Field(default_factory=list)
     safety_warnings: list[str] = Field(default_factory=list)
+    source_families: list[str] = Field(default_factory=list)
     requires_user_approval: bool = False
 
 
@@ -331,5 +334,6 @@ async def run_chatbot(
         provider=chatbot_response.provider,
         used_tools=used_tools,
         safety_warnings=chatbot_response.safety_warnings,
+        source_families=chatbot_response.source_families,
         requires_user_approval=chatbot_response.requires_user_approval,
     )

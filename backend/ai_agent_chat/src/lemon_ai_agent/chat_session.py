@@ -27,4 +27,5 @@ class ChatbotResponse:
     provider: str
     used_tools: list[str] = field(default_factory=list)
     safety_warnings: list[str] = field(default_factory=list)
+    source_families: list[str] = field(default_factory=list)
     requires_user_approval: bool = False

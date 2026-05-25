@@ -70,6 +70,7 @@ class ChatbotResponse {
     required this.provider,
     required this.usedTools,
     required this.safetyWarnings,
+    required this.sourceFamilies,
     required this.requiresUserApproval,
   });
 
@@ -80,6 +81,7 @@ class ChatbotResponse {
       provider: json['provider'] as String? ?? 'unknown',
       usedTools: _stringList(json['used_tools']),
       safetyWarnings: _stringList(json['safety_warnings']),
+      sourceFamilies: _stringList(json['source_families']),
       requiresUserApproval:
           json['requires_user_approval'] as bool? ?? false,
     );
@@ -90,6 +92,7 @@ class ChatbotResponse {
   final String provider;
   final List<String> usedTools;
   final List<String> safetyWarnings;
+  final List<String> sourceFamilies;
   final bool requiresUserApproval;
 
   bool get usedAgentMemory => usedTools.contains('agent_memory');

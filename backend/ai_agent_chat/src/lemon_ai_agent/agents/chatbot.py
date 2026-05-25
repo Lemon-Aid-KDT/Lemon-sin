@@ -56,6 +56,7 @@ class ChatbotAgent:
             provider=llm_response.provider,
             used_tools=["chatbot_agent", "knowledge_policy", "safety_guard"],
             safety_warnings=warnings,
+            source_families=list(policy.source_families),
             requires_user_approval=False,
         )
 
@@ -98,6 +99,7 @@ class ChatbotAgent:
             provider="deterministic",
             used_tools=["chatbot_agent", "knowledge_policy", "safety_guard"],
             safety_warnings=warnings,
+            source_families=list(policy.source_families),
             requires_user_approval=False,
         )
 
@@ -157,6 +159,7 @@ class ChatbotAgent:
             warnings.append("Emergency escalation boundary applied")
             return self._deterministic_response(
                 request,
+                policy,
                 (
                     "즉시 안내: 가슴 통증, 숨참, 마비, 실신처럼 응급 가능성이 있는 "
                     "증상은 식단 코칭보다 긴급 확인이 우선입니다. 지금 증상이 "
@@ -172,6 +175,7 @@ class ChatbotAgent:
             warnings.append("Mental health escalation boundary applied")
             return self._deterministic_response(
                 request,
+                policy,
                 (
                     "즉시 안내: 자해, 자살 생각, 극단적인 굶기처럼 안전 위험이 보이면 "
                     "일반 건강관리 안내를 멈추고 사람의 도움을 먼저 받아야 합니다. "
@@ -187,6 +191,7 @@ class ChatbotAgent:
             warnings.append("Drug interaction boundary applied")
             return self._deterministic_response(
                 request,
+                policy,
                 (
                     "요약: 약, 질환, 영양제 병용 질문은 Lemon Aid가 허용 또는 "
                     "금지로 판정하지 않습니다. 주의: 현재 복용 중인 약, 질환, "
@@ -202,6 +207,7 @@ class ChatbotAgent:
             warnings.append("Out-of-scope medical decision boundary applied")
             return self._deterministic_response(
                 request,
+                policy,
                 (
                     "요약: 개인 복용량, 처방 변경, 질환 판단처럼 개인 의료 결정에 "
                     "해당하는 질문은 Lemon Aid가 결정하지 않습니다. 주의: 영양소도 "
@@ -217,6 +223,7 @@ class ChatbotAgent:
     def _deterministic_response(
         self,
         request: ChatbotRequest,
+        policy: AnswerPolicy,
         message: str,
         warnings: list[str],
     ) -> ChatbotResponse:
@@ -226,6 +233,7 @@ class ChatbotAgent:
             provider="deterministic",
             used_tools=["chatbot_agent", "knowledge_policy", "safety_guard"],
             safety_warnings=warnings,
+            source_families=list(policy.source_families),
             requires_user_approval=False,
         )
 
