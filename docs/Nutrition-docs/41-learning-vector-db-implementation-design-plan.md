@@ -42,10 +42,44 @@
 - Sentence Transformers image search: https://sbert.net/examples/sentence_transformer/applications/image-search/README.html
 - Boto3 S3 `put_object`: https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/put_object.html
 - Boto3 S3 `delete_object`: https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/delete_object.html
+- Supabase MCP setup: https://supabase.com/docs/guides/ai-tools/mcp
+- Supabase CLI config: https://supabase.com/docs/guides/local-development/cli/config
+- Supabase API keys: https://supabase.com/docs/guides/getting-started/api-keys
 
 ### 확인 한계
 
 위 Sentence Transformers image-search 문서는 `clip-ViT-B-32` 사용 예시는 제공하지만, 이 문서 안에서 output vector dimension을 직접 명시하지 않는다. 따라서 migration의 `VECTOR(n)` 값은 기억이나 추정으로 고정하지 않고, 구현 PR에서 실제 model probe 결과와 테스트 증거를 남긴 뒤 고정한다.
+
+## 2.1 Supabase MCP 및 로컬 Docker 포트 기준
+
+현재 프로젝트는 Supabase MCP를 project-scoped, env-driven 방식으로 연결한다.
+
+- MCP 설정 파일: `.mcp.json`
+- 서버 URL: `https://mcp.supabase.com/mcp`
+- 필수 로컬 입력값: `SUPABASE_PROJECT_REF`
+- 기본 접근 모드: `SUPABASE_MCP_READ_ONLY=true`
+- 기본 기능 그룹: `database,docs,debugging,storage`
+
+`SUPABASE_ACCESS_TOKEN`은 CI나 headless 환경에서만 사용하고, 기본 로컬 MCP 인증은
+OAuth 흐름을 우선한다. 토큰, DB URL, secret key는 `.env` 또는 비밀 저장소에만
+입력하며 `.mcp.json`, PR 본문, 문서, 테스트 fixture에는 기록하지 않는다.
+
+로컬 Supabase Docker 포트는 다른 프로젝트의 기본 `5432x` 블록과 충돌하지 않도록
+`5632x` 블록으로 고정한다.
+
+| 서비스 | 포트 |
+| --- | --- |
+| API | `56321` |
+| DB | `56322` |
+| Shadow DB | `56320` |
+| Studio | `56323` |
+| Inbucket | `56324` |
+| Pooler | `56329` |
+
+학습 이미지 bucket은 `supabase/config.toml`에 `learning-images`로 정의하며 기본
+비공개(`public=false`) 상태를 유지한다. 허용 MIME type은 `image/png`,
+`image/jpeg`, `image/webp`이고, 원본 이미지는 사용자 opt-in과 검수 gate를 통과한
+경우에만 private Storage/S3-compatible bucket에 저장한다.
 
 ## 3. 설계 원칙
 

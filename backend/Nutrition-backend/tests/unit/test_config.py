@@ -85,6 +85,15 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.environment == "development"
     assert settings.database_url == DEFAULT_DATABASE_URL
     assert settings.database_url.startswith("postgresql+asyncpg://")
+    assert settings.supabase_project_ref is None
+    assert settings.supabase_url is None
+    assert settings.supabase_publishable_key is None
+    assert settings.supabase_secret_key is None
+    assert settings.supabase_access_token is None
+    assert settings.supabase_db_url is None
+    assert settings.supabase_mcp_read_only is True
+    assert settings.supabase_mcp_features == "database,docs,debugging,storage"
+    assert settings.supabase_storage_private_bucket == "learning-images"
     assert "testserver" in settings.allowed_hosts
     assert settings.auth_mode == "disabled"
     assert settings.supplement_image_max_bytes == 5 * 1024 * 1024
@@ -168,6 +177,44 @@ def test_empty_google_cloud_api_key_dotenv_value_is_ignored(tmp_path: Path) -> N
     settings = Settings(_env_file=env_file)
 
     assert settings.google_cloud_api_key is None
+
+
+def test_supabase_inputs_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
+    """Verify Supabase MCP and hosted project inputs stay backend-scoped."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "SUPABASE_PROJECT_REF=lemonprojectrefdev01",  # pragma: allowlist secret
+                "SUPABASE_URL=https://lemonprojectrefdev01.supabase.co",
+                "SUPABASE_PUBLISHABLE_KEY=sb_publishable_placeholder",  # pragma: allowlist secret
+                "SUPABASE_SECRET_KEY=sb_secret_placeholder",  # pragma: allowlist secret
+                "SUPABASE_ACCESS_TOKEN=sbp_placeholder",  # pragma: allowlist secret
+                "SUPABASE_DB_URL=postgresql://postgres:placeholder@db.example.com:5432/postgres",  # pragma: allowlist secret
+                "SUPABASE_MCP_READ_ONLY=false",
+                "SUPABASE_MCP_FEATURES=database,docs,debugging,storage",
+                "SUPABASE_STORAGE_PRIVATE_BUCKET=learning-images",  # pragma: allowlist secret
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.supabase_project_ref == "lemonprojectrefdev01"
+    assert settings.supabase_url == "https://lemonprojectrefdev01.supabase.co"
+    assert settings.supabase_publishable_key is not None
+    assert settings.supabase_publishable_key.get_secret_value() == "sb_publishable_placeholder"
+    assert settings.supabase_secret_key is not None
+    assert settings.supabase_secret_key.get_secret_value() == "sb_secret_placeholder"
+    assert settings.supabase_access_token is not None
+    assert settings.supabase_access_token.get_secret_value() == "sbp_placeholder"
+    assert settings.supabase_db_url is not None
+    assert settings.supabase_db_url.get_secret_value().startswith("postgresql://")
+    assert settings.supabase_mcp_read_only is False
+    assert settings.supabase_mcp_features == "database,docs,debugging,storage"
+    assert settings.supabase_storage_private_bucket == "learning-images"
 
 
 @pytest.mark.parametrize(

@@ -175,6 +175,15 @@ class Settings(BaseSettings):
         log_level: 애플리케이션 로그 레벨.
         database_url: PostgreSQL asyncpg SQLAlchemy 연결 URL.
         redis_url: Redis 연결 URL.
+        supabase_project_ref: Supabase hosted project ref for CLI/MCP scoping.
+        supabase_url: Supabase project API URL.
+        supabase_publishable_key: Client-safe Supabase publishable API key.
+        supabase_secret_key: Backend-only Supabase secret API key.
+        supabase_access_token: Developer-only Supabase Management/MCP token.
+        supabase_db_url: Direct Supabase Postgres URL for migration/preflight use.
+        supabase_mcp_read_only: Whether Supabase MCP should run read-only by default.
+        supabase_mcp_features: Comma-separated Supabase MCP feature groups.
+        supabase_storage_private_bucket: Private bucket id for opt-in learning images.
         allowed_origins: CORS 허용 origin 목록.
         allowed_hosts: TrustedHost 허용 host 목록.
         auth_mode: 인증 모드. 실제 사용자 앱은 production에서 jwt를 사용한다.
@@ -263,6 +272,18 @@ class Settings(BaseSettings):
 
     database_url: str = Field(default=DEFAULT_DATABASE_URL)
     redis_url: str = Field(default=DEFAULT_REDIS_URL)
+    supabase_project_ref: str | None = Field(default=None)
+    supabase_url: str | None = Field(default=None)
+    supabase_publishable_key: SecretStr | None = Field(default=None)
+    supabase_secret_key: SecretStr | None = Field(default=None)
+    supabase_access_token: SecretStr | None = Field(default=None)
+    supabase_db_url: SecretStr | None = Field(default=None)
+    supabase_mcp_read_only: bool = Field(
+        default=True,
+        description="Keep Supabase MCP read-only unless a reviewed migration task needs writes.",
+    )
+    supabase_mcp_features: str = Field(default="database,docs,debugging,storage")
+    supabase_storage_private_bucket: str = Field(default="learning-images")
     allowed_origins: list[str] = Field(default_factory=list)
     allowed_hosts: list[str] = Field(default_factory=_default_allowed_hosts)
 
