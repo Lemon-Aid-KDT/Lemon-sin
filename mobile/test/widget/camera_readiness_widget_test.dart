@@ -126,6 +126,49 @@ void main() {
     expect(find.textContaining('Consent is required.'), findsOneWidget);
     expect(find.text('분석하기'), findsOneWidget);
   });
+
+  testWidgets('selected OCR provider reaches real analysis flow', (
+    WidgetTester tester,
+  ) async {
+    final File image = _writeTinyPng();
+    addTearDown(() {
+      if (image.existsSync()) {
+        image.deleteSync();
+      }
+    });
+    final _CameraWidgetRepository repository = _CameraWidgetRepository();
+    final AppController controller = AppController(repository: repository);
+    final _FakeImagePicker picker = _FakeImagePicker(image.path);
+    addTearDown(controller.dispose);
+    await controller.bootstrap();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SupplementFlowScreen(
+          controller: controller,
+          imagePicker: picker,
+          cameraReadinessProbe: CameraReadinessProbe(
+            platform: TargetPlatform.android,
+            loader: () async => const <camera.CameraDescription>[],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('갤러리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paddle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('분석하기'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastImagePath, image.path);
+    expect(repository.lastOcrProvider, 'paddleocr');
+    expect(picker.lastMaxWidth, 2400);
+    expect(picker.lastImageQuality, 95);
+    expect(find.text('Preview'), findsOneWidget);
+  });
 }
 
 IconButton _iconButtonByTooltip(WidgetTester tester, String tooltip) {
@@ -138,6 +181,8 @@ class _FakeImagePicker extends ImagePicker {
   _FakeImagePicker(this.path);
 
   final String path;
+  double? lastMaxWidth;
+  int? lastImageQuality;
 
   @override
   Future<XFile?> pickImage({
@@ -148,6 +193,8 @@ class _FakeImagePicker extends ImagePicker {
     CameraDevice preferredCameraDevice = CameraDevice.rear,
     bool requestFullMetadata = true,
   }) async {
+    lastMaxWidth = maxWidth;
+    lastImageQuality = imageQuality;
     return XFile(path);
   }
 }
@@ -156,17 +203,21 @@ class _CameraWidgetRepository implements LemonAidRepository {
   _CameraWidgetRepository({this.analyzeError});
 
   final ApiError? analyzeError;
+  String? lastImagePath;
+  String? lastOcrProvider;
 
   @override
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
     String imagePath, {
     String ocrProvider = 'configured',
   }) async {
+    lastImagePath = imagePath;
+    lastOcrProvider = ocrProvider;
     final ApiError? error = analyzeError;
     if (error != null) {
       throw error;
     }
-    throw UnimplementedError();
+    return SupplementAnalysisPreview.fromJson(_previewResponse);
   }
 
   @override
@@ -270,6 +321,29 @@ class _CameraWidgetRepository implements LemonAidRepository {
     );
   }
 }
+
+final Map<String, Object?> _previewResponse = <String, Object?>{
+  'analysis_id': '00000000-0000-0000-0000-000000000010',
+  'status': 'requires_confirmation',
+  'parsed_product': <String, Object?>{},
+  'ingredient_candidates': <Object?>[],
+  'layout_available': false,
+  'layout_fallback_reason': 'test',
+  'label_sections': <Object?>[],
+  'pipeline_metadata': <String, Object?>{
+    'intake_completed': true,
+    'vision_roi_used': false,
+    'ocr_provider': 'paddleocr_local',
+    'llm_parser_used': false,
+    'raw_image_stored': false,
+    'raw_ocr_text_stored': false,
+  },
+  'low_confidence_fields': <Object?>[],
+  'warnings': <Object?>[],
+  'algorithm_version': 'test',
+  'source_manifest_version': null,
+  'expires_at': '2026-05-25T00:00:00Z',
+};
 
 File _writeTinyPng() {
   final Directory directory = Directory.systemTemp.createTempSync(

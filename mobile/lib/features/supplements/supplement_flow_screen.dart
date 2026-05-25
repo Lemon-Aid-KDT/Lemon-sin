@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app_controller.dart';
 import '../../core/api/api_error.dart';
 import '../../shared/theme/lemon_design_tokens.dart';
 import '../../shared/widgets/error_panel.dart';
+import '../../utils/device_env.dart';
 import 'camera_readiness.dart';
 import 'supplement_models.dart';
 
@@ -100,7 +102,9 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
 
     if (!widget.controller.hasMinimumConsents) {
       return _BlackConsentRequired(
+        busy: widget.controller.busy,
         apiError: widget.controller.apiError,
+        onGrant: widget.controller.grantMinimumConsents,
         onErrorDismissed: widget.controller.clearMessages,
         onClose: widget.onClose,
       );
@@ -235,7 +239,12 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   Future<void> _pickImage(ImageSource source) async {
     XFile? image;
     try {
-      image = await _imagePicker.pickImage(source: source);
+      image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 2400,
+        imageQuality: 95,
+        requestFullMetadata: true,
+      );
     } catch (_) {
       if (mounted) {
         _showSnackBar(
@@ -327,6 +336,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     setState(() {
       _stage = _SupplementFlowStage.uploading;
     });
+    HapticFeedback.mediumImpact();
     await Future<void>.delayed(Duration.zero);
     if (!mounted) {
       return;
@@ -622,12 +632,16 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
 
 class _BlackConsentRequired extends StatelessWidget {
   const _BlackConsentRequired({
+    required this.busy,
     required this.apiError,
+    required this.onGrant,
     required this.onErrorDismissed,
     required this.onClose,
   });
 
+  final bool busy;
   final ApiError? apiError;
+  final VoidCallback onGrant;
   final VoidCallback onErrorDismissed;
   final VoidCallback? onClose;
 
@@ -670,6 +684,40 @@ class _BlackConsentRequired extends StatelessWidget {
               ),
             ),
             const Spacer(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: busy ? null : onGrant,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFC400),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  icon: busy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
+                        )
+                      : const Icon(Icons.verified_user_outlined),
+                  label: const Text(
+                    '동의하고 계속',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -955,13 +1003,16 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
   List<camera.CameraDescription> _cameras = const <camera.CameraDescription>[];
   int _cameraIndex = 0;
   bool _initializing = true;
+  bool _initializingController = false;
   bool _takingPicture = false;
+  bool _isEmulator = DeviceEnv.isEmulatorSync;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _warmDeviceEnv();
     _initializeCamera();
   }
 
@@ -978,7 +1029,9 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
     if (controller == null || !controller.value.isInitialized) {
       return;
     }
-    if (state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
       _disposeController();
     } else if (state == AppLifecycleState.resumed) {
       _initializeSelectedCamera();
@@ -1006,7 +1059,10 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: previewReady
-                    ? _LiveCameraPreview(controller: controller)
+                    ? _LiveCameraPreview(
+                        controller: controller,
+                        isEmulator: _isEmulator,
+                      )
                     : _CameraUnavailableFrame(
                         initializing: _initializing,
                         message: _errorMessage,
@@ -1036,7 +1092,20 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
     );
   }
 
+  Future<void> _warmDeviceEnv() async {
+    final bool isEmulator = await DeviceEnv.isEmulator;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isEmulator = isEmulator;
+    });
+  }
+
   Future<void> _initializeCamera() async {
+    if (_initializingController) {
+      return;
+    }
     setState(() {
       _initializing = true;
       _errorMessage = null;
@@ -1063,8 +1132,13 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
   }
 
   Future<void> _initializeSelectedCamera() async {
+    if (_initializingController) {
+      return;
+    }
+    _initializingController = true;
     await _disposeController();
     if (_cameras.isEmpty) {
+      _initializingController = false;
       return;
     }
     setState(() {
@@ -1092,6 +1166,8 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
         _initializing = false;
         _errorMessage = _cameraErrorMessage(error.code);
       });
+    } finally {
+      _initializingController = false;
     }
   }
 
@@ -1153,25 +1229,33 @@ class _LiveCameraCaptureScreenState extends State<_LiveCameraCaptureScreen>
 }
 
 class _LiveCameraPreview extends StatelessWidget {
-  const _LiveCameraPreview({required this.controller});
+  const _LiveCameraPreview({
+    required this.controller,
+    required this.isEmulator,
+  });
 
   final camera.CameraController controller;
+  final bool isEmulator;
 
   @override
   Widget build(BuildContext context) {
+    final Widget preview = FittedBox(
+      fit: BoxFit.cover,
+      child: SizedBox(
+        width: controller.value.previewSize?.height ?? 1,
+        height: controller.value.previewSize?.width ?? 1,
+        child: camera.CameraPreview(controller),
+      ),
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: controller.value.previewSize?.height ?? 1,
-              height: controller.value.previewSize?.width ?? 1,
-              child: camera.CameraPreview(controller),
-            ),
-          ),
+          if (isEmulator)
+            Transform.translate(offset: const Offset(0, 8), child: preview)
+          else
+            preview,
           DecoratedBox(
             decoration: BoxDecoration(
               border: Border.all(color: const Color(0xFF2B2B2B), width: 1.4),

@@ -14,7 +14,7 @@ void main() {
     await tester.pumpWidget(LemonAidApp(repository: _FakeRepository()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Dashboard'), findsAtLeastNWidgets(1));
+    expect(find.text('오늘 데이터가 연결됐어요'), findsAtLeastNWidgets(1));
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('챗'), findsOneWidget);
     expect(find.text('점수'), findsOneWidget);

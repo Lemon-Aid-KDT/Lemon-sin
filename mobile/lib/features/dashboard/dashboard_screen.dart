@@ -4,6 +4,7 @@ import '../../app_controller.dart';
 import '../../shared/theme/lemon_design_tokens.dart';
 import '../../shared/widgets/disclaimer_list.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../widgets/dashboard/health_hero_card.dart';
 import 'dashboard_models.dart';
 
 /// Minimal dashboard summary connected to `/dashboard/summary`.
@@ -33,7 +34,7 @@ class DashboardScreen extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: <Widget>[
-          _DashboardHero(summary: summary),
+          HealthHeroCard(summary: summary),
           const SizedBox(height: 18),
           _MetricGrid(summary: summary),
           const SizedBox(height: 18),
@@ -41,128 +42,6 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 18),
           DisclaimerList(disclaimers: summary.disclaimers),
         ],
-      ),
-    );
-  }
-}
-
-class _DashboardHero extends StatelessWidget {
-  const _DashboardHero({required this.summary});
-
-  final DashboardSummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: LemonColors.paper,
-        borderRadius: BorderRadius.circular(LemonRadius.lg),
-        border: Border.all(color: LemonColors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 16, 18),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Dashboard',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: LemonColors.ink,
-                      fontFamily: 'AtoZ',
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Updated ${summary.asOf.toLocal()}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: LemonColors.inkSoft),
-                  ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: <Widget>[
-                      _HeroBadge(
-                        icon: Icons.medication_outlined,
-                        label:
-                            '${summary.supplements.registeredCount} supplements',
-                      ),
-                      _HeroBadge(
-                        icon: Icons.manage_search_outlined,
-                        label:
-                            '${summary.supplements.requiresReviewCount} reviews',
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 88,
-              height: 88,
-              child: Image.asset(
-                LemonAssets.mascotHello,
-                fit: BoxFit.contain,
-                errorBuilder:
-                    (
-                      BuildContext context,
-                      Object error,
-                      StackTrace? stackTrace,
-                    ) {
-                      return const Icon(
-                        Icons.health_and_safety_outlined,
-                        color: LemonColors.leaf,
-                        size: 52,
-                      );
-                    },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HeroBadge extends StatelessWidget {
-  const _HeroBadge({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: LemonColors.lemon.withValues(alpha: 0.20),
-        borderRadius: BorderRadius.circular(LemonRadius.pill),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 16, color: LemonColors.lemonDeep),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                color: LemonColors.ink,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
