@@ -131,7 +131,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
               busy: widget.controller.busy,
             ),
             const SizedBox(height: 16),
-            _PreviewCard(preview: preview),
+            _PreviewCard(preview: preview, requestedOcrProvider: _ocrProvider),
             const SizedBox(height: 16),
             _OcrTextCard(
               controller: _ocrTextController,
@@ -171,6 +171,8 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
                 onRefresh: widget.controller.refreshSupplementRecommendation,
                 onExplain: () =>
                     widget.controller.explainSupplementRecommendation(),
+                onExplainWithOllama: () => widget.controller
+                    .explainSupplementRecommendation(useLocalLlm: true),
               ),
             ],
           ],
@@ -1883,9 +1885,13 @@ class _TimelineChip extends StatelessWidget {
 }
 
 class _PreviewCard extends StatelessWidget {
-  const _PreviewCard({required this.preview});
+  const _PreviewCard({
+    required this.preview,
+    required this.requestedOcrProvider,
+  });
 
   final SupplementAnalysisPreview preview;
+  final String requestedOcrProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -1901,6 +1907,11 @@ class _PreviewCard extends StatelessWidget {
             Text('Status: ${preview.status}'),
             Text('Ingredients: ${preview.ingredientCandidates.length}'),
             Text('Sections: ${preview.labelSections.length}'),
+            const SizedBox(height: 10),
+            _AiPipelineStatus(
+              metadata: preview.pipelineMetadata,
+              requestedOcrProvider: requestedOcrProvider,
+            ),
             if (ocrNotice != null) ...<Widget>[
               const SizedBox(height: 8),
               _LocalOcrNotice(message: ocrNotice),
@@ -1928,6 +1939,99 @@ class _PreviewCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AiPipelineStatus extends StatelessWidget {
+  const _AiPipelineStatus({
+    required this.metadata,
+    required this.requestedOcrProvider,
+  });
+
+  final SupplementImagePipelineMetadata metadata;
+  final String requestedOcrProvider;
+
+  @override
+  Widget build(BuildContext context) {
+    final String actualProvider = metadata.ocrProvider ?? 'none';
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        _PipelineChip(
+          icon: Icons.text_snippet_outlined,
+          label: 'OCR ${_formatProviderLabel(requestedOcrProvider)}',
+          value: _formatProviderLabel(actualProvider),
+          active: actualProvider != 'none' && actualProvider != 'intake-only',
+        ),
+        _PipelineChip(
+          icon: Icons.center_focus_strong_outlined,
+          label: 'YOLO ROI',
+          value: metadata.visionRoiUsed ? 'used' : 'off',
+          active: metadata.visionRoiUsed,
+        ),
+        _PipelineChip(
+          icon: Icons.psychology_alt_outlined,
+          label: 'Parser',
+          value: metadata.llmParserUsed ? 'used' : 'pending',
+          active: metadata.llmParserUsed,
+        ),
+        _PipelineChip(
+          icon: Icons.lock_outline,
+          label: 'Retention',
+          value: metadata.rawImageStored || metadata.rawOcrTextStored
+              ? 'review'
+              : 'clean',
+          active: !metadata.rawImageStored && !metadata.rawOcrTextStored,
+        ),
+      ],
+    );
+  }
+}
+
+class _PipelineChip extends StatelessWidget {
+  const _PipelineChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.active,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Chip(
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: active ? colors.primary : colors.onSurfaceVariant,
+      ),
+      backgroundColor: active
+          ? colors.primaryContainer.withValues(alpha: 0.72)
+          : colors.surfaceContainerHighest,
+      label: Text(
+        '$label: $value',
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+String _formatProviderLabel(String value) {
+  return switch (value) {
+    'configured' => 'Auto',
+    'paddleocr' || 'paddleocr_local' => 'Paddle',
+    'google_vision' || 'google_vision_document' => 'Vision',
+    'clova' || 'clova_ocr' => 'CLOVA',
+    'ollama_vision_assist' => 'Ollama Vision',
+    'intake-only' => 'Intake',
+    'none' => 'None',
+    _ => value,
+  };
 }
 
 String? _ocrNoticeText(SupplementAnalysisPreview preview) {
@@ -2633,6 +2737,7 @@ class _SupplementImpactCard extends StatelessWidget {
     required this.busy,
     required this.onRefresh,
     required this.onExplain,
+    required this.onExplainWithOllama,
   });
 
   final SupplementImpactPreviewResponse preview;
@@ -2640,6 +2745,7 @@ class _SupplementImpactCard extends StatelessWidget {
   final bool busy;
   final VoidCallback onRefresh;
   final VoidCallback onExplain;
+  final VoidCallback onExplainWithOllama;
 
   @override
   Widget build(BuildContext context) {
@@ -2709,6 +2815,23 @@ class _SupplementImpactCard extends StatelessWidget {
             ),
             if (explanation != null) ...<Widget>[
               const Divider(height: 24),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(
+                  avatar: Icon(
+                    explanation!.llmUsed
+                        ? Icons.psychology_alt_outlined
+                        : Icons.rule_outlined,
+                    size: 18,
+                  ),
+                  label: Text(
+                    explanation!.llmUsed
+                        ? 'Ollama wording used'
+                        : 'Deterministic wording used',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               Text(explanation!.safeUserMessage),
               for (final String bullet in explanation!.explanationBullets)
                 Text('• $bullet'),
@@ -2727,6 +2850,11 @@ class _SupplementImpactCard extends StatelessWidget {
                   onPressed: busy ? null : onExplain,
                   icon: const Icon(Icons.notes_outlined),
                   label: const Text('Explain'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onExplainWithOllama,
+                  icon: const Icon(Icons.psychology_alt_outlined),
+                  label: const Text('Ollama'),
                 ),
               ],
             ),

@@ -22,6 +22,7 @@ from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
     analyze_supplement_image,
 )
+from src.services.supplement_intake import supplement_analysis_run_to_preview
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
 from starlette.datastructures import Headers
 
@@ -303,6 +304,10 @@ async def test_analyze_supplement_image_defaults_to_intake_only() -> None:
     assert result.vision_region is None
     assert result.record.ocr_text_hash is None
     assert result.record.algorithm_version == "supplement-intake-v1.0.0"
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.pipeline_metadata.ocr_provider == "intake-only"
+    assert preview.pipeline_metadata.vision_roi_used is False
+    assert preview.pipeline_metadata.llm_parser_used is False
     assert fake_session.committed is False
 
 
@@ -331,6 +336,9 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert result.record.ocr_provider == "fake-ocr"
     assert result.record.parsed_snapshot["parsed_product"]["product_name"] == "비타민 D 1000"
     assert result.record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.pipeline_metadata.ocr_provider == "fake-ocr"
+    assert preview.pipeline_metadata.llm_parser_used is True
     assert fake_session.committed is True
 
 
@@ -371,6 +379,10 @@ async def test_analyze_supplement_image_passes_yolo_roi_to_ocr_when_enabled() ->
     assert fake_vision.call_count == 1
     assert fake_ocr.received_image is not None
     assert fake_ocr.received_image.label_region == region
+    assert result.record.parsed_snapshot["pipeline_metadata"]["vision_roi_used"] is True
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.pipeline_metadata.vision_roi_used is True
+    assert preview.pipeline_metadata.ocr_provider == "fake-ocr"
     assert result.parser_used is True
 
 

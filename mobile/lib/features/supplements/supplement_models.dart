@@ -42,6 +42,7 @@ class SupplementAnalysisPreview {
     required this.multiImageGroupId,
     required this.sourceType,
     required this.identityConflict,
+    this.pipelineMetadata = SupplementImagePipelineMetadata.intakeOnly,
     required this.lowConfidenceFields,
     required this.warnings,
     required this.algorithmVersion,
@@ -111,6 +112,9 @@ class SupplementAnalysisPreview {
 
   /// Optional review-only barcode/label identity conflict.
   final SupplementIdentityConflict? identityConflict;
+
+  /// Non-sensitive OCR, YOLO, and parser pipeline metadata.
+  final SupplementImagePipelineMetadata pipelineMetadata;
 
   /// Field names that need extra attention.
   final List<String> lowConfidenceFields;
@@ -187,6 +191,11 @@ class SupplementAnalysisPreview {
           : SupplementIdentityConflict.fromJson(
               readObject(json, 'identity_conflict'),
             ),
+      pipelineMetadata: readOptionalObject(json, 'pipeline_metadata') == null
+          ? SupplementImagePipelineMetadata.intakeOnly
+          : SupplementImagePipelineMetadata.fromJson(
+              readObject(json, 'pipeline_metadata'),
+            ),
       lowConfidenceFields: readOptionalStringList(
         json,
         'low_confidence_fields',
@@ -236,6 +245,60 @@ class SupplementAnalysisPreview {
       return 'Image blocked';
     }
     return 'No image action';
+  }
+}
+
+/// Non-sensitive image analysis pipeline metadata.
+class SupplementImagePipelineMetadata {
+  /// Creates image analysis pipeline metadata.
+  const SupplementImagePipelineMetadata({
+    required this.intakeCompleted,
+    required this.visionRoiUsed,
+    required this.ocrProvider,
+    required this.llmParserUsed,
+    required this.rawImageStored,
+    required this.rawOcrTextStored,
+  });
+
+  /// Default metadata for legacy intake-only previews.
+  static const SupplementImagePipelineMetadata intakeOnly =
+      SupplementImagePipelineMetadata(
+        intakeCompleted: true,
+        visionRoiUsed: false,
+        ocrProvider: 'intake-only',
+        llmParserUsed: false,
+        rawImageStored: false,
+        rawOcrTextStored: false,
+      );
+
+  /// Whether validated image intake completed.
+  final bool intakeCompleted;
+
+  /// Whether backend YOLO ROI metadata was used before OCR.
+  final bool visionRoiUsed;
+
+  /// OCR-like provider label selected by the backend, if any.
+  final String? ocrProvider;
+
+  /// Whether the structured parser ran after OCR text extraction.
+  final bool llmParserUsed;
+
+  /// Whether raw image bytes were retained.
+  final bool rawImageStored;
+
+  /// Whether raw OCR text was retained.
+  final bool rawOcrTextStored;
+
+  /// Parses sanitized pipeline metadata.
+  factory SupplementImagePipelineMetadata.fromJson(Map<String, dynamic> json) {
+    return SupplementImagePipelineMetadata(
+      intakeCompleted: json['intake_completed'] != false,
+      visionRoiUsed: json['vision_roi_used'] == true,
+      ocrProvider: readOptionalString(json, 'ocr_provider'),
+      llmParserUsed: json['llm_parser_used'] == true,
+      rawImageStored: json['raw_image_stored'] == true,
+      rawOcrTextStored: json['raw_ocr_text_stored'] == true,
+    );
   }
 }
 

@@ -28,6 +28,7 @@ from src.llm.ollama import (
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.privacy import ConsentType
+from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_intake import (
@@ -246,12 +247,13 @@ async def analyze_supplement_image(
     if warning_messages:
         await _store_preview_warnings(session, parsed_record or intake.record, warning_messages)
 
+    result_record = parsed_record or intake.record
     learning_object = None
     if learning_object_store is not None:
         learning_object = await maybe_store_learning_image_object(
             session=session,
             user=user,
-            analysis=parsed_record or intake.record,
+            analysis=result_record,
             image_bytes=image_bytes,
             image_metadata=image_metadata,
             settings=settings,
@@ -259,8 +261,17 @@ async def analyze_supplement_image(
             granted_consents=learning_consents,
         )
 
+    pipeline_metadata = _build_pipeline_metadata(
+        record=result_record,
+        vision_region=vision_region,
+        ocr_result=ocr_result,
+        parser_used=parsed_record is not None,
+    )
+    if _should_store_pipeline_metadata(result_record, pipeline_metadata):
+        result_record = await _store_pipeline_metadata(session, result_record, pipeline_metadata)
+
     return SupplementImageAnalysisResult(
-        record=parsed_record or intake.record,
+        record=result_record,
         reused_existing=intake.reused_existing,
         image_metadata=image_metadata,
         vision_region=vision_region,
@@ -271,6 +282,78 @@ async def analyze_supplement_image(
         ocr_warning_codes=warning_codes,
         learning_image_object_created=learning_object is not None,
     )
+
+
+def _build_pipeline_metadata(
+    *,
+    record: SupplementAnalysisRun,
+    vision_region: BoundingBox | None,
+    ocr_result: OCRResult | None,
+    parser_used: bool,
+) -> SupplementImagePipelineMetadata:
+    """Build sanitized OCR/YOLO/parser metadata for preview response diagnostics.
+
+    Args:
+        record: Persisted supplement analysis run.
+        vision_region: Optional YOLO-detected ROI used as OCR input metadata.
+        ocr_result: OCR-like result selected for parsing, when available.
+        parser_used: Whether structured text parsing ran.
+
+    Returns:
+        Non-sensitive pipeline metadata without raw image, OCR, or provider payloads.
+    """
+    return SupplementImagePipelineMetadata(
+        intake_completed=True,
+        vision_roi_used=vision_region is not None,
+        ocr_provider=ocr_result.provider if ocr_result is not None else record.ocr_provider,
+        llm_parser_used=parser_used,
+        raw_image_stored=False,
+        raw_ocr_text_stored=False,
+    )
+
+
+def _should_store_pipeline_metadata(
+    record: SupplementAnalysisRun,
+    metadata: SupplementImagePipelineMetadata,
+) -> bool:
+    """Return whether metadata must be persisted beyond record-derived defaults.
+
+    Args:
+        record: Persisted supplement analysis run.
+        metadata: Sanitized pipeline metadata built for the current execution.
+
+    Returns:
+        True when record fields cannot reconstruct the execution metadata.
+    """
+    parsed_snapshot = record.parsed_snapshot if isinstance(record.parsed_snapshot, dict) else {}
+    if isinstance(parsed_snapshot.get("pipeline_metadata"), dict):
+        return True
+    if metadata.vision_roi_used:
+        return True
+    return metadata.ocr_provider is not None and metadata.ocr_provider != record.ocr_provider
+
+
+async def _store_pipeline_metadata(
+    session: AsyncSession,
+    record: SupplementAnalysisRun,
+    metadata: SupplementImagePipelineMetadata,
+) -> SupplementAnalysisRun:
+    """Persist sanitized pipeline metadata inside the preview snapshot.
+
+    Args:
+        session: Request-scoped async database session.
+        record: Preview row to update.
+        metadata: Non-sensitive pipeline metadata.
+
+    Returns:
+        Refreshed preview row.
+    """
+    parsed_snapshot = dict(record.parsed_snapshot or {})
+    parsed_snapshot["pipeline_metadata"] = metadata.model_dump(exclude_none=True)
+    record.parsed_snapshot = parsed_snapshot
+    await session.commit()
+    await session.refresh(record)
+    return record
 
 
 async def _read_validated_image_bytes_if_needed(

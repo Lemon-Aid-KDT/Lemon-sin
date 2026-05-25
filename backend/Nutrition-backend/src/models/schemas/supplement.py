@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.models.schemas.image_quality import ImageQualityReport
+from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
 
 SupplementImageRiskActionRequired = Literal[
     "none",
@@ -475,6 +476,7 @@ class SupplementAnalysisPreview(BaseModel):
         multi_image_group_id: Optional client/backend group id for future multi-image merging.
         source_type: Conservative source classification for the uploaded image.
         identity_conflict: Optional review-only barcode/label identity conflict.
+        pipeline_metadata: Non-sensitive OCR/YOLO/parser metadata for smoke tests.
         low_confidence_fields: Field names that require extra user attention.
         warnings: Safe warnings for the preview screen.
         algorithm_version: Parsing contract version.
@@ -507,6 +509,9 @@ class SupplementAnalysisPreview(BaseModel):
     multi_image_group_id: str | None = Field(default=None, max_length=120)
     source_type: SupplementImageSourceType = "uploaded_image"
     identity_conflict: SupplementIdentityConflict | None = None
+    pipeline_metadata: SupplementImagePipelineMetadata = Field(
+        default_factory=lambda: SupplementImagePipelineMetadata(intake_completed=True)
+    )
     low_confidence_fields: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     algorithm_version: str

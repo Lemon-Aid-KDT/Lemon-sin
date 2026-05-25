@@ -26,6 +26,7 @@ from src.models.schemas.supplement import (
     SupplementIngredientCandidate,
     SupplementParsedProduct,
 )
+from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.utils.image_safety import (
@@ -201,11 +202,40 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
             for item in _dict_items(match_snapshot.get("matched_product_candidates"))
         ],
         low_confidence_fields=list(_string_items(parsed_snapshot.get("low_confidence_fields"))),
+        pipeline_metadata=_build_pipeline_metadata(record, parsed_snapshot),
         warnings=list(_string_items(record.warnings)),
         algorithm_version=record.algorithm_version,
         source_manifest_version=record.source_manifest_version,
         expires_at=record.expires_at,
     )
+
+
+def _build_pipeline_metadata(
+    record: SupplementAnalysisRun,
+    parsed_snapshot: dict[str, Any],
+) -> SupplementImagePipelineMetadata:
+    """Build safe pipeline metadata for preview responses.
+
+    Args:
+        record: Persisted supplement analysis run.
+        parsed_snapshot: Sanitized parsed snapshot JSON.
+
+    Returns:
+        Non-sensitive OCR/YOLO/parser metadata for mobile smoke tests.
+    """
+    raw_metadata = parsed_snapshot.get("pipeline_metadata")
+    metadata: dict[str, Any] = {
+        "intake_completed": True,
+        "vision_roi_used": False,
+        "ocr_provider": record.ocr_provider,
+        "llm_parser_used": isinstance(parsed_snapshot.get("parser_metadata"), dict),
+        "raw_image_stored": False,
+        "raw_ocr_text_stored": False,
+    }
+    if isinstance(raw_metadata, dict):
+        metadata.update(raw_metadata)
+        metadata["ocr_provider"] = metadata.get("ocr_provider") or record.ocr_provider
+    return SupplementImagePipelineMetadata.model_validate(metadata)
 
 
 async def create_supplement_analysis_intake(

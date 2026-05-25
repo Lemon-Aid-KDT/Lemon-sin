@@ -269,3 +269,6 @@ def test_analyze_supplement_label_runs_paddleocr_default_path(
     body = response.json()
     assert body["parsed_product"]["product_name"] == "비타민 D 1000"
     assert body["ingredient_candidates"][0]["display_name"] == "비타민 D"
+    assert body["pipeline_metadata"]["ocr_provider"] == PADDLE_OCR_PROVIDER
+    assert body["pipeline_metadata"]["vision_roi_used"] is False
+    assert body["pipeline_metadata"]["llm_parser_used"] is True

@@ -135,6 +135,14 @@ void main() {
               'parsed_product_present': true,
             },
           },
+          'pipeline_metadata': <String, dynamic>{
+            'intake_completed': true,
+            'vision_roi_used': true,
+            'ocr_provider': 'paddleocr_local',
+            'llm_parser_used': true,
+            'raw_image_stored': false,
+            'raw_ocr_text_stored': false,
+          },
           'matched_product_candidates': <Object>[],
           'low_confidence_fields': <String>['manufacturer'],
           'warnings': <String>['User confirmation required.'],
@@ -157,6 +165,10 @@ void main() {
     expect(preview.detectedProductRegions.single.regionId, 'roi-001');
     expect(preview.missingRequiredSections.single, 'supplement_facts');
     expect(preview.identityConflict?.conflictType, 'barcode_product_mismatch');
+    expect(preview.pipelineMetadata.ocrProvider, 'paddleocr_local');
+    expect(preview.pipelineMetadata.visionRoiUsed, isTrue);
+    expect(preview.pipelineMetadata.llmParserUsed, isTrue);
+    expect(preview.pipelineMetadata.rawOcrTextStored, isFalse);
 
     final UserSupplementCreate request = UserSupplementCreate(
       analysisId: preview.analysisId,
