@@ -25,7 +25,10 @@ void main() {
 
 class _FakeRepository implements LemonAidRepository {
   @override
-  Future<SupplementAnalysisPreview> analyzeSupplementImage(String imagePath) {
+  Future<SupplementAnalysisPreview> analyzeSupplementImage(
+    String imagePath, {
+    String ocrProvider = 'configured',
+  }) {
     throw UnimplementedError();
   }
 

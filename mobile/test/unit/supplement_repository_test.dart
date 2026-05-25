@@ -8,7 +8,41 @@ import 'package:lemon_aid_mobile/core/api/api_client.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 
 void main() {
-  test('forces local PaddleOCR provider on supplement image upload', () async {
+  test(
+    'uses configured OCR provider by default on supplement upload',
+    () async {
+      final File image = _writeTinyPng();
+      addTearDown(() {
+        if (image.existsSync()) {
+          image.deleteSync();
+        }
+      });
+      late http.MultipartRequest capturedRequest;
+      final ApiClient apiClient = ApiClient(
+        baseUrl: 'http://localhost:8000/api/v1',
+        httpClient: _CaptureMultipartClient(
+          onRequest: (http.MultipartRequest request) {
+            capturedRequest = request;
+          },
+        ),
+      );
+      addTearDown(apiClient.close);
+      final BackendLemonAidRepository repository = BackendLemonAidRepository(
+        apiClient: apiClient,
+      );
+
+      await repository.analyzeSupplementImage(image.path);
+
+      expect(capturedRequest.fields['ocr_provider'], 'configured');
+      expect(
+        capturedRequest.fields['client_request_id'],
+        startsWith('mobile-'),
+      );
+      expect(capturedRequest.files.single.field, 'image');
+    },
+  );
+
+  test('passes selected OCR provider on supplement image upload', () async {
     final File image = _writeTinyPng();
     addTearDown(() {
       if (image.existsSync()) {
@@ -29,10 +63,12 @@ void main() {
       apiClient: apiClient,
     );
 
-    await repository.analyzeSupplementImage(image.path);
+    await repository.analyzeSupplementImage(
+      image.path,
+      ocrProvider: 'google_vision',
+    );
 
-    expect(capturedRequest.fields['ocr_provider'], 'paddleocr');
-    expect(capturedRequest.fields['client_request_id'], startsWith('mobile-'));
+    expect(capturedRequest.fields['ocr_provider'], 'google_vision');
     expect(capturedRequest.files.single.field, 'image');
   });
 }

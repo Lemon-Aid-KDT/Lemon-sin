@@ -62,6 +62,14 @@ class _FakeSupplementSession:
         """
         return _TransactionContext()
 
+    def in_transaction(self) -> bool:
+        """Return whether the fake session has an active implicit transaction.
+
+        Returns:
+            False because these tests do not model SQLAlchemy's implicit read transaction.
+        """
+        return False
+
     async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
         """Return a fake existing row for idempotency lookup.
 
@@ -214,6 +222,15 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
     """
 
 
+def _empty_analysis_adapters() -> SupplementImageAnalysisAdapters:
+    """Return an adapter bundle with OCR intentionally disabled for route tests.
+
+    Returns:
+        Empty supplement image analysis adapter bundle.
+    """
+    return SupplementImageAnalysisAdapters()
+
+
 def _settings(
     *,
     supplement_image_max_bytes: int = 5 * 1024 * 1024,
@@ -234,6 +251,10 @@ def _settings(
         supplement_image_max_bytes=supplement_image_max_bytes,
         supplement_image_max_pixels=supplement_image_max_pixels,
         supplement_preview_ttl_minutes=supplement_preview_ttl_minutes,
+        ocr_primary_provider="paddleocr",
+        allow_external_ocr=False,
+        enable_clova_ocr=False,
+        enable_local_ocr=True,
     )
 
 
@@ -246,7 +267,7 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
-        lambda: SupplementImageAnalysisAdapters()
+        _empty_analysis_adapters
     )
     client = TestClient(app)
 
@@ -280,9 +301,11 @@ def test_analyze_supplement_label_requires_ocr_consent(
 ) -> None:
     """Verify supplement image intake fails closed without OCR consent."""
     fake_session = _FakeSupplementSession()
+    settings = _settings()
     monkeypatch.setattr(supplements, "require_user_consent", _deny_consent)
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
-    app = create_app()
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     client = TestClient(app)
 

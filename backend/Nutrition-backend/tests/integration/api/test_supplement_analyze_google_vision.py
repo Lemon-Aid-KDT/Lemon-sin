@@ -61,6 +61,14 @@ class _FakeSupplementSession:
         """
         return _TransactionContext()
 
+    def in_transaction(self) -> bool:
+        """Return whether the fake session has an active implicit transaction.
+
+        Returns:
+            False because these tests do not model SQLAlchemy's implicit read transaction.
+        """
+        return False
+
     async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
         """Return the analysis row added by intake.
 

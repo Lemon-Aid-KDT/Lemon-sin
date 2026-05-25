@@ -98,9 +98,15 @@ class AppController extends ChangeNotifier {
   }
 
   /// Uploads a supplement label image and stores the preview.
-  Future<void> analyzeImage(String imagePath) async {
+  Future<void> analyzeImage(
+    String imagePath, {
+    String ocrProvider = 'configured',
+  }) async {
     await _run(() async {
-      _analysisPreview = await _repository.analyzeSupplementImage(imagePath);
+      _analysisPreview = await _repository.analyzeSupplementImage(
+        imagePath,
+        ocrProvider: ocrProvider,
+      );
       _lastRegisteredSupplement = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;

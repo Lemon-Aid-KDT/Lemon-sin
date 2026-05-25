@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app_controller.dart';
+import '../../shared/theme/lemon_design_tokens.dart';
 import 'supplement_models.dart';
 
 /// Supplement capture, OCR text review, and registration screen.
@@ -47,6 +49,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   String? _seededAnalysisId;
   _SelectedLabelImage? _selectedImage;
   _SupplementFlowStage _stage = _SupplementFlowStage.idle;
+  String _ocrProvider = 'configured';
 
   @override
   void initState() {
@@ -90,6 +93,8 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         busy: widget.controller.busy,
         selectedImage: _selectedImage,
         stage: _stage,
+        ocrProvider: _ocrProvider,
+        onOcrProviderChanged: _setOcrProvider,
         onCamera: () => _pickImage(ImageSource.camera),
         onGallery: () => _pickImage(ImageSource.gallery),
         onAnalyze: _analyzeSelectedImage,
@@ -233,7 +238,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     setState(() {
       _stage = _SupplementFlowStage.ocrProcessing;
     });
-    await widget.controller.analyzeImage(image.path);
+    await widget.controller.analyzeImage(image.path, ocrProvider: _ocrProvider);
     if (!mounted) {
       return;
     }
@@ -241,6 +246,12 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       _stage = widget.controller.analysisPreview == null
           ? _SupplementFlowStage.imageSelected
           : _SupplementFlowStage.confirmationRequired;
+    });
+  }
+
+  void _setOcrProvider(String value) {
+    setState(() {
+      _ocrProvider = value;
     });
   }
 
@@ -567,6 +578,8 @@ class _BlackCaptureSurface extends StatelessWidget {
     required this.busy,
     required this.selectedImage,
     required this.stage,
+    required this.ocrProvider,
+    required this.onOcrProviderChanged,
     required this.onCamera,
     required this.onGallery,
     required this.onAnalyze,
@@ -577,6 +590,8 @@ class _BlackCaptureSurface extends StatelessWidget {
   final bool busy;
   final _SelectedLabelImage? selectedImage;
   final _SupplementFlowStage stage;
+  final String ocrProvider;
+  final ValueChanged<String> onOcrProviderChanged;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onAnalyze;
@@ -613,6 +628,14 @@ class _BlackCaptureSurface extends StatelessWidget {
                     : SupplementLabelPreviewFrame(imagePath: image.path),
               ),
             ),
+            if (!kReleaseMode) ...<Widget>[
+              const SizedBox(height: 14),
+              _OcrProviderSelector(
+                value: ocrProvider,
+                enabled: !busy && !_processing,
+                onChanged: onOcrProviderChanged,
+              ),
+            ],
             if (_processing) ...<Widget>[
               const SizedBox(height: 14),
               const _CaptureStatusPill(
@@ -637,6 +660,127 @@ class _BlackCaptureSurface extends StatelessWidget {
               ),
             const SizedBox(height: 18),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OcrProviderSelector extends StatelessWidget {
+  const _OcrProviderSelector({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const List<_OcrProviderChoice> choices = <_OcrProviderChoice>[
+      _OcrProviderChoice(value: 'configured', label: 'Auto'),
+      _OcrProviderChoice(value: 'paddleocr', label: 'Paddle'),
+      _OcrProviderChoice(value: 'google_vision', label: 'Vision'),
+      _OcrProviderChoice(value: 'clova', label: 'CLOVA'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(LemonRadius.lg),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(2, 0, 2, 8),
+                child: Text(
+                  'OCR provider',
+                  style: TextStyle(
+                    color: Color(0xFFC8C8C8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+              Row(
+                children: <Widget>[
+                  for (final _OcrProviderChoice choice in choices)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: _OcrProviderButton(
+                          choice: choice,
+                          selected: choice.value == value,
+                          enabled: enabled,
+                          onTap: () => onChanged(choice.value),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OcrProviderChoice {
+  const _OcrProviderChoice({required this.value, required this.label});
+
+  final String value;
+  final String label;
+}
+
+class _OcrProviderButton extends StatelessWidget {
+  const _OcrProviderButton({
+    required this.choice,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final _OcrProviderChoice choice;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 38,
+      child: TextButton(
+        onPressed: enabled ? onTap : null,
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          backgroundColor: selected ? LemonColors.lemon : Colors.transparent,
+          foregroundColor: selected ? LemonColors.ink : Colors.white,
+          disabledForegroundColor: const Color(0xFF777777),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(LemonRadius.md),
+          ),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            choice.label,
+            maxLines: 1,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
         ),
       ),
     );
@@ -715,17 +859,32 @@ class _SimulatorCameraFrame extends StatelessWidget {
               border: Border.all(color: const Color(0xFF2B2B2B), width: 1.4),
               borderRadius: BorderRadius.circular(28),
             ),
-            child: const Center(
+            child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(
-                    Icons.no_photography_outlined,
-                    color: Color(0xFF777777),
-                    size: 56,
+                  SizedBox(
+                    width: 82,
+                    height: 82,
+                    child: Image.asset(
+                      LemonAssets.mascotWorking,
+                      fit: BoxFit.contain,
+                      errorBuilder:
+                          (
+                            BuildContext context,
+                            Object error,
+                            StackTrace? stackTrace,
+                          ) {
+                            return const Icon(
+                              Icons.no_photography_outlined,
+                              color: Color(0xFF777777),
+                              size: 56,
+                            );
+                          },
+                    ),
                   ),
-                  SizedBox(height: 14),
-                  Text(
+                  const SizedBox(height: 14),
+                  const Text(
                     '시뮬레이터에서는 카메라를 사용할 수 없어요',
                     textAlign: TextAlign.center,
                     style: TextStyle(

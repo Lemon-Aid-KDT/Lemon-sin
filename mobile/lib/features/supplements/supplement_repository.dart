@@ -15,7 +15,10 @@ abstract class LemonAidRepository {
   Future<DashboardSummary> fetchDashboardSummary({int days = 30});
 
   /// Uploads a selected supplement label image for preview analysis.
-  Future<SupplementAnalysisPreview> analyzeSupplementImage(String imagePath);
+  Future<SupplementAnalysisPreview> analyzeSupplementImage(
+    String imagePath, {
+    String ocrProvider = 'configured',
+  });
 
   /// Parses user-reviewed OCR text for an existing preview.
   Future<SupplementAnalysisPreview> parseOcrText({
@@ -86,8 +89,10 @@ class BackendLemonAidRepository implements LemonAidRepository {
 
   @override
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
-    String imagePath,
-  ) async {
+    String imagePath, {
+    String ocrProvider = 'configured',
+  }) async {
+    final String selectedOcrProvider = _normalizeOcrProvider(ocrProvider);
     final String clientRequestId =
         'mobile-${DateTime.now().microsecondsSinceEpoch}';
     final Map<String, dynamic> json = await _apiClient.postMultipart(
@@ -96,7 +101,7 @@ class BackendLemonAidRepository implements LemonAidRepository {
       filePath: imagePath,
       fields: <String, String>{
         'client_request_id': clientRequestId,
-        'ocr_provider': 'paddleocr',
+        'ocr_provider': selectedOcrProvider,
       },
     );
     return SupplementAnalysisPreview.fromJson(json);
@@ -169,5 +174,23 @@ class BackendLemonAidRepository implements LemonAidRepository {
   @override
   void close() {
     _apiClient.close();
+  }
+
+  static String _normalizeOcrProvider(String value) {
+    final String normalized = value.trim();
+    const Set<String> allowedProviders = <String>{
+      'configured',
+      'paddleocr',
+      'google_vision',
+      'clova',
+    };
+    if (!allowedProviders.contains(normalized)) {
+      throw ArgumentError.value(
+        value,
+        'ocrProvider',
+        'Unsupported OCR provider',
+      );
+    }
+    return normalized;
   }
 }
