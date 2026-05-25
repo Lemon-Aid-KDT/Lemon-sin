@@ -3539,7 +3539,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 
 ### B.0 한 줄 결론
 
-백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, AI Agent daily-coaching/chat API client, secure token store, 영양제 촬영·분석 preview API 연결, 사용자 확인/수정 후 `/api/v1/supplements` 저장 flow, 음식 사진+수동 입력 확인 flow, confirmed food/supplement 기반 daily-coaching payload 조립, 앱 세션 내 confirmed entry handoff, debug-only photo-free LLM coaching sample까지 구현했다. AI Agent는 `/api/v1/ai-agent/daily-coaching`과 `/api/v1/ai-agent/chat`으로 FastAPI에 연결되어 있고, `agent_memory`, Q&A knowledge policy, safety boundary, Ollama/SGLang provider 경로를 사용한다. 음식 flow는 팀의 음식 인식 모델·영양성분 DB lookup이 아직 없다는 전제하에 영양성분을 임의 생성하지 않고 confirmed 입력만 Agent 연결 후보로 유지한다. `origin/taedong-design`의 루트 `mobile/` Flutter 앱은 UI/UX와 인증 흐름의 후보 원천으로 확인했지만, 현재 백엔드에는 `/api/v1/auth/*` 라우트가 아직 없으므로 직접 병합하지 않고 `mobile/flutter_app`에 API 연결층, loose model 호환층, home/coaching 하단 셸, 촬영 프레임, 결과 화면부터 선별 반영했다. Flutter toolchain 검증과 Docker/PostgreSQL/SGLang live smoke는 완료됐으며, 다음 실질 구현 단계는 Android emulator build/run, result screen의 backend detail 확장, OCR/Ollama live 검증, OIDC staging 연동이다.
+백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, AI Agent daily-coaching/chat API client, secure token store, 영양제 촬영·분석 preview API 연결, 사용자 확인/수정 후 `/api/v1/supplements` 저장 flow, 음식 사진+수동 입력 확인 flow, confirmed food/supplement 기반 daily-coaching payload 조립, 앱 세션 내 confirmed entry handoff, debug-only photo-free LLM coaching sample까지 구현했다. AI Agent는 `/api/v1/ai-agent/daily-coaching`과 `/api/v1/ai-agent/chat`으로 FastAPI에 연결되어 있고, `agent_memory`, Q&A knowledge policy, safety boundary, Ollama/SGLang provider 경로를 사용한다. 2026-05-25 기준 Docker/PostgreSQL/SGLang live smoke에서 daily-coaching 2회, chatbot 1회, SGLang provider, `agent_memory` 재주입까지 확인했다. 음식 flow는 팀의 음식 인식 모델·영양성분 DB lookup이 아직 없다는 전제하에 영양성분을 임의 생성하지 않고 confirmed 입력만 Agent 연결 후보로 유지한다. `origin/taedong-design`의 루트 `mobile/` Flutter 앱은 UI/UX와 인증 흐름의 후보 원천으로 확인했지만, 현재 백엔드에는 `/api/v1/auth/*` 라우트가 아직 없으므로 직접 병합하지 않고 `mobile/flutter_app`에 API 연결층, loose model 호환층, home/coaching 하단 셸, 촬영 프레임, 결과 화면부터 선별 반영했다. Flutter toolchain 검증과 Docker/PostgreSQL/SGLang live smoke는 완료됐으며, 다음 실질 구현 단계는 KDCA key와 필요 시 MFDS key 수령 후 medical source readiness 재확인, Android emulator build/run, result screen의 backend detail 확장, OCR/Ollama live 검증, OIDC staging 연동이다.
 
 ### B.1 현재 구현 완료 범위
 
@@ -3558,7 +3558,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | 영양제 매칭/등록 API | 구현 완료 | matching service, 등록/list/detail/delete, user confirmation, audit/consent 연결 |
 | 부족 영양소/대시보드 API | 구현 완료 | latest nutrition diagnosis, dashboard summary, supplement/health/activity snapshot 통합 |
 | HealthKit/Health Connect sync | 백엔드 구현 | daily aggregate sync, client batch idempotency, summary upsert, consent/audit 연결 |
-| AI Agent daily coaching/chat | 구현·검증 진행 중 | `/api/v1/ai-agent/daily-coaching`, `/api/v1/ai-agent/chat`, `agent_memory` context, Q&A knowledge policy, emergency/drug/mental-health boundary, Ollama/SGLang provider 경로 |
+| AI Agent daily coaching/chat | 구현·live 검증 완료 | `/api/v1/ai-agent/daily-coaching`, `/api/v1/ai-agent/chat`, `agent_memory` context, Q&A knowledge policy, emergency/drug/mental-health boundary, Ollama/SGLang provider 경로. 2026-05-25 SGLang live smoke에서 daily-coaching 2회와 chatbot 1회 모두 `sglang` provider로 응답하고 memory 재주입을 확인 |
 | 모바일 MVP | 연결 완료 | `mobile/flutter_app` Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, secure token store, Dio API client, Android emulator-safe local base URL, daily-coaching DTO/repository, taedong-compatible loose models, 영양제 촬영 permission/image picker + `/api/v1/supplements/analyze` multipart preview 연결 + confirmed `/api/v1/supplements` 저장 flow, 음식 사진/수동 입력 confirmed payload, debug-only confirmed sample seeding, `ConfirmedEntryStore` 앱 세션 handoff, 면책 고지, Python contract test, Flutter analyze/test |
 
 ### B.2 현재 주요 API 표면
@@ -3595,9 +3595,9 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | Windows desktop/web toolchain | 준비됨 | Windows 11, Chrome, Visual Studio Build Tools 확인 |
 | iOS/Xcode/CocoaPods | 별도 Mac 트랙 | 이 Windows 세션에서는 검증하지 않음. iOS 검증은 Mac 환경에서 별도 수행 |
 | Android SDK | 미설치 | Android emulator build/run 검증 전 설치 필요 |
-| Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-20 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
-| AI Agent chatbot policy smoke | 부분 완료 | unit/API 테스트로 `/api/v1/ai-agent/chat`, SGLang provider 분기, `agent_memory`, 약물·응급·자해 boundary, 민감 건강 동의 gate를 확인했다. Flutter web CORS smoke는 고정 포트 기준으로 별도 실행한다. |
-| Ollama live smoke | 미완료 | parser unit test는 있으나 실제 Ollama server/model 호출 검증 필요 |
+| Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-25 Docker Desktop + `lemon-sglang` container 기준 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + chatbot 1회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
+| AI Agent chatbot policy smoke | 완료 | unit/API 테스트와 2026-05-25 live smoke로 `/api/v1/ai-agent/chat`, SGLang provider 분기, `chat_used_tools`의 `agent_memory`, 약물·응급·자해 boundary, 민감 건강 동의 gate를 확인했다. Flutter web CORS smoke는 고정 포트 기준의 별도 UI smoke로 관리한다. |
+| Ollama live smoke | 미완료 | parser unit test는 있으나 현재 `127.0.0.1:11434` Ollama server/model 호출 검증은 미완료다. 운영 후보 SGLang 경로는 live 검증 완료, Ollama는 개발용 기본 런타임 확인 항목으로 남긴다. |
 
 ### B.5 보안/개인정보 현재 판단
 
@@ -3613,15 +3613,16 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 1. Android Studio/Android SDK 설치 후 `mobile/flutter_app`의 Android emulator build/run을 확인한다.
 2. `taedong-design`의 루트 `mobile/` 앱을 canonical frontend로 옮길지, 현재 `mobile/flutter_app`을 통합 앱으로 유지할지 결정한다.
 3. result screen에 backend analysis/detail 요약을 확장하되, taedong mock data를 가져오지 않고 API client, confirmed payload 규칙, `ConfirmedEntryStore` handoff를 보존한다.
-4. OCR provider adapter와 로컬 Ollama live smoke test를 추가한다.
-5. 여러 장 이미지 batch upload 계약을 설계한다: batch id, per-image validation, merged OCR text, user confirmation.
-6. 팀의 음식 인식 모델·영양성분 DB lookup이 준비되면 confirmed food flow에 계산 결과를 연결한다.
-7. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e를 검증한다.
-8. KDRIs 2025 공식 row 승인, checksum 갱신, `ALLOW_SAMPLE_KDRIS=false` production 전환.
+4. `KDCA_HEALTHINFO_API_KEY`와 필요 시 `MFDS_DATA_API_KEY` 수령 후 `backend/scripts/check_ai_agent_runtime_prereqs.py`로 `kdca-healthinfo`, `mfds-drug-safety` readiness를 재확인한다.
+5. OCR provider adapter와 로컬 Ollama live smoke test를 추가한다.
+6. 여러 장 이미지 batch upload 계약을 설계한다: batch id, per-image validation, merged OCR text, user confirmation.
+7. 팀의 음식 인식 모델·영양성분 DB lookup이 준비되면 confirmed food flow에 계산 결과를 연결한다.
+8. OIDC staging provider를 선택하고 discovery/JWKS/access token e2e를 검증한다.
+9. KDRIs 2025 공식 row 승인, checksum 갱신, `ALLOW_SAMPLE_KDRIS=false` production 전환.
 
 ### B.7 브리핑 때 바로 말할 수 있는 문장
 
-> 현재 Lemon Aid는 기획 문서만 있는 상태가 아니라, FastAPI 백엔드와 보안/개인정보 기반, KDRIs 분석, 영양제 이미지 intake, 구조화 파서, 영양제 등록, 대시보드, 헬스 데이터 sync API까지 구현되어 있다. 다음 단계는 사용자가 실제로 촬영하고 확인할 수 있는 모바일 MVP를 붙이는 것이다.
+> 현재 Lemon Aid는 기획 문서만 있는 상태가 아니라, FastAPI 백엔드와 보안/개인정보 기반, KDRIs 분석, 영양제 이미지 intake, 구조화 파서, 영양제 등록, 대시보드, 헬스 데이터 sync API, AI Agent daily-coaching/chat까지 구현되어 있다. 2026-05-25에는 PostgreSQL, FastAPI, SGLang을 함께 띄운 live smoke로 daily-coaching과 chatbot의 `sglang` provider 및 `agent_memory` 재사용까지 확인했다. 다음 단계는 KDCA key와 필요 시 MFDS key 수령 후 medical source readiness를 재확인하고, Android emulator와 실제 모바일 흐름 검증을 이어가는 것이다.
 
 </script>
 
