@@ -175,7 +175,9 @@ Before a physical-device camera test, run the sanitized readiness preflight:
 python backend/scripts/check_mobile_ngrok_camera_readiness.py \
   --require-gateway \
   --require-ngrok \
-  --require-physical-device
+  --require-physical-device \
+  --require-ollama \
+  --ollama-model qwen3.5:9b
 ```
 
 For a non-blocking status check while setup is still in progress, omit the
@@ -186,6 +188,8 @@ normal device visibility from sanitized Flutter tool failures such as
 `permission_error`, `timeout`, or `unavailable`. `gateway_contract` checks the
 same consent endpoint the app calls on launch, so a healthy `/health` response
 cannot hide a database-backed mobile contract failure.
+`ollama_model_present=True` means the local Ollama `/api/tags` response includes
+the configured parser model; it does not print model names or raw model output.
 `physical_device_ready=True` means Flutter can see at least one physical phone;
 `device_deploy_probe=not_checked` means the script has not installed or launched
 the app, so Developer Mode, signing, and trust prompts still need the `flutter

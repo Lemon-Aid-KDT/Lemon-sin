@@ -54,6 +54,21 @@ class NgrokSummary:
 
 
 @dataclass(frozen=True)
+class OllamaSummary:
+    """Summarized local Ollama parser readiness.
+
+    Args:
+        model_present: Whether the configured parser model appears in `/api/tags`.
+        model_count: Number of models returned by the local Ollama API.
+        probe_status: Sanitized status for the Ollama probe.
+    """
+
+    model_present: bool
+    model_count: int
+    probe_status: str = "ok"
+
+
+@dataclass(frozen=True)
 class ReadinessResult:
     """Computed readiness result.
 
@@ -89,6 +104,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--expected-gateway-url", default="http://127.0.0.1:8010")
     parser.add_argument("--ngrok-api-url", default="http://127.0.0.1:4041/api/tunnels")
+    parser.add_argument("--ollama-tags-url", default="http://127.0.0.1:11434/api/tags")
+    parser.add_argument("--ollama-model", default="qwen3.5:9b")
     parser.add_argument("--flutter-bin", default="flutter")
     parser.add_argument("--flutter-workdir", default="mobile")
     parser.add_argument("--timeout-seconds", type=float, default=3.0)
@@ -102,6 +119,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--require-physical-device", action="store_true")
     parser.add_argument("--require-gateway", action="store_true")
     parser.add_argument("--require-ngrok", action="store_true")
+    parser.add_argument("--require-ollama", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -133,6 +151,11 @@ def main(argv: list[str] | None = None) -> int:
         expected_gateway_url=args.expected_gateway_url,
         timeout=args.timeout_seconds,
     )
+    ollama = load_ollama_summary(
+        args.ollama_tags_url,
+        model=args.ollama_model,
+        timeout=args.timeout_seconds,
+    )
     deploy_probe_status = "not_checked"
     if args.check_device_deploy:
         deploy_probe_status = probe_flutter_device_deploy(
@@ -149,10 +172,12 @@ def main(argv: list[str] | None = None) -> int:
         gateway_contract_status=gateway_contract_status,
         devices=devices,
         ngrok=ngrok,
+        ollama=ollama,
         deploy_probe_status=deploy_probe_status,
         require_physical_device=args.require_physical_device,
         require_gateway=args.require_gateway,
         require_ngrok=args.require_ngrok,
+        require_ollama=args.require_ollama,
     )
     print(format_result(result))
     return result.exit_code
@@ -296,6 +321,64 @@ def load_ngrok_summary(
     return parse_ngrok_tunnels(payload, expected_gateway_url=expected_gateway_url)
 
 
+def load_ollama_summary(
+    ollama_tags_url: str,
+    *,
+    model: str,
+    timeout: float,
+) -> OllamaSummary:
+    """Load sanitized local Ollama model readiness from `/api/tags`.
+
+    Args:
+        ollama_tags_url: Local Ollama Tags API URL.
+        model: Configured parser model tag that must be present for OCR parsing.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Sanitized model presence summary. Raw model names are not printed by the
+        caller.
+    """
+    try:
+        with urlopen(ollama_tags_url, timeout=timeout) as response:
+            payload = response.read().decode("utf-8")
+    except HTTPError:
+        return OllamaSummary(model_present=False, model_count=0, probe_status="http_error")
+    except TimeoutError:
+        return OllamaSummary(model_present=False, model_count=0, probe_status="timeout")
+    except (OSError, URLError, ValueError):
+        return OllamaSummary(model_present=False, model_count=0, probe_status="unavailable")
+    return parse_ollama_tags(payload, model=model)
+
+
+def parse_ollama_tags(payload: str, *, model: str) -> OllamaSummary:
+    """Parse an Ollama `/api/tags` response into sanitized readiness flags.
+
+    Args:
+        payload: JSON payload from the Ollama Tags API.
+        model: Expected parser model tag.
+
+    Returns:
+        Sanitized model count and expected-model presence.
+    """
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return OllamaSummary(model_present=False, model_count=0, probe_status="invalid_json")
+    models = parsed.get("models", []) if isinstance(parsed, dict) else []
+    model_names: set[str] = set()
+    for item in models if isinstance(models, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("model")
+        if isinstance(name, str) and name.strip():
+            model_names.add(name.strip())
+    expected = model.strip()
+    return OllamaSummary(
+        model_present=bool(expected) and expected in model_names,
+        model_count=len(model_names),
+    )
+
+
 def probe_flutter_device_deploy(
     *,
     flutter_bin: str,
@@ -422,6 +505,8 @@ def evaluate_readiness(
     require_physical_device: bool,
     require_gateway: bool,
     require_ngrok: bool,
+    ollama: OllamaSummary | None = None,
+    require_ollama: bool = False,
 ) -> ReadinessResult:
     """Evaluate selected mobile ngrok readiness requirements.
 
@@ -431,14 +516,21 @@ def evaluate_readiness(
         gateway_contract_status: Mobile app contract status through the local gateway.
         devices: Flutter device visibility summary.
         ngrok: Local ngrok tunnel summary.
+        ollama: Local Ollama model readiness summary.
         deploy_probe_status: Optional Flutter device deployment probe status.
         require_physical_device: Whether at least one physical mobile device is required.
         require_gateway: Whether gateway health must be HTTP 200.
         require_ngrok: Whether a matching HTTPS ngrok tunnel is required.
+        require_ollama: Whether the configured local Ollama parser model is required.
 
     Returns:
         Readiness result with sanitized details.
     """
+    ollama = ollama or OllamaSummary(
+        model_present=False,
+        model_count=0,
+        probe_status="not_checked",
+    )
     physical_count = devices.ios_physical + devices.android_physical
     failures = []
     if backend_status != HTTPStatus.OK:
@@ -451,6 +543,8 @@ def evaluate_readiness(
         failures.append("ngrok")
     if require_physical_device and physical_count < 1:
         failures.append("physical_device")
+    if require_ollama and not ollama.model_present:
+        failures.append("ollama")
     if deploy_probe_status not in {"not_checked", "launched"}:
         failures.append("device_deploy")
 
@@ -468,6 +562,9 @@ def evaluate_readiness(
         "physical_device_ready": physical_count > 0,
         "device_deploy_probe": deploy_probe_status,
         "ngrok_ready": ngrok.gateway_matches > 0,
+        "ollama_probe": ollama.probe_status,
+        "ollama_model_present": ollama.model_present,
+        "ollama_model_count": ollama.model_count,
     }
     if failures:
         return ReadinessResult(exit_code=1, status="failed", details=details)

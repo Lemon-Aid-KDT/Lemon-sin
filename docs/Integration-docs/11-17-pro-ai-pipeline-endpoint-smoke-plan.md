@@ -73,6 +73,19 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
    - `Ollama` for local LLM wording.
 9. Confirm the explanation chip reports whether Ollama wording was accepted.
 
+Before interpreting `Parser: pending` as OCR model failure, run the sanitized
+preflight with the local parser gate:
+
+```bash
+python backend/scripts/check_mobile_ngrok_camera_readiness.py \
+  --require-ollama \
+  --ollama-model qwen3.5:9b
+```
+
+`ollama_model_present=True` confirms the local parser model is visible through
+Ollama `/api/tags`; it does not prove OCR accuracy, but it removes the common
+runtime blocker where PaddleOCR output cannot reach structured parsing.
+
 ## 4. Physical iPhone / Ngrok Path
 
 Use the token-gated gateway only for physical-device smoke:
