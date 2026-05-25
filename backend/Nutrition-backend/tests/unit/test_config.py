@@ -58,8 +58,9 @@ def _valid_production_kwargs() -> dict[str, Any]:
         Keyword arguments accepted by Settings.
     """
     return {
+        "_env_file": None,
         "environment": "production",
-        "database_url": "postgresql+asyncpg://lemon_prod:secret@db.example.com:5432/lemon",
+        "database_url": "postgresql+asyncpg://lemon_prod:secret@db.example.com:5432/lemon",  # pragma: allowlist secret
         "allowed_origins": ["https://app.example.com"],
         "allowed_hosts": ["api.example.com"],
         "auth_mode": "jwt",
@@ -67,7 +68,7 @@ def _valid_production_kwargs() -> dict[str, Any]:
         "jwt_audience": "lemon-api",
         "jwt_jwks_url": "https://auth.example.com/.well-known/jwks.json",
         "jwt_expected_token_type": "at+jwt",
-        "privacy_hash_secret": "prod-privacy-hash-secret-at-least-32",
+        "privacy_hash_secret": "prod-privacy-hash-secret-at-least-32",  # pragma: allowlist secret
         "kdris_data_version": "2025",
         "kdris_data_path": "data/nutrition_reference/kdris/kdris_2025.csv",
         "allow_sample_kdris": False,
@@ -163,7 +164,10 @@ def test_google_cloud_api_key_can_be_loaded_as_secret() -> None:
 def test_google_cloud_api_key_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
     """Verify Google Vision API key placeholders can be filled through dotenv."""
     env_file = tmp_path / ".env"
-    env_file.write_text("GOOGLE_CLOUD_API_KEY=test-dotenv-google-key\n", encoding="utf-8")
+    env_file.write_text(  # pragma: allowlist secret
+        "GOOGLE_CLOUD_API_KEY=test-dotenv-google-key\n",  # pragma: allowlist secret
+        encoding="utf-8",
+    )
 
     settings = Settings(_env_file=env_file)
 
@@ -236,8 +240,8 @@ def test_supabase_inputs_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
     (
         "sqlite+aiosqlite:///tmp/lemon.db",
         "sqlite:///tmp/lemon.db",
-        "postgresql://lemon:lemon@localhost:5432/lemon",
-        "mysql+aiomysql://lemon:lemon@localhost:3306/lemon",
+        "postgresql://lemon:lemon@localhost:5432/lemon",  # pragma: allowlist secret
+        "mysql+aiomysql://lemon:lemon@localhost:3306/lemon",  # pragma: allowlist secret
     ),
 )
 def test_database_url_must_use_postgresql_asyncpg(database_url: str) -> None:
@@ -444,7 +448,7 @@ def test_production_rejects_clova_ocr_without_external_gate() -> None:
     kwargs = _valid_production_kwargs()
     kwargs["enable_clova_ocr"] = True
     kwargs["clova_ocr_api_url"] = "https://example.apigw.ntruss.com/custom/v1/infer"
-    kwargs["clova_ocr_secret"] = "secret"
+    kwargs["clova_ocr_secret"] = "secret"  # pragma: allowlist secret
 
     with pytest.raises(ValidationError, match="ALLOW_EXTERNAL_OCR"):
         Settings(**kwargs)
@@ -455,7 +459,7 @@ def test_production_rejects_clova_primary_without_external_gate() -> None:
     kwargs = _valid_production_kwargs()
     kwargs["ocr_primary_provider"] = "clova"
     kwargs["clova_ocr_api_url"] = "https://example.apigw.ntruss.com/custom/v1/infer"
-    kwargs["clova_ocr_secret"] = "secret"
+    kwargs["clova_ocr_secret"] = "secret"  # pragma: allowlist secret
 
     with pytest.raises(
         ValidationError,
@@ -469,7 +473,7 @@ def test_production_rejects_clova_primary_without_api_url() -> None:
     kwargs = _valid_production_kwargs()
     kwargs["ocr_primary_provider"] = "clova"
     kwargs["allow_external_ocr"] = True
-    kwargs["clova_ocr_secret"] = "secret"
+    kwargs["clova_ocr_secret"] = "secret"  # pragma: allowlist secret
 
     with pytest.raises(
         ValidationError,
@@ -550,7 +554,7 @@ def test_supabase_s3_learning_object_storage_requires_project_or_endpoint() -> N
             learning_object_storage_provider="supabase_s3",
             learning_object_storage_region="ap-northeast-2",
             supabase_storage_s3_access_key_id="access",
-            supabase_storage_s3_secret_access_key="secret",
+            supabase_storage_s3_secret_access_key="secret",  # pragma: allowlist secret
         )
 
 
@@ -562,7 +566,7 @@ def test_supabase_s3_learning_object_storage_requires_region() -> None:
             learning_object_storage_provider="supabase_s3",
             supabase_project_ref="projectref",
             supabase_storage_s3_access_key_id="access",
-            supabase_storage_s3_secret_access_key="secret",
+            supabase_storage_s3_secret_access_key="secret",  # pragma: allowlist secret
         )
 
 
@@ -684,7 +688,7 @@ def test_production_requires_adc_for_google_vision() -> None:
     kwargs["allow_external_ocr"] = True
     kwargs["google_vision_auth_mode"] = "api_key"
     kwargs["allow_google_api_key_auth"] = True
-    kwargs["google_cloud_api_key"] = "local-only-key"
+    kwargs["google_cloud_api_key"] = "local-only-key"  # pragma: allowlist secret
     kwargs["google_cloud_project"] = "lemon-prod"
 
     with pytest.raises(ValidationError, match="ALLOW_GOOGLE_API_KEY_AUTH=true is forbidden"):

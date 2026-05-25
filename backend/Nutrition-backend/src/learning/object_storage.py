@@ -10,6 +10,36 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+FORBIDDEN_OBJECT_METADATA_KEYS = frozenset(
+    {
+        "apikey",
+        "authorization",
+        "credential",
+        "credentials",
+        "imagebase64",
+        "imagebytes",
+        "ocrtext",
+        "providerpayload",
+        "rawimage",
+        "rawimagebytes",
+        "rawocrtext",
+        "rawproviderpayload",
+        "requestheaders",
+        "secret",
+        "servicekey",
+        "accesstoken",
+    }
+)
+SECRET_LIKE_OBJECT_METADATA_VALUE_MARKERS = (
+    "bearer ",
+    "sb_secret_",
+    "service_role",
+    "aws_secret_access_key",
+    "-----begin",
+)
+MAX_OBJECT_METADATA_KEY_LENGTH = 64
+MAX_OBJECT_METADATA_VALUE_LENGTH = 256
+
 
 class LearningObjectStorageError(RuntimeError):
     """Raised when a learning image object cannot be stored or deleted safely."""
@@ -174,6 +204,7 @@ class LocalLearningImageObjectStore(LearningImageObjectStore):
         Raises:
             LearningObjectStorageError: If the file cannot be written.
         """
+        validate_learning_object_metadata(payload.metadata)
         key = self._build_key(payload)
         target = self._path_for_key(key)
         try:
@@ -314,12 +345,13 @@ class S3LearningImageObjectStore(LearningImageObjectStore):
             LearningObjectStorageError: If S3 rejects the object.
         """
         key = self._build_key(payload)
+        metadata = validate_learning_object_metadata(payload.metadata)
         kwargs: dict[str, Any] = {
             "Bucket": self._bucket,
             "Key": key,
             "Body": payload.image_bytes,
             "ContentType": payload.mime_type,
-            "Metadata": payload.metadata,
+            "Metadata": metadata,
         }
         if self._server_side_encryption:
             kwargs["ServerSideEncryption"] = self._server_side_encryption
@@ -448,6 +480,52 @@ def _normalize_prefix(prefix: str) -> str:
     """
     normalized = "/".join(part for part in prefix.strip("/").split("/") if part)
     return normalized or "learning/images"
+
+
+def validate_learning_object_metadata(metadata: dict[str, str]) -> dict[str, str]:
+    """Return metadata only if it is safe for object-store headers.
+
+    Args:
+        metadata: Candidate object metadata.
+
+    Returns:
+        A shallow copy safe to pass to an S3-compatible client.
+
+    Raises:
+        LearningObjectStorageError: If a key or value could leak raw OCR/image data or secrets.
+    """
+    safe_metadata: dict[str, str] = {}
+    for key, value in metadata.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise LearningObjectStorageError("Learning object metadata must be string-only.")
+        if not key.strip():
+            raise LearningObjectStorageError("Learning object metadata key must not be empty.")
+        if len(key) > MAX_OBJECT_METADATA_KEY_LENGTH:
+            raise LearningObjectStorageError("Learning object metadata key is too long.")
+        if len(value) > MAX_OBJECT_METADATA_VALUE_LENGTH:
+            raise LearningObjectStorageError("Learning object metadata value is too long.")
+        normalized_key = _normalize_metadata_key(key)
+        if any(
+            normalized_key.startswith(forbidden) for forbidden in FORBIDDEN_OBJECT_METADATA_KEYS
+        ):
+            raise LearningObjectStorageError("Learning object metadata contains a forbidden key.")
+        value_lower = value.lower()
+        if any(marker in value_lower for marker in SECRET_LIKE_OBJECT_METADATA_VALUE_MARKERS):
+            raise LearningObjectStorageError("Learning object metadata contains a forbidden value.")
+        safe_metadata[key] = value
+    return safe_metadata
+
+
+def _normalize_metadata_key(key: str) -> str:
+    """Normalize a metadata key for case-insensitive policy checks.
+
+    Args:
+        key: Candidate metadata key.
+
+    Returns:
+        Lowercase alphanumeric key.
+    """
+    return "".join(character for character in key.lower() if character.isalnum())
 
 
 def _normalize_key(key: str) -> str:

@@ -51,7 +51,7 @@ def build_learning_object_store(settings: Settings) -> LearningImageObjectStore:
                 or _supabase_storage_s3_endpoint(settings.supabase_project_ref)
             ),
             region_name=settings.learning_object_storage_region,
-            server_side_encryption=settings.learning_object_storage_sse,
+            server_side_encryption=None,
             access_key_id=_secret_value(settings.supabase_storage_s3_access_key_id),
             secret_access_key=_secret_value(settings.supabase_storage_s3_secret_access_key),
             provider_name="supabase_s3",

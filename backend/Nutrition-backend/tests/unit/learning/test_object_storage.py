@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from src.learning.object_storage import (
     LearningImageObjectInput,
+    LearningObjectStorageError,
     LocalLearningImageObjectStore,
     S3LearningImageObjectStore,
 )
@@ -40,6 +41,26 @@ async def test_local_learning_image_object_store_round_trip(tmp_path: Path) -> N
     await store.delete_image(stored.object_uri)
 
     assert not any(tmp_path.rglob("*-*"))
+
+
+@pytest.mark.asyncio
+async def test_local_learning_image_object_store_rejects_unsafe_metadata(tmp_path: Path) -> None:
+    """Verify local retention also fails closed for unsafe metadata."""
+    store = LocalLearningImageObjectStore(tmp_path)
+    payload = _payload()
+    unsafe_payload = LearningImageObjectInput(
+        image_bytes=payload.image_bytes,
+        image_sha256=payload.image_sha256,
+        mime_type=payload.mime_type,
+        owner_subject_hash=payload.owner_subject_hash,
+        retained_until=payload.retained_until,
+        metadata={"raw_ocr_text": "vitamin c 1000mg"},
+    )
+
+    with pytest.raises(LearningObjectStorageError, match="forbidden key"):
+        await store.put_image(unsafe_payload)
+
+    assert not any(tmp_path.rglob("*"))
 
 
 class _FakeS3Client:
@@ -101,3 +122,60 @@ async def test_s3_learning_image_object_store_can_label_supabase_provider() -> N
 
     assert stored.provider == "supabase_s3"
     assert stored.object_uri.startswith("s3://learning-images/learning/images/")
+
+
+@pytest.mark.asyncio
+async def test_s3_learning_image_object_store_can_disable_sse_header() -> None:
+    """Verify Supabase-compatible construction can omit unsupported SSE headers."""
+    client = _FakeS3Client()
+    store = S3LearningImageObjectStore(
+        bucket="learning-images",
+        server_side_encryption=None,
+        client=client,
+    )
+
+    await store.put_image(_payload())
+
+    assert "ServerSideEncryption" not in client.calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_s3_learning_image_object_store_rejects_forbidden_metadata_key() -> None:
+    """Verify raw OCR/image fields cannot become object metadata headers."""
+    client = _FakeS3Client()
+    store = S3LearningImageObjectStore(bucket="bucket", client=client)
+    payload = _payload()
+    unsafe_payload = LearningImageObjectInput(
+        image_bytes=payload.image_bytes,
+        image_sha256=payload.image_sha256,
+        mime_type=payload.mime_type,
+        owner_subject_hash=payload.owner_subject_hash,
+        retained_until=payload.retained_until,
+        metadata={"provider_payload": "{}"},
+    )
+
+    with pytest.raises(LearningObjectStorageError, match="forbidden key"):
+        await store.put_image(unsafe_payload)
+
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_s3_learning_image_object_store_rejects_secret_like_metadata_value() -> None:
+    """Verify credential-like values cannot become object metadata headers."""
+    client = _FakeS3Client()
+    store = S3LearningImageObjectStore(bucket="bucket", client=client)
+    payload = _payload()
+    unsafe_payload = LearningImageObjectInput(
+        image_bytes=payload.image_bytes,
+        image_sha256=payload.image_sha256,
+        mime_type=payload.mime_type,
+        owner_subject_hash=payload.owner_subject_hash,
+        retained_until=payload.retained_until,
+        metadata={"operator_note": "Bearer token-value"},
+    )
+
+    with pytest.raises(LearningObjectStorageError, match="forbidden value"):
+        await store.put_image(unsafe_payload)
+
+    assert client.calls == []

@@ -45,6 +45,7 @@ def test_build_learning_object_store_uses_supabase_storage_endpoint(
     assert captured["bucket"] == "learning-images"
     assert captured["endpoint_url"] == "https://projectref.storage.supabase.co/storage/v1/s3"
     assert captured["region_name"] == "ap-northeast-2"
+    assert captured["server_side_encryption"] is None
     assert captured["provider_name"] == "supabase_s3"
     assert captured["force_path_style"] is True
     assert captured["access_key_id"] == "access"
