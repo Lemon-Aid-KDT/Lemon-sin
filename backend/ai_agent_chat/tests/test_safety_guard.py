@@ -34,3 +34,25 @@ def test_safety_guard_allows_professional_consult_boundary_language() -> None:
 
     assert result.allowed is True
     assert result.warnings == []
+
+
+def test_safety_guard_blocks_unsupported_evidence_claims() -> None:
+    """Verify evidence/effect claims must be present in the grounding context."""
+    result = SafetyGuard().check_grounding(
+        "연구에 따르면 오메가3는 혈압을 낮춥니다.",
+        allowed_context="현재 입력 기준으로 나트륨 섭취가 높을 수 있습니다.",
+    )
+
+    assert result.allowed is False
+    assert "Unsupported medical fact detected" in result.warnings
+
+
+def test_safety_guard_allows_grounded_evidence_terms() -> None:
+    """Verify evidence terms are allowed when already present in context."""
+    result = SafetyGuard().check_grounding(
+        "현재 메모에 따르면 임상시험 관련 자료는 사용하지 않습니다.",
+        allowed_context="임상시험 관련 자료는 사용하지 않습니다.",
+    )
+
+    assert result.allowed is True
+    assert result.warnings == []

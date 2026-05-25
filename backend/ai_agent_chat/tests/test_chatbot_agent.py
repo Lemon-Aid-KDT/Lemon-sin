@@ -101,6 +101,19 @@ def test_chatbot_unsafe_llm_output_falls_back_to_safe_message() -> None:
     assert "Forbidden medical expression detected" in response.safety_warnings
 
 
+def test_chatbot_unsupported_evidence_claim_falls_back() -> None:
+    """Verify LLM cannot add ungrounded study or effect claims."""
+    client = _CapturingLLMClient(text="연구에 따르면 오메가3는 혈압을 낮춥니다.")
+    agent = ChatbotAgent(llm_client=client)
+
+    response = agent.answer(_request())
+
+    assert response.provider == "deterministic"
+    assert "연구에 따르면" not in response.message
+    assert "혈압을 낮춥니다" not in response.message
+    assert "Unsupported medical fact detected" in response.safety_warnings
+
+
 def test_chatbot_chronic_condition_diagnosis_text_falls_back() -> None:
     """Verify chronic-condition certainty from the LLM is not user-facing."""
     client = _CapturingLLMClient(text="고혈압입니다. 나트륨을 완전히 금지하세요.")

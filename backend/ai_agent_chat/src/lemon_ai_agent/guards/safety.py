@@ -34,6 +34,20 @@ PRODUCT_PROMOTION_TERMS = (
     "브랜드",
 )
 
+UNSUPPORTED_EVIDENCE_TERMS = (
+    "연구에 따르면",
+    "임상시험",
+    "논문",
+    "입증",
+    "근거가 확실",
+    "혈압을 낮춥니다",
+    "혈당을 낮춥니다",
+    "콜레스테롤을 낮춥니다",
+    "reduces blood pressure",
+    "clinically proven",
+    "study shows",
+)
+
 
 @dataclass(frozen=True)
 class SafetyCheckResult:
@@ -55,6 +69,19 @@ class SafetyGuard:
         for term in PRODUCT_PROMOTION_TERMS:
             if term.lower() in lowered:
                 warnings.append("Product-promotion expression detected")
+
+        return SafetyCheckResult(allowed=not warnings, warnings=warnings)
+
+    def check_grounding(self, text: str, allowed_context: str) -> SafetyCheckResult:
+        """Block unsupported evidence or effect claims absent from grounding context."""
+        lowered_text = text.lower()
+        lowered_context = allowed_context.lower()
+        warnings: list[str] = []
+
+        for term in UNSUPPORTED_EVIDENCE_TERMS:
+            lowered_term = term.lower()
+            if lowered_term in lowered_text and lowered_term not in lowered_context:
+                warnings.append("Unsupported medical fact detected")
 
         return SafetyCheckResult(allowed=not warnings, warnings=warnings)
 

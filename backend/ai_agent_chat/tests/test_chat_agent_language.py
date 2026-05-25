@@ -117,3 +117,16 @@ def test_unsafe_llm_output_falls_back_to_safe_korean_message() -> None:
     assert "당뇨입니다" not in message
     assert "구매하세요" not in message
     assert "Forbidden medical expression detected" in agent.last_llm_warnings
+
+
+def test_unsupported_evidence_claim_falls_back_to_deterministic_message() -> None:
+    """Verify daily coaching LLM output cannot add unsupported evidence claims."""
+    client = _CapturingLLMClient(text="임상시험에서 비타민 D가 혈압을 낮춥니다.")
+    agent = ChatAgent(llm_client=client)
+
+    message = agent.answer("오늘 코칭 내용을 요약해 주세요.", _result())
+
+    assert agent.last_provider == "deterministic"
+    assert "임상시험" not in message
+    assert "혈압을 낮춥니다" not in message
+    assert "Unsupported medical fact detected" in agent.last_llm_warnings

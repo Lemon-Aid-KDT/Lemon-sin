@@ -42,6 +42,13 @@ class ChatbotAgent:
         warnings.extend(check.warnings)
         if not check.allowed:
             return self._fallback_response(request, warnings, policy)
+        grounding_check = self._safety_guard.check_grounding(
+            llm_response.text,
+            self._grounding_context(request),
+        )
+        warnings.extend(grounding_check.warnings)
+        if not grounding_check.allowed:
+            return self._fallback_response(request, warnings, policy)
 
         return ChatbotResponse(
             request_id=request.request_id,
@@ -231,3 +238,8 @@ class ChatbotAgent:
         if not check.allowed:
             return ""
         return raw_summary.strip()
+
+    def _grounding_context(self, request: ChatbotRequest) -> str:
+        conversation = "\n".join(turn.content for turn in request.conversation[-6:])
+        summary = self._safe_summary(request.context)
+        return "\n".join((request.message, conversation, summary))

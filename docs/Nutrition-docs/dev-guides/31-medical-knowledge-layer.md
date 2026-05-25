@@ -222,8 +222,10 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 - [ ] LLM output은 retrieved 또는 deterministic context 밖의 unsupported fact를 추가하지 못한다.
       [부분 완료: chatbot prompt는 listed source family 없는 신규 건강 사실과 supplied
       context 밖 판단을 금지하고, daily-coaching prompt는 supplied findings/recommendations
-      밖 판단을 금지한다. 출력 후 자동 fact verification은 RAG/live retrieval 연결 전
-      추가 게이트로 남긴다.]
+      밖 판단을 금지한다. `SafetyGuard.check_grounding()`은 출력 후에도 "연구에 따르면",
+      "임상시험", "입증", "혈압을 낮춥니다" 같은 근거·효과 주장이 grounding context에
+      없으면 deterministic fallback으로 되돌린다. 전체 medical fact verification은
+      RAG/live retrieval 연결 전 추가 게이트로 남긴다.]
 - [x] LLM이 단정 표현을 만들면 SafetyGuard fallback을 사용한다.
 - [x] UI는 raw trace, raw findings, internal policy string을 숨긴다.
 - [x] fine-tuning backlog는 tone, structure, safe refusal pattern으로 제한한다.

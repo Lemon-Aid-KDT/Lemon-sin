@@ -34,6 +34,13 @@ class ChatAgent:
         self.last_llm_warnings.extend(check.warnings)
         if not check.allowed:
             return fallback
+        grounding_check = self._safety_guard.check_grounding(
+            response.text,
+            self._grounding_context(result),
+        )
+        self.last_llm_warnings.extend(grounding_check.warnings)
+        if not grounding_check.allowed:
+            return fallback
 
         self.last_provider = response.provider
         return response.text
@@ -108,6 +115,16 @@ class ChatAgent:
                 ),
             ]
         )
+
+    def _grounding_context(self, result: DailyCoachingResult) -> str:
+        findings = "\n".join(
+            f"{finding.nutrient} {finding.level.value} {finding.total_amount}{finding.unit}"
+            for finding in result.findings
+        )
+        recommendations = "\n".join(
+            f"{item.title} {item.rationale}" for item in result.recommendations
+        )
+        return "\n".join((findings, recommendations))
 
 
 def _ko_recommendation_title(title: str) -> str:
