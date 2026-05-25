@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
+from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
 from src.models.db.privacy import AuditLog, ConsentRecord, DeletionRequest
 from src.models.db.regulated import RegulatedDocument
 from src.models.db.supplement import (
@@ -25,7 +26,11 @@ from src.models.db.supplement import (
 from src.models.schemas.privacy import ConsentType
 from src.privacy.consent_policies import ACTIVE_CONSENT_POLICIES
 from src.security.auth import AuthenticatedUser
-from src.services.privacy import create_delete_all_user_data_request, record_audit_event
+from src.services.privacy import (
+    create_delete_all_user_data_request,
+    record_audit_event,
+    revoke_consent,
+)
 
 
 class _FakeAuditSession:
@@ -152,6 +157,36 @@ class _FakeDeletionSession:
         """
         self.added.append(record)
 
+    async def refresh(self, _record: object) -> None:
+        """No-op refresh for fake ORM records.
+
+        Args:
+            _record: ORM object refreshed by the service.
+
+        Returns:
+            None.
+        """
+
+
+class _FakeLearningObjectStore:
+    """Fake learning object store that records deletes."""
+
+    def __init__(self) -> None:
+        """Initialize captured object deletes."""
+        self.deleted: list[tuple[str, str | None]] = []
+
+    async def delete_image(self, object_uri: str, version_id: str | None = None) -> None:
+        """Capture a private object deletion request.
+
+        Args:
+            object_uri: Private object URI.
+            version_id: Optional object version.
+
+        Returns:
+            None.
+        """
+        self.deleted.append((object_uri, version_id))
+
 
 def _request() -> Request:
     """Return a request fixture with auditable metadata.
@@ -194,6 +229,88 @@ def test_external_ocr_processing_policy_is_active() -> None:
     assert policy.version == "2026-05-15"
     assert policy.required is False
     assert len(policy.content_hash) == 64
+
+
+@pytest.mark.asyncio
+async def test_revoke_image_learning_consent_deletes_learning_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify learning opt-out deletes retained image and vector artifacts."""
+    now = datetime.now(UTC)
+    analysis_id = uuid4()
+    image_object = LearningImageObject(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        analysis_id=analysis_id,
+        image_sha256="b" * 64,
+        object_uri="s3://learning-images/private/object.png",
+        object_storage_provider="supabase_s3",
+        object_version_id="version-1",
+        image_mime_type="image/png",
+        image_size_bytes=1024,
+        retained_until=now + timedelta(days=30),
+        status="ready",
+        consent_snapshot={"consents": []},
+    )
+    embedding_job = ImageEmbeddingJob(
+        id=uuid4(),
+        image_object_id=image_object.id,
+        analysis_id=analysis_id,
+        owner_subject_hash="a" * 64,
+        embedding_model="clip-test",
+        status="pending",
+        attempt_count=0,
+        next_run_at=now,
+        metadata_snapshot={"display_name": "Vitamin C"},
+    )
+    embedding_record = ImageEmbeddingRecord(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        analysis_id=analysis_id,
+        image_object_id=image_object.id,
+        image_sha256=image_object.image_sha256,
+        embedding_model="clip-test",
+        embedding_dimensions=3,
+        embedding=(0.1, 0.2, 0.3),
+        embedding_metadata={"display_name": "Vitamin C"},
+    )
+    fake_session = _FakeDeletionSession(
+        {
+            ImageEmbeddingJob: [embedding_job],
+            ImageEmbeddingRecord: [embedding_record],
+            LearningImageObject: [image_object],
+        }
+    )
+    fake_store = _FakeLearningObjectStore()
+    monkeypatch.setattr(
+        "src.services.privacy.build_learning_object_store",
+        lambda _settings: fake_store,
+    )
+    settings = Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
+
+    consent_record = await revoke_consent(
+        cast(AsyncSession, fake_session),
+        _user(),
+        ConsentType.IMAGE_LEARNING_DATASET,
+        _request(),
+        settings,
+    )
+
+    assert consent_record.granted is False
+    assert fake_store.deleted == [(image_object.object_uri, image_object.object_version_id)]
+    assert fake_session.deleted == [embedding_job, embedding_record, image_object]
+    audit_log = fake_session.added[1]
+    assert isinstance(audit_log, AuditLog)
+    assert audit_log.event_metadata["learning_deleted_counts"] == {
+        "learning_image_objects": 1,
+        "image_embedding_jobs": 1,
+        "image_embedding_records": 1,
+        "learning_image_object_blobs": 1,
+        "learning_image_object_delete_failures": 0,
+    }
+    serialized_metadata = str(audit_log.event_metadata)
+    assert image_object.object_uri not in serialized_metadata
+    assert "owner_subject_hash" not in serialized_metadata
 
 
 @pytest.mark.asyncio

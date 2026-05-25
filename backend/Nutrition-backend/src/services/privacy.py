@@ -14,6 +14,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.learning.consent_gate import IMAGE_LEARNING_REQUIRED_CONSENTS
 from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import delete_learning_artifacts_for_owner
 from src.models.db.analysis_result import AnalysisResult
@@ -45,6 +46,7 @@ from src.security.subjects import build_owner_subject
 
 SENSITIVE_HEALTH_CONSENT = ConsentType.SENSITIVE_HEALTH_ANALYSIS
 AuditOutcome = Literal["success", "failed", "not_found", "blocked"]
+LEARNING_REVOCATION_CONSENTS = frozenset(IMAGE_LEARNING_REQUIRED_CONSENTS)
 FORBIDDEN_AUDIT_METADATA_KEYS = {
     "authorization",
     "access_token",
@@ -449,19 +451,29 @@ async def revoke_consent(
         ip_hash=ip_hash,
         user_agent_hash=user_agent_hash,
     )
-    audit_log = _build_audit_log(
-        user=user,
-        action="consent_revoked",
-        resource_type="consent",
-        resource_id=consent_type.value,
-        outcome="success",
-        request=request,
-        settings=settings,
-        event_metadata={"consent_type": consent_type.value, "policy_version": policy.version},
-    )
-
     async with session.begin():
         session.add(record)
+        event_metadata: dict[str, Any] = {
+            "consent_type": consent_type.value,
+            "policy_version": policy.version,
+        }
+        if consent_type in LEARNING_REVOCATION_CONSENTS:
+            learning_deleted_counts = await delete_learning_artifacts_for_owner(
+                session=session,
+                owner_subject_hash=hash_actor_subject(user, settings),
+                object_store=build_learning_object_store(settings),
+            )
+            event_metadata["learning_deleted_counts"] = learning_deleted_counts
+        audit_log = _build_audit_log(
+            user=user,
+            action="consent_revoked",
+            resource_type="consent",
+            resource_id=consent_type.value,
+            outcome="success",
+            request=request,
+            settings=settings,
+            event_metadata=event_metadata,
+        )
         session.add(audit_log)
     await session.refresh(record)
     return record
