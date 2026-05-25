@@ -71,6 +71,37 @@ void main() {
     expect(capturedRequest.fields['ocr_provider'], 'google_vision');
     expect(capturedRequest.files.single.field, 'image');
   });
+
+  test('adds development gateway token header on supplement upload', () async {
+    final File image = _writeTinyPng();
+    addTearDown(() {
+      if (image.existsSync()) {
+        image.deleteSync();
+      }
+    });
+    late http.MultipartRequest capturedRequest;
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'https://example.ngrok.app/api/v1',
+      devGatewayToken: 'debug-gateway-token',
+      httpClient: _CaptureMultipartClient(
+        onRequest: (http.MultipartRequest request) {
+          capturedRequest = request;
+        },
+      ),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    await repository.analyzeSupplementImage(image.path);
+
+    expect(
+      capturedRequest.headers['X-Lemon-Dev-Gateway-Token'],
+      'debug-gateway-token',
+    );
+    expect(capturedRequest.headers, isNot(contains('Authorization')));
+  });
 }
 
 class _CaptureMultipartClient extends http.BaseClient {

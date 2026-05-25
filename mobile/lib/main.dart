@@ -10,6 +10,7 @@ void main() {
   final ApiClient apiClient = ApiClient(
     baseUrl: config.apiBaseUrl,
     bearerToken: config.apiToken,
+    devGatewayToken: config.devGatewayToken,
   );
 
   runApp(

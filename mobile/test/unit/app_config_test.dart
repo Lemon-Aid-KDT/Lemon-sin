@@ -10,7 +10,17 @@ void main() {
 
     expect(config.apiBaseUrl, 'http://127.0.0.1:8000/api/v1');
     expect(config.apiToken, 'local-token');
+    expect(config.devGatewayToken, isNull);
     expect(config.certificatePins, isEmpty);
+  });
+
+  test('allows local development gateway token', () {
+    final AppConfig config = AppConfig.fromValues(
+      apiBaseUrl: 'https://example.ngrok.app/api/v1',
+      devGatewayToken: ' local-gateway-token ',
+    );
+
+    expect(config.devGatewayToken, 'local-gateway-token');
   });
 
   test('requires HTTPS in release builds', () {
@@ -28,6 +38,17 @@ void main() {
       () => AppConfig.fromValues(
         apiBaseUrl: 'https://api.example.com/api/v1',
         apiToken: 'must-not-ship',
+        releaseMode: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('rejects embedded release gateway tokens', () {
+    expect(
+      () => AppConfig.fromValues(
+        apiBaseUrl: 'https://api.example.com/api/v1',
+        devGatewayToken: 'must-not-ship',
         releaseMode: true,
       ),
       throwsA(isA<StateError>()),
@@ -60,6 +81,7 @@ void main() {
 
     expect(config.apiBaseUrl, 'https://api.example.com/api/v1');
     expect(config.apiToken, isNull);
+    expect(config.devGatewayToken, isNull);
     expect(config.certificatePins, const <String>['pin-primary', 'pin-backup']);
   });
 }

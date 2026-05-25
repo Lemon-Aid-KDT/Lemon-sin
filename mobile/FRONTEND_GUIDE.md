@@ -10,6 +10,7 @@ from `origin/feat/mobile-dashboard-redesign`.
 - State model: `ChangeNotifier` through `AppController`
 - API base config: `LEMON_API_BASE_URL`, which must end with `/api/v1`
 - Optional local token config: `LEMON_API_TOKEN`; never embed it in release builds
+- Optional local gateway config: `LEMON_DEV_GATEWAY_TOKEN`; never embed it in release builds
 - Release pin config: `LEMON_CERTIFICATE_PINS`
 
 For Android emulator testing against a local backend, use:
@@ -36,9 +37,11 @@ the developer machine:
 2. Start the local Host-rewriting gateway:
 
 ```bash
+export LEMON_DEV_GATEWAY_TOKEN=<random-local-smoke-token>
 python backend/scripts/dev_mobile_ngrok_backend_gateway.py \
   --listen-port 8010 \
-  --backend-url http://127.0.0.1:8000
+  --backend-url http://127.0.0.1:8000 \
+  --require-token
 ```
 
 3. Start a fresh public tunnel to the gateway:
@@ -51,19 +54,22 @@ ngrok http 8010 --web-addr 127.0.0.1:4041
 
 ```bash
 flutter run -d <ios-device-id> \
-  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1 \
+  --dart-define=LEMON_DEV_GATEWAY_TOKEN=${LEMON_DEV_GATEWAY_TOKEN}
 ```
 
 For Android physical devices, add the dev flavor:
 
 ```bash
 flutter run -d <android-device-id> --flavor dev \
-  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1 \
+  --dart-define=LEMON_DEV_GATEWAY_TOKEN=${LEMON_DEV_GATEWAY_TOKEN}
 ```
 
 The gateway rewrites the public ngrok `Host` header to the local backend host so
 the backend `ALLOWED_HOSTS` policy does not need to allow arbitrary ngrok hosts.
-It must only be used for local development smoke tests.
+It must only be used for local development smoke tests. The gateway token is
+checked at the gateway and is not forwarded to the backend.
 
 iOS Simulator can validate the app build and gallery-based OCR flow, but direct
 camera capture requires a physical iPhone with Developer Mode enabled. Android

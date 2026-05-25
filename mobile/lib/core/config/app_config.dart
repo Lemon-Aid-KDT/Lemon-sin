@@ -10,6 +10,7 @@ class AppConfig {
   const AppConfig({
     required this.apiBaseUrl,
     required this.apiToken,
+    required this.devGatewayToken,
     required this.certificatePins,
   });
 
@@ -18,6 +19,9 @@ class AppConfig {
 
   /// Optional bearer token for JWT-backed environments.
   final String? apiToken;
+
+  /// Optional local development gateway token for ngrok smoke tests.
+  final String? devGatewayToken;
 
   /// Release certificate pin configuration reserved for the hardened API client.
   final List<String> certificatePins;
@@ -32,6 +36,9 @@ class AppConfig {
       defaultValue: 'http://127.0.0.1:8000/api/v1',
     );
     const String rawToken = String.fromEnvironment('LEMON_API_TOKEN');
+    const String rawDevGatewayToken = String.fromEnvironment(
+      'LEMON_DEV_GATEWAY_TOKEN',
+    );
     const String rawCertificatePins = String.fromEnvironment(
       'LEMON_CERTIFICATE_PINS',
     );
@@ -39,6 +46,7 @@ class AppConfig {
     return AppConfig.fromValues(
       apiBaseUrl: rawBaseUrl,
       apiToken: rawToken,
+      devGatewayToken: rawDevGatewayToken,
       certificatePins: _splitCommaSeparated(rawCertificatePins),
       releaseMode: releaseMode,
     );
@@ -49,6 +57,7 @@ class AppConfig {
   /// Args:
   ///   apiBaseUrl: Backend API base URL ending at `/api/v1`.
   ///   apiToken: Optional local-development bearer token.
+  ///   devGatewayToken: Optional local-development gateway token.
   ///   certificatePins: Certificate pin config required for release builds.
   ///   releaseMode: Whether release binary restrictions should be enforced.
   ///
@@ -60,6 +69,7 @@ class AppConfig {
   factory AppConfig.fromValues({
     required String apiBaseUrl,
     String? apiToken,
+    String? devGatewayToken,
     List<String> certificatePins = const <String>[],
     bool releaseMode = false,
   }) {
@@ -67,6 +77,10 @@ class AppConfig {
     final String? normalizedToken = apiToken == null || apiToken.trim().isEmpty
         ? null
         : apiToken.trim();
+    final String? normalizedDevGatewayToken =
+        devGatewayToken == null || devGatewayToken.trim().isEmpty
+        ? null
+        : devGatewayToken.trim();
     final List<String> normalizedCertificatePins = certificatePins
         .map((String value) => value.trim())
         .where((String value) => value.isNotEmpty)
@@ -75,6 +89,11 @@ class AppConfig {
     if (releaseMode && normalizedToken != null) {
       throw StateError(
         'LEMON_API_TOKEN must not be embedded in release builds.',
+      );
+    }
+    if (releaseMode && normalizedDevGatewayToken != null) {
+      throw StateError(
+        'LEMON_DEV_GATEWAY_TOKEN must not be embedded in release builds.',
       );
     }
     if (releaseMode && !normalizedBaseUrl.startsWith('https://')) {
@@ -92,6 +111,7 @@ class AppConfig {
     return AppConfig(
       apiBaseUrl: normalizedBaseUrl,
       apiToken: normalizedToken,
+      devGatewayToken: normalizedDevGatewayToken,
       certificatePins: List<String>.unmodifiable(normalizedCertificatePins),
     );
   }

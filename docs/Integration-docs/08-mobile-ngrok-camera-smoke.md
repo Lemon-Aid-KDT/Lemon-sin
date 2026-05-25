@@ -1,6 +1,6 @@
 # 08. Mobile ngrok Camera Smoke Runbook
 
-> Status: simulator gateway smoke verified, physical device/ngrok live smoke pending
+> Status: token-gated simulator gateway smoke verified, physical device/ngrok live smoke pending
 > Date: 2026-05-25
 > Scope: Flutter supplement label camera capture, local ngrok HTTPS tunnel, and
 > backend OCR endpoint smoke on `feat/db-internal-learning-pipeline`
@@ -45,23 +45,31 @@ payloads, raw OCR output, image bytes, object URIs, or bearer tokens in logs.
 ## 4. ngrok Host-Rewriting Gateway
 
 FastAPI `TrustedHost` should not be widened to arbitrary ngrok domains for local
-smoke testing. Instead, run the local-only gateway:
+smoke testing. Instead, run the local-only gateway. For public ngrok testing,
+require a short-lived operator-generated token:
 
 ```bash
+export LEMON_DEV_GATEWAY_TOKEN=<random-local-smoke-token>
 python backend/scripts/dev_mobile_ngrok_backend_gateway.py \
   --listen-port 8010 \
-  --backend-url http://127.0.0.1:8000
+  --backend-url http://127.0.0.1:8000 \
+  --require-token
 ```
 
 Then verify the gateway:
 
 ```bash
-curl -sS http://127.0.0.1:8010/health
-curl -sS http://127.0.0.1:8010/api/v1/me/privacy/consents
+curl -sS \
+  -H "X-Lemon-Dev-Gateway-Token: ${LEMON_DEV_GATEWAY_TOKEN}" \
+  http://127.0.0.1:8010/health
+curl -sS \
+  -H "X-Lemon-Dev-Gateway-Token: ${LEMON_DEV_GATEWAY_TOKEN}" \
+  http://127.0.0.1:8010/api/v1/me/privacy/consents
 ```
 
 The gateway forwards request bodies but logs only method and status. It does not
-log image bytes, OCR text, provider payloads, object URIs, or secrets.
+forward the development gateway token to the backend and does not log image
+bytes, OCR text, provider payloads, object URIs, or secrets.
 
 ## 5. Public Tunnel
 
@@ -88,7 +96,8 @@ For a physical iPhone:
 ```bash
 cd mobile
 flutter run -d <ios-device-id> \
-  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1 \
+  --dart-define=LEMON_DEV_GATEWAY_TOKEN=${LEMON_DEV_GATEWAY_TOKEN}
 ```
 
 For a physical Android phone:
@@ -96,7 +105,8 @@ For a physical Android phone:
 ```bash
 cd mobile
 flutter run -d <android-device-id> --flavor dev \
-  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+  --dart-define=LEMON_API_BASE_URL=https://<ngrok-host>/api/v1 \
+  --dart-define=LEMON_DEV_GATEWAY_TOKEN=${LEMON_DEV_GATEWAY_TOKEN}
 ```
 
 For iOS Simulator build/gallery smoke:
@@ -136,7 +146,7 @@ flutter run -d emulator-5554 --flavor dev \
 | iOS Simulator camera | Simulator can build and use gallery fallback, but real camera capture needs hardware. | Use a physical iPhone for direct capture. |
 | Physical iPhone visibility | The device must be unlocked, trusted, paired, and Developer Mode enabled. | Re-run `flutter devices` before smoke. |
 | Existing authenticated ngrok tunnel | Basic-auth protected tunnels return `401` to the app unless credentials are embedded. | Start a fresh development tunnel to the local gateway. |
-| Release auth | `LEMON_API_TOKEN` is local-smoke only. | Never embed tokens in release builds. |
+| Release auth | `LEMON_API_TOKEN` and `LEMON_DEV_GATEWAY_TOKEN` are local-smoke only. | Never embed tokens in release builds. |
 
 ## 9. Current Verification Evidence
 
@@ -145,12 +155,17 @@ Verified on 2026-05-25 from
 
 | Requirement | Evidence | Result |
 | --- | --- | --- |
-| Branch and remote | `HEAD` and `origin/feat/db-internal-learning-pipeline` both at `091e7a266a0e10be49238c18936dd08f8be48fb3` | Passed |
+| Branch and remote | `git status --short --branch`, `git ls-remote origin feat/db-internal-learning-pipeline` | Local branch and remote branch synchronized before this evidence update |
 | Local backend | `curl -i http://127.0.0.1:8000/health` | `200`, `{"status":"ok","version":"0.1.0"}` |
-| Gateway health | `curl -i http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
+| Gateway token enforcement | `curl -i http://127.0.0.1:8010/health` with token-required gateway | `401 Unauthorized` without `X-Lemon-Dev-Gateway-Token` |
+| Gateway token rejection | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <wrong-token>' http://127.0.0.1:8010/health` | `401 Unauthorized` |
+| Gateway token success | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <local-smoke-token>' http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
 | iOS simulator availability | `flutter devices` after booting `iPhone 17` | Simulator visible as `C98610F7-7B4C-4202-A18C-498F43A20AA0` |
 | iOS simulator gateway app run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1` | App installed and launched; gateway logged sanitized `GET 200` calls |
+| iOS simulator token-gated app run | Same simulator run plus `--dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; token-required gateway logged sanitized `GET 200` calls |
 | iOS simulator screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-gateway-smoke.png` | Dashboard rendered live summary updated at `2026-05-25 15:58:15.939646` |
+| Flutter regression | `flutter analyze`, `flutter test` | No analyzer issues; `19` tests passed |
+| Platform debug builds | `flutter build apk --debug --flavor dev ...`, `flutter build ios --simulator --debug ...` with gateway token define | Android dev APK and iOS simulator app built successfully |
 | iOS simulator direct camera | `xcrun simctl help io` | Not supported; available operations are enumerate, poll, recordVideo, screenshot |
 | Physical iPhone detection | `flutter devices` | Not detected; wireless discovery reports Developer Mode/unlock/cable/LAN requirement |
 | Existing ngrok tunnel | `curl http://127.0.0.1:4040/api/tunnels` | Tunnel points to `http://localhost:8765`, not the backend gateway |

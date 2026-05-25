@@ -11,17 +11,21 @@ class ApiClient {
   /// Args:
   ///   baseUrl: Backend API base URL ending at `/api/v1`.
   ///   bearerToken: Optional JWT bearer token.
+  ///   devGatewayToken: Optional local development gateway token.
   ///   httpClient: Injectable HTTP client for tests.
   ApiClient({
     required String baseUrl,
     String? bearerToken,
+    String? devGatewayToken,
     http.Client? httpClient,
   }) : _baseUrl = _normalizeBaseUrl(baseUrl),
        _bearerToken = bearerToken,
+       _devGatewayToken = devGatewayToken,
        _httpClient = httpClient ?? http.Client();
 
   final String _baseUrl;
   final String? _bearerToken;
+  final String? _devGatewayToken;
   final http.Client _httpClient;
 
   /// Sends a JSON GET request and returns a decoded object map.
@@ -153,6 +157,9 @@ class ApiClient {
     };
     if (_bearerToken != null && _bearerToken.trim().isNotEmpty) {
       headers['Authorization'] = 'Bearer ${_bearerToken.trim()}';
+    }
+    if (_devGatewayToken != null && _devGatewayToken.trim().isNotEmpty) {
+      headers['X-Lemon-Dev-Gateway-Token'] = _devGatewayToken.trim();
     }
     return headers;
   }
