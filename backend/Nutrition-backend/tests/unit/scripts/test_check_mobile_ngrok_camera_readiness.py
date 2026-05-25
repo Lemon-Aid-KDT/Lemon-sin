@@ -135,6 +135,7 @@ def test_evaluate_readiness_reports_incomplete_when_optional_live_gates_missing(
     assert result.status == "incomplete"
     assert result.details["flutter_devices_probe"] == "ok"
     assert result.details["physical_device_ready"] is False
+    assert result.details["device_deploy_probe"] == "not_checked"
     assert result.details["ngrok_ready"] is False
 
 
@@ -195,6 +196,7 @@ def test_format_result_is_single_line_and_sanitized() -> None:
             "gateway_contract": 200,
             "ngrok_gateway_matches": 1,
             "physical_device_ready": True,
+            "device_deploy_probe": "not_checked",
         },
     )
 
@@ -202,7 +204,8 @@ def test_format_result_is_single_line_and_sanitized() -> None:
 
     assert formatted == (
         "status=ready backend_health=200 gateway_health=200 gateway_contract=200 "
-        "ngrok_gateway_matches=1 physical_device_ready=True"
+        "ngrok_gateway_matches=1 physical_device_ready=True "
+        "device_deploy_probe=not_checked"
     )
     assert "ngrok.app" not in formatted
     assert "token" not in formatted.lower()

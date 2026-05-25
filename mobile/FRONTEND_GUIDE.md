@@ -91,6 +91,10 @@ status flags, including `flutter_devices_probe` when the local Flutter device
 probe itself fails. It also checks the launch-time consent API through
 `gateway_contract`, because the dashboard can still fail when `/health` is OK
 but the database-backed mobile contract is not ready.
+`physical_device_ready=True` only confirms that Flutter can see a physical
+phone. If `flutter run -d <ios-device-id>` says Developer Mode is required,
+enable it on the iPhone under Settings > Privacy & Security, reconnect the
+device, and handle any Xcode trust prompt before camera capture testing.
 
 If the iOS Simulator shows a dashboard `500`, verify the gateway contract before
 testing camera capture:

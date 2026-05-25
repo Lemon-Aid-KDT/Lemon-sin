@@ -158,6 +158,10 @@ normal device visibility from sanitized Flutter tool failures such as
 `permission_error`, `timeout`, or `unavailable`. `gateway_contract` checks the
 same consent endpoint the app calls on launch, so a healthy `/health` response
 cannot hide a database-backed mobile contract failure.
+`physical_device_ready=True` means Flutter can see at least one physical phone;
+`device_deploy_probe=not_checked` means the script has not installed or launched
+the app, so Developer Mode, signing, and trust prompts still need the `flutter
+run` step below.
 
 ## 9. Known Limits
 
@@ -193,6 +197,9 @@ Verified on 2026-05-25 from
 | iOS simulator team backend gateway run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1 --dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; dashboard rendered live summary without the previous `500` banner |
 | iOS simulator screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-gateway-smoke.png` | Dashboard rendered live summary updated at `2026-05-25 15:58:15.939646` |
 | iOS simulator team backend screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-8010-container-gateway.png` | Dashboard rendered live summary updated at `2026-05-25 16:43:24.132563` |
+| Physical iPhone visibility | `flutter devices --machine` | Physical iPhone visible as an iOS device; readiness reports `ios_physical=1` and `physical_device_ready=True` |
+| Physical iPhone deploy attempt | `flutter run -d <ios-device-id> --no-resident ...` | Blocked before launch: iPhone requires Developer Mode in Settings > Privacy & Security or Xcode trust prompt handling |
+| Public ngrok tunnel attempt | `ngrok http 8010 --web-addr 127.0.0.1:4041` | Not run: public tunnel opening was rejected by safety approval because it exposes local backend traffic to an external service |
 | Flutter regression | `flutter analyze`, `flutter test` | No analyzer issues; `19` tests passed |
 | Platform debug builds | `flutter build apk --debug --flavor dev ...`, `flutter build ios --simulator --debug ...` with gateway token define | Android dev APK and iOS simulator app built successfully |
 | iOS simulator direct camera | `xcrun simctl help io` | Not supported; available operations are enumerate, poll, recordVideo, screenshot |

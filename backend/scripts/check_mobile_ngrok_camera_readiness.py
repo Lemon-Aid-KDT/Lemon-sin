@@ -360,6 +360,7 @@ def evaluate_readiness(
         "ngrok_https_tunnels": ngrok.https_tunnels,
         "ngrok_gateway_matches": ngrok.gateway_matches,
         "physical_device_ready": physical_count > 0,
+        "device_deploy_probe": "not_checked",
         "ngrok_ready": ngrok.gateway_matches > 0,
     }
     if failures:
