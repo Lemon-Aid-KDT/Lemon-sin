@@ -360,6 +360,12 @@ def test_flutter_chat_mvp_uses_safe_contract_and_navigation() -> None:
     assert "IconButton" in screen
     assert "provider" in screen
     assert "memory" in screen
+    assert "sourceFamilies" in screen
+    assert "_sourceFamilyLabel" in screen
+    assert "nutrition_reference" in screen
+    assert "영양 기준" in screen
+    assert "supplement_reference" in screen
+    assert "영양제 참고" in screen
     assert "MedicalDisclaimer" in screen
     assert "error.toString()" not in screen
 

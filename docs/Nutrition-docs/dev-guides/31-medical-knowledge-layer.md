@@ -202,7 +202,9 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 2. 만성질환 지식용 reviewed source registry file을 추가한다. [완료: 코드 registry 1차]
 3. 가치가 큰 소수 케이스부터 deterministic caution mapping을 추가한다.
 4. 만성질환 출력의 금지 표현 테스트를 추가한다.
-5. UI 문구가 준비된 뒤 source metadata를 backend response에 추가한다.
+5. UI 문구가 준비된 뒤 source metadata를 backend response와 Flutter chatbot card
+   footer에 추가한다. [완료: `source_families` API 응답, Flutter DTO parsing,
+   chatbot 화면 source family chip]
 6. source record, review workflow, stale-source behavior가 정리된 뒤 RAG를 검토한다.
    [부분 완료: readiness가 expired review를 `source_stale`로 차단]
 7. safety test가 안정된 뒤 tone 또는 format 목적의 fine-tuning만 검토한다.
@@ -236,9 +238,11 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 
 - reviewed source record의 첫 만성질환 topic은 KDCA 고혈압/당뇨/신장질환 맥락으로 시작한다.
 - source review와 expiry check 책임자를 정한다.
-- source metadata를 chatbot card footer에 넣을지 detail sheet에 넣을지 정한다.
-  [부분 완료: backend `/api/v1/ai-agent/chat` 응답은 `source_families`를 포함하고,
-  Flutter `ChatbotResponse`도 이를 파싱한다. 실제 화면 노출 위치는 UI 결정으로 남긴다.]
+- chatbot card footer에는 source family chip을 표시한다.
+  [완료: backend `/api/v1/ai-agent/chat` 응답은 `source_families`를 포함하고,
+  Flutter `ChatbotResponse`가 이를 파싱하며 채팅 화면에 영양 기준/영양제 참고 등
+  한국어 source family chip으로 표시한다. 구체 source record detail sheet는 RAG/live
+  retrieval 적용 뒤 별도 UX로 검토한다.]
 - chatbot과 daily-coaching snapshot에 금지 표현 자동 검사를 추가한다.
   [완료: chatbot LLM 출력, daily-coaching adapter/Flutter contract, `SafetyGuard`
   회귀 테스트에서 raw trace, 위험 단정 표현, 약 중단·복용량 변경 지시를 차단한다.]

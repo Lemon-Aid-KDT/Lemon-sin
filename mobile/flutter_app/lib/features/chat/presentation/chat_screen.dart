@@ -126,6 +126,13 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: LemonColors.sky,
                           backgroundColor: LemonColors.skySoft,
                         ),
+                        for (final String sourceFamily
+                            in _lastResponse!.sourceFamilies)
+                          LemonPill(
+                            label: _sourceFamilyLabel(sourceFamily),
+                            color: LemonColors.leaf,
+                            backgroundColor: LemonColors.leafSoft,
+                          ),
                         if (_lastResponse!.requiresUserApproval)
                           const LemonPill(
                             label: '승인 필요',
@@ -179,6 +186,19 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+}
+
+String _sourceFamilyLabel(String sourceFamily) {
+  return switch (sourceFamily) {
+    'nutrition_reference' => '영양 기준',
+    'supplement_reference' => '영양제 참고',
+    'drug_safety_boundary' => '복약 주의',
+    'chronic_condition' => '만성질환 맥락',
+    'general_medical' => '일반 건강정보',
+    'emergency_escalation' => '응급 안내',
+    'mental_health_escalation' => '안전 위기 안내',
+    _ => sourceFamily.replaceAll('_', ' '),
+  };
 }
 
 class _EmptyChatState extends StatelessWidget {
