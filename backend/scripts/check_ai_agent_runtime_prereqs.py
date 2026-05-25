@@ -98,10 +98,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if ollama_failure:
         print(f"Required Ollama runtime is not ready: ollama={ollama_failure}")
 
-    return (
-        0
-        if postgres_ready and sglang_ready and not medical_source_failures and not ollama_failure
-        else 1
+    return _exit_code(
+        args,
+        postgres_ready=postgres_ready,
+        sglang_ready=sglang_ready,
+        medical_source_failures=medical_source_failures,
+        ollama_failure=ollama_failure,
     )
 
 
@@ -135,7 +137,37 @@ def _parse_args(argv: Sequence[str] | None) -> Namespace:
         action="store_true",
         help="Fail if the configured local Ollama server or model is not available.",
     )
+    parser.add_argument(
+        "--require-postgres-smoke",
+        action="store_true",
+        help="Fail if PostgreSQL migration smoke prerequisites are not ready.",
+    )
+    parser.add_argument(
+        "--require-sglang-smoke",
+        action="store_true",
+        help="Fail if local SGLang smoke prerequisites are not ready.",
+    )
     return parser.parse_args(argv)
+
+
+def _exit_code(
+    args: Namespace,
+    *,
+    postgres_ready: bool,
+    sglang_ready: bool,
+    medical_source_failures: Sequence[str],
+    ollama_failure: str | None,
+) -> int:
+    """Return success unless a caller-requested strict gate failed."""
+    if args.require_postgres_smoke and not postgres_ready:
+        return 1
+    if args.require_sglang_smoke and not sglang_ready:
+        return 1
+    if medical_source_failures:
+        return 1
+    if ollama_failure:
+        return 1
+    return 0
 
 
 def _build_settings(args: Namespace) -> Settings:

@@ -113,6 +113,51 @@ def test_build_settings_can_ignore_dotenv_files() -> None:
     assert isinstance(settings, Settings)
 
 
+def test_exit_code_ignores_advisory_runtime_when_required_sources_pass() -> None:
+    """Verify medical-source-only checks are not failed by smoke runtime env gaps."""
+    args = prereqs._parse_args(["--require-medical-sources", "kdca-healthinfo"])
+
+    exit_code = prereqs._exit_code(
+        args,
+        postgres_ready=False,
+        sglang_ready=False,
+        medical_source_failures=[],
+        ollama_failure=None,
+    )
+
+    assert exit_code == 0
+
+
+def test_exit_code_can_require_runtime_smoke_gates() -> None:
+    """Verify live-smoke mode can still fail on PostgreSQL and SGLang readiness."""
+    args = prereqs._parse_args(["--require-postgres-smoke", "--require-sglang-smoke"])
+
+    exit_code = prereqs._exit_code(
+        args,
+        postgres_ready=False,
+        sglang_ready=False,
+        medical_source_failures=[],
+        ollama_failure=None,
+    )
+
+    assert exit_code == 1
+
+
+def test_exit_code_fails_required_medical_sources_and_ollama() -> None:
+    """Verify strict source and Ollama gates still control the exit code."""
+    args = prereqs._parse_args(["--require-medical-sources", "kdca-healthinfo", "--require-ollama"])
+
+    exit_code = prereqs._exit_code(
+        args,
+        postgres_ready=True,
+        sglang_ready=True,
+        medical_source_failures=["kdca-healthinfo=missing_api_key"],
+        ollama_failure="port_closed",
+    )
+
+    assert exit_code == 1
+
+
 def test_required_medical_source_failures_report_unknown_source() -> None:
     """Verify strict gates fail loudly for misspelled source IDs."""
     failures = prereqs._required_medical_source_failures(

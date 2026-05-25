@@ -190,6 +190,9 @@ python backend\scripts\smoke_ai_agent_server.py `
 - [x] `backend/scripts/check_ai_agent_runtime_prereqs.py`가 runtime port와 함께
       medical source readiness를 출력하고, 기본 실행에서 앱과 같은 `.env`
       후보를 읽으며 `--env-file`/`--ignore-env-file`로 명시 제어할 수 있다.
+      PostgreSQL/SGLang smoke readiness는 기본 상태 출력이고,
+      `--require-postgres-smoke`, `--require-sglang-smoke`를 붙일 때만 종료코드
+      실패로 판정한다.
 - [x] `--require-medical-sources` strict gate로 키 누락, 미검수 source, source id
       오타를 종료코드 실패로 판정한다.
 - [x] `--require-ollama` strict gate로 개발용 Ollama port와 configured model 존재를
@@ -244,7 +247,8 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py `
 - `medical source semantic-scholar: missing (not_reviewed)`는 정상
 - SGLang live smoke와 PostgreSQL migration smoke는 2026-05-25에 opt-in 환경변수
   기준 통과했다. Docker Desktop 또는 `lemon-sglang` 컨테이너가 꺼져 있으면
-  다시 `missing`으로 보일 수 있다.
+  다시 `missing`으로 보일 수 있다. 해당 runtime까지 종료코드로 강제하려면
+  `--require-postgres-smoke --require-sglang-smoke`를 추가한다.
 - 개발용 Ollama까지 확인하려면 Ollama 서버와 모델을 준비한 뒤 다음을 추가 실행한다:
 
 ```powershell

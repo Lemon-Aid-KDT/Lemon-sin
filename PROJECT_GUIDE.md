@@ -3014,7 +3014,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | Android SDK | 미설치 | Android emulator build/run 검증 전 설치 필요 |
 | Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-25 Docker Desktop + `lemon-sglang` container 기준 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + chatbot 1회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
 | AI Agent chatbot policy smoke | 완료 | unit/API 테스트와 2026-05-25 live smoke로 `/api/v1/ai-agent/chat`, SGLang provider 분기, `chat_used_tools`의 `agent_memory`, 약물·응급·자해 boundary, 민감 건강 동의 gate를 확인했다. Flutter web CORS smoke는 고정 포트 기준의 별도 UI smoke로 관리한다. |
-| Ollama live smoke | 실행 게이트 준비, live 미완료 | parser unit test와 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` strict gate는 준비됐다. preflight는 앱과 같은 기본 `.env` 후보를 읽고 `--env-file`/`--ignore-env-file`로 명시 제어할 수 있다. 현재 `127.0.0.1:11434` Ollama server/model 호출은 `ollama=port_closed`로 미완료다. 운영 후보 SGLang 경로는 live 검증 완료, Ollama는 개발용 기본 런타임 확인 항목으로 남긴다. |
+| Ollama live smoke | 실행 게이트 준비, live 미완료 | parser unit test와 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` strict gate는 준비됐다. preflight는 앱과 같은 기본 `.env` 후보를 읽고 `--env-file`/`--ignore-env-file`로 명시 제어할 수 있으며, PostgreSQL/SGLang smoke는 `--require-postgres-smoke`/`--require-sglang-smoke`를 붙일 때만 종료코드 실패로 판정한다. 현재 `127.0.0.1:11434` Ollama server/model 호출은 `ollama=port_closed`로 미완료다. 운영 후보 SGLang 경로는 live 검증 완료, Ollama는 개발용 기본 런타임 확인 항목으로 남긴다. |
 
 ### B.5 보안/개인정보 현재 판단
 
