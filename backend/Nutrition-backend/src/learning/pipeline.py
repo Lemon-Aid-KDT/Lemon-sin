@@ -60,6 +60,10 @@ FORBIDDEN_LEARNING_METADATA_KEYS = frozenset(
         "service_key",
     }
 )
+NORMALIZED_FORBIDDEN_LEARNING_METADATA_KEYS = frozenset(
+    "".join(character for character in key.casefold() if character.isalnum())
+    for key in FORBIDDEN_LEARNING_METADATA_KEYS
+)
 PII_LIKE_TEXT_PATTERN = re.compile(
     r"(?P<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|" r"(?P<phone>\+?\d[\d\s().-]{7,}\d)",
     re.IGNORECASE,
@@ -691,13 +695,26 @@ def _contains_forbidden_metadata_key(value: Any) -> bool:
     """
     if isinstance(value, dict):
         for key, nested in value.items():
-            if str(key).casefold() in FORBIDDEN_LEARNING_METADATA_KEYS:
+            normalized_key = _normalize_metadata_key(str(key))
+            if normalized_key in NORMALIZED_FORBIDDEN_LEARNING_METADATA_KEYS:
                 return True
             if _contains_forbidden_metadata_key(nested):
                 return True
     elif isinstance(value, list):
         return any(_contains_forbidden_metadata_key(item) for item in value)
     return False
+
+
+def _normalize_metadata_key(key: str) -> str:
+    """Normalize metadata keys before forbidden-key comparison.
+
+    Args:
+        key: Candidate metadata key.
+
+    Returns:
+        Lowercase alphanumeric key for snake/camel/kebab-case equivalence.
+    """
+    return "".join(character for character in key.casefold() if character.isalnum())
 
 
 def _contains_pii_like_text(value: Any) -> bool:

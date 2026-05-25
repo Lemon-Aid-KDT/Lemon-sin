@@ -182,6 +182,9 @@ def test_learning_metadata_storage_filter_allows_low_signal_review_metadata() ->
     "metadata",
     [
         {"display_name": "Vitamin C", "raw_ocr_text": "label"},
+        {"display_name": "Vitamin C", "rawOcrText": "label"},
+        {"display_name": "Vitamin C", "raw-ocr-text": "label"},
+        {"display_name": "Vitamin C", "nested": {"providerPayload": "{}"}},
         {"display_name": "Vitamin C", "ingredients": []},
         {"display_name": "Vitamin C", "ingredients": [{"display_name": ""}]},
         {"display_name": "Vitamin C", "ingredients": [{"display_name": "010-1234-5678"}]},
