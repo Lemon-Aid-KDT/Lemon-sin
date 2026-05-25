@@ -212,6 +212,33 @@ def test_predictor_forwards_textline_orientation_when_disabled(
     assert predictor.kwargs["text_recognition_model_name"] == "korean_PP-OCRv5_mobile_rec"  # type: ignore[attr-defined]
 
 
+def test_predictor_wraps_import_time_provider_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify PaddleOCR import-time runtime failures become bounded OCR errors.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+    """
+
+    def _raise_permission_error(module_name: str) -> object:
+        """Raise a runtime import failure for the requested module.
+
+        Args:
+            module_name: Imported module name.
+
+        Raises:
+            PermissionError: Simulated provider cache permission failure.
+        """
+        raise PermissionError(f"{module_name} cache unavailable")
+
+    monkeypatch.setattr("src.ocr.providers.paddle.import_module", _raise_permission_error)
+    _get_paddle_predictor.cache_clear()
+    try:
+        with pytest.raises(OCRError, match="provider initialization"):
+            _get_paddle_predictor(language="korean", device=None)
+    finally:
+        _get_paddle_predictor.cache_clear()
+
+
 def test_predictor_forwards_textline_orientation_when_enabled(
     _fake_paddleocr_module: None,
 ) -> None:

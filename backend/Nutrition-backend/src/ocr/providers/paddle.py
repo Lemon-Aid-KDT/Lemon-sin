@@ -135,6 +135,8 @@ def _get_paddle_predictor(
         paddle_ocr_class = cast(Any, import_module("paddleocr")).PaddleOCR
     except ImportError as exc:
         raise OCRError("PaddleOCR is not installed. Install backend .[ocr-local].") from exc
+    except Exception as exc:
+        raise OCRError("PaddleOCR provider initialization failed.") from exc
 
     kwargs: dict[str, object] = {
         "lang": language,

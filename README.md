@@ -126,20 +126,23 @@ Google Vision 관련 코드와 설정은 존재하지만 기본 운영 자세는
 
 ## 🚀 빠른 시작
 
-현재 루트에는 Docker Compose 파일이 포함되어 있지 않습니다. backend 검증은 로컬 Python 환경 기준으로 실행합니다.
+로컬 smoke는 두 가지 방식으로 실행할 수 있습니다.
+
+- 빠른 코드 반복: 로컬 Python venv에서 FastAPI 실행
+- 컨테이너 재현: `docker-compose.yml`로 pgvector PostgreSQL, Redis, FastAPI backend 실행
 
 ### 1. 저장소 준비
 
 ```bash
 git clone https://github.com/Lemon-Aid-KDT/Lemon-sin.git
 cd Lemon-sin
-git switch yeong-tech
+git switch feat/db-internal-learning-pipeline
 ```
 
 로컬 작업 경로에서 바로 실행하는 경우:
 
 ```bash
-cd /Users/yeong/99_me/00_github/03_lemon_healthcare/yeong-Lemon-Aid
+cd /Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid
 ```
 
 ### 2. Backend 환경 구성
@@ -157,16 +160,30 @@ cp .env.example .env
 
 ### 3. Backend 실행
 
+로컬 Python으로 실행:
+
 ```bash
 cd backend
 source .venv/bin/activate
 python -m uvicorn src.main:app --app-dir Nutrition-backend --reload --port 8000
 ```
 
+Docker Compose로 실행:
+
+```bash
+docker compose build backend
+docker compose up -d db redis backend
+```
+
+Compose backend는 Docker Desktop 개발 환경에서 로컬 Ollama로 접근할 수 있도록
+`OLLAMA_BASE_URL=http://host.docker.internal:11434`를 기본값으로 사용합니다. 이 alias는
+`ENVIRONMENT=development`에서만 local LLM guard를 통과합니다.
+
 동작 확인:
 
 ```bash
 curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/ready
 ```
 
 Swagger UI:
@@ -185,7 +202,7 @@ http://127.0.0.1:8000/docs
 
 ```dotenv
 ENVIRONMENT=development
-DATABASE_URL=postgresql+asyncpg://lemon:lemon@localhost:5432/lemon
+DATABASE_URL=postgresql+asyncpg://<user>:<password>@localhost:5432/lemon
 REDIS_URL=redis://localhost:6379/0
 
 LLM_PROVIDER=ollama
@@ -207,12 +224,22 @@ FEATURE_MEDICATION_SAFETY_ALERT=false
 
 운영 환경에서는 외부 LLM 사용을 금지하고, Google Vision 운영 사용 시 `GOOGLE_VISION_AUTH_MODE=adc`, `GOOGLE_CLOUD_PROJECT`, attached service account, 별도 승인 게이트가 필요합니다.
 
+Google Vision local smoke에서 `status 401`이 나오면 endpoint 연결 문제가 아니라
+`GOOGLE_CLOUD_API_KEY` 또는 ADC 권한 문제입니다. CLOVA/PaddleOCR/Ollama 경로와 분리해서
+키 재발급, Cloud Vision API 사용 설정, API key restriction을 먼저 확인합니다.
+
+공식 참고:
+
+- Docker Compose CLI: <https://docs.docker.com/reference/cli/docker/compose/>
+- Docker Compose services: <https://docs.docker.com/compose/compose-file/05-services/>
+- Docker Desktop host networking: <https://docs.docker.com/desktop/features/networking/>
+
 ---
 
 ## 📂 폴더 구조
 
 ```text
-yeong-Lemon-Aid/
+Lemon-Aid/
 ├── README.md
 ├── PROJECT_GUIDE.md
 ├── guide.html
@@ -344,30 +371,22 @@ python -m pytest -q --no-cov
 
 ## 🤝 협업 규칙
 
-현재 팀 브랜치는 기능별 `feature/*`를 계속 만드는 방식보다 팀원 이름과 담당 파트를 붙인 고정 브랜치 방식을 기준으로 합니다.
-
-| 브랜치 | 담당 범위 |
-|--------|-----------|
-| `changmin-aiagent` | AI agent chat 기능, `backend/ai_agent_chat/`, `docs/Chat-docs/` |
-| `changmin-plan` | 기획·일정·회의록·공통 문서 |
-| `taedong-design` | UI/UX, mobile, frontend, assets |
-| `yeong-tech` | Nutrition 기술 구현, `backend/Nutrition-backend/`, `docs/Nutrition-docs/`, supplement data |
-| `jongpil-tech` | 기술 구현 보조와 담당 기능 개발 |
-| `sunghoon-database` | DB, Alembic, data structure, scripts |
+브랜치는 기능 단위로 분리하고, 이름은 `<type>/<scope>-<kebab-subject>` 형식을 사용합니다.
 
 기본 흐름:
 
 ```bash
-git switch yeong-tech
+git switch feat/db-internal-learning-pipeline
 git fetch origin
 git merge origin/develop
 # 작업
 git add -A
 git commit
-git push origin yeong-tech
+git push origin feat/db-internal-learning-pipeline
 ```
 
-커밋 메시지는 Conventional Commits를 기본으로 하되, 현재 로컬 hook은 Lore format과 `Co-authored-by: OmX <omx@oh-my-codex.dev>` trailer를 요구할 수 있습니다.
+커밋 메시지는 Conventional Commits를 기본으로 합니다. 현재 hook은 Lore format과
+`Co-authored-by: OmX <omx@oh-my-codex.dev>` trailer를 요구할 수 있습니다.
 
 ---
 
