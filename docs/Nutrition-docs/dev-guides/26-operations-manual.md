@@ -170,6 +170,8 @@ redis-cli -u $REDIS_URL ping
   - `python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` 통과.
   - `/api/chat` non-streaming smoke와 `OllamaSupplementParser` structured-output live
     smoke 통과. Vitamin D 25 mcg OCR 예시가 schema-validated JSON으로 파싱됨.
+  - 반복 실행 명령:
+    `$env:RUN_OLLAMA_TESTS='true'; python -m pytest -q --no-cov Nutrition-backend\tests\integration\llm\test_real_ollama_parser.py`
 - [x] SGLang 운영 후보 상태 확인 (2026-05-20 재확인)
   - 기본 endpoint: `http://127.0.0.1:30000/v1`
   - 현재 응답 모델: `Qwen/Qwen2.5-0.5B-Instruct`

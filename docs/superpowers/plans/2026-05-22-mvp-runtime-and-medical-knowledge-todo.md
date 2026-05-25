@@ -213,7 +213,8 @@ python backend\scripts\smoke_ai_agent_server.py `
   연결하려면 별도 source review가 필요하다.
 - Ollama live readiness: 2026-05-25 Windows Ollama 0.24.0 설치와
   `qwen3.5:9b` pull 이후 `--require-ollama`가 통과했다. `/api/chat` non-streaming
-  smoke와 `OllamaSupplementParser` structured-output live smoke도 통과했다.
+  smoke와 `RUN_OLLAMA_TESTS=true` 기반 `OllamaSupplementParser` structured-output
+  live pytest도 통과했다.
 
 ## KDCA key 수령 후 바로 실행할 명령
 
@@ -263,7 +264,9 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama
 
 2026-05-25 검증 결과: `qwen3.5:9b` 기준 위 조건이 통과했고,
 `OllamaSupplementParser`가 Vitamin D 25 mcg OCR 예시를 schema-validated JSON으로
-파싱했다.
+파싱했다. 반복 실행은
+`$env:RUN_OLLAMA_TESTS='true'; python -m pytest -q --no-cov Nutrition-backend\tests\integration\llm\test_real_ollama_parser.py`
+로 한다.
 
 ## 2026-05-25 live smoke 재검증 기록
 
