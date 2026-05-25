@@ -104,6 +104,12 @@ redis-cli -u $REDIS_URL ping
     `kdca-healthinfo`는 `missing_api_key`로 표시된다. `MFDS_DATA_API_KEY`가 없으면
     `mfds-drug-safety`도 `missing_api_key`로 표시된다. Semantic Scholar는 key가
     있어도 검수 전 research backlog이므로 `not_reviewed`로 표시된다.
+  - 키 수령 후 필수 source까지 종료코드로 검증할 때는 다음처럼 strict gate를 켠다:
+    ```bash
+    python backend/scripts/check_ai_agent_runtime_prereqs.py \
+      --require-medical-sources kdca-healthinfo mfds-drug-safety
+    ```
+    이 모드는 지정한 source id가 없거나, key 누락·검수 전·review 만료 상태면 실패한다.
 - [x] AI Agent 실제 서버 조합 smoke 확인 (2026-05-20):
   ```bash
   TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke \

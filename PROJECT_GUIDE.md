@@ -3030,7 +3030,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 1. Android Studio/Android SDK 설치 후 `mobile/flutter_app`의 Android emulator build/run을 확인한다.
 2. `taedong-design`의 루트 `mobile/` 앱을 canonical frontend로 옮길지, 현재 `mobile/flutter_app`을 통합 앱으로 유지할지 결정한다.
 3. result screen에 backend analysis/detail 요약을 확장하되, taedong mock data를 가져오지 않고 API client, confirmed payload 규칙, `ConfirmedEntryStore` handoff를 보존한다.
-4. `KDCA_HEALTHINFO_API_KEY`와 필요 시 `MFDS_DATA_API_KEY` 수령 후 `backend/scripts/check_ai_agent_runtime_prereqs.py`로 `kdca-healthinfo`, `mfds-drug-safety` readiness를 재확인한다.
+4. `KDCA_HEALTHINFO_API_KEY`와 필요 시 `MFDS_DATA_API_KEY` 수령 후 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-medical-sources kdca-healthinfo mfds-drug-safety`로 `kdca-healthinfo`, `mfds-drug-safety` readiness를 종료코드까지 포함해 재확인한다.
 5. OCR provider adapter와 로컬 Ollama live smoke test를 추가한다.
 6. 여러 장 이미지 batch upload 계약을 설계한다: batch id, per-image validation, merged OCR text, user confirmation.
 7. 팀의 음식 인식 모델·영양성분 DB lookup이 준비되면 confirmed food flow에 계산 결과를 연결한다.

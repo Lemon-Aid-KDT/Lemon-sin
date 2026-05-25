@@ -7,6 +7,8 @@ import os
 import shutil
 import socket
 import sys
+from argparse import ArgumentParser, Namespace
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
@@ -21,12 +23,14 @@ for import_path in (NUTRITION_BACKEND_DIR, AI_AGENT_CHAT_SRC_DIR):
     if import_path_text not in sys.path:
         sys.path.insert(0, import_path_text)
 
-from src.config import Settings
-from src.services.medical_source_readiness import build_medical_source_readiness
+from src.config import Settings  # noqa: E402
+from src.services.medical_source_readiness import build_medical_source_readiness  # noqa: E402
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Print local readiness for PostgreSQL and SGLang smoke tests."""
+    args = _parse_args(argv)
+    settings = Settings(_env_file=None)
     postgres_host, postgres_port = _database_host_port(os.getenv("TEST_DATABASE_URL"))
     sglang_host, sglang_port = _http_host_port(
         os.getenv("SGLANG_BASE_URL", "http://127.0.0.1:30000/v1"),
@@ -51,7 +55,7 @@ def main() -> int:
 
     for label, ok in checks:
         print(f"{label}: {'ok' if ok else 'missing'}")
-    for line in _medical_source_readiness_lines(Settings(_env_file=None)):
+    for line in _medical_source_readiness_lines(settings):
         print(line)
 
     postgres_ready = (
@@ -75,8 +79,34 @@ def main() -> int:
             "SGLang live smoke is not ready. "
             "Set RUN_SGLANG_SMOKE=1, SGLANG_MODEL, and start a local SGLang server."
         )
+    medical_source_failures = _required_medical_source_failures(
+        settings,
+        args.require_medical_sources,
+    )
+    if medical_source_failures:
+        print(
+            "Required medical sources are not ready: "
+            + ", ".join(medical_source_failures)
+        )
 
-    return 0 if postgres_ready and sglang_ready else 1
+    return 0 if postgres_ready and sglang_ready and not medical_source_failures else 1
+
+
+def _parse_args(argv: Sequence[str] | None) -> Namespace:
+    parser = ArgumentParser(
+        description="Check local AI Agent runtime and optional medical source gates."
+    )
+    parser.add_argument(
+        "--require-medical-sources",
+        nargs="*",
+        default=(),
+        metavar="SOURCE_ID",
+        help=(
+            "Fail if any listed reviewed medical source is not ready. "
+            "Example: --require-medical-sources kdca-healthinfo mfds-drug-safety"
+        ),
+    )
+    return parser.parse_args(argv)
 
 
 def _command_available(command: str) -> bool:
@@ -125,6 +155,25 @@ def _medical_source_readiness_lines(
         detail = f" ({source.error_code})" if source.error_code else ""
         lines.append(f"medical source {source.source_id}: {state}{detail}")
     return lines
+
+
+def _required_medical_source_failures(
+    settings: Settings,
+    required_source_ids: Sequence[str],
+    *,
+    today: date | None = None,
+) -> list[str]:
+    """Return strict readiness failures for explicitly required medical sources."""
+    readiness = build_medical_source_readiness(settings, today=today)
+    by_source_id = {source.source_id: source for source in readiness.sources}
+    failures: list[str] = []
+    for source_id in required_source_ids:
+        source = by_source_id.get(source_id)
+        if source is None:
+            failures.append(f"{source_id}=unknown_source")
+        elif not source.ready:
+            failures.append(f"{source_id}={source.error_code or 'not_ready'}")
+    return failures
 
 
 def _port_open(host: str, port: int) -> bool:

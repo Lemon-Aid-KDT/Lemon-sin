@@ -48,3 +48,43 @@ def test_medical_source_readiness_lines_show_keyed_source_status() -> None:
     assert "medical source kdca-healthinfo: missing (missing_api_key)" in lines
     assert "medical source kdris-2025: ok" in lines
     assert "medical source semantic-scholar: missing (not_reviewed)" in lines
+
+
+def test_required_medical_source_failures_report_missing_keys() -> None:
+    """Verify strict medical-source gates fail when required keys are absent."""
+    failures = prereqs._required_medical_source_failures(
+        Settings(_env_file=None),
+        ("kdca-healthinfo", "mfds-drug-safety"),
+        today=date(2026, 5, 24),
+    )
+
+    assert failures == [
+        "kdca-healthinfo=missing_api_key",
+        "mfds-drug-safety=missing_api_key",
+    ]
+
+
+def test_required_medical_source_failures_pass_with_configured_keys() -> None:
+    """Verify strict medical-source gates pass once required source keys exist."""
+    failures = prereqs._required_medical_source_failures(
+        Settings(
+            _env_file=None,
+            kdca_healthinfo_api_key="kdca-key",
+            mfds_data_api_key="mfds-key",
+        ),
+        ("kdca-healthinfo", "mfds-drug-safety"),
+        today=date(2026, 5, 24),
+    )
+
+    assert failures == []
+
+
+def test_required_medical_source_failures_report_unknown_source() -> None:
+    """Verify strict gates fail loudly for misspelled source IDs."""
+    failures = prereqs._required_medical_source_failures(
+        Settings(_env_file=None),
+        ("not-a-source",),
+        today=date(2026, 5, 24),
+    )
+
+    assert failures == ["not-a-source=unknown_source"]

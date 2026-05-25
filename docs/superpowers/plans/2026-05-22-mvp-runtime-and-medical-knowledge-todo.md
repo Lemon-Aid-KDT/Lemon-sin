@@ -189,6 +189,8 @@ python backend\scripts\smoke_ai_agent_server.py `
       구분한다.
 - [x] `backend/scripts/check_ai_agent_runtime_prereqs.py`가 runtime port와 함께
       medical source readiness를 출력한다.
+- [x] `--require-medical-sources` strict gate로 키 누락, 미검수 source, source id
+      오타를 종료코드 실패로 판정한다.
 
 ## 아직 외부 준비가 필요한 항목
 
@@ -213,12 +215,16 @@ python backend\scripts\smoke_ai_agent_server.py `
 ```powershell
 cd C:\MyWorkspace\lemon_aid\ai-agent-backend-integration
 $env:KDCA_HEALTHINFO_API_KEY="<issued-kdca-key>"
-python backend\scripts\check_ai_agent_runtime_prereqs.py
+$env:MFDS_DATA_API_KEY="<issued-mfds-key-if-required>"
+python backend\scripts\check_ai_agent_runtime_prereqs.py `
+  --require-medical-sources kdca-healthinfo mfds-drug-safety
 ```
 
 기대 결과:
 
 - `medical source kdca-healthinfo: ok`
+- `medical source mfds-drug-safety: ok` 또는 이번 범위에서 MFDS를 제외하기로 명시한
+  경우 strict 대상에서 `mfds-drug-safety`를 제거
 - `medical source kdris-2025: ok`
 - `medical source semantic-scholar: missing (not_reviewed)`는 정상
 - SGLang live smoke와 PostgreSQL migration smoke는 2026-05-25에 opt-in 환경변수
