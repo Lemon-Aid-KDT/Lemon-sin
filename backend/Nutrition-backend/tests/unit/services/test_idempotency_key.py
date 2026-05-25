@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from pydantic import SecretStr
-from src.services.supplement_intake import derive_idempotency_key
+from src.services.supplement_intake import (
+    CLIENT_IDEMPOTENCY_HINT_MAX_LENGTH,
+    IDEMPOTENCY_SEPARATOR,
+    STORED_CLIENT_REQUEST_ID_MAX_LENGTH,
+    derive_idempotency_key,
+)
 
 _SECRET = SecretStr("unit-test-secret-not-used-anywhere-else")
 
@@ -19,7 +24,7 @@ def test_derived_key_has_owner_prefix() -> None:
     """Verify derived key carries a 16-hex prefix followed by the trimmed hint."""
     key = derive_idempotency_key("hint-1", "owner-a", _SECRET)
     assert key is not None
-    prefix, _, hint = key.partition(":")
+    prefix, _, hint = key.partition(IDEMPOTENCY_SEPARATOR)
     assert len(prefix) == 16
     assert all(char in "0123456789abcdef" for char in prefix)
     assert hint == "hint-1"
@@ -43,9 +48,20 @@ def test_same_owner_same_hint_yields_same_key() -> None:
 
 
 def test_long_hint_is_truncated() -> None:
-    """Verify long client-supplied hints are truncated to 120 characters."""
+    """Verify long client-supplied hints are truncated to the stored DB limit."""
     long_hint = "x" * 500
     key = derive_idempotency_key(long_hint, "owner-z", _SECRET)
     assert key is not None
-    _, _, hint = key.partition(":")
-    assert hint == "x" * 120
+    _, _, hint = key.partition(IDEMPOTENCY_SEPARATOR)
+    assert hint == "x" * CLIENT_IDEMPOTENCY_HINT_MAX_LENGTH
+    assert len(key) == STORED_CLIENT_REQUEST_ID_MAX_LENGTH
+
+
+def test_route_max_length_hint_fits_stored_idempotency_column() -> None:
+    """Verify valid API max-length hints cannot overflow the stored column."""
+    route_max_length_hint = "x" * 80
+
+    key = derive_idempotency_key(route_max_length_hint, "owner-route", _SECRET)
+
+    assert key is not None
+    assert len(key) <= STORED_CLIENT_REQUEST_ID_MAX_LENGTH

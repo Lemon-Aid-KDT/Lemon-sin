@@ -43,6 +43,14 @@ SUPPLEMENT_INTAKE_WARNING = (
 ALLOWED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 READ_CHUNK_SIZE_BYTES = 64 * 1024
 WEBP_HEADER_MIN_BYTES = 12
+OWNER_IDEMPOTENCY_PREFIX_LENGTH = 16
+IDEMPOTENCY_SEPARATOR = ":"
+STORED_CLIENT_REQUEST_ID_MAX_LENGTH = 80
+CLIENT_IDEMPOTENCY_HINT_MAX_LENGTH = (
+    STORED_CLIENT_REQUEST_ID_MAX_LENGTH
+    - OWNER_IDEMPOTENCY_PREFIX_LENGTH
+    - len(IDEMPOTENCY_SEPARATOR)
+)
 
 
 @dataclass(frozen=True)
@@ -461,8 +469,12 @@ def derive_idempotency_key(
     if normalized is None:
         return None
     secret = privacy_hash_secret.get_secret_value().encode("utf-8")
-    digest = hmac.new(secret, owner_subject.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
-    return f"{digest}:{normalized[:120]}"
+    digest = hmac.new(
+        secret,
+        owner_subject.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:OWNER_IDEMPOTENCY_PREFIX_LENGTH]
+    return f"{digest}{IDEMPOTENCY_SEPARATOR}{normalized[:CLIENT_IDEMPOTENCY_HINT_MAX_LENGTH]}"
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:

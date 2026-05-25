@@ -16,6 +16,7 @@ from src.api.v1.router import api_router
 from src.config import Settings, get_settings
 from src.db.session import dispose_engine
 from src.middleware.secure_headers import SecureHeadersMiddleware
+from src.readiness import ReadinessResponse, build_readiness_response
 from src.utils.image_safety import configure_pillow_limits
 from src.utils.logger import setup_logging
 
@@ -112,6 +113,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             서비스 상태와 API 버전.
         """
         return {"status": "ok", "version": "0.1.0"}
+
+    @app.get("/ready", tags=["health"], response_model=ReadinessResponse)
+    async def readiness_check() -> ReadinessResponse:
+        """Return sanitized runtime readiness for mobile OCR smoke tests.
+
+        Returns:
+            OCR, YOLO, and parser readiness flags without credentials, raw OCR text,
+            provider payloads, image bytes, object URIs, or public tunnel URLs.
+        """
+        return build_readiness_response(app_settings)
 
     app.include_router(api_router)
 
