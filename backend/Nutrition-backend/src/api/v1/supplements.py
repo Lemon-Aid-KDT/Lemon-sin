@@ -69,13 +69,13 @@ from src.models.schemas.supplement_comprehensive import (
     SupplementComprehensiveAnalysis,
 )
 from src.models.schemas.supplement_parser import SupplementOCRTextParseRequest
-from src.nutrition.comprehensive import compute_comprehensive
 from src.models.schemas.supplement_recommendation import (
     SupplementImpactPreviewRequest,
     SupplementImpactPreviewResponse,
     SupplementRecommendationExplainRequest,
     SupplementRecommendationExplainResponse,
 )
+from src.nutrition.comprehensive import compute_comprehensive
 from src.ocr.factory import (
     OCRConfigurationError,
     SupplementOCRProviderSelector,
@@ -289,7 +289,8 @@ async def _commit_consent_read_transaction(session: AsyncSession) -> None:
     Args:
         session: Request-scoped async database session.
     """
-    if session.in_transaction():
+    in_transaction = getattr(session, "in_transaction", None)
+    if callable(in_transaction) and in_transaction():
         await session.commit()
 
 
@@ -1386,7 +1387,7 @@ async def delete_user_supplement(
 )
 async def analyze_supplement_comprehensive(
     request_body: ComprehensiveAnalysisRequest,
-    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    _current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
 ) -> SupplementComprehensiveAnalysis:
     """5-card UI 의 5종 카드 데이터를 모두 채우는 종합 분석 결과를 반환한다.
 
@@ -1397,7 +1398,7 @@ async def analyze_supplement_comprehensive(
 
     Args:
         request_body: 분석 요청 본문 (ingredients + user_profile + persona).
-        current_user: 인증된 사용자 (dev 모드에서는 mock).
+        _current_user: 인증된 사용자 (dev 모드에서는 mock).
 
     Returns:
         [SupplementComprehensiveAnalysis] — 5-card 모두 채울 수 있는 데이터.

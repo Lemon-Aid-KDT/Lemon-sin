@@ -7,7 +7,8 @@ from `origin/feat/mobile-dashboard-redesign`.
 ## Runtime Contract
 
 - Package name: `lemon_aid_mobile`
-- State model: `ChangeNotifier` through `AppController`
+- State model: Riverpod providers wrapping the existing `AppController`
+- Navigation: source-branch-style `go_router` five-tab shell
 - API base config: `LEMON_API_BASE_URL`, which must end with `/api/v1`
 - Optional local token config: `LEMON_API_TOKEN`; never embed it in release builds
 - Optional local gateway config: `LEMON_DEV_GATEWAY_TOKEN`; never embed it in release builds
@@ -156,6 +157,38 @@ Android/iOS project files were not imported.
 
 The detailed import boundary and simulator mismatch diagnosis are tracked in
 `docs/Integration-docs/09-mobile-uiux-selective-import-and-simulator-diagnostics.md`.
+
+## Auth and Local Tokens
+
+The backend remains a JWT/OIDC resource server. The app does not call source
+branch `/api/v1/auth/login` style endpoints because the current backend does
+not expose a password-token issuer.
+
+Debug builds can enter the shell without a token for local backends running
+`AUTH_MODE=disabled`. Staging or JWT-backed testing can paste an externally
+issued bearer token into the in-app API access panel. Stored tokens are attached
+as `Authorization: Bearer <token>` and can be cleared from Settings.
+
+For local ngrok runs, keep secrets in the ignored root `.env`:
+
+```dotenv
+NGROK_AUTHTOKEN=<operator-ngrok-agent-token>
+LEMON_DEV_GATEWAY_TOKEN=<random-local-smoke-token>
+LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+```
+
+Use the ngrok authtoken only with the ngrok agent config, for example:
+
+```bash
+set -a
+source ../.env
+set +a
+ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+```
+
+Do not add `.env` to Flutter assets. Flutter asset values can be extracted from
+the app binary, so client-side env files are only appropriate for non-sensitive
+configuration.
 
 ## OCR Test Flow
 

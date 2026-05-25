@@ -142,11 +142,12 @@ The mobile app should not invent separate YOLO or Ollama endpoints.
 2. Use the simulator bundle identity checks above before screenshot comparison.
 3. Keep the source branch installed app separate unless a simulator reset is
    explicitly needed.
-4. Continue using the current full-screen black capture flow because it is
-   already wired to `AppController.analyzeImage(image.path, ocrProvider: ...)`.
-5. Use the source branch camera screen only as a visual reference for future
-   polish: guide frame density, captured preview controls, and central shutter
-   layout.
+4. Run the app through a source-style `go_router` five-tab shell while keeping
+   the existing `AppController` and repository endpoint contract.
+5. Use the camera tab for the backend-connected supplement capture/review flow:
+   `AppController.analyzeImage(image.path, ocrProvider: ...)`.
+6. Keep real login as externally issued JWT bearer-token input. Do not add
+   `/api/v1/auth/login` style mobile calls unless the backend adds that issuer.
 
 ### 5.2 Next Code Change Candidates
 
@@ -161,14 +162,38 @@ These are safe candidates because they preserve the backend contract:
   `DashboardSummary`;
 - add screenshots to the runbook after physical-device smoke succeeds.
 
-Avoid these changes in this branch unless a separate architecture PR is planned:
+Avoid these changes in this branch unless a separate release/backend PR is planned:
 
-- replacing the app with `go_router`;
-- adopting Riverpod/Dio auth services;
+- replacing the backend-connected controller/repository with source mock flows;
+- adopting source Riverpod/Dio auth services without adapting them to the
+  current JWT resource-server backend;
 - adding `.env` asset loading;
 - renaming bundle IDs or Android package IDs;
 - replacing iOS or Android project trees;
 - deleting existing unit/widget tests.
+
+## 5.3 Local `.env` and ngrok Token Handling
+
+The root `.env` is ignored and may hold operator-local ngrok values:
+
+```dotenv
+NGROK_AUTHTOKEN=<operator-ngrok-agent-token>
+LEMON_DEV_GATEWAY_TOKEN=<random-local-smoke-token>
+LEMON_API_BASE_URL=https://<ngrok-host>/api/v1
+```
+
+Use `NGROK_AUTHTOKEN` only for the ngrok agent, for example:
+
+```bash
+set -a
+source .env
+set +a
+ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+```
+
+Do not add `.env` to `mobile/pubspec.yaml`. The `flutter_dotenv` package
+documents that Flutter asset env values are bundled into the app binary and are
+extractable, so tokens must stay outside Flutter assets.
 
 ## 6. Live Test Plan
 

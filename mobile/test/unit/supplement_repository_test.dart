@@ -102,6 +102,34 @@ void main() {
     );
     expect(capturedRequest.headers, isNot(contains('Authorization')));
   });
+
+  test('adds configured JWT bearer token on supplement upload', () async {
+    final File image = _writeTinyPng();
+    addTearDown(() {
+      if (image.existsSync()) {
+        image.deleteSync();
+      }
+    });
+    late http.MultipartRequest capturedRequest;
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'https://api.example.com/api/v1',
+      bearerToken: 'jwt-access-token',
+      httpClient: _CaptureMultipartClient(
+        onRequest: (http.MultipartRequest request) {
+          capturedRequest = request;
+        },
+      ),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    await repository.analyzeSupplementImage(image.path);
+
+    expect(capturedRequest.headers['Authorization'], 'Bearer jwt-access-token');
+    expect(capturedRequest.fields['ocr_provider'], 'configured');
+  });
 }
 
 class _CaptureMultipartClient extends http.BaseClient {

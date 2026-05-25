@@ -15,6 +15,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Dashboard'), findsAtLeastNWidgets(1));
+    expect(find.text('홈'), findsOneWidget);
+    expect(find.text('챗'), findsOneWidget);
+    expect(find.text('점수'), findsOneWidget);
+    expect(find.text('설정'), findsOneWidget);
     expect(find.text('Supplements'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
