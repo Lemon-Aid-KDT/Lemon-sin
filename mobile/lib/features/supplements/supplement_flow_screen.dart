@@ -1924,7 +1924,10 @@ class _PreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String? ocrNotice = _ocrNoticeText(preview);
+    final String? ocrNotice = _ocrNoticeText(
+      preview,
+      requestedOcrProvider: requestedOcrProvider,
+    );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2063,16 +2066,33 @@ String _formatProviderLabel(String value) {
   };
 }
 
-String? _ocrNoticeText(SupplementAnalysisPreview preview) {
+String? _ocrNoticeText(
+  SupplementAnalysisPreview preview, {
+  required String requestedOcrProvider,
+}) {
   if (preview.ingredientCandidates.isNotEmpty) {
     return null;
+  }
+  final String actualProvider = preview.pipelineMetadata.ocrProvider ?? 'none';
+  final bool providerProducedText =
+      actualProvider != 'none' && actualProvider != 'intake-only';
+  if (!providerProducedText) {
+    final String providerLabel = _formatProviderLabel(requestedOcrProvider);
+    if (requestedOcrProvider == 'configured') {
+      return '자동 OCR이 실행 결과 없이 intake-only로 돌아왔어요. 백엔드 OCR env, provider 권한, API base URL을 확인해주세요.';
+    }
+    return '$providerLabel OCR 요청은 백엔드에 도달했지만 자동 추출 결과가 없어요. provider 권한과 키 설정을 확인하거나 다른 OCR을 선택해주세요.';
+  }
+  if (!preview.pipelineMetadata.llmParserUsed) {
+    final String providerLabel = _formatProviderLabel(actualProvider);
+    return '$providerLabel OCR은 실행됐지만 성분 파서가 결과를 만들지 못했어요. Ollama/parser 상태를 확인하거나 성분을 직접 입력해주세요.';
   }
   final String warningText = preview.warnings.join(' ').toLowerCase();
   if (warningText.contains('automatic text extraction') ||
       warningText.contains('paddleocr') ||
       warningText.contains('ocr provider') ||
       warningText.contains('readable text')) {
-    return '사진은 업로드됐지만 로컬 OCR이 라벨 성분을 읽지 못했어요. PaddleOCR 설정과 이미지 해상도/언어를 확인해주세요.';
+    return 'OCR과 파서는 실행됐지만 성분 후보가 비어 있어요. 이미지 해상도, 라벨 구도, 도메인 파싱 규칙을 확인해주세요.';
   }
   return '사진은 업로드됐지만 성분 후보가 비어 있어요. 더 선명한 라벨 사진을 선택하거나 성분을 직접 입력해주세요.';
 }
