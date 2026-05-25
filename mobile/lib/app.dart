@@ -5,6 +5,7 @@ import 'features/consent/consent_gate_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/supplements/supplement_flow_screen.dart';
 import 'features/supplements/supplement_repository.dart';
+import 'shared/theme/lemon_design_tokens.dart';
 import 'shared/widgets/error_panel.dart';
 
 /// Lemon Aid mobile application.
@@ -23,10 +24,7 @@ class LemonAidApp extends StatelessWidget {
     return MaterialApp(
       title: 'Lemon Aid',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4E8F73)),
-        useMaterial3: true,
-      ),
+      theme: buildLemonAidTheme(),
       home: LemonAidHome(repository: repository),
     );
   }
