@@ -24,6 +24,30 @@ For a physical device, use an HTTPS gateway or tunnel that points to the same
 backend `/api/v1` routes. Do not put ngrok basic-auth credentials or API tokens
 in `--dart-define` values that might be reused for release builds.
 
+## Simulator App Identity
+
+When comparing iOS Simulator screens, verify the installed bundle first. The
+UIUX source branch can leave a separate app installed as `com.lemonaid.lemonAid`,
+while this branch runs as `com.example.lemonAidMobile`. If iPhone 17 Pro and
+iPhone 17 appear to show different Lemon-Aid apps, they may simply be launching
+different bundles.
+
+```bash
+flutter devices --machine
+xcrun simctl get_app_container <simulator-udid> com.example.lemonAidMobile app
+xcrun simctl listapps <simulator-udid> | rg "com.example.lemonAidMobile|com.lemonaid.lemonAid|CFBundle"
+```
+
+Install the current branch on the target simulator before taking screenshots:
+
+```bash
+flutter run -d <simulator-udid> --no-resident \
+  --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+Do not use the source branch bundle as proof that the current backend-connected
+flow regressed. Keep the app-ID migration as a separate release decision.
+
 ## Device Camera and ngrok Smoke
 
 The supplement capture screen now uses the Flutter `camera` plugin for direct
@@ -129,6 +153,9 @@ The app imports reusable assets only:
 
 The source branch router, auth services, Riverpod providers, and replacement
 Android/iOS project files were not imported.
+
+The detailed import boundary and simulator mismatch diagnosis are tracked in
+`docs/Integration-docs/09-mobile-uiux-selective-import-and-simulator-diagnostics.md`.
 
 ## OCR Test Flow
 

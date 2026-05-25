@@ -126,6 +126,34 @@ flutter run -d emulator-5554 --flavor dev \
   --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1
 ```
 
+### 6.1 Simulator Bundle Identity Check
+
+If two simulators show different Lemon-Aid screens, first confirm that they are
+running the same bundle. On 2026-05-25, the iPhone 17 Pro Simulator was showing
+a stale/source-branch app with bundle ID `com.lemonaid.lemonAid`, while the
+iPhone 17 Simulator was showing this branch's app with bundle ID
+`com.example.lemonAidMobile`.
+
+Use these checks before comparing UI:
+
+```bash
+flutter devices --machine
+xcrun simctl get_app_container <simulator-udid> com.example.lemonAidMobile app
+xcrun simctl listapps <simulator-udid> | rg "com.example.lemonAidMobile|com.lemonaid.lemonAid|CFBundle"
+```
+
+Install this branch on a specific simulator before taking screenshots:
+
+```bash
+cd mobile
+flutter run -d <simulator-udid> --no-resident \
+  --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+Do not treat `com.lemonaid.lemonAid` and `com.example.lemonAidMobile` as the
+same app during UI review. Removing the stale simulator app is optional and
+deletes simulator-local data for that bundle.
+
 ## 7. Manual Test Steps
 
 1. Connect a physical phone and confirm it appears in `flutter devices`.
@@ -212,6 +240,9 @@ Verified on 2026-05-25 from
 | iOS simulator team backend gateway run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1 --dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; dashboard rendered live summary without the previous `500` banner |
 | iOS simulator screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-gateway-smoke.png` | Dashboard rendered live summary updated at `2026-05-25 15:58:15.939646` |
 | iOS simulator team backend screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-8010-container-gateway.png` | Dashboard rendered live summary updated at `2026-05-25 16:43:24.132563` |
+| iOS simulator app mismatch diagnosis | `simctl get_app_container` and `simctl listapps` on iPhone 17 Pro and iPhone 17 simulators | iPhone 17 Pro had stale/source bundle `com.lemonaid.lemonAid`; iPhone 17 had current bundle `com.example.lemonAidMobile` |
+| iOS simulator current-branch reinstall | `flutter run -d 71FB0384-0C75-4CC4-925A-2A6598CAE89A --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1` | Current branch app installed on iPhone 17 Pro and rendered the backend-connected dashboard/capture flow |
+| UIUX selective import decision | `git diff --name-status HEAD..origin/feat/mobile-dashboard-redesign -- mobile` | Whole `mobile/` import rejected because source branch replaces current API/config/features/tests and platform guardrails |
 | Physical iPhone visibility | `flutter devices --machine` | Physical iPhone visible as an iOS device; readiness reports `ios_physical=1` and `physical_device_ready=True` |
 | Physical iPhone deploy attempt | `flutter run -d <ios-device-id> --no-resident ...` | Blocked before launch: iPhone requires Developer Mode in Settings > Privacy & Security or Xcode trust prompt handling |
 | Physical iPhone deploy readiness classification | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --check-device-deploy --deploy-device-id <ios-device-id> --deploy-timeout-seconds 60` | `status=failed`, `ios_physical=1`, `physical_device_ready=True`, `device_deploy_probe=developer_mode_or_trust_required`; no raw Flutter stderr printed |
