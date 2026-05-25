@@ -75,7 +75,8 @@ lemon-healthcare-project/
 │       ├── 27-incident-runbook.md
 │       ├── 28-retrospective.md
 │       ├── 29-final-deliverables-index.md  ⭐ (이 문서)
-│       └── 30-post-p1-execution-checklist.md
+│       ├── 30-post-p1-execution-checklist.md
+│       └── 31-medical-knowledge-layer.md
 │
 ├── backend/
 │   └── CLAUDE.md                      # Tier 2 (백엔드)
@@ -236,6 +237,7 @@ lemon-healthcare-project/
 | # | 파일 | 핵심 가치 |
 |---|------|---------|
 | 30 | `30-post-p1-execution-checklist.md` | CI/PR gate, Google Vision MVP, 3-tier OCR, learning/vector, regulated OCR intake 진입 전 체크리스트 |
+| 31 | `31-medical-knowledge-layer.md` | 만성질환·복약 관련 사실을 LLM fine-tuning 밖에 두고, 검수된 source record와 안전 경계로 관리하는 설계 |
 
 ---
 

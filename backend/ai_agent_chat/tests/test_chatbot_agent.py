@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from lemon_ai_agent.agents.chatbot import ChatbotAgent
-from lemon_ai_agent.chat_session import ChatTurn, ChatbotRequest
+from lemon_ai_agent.chat_session import ChatbotRequest, ChatTurn
 from lemon_ai_agent.llm import LLMRequest, LLMResponse
 
 
@@ -96,6 +96,26 @@ def test_chatbot_unsafe_llm_output_falls_back_to_safe_message() -> None:
     assert "오늘의 요약" in response.message
     assert "당뇨입니다" not in response.message
     assert "구매하세요" not in response.message
+    assert "Forbidden medical expression detected" in response.safety_warnings
+
+
+def test_chatbot_chronic_condition_diagnosis_text_falls_back() -> None:
+    """Verify chronic-condition certainty from the LLM is not user-facing."""
+    client = _CapturingLLMClient(text="고혈압입니다. 나트륨을 완전히 금지하세요.")
+    request = ChatbotRequest(
+        request_id="chatbot-chronic-boundary",
+        user_id="local-dev-user",
+        message="고혈압이 있는데 라면 먹으면 안 돼?",
+        context={"daily_coaching_summary": "나트륨 섭취가 높을 수 있습니다."},
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(request)
+
+    assert response.provider == "deterministic"
+    assert "고혈압입니다" not in response.message
+    assert "완전히 금지" not in response.message
+    assert "현재 입력 기준" in response.message
+    assert "직접 확인 가능한 기록" in response.message
     assert "Forbidden medical expression detected" in response.safety_warnings
 
 

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import date
+
+from src.config import Settings
+
 from scripts import check_ai_agent_runtime_prereqs as prereqs
 
 
@@ -16,11 +20,11 @@ def test_database_host_port_uses_test_database_url_port() -> None:
 
 
 def test_database_host_port_defaults_to_local_postgres() -> None:
-    """Verify missing TEST_DATABASE_URL reports the default local PostgreSQL port."""
+    """Verify missing TEST_DATABASE_URL reports the local dev stack PostgreSQL port."""
     host, port = prereqs._database_host_port(None)
 
     assert host == "127.0.0.1"
-    assert port == 5432
+    assert port == 55432
 
 
 def test_http_host_port_uses_sglang_base_url_port() -> None:
@@ -32,3 +36,15 @@ def test_http_host_port_uses_sglang_base_url_port() -> None:
 
     assert host == "localhost"
     assert port == 31000
+
+
+def test_medical_source_readiness_lines_show_keyed_source_status() -> None:
+    """Verify preflight output includes non-secret medical source readiness."""
+    lines = prereqs._medical_source_readiness_lines(
+        Settings(_env_file=None),
+        today=date(2026, 5, 24),
+    )
+
+    assert "medical source kdca-healthinfo: missing (missing_api_key)" in lines
+    assert "medical source kdris-2025: ok" in lines
+    assert "medical source semantic-scholar: missing (not_reviewed)" in lines

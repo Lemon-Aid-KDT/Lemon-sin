@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-
 QuestionCategory = Literal[
     "general_info",
     "nutrition_analysis",
@@ -27,12 +26,35 @@ SourceFamily = Literal[
     "food_safety_allergy",
 ]
 
+SourceStatus = Literal["draft", "reviewed", "deprecated"]
+SourceType = Literal["public_health", "nutrition_standard", "drug_safety", "paper_index"]
+
 
 @dataclass(frozen=True)
 class KnowledgeSource:
     title: str
     url: str | None = None
     repo_path: str | None = None
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class ReviewedMedicalSource:
+    source_id: str
+    title: str
+    publisher: str
+    url: str
+    source_type: SourceType
+    source_families: tuple[SourceFamily, ...]
+    status: SourceStatus
+    version_label: str
+    jurisdiction: str
+    last_reviewed_at: str
+    review_expires_at: str
+    owner: str
+    env_key: str | None = None
+    topics: tuple[str, ...] = ()
+    user_facing_allowed: bool = True
     note: str = ""
 
 
@@ -155,6 +177,77 @@ SOURCE_REGISTRY: dict[SourceFamily, tuple[KnowledgeSource, ...]] = {
         ),
     ),
 }
+
+REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
+    ReviewedMedicalSource(
+        source_id="kdca-healthinfo",
+        title="KDCA National Health Information Portal",
+        publisher="Korea Disease Control and Prevention Agency",
+        url="https://health.kdca.go.kr/healthinfo",
+        source_type="public_health",
+        source_families=("general_medical", "chronic_condition", "drug_safety_boundary"),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="KR",
+        last_reviewed_at="2026-05-22",
+        review_expires_at="2026-11-22",
+        owner="AI Agent medical knowledge review",
+        env_key="KDCA_HEALTHINFO_API_KEY",
+        topics=("hypertension", "diabetes", "kidney_disease", "stroke", "osteoporosis", "anemia"),
+        note="Use for Korean public-health definitions and user wording boundaries.",
+    ),
+    ReviewedMedicalSource(
+        source_id="kdris-2025",
+        title="Korean Dietary Reference Intakes",
+        publisher="Korean Nutrition Society",
+        url="https://www.kns.or.kr/FileRoom/FileRoom.asp?BoardID=Kdr",
+        source_type="nutrition_standard",
+        source_families=("nutrition_reference",),
+        status="reviewed",
+        version_label="KDRIs 2025",
+        jurisdiction="KR",
+        last_reviewed_at="2026-05-19",
+        review_expires_at="2027-05-19",
+        owner="Nutrition backend data review",
+        topics=("protein", "sodium", "vitamin_d", "magnesium", "iron", "calcium", "fiber"),
+        note="Primary reference family for nutrient intake comparison.",
+    ),
+    ReviewedMedicalSource(
+        source_id="mfds-drug-safety",
+        title="MFDS Drug Safety Portal",
+        publisher="Ministry of Food and Drug Safety",
+        url="https://nedrug.mfds.go.kr",
+        source_type="drug_safety",
+        source_families=("drug_safety_boundary", "supplement_reference"),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="KR",
+        last_reviewed_at="2026-05-22",
+        review_expires_at="2026-11-22",
+        owner="AI Agent medical knowledge review",
+        env_key="MFDS_DATA_API_KEY",
+        topics=("drug_safety", "supplement_interaction", "functional_food"),
+        note="Use only for boundary and professional-consult routing until product review.",
+    ),
+    ReviewedMedicalSource(
+        source_id="semantic-scholar",
+        title="Semantic Scholar Graph API",
+        publisher="Semantic Scholar",
+        url="https://www.semanticscholar.org/product/api",
+        source_type="paper_index",
+        source_families=("general_medical", "chronic_condition", "supplement_reference"),
+        status="draft",
+        version_label="research backlog",
+        jurisdiction="global",
+        last_reviewed_at="2026-05-22",
+        review_expires_at="2026-08-22",
+        owner="AI Agent research review",
+        env_key="SEMANTIC_SCHOLAR_API_KEY",
+        topics=("paper_discovery", "evidence_backlog"),
+        user_facing_allowed=False,
+        note="Research discovery only; do not use directly in user-facing answers.",
+    ),
+)
 
 RESPONSE_CONTRACTS: dict[QuestionCategory, ResponseContract] = {
     "general_info": ResponseContract(

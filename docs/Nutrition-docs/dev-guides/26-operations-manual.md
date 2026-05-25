@@ -100,6 +100,10 @@ redis-cli -u $REDIS_URL ping
   - 이 스크립트는 `TEST_DATABASE_URL`의 host/port와 `SGLANG_BASE_URL`의 host/port를
     읽어 live smoke 대상 포트를 점검한다. 임시 PostgreSQL 포트가 5432가 아니어도
     실제 설정값 기준으로 판단한다.
+  - medical source readiness도 함께 출력한다. `KDCA_HEALTHINFO_API_KEY`가 없으면
+    `kdca-healthinfo`는 `missing_api_key`로 표시된다. `MFDS_DATA_API_KEY`가 없으면
+    `mfds-drug-safety`도 `missing_api_key`로 표시된다. Semantic Scholar는 key가
+    있어도 검수 전 research backlog이므로 `not_reviewed`로 표시된다.
 - [x] AI Agent 실제 서버 조합 smoke 확인 (2026-05-20):
   ```bash
   TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke \
@@ -112,6 +116,18 @@ redis-cli -u $REDIS_URL ping
     `/api/v1/me/privacy/consents/sensitive_health_analysis` 동의 생성,
     `/api/v1/ai-agent/daily-coaching` 2회 호출, 로컬 SGLang provider 응답,
     두 번째 호출의 `used_tools` 내 `agent_memory` 재주입 확인.
+- [x] AI Agent deterministic fallback smoke 확인 (2026-05-24):
+  ```bash
+  python backend/scripts/smoke_ai_agent_server.py \
+    --database-url postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev \
+    --skip-db-upgrade \
+    --skip-sglang-check \
+    --use-existing-server
+  ```
+  - 검증 범위: 이미 실행 중인 FastAPI dev server, 민감 건강 분석 동의 생성,
+    `/api/v1/ai-agent/daily-coaching` 2회 호출, SGLang 미기동 상태의
+    deterministic fallback, 두 번째 호출의 `used_tools` 내 `agent_memory`
+    재주입 확인.
 - [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
 - [x] SGLang 운영 후보 상태 확인 (2026-05-20 재확인)
   - 기본 endpoint: `http://127.0.0.1:30000/v1`

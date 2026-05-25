@@ -2028,7 +2028,10 @@ GitHub 사용자명은 팀 합의 후 채워 넣는다. 예시:
 | OLLAMA_BASE_URL / OLLAMA_MODEL | 운영 서버 환경변수 | 로컬 또는 사내 추론 서버 주소와 모델 태그 |
 | ALLOW_EXTERNAL_LLM | 운영 서버 환경변수 | 기본 `false`, 비식별 승인 환경에서만 `true` |
 | GOOGLE_APPLICATION_CREDENTIALS | GCP 서비스 어카운트 JSON, 1Password 또는 운영 서버 마운트 | Cloud Vision OCR |
-| MFDS_API_KEY | GitHub Secrets + 환경변수 | 식약처 |
+| MFDS_API_KEY / MFDS_DATA_API_KEY | GitHub Secrets + 환경변수 | 식약처 공공데이터·의약품 안전 API. 신규 의료 지식 readiness는 `MFDS_DATA_API_KEY` 기준 |
+| KDCA_HEALTHINFO_API_KEY | GitHub Secrets + 환경변수 | 질병관리청 건강정보포털. 만성질환·공중보건 표현 경계에 사용 |
+| SEMANTIC_SCHOLAR_API_KEY | GitHub Secrets + 환경변수 | 논문 탐색 백로그용. 발급 후에도 검토 완료 전까지 사용자 답변 근거로 사용 금지 |
+| DATA_GO_KR_SERVICE_KEY / NCBI_API_KEY / OPENFDA_API_KEY / GOOGLE_CSE_API_KEY | GitHub Secrets + 환경변수 | 향후 외부 지식 검색·근거 수집 확장 후보. 구현 전 출처 검토와 rate limit 정책 필요 |
 | JWT_SECRET / ENCRYPTION_KEY | 운영 서버 환경변수 (Secrets에는 staging만) | 인증·암호화 |
 | Firebase / Vercel 키 | (해당 시) GitHub Secrets | CI 배포 |
 | TestFlight / Play Console 자격증명 | Apple / Google 별도 보관 | 수동 배포 |
@@ -2480,6 +2483,9 @@ flowchart LR
     - ALLOW_EXTERNAL_LLM=false
     - GOOGLE_APPLICATION_CREDENTIALS
     - MFDS_API_KEY
+    - MFDS_DATA_API_KEY
+    - KDCA_HEALTHINFO_API_KEY
+    - SEMANTIC_SCHOLAR_API_KEY
     - DATABASE_URL
     - REDIS_URL
     - JWT_SECRET (openssl rand -hex 32)
@@ -2667,6 +2673,17 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 CLOVA_OCR_API_KEY=...
 
 MFDS_API_KEY=...
+MFDS_DATA_API_KEY=...
+KDCA_HEALTHINFO_API_KEY=...
+SEMANTIC_SCHOLAR_API_KEY=...           # 연구용. 검토 전 사용자 답변 근거 사용 금지
+DATA_GO_KR_SERVICE_KEY=
+NCBI_API_KEY=
+NCBI_TOOL_NAME=lemon-aid
+NCBI_EMAIL=
+OPENFDA_API_KEY=
+CROSSREF_MAILTO=
+GOOGLE_CSE_API_KEY=
+GOOGLE_CSE_ID=
 
 JWT_SECRET=...                       # openssl rand -hex 32
 ENCRYPTION_KEY=...                   # openssl rand -base64 32
@@ -2939,7 +2956,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 
 ### B.0 한 줄 결론
 
-백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, AI Agent daily-coaching API client, secure token store, 영양제 촬영·분석 preview API 연결, 사용자 확인/수정 후 `/api/v1/supplements` 저장 flow, 음식 사진+수동 입력 확인 flow, confirmed food/supplement 기반 daily-coaching payload 조립, 앱 세션 내 confirmed entry handoff, debug-only photo-free LLM coaching sample까지 구현했다. 음식 flow는 팀의 음식 인식 모델·영양성분 DB lookup이 아직 없다는 전제하에 영양성분을 임의 생성하지 않고 confirmed 입력만 Agent 연결 후보로 유지한다. `origin/taedong-design`의 루트 `mobile/` Flutter 앱은 UI/UX와 인증 흐름의 후보 원천으로 확인했지만, 현재 백엔드에는 `/api/v1/auth/*` 라우트가 아직 없으므로 직접 병합하지 않고 `mobile/flutter_app`에 API 연결층, loose model 호환층, home/coaching 하단 셸, 촬영 프레임, 결과 화면부터 선별 반영했다. Flutter toolchain 검증과 Docker/PostgreSQL/SGLang live smoke는 완료됐으며, 다음 실질 구현 단계는 Android emulator build/run, result screen의 backend detail 확장, OCR/Ollama live 검증, OIDC staging 연동이다.
+백엔드는 P0 보안/데이터 기반부터 P1-6 HealthKit/Health Connect sync API까지 구현되어 테스트를 통과했다. P1-7 모바일 MVP는 Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, AI Agent daily-coaching/chat API client, secure token store, 영양제 촬영·분석 preview API 연결, 사용자 확인/수정 후 `/api/v1/supplements` 저장 flow, 음식 사진+수동 입력 확인 flow, confirmed food/supplement 기반 daily-coaching payload 조립, 앱 세션 내 confirmed entry handoff, debug-only photo-free LLM coaching sample까지 구현했다. AI Agent는 `/api/v1/ai-agent/daily-coaching`과 `/api/v1/ai-agent/chat`으로 FastAPI에 연결되어 있고, `agent_memory`, Q&A knowledge policy, safety boundary, Ollama/SGLang provider 경로를 사용한다. 음식 flow는 팀의 음식 인식 모델·영양성분 DB lookup이 아직 없다는 전제하에 영양성분을 임의 생성하지 않고 confirmed 입력만 Agent 연결 후보로 유지한다. `origin/taedong-design`의 루트 `mobile/` Flutter 앱은 UI/UX와 인증 흐름의 후보 원천으로 확인했지만, 현재 백엔드에는 `/api/v1/auth/*` 라우트가 아직 없으므로 직접 병합하지 않고 `mobile/flutter_app`에 API 연결층, loose model 호환층, home/coaching 하단 셸, 촬영 프레임, 결과 화면부터 선별 반영했다. Flutter toolchain 검증과 Docker/PostgreSQL/SGLang live smoke는 완료됐으며, 다음 실질 구현 단계는 Android emulator build/run, result screen의 backend detail 확장, OCR/Ollama live 검증, OIDC staging 연동이다.
 
 ### B.1 현재 구현 완료 범위
 
@@ -2958,6 +2975,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | 영양제 매칭/등록 API | 구현 완료 | matching service, 등록/list/detail/delete, user confirmation, audit/consent 연결 |
 | 부족 영양소/대시보드 API | 구현 완료 | latest nutrition diagnosis, dashboard summary, supplement/health/activity snapshot 통합 |
 | HealthKit/Health Connect sync | 백엔드 구현 | daily aggregate sync, client batch idempotency, summary upsert, consent/audit 연결 |
+| AI Agent daily coaching/chat | 구현·검증 진행 중 | `/api/v1/ai-agent/daily-coaching`, `/api/v1/ai-agent/chat`, `agent_memory` context, Q&A knowledge policy, emergency/drug/mental-health boundary, Ollama/SGLang provider 경로 |
 | 모바일 MVP | 연결 완료 | `mobile/flutter_app` Flutter shell, taedong-inspired bottom shell/capture frame/result screen, dashboard routing, secure token store, Dio API client, Android emulator-safe local base URL, daily-coaching DTO/repository, taedong-compatible loose models, 영양제 촬영 permission/image picker + `/api/v1/supplements/analyze` multipart preview 연결 + confirmed `/api/v1/supplements` 저장 flow, 음식 사진/수동 입력 confirmed payload, debug-only confirmed sample seeding, `ConfirmedEntryStore` 앱 세션 handoff, 면책 고지, Python contract test, Flutter analyze/test |
 
 ### B.2 현재 주요 API 표면
@@ -2971,6 +2989,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | Analysis Results | `POST /api/v1/analysis-results/*`, `GET`, `DELETE` | 서버 계산 결과 저장/조회/삭제 |
 | Privacy | `/api/v1/me/privacy/consents`, `/api/v1/me/data-deletion-requests` | 동의, 철회, 삭제 요청 |
 | Supplements | `POST /api/v1/supplements/analyze`, `POST /api/v1/supplements`, list/detail/delete | 영양제 이미지 intake와 사용자 등록 |
+| AI Agent | `POST /api/v1/ai-agent/daily-coaching`, `POST /api/v1/ai-agent/chat` | confirmed 입력 기반 일일 코칭, agent memory 사용, 안전 경계가 적용된 챗봇 응답 |
 | Health Sync | `POST /api/v1/health/sync` | 모바일 health aggregate sync |
 | Dashboard | `GET /api/v1/dashboard/summary` | 활동/체중/영양/영양제/헬스 요약 |
 
@@ -2994,6 +3013,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | iOS/Xcode/CocoaPods | 별도 Mac 트랙 | 이 Windows 세션에서는 검증하지 않음. iOS 검증은 Mac 환경에서 별도 수행 |
 | Android SDK | 미설치 | Android emulator build/run 검증 전 설치 필요 |
 | Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-20 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
+| AI Agent chatbot policy smoke | 부분 완료 | unit/API 테스트로 `/api/v1/ai-agent/chat`, SGLang provider 분기, `agent_memory`, 약물·응급·자해 boundary, 민감 건강 동의 gate를 확인했다. Flutter web CORS smoke는 고정 포트 기준으로 별도 실행한다. |
 | Ollama live smoke | 미완료 | parser unit test는 있으나 실제 Ollama server/model 호출 검증 필요 |
 
 ### B.5 보안/개인정보 현재 판단

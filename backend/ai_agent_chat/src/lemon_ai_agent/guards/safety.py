@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 FORBIDDEN_TERMS = (
     "diagnose",
     "diagnosis",
@@ -16,6 +15,8 @@ FORBIDDEN_TERMS = (
     "처방",
     "복용해도 됩니다",
     "당뇨입니다",
+    "고혈압입니다",
+    "신장질환입니다",
 )
 
 PRODUCT_PROMOTION_TERMS = (

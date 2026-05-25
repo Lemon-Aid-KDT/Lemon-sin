@@ -4,10 +4,25 @@ from __future__ import annotations
 
 import importlib.util
 import os
-from pathlib import Path
 import shutil
 import socket
+import sys
+from datetime import date
+from pathlib import Path
 from urllib.parse import urlparse
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = SCRIPT_DIR.parent
+NUTRITION_BACKEND_DIR = BACKEND_DIR / "Nutrition-backend"
+AI_AGENT_CHAT_SRC_DIR = BACKEND_DIR / "ai_agent_chat" / "src"
+DEFAULT_POSTGRES_SMOKE_PORT = 55432
+for import_path in (NUTRITION_BACKEND_DIR, AI_AGENT_CHAT_SRC_DIR):
+    import_path_text = str(import_path)
+    if import_path_text not in sys.path:
+        sys.path.insert(0, import_path_text)
+
+from src.config import Settings
+from src.services.medical_source_readiness import build_medical_source_readiness
 
 
 def main() -> int:
@@ -36,6 +51,8 @@ def main() -> int:
 
     for label, ok in checks:
         print(f"{label}: {'ok' if ok else 'missing'}")
+    for line in _medical_source_readiness_lines(Settings(_env_file=None)):
+        print(line)
 
     postgres_ready = (
         os.getenv("RUN_POSTGRES_MIGRATION_SMOKE") == "1"
@@ -85,15 +102,29 @@ def _module_available(module: str) -> bool:
 def _database_host_port(database_url: str | None) -> tuple[str, int]:
     """Extract host and port from a SQLAlchemy database URL."""
     if not database_url:
-        return "127.0.0.1", 5432
+        return "127.0.0.1", DEFAULT_POSTGRES_SMOKE_PORT
     parsed = urlparse(database_url)
-    return parsed.hostname or "127.0.0.1", parsed.port or 5432
+    return parsed.hostname or "127.0.0.1", parsed.port or DEFAULT_POSTGRES_SMOKE_PORT
 
 
 def _http_host_port(url: str, *, default_port: int) -> tuple[str, int]:
     """Extract host and port from a local HTTP endpoint."""
     parsed = urlparse(url)
     return parsed.hostname or "127.0.0.1", parsed.port or default_port
+
+
+def _medical_source_readiness_lines(
+    settings: Settings,
+    *,
+    today: date | None = None,
+) -> list[str]:
+    readiness = build_medical_source_readiness(settings, today=today)
+    lines: list[str] = []
+    for source in readiness.sources:
+        state = "ok" if source.ready else "missing"
+        detail = f" ({source.error_code})" if source.error_code else ""
+        lines.append(f"medical source {source.source_id}: {state}{detail}")
+    return lines
 
 
 def _port_open(host: str, port: int) -> bool:

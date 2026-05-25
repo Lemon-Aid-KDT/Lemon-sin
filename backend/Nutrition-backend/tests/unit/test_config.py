@@ -142,6 +142,50 @@ def test_default_llm_settings_include_sglang_operational_candidate() -> None:
     assert settings.sglang_api_key is None
 
 
+def test_medical_source_api_settings_map_from_environment(tmp_path: Path) -> None:
+    """Verify reviewed medical-source keys in .env.example are real settings fields."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "DATA_GO_KR_SERVICE_KEY=data-go-key",
+                "MFDS_DATA_API_KEY=mfds-data-key",
+                "KDCA_HEALTHINFO_API_KEY=kdca-key",
+                "NCBI_API_KEY=ncbi-key",
+                "NCBI_TOOL_NAME=lemon-aid-test",
+                "NCBI_EMAIL=team@example.test",
+                "SEMANTIC_SCHOLAR_API_KEY=semantic-key",
+                "OPENFDA_API_KEY=openfda-key",
+                "CROSSREF_MAILTO=research@example.test",
+                "GOOGLE_CSE_API_KEY=google-cse-key",
+                "GOOGLE_CSE_ID=google-cse-id",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.data_go_kr_service_key is not None
+    assert settings.data_go_kr_service_key.get_secret_value() == "data-go-key"
+    assert settings.mfds_data_api_key is not None
+    assert settings.mfds_data_api_key.get_secret_value() == "mfds-data-key"
+    assert settings.kdca_healthinfo_api_key is not None
+    assert settings.kdca_healthinfo_api_key.get_secret_value() == "kdca-key"
+    assert settings.ncbi_api_key is not None
+    assert settings.ncbi_api_key.get_secret_value() == "ncbi-key"
+    assert settings.ncbi_tool_name == "lemon-aid-test"
+    assert settings.ncbi_email == "team@example.test"
+    assert settings.semantic_scholar_api_key is not None
+    assert settings.semantic_scholar_api_key.get_secret_value() == "semantic-key"
+    assert settings.openfda_api_key is not None
+    assert settings.openfda_api_key.get_secret_value() == "openfda-key"
+    assert settings.crossref_mailto == "research@example.test"
+    assert settings.google_cse_api_key is not None
+    assert settings.google_cse_api_key.get_secret_value() == "google-cse-key"
+    assert settings.google_cse_id == "google-cse-id"
+
+
 def test_google_cloud_api_key_can_be_loaded_as_secret() -> None:
     """Verify local Google Vision REST API key input is accepted as a secret value."""
     settings = Settings(

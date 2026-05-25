@@ -23,26 +23,21 @@ DEFAULT_SGLANG_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server-url", default=DEFAULT_SERVER_URL)
-    parser.add_argument("--sglang-base-url", default=os.getenv("SGLANG_BASE_URL", DEFAULT_SGLANG_BASE_URL))
-    parser.add_argument("--sglang-model", default=os.getenv("SGLANG_MODEL", DEFAULT_SGLANG_MODEL))
-    parser.add_argument("--database-url", default=os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL"))
-    parser.add_argument("--timeout", type=float, default=45.0)
-    parser.add_argument("--skip-db-upgrade", action="store_true")
-    args = parser.parse_args()
+    args = _parse_args()
 
     if not args.database_url:
         print("ERROR: set TEST_DATABASE_URL or pass --database-url.", file=sys.stderr)
         return 2
 
-    _require_sglang(args.sglang_base_url, args.timeout)
+    sglang_check = "skipped" if args.skip_sglang_check else "required"
+    if not args.skip_sglang_check:
+        _require_sglang(args.sglang_base_url, args.timeout)
 
     env = _server_env(args.database_url, args.sglang_base_url, args.sglang_model)
     if not args.skip_db_upgrade:
         _run([sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"], env=env)
 
-    process = _start_server(args.server_url, env)
+    process = None if args.use_existing_server else _start_server(args.server_url, env)
     try:
         _wait_for_health(args.server_url, args.timeout)
         consent = _post_json(
@@ -61,7 +56,8 @@ def main() -> int:
             timeout=args.timeout,
         )
     finally:
-        _stop_server(process)
+        if process is not None:
+            _stop_server(process)
 
     _assert_response(consent.get("granted") is True, "consent grant failed")
     _assert_response(first.get("status") == "completed", "first coaching request did not complete")
@@ -77,20 +73,60 @@ def main() -> int:
 
     print(
         json.dumps(
-            {
-                "status": "ok",
-                "server_url": args.server_url,
-                "sglang_base_url": args.sglang_base_url,
-                "model": args.sglang_model,
-                "first_provider": first.get("provider"),
-                "second_provider": second.get("provider"),
-                "second_used_tools": second.get("used_tools", []),
-            },
+            _summary_payload(
+                args=args,
+                sglang_check=sglang_check,
+                first=first,
+                second=second,
+            ),
             ensure_ascii=False,
             indent=2,
         )
     )
     return 0
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server-url", default=DEFAULT_SERVER_URL)
+    parser.add_argument(
+        "--sglang-base-url",
+        default=os.getenv("SGLANG_BASE_URL", DEFAULT_SGLANG_BASE_URL),
+    )
+    parser.add_argument("--sglang-model", default=os.getenv("SGLANG_MODEL", DEFAULT_SGLANG_MODEL))
+    parser.add_argument("--database-url", default=os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL"))
+    parser.add_argument("--timeout", type=float, default=45.0)
+    parser.add_argument("--skip-db-upgrade", action="store_true")
+    parser.add_argument(
+        "--skip-sglang-check",
+        action="store_true",
+        help="Skip /v1/models readiness and allow deterministic fallback smoke.",
+    )
+    parser.add_argument(
+        "--use-existing-server",
+        action="store_true",
+        help="Call an already running FastAPI server instead of starting uvicorn.",
+    )
+    return parser.parse_args(argv)
+
+
+def _summary_payload(
+    *,
+    args: argparse.Namespace,
+    sglang_check: str,
+    first: dict[str, Any],
+    second: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "server_url": args.server_url,
+        "sglang_base_url": args.sglang_base_url,
+        "sglang_check": sglang_check,
+        "model": args.sglang_model,
+        "first_provider": first.get("provider"),
+        "second_provider": second.get("provider"),
+        "second_used_tools": second.get("used_tools", []),
+    }
 
 
 def _server_env(database_url: str, sglang_base_url: str, sglang_model: str) -> dict[str, str]:
