@@ -75,7 +75,9 @@
 - transport timing 기반 `duration_ms` 계측은 아직 없다.
 - HTTP status별 error mapping은 404 model unavailable만 분리했고, 나머지는 안정적 `OllamaClientError`로 유지한다.
 - schema invalid response에 대한 1회 재시도 여부가 아직 결정되지 않았다.
-- 실제 local Ollama smoke test는 opt-in gate만 설계했고 아직 추가하지 않았다.
+- 실제 local Ollama smoke test는 opt-in gate로 유지한다. 2026-05-25 Windows
+  Ollama 0.24.0 + `qwen3.5:9b`에서 `/api/chat` non-streaming smoke와
+  `OllamaSupplementParser` structured-output live smoke가 통과했다.
 
 ## 4. 설계 원칙
 
@@ -308,6 +310,7 @@ cd yeong-Lemon-Aid/backend
 - [x] `GET /api/tags` 기반 readiness helper 추가
 - [x] model missing, Ollama down, remote URL blocked cases 테스트
 - `RUN_OLLAMA_TESTS=true` 전용 실제 local smoke test 추가
+  [부분 완료: 2026-05-25 수동 live smoke는 통과. CI/pytest opt-in 파일은 아직 미추가]
 
 완료 조건:
 

@@ -164,8 +164,12 @@ redis-cli -u $REDIS_URL ping
     `chat_provider=sglang`, `second_used_tools`와 `chat_used_tools` 내
     `agent_memory` 포함이다.
   - `--skip-db-upgrade`는 대상 DB가 Alembic head임을 이미 확인한 경우에만 사용한다.
-- [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test,
-      `python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama`)
+- [x] Ollama 서버 상태 확인 (2026-05-25)
+  - Windows Ollama 0.24.0 설치, `qwen3.5:9b` pull 완료.
+  - `127.0.0.1:11434` 포트와 `/api/tags`에서 `qwen3.5:9b` 확인.
+  - `python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` 통과.
+  - `/api/chat` non-streaming smoke와 `OllamaSupplementParser` structured-output live
+    smoke 통과. Vitamin D 25 mcg OCR 예시가 schema-validated JSON으로 파싱됨.
 - [x] SGLang 운영 후보 상태 확인 (2026-05-20 재확인)
   - 기본 endpoint: `http://127.0.0.1:30000/v1`
   - 현재 응답 모델: `Qwen/Qwen2.5-0.5B-Instruct`

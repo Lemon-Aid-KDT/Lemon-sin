@@ -211,9 +211,9 @@ python backend\scripts\smoke_ai_agent_server.py `
 - Semantic Scholar: `SEMANTIC_SCHOLAR_API_KEY`가 설정되어도 현재는 research
   backlog source라서 `not_reviewed`가 정상이다. 사용자-facing retrieval에
   연결하려면 별도 source review가 필요하다.
-- Ollama live readiness: 2026-05-25 현재 `127.0.0.1:11434`가 닫혀 있어
-  `--require-ollama`는 `ollama=port_closed`로 실패한다. Ollama 서버와
-  `OLLAMA_MODEL` 모델을 준비한 뒤 다시 실행한다.
+- Ollama live readiness: 2026-05-25 Windows Ollama 0.24.0 설치와
+  `qwen3.5:9b` pull 이후 `--require-ollama`가 통과했다. `/api/chat` non-streaming
+  smoke와 `OllamaSupplementParser` structured-output live smoke도 통과했다.
 
 ## KDCA key 수령 후 바로 실행할 명령
 
@@ -249,7 +249,7 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py `
   기준 통과했다. Docker Desktop 또는 `lemon-sglang` 컨테이너가 꺼져 있으면
   다시 `missing`으로 보일 수 있다. 해당 runtime까지 종료코드로 강제하려면
   `--require-postgres-smoke --require-sglang-smoke`를 추가한다.
-- 개발용 Ollama까지 확인하려면 Ollama 서버와 모델을 준비한 뒤 다음을 추가 실행한다:
+- 개발용 Ollama를 재확인하려면 Ollama 서버가 켜져 있는 상태에서 다음을 실행한다:
 
 ```powershell
 python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama
@@ -260,6 +260,10 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama
 - `Ollama port 127.0.0.1:11434: ok`
 - `OLLAMA_MODEL: ok`
 - `Required Ollama runtime is not ready` 메시지가 없어야 함
+
+2026-05-25 검증 결과: `qwen3.5:9b` 기준 위 조건이 통과했고,
+`OllamaSupplementParser`가 Vitamin D 25 mcg OCR 예시를 schema-validated JSON으로
+파싱했다.
 
 ## 2026-05-25 live smoke 재검증 기록
 
