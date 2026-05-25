@@ -2,7 +2,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -10,6 +9,7 @@ from lemon_ai_agent.agents.chat import ChatAgent
 from lemon_ai_agent.knowledge import (
     LLM_QA_EVAL_SET,
     RESPONSE_CONTRACTS,
+    REVIEWED_MEDICAL_SOURCE_REGISTRY,
     SOURCE_REGISTRY,
     classify_question,
     policy_for_question,
@@ -171,6 +171,21 @@ class LLMKnowledgeSystemTest(unittest.TestCase):
                 policy = policy_for_question(item.question)
 
                 self.assertEqual(policy.category, item.expected_category)
+
+    def test_reviewed_source_registry_tracks_keyed_medical_sources(self) -> None:
+        sources = {source.source_id: source for source in REVIEWED_MEDICAL_SOURCE_REGISTRY}
+
+        kdca = sources["kdca-healthinfo"]
+        self.assertEqual(kdca.status, "reviewed")
+        self.assertEqual(kdca.env_key, "KDCA_HEALTHINFO_API_KEY")
+        self.assertIn("chronic_condition", kdca.source_families)
+        self.assertTrue({"hypertension", "diabetes", "kidney_disease"}.issubset(kdca.topics))
+        self.assertTrue(kdca.last_reviewed_at)
+
+        semantic_scholar = sources["semantic-scholar"]
+        self.assertEqual(semantic_scholar.status, "draft")
+        self.assertEqual(semantic_scholar.env_key, "SEMANTIC_SCHOLAR_API_KEY")
+        self.assertFalse(semantic_scholar.user_facing_allowed)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,14 @@ Implementation entry point:
 - `src/lemon_ai_agent/agents/chat.py`
 - `tests/test_llm_knowledge_system.py`
 
+`knowledge.py` also owns `REVIEWED_MEDICAL_SOURCE_REGISTRY`, a lightweight
+source-versioned registry for KDCA, KDRIs, MFDS, and Semantic Scholar. API-keyed
+sources such as KDCA HealthInfo and Semantic Scholar are represented by their
+environment variable names, but this standalone package still treats Semantic
+Scholar as research backlog only, not direct user-facing retrieval. Each record
+also carries review expiry metadata so backend integration can fail closed before
+using stale source records.
+
 ## Source Registry Families
 
 The code registry keeps nine source families. The family name, not raw free-form

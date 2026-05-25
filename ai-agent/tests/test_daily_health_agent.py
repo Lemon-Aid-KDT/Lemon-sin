@@ -2,7 +2,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -115,9 +114,12 @@ class DailyHealthAgentTest(unittest.TestCase):
         guard = SafetyGuard()
 
         unsafe = guard.check_text("당뇨입니다. 이 브랜드 제품을 구매하세요.")
+        chronic_certainty = guard.check_text("고혈압입니다. 나트륨을 완전히 금지하세요.")
 
         self.assertFalse(unsafe.allowed)
         self.assertGreaterEqual(len(unsafe.warnings), 2)
+        self.assertFalse(chronic_certainty.allowed)
+        self.assertIn("Forbidden medical expression detected", chronic_certainty.warnings)
 
     def test_upper_limit_excess_for_multiple_supplement_ingredients_is_risky(
         self,
