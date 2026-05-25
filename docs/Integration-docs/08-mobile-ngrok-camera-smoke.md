@@ -163,6 +163,21 @@ cannot hide a database-backed mobile contract failure.
 the app, so Developer Mode, signing, and trust prompts still need the `flutter
 run` step below.
 
+After Flutter can see a physical phone, optionally run a sanitized deploy probe:
+
+```bash
+python backend/scripts/check_mobile_ngrok_camera_readiness.py \
+  --require-gateway \
+  --require-physical-device \
+  --check-device-deploy \
+  --deploy-device-id <ios-device-id> \
+  --deploy-timeout-seconds 60
+```
+
+The deploy probe invokes `flutter run --no-resident` and reports only statuses
+such as `launched`, `developer_mode_or_trust_required`, `signing_error`, or
+`timeout`; it does not print raw Flutter output, gateway tokens, or public URLs.
+
 ## 9. Known Limits
 
 | Limit | Current state | Action |
@@ -185,7 +200,7 @@ Verified on 2026-05-25 from
 | Gateway token rejection | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <wrong-token>' http://127.0.0.1:8010/health` | `401 Unauthorized` |
 | Gateway token success | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <local-smoke-token>' http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
 | Gateway unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_dev_mobile_ngrok_backend_gateway.py -q --no-cov` | `4` tests passed; token opt-in, 401 rejection, Host rewrite, token stripping, and POST body forwarding covered without opening test sockets |
-| Readiness preflight unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_check_mobile_ngrok_camera_readiness.py -q --no-cov` | `7` tests passed; device parsing, sanitized Flutter probe failures, ngrok gateway matching, mobile contract failure, optional incomplete status, required failure status, and sanitized formatting covered |
+| Readiness preflight unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_check_mobile_ngrok_camera_readiness.py -q --no-cov` | `9` tests passed; device parsing, sanitized Flutter probe failures, deploy blocker classification, ngrok gateway matching, mobile contract failure, optional incomplete status, required failure status, and sanitized formatting covered |
 | Readiness preflight with backend up | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=incomplete`, backend `200`, gateway contract `unreachable`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
 | Readiness preflight with live services stopped | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=failed`, backend `unreachable`, gateway `unreachable`, gateway contract `unreachable`, `flutter_devices_probe=permission_error`, physical devices `0`, ngrok gateway matches `0` |
 | Readiness preflight with local gateway and DB stopped | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --backend-health-url http://127.0.0.1:8001/health --gateway-health-url http://127.0.0.1:8011/health --gateway-contract-url http://127.0.0.1:8011/api/v1/me/privacy/consents --expected-gateway-url http://127.0.0.1:8011 --flutter-bin /opt/homebrew/bin/flutter --require-gateway` | `status=failed`, backend `200`, gateway `200`, gateway contract `500`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
@@ -199,11 +214,12 @@ Verified on 2026-05-25 from
 | iOS simulator team backend screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-8010-container-gateway.png` | Dashboard rendered live summary updated at `2026-05-25 16:43:24.132563` |
 | Physical iPhone visibility | `flutter devices --machine` | Physical iPhone visible as an iOS device; readiness reports `ios_physical=1` and `physical_device_ready=True` |
 | Physical iPhone deploy attempt | `flutter run -d <ios-device-id> --no-resident ...` | Blocked before launch: iPhone requires Developer Mode in Settings > Privacy & Security or Xcode trust prompt handling |
+| Physical iPhone deploy readiness classification | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --check-device-deploy --deploy-device-id <ios-device-id> --deploy-timeout-seconds 60` | `status=failed`, `ios_physical=1`, `physical_device_ready=True`, `device_deploy_probe=developer_mode_or_trust_required`; no raw Flutter stderr printed |
 | Public ngrok tunnel attempt | `ngrok http 8010 --web-addr 127.0.0.1:4041` | Not run: public tunnel opening was rejected by safety approval because it exposes local backend traffic to an external service |
 | Flutter regression | `flutter analyze`, `flutter test` | No analyzer issues; `19` tests passed |
 | Platform debug builds | `flutter build apk --debug --flavor dev ...`, `flutter build ios --simulator --debug ...` with gateway token define | Android dev APK and iOS simulator app built successfully |
 | iOS simulator direct camera | `xcrun simctl help io` | Not supported; available operations are enumerate, poll, recordVideo, screenshot |
-| Physical iPhone detection | `flutter devices` | Not detected; wireless discovery reports Developer Mode/unlock/cable/LAN requirement |
+| Earlier physical iPhone detection | `flutter devices` before reconnect/trust progress | Previously not detected; now superseded by the physical visibility row above |
 | Existing ngrok tunnel | `curl http://127.0.0.1:4040/api/tunnels` | Tunnel points to `http://localhost:8765`, not the backend gateway |
 | Existing ngrok backend access | `curl -H 'ngrok-skip-browser-warning: true' <current-ngrok-origin>/health` | `401 Unauthorized`; unsuitable for mobile app without embedding credentials |
 

@@ -113,6 +113,31 @@ def test_load_flutter_devices_reports_sanitized_permission_error(monkeypatch) ->
     )
 
 
+def test_probe_flutter_device_deploy_reports_developer_mode_blocker(monkeypatch) -> None:
+    """Verify optional deploy probe classifies device trust failures safely."""
+
+    def fake_run(*_args, **_kwargs):
+        return readiness.subprocess.CompletedProcess(
+            args=["flutter", "run"],
+            returncode=1,
+            stdout="",
+            stderr="enable Developer Mode in Settings and trust this computer",
+        )
+
+    monkeypatch.setattr(readiness.subprocess, "run", fake_run)
+
+    status = readiness.probe_flutter_device_deploy(
+        flutter_bin="flutter",
+        device_id="ios-device",
+        api_base_url="http://127.0.0.1:8010/api/v1",
+        gateway_token="local-token",
+        flutter_workdir="mobile",
+        timeout=1.0,
+    )
+
+    assert status == "developer_mode_or_trust_required"
+
+
 def test_evaluate_readiness_reports_incomplete_when_optional_live_gates_missing() -> None:
     """Verify missing physical device and ngrok are incomplete unless required."""
     result = readiness.evaluate_readiness(
@@ -126,6 +151,7 @@ def test_evaluate_readiness_reports_incomplete_when_optional_live_gates_missing(
             android_physical=0,
         ),
         ngrok=readiness.NgrokSummary(https_tunnels=0, gateway_matches=0),
+        deploy_probe_status="not_checked",
         require_physical_device=False,
         require_gateway=False,
         require_ngrok=False,
@@ -152,6 +178,7 @@ def test_evaluate_readiness_fails_when_required_live_gates_missing() -> None:
             android_physical=0,
         ),
         ngrok=readiness.NgrokSummary(https_tunnels=1, gateway_matches=0),
+        deploy_probe_status="not_checked",
         require_physical_device=True,
         require_gateway=True,
         require_ngrok=True,
@@ -175,6 +202,7 @@ def test_evaluate_readiness_fails_when_mobile_contract_is_broken() -> None:
             android_physical=0,
         ),
         ngrok=readiness.NgrokSummary(https_tunnels=0, gateway_matches=0),
+        deploy_probe_status="not_checked",
         require_physical_device=False,
         require_gateway=False,
         require_ngrok=False,
@@ -183,6 +211,31 @@ def test_evaluate_readiness_fails_when_mobile_contract_is_broken() -> None:
     assert result.exit_code == 1
     assert result.status == "failed"
     assert result.details["gateway_contract"] == HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+def test_evaluate_readiness_fails_when_deploy_probe_is_blocked() -> None:
+    """Verify device visibility alone is not treated as deploy readiness."""
+    result = readiness.evaluate_readiness(
+        backend_status=HTTPStatus.OK,
+        gateway_status=HTTPStatus.OK,
+        gateway_contract_status=HTTPStatus.OK,
+        devices=readiness.DeviceSummary(
+            ios_simulators=1,
+            ios_physical=1,
+            android_emulators=0,
+            android_physical=0,
+        ),
+        ngrok=readiness.NgrokSummary(https_tunnels=0, gateway_matches=0),
+        deploy_probe_status="developer_mode_or_trust_required",
+        require_physical_device=True,
+        require_gateway=True,
+        require_ngrok=False,
+    )
+
+    assert result.exit_code == 1
+    assert result.status == "failed"
+    assert result.details["physical_device_ready"] is True
+    assert result.details["device_deploy_probe"] == "developer_mode_or_trust_required"
 
 
 def test_format_result_is_single_line_and_sanitized() -> None:

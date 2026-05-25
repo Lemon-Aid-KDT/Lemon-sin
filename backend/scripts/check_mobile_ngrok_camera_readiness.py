@@ -13,6 +13,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from http import HTTPStatus
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -89,7 +90,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--expected-gateway-url", default="http://127.0.0.1:8010")
     parser.add_argument("--ngrok-api-url", default="http://127.0.0.1:4041/api/tunnels")
     parser.add_argument("--flutter-bin", default="flutter")
+    parser.add_argument("--flutter-workdir", default="mobile")
     parser.add_argument("--timeout-seconds", type=float, default=3.0)
+    parser.add_argument("--check-device-deploy", action="store_true")
+    parser.add_argument("--deploy-device-id")
+    parser.add_argument(
+        "--deploy-api-base-url",
+        default="http://127.0.0.1:8010/api/v1",
+    )
+    parser.add_argument("--deploy-timeout-seconds", type=float, default=120.0)
     parser.add_argument("--require-physical-device", action="store_true")
     parser.add_argument("--require-gateway", action="store_true")
     parser.add_argument("--require-ngrok", action="store_true")
@@ -124,12 +133,23 @@ def main(argv: list[str] | None = None) -> int:
         expected_gateway_url=args.expected_gateway_url,
         timeout=args.timeout_seconds,
     )
+    deploy_probe_status = "not_checked"
+    if args.check_device_deploy:
+        deploy_probe_status = probe_flutter_device_deploy(
+            flutter_bin=args.flutter_bin,
+            device_id=args.deploy_device_id,
+            api_base_url=args.deploy_api_base_url,
+            gateway_token=token or None,
+            flutter_workdir=args.flutter_workdir,
+            timeout=args.deploy_timeout_seconds,
+        )
     result = evaluate_readiness(
         backend_status=backend_status,
         gateway_status=gateway_status,
         gateway_contract_status=gateway_contract_status,
         devices=devices,
         ngrok=ngrok,
+        deploy_probe_status=deploy_probe_status,
         require_physical_device=args.require_physical_device,
         require_gateway=args.require_gateway,
         require_ngrok=args.require_ngrok,
@@ -276,6 +296,88 @@ def load_ngrok_summary(
     return parse_ngrok_tunnels(payload, expected_gateway_url=expected_gateway_url)
 
 
+def probe_flutter_device_deploy(
+    *,
+    flutter_bin: str,
+    device_id: str | None,
+    api_base_url: str,
+    gateway_token: str | None,
+    flutter_workdir: str,
+    timeout: float,
+) -> str:
+    """Run an optional sanitized Flutter device deployment probe.
+
+    Args:
+        flutter_bin: Flutter executable path or command name.
+        device_id: Target Flutter device ID.
+        api_base_url: API base URL passed to the app.
+        gateway_token: Optional development gateway token.
+        flutter_workdir: Directory where the Flutter app lives.
+        timeout: Deployment command timeout in seconds.
+
+    Returns:
+        Sanitized deployment probe status.
+    """
+    if not device_id:
+        return "missing_device_id"
+    command = [
+        flutter_bin,
+        "run",
+        "-d",
+        device_id,
+        "--no-resident",
+        f"--dart-define=LEMON_API_BASE_URL={api_base_url}",
+    ]
+    if gateway_token:
+        command.append(f"--dart-define=LEMON_DEV_GATEWAY_TOKEN={gateway_token}")
+    workdir = Path(flutter_workdir)
+    status = "failed"
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            cwd=workdir if workdir.exists() else None,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        status = "timeout"
+    except OSError:
+        status = "unavailable"
+    else:
+        status = classify_flutter_deploy_output(
+            returncode=completed.returncode,
+            output=f"{completed.stdout}\n{completed.stderr}",
+        )
+    return status
+
+
+def classify_flutter_deploy_output(*, returncode: int, output: str) -> str:
+    """Classify Flutter deploy output into a sanitized status label.
+
+    Args:
+        returncode: Flutter process return code.
+        output: Combined stdout and stderr.
+
+    Returns:
+        Sanitized deployment probe status.
+    """
+    if returncode == 0:
+        return "launched"
+    lowered = output.lower()
+    marker_statuses = (
+        (("developer mode", "trust this computer"), "developer_mode_or_trust_required"),
+        (("code signing", "development team"), "signing_error"),
+        (("no devices", "device not found"), "device_unavailable"),
+        (("operation not permitted",), "permission_error"),
+    )
+    for markers, status in marker_statuses:
+        if any(marker in lowered for marker in markers):
+            return status
+    return "failed"
+
+
 def parse_ngrok_tunnels(payload: str, *, expected_gateway_url: str) -> NgrokSummary:
     """Parse local ngrok tunnel API output without exposing public URLs.
 
@@ -316,6 +418,7 @@ def evaluate_readiness(
     gateway_contract_status: int | None,
     devices: DeviceSummary,
     ngrok: NgrokSummary,
+    deploy_probe_status: str,
     require_physical_device: bool,
     require_gateway: bool,
     require_ngrok: bool,
@@ -328,6 +431,7 @@ def evaluate_readiness(
         gateway_contract_status: Mobile app contract status through the local gateway.
         devices: Flutter device visibility summary.
         ngrok: Local ngrok tunnel summary.
+        deploy_probe_status: Optional Flutter device deployment probe status.
         require_physical_device: Whether at least one physical mobile device is required.
         require_gateway: Whether gateway health must be HTTP 200.
         require_ngrok: Whether a matching HTTPS ngrok tunnel is required.
@@ -347,6 +451,8 @@ def evaluate_readiness(
         failures.append("ngrok")
     if require_physical_device and physical_count < 1:
         failures.append("physical_device")
+    if deploy_probe_status not in {"not_checked", "launched"}:
+        failures.append("device_deploy")
 
     details: dict[str, str | int | bool] = {
         "backend_health": backend_status or "unreachable",
@@ -360,7 +466,7 @@ def evaluate_readiness(
         "ngrok_https_tunnels": ngrok.https_tunnels,
         "ngrok_gateway_matches": ngrok.gateway_matches,
         "physical_device_ready": physical_count > 0,
-        "device_deploy_probe": "not_checked",
+        "device_deploy_probe": deploy_probe_status,
         "ngrok_ready": ngrok.gateway_matches > 0,
     }
     if failures:

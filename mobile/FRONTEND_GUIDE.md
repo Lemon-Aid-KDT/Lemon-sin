@@ -95,6 +95,16 @@ but the database-backed mobile contract is not ready.
 phone. If `flutter run -d <ios-device-id>` says Developer Mode is required,
 enable it on the iPhone under Settings > Privacy & Security, reconnect the
 device, and handle any Xcode trust prompt before camera capture testing.
+To classify this blocker through the preflight, add:
+
+```bash
+python backend/scripts/check_mobile_ngrok_camera_readiness.py \
+  --require-gateway \
+  --require-physical-device \
+  --check-device-deploy \
+  --deploy-device-id <ios-device-id> \
+  --deploy-timeout-seconds 60
+```
 
 If the iOS Simulator shows a dashboard `500`, verify the gateway contract before
 testing camera capture:
