@@ -5,11 +5,9 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
 
 from lemon_ai_agent.adapters import AgentFinding, AgentInput, AgentOutput
 from src.config import Settings
-from src.models.db.agent_memory import AgentMemory
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.supplement import UserSupplement, UserSupplementIngredient
 from src.security.auth import AuthenticatedUser

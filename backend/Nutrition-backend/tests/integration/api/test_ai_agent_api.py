@@ -15,6 +15,26 @@ from src.main import create_app
 from src.services.privacy import ConsentRequiredError
 
 
+class _UnavailableOllamaClient:
+    """Network-free Ollama stand-in for route fallback tests."""
+
+    provider = "ollama"
+    model = "offline-test-ollama"
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        """Accept the production client constructor shape without opening a socket."""
+
+    def generate(self, _request: LLMRequest) -> LLMResponse:
+        """Force the app adapter through its deterministic fallback path."""
+        raise RuntimeError("offline test llm")
+
+
+@pytest.fixture(autouse=True)
+def _disable_live_ollama_for_route_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep route tests isolated from whichever Ollama server is running locally."""
+    monkeypatch.setattr(ai_agent, "OllamaClient", _UnavailableOllamaClient)
+
+
 async def _fake_session_dependency() -> AsyncIterator[object]:
     """Yield a fake session for route tests.
 
@@ -217,16 +237,14 @@ def test_daily_coaching_returns_completed_result_for_confirmed_input(
     assert body["approval_status"] == "confirmed"
     assert body["provider"] == "deterministic"
     assert body["debug_trace"] == []
-    assert set(
-        [
-            "message",
-            "findings",
-            "recommendations",
-            "safety_warnings",
-            "provider",
-            "used_tools",
-        ]
-    ).issubset(body)
+    assert {
+        "message",
+        "findings",
+        "recommendations",
+        "safety_warnings",
+        "provider",
+        "used_tools",
+    }.issubset(body)
     assert "오늘의 요약" in body["message"]
     assert "권장 행동" in body["message"]
     assert "참고 및 주의" in body["message"]
@@ -602,9 +620,10 @@ def test_chat_route_drug_boundary_does_not_call_llm(
             api_key: str | None,
             timeout: float,
         ) -> None:
+            _ = (endpoint, api_key, timeout)
             captured["model"] = model
 
-        def generate(self, request: LLMRequest) -> LLMResponse:
+        def generate(self, _request: LLMRequest) -> LLMResponse:
             captured["generate_called"] = True
             raise AssertionError("boundary response should not call LLM")
 
@@ -660,7 +679,7 @@ def test_chat_route_escalation_boundaries_do_not_call_llm(
         ) -> None:
             pass
 
-        def generate(self, request: LLMRequest) -> LLMResponse:
+        def generate(self, _request: LLMRequest) -> LLMResponse:
             captured["generate_calls"] += 1
             raise AssertionError("escalation response should not call LLM")
 
