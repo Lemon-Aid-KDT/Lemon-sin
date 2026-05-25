@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from base64 import b64decode
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from typing import Self, cast
@@ -273,6 +274,20 @@ async def test_read_and_validate_rejects_corrupt_supported_image() -> None:
             _upload(b"\x89PNG\r\n\x1a\ncorrupt"),
             _settings(),
         )
+
+    assert exc_info.value.code == "invalid_image"
+    assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_read_and_validate_rejects_bad_png_checksum() -> None:
+    """Verify PNG CRC failures are converted to validation errors, not 500s."""
+    bad_png = b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    )
+
+    with pytest.raises(SupplementImageValidationError) as exc_info:
+        await read_and_validate_supplement_image(_upload(bad_png), _settings())
 
     assert exc_info.value.code == "invalid_image"
     assert exc_info.value.status_code == 422

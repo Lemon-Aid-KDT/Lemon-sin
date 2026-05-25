@@ -1,13 +1,18 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
+import 'package:lemon_aid_mobile/core/api/api_error.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/camera_readiness.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_flow_screen.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
   testWidgets('iOS runtime with no cameras keeps gallery endpoint path open', (
@@ -75,6 +80,52 @@ void main() {
     final IconButton shutter = _iconButtonByTooltip(tester, '촬영');
     expect(shutter.onPressed, isNotNull);
   });
+
+  testWidgets('analysis endpoint errors remain visible on camera tab', (
+    WidgetTester tester,
+  ) async {
+    final File image = _writeTinyPng();
+    addTearDown(() {
+      if (image.existsSync()) {
+        image.deleteSync();
+      }
+    });
+    final AppController controller = AppController(
+      repository: _CameraWidgetRepository(
+        analyzeError: const ApiError(
+          statusCode: 403,
+          code: 'consent_required',
+          message: 'Consent is required.',
+          requiredConsents: <String>['ocr_image_processing'],
+        ),
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.bootstrap();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SupplementFlowScreen(
+          controller: controller,
+          imagePicker: _FakeImagePicker(image.path),
+          cameraReadinessProbe: CameraReadinessProbe(
+            platform: TargetPlatform.iOS,
+            loader: () async => const <camera.CameraDescription>[],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('갤러리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('분석하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Request failed (403)'), findsOneWidget);
+    expect(find.textContaining('Consent is required.'), findsOneWidget);
+    expect(find.text('분석하기'), findsOneWidget);
+  });
 }
 
 IconButton _iconButtonByTooltip(WidgetTester tester, String tooltip) {
@@ -83,12 +134,38 @@ IconButton _iconButtonByTooltip(WidgetTester tester, String tooltip) {
       .singleWhere((IconButton button) => button.tooltip == tooltip);
 }
 
+class _FakeImagePicker extends ImagePicker {
+  _FakeImagePicker(this.path);
+
+  final String path;
+
+  @override
+  Future<XFile?> pickImage({
+    required ImageSource source,
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    CameraDevice preferredCameraDevice = CameraDevice.rear,
+    bool requestFullMetadata = true,
+  }) async {
+    return XFile(path);
+  }
+}
+
 class _CameraWidgetRepository implements LemonAidRepository {
+  _CameraWidgetRepository({this.analyzeError});
+
+  final ApiError? analyzeError;
+
   @override
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
     String imagePath, {
     String ocrProvider = 'configured',
-  }) {
+  }) async {
+    final ApiError? error = analyzeError;
+    if (error != null) {
+      throw error;
+    }
     throw UnimplementedError();
   }
 
@@ -192,4 +269,22 @@ class _CameraWidgetRepository implements LemonAidRepository {
       revokedAt: null,
     );
   }
+}
+
+File _writeTinyPng() {
+  final Directory directory = Directory.systemTemp.createTempSync(
+    'lemon-aid-camera-widget-test-',
+  );
+  final File file = File('${directory.path}/label.png');
+  addTearDown(() {
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  });
+  file.writeAsBytesSync(
+    base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+    ),
+  );
+  return file;
 }

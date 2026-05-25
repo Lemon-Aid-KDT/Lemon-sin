@@ -379,7 +379,7 @@ def _validate_decodable_image(data: bytes, max_pixels: int) -> tuple[int, int]:
             message="Uploaded label image exceeds the configured pixel limit.",
             status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
         ) from exc
-    except (OSError, UnidentifiedImageError) as exc:
+    except (OSError, SyntaxError, UnidentifiedImageError) as exc:
         raise SupplementImageValidationError(
             code="invalid_image",
             message="Uploaded label image cannot be decoded.",

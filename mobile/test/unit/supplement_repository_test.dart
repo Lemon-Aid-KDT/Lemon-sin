@@ -40,6 +40,7 @@ void main() {
         startsWith('mobile-'),
       );
       expect(capturedRequest.files.single.field, 'image');
+      expect(capturedRequest.files.single.contentType.mimeType, 'image/png');
     },
   );
 
@@ -71,7 +72,37 @@ void main() {
 
     expect(capturedRequest.fields['ocr_provider'], 'google_vision');
     expect(capturedRequest.files.single.field, 'image');
+    expect(capturedRequest.files.single.contentType.mimeType, 'image/png');
   });
+
+  test(
+    'sniffs image content type when selected path has no extension',
+    () async {
+      final File image = _writeTinyPng(fileName: 'label');
+      addTearDown(() {
+        if (image.existsSync()) {
+          image.deleteSync();
+        }
+      });
+      late http.MultipartRequest capturedRequest;
+      final ApiClient apiClient = ApiClient(
+        baseUrl: 'http://localhost:8000/api/v1',
+        httpClient: _CaptureMultipartClient(
+          onRequest: (http.MultipartRequest request) {
+            capturedRequest = request;
+          },
+        ),
+      );
+      addTearDown(apiClient.close);
+      final BackendLemonAidRepository repository = BackendLemonAidRepository(
+        apiClient: apiClient,
+      );
+
+      await repository.analyzeSupplementImage(image.path);
+
+      expect(capturedRequest.files.single.contentType.mimeType, 'image/png');
+    },
+  );
 
   test('adds development gateway token header on supplement upload', () async {
     final File image = _writeTinyPng();
@@ -244,11 +275,11 @@ final Map<String, Object?> _explainResponse = <String, Object?>{
   'warnings': <Object?>[],
 };
 
-File _writeTinyPng() {
+File _writeTinyPng({String fileName = 'label.png'}) {
   final Directory directory = Directory.systemTemp.createTempSync(
     'lemon-aid-repository-test-',
   );
-  final File file = File('${directory.path}/label.png');
+  final File file = File('${directory.path}/$fileName');
   addTearDown(() {
     if (directory.existsSync()) {
       directory.deleteSync(recursive: true);

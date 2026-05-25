@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app_controller.dart';
+import '../../core/api/api_error.dart';
 import '../../shared/theme/lemon_design_tokens.dart';
+import '../../shared/widgets/error_panel.dart';
 import 'camera_readiness.dart';
 import 'supplement_models.dart';
 
@@ -97,7 +99,11 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     }
 
     if (!widget.controller.hasMinimumConsents) {
-      return _BlackConsentRequired(onClose: widget.onClose);
+      return _BlackConsentRequired(
+        apiError: widget.controller.apiError,
+        onErrorDismissed: widget.controller.clearMessages,
+        onClose: widget.onClose,
+      );
     }
 
     if (preview == null) {
@@ -113,6 +119,8 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         onGallery: () => _pickImage(ImageSource.gallery),
         onAnalyze: _analyzeSelectedImage,
         onRetake: _resetSelectedImage,
+        apiError: widget.controller.apiError,
+        onErrorDismissed: widget.controller.clearMessages,
         onClose: widget.onClose,
       );
     }
@@ -124,6 +132,13 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: <Widget>[
             _ReviewTopBar(onClose: widget.onClose),
+            if (widget.controller.apiError != null) ...<Widget>[
+              const SizedBox(height: 12),
+              ErrorPanel(
+                error: widget.controller.apiError!,
+                onDismissed: widget.controller.clearMessages,
+              ),
+            ],
             const SizedBox(height: 16),
             _ProcessingTimeline(
               stage: _stage,
@@ -606,8 +621,14 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
 }
 
 class _BlackConsentRequired extends StatelessWidget {
-  const _BlackConsentRequired({required this.onClose});
+  const _BlackConsentRequired({
+    required this.apiError,
+    required this.onErrorDismissed,
+    required this.onClose,
+  });
 
+  final ApiError? apiError;
+  final VoidCallback onErrorDismissed;
   final VoidCallback? onClose;
 
   @override
@@ -618,6 +639,8 @@ class _BlackConsentRequired extends StatelessWidget {
         child: Column(
           children: <Widget>[
             _CaptureTopBar(title: '영양제 촬영', onClose: onClose),
+            if (apiError != null)
+              ErrorPanel(error: apiError!, onDismissed: onErrorDismissed),
             const Spacer(),
             const Icon(
               Icons.verified_user_outlined,
@@ -667,6 +690,8 @@ class _BlackCaptureSurface extends StatelessWidget {
     required this.onGallery,
     required this.onAnalyze,
     required this.onRetake,
+    required this.apiError,
+    required this.onErrorDismissed,
     required this.onClose,
   });
 
@@ -681,6 +706,8 @@ class _BlackCaptureSurface extends StatelessWidget {
   final VoidCallback onGallery;
   final VoidCallback onAnalyze;
   final VoidCallback onRetake;
+  final ApiError? apiError;
+  final VoidCallback onErrorDismissed;
   final VoidCallback? onClose;
 
   bool get _processing {
@@ -704,6 +731,8 @@ class _BlackCaptureSurface extends StatelessWidget {
                   : Icons.arrow_back_rounded,
               onClose: image == null ? onClose : onRetake,
             ),
+            if (apiError != null)
+              ErrorPanel(error: apiError!, onDismissed: onErrorDismissed),
             const SizedBox(height: 16),
             Expanded(
               child: Padding(

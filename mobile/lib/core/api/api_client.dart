@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'api_error.dart';
 
@@ -106,11 +108,18 @@ class ApiClient {
     Map<String, String> fields = const <String, String>{},
     Set<int> expectedStatusCodes = const <int>{202},
   }) async {
+    final MediaType contentType = await _contentTypeForPath(filePath);
     final http.MultipartRequest request =
         http.MultipartRequest('POST', _uri(path))
           ..headers.addAll(_headers())
           ..fields.addAll(fields)
-          ..files.add(await http.MultipartFile.fromPath(fileField, filePath));
+          ..files.add(
+            await http.MultipartFile.fromPath(
+              fileField,
+              filePath,
+              contentType: contentType,
+            ),
+          );
 
     final http.StreamedResponse streamedResponse = await _httpClient.send(
       request,
@@ -177,5 +186,70 @@ class ApiClient {
       return trimmed.substring(0, trimmed.length - 1);
     }
     return trimmed;
+  }
+
+  static Future<MediaType> _contentTypeForPath(String filePath) async {
+    final MediaType? detectedFromHeader = await _sniffImageContentType(
+      filePath,
+    );
+    if (detectedFromHeader != null) {
+      return detectedFromHeader;
+    }
+    final String lowerPath = filePath.toLowerCase();
+    if (lowerPath.endsWith('.png')) {
+      return MediaType('image', 'png');
+    }
+    if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
+      return MediaType('image', 'jpeg');
+    }
+    if (lowerPath.endsWith('.webp')) {
+      return MediaType('image', 'webp');
+    }
+    return MediaType('application', 'octet-stream');
+  }
+
+  static Future<MediaType?> _sniffImageContentType(String filePath) async {
+    RandomAccessFile? file;
+    try {
+      file = await File(filePath).open();
+      final List<int> header = await file.read(16);
+      if (_startsWith(header, const <int>[
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+      ])) {
+        return MediaType('image', 'png');
+      }
+      if (_startsWith(header, const <int>[0xFF, 0xD8, 0xFF])) {
+        return MediaType('image', 'jpeg');
+      }
+      if (_startsWith(header, 'RIFF'.codeUnits) &&
+          header.length >= 12 &&
+          _startsWith(header.sublist(8), 'WEBP'.codeUnits)) {
+        return MediaType('image', 'webp');
+      }
+    } on FileSystemException {
+      return null;
+    } finally {
+      await file?.close();
+    }
+    return null;
+  }
+
+  static bool _startsWith(List<int> value, List<int> prefix) {
+    if (value.length < prefix.length) {
+      return false;
+    }
+    for (int index = 0; index < prefix.length; index += 1) {
+      if (value[index] != prefix[index]) {
+        return false;
+      }
+    }
+    return true;
   }
 }
