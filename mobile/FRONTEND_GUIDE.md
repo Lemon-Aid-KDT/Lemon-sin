@@ -87,7 +87,19 @@ python backend/scripts/check_mobile_ngrok_camera_readiness.py \
 
 This check fails closed when the backend, token-gated gateway, matching ngrok
 tunnel, or physical device is missing. It prints only sanitized counts and
-status flags.
+status flags, including `flutter_devices_probe` when the local Flutter device
+probe itself fails. It also checks the launch-time consent API through
+`gateway_contract`, because the dashboard can still fail when `/health` is OK
+but the database-backed mobile contract is not ready.
+
+If the iOS Simulator shows a dashboard `500`, verify the gateway contract before
+testing camera capture:
+
+```bash
+curl -i \
+  -H "X-Lemon-Dev-Gateway-Token: ${LEMON_DEV_GATEWAY_TOKEN}" \
+  http://127.0.0.1:8010/api/v1/me/privacy/consents
+```
 
 ## Imported UIUX Assets
 

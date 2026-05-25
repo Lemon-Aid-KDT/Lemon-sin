@@ -29,12 +29,14 @@ class DeviceSummary:
         ios_physical: Number of visible physical iOS devices.
         android_emulators: Number of visible Android emulator devices.
         android_physical: Number of visible physical Android devices.
+        probe_status: Sanitized Flutter device probe status.
     """
 
     ios_simulators: int
     ios_physical: int
     android_emulators: int
     android_physical: int
+    probe_status: str = "ok"
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--backend-health-url", default="http://127.0.0.1:8000/health")
     parser.add_argument("--gateway-health-url", default="http://127.0.0.1:8010/health")
+    parser.add_argument(
+        "--gateway-contract-url",
+        default="http://127.0.0.1:8010/api/v1/me/privacy/consents",
+        help="Gateway URL for the first backend-connected mobile app contract check.",
+    )
     parser.add_argument("--expected-gateway-url", default="http://127.0.0.1:8010")
     parser.add_argument("--ngrok-api-url", default="http://127.0.0.1:4041/api/tunnels")
     parser.add_argument("--flutter-bin", default="flutter")
@@ -106,6 +113,11 @@ def main(argv: list[str] | None = None) -> int:
         timeout=args.timeout_seconds,
         gateway_token=token or None,
     )
+    gateway_contract_status = fetch_http_status(
+        args.gateway_contract_url,
+        timeout=args.timeout_seconds,
+        gateway_token=token or None,
+    )
     devices = load_flutter_devices(args.flutter_bin)
     ngrok = load_ngrok_summary(
         args.ngrok_api_url,
@@ -115,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     result = evaluate_readiness(
         backend_status=backend_status,
         gateway_status=gateway_status,
+        gateway_contract_status=gateway_contract_status,
         devices=devices,
         ngrok=ngrok,
         require_physical_device=args.require_physical_device,
@@ -171,19 +184,32 @@ def load_flutter_devices(flutter_bin: str) -> DeviceSummary:
             text=True,
             timeout=15,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
         return DeviceSummary(
             ios_simulators=0,
             ios_physical=0,
             android_emulators=0,
             android_physical=0,
+            probe_status="timeout",
+        )
+    except OSError:
+        return DeviceSummary(
+            ios_simulators=0,
+            ios_physical=0,
+            android_emulators=0,
+            android_physical=0,
+            probe_status="unavailable",
         )
     if completed.returncode != 0:
+        probe_status = (
+            "permission_error" if "Operation not permitted" in completed.stderr else "error"
+        )
         return DeviceSummary(
             ios_simulators=0,
             ios_physical=0,
             android_emulators=0,
             android_physical=0,
+            probe_status=probe_status,
         )
     return parse_flutter_devices(completed.stdout)
 
@@ -287,6 +313,7 @@ def evaluate_readiness(
     *,
     backend_status: int | None,
     gateway_status: int | None,
+    gateway_contract_status: int | None,
     devices: DeviceSummary,
     ngrok: NgrokSummary,
     require_physical_device: bool,
@@ -298,6 +325,7 @@ def evaluate_readiness(
     Args:
         backend_status: Local backend health status.
         gateway_status: Local gateway health status.
+        gateway_contract_status: Mobile app contract status through the local gateway.
         devices: Flutter device visibility summary.
         ngrok: Local ngrok tunnel summary.
         require_physical_device: Whether at least one physical mobile device is required.
@@ -313,6 +341,8 @@ def evaluate_readiness(
         failures.append("backend")
     if require_gateway and gateway_status != HTTPStatus.OK:
         failures.append("gateway")
+    if gateway_status == HTTPStatus.OK and gateway_contract_status != HTTPStatus.OK:
+        failures.append("gateway_contract")
     if require_ngrok and ngrok.gateway_matches < 1:
         failures.append("ngrok")
     if require_physical_device and physical_count < 1:
@@ -321,10 +351,12 @@ def evaluate_readiness(
     details: dict[str, str | int | bool] = {
         "backend_health": backend_status or "unreachable",
         "gateway_health": gateway_status or "unreachable",
+        "gateway_contract": gateway_contract_status or "unreachable",
         "ios_simulators": devices.ios_simulators,
         "ios_physical": devices.ios_physical,
         "android_emulators": devices.android_emulators,
         "android_physical": devices.android_physical,
+        "flutter_devices_probe": devices.probe_status,
         "ngrok_https_tunnels": ngrok.https_tunnels,
         "ngrok_gateway_matches": ngrok.gateway_matches,
         "physical_device_ready": physical_count > 0,
@@ -332,7 +364,12 @@ def evaluate_readiness(
     }
     if failures:
         return ReadinessResult(exit_code=1, status="failed", details=details)
-    if physical_count < 1 or ngrok.gateway_matches < 1 or gateway_status != HTTPStatus.OK:
+    if (
+        physical_count < 1
+        or ngrok.gateway_matches < 1
+        or gateway_status != HTTPStatus.OK
+        or gateway_contract_status != HTTPStatus.OK
+    ):
         return ReadinessResult(exit_code=0, status="incomplete", details=details)
     return ReadinessResult(exit_code=0, status="ready", details=details)
 

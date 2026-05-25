@@ -89,11 +89,36 @@ def test_parse_ngrok_tunnels_counts_only_matching_https_gateway() -> None:
     assert summary == readiness.NgrokSummary(https_tunnels=2, gateway_matches=1)
 
 
+def test_load_flutter_devices_reports_sanitized_permission_error(monkeypatch) -> None:
+    """Verify Flutter command failures do not leak raw stderr."""
+
+    def fake_run(*_args, **_kwargs):
+        return readiness.subprocess.CompletedProcess(
+            args=["flutter", "devices", "--machine"],
+            returncode=1,
+            stdout="",
+            stderr="/path/to/cache/engine.stamp: Operation not permitted",
+        )
+
+    monkeypatch.setattr(readiness.subprocess, "run", fake_run)
+
+    summary = readiness.load_flutter_devices("flutter")
+
+    assert summary == readiness.DeviceSummary(
+        ios_simulators=0,
+        ios_physical=0,
+        android_emulators=0,
+        android_physical=0,
+        probe_status="permission_error",
+    )
+
+
 def test_evaluate_readiness_reports_incomplete_when_optional_live_gates_missing() -> None:
     """Verify missing physical device and ngrok are incomplete unless required."""
     result = readiness.evaluate_readiness(
         backend_status=HTTPStatus.OK,
         gateway_status=HTTPStatus.OK,
+        gateway_contract_status=HTTPStatus.OK,
         devices=readiness.DeviceSummary(
             ios_simulators=1,
             ios_physical=0,
@@ -108,6 +133,7 @@ def test_evaluate_readiness_reports_incomplete_when_optional_live_gates_missing(
 
     assert result.exit_code == 0
     assert result.status == "incomplete"
+    assert result.details["flutter_devices_probe"] == "ok"
     assert result.details["physical_device_ready"] is False
     assert result.details["ngrok_ready"] is False
 
@@ -117,6 +143,7 @@ def test_evaluate_readiness_fails_when_required_live_gates_missing() -> None:
     result = readiness.evaluate_readiness(
         backend_status=HTTPStatus.OK,
         gateway_status=HTTPStatus.UNAUTHORIZED,
+        gateway_contract_status=HTTPStatus.UNAUTHORIZED,
         devices=readiness.DeviceSummary(
             ios_simulators=1,
             ios_physical=0,
@@ -134,6 +161,29 @@ def test_evaluate_readiness_fails_when_required_live_gates_missing() -> None:
     assert result.details["gateway_health"] == HTTPStatus.UNAUTHORIZED
 
 
+def test_evaluate_readiness_fails_when_mobile_contract_is_broken() -> None:
+    """Verify health-only success cannot hide a broken mobile API contract."""
+    result = readiness.evaluate_readiness(
+        backend_status=HTTPStatus.OK,
+        gateway_status=HTTPStatus.OK,
+        gateway_contract_status=HTTPStatus.INTERNAL_SERVER_ERROR,
+        devices=readiness.DeviceSummary(
+            ios_simulators=1,
+            ios_physical=0,
+            android_emulators=0,
+            android_physical=0,
+        ),
+        ngrok=readiness.NgrokSummary(https_tunnels=0, gateway_matches=0),
+        require_physical_device=False,
+        require_gateway=False,
+        require_ngrok=False,
+    )
+
+    assert result.exit_code == 1
+    assert result.status == "failed"
+    assert result.details["gateway_contract"] == HTTPStatus.INTERNAL_SERVER_ERROR
+
+
 def test_format_result_is_single_line_and_sanitized() -> None:
     """Verify result formatting contains only sanitized key/value fields."""
     result = readiness.ReadinessResult(
@@ -142,6 +192,7 @@ def test_format_result_is_single_line_and_sanitized() -> None:
         details={
             "backend_health": 200,
             "gateway_health": 200,
+            "gateway_contract": 200,
             "ngrok_gateway_matches": 1,
             "physical_device_ready": True,
         },
@@ -150,7 +201,7 @@ def test_format_result_is_single_line_and_sanitized() -> None:
     formatted = readiness.format_result(result)
 
     assert formatted == (
-        "status=ready backend_health=200 gateway_health=200 "
+        "status=ready backend_health=200 gateway_health=200 gateway_contract=200 "
         "ngrok_gateway_matches=1 physical_device_ready=True"
     )
     assert "ngrok.app" not in formatted

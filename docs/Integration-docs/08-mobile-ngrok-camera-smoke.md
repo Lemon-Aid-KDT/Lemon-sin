@@ -153,7 +153,11 @@ python backend/scripts/check_mobile_ngrok_camera_readiness.py \
 For a non-blocking status check while setup is still in progress, omit the
 `--require-*` flags. The script prints counts and booleans only; it does not
 print public ngrok URLs, gateway tokens, bearer tokens, OCR payloads, image
-bytes, or object URIs.
+bytes, object URIs, or raw Flutter stderr. `flutter_devices_probe` distinguishes
+normal device visibility from sanitized Flutter tool failures such as
+`permission_error`, `timeout`, or `unavailable`. `gateway_contract` checks the
+same consent endpoint the app calls on launch, so a healthy `/health` response
+cannot hide a database-backed mobile contract failure.
 
 ## 9. Known Limits
 
@@ -177,13 +181,18 @@ Verified on 2026-05-25 from
 | Gateway token rejection | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <wrong-token>' http://127.0.0.1:8010/health` | `401 Unauthorized` |
 | Gateway token success | `curl -i -H 'X-Lemon-Dev-Gateway-Token: <local-smoke-token>' http://127.0.0.1:8010/health` | `200` through `LemonAidDevGateway` |
 | Gateway unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_dev_mobile_ngrok_backend_gateway.py -q --no-cov` | `4` tests passed; token opt-in, 401 rejection, Host rewrite, token stripping, and POST body forwarding covered without opening test sockets |
-| Readiness preflight unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_check_mobile_ngrok_camera_readiness.py -q --no-cov` | `5` tests passed; device parsing, ngrok gateway matching, optional incomplete status, required failure status, and sanitized formatting covered |
-| Readiness preflight with backend up | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=incomplete`, backend `200`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
-| Readiness preflight with live services stopped | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=failed`, backend `unreachable`, gateway `unreachable`, physical devices `0`, ngrok gateway matches `0` |
+| Readiness preflight unit coverage | `pytest backend/Nutrition-backend/tests/unit/scripts/test_check_mobile_ngrok_camera_readiness.py -q --no-cov` | `7` tests passed; device parsing, sanitized Flutter probe failures, ngrok gateway matching, mobile contract failure, optional incomplete status, required failure status, and sanitized formatting covered |
+| Readiness preflight with backend up | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=incomplete`, backend `200`, gateway contract `unreachable`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
+| Readiness preflight with live services stopped | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter` | `status=failed`, backend `unreachable`, gateway `unreachable`, gateway contract `unreachable`, `flutter_devices_probe=permission_error`, physical devices `0`, ngrok gateway matches `0` |
+| Readiness preflight with local gateway and DB stopped | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --backend-health-url http://127.0.0.1:8001/health --gateway-health-url http://127.0.0.1:8011/health --gateway-contract-url http://127.0.0.1:8011/api/v1/me/privacy/consents --expected-gateway-url http://127.0.0.1:8011 --flutter-bin /opt/homebrew/bin/flutter --require-gateway` | `status=failed`, backend `200`, gateway `200`, gateway contract `500`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
+| Team backend container contract | `curl -i http://127.0.0.1:8000/api/v1/me/privacy/consents` | `200`; confirms the running `lemon-aid-team-backend` container and DB can serve the mobile launch contract |
+| Readiness preflight with team backend gateway | `python backend/scripts/check_mobile_ngrok_camera_readiness.py --flutter-bin /opt/homebrew/bin/flutter --require-gateway` with token-gated gateway on `8010` to backend `8000` | `status=incomplete`, backend `200`, gateway `200`, gateway contract `200`, iOS simulator `1`, physical devices `0`, ngrok gateway matches `0` |
 | iOS simulator availability | `flutter devices` after booting `iPhone 17` | Simulator visible as `C98610F7-7B4C-4202-A18C-498F43A20AA0` |
 | iOS simulator gateway app run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1` | App installed and launched; gateway logged sanitized `GET 200` calls |
 | iOS simulator token-gated app run | Same simulator run plus `--dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; token-required gateway logged sanitized `GET 200` calls |
+| iOS simulator team backend gateway run | `flutter run -d C98610F7-7B4C-4202-A18C-498F43A20AA0 --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8010/api/v1 --dart-define=LEMON_DEV_GATEWAY_TOKEN=<local-smoke-token>` | App installed and launched; dashboard rendered live summary without the previous `500` banner |
 | iOS simulator screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-gateway-smoke.png` | Dashboard rendered live summary updated at `2026-05-25 15:58:15.939646` |
+| iOS simulator team backend screenshot | `xcrun simctl io ... screenshot /private/tmp/lemon-aid-ios-simulator-8010-container-gateway.png` | Dashboard rendered live summary updated at `2026-05-25 16:43:24.132563` |
 | Flutter regression | `flutter analyze`, `flutter test` | No analyzer issues; `19` tests passed |
 | Platform debug builds | `flutter build apk --debug --flavor dev ...`, `flutter build ios --simulator --debug ...` with gateway token define | Android dev APK and iOS simulator app built successfully |
 | iOS simulator direct camera | `xcrun simctl help io` | Not supported; available operations are enumerate, poll, recordVideo, screenshot |
