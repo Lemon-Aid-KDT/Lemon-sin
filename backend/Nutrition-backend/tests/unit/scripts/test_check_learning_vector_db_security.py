@@ -32,6 +32,20 @@ def test_preflight_constants_cover_supabase_learning_tables_and_raw_keys() -> No
         "authenticated",
         "service_role",
     )
+    assert check_learning_vector_db_security.LEARNING_STORAGE_BUCKET == "learning-images"
+    assert (
+        check_learning_vector_db_security.LEARNING_STORAGE_FILE_SIZE_LIMIT_BYTES == 20 * 1024 * 1024
+    )
+    assert check_learning_vector_db_security.LEARNING_STORAGE_ALLOWED_MIME_TYPES == (
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    )
+    assert check_learning_vector_db_security.SUPABASE_CLIENT_STORAGE_ROLES == (
+        "public",
+        "anon",
+        "authenticated",
+    )
     assert check_learning_vector_db_security.SUPABASE_CLIENT_EXECUTE_ROLES == (
         "PUBLIC",
         "anon",
@@ -61,6 +75,15 @@ async def test_run_preflight_outputs_sanitized_success(
             "vector_extension_schema": "extensions",
             "unsafe_security_definer_function_count": 0,
             "unsafe_security_definer_functions": [],
+            "unsafe_learning_storage_policy_count": 0,
+            "unsafe_learning_storage_policies": [],
+            "learning_storage_bucket": {
+                "bucket": "learning-images",
+                "exists": True,
+                "private": True,
+                "file_size_limit_ok": True,
+                "allowed_mime_types_ok": True,
+            },
             "raw_image_bytes_stored_in_db": False,
             "raw_ocr_text_stored_in_db": False,
         }

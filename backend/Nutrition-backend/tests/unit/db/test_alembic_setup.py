@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0011_add_learning_review_metadata"]
+    assert script.get_heads() == ["0012_configure_learning_private_storage_bucket"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0011_add_learning_review_metadata"]
+    assert script.get_heads() == ["0012_configure_learning_private_storage_bucket"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -201,5 +201,33 @@ def test_learning_review_metadata_migration_stores_only_sanitized_snapshot() -> 
     assert "review_metadata_snapshot" in migration
     assert "postgresql.JSONB" in migration
     assert "image_bytes" not in migration
+    assert "provider_payload" not in migration
+    assert "GRANT " not in migration
+
+
+def test_learning_private_storage_bucket_migration_file_exists() -> None:
+    """Verify the private learning Storage bucket migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0012_configure_learning_private_storage_bucket.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_learning_private_storage_bucket_migration_is_private() -> None:
+    """Verify the learning Storage bucket is private and image-only."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0012_configure_learning_private_storage_bucket.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "storage.buckets" in migration
+    assert "learning-images" in migration
+    assert "public = false" in migration
+    assert "image/jpeg" in migration
+    assert "image/png" in migration
+    assert "image/webp" in migration
+    assert "20 * 1024 * 1024" in migration
+    assert "raw_ocr_text" not in migration
     assert "provider_payload" not in migration
     assert "GRANT " not in migration

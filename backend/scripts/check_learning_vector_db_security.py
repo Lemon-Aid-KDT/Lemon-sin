@@ -19,13 +19,17 @@ if str(NUTRITION_BACKEND_ROOT) not in sys.path:
 
 from src.config import get_settings  # noqa: E402
 
-SCHEMA_VERSION = "learning-vector-db-security-v1"
+SCHEMA_VERSION = "learning-vector-db-security-v2"
 LEARNING_VECTOR_TABLES = (
     "learning_image_objects",
     "image_embedding_jobs",
     "image_embedding_records",
 )
+LEARNING_STORAGE_BUCKET = "learning-images"
+LEARNING_STORAGE_FILE_SIZE_LIMIT_BYTES = 20 * 1024 * 1024
+LEARNING_STORAGE_ALLOWED_MIME_TYPES = ("image/jpeg", "image/png", "image/webp")
 SUPABASE_API_ROLES = ("PUBLIC", "anon", "authenticated", "service_role")
+SUPABASE_CLIENT_STORAGE_ROLES = ("public", "anon", "authenticated")
 SUPABASE_CLIENT_EXECUTE_ROLES = ("PUBLIC", "anon", "authenticated", "service_role")
 FORBIDDEN_COLUMNS = (
     "image_bytes",
@@ -81,6 +85,8 @@ async def collect_security_report() -> dict[str, Any]:
             unsafe_privileges = []
             forbidden_columns = []
             unsafe_security_definer_functions = []
+            storage_bucket_report = await _learning_storage_bucket_report(connection)
+            unsafe_storage_policies = await _unsafe_learning_storage_policies(connection)
             for table_name in LEARNING_VECTOR_TABLES:
                 table_reports.append(
                     await _table_security_report(connection, table_name=table_name)
@@ -104,6 +110,11 @@ async def collect_security_report() -> dict[str, Any]:
         and not unsafe_privileges
         and not forbidden_columns
         and not unsafe_security_definer_functions
+        and storage_bucket_report["exists"]
+        and storage_bucket_report["private"]
+        and storage_bucket_report["file_size_limit_ok"]
+        and storage_bucket_report["allowed_mime_types_ok"]
+        and not unsafe_storage_policies
     )
     return {
         "schema_version": SCHEMA_VERSION,
@@ -117,6 +128,9 @@ async def collect_security_report() -> dict[str, Any]:
         "forbidden_columns": forbidden_columns,
         "unsafe_security_definer_function_count": len(unsafe_security_definer_functions),
         "unsafe_security_definer_functions": unsafe_security_definer_functions,
+        "learning_storage_bucket": storage_bucket_report,
+        "unsafe_learning_storage_policy_count": len(unsafe_storage_policies),
+        "unsafe_learning_storage_policies": unsafe_storage_policies,
         "raw_image_bytes_stored_in_db": False,
         "raw_ocr_text_stored_in_db": False,
     }
@@ -282,6 +296,128 @@ async def _unsafe_security_definer_functions(connection: Any) -> list[dict[str, 
         }
         for row in rows
     ]
+
+
+async def _learning_storage_bucket_report(connection: Any) -> dict[str, Any]:
+    """Return private Storage bucket posture for retained learning images.
+
+    Args:
+        connection: Async SQLAlchemy connection.
+
+    Returns:
+        Sanitized Storage bucket report.
+    """
+    storage_schema_available = bool(
+        await connection.scalar(text("SELECT to_regclass('storage.buckets') IS NOT NULL"))
+    )
+    if not storage_schema_available:
+        return {
+            "bucket": LEARNING_STORAGE_BUCKET,
+            "storage_schema_available": False,
+            "exists": False,
+            "private": False,
+            "file_size_limit_bytes": None,
+            "file_size_limit_ok": False,
+            "allowed_mime_types": [],
+            "allowed_mime_types_ok": False,
+        }
+    row = (
+        (
+            await connection.execute(
+                text("""
+                SELECT id, public, file_size_limit, allowed_mime_types
+                FROM storage.buckets
+                WHERE id = :bucket
+                """),
+                {"bucket": LEARNING_STORAGE_BUCKET},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return {
+            "bucket": LEARNING_STORAGE_BUCKET,
+            "storage_schema_available": True,
+            "exists": False,
+            "private": False,
+            "file_size_limit_bytes": None,
+            "file_size_limit_ok": False,
+            "allowed_mime_types": [],
+            "allowed_mime_types_ok": False,
+        }
+    file_size_limit = row["file_size_limit"]
+    file_size_limit_bytes = int(file_size_limit) if file_size_limit is not None else None
+    allowed_mime_types = sorted(str(item) for item in (row["allowed_mime_types"] or []))
+    return {
+        "bucket": LEARNING_STORAGE_BUCKET,
+        "storage_schema_available": True,
+        "exists": True,
+        "private": not bool(row["public"]),
+        "file_size_limit_bytes": file_size_limit_bytes,
+        "file_size_limit_ok": file_size_limit_bytes == LEARNING_STORAGE_FILE_SIZE_LIMIT_BYTES,
+        "allowed_mime_types": allowed_mime_types,
+        "allowed_mime_types_ok": set(allowed_mime_types)
+        == set(LEARNING_STORAGE_ALLOWED_MIME_TYPES),
+    }
+
+
+async def _unsafe_learning_storage_policies(connection: Any) -> list[dict[str, str]]:
+    """Return Storage policies that could expose the private learning bucket.
+
+    Args:
+        connection: Async SQLAlchemy connection.
+
+    Returns:
+        Sanitized policy summaries without raw SQL expressions.
+    """
+    storage_schema_available = bool(
+        await connection.scalar(text("SELECT to_regclass('pg_catalog.pg_policies') IS NOT NULL"))
+    )
+    if not storage_schema_available:
+        return []
+    rows = (
+        (
+            await connection.execute(
+                text("""
+                SELECT tablename, policyname, roles::text AS roles, cmd,
+                       COALESCE(qual, '') AS qual,
+                       COALESCE(with_check, '') AS with_check
+                FROM pg_policies
+                WHERE schemaname = 'storage'
+                  AND tablename IN ('objects', 'buckets')
+                ORDER BY tablename, policyname
+                """),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    unsafe = []
+    for row in rows:
+        roles_text = str(row["roles"]).casefold()
+        if not any(role in roles_text for role in SUPABASE_CLIENT_STORAGE_ROLES):
+            continue
+        expression = f"{row['qual']} {row['with_check']}".casefold()
+        targets_learning_bucket = LEARNING_STORAGE_BUCKET.casefold() in expression
+        has_bucket_guard = (
+            "bucket_id" in expression if row["tablename"] == "objects" else "id" in expression
+        )
+        if targets_learning_bucket or not has_bucket_guard:
+            unsafe.append(
+                {
+                    "table": str(row["tablename"]),
+                    "policy": str(row["policyname"]),
+                    "roles": str(row["roles"]),
+                    "command": str(row["cmd"]),
+                    "reason": (
+                        "targets_learning_bucket"
+                        if targets_learning_bucket
+                        else "missing_bucket_guard"
+                    ),
+                }
+            )
+    return unsafe
 
 
 async def run_preflight(
