@@ -88,3 +88,36 @@ def test_required_medical_source_failures_report_unknown_source() -> None:
     )
 
     assert failures == ["not-a-source=unknown_source"]
+
+
+def test_ollama_readiness_failure_reports_closed_port() -> None:
+    """Verify strict Ollama gates fail when the local API port is closed."""
+    failure = prereqs._ollama_readiness_failure(
+        Settings(_env_file=None, ollama_model="qwen3.5:9b"),
+        port_open=False,
+        model_names=("qwen3.5:9b",),
+    )
+
+    assert failure == "port_closed"
+
+
+def test_ollama_readiness_failure_reports_missing_model() -> None:
+    """Verify strict Ollama gates fail when the configured model is absent."""
+    failure = prereqs._ollama_readiness_failure(
+        Settings(_env_file=None, ollama_model="qwen3.5:9b"),
+        port_open=True,
+        model_names=("qwen2.5:7b",),
+    )
+
+    assert failure == "model_missing"
+
+
+def test_ollama_readiness_failure_passes_when_model_is_available() -> None:
+    """Verify strict Ollama gates pass with an open port and configured model."""
+    failure = prereqs._ollama_readiness_failure(
+        Settings(_env_file=None, ollama_model="qwen3.5:9b"),
+        port_open=True,
+        model_names=("qwen3.5:9b", "qwen2.5:7b"),
+    )
+
+    assert failure is None

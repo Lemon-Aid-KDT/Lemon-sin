@@ -191,6 +191,8 @@ python backend\scripts\smoke_ai_agent_server.py `
       medical source readiness를 출력한다.
 - [x] `--require-medical-sources` strict gate로 키 누락, 미검수 source, source id
       오타를 종료코드 실패로 판정한다.
+- [x] `--require-ollama` strict gate로 개발용 Ollama port와 configured model 존재를
+      종료코드 실패/성공으로 판정한다.
 
 ## 아직 외부 준비가 필요한 항목
 
@@ -205,6 +207,9 @@ python backend\scripts\smoke_ai_agent_server.py `
 - Semantic Scholar: `SEMANTIC_SCHOLAR_API_KEY`가 설정되어도 현재는 research
   backlog source라서 `not_reviewed`가 정상이다. 사용자-facing retrieval에
   연결하려면 별도 source review가 필요하다.
+- Ollama live readiness: 2026-05-25 현재 `127.0.0.1:11434`가 닫혀 있어
+  `--require-ollama`는 `ollama=port_closed`로 실패한다. Ollama 서버와
+  `OLLAMA_MODEL` 모델을 준비한 뒤 다시 실행한다.
 
 ## KDCA key 수령 후 바로 실행할 명령
 
@@ -230,6 +235,17 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py `
 - SGLang live smoke와 PostgreSQL migration smoke는 2026-05-25에 opt-in 환경변수
   기준 통과했다. Docker Desktop 또는 `lemon-sglang` 컨테이너가 꺼져 있으면
   다시 `missing`으로 보일 수 있다.
+- 개발용 Ollama까지 확인하려면 Ollama 서버와 모델을 준비한 뒤 다음을 추가 실행한다:
+
+```powershell
+python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama
+```
+
+기대 결과:
+
+- `Ollama port 127.0.0.1:11434: ok`
+- `OLLAMA_MODEL: ok`
+- `Required Ollama runtime is not ready` 메시지가 없어야 함
 
 ## 2026-05-25 live smoke 재검증 기록
 

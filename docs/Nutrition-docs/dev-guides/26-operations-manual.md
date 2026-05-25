@@ -110,6 +110,13 @@ redis-cli -u $REDIS_URL ping
       --require-medical-sources kdca-healthinfo mfds-drug-safety
     ```
     이 모드는 지정한 source id가 없거나, key 누락·검수 전·review 만료 상태면 실패한다.
+  - 개발용 Ollama runtime까지 필수로 확인할 때는 `OLLAMA_MODEL`에 맞는 모델을
+    로컬 Ollama에 받은 뒤 다음처럼 strict gate를 켠다:
+    ```bash
+    python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama
+    ```
+    이 모드는 `127.0.0.1:11434` 포트가 닫혀 있거나 `/api/tags`에 설정 모델이
+    없으면 실패한다.
 - [x] AI Agent 실제 서버 조합 smoke 확인 (2026-05-20):
   ```bash
   TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_smoke \
@@ -152,7 +159,8 @@ redis-cli -u $REDIS_URL ping
     `chat_provider=sglang`, `second_used_tools`와 `chat_used_tools` 내
     `agent_memory` 포함이다.
   - `--skip-db-upgrade`는 대상 DB가 Alembic head임을 이미 확인한 경우에만 사용한다.
-- [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test)
+- [ ] Ollama 서버 상태 확인 (`ollama list`, `/api/chat` smoke test,
+      `python backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama`)
 - [x] SGLang 운영 후보 상태 확인 (2026-05-20 재확인)
   - 기본 endpoint: `http://127.0.0.1:30000/v1`
   - 현재 응답 모델: `Qwen/Qwen2.5-0.5B-Instruct`
