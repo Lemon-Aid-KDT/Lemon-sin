@@ -1,34 +1,34 @@
+// widgets/common/pressable.dart — 누를 수 있는 요소 공통 래퍼
+//
+// CLAUDE.md §7-8 모션 룰:
+//   누르는 모든 것에 피드백 — scale down + 햅틱.
+//
+// 사용:
+//   Pressable(
+//     onTap: () => ...,
+//     child: SomeCard(...),
+//   )
+//
+// 카드·버튼·리스트 항목 등 탭 가능한 어디든 감싸서 쓴다.
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Source-style tap feedback wrapper for cards and buttons.
 class Pressable extends StatefulWidget {
-  /// Creates a pressable wrapper.
-  ///
-  /// Args:
-  ///   child: Visual content to render.
-  ///   onTap: Optional tap callback. When null, the child is not interactive.
-  ///   pressedScale: Scale used while the pointer is down.
-  ///   haptic: Whether to emit a light haptic signal on tap.
+  final Widget child;
+  final VoidCallback? onTap;
+  // 눌렀을 때 줄어드는 정도 (0.96 = 살짝, 0.92 = 뚜렷)
+  final double pressedScale;
+  // 햅틱 종류
+  final bool haptic;
+
   const Pressable({
+    super.key,
     required this.child,
     this.onTap,
     this.pressedScale = 0.97,
     this.haptic = true,
-    super.key,
   });
-
-  /// Wrapped content.
-  final Widget child;
-
-  /// Tap callback.
-  final VoidCallback? onTap;
-
-  /// Scale used while pressed.
-  final double pressedScale;
-
-  /// Whether haptics should run on tap.
-  final bool haptic;
 
   @override
   State<Pressable> createState() => _PressableState();
@@ -37,36 +37,30 @@ class Pressable extends StatefulWidget {
 class _PressableState extends State<Pressable> {
   bool _pressed = false;
 
+  void _set(bool v) {
+    if (widget.onTap == null) return;
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      behavior: HitTestBehavior.opaque,
       onTap: widget.onTap == null
           ? null
           : () {
-              if (widget.haptic) {
-                HapticFeedback.lightImpact();
-              }
+              if (widget.haptic) HapticFeedback.lightImpact();
               widget.onTap!();
             },
-      onTapDown: widget.onTap == null ? null : (_) => _setPressed(true),
-      onTapUp: widget.onTap == null ? null : (_) => _setPressed(false),
-      onTapCancel: widget.onTap == null ? null : () => _setPressed(false),
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      behavior: HitTestBehavior.opaque,
       child: AnimatedScale(
-        scale: _pressed ? widget.pressedScale : 1,
-        duration: const Duration(milliseconds: 140),
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: const Duration(milliseconds: 150),
         curve: Curves.easeOutCubic,
         child: widget.child,
       ),
     );
-  }
-
-  void _setPressed(bool value) {
-    if (_pressed == value) {
-      return;
-    }
-    setState(() {
-      _pressed = value;
-    });
   }
 }
