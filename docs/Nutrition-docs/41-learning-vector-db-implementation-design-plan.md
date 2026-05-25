@@ -555,6 +555,9 @@ secret-like value를 금지해 S3 metadata header를 통한 우회 저장을 차
    `learning-images` private bucket의 put/get/delete round-trip을 확인한다.
 6. 운영 batch 또는 수동 작업으로 아래 retention cleanup을 주기 실행해
    `retained_until`이 지난 image object와 private Storage 원본을 삭제한다.
+7. 수동 검수 대상은 아래 queue export로 먼저 확인하고, `object_uri`,
+   `owner_subject_hash`, raw OCR/provider payload 없이 internal operator artifact로만
+   보관한다.
 
 ```bash
 RUN_LEARNING_STORAGE_LIVE_SMOKE=1 \
@@ -573,6 +576,18 @@ PYTHONPATH=backend/Nutrition-backend \
 retention cleanup 출력도 object URI, SDK exception message, secret 값을 표시하지 않고
 삭제 건수와 provider만 표시한다. 삭제 실패 시에는 해당 exception type만 출력해 운영자가
 로그 접근 권한이 있는 환경에서 별도 조사하도록 한다.
+
+```bash
+PYTHONPATH=backend/Nutrition-backend \
+.venv/bin/python backend/scripts/export_learning_manual_review_queue.py \
+  --output outputs/generated/learning/manual-review-queue.jsonl \
+  --limit 100
+```
+
+manual review queue는 `image_object_id`, `analysis_id`, provider, MIME, size,
+retention deadline, metadata shape summary만 내보낸다. 원본 object URI, owner hash,
+metadata value body, raw OCR text, provider payload, request headers, image bytes,
+secret-like value는 출력하지 않는다.
 
 검증 기록:
 
