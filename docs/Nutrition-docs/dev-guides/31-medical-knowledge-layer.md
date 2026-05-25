@@ -212,14 +212,23 @@ governance, transparency, lifecycle thinking을 명시하기 위한 기준으로
 - [x] 어떤 출력도 Lemon Aid가 진단, 치료, 처방, 복약 변경을 한다고 표현하지 않는다.
       `ai_agent_chat/tests/test_safety_guard.py`가 진단·치료·약 중단·복용량 변경
       지시형 표현을 `SafetyGuard`에서 차단하는지 검증한다.
-- [ ] 만성질환 context는 명시 동의 뒤에만 사용한다.
+- [x] 만성질환 context는 명시 동의 뒤에만 사용한다.
+      `test_daily_coaching_requires_sensitive_health_consent`와
+      `test_chat_route_requires_sensitive_health_consent`가 동의 없는 daily-coaching/chat
+      호출을 `consent_required`로 차단하는지 검증한다.
 - [x] user-provided disease status를 confirmed medical fact로 조용히 승격하지 않는다.
 - [x] 의료 사실 source family는 reviewed source record와 연결된다.
 - [x] source readiness는 missing key, draft source, expired review를 구분한다.
 - [ ] LLM output은 retrieved 또는 deterministic context 밖의 unsupported fact를 추가하지 못한다.
+      [부분 완료: chatbot prompt는 listed source family 없는 신규 건강 사실과 supplied
+      context 밖 판단을 금지하고, daily-coaching prompt는 supplied findings/recommendations
+      밖 판단을 금지한다. 출력 후 자동 fact verification은 RAG/live retrieval 연결 전
+      추가 게이트로 남긴다.]
 - [x] LLM이 단정 표현을 만들면 SafetyGuard fallback을 사용한다.
 - [x] UI는 raw trace, raw findings, internal policy string을 숨긴다.
-- [ ] fine-tuning backlog는 tone, structure, safe refusal pattern으로 제한한다.
+- [x] fine-tuning backlog는 tone, structure, safe refusal pattern으로 제한한다.
+      이 문서의 2장과 8장은 질환 사실, 약물 규칙, 금기 로직, 복용량 결정, 치료 권고를
+      fine-tuning 대상에서 제외하고 tone/format 목적만 검토하도록 제한한다.
 
 ## 10. 남은 결정 사항
 

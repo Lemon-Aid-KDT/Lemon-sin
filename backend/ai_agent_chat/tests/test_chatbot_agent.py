@@ -73,6 +73,8 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
     assert "Answer only in Korean" in system_prompt
     assert "response contract sections" in system_prompt
     assert "Do not mention or quote internal calculation logs" in system_prompt
+    assert "Do not create new health facts without a listed source family" in system_prompt
+    assert "Do not create new health judgments beyond the supplied context" in system_prompt
     assert "supplement totals" in system_prompt
     assert "Question category: supplement_question" in user_prompt
     assert "supplement_reference" in user_prompt

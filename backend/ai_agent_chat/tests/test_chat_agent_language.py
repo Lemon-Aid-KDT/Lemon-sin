@@ -97,6 +97,7 @@ def test_llm_prompt_requires_korean_answer_and_hides_internal_logs() -> None:
     assert "참고 및 주의" in system_prompt
     assert "전문가와 상담해 주세요" in system_prompt
     assert "Do not mention or quote internal calculation logs" in system_prompt
+    assert "Do not create new health judgments beyond the supplied findings and recommendations" in system_prompt
     assert "supplement totals" in system_prompt
     assert "nutrition findings" in system_prompt
     assert "Trace summary" not in user_prompt
