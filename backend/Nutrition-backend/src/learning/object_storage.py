@@ -266,6 +266,10 @@ class S3LearningImageObjectStore(LearningImageObjectStore):
         endpoint_url: str | None = None,
         region_name: str | None = None,
         server_side_encryption: str | None = "AES256",
+        access_key_id: str | None = None,
+        secret_access_key: str | None = None,
+        provider_name: str = "s3",
+        force_path_style: bool = False,
         client: Any | None = None,
     ) -> None:
         """Initialize an S3 object store.
@@ -276,6 +280,10 @@ class S3LearningImageObjectStore(LearningImageObjectStore):
             endpoint_url: Optional S3-compatible endpoint URL.
             region_name: Optional region name.
             server_side_encryption: Optional server-side encryption mode.
+            access_key_id: Optional server-side S3 access key id.
+            secret_access_key: Optional server-side S3 secret access key.
+            provider_name: Provider label persisted in the DB object row.
+            force_path_style: Whether to force path-style S3 addressing.
             client: Optional injected boto3-compatible client for tests.
 
         Raises:
@@ -284,7 +292,14 @@ class S3LearningImageObjectStore(LearningImageObjectStore):
         self._bucket = bucket
         self._prefix = _normalize_prefix(prefix)
         self._server_side_encryption = server_side_encryption
-        self._client = client or self._build_client(endpoint_url, region_name)
+        self.provider = provider_name
+        self._client = client or self._build_client(
+            endpoint_url,
+            region_name,
+            access_key_id,
+            secret_access_key,
+            force_path_style,
+        )
 
     async def put_image(self, payload: LearningImageObjectInput) -> StoredLearningImage:
         """Store one image in S3.
@@ -362,12 +377,22 @@ class S3LearningImageObjectStore(LearningImageObjectStore):
         except Exception as exc:
             raise LearningObjectStorageError("Failed to delete S3 learning image.") from exc
 
-    def _build_client(self, endpoint_url: str | None, region_name: str | None) -> Any:
+    def _build_client(
+        self,
+        endpoint_url: str | None,
+        region_name: str | None,
+        access_key_id: str | None,
+        secret_access_key: str | None,
+        force_path_style: bool,
+    ) -> Any:
         """Build a boto3 S3 client lazily.
 
         Args:
             endpoint_url: Optional S3-compatible endpoint URL.
             region_name: Optional region name.
+            access_key_id: Optional server-side S3 access key id.
+            secret_access_key: Optional server-side S3 secret access key.
+            force_path_style: Whether to force path-style S3 addressing.
 
         Returns:
             boto3 S3 client.
@@ -381,7 +406,23 @@ class S3LearningImageObjectStore(LearningImageObjectStore):
             raise LearningObjectStorageError(
                 "boto3 is required for LEARNING_OBJECT_STORAGE_PROVIDER=s3."
             ) from exc
-        return boto3.client("s3", endpoint_url=endpoint_url, region_name=region_name)
+        kwargs: dict[str, Any] = {
+            "endpoint_url": endpoint_url,
+            "region_name": region_name,
+        }
+        if access_key_id is not None:
+            kwargs["aws_access_key_id"] = access_key_id
+        if secret_access_key is not None:
+            kwargs["aws_secret_access_key"] = secret_access_key
+        if force_path_style:
+            try:
+                botocore_config = import_module("botocore.config")
+            except ImportError as exc:
+                raise LearningObjectStorageError(
+                    "botocore is required for path-style S3 configuration."
+                ) from exc
+            kwargs["config"] = botocore_config.Config(s3={"addressing_style": "path"})
+        return boto3.client("s3", **kwargs)
 
     def _build_key(self, payload: LearningImageObjectInput) -> str:
         """Build a safe S3 key for a retained image.

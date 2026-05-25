@@ -274,12 +274,14 @@ LearningImageObjectStore.delete_image(object_uri, version_id=None) -> None
 
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
-| `LEARNING_OBJECT_STORAGE_PROVIDER` | `disabled` | `disabled`, `local`, `s3` |
-| `LEARNING_OBJECT_STORAGE_BUCKET` | 없음 | s3 provider에서 필수 |
+| `LEARNING_OBJECT_STORAGE_PROVIDER` | `disabled` | `disabled`, `local`, `s3`, `supabase_s3` |
+| `LEARNING_OBJECT_STORAGE_BUCKET` | 없음 | generic `s3` provider에서 필수. `supabase_s3`는 기본적으로 `SUPABASE_STORAGE_PRIVATE_BUCKET` 사용 |
 | `LEARNING_OBJECT_STORAGE_PREFIX` | `learning/images` | object key prefix |
-| `LEARNING_OBJECT_STORAGE_ENDPOINT_URL` | 없음 | S3-compatible storage 사용 시 |
-| `LEARNING_OBJECT_STORAGE_REGION` | 없음 | cloud provider region |
+| `LEARNING_OBJECT_STORAGE_ENDPOINT_URL` | 없음 | S3-compatible storage 사용 시. hosted `supabase_s3`는 비워두면 `SUPABASE_PROJECT_REF`로 endpoint를 구성 |
+| `LEARNING_OBJECT_STORAGE_REGION` | 없음 | cloud provider region. Supabase S3 설정 페이지의 region을 사용 |
 | `LEARNING_OBJECT_STORAGE_SSE` | `AES256` 후보 | 운영 sign-off 후 확정 |
+| `SUPABASE_STORAGE_S3_ACCESS_KEY_ID` | 없음 | Supabase Storage S3 설정에서 발급한 server-only access key id |
+| `SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY` | 없음 | Supabase Storage S3 설정에서 발급한 server-only secret access key |
 
 credential JSON이나 access key는 저장소에 커밋하지 않는다. 실제 secret은 배포 환경의 secret manager 또는 runtime env에서만 주입한다.
 

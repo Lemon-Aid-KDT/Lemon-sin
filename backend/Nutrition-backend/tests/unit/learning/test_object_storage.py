@@ -85,3 +85,19 @@ async def test_s3_learning_image_object_store_uses_safe_object_calls() -> None:
     assert "raw_ocr_text" not in client.calls[0][1]["Metadata"]
     assert client.calls[1][1]["VersionId"] == "version-1"
     assert client.calls[2][1]["VersionId"] == "version-1"
+
+
+@pytest.mark.asyncio
+async def test_s3_learning_image_object_store_can_label_supabase_provider() -> None:
+    """Verify Supabase S3 objects are marked with a distinct private provider."""
+    client = _FakeS3Client()
+    store = S3LearningImageObjectStore(
+        bucket="learning-images",
+        provider_name="supabase_s3",
+        client=client,
+    )
+
+    stored = await store.put_image(_payload())
+
+    assert stored.provider == "supabase_s3"
+    assert stored.object_uri.startswith("s3://learning-images/learning/images/")

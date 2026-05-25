@@ -94,6 +94,8 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.supabase_mcp_read_only is True
     assert settings.supabase_mcp_features == "database,docs,debugging,storage"
     assert settings.supabase_storage_private_bucket == "learning-images"
+    assert settings.supabase_storage_s3_access_key_id is None
+    assert settings.supabase_storage_s3_secret_access_key is None
     assert "testserver" in settings.allowed_hosts
     assert settings.auth_mode == "disabled"
     assert settings.supplement_image_max_bytes == 5 * 1024 * 1024
@@ -194,6 +196,8 @@ def test_supabase_inputs_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
                 "SUPABASE_MCP_READ_ONLY=false",
                 "SUPABASE_MCP_FEATURES=database,docs,debugging,storage",
                 "SUPABASE_STORAGE_PRIVATE_BUCKET=learning-images",  # pragma: allowlist secret
+                "SUPABASE_STORAGE_S3_ACCESS_KEY_ID=supabase_storage_access_key",  # pragma: allowlist secret
+                "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY=supabase_storage_secret_key",  # pragma: allowlist secret
             ]
         )
         + "\n",
@@ -215,6 +219,16 @@ def test_supabase_inputs_can_be_loaded_from_dotenv(tmp_path: Path) -> None:
     assert settings.supabase_mcp_read_only is False
     assert settings.supabase_mcp_features == "database,docs,debugging,storage"
     assert settings.supabase_storage_private_bucket == "learning-images"
+    assert settings.supabase_storage_s3_access_key_id is not None
+    assert (
+        settings.supabase_storage_s3_access_key_id.get_secret_value()
+        == "supabase_storage_access_key"
+    )
+    assert settings.supabase_storage_s3_secret_access_key is not None
+    assert (
+        settings.supabase_storage_s3_secret_access_key.get_secret_value()
+        == "supabase_storage_secret_key"
+    )
 
 
 @pytest.mark.parametrize(
@@ -523,6 +537,44 @@ def test_s3_learning_object_storage_requires_bucket() -> None:
     """Verify S3 learning object storage cannot start without a bucket."""
     with pytest.raises(ValidationError, match="LEARNING_OBJECT_STORAGE_BUCKET"):
         Settings(_env_file=None, learning_object_storage_provider="s3")
+
+
+def test_supabase_s3_learning_object_storage_requires_project_or_endpoint() -> None:
+    """Verify Supabase Storage cannot be configured without a scoped endpoint."""
+    with pytest.raises(
+        ValidationError,
+        match="SUPABASE_PROJECT_REF or LEARNING_OBJECT_STORAGE_ENDPOINT_URL",
+    ):
+        Settings(
+            _env_file=None,
+            learning_object_storage_provider="supabase_s3",
+            learning_object_storage_region="ap-northeast-2",
+            supabase_storage_s3_access_key_id="access",
+            supabase_storage_s3_secret_access_key="secret",
+        )
+
+
+def test_supabase_s3_learning_object_storage_requires_region() -> None:
+    """Verify Supabase Storage S3 uses the official project region explicitly."""
+    with pytest.raises(ValidationError, match="LEARNING_OBJECT_STORAGE_REGION"):
+        Settings(
+            _env_file=None,
+            learning_object_storage_provider="supabase_s3",
+            supabase_project_ref="projectref",
+            supabase_storage_s3_access_key_id="access",
+            supabase_storage_s3_secret_access_key="secret",
+        )
+
+
+def test_supabase_s3_learning_object_storage_requires_server_credentials() -> None:
+    """Verify Supabase Storage S3 cannot rely on public client keys."""
+    with pytest.raises(ValidationError, match="SUPABASE_STORAGE_S3_ACCESS_KEY_ID"):
+        Settings(
+            _env_file=None,
+            learning_object_storage_provider="supabase_s3",
+            supabase_project_ref="projectref",
+            learning_object_storage_region="ap-northeast-2",
+        )
 
 
 def test_staging_requires_manual_review_when_image_learning_enabled() -> None:

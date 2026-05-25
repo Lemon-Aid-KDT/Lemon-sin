@@ -184,6 +184,8 @@ class Settings(BaseSettings):
         supabase_mcp_read_only: Whether Supabase MCP should run read-only by default.
         supabase_mcp_features: Comma-separated Supabase MCP feature groups.
         supabase_storage_private_bucket: Private bucket id for opt-in learning images.
+        supabase_storage_s3_access_key_id: Server-only Supabase Storage S3 access key id.
+        supabase_storage_s3_secret_access_key: Server-only Supabase Storage S3 secret key.
         allowed_origins: CORS 허용 origin 목록.
         allowed_hosts: TrustedHost 허용 host 목록.
         auth_mode: 인증 모드. 실제 사용자 앱은 production에서 jwt를 사용한다.
@@ -284,6 +286,8 @@ class Settings(BaseSettings):
     )
     supabase_mcp_features: str = Field(default="database,docs,debugging,storage")
     supabase_storage_private_bucket: str = Field(default="learning-images")
+    supabase_storage_s3_access_key_id: SecretStr | None = Field(default=None)
+    supabase_storage_s3_secret_access_key: SecretStr | None = Field(default=None)
     allowed_origins: list[str] = Field(default_factory=list)
     allowed_hosts: list[str] = Field(default_factory=_default_allowed_hosts)
 
@@ -499,9 +503,12 @@ class Settings(BaseSettings):
             "embedding job creation for user opt-in learning images."
         ),
     )
-    learning_object_storage_provider: Literal["disabled", "local", "s3"] = Field(
+    learning_object_storage_provider: Literal["disabled", "local", "s3", "supabase_s3"] = Field(
         default="disabled",
-        description="학습 이미지 object storage provider. 기본값 disabled.",
+        description=(
+            "학습 이미지 object storage provider. 기본값 disabled. "
+            "Supabase private Storage는 supabase_s3를 사용한다."
+        ),
     )
     learning_object_storage_bucket: str | None = Field(default=None)
     learning_object_storage_prefix: str = Field(default="learning/images")
@@ -530,14 +537,7 @@ class Settings(BaseSettings):
                 f"DATABASE_URL must use {POSTGRESQL_ASYNCPG_DRIVER}; "
                 "SQLite and sync PostgreSQL drivers are not supported."
             )
-        if (
-            self.learning_object_storage_provider == "s3"
-            and not self.learning_object_storage_bucket
-        ):
-            raise ValueError(
-                "LEARNING_OBJECT_STORAGE_BUCKET is required when "
-                "LEARNING_OBJECT_STORAGE_PROVIDER=s3."
-            )
+        self._validate_learning_object_storage_settings()
         if (
             self.environment in {"staging", "production"}
             and self.enable_image_learning_pipeline
@@ -783,6 +783,49 @@ class Settings(BaseSettings):
         if errors:
             raise ValueError(" ".join(errors))
         return self
+
+    def _validate_learning_object_storage_settings(self) -> None:
+        """Validate consent-gated learning image object storage settings.
+
+        Raises:
+            ValueError: If an enabled object store is missing private storage
+                settings or server-only credentials.
+        """
+        if (
+            self.learning_object_storage_provider == "s3"
+            and not self.learning_object_storage_bucket
+        ):
+            raise ValueError(
+                "LEARNING_OBJECT_STORAGE_BUCKET is required when "
+                "LEARNING_OBJECT_STORAGE_PROVIDER=s3."
+            )
+        if self.learning_object_storage_provider != "supabase_s3":
+            return
+        if not self.supabase_storage_private_bucket and not self.learning_object_storage_bucket:
+            raise ValueError(
+                "SUPABASE_STORAGE_PRIVATE_BUCKET or LEARNING_OBJECT_STORAGE_BUCKET "
+                "is required when LEARNING_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if not self.learning_object_storage_endpoint_url and not self.supabase_project_ref:
+            raise ValueError(
+                "SUPABASE_PROJECT_REF or LEARNING_OBJECT_STORAGE_ENDPOINT_URL is required "
+                "when LEARNING_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if not self.learning_object_storage_region:
+            raise ValueError(
+                "LEARNING_OBJECT_STORAGE_REGION is required when "
+                "LEARNING_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if self.supabase_storage_s3_access_key_id is None:
+            raise ValueError(
+                "SUPABASE_STORAGE_S3_ACCESS_KEY_ID is required when "
+                "LEARNING_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if self.supabase_storage_s3_secret_access_key is None:
+            raise ValueError(
+                "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY is required when "
+                "LEARNING_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
 
 
 @lru_cache
