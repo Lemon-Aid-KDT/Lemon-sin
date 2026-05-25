@@ -218,6 +218,8 @@ class UserSupplement(TimestampMixin, Base):
         CheckConstraint("display_name <> ''", name="display_name_nonempty"),
         Index("ix_user_supplements_owner_created_at", "owner_subject", "created_at"),
         Index("ix_user_supplements_owner_deleted_at", "owner_subject", "deleted_at"),
+        Index("ix_user_supplements_source_analysis_run_id", "source_analysis_run_id"),
+        Index("ix_user_supplements_matched_product_id", "matched_product_id"),
     )
 
     id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)

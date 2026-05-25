@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0012_configure_learning_private_storage_bucket"]
+    assert script.get_heads() == ["0013_index_user_supplement_foreign_keys"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0012_configure_learning_private_storage_bucket"]
+    assert script.get_heads() == ["0013_index_user_supplement_foreign_keys"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -231,3 +231,27 @@ def test_learning_private_storage_bucket_migration_is_private() -> None:
     assert "raw_ocr_text" not in migration
     assert "provider_payload" not in migration
     assert "GRANT " not in migration
+
+
+def test_user_supplement_fk_index_migration_file_exists() -> None:
+    """Verify the user_supplements foreign-key index migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0013_index_user_supplement_foreign_keys.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_user_supplement_fk_index_migration_adds_no_data_exposure() -> None:
+    """Verify FK index migration is limited to performance-only index DDL."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0013_index_user_supplement_foreign_keys.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "CREATE INDEX IF NOT EXISTS ix_user_supplements_source_analysis_run_id" in migration
+    assert "CREATE INDEX IF NOT EXISTS ix_user_supplements_matched_product_id" in migration
+    assert "GRANT " not in migration
+    assert "POLICY" not in migration
+    assert "raw_ocr_text" not in migration
+    assert "provider_payload" not in migration

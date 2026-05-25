@@ -603,10 +603,36 @@ secret-like value는 출력하지 않는다.
   - 원격 DB `learning_image_objects.review_metadata_snapshot` JSONB column 존재 확인
   - 원격 DB에서 `anon`, `authenticated`, `service_role`, `PUBLIC`의 learning/vector table 직접 grant 제거 완료
   - 원격 DB에서 `public.rls_auto_enable()` SECURITY DEFINER helper의 client-role execute grant 제거 완료
-  - 원격 DB `alembic_version=0012_configure_learning_private_storage_bucket` 확인
+  - 원격 DB `alembic_version=0013_index_user_supplement_foreign_keys` 확인
+  - 원격 DB `user_supplements.source_analysis_run_id`, `user_supplements.matched_product_id`
+    covering index 존재 확인
+  - Supabase performance advisor의 `user_supplements` unindexed foreign key 항목 제거 확인
+    (`unused_index` INFO는 새 인덱스 생성 직후 사용 통계가 아직 없어 발생)
   - 원격 보안 요약: vector extension in `extensions` true, learning table RLS true, unsafe privilege 0, forbidden raw column 0, unsafe SECURITY DEFINER function 0
   - 원격 Storage 요약: `learning-images` bucket private configured true, unsafe learning Storage policy 0
   - Supabase security advisor의 WARN 항목은 제거됨. RLS enabled/no-policy INFO는 fail-closed 정책상 의도한 상태로 둔다.
+  - 로컬 `.env` 기반 `check_learning_vector_db_security.py --strict`는 현재
+    `DATABASE_URL` 인증 실패(`InvalidPasswordError`)로 직접 DB 접속 검증 불가.
+    원격 검증은 Supabase MCP read-only SQL/advisor와 `apply_migration` 결과로 대체했다.
+
+### 2026-05-25 추가 반영: user_supplements FK index
+
+Supabase performance advisor가 `user_supplements`의 아래 foreign key에 covering index가
+없다고 지적했다.
+
+- `source_analysis_run_id -> supplement_analysis_runs.id`
+- `matched_product_id -> supplement_products.id`
+
+`0013_index_user_supplement_foreign_keys` migration은 데이터 노출 범위를 바꾸지 않고
+아래 index만 추가한다.
+
+- `ix_user_supplements_source_analysis_run_id`
+- `ix_user_supplements_matched_product_id`
+
+이 변경은 confirmed supplement가 preview run 또는 reference product와 조인될 때,
+그리고 FK `ON DELETE SET NULL` referential action이 실행될 때 불필요한 table scan을
+줄이기 위한 성능 보강이다. `GRANT`, RLS policy, raw OCR/provider payload column은
+추가하지 않는다.
 
 ### 2026-05-25 추가 반영: private Storage bucket
 

@@ -305,6 +305,7 @@ def test_supplement_constraints_and_indexes_are_defined() -> None:
     """Verify P1 supplement tables expose deterministic constraints and lookup indexes."""
     supplement_product = cast(Table, SupplementProduct.__table__)
     supplement_analysis_run = cast(Table, SupplementAnalysisRun.__table__)
+    user_supplement = cast(Table, UserSupplement.__table__)
     user_supplement_ingredient = cast(Table, UserSupplementIngredient.__table__)
     product_constraint_names = {constraint.name for constraint in supplement_product.constraints}
     run_constraint_names = {constraint.name for constraint in supplement_analysis_run.constraints}
@@ -316,6 +317,9 @@ def test_supplement_constraints_and_indexes_are_defined() -> None:
     }
     run_index_names = {
         index.name for index in supplement_analysis_run.indexes if isinstance(index, Index)
+    }
+    user_supplement_index_names = {
+        index.name for index in user_supplement.indexes if isinstance(index, Index)
     }
     ingredient_index_names = {
         index.name for index in user_supplement_ingredient.indexes if isinstance(index, Index)
@@ -329,6 +333,8 @@ def test_supplement_constraints_and_indexes_are_defined() -> None:
     assert "ix_supplement_products_normalized_name" in product_index_names
     assert "ix_supplement_analysis_runs_owner_created_at" in run_index_names
     assert "ix_supplement_analysis_runs_owner_status_created_at" in run_index_names
+    assert "ix_user_supplements_source_analysis_run_id" in user_supplement_index_names
+    assert "ix_user_supplements_matched_product_id" in user_supplement_index_names
     assert "ix_user_supplement_ingredients_supplement_id" in ingredient_index_names
 
 
