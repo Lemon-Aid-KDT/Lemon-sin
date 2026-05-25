@@ -34,6 +34,8 @@ LEARNING_IMAGE_STATUS_AWAITING_CONFIRMATION = "awaiting_confirmation"
 LEARNING_IMAGE_STATUS_PENDING_AUTO_FILTER = "pending_auto_filter"
 LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW = "pending_manual_review"
 LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER = "rejected_by_auto_filter"
+LEARNING_IMAGE_STATUS_APPROVED_FOR_EMBEDDING = "approved_for_embedding"
+LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW = "rejected_by_review"
 LEARNING_IMAGE_STATUS_READY = "ready"
 LEARNING_IMAGE_STATUS_DELETED = "deleted"
 IMAGE_EMBEDDING_JOB_STATUS_PENDING = "pending"
@@ -277,6 +279,12 @@ async def _stage_embedding_job_after_learning_filters(
     Returns:
         Persisted embedding job, or None when review/filter gates stop the item.
     """
+    storage_decision = evaluate_learning_metadata_storage_filter(metadata_snapshot)
+    if not storage_decision.allowed:
+        image_object.status = LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER
+        await session.commit()
+        return None
+
     if settings.enable_learning_auto_filter:
         image_object.status = LEARNING_IMAGE_STATUS_PENDING_AUTO_FILTER
         filter_decision = evaluate_learning_metadata_auto_filter(metadata_snapshot)
@@ -287,9 +295,127 @@ async def _stage_embedding_job_after_learning_filters(
 
     if settings.require_learning_manual_review:
         image_object.status = LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+        image_object.review_metadata_snapshot = metadata_snapshot
         await session.commit()
         return None
 
+    return await _create_pending_embedding_job(
+        session=session,
+        image_object=image_object,
+        analysis_id=analysis_id,
+        owner_subject_hash=owner_subject_hash,
+        metadata_snapshot=metadata_snapshot,
+        settings=settings,
+    )
+
+
+async def approve_learning_image_object_after_manual_review(
+    *,
+    session: AsyncSession,
+    image_object_id: UUID,
+    settings: Settings,
+) -> ImageEmbeddingJob | None:
+    """Approve a manually reviewed learning image object for embedding.
+
+    Args:
+        session: Request-scoped async database session.
+        image_object_id: Retained image object selected by the reviewer.
+        settings: Runtime settings.
+
+    Returns:
+        Persisted embedding job, or None when the item is missing, already
+        ineligible, or its stored review metadata no longer passes safety checks.
+    """
+    if not settings.enable_image_learning_pipeline or not settings.enable_pgvector_storage:
+        return None
+
+    image_object = await session.scalar(
+        select(LearningImageObject).where(
+            LearningImageObject.id == image_object_id,
+            LearningImageObject.status == LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW,
+            LearningImageObject.deleted_at.is_(None),
+        )
+    )
+    if image_object is None:
+        return None
+
+    existing = await session.scalar(
+        select(ImageEmbeddingJob).where(
+            ImageEmbeddingJob.image_object_id == image_object.id,
+            ImageEmbeddingJob.embedding_model == settings.embedding_model,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    metadata_snapshot = image_object.review_metadata_snapshot
+    filter_decision = evaluate_learning_metadata_auto_filter(metadata_snapshot)
+    if not filter_decision.allowed:
+        image_object.status = LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER
+        await session.commit()
+        return None
+
+    image_object.status = LEARNING_IMAGE_STATUS_APPROVED_FOR_EMBEDDING
+    return await _create_pending_embedding_job(
+        session=session,
+        image_object=image_object,
+        analysis_id=image_object.analysis_id,
+        owner_subject_hash=image_object.owner_subject_hash,
+        metadata_snapshot=metadata_snapshot,
+        settings=settings,
+    )
+
+
+async def reject_learning_image_object_after_manual_review(
+    *,
+    session: AsyncSession,
+    image_object_id: UUID,
+) -> bool:
+    """Reject a manually reviewed learning image object.
+
+    Args:
+        session: Request-scoped async database session.
+        image_object_id: Retained image object selected by the reviewer.
+
+    Returns:
+        True when a pending review object was marked rejected.
+    """
+    image_object = await session.scalar(
+        select(LearningImageObject).where(
+            LearningImageObject.id == image_object_id,
+            LearningImageObject.status == LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW,
+            LearningImageObject.deleted_at.is_(None),
+        )
+    )
+    if image_object is None:
+        return False
+    image_object.status = LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW
+    await session.commit()
+    return True
+
+
+async def _create_pending_embedding_job(
+    *,
+    session: AsyncSession,
+    image_object: LearningImageObject,
+    analysis_id: UUID,
+    owner_subject_hash: str,
+    metadata_snapshot: dict[str, Any],
+    settings: Settings,
+) -> ImageEmbeddingJob:
+    """Create a pending embedding job after automated or manual review gates.
+
+    Args:
+        session: Request-scoped async database session.
+        image_object: Retained image object that passed review.
+        analysis_id: Source supplement analysis id.
+        owner_subject_hash: HMAC of the owner subject.
+        metadata_snapshot: User-confirmed structured metadata.
+        settings: Runtime settings.
+
+    Returns:
+        Persisted embedding job.
+    """
     now = datetime.now(UTC)
     image_object.status = LEARNING_IMAGE_STATUS_READY
     job = ImageEmbeddingJob(
@@ -308,6 +434,32 @@ async def _stage_embedding_job_after_learning_filters(
     return job
 
 
+def evaluate_learning_metadata_storage_filter(
+    metadata_snapshot: dict[str, Any],
+) -> LearningMetadataAutoFilterDecision:
+    """Screen metadata before storing it for manual learning review.
+
+    Args:
+        metadata_snapshot: User-confirmed structured supplement metadata.
+
+    Returns:
+        Storage-safety decision. This does not enforce ingredient signal so a
+        human can review low-signal structured records, but it still blocks raw
+        payload keys and PII-like strings.
+    """
+    if _contains_forbidden_metadata_key(metadata_snapshot):
+        return LearningMetadataAutoFilterDecision(
+            allowed=False,
+            reason="forbidden_metadata_key",
+        )
+    if _contains_pii_like_text(metadata_snapshot):
+        return LearningMetadataAutoFilterDecision(
+            allowed=False,
+            reason="pii_like_text",
+        )
+    return LearningMetadataAutoFilterDecision(allowed=True, reason="passed")
+
+
 def evaluate_learning_metadata_auto_filter(
     metadata_snapshot: dict[str, Any],
 ) -> LearningMetadataAutoFilterDecision:
@@ -323,16 +475,9 @@ def evaluate_learning_metadata_auto_filter(
     Returns:
         Auto-filter decision safe to log without raw OCR text.
     """
-    if _contains_forbidden_metadata_key(metadata_snapshot):
-        return LearningMetadataAutoFilterDecision(
-            allowed=False,
-            reason="forbidden_metadata_key",
-        )
-    if _contains_pii_like_text(metadata_snapshot):
-        return LearningMetadataAutoFilterDecision(
-            allowed=False,
-            reason="pii_like_text",
-        )
+    storage_decision = evaluate_learning_metadata_storage_filter(metadata_snapshot)
+    if not storage_decision.allowed:
+        return storage_decision
     ingredients = metadata_snapshot.get("ingredients")
     if not isinstance(ingredients, list) or not ingredients:
         return LearningMetadataAutoFilterDecision(

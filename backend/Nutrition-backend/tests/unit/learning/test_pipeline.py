@@ -12,8 +12,12 @@ from src.learning.pipeline import (
     LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW,
     LEARNING_IMAGE_STATUS_READY,
     LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER,
+    LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW,
+    approve_learning_image_object_after_manual_review,
     enqueue_learning_embedding_job_for_confirmation,
     evaluate_learning_metadata_auto_filter,
+    evaluate_learning_metadata_storage_filter,
+    reject_learning_image_object_after_manual_review,
 )
 from src.models.db.learning import ImageEmbeddingJob, LearningImageObject
 from src.models.schemas.privacy import ConsentType
@@ -166,6 +170,14 @@ def test_learning_metadata_auto_filter_accepts_sanitized_ingredients() -> None:
     assert decision.reason == "passed"
 
 
+def test_learning_metadata_storage_filter_allows_low_signal_review_metadata() -> None:
+    """Verify manual-review metadata storage can hold low-signal structured data."""
+    decision = evaluate_learning_metadata_storage_filter({"display_name": "Vitamin C"})
+
+    assert decision.allowed is True
+    assert decision.reason == "passed"
+
+
 @pytest.mark.parametrize(
     "metadata",
     [
@@ -202,6 +214,7 @@ async def test_confirmation_requires_manual_review_before_embedding_job() -> Non
 
     assert job is None
     assert image_object.status == LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+    assert image_object.review_metadata_snapshot == _metadata()
     assert session.added == []
     assert session.commit_count == 1
 
@@ -246,6 +259,7 @@ async def test_confirmation_falls_back_to_manual_review_when_auto_filter_disable
 
     assert job is None
     assert image_object.status == LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+    assert image_object.review_metadata_snapshot == {"display_name": "Vitamin C"}
     assert session.added == []
     assert session.commit_count == 1
 
@@ -270,4 +284,87 @@ async def test_confirmation_can_enqueue_after_manual_review_gate_is_disabled() -
     assert image_object.status == LEARNING_IMAGE_STATUS_READY
     assert job.status == IMAGE_EMBEDDING_JOB_STATUS_PENDING
     assert session.added == [job]
+    assert session.commit_count == 1
+
+
+@pytest.mark.asyncio
+async def test_manual_review_approval_enqueues_job_from_stored_metadata() -> None:
+    """Verify operator-approved review metadata enters the worker queue."""
+    analysis_id = uuid4()
+    image_object = _image_object(analysis_id)
+    image_object.status = LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+    image_object.review_metadata_snapshot = _metadata()
+    session = _FakeSession([image_object, None])
+
+    job = await approve_learning_image_object_after_manual_review(
+        session=session,  # type: ignore[arg-type]
+        image_object_id=image_object.id,
+        settings=_settings(),
+    )
+
+    assert isinstance(job, ImageEmbeddingJob)
+    assert image_object.status == LEARNING_IMAGE_STATUS_READY
+    assert job.metadata_snapshot == _metadata()
+    assert job.status == IMAGE_EMBEDDING_JOB_STATUS_PENDING
+    assert session.added == [job]
+    assert session.commit_count == 1
+
+
+@pytest.mark.asyncio
+async def test_manual_review_approval_respects_feature_gates() -> None:
+    """Verify the operator approval path cannot bypass disabled learning flags."""
+    analysis_id = uuid4()
+    image_object = _image_object(analysis_id)
+    image_object.status = LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+    image_object.review_metadata_snapshot = _metadata()
+    session = _FakeSession([image_object, None])
+
+    job = await approve_learning_image_object_after_manual_review(
+        session=session,  # type: ignore[arg-type]
+        image_object_id=image_object.id,
+        settings=Settings(),
+    )
+
+    assert job is None
+    assert session.added == []
+    assert session.commit_count == 0
+
+
+@pytest.mark.asyncio
+async def test_manual_review_approval_rejects_stored_low_signal_metadata() -> None:
+    """Verify approval cannot bypass deterministic embedding metadata checks."""
+    analysis_id = uuid4()
+    image_object = _image_object(analysis_id)
+    image_object.status = LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+    image_object.review_metadata_snapshot = {"display_name": "Vitamin C"}
+    session = _FakeSession([image_object, None])
+
+    job = await approve_learning_image_object_after_manual_review(
+        session=session,  # type: ignore[arg-type]
+        image_object_id=image_object.id,
+        settings=_settings(),
+    )
+
+    assert job is None
+    assert image_object.status == LEARNING_IMAGE_STATUS_REJECTED_BY_AUTO_FILTER
+    assert session.added == []
+    assert session.commit_count == 1
+
+
+@pytest.mark.asyncio
+async def test_manual_review_rejection_marks_image_object_rejected() -> None:
+    """Verify operator rejection is persisted without creating a job."""
+    analysis_id = uuid4()
+    image_object = _image_object(analysis_id)
+    image_object.status = LEARNING_IMAGE_STATUS_PENDING_MANUAL_REVIEW
+    session = _FakeSession([image_object])
+
+    rejected = await reject_learning_image_object_after_manual_review(
+        session=session,  # type: ignore[arg-type]
+        image_object_id=image_object.id,
+    )
+
+    assert rejected is True
+    assert image_object.status == LEARNING_IMAGE_STATUS_REJECTED_BY_REVIEW
+    assert session.added == []
     assert session.commit_count == 1

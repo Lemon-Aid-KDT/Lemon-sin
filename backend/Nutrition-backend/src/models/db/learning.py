@@ -62,6 +62,7 @@ class LearningImageObject(TimestampMixin, Base):
         retained_until: Automatic deletion deadline.
         status: Learning object lifecycle state.
         consent_snapshot: Consent type and policy-version snapshot.
+        review_metadata_snapshot: Sanitized user-confirmed metadata pending manual review.
         deleted_at: Timestamp set after storage deletion.
         created_at: Server-side record creation timestamp.
         updated_at: Server-side record update timestamp.
@@ -114,6 +115,9 @@ class LearningImageObject(TimestampMixin, Base):
     retained_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     consent_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB, nullable=False, default=dict
+    )
+    review_metadata_snapshot: Mapped[dict[str, Any]] = mapped_column(
         postgresql.JSONB, nullable=False, default=dict
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

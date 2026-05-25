@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0010_revoke_learning_api_grants"]
+    assert script.get_heads() == ["0011_add_learning_review_metadata"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0010_revoke_learning_api_grants"]
+    assert script.get_heads() == ["0011_add_learning_review_metadata"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -179,4 +179,27 @@ def test_learning_vector_remote_grant_revoke_migration_is_fail_closed() -> None:
     assert "REVOKE EXECUTE ON FUNCTION" in migration
     assert "rls_auto_enable" in migration
     assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "GRANT " not in migration
+
+
+def test_learning_review_metadata_migration_file_exists() -> None:
+    """Verify the manual review metadata migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0011_add_learning_review_metadata_snapshot.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_learning_review_metadata_migration_stores_only_sanitized_snapshot() -> None:
+    """Verify review metadata migration adds no raw payload columns or grants."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0011_add_learning_review_metadata_snapshot.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "review_metadata_snapshot" in migration
+    assert "postgresql.JSONB" in migration
+    assert "image_bytes" not in migration
+    assert "provider_payload" not in migration
     assert "GRANT " not in migration
