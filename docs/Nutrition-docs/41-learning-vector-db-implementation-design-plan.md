@@ -553,6 +553,8 @@ secret-like value를 금지해 S3 metadata header를 통한 우회 저장을 차
 4. Supabase 원격 DB에는 동일 Alembic migration을 적용한 뒤 같은 preflight를 재실행한다.
 5. server-only S3 access key가 준비된 operator 환경에서 아래 live smoke를 실행해
    `learning-images` private bucket의 put/get/delete round-trip을 확인한다.
+6. 운영 batch 또는 수동 작업으로 아래 retention cleanup을 주기 실행해
+   `retained_until`이 지난 image object와 private Storage 원본을 삭제한다.
 
 ```bash
 RUN_LEARNING_STORAGE_LIVE_SMOKE=1 \
@@ -562,6 +564,15 @@ PYTHONPATH=backend/Nutrition-backend \
 
 이 smoke는 object URI, object metadata, image bytes, SDK exception message,
 secret 값을 출력하지 않고 `status`, provider, round-trip 여부만 표시한다.
+
+```bash
+PYTHONPATH=backend/Nutrition-backend \
+.venv/bin/python backend/scripts/delete_expired_learning_images.py --limit 100
+```
+
+retention cleanup 출력도 object URI, SDK exception message, secret 값을 표시하지 않고
+삭제 건수와 provider만 표시한다. 삭제 실패 시에는 해당 exception type만 출력해 운영자가
+로그 접근 권한이 있는 환경에서 별도 조사하도록 한다.
 
 검증 기록:
 
