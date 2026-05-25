@@ -50,6 +50,8 @@ API에서는 `SupplementOCRTextParseRequest`로 `ocr_text`, `ocr_provider`, `ocr
 - `localhost`
 - `127.0.0.1`
 - `::1`
+- `host.docker.internal` (`development` only, for Docker Desktop containers
+  calling a Mac-hosted Ollama server)
 
 `LLM_PROVIDER`는 `ollama`만 지원한다. 외부 LLM provider로 확장하려면 별도 보안 검토와 설정 gate가 필요하다.
 

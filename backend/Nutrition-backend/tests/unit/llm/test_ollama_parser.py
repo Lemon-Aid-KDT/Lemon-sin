@@ -116,6 +116,7 @@ def _settings(
     *,
     ollama_base_url: str = "http://127.0.0.1:11434",
     ollama_temperature: float = 0.0,
+    environment: str = "development",
 ) -> Settings:
     """Return settings for Ollama parser tests.
 
@@ -129,6 +130,9 @@ def _settings(
     return Settings(
         ollama_base_url=ollama_base_url,
         ollama_temperature=ollama_temperature,
+        environment=environment,
+        auth_mode="jwt" if environment != "development" else "disabled",
+        allowed_hosts=["localhost"] if environment != "development" else [],
     )
 
 
@@ -432,6 +436,37 @@ async def test_check_ollama_readiness_reports_missing_model() -> None:
 async def test_check_ollama_readiness_blocks_remote_base_url() -> None:
     """Verify readiness does not call a remote URL when external LLM is disabled."""
     settings = _settings(ollama_base_url="https://ollama.example.com")
+    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "qwen3.5:9b"}]})
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    readiness = await check_ollama_readiness(settings, chat_client)
+
+    assert readiness.ready is False
+    assert readiness.error_code == "configuration_invalid"
+    assert fake_client.get_url is None
+
+
+@pytest.mark.asyncio
+async def test_check_ollama_readiness_allows_docker_desktop_host_in_development() -> None:
+    """Verify Docker Desktop's host alias is treated as local only in development."""
+    settings = _settings(ollama_base_url="http://host.docker.internal:11434")
+    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "qwen3.5:9b"}]})
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    readiness = await check_ollama_readiness(settings, chat_client)
+
+    assert readiness.ready is True
+    assert readiness.error_code is None
+    assert fake_client.get_url == "http://host.docker.internal:11434/api/tags"
+
+
+@pytest.mark.asyncio
+async def test_check_ollama_readiness_blocks_docker_desktop_host_outside_development() -> None:
+    """Verify the Docker host alias does not bypass non-development LLM policy."""
+    settings = _settings(
+        environment="staging",
+        ollama_base_url="http://host.docker.internal:11434",
+    )
     fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "qwen3.5:9b"}]})
     chat_client = OllamaChatClient(settings, http_client=fake_client)
 

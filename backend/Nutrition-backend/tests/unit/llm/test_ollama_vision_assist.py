@@ -124,6 +124,7 @@ def _settings(
     multimodal_ocr_assist_policy: OcrAssistPolicy = "ocr_empty_only",
     ollama_base_url: str = "http://127.0.0.1:11434",
     ollama_vision_model: str | None = "gemma4:e4b",
+    environment: str = "development",
 ) -> Settings:
     """Return settings for Ollama vision tests.
 
@@ -132,6 +133,7 @@ def _settings(
         multimodal_ocr_assist_policy: Runtime policy for vision assist calls.
         ollama_base_url: Ollama base URL used by the fake client assertions.
         ollama_vision_model: Local vision model tag to check in readiness tests.
+        environment: Runtime environment for local-host policy checks.
 
     Returns:
         Settings object.
@@ -141,6 +143,9 @@ def _settings(
         multimodal_ocr_assist_policy=multimodal_ocr_assist_policy,
         ollama_base_url=ollama_base_url,
         ollama_vision_model=ollama_vision_model,
+        environment=environment,
+        auth_mode="jwt" if environment != "development" else "disabled",
+        allowed_hosts=["localhost"] if environment != "development" else [],
     )
 
 
@@ -244,6 +249,36 @@ async def test_ollama_vision_assist_blocks_remote_base_url() -> None:
     """Verify identifiable image data is not sent to remote Ollama endpoints by default."""
     fake_client = _FakeHTTPClient({"message": {"content": _response_content()}})
     settings = _settings(ollama_base_url="https://ollama.example.com")
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    with pytest.raises(OllamaConfigurationError):
+        await OllamaVisionAssistAdapter(settings, client=chat_client).extract_text(
+            _ocr_image_input()
+        )
+
+    assert fake_client.request_json is None
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_assist_allows_docker_desktop_host_in_development() -> None:
+    """Verify Docker Desktop's host alias is allowed only as a development local endpoint."""
+    fake_client = _FakeHTTPClient({"message": {"content": _response_content()}})
+    settings = _settings(ollama_base_url="http://host.docker.internal:11434")
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    await OllamaVisionAssistAdapter(settings, client=chat_client).extract_text(_ocr_image_input())
+
+    assert fake_client.post_url == "http://host.docker.internal:11434/api/chat"
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_assist_blocks_docker_desktop_host_outside_development() -> None:
+    """Verify non-development runtimes do not treat Docker host alias as local."""
+    fake_client = _FakeHTTPClient({"message": {"content": _response_content()}})
+    settings = _settings(
+        environment="staging",
+        ollama_base_url="http://host.docker.internal:11434",
+    )
     chat_client = OllamaChatClient(settings, http_client=fake_client)
 
     with pytest.raises(OllamaConfigurationError):

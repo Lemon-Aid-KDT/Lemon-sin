@@ -14,6 +14,8 @@
 | Flutter image picker | https://pub.dev/packages/image_picker | Keep gallery fallback and Android lost-data recovery on the same upload path. |
 | Flutter package environment warning | https://pub.dev/packages/flutter_dotenv | Do not bundle `.env` or ngrok tokens as Flutter assets. |
 | Android emulator host loopback | https://developer.android.com/studio/run/emulator-networking-address | Android Emulator uses `10.0.2.2` to reach the host backend. |
+| Docker Desktop host gateway | https://docs.docker.com/desktop/features/networking/networking-how-tos/ | Development containers may reach a host-local Ollama server through `host.docker.internal`. |
+| Ollama model listing API | https://docs.ollama.com/api/tags | Parser readiness checks `/api/tags` before sending OCR text to the local model. |
 
 ## 2. Endpoint Contract
 
@@ -43,6 +45,10 @@ The mobile app does not add fake YOLO or Ollama endpoints:
 
 1. Run the backend locally with the desired OCR provider and optional YOLO/Ollama
    runtime settings.
+   - If backend runs in Docker Desktop and Ollama runs on the Mac host, use
+     `OLLAMA_BASE_URL=http://host.docker.internal:11434` in `development`.
+     Keep `ALLOW_EXTERNAL_LLM=false`; the backend treats this Docker Desktop
+     alias as local only outside staging/production.
 2. Run the iPhone 17 Pro Simulator:
 
 ```bash

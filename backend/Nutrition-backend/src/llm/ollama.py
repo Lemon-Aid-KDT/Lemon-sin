@@ -15,6 +15,7 @@ from src.config import Settings
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 
 LOCAL_OLLAMA_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+DEVELOPMENT_CONTAINER_OLLAMA_HOSTS = frozenset({"host.docker.internal"})
 HTTP_NOT_FOUND = 404
 SUPPLEMENT_PARSER_PROVIDER = "ollama"
 SUPPLEMENT_PARSER_SOURCE = "ollama_structured"
@@ -390,9 +391,12 @@ def _validate_local_ollama_settings(settings: Settings) -> None:
     parsed = urlparse(settings.ollama_base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise OllamaConfigurationError("OLLAMA_BASE_URL must be an absolute HTTP URL.")
-    if not settings.allow_external_llm and parsed.hostname not in LOCAL_OLLAMA_HOSTS:
+    if not settings.allow_external_llm and parsed.hostname not in _allowed_local_ollama_hosts(
+        settings
+    ):
         raise OllamaConfigurationError(
-            "OLLAMA_BASE_URL must target localhost when ALLOW_EXTERNAL_LLM=false."
+            "OLLAMA_BASE_URL must target localhost or an approved local container host "
+            "when ALLOW_EXTERNAL_LLM=false."
         )
 
 
@@ -407,6 +411,22 @@ def validate_local_ollama_settings(settings: Settings) -> None:
             local Ollama endpoint.
     """
     _validate_local_ollama_settings(settings)
+
+
+def _allowed_local_ollama_hosts(settings: Settings) -> frozenset[str]:
+    """Return hostnames treated as local Ollama endpoints for the active runtime.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        Allowed local hostnames. Docker Desktop's host gateway alias is accepted
+        only in development so production deployments do not silently permit
+        networked LLM endpoints while ``ALLOW_EXTERNAL_LLM=false``.
+    """
+    if settings.environment == "development":
+        return LOCAL_OLLAMA_HOSTS | DEVELOPMENT_CONTAINER_OLLAMA_HOSTS
+    return LOCAL_OLLAMA_HOSTS
 
 
 def _ollama_endpoint(settings: Settings, path: str) -> str:

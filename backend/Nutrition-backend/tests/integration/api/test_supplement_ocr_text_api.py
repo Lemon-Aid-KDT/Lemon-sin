@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -288,7 +289,8 @@ def test_parse_supplement_ocr_text_returns_confirmation_preview(
     assert body["status"] == "requires_confirmation"
     assert body["parsed_product"]["product_name"] == "비타민 D 1000"
     assert body["ingredient_candidates"][0]["display_name"] == "비타민 D"
-    assert "ocr_text" not in str(body)
+    assert received["ocr_text"] not in json.dumps(body, ensure_ascii=False)
+    assert body["pipeline_metadata"]["raw_ocr_text_stored"] is False
     assert len(fake_session.added_audits) == 1
     audit_metadata = fake_session.added_audits[0].event_metadata
     assert audit_metadata["raw_ocr_text_stored"] is False
