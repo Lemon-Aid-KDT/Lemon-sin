@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from textwrap import dedent
 
 from src.config import Settings
 
@@ -77,6 +78,39 @@ def test_required_medical_source_failures_pass_with_configured_keys() -> None:
     )
 
     assert failures == []
+
+
+def test_build_settings_loads_explicit_env_file(tmp_path) -> None:
+    """Verify preflight can read user-provided API keys from a dotenv file."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        dedent(
+            """
+            KDCA_HEALTHINFO_API_KEY=kdca-key
+            MFDS_DATA_API_KEY=mfds-key
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    args = prereqs._parse_args(["--env-file", str(env_file)])
+
+    settings = prereqs._build_settings(args)
+    failures = prereqs._required_medical_source_failures(
+        settings,
+        ("kdca-healthinfo", "mfds-drug-safety"),
+        today=date(2026, 5, 24),
+    )
+
+    assert failures == []
+
+
+def test_build_settings_can_ignore_dotenv_files() -> None:
+    """Verify tests and CI can force environment-only preflight settings."""
+    args = prereqs._parse_args(["--ignore-env-file"])
+
+    settings = prereqs._build_settings(args)
+
+    assert isinstance(settings, Settings)
 
 
 def test_required_medical_source_failures_report_unknown_source() -> None:

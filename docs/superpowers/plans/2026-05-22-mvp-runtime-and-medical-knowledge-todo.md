@@ -188,7 +188,8 @@ python backend\scripts\smoke_ai_agent_server.py `
 - [x] source readiness가 missing key, draft source, expired review를 secret 없이
       구분한다.
 - [x] `backend/scripts/check_ai_agent_runtime_prereqs.py`가 runtime port와 함께
-      medical source readiness를 출력한다.
+      medical source readiness를 출력하고, 기본 실행에서 앱과 같은 `.env`
+      후보를 읽으며 `--env-file`/`--ignore-env-file`로 명시 제어할 수 있다.
 - [x] `--require-medical-sources` strict gate로 키 누락, 미검수 source, source id
       오타를 종료코드 실패로 판정한다.
 - [x] `--require-ollama` strict gate로 개발용 Ollama port와 configured model 존재를
@@ -222,6 +223,15 @@ cd C:\MyWorkspace\lemon_aid\ai-agent-backend-integration
 $env:KDCA_HEALTHINFO_API_KEY="<issued-kdca-key>"
 $env:MFDS_DATA_API_KEY="<issued-mfds-key-if-required>"
 python backend\scripts\check_ai_agent_runtime_prereqs.py `
+  --require-medical-sources kdca-healthinfo mfds-drug-safety
+```
+
+키를 repo root `.env` 또는 `backend/.env`에 넣어두었으면 위 `$env:` 줄은 생략해도 된다.
+별도 파일에 둔 경우에는 다음처럼 명시한다.
+
+```powershell
+python backend\scripts\check_ai_agent_runtime_prereqs.py `
+  --env-file C:\path\to\.env `
   --require-medical-sources kdca-healthinfo mfds-drug-safety
 ```
 

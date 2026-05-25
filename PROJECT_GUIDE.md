@@ -3014,7 +3014,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 | Android SDK | 미설치 | Android emulator build/run 검증 전 설치 필요 |
 | Docker/PostgreSQL/SGLang AI Agent live smoke | 완료 | 2026-05-25 Docker Desktop + `lemon-sglang` container 기준 `backend/scripts/smoke_ai_agent_server.py`로 PostgreSQL Alembic upgrade + FastAPI daily-coaching 2회 + chatbot 1회 + 로컬 SGLang 호출 + `agent_memory` 재주입 확인 |
 | AI Agent chatbot policy smoke | 완료 | unit/API 테스트와 2026-05-25 live smoke로 `/api/v1/ai-agent/chat`, SGLang provider 분기, `chat_used_tools`의 `agent_memory`, 약물·응급·자해 boundary, 민감 건강 동의 gate를 확인했다. Flutter web CORS smoke는 고정 포트 기준의 별도 UI smoke로 관리한다. |
-| Ollama live smoke | 실행 게이트 준비, live 미완료 | parser unit test와 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` strict gate는 준비됐다. 현재 `127.0.0.1:11434` Ollama server/model 호출은 `ollama=port_closed`로 미완료다. 운영 후보 SGLang 경로는 live 검증 완료, Ollama는 개발용 기본 런타임 확인 항목으로 남긴다. |
+| Ollama live smoke | 실행 게이트 준비, live 미완료 | parser unit test와 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama` strict gate는 준비됐다. preflight는 앱과 같은 기본 `.env` 후보를 읽고 `--env-file`/`--ignore-env-file`로 명시 제어할 수 있다. 현재 `127.0.0.1:11434` Ollama server/model 호출은 `ollama=port_closed`로 미완료다. 운영 후보 SGLang 경로는 live 검증 완료, Ollama는 개발용 기본 런타임 확인 항목으로 남긴다. |
 
 ### B.5 보안/개인정보 현재 판단
 
@@ -3030,7 +3030,7 @@ D5: docs/medical_review.md 의료자문위 질문 초안 + Android Health Connec
 1. Android Studio/Android SDK 설치 후 `mobile/flutter_app`의 Android emulator build/run을 확인한다.
 2. `taedong-design`의 루트 `mobile/` 앱을 canonical frontend로 옮길지, 현재 `mobile/flutter_app`을 통합 앱으로 유지할지 결정한다.
 3. result screen에 backend analysis/detail 요약을 확장하되, taedong mock data를 가져오지 않고 API client, confirmed payload 규칙, `ConfirmedEntryStore` handoff를 보존한다.
-4. `KDCA_HEALTHINFO_API_KEY`와 필요 시 `MFDS_DATA_API_KEY` 수령 후 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-medical-sources kdca-healthinfo mfds-drug-safety`로 `kdca-healthinfo`, `mfds-drug-safety` readiness를 종료코드까지 포함해 재확인한다.
+4. `KDCA_HEALTHINFO_API_KEY`와 필요 시 `MFDS_DATA_API_KEY` 수령 후 repo root `.env`, `backend/.env`, 실행 환경 또는 `--env-file`에 넣고 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-medical-sources kdca-healthinfo mfds-drug-safety`로 `kdca-healthinfo`, `mfds-drug-safety` readiness를 종료코드까지 포함해 재확인한다.
 5. Ollama 서버와 `OLLAMA_MODEL` 준비 후 `backend/scripts/check_ai_agent_runtime_prereqs.py --require-ollama`로 개발용 Ollama live readiness를 재확인한다.
 6. 여러 장 이미지 batch upload 계약을 설계한다: batch id, per-image validation, merged OCR text, user confirmation.
 7. 팀의 음식 인식 모델·영양성분 DB lookup이 준비되면 confirmed food flow에 계산 결과를 연결한다.

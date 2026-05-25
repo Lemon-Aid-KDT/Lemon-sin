@@ -106,9 +106,10 @@ RAG index, stale-source 자동 갱신은 아직 켜지지 않았다.
 
 API key 발급 후 첫 확인 순서:
 
-1. `.env` 또는 실행 환경에 `KDCA_HEALTHINFO_API_KEY`, `MFDS_DATA_API_KEY`,
+1. repo root `.env`, `backend/.env` 또는 실행 환경에 `KDCA_HEALTHINFO_API_KEY`, `MFDS_DATA_API_KEY`,
    필요 시 `SEMANTIC_SCHOLAR_API_KEY`를 설정한다.
 2. `python backend/scripts/check_ai_agent_runtime_prereqs.py`를 실행한다.
+   특정 dotenv 파일을 지정하려면 `--env-file path\to\.env`를 붙인다.
 3. `kdca-healthinfo`와 `mfds-drug-safety`는 `ok`가 되어야 한다.
 4. `semantic-scholar`는 key가 있어도 `not_reviewed`로 남는 것이 정상이다.
    이 source는 research backlog이며 사용자-facing 답변에 직접 쓰지 않는다.

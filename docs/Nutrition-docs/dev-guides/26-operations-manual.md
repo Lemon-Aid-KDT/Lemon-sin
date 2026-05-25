@@ -100,6 +100,9 @@ redis-cli -u $REDIS_URL ping
   - 이 스크립트는 `TEST_DATABASE_URL`의 host/port와 `SGLANG_BASE_URL`의 host/port를
     읽어 live smoke 대상 포트를 점검한다. 임시 PostgreSQL 포트가 5432가 아니어도
     실제 설정값 기준으로 판단한다.
+  - 기본 실행은 앱과 같은 설정 로딩을 사용하므로 repo root `.env`와 `backend/.env`를
+    읽는다. 특정 파일을 지정하려면 `--env-file path\to\.env`, CI처럼 dotenv를
+    무시하려면 `--ignore-env-file`을 사용한다.
   - medical source readiness도 함께 출력한다. `KDCA_HEALTHINFO_API_KEY`가 없으면
     `kdca-healthinfo`는 `missing_api_key`로 표시된다. `MFDS_DATA_API_KEY`가 없으면
     `mfds-drug-safety`도 `missing_api_key`로 표시된다. Semantic Scholar는 key가

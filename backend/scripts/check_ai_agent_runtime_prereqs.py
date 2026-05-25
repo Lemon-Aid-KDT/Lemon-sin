@@ -33,7 +33,7 @@ from src.services.medical_source_readiness import build_medical_source_readiness
 def main(argv: Sequence[str] | None = None) -> int:
     """Print local readiness for PostgreSQL and SGLang smoke tests."""
     args = _parse_args(argv)
-    settings = Settings(_env_file=None)
+    settings = _build_settings(args)
     postgres_host, postgres_port = _database_host_port(os.getenv("TEST_DATABASE_URL"))
     sglang_host, sglang_port = _http_host_port(
         os.getenv("SGLANG_BASE_URL", "http://127.0.0.1:30000/v1"),
@@ -110,6 +110,17 @@ def _parse_args(argv: Sequence[str] | None) -> Namespace:
         description="Check local AI Agent runtime and optional medical source gates."
     )
     parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help="Load settings from this dotenv file instead of the default project/backend .env files.",
+    )
+    parser.add_argument(
+        "--ignore-env-file",
+        action="store_true",
+        help="Ignore dotenv files and read settings only from the process environment.",
+    )
+    parser.add_argument(
         "--require-medical-sources",
         nargs="*",
         default=(),
@@ -125,6 +136,15 @@ def _parse_args(argv: Sequence[str] | None) -> Namespace:
         help="Fail if the configured local Ollama server or model is not available.",
     )
     return parser.parse_args(argv)
+
+
+def _build_settings(args: Namespace) -> Settings:
+    """Build runtime settings using the same dotenv behavior as the app by default."""
+    if args.ignore_env_file:
+        return Settings(_env_file=None)
+    if args.env_file is not None:
+        return Settings(_env_file=args.env_file)
+    return Settings()
 
 
 def _command_available(command: str) -> bool:
