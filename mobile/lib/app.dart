@@ -7,7 +7,7 @@ import 'app_controller.dart';
 import 'app_providers.dart';
 import 'core/config/app_config.dart';
 import 'features/auth/token_session.dart';
-import 'features/supplements/supplement_flow_screen.dart';
+import 'features/supplements/supplement_review_screen.dart';
 import 'features/supplements/supplement_repository.dart';
 import 'screens/camera_screen.dart' as source_camera;
 import 'screens/chat_screen.dart' as source_chat;
@@ -272,8 +272,16 @@ class _SupplementCameraBranch extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppController controller = ref.watch(appControllerProvider);
-    if (!controller.hasMinimumConsents || controller.analysisPreview != null) {
-      return SupplementFlowScreen(
+    if (!controller.hasMinimumConsents) {
+      return SupplementConsentGateScreen(
+        controller: controller,
+        onClose: () => context.go('/shell/home'),
+      );
+    }
+    if (controller.analysisPreview != null ||
+        controller.lastRegisteredSupplement != null ||
+        controller.supplementImpactPreview != null) {
+      return SupplementReviewScreen(
         controller: controller,
         onClose: () => context.go('/shell/home'),
       );

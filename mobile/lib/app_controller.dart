@@ -29,6 +29,7 @@ class AppController extends ChangeNotifier {
   UserSupplementResponse? _lastRegisteredSupplement;
   SupplementImpactPreviewResponse? _supplementImpactPreview;
   SupplementRecommendationExplainResponse? _supplementExplanation;
+  String? _lastRequestedOcrProvider;
 
   /// Whether a network operation is in progress.
   bool get busy => _busy;
@@ -59,6 +60,9 @@ class AppController extends ChangeNotifier {
   /// Latest safe supplement explanation.
   SupplementRecommendationExplainResponse? get supplementExplanation =>
       _supplementExplanation;
+
+  /// Most recent mobile-selected OCR provider for smoke-test diagnostics.
+  String? get lastRequestedOcrProvider => _lastRequestedOcrProvider;
 
   /// Whether the two P2 demo consents are granted.
   bool get hasMinimumConsents {
@@ -103,6 +107,7 @@ class AppController extends ChangeNotifier {
     String ocrProvider = 'configured',
   }) async {
     await _run(() async {
+      _lastRequestedOcrProvider = ocrProvider;
       _analysisPreview = await _repository.analyzeSupplementImage(
         imagePath,
         ocrProvider: ocrProvider,
@@ -197,6 +202,7 @@ class AppController extends ChangeNotifier {
     _lastRegisteredSupplement = null;
     _supplementImpactPreview = null;
     _supplementExplanation = null;
+    _lastRequestedOcrProvider = null;
     _apiError = null;
     _notice = null;
     notifyListeners();
