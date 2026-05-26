@@ -22,13 +22,33 @@ patterns.
 3. From `mobile/`, run the dev flavor against the Android emulator host alias:
 
 ```bash
-flutter run -d emulator-5554 --flavor dev \
+flutter run -d emulator-5560 --flavor dev \
   --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1
 ```
 
 `10.0.2.2` is the Android Emulator alias for the host loopback interface.
 The current app has Android product flavors, so `--flavor dev` is required for
 debug smoke runs.
+
+On this Mac, Docker can occupy the default emulator adb port pair `5554/5555`.
+If `emulator-5554` remains offline, start the AVD on port `5560` and run:
+
+```bash
+/opt/homebrew/share/android-commandlinetools/emulator/emulator \
+  -avd lemon_pixel_8_api_36 -port 5560
+./scripts/run-android-dev.sh
+```
+
+If the launcher shows duplicate Lemon Aid icons, remove the stale non-dev
+package from the emulator:
+
+```bash
+adb -s emulator-5560 uninstall com.example.lemon_aid_mobile
+```
+
+The dev package is `com.example.lemon_aid_mobile.dev`. Android does not always
+pin newly installed apps to the home screen; open the app drawer and drag the
+Lemon Aid icon to the home screen for the demo launcher layout.
 
 ## Provider Scenarios
 

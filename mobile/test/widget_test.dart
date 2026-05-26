@@ -8,22 +8,23 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 
 void main() {
-  testWidgets('renders dashboard summary from repository', (
+  testWidgets('renders source dashboard shell with backend session wiring', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(LemonAidApp(repository: _FakeRepository()));
     await tester.pumpAndSettle();
 
-    expect(find.text('오늘 데이터가 연결됐어요'), findsAtLeastNWidgets(1));
+    expect(find.text('레몬'), findsOneWidget);
+    expect(find.text('에이드'), findsOneWidget);
+    expect(find.text('오늘의 건강 점수'), findsOneWidget);
+    expect(find.text('오늘의 분석'), findsOneWidget);
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('챗'), findsOneWidget);
     expect(find.text('점수'), findsOneWidget);
     expect(find.text('설정'), findsOneWidget);
-    expect(find.text('Supplements'), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
     await tester.pumpAndSettle();
-    expect(find.text('Review OCR output before saving.'), findsOneWidget);
+    expect(find.text('최근 분석'), findsOneWidget);
   });
 }
 

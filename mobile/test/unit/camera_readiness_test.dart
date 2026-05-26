@@ -73,4 +73,45 @@ void main() {
     expect(snapshot.guidance, contains('MissingPlugin'));
     expect(snapshot.guidance, isNot(contains('camera channel unavailable')));
   });
+
+  test(
+    'allows Android direct capture attempt when camera probe times out',
+    () async {
+      final CameraReadinessProbe probe = CameraReadinessProbe(
+        platform: TargetPlatform.android,
+        timeout: const Duration(milliseconds: 1),
+        loader: () async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return const <camera.CameraDescription>[];
+        },
+      );
+
+      final CameraReadinessSnapshot snapshot = await probe.check();
+
+      expect(snapshot.kind, CameraReadinessKind.ready);
+      expect(snapshot.canOpenCamera, isTrue);
+      expect(snapshot.errorCode, 'CameraProbeTimeout');
+    },
+  );
+
+  test(
+    'uses gallery fallback when non-Android camera probe times out',
+    () async {
+      final CameraReadinessProbe probe = CameraReadinessProbe(
+        platform: TargetPlatform.iOS,
+        timeout: const Duration(milliseconds: 1),
+        loader: () async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return const <camera.CameraDescription>[];
+        },
+      );
+
+      final CameraReadinessSnapshot snapshot = await probe.check();
+
+      expect(snapshot.kind, CameraReadinessKind.error);
+      expect(snapshot.canOpenCamera, isFalse);
+      expect(snapshot.preferGalleryFallback, isTrue);
+      expect(snapshot.errorCode, 'CameraProbeTimeout');
+    },
+  );
 }

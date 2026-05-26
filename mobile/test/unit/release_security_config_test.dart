@@ -29,6 +29,17 @@ void main() {
     );
   });
 
+  test('Android manifest keeps camera optional for emulator installs', () {
+    final String manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
+
+    expect(manifest, contains('android.permission.CAMERA'));
+    expect(manifest, contains('android.permission.READ_MEDIA_IMAGES'));
+    expect(manifest, contains('android.hardware.camera'));
+    expect(manifest, contains('android:required="false"'));
+  });
+
   test('iOS ATS explicitly keeps arbitrary loads disabled', () {
     final String infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
     final int atsIndex = infoPlist.indexOf('<key>NSAppTransportSecurity</key>');

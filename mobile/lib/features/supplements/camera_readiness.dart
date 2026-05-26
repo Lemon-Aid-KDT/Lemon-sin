@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -121,7 +123,8 @@ class CameraReadinessSnapshot {
   /// Whether gallery fallback is the expected test path for this runtime.
   bool get preferGalleryFallback {
     return kind == CameraReadinessKind.unavailable ||
-        kind == CameraReadinessKind.permissionDenied;
+        kind == CameraReadinessKind.permissionDenied ||
+        kind == CameraReadinessKind.error;
   }
 
   /// User-safe short platform label.
@@ -196,6 +199,28 @@ class CameraReadinessSnapshot {
     }
     return null;
   }
+
+  /// Creates a bounded fallback when the platform camera probe hangs.
+  ///
+  /// Args:
+  ///   platform: Flutter target platform being evaluated.
+  ///
+  /// Returns:
+  ///   Android is allowed to try direct capture because the emulator camera
+  ///   controller can still initialize after a slow list probe. Other platforms
+  ///   fall back to gallery-first behavior.
+  factory CameraReadinessSnapshot.fromProbeTimeout({
+    required TargetPlatform platform,
+  }) {
+    return CameraReadinessSnapshot(
+      kind: platform == TargetPlatform.android
+          ? CameraReadinessKind.ready
+          : CameraReadinessKind.error,
+      platform: platform,
+      cameraCount: 0,
+      errorCode: 'CameraProbeTimeout',
+    );
+  }
 }
 
 /// Probes camera availability without exposing image data or provider payloads.
@@ -208,10 +233,13 @@ class CameraReadinessProbe {
   const CameraReadinessProbe({
     CameraListLoader? loader,
     TargetPlatform? platform,
+    Duration timeout = const Duration(seconds: 4),
   }) : _loader = loader ?? camera.availableCameras,
+       _timeout = timeout,
        _platform = platform;
 
   final CameraListLoader _loader;
+  final Duration _timeout;
   final TargetPlatform? _platform;
 
   /// Checks camera availability for the current Flutter runtime.
@@ -221,11 +249,15 @@ class CameraReadinessProbe {
   Future<CameraReadinessSnapshot> check() async {
     final TargetPlatform platform = _platform ?? defaultTargetPlatform;
     try {
-      final List<camera.CameraDescription> cameras = await _loader();
+      final List<camera.CameraDescription> cameras = await _loader().timeout(
+        _timeout,
+      );
       return CameraReadinessSnapshot.fromCameras(
         platform: platform,
         cameras: cameras,
       );
+    } on TimeoutException {
+      return CameraReadinessSnapshot.fromProbeTimeout(platform: platform);
     } catch (error) {
       return CameraReadinessSnapshot.fromError(
         platform: platform,
