@@ -163,37 +163,43 @@ class _BottomBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 72,
+          height: 92,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
             children: [
               // 4 일반 탭 (좌 2 + 우 2) — Row 로 균등 분배
-              Row(
-                children: [
-                  for (final t in leftTabs)
-                    Expanded(
-                      child: _TabItem(
-                        spec: t,
-                        active: t.branchIndex == currentIndex,
-                        onTap: () => onTabTap(t.branchIndex),
-                      ),
-                    ),
-                  // 중앙 공간 (FAB 자리)
-                  const Expanded(child: SizedBox.shrink()),
-                  for (final t in rightTabs)
-                    Expanded(
-                      child: _TabItem(
-                        spec: t,
-                        active: t.branchIndex == currentIndex,
-                        onTap: () => onTabTap(t.branchIndex),
-                      ),
-                    ),
-                ],
-              ),
-              // 중앙 카메라 FAB — 탭바 위로 20dp 떠있음 (64px 크기 비율)
               Positioned(
-                top: -20,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 72,
+                child: Row(
+                  children: [
+                    for (final t in leftTabs)
+                      Expanded(
+                        child: _TabItem(
+                          spec: t,
+                          active: t.branchIndex == currentIndex,
+                          onTap: () => onTabTap(t.branchIndex),
+                        ),
+                      ),
+                    // 중앙 공간 (FAB 자리)
+                    const Expanded(child: SizedBox.shrink()),
+                    for (final t in rightTabs)
+                      Expanded(
+                        child: _TabItem(
+                          spec: t,
+                          active: t.branchIndex == currentIndex,
+                          onTap: () => onTabTap(t.branchIndex),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // 중앙 카메라 FAB — 시각적으로 떠 있는 영역까지 hit-test 안에 포함.
+              Positioned(
+                top: 0,
                 child: _CameraFab(active: cameraActive, onTap: onCameraTap),
               ),
             ],
@@ -266,6 +272,7 @@ class _CameraFab extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,

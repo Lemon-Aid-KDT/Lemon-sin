@@ -12,6 +12,7 @@
 //
 // 권한 (AndroidManifest / iOS Info.plist) 박혀있어야 함 — 이미 박혔음
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -26,6 +27,10 @@ import '../utils/design_tokens_v2.dart';
 import '../utils/device_env.dart';
 
 enum _CaptureMode { supplement, meal }
+
+const bool _enableEmulatorLiveCamera = bool.fromEnvironment(
+  'LEMON_ENABLE_EMULATOR_LIVE_CAMERA',
+);
 
 // ═══════════════════════════════════════════
 // 카메라 화면 UI 톤 — LADS Flat 2.0 + Soft UI.
@@ -56,12 +61,16 @@ class CameraScreen extends StatefulWidget {
   const CameraScreen({
     required this.onAnalyzeSupplementImage,
     this.initialMode = 'supplement',
+    this.imagePicker,
     this.onClose,
     super.key,
   });
 
   /// Initial capture mode selected from the quick action palette.
   final String initialMode;
+
+  /// Optional image picker override used by widget tests.
+  final ImagePicker? imagePicker;
 
   /// Sends a supplement image to the backend OCR analysis endpoint.
   final Future<void> Function(String imagePath, {required String ocrProvider})
@@ -80,15 +89,15 @@ class _CameraScreenState extends State<CameraScreen>
   File? _captured;
   bool _picking = false;
   String _ocrProvider = 'configured';
+  bool _lostDataChecked = false;
 
   // ─── 카메라 컨트롤러 ───
   CameraController? _controller;
   List<CameraDescription>? _cameras;
   bool _initializing = true;
   String? _initError;
-  // 카메라 방향 — 실기기는 후면, 에뮬레이터는 Mac webcam 가능성이 높은 전면 우선.
+  // 카메라 방향 — 영양제 라벨 촬영은 후면을 우선한다.
   CameraLensDirection _lens = CameraLensDirection.back;
-  bool _userSelectedLens = false;
   // 에뮬 여부 — 카메라 영상 정렬 보정용
   bool _isEmulator = false;
 
@@ -99,18 +108,11 @@ class _CameraScreenState extends State<CameraScreen>
         ? _CaptureMode.meal
         : _CaptureMode.supplement;
     WidgetsBinding.instance.addObserver(this);
-    // 동기 캐시 먼저 (warmUp 됐으면 즉시 반영)
     _isEmulator = DeviceEnv.isEmulatorSync;
-    // 비동기 한 번 더 확정 (warmUp 늦었어도 잡힘)
-    DeviceEnv.isEmulator.then((v) {
-      if (mounted && _isEmulator != v) {
-        setState(() => _isEmulator = v);
-        if (v && !_userSelectedLens && _captured == null) {
-          _restartCamera();
-        }
-      }
+    _startCameraAfterDeviceProbe();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _recoverLostGalleryPick();
     });
-    _initCamera();
   }
 
   @override
@@ -151,6 +153,15 @@ class _CameraScreenState extends State<CameraScreen>
 
   bool _initInFlight = false;
 
+  Future<void> _startCameraAfterDeviceProbe() async {
+    final bool isEmulator = await DeviceEnv.isEmulator;
+    if (!mounted) return;
+    if (_isEmulator != isEmulator) {
+      setState(() => _isEmulator = isEmulator);
+    }
+    await _initCamera();
+  }
+
   Future<void> _initCamera() async {
     // 동시 진입 방지
     if (_initInFlight) return;
@@ -170,6 +181,16 @@ class _CameraScreenState extends State<CameraScreen>
       });
     }
     try {
+      if (_isEmulator && !_enableEmulatorLiveCamera) {
+        if (mounted) {
+          setState(() {
+            _initError =
+                'Android 에뮬레이터 라이브 카메라는 현재 안정화 전이에요.\n갤러리로 OCR을 테스트해주세요.';
+            _initializing = false;
+          });
+        }
+        return;
+      }
       _cameras ??= await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
         if (mounted) {
@@ -181,13 +202,16 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
       final cam = _selectCamera(_cameras!);
+      final resolution = _isEmulator
+          ? ResolutionPreset.low
+          : ResolutionPreset.high;
       final controller = CameraController(
         cam,
-        ResolutionPreset.high,
+        resolution,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
-      await controller.initialize();
+      await controller.initialize().timeout(const Duration(seconds: 8));
       if (!mounted) {
         await controller.dispose();
         return;
@@ -198,6 +222,13 @@ class _CameraScreenState extends State<CameraScreen>
         _initializing = false;
         _initError = null;
       });
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _initError = '카메라 응답이 지연되고 있어요.\n갤러리로 OCR을 테스트해주세요.';
+          _initializing = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -216,28 +247,13 @@ class _CameraScreenState extends State<CameraScreen>
     await c?.dispose();
   }
 
-  Future<void> _restartCamera() async {
-    await _disposeCamera();
-    if (!mounted) return;
-    setState(() {
-      _initializing = true;
-      _initError = null;
-    });
-    await _initCamera();
-  }
-
   CameraDescription _selectCamera(List<CameraDescription> cameras) {
-    final CameraLensDirection preferredLens = _isEmulator && !_userSelectedLens
-        ? CameraLensDirection.front
-        : _lens;
+    final CameraLensDirection preferredLens = _lens;
     return cameras.firstWhere(
       (CameraDescription c) => c.lensDirection == preferredLens,
       orElse: () => cameras.firstWhere(
-        (CameraDescription c) => c.lensDirection == _lens,
-        orElse: () => cameras.firstWhere(
-          (CameraDescription c) => c.lensDirection == CameraLensDirection.back,
-          orElse: () => cameras.first,
-        ),
+        (CameraDescription c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
       ),
     );
   }
@@ -277,7 +293,6 @@ class _CameraScreenState extends State<CameraScreen>
     if (!mounted) return;
     setState(() {
       _lens = next;
-      _userSelectedLens = true;
       _initializing = true;
       _initError = null;
     });
@@ -289,20 +304,24 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _picking = true);
     HapticFeedback.lightImpact();
     try {
-      final picker = ImagePicker();
+      final picker = widget.imagePicker ?? ImagePicker();
       final XFile? file = await picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1600,
-        imageQuality: 88,
+        maxWidth: 2400,
+        imageQuality: 95,
+        requestFullMetadata: false,
       );
       if (file != null && mounted) {
-        setState(() => _captured = File(file.path));
+        final File cached = await _copyPickedImageToCache(file);
+        if (mounted) {
+          setState(() => _captured = cached);
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('갤러리를 못 열었어요 · ${e.toString()}'),
+          const SnackBar(
+            content: Text('갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.'),
             backgroundColor: AppColor.danger,
           ),
         );
@@ -310,6 +329,79 @@ class _CameraScreenState extends State<CameraScreen>
     } finally {
       if (mounted) setState(() => _picking = false);
     }
+  }
+
+  Future<void> _recoverLostGalleryPick() async {
+    if (_lostDataChecked) return;
+    _lostDataChecked = true;
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      final LostDataResponse response =
+          await (widget.imagePicker ?? ImagePicker()).retrieveLostData();
+      final List<XFile>? files = response.files;
+      final XFile? file = files != null && files.isNotEmpty
+          ? files.first
+          : response.file;
+      if (!mounted || response.isEmpty || file == null) return;
+      final File cached = await _copyPickedImageToCache(file);
+      if (mounted && _captured == null) {
+        setState(() => _captured = cached);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('이전 갤러리 선택을 복구하지 못했어요. 다시 선택해주세요.'),
+            backgroundColor: AppColor.ink,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<File> _copyPickedImageToCache(XFile file) async {
+    Uint8List? bytes;
+    if (file.path.isNotEmpty) {
+      final File sourceFile = File(file.path);
+      if (sourceFile.existsSync() && sourceFile.lengthSync() > 0) {
+        bytes = sourceFile.readAsBytesSync();
+      }
+    }
+    bytes ??= await file.readAsBytes();
+    if (bytes.isEmpty) {
+      throw const FormatException('empty image');
+    }
+    final String extension = _imageExtension(file.name).isNotEmpty
+        ? _imageExtension(file.name)
+        : _imageExtension(file.path);
+    final String safeExtension = extension.isEmpty ? '.jpg' : extension;
+    final String outputPath =
+        '${Directory.systemTemp.path}/lemon_aid_ocr_${DateTime.now().microsecondsSinceEpoch}$safeExtension';
+    final File output = File(outputPath);
+    output.writeAsBytesSync(bytes, flush: true);
+    final int copiedLength = output.lengthSync();
+    if (copiedLength == 0) {
+      throw const FormatException('empty copied image');
+    }
+    return output;
+  }
+
+  String _imageExtension(String value) {
+    final String lower = value.toLowerCase();
+    for (final String extension in <String>[
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.heic',
+    ]) {
+      if (lower.endsWith(extension)) {
+        return extension == '.jpeg' ? '.jpg' : extension;
+      }
+    }
+    return '';
   }
 
   void _retake() {
@@ -320,6 +412,18 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _analyze() async {
     final File? captured = _captured;
     if (captured == null || _picking) return;
+    if (!await captured.exists() || await captured.length() == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('선택한 이미지 파일이 비어 있어요. 다시 촬영하거나 선택해주세요.'),
+            backgroundColor: AppColor.danger,
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     HapticFeedback.mediumImpact();
     if (_mode == _CaptureMode.meal) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -450,61 +554,80 @@ class _CameraScreenState extends State<CameraScreen>
 
   // ─── 미리보기 (촬영 후) ───
   Widget _buildPreview() {
-    return Column(
-      children: [
-        _TopBar(
-          mode: _mode,
-          title: '미리보기',
-          onClose: _retake,
-          closeIcon: Icons.arrow_back_rounded,
-        ),
-        const SizedBox(height: AppSpace.md),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              child: Image.file(
-                _captured!,
-                fit: BoxFit.cover,
-                width: double.infinity,
+    return SafeArea(
+      child: Column(
+        children: [
+          _TopBar(
+            mode: _mode,
+            title: '미리보기',
+            onClose: _retake,
+            closeIcon: Icons.arrow_back_rounded,
+          ),
+          const SizedBox(height: AppSpace.md),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                child: Image.file(
+                  _captured!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: AppColor.ink,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.all(AppSpace.lg),
+                      child: const Text(
+                        '이미지 미리보기를 열 수 없어요.\n다시 촬영하거나 다른 사진을 선택해주세요.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          height: 1.45,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
-        ),
-        if (!kReleaseMode) ...[
+          if (!kReleaseMode) ...[
+            const SizedBox(height: AppSpace.md),
+            _DebugOcrProviderSelector(
+              value: _ocrProvider,
+              enabled: !_picking,
+              onChanged: (value) => setState(() => _ocrProvider = value),
+            ),
+          ],
           const SizedBox(height: AppSpace.md),
-          _DebugOcrProviderSelector(
-            value: _ocrProvider,
-            enabled: !_picking,
-            onChanged: (value) => setState(() => _ocrProvider = value),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _GhostButton(
+                    label: '다시 촬영',
+                    icon: Icons.refresh_rounded,
+                    onTap: _retake,
+                  ),
+                ),
+                const SizedBox(width: AppSpace.sm),
+                Expanded(
+                  flex: 2,
+                  child: _PrimaryButton(
+                    label: _picking ? '분석 중' : '분석하기',
+                    onTap: _analyze,
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: AppSpace.md),
         ],
-        const SizedBox(height: AppSpace.lg),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
-          child: Row(
-            children: [
-              Expanded(
-                child: _GhostButton(
-                  label: '다시 촬영',
-                  icon: Icons.refresh_rounded,
-                  onTap: _retake,
-                ),
-              ),
-              const SizedBox(width: AppSpace.sm),
-              Expanded(
-                flex: 2,
-                child: _PrimaryButton(
-                  label: _picking ? '분석 중' : '분석하기',
-                  onTap: _analyze,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpace.lg),
-      ],
+      ),
     );
   }
 }

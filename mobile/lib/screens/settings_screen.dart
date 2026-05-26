@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
 import '../features/auth/token_session.dart';
-import '../features/consent/consent_gate_screen.dart';
+import '../features/consent/consent_models.dart';
 import '../utils/design_tokens_v2.dart';
 
 /// Source-style settings screen wired to the current auth and consent state.
@@ -40,6 +40,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool ocrConsentGranted =
+        widget.controller.consentState?.isGranted(AppController.ocrConsent) ??
+        false;
+    final bool healthConsentGranted =
+        widget.controller.consentState?.isGranted(
+          AppController.healthConsent,
+        ) ??
+        false;
+
     return Scaffold(
       backgroundColor: AppColor.section,
       body: Column(
@@ -121,15 +130,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               : '외부 JWT 토큰 저장됨',
                         ),
                         const _SettingsDivider(),
-                        const _SettingsRow(
+                        _SettingsRow(
                           icon: Icons.shield_rounded,
-                          iconBg: Color(0xFFEDEFF3),
-                          iconColor: AppColor.inkSecondary,
+                          iconBg: ocrConsentGranted && healthConsentGranted
+                              ? AppColor.successSoft
+                              : AppColor.warningSoft,
+                          iconColor: ocrConsentGranted && healthConsentGranted
+                              ? AppColor.success
+                              : AppColor.warning,
                           title: '동의 관리',
-                          subtitle: 'OCR 이미지 · 민감 건강 분석',
+                          subtitle: ocrConsentGranted && healthConsentGranted
+                              ? 'OCR 이미지 · 민감 건강 분석 동의 완료'
+                              : 'OCR 이미지 · 민감 건강 분석 동의 필요',
                         ),
                         const SizedBox(height: AppSpace.md),
-                        ConsentGateScreen(controller: widget.controller),
+                        _ConsentStatusCard(
+                          consentState: widget.controller.consentState,
+                          busy: widget.controller.busy,
+                          onGrant: widget.controller.grantMinimumConsents,
+                          onReload: widget.controller.bootstrap,
+                        ),
                         const SizedBox(height: AppSpace.md),
                         _TokenAccessCard(
                           controller: _tokenController,
@@ -141,6 +161,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               : widget.session.clearBearerToken,
                         ),
                       ],
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    const _SectionLabel('OCR 테스트'),
+                    const _SettingsCard(
+                      children: [
+                        _SettingsRow(
+                          icon: Icons.camera_alt_rounded,
+                          iconBg: AppColor.brandSoft,
+                          iconColor: AppColor.brandDeep,
+                          title: '촬영 환경',
+                          subtitle: '에뮬레이터 라이브 카메라는 안정화 전까지 갤러리 사용',
+                        ),
+                        _SettingsDivider(),
+                        _SettingsRow(
+                          icon: Icons.photo_library_rounded,
+                          iconBg: AppColor.successSoft,
+                          iconColor: AppColor.success,
+                          title: '갤러리 입력',
+                          subtitle: '선택 이미지는 앱 캐시에 복사 후 OCR 업로드',
+                        ),
+                        _SettingsDivider(),
+                        _SettingsRow(
+                          icon: Icons.psychology_rounded,
+                          iconBg: AppColor.warningSoft,
+                          iconColor: AppColor.warning,
+                          title: '로컬 LLM 설명',
+                          subtitle: 'Ollama 사용 여부는 백엔드 설정을 따름',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    const _SectionLabel('안내'),
+                    const _SettingsCard(
+                      children: [
+                        _SettingsRow(
+                          icon: Icons.info_outline_rounded,
+                          iconBg: Color(0xFFEDEFF3),
+                          iconColor: AppColor.inkSecondary,
+                          title: '서비스 정보',
+                          subtitle: '의료 판단 전 전문 의료진 상담 필요',
+                        ),
+                        _SettingsDivider(),
+                        _SettingsRow(
+                          icon: Icons.download_rounded,
+                          iconBg: Color(0xFFEDEFF3),
+                          iconColor: AppColor.inkSecondary,
+                          title: '데이터 내보내기',
+                          subtitle: '민감정보 export는 별도 승인 후 연결',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    Center(
+                      child: Text(
+                        'v1.0.0 · Lemon Aid',
+                        style: AppText.caption.copyWith(
+                          color: AppColor.inkTertiary,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -165,6 +246,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _tokenError = '토큰을 입력해주세요.';
       });
     }
+  }
+}
+
+class _ConsentStatusCard extends StatelessWidget {
+  const _ConsentStatusCard({
+    required this.consentState,
+    required this.busy,
+    required this.onGrant,
+    required this.onReload,
+  });
+
+  final ConsentState? consentState;
+  final bool busy;
+  final Future<void> Function() onGrant;
+  final Future<void> Function() onReload;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool ocrGranted =
+        consentState?.isGranted(AppController.ocrConsent) ?? false;
+    final bool healthGranted =
+        consentState?.isGranted(AppController.healthConsent) ?? false;
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.md),
+      decoration: BoxDecoration(
+        color: AppColor.sunken,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '필수 동의 상태',
+            style: AppText.caption.copyWith(
+              color: AppColor.ink,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          _ConsentPill(label: 'OCR 이미지 처리', granted: ocrGranted),
+          const SizedBox(height: AppSpace.xs),
+          _ConsentPill(label: '민감 건강 분석', granted: healthGranted),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy ? null : onGrant,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColor.brand,
+                    foregroundColor: AppColor.ink,
+                  ),
+                  child: const Text('필수 동의 허용'),
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              OutlinedButton(
+                onPressed: busy ? null : onReload,
+                child: const Text('새로고침'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConsentPill extends StatelessWidget {
+  const _ConsentPill({required this.label, required this.granted});
+
+  final String label;
+  final bool granted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          granted
+              ? Icons.check_circle_rounded
+              : Icons.radio_button_unchecked_rounded,
+          color: granted ? AppColor.success : AppColor.inkTertiary,
+          size: 18,
+        ),
+        const SizedBox(width: AppSpace.xs),
+        Expanded(
+          child: Text(
+            label,
+            style: AppText.caption.copyWith(
+              color: AppColor.ink,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+        Text(
+          granted ? '허용됨' : '필요',
+          style: AppText.micro.copyWith(
+            color: granted ? AppColor.success : AppColor.inkTertiary,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
+        ),
+      ],
+    );
   }
 }
 

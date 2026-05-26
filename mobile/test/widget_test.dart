@@ -59,6 +59,36 @@ void main() {
 
     expect(find.text('음식이 테두리 안에 들어오게 맞춰주세요'), findsOneWidget);
   });
+
+  testWidgets('settings tab renders account consent and OCR test sections', (
+    WidgetTester tester,
+  ) async {
+    await _pumpReadyShell(tester);
+
+    await tester.tap(find.text('설정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('내 건강'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('필수 동의 상태'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('필수 동의 상태'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('OCR 테스트'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('OCR 테스트'), findsOneWidget);
+    expect(find.text('갤러리 입력'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('API access'),
+      -300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('API access'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpReadyShell(WidgetTester tester) async {
