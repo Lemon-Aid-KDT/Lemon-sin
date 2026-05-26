@@ -7,13 +7,15 @@ import 'app_controller.dart';
 import 'app_providers.dart';
 import 'core/config/app_config.dart';
 import 'features/auth/token_session.dart';
-import 'features/supplements/supplement_review_screen.dart';
+import 'features/consent/consent_gate_screen.dart';
 import 'features/supplements/supplement_repository.dart';
+import 'screens/analysis_result_screen.dart' as source_analysis;
 import 'screens/camera_screen.dart' as source_camera;
 import 'screens/chat_screen.dart' as source_chat;
 import 'screens/dashboard_screen.dart' as source_dashboard;
 import 'screens/score_screen.dart' as source_score;
 import 'screens/settings_screen.dart' as source_settings;
+import 'screens/splash_screen.dart' as source_splash;
 import 'shared/theme/lemon_design_tokens.dart';
 import 'shared/widgets/error_panel.dart';
 import 'widgets/common/main_shell.dart';
@@ -80,7 +82,7 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
       GoRoute(
         path: '/splash',
         builder: (BuildContext context, GoRouterState state) {
-          return const _SplashScreen();
+          return const source_splash.SplashScreen();
         },
       ),
       GoRoute(
@@ -130,10 +132,20 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                   GoRoute(
                     path: 'analysis-result',
                     builder: (BuildContext context, GoRouterState state) {
-                      return const _NeutralBranch(
-                        icon: Icons.insights_rounded,
-                        title: '분석 결과',
-                        message: '식단 분석 결과 화면은 실제 endpoint 확정 후 연결합니다.',
+                      final String mode =
+                          state.uri.queryParameters['mode'] ?? 'supplement';
+                      return Consumer(
+                        builder:
+                            (
+                              BuildContext context,
+                              WidgetRef ref,
+                              Widget? child,
+                            ) {
+                              return source_analysis.AnalysisResultScreen(
+                                mode: mode,
+                                controller: ref.watch(appControllerProvider),
+                              );
+                            },
                       );
                     },
                   ),
@@ -146,7 +158,10 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
               GoRoute(
                 path: '/shell/camera',
                 builder: (BuildContext context, GoRouterState state) {
-                  return const _SupplementCameraBranch();
+                  return _SupplementCameraBranch(
+                    initialMode:
+                        state.uri.queryParameters['mode'] ?? 'supplement',
+                  );
                 },
               ),
             ],
@@ -197,18 +212,6 @@ class _LemonAidRouterApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: buildLemonAidTheme(),
       routerConfig: ref.watch(_routerProvider),
-    );
-  }
-}
-
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: LemonColors.canvas,
-      child: Center(child: CircularProgressIndicator(color: LemonColors.leaf)),
     );
   }
 }
@@ -267,30 +270,27 @@ class _LemonAidShell extends ConsumerWidget {
 }
 
 class _SupplementCameraBranch extends ConsumerWidget {
-  const _SupplementCameraBranch();
+  const _SupplementCameraBranch({required this.initialMode});
+
+  final String initialMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppController controller = ref.watch(appControllerProvider);
     if (!controller.hasMinimumConsents) {
-      return SupplementConsentGateScreen(
-        controller: controller,
-        onClose: () => context.go('/shell/home'),
-      );
-    }
-    if (controller.analysisPreview != null ||
-        controller.lastRegisteredSupplement != null ||
-        controller.supplementImpactPreview != null) {
-      return SupplementReviewScreen(
-        controller: controller,
-        onClose: () => context.go('/shell/home'),
-      );
+      return ConsentGateScreen(controller: controller);
     }
     return source_camera.CameraScreen(
+      initialMode: initialMode,
       onClose: () => context.go('/shell/home'),
       onAnalyzeSupplementImage:
-          (String imagePath, {required String ocrProvider}) {
-            return controller.analyzeImage(imagePath, ocrProvider: ocrProvider);
+          (String imagePath, {required String ocrProvider}) async {
+            await controller.analyzeImage(imagePath, ocrProvider: ocrProvider);
+            if (!context.mounted) return;
+            if (controller.analysisPreview != null &&
+                controller.apiError == null) {
+              context.go('/shell/home/analysis-result?mode=supplement');
+            }
           },
     );
   }

@@ -5,34 +5,36 @@ import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
-import 'package:lemon_aid_mobile/features/supplements/supplement_review_screen.dart';
+import 'package:lemon_aid_mobile/screens/analysis_result_screen.dart';
 
 void main() {
-  testWidgets(
-    'renders source-styled OCR review instead of legacy progress UI',
-    (WidgetTester tester) async {
-      final AppController controller = AppController(
-        repository: _ReviewRepository(),
-      );
-      await controller.analyzeImage('/tmp/supplement-label.jpg');
+  testWidgets('renders source-style analysis result with real pipeline data', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _ReviewRepository(),
+    );
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(home: SupplementReviewScreen(controller: controller)),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('영양제 분석'), findsOneWidget);
-      expect(find.text('분석 상태'), findsOneWidget);
-      expect(find.textContaining('OCR: paddleocr_local'), findsOneWidget);
-      expect(find.textContaining('YOLO ROI: on'), findsOneWidget);
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
-      await tester.pumpAndSettle();
-      expect(find.text('성분 확인'), findsOneWidget);
-      expect(find.text('확인 후 저장'), findsOneWidget);
-      expect(find.text('Analysis progress'), findsNothing);
-      expect(find.textContaining('OCR Auto'), findsNothing);
-    },
-  );
+    expect(find.text('영양제 분석'), findsOneWidget);
+    expect(find.text('성분 후보 1개를 찾았어요'), findsOneWidget);
+    expect(find.text('OCR'), findsOneWidget);
+    expect(find.text('paddleocr_local'), findsOneWidget);
+    expect(find.text('YOLO ROI'), findsOneWidget);
+    expect(find.text('on'), findsOneWidget);
+    expect(find.text('Ollama'), findsOneWidget);
+    expect(find.text('parser on'), findsOneWidget);
+    expect(find.text('Analysis progress'), findsNothing);
+    expect(find.textContaining('OCR Auto'), findsNothing);
+  });
 }
 
 class _ReviewRepository implements LemonAidRepository {

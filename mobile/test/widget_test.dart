@@ -12,6 +12,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(LemonAidApp(repository: _FakeRepository()));
+    await tester.pump(const Duration(seconds: 6));
     await tester.pumpAndSettle();
 
     expect(find.text('레몬'), findsOneWidget);
@@ -22,6 +23,14 @@ void main() {
     expect(find.text('챗'), findsOneWidget);
     expect(find.text('점수'), findsOneWidget);
     expect(find.text('설정'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    await tester.pumpAndSettle();
+    expect(find.text('영양제 촬영'), findsOneWidget);
+    expect(find.text('식단 촬영'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
     await tester.pumpAndSettle();
     expect(find.text('최근 분석'), findsOneWidget);

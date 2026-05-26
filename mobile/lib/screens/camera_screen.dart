@@ -55,9 +55,13 @@ class CameraScreen extends StatefulWidget {
   ///   onClose: Optional callback used by the app shell to return home.
   const CameraScreen({
     required this.onAnalyzeSupplementImage,
+    this.initialMode = 'supplement',
     this.onClose,
     super.key,
   });
+
+  /// Initial capture mode selected from the quick action palette.
+  final String initialMode;
 
   /// Sends a supplement image to the backend OCR analysis endpoint.
   final Future<void> Function(String imagePath, {required String ocrProvider})
@@ -72,7 +76,7 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen>
     with WidgetsBindingObserver {
-  _CaptureMode _mode = _CaptureMode.supplement;
+  late _CaptureMode _mode;
   File? _captured;
   bool _picking = false;
   String _ocrProvider = 'configured';
@@ -91,6 +95,9 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void initState() {
     super.initState();
+    _mode = widget.initialMode == 'meal'
+        ? _CaptureMode.meal
+        : _CaptureMode.supplement;
     WidgetsBinding.instance.addObserver(this);
     // 동기 캐시 먼저 (warmUp 됐으면 즉시 반영)
     _isEmulator = DeviceEnv.isEmulatorSync;
@@ -101,6 +108,16 @@ class _CameraScreenState extends State<CameraScreen>
       }
     });
     _initCamera();
+  }
+
+  @override
+  void didUpdateWidget(covariant CameraScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialMode != widget.initialMode && _captured == null) {
+      _mode = widget.initialMode == 'meal'
+          ? _CaptureMode.meal
+          : _CaptureMode.supplement;
+    }
   }
 
   @override

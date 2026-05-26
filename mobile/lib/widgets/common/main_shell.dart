@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../utils/design_tokens_v2.dart';
+import 'quick_action_palette.dart';
 
 class MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -66,10 +67,28 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  // 중앙 FAB — OCR smoke를 위해 촬영 화면으로 바로 진입한다.
+  // 중앙 FAB — 빠른 액션 팔레트 5개 펼침.
   void _openActionPalette() {
     HapticFeedback.mediumImpact();
-    _goBranch(_cameraBranchIndex);
+    showQuickActionPalette(
+      context,
+      onAction: (QuickAction action) {
+        switch (action) {
+          case QuickAction.supplementShot:
+            context.go('/shell/camera?mode=supplement');
+            break;
+          case QuickAction.mealShot:
+            context.go('/shell/camera?mode=meal');
+            break;
+          case QuickAction.medication:
+            context.push('/shell/home/calendar');
+            break;
+          case QuickAction.water:
+          case QuickAction.manualInput:
+            break;
+        }
+      },
+    );
   }
 
   @override
