@@ -68,28 +68,37 @@ const List<_ActionSpec> _kActions = [
   ),
 ];
 
+const Duration _kPaletteTransitionDuration = Duration(milliseconds: 420);
+
 /// 팔레트를 오버레이로 띄운다. 액션 선택 시 [onAction] 호출 후 닫힘.
 Future<void> showQuickActionPalette(
   BuildContext context, {
   required ValueChanged<QuickAction> onAction,
-}) {
-  return showGeneralDialog(
+}) async {
+  final QuickAction? selected = await showGeneralDialog<QuickAction>(
     context: context,
     barrierDismissible: true,
     barrierLabel: '닫기',
     barrierColor: Colors.black.withValues(alpha: 0.58),
-    transitionDuration: const Duration(milliseconds: 420),
+    transitionDuration: _kPaletteTransitionDuration,
     pageBuilder: (_, _, _) => const SizedBox.shrink(),
     transitionBuilder: (_, anim, _, _) {
-      return _QuickActionPalette(progress: anim, onAction: onAction);
+      return _QuickActionPalette(progress: anim);
     },
   );
+  if (!context.mounted || selected == null) {
+    return;
+  }
+  await Future<void>.delayed(_kPaletteTransitionDuration);
+  if (!context.mounted) {
+    return;
+  }
+  onAction(selected);
 }
 
 class _QuickActionPalette extends StatelessWidget {
   final Animation<double> progress;
-  final ValueChanged<QuickAction> onAction;
-  const _QuickActionPalette({required this.progress, required this.onAction});
+  const _QuickActionPalette({required this.progress});
 
   static const double _fabSize = 64;
   // 부채꼴 반지름 — 크게 할수록 호가 길어져 원 사이 간격이 벌어짐
@@ -116,7 +125,7 @@ class _QuickActionPalette extends StatelessWidget {
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
+              onTap: () => Navigator.of(context, rootNavigator: true).pop(),
             ),
           ),
 
@@ -134,7 +143,7 @@ class _QuickActionPalette extends StatelessWidget {
                 curve: Curves.easeOutQuart,
               ),
               child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
+                onTap: () => Navigator.of(context, rootNavigator: true).pop(),
                 child: Container(
                   width: _fabSize,
                   height: _fabSize,
@@ -212,6 +221,11 @@ class _QuickActionPalette extends StatelessWidget {
       ),
     );
 
+    void selectAction() {
+      HapticFeedback.lightImpact();
+      Navigator.of(context, rootNavigator: true).pop(spec.action);
+    }
+
     // 라벨 위치 — 버튼이 위쪽 부채꼴이라 라벨은 버튼 '위'에 둠 (아래는 겹침).
     return AnimatedBuilder(
       animation: progress,
@@ -226,56 +240,57 @@ class _QuickActionPalette extends StatelessWidget {
           top: by - _btnSize / 2, // 버튼 중심을 by 에
           child: Opacity(
             opacity: fadeAnim.value.clamp(0.0, 1.0),
-            child: SizedBox(
-              width: 96,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 원형 흰 버튼 — Flat 2.0 흰 면 + 아이콘만 컬러 + Soft 그림자
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.of(context).pop();
-                      onAction(spec.action);
-                    },
-                    child: Container(
-                      width: _btnSize,
-                      height: _btnSize,
-                      decoration: BoxDecoration(
-                        color: AppColor.surface,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.16),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(spec.icon, color: spec.color, size: 25),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // 라벨 — 버튼 아래, 흰 글자 (어두운 배경 위라 칩 없이 깔끔)
-                  Text(
-                    spec.label,
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
-                      shadows: [
-                        Shadow(
-                          color: Color.fromRGBO(0, 0, 0, 0.5),
-                          blurRadius: 4,
+            child: Semantics(
+              button: true,
+              label: spec.label,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: selectAction,
+                child: SizedBox(
+                  width: 96,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 원형 흰 버튼 — Flat 2.0 흰 면 + 아이콘만 컬러 + Soft 그림자
+                      Container(
+                        width: _btnSize,
+                        height: _btnSize,
+                        decoration: BoxDecoration(
+                          color: AppColor.surface,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.16),
+                              blurRadius: 14,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                        alignment: Alignment.center,
+                        child: Icon(spec.icon, color: spec.color, size: 25),
+                      ),
+                      const SizedBox(height: 8),
+                      // 라벨 — 버튼 아래, 흰 글자 (어두운 배경 위라 칩 없이 깔끔)
+                      Text(
+                        spec.label,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                          shadows: [
+                            Shadow(
+                              color: Color.fromRGBO(0, 0, 0, 0.5),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

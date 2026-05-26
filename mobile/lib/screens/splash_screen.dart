@@ -19,7 +19,7 @@ class SplashScreen extends ConsumerStatefulWidget {
 class _SplashScreenState extends ConsumerState<SplashScreen> {
   static const String _tagline = '상큼하게 찍고, 톡 쏘게 채우는 스마트 헬스케어';
   static const Duration _typeStep = Duration(milliseconds: 80);
-  static const Duration _minimumHold = Duration(milliseconds: 1700);
+  static const Duration _minimumHold = Duration(milliseconds: 3200);
 
   int _typedCount = 0;
   Timer? _typeTimer;
@@ -65,6 +65,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
   Future<String> _nextRoute() async {
     for (int attempt = 0; attempt < 100; attempt++) {
+      if (!mounted) {
+        return '/login';
+      }
       final session = ref.read(tokenSessionProvider);
       if (session.bootstrapped) {
         return session.canEnterShell ? '/shell/home' : '/login';

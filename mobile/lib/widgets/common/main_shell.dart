@@ -100,39 +100,7 @@ class _MainShellState extends State<MainShell> {
       backgroundColor: isCamera ? Colors.black : AppColor.bg,
       // extendBody = 카메라 모드일 때 body 가 시스템 영역까지 확장
       extendBody: isCamera,
-      // 탭 전환 (CLAUDE.md §7-8 — 즉각 교체 금지)
-      //   - 일반 탭: 페이드
-      //   - 카메라 탭: 아래→위 슬라이드 (메인 카메라 톤 — 토스/인스타)
-      body: AnimatedSwitcher(
-        duration: Duration(milliseconds: isCamera ? 320 : 240),
-        switchInCurve: Curves.easeOutQuart,
-        switchOutCurve: Curves.easeInQuart,
-        transitionBuilder: (child, anim) {
-          // 들어오거나 나가는 화면이 카메라면 슬라이드, 아니면 페이드.
-          // child 의 key(=인덱스) 로 카메라 여부 판단.
-          final keyIdx = (child.key as ValueKey<int>?)?.value;
-          final isCameraChild = keyIdx == _cameraBranchIndex;
-          if (isCameraChild) {
-            return FadeTransition(
-              opacity: anim,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 1.0), // 아래에서
-                  end: Offset.zero,
-                ).animate(anim),
-                child: child,
-              ),
-            );
-          }
-          return FadeTransition(opacity: anim, child: child);
-        },
-        // navigationShell 은 IndexedStack 이라 항상 같은 인스턴스 →
-        // currentIndex 를 key 로 줘서 탭 바뀔 때 전환 트리거
-        child: KeyedSubtree(
-          key: ValueKey<int>(currentIndex),
-          child: widget.navigationShell,
-        ),
-      ),
+      body: widget.navigationShell,
       bottomNavigationBar: isCamera
           ? null
           : _BottomBar(

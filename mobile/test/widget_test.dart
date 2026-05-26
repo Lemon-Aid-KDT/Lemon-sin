@@ -11,9 +11,7 @@ void main() {
   testWidgets('renders source dashboard shell with backend session wiring', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(LemonAidApp(repository: _FakeRepository()));
-    await tester.pump(const Duration(seconds: 6));
-    await tester.pumpAndSettle();
+    await _pumpReadyShell(tester);
 
     expect(find.text('레몬'), findsOneWidget);
     expect(find.text('에이드'), findsOneWidget);
@@ -35,6 +33,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('최근 분석'), findsOneWidget);
   });
+
+  testWidgets('quick action supplement label opens supplement camera mode', (
+    WidgetTester tester,
+  ) async {
+    await _pumpReadyShell(tester);
+
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('영양제 촬영'));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('성분표를 테두리 안에 맞춰주세요'), findsOneWidget);
+  });
+
+  testWidgets('quick action meal label opens meal camera mode', (
+    WidgetTester tester,
+  ) async {
+    await _pumpReadyShell(tester);
+
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('식단 촬영'));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('음식이 테두리 안에 들어오게 맞춰주세요'), findsOneWidget);
+  });
+}
+
+Future<void> _pumpReadyShell(WidgetTester tester) async {
+  await tester.pumpWidget(LemonAidApp(repository: _FakeRepository()));
+  await tester.pump();
+  expect(
+    find.byWidgetPredicate((Widget widget) {
+      final Object? image = widget is Image ? widget.image : null;
+      return image is AssetImage &&
+          image.assetName == 'assets/mascot/gold-poster.png';
+    }),
+    findsOneWidget,
+  );
+
+  await tester.pump(const Duration(seconds: 6));
+  await tester.pumpAndSettle();
 }
 
 class _FakeRepository implements LemonAidRepository {

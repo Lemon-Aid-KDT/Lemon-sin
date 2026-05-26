@@ -70,10 +70,13 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
       if (!session.bootstrapped) {
         return isSplash ? null : '/splash';
       }
+      if (isSplash) {
+        return null;
+      }
       if (!session.canEnterShell && !isLogin) {
         return '/login';
       }
-      if (session.canEnterShell && (isLogin || isSplash)) {
+      if (session.canEnterShell && isLogin) {
         return '/shell/home';
       }
       return null;
@@ -281,6 +284,7 @@ class _SupplementCameraBranch extends ConsumerWidget {
       return ConsentGateScreen(controller: controller);
     }
     return source_camera.CameraScreen(
+      key: ValueKey<String>('camera-$initialMode'),
       initialMode: initialMode,
       onClose: () => context.go('/shell/home'),
       onAnalyzeSupplementImage:

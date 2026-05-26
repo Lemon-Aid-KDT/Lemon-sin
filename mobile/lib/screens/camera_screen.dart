@@ -86,9 +86,9 @@ class _CameraScreenState extends State<CameraScreen>
   List<CameraDescription>? _cameras;
   bool _initializing = true;
   String? _initError;
-  // 카메라 방향 — 기본 후면 (영양제 라벨 촬영 가정)
-  // 전면(셀카) 은 실기기에서만 의미 있음. 에뮬에서는 빈 화면.
+  // 카메라 방향 — 실기기는 후면, 에뮬레이터는 Mac webcam 가능성이 높은 전면 우선.
   CameraLensDirection _lens = CameraLensDirection.back;
+  bool _userSelectedLens = false;
   // 에뮬 여부 — 카메라 영상 정렬 보정용
   bool _isEmulator = false;
 
@@ -105,6 +105,9 @@ class _CameraScreenState extends State<CameraScreen>
     DeviceEnv.isEmulator.then((v) {
       if (mounted && _isEmulator != v) {
         setState(() => _isEmulator = v);
+        if (v && !_userSelectedLens && _captured == null) {
+          _restartCamera();
+        }
       }
     });
     _initCamera();
@@ -177,26 +180,7 @@ class _CameraScreenState extends State<CameraScreen>
         }
         return;
       }
-      // 셀카(전면)면 빈 화면으로만 두고 카메라 컨트롤러 안 만듦.
-      // 에뮬에서는 노트북캠이 후면으로 잡혀있고 전면은 None → 셀카 시 검정.
-      if (_lens == CameraLensDirection.front) {
-        if (mounted) {
-          setState(() {
-            _controller = null;
-            _initializing = false;
-            _initError = null;
-          });
-        }
-        return;
-      }
-      // 후면 우선 (영양제 라벨 촬영 용도)
-      final cam = _cameras!.firstWhere(
-        (c) => c.lensDirection == _lens,
-        orElse: () => _cameras!.firstWhere(
-          (c) => c.lensDirection == CameraLensDirection.back,
-          orElse: () => _cameras!.first,
-        ),
-      );
+      final cam = _selectCamera(_cameras!);
       final controller = CameraController(
         cam,
         ResolutionPreset.high,
@@ -210,6 +194,7 @@ class _CameraScreenState extends State<CameraScreen>
       }
       setState(() {
         _controller = controller;
+        _lens = cam.lensDirection;
         _initializing = false;
         _initError = null;
       });
@@ -229,6 +214,32 @@ class _CameraScreenState extends State<CameraScreen>
     final c = _controller;
     _controller = null;
     await c?.dispose();
+  }
+
+  Future<void> _restartCamera() async {
+    await _disposeCamera();
+    if (!mounted) return;
+    setState(() {
+      _initializing = true;
+      _initError = null;
+    });
+    await _initCamera();
+  }
+
+  CameraDescription _selectCamera(List<CameraDescription> cameras) {
+    final CameraLensDirection preferredLens = _isEmulator && !_userSelectedLens
+        ? CameraLensDirection.front
+        : _lens;
+    return cameras.firstWhere(
+      (CameraDescription c) => c.lensDirection == preferredLens,
+      orElse: () => cameras.firstWhere(
+        (CameraDescription c) => c.lensDirection == _lens,
+        orElse: () => cameras.firstWhere(
+          (CameraDescription c) => c.lensDirection == CameraLensDirection.back,
+          orElse: () => cameras.first,
+        ),
+      ),
+    );
   }
 
   Future<void> _shutter() async {
@@ -266,6 +277,7 @@ class _CameraScreenState extends State<CameraScreen>
     if (!mounted) return;
     setState(() {
       _lens = next;
+      _userSelectedLens = true;
       _initializing = true;
       _initError = null;
     });
@@ -719,10 +731,6 @@ class _FullScreenPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 셀카 모드 — 에뮬에서는 전면 카메라가 None 이므로 빈 검정 화면
-    if (isFront) {
-      return Container(color: Colors.black);
-    }
     if (initializing) {
       return Container(
         color: Colors.black,
@@ -771,7 +779,14 @@ class _FullScreenPreview extends StatelessWidget {
             child: SizedBox(
               width: size.height,
               height: size.width,
-              child: CameraPreview(c),
+              child: isFront && !isEmulator
+                  ? Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..scaleByDouble(-1.0, 1.0, 1.0, 1.0),
+                      child: CameraPreview(c),
+                    )
+                  : CameraPreview(c),
             ),
           ),
         ),

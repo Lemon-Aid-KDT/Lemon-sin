@@ -5,7 +5,7 @@
 //
 // 사용:
 //   Image.asset(MascotPose.thanks.asset, width: 96)
-//   또는 화면별 추천: MascotPose.forGreeting(hour) 등
+//   또는 화면별 추천: MascotFor.greeting(hour) 등
 
 /// 레몬 마스코트 15 포즈.
 /// 각 포즈는 표정/동작이 다름 — 화면 맥락에 맞춰 골라 쓴다.
@@ -35,11 +35,37 @@ enum MascotPose {
 
 /// 화면 맥락별 포즈 추천 — 일관된 캐릭터 사용을 위해 한 곳에서 관리.
 class MascotFor {
+  static const Duration _defaultPoseInterval = Duration(minutes: 5);
+
   // ─── 홈 인사 — 시간대별 ───
   static MascotPose greeting(int hour) {
     if (hour < 11) return MascotPose.fresh; // 아침 — 상큼
     if (hour < 17) return MascotPose.fighting; // 낮 — 파이팅
     return MascotPose.resting; // 저녁 — 휴식
+  }
+
+  /// 홈 히어로에서 쓰는 시간 기반 랜덤 포즈.
+  ///
+  /// Args:
+  ///   time: 현재 시각.
+  ///   interval: 같은 포즈를 유지할 시간 버킷.
+  ///
+  /// Returns:
+  ///   시간 버킷마다 결정적으로 바뀌는 마스코트 포즈.
+  ///
+  /// Raises:
+  ///   ArgumentError: [interval]이 0 이하일 때.
+  static MascotPose timedRandom(
+    DateTime time, {
+    Duration interval = _defaultPoseInterval,
+  }) {
+    if (interval <= Duration.zero) {
+      throw ArgumentError.value(interval, 'interval', 'must be positive');
+    }
+    final int bucket = time.millisecondsSinceEpoch ~/ interval.inMilliseconds;
+    final int seed =
+        (bucket * 1103515245 + time.weekday * 12345 + time.day) & 0x7fffffff;
+    return MascotPose.values[seed % MascotPose.values.length];
   }
 
   // ─── 화면별 고정 ───

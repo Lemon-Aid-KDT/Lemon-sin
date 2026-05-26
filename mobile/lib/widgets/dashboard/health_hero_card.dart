@@ -8,8 +8,9 @@
 //   - 반원 게이지 위에 시간대별 레몬 마스코트
 //   - 하단: 소모/잔여 칼로리 + 순탄수·단백질·지방
 //
-// 시간대별 캐릭터: MascotFor.greeting(hour) — 아침 fresh / 낮 fighting / 저녁 resting
+// 시간대별 캐릭터: MascotFor.timedRandom(DateTime.now()) — 시간 버킷마다 자동 변경
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -80,8 +81,11 @@ class _HealthHeroCardState extends State<HealthHeroCard>
   // 게이지 차오름 애니메이션
   late final AnimationController _gaugeCtl;
   late final Animation<double> _gauge;
+  static const Duration _poseRefreshInterval = Duration(minutes: 5);
   // 테마 칩으로 캐릭터 포즈 순환 (확인용) — null 이면 시간대 자동
   int? _poseOverride;
+  late DateTime _poseClock;
+  Timer? _poseTimer;
 
   int get _remainKcal =>
       (widget.targetKcal - widget.consumedKcal).clamp(0, widget.targetKcal);
@@ -97,6 +101,11 @@ class _HealthHeroCardState extends State<HealthHeroCard>
       duration: const Duration(milliseconds: 1100),
     );
     _gauge = CurvedAnimation(parent: _gaugeCtl, curve: Curves.easeOutQuart);
+    _poseClock = DateTime.now();
+    _poseTimer = Timer.periodic(_poseRefreshInterval, (_) {
+      if (!mounted || _poseOverride != null) return;
+      setState(() => _poseClock = DateTime.now());
+    });
     // 진입 직후 살짝 지연 후 차오름
     Future.delayed(const Duration(milliseconds: 220), () {
       if (mounted) _gaugeCtl.forward();
@@ -105,6 +114,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
 
   @override
   void dispose() {
+    _poseTimer?.cancel();
     _gaugeCtl.dispose();
     super.dispose();
   }
@@ -125,10 +135,10 @@ class _HealthHeroCardState extends State<HealthHeroCard>
         : hour < 17
         ? '오늘도 화이팅이에요'
         : '오늘 하루 어떠셨어요';
-    // 포즈 — 테마칩으로 오버라이드했으면 그거, 아니면 시간대 자동
+    // 포즈 — 테마칩으로 오버라이드했으면 그거, 아니면 시간 버킷 기반 자동 랜덤
     final pose = _poseOverride != null
         ? MascotPose.values[_poseOverride!]
-        : MascotFor.greeting(hour);
+        : MascotFor.timedRandom(_poseClock, interval: _poseRefreshInterval);
 
     return Container(
       width: double.infinity,
