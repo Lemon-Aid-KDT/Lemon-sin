@@ -55,6 +55,21 @@ The supplement capture screen now uses the Flutter `camera` plugin for direct
 device preview and capture. The gallery path still uses `image_picker`, so iOS
 simulator testing can use gallery images when a hardware camera is unavailable.
 
+For Android emulator live camera testing on this Mac, start the emulator from
+Android Studio or Android Studio's built-in Terminal so the emulator process is
+owned by Android Studio. A Codex-launched emulator can appear connected but fail
+to deliver host webcam frames. Run the app with:
+
+```bash
+flutter run -d emulator-5554 --flavor dev \
+  --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1 \
+  --dart-define=LEMON_ENABLE_EMULATOR_LIVE_CAMERA=true
+```
+
+The expected runtime evidence is that the Android Camera app and the Lemon Aid
+camera screen both show the MacBook Pro camera feed, and `camera.provider.ranchu`
+does not report `Unable to obtain video frame from the camera`.
+
 Use this local-only flow when a physical phone needs to call a backend running on
 the developer machine:
 

@@ -62,6 +62,7 @@ class CameraScreen extends StatefulWidget {
     required this.onAnalyzeSupplementImage,
     this.initialMode = 'supplement',
     this.imagePicker,
+    this.useCameraPickerFallback,
     this.onClose,
     super.key,
   });
@@ -71,6 +72,9 @@ class CameraScreen extends StatefulWidget {
 
   /// Optional image picker override used by widget tests.
   final ImagePicker? imagePicker;
+
+  /// Optional camera picker fallback override used by widget tests.
+  final bool? useCameraPickerFallback;
 
   /// Sends a supplement image to the backend OCR analysis endpoint.
   final Future<void> Function(String imagePath, {required String ocrProvider})
@@ -153,6 +157,10 @@ class _CameraScreenState extends State<CameraScreen>
 
   bool _initInFlight = false;
 
+  bool get _canUseCameraPickerFallback =>
+      widget.useCameraPickerFallback ??
+      (_isEmulator && !_enableEmulatorLiveCamera);
+
   Future<void> _startCameraAfterDeviceProbe() async {
     final bool isEmulator = await DeviceEnv.isEmulator;
     if (!mounted) return;
@@ -181,11 +189,11 @@ class _CameraScreenState extends State<CameraScreen>
       });
     }
     try {
-      if (_isEmulator && !_enableEmulatorLiveCamera) {
+      if (_canUseCameraPickerFallback) {
         if (mounted) {
           setState(() {
             _initError =
-                'Android 에뮬레이터 라이브 카메라는 현재 안정화 전이에요.\n갤러리로 OCR을 테스트해주세요.';
+                '에뮬레이터 live preview는 실행 옵션으로 켜요.\n셔터는 Android 카메라 앱 촬영으로 열려요.';
             _initializing = false;
           });
         }
@@ -260,7 +268,13 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _shutter() async {
     final c = _controller;
-    if (c == null || !c.value.isInitialized || _picking) return;
+    if (_picking) return;
+    if (c == null || !c.value.isInitialized) {
+      if (_canUseCameraPickerFallback) {
+        await _pickFromCameraApp();
+      }
+      return;
+    }
     setState(() => _picking = true);
     HapticFeedback.mediumImpact();
     try {
@@ -300,15 +314,33 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _pickFromGallery() async {
+    await _pickImageFromPicker(
+      source: ImageSource.gallery,
+      errorMessage: '갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.',
+    );
+  }
+
+  Future<void> _pickFromCameraApp() async {
+    await _pickImageFromPicker(
+      source: ImageSource.camera,
+      errorMessage: '카메라 앱 촬영 이미지를 불러오지 못했어요. 갤러리로 테스트해주세요.',
+    );
+  }
+
+  Future<void> _pickImageFromPicker({
+    required ImageSource source,
+    required String errorMessage,
+  }) async {
     if (_picking) return;
     setState(() => _picking = true);
     HapticFeedback.lightImpact();
     try {
       final picker = widget.imagePicker ?? ImagePicker();
       final XFile? file = await picker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         maxWidth: 2400,
         imageQuality: 95,
+        preferredCameraDevice: CameraDevice.rear,
         requestFullMetadata: false,
       );
       if (file != null && mounted) {
@@ -320,8 +352,8 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.'),
+          SnackBar(
+            content: Text(errorMessage),
             backgroundColor: AppColor.danger,
           ),
         );
@@ -544,7 +576,9 @@ class _CameraScreenState extends State<CameraScreen>
               onShutter: _shutter,
               onGallery: _pickFromGallery,
               loading: _picking,
-              enabled: _controller?.value.isInitialized == true,
+              enabled:
+                  _controller?.value.isInitialized == true ||
+                  _canUseCameraPickerFallback,
             ),
           ),
         ),

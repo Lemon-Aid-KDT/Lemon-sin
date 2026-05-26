@@ -171,7 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           iconBg: AppColor.brandSoft,
                           iconColor: AppColor.brandDeep,
                           title: '촬영 환경',
-                          subtitle: '에뮬레이터 라이브 카메라는 안정화 전까지 갤러리 사용',
+                          subtitle: 'Android Studio AVD와 live flag 사용',
                         ),
                         _SettingsDivider(),
                         _SettingsRow(

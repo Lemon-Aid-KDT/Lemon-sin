@@ -39,6 +39,40 @@ void main() {
     expect(find.text('미리보기'), findsOneWidget);
     expect(find.text('분석하기'), findsOneWidget);
   });
+
+  testWidgets('emulator camera fallback opens picker camera source', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File source = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(source.path);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          imagePicker: picker,
+          useCameraPickerFallback: true,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.bySemanticsLabel('사진 촬영'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(picker.lastSource, ImageSource.camera);
+    expect(picker.lastMaxWidth, 2400);
+    expect(picker.lastImageQuality, 95);
+    expect(picker.lastRequestFullMetadata, isFalse);
+    expect(find.text('미리보기'), findsOneWidget);
+    expect(find.text('분석하기'), findsOneWidget);
+  });
 }
 
 Future<void> _usePhoneSurface(WidgetTester tester) async {
@@ -60,6 +94,7 @@ class _FakeImagePicker extends ImagePicker {
   _FakeImagePicker(this.path);
 
   final String path;
+  ImageSource? lastSource;
   double? lastMaxWidth;
   int? lastImageQuality;
   bool? lastRequestFullMetadata;
@@ -73,6 +108,7 @@ class _FakeImagePicker extends ImagePicker {
     CameraDevice preferredCameraDevice = CameraDevice.rear,
     bool requestFullMetadata = true,
   }) {
+    lastSource = source;
     lastMaxWidth = maxWidth;
     lastImageQuality = imageQuality;
     lastRequestFullMetadata = requestFullMetadata;
