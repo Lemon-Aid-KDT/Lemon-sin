@@ -238,3 +238,25 @@ def test_activity_score_surfaces_smoking_and_alcohol_guardrails() -> None:
     assert len(response.safety_messages) == 2
     assert "금연 상담" in response.safety_messages[0]
     assert "활동 점수 가중치를 추가하지 않고" in response.safety_messages[1]
+
+
+def test_activity_score_surfaces_recent_cessation_weight_message() -> None:
+    """금연 1년 이내 사용자는 흡연 중 문구 대신 금연 유지·체중 변화 안내를 받는다."""
+    request = ActivityScoreRequest(
+        profile=UserProfile(
+            age=45,
+            sex="male",
+            height_cm=175,
+            weight_kg=82,
+            smoking_status="former_lt_1y",
+        ),
+        daily_steps=8000,
+        target_hr_minutes=None,
+    )
+
+    response = calculate_activity_score(request)
+
+    assert response.disease_multiplier == 1.05
+    assert len(response.safety_messages) == 1
+    assert "금연 후 1년 이내" in response.safety_messages[0]
+    assert "흡연 상태" not in response.safety_messages[0]

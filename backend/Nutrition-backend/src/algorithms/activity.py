@@ -95,9 +95,13 @@ SMOKING_MULTIPLIERS = {
     "current_light": 1.05,
     "current_heavy": 1.10,
 }
+CURRENT_SMOKING_STATUSES = {"current_light", "current_heavy"}
 SMOKING_ACTIVITY_MESSAGE = (
     "흡연 상태는 활동 동기 가중치에만 반영되며 흡연 위해를 상쇄하지 않습니다. "
     "금연 상담 또는 지원 정보를 함께 확인하세요."
+)
+RECENT_CESSATION_ACTIVITY_MESSAGE = (
+    "금연 후 1년 이내에는 체중 변화가 흔할 수 있어, 금연 유지와 활동 루틴을 함께 확인하세요."
 )
 AUDIT_KR_ACTIVITY_MESSAGE = (
     "AUDIT-KR 위험 음주 범위에서는 활동 점수 가중치를 추가하지 않고, "
@@ -385,8 +389,10 @@ def build_activity_safety_messages(request: ActivityScoreRequest) -> list[str]:
         사용자 노출용 안전 메시지 목록.
     """
     messages: list[str] = []
-    if request.profile.smoking_status in SMOKING_MULTIPLIERS:
+    if request.profile.smoking_status in CURRENT_SMOKING_STATUSES:
         messages.append(SMOKING_ACTIVITY_MESSAGE)
+    elif request.profile.smoking_status == "former_lt_1y":
+        messages.append(RECENT_CESSATION_ACTIVITY_MESSAGE)
     if (
         request.profile.audit_kr_score is not None
         and request.profile.audit_kr_score >= AUDIT_KR_RISK_CUTOFF
