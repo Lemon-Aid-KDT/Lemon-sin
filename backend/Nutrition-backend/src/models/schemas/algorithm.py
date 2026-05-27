@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -197,6 +198,55 @@ class WeightPredictionStep(BaseModel):
     warning: str | None = None
 
 
+class WeightPredictionCheckIn(BaseModel):
+    """예측 후 주간 실측 체중 확인값.
+
+    Attributes:
+        week_index: 예측 시작 후 몇 번째 주 실측인지 나타내는 1-based index.
+        measured_weight_kg: 해당 주의 실측 체중(kg).
+        expected_weight_range_kg: 같은 주차에 기대한 체중 범위.
+        measured_date: 사용자 로컬 기준 실측 날짜.
+    """
+
+    week_index: int = Field(ge=1, le=156)
+    measured_weight_kg: float = Field(ge=10, le=300)
+    expected_weight_range_kg: tuple[float, float]
+    measured_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_expected_weight_range(self) -> WeightPredictionCheckIn:
+        """기대 체중 범위의 하한/상한 순서를 검증한다.
+
+        Returns:
+            검증된 주간 실측 체중 확인값.
+
+        Raises:
+            ValueError: 기대 체중 범위 하한이 상한보다 큰 경우.
+        """
+        lower, upper = self.expected_weight_range_kg
+        if lower > upper:
+            raise ValueError("expected_weight_range_kg lower bound must be <= upper bound")
+        return self
+
+
+class WeightPredictionMismatchWarning(BaseModel):
+    """예측-실측 체중 mismatch 판정 결과.
+
+    Attributes:
+        triggered: 최근 주간 실측이 2주 연속 기대 범위를 벗어났는지 여부.
+        consecutive_out_of_range_weeks: 최근 연속 범위 이탈 주 수.
+        out_of_range_count: 전체 입력 check-in 중 범위 이탈 건수.
+        message: 사용자 안내 메시지. trigger가 없으면 None.
+        recommended_actions: trigger 시 사용자에게 노출할 권장 후속 행동.
+    """
+
+    triggered: bool = False
+    consecutive_out_of_range_weeks: int = 0
+    out_of_range_count: int = 0
+    message: str | None = None
+    recommended_actions: list[str] = Field(default_factory=list)
+
+
 class WeightPredictionRequest(BaseModel):
     """체중 예측 API 요청.
 
@@ -213,6 +263,7 @@ class WeightPredictionRequest(BaseModel):
         body_fat_pct: 체지방률(%). 입력 시 BMR 보조 공식에 사용할 수 있다.
         chronic_diseases: 자동 체중 예측 안전 분기용 만성질환 코드.
         periods_days: 예측 기간 목록.
+        prediction_checkins: 주간 실측 체중과 해당 주차 기대 범위 목록.
     """
 
     model_config = ConfigDict(
@@ -230,6 +281,7 @@ class WeightPredictionRequest(BaseModel):
                     "alcohol_abv_percent": None,
                     "chronic_diseases": [],
                     "periods_days": [7, 30, 90],
+                    "prediction_checkins": [],
                 }
             ]
         }
@@ -251,19 +303,24 @@ class WeightPredictionRequest(BaseModel):
         min_length=1,
         max_length=12,
     )
+    prediction_checkins: list[WeightPredictionCheckIn] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
-    def validate_alcohol_volume_inputs(self) -> WeightPredictionRequest:
-        """주류 용량 입력이 있으면 ABV도 함께 요구한다.
+    def validate_weight_prediction_request(self) -> WeightPredictionRequest:
+        """주류 용량과 주간 실측 체중 입력의 교차 조건을 검증한다.
 
         Returns:
             검증된 요청 모델.
 
         Raises:
-            ValueError: alcohol_volume_ml > 0 이지만 alcohol_abv_percent 가 없는 경우.
+            ValueError: alcohol_volume_ml > 0 이지만 alcohol_abv_percent 가 없는 경우,
+                또는 중복 주차 check-in 이 있는 경우.
         """
         if self.alcohol_volume_ml > 0 and self.alcohol_abv_percent is None:
             raise ValueError("alcohol_abv_percent is required when alcohol_volume_ml is provided")
+        week_indices = [checkin.week_index for checkin in self.prediction_checkins]
+        if len(week_indices) != len(set(week_indices)):
+            raise ValueError("prediction_checkins must not contain duplicate week_index values")
         return self
 
 
@@ -274,6 +331,7 @@ class WeightPredictionResponse(BaseModel):
         predictions: 기간별 예측 결과.
         prediction_status: 전체 예측 상태.
         safety_warnings: 자동 계산 보류 또는 신뢰도 저하 사유.
+        mismatch_warning: 주간 실측 체중이 기대 범위를 2주 연속 벗어났는지에 대한 판정.
         evidence_level: 7,700 kcal/kg 정적 근사와 프로젝트 보정계수의 근거 수준.
         note: 장기 예측 한계 안내.
     """
@@ -281,6 +339,7 @@ class WeightPredictionResponse(BaseModel):
     predictions: list[WeightPredictionStep]
     prediction_status: Literal["computed", "disabled"] = "computed"
     safety_warnings: list[str] = Field(default_factory=list)
+    mismatch_warning: WeightPredictionMismatchWarning | None = None
     evidence_level: EvidenceLevel = EvidenceLevel.B
     note: str = (
         "기대 체중 범위는 일반적 시나리오 기반 참고값이며 장기 대사 적응을 완전히 반영하지 않습니다."

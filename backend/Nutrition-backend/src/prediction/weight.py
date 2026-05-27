@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from src.algorithms.metabolism import calculate_bmr, calculate_tdee
-from src.models.schemas.algorithm import WeightPredictionResponse, WeightPredictionStep
+from src.models.schemas.algorithm import (
+    WeightPredictionCheckIn,
+    WeightPredictionMismatchWarning,
+    WeightPredictionResponse,
+    WeightPredictionStep,
+)
 from src.models.schemas.user import Sex
 
 KCAL_PER_KG_FAT = 7700.0
@@ -37,6 +42,16 @@ BLOCKING_CONDITIONS = {
     "prednisone",
 }
 LOW_CONFIDENCE_CONDITIONS = {"pcos", "diabetes_on_insulin", "diabetes_on_glp1"}
+MISMATCH_WARNING_CONSECUTIVE_WEEKS = 2
+MISMATCH_WARNING_MESSAGE = (
+    "최근 실측 체중이 기대 체중 범위를 2주 연속 벗어났습니다. "
+    "알고리즘 한계, 측정 조건 변화, 질환 또는 약물 영향 가능성을 다시 확인해주세요."
+)
+MISMATCH_RECOMMENDED_ACTIONS = [
+    "최근 식사·활동·음주 기록과 체중 측정 조건을 다시 확인합니다.",
+    "갑상선·신장·심부전·간질환·스테로이드 등 만성질환/약물 체크리스트를 갱신합니다.",
+    "차이가 계속되면 주치의 또는 임상영양사 상담을 권장합니다.",
+]
 
 
 def calculate_alcohol_kcal_from_volume(volume_ml: float, abv_percent: float) -> float:
@@ -109,6 +124,57 @@ def should_disable_weight_prediction(chronic_diseases: list[str] | None) -> bool
         True when a high-risk condition is present.
     """
     return bool(_normalized_conditions(chronic_diseases) & BLOCKING_CONDITIONS)
+
+
+def is_weight_checkin_outside_expected_range(checkin: WeightPredictionCheckIn) -> bool:
+    """주간 실측 체중이 해당 주차 기대 범위를 벗어났는지 판정한다.
+
+    Args:
+        checkin: 주간 실측 체중과 해당 주차 기대 체중 범위.
+
+    Returns:
+        실측 체중이 기대 범위 밖이면 True.
+    """
+    lower, upper = checkin.expected_weight_range_kg
+    return checkin.measured_weight_kg < lower or checkin.measured_weight_kg > upper
+
+
+def evaluate_weight_prediction_mismatch(
+    prediction_checkins: list[WeightPredictionCheckIn] | None,
+) -> WeightPredictionMismatchWarning | None:
+    """예측-실측 체중이 최근 2주 연속 기대 범위를 벗어났는지 평가한다.
+
+    Args:
+        prediction_checkins: 예측 후 주차별 실측 체중 확인값.
+
+    Returns:
+        입력 check-in 이 있으면 mismatch 평가 결과, 없으면 None.
+    """
+    if not prediction_checkins:
+        return None
+
+    ordered_checkins = sorted(prediction_checkins, key=lambda checkin: checkin.week_index)
+    out_of_range_count = sum(
+        1 for checkin in ordered_checkins if is_weight_checkin_outside_expected_range(checkin)
+    )
+    expected_week = ordered_checkins[-1].week_index
+    consecutive_out_of_range_weeks = 0
+    for checkin in reversed(ordered_checkins):
+        if checkin.week_index != expected_week:
+            break
+        if not is_weight_checkin_outside_expected_range(checkin):
+            break
+        consecutive_out_of_range_weeks += 1
+        expected_week -= 1
+
+    triggered = consecutive_out_of_range_weeks >= MISMATCH_WARNING_CONSECUTIVE_WEEKS
+    return WeightPredictionMismatchWarning(
+        triggered=triggered,
+        consecutive_out_of_range_weeks=consecutive_out_of_range_weeks,
+        out_of_range_count=out_of_range_count,
+        message=MISMATCH_WARNING_MESSAGE if triggered else None,
+        recommended_actions=list(MISMATCH_RECOMMENDED_ACTIONS) if triggered else [],
+    )
 
 
 def predict_weight_n_days(
@@ -211,6 +277,7 @@ def predict_weight_periods(
     body_fat_pct: float | None = None,
     alcohol_kcal: float = 0.0,
     chronic_diseases: list[str] | None = None,
+    prediction_checkins: list[WeightPredictionCheckIn] | None = None,
 ) -> WeightPredictionResponse:
     """여러 기간에 대한 체중 예측을 일괄 계산한다.
 
@@ -225,6 +292,7 @@ def predict_weight_periods(
         body_fat_pct: 체지방률(%).
         alcohol_kcal: 별도 입력된 알코올 열량.
         chronic_diseases: 신뢰도 저하 또는 자동 계산 보류 조건.
+        prediction_checkins: 예측 후 주차별 실측 체중 확인값.
 
     Returns:
         기간별 체중 예측 API 응답.
@@ -257,4 +325,8 @@ def predict_weight_periods(
         safety_warnings.append(
             "알코올 열량은 지방 저장 보정 계수를 적용해 일일 섭취 열량에 합산했습니다."
         )
-    return WeightPredictionResponse(predictions=predictions, safety_warnings=safety_warnings)
+    return WeightPredictionResponse(
+        predictions=predictions,
+        safety_warnings=safety_warnings,
+        mismatch_warning=evaluate_weight_prediction_mismatch(prediction_checkins),
+    )

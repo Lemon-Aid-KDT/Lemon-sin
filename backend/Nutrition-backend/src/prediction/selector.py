@@ -5,13 +5,18 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
-from src.models.schemas.algorithm import WeightPredictionResponse, WeightPredictionStep
+from src.models.schemas.algorithm import (
+    WeightPredictionCheckIn,
+    WeightPredictionResponse,
+    WeightPredictionStep,
+)
 from src.models.schemas.user import Sex
 from src.prediction.hall import HallLiteResult, predict_with_hall
 from src.prediction.weight import (
     ALCOHOL_STORAGE_KCAL_FACTOR,
     KCAL_PER_KG_FAT,
     build_disabled_weight_prediction_response,
+    evaluate_weight_prediction_mismatch,
     predict_weight_n_days,
     predict_weight_periods,
     should_disable_weight_prediction,
@@ -211,6 +216,7 @@ def predict_weight_periods_selected(
     body_fat_pct: float | None = None,
     alcohol_kcal: float = 0.0,
     chronic_diseases: list[str] | None = None,
+    prediction_checkins: list[WeightPredictionCheckIn] | None = None,
     feature_hall_lite_weight_prediction: bool = False,
     weight_prediction_engine: str | WeightPredictionEngine = WeightPredictionEngine.STATIC_7STEP,
 ) -> WeightPredictionResponse:
@@ -227,6 +233,7 @@ def predict_weight_periods_selected(
         body_fat_pct: Optional body-fat percentage.
         alcohol_kcal: Alcohol kcal added separately to intake.
         chronic_diseases: User condition codes for safety routing.
+        prediction_checkins: Weekly measured-weight follow-up values for mismatch warning.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
         weight_prediction_engine: Configured prediction engine.
 
@@ -252,6 +259,7 @@ def predict_weight_periods_selected(
             body_fat_pct=body_fat_pct,
             alcohol_kcal=alcohol_kcal,
             chronic_diseases=chronic_diseases,
+            prediction_checkins=prediction_checkins,
         )
 
     predictions = [
@@ -274,4 +282,8 @@ def predict_weight_periods_selected(
     safety_warnings: list[str] = []
     if alcohol_kcal > 0:
         safety_warnings.append("알코올 열량을 일일 섭취 열량에 별도 합산했습니다.")
-    return WeightPredictionResponse(predictions=predictions, safety_warnings=safety_warnings)
+    return WeightPredictionResponse(
+        predictions=predictions,
+        safety_warnings=safety_warnings,
+        mismatch_warning=evaluate_weight_prediction_mismatch(prediction_checkins),
+    )
