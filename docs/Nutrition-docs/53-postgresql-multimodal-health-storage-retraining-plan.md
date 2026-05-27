@@ -1017,3 +1017,25 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Operator model training run registration/retraining focused tests: 14 passed
 - `black --check backend/scripts/register_model_training_run.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_training_run.py`: passed
 - `ruff check backend/scripts/register_model_training_run.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_training_run.py`: passed
+
+### 16.12 Phase 12 부분 구현 기록: operator learning dataset version creation CLI
+
+구현 범위:
+
+- `backend/scripts/create_learning_dataset_version.py`를 추가해 operator가 dataset version shell을 생성할 수 있게 함
+- `dataset_key`, `version`, initial `status`, `privacy_review_status`, split count, optional source window, optional operator hash를 저장
+- CLI 생성 범위는 `draft` 또는 `frozen` dataset version으로 제한하고, export 가능 여부는 기존 export gate에서 다시 검증
+- `status='frozen'`이면 `frozen_at`을 서버 시간으로 기록
+
+보안 결정:
+
+- CLI stdout에는 dataset id/key/version/status/count와 source window 등록 여부만 출력한다.
+- created_by_hash, source item ref, label snapshot, raw OCR/provider payload, object URL/path는 stdout에 출력하지 않는다.
+- source window가 역전되었거나 operator hash 길이가 맞지 않으면 DB write 전에 fail-closed로 중단한다.
+- dataset item 생성/import는 별도 review import CLI로 분리한다.
+
+검증:
+
+- Operator dataset version creation/retraining focused tests: 14 passed
+- `black --check backend/scripts/create_learning_dataset_version.py backend/Nutrition-backend/tests/unit/scripts/test_create_learning_dataset_version.py`: passed
+- `ruff check backend/scripts/create_learning_dataset_version.py backend/Nutrition-backend/tests/unit/scripts/test_create_learning_dataset_version.py`: passed
