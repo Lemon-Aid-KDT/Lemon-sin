@@ -8,7 +8,12 @@ import pytest
 from pydantic import ValidationError
 from scripts.data._dataset_audit import collect_stems_by_class
 from scripts.data._manifest_models import ClassManifest, TrainManifest
-from scripts.data.downsample_balanced import select_stems_per_class
+from scripts.data.downsample_balanced import (
+    copy_full_split,
+    copy_selected_pairs,
+    select_stems_per_class,
+    write_dataset_yaml,
+)
 
 
 class TestManifestModels:
@@ -131,3 +136,65 @@ class TestSelectStemsPerClass:
         a = select_stems_per_class(sorted_input, cap_per_class=500, seed=42)
         b = select_stems_per_class(shuffled_input, cap_per_class=500, seed=42)
         assert sorted(a[0]) == sorted(b[0])
+
+
+class TestCopyAndYaml:
+    """파일 복사와 data.yaml 작성."""
+
+    def _make_pair(self, root: Path, stem: str) -> None:
+        (root / "images").mkdir(parents=True, exist_ok=True)
+        (root / "labels").mkdir(parents=True, exist_ok=True)
+        (root / "images" / f"{stem}.jpg").write_bytes(b"\xff\xd8\xff\xe0 fake jpg")
+        (root / "labels" / f"{stem}.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    def test_copy_selected_pairs_copies_only_listed_stems(self, tmp_path: Path) -> None:
+        """선택된 stem만 새 train으로 복사한다."""
+        src = tmp_path / "src" / "train"
+        for s in ("a", "b", "c", "d"):
+            self._make_pair(src, s)
+        dst = tmp_path / "dst" / "train"
+
+        copied = copy_selected_pairs(src, dst, selected_stems=["a", "c"])
+
+        assert copied == 2
+        assert sorted(p.stem for p in (dst / "images").glob("*.jpg")) == ["a", "c"]
+        assert sorted(p.stem for p in (dst / "labels").glob("*.txt")) == ["a", "c"]
+
+    def test_copy_selected_pairs_raises_on_missing_image(self, tmp_path: Path) -> None:
+        """라벨은 있는데 이미지가 없으면 즉시 실패한다."""
+        src = tmp_path / "src" / "train"
+        (src / "labels").mkdir(parents=True)
+        (src / "labels" / "ghost.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+        (src / "images").mkdir()
+        dst = tmp_path / "dst" / "train"
+
+        with pytest.raises(FileNotFoundError, match=r"ghost\.jpg"):
+            copy_selected_pairs(src, dst, selected_stems=["ghost"])
+
+    def test_copy_full_split_copies_all_pairs(self, tmp_path: Path) -> None:
+        """val 전체 복사."""
+        src = tmp_path / "src" / "val"
+        for s in ("v1", "v2", "v3"):
+            self._make_pair(src, s)
+        dst = tmp_path / "dst" / "val"
+
+        copied = copy_full_split(src, dst)
+
+        assert copied == 3
+        assert sorted(p.stem for p in (dst / "images").glob("*.jpg")) == ["v1", "v2", "v3"]
+
+    def test_write_dataset_yaml_contains_path_and_names(self, tmp_path: Path) -> None:
+        """data.yaml에 path, train, val, nc, names가 정확히 기록된다."""
+        dst = tmp_path / "balanced_500"
+        dst.mkdir()
+        names = ["salad", "mixed-rice-bowl", "rice-bowl"]
+
+        yaml_path = write_dataset_yaml(dst, names=names)
+
+        content = yaml_path.read_text(encoding="utf-8")
+        assert f"path: {dst.as_posix()}" in content
+        assert "train: train/images" in content
+        assert "val: val/images" in content
+        assert "nc: 3" in content
+        assert "- salad" in content
+        assert "- mixed-rice-bowl" in content
