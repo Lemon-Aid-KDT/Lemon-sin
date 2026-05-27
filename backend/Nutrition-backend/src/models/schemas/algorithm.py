@@ -55,6 +55,7 @@ class BMIResult(BaseModel):
         notes: 보완 지표와 사용자 맥락 안내.
         waist_to_height_ratio: 허리-신장비. 허리둘레가 없으면 None.
         central_obesity: WHtR 0.5 이상 여부. 허리둘레가 없으면 None.
+        waist_circumference_obesity: KSSO 성별 허리둘레 기준 복부비만 여부.
         body_fat_flag: 체지방률 참고 flag.
         sarcopenic_obesity_suspected: 고령·정상 BMI·높은 체지방률 조합 flag.
     """
@@ -68,6 +69,7 @@ class BMIResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
     waist_to_height_ratio: float | None = None
     central_obesity: bool | None = None
+    waist_circumference_obesity: bool | None = None
     body_fat_flag: Literal["high", "normal"] | None = None
     sarcopenic_obesity_suspected: bool | None = None
 

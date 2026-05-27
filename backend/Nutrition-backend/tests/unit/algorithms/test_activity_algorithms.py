@@ -16,7 +16,7 @@ from src.algorithms.activity import (
     calculate_v3_score,
     calculate_v4_score,
 )
-from src.algorithms.bmi import calculate_bmi, classify_bmi
+from src.algorithms.bmi import calculate_bmi, classify_bmi, evaluate_bmi
 from src.models.schemas.algorithm import ActivityScoreRequest, BMICategory
 from src.models.schemas.user import UserProfile
 
@@ -50,6 +50,18 @@ def test_bmi_classification(
 def test_bmi_classification_supports_who_standard_region() -> None:
     """WHO 기준을 선택하면 동일 BMI도 다른 기준으로 분류할 수 있다."""
     assert classify_bmi(32.0, region="who_standard") == BMICategory.OBESE_1
+
+
+def test_bmi_evaluation_flags_ksso_waist_circumference_obesity() -> None:
+    """성별 허리둘레 기준 복부비만 flag를 WHtR와 별도로 노출한다."""
+    male = evaluate_bmi(weight_kg=62.0, height_cm=170.0, sex="male", waist_cm=90.0)
+    female = evaluate_bmi(weight_kg=55.0, height_cm=165.0, sex="female", waist_cm=85.0)
+    without_sex = evaluate_bmi(weight_kg=55.0, height_cm=165.0, waist_cm=85.0)
+
+    assert male.waist_circumference_obesity is True
+    assert female.waist_circumference_obesity is True
+    assert without_sex.waist_circumference_obesity is None
+    assert any("성별 허리둘레 기준" in note for note in male.notes)
 
 
 def test_v1_recommended_steps_50f_obese1() -> None:

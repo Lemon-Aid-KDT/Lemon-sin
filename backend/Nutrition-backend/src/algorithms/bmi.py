@@ -12,6 +12,8 @@ CM_PER_METER = 100
 BMI_DECIMALS = 1
 WHR_DECIMALS = 3
 WAIST_TO_HEIGHT_RISK_CUTOFF = 0.5
+MALE_WAIST_OBESITY_CUTOFF_CM = 90.0
+FEMALE_WAIST_OBESITY_CUTOFF_CM = 85.0
 MALE_BODY_FAT_HIGH_CUTOFF = 26.0
 FEMALE_BODY_FAT_HIGH_CUTOFF = 36.0
 SENIOR_AGE_CUTOFF = 65
@@ -93,6 +95,22 @@ def _body_fat_flag(body_fat_pct: float | None, sex: Sex | None) -> str | None:
     return "high" if body_fat_pct >= threshold else "normal"
 
 
+def _waist_circumference_obesity(waist_cm: float | None, sex: Sex | None) -> bool | None:
+    """KSSO 성별 허리둘레 기준 복부비만 여부를 반환한다.
+
+    Args:
+        waist_cm: 허리둘레(cm).
+        sex: 성별. None이면 성별별 기준을 계산하지 않는다.
+
+    Returns:
+        성별 기준 복부비만 여부. 허리둘레나 성별이 없으면 None.
+    """
+    if waist_cm is None or sex is None:
+        return None
+    cutoff = MALE_WAIST_OBESITY_CUTOFF_CM if sex == "male" else FEMALE_WAIST_OBESITY_CUTOFF_CM
+    return waist_cm >= cutoff
+
+
 def evaluate_bmi(
     weight_kg: float,
     height_cm: float,
@@ -127,12 +145,15 @@ def evaluate_bmi(
     notes: list[str] = []
     waist_to_height_ratio: float | None = None
     central_obesity: bool | None = None
+    waist_circumference_obesity = _waist_circumference_obesity(waist_cm=waist_cm, sex=sex)
 
     if waist_cm is not None:
         waist_to_height_ratio = round(waist_cm / height_cm, WHR_DECIMALS)
         central_obesity = waist_to_height_ratio >= WAIST_TO_HEIGHT_RISK_CUTOFF
         if category in {BMICategory.UNDERWEIGHT, BMICategory.NORMAL} and central_obesity:
             notes.append("BMI 분류는 낮지만 허리-신장비가 높아 복부 비만 위험 신호가 있습니다.")
+        if waist_circumference_obesity:
+            notes.append("성별 허리둘레 기준상 복부 비만 위험 신호가 있어 BMI와 함께 확인하세요.")
 
     body_fat_flag = _body_fat_flag(body_fat_pct=body_fat_pct, sex=sex)
     if body_fat_flag == "high" and category in {BMICategory.UNDERWEIGHT, BMICategory.NORMAL}:
@@ -166,6 +187,7 @@ def evaluate_bmi(
         notes=notes,
         waist_to_height_ratio=waist_to_height_ratio,
         central_obesity=central_obesity,
+        waist_circumference_obesity=waist_circumference_obesity,
         body_fat_flag=body_fat_flag,  # type: ignore[arg-type]
         sarcopenic_obesity_suspected=sarcopenic_obesity_suspected or None,
     )
