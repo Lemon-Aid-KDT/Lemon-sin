@@ -21,6 +21,8 @@ def test_p1_scope_registry_contains_supplement_health_and_dashboard_scopes() -> 
         ApiScope.SUPPLEMENT_WRITE,
         ApiScope.SUPPLEMENT_DELETE,
         ApiScope.HEALTH_WRITE,
+        ApiScope.MEDICAL_READ,
+        ApiScope.MEDICAL_WRITE,
         ApiScope.REGULATED_INPUT_WRITE,
         ApiScope.DASHBOARD_READ,
     ) == (
@@ -28,6 +30,8 @@ def test_p1_scope_registry_contains_supplement_health_and_dashboard_scopes() -> 
         "supplement:write",
         "supplement:delete",
         "health:write",
+        "medical:read",
+        "medical:write",
         "regulated_input:write",
         "dashboard:read",
     )

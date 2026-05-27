@@ -894,3 +894,32 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - `ruff check` on 42 changed Python files: passed
 - `git diff --check`: passed
 - `detect-secrets scan` on changed Python/doc files: no findings
+
+### 16.7 Phase 7 부분 구현 기록: health/medical current-user API
+
+구현 범위:
+
+- `POST /api/v1/health/profile-snapshots`, `GET /api/v1/health/profile-snapshots/latest` 추가
+- `POST /api/v1/health/metric-samples`, `GET /api/v1/health/daily-summary` 추가
+- `POST /api/v1/medical-records`, `GET /api/v1/medical-records`, `POST /api/v1/medical-records/{record_id}/confirm` 추가
+- `POST /api/v1/patient/status`, `GET /api/v1/patient/status/latest` 추가
+- `medical:read`, `medical:write` scope를 중앙 scope registry와 auth dependency에 추가
+- health profile/metric service와 medical record/patient status service 추가
+- health profile API는 `sensitive_health_analysis` consent를 요구하고 owner subject와 consent snapshot을 response에서 제외
+- health metric/daily summary API는 `health_device_data` consent를 요구하고 source record hash와 owner subject를 response에서 제외
+- medical record API는 `sensitive_health_analysis` consent와 `medical:*` scope를 요구하며 owner hash, consent snapshot, source document id, condition code hash를 response에서 제외
+- patient status snapshot은 진단/치료 지시가 아니라 `summary_type`, bounded summary, `risk_flags`, `data_quality`, `generated_by` code 중심으로 제한
+- patient status request validator가 `diagnosis`, `treatment_instruction`, `raw_ocr_text`, `provider_payload` 계열 key를 거부하도록 보강
+- 최신 patient status가 없으면 DB에 새 row를 쓰지 않고 `status=not_ready`, `risk_flags=['data_insufficient']` synthetic response만 반환
+
+보안 결정:
+
+- Supabase Data API를 직접 여는 대신 모든 신규 current-user API는 backend auth/scope/consent gate 뒤에서만 PostgreSQL에 접근한다.
+- audit metadata에는 값 자체가 아니라 count, field-present boolean, code만 기록한다.
+- raw image, raw OCR text, provider payload, object URI, source hash, owner hash, source document id는 response와 audit metadata에 노출하지 않는다.
+- 의료 기록 API는 사용자 입력 또는 사용자 확인 문서 필드 저장까지만 담당하고, 앱 생성 진단/처방/치료 지시는 저장하지 않는다.
+
+검증:
+
+- Health/medical API 및 service focused tests: 22 passed
+- 신규 route/service/schema/scope `ruff check`: passed

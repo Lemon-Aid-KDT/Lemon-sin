@@ -21,6 +21,8 @@ class ApiScope(StrEnum):
         MEAL_WRITE: Analyze and create current-user meal previews.
         HEALTH_READ: Read current-user health summary data.
         HEALTH_WRITE: Sync current-user health device aggregate data.
+        MEDICAL_READ: Read current-user confirmed medical records.
+        MEDICAL_WRITE: Create or confirm current-user medical records.
         REGULATED_INPUT_WRITE: Create intake-only regulated document OCR previews.
         DASHBOARD_READ: Read current-user dashboard summaries.
     """
@@ -37,6 +39,8 @@ class ApiScope(StrEnum):
     MEAL_WRITE = "meal:write"
     HEALTH_READ = "health:read"
     HEALTH_WRITE = "health:write"
+    MEDICAL_READ = "medical:read"
+    MEDICAL_WRITE = "medical:write"
     REGULATED_INPUT_WRITE = "regulated_input:write"
     DASHBOARD_READ = "dashboard:read"
 
@@ -54,6 +58,8 @@ SCOPE_DESCRIPTIONS: dict[ApiScope, str] = {
     ApiScope.MEAL_WRITE: "Analyze and create current-user meal previews.",
     ApiScope.HEALTH_READ: "Read current-user health summary data.",
     ApiScope.HEALTH_WRITE: "Sync current-user health device aggregate data.",
+    ApiScope.MEDICAL_READ: "Read current-user confirmed medical records.",
+    ApiScope.MEDICAL_WRITE: "Create or confirm current-user medical records.",
     ApiScope.REGULATED_INPUT_WRITE: "Create intake-only regulated document OCR previews.",
     ApiScope.DASHBOARD_READ: "Read current-user dashboard summaries.",
 }

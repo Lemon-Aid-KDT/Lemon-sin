@@ -27,6 +27,8 @@ SUPPLEMENT_DELETE_SCOPE = ApiScope.SUPPLEMENT_DELETE.value
 MEAL_WRITE_SCOPE = ApiScope.MEAL_WRITE.value
 HEALTH_READ_SCOPE = ApiScope.HEALTH_READ.value
 HEALTH_WRITE_SCOPE = ApiScope.HEALTH_WRITE.value
+MEDICAL_READ_SCOPE = ApiScope.MEDICAL_READ.value
+MEDICAL_WRITE_SCOPE = ApiScope.MEDICAL_WRITE.value
 REGULATED_INPUT_WRITE_SCOPE = ApiScope.REGULATED_INPUT_WRITE.value
 DASHBOARD_READ_SCOPE = ApiScope.DASHBOARD_READ.value
 DEVELOPMENT_AUTH_SCOPES = ALL_API_SCOPES
@@ -37,7 +39,8 @@ bearer_scheme = HTTPBearer(
     scheme_name="BearerAuth",
     description=(
         "OAuth/OIDC Bearer access token. Protected APIs require route-specific "
-        "analysis:*, privacy:*, supplement:*, meal:*, health:*, or dashboard:* scopes."
+        "analysis:*, privacy:*, supplement:*, meal:*, health:*, medical:*, "
+        "or dashboard:* scopes."
     ),
 )
 
@@ -407,5 +410,7 @@ require_supplement_delete = require_scopes(ApiScope.SUPPLEMENT_DELETE)
 require_meal_write = require_scopes(ApiScope.MEAL_WRITE)
 require_health_read = require_scopes(ApiScope.HEALTH_READ)
 require_health_write = require_scopes(ApiScope.HEALTH_WRITE)
+require_medical_read = require_scopes(ApiScope.MEDICAL_READ)
+require_medical_write = require_scopes(ApiScope.MEDICAL_WRITE)
 require_regulated_input_write = require_scopes(ApiScope.REGULATED_INPUT_WRITE)
 require_dashboard_read = require_scopes(ApiScope.DASHBOARD_READ)

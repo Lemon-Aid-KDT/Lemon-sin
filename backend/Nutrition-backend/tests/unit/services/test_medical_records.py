@@ -1,0 +1,240 @@
+"""Medical record and patient status service tests."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import cast
+from uuid import uuid4
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+from src.config import Settings
+from src.models.db.medical import MedicalRecordCollection, PatientCondition, PatientStatusSnapshot
+from src.models.schemas.medical import (
+    MedicalRecordCreateRequest,
+    PatientConditionInput,
+    PatientStatusSnapshotCreate,
+)
+from src.security.auth import AuthenticatedUser
+from src.security.privacy import hash_actor_subject
+from src.services.medical_records import (
+    create_medical_record,
+    get_latest_patient_status_snapshot,
+    medical_record_to_response,
+    patient_status_to_response,
+)
+
+
+class _FakeScalarResult:
+    """Fake SQLAlchemy scalar result for service tests."""
+
+    def __init__(self, rows: list[object]) -> None:
+        """Initialize fake rows.
+
+        Args:
+            rows: Rows returned by `all`.
+        """
+        self._rows = rows
+
+    def all(self) -> list[object]:
+        """Return rows.
+
+        Returns:
+            Stored fake rows.
+        """
+        return self._rows
+
+
+class _FakeSession:
+    """Fake async session for medical service tests."""
+
+    def __init__(self, *, scalar_rows: list[object | None] | None = None) -> None:
+        """Initialize fake session.
+
+        Args:
+            scalar_rows: Ordered scalar return values.
+        """
+        self.scalar_rows = list(scalar_rows or [])
+        self.added: list[object] = []
+        self.refreshed: list[object] = []
+
+    async def scalar(self, _statement: object) -> object | None:
+        """Return next scalar value.
+
+        Args:
+            _statement: SQLAlchemy statement ignored by the fake.
+
+        Returns:
+            Next scalar value or None.
+        """
+        if not self.scalar_rows:
+            return None
+        return self.scalar_rows.pop(0)
+
+    async def scalars(self, _statement: object) -> _FakeScalarResult:
+        """Return empty scalar result.
+
+        Args:
+            _statement: SQLAlchemy statement ignored by the fake.
+
+        Returns:
+            Empty fake scalar result.
+        """
+        return _FakeScalarResult([])
+
+    def add(self, record: object) -> None:
+        """Capture added row.
+
+        Args:
+            record: ORM row.
+        """
+        self.added.append(record)
+
+    async def flush(self) -> None:
+        """Populate parent id after fake insert."""
+        for record in self.added:
+            if getattr(record, "id", None) is None:
+                record.id = uuid4()
+
+    async def commit(self) -> None:
+        """No-op commit."""
+
+    async def refresh(self, record: object) -> None:
+        """Populate generated timestamps.
+
+        Args:
+            record: ORM row.
+        """
+        if getattr(record, "created_at", None) is None:
+            record.created_at = datetime.now(UTC)
+        if getattr(record, "updated_at", None) is None:
+            record.updated_at = datetime.now(UTC)
+        self.refreshed.append(record)
+
+
+def _settings() -> Settings:
+    """Return test settings.
+
+    Returns:
+        Development settings instance with the default privacy hash fixture.
+    """
+    return Settings()
+
+
+def _user() -> AuthenticatedUser:
+    """Return authenticated user fixture.
+
+    Returns:
+        Authenticated user.
+    """
+    return AuthenticatedUser(
+        subject="user-1",
+        issuer="https://auth.example.com/",
+        claims={"sub": "user-1"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_medical_record_hashes_owner_and_hides_internal_fields() -> None:
+    """Verify medical records store hashed owner keys and responses hide internals."""
+    fake_session = _FakeSession()
+    request = MedicalRecordCreateRequest(
+        record_type="condition",
+        condition=PatientConditionInput(
+            condition_text="사용자 확인 질환명",
+            clinical_status="active",
+        ),
+        user_confirmed=True,
+    )
+
+    collection, conditions, medications = await create_medical_record(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _settings(),
+        request,
+    )
+    response = medical_record_to_response(collection, conditions, medications)
+
+    assert collection.owner_subject_hash == hash_actor_subject(_user(), _settings())
+    assert collection.owner_subject_hash != "https://auth.example.com/::user-1"
+    assert collection.status == "active"
+    assert conditions[0].confirmed_at is not None
+    assert medications == []
+    serialized = response.model_dump(mode="json")
+    assert "owner_subject_hash" not in serialized
+    assert "condition_code_hash" not in serialized
+    assert "source_document_id" not in serialized
+    assert "consent_snapshot" not in serialized
+
+
+def test_patient_status_response_is_non_diagnostic_and_hides_owner() -> None:
+    """Verify patient status responses contain codes only and hide owner hash."""
+    now = datetime(2026, 5, 27, 10, 0, tzinfo=UTC)
+    record = PatientStatusSnapshot(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        status_at=now,
+        summary_type="system_derived",
+        symptom_categories=["sleep"],
+        metric_summary={"steps_days_present": 3},
+        medication_summary={"active_count": 2},
+        risk_flags=["data_insufficient"],
+        data_quality="partial",
+        generated_by="backend_rule",
+        expires_at=now + timedelta(hours=24),
+    )
+
+    response = patient_status_to_response(record)
+
+    serialized = response.model_dump(mode="json")
+    assert serialized["status"] == "ready"
+    assert "owner_subject_hash" not in serialized
+    assert "diagnosis" not in str(serialized)
+    assert "treatment_instruction" not in str(serialized)
+
+
+def test_patient_status_create_rejects_diagnostic_summary_keys() -> None:
+    """Verify patient status snapshots reject diagnostic or raw summary keys."""
+    with pytest.raises(ValueError):
+        PatientStatusSnapshotCreate(metric_summary={"diagnosis": "not allowed"})
+
+
+@pytest.mark.asyncio
+async def test_latest_patient_status_returns_not_ready_when_absent() -> None:
+    """Verify missing patient status yields a non-persisted not-ready response."""
+    response = await get_latest_patient_status_snapshot(
+        cast(AsyncSession, _FakeSession(scalar_rows=[None])),
+        _user(),
+        _settings(),
+    )
+
+    serialized = response.model_dump(mode="json")
+    assert serialized["status"] == "not_ready"
+    assert serialized["data_quality"] == "insufficient"
+    assert serialized["risk_flags"] == ["data_insufficient"]
+    assert serialized["id"] is None
+
+
+def test_medical_response_hides_code_hash() -> None:
+    """Verify condition code hashes stay internal."""
+    collection = MedicalRecordCollection(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        record_type="condition",
+        source="user_manual",
+        status="active",
+        consent_snapshot={"consent_type": "sensitive_health_analysis"},
+    )
+    condition = PatientCondition(
+        id=uuid4(),
+        medical_collection_id=collection.id,
+        condition_text="사용자 확인 질환명",
+        condition_code_hash="b" * 64,
+        clinical_status="active",
+        source="user_confirmed",
+    )
+
+    response = medical_record_to_response(collection, [condition], [])
+
+    serialized = response.model_dump(mode="json")
+    assert "condition_code_hash" not in serialized
