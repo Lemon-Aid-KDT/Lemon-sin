@@ -6,6 +6,8 @@ import pytest
 from src.models.schemas.supplement_comprehensive import ComprehensiveAnalysisRequest
 from src.nutrition.comprehensive import compute_comprehensive
 
+FORBIDDEN_USER_TERMS = ("진단", "치료", "처방", "복용량 변경", "효능")
+
 
 def _make_request(
     *,
@@ -246,6 +248,13 @@ class TestComputeComprehensive:
         )
 
         assert "supplement_recommendation_paused_audit_kr" in result.warnings
+        dependence_caution = next(
+            caution
+            for caution in result.cautionary_components
+            if caution.reason == "audit_kr_dependence_cutoff"
+        )
+        assert "1577-0199" in dependence_caution.message
+        assert "중독관리통합지원센터" in dependence_caution.message
 
     def test_wellness_goal_targets_include_extended_goal_matrix(self) -> None:
         """면역·수면·장 건강 목적별 매트릭스를 응답에 별도 노출한다."""
@@ -276,7 +285,10 @@ class TestComputeComprehensive:
 
         goals = {target.goal for target in result.wellness_goal_targets}
         assert {"immune_support", "sleep_support", "gut_health"}.issubset(goals)
-        assert all("치료" not in target.message for target in result.wellness_goal_targets)
+        assert all(
+            not any(term in target.message for term in FORBIDDEN_USER_TERMS)
+            for target in result.wellness_goal_targets
+        )
 
     def test_specific_drug_supplement_interactions_are_prioritized(self) -> None:
         """와파린·레보티록신 조합은 일반 경고보다 구체적 상호작용을 우선 표시한다."""
@@ -363,3 +375,40 @@ class TestComputeComprehensive:
             caution.reason == "pregnancy_vitamin_a_ul_risk" and caution.severity == "high"
             for caution in result.cautionary_components
         )
+
+    def test_user_visible_messages_avoid_medical_claim_terms(self) -> None:
+        """종합 분석 사용자 노출 문구는 의료 단정 어휘를 피한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Vitamin K",
+                        "nutrient_code": "vitamin_k_ug",
+                        "amount": 120,
+                        "unit": "ug",
+                    },
+                    {
+                        "display_name": "Vitamin E",
+                        "nutrient_code": "vitamin_e_mg",
+                        "amount": 120,
+                        "unit": "mg",
+                    },
+                    {
+                        "display_name": "Calcium",
+                        "nutrient_code": "calcium_mg",
+                        "amount": 500,
+                        "unit": "mg",
+                    },
+                ],
+                chronic_conditions=["cardiovascular"],
+                medications=["warfarin", "chemo"],
+            )
+        )
+        messages = [
+            result.diet_score_message,
+            *[caution.message for caution in result.cautionary_components],
+            *[target.message for target in result.purpose_targets],
+            *[target.message for target in result.wellness_goal_targets],
+        ]
+
+        assert not any(term in message for term in FORBIDDEN_USER_TERMS for message in messages)

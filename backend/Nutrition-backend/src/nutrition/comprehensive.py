@@ -479,7 +479,7 @@ def _build_purpose_message(
     evidence_label = _EVIDENCE_LABELS.get(evidence_level, evidence_level)
     if is_user_target:
         return f"{condition_label} 관리에 ({evidence_label}) 도움이 될 수 있어요."
-    return f"{condition_label}에 대한 효능은 {evidence_label} 단계 근거가 있어요."
+    return f"{condition_label} 관련성은 {evidence_label} 단계 근거로 표시합니다."
 
 
 _CONDITION_LABELS: dict[str, str] = {
@@ -781,7 +781,7 @@ def _compute_drug_cautions_for_ingredient(
                 ingredient,
                 "oncology_high_dose_antioxidant_review",
                 "high",
-                "항암·면역억제 치료 중 고용량 항산화제는 의료진 확인 후 결정해야 합니다.",
+                "항암제·면역억제제 사용 중 고용량 항산화제는 의료진 확인 후 결정해야 합니다.",
             )
         )
     return cautions
@@ -871,7 +871,10 @@ def _compute_profile_summary_cautions(
                     component="audit_kr",
                     reason="audit_kr_dependence_cutoff",
                     severity="high",
-                    message="AUDIT-KR 점수가 높아 영양제 선택보다 전문 상담 연결이 우선입니다.",
+                    message=(
+                        "AUDIT-KR 점수가 높아 영양제 자동 추천보다 1577-0199 또는 "
+                        "중독관리통합지원센터 상담 연결이 우선입니다."
+                    ),
                 )
             )
     return cautions
@@ -988,13 +991,19 @@ def _format_caution_message(caution_token: str, display_name: str) -> str:
     mapping: dict[str, str] = {
         "high_dose_atrial_fibrillation_risk": "고용량 시 부정맥 위험이 있어요.",
         "anticoagulant_bleeding_risk": "항응고제(와파린 등) 복용 시 출혈 위험이 커요.",
-        "drug_interaction:warfarin": "와파린(혈액 응고 억제제) 복용 시 효능에 영향이 있어요.",
+        "drug_interaction:warfarin": "와파린(혈액 응고 억제제) 복용 시 작용에 영향이 있어요.",
     }
     msg = mapping.get(caution_token)
     if msg:
         return f"{display_name}: {msg}"
     # token 형식 cleanup
     cleaned = caution_token.replace("_", " ").replace(":", " — ")
+    cleaned = (
+        cleaned.replace("효능", "작용")
+        .replace("치료", "관리")
+        .replace("처방", "전문가 지시")
+        .replace("진단", "확인")
+    )
     return f"{display_name}: {cleaned}"
 
 
