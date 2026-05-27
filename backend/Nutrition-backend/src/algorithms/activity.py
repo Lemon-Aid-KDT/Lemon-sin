@@ -50,6 +50,7 @@ BONUS_TOP_30 = 3
 MAX_SCORE = 100.0
 MAX_DISEASE_MULTIPLIER = 1.3
 ACTIVITY_ALGORITHM_VERSION = "activity-v1.0.0"
+AUDIT_KR_RISK_CUTOFF = 3
 
 BMI_STEP_FACTORS = {
     BMICategory.UNDERWEIGHT: 1.0,
@@ -94,6 +95,14 @@ SMOKING_MULTIPLIERS = {
     "current_light": 1.05,
     "current_heavy": 1.10,
 }
+SMOKING_ACTIVITY_MESSAGE = (
+    "흡연 상태는 활동 동기 가중치에만 반영되며 흡연 위해를 상쇄하지 않습니다. "
+    "금연 상담 또는 지원 정보를 함께 확인하세요."
+)
+AUDIT_KR_ACTIVITY_MESSAGE = (
+    "AUDIT-KR 위험 음주 범위에서는 활동 점수 가중치를 추가하지 않고, "
+    "음주 다음날 안정시 심박 변동과 절주·금주 상담 정보를 함께 확인하세요."
+)
 
 
 def get_sex_factor(sex: str) -> float:
@@ -366,6 +375,26 @@ def calculate_v4_score(v3_score: float, multiplier: float) -> float:
     return round(min(MAX_SCORE, v3_score * multiplier), 2)
 
 
+def build_activity_safety_messages(request: ActivityScoreRequest) -> list[str]:
+    """활동점수 해석에 필요한 생활습관 안전 메시지를 구성한다.
+
+    Args:
+        request: 활동점수 요청 모델.
+
+    Returns:
+        사용자 노출용 안전 메시지 목록.
+    """
+    messages: list[str] = []
+    if request.profile.smoking_status in SMOKING_MULTIPLIERS:
+        messages.append(SMOKING_ACTIVITY_MESSAGE)
+    if (
+        request.profile.audit_kr_score is not None
+        and request.profile.audit_kr_score >= AUDIT_KR_RISK_CUTOFF
+    ):
+        messages.append(AUDIT_KR_ACTIVITY_MESSAGE)
+    return messages
+
+
 def calculate_activity_score(request: ActivityScoreRequest) -> ActivityScoreResponse:
     """활동점수 v1-v4 전체 결과를 계산한다.
 
@@ -423,4 +452,5 @@ def calculate_activity_score(request: ActivityScoreRequest) -> ActivityScoreResp
         v2_score=v2_score,
         v3_score=v3_score,
         v4_score=v4_score,
+        safety_messages=build_activity_safety_messages(request),
     )

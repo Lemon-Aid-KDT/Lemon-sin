@@ -176,3 +176,26 @@ def test_activity_score_50f_obese1_example() -> None:
     assert response.v4_score == pytest.approx(84.0, abs=0.2)
     assert response.score_label == "활동 동기 점수"
     assert response.target_hr_range.method == "karvonen_hrr"
+
+
+def test_activity_score_surfaces_smoking_and_alcohol_guardrails() -> None:
+    """흡연·음주 맥락은 점수 변경과 별개로 안전 안내에 노출한다."""
+    request = ActivityScoreRequest(
+        profile=UserProfile(
+            age=45,
+            sex="male",
+            height_cm=175,
+            weight_kg=82,
+            smoking_status="current_heavy",
+            audit_kr_score=3,
+        ),
+        daily_steps=8000,
+        target_hr_minutes=None,
+    )
+
+    response = calculate_activity_score(request)
+
+    assert response.disease_multiplier == 1.10
+    assert len(response.safety_messages) == 2
+    assert "금연 상담" in response.safety_messages[0]
+    assert "활동 점수 가중치를 추가하지 않고" in response.safety_messages[1]

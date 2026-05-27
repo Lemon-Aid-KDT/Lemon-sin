@@ -142,6 +142,7 @@ class ActivityScoreResponse(BaseModel):
         v3_score: 백분위 보너스 반영 점수.
         v4_score: 만성질환 가중 반영 점수.
         score_label: UX 라벨. 질환 개선 효과가 아닌 활동 동기 보정임을 명확히 한다.
+        safety_messages: 흡연·음주 등 생활습관 맥락에서 점수 해석을 보수적으로 돕는 안내.
         note: 의료 확정 표현을 피하기 위한 안내.
     """
 
@@ -156,6 +157,7 @@ class ActivityScoreResponse(BaseModel):
     v3_score: float
     v4_score: float
     score_label: str = "활동 동기 점수"
+    safety_messages: list[str] = Field(default_factory=list)
     note: str = "활동 동기 점수는 건강 행동 참고 지표이며 질환 개선 효과를 의미하지 않습니다."
 
 
