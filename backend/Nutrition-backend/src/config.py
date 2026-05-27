@@ -297,7 +297,7 @@ class Settings(BaseSettings):
     ollama_timeout_sec: int = Field(default=60, ge=1)
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     sglang_base_url: str = Field(default="http://127.0.0.1:30000/v1")
-    sglang_model: str = Field(default="qwen3.5:9b")
+    sglang_model: str = Field(default="Qwen/Qwen2.5-0.5B-Instruct")
     sglang_api_key: SecretStr | None = Field(default=None)
     allow_external_llm: bool = Field(default=False)
 

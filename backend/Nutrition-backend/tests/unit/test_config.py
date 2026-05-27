@@ -139,6 +139,7 @@ def test_default_llm_settings_include_sglang_operational_candidate() -> None:
 
     assert settings.llm_provider == "ollama"
     assert settings.sglang_base_url == "http://127.0.0.1:30000/v1"
+    assert settings.sglang_model == "Qwen/Qwen2.5-0.5B-Instruct"
     assert settings.sglang_api_key is None
 
 

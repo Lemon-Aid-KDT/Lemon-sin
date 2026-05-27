@@ -180,8 +180,8 @@ python backend\scripts\smoke_ai_agent_server.py `
 - [x] 의료 지식층 문서 번호가 기존 dev-guides `29`/`30`과 충돌하지 않도록
       사용자 승인 후 31번으로 확정되어 있다.
 - [x] backend Settings가 `KDCA_HEALTHINFO_TOPIC_IDS_FILE`, `KDCA_HEALTHINFO_TOPIC_IDS`,
-  `KDCA_HEALTHINFO_API_KEY`(legacy), `SEMANTIC_SCHOLAR_API_KEY`
-      등 source API key placeholder를 실제 설정 필드로 읽는다.
+  `SEMANTIC_SCHOLAR_API_KEY`
+      등 source API key/topic id placeholder를 실제 설정 필드로 읽는다.
 - [x] `.env.example`의 `ALLOWED_ORIGINS`가 Flutter web 고정 포트
       `http://localhost:52100`과 `http://127.0.0.1:52100`을 포함한다.
 - [x] backend AI Agent package가 reviewed source registry와 Q&A eval set 회귀

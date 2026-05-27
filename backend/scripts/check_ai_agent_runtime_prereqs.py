@@ -39,10 +39,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     settings = _build_settings(args)
     postgres_host, postgres_port = _database_host_port(os.getenv("TEST_DATABASE_URL"))
-    sglang_host, sglang_port = _http_host_port(
-        os.getenv("SGLANG_BASE_URL", "http://127.0.0.1:30000/v1"),
-        default_port=30000,
-    )
+    sglang_host, sglang_port = _http_host_port(settings.sglang_base_url, default_port=30000)
     ollama_host, ollama_port = _http_host_port(settings.ollama_base_url, default_port=11434)
     checks = [
         ("postgres command", _command_available("postgres")),
@@ -59,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("RUN_POSTGRES_MIGRATION_SMOKE", os.getenv("RUN_POSTGRES_MIGRATION_SMOKE") == "1"),
         ("TEST_DATABASE_URL", bool(os.getenv("TEST_DATABASE_URL"))),
         ("RUN_SGLANG_SMOKE", os.getenv("RUN_SGLANG_SMOKE") == "1"),
-        ("SGLANG_MODEL", bool(os.getenv("SGLANG_MODEL"))),
+        ("SGLANG_MODEL", bool(settings.sglang_model)),
         ("OLLAMA_MODEL", bool(settings.ollama_model)),
     ]
 
@@ -75,7 +72,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     sglang_ready = (
         os.getenv("RUN_SGLANG_SMOKE") == "1"
-        and bool(os.getenv("SGLANG_MODEL"))
+        and bool(settings.sglang_model)
         and _port_open(sglang_host, sglang_port)
     )
 
