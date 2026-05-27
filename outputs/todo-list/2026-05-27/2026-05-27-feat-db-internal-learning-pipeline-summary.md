@@ -6,12 +6,12 @@
 - 대상 repo: `/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid`
 - remote: `origin` = `https://github.com/Lemon-Aid-KDT/Lemon-sin.git`
 - 작업 브랜치: `feat/db-internal-learning-pipeline`
-- 최종 확인 head: `550bf08 feat(learning): dataset lifecycle 전환 CLI 추가`
-- 작성 목적: `53-postgresql-multimodal-health-storage-retraining-plan.md` 기준으로 진행한 PostgreSQL 중심 멀티모달 건강 저장소, regulated OCR 저장, 학습 dataset/model registry operator flow, Supabase 보안 preflight 보강 작업을 다음 작업자가 이어서 검증할 수 있게 정리한다.
+- 최종 확인 head: `dd3aebc refactor(food): Food-backend 분리 및 계획 갱신`
+- 작성 목적: `53-postgresql-multimodal-health-storage-retraining-plan.md` 기준으로 진행한 PostgreSQL 중심 멀티모달 건강 저장소, regulated OCR 저장, 학습 dataset/model registry operator flow, Supabase 보안 preflight 보강 작업과 이후 식단 YOLO/Food-backend 분리 작업을 다음 작업자가 이어서 검증할 수 있게 정리한다.
 
 ## 브랜치/커밋 범위
 
-오늘 현재 브랜치에서 확인한 작업 범위는 `257a48e`부터 `550bf08`까지다.
+오늘 현재 브랜치에서 확인한 작업 범위는 `257a48e`부터 `dd3aebc`까지다.
 
 | commit | 요약 |
 | --- | --- |
@@ -28,6 +28,8 @@
 | `44a695b` | `feat(learning): 모델 eval metric 등록 CLI 추가` |
 | `5114052` | `feat(learning): 모델 retirement CLI 추가` |
 | `550bf08` | `feat(learning): dataset lifecycle 전환 CLI 추가` |
+| `c26b546` | `feat(meal): 식단 YOLO 데이터 파이프라인 이식` |
+| `dd3aebc` | `refactor(food): Food-backend 분리 및 계획 갱신` |
 
 ## 수행한 작업
 
@@ -55,6 +57,16 @@
   - `backend/scripts/check_learning_vector_db_security.py`에 public view와 materialized view 노출 점검을 추가했다.
   - `security_invoker` 없는 public view와 client role에 노출되는 materialized view를 fail-closed로 처리한다.
   - view definition SQL은 출력하지 않고 schema, view, role, reason만 보고하도록 제한했다.
+
+- 식단 YOLO/RDA 데이터 파이프라인 이식
+  - `origin/docs/data-yolo-food-detection`에서 식단 이미지 분석, RDA matcher, fixture, manifest, 변환 script를 현재 브랜치로 선별 이식했다.
+  - UIUX 브랜치 전체 복원 대신 현재 OCR/YOLO/Ollama endpoint 구조를 유지하고, food image analysis에 필요한 backend/test/data 자산만 분리해서 가져왔다.
+  - 로컬 PC 절대 경로와 모델 weight, raw OCR/provider payload, object URI, signed/public URL은 커밋하지 않는 기준을 유지했다.
+
+- Food-backend 분리
+  - 식단 이미지 분석 코드는 현재 Nutrition API endpoint에 직접 붙은 runtime 코드가 아니므로 `backend/Food-backend/` 작업 공간으로 분리했다.
+  - 기존 `backend/Nutrition-backend/src/meal`과 관련 테스트는 제거하고, Food-backend 자체 `pyproject.toml`, README, unit/integration test 구조를 추가했다.
+  - `docs/superpowers/plans`와 `docs/superpowers/specs`에 AIHub YOLO balanced500/yolo11s 계획 문서를 추가해 다음 식단 모델 학습 단계를 분리된 backend 기준으로 이어갈 수 있게 했다.
 
 ## 검증 결과
 
@@ -95,8 +107,15 @@
   - backend unit collection advanced from 1114 to 1140 collected
   - each phase passed `black --check`, `ruff check`, `git diff --check`, `detect-secrets scan`
 
+- Meal/Food backend
+  - `PYTHONPATH=backend/Nutrition-backend:backend python -m pytest backend/Nutrition-backend/tests/unit/meal backend/Nutrition-backend/tests/unit/nutrition/test_rda_matcher.py backend/Nutrition-backend/tests/integration/meal -q --no-cov`
+  - `PYTHONPATH=backend/Nutrition-backend:backend python -m pytest backend/Nutrition-backend/tests/unit --collect-only -q --no-cov`
+  - `python -m pytest backend/Food-backend/tests/unit/meal backend/Food-backend/tests/unit/nutrition/test_rda_matcher.py backend/Food-backend/tests/integration/meal -q --no-cov`
+  - `PYTHONPATH=backend/Nutrition-backend:backend python -m pytest backend/Nutrition-backend/tests/unit --collect-only -q --no-cov`
+  - `black --check`, `ruff check`, `git diff --check`, `detect-secrets scan`
+
 - push 상태
-  - `550bf08 feat(learning): dataset lifecycle 전환 CLI 추가`까지 `origin/feat/db-internal-learning-pipeline`에 push 완료
+  - `dd3aebc refactor(food): Food-backend 분리 및 계획 갱신`까지 `origin/feat/db-internal-learning-pipeline`에 push 완료
 
 ## 남은 TODO
 
@@ -120,6 +139,8 @@
   - multipart field: `image`
   - form fields: `client_request_id`, `ocr_provider`
   - YOLO와 Ollama는 backend runtime 설정으로만 제어한다.
+- Food-backend는 현재 Nutrition API runtime과 분리된 실험/학습 작업 공간이므로, 모바일 식단 endpoint에 연결하기 전 별도 API contract와 보안 gate를 설계한다.
+- `docs/Nutrition-docs/core-algorithm/`에 추가된 알고리즘 문서는 아직 untracked 상태이므로, 적용 전 문서 내용과 현재 `src/algorithms`, `src/prediction`, `src/nutrition` 코드의 차이를 별도 구현 단계로 매핑한다.
 
 ## 주의할 파일/커밋 제외 항목
 

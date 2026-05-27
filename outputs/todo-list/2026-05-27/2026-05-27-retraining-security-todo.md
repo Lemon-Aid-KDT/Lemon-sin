@@ -5,13 +5,13 @@
 - 작성일: 2026-05-27
 - 대상 repo: `/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid`
 - 작업 브랜치: `feat/db-internal-learning-pipeline`
-- 기준 head: `550bf08 feat(learning): dataset lifecycle 전환 CLI 추가`
+- 기준 head: `dd3aebc refactor(food): Food-backend 분리 및 계획 갱신`
 - 기준 문서: `docs/Nutrition-docs/53-postgresql-multimodal-health-storage-retraining-plan.md`
 - 목적: 오늘 추가된 backend 저장소와 operator CLI를 다음 단계 live smoke, Supabase 보안 점검, OCR/YOLO/Ollama endpoint 검증으로 이어가기 위한 TODO를 정리한다.
 
 ## 브랜치/커밋 범위
 
-- 현재 요약 대상: `257a48e`부터 `550bf08`까지
+- 현재 요약 대상: `257a48e`부터 `dd3aebc`까지
 - 이 문서는 추가 구현 코드가 아니라, 다음 실행 순서와 보안 금지 항목을 고정하기 위한 repo-local TODO다.
 
 ## 수행한 작업
@@ -39,6 +39,10 @@
   - public table/RLS/revoke 점검에 더해 public view/materialized view 노출을 점검한다.
   - client role에서 조회 가능한 view 계층을 fail-closed로 다룬다.
 
+- 식단 YOLO/Food-backend 작업을 분리했다.
+  - food image analysis 코드는 `backend/Food-backend/`로 분리되어 현재 Nutrition-backend retraining storage와 직접 결합하지 않는다.
+  - 식단 YOLO 학습 계획 문서는 `docs/superpowers/`에 별도 보관했다.
+
 ## 검증 결과
 
 - 오늘 추가된 CLI와 보안 preflight는 focused pytest로 검증했다.
@@ -50,7 +54,7 @@
   - backend unit `--collect-only`
   - `git diff --check`
   - `detect-secrets scan`
-- 최신 커밋 `550bf08`까지 `origin/feat/db-internal-learning-pipeline`에 push 완료 상태다.
+- 최신 커밋 `dd3aebc`까지 `origin/feat/db-internal-learning-pipeline`에 push 완료 상태다.
 
 ## 남은 TODO
 
@@ -82,6 +86,11 @@
    - endpoint 도달 여부와 provider 선택값부터 확인한다.
    - provider가 정상 실행되는데 ingredients 후보가 비면 parser/domain correction을 먼저 본다.
    - parser가 정상인데 텍스트 품질이 낮으면 이미지 품질, YOLO ROI, provider 비교, PaddleOCR fine-tuning 순서로 판단한다.
+
+7. Food-backend 후속 분리 검증
+   - Food-backend는 Nutrition-backend와 별도 test target으로 유지한다.
+   - 식단 endpoint를 모바일에 붙이기 전 raw image 저장, OCR/vision payload redaction, model artifact 경로, auth/consent 정책을 먼저 고정한다.
+   - 모델 weight와 로컬 학습 산출물은 git에 넣지 않는다.
 
 ## 주의할 파일/커밋 제외 항목
 

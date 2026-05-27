@@ -5,7 +5,7 @@
 - 작성일: 2026-05-27
 - 대상 repo: `/Users/yeong/99_me/00_github/03_lemon_healthcare/Lemon-Aid`
 - 작업 브랜치: `feat/db-internal-learning-pipeline`
-- 현재 기준 head: `550bf08 feat(learning): dataset lifecycle 전환 CLI 추가`
+- 현재 기준 head: `dd3aebc refactor(food): Food-backend 분리 및 계획 갱신`
 - 참고 UIUX 브랜치: `origin/feat/mobile-dashboard-redesign`
 - 참고 음식 데이터 브랜치: `origin/docs/data-yolo-food-detection`
 - 목적: 팀원이 작업한 mobile UIUX 브랜치와 음식 YOLO/data 브랜치를 현재 backend-connected OCR/YOLO/Ollama 흐름에 맞춰 어디까지 가져올지 정리하고, 선별 이식된 항목과 제외 항목을 다음 작업자가 이어서 검증할 수 있게 남긴다.
@@ -15,7 +15,7 @@
 | 구분 | 기준 |
 | --- | --- |
 | 현재 브랜치 | `feat/db-internal-learning-pipeline` |
-| 현재 head | `550bf08` |
+| 현재 head | `dd3aebc` |
 | UIUX 참고 브랜치 head | `e50114c68147` |
 | 음식 데이터 참고 브랜치 head | `c1a2fb2cb91f` |
 
@@ -32,23 +32,27 @@
   - source branch의 일부 run metadata와 과거 planning 문서에는 로컬 Windows path가 포함되어 있어, 해당 파일들은 그대로 가져오지 않는 대상으로 분리했다.
 
 - 현재 브랜치로 선별 이식한 항목
-  - `backend/Nutrition-backend/src/meal/`
-  - `backend/Nutrition-backend/src/nutrition/rda_matcher.py`
-  - `backend/Nutrition-backend/tests/unit/meal/`
-  - `backend/Nutrition-backend/tests/integration/meal/`
-  - `backend/Nutrition-backend/tests/unit/nutrition/test_rda_matcher.py`
+  - `backend/Food-backend/src/meal/`
+  - `backend/Food-backend/src/nutrition/rda_matcher.py`
+  - `backend/Food-backend/tests/unit/meal/`
+  - `backend/Food-backend/tests/integration/meal/`
+  - `backend/Food-backend/tests/unit/nutrition/test_rda_matcher.py`
   - `data/meal_vision/`
   - `data/rda/`
   - `data/food_images/manifests/roboflow_aihub_class_map_50.csv`
   - `data/food_images/manifests/roboflow_autolabel_food_prompts_50_aihub_aligned.csv`
   - `data/food_images/scripts/convert_aihub_50_to_yolo.py`
   - `runs/food_yolo/exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true/results.csv`
+  - `docs/superpowers/plans/2026-05-27-aihub-yolo-todo.md`
+  - `docs/superpowers/plans/2026-05-27-aihub-yolo-balanced500-yolo11s-plan.md`
+  - `docs/superpowers/specs/2026-05-27-aihub-yolo-balanced500-yolo11s-design.md`
 
 - 이식 중 보정한 항목
   - `backend/src/...` 기반 import/test 경로를 현재 backend layout인 `backend/Nutrition-backend/src/...` 기준으로 이동했다.
   - 테스트의 `REPO_ROOT` 계산을 현재 파일 깊이에 맞게 조정했다.
   - `convert_aihub_50_to_yolo.py`의 hard-coded Windows 기본 경로를 repo-relative 기본 경로로 바꿨다.
   - `7z` executable 기본값은 PATH 기반 탐색으로 바꿔, 특정 PC 절대 경로에 의존하지 않게 했다.
+  - 이후 `meal` domain은 현재 Nutrition API runtime과 혼동되지 않도록 `backend/Food-backend/`로 다시 분리했다.
 
 ## 검증 결과
 
@@ -59,6 +63,9 @@
   - 실행 범위: meal unit tests, RDA matcher unit test, meal integration test
   - 결과: `284 passed`
   - 비고: `/private/tmp/lemon-p1-quality-venv/bin/python`에는 `pytest`가 없어, 현재 local Python 환경으로 focused test를 실행했다.
+- Food-backend 분리 후 focused pytest
+  - 실행 범위: `backend/Food-backend/tests/unit/meal`, `backend/Food-backend/tests/unit/nutrition/test_rda_matcher.py`, `backend/Food-backend/tests/integration/meal`
+  - commit body 기준으로 분리 후 focused test, Nutrition-backend unit collection, formatting/lint/security gate를 통과한 뒤 push했다.
 - formatting/lint
   - `ruff check --fix`로 import sort 10건을 정리했다.
   - `black`으로 새 Python 파일 formatting 12건을 정리했다.
@@ -89,6 +96,10 @@
    - formatting, tests, secret check가 끝난 뒤 선별 이식 diff만 stage한다.
    - 기존 untracked 개인/생성 폴더는 stage하지 않는다.
    - 커밋 메시지는 팀 규칙에 맞춰 `feat(meal): 식단 YOLO 데이터 파이프라인 이식`처럼 Conventional Commits 형식을 사용한다.
+
+4. Food-backend 연결 설계
+   - Food-backend는 분리된 작업 공간이므로 Nutrition-backend 모바일 OCR endpoint에 바로 섞지 않는다.
+   - 식단 촬영 endpoint가 필요하면 별도 API contract, auth/consent, raw image retention, YOLO model loading 정책을 먼저 문서화한다.
 
 ## 주의할 파일/커밋 제외 항목
 
