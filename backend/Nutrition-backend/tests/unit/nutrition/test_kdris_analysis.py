@@ -286,6 +286,20 @@ def test_pregnancy_routes_to_referral_required() -> None:
     assert not contains_forbidden_terms(response.safety_messages)
 
 
+def test_pediatric_profile_routes_to_referral_required() -> None:
+    """소아·청소년은 일반 성인 자동 평가를 보류하고 상담 경로로 분기한다."""
+    profile = UserProfile(age=16, sex="female", height_cm=160, weight_kg=55)
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[NutrientIntake(nutrient_code="vitamin_c_mg", amount=80, unit="mg")],
+    )
+
+    assert response.routing_status == "referral_required"
+    assert response.results == []
+    assert any("소아·청소년" in message for message in response.safety_messages)
+    assert not contains_forbidden_terms(response.safety_messages)
+
+
 def test_medications_route_to_referral_required() -> None:
     """약물 입력이 있으면 약물-영양소 상호작용 확인 경로로 분기한다."""
     profile = UserProfile(

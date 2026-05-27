@@ -26,6 +26,7 @@ ZINC_COPPER_REVIEW_THRESHOLD_MG = 50.0
 CALCIUM_IRON_REVIEW_THRESHOLD_MG = 300.0
 FORBIDDEN_TERMS = ("진단", "치료", "처방", "복용량 변경")
 NUTRITION_ANALYSIS_ALGORITHM_VERSION = "nutrition-v1.0.0"
+ADULT_NUTRITION_ANALYSIS_MIN_AGE = 19
 HIGH_RISK_NUTRITION_ROUTE_FLAGS = {
     "ckd",
     "chronic_kidney_disease",
@@ -123,6 +124,10 @@ def _referral_route_messages(profile: UserProfile) -> list[str]:
     if profile.pregnancy_status in {"pregnant", "lactating"}:
         messages.append(
             "임신·수유 상태에서는 추가 필요량과 상한 확인을 위해 전문가 상담이 우선입니다."
+        )
+    if profile.age < ADULT_NUTRITION_ANALYSIS_MIN_AGE:
+        messages.append(
+            "소아·청소년은 성장 단계별 기준과 보호자·전문가 확인이 필요해 일반 성인 자동 평가를 보류합니다."
         )
     if profile.medications:
         messages.append(
