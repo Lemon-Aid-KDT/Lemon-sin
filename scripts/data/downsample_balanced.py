@@ -11,9 +11,16 @@ Reference:
 
 from __future__ import annotations
 
+import argparse
+import csv
 import random
 import shutil
+import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+from scripts.data._dataset_audit import collect_stems_by_class
+from scripts.data._manifest_models import ClassManifest, TrainManifest
 
 
 def select_stems_per_class(
@@ -123,3 +130,154 @@ def write_dataset_yaml(dst_root: Path, names: list[str]) -> Path:
     ]
     yaml_path.write_text("\n".join(lines), encoding="utf-8")
     return yaml_path
+
+
+@dataclass(frozen=True)
+class DownsampleResult:
+    """run_downsample 결과 요약."""
+
+    train_copied: int
+    val_copied: int
+    manifest_path: Path
+
+
+def _write_class_counts_csv(path: Path, counts: dict[int, int], names: list[str]) -> None:
+    """class_id, class_name, count 3-열 CSV로 분포를 기록한다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["class_id", "class_name", "count"])
+        for cid in sorted(counts.keys()):
+            writer.writerow([cid, names[cid], counts[cid]])
+
+
+def run_downsample(
+    src_root: Path,
+    dst_root: Path,
+    class_names: list[str],
+    cap_per_class: int,
+    seed: int,
+) -> DownsampleResult:
+    """다운샘플 파이프라인 전체를 실행한다.
+
+    1) 원본 train 라벨 스캔 → 클래스별 stem 맵
+    2) seed 고정 랜덤 샘플링으로 클래스당 cap 적용
+    3) 선택된 train 짝과 val 전체를 dst로 복사
+    4) data.yaml + 매니페스트 JSON + 분포 CSV 2개 작성
+
+    Args:
+        src_root: 원본 데이터셋 루트 (aihub_yolo_50).
+        dst_root: 대상 데이터셋 루트 (없으면 생성).
+        class_names: 클래스 이름 리스트 (순서 = class_id).
+        cap_per_class: 클래스당 상한.
+        seed: random seed.
+
+    Returns:
+        DownsampleResult (train/val 복사 개수, 매니페스트 경로).
+
+    Raises:
+        FileNotFoundError: 라벨에 짝꿍 이미지가 없는 경우.
+        ValueError: 라벨에 범위 밖 class_id가 있는 경우.
+    """
+    num_classes = len(class_names)
+    src_train_labels = src_root / "train" / "labels"
+
+    stems_by_class = collect_stems_by_class(src_train_labels, num_classes=num_classes)
+    original_counts = {cid: len(stems) for cid, stems in stems_by_class.items()}
+
+    selected = select_stems_per_class(stems_by_class, cap_per_class=cap_per_class, seed=seed)
+    balanced_counts = {cid: len(stems) for cid, stems in selected.items()}
+
+    flat_selected: list[str] = []
+    for cid in sorted(selected.keys()):
+        flat_selected.extend(selected[cid])
+
+    train_copied = copy_selected_pairs(
+        src_root / "train", dst_root / "train", selected_stems=flat_selected
+    )
+    val_copied = copy_full_split(src_root / "val", dst_root / "val")
+
+    write_dataset_yaml(dst_root, names=class_names)
+
+    manifest = TrainManifest(
+        seed=seed,
+        cap_per_class=cap_per_class,
+        classes=[
+            ClassManifest(class_id=cid, class_name=class_names[cid], stems=selected[cid])
+            for cid in sorted(selected.keys())
+        ],
+    )
+    manifest_path = dst_root / "_manifest" / "train_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+
+    _write_class_counts_csv(
+        dst_root / "_manifest" / "class_counts_original.csv", original_counts, class_names
+    )
+    _write_class_counts_csv(
+        dst_root / "_manifest" / "class_counts_balanced.csv", balanced_counts, class_names
+    )
+
+    return DownsampleResult(
+        train_copied=train_copied, val_copied=val_copied, manifest_path=manifest_path
+    )
+
+
+def _load_class_names_from_yaml(yaml_path: Path) -> list[str]:
+    """원본 data.yaml에서 'names:' 블록을 읽는다.
+
+    PyYAML 없이 단순 파싱: '- ' 접두사 라인을 클래스로 본다.
+
+    Args:
+        yaml_path: data.yaml 경로.
+
+    Returns:
+        클래스 이름 리스트 (순서 = class_id).
+    """
+    names: list[str] = []
+    in_names = False
+    for raw in yaml_path.read_text(encoding="utf-8").splitlines():
+        line = raw.rstrip()
+        if line.startswith("names:"):
+            in_names = True
+            continue
+        if in_names:
+            stripped = line.lstrip()
+            if stripped.startswith("- "):
+                names.append(stripped[2:].strip())
+            elif line and not line.startswith(" "):
+                break
+    return names
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """CLI 진입점."""
+    parser = argparse.ArgumentParser(
+        description="AI Hub YOLO 50 train 다운샘플 (클래스당 상한 적용)"
+    )
+    parser.add_argument("--src", type=Path, required=True, help="원본 데이터셋 루트")
+    parser.add_argument("--dst", type=Path, required=True, help="대상 데이터셋 루트")
+    parser.add_argument("--cap", type=int, default=500, help="클래스당 상한 (기본 500)")
+    parser.add_argument("--seed", type=int, default=42, help="random seed (기본 42)")
+    args = parser.parse_args(argv)
+
+    src_yaml = args.src / "data.yaml"
+    names = _load_class_names_from_yaml(src_yaml)
+    if not names:
+        print(f"ERROR: failed to load class names from {src_yaml}", file=sys.stderr)
+        return 2
+
+    result = run_downsample(
+        src_root=args.src,
+        dst_root=args.dst,
+        class_names=names,
+        cap_per_class=args.cap,
+        seed=args.seed,
+    )
+    print(f"train_copied={result.train_copied} val_copied={result.val_copied}")
+    print(f"manifest={result.manifest_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

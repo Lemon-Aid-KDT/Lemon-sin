@@ -11,6 +11,7 @@ from scripts.data._manifest_models import ClassManifest, TrainManifest
 from scripts.data.downsample_balanced import (
     copy_full_split,
     copy_selected_pairs,
+    run_downsample,
     select_stems_per_class,
     write_dataset_yaml,
 )
@@ -198,3 +199,68 @@ class TestCopyAndYaml:
         assert "nc: 3" in content
         assert "- salad" in content
         assert "- mixed-rice-bowl" in content
+
+
+class TestRunDownsample:
+    """run_downsample 전체 파이프라인 (소형 데이터셋으로)."""
+
+    def _make_dataset(self, root: Path, train_counts: dict[int, int], val_count: int) -> None:
+        """class_id → 개수 dict 로 가짜 train을 만들고 val은 단일 클래스로 채운다."""
+        (root / "train" / "images").mkdir(parents=True)
+        (root / "train" / "labels").mkdir(parents=True)
+        (root / "val" / "images").mkdir(parents=True)
+        (root / "val" / "labels").mkdir(parents=True)
+
+        for cid, n in train_counts.items():
+            for i in range(n):
+                stem = f"t_c{cid}_{i:04d}"
+                (root / "train" / "images" / f"{stem}.jpg").write_bytes(b"\xff\xd8")
+                (root / "train" / "labels" / f"{stem}.txt").write_text(
+                    f"{cid} 0.5 0.5 0.2 0.2\n", encoding="utf-8"
+                )
+        for i in range(val_count):
+            stem = f"v_{i:04d}"
+            (root / "val" / "images" / f"{stem}.jpg").write_bytes(b"\xff\xd8")
+            (root / "val" / "labels" / f"{stem}.txt").write_text(
+                "0 0.5 0.5 0.2 0.2\n", encoding="utf-8"
+            )
+
+    def test_run_downsample_caps_train_keeps_val(self, tmp_path: Path) -> None:
+        """train은 cap 적용, val은 무변경."""
+        src = tmp_path / "src"
+        self._make_dataset(src, train_counts={0: 800, 1: 50}, val_count=30)
+        dst = tmp_path / "dst_balanced"
+        names = ["cls_zero", "cls_one"]
+
+        result = run_downsample(
+            src_root=src,
+            dst_root=dst,
+            class_names=names,
+            cap_per_class=500,
+            seed=42,
+        )
+
+        assert result.train_copied == 550
+        assert result.val_copied == 30
+
+        assert len(list((dst / "train" / "images").glob("*.jpg"))) == 550
+        assert len(list((dst / "val" / "images").glob("*.jpg"))) == 30
+        assert (dst / "data.yaml").exists()
+        assert (dst / "_manifest" / "train_manifest.json").exists()
+        assert (dst / "_manifest" / "class_counts_original.csv").exists()
+        assert (dst / "_manifest" / "class_counts_balanced.csv").exists()
+
+    def test_run_downsample_is_deterministic(self, tmp_path: Path) -> None:
+        """두 번 돌렸을 때 매니페스트가 비트 동일."""
+        src = tmp_path / "src"
+        self._make_dataset(src, train_counts={0: 800, 1: 700}, val_count=10)
+        names = ["cls_zero", "cls_one"]
+
+        dst_a = tmp_path / "dst_a"
+        dst_b = tmp_path / "dst_b"
+        run_downsample(src, dst_a, names, cap_per_class=500, seed=42)
+        run_downsample(src, dst_b, names, cap_per_class=500, seed=42)
+
+        manifest_a = (dst_a / "_manifest" / "train_manifest.json").read_text(encoding="utf-8")
+        manifest_b = (dst_b / "_manifest" / "train_manifest.json").read_text(encoding="utf-8")
+        assert manifest_a == manifest_b
