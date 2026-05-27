@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.models.db.medical import MedicalRecordCollection, PatientMedication
 from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDocument
 from src.models.schemas.regulated import (
     ConsultProfessionalCTA,
@@ -323,6 +324,12 @@ async def confirm_regulated_document(
                     "Prescription confirmation requires prescription_items only."
                 )
             _add_confirmed_prescription_items(session, document.id, request.prescription_items)
+            _add_prescription_medical_records(
+                session,
+                document,
+                request.prescription_items,
+                now,
+            )
             confirmed_items = [item.model_dump(mode="json") for item in request.prescription_items]
         else:
             if not request.lab_result_items or request.prescription_items:
@@ -330,6 +337,7 @@ async def confirm_regulated_document(
                     "Lab result confirmation requires lab_result_items only."
                 )
             _add_confirmed_lab_result_items(session, document.id, request.lab_result_items)
+            _add_lab_result_medical_collection(session, document)
             confirmed_items = [item.model_dump(mode="json") for item in request.lab_result_items]
 
         document.status = RegulatedDocumentStatus.CONFIRMED.value
@@ -845,6 +853,78 @@ def _add_confirmed_lab_result_items(
                 sort_order=sort_order,
             )
         )
+
+
+def _add_prescription_medical_records(
+    session: AsyncSession,
+    document: RegulatedDocument,
+    items: list[PrescriptionItemConfirm],
+    confirmed_at: datetime,
+) -> None:
+    """Add longitudinal medication records from confirmed prescription fields.
+
+    Args:
+        session: Request-scoped async database session.
+        document: Confirmed regulated document source.
+        items: User-confirmed prescription items.
+        confirmed_at: Confirmation timestamp.
+    """
+    for item in items:
+        collection = _medical_collection_for_regulated_document(document, "prescription")
+        session.add(collection)
+        session.add(
+            PatientMedication(
+                medical_collection_id=collection.id,
+                medication_name_text=item.medication_name_text,
+                dose_text=item.dose_text,
+                frequency_text=item.frequency_text,
+                route_text=item.route_text,
+                period_text=item.period_text,
+                active_status="active",
+                source_document_id=document.id,
+                confirmed_at=confirmed_at,
+            )
+        )
+
+
+def _add_lab_result_medical_collection(
+    session: AsyncSession,
+    document: RegulatedDocument,
+) -> None:
+    """Add a longitudinal lab-result collection from a confirmed lab document.
+
+    Args:
+        session: Request-scoped async database session.
+        document: Confirmed regulated document source.
+    """
+    session.add(_medical_collection_for_regulated_document(document, "lab_result"))
+
+
+def _medical_collection_for_regulated_document(
+    document: RegulatedDocument,
+    record_type: str,
+) -> MedicalRecordCollection:
+    """Build a user-confirmed medical collection linked to a regulated document.
+
+    Args:
+        document: Source regulated document.
+        record_type: Medical record type to create.
+
+    Returns:
+        Medical record collection row with no raw document content.
+    """
+    return MedicalRecordCollection(
+        id=uuid4(),
+        owner_subject_hash=document.owner_subject_hash,
+        record_type=record_type,
+        source="regulated_ocr_confirmed",
+        source_document_id=document.id,
+        status="active",
+        consent_snapshot={
+            "consent_type": "sensitive_health_analysis",
+            "source": "regulated_ocr_confirmed",
+        },
+    )
 
 
 def _bounded_ocr_lines(ocr_text: str) -> list[str]:

@@ -13,6 +13,7 @@ from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.models.db.medical import MedicalRecordCollection, PatientMedication
 from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDocument
 from src.models.schemas.regulated import (
     LabResultItemConfirm,
@@ -62,6 +63,8 @@ class _FakeRegulatedSession:
         self.added_documents: list[RegulatedDocument] = []
         self.added_prescription_items: list[PrescriptionItem] = []
         self.added_lab_result_items: list[LabResultItem] = []
+        self.added_medical_collections: list[MedicalRecordCollection] = []
+        self.added_patient_medications: list[PatientMedication] = []
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -97,6 +100,12 @@ class _FakeRegulatedSession:
             return
         if isinstance(record, LabResultItem):
             self.added_lab_result_items.append(record)
+            return
+        if isinstance(record, MedicalRecordCollection):
+            self.added_medical_collections.append(record)
+            return
+        if isinstance(record, PatientMedication):
+            self.added_patient_medications.append(record)
 
     async def refresh(self, record: object) -> None:
         """Populate generated timestamps on fake records.
@@ -289,6 +298,16 @@ async def test_confirm_prescription_stores_user_confirmed_items() -> None:
     assert document.status == RegulatedDocumentStatus.CONFIRMED.value
     assert fake_session.added_prescription_items[0].medication_name_text == "Amoxicillin"
     assert fake_session.added_lab_result_items == []
+    assert fake_session.added_medical_collections[0].record_type == "prescription"
+    assert fake_session.added_medical_collections[0].source == "regulated_ocr_confirmed"
+    assert fake_session.added_medical_collections[0].source_document_id == document.id
+    assert fake_session.added_patient_medications[0].medication_name_text == "Amoxicillin"
+    assert fake_session.added_patient_medications[0].source_document_id == document.id
+    serialized_medical = str(fake_session.added_medical_collections[0].__dict__) + str(
+        fake_session.added_patient_medications[0].__dict__
+    )
+    assert "raw_ocr_text" not in serialized_medical
+    assert "provider_payload" not in serialized_medical
 
 
 @pytest.mark.asyncio
@@ -319,6 +338,9 @@ async def test_confirm_lab_result_stores_user_confirmed_items() -> None:
 
     assert fake_session.added_lab_result_items[0].test_name_text == "HbA1c"
     assert fake_session.added_prescription_items == []
+    assert fake_session.added_medical_collections[0].record_type == "lab_result"
+    assert fake_session.added_medical_collections[0].source_document_id == document.id
+    assert fake_session.added_patient_medications == []
 
 
 def test_direct_dose_change_guidance_is_blocked() -> None:

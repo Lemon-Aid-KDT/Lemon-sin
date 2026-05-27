@@ -923,3 +923,27 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 
 - Health/medical API 및 service focused tests: 22 passed
 - 신규 route/service/schema/scope `ruff check`: passed
+
+### 16.8 Phase 8 부분 구현 기록: regulated confirmation 의료 기록 승격
+
+구현 범위:
+
+- `confirm_regulated_document()`가 사용자 확인 처방전/검사표를 기존 regulated intake row에만 남기지 않고 longitudinal medical record로도 승격하도록 보강
+- 처방전 confirmation은 확인된 prescription item마다 `medical_record_collections(record_type='prescription')`와 `patient_medications`를 추가
+- 검사표 confirmation은 `medical_record_collections(record_type='lab_result')`를 추가하고, 검사 상세 structured field는 기존 `lab_result_items`에 유지
+- 승격 row의 source는 `regulated_ocr_confirmed`, `source_document_id`는 regulated document id로 연결
+- owner는 raw subject가 아니라 기존 regulated document의 `owner_subject_hash`를 재사용
+- medical collection consent snapshot에는 consent type/source code만 저장
+
+보안 결정:
+
+- raw document image, raw OCR text, provider payload, object URI, signed/public URL은 medical record 승격 row에 복사하지 않는다.
+- 처방전 승격은 사용자가 확인한 약명/용량/빈도/경로/기간 text만 `patient_medications`에 저장한다.
+- 검사표 상세값은 새 medical table로 중복 복사하지 않고 기존 confirmed `lab_result_items`와 collection source link만 유지한다.
+- confirm route의 직접 dose-change/진단/치료 지시 차단 guard를 그대로 먼저 통과해야 medical record 승격이 일어난다.
+
+검증:
+
+- Regulated OCR intake service/API focused tests: 9 passed
+- `black --check backend/Nutrition-backend/src/regulated/ocr_intake.py backend/Nutrition-backend/tests/unit/regulated/test_ocr_intake.py`: passed
+- `ruff check backend/Nutrition-backend/src/regulated/ocr_intake.py backend/Nutrition-backend/tests/unit/regulated/test_ocr_intake.py`: passed
