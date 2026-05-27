@@ -947,3 +947,29 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Regulated OCR intake service/API focused tests: 9 passed
 - `black --check backend/Nutrition-backend/src/regulated/ocr_intake.py backend/Nutrition-backend/tests/unit/regulated/test_ocr_intake.py`: passed
 - `ruff check backend/Nutrition-backend/src/regulated/ocr_intake.py backend/Nutrition-backend/tests/unit/regulated/test_ocr_intake.py`: passed
+
+### 16.9 Phase 9 부분 구현 기록: operator training manifest export CLI
+
+구현 범위:
+
+- `backend/scripts/export_training_manifest.py`를 추가해 privacy-reviewed `learning_dataset_versions`와 `learning_dataset_items`를 operator 전용 학습 manifest로 export
+- 기본 dataset manifest와 task-specific export를 모두 지원:
+  - `dataset`
+  - `yolo_detection`
+  - `paddleocr_detection`
+  - `paddleocr_recognition`
+- 기존 `src.learning.retraining`의 fail-closed export gate를 재사용해 frozen/privacy-approved dataset만 export
+- CLI stdout과 summary file에는 dataset id, export kind, item count, manifest hash, artifact hash만 남기고 source ref와 label text는 출력하지 않음
+
+보안 결정:
+
+- output artifact는 operator-only 파일로 취급하며 backend-only `media:<uuid>` 또는 `learning_image:<uuid>` source ref만 포함한다.
+- stdout/summary에는 private source ref, OCR label text, owner hash, output path, object URL/path, provider payload를 남기지 않는다.
+- label snapshot에 raw OCR/provider payload, public/signed URL, local path, secret-like value가 들어오면 기존 retraining security gate에서 export를 중단한다.
+- 실패 시에도 error class와 output filename/path hash만 남기고 raw path나 label value는 출력하지 않는다.
+
+검증:
+
+- Operator training manifest export/retraining focused tests: 13 passed
+- `black --check backend/scripts/export_training_manifest.py backend/Nutrition-backend/tests/unit/scripts/test_export_training_manifest.py`: passed
+- `ruff check backend/scripts/export_training_manifest.py backend/Nutrition-backend/tests/unit/scripts/test_export_training_manifest.py`: passed
