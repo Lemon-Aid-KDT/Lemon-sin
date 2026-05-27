@@ -66,6 +66,8 @@ _USER_CONDITION_BOOST = 0.15
 """사용자가 명시한 chronic_condition 의 relevance_score 가중치."""
 _SMOKER_BETA_CAROTENE_WARNING_MG = 6.0
 _VITAMIN_A_UL_UG = 3000.0
+_ADULT_PREGNANCY_VITAMIN_A_MIN_AGE = 19
+_ADOLESCENT_PREGNANCY_PREFORMED_VITAMIN_A_UL_UG = 2800.0
 _AUDIT_KR_RISK_CUTOFF = 3
 _AUDIT_KR_DEPENDENCE_MALE = 10
 _AUDIT_KR_DEPENDENCE_FEMALE = 8
@@ -603,6 +605,7 @@ def _compute_profile_safety_cautions(
                 is_smoker=is_smoker,
                 has_alcohol_risk=has_alcohol_risk,
                 is_pregnant=user.is_pregnant,
+                user_age=user.age,
             )
         )
         cautions.extend(
@@ -634,6 +637,7 @@ def _compute_lifestyle_cautions_for_ingredient(
     is_smoker: bool,
     has_alcohol_risk: bool,
     is_pregnant: bool,
+    user_age: int,
 ) -> list[CautionaryComponent]:
     """흡연·음주·임신 상태에 따른 성분별 안전 경고를 산출한다.
 
@@ -642,19 +646,22 @@ def _compute_lifestyle_cautions_for_ingredient(
         is_smoker: 현재 또는 최근 흡연 여부.
         has_alcohol_risk: AUDIT-KR 위험 음주 여부.
         is_pregnant: 임신 여부.
+        user_age: 만 나이.
 
     Returns:
         성분별 생활습관 안전 경고.
     """
     cautions: list[CautionaryComponent] = []
     amount = ingredient.amount or 0.0
+    vitamin_a_mcg_rae = _vitamin_a_amount_mcg_rae(ingredient)
     is_beta_carotene = _is_beta_carotene(ingredient)
     is_vitamin_a = _is_vitamin_a(ingredient)
+    is_preformed_vitamin_a = _is_preformed_vitamin_a(ingredient)
     is_liver_supplement = _is_liver_support_supplement(ingredient)
 
     if is_smoker and (
         (is_beta_carotene and amount >= _SMOKER_BETA_CAROTENE_WARNING_MG)
-        or (is_vitamin_a and amount >= _VITAMIN_A_UL_UG)
+        or (is_vitamin_a and vitamin_a_mcg_rae >= _VITAMIN_A_UL_UG)
     ):
         cautions.append(
             _build_caution(
@@ -664,7 +671,8 @@ def _compute_lifestyle_cautions_for_ingredient(
                 "흡연자는 베타카로틴 또는 고함량 비타민 A 보충제 섭취 전 전문가 상담이 필요합니다.",
             )
         )
-    if is_pregnant and is_vitamin_a and amount >= _VITAMIN_A_UL_UG:
+    pregnancy_vitamin_a_ul = _pregnancy_preformed_vitamin_a_ul_ug(user_age)
+    if is_pregnant and is_preformed_vitamin_a and vitamin_a_mcg_rae >= pregnancy_vitamin_a_ul:
         cautions.append(
             _build_caution(
                 ingredient,
@@ -673,7 +681,21 @@ def _compute_lifestyle_cautions_for_ingredient(
                 "임신 중 고함량 레티놀형 비타민 A는 전문가 확인 전 추가 섭취를 피해야 합니다.",
             )
         )
-    if has_alcohol_risk and is_vitamin_a and amount >= _VITAMIN_A_UL_UG:
+    elif (
+        is_pregnant
+        and is_vitamin_a
+        and not is_beta_carotene
+        and vitamin_a_mcg_rae >= pregnancy_vitamin_a_ul
+    ):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "pregnancy_vitamin_a_form_review",
+                "medium",
+                "임신 중 비타민 A 함량이 높으면 라벨의 레티놀·레티닐 비율 확인이 필요합니다.",
+            )
+        )
+    if has_alcohol_risk and is_vitamin_a and vitamin_a_mcg_rae >= _VITAMIN_A_UL_UG:
         cautions.append(
             _build_caution(
                 ingredient,
@@ -965,9 +987,56 @@ def _is_vitamin_a(ingredient: ComprehensiveIngredient) -> bool:
     """비타민 A 성분 여부를 판별한다."""
     return _ingredient_matches(
         ingredient,
-        codes={"vitamin_a_ug"},
+        codes={"vitamin_a_ug", "vitamin_a_retinol_ug", "retinol_ug"},
         keywords=("vitamin a", "비타민 a"),
     )
+
+
+def _is_preformed_vitamin_a(ingredient: ComprehensiveIngredient) -> bool:
+    """Preformed vitamin A(retinol/retinyl ester) 성분 여부를 판별한다."""
+    return _ingredient_matches(
+        ingredient,
+        codes={"vitamin_a_retinol_ug", "retinol_ug", "retinyl_palmitate_ug"},
+        keywords=(
+            "preformed vitamin a",
+            "retinol",
+            "retinyl",
+            "retinyl palmitate",
+            "retinyl acetate",
+            "레티놀",
+            "레티닐",
+        ),
+    )
+
+
+def _vitamin_a_amount_mcg_rae(ingredient: ComprehensiveIngredient) -> float:
+    """비타민 A 표기량을 mcg RAE로 환산한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+
+    Returns:
+        mcg RAE 기준 비타민 A 함량. 단위가 없거나 이미 mcg/ug 계열이면 원 값을 사용한다.
+    """
+    amount = ingredient.amount or 0.0
+    unit = (ingredient.unit or "").casefold().replace("µ", "u")
+    if "iu" in unit:
+        return amount * 0.3
+    return amount
+
+
+def _pregnancy_preformed_vitamin_a_ul_ug(user_age: int) -> float:
+    """임신 중 preformed vitamin A 상한 기준을 반환한다.
+
+    Args:
+        user_age: 만 나이.
+
+    Returns:
+        mcg RAE 기준 상한. 14~18세 구간은 더 낮은 기준을 적용한다.
+    """
+    if user_age < _ADULT_PREGNANCY_VITAMIN_A_MIN_AGE:
+        return _ADOLESCENT_PREGNANCY_PREFORMED_VITAMIN_A_UL_UG
+    return _VITAMIN_A_UL_UG
 
 
 def _is_nac(ingredient: ComprehensiveIngredient) -> bool:

@@ -354,7 +354,56 @@ class TestComputeComprehensive:
         assert "liver_disease_supplement_consult" in reasons
 
     def test_pregnancy_high_vitamin_a_triggers_high_caution(self) -> None:
-        """임신 중 고함량 비타민 A는 별도 high caution으로 분기한다."""
+        """임신 중 고함량 레티놀형 비타민 A는 별도 high caution으로 분기한다."""
+        request = _make_request(
+            ingredients=[
+                {
+                    "display_name": "Vitamin A (retinol)",
+                    "nutrient_code": "retinol_ug",
+                    "amount": 10000,
+                    "unit": "IU",
+                }
+            ],
+            sex="female",
+        )
+        payload = request.model_dump()
+        payload["user_profile"]["is_pregnant"] = True
+
+        result = compute_comprehensive(ComprehensiveAnalysisRequest.model_validate(payload))
+
+        assert any(
+            caution.reason == "pregnancy_vitamin_a_ul_risk" and caution.severity == "high"
+            for caution in result.cautionary_components
+        )
+
+    def test_pregnancy_beta_carotene_does_not_trigger_retinol_ul_caution(self) -> None:
+        """임신 중 베타카로틴 표기는 레티놀형 vitamin A high caution으로 분류하지 않는다."""
+        request = _make_request(
+            ingredients=[
+                {
+                    "display_name": "Vitamin A (as beta-carotene)",
+                    "nutrient_code": "vitamin_a_ug",
+                    "amount": 3000,
+                    "unit": "ug",
+                }
+            ],
+            sex="female",
+        )
+        payload = request.model_dump()
+        payload["user_profile"]["is_pregnant"] = True
+
+        result = compute_comprehensive(ComprehensiveAnalysisRequest.model_validate(payload))
+        pregnancy_cautions = {
+            caution.reason
+            for caution in result.cautionary_components
+            if "pregnancy" in caution.reason
+        }
+
+        assert "pregnancy_vitamin_a_ul_risk" not in pregnancy_cautions
+        assert "pregnancy_vitamin_a_form_review" not in pregnancy_cautions
+
+    def test_pregnancy_generic_high_vitamin_a_requests_form_review(self) -> None:
+        """임신 중 vitamin A 형태가 불명확하면 high가 아니라 label review caution을 반환한다."""
         request = _make_request(
             ingredients=[
                 {
@@ -370,11 +419,10 @@ class TestComputeComprehensive:
         payload["user_profile"]["is_pregnant"] = True
 
         result = compute_comprehensive(ComprehensiveAnalysisRequest.model_validate(payload))
+        caution_by_reason = {caution.reason: caution for caution in result.cautionary_components}
 
-        assert any(
-            caution.reason == "pregnancy_vitamin_a_ul_risk" and caution.severity == "high"
-            for caution in result.cautionary_components
-        )
+        assert "pregnancy_vitamin_a_ul_risk" not in caution_by_reason
+        assert caution_by_reason["pregnancy_vitamin_a_form_review"].severity == "medium"
 
     def test_user_visible_messages_avoid_medical_claim_terms(self) -> None:
         """종합 분석 사용자 노출 문구는 의료 단정 어휘를 피한다."""
