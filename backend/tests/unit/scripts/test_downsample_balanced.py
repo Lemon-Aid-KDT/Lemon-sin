@@ -264,3 +264,56 @@ class TestRunDownsample:
         manifest_a = (dst_a / "_manifest" / "train_manifest.json").read_text(encoding="utf-8")
         manifest_b = (dst_b / "_manifest" / "train_manifest.json").read_text(encoding="utf-8")
         assert manifest_a == manifest_b
+
+    def test_run_downsample_applies_val_cap_when_given(self, tmp_path: Path) -> None:
+        """val_cap_per_class 가 주어지면 val도 클래스별 cap 적용된다."""
+        src = tmp_path / "src"
+        # train cap 적용용 + val에 클래스 0이 80, 클래스 1이 5 들어가도록
+        self._make_dataset(src, train_counts={0: 200, 1: 5}, val_count=0)
+        # val을 직접 만들기 (val_count=0이면 안 만들었으니 추가)
+        (src / "val" / "images").mkdir(parents=True, exist_ok=True)
+        (src / "val" / "labels").mkdir(parents=True, exist_ok=True)
+        for cid, n in {0: 80, 1: 5}.items():
+            for i in range(n):
+                stem = f"v_c{cid}_{i:04d}"
+                (src / "val" / "images" / f"{stem}.jpg").write_bytes(b"\xff\xd8")
+                (src / "val" / "labels" / f"{stem}.txt").write_text(
+                    f"{cid} 0.5 0.5 0.2 0.2\n", encoding="utf-8"
+                )
+
+        dst = tmp_path / "dst"
+        names = ["cls_zero", "cls_one"]
+
+        result = run_downsample(
+            src_root=src,
+            dst_root=dst,
+            class_names=names,
+            cap_per_class=500,
+            seed=42,
+            val_cap_per_class=50,
+        )
+
+        # train: 200 + 5 = 205 (cap 500 안 걸림)
+        assert result.train_copied == 205
+        # val: 클래스 0이 80 → 50으로 cap, 클래스 1은 5 그대로 → 55
+        assert result.val_copied == 55
+        assert (dst / "_manifest" / "val_manifest.json").exists()
+        assert (dst / "_manifest" / "val_class_counts_original.csv").exists()
+        assert (dst / "_manifest" / "val_class_counts_balanced.csv").exists()
+
+    def test_run_downsample_val_cap_none_copies_full_val(self, tmp_path: Path) -> None:
+        """val_cap_per_class=None(기본값)이면 val 전체 복사 (기존 동작 호환)."""
+        src = tmp_path / "src"
+        self._make_dataset(src, train_counts={0: 100}, val_count=42)
+        dst = tmp_path / "dst"
+
+        result = run_downsample(
+            src_root=src,
+            dst_root=dst,
+            class_names=["cls_zero"],
+            cap_per_class=500,
+            seed=42,
+        )
+
+        assert result.val_copied == 42
+        assert not (dst / "_manifest" / "val_manifest.json").exists()

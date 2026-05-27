@@ -157,31 +157,35 @@ def run_downsample(
     class_names: list[str],
     cap_per_class: int,
     seed: int,
+    val_cap_per_class: int | None = None,
 ) -> DownsampleResult:
     """다운샘플 파이프라인 전체를 실행한다.
 
     1) 원본 train 라벨 스캔 → 클래스별 stem 맵
     2) seed 고정 랜덤 샘플링으로 클래스당 cap 적용
-    3) 선택된 train 짝과 val 전체를 dst로 복사
-    4) data.yaml + 매니페스트 JSON + 분포 CSV 2개 작성
+    3) 선택된 train 짝과 val(전체 또는 cap) 을 dst로 복사
+    4) data.yaml + train 매니페스트 JSON + 분포 CSV 작성
+    5) val_cap_per_class 가 주어지면 val 매니페스트/분포 CSV도 함께 작성
 
     Args:
         src_root: 원본 데이터셋 루트 (aihub_yolo_50).
         dst_root: 대상 데이터셋 루트 (없으면 생성).
         class_names: 클래스 이름 리스트 (순서 = class_id).
-        cap_per_class: 클래스당 상한.
-        seed: random seed.
+        cap_per_class: train 클래스당 상한.
+        seed: random seed (train과 val에 동일 시드 사용, 별도 Random 인스턴스).
+        val_cap_per_class: val 클래스당 상한. None이면 val 전체 복사(기본값).
 
     Returns:
-        DownsampleResult (train/val 복사 개수, 매니페스트 경로).
+        DownsampleResult (train/val 복사 개수, train 매니페스트 경로).
 
     Raises:
         FileNotFoundError: 라벨에 짝꿍 이미지가 없는 경우.
         ValueError: 라벨에 범위 밖 class_id가 있는 경우.
     """
     num_classes = len(class_names)
-    src_train_labels = src_root / "train" / "labels"
 
+    # --- train 처리 ---
+    src_train_labels = src_root / "train" / "labels"
     stems_by_class = collect_stems_by_class(src_train_labels, num_classes=num_classes)
     original_counts = {cid: len(stems) for cid, stems in stems_by_class.items()}
 
@@ -195,10 +199,28 @@ def run_downsample(
     train_copied = copy_selected_pairs(
         src_root / "train", dst_root / "train", selected_stems=flat_selected
     )
-    val_copied = copy_full_split(src_root / "val", dst_root / "val")
+
+    # --- val 처리 ---
+    if val_cap_per_class is None:
+        val_copied = copy_full_split(src_root / "val", dst_root / "val")
+        val_stems_by_class: dict[int, list[str]] | None = None
+        val_selected: dict[int, list[str]] | None = None
+    else:
+        src_val_labels = src_root / "val" / "labels"
+        val_stems_by_class = collect_stems_by_class(src_val_labels, num_classes=num_classes)
+        val_selected = select_stems_per_class(
+            val_stems_by_class, cap_per_class=val_cap_per_class, seed=seed
+        )
+        flat_val_selected: list[str] = []
+        for cid in sorted(val_selected.keys()):
+            flat_val_selected.extend(val_selected[cid])
+        val_copied = copy_selected_pairs(
+            src_root / "val", dst_root / "val", selected_stems=flat_val_selected
+        )
 
     write_dataset_yaml(dst_root, names=class_names)
 
+    # --- train 매니페스트 + CSV ---
     manifest = TrainManifest(
         seed=seed,
         cap_per_class=cap_per_class,
@@ -217,6 +239,35 @@ def run_downsample(
     _write_class_counts_csv(
         dst_root / "_manifest" / "class_counts_balanced.csv", balanced_counts, class_names
     )
+
+    # --- val 매니페스트 + CSV (val_cap_per_class 적용 시만) ---
+    if (
+        val_cap_per_class is not None
+        and val_selected is not None
+        and val_stems_by_class is not None
+    ):
+        val_original_counts = {cid: len(s) for cid, s in val_stems_by_class.items()}
+        val_balanced_counts = {cid: len(s) for cid, s in val_selected.items()}
+        val_manifest = TrainManifest(
+            seed=seed,
+            cap_per_class=val_cap_per_class,
+            classes=[
+                ClassManifest(class_id=cid, class_name=class_names[cid], stems=val_selected[cid])
+                for cid in sorted(val_selected.keys())
+            ],
+        )
+        val_manifest_path = dst_root / "_manifest" / "val_manifest.json"
+        val_manifest_path.write_text(val_manifest.model_dump_json(indent=2), encoding="utf-8")
+        _write_class_counts_csv(
+            dst_root / "_manifest" / "val_class_counts_original.csv",
+            val_original_counts,
+            class_names,
+        )
+        _write_class_counts_csv(
+            dst_root / "_manifest" / "val_class_counts_balanced.csv",
+            val_balanced_counts,
+            class_names,
+        )
 
     return DownsampleResult(
         train_copied=train_copied, val_copied=val_copied, manifest_path=manifest_path
@@ -257,7 +308,13 @@ def _main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--src", type=Path, required=True, help="원본 데이터셋 루트")
     parser.add_argument("--dst", type=Path, required=True, help="대상 데이터셋 루트")
-    parser.add_argument("--cap", type=int, default=500, help="클래스당 상한 (기본 500)")
+    parser.add_argument("--cap", type=int, default=500, help="train 클래스당 상한 (기본 500)")
+    parser.add_argument(
+        "--val-cap",
+        type=int,
+        default=None,
+        help="val 클래스당 상한 (기본 None = val 전체 복사)",
+    )
     parser.add_argument("--seed", type=int, default=42, help="random seed (기본 42)")
     args = parser.parse_args(argv)
 
@@ -273,6 +330,7 @@ def _main(argv: list[str] | None = None) -> int:
         class_names=names,
         cap_per_class=args.cap,
         seed=args.seed,
+        val_cap_per_class=args.val_cap,
     )
     print(f"train_copied={result.train_copied} val_copied={result.val_copied}")
     print(f"manifest={result.manifest_path}")
