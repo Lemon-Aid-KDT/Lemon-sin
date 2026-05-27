@@ -97,6 +97,28 @@ def test_pregnancy_specific_references_append_without_dropping_baseline() -> Non
     }
 
 
+def test_elderly_profile_uses_older_adult_vitamin_d_reference() -> None:
+    """65세 이상 프로필은 노인 연령대 비타민 D 기준값을 사용한다."""
+    adult_references = get_kdris_for_profile(age=64, sex="female")
+    elderly_references = get_kdris_for_profile(age=75, sex="female")
+
+    adult_vitamin_d = next(
+        reference
+        for reference in adult_references
+        if reference.nutrient_code == "vitamin_d_ug" and reference.reference_type == "AI"
+    )
+    elderly_vitamin_d = next(
+        reference
+        for reference in elderly_references
+        if reference.nutrient_code == "vitamin_d_ug" and reference.reference_type == "AI"
+    )
+
+    assert adult_vitamin_d.reference_amount == 10
+    assert elderly_vitamin_d.reference_amount == 15
+    assert elderly_vitamin_d.age_min == 75
+    assert elderly_vitamin_d.source_id == "kns_2025_kdris_publication"
+
+
 def test_unit_conversion_supports_mass_and_vitamin_d_iu() -> None:
     """질량 단위와 비타민D IU 환산을 검증한다."""
     assert convert_amount(1, "g", "mg") == 1000
