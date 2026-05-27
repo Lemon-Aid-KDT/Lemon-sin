@@ -1,6 +1,3 @@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-
 # PC2 YOLO11s + balanced_500 학습
 # exp03_yolo11s_balanced500_pc2_b<BATCH>_w8_cache_disk_det_true
 # 사전: docs/superpowers/specs/2026-05-27-aihub-yolo-balanced500-yolo11s-design.md
@@ -10,6 +7,9 @@ param(
     [int]$Epochs = 50,
     [string]$RunName = "exp03_yolo11s_balanced500_pc2"
 )
+
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $yolo       = "C:\Lemon-Aid\Lemon-sin\backend\.venv\Scripts\yolo.exe"
 $venvPython = "C:\Lemon-Aid\Lemon-sin\backend\.venv\Scripts\python.exe"
