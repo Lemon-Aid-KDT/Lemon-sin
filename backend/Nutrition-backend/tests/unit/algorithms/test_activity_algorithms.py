@@ -100,8 +100,8 @@ def test_resting_hr_moving_median_excludes_drinking_next_day_outliers() -> None:
 
 
 def test_v3_percentile_bonus_requires_minimum_sample() -> None:
-    """비교군 표본이 30명 미만이면 백분위 보너스를 주지 않는다."""
-    assert calculate_percentile_bonus(70.0, [50.0] * 20) == 0
+    """비교군 표본이 100명 미만이면 백분위 보너스를 주지 않는다."""
+    assert calculate_percentile_bonus(70.0, [50.0] * 99) == 0
 
 
 def test_v3_percentile_bonus_and_cap() -> None:
@@ -110,6 +110,13 @@ def test_v3_percentile_bonus_and_cap() -> None:
 
     assert calculate_percentile_bonus(80.0, group) == 10
     assert calculate_v3_score(95.0, 10) == 100.0
+
+
+def test_v3_percentile_bonus_filters_invalid_peer_outliers() -> None:
+    """0-100 범위 밖의 비교군 v2 점수는 outlier로 제외한다."""
+    group = [50.0] * 100 + [-1.0, 120.0, 999.0]
+
+    assert calculate_percentile_bonus(80.0, group) == 10
 
 
 def test_v4_disease_multiplier_ignores_unknown_codes() -> None:

@@ -255,6 +255,29 @@ def test_audit_kr_risk_prioritizes_alcohol_support_nutrients() -> None:
     assert response.safety_messages
 
 
+def test_nutrient_interaction_messages_flag_balance_review() -> None:
+    """Ca/Mg, Vit D/Mg, Zn/Cu, Ca/Fe 상호작용 확인 메시지를 생성한다."""
+    profile = UserProfile(age=30, sex="male", height_cm=170, weight_kg=70)
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="calcium_mg", amount=1000, unit="mg"),
+            NutrientIntake(nutrient_code="magnesium_mg", amount=100, unit="mg"),
+            NutrientIntake(nutrient_code="vitamin_d_ug", amount=15, unit="ug"),
+            NutrientIntake(nutrient_code="zinc_mg", amount=55, unit="mg"),
+            NutrientIntake(nutrient_code="iron_mg", amount=5, unit="mg"),
+        ],
+    )
+
+    messages = "\n".join(response.safety_messages)
+
+    assert "칼슘:마그네슘" in messages
+    assert "비타민 D" in messages
+    assert "아연 50mg/day 초과" in messages
+    assert "칼슘과 철분" in messages
+    assert not contains_forbidden_terms(response.safety_messages)
+
+
 def test_chronic_priority_messages_do_not_contain_forbidden_terms() -> None:
     """만성질환 우선 확인 문구가 치료·처방 표현을 포함하지 않는지 검증한다."""
     profile = UserProfile(

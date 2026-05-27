@@ -38,7 +38,9 @@ TARGET_HR_FULL_CREDIT_MINUTES = 30.0
 NO_WEARABLE_HR_FACTOR = 0.7
 V2_BASE_MULTIPLIER = 0.7
 V2_HR_MULTIPLIER_WEIGHT = 0.3
-MIN_PERCENTILE_SAMPLE_SIZE = 30
+MIN_PERCENTILE_SAMPLE_SIZE = 100
+MIN_VALID_PEER_SCORE = 0.0
+MAX_VALID_PEER_SCORE = 100.0
 TOP_10_PERCENT = 10.0
 TOP_20_PERCENT = 20.0
 TOP_30_PERCENT = 30.0
@@ -299,16 +301,19 @@ def calculate_percentile_bonus(user_v2: float, group_v2_scores: list[float]) -> 
 
     Args:
         user_v2: 사용자 v2 점수.
-        group_v2_scores: 비교군 v2 점수 목록.
+        group_v2_scores: 비교군 v2 점수 목록. 0-100 범위 밖의 값은 outlier로 제외한다.
 
     Returns:
         백분위 보너스. 표본이 부족하면 0.
     """
-    if len(group_v2_scores) < MIN_PERCENTILE_SAMPLE_SIZE:
+    filtered_scores = [
+        score for score in group_v2_scores if MIN_VALID_PEER_SCORE <= score <= MAX_VALID_PEER_SCORE
+    ]
+    if len(filtered_scores) < MIN_PERCENTILE_SAMPLE_SIZE:
         return 0
 
-    higher_count = sum(1 for score in group_v2_scores if score > user_v2)
-    percentile_rank = (higher_count / len(group_v2_scores)) * MAX_SCORE
+    higher_count = sum(1 for score in filtered_scores if score > user_v2)
+    percentile_rank = (higher_count / len(filtered_scores)) * MAX_SCORE
 
     if percentile_rank <= TOP_10_PERCENT:
         return BONUS_TOP_10

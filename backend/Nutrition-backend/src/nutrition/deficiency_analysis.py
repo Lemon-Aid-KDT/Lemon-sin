@@ -20,6 +20,9 @@ SMOKER_VITAMIN_C_ADDITIONAL_MG = 35.0
 AUDIT_KR_RISK_CUTOFF = 3
 RATIO_DECIMALS = 2
 AMOUNT_DECIMALS = 3
+HIGH_CALCIUM_MAGNESIUM_RATIO = 2.5
+ZINC_COPPER_REVIEW_THRESHOLD_MG = 50.0
+CALCIUM_IRON_REVIEW_THRESHOLD_MG = 300.0
 FORBIDDEN_TERMS = ("진단", "치료", "처방", "복용량 변경")
 NUTRITION_ANALYSIS_ALGORITHM_VERSION = "nutrition-v1.0.0"
 HIGH_RISK_NUTRITION_ROUTE_FLAGS = {
@@ -40,6 +43,18 @@ REFERENCE_TYPE_AI = "AI"
 REFERENCE_TYPE_EAR = "EAR"
 CURRENT_SMOKING_STATUSES = {"current_light", "current_heavy"}
 AUDIT_KR_SUPPORT_NUTRIENTS = {"thiamin_mg", "folate_ug", "magnesium_mg", "zinc_mg"}
+LOW_NUTRIENT_STATUSES = {
+    NutrientStatus.AT_RISK_INADEQUATE,
+    NutrientStatus.BELOW_RDA,
+    NutrientStatus.DEFICIENT,
+    NutrientStatus.LOW,
+}
+HIGH_OR_ADEQUATE_NUTRIENT_STATUSES = {
+    NutrientStatus.ADEQUATE,
+    NutrientStatus.EXCESSIVE_NEAR_UL,
+    NutrientStatus.EXCESSIVE,
+    NutrientStatus.RISKY,
+}
 
 
 def _message_for_status(status: NutrientStatus) -> str:
@@ -227,6 +242,84 @@ def contains_forbidden_terms(messages: list[str]) -> bool:
     return any(term in message for message in messages for term in FORBIDDEN_TERMS)
 
 
+def _result_by_code(results: list[NutrientAnalysisResult]) -> dict[str, NutrientAnalysisResult]:
+    """영양소 코드 기준으로 분석 결과를 조회할 수 있게 변환한다.
+
+    Args:
+        results: 영양소별 분석 결과 목록.
+
+    Returns:
+        영양소 코드를 key로 하는 분석 결과 dict.
+    """
+    return {result.nutrient_code: result for result in results}
+
+
+def _append_unique_message(messages: list[str], message: str) -> None:
+    """중복 없이 안전 메시지를 추가한다.
+
+    Args:
+        messages: 누적 메시지 목록.
+        message: 추가할 메시지.
+    """
+    if message not in messages:
+        messages.append(message)
+
+
+def _nutrient_interaction_messages(results: list[NutrientAnalysisResult]) -> list[str]:
+    """영양소 간 섭취 균형 확인 메시지를 생성한다.
+
+    Args:
+        results: 영양소별 분석 결과 목록.
+
+    Returns:
+        사용자에게 노출할 안전 확인 메시지 목록.
+    """
+    messages: list[str] = []
+    by_code = _result_by_code(results)
+    calcium = by_code.get("calcium_mg")
+    magnesium = by_code.get("magnesium_mg")
+    vitamin_d = by_code.get("vitamin_d_ug")
+    zinc = by_code.get("zinc_mg")
+    iron = by_code.get("iron_mg")
+
+    if (
+        calcium is not None
+        and magnesium is not None
+        and magnesium.actual_amount > 0
+        and calcium.actual_amount / magnesium.actual_amount > HIGH_CALCIUM_MAGNESIUM_RATIO
+    ):
+        _append_unique_message(
+            messages,
+            "칼슘:마그네슘 섭취 비율이 높아 두 미네랄 섭취 균형을 함께 확인하세요.",
+        )
+    if (
+        vitamin_d is not None
+        and magnesium is not None
+        and vitamin_d.status in HIGH_OR_ADEQUATE_NUTRIENT_STATUSES
+        and magnesium.status in LOW_NUTRIENT_STATUSES
+    ):
+        _append_unique_message(
+            messages,
+            "비타민 D 섭취가 충분하거나 높은 상태에서는 마그네슘 섭취 상태도 함께 확인하세요.",
+        )
+    if zinc is not None and zinc.actual_amount > ZINC_COPPER_REVIEW_THRESHOLD_MG:
+        _append_unique_message(
+            messages,
+            "아연 50mg/day 초과 섭취는 구리 섭취 상태 확인이 필요합니다.",
+        )
+    if (
+        calcium is not None
+        and iron is not None
+        and calcium.actual_amount >= CALCIUM_IRON_REVIEW_THRESHOLD_MG
+        and iron.status in LOW_NUTRIENT_STATUSES
+    ):
+        _append_unique_message(
+            messages,
+            "칼슘과 철분을 함께 많이 섭취하는 경우 철분 섭취 상태를 따로 확인하세요.",
+        )
+    return messages
+
+
 def analyze_nutrient_intakes(
     profile: UserProfile,
     intakes: list[NutrientIntake],
@@ -378,6 +471,9 @@ def analyze_nutrient_intakes(
     )
     for index, result in enumerate(low_results, start=1):
         result.priority = index
+
+    for message in _nutrient_interaction_messages(results):
+        _append_unique_message(safety_messages, message)
 
     return NutritionAnalysisResponse(
         results=results,
