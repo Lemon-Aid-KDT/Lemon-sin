@@ -17,10 +17,26 @@ from src.config import Settings
 from src.learning.consent_gate import IMAGE_LEARNING_REQUIRED_CONSENTS
 from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import delete_learning_artifacts_for_owner
+from src.media.factory import build_media_object_store
+from src.media.object_storage import MediaObjectReference, MediaObjectStorageError, MediaObjectStore
 from src.models.db.analysis_result import AnalysisResult
-from src.models.db.health import HealthDailySummary, HealthSyncBatch
+from src.models.db.health import (
+    BodyProfileSnapshot,
+    HealthDailySummary,
+    HealthMetricSample,
+    HealthSyncBatch,
+)
+from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
+from src.models.db.media import MediaObject, MediaProcessingRun, SupplementImageEvidence
+from src.models.db.medical import (
+    MedicalRecordCollection,
+    PatientCondition,
+    PatientMedication,
+    PatientStatusSnapshot,
+)
 from src.models.db.privacy import AuditLog, ConsentRecord, DeletionRequest
 from src.models.db.regulated import RegulatedDocument
+from src.models.db.retraining import AnnotationTask, LearningDatasetItem
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     UserSupplement,
@@ -50,10 +66,30 @@ LEARNING_REVOCATION_CONSENTS = frozenset(IMAGE_LEARNING_REQUIRED_CONSENTS)
 FORBIDDEN_AUDIT_METADATA_KEYS = {
     "authorization",
     "access_token",
+    "diagnosis",
+    "diagnosis_text",
+    "image_base64",
+    "image_bytes",
     "jwt",
+    "object_ref",
+    "object_uri",
+    "ocr_text",
     "owner_subject",
+    "public_url",
+    "provider_payload",
+    "provider_raw_payload",
+    "raw_image",
+    "raw_image_bytes",
+    "raw_ocr_text",
+    "raw_payload",
+    "raw_provider_payload",
+    "request_headers",
     "input_snapshot",
     "result_snapshot",
+    "secret",
+    "signed_url",
+    "treatment_instruction",
+    "treatment_instructions",
     "token",
 }
 
@@ -458,11 +494,16 @@ async def revoke_consent(
             "policy_version": policy.version,
         }
         if consent_type in LEARNING_REVOCATION_CONSENTS:
+            retraining_revoked_counts = await revoke_retraining_records_for_owner(
+                session=session,
+                owner_subject_hash=hash_actor_subject(user, settings),
+            )
             learning_deleted_counts = await delete_learning_artifacts_for_owner(
                 session=session,
                 owner_subject_hash=hash_actor_subject(user, settings),
                 object_store=build_learning_object_store(settings),
             )
+            event_metadata["retraining_revoked_counts"] = retraining_revoked_counts
             event_metadata["learning_deleted_counts"] = learning_deleted_counts
         learning_delete_failed = bool(
             event_metadata.get("learning_deleted_counts", {}).get(
@@ -634,6 +675,149 @@ async def delete_analysis_result_for_user(
         return True
 
 
+async def _scalar_records(session: AsyncSession, statement: Any) -> list[Any]:
+    """Return all scalar ORM records for one select statement.
+
+    Args:
+        session: Request-scoped async database session.
+        statement: SQLAlchemy select statement.
+
+    Returns:
+        Scalar ORM records returned by the statement.
+    """
+    return list((await session.scalars(statement)).all())
+
+
+async def _records_for_ids(
+    session: AsyncSession,
+    statement: Any,
+    ids: list[UUID],
+) -> list[Any]:
+    """Return linked records only when the parent id list is non-empty.
+
+    Args:
+        session: Request-scoped async database session.
+        statement: SQLAlchemy select statement with an ``IN`` predicate.
+        ids: Parent identifiers used to decide whether the lookup is needed.
+
+    Returns:
+        Linked ORM records or an empty list when there are no parent ids.
+    """
+    if not ids:
+        return []
+    return await _scalar_records(session, statement)
+
+
+async def _delete_records(session: AsyncSession, records: list[Any]) -> None:
+    """Delete ORM records in the provided order.
+
+    Args:
+        session: Request-scoped async database session.
+        records: ORM records selected for delete-all cleanup.
+
+    Returns:
+        None.
+    """
+    for record in records:
+        await session.delete(record)
+
+
+async def revoke_retraining_records_for_owner(
+    *,
+    session: AsyncSession,
+    owner_subject_hash: str,
+) -> dict[str, int]:
+    """Scrub user-linked retraining records for revoke/delete-all flows.
+
+    Args:
+        session: Request-scoped async database session.
+        owner_subject_hash: HMAC of the authenticated owner subject.
+
+    Returns:
+        Sanitized counts of scrubbed retraining lineage records.
+    """
+    now = _utc_now()
+    dataset_items = await _scalar_records(
+        session,
+        select(LearningDatasetItem).where(
+            LearningDatasetItem.owner_subject_hash == owner_subject_hash
+        ),
+    )
+    annotation_tasks = await _scalar_records(
+        session,
+        select(AnnotationTask).where(AnnotationTask.owner_subject_hash == owner_subject_hash),
+    )
+    for item in dataset_items:
+        item.label_status = "revoked"
+        item.media_object_id = None
+        item.learning_image_object_id = None
+        item.label_snapshot = {}
+        item.label_hash = None
+        item.quality_score = None
+        item.consent_snapshot = {}
+        item.retained_until = now
+        item.revoked_at = now
+    for task in annotation_tasks:
+        task.status = "cancelled"
+        task.media_object_id = None
+        task.label_snapshot = {}
+        task.review_notes_code = None
+        task.reviewer_hash = None
+        task.completed_at = now
+    return {
+        "learning_dataset_items_revoked": len(dataset_items),
+        "annotation_tasks_cancelled": len(annotation_tasks),
+    }
+
+
+async def _medical_deletion_records_for_owner(
+    session: AsyncSession,
+    owner_subject_hash: str,
+) -> dict[str, list[Any]]:
+    """Return medical records that must be removed for delete-all.
+
+    Args:
+        session: Request-scoped async database session.
+        owner_subject_hash: HMAC of the authenticated owner subject.
+
+    Returns:
+        Medical record groups keyed by sanitized deleted-count names.
+    """
+    medical_record_collections = await _scalar_records(
+        session,
+        select(MedicalRecordCollection).where(
+            MedicalRecordCollection.owner_subject_hash == owner_subject_hash
+        ),
+    )
+    medical_collection_ids = [record.id for record in medical_record_collections]
+    patient_conditions = await _records_for_ids(
+        session,
+        select(PatientCondition).where(
+            PatientCondition.medical_collection_id.in_(medical_collection_ids)
+        ),
+        medical_collection_ids,
+    )
+    patient_medications = await _records_for_ids(
+        session,
+        select(PatientMedication).where(
+            PatientMedication.medical_collection_id.in_(medical_collection_ids)
+        ),
+        medical_collection_ids,
+    )
+    patient_status_snapshots = await _scalar_records(
+        session,
+        select(PatientStatusSnapshot).where(
+            PatientStatusSnapshot.owner_subject_hash == owner_subject_hash
+        ),
+    )
+    return {
+        "patient_status_snapshots": patient_status_snapshots,
+        "patient_conditions": patient_conditions,
+        "patient_medications": patient_medications,
+        "medical_record_collections": medical_record_collections,
+    }
+
+
 async def create_delete_all_user_data_request(
     session: AsyncSession,
     user: AuthenticatedUser,
@@ -669,111 +853,146 @@ async def create_delete_all_user_data_request(
     )
 
     async with session.begin():
-        health_daily_summaries = list(
-            (
-                await session.scalars(
-                    select(HealthDailySummary).where(
-                        HealthDailySummary.owner_subject == owner_subject
-                    )
-                )
-            ).all()
+        health_daily_summaries = await _scalar_records(
+            session,
+            select(HealthDailySummary).where(HealthDailySummary.owner_subject == owner_subject),
         )
-        health_sync_batches = list(
-            (
-                await session.scalars(
-                    select(HealthSyncBatch).where(HealthSyncBatch.owner_subject == owner_subject)
-                )
-            ).all()
+        health_sync_batches = await _scalar_records(
+            session,
+            select(HealthSyncBatch).where(HealthSyncBatch.owner_subject == owner_subject),
         )
-        supplement_analysis_runs = list(
-            (
-                await session.scalars(
-                    select(SupplementAnalysisRun).where(
-                        SupplementAnalysisRun.owner_subject == owner_subject
-                    )
-                )
-            ).all()
+        body_profile_snapshots = await _scalar_records(
+            session,
+            select(BodyProfileSnapshot).where(BodyProfileSnapshot.owner_subject == owner_subject),
         )
-        user_supplements = list(
-            (
-                await session.scalars(
-                    select(UserSupplement).where(UserSupplement.owner_subject == owner_subject)
-                )
-            ).all()
+        health_metric_samples = await _scalar_records(
+            session,
+            select(HealthMetricSample).where(HealthMetricSample.owner_subject == owner_subject),
+        )
+        supplement_analysis_runs = await _scalar_records(
+            session,
+            select(SupplementAnalysisRun).where(
+                SupplementAnalysisRun.owner_subject == owner_subject
+            ),
+        )
+        supplement_analysis_run_ids = [record.id for record in supplement_analysis_runs]
+        supplement_image_evidence = await _records_for_ids(
+            session,
+            select(SupplementImageEvidence).where(
+                SupplementImageEvidence.analysis_run_id.in_(supplement_analysis_run_ids)
+            ),
+            supplement_analysis_run_ids,
+        )
+        user_supplements = await _scalar_records(
+            session,
+            select(UserSupplement).where(UserSupplement.owner_subject == owner_subject),
         )
         user_supplement_ids = [record.id for record in user_supplements]
-        user_supplement_ingredients: list[UserSupplementIngredient] = []
-        if user_supplement_ids:
-            user_supplement_ingredients = list(
-                (
-                    await session.scalars(
-                        select(UserSupplementIngredient).where(
-                            UserSupplementIngredient.user_supplement_id.in_(user_supplement_ids)
-                        )
-                    )
-                ).all()
-            )
-        analysis_records = list(
-            (
-                await session.scalars(
-                    select(AnalysisResult).where(AnalysisResult.owner_subject == owner_subject)
-                )
-            ).all()
+        user_supplement_ingredients = await _records_for_ids(
+            session,
+            select(UserSupplementIngredient).where(
+                UserSupplementIngredient.user_supplement_id.in_(user_supplement_ids)
+            ),
+            user_supplement_ids,
         )
-        regulated_documents = list(
-            (
-                await session.scalars(
-                    select(RegulatedDocument).where(
-                        RegulatedDocument.owner_subject_hash == owner_subject_hash
-                    )
-                )
-            ).all()
+        meal_records = await _scalar_records(
+            session,
+            select(MealRecord).where(MealRecord.owner_subject == owner_subject),
         )
-        consent_records = list(
-            (
-                await session.scalars(
-                    select(ConsentRecord).where(ConsentRecord.owner_subject == owner_subject)
-                )
-            ).all()
+        meal_record_ids = [record.id for record in meal_records]
+        meal_food_items = await _records_for_ids(
+            session,
+            select(MealFoodItem).where(MealFoodItem.meal_id.in_(meal_record_ids)),
+            meal_record_ids,
+        )
+        food_image_analysis_runs = await _scalar_records(
+            session,
+            select(FoodImageAnalysisRun).where(FoodImageAnalysisRun.owner_subject == owner_subject),
+        )
+        analysis_records = await _scalar_records(
+            session,
+            select(AnalysisResult).where(AnalysisResult.owner_subject == owner_subject),
+        )
+        regulated_documents = await _scalar_records(
+            session,
+            select(RegulatedDocument).where(
+                RegulatedDocument.owner_subject_hash == owner_subject_hash
+            ),
+        )
+        medical_deletion_records = await _medical_deletion_records_for_owner(
+            session,
+            owner_subject_hash,
+        )
+        consent_records = await _scalar_records(
+            session,
+            select(ConsentRecord).where(ConsentRecord.owner_subject == owner_subject),
         )
         learning_deleted_counts = await delete_learning_artifacts_for_owner(
             session=session,
             owner_subject_hash=owner_subject_hash,
             object_store=build_learning_object_store(settings),
         )
+        retraining_revoked_counts = await revoke_retraining_records_for_owner(
+            session=session,
+            owner_subject_hash=owner_subject_hash,
+        )
+        media_deleted_counts = await delete_media_artifacts_for_owner(
+            session=session,
+            owner_subject_hash=owner_subject_hash,
+            object_store=build_media_object_store(settings),
+        )
 
-        for user_supplement_ingredient in user_supplement_ingredients:
-            await session.delete(user_supplement_ingredient)
-        for user_supplement in user_supplements:
-            await session.delete(user_supplement)
-        for supplement_analysis_run in supplement_analysis_runs:
-            await session.delete(supplement_analysis_run)
-        for health_daily_summary in health_daily_summaries:
-            await session.delete(health_daily_summary)
-        for health_sync_batch in health_sync_batches:
-            await session.delete(health_sync_batch)
-        for analysis_record in analysis_records:
-            await session.delete(analysis_record)
-        for regulated_document in regulated_documents:
-            await session.delete(regulated_document)
-        for consent_record in consent_records:
-            await session.delete(consent_record)
+        await _delete_records(session, user_supplement_ingredients)
+        await _delete_records(session, user_supplements)
+        await _delete_records(session, food_image_analysis_runs)
+        await _delete_records(session, meal_food_items)
+        await _delete_records(session, meal_records)
+        await _delete_records(session, supplement_image_evidence)
+        await _delete_records(session, supplement_analysis_runs)
+        await _delete_records(session, body_profile_snapshots)
+        await _delete_records(session, health_metric_samples)
+        await _delete_records(session, health_daily_summaries)
+        await _delete_records(session, health_sync_batches)
+        await _delete_records(session, analysis_records)
+        for records in medical_deletion_records.values():
+            await _delete_records(session, records)
+        await _delete_records(session, regulated_documents)
+        await _delete_records(session, consent_records)
 
         deletion_request.deleted_counts = {
             "analysis_results": len(analysis_records),
             "consent_records": len(consent_records),
             "health_daily_summaries": len(health_daily_summaries),
+            "body_profile_snapshots": len(body_profile_snapshots),
+            "health_metric_samples": len(health_metric_samples),
             "health_sync_batches": len(health_sync_batches),
+            "food_image_analysis_runs": len(food_image_analysis_runs),
+            "meal_food_items": len(meal_food_items),
+            "meal_records": len(meal_records),
+            **{
+                count_name: len(records) for count_name, records in medical_deletion_records.items()
+            },
             "regulated_documents": len(regulated_documents),
+            "supplement_image_evidence": len(supplement_image_evidence),
             "supplement_analysis_runs": len(supplement_analysis_runs),
             "user_supplement_ingredients": len(user_supplement_ingredients),
             "user_supplements": len(user_supplements),
+            **media_deleted_counts,
             **learning_deleted_counts,
+            **retraining_revoked_counts,
         }
-        if learning_deleted_counts["learning_image_object_delete_failures"]:
+        learning_delete_failed, media_delete_failed = (
+            bool(learning_deleted_counts["learning_image_object_delete_failures"]),
+            bool(media_deleted_counts["media_object_delete_failures"]),
+        )
+        if learning_delete_failed or media_delete_failed:
             deletion_request.status = DeletionRequestStatus.FAILED.value
             deletion_request.completed_at = None
-            deletion_request.failure_reason = "learning_image_object_delete_failed"
+            deletion_request.failure_reason = (
+                "learning_image_object_delete_failed"
+                if learning_delete_failed
+                else "media_object_delete_failed"
+            )
         session.add(deletion_request)
         session.add(
             _build_audit_log(
@@ -781,17 +1000,84 @@ async def create_delete_all_user_data_request(
                 action="user_data_deleted",
                 resource_type="user_data",
                 resource_id=str(deletion_request.id),
-                outcome=(
-                    "failed"
-                    if learning_deleted_counts["learning_image_object_delete_failures"]
-                    else "success"
-                ),
+                outcome="failed" if learning_delete_failed or media_delete_failed else "success",
                 request=request,
                 settings=settings,
                 event_metadata={"deleted_counts": deletion_request.deleted_counts},
             )
         )
     return deletion_request
+
+
+async def delete_media_artifacts_for_owner(
+    *,
+    session: AsyncSession,
+    owner_subject_hash: str,
+    object_store: MediaObjectStore,
+) -> dict[str, int]:
+    """Delete backend-only media references and retained objects for one user.
+
+    Args:
+        session: Request-scoped async database session.
+        owner_subject_hash: HMAC of the owner subject.
+        object_store: Object store used to delete retained media objects.
+
+    Returns:
+        Deleted row/object counts. Object delete failures preserve the media row
+        with status=failed so a later retry can delete the private object.
+    """
+    media_objects = list(
+        (
+            await session.scalars(
+                select(MediaObject).where(MediaObject.owner_subject_hash == owner_subject_hash)
+            )
+        ).all()
+    )
+    media_object_ids = [record.id for record in media_objects]
+    media_processing_runs: list[MediaProcessingRun] = []
+    if media_object_ids:
+        media_processing_runs = list(
+            (
+                await session.scalars(
+                    select(MediaProcessingRun).where(
+                        MediaProcessingRun.media_object_id.in_(media_object_ids)
+                    )
+                )
+            ).all()
+        )
+
+    deleted_rows = 0
+    deleted_objects = 0
+    object_delete_failures = 0
+    retained_for_retry = 0
+    for media_processing_run in media_processing_runs:
+        await session.delete(media_processing_run)
+    for media_object in media_objects:
+        if media_object.deleted_at is None:
+            try:
+                await object_store.delete_object(
+                    MediaObjectReference(
+                        object_storage_provider=media_object.object_storage_provider,
+                        object_ref=media_object.object_ref,
+                        object_version_id=media_object.object_version_id,
+                    )
+                )
+                deleted_objects += 1
+            except MediaObjectStorageError:
+                object_delete_failures += 1
+                retained_for_retry += 1
+                media_object.status = "failed"
+                continue
+        await session.delete(media_object)
+        deleted_rows += 1
+
+    return {
+        "media_objects": deleted_rows,
+        "media_processing_runs": len(media_processing_runs),
+        "media_object_blobs": deleted_objects,
+        "media_object_delete_failures": object_delete_failures,
+        "media_objects_retained_for_retry": retained_for_retry,
+    }
 
 
 async def get_deletion_request(

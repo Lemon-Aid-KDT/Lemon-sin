@@ -97,6 +97,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.supabase_storage_private_bucket == "learning-images"
     assert settings.supabase_storage_s3_access_key_id is None
     assert settings.supabase_storage_s3_secret_access_key is None
+    assert settings.media_object_storage_provider == "disabled"
     assert "testserver" in settings.allowed_hosts
     assert settings.auth_mode == "disabled"
     assert settings.supplement_image_max_bytes == 5 * 1024 * 1024
@@ -525,6 +526,16 @@ def test_production_rejects_learning_object_storage_without_signoff() -> None:
         Settings(**kwargs)
 
 
+def test_production_rejects_media_object_storage_without_signoff() -> None:
+    """Verify production cannot enable retained media storage before sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs["media_object_storage_provider"] = "s3"
+    kwargs["media_object_storage_bucket"] = "media-objects"
+
+    with pytest.raises(ValidationError, match="MEDIA_OBJECT_STORAGE_PROVIDER"):
+        Settings(**kwargs)
+
+
 def test_production_rejects_regulated_raw_image_retention_without_signoff() -> None:
     """Verify regulated document raw images remain memory-only before sign-off."""
     kwargs = _valid_production_kwargs()
@@ -578,6 +589,50 @@ def test_supabase_s3_learning_object_storage_requires_server_credentials() -> No
             learning_object_storage_provider="supabase_s3",
             supabase_project_ref="projectref",
             learning_object_storage_region="ap-northeast-2",
+        )
+
+
+def test_s3_media_object_storage_requires_bucket() -> None:
+    """Verify S3 media object storage cannot start without a bucket."""
+    with pytest.raises(ValidationError, match="MEDIA_OBJECT_STORAGE_BUCKET"):
+        Settings(_env_file=None, media_object_storage_provider="s3")
+
+
+def test_supabase_s3_media_object_storage_requires_project_or_endpoint() -> None:
+    """Verify Supabase media Storage cannot be configured without a scoped endpoint."""
+    with pytest.raises(
+        ValidationError,
+        match="SUPABASE_PROJECT_REF or MEDIA_OBJECT_STORAGE_ENDPOINT_URL",
+    ):
+        Settings(
+            _env_file=None,
+            media_object_storage_provider="supabase_s3",
+            media_object_storage_region="ap-northeast-2",
+            supabase_storage_s3_access_key_id="access",
+            supabase_storage_s3_secret_access_key="secret",  # pragma: allowlist secret
+        )
+
+
+def test_supabase_s3_media_object_storage_requires_region() -> None:
+    """Verify Supabase media Storage S3 uses the project region explicitly."""
+    with pytest.raises(ValidationError, match="MEDIA_OBJECT_STORAGE_REGION"):
+        Settings(
+            _env_file=None,
+            media_object_storage_provider="supabase_s3",
+            supabase_project_ref="projectref",
+            supabase_storage_s3_access_key_id="access",
+            supabase_storage_s3_secret_access_key="secret",  # pragma: allowlist secret
+        )
+
+
+def test_supabase_s3_media_object_storage_requires_server_credentials() -> None:
+    """Verify Supabase media Storage S3 cannot rely on public client keys."""
+    with pytest.raises(ValidationError, match="SUPABASE_STORAGE_S3_ACCESS_KEY_ID"):
+        Settings(
+            _env_file=None,
+            media_object_storage_provider="supabase_s3",
+            supabase_project_ref="projectref",
+            media_object_storage_region="ap-northeast-2",
         )
 
 

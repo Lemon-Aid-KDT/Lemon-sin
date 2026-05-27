@@ -18,6 +18,7 @@ class ConsentType(StrEnum):
         HEALTH_DEVICE_DATA: Consent for future wearable or device data intake.
         OCR_IMAGE_PROCESSING: Consent for future OCR image processing.
         EXTERNAL_OCR_PROCESSING: Consent for sending label images to external OCR providers.
+        FOOD_IMAGE_PROCESSING: Consent for processing food images into meal previews.
         PRESCRIPTION_OCR_INTAKE: Consent for prescription document OCR intake.
         LAB_RESULT_OCR_INTAKE: Consent for lab result document OCR intake.
         DATA_RETENTION: Consent for retaining user analysis history.
@@ -28,6 +29,7 @@ class ConsentType(StrEnum):
     HEALTH_DEVICE_DATA = "health_device_data"
     OCR_IMAGE_PROCESSING = "ocr_image_processing"
     EXTERNAL_OCR_PROCESSING = "external_ocr_processing"
+    FOOD_IMAGE_PROCESSING = "food_image_processing"
     PRESCRIPTION_OCR_INTAKE = "prescription_ocr_intake"
     LAB_RESULT_OCR_INTAKE = "lab_result_ocr_intake"
     DATA_RETENTION = "data_retention"

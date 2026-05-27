@@ -14,11 +14,26 @@ from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.learning.object_storage import LearningObjectStorageError
+from src.media.object_storage import MediaObjectReference, MediaObjectStorageError
 from src.models.db.analysis_result import AnalysisResult
-from src.models.db.health import HealthDailySummary, HealthSyncBatch
+from src.models.db.health import (
+    BodyProfileSnapshot,
+    HealthDailySummary,
+    HealthMetricSample,
+    HealthSyncBatch,
+)
 from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
+from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
+from src.models.db.media import MediaObject, MediaProcessingRun, SupplementImageEvidence
+from src.models.db.medical import (
+    MedicalRecordCollection,
+    PatientCondition,
+    PatientMedication,
+    PatientStatusSnapshot,
+)
 from src.models.db.privacy import AuditLog, ConsentRecord, DeletionRequest
 from src.models.db.regulated import RegulatedDocument
+from src.models.db.retraining import AnnotationTask, LearningDatasetItem
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     UserSupplement,
@@ -199,6 +214,35 @@ class _FakeLearningObjectStore:
         self.deleted.append((object_uri, version_id))
 
 
+class _FakeMediaObjectStore:
+    """Fake media object store that records deletes."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        """Initialize captured media object deletes.
+
+        Args:
+            fail: Whether delete_object should raise a storage error.
+        """
+        self.fail = fail
+        self.deleted: list[MediaObjectReference] = []
+
+    async def delete_object(self, reference: MediaObjectReference) -> None:
+        """Capture a private media object deletion request.
+
+        Args:
+            reference: Private media object reference.
+
+        Returns:
+            None.
+
+        Raises:
+            MediaObjectStorageError: When fail=True.
+        """
+        if self.fail:
+            raise MediaObjectStorageError("sensitive object ref should not be printed")
+        self.deleted.append(reference)
+
+
 def _request() -> Request:
     """Return a request fixture with auditable metadata.
 
@@ -285,11 +329,39 @@ async def test_revoke_image_learning_consent_deletes_learning_artifacts(
         embedding=(0.1, 0.2, 0.3),
         embedding_metadata={"display_name": "Vitamin C"},
     )
+    dataset_item = LearningDatasetItem(
+        id=uuid4(),
+        dataset_version_id=uuid4(),
+        owner_subject_hash="a" * 64,
+        learning_image_object_id=image_object.id,
+        source_domain="supplement",
+        task_type="paddleocr_recognition",
+        label_status="human_reviewed",
+        split="train",
+        label_snapshot={"text_label": "confirmed label"},
+        label_hash="c" * 64,
+        quality_score=Decimal("0.9000"),
+        consent_snapshot={"consents": ["image_learning_dataset"]},
+        retained_until=now + timedelta(days=30),
+    )
+    annotation_task = AnnotationTask(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        task_type="ocr_textline_label",
+        status="accepted",
+        assignee_role="data_reviewer",
+        label_snapshot={"text_label": "confirmed label"},
+        review_notes_code="accepted",
+        reviewer_hash="d" * 64,
+        completed_at=now,
+    )
     fake_session = _FakeDeletionSession(
         {
             ImageEmbeddingJob: [embedding_job],
             ImageEmbeddingRecord: [embedding_record],
             LearningImageObject: [image_object],
+            LearningDatasetItem: [dataset_item],
+            AnnotationTask: [annotation_task],
         }
     )
     fake_store = _FakeLearningObjectStore()
@@ -310,6 +382,16 @@ async def test_revoke_image_learning_consent_deletes_learning_artifacts(
     assert consent_record.granted is False
     assert fake_store.deleted == [(image_object.object_uri, image_object.object_version_id)]
     assert fake_session.deleted == [embedding_job, embedding_record, image_object]
+    assert dataset_item.label_status == "revoked"
+    assert dataset_item.learning_image_object_id is None
+    assert dataset_item.label_snapshot == {}
+    assert dataset_item.label_hash is None
+    assert dataset_item.consent_snapshot == {}
+    assert dataset_item.revoked_at is not None
+    assert annotation_task.status == "cancelled"
+    assert annotation_task.label_snapshot == {}
+    assert annotation_task.review_notes_code is None
+    assert annotation_task.reviewer_hash is None
     audit_log = fake_session.added[1]
     assert isinstance(audit_log, AuditLog)
     assert audit_log.event_metadata["learning_deleted_counts"] == {
@@ -319,6 +401,10 @@ async def test_revoke_image_learning_consent_deletes_learning_artifacts(
         "learning_image_object_blobs": 1,
         "learning_image_object_delete_failures": 0,
         "learning_image_objects_retained_for_retry": 0,
+    }
+    assert audit_log.event_metadata["retraining_revoked_counts"] == {
+        "learning_dataset_items_revoked": 1,
+        "annotation_tasks_cancelled": 1,
     }
     serialized_metadata = str(audit_log.event_metadata)
     assert image_object.object_uri not in serialized_metadata
@@ -362,7 +448,9 @@ async def test_record_audit_event_sanitizes_sensitive_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> None:
+async def test_delete_all_user_data_includes_p1_health_and_supplement_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify all owner-scoped P1 rows are included in all-user-data deletion."""
     owner_subject = "https://auth.example.com/::user_123"
     now = datetime.now(UTC)
@@ -413,6 +501,28 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
         input_snapshot={"source": "manual"},
         result_snapshot={"accepted": 1},
     )
+    body_profile = BodyProfileSnapshot(
+        id=uuid4(),
+        owner_subject=owner_subject,
+        effective_at=now,
+        source="manual",
+        sex="male",
+        birth_year=1990,
+        height_cm=Decimal("175.0"),
+        weight_kg=Decimal("72.0"),
+        consent_snapshot={"consents": ["sensitive_health_analysis"]},
+    )
+    health_metric_sample = HealthMetricSample(
+        id=uuid4(),
+        owner_subject=owner_subject,
+        metric_type="steps",
+        measured_at=now,
+        value_numeric=Decimal("7000"),
+        unit="count",
+        source_platform="manual",
+        source_record_hash="e" * 64,
+        quality_flags=[],
+    )
     analysis_result = AnalysisResult(
         id=uuid4(),
         owner_subject=owner_subject,
@@ -444,17 +554,175 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
         raw_image_deleted_at=now,
         expires_at=now + timedelta(minutes=30),
     )
+    medical_collection = MedicalRecordCollection(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        record_type="medication",
+        source="regulated_ocr_confirmed",
+        source_document_id=regulated_document.id,
+        status="active",
+        consent_snapshot={"consents": ["sensitive_health_analysis"]},
+    )
+    patient_condition = PatientCondition(
+        id=uuid4(),
+        medical_collection_id=medical_collection.id,
+        condition_text="confirmed condition",
+        condition_code_system="internal",
+        condition_code_hash="f" * 64,
+        clinical_status="active",
+        source="user_confirmed",
+        confirmed_at=now,
+    )
+    patient_medication = PatientMedication(
+        id=uuid4(),
+        medical_collection_id=medical_collection.id,
+        medication_name_text="confirmed medication",
+        dose_text="confirmed dose",
+        frequency_text="confirmed frequency",
+        active_status="active",
+        source_document_id=regulated_document.id,
+        confirmed_at=now,
+    )
+    patient_status_snapshot = PatientStatusSnapshot(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        status_at=now,
+        summary_type="confirmed_record_summary",
+        symptom_categories=[],
+        metric_summary={"records": 1},
+        medication_summary={"active_count": 1},
+        risk_flags=["data_insufficient"],
+        data_quality="partial",
+        generated_by="backend_rule",
+        expires_at=now + timedelta(days=1),
+    )
+    media_object = MediaObject(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        domain="supplement_label",
+        object_storage_provider="supabase_s3",
+        object_ref="supplement/2026/05/object.png",
+        image_sha256="c" * 64,
+        image_mime_type="image/png",
+        image_size_bytes=1024,
+        exif_stripped=True,
+        retained_until=now + timedelta(days=30),
+        status="retained",
+        consent_snapshot={"consents": []},
+    )
+    media_processing_run = MediaProcessingRun(
+        id=uuid4(),
+        media_object_id=media_object.id,
+        pipeline_type="quality_check",
+        provider="internal",
+        status="succeeded",
+        sanitized_snapshot={"quality": "usable"},
+        warning_codes=[],
+    )
+    supplement_image_evidence = SupplementImageEvidence(
+        id=uuid4(),
+        analysis_run_id=supplement_run.id,
+        media_object_id=media_object.id,
+        image_role="supplement_facts",
+        quality_status="usable",
+        quality_codes=[],
+        roi_snapshot={"boxes": []},
+    )
+    meal_record = MealRecord(
+        id=uuid4(),
+        owner_subject=owner_subject,
+        client_request_id="meal-req-123",
+        eaten_at=now,
+        meal_type="lunch",
+        source="gallery",
+        status="requires_confirmation",
+        nutrition_summary={"kcal": 600},
+        confidence=Decimal("0.8000"),
+    )
+    meal_food_item = MealFoodItem(
+        id=uuid4(),
+        meal_id=meal_record.id,
+        food_name_text="sample food",
+        portion_amount=Decimal("1.0"),
+        portion_unit="serving",
+        kcal=Decimal("600"),
+        source="vision",
+        confidence=Decimal("0.7000"),
+        sort_order=0,
+    )
+    food_image_analysis_run = FoodImageAnalysisRun(
+        id=uuid4(),
+        owner_subject=owner_subject,
+        client_request_id="food-image-req-123",
+        media_object_id=media_object.id,
+        meal_id=meal_record.id,
+        image_sha256="d" * 64,
+        image_mime_type="image/png",
+        image_size_bytes=2048,
+        detector_model="food-detector-test",
+        classifier_model="food-classifier-test",
+        status="requires_confirmation",
+        detected_items_snapshot={"items": []},
+        nutrition_estimate_snapshot={"items": []},
+        warning_codes=[],
+    )
+    dataset_item = LearningDatasetItem(
+        id=uuid4(),
+        dataset_version_id=uuid4(),
+        owner_subject_hash="a" * 64,
+        media_object_id=media_object.id,
+        source_domain="food",
+        task_type="food_classification",
+        label_status="human_reviewed",
+        split="train",
+        label_snapshot={"class_label": "sample"},
+        label_hash="f" * 64,
+        quality_score=Decimal("0.8500"),
+        consent_snapshot={"consents": ["food_image_processing"]},
+        retained_until=now + timedelta(days=30),
+    )
+    annotation_task = AnnotationTask(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        media_object_id=media_object.id,
+        task_type="food_class",
+        status="accepted",
+        assignee_role="nutrition_reviewer",
+        label_snapshot={"class_label": "sample"},
+        review_notes_code="accepted",
+        reviewer_hash="f" * 64,
+        completed_at=now,
+    )
     fake_session = _FakeDeletionSession(
         {
             HealthDailySummary: [health_summary],
             HealthSyncBatch: [health_batch],
+            BodyProfileSnapshot: [body_profile],
+            HealthMetricSample: [health_metric_sample],
             SupplementAnalysisRun: [supplement_run],
             UserSupplement: [supplement],
             UserSupplementIngredient: [supplement_ingredient],
             AnalysisResult: [analysis_result],
             RegulatedDocument: [regulated_document],
+            MedicalRecordCollection: [medical_collection],
+            PatientCondition: [patient_condition],
+            PatientMedication: [patient_medication],
+            PatientStatusSnapshot: [patient_status_snapshot],
             ConsentRecord: [consent_record],
+            MediaObject: [media_object],
+            MediaProcessingRun: [media_processing_run],
+            SupplementImageEvidence: [supplement_image_evidence],
+            MealRecord: [meal_record],
+            MealFoodItem: [meal_food_item],
+            FoodImageAnalysisRun: [food_image_analysis_run],
+            LearningDatasetItem: [dataset_item],
+            AnnotationTask: [annotation_task],
         }
+    )
+    fake_media_store = _FakeMediaObjectStore()
+    monkeypatch.setattr(
+        "src.services.privacy.build_media_object_store",
+        lambda _settings: fake_media_store,
     )
     settings = Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
 
@@ -466,34 +734,83 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows() -> 
     )
 
     assert fake_session.deleted == [
+        media_processing_run,
+        media_object,
         supplement_ingredient,
         supplement,
+        food_image_analysis_run,
+        meal_food_item,
+        meal_record,
+        supplement_image_evidence,
         supplement_run,
+        body_profile,
+        health_metric_sample,
         health_summary,
         health_batch,
         analysis_result,
+        patient_status_snapshot,
+        patient_condition,
+        patient_medication,
+        medical_collection,
         regulated_document,
         consent_record,
     ]
+    assert fake_media_store.deleted == [
+        MediaObjectReference(
+            object_storage_provider=media_object.object_storage_provider,
+            object_ref=media_object.object_ref,
+            object_version_id=media_object.object_version_id,
+        )
+    ]
     assert isinstance(deletion_request, DeletionRequest)
+    assert dataset_item.label_status == "revoked"
+    assert dataset_item.media_object_id is None
+    assert dataset_item.label_snapshot == {}
+    assert dataset_item.label_hash is None
+    assert dataset_item.consent_snapshot == {}
+    assert annotation_task.status == "cancelled"
+    assert annotation_task.media_object_id is None
+    assert annotation_task.label_snapshot == {}
+    assert annotation_task.review_notes_code is None
+    assert annotation_task.reviewer_hash is None
     assert deletion_request.deleted_counts == {
+        "annotation_tasks_cancelled": 1,
         "analysis_results": 1,
         "consent_records": 1,
+        "body_profile_snapshots": 1,
         "health_daily_summaries": 1,
+        "health_metric_samples": 1,
         "health_sync_batches": 1,
+        "food_image_analysis_runs": 1,
         "image_embedding_jobs": 0,
         "image_embedding_records": 0,
         "learning_image_object_blobs": 0,
         "learning_image_object_delete_failures": 0,
         "learning_image_objects_retained_for_retry": 0,
         "learning_image_objects": 0,
+        "learning_dataset_items_revoked": 1,
+        "meal_food_items": 1,
+        "meal_records": 1,
+        "media_object_blobs": 1,
+        "media_object_delete_failures": 0,
+        "media_objects_retained_for_retry": 0,
+        "media_objects": 1,
+        "media_processing_runs": 1,
+        "medical_record_collections": 1,
+        "patient_conditions": 1,
+        "patient_medications": 1,
+        "patient_status_snapshots": 1,
         "regulated_documents": 1,
+        "supplement_image_evidence": 1,
         "supplement_analysis_runs": 1,
         "user_supplement_ingredients": 1,
         "user_supplements": 1,
     }
     assert fake_session.added[0] is deletion_request
     assert isinstance(fake_session.added[1], AuditLog)
+    serialized_metadata = str(fake_session.added[1].event_metadata)
+    assert media_object.object_ref not in serialized_metadata
+    assert "owner_subject_hash" not in serialized_metadata
 
 
 @pytest.mark.asyncio
@@ -582,4 +899,80 @@ async def test_delete_all_user_data_marks_failed_when_learning_object_delete_fai
     assert audit_log.outcome == "failed"
     serialized_metadata = str(audit_log.event_metadata)
     assert image_object.object_uri not in serialized_metadata
+    assert "owner_subject_hash" not in serialized_metadata
+
+
+@pytest.mark.asyncio
+async def test_delete_all_user_data_marks_failed_when_media_object_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify delete-all requests fail closed when private media deletion fails."""
+    owner_subject = "https://auth.example.com/::user_123"
+    now = datetime.now(UTC)
+    media_object = MediaObject(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        domain="supplement_label",
+        object_storage_provider="supabase_s3",
+        object_ref="supplement/2026/05/object.png",
+        object_version_id="version-1",
+        image_sha256="c" * 64,
+        image_mime_type="image/png",
+        image_size_bytes=1024,
+        exif_stripped=True,
+        retained_until=now + timedelta(days=30),
+        status="retained",
+        consent_snapshot={"consents": []},
+    )
+    media_processing_run = MediaProcessingRun(
+        id=uuid4(),
+        media_object_id=media_object.id,
+        pipeline_type="quality_check",
+        provider="internal",
+        status="succeeded",
+        sanitized_snapshot={"quality": "usable"},
+        warning_codes=[],
+    )
+    consent_record = ConsentRecord(
+        id=uuid4(),
+        owner_subject=owner_subject,
+        consent_type="sensitive_health_analysis",
+        policy_version="2026-05-11",
+        granted=True,
+        occurred_at=now,
+    )
+    fake_session = _FakeDeletionSession(
+        {
+            MediaObject: [media_object],
+            MediaProcessingRun: [media_processing_run],
+            ConsentRecord: [consent_record],
+        }
+    )
+    fake_media_store = _FakeMediaObjectStore(fail=True)
+    monkeypatch.setattr(
+        "src.services.privacy.build_media_object_store",
+        lambda _settings: fake_media_store,
+    )
+    settings = Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
+
+    deletion_request = await create_delete_all_user_data_request(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _request(),
+        settings,
+    )
+
+    assert deletion_request.status == "failed"
+    assert deletion_request.completed_at is None
+    assert deletion_request.failure_reason == "media_object_delete_failed"
+    assert deletion_request.deleted_counts["media_objects"] == 0
+    assert deletion_request.deleted_counts["media_object_delete_failures"] == 1
+    assert deletion_request.deleted_counts["media_objects_retained_for_retry"] == 1
+    assert media_object.status == "failed"
+    assert fake_session.deleted == [media_processing_run, consent_record]
+    audit_log = fake_session.added[1]
+    assert isinstance(audit_log, AuditLog)
+    assert audit_log.outcome == "failed"
+    serialized_metadata = str(audit_log.event_metadata)
+    assert media_object.object_ref not in serialized_metadata
     assert "owner_subject_hash" not in serialized_metadata

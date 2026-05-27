@@ -26,6 +26,69 @@ def test_preflight_constants_cover_supabase_learning_tables_and_raw_keys() -> No
         "image_embedding_jobs",
         "image_embedding_records",
     )
+    assert check_learning_vector_db_security.INTERNAL_MEDIA_TABLES == (
+        "media_objects",
+        "media_processing_runs",
+        "supplement_image_evidence",
+    )
+    assert check_learning_vector_db_security.FOOD_MEAL_TABLES == (
+        "meal_records",
+        "meal_food_items",
+        "food_image_analysis_runs",
+    )
+    assert check_learning_vector_db_security.HEALTH_PROFILE_TABLES == (
+        "users",
+        "health_sync_batches",
+        "health_daily_summaries",
+        "body_profile_snapshots",
+        "health_metric_samples",
+    )
+    assert check_learning_vector_db_security.MEDICAL_RECORD_TABLES == (
+        "regulated_documents",
+        "prescription_items",
+        "lab_result_items",
+        "medical_record_collections",
+        "patient_conditions",
+        "patient_medications",
+        "patient_status_snapshots",
+    )
+    assert check_learning_vector_db_security.LEARNING_RETRAINING_TABLES == (
+        "learning_dataset_versions",
+        "learning_dataset_items",
+        "annotation_tasks",
+        "model_training_runs",
+        "model_registry",
+        "model_eval_results",
+    )
+    assert check_learning_vector_db_security.SENSITIVE_INTERNAL_TABLES == (
+        "learning_image_objects",
+        "image_embedding_jobs",
+        "image_embedding_records",
+        "media_objects",
+        "media_processing_runs",
+        "supplement_image_evidence",
+        "meal_records",
+        "meal_food_items",
+        "food_image_analysis_runs",
+        "users",
+        "health_sync_batches",
+        "health_daily_summaries",
+        "body_profile_snapshots",
+        "health_metric_samples",
+        "regulated_documents",
+        "prescription_items",
+        "lab_result_items",
+        "medical_record_collections",
+        "patient_conditions",
+        "patient_medications",
+        "patient_status_snapshots",
+        "learning_dataset_versions",
+        "learning_dataset_items",
+        "annotation_tasks",
+        "model_training_runs",
+        "model_registry",
+        "model_eval_results",
+    )
     assert check_learning_vector_db_security.SUPABASE_API_ROLES == (
         "PUBLIC",
         "anon",
@@ -53,11 +116,26 @@ def test_preflight_constants_cover_supabase_learning_tables_and_raw_keys() -> No
         "service_role",
     )
     assert {
+        "access_token",
+        "device_payload",
+        "diagnosis",
+        "diagnosis_text",
         "image_bytes",
+        "ocr_text",
+        "public_url",
+        "provider_raw_payload",
+        "prescription_instruction",
+        "raw_payload",
+        "raw_document",
+        "raw_document_text",
         "raw_ocr_text",
         "provider_payload",
+        "raw_provider_payload",
         "request_headers",
         "secret",
+        "signed_url",
+        "treatment_instruction",
+        "treatment_instructions",
     }.issubset(check_learning_vector_db_security.FORBIDDEN_COLUMNS)
 
 

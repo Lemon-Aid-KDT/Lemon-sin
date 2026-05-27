@@ -76,6 +76,17 @@ ACTIVE_CONSENT_POLICIES: dict[ConsentType, ConsentPolicyDefinition] = {
             "the service database."
         ),
     ),
+    ConsentType.FOOD_IMAGE_PROCESSING: ConsentPolicyDefinition(
+        consent_type=ConsentType.FOOD_IMAGE_PROCESSING,
+        version="2026-05-27",
+        title="Food image processing",
+        required=True,
+        content_hash=_policy_hash(
+            "Separate consent to process food images into meal preview records. The service "
+            "does not store raw food images, location metadata, provider payloads, or "
+            "household context from the image."
+        ),
+    ),
     ConsentType.PRESCRIPTION_OCR_INTAKE: ConsentPolicyDefinition(
         consent_type=ConsentType.PRESCRIPTION_OCR_INTAKE,
         version="2026-05-15",

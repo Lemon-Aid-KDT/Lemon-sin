@@ -18,6 +18,7 @@ class ApiScope(StrEnum):
         SUPPLEMENT_READ: Read current-user supplement records.
         SUPPLEMENT_WRITE: Analyze and register current-user supplements.
         SUPPLEMENT_DELETE: Delete current-user supplement records.
+        MEAL_WRITE: Analyze and create current-user meal previews.
         HEALTH_READ: Read current-user health summary data.
         HEALTH_WRITE: Sync current-user health device aggregate data.
         REGULATED_INPUT_WRITE: Create intake-only regulated document OCR previews.
@@ -33,6 +34,7 @@ class ApiScope(StrEnum):
     SUPPLEMENT_READ = "supplement:read"
     SUPPLEMENT_WRITE = "supplement:write"
     SUPPLEMENT_DELETE = "supplement:delete"
+    MEAL_WRITE = "meal:write"
     HEALTH_READ = "health:read"
     HEALTH_WRITE = "health:write"
     REGULATED_INPUT_WRITE = "regulated_input:write"
@@ -49,6 +51,7 @@ SCOPE_DESCRIPTIONS: dict[ApiScope, str] = {
     ApiScope.SUPPLEMENT_READ: "Read current-user supplement records.",
     ApiScope.SUPPLEMENT_WRITE: "Analyze and register current-user supplements.",
     ApiScope.SUPPLEMENT_DELETE: "Delete current-user supplement records.",
+    ApiScope.MEAL_WRITE: "Analyze and create current-user meal previews.",
     ApiScope.HEALTH_READ: "Read current-user health summary data.",
     ApiScope.HEALTH_WRITE: "Sync current-user health device aggregate data.",
     ApiScope.REGULATED_INPUT_WRITE: "Create intake-only regulated document OCR previews.",

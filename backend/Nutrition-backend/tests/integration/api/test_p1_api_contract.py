@@ -127,6 +127,10 @@ def test_p1_contract_endpoints_are_registered_with_required_scopes() -> None:
             "p1_2_intake_ready",
             ["supplement:write"],
         ),
+        ("/api/v1/meals/analyze-image", "post"): (
+            "p1_2_intake_ready",
+            ["meal:write"],
+        ),
         ("/api/v1/supplements", "post"): ("p1_4_registration_ready", ["supplement:write"]),
         ("/api/v1/supplements", "get"): ("p1_4_registration_ready", ["supplement:read"]),
         ("/api/v1/supplements/{supplement_id}", "get"): (
@@ -168,6 +172,9 @@ def test_p1_contract_endpoints_expose_required_consents() -> None:
     assert schema["paths"]["/api/v1/supplements/analyses/{analysis_id}/ocr-text"]["post"][
         "x-required-consents"
     ] == ["ocr_image_processing"]
+    assert schema["paths"]["/api/v1/meals/analyze-image"]["post"]["x-required-consents"] == [
+        "food_image_processing"
+    ]
     assert schema["paths"]["/api/v1/supplements"]["post"]["x-required-consents"] == [
         "sensitive_health_analysis"
     ]

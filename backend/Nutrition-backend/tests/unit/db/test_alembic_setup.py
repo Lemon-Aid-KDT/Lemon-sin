@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0013_index_user_supplement_foreign_keys"]
+    assert script.get_heads() == ["0018_create_learning_dataset_model_registry_tables"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0013_index_user_supplement_foreign_keys"]
+    assert script.get_heads() == ["0018_create_learning_dataset_model_registry_tables"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -255,3 +255,214 @@ def test_user_supplement_fk_index_migration_adds_no_data_exposure() -> None:
     assert "POLICY" not in migration
     assert "raw_ocr_text" not in migration
     assert "provider_payload" not in migration
+
+
+def test_backend_only_media_migration_file_exists() -> None:
+    """Verify the backend-only media table migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0014_create_backend_only_media_tables.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_backend_only_media_migration_is_fail_closed() -> None:
+    """Verify media tables are internal and do not store raw payload columns."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0014_create_backend_only_media_tables.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "media_objects" in migration
+    assert "media_processing_runs" in migration
+    assert "supplement_image_evidence" in migration
+    assert "ENABLE ROW LEVEL SECURITY" in migration
+    assert "REVOKE ALL PRIVILEGES ON TABLE" in migration
+    assert "FROM PUBLIC" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "object_ref NOT LIKE '%://%'" in migration
+    assert "object_ref NOT LIKE '/%'" in migration
+    assert "object_ref NOT LIKE '%..%'" in migration
+    assert "quality_codes" in migration
+    assert "roi_snapshot" in migration
+    assert "jsonb_typeof(quality_codes) = 'array'" in migration
+    assert "jsonb_typeof(roi_snapshot) = 'object'" in migration
+    assert "Raw image bytes" in migration
+    assert "raw OCR" in migration
+    assert "provider payloads" in migration
+    assert "GRANT " not in migration
+    assert "image_bytes" not in migration
+    assert "raw_ocr_text" not in migration
+    assert "provider_payload" not in migration
+    assert "request_headers" not in migration
+    assert "access_token" not in migration
+
+
+def test_food_meal_migration_file_exists() -> None:
+    """Verify the food and meal preview migration file exists."""
+    migration_path = BACKEND_ROOT / "alembic" / "versions" / "0015_create_food_meal_tables.py"
+
+    assert migration_path.is_file()
+
+
+def test_food_meal_migration_is_fail_closed() -> None:
+    """Verify food/meal tables are internal and do not store raw payload columns."""
+    migration_path = BACKEND_ROOT / "alembic" / "versions" / "0015_create_food_meal_tables.py"
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "meal_records" in migration
+    assert "meal_food_items" in migration
+    assert "food_image_analysis_runs" in migration
+    assert "ENABLE ROW LEVEL SECURITY" in migration
+    assert "REVOKE ALL PRIVILEGES ON TABLE" in migration
+    assert "FROM PUBLIC" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "jsonb_typeof(nutrition_summary) = 'object'" in migration
+    assert "jsonb_typeof(detected_items_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(nutrition_estimate_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(warning_codes) = 'array'" in migration
+    assert "Original images" in migration
+    assert "provider payloads" in migration
+    assert "GRANT " not in migration
+    assert "image_bytes" not in migration
+    assert "raw_ocr_text" not in migration
+    assert "provider_payload" not in migration
+    assert "request_headers" not in migration
+    assert "access_token" not in migration
+
+
+def test_health_profile_metric_migration_file_exists() -> None:
+    """Verify the health profile and metric sample migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0016_create_health_profile_metric_tables.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_health_profile_metric_migration_is_fail_closed() -> None:
+    """Verify health/profile tables are hardened against Supabase client exposure."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0016_create_health_profile_metric_tables.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "body_profile_snapshots" in migration
+    assert "health_metric_samples" in migration
+    assert "public.users" in migration
+    assert "public.health_sync_batches" in migration
+    assert "public.health_daily_summaries" in migration
+    assert "ENABLE ROW LEVEL SECURITY" in migration
+    assert "REVOKE ALL PRIVILEGES ON TABLE" in migration
+    assert "FROM PUBLIC" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "jsonb_typeof(consent_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(quality_flags) = 'array'" in migration
+    assert "Direct backend PostgreSQL access only" in migration
+    assert "GRANT " not in migration
+    assert "raw_payload" not in migration
+    assert "provider_payload" not in migration
+    assert "request_headers" not in migration
+    assert "access_token" not in migration
+
+
+def test_medical_record_status_migration_file_exists() -> None:
+    """Verify the medical record and patient status migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0017_create_medical_record_status_tables.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_medical_record_status_migration_is_fail_closed() -> None:
+    """Verify medical record tables are internal and avoid raw payload columns."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0017_create_medical_record_status_tables.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "medical_record_collections" in migration
+    assert "patient_conditions" in migration
+    assert "patient_medications" in migration
+    assert "patient_status_snapshots" in migration
+    assert "public.regulated_documents" in migration
+    assert "public.prescription_items" in migration
+    assert "public.lab_result_items" in migration
+    assert "ENABLE ROW LEVEL SECURITY" in migration
+    assert "REVOKE ALL PRIVILEGES ON TABLE" in migration
+    assert "FROM PUBLIC" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "jsonb_typeof(consent_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(symptom_categories) = 'array'" in migration
+    assert "jsonb_typeof(metric_summary) = 'object'" in migration
+    assert "jsonb_typeof(risk_flags) = 'array'" in migration
+    assert "Direct backend PostgreSQL access only" in migration
+    assert "GRANT " not in migration
+    for forbidden_column in (
+        'sa.Column("diagnosis"',
+        'sa.Column("diagnosis_text"',
+        'sa.Column("image_bytes"',
+        'sa.Column("provider_payload"',
+        'sa.Column("raw_document"',
+        'sa.Column("raw_ocr_text"',
+        'sa.Column("request_headers"',
+        'sa.Column("treatment_instruction"',
+    ):
+        assert forbidden_column not in migration
+
+
+def test_learning_dataset_model_registry_migration_file_exists() -> None:
+    """Verify the retraining dataset and model registry migration file exists."""
+    migration_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "0018_create_learning_dataset_model_registry_tables.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_learning_dataset_model_registry_migration_is_fail_closed() -> None:
+    """Verify retraining lineage tables are backend-only and privacy-safe."""
+    migration_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "0018_create_learning_dataset_model_registry_tables.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "learning_dataset_versions" in migration
+    assert "learning_dataset_items" in migration
+    assert "annotation_tasks" in migration
+    assert "model_training_runs" in migration
+    assert "model_registry" in migration
+    assert "model_eval_results" in migration
+    assert "ENABLE ROW LEVEL SECURITY" in migration
+    assert "REVOKE ALL PRIVILEGES ON TABLE" in migration
+    assert "FROM PUBLIC" in migration
+    assert "'anon', 'authenticated', 'service_role'" in migration
+    assert "jsonb_typeof(label_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(consent_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(metrics_snapshot) = 'object'" in migration
+    assert "jsonb_typeof(metric_gate_snapshot) = 'object'" in migration
+    assert "artifact_ref NOT LIKE '%://%'" in migration
+    assert "Backend-only direct PostgreSQL access" in migration
+    assert "GRANT " not in migration
+    for forbidden_column in (
+        'sa.Column("access_token"',
+        'sa.Column("image_bytes"',
+        'sa.Column("object_uri"',
+        'sa.Column("owner_subject",',
+        'sa.Column("provider_payload"',
+        'sa.Column("public_url"',
+        'sa.Column("raw_image"',
+        'sa.Column("raw_ocr_text"',
+        'sa.Column("raw_payload"',
+        'sa.Column("request_headers"',
+        'sa.Column("secret"',
+        'sa.Column("signed_url"',
+    ):
+        assert forbidden_column not in migration

@@ -160,3 +160,190 @@ class HealthDailySummary(TimestampMixin, Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class BodyProfileSnapshot(TimestampMixin, Base):
+    """Persist one versioned current-user body profile snapshot.
+
+    Attributes:
+        id: Stable profile snapshot identifier.
+        owner_subject: Issuer-qualified authenticated subject.
+        effective_at: Time when this profile version starts applying.
+        source: Source of the profile values.
+        sex: Biological sex value currently supported by algorithms.
+        birth_year: Minimal age derivation input.
+        height_cm: Height in centimeters.
+        weight_kg: Body weight in kilograms.
+        waist_cm: Waist circumference in centimeters.
+        pregnancy_status: KDRIs-relevant pregnancy status code.
+        lactation_status: KDRIs-relevant lactation status code.
+        activity_level: Algorithm activity-level input.
+        consent_snapshot: Consent type and policy-version snapshot.
+        superseded_at: Time when a newer profile version superseded this row.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "body_profile_snapshots"
+    __table_args__ = (
+        CheckConstraint("owner_subject <> ''", name="body_profile_owner_subject_nonempty"),
+        CheckConstraint(
+            "source IN ('manual', 'healthkit', 'health_connect', 'clinician_document')",
+            name="body_profile_source_allowed",
+        ),
+        CheckConstraint(
+            "sex IS NULL OR sex IN ('male', 'female')", name="body_profile_sex_allowed"
+        ),
+        CheckConstraint(
+            "birth_year IS NULL OR (birth_year >= 1900 AND birth_year <= 2100)",
+            name="body_profile_birth_year_range",
+        ),
+        CheckConstraint(
+            "height_cm IS NULL OR (height_cm >= 30 AND height_cm <= 260)",
+            name="body_profile_height_cm_range",
+        ),
+        CheckConstraint(
+            "weight_kg IS NULL OR (weight_kg >= 1 AND weight_kg <= 500)",
+            name="body_profile_weight_kg_range",
+        ),
+        CheckConstraint(
+            "waist_cm IS NULL OR (waist_cm >= 20 AND waist_cm <= 250)",
+            name="body_profile_waist_cm_range",
+        ),
+        CheckConstraint(
+            (
+                "pregnancy_status IS NULL OR pregnancy_status IN "
+                "('not_applicable', 'not_pregnant', 'pregnant', 'unknown')"
+            ),
+            name="body_profile_pregnancy_status_allowed",
+        ),
+        CheckConstraint(
+            (
+                "lactation_status IS NULL OR lactation_status IN "
+                "('not_applicable', 'not_lactating', 'lactating', 'unknown')"
+            ),
+            name="body_profile_lactation_status_allowed",
+        ),
+        CheckConstraint(
+            (
+                "activity_level IS NULL OR activity_level IN "
+                "('sedentary', 'low_active', 'active', 'very_active', 'unknown')"
+            ),
+            name="body_profile_activity_level_allowed",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(consent_snapshot) = 'object'",
+            name="body_profile_consent_snapshot_object",
+        ),
+        Index(
+            "ix_body_profile_snapshots_owner_effective_at",
+            "owner_subject",
+            "effective_at",
+        ),
+        Index(
+            "ix_body_profile_snapshots_owner_superseded_at",
+            "owner_subject",
+            "superseded_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    owner_subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    sex: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    birth_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height_cm: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    waist_cm: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    pregnancy_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    lactation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    activity_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    consent_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=dict,
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class HealthMetricSample(TimestampMixin, Base):
+    """Persist one current-user point-in-time health metric sample.
+
+    Attributes:
+        id: Stable metric sample identifier.
+        owner_subject: Issuer-qualified authenticated subject.
+        metric_type: Metric type code.
+        measured_at: Time when the metric was measured.
+        value_numeric: Numeric metric value in the declared unit.
+        unit: Unit code for the value.
+        source_platform: Metric source platform.
+        source_record_hash: Optional client duplicate-detection hash.
+        quality_flags: Stable safe quality flags.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "health_metric_samples"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_subject",
+            "source_platform",
+            "source_record_hash",
+            name="uq_health_metric_samples_owner_source_hash",
+        ),
+        CheckConstraint("owner_subject <> ''", name="health_metric_owner_subject_nonempty"),
+        CheckConstraint(
+            (
+                "metric_type IN ('steps', 'weight_kg', 'resting_hr_bpm', "
+                "'active_energy_kcal', 'blood_pressure_systolic', "
+                "'blood_pressure_diastolic', 'glucose_mg_dl')"
+            ),
+            name="health_metric_type_allowed",
+        ),
+        CheckConstraint("value_numeric >= 0", name="health_metric_value_nonnegative"),
+        CheckConstraint(
+            "unit IN ('count', 'kg', 'bpm', 'kcal', 'mmHg', 'mg/dL')",
+            name="health_metric_unit_allowed",
+        ),
+        CheckConstraint(
+            "source_platform IN ('ios_healthkit', 'android_health_connect', 'manual', 'document')",
+            name="health_metric_source_platform_allowed",
+        ),
+        CheckConstraint(
+            "source_record_hash IS NULL OR length(source_record_hash) = 64",
+            name="health_metric_source_record_hash_length",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(quality_flags) = 'array'",
+            name="health_metric_quality_flags_array",
+        ),
+        Index(
+            "ix_health_metric_samples_owner_measured_at",
+            "owner_subject",
+            "measured_at",
+        ),
+        Index(
+            "ix_health_metric_samples_owner_metric_measured_at",
+            "owner_subject",
+            "metric_type",
+            "measured_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    owner_subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    metric_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    value_numeric: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    unit: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_record_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quality_flags: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=list,
+    )

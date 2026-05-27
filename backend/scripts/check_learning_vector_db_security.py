@@ -1,4 +1,4 @@
-"""Check learning/vector DB security posture without printing secrets."""
+"""Check sensitive learning/vector/media DB posture without printing secrets."""
 
 from __future__ import annotations
 
@@ -19,11 +19,53 @@ if str(NUTRITION_BACKEND_ROOT) not in sys.path:
 
 from src.config import get_settings  # noqa: E402
 
-SCHEMA_VERSION = "learning-vector-db-security-v2"
+SCHEMA_VERSION = "learning-vector-db-security-v8"
 LEARNING_VECTOR_TABLES = (
     "learning_image_objects",
     "image_embedding_jobs",
     "image_embedding_records",
+)
+INTERNAL_MEDIA_TABLES = (
+    "media_objects",
+    "media_processing_runs",
+    "supplement_image_evidence",
+)
+FOOD_MEAL_TABLES = (
+    "meal_records",
+    "meal_food_items",
+    "food_image_analysis_runs",
+)
+HEALTH_PROFILE_TABLES = (
+    "users",
+    "health_sync_batches",
+    "health_daily_summaries",
+    "body_profile_snapshots",
+    "health_metric_samples",
+)
+MEDICAL_RECORD_TABLES = (
+    "regulated_documents",
+    "prescription_items",
+    "lab_result_items",
+    "medical_record_collections",
+    "patient_conditions",
+    "patient_medications",
+    "patient_status_snapshots",
+)
+LEARNING_RETRAINING_TABLES = (
+    "learning_dataset_versions",
+    "learning_dataset_items",
+    "annotation_tasks",
+    "model_training_runs",
+    "model_registry",
+    "model_eval_results",
+)
+SENSITIVE_INTERNAL_TABLES = (
+    LEARNING_VECTOR_TABLES
+    + INTERNAL_MEDIA_TABLES
+    + FOOD_MEAL_TABLES
+    + HEALTH_PROFILE_TABLES
+    + MEDICAL_RECORD_TABLES
+    + LEARNING_RETRAINING_TABLES
 )
 LEARNING_STORAGE_BUCKET = "learning-images"
 LEARNING_STORAGE_FILE_SIZE_LIMIT_BYTES = 20 * 1024 * 1024
@@ -36,12 +78,25 @@ FORBIDDEN_COLUMNS = (
     "raw_image",
     "raw_image_bytes",
     "image_base64",
+    "access_token",
+    "device_payload",
+    "diagnosis",
+    "diagnosis_text",
     "ocr_text",
+    "public_url",
+    "provider_raw_payload",
+    "prescription_instruction",
+    "raw_payload",
+    "raw_document",
+    "raw_document_text",
     "raw_ocr_text",
     "provider_payload",
     "raw_provider_payload",
     "request_headers",
     "secret",
+    "signed_url",
+    "treatment_instruction",
+    "treatment_instructions",
 )
 
 
@@ -61,7 +116,7 @@ def parse_args() -> argparse.Namespace:
 
 
 async def collect_security_report() -> dict[str, Any]:
-    """Collect a sanitized learning/vector DB security report.
+    """Collect a sanitized learning/vector/media DB security report.
 
     Returns:
         JSON-serializable report without database URLs, secrets, or raw data.
@@ -87,7 +142,7 @@ async def collect_security_report() -> dict[str, Any]:
             unsafe_security_definer_functions = []
             storage_bucket_report = await _learning_storage_bucket_report(connection)
             unsafe_storage_policies = await _unsafe_learning_storage_policies(connection)
-            for table_name in LEARNING_VECTOR_TABLES:
+            for table_name in SENSITIVE_INTERNAL_TABLES:
                 table_reports.append(
                     await _table_security_report(connection, table_name=table_name)
                 )

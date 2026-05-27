@@ -11,7 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
-DEFAULT_DATABASE_URL = "postgresql+asyncpg://lemon:lemon@localhost:5432/lemon"
+DEFAULT_DATABASE_URL = (
+    "postgresql+asyncpg://lemon:lemon@localhost:5432/lemon"  # pragma: allowlist secret
+)
 POSTGRESQL_ASYNCPG_DRIVER = "postgresql+asyncpg"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
@@ -20,7 +22,9 @@ DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
 DEFAULT_VISION_ROI_ALLOWED_CLASSES = ["supplement_label", "supplement_bottle", "blister_pack"]
 # Deliberately insecure development sentinel; production validation rejects this exact value.
-DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100
+DEFAULT_PRIVACY_HASH_SECRET = (
+    "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
+)
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE_CANDIDATES = (PROJECT_ROOT / ".env", BACKEND_ROOT / ".env")
@@ -186,6 +190,11 @@ class Settings(BaseSettings):
         supabase_storage_private_bucket: Private bucket id for opt-in learning images.
         supabase_storage_s3_access_key_id: Server-only Supabase Storage S3 access key id.
         supabase_storage_s3_secret_access_key: Server-only Supabase Storage S3 secret key.
+        media_object_storage_provider: Backend-only private media object storage provider.
+        media_object_storage_bucket: Private bucket for retained media object deletion.
+        media_object_storage_endpoint_url: S3-compatible endpoint for retained media objects.
+        media_object_storage_region: Region for retained media object deletion.
+        media_object_storage_local_path: Development-only local retained media path.
         allowed_origins: CORS 허용 origin 목록.
         allowed_hosts: TrustedHost 허용 host 목록.
         auth_mode: 인증 모드. 실제 사용자 앱은 production에서 jwt를 사용한다.
@@ -288,6 +297,20 @@ class Settings(BaseSettings):
     supabase_storage_private_bucket: str = Field(default="learning-images")
     supabase_storage_s3_access_key_id: SecretStr | None = Field(default=None)
     supabase_storage_s3_secret_access_key: SecretStr | None = Field(default=None)
+    media_object_storage_provider: Literal["disabled", "local", "s3", "supabase_s3"] = Field(
+        default="disabled",
+        description=(
+            "Backend-only retained media object storage provider. Defaults disabled; "
+            "Supabase private Storage uses supabase_s3."
+        ),
+    )
+    media_object_storage_bucket: str | None = Field(default=None)
+    media_object_storage_endpoint_url: str | None = Field(default=None)
+    media_object_storage_region: str | None = Field(default=None)
+    media_object_storage_local_path: Path = Field(
+        default=PROJECT_ROOT / ".local" / "media-objects",
+        description="개발/테스트 전용 retained media object storage 경로.",
+    )
     allowed_origins: list[str] = Field(default_factory=list)
     allowed_hosts: list[str] = Field(default_factory=_default_allowed_hosts)
 
@@ -538,6 +561,7 @@ class Settings(BaseSettings):
                 "SQLite and sync PostgreSQL drivers are not supported."
             )
         self._validate_learning_object_storage_settings()
+        self._validate_media_object_storage_settings()
         if (
             self.environment in {"staging", "production"}
             and self.enable_image_learning_pipeline
@@ -749,6 +773,10 @@ class Settings(BaseSettings):
                     "LEARNING_OBJECT_STORAGE_PROVIDER requires docs/17 §9 gate #3 sign-off.",
                 ),
                 (
+                    self.media_object_storage_provider != "disabled",
+                    "MEDIA_OBJECT_STORAGE_PROVIDER requires docs/53 media retention sign-off.",
+                ),
+                (
                     self.feature_hall_lite_weight_prediction,
                     "FEATURE_HALL_LITE_WEIGHT_PREDICTION=true requires Hall-lite validation sign-off.",
                 ),
@@ -825,6 +853,45 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY is required when "
                 "LEARNING_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+
+    def _validate_media_object_storage_settings(self) -> None:
+        """Validate backend-only retained media object storage settings.
+
+        Raises:
+            ValueError: If an enabled object store is missing private storage
+                settings or server-only credentials.
+        """
+        if self.media_object_storage_provider == "s3" and not self.media_object_storage_bucket:
+            raise ValueError(
+                "MEDIA_OBJECT_STORAGE_BUCKET is required when " "MEDIA_OBJECT_STORAGE_PROVIDER=s3."
+            )
+        if self.media_object_storage_provider != "supabase_s3":
+            return
+        if not self.supabase_storage_private_bucket and not self.media_object_storage_bucket:
+            raise ValueError(
+                "SUPABASE_STORAGE_PRIVATE_BUCKET or MEDIA_OBJECT_STORAGE_BUCKET "
+                "is required when MEDIA_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if not self.media_object_storage_endpoint_url and not self.supabase_project_ref:
+            raise ValueError(
+                "SUPABASE_PROJECT_REF or MEDIA_OBJECT_STORAGE_ENDPOINT_URL is required "
+                "when MEDIA_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if not self.media_object_storage_region:
+            raise ValueError(
+                "MEDIA_OBJECT_STORAGE_REGION is required when "
+                "MEDIA_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if self.supabase_storage_s3_access_key_id is None:
+            raise ValueError(
+                "SUPABASE_STORAGE_S3_ACCESS_KEY_ID is required when "
+                "MEDIA_OBJECT_STORAGE_PROVIDER=supabase_s3."
+            )
+        if self.supabase_storage_s3_secret_access_key is None:
+            raise ValueError(
+                "SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY is required when "
+                "MEDIA_OBJECT_STORAGE_PROVIDER=supabase_s3."
             )
 
 

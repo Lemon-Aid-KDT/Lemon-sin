@@ -9,6 +9,7 @@ from src.api.v1 import (
     analysis_results,
     dashboard,
     health,
+    meals,
     nutrition,
     predictions,
     privacy,
@@ -24,5 +25,6 @@ api_router.include_router(analysis_results.router)
 api_router.include_router(privacy.router)
 api_router.include_router(regulated_inputs.router)
 api_router.include_router(supplements.router)
+api_router.include_router(meals.router)
 api_router.include_router(health.router)
 api_router.include_router(dashboard.router)
