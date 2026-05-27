@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
+from scripts.data._dataset_audit import collect_stems_by_class
 from scripts.data._manifest_models import ClassManifest, TrainManifest
 
 
@@ -47,3 +50,43 @@ class TestManifestModels:
         """class_id는 0~49 범위 밖이면 거부된다."""
         with pytest.raises(ValidationError):
             ClassManifest(class_id=50, class_name="ghost", stems=["g1"])
+
+
+class TestDatasetAudit:
+    """원본 라벨 디렉토리를 스캔해 클래스별 stem 맵을 만든다."""
+
+    def _write_label(self, dir_path: Path, stem: str, lines: list[str]) -> None:
+        (dir_path / f"{stem}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_collect_stems_groups_by_first_class_in_file(self, tmp_path: Path) -> None:
+        """파일 안 첫 객체의 class_id로 stem이 묶인다."""
+        labels = tmp_path / "labels"
+        labels.mkdir()
+        self._write_label(labels, "img_a", ["3 0.5 0.5 0.2 0.2"])
+        self._write_label(labels, "img_b", ["3 0.1 0.1 0.1 0.1", "7 0.9 0.9 0.1 0.1"])
+        self._write_label(labels, "img_c", ["7 0.2 0.2 0.1 0.1"])
+
+        result = collect_stems_by_class(labels, num_classes=50)
+
+        assert sorted(result[3]) == ["img_a", "img_b"]
+        assert sorted(result[7]) == ["img_b", "img_c"]
+        for cid in (0, 1, 2, 4, 5, 6, 8):
+            assert result[cid] == []
+
+    def test_collect_stems_ignores_blank_and_invalid_lines(self, tmp_path: Path) -> None:
+        """빈 줄과 토큰 부족 줄은 무시한다."""
+        labels = tmp_path / "labels"
+        labels.mkdir()
+        self._write_label(labels, "img_a", ["", "3 0.5 0.5 0.2 0.2", "   ", "bad"])
+
+        result = collect_stems_by_class(labels, num_classes=50)
+        assert result[3] == ["img_a"]
+
+    def test_collect_stems_raises_on_out_of_range_class(self, tmp_path: Path) -> None:
+        """num_classes 범위 밖 class_id는 명시 예외로 차단한다."""
+        labels = tmp_path / "labels"
+        labels.mkdir()
+        self._write_label(labels, "img_a", ["77 0.5 0.5 0.2 0.2"])
+
+        with pytest.raises(ValueError, match="class_id 77"):
+            collect_stems_by_class(labels, num_classes=50)
