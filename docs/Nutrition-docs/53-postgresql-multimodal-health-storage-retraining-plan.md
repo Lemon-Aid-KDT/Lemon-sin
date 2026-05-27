@@ -1112,3 +1112,26 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Backend unit collection: 1120 collected
 - `black --check backend/scripts/register_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_candidate.py`: passed
 - `ruff check backend/scripts/register_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_candidate.py`: passed
+
+### 16.16 Phase 16 부분 구현 기록: operator model eval result registration CLI
+
+구현 범위:
+
+- `backend/scripts/register_model_eval_results.py`를 추가해 operator가 promotion gate용 `model_eval_results` metric row를 등록
+- 하나의 model/eval dataset version에 대해 `--metric NAME VALUE`를 반복 입력할 수 있게 함
+- metric name은 stable safe key만 허용하고 metric value는 finite nonnegative Decimal로 제한
+- optional `subgroup_key`, `failure_bucket`은 stable code만 허용하며 public URL/path/traversal/secret-like marker를 차단
+- model registry row가 없거나 metric이 비어 있으면 DB write 전에 fail-closed 처리
+
+보안 결정:
+
+- CLI stdout에는 model id, eval dataset version id, eval result count, boolean guard만 출력한다.
+- metric name/value, subgroup key, failure bucket, raw eval payload, artifact ref, storage URL/path, secret-like value는 stdout에 출력하지 않는다.
+- promotion 판단은 기존 `promote_model_candidate.py`가 persisted metric row를 읽어서 수행하며, 이 CLI는 eval row 등록만 담당한다.
+
+검증:
+
+- Operator model eval result registration/promotion focused tests: 10 passed
+- Backend unit collection: 1126 collected
+- `black --check backend/scripts/register_model_eval_results.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_eval_results.py`: passed
+- `ruff check backend/scripts/register_model_eval_results.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_eval_results.py`: passed
