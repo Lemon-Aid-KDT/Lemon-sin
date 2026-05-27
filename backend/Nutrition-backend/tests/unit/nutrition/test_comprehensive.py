@@ -9,6 +9,90 @@ from src.nutrition.comprehensive import compute_comprehensive
 FORBIDDEN_USER_TERMS = ("진단", "치료", "처방", "복용량 변경", "효능")
 
 
+def _complete_kdris_ingredients(*, vitamin_c_mg: float) -> list[dict[str, object]]:
+    """비타민 C 외 부족 항목이 상위 카드 산출을 가리지 않도록 기준량 입력을 만든다."""
+    return [
+        {
+            "display_name": "Vitamin A",
+            "nutrient_code": "vitamin_a_ug",
+            "amount": 750,
+            "unit": "ug",
+        },
+        {
+            "display_name": "Vitamin B1",
+            "nutrient_code": "vitamin_b1_mg",
+            "amount": 1.2,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Vitamin B6",
+            "nutrient_code": "vitamin_b6_mg",
+            "amount": 1.4,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Vitamin B12",
+            "nutrient_code": "vitamin_b12_ug",
+            "amount": 2.4,
+            "unit": "ug",
+        },
+        {
+            "display_name": "Vitamin C",
+            "nutrient_code": "vitamin_c_mg",
+            "amount": vitamin_c_mg,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Vitamin D",
+            "nutrient_code": "vitamin_d_ug",
+            "amount": 10,
+            "unit": "ug",
+        },
+        {
+            "display_name": "Vitamin E",
+            "nutrient_code": "vitamin_e_mg",
+            "amount": 12,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Vitamin K",
+            "nutrient_code": "vitamin_k_ug",
+            "amount": 75,
+            "unit": "ug",
+        },
+        {
+            "display_name": "Calcium",
+            "nutrient_code": "calcium_mg",
+            "amount": 800,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Magnesium",
+            "nutrient_code": "magnesium_mg",
+            "amount": 350,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Iron",
+            "nutrient_code": "iron_mg",
+            "amount": 10,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Zinc",
+            "nutrient_code": "zinc_mg",
+            "amount": 10,
+            "unit": "mg",
+        },
+        {
+            "display_name": "Omega-3",
+            "nutrient_code": "omega3_mg",
+            "amount": 1000,
+            "unit": "mg",
+        },
+    ]
+
+
 def _make_request(
     *,
     ingredients: list[dict[str, object]],
@@ -208,6 +292,38 @@ class TestComputeComprehensive:
             caution.reason == "smoker_beta_carotene_vitamin_a_risk" and caution.severity == "high"
             for caution in result.cautionary_components
         )
+
+    def test_current_smoker_vitamin_c_card_uses_iom_plus_35mg_reference(self) -> None:
+        """현재 흡연자는 종합 부족 카드의 비타민 C 기준도 +35mg로 보정한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=_complete_kdris_ingredients(vitamin_c_mg=120),
+                smoking_status="current_light",
+            )
+        )
+
+        vitamin_c = next(
+            nutrient
+            for nutrient in result.deficient_nutrients
+            if nutrient.nutrient_code == "vitamin_c_mg"
+        )
+        assert vitamin_c.recommended_intake == 135
+        assert vitamin_c.deficit_ratio == pytest.approx((135 - 120) / 135, abs=0.0001)
+        assert "smoker_vitamin_c_reference_iom_plus_35mg" in result.warnings
+
+    def test_recent_former_smoker_does_not_raise_vitamin_c_card_reference(self) -> None:
+        """금연 1년 이내는 안전 경고에는 포함하되 비타민 C +35mg 기준은 적용하지 않는다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=_complete_kdris_ingredients(vitamin_c_mg=100),
+                smoking_status="former_lt_1y",
+            )
+        )
+
+        assert all(
+            nutrient.nutrient_code != "vitamin_c_mg" for nutrient in result.deficient_nutrients
+        )
+        assert "smoker_vitamin_c_reference_iom_plus_35mg" not in result.warnings
 
     def test_audit_kr_vitamin_a_and_acetaminophen_trigger_cautions(self) -> None:
         """AUDIT-KR 위험 범위에서는 Vit A와 아세트아미노펜 경고를 분리한다."""

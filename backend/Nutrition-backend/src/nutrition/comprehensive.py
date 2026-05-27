@@ -64,6 +64,8 @@ _PERSONA_B_CAUTION_WEIGHT = 1.2
 
 _USER_CONDITION_BOOST = 0.15
 """사용자가 명시한 chronic_condition 의 relevance_score 가중치."""
+_CURRENT_SMOKING_STATUSES = {"current_light", "current_heavy"}
+_SMOKER_VITAMIN_C_ADDITIONAL_MG = 35.0
 _SMOKER_BETA_CAROTENE_WARNING_MG = 6.0
 _VITAMIN_A_UL_UG = 3000.0
 _ADULT_PREGNANCY_VITAMIN_A_MIN_AGE = 19
@@ -182,14 +184,24 @@ def _compute_intake_by_code(
 
 def _compute_deficient(
     intake_by_code: dict[str, tuple[float, str, str]],
+    user: UserProfileInput,
 ) -> list[DeficientNutrient]:
-    """KDRIs 권장량 대비 부족 영양소를 산출한다."""
+    """KDRIs 권장량 대비 부족 영양소를 산출한다.
+
+    Args:
+        intake_by_code: nutrient_code 키 → (총 섭취량, 단위, 표시명) 매핑.
+        user: 흡연 등 생활습관 기준 보정을 적용할 사용자 프로필.
+
+    Returns:
+        부족 비율 기준으로 정렬된 부족 영양소 목록.
+    """
     deficient: list[DeficientNutrient] = []
     for code, kdris in _KDRIS_TABLE.items():
         current, _unit, display = intake_by_code.get(code, (0.0, kdris.unit, kdris.display_name))
-        if current >= kdris.recommended:
+        recommended = _recommended_intake_for_user(kdris, nutrient_code=code, user=user)
+        if current >= recommended:
             continue
-        ratio = 1.0 - (current / kdris.recommended) if kdris.recommended > 0 else 0.0
+        ratio = 1.0 - (current / recommended) if recommended > 0 else 0.0
         if ratio < _DEFICIT_NOISE_THRESHOLD:
             continue  # 5% 미만 부족은 노이즈로 간주
         deficient.append(
@@ -197,7 +209,7 @@ def _compute_deficient(
                 nutrient_code=code,
                 display_name=display,
                 current_intake=round(current, 2),
-                recommended_intake=kdris.recommended,
+                recommended_intake=recommended,
                 unit=kdris.unit,
                 deficit_ratio=round(min(ratio, 1.0), 4),
             )
@@ -205,6 +217,27 @@ def _compute_deficient(
     # 가장 부족한 순으로 정렬, 상위 5개만 반환
     deficient.sort(key=lambda d: d.deficit_ratio, reverse=True)
     return deficient[:_MAX_NUTRIENTS_PER_CARD]
+
+
+def _recommended_intake_for_user(
+    kdris: _KdrisEntry,
+    *,
+    nutrient_code: str,
+    user: UserProfileInput,
+) -> float:
+    """사용자 생활습관에 따른 종합 카드 기준 섭취량을 반환한다.
+
+    Args:
+        kdris: 기본 KDRIs inline 항목.
+        nutrient_code: 보정 대상 nutrient_code.
+        user: 사용자 프로필.
+
+    Returns:
+        종합 카드에서 사용할 기준 섭취량.
+    """
+    if nutrient_code == "vitamin_c_mg" and user.smoking_status in _CURRENT_SMOKING_STATUSES:
+        return kdris.recommended + _SMOKER_VITAMIN_C_ADDITIONAL_MG
+    return kdris.recommended
 
 
 def _compute_excessive(
@@ -1168,7 +1201,10 @@ def compute_comprehensive(
     ):
         warnings.append("supplement_recommendation_paused_audit_kr")
 
-    deficient = _compute_deficient(intake_by_code)
+    if request.user_profile.smoking_status in _CURRENT_SMOKING_STATUSES:
+        warnings.append("smoker_vitamin_c_reference_iom_plus_35mg")
+
+    deficient = _compute_deficient(intake_by_code, request.user_profile)
     excessive = _compute_excessive(intake_by_code)
     cautions = _compute_cautions(request.ingredients, request.user_profile)
     indications, purpose_targets = _compute_chronic_indications_and_targets(
