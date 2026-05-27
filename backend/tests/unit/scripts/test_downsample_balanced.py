@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 from scripts.data._dataset_audit import collect_stems_by_class
 from scripts.data._manifest_models import ClassManifest, TrainManifest
+from scripts.data.downsample_balanced import select_stems_per_class
 
 
 class TestManifestModels:
@@ -90,3 +91,43 @@ class TestDatasetAudit:
 
         with pytest.raises(ValueError, match="class_id 77"):
             collect_stems_by_class(labels, num_classes=50)
+
+
+class TestSelectStemsPerClass:
+    """spec §3.1: seed=42 고정 랜덤 샘플링."""
+
+    def test_caps_at_500_when_class_has_more(self) -> None:
+        """500장 초과 클래스는 정확히 500장으로 잘린다."""
+        stems_by_class = {0: [f"img_{i:04d}" for i in range(1200)]}
+        selected = select_stems_per_class(stems_by_class, cap_per_class=500, seed=42)
+        assert len(selected[0]) == 500
+
+    def test_keeps_all_when_class_below_cap(self) -> None:
+        """500장 미만 클래스는 그대로 보존된다."""
+        stems_by_class = {0: [f"img_{i:04d}" for i in range(123)]}
+        selected = select_stems_per_class(stems_by_class, cap_per_class=500, seed=42)
+        assert sorted(selected[0]) == sorted(stems_by_class[0])
+
+    def test_deterministic_across_runs(self) -> None:
+        """같은 seed+입력 → 같은 출력 (비트 동일)."""
+        stems_by_class = {cid: [f"c{cid}_{i:05d}" for i in range(1500)] for cid in range(50)}
+        first = select_stems_per_class(stems_by_class, cap_per_class=500, seed=42)
+        second = select_stems_per_class(stems_by_class, cap_per_class=500, seed=42)
+        for cid in range(50):
+            assert first[cid] == second[cid]
+
+    def test_different_seed_produces_different_selection(self) -> None:
+        """seed가 다르면 선택이 달라진다 (랜덤성 sanity check)."""
+        stems_by_class = {0: [f"img_{i:04d}" for i in range(1500)]}
+        a = select_stems_per_class(stems_by_class, cap_per_class=500, seed=42)
+        b = select_stems_per_class(stems_by_class, cap_per_class=500, seed=43)
+        assert set(a[0]) != set(b[0])
+
+    def test_input_order_does_not_affect_output(self) -> None:
+        """입력 리스트 순서를 섞어도 같은 시드면 같은 결과 (sorted() 정규화)."""
+        base = [f"img_{i:04d}" for i in range(1500)]
+        sorted_input = {0: sorted(base)}
+        shuffled_input = {0: list(reversed(base))}
+        a = select_stems_per_class(sorted_input, cap_per_class=500, seed=42)
+        b = select_stems_per_class(shuffled_input, cap_per_class=500, seed=42)
+        assert sorted(a[0]) == sorted(b[0])
