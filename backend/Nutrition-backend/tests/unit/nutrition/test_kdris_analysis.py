@@ -186,6 +186,8 @@ def test_chronic_priority_boosts_only_low_or_deficient_nutrients() -> None:
     assert by_code["magnesium_mg"].status == NutrientStatus.EXCESSIVE_NEAR_UL
     assert by_code["magnesium_mg"].priority == 0
     assert by_code["magnesium_mg"].priority_context == []
+    guide_keys = {guide.guide_key for guide in response.condition_nutrition_guides}
+    assert "dash_hypertension" in guide_keys
 
 
 def test_unknown_chronic_disease_keeps_ratio_based_priority() -> None:
@@ -232,6 +234,36 @@ def test_ckd_caution_nutrients_do_not_receive_priority_boost() -> None:
     assert response.routing_status == "referral_required"
     assert response.results == []
     assert response.safety_messages
+    assert response.condition_nutrition_guides[0].guide_key == "kdoqi_ckd_nutrition"
+    assert response.condition_nutrition_guides[0].referral_required is True
+
+
+def test_condition_nutrition_guides_surface_diabetes_and_hypertension_routes() -> None:
+    """당뇨·고혈압 입력은 질환별 공식 영양 가이드 route를 함께 반환한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        chronic_diseases=["type-2 diabetes", "HTN"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="fiber_g", amount=10, unit="g"),
+            NutrientIntake(nutrient_code="potassium_mg", amount=2000, unit="mg"),
+        ],
+    )
+
+    guides = {guide.guide_key: guide for guide in response.condition_nutrition_guides}
+    assert response.routing_status == "ok"
+    assert set(guides) == {"ada_diabetes_nutrition", "dash_hypertension"}
+    assert guides["ada_diabetes_nutrition"].source_id == "ada_standards_of_care"
+    assert guides["dash_hypertension"].source_id == "nhlbi_dash"
+    assert guides["ada_diabetes_nutrition"].referral_required is False
+    assert not contains_forbidden_terms(
+        [guide.user_message for guide in response.condition_nutrition_guides]
+    )
 
 
 def test_pregnancy_routes_to_referral_required() -> None:

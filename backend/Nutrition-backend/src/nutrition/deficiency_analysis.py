@@ -10,6 +10,7 @@ from src.models.schemas.nutrition import (
     NutritionAnalysisResponse,
 )
 from src.models.schemas.user import UserProfile
+from src.nutrition.chronic_nutrition_guidance import get_condition_nutrition_guides
 from src.nutrition.chronic_priority import get_chronic_priority_match
 from src.nutrition.kdris import get_kdris_dataset_context, get_kdris_for_profile
 from src.nutrition.unit_converter import convert_amount
@@ -101,7 +102,10 @@ def _requires_referral_route(profile: UserProfile) -> bool:
     Returns:
         고위험 질환 flag가 있으면 True.
     """
-    return bool(_normalized_diseases(profile) & HIGH_RISK_NUTRITION_ROUTE_FLAGS)
+    return bool(_normalized_diseases(profile) & HIGH_RISK_NUTRITION_ROUTE_FLAGS) or any(
+        guide.referral_required
+        for guide in get_condition_nutrition_guides(profile.chronic_diseases)
+    )
 
 
 def _referral_route_messages(profile: UserProfile) -> list[str]:
@@ -361,6 +365,7 @@ def analyze_nutrient_intakes(
     """
     results: list[NutrientAnalysisResult] = []
     dataset_context = get_kdris_dataset_context()
+    condition_guides = get_condition_nutrition_guides(profile.chronic_diseases)
     referral_messages = _referral_route_messages(profile)
     if referral_messages:
         return NutritionAnalysisResponse(
@@ -370,6 +375,7 @@ def analyze_nutrient_intakes(
             source_manifest_version=dataset_context["source_manifest_version"],
             routing_status="referral_required",
             safety_messages=referral_messages,
+            condition_nutrition_guides=condition_guides,
             note="결과는 보류되었으며 개인 건강 상태에 맞춘 상담을 권장합니다.",
         )
 
@@ -503,4 +509,5 @@ def analyze_nutrient_intakes(
         dataset_version=dataset_context["dataset_version"],
         source_manifest_version=dataset_context["source_manifest_version"],
         safety_messages=safety_messages,
+        condition_nutrition_guides=condition_guides,
     )

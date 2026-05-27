@@ -186,6 +186,37 @@ class NutrientAnalysisResult(BaseModel):
     user_message: str
 
 
+class ConditionNutritionGuide(BaseModel):
+    """질환별 영양 가이드 라우팅 메타데이터.
+
+    Attributes:
+        condition_codes: 사용자 입력에서 매칭된 canonical condition code 목록.
+        guide_key: 클라이언트 표시/분기용 안정 key.
+        guide_label: 가이드 표시명.
+        source_id: 공식 근거 source id.
+        source_title: 공식 근거 title.
+        source_url: 공식 공개 URL.
+        focus_nutrients: 우선 확인할 영양소 또는 식사 패턴 key.
+        referral_required: 일반 KDRIs 자동 분석 보류 여부.
+        user_message: 사용자 노출용 안전 안내.
+    """
+
+    condition_codes: list[str] = Field(default_factory=list)
+    guide_key: Literal[
+        "ada_diabetes_nutrition",
+        "dash_hypertension",
+        "kdoqi_ckd_nutrition",
+        "easl_liver_nutrition",
+    ]
+    guide_label: str
+    source_id: str
+    source_title: str
+    source_url: str
+    focus_nutrients: list[str] = Field(default_factory=list)
+    referral_required: bool = False
+    user_message: str
+
+
 class NutritionAnalysisRequest(BaseModel):
     """영양소 섭취 상태 분석 API 요청.
 
@@ -225,6 +256,7 @@ class NutritionAnalysisResponse(BaseModel):
         dataset_status: 샘플/공식 데이터 상태.
         dataset_version: KDRIs 데이터셋 버전.
         source_manifest_version: source manifest schema version.
+        condition_nutrition_guides: 질환별 공식 가이드 라우팅 메타데이터.
         note: 사용자 노출용 안전 문구.
     """
 
@@ -234,6 +266,7 @@ class NutritionAnalysisResponse(BaseModel):
     source_manifest_version: str
     routing_status: Literal["ok", "referral_required"] = "ok"
     safety_messages: list[str] = Field(default_factory=list)
+    condition_nutrition_guides: list[ConditionNutritionGuide] = Field(default_factory=list)
     note: str = "결과는 섭취 상태 참고용이며 개인 건강 상태를 확정하지 않습니다."
 
 
