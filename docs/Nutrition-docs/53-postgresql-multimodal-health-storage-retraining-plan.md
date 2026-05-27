@@ -1135,3 +1135,27 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Backend unit collection: 1126 collected
 - `black --check backend/scripts/register_model_eval_results.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_eval_results.py`: passed
 - `ruff check backend/scripts/register_model_eval_results.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_eval_results.py`: passed
+
+### 16.17 Phase 17 부분 구현 기록: operator model retirement CLI
+
+구현 범위:
+
+- `backend/scripts/retire_model_version.py`를 추가해 operator가 candidate/staging/production/rolled_back model registry entry를 `retired`로 전환
+- 기본 실행은 dry-run이고, `--apply`가 있을 때만 DB에 반영
+- production model은 rollback target 없이 retire 할 수 없도록 fail-closed 처리
+- rollback target은 같은 `task_type`이고 `staging` 또는 `production` 상태인 model만 허용
+- retirement metadata는 기존 `metric_gate_snapshot`에 `retirement` object로 추가하되 artifact ref나 raw eval payload는 포함하지 않음
+
+보안 결정:
+
+- CLI stdout에는 model id, task type, status transition, rollback target 존재 여부, boolean guard만 출력한다.
+- artifact ref, operator reason code, metric snapshot 본문, hyperparam snapshot, raw eval payload, storage URL/path, secret-like value는 stdout에 출력하지 않는다.
+- reason code는 stable code 문자만 허용하고 free text/path/URL/secret-like marker는 DB write 전에 차단한다.
+- 이미 retired 상태이거나 production rollback target이 없으면 mutation 없이 실패 summary를 반환한다.
+
+검증:
+
+- Operator model retirement/promotion focused tests: 11 passed
+- Backend unit collection: 1133 collected
+- `black --check backend/scripts/retire_model_version.py backend/Nutrition-backend/tests/unit/scripts/test_retire_model_version.py`: passed
+- `ruff check backend/scripts/retire_model_version.py backend/Nutrition-backend/tests/unit/scripts/test_retire_model_version.py`: passed
