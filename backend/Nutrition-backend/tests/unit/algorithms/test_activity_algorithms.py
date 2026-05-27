@@ -64,6 +64,33 @@ def test_bmi_evaluation_flags_ksso_waist_circumference_obesity() -> None:
     assert any("성별 허리둘레 기준" in note for note in male.notes)
 
 
+def test_bmi_evaluation_recommends_waist_input_for_audit_kr_risk() -> None:
+    """AUDIT-KR 위험 범위에서 허리둘레가 없으면 WHtR 보조 입력을 안내한다."""
+    result = evaluate_bmi(
+        weight_kg=72.0,
+        height_cm=170.0,
+        sex="male",
+        audit_kr_score=3,
+    )
+
+    assert any("허리둘레 입력" in note for note in result.notes)
+    assert result.waist_to_height_ratio is None
+
+
+def test_bmi_evaluation_skips_alcohol_waist_prompt_when_waist_exists() -> None:
+    """음주 위험이어도 허리둘레가 있으면 중복 입력 안내를 반복하지 않는다."""
+    result = evaluate_bmi(
+        weight_kg=72.0,
+        height_cm=170.0,
+        sex="male",
+        waist_cm=82.0,
+        audit_kr_score=3,
+    )
+
+    assert not any("허리둘레 입력" in note for note in result.notes)
+    assert result.waist_to_height_ratio == pytest.approx(0.482, abs=0.001)
+
+
 def test_v1_recommended_steps_50f_obese1() -> None:
     """50대 여성 비만1단계 권장 걸음수 예시를 재현한다."""
     steps = calculate_recommended_steps("female", 50, BMICategory.OBESE_1)

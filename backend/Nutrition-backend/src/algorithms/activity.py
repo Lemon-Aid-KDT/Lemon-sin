@@ -412,6 +412,7 @@ def calculate_activity_score(request: ActivityScoreRequest) -> ActivityScoreResp
         waist_cm=request.profile.waist_cm,
         body_fat_pct=request.profile.body_fat_pct,
         chronic_diseases=request.profile.chronic_diseases,
+        audit_kr_score=request.profile.audit_kr_score,
     )
     recommended_steps = calculate_recommended_steps(
         sex=request.profile.sex,

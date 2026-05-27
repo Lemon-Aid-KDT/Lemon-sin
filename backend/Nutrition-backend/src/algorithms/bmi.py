@@ -17,6 +17,7 @@ FEMALE_WAIST_OBESITY_CUTOFF_CM = 85.0
 MALE_BODY_FAT_HIGH_CUTOFF = 26.0
 FEMALE_BODY_FAT_HIGH_CUTOFF = 36.0
 SENIOR_AGE_CUTOFF = 65
+AUDIT_KR_RISK_CUTOFF = 3
 
 _CUTOFFS: Final[dict[BMIRegion, tuple[tuple[float, BMICategory], ...]]] = {
     "asia_kr": (
@@ -121,6 +122,7 @@ def evaluate_bmi(
     waist_cm: float | None = None,
     body_fat_pct: float | None = None,
     chronic_diseases: list[str] | None = None,
+    audit_kr_score: int | None = None,
 ) -> BMIResult:
     """BMI 값과 분류를 함께 반환한다.
 
@@ -133,6 +135,7 @@ def evaluate_bmi(
         waist_cm: 허리-신장비 산출용 허리둘레.
         body_fat_pct: 체지방률(%).
         chronic_diseases: 만성질환 맥락 안내용 코드 목록.
+        audit_kr_score: 위험 음주 맥락의 허리둘레 보조 입력 안내용 점수.
 
     Returns:
         BMI 계산 결과.
@@ -177,6 +180,11 @@ def evaluate_bmi(
     if normalized_diseases and category == BMICategory.OVERWEIGHT:
         notes.append(
             "만성질환이 있으면 BMI 23 미만 유지가 더 유익할 수 있어 전문가 상담을 권장합니다."
+        )
+
+    if audit_kr_score is not None and audit_kr_score >= AUDIT_KR_RISK_CUTOFF and waist_cm is None:
+        notes.append(
+            "음주 위험 범위에서는 BMI만으로 복부 지방을 보기 어려워 허리둘레 입력을 권장합니다."
         )
 
     return BMIResult(
