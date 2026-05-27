@@ -1039,3 +1039,26 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Operator dataset version creation/retraining focused tests: 14 passed
 - `black --check backend/scripts/create_learning_dataset_version.py backend/Nutrition-backend/tests/unit/scripts/test_create_learning_dataset_version.py`: passed
 - `ruff check backend/scripts/create_learning_dataset_version.py backend/Nutrition-backend/tests/unit/scripts/test_create_learning_dataset_version.py`: passed
+
+### 16.13 Phase 13 부분 구현 기록: operator annotation review import CLI
+
+구현 범위:
+
+- `backend/scripts/import_annotation_review.py`를 추가해 operator가 JSONL review decision을 기존 `annotation_tasks`에 반영할 수 있게 함
+- 입력 record는 `annotation_task_id`, `decision`, `reviewer_hash`, optional `review_notes_code`, `label_snapshot`으로 제한
+- `accept`는 sanitized non-empty label snapshot을 요구하고, `reject`는 label snapshot을 빈 object로 scrub
+- 모든 입력 record와 대상 task 상태를 검증한 뒤 한 번에 commit하여 부분 적용을 피함
+- update 가능 상태는 `pending`, `in_review`로 제한하고 `cancelled`, 이미 완료된 task는 fail-closed 처리
+
+보안 결정:
+
+- CLI stdout에는 record/accepted/rejected count와 boolean guard만 출력한다.
+- reviewer hash, label snapshot, media ref, input path, raw OCR/provider payload, object URL/path는 stdout에 출력하지 않는다.
+- label snapshot은 기존 retraining sanitizer를 재사용해 raw OCR/provider payload, URL/path, secret-like value를 차단한다.
+- `review_notes_code`는 자유 텍스트가 아니라 `^[a-z0-9_]{1,80}$` stable code만 허용한다.
+
+검증:
+
+- Operator annotation review import/retraining focused tests: 14 passed
+- `black --check backend/scripts/import_annotation_review.py backend/Nutrition-backend/tests/unit/scripts/test_import_annotation_review.py`: passed
+- `ruff check backend/scripts/import_annotation_review.py backend/Nutrition-backend/tests/unit/scripts/test_import_annotation_review.py`: passed
