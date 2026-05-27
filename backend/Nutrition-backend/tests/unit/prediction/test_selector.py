@@ -119,3 +119,30 @@ def test_selector_hall_lite_applies_alcohol_storage_factor() -> None:
     assert with_alcohol.predictions[0].daily_balance_kcal == (
         without_alcohol.predictions[0].daily_balance_kcal + 130
     )
+
+
+def test_selector_hall_lite_uses_measured_body_fat_for_partitioning() -> None:
+    """Verify body-fat input reaches Hall-lite FM/FFM partitioning."""
+    base_kwargs = {
+        "weight_kg": 80.0,
+        "height_cm": 175.0,
+        "age": 40,
+        "sex": "male",
+        "daily_steps": 6500,
+        "daily_intake_kcal": 1800.0,
+        "periods_days": [90],
+        "feature_hall_lite_weight_prediction": True,
+        "weight_prediction_engine": WeightPredictionEngine.HALL_LITE,
+    }
+
+    lower_body_fat = predict_weight_periods_selected(**base_kwargs, body_fat_pct=15.0)
+    higher_body_fat = predict_weight_periods_selected(**base_kwargs, body_fat_pct=35.0)
+    estimated_body_fat = predict_weight_periods_selected(**base_kwargs)
+
+    assert lower_body_fat.predictions[0].model_name == "hall_lite"
+    assert lower_body_fat.predictions[0].predicted_weight_kg < (
+        estimated_body_fat.predictions[0].predicted_weight_kg
+    )
+    assert higher_body_fat.predictions[0].predicted_weight_kg > (
+        estimated_body_fat.predictions[0].predicted_weight_kg
+    )

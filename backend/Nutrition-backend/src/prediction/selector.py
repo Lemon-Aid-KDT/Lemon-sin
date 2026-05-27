@@ -175,6 +175,7 @@ def _predict_one_period(
                 daily_steps=daily_steps,
                 daily_intake_kcal=effective_intake_kcal,
                 n_days=days,
+                measured_body_fat_pct=body_fat_pct,
             )
             return _hall_result_to_weight_step(
                 result=result,
