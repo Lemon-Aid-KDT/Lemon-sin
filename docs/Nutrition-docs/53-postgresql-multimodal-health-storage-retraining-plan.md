@@ -973,3 +973,25 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Operator training manifest export/retraining focused tests: 13 passed
 - `black --check backend/scripts/export_training_manifest.py backend/Nutrition-backend/tests/unit/scripts/test_export_training_manifest.py`: passed
 - `ruff check backend/scripts/export_training_manifest.py backend/Nutrition-backend/tests/unit/scripts/test_export_training_manifest.py`: passed
+
+### 16.10 Phase 10 부분 구현 기록: operator model promotion CLI
+
+구현 범위:
+
+- `backend/scripts/promote_model_candidate.py`를 추가해 operator가 candidate model의 promotion gate를 dry-run 또는 apply 할 수 있게 함
+- `model_training_runs`, `model_registry`, `model_eval_results`를 읽고 기존 `evaluate_model_promotion_gate()`를 재사용
+- `--metric-rule METRIC COMPARATOR THRESHOLD`를 하나 이상 받아 persisted eval metric row 기준으로만 promotion 가능 여부를 판단
+- `--apply`가 있을 때 gate 통과 시에만 `model_registry.deployment_status='staging'`, `model_training_runs.status='approved_for_deploy'`로 변경
+
+보안 결정:
+
+- CLI 출력은 allowed/applied/reason, model id, training run id, rule count만 포함한다.
+- artifact ref, storage ref, operator hash, raw eval payload, provider payload, dataset labels는 stdout에 출력하지 않는다.
+- metric rule이 없거나 persisted eval result가 없으면 fail-closed로 promotion을 거부한다.
+- production 승격은 이 CLI에서 처리하지 않고 별도 release/signoff 단계로 분리한다.
+
+검증:
+
+- Operator model promotion/retraining focused tests: 13 passed
+- `black --check backend/scripts/promote_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_promote_model_candidate.py`: passed
+- `ruff check backend/scripts/promote_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_promote_model_candidate.py`: passed
