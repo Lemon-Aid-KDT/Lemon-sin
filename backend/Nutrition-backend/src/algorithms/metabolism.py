@@ -25,6 +25,8 @@ VERY_ACTIVE_FACTOR = 1.900
 ENERGY_DECIMALS = 0
 KATCH_MCARDLE_BASE = 370.0
 KATCH_MCARDLE_LBM_COEFFICIENT = 21.6
+CUNNINGHAM_BASE = 370.0
+CUNNINGHAM_FFM_COEFFICIENT = 21.6
 MIN_BODY_FAT_PERCENT = 10.0
 MAX_BODY_FAT_PERCENT = 55.0
 ExerciseActivityCode = Literal[
@@ -78,6 +80,44 @@ def calculate_mifflin_bmr(weight_kg: float, height_cm: float, age: int, sex: Sex
     return round(base + sex_constant, ENERGY_DECIMALS)
 
 
+def calculate_lean_body_mass_from_body_fat(weight_kg: float, body_fat_pct: float) -> float:
+    """체중과 체지방률로 제지방량을 계산한다.
+
+    Args:
+        weight_kg: 체중(kg).
+        body_fat_pct: 체지방률(%).
+
+    Returns:
+        제지방량(kg).
+
+    Raises:
+        ValueError: 체지방률이 적용 가능한 범위를 벗어난 경우.
+    """
+    if not MIN_BODY_FAT_PERCENT <= body_fat_pct <= MAX_BODY_FAT_PERCENT:
+        raise ValueError("body_fat_pct must be between 10 and 55")
+    return weight_kg * (1 - (body_fat_pct / 100))
+
+
+def calculate_cunningham_bmr(lean_body_mass_kg: float) -> float:
+    """Cunningham 1991 공식으로 제지방량 기반 예상 BMR을 계산한다.
+
+    Args:
+        lean_body_mass_kg: 제지방량(kg).
+
+    Returns:
+        예상 BMR(kcal/day).
+
+    Raises:
+        ValueError: 제지방량이 음수인 경우.
+    """
+    if lean_body_mass_kg < 0:
+        raise ValueError("lean_body_mass_kg must be non-negative")
+    return round(
+        CUNNINGHAM_BASE + CUNNINGHAM_FFM_COEFFICIENT * lean_body_mass_kg,
+        ENERGY_DECIMALS,
+    )
+
+
 def calculate_katch_mcardle_bmr(weight_kg: float, body_fat_pct: float) -> float:
     """Katch-McArdle 공식으로 체지방률 기반 예상 BMR을 계산한다.
 
@@ -91,12 +131,12 @@ def calculate_katch_mcardle_bmr(weight_kg: float, body_fat_pct: float) -> float:
     Raises:
         ValueError: 체지방률이 적용 가능한 범위를 벗어난 경우.
     """
-    if not MIN_BODY_FAT_PERCENT <= body_fat_pct <= MAX_BODY_FAT_PERCENT:
-        raise ValueError("body_fat_pct must be between 10 and 55")
-    lean_body_mass = weight_kg * (1 - (body_fat_pct / 100))
+    lean_body_mass = calculate_lean_body_mass_from_body_fat(
+        weight_kg=weight_kg,
+        body_fat_pct=body_fat_pct,
+    )
     return round(
-        KATCH_MCARDLE_BASE + KATCH_MCARDLE_LBM_COEFFICIENT * lean_body_mass,
-        ENERGY_DECIMALS,
+        KATCH_MCARDLE_BASE + KATCH_MCARDLE_LBM_COEFFICIENT * lean_body_mass, ENERGY_DECIMALS
     )
 
 
@@ -109,8 +149,9 @@ def calculate_bmr(
 ) -> float:
     """예상 BMR을 계산한다.
 
-    체지방률이 신뢰 가능한 범위로 입력되면 Katch-McArdle 공식을 우선하고,
-    그렇지 않으면 Mifflin-St Jeor 공식을 사용한다.
+    체지방률이 신뢰 가능한 범위로 입력되면 Katch-McArdle/Cunningham 1991과
+    동일한 제지방량 기반 공식을 우선하고, 그렇지 않으면 Mifflin-St Jeor
+    공식을 사용한다.
 
     Args:
         weight_kg: 체중(kg).

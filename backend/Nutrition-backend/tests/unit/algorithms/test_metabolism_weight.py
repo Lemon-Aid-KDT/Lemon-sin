@@ -6,9 +6,11 @@ import pytest
 from pydantic import ValidationError
 from src.algorithms.metabolism import (
     calculate_bmr,
+    calculate_cunningham_bmr,
     calculate_exercise_kcal_from_activity,
     calculate_exercise_kcal_from_mets,
     calculate_katch_mcardle_bmr,
+    calculate_lean_body_mass_from_body_fat,
     calculate_tdee,
     calculate_tdee_with_activity_codes,
     get_activity_factor,
@@ -56,6 +58,20 @@ def test_katch_mcardle_bmr_used_when_body_fat_is_available() -> None:
             body_fat_pct=30.0,
         )
         == 1398.0
+    )
+
+
+def test_cunningham_bmr_matches_body_fat_based_lbm_path() -> None:
+    """Cunningham 1991 제지방량 공식은 체지방률 기반 BMR 경로와 같은 값을 낸다."""
+    lean_body_mass = calculate_lean_body_mass_from_body_fat(weight_kg=68.0, body_fat_pct=30.0)
+
+    assert lean_body_mass == pytest.approx(47.6, abs=0.01)
+    assert calculate_cunningham_bmr(lean_body_mass_kg=lean_body_mass) == 1398.0
+    assert calculate_cunningham_bmr(
+        lean_body_mass_kg=lean_body_mass
+    ) == calculate_katch_mcardle_bmr(
+        weight_kg=68.0,
+        body_fat_pct=30.0,
     )
 
 
