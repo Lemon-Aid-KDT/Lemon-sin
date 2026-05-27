@@ -87,6 +87,15 @@ _MIN_HIGH_DOSE_OMEGA3_MG = 1000.0
 _MIN_HIGH_DOSE_VITAMIN_E_MG = 100.0
 _MIN_HIGH_DOSE_BETA_CAROTENE_MG = 20.0
 _BINDING_NUTRIENT_CODES = {"calcium_mg", "iron_mg", "magnesium_mg"}
+_WARFARIN_BOTANICAL_BLEEDING_CODES = {"ginkgo_mg", "ginkgo_biloba_mg", "garlic_mg"}
+_WARFARIN_BOTANICAL_BLEEDING_KEYWORDS = (
+    "ginkgo",
+    "ginkgo biloba",
+    "은행잎",
+    "은행",
+    "garlic",
+    "마늘",
+)
 _CKD_CAUTION_NUTRIENT_CODES = {
     "magnesium_mg",
     "potassium_mg",
@@ -944,6 +953,19 @@ def _compute_warfarin_cautions(
                 "warfarin_vitamin_e_bleeding_risk",
                 "high",
                 "와파린 복용 중 고함량 비타민 E는 출혈 위험 검토가 필요합니다.",
+            )
+        )
+    if _ingredient_matches(
+        ingredient,
+        codes=_WARFARIN_BOTANICAL_BLEEDING_CODES,
+        keywords=_WARFARIN_BOTANICAL_BLEEDING_KEYWORDS,
+    ):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "warfarin_botanical_bleeding_risk",
+                "high",
+                "와파린 복용 중 은행잎·마늘 보충제는 출혈 위험 검토가 필요합니다.",
             )
         )
     return cautions

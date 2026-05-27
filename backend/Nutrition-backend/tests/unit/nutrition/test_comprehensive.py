@@ -323,6 +323,36 @@ class TestComputeComprehensive:
         assert "drug_absorption_spacing:levothyroxine" in reasons
         assert "warfarin_omega3_bleeding_risk" in reasons
 
+    def test_warfarin_botanical_bleeding_interactions_are_flagged(self) -> None:
+        """와파린 복용 중 은행잎·마늘 보충제는 botanical 출혈 위험으로 표시한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Ginkgo Biloba",
+                        "nutrient_code": "ginkgo_biloba_mg",
+                        "amount": 120,
+                        "unit": "mg",
+                    },
+                    {
+                        "display_name": "마늘 추출물",
+                        "nutrient_code": None,
+                        "amount": 500,
+                        "unit": "mg",
+                    },
+                ],
+                medications=["warfarin"],
+            )
+        )
+        botanical_cautions = [
+            caution
+            for caution in result.cautionary_components
+            if caution.reason == "warfarin_botanical_bleeding_risk"
+        ]
+
+        assert len(botanical_cautions) == 2
+        assert all(caution.severity == "high" for caution in botanical_cautions)
+
     def test_liver_goal_alcohol_risk_and_nac_are_consult_routed(self) -> None:
         """음주 위험·간질환 프로필에서는 간 건강 보조제 상담 분기를 강화한다."""
         result = compute_comprehensive(
