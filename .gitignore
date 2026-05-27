@@ -124,3 +124,7 @@ ml/notebooks/.ipynb_checkpoints/
 *.pt
 runs/
 wandb/
+
+# Large datasets (DO NOT COMMIT)
+data/food_images/
+
