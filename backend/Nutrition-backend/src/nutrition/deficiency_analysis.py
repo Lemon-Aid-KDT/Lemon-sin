@@ -104,6 +104,29 @@ def _requires_referral_route(profile: UserProfile) -> bool:
     return bool(_normalized_diseases(profile) & HIGH_RISK_NUTRITION_ROUTE_FLAGS)
 
 
+def _referral_route_messages(profile: UserProfile) -> list[str]:
+    """일반 KDRIs 자동 평가를 보류해야 하는 프로필 수준 사유를 반환한다.
+
+    Args:
+        profile: 사용자 프로필.
+
+    Returns:
+        Referral route가 필요하면 사용자 노출용 안전 메시지 목록, 아니면 빈 목록.
+    """
+    messages: list[str] = []
+    if _requires_referral_route(profile):
+        messages.append("등록된 건강 상태에서는 일반 KDRIs 자동 평가보다 전문가 상담이 우선입니다.")
+    if profile.pregnancy_status in {"pregnant", "lactating"}:
+        messages.append(
+            "임신·수유 상태에서는 추가 필요량과 상한 확인을 위해 전문가 상담이 우선입니다."
+        )
+    if profile.medications:
+        messages.append(
+            "복용 약물이 있으면 영양소 평가 전에 약물-영양소 상호작용 확인이 필요합니다."
+        )
+    return messages
+
+
 def _is_current_smoker(profile: UserProfile) -> bool:
     """현재 흡연자 비타민 C 참고 기준을 적용할지 판단한다.
 
@@ -338,16 +361,15 @@ def analyze_nutrient_intakes(
     """
     results: list[NutrientAnalysisResult] = []
     dataset_context = get_kdris_dataset_context()
-    if _requires_referral_route(profile):
+    referral_messages = _referral_route_messages(profile)
+    if referral_messages:
         return NutritionAnalysisResponse(
             results=[],
             dataset_status=dataset_context["dataset_status"],
             dataset_version=dataset_context["dataset_version"],
             source_manifest_version=dataset_context["source_manifest_version"],
             routing_status="referral_required",
-            safety_messages=[
-                "등록된 건강 상태에서는 일반 KDRIs 자동 평가보다 전문가 상담이 우선입니다.",
-            ],
+            safety_messages=referral_messages,
             note="결과는 보류되었으며 개인 건강 상태에 맞춘 상담을 권장합니다.",
         )
 

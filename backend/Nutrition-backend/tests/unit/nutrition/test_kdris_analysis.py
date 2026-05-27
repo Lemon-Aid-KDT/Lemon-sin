@@ -212,6 +212,46 @@ def test_ckd_caution_nutrients_do_not_receive_priority_boost() -> None:
     assert response.safety_messages
 
 
+def test_pregnancy_routes_to_referral_required() -> None:
+    """임신 상태에서는 일반 KDRIs 자동 평가를 보류하고 상담 경로로 분기한다."""
+    profile = UserProfile(
+        age=30,
+        sex="female",
+        height_cm=165,
+        weight_kg=60,
+        pregnancy_status="pregnant",
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[NutrientIntake(nutrient_code="folate_ug", amount=400, unit="ug")],
+    )
+
+    assert response.routing_status == "referral_required"
+    assert response.results == []
+    assert any("임신·수유" in message for message in response.safety_messages)
+    assert not contains_forbidden_terms(response.safety_messages)
+
+
+def test_medications_route_to_referral_required() -> None:
+    """약물 입력이 있으면 약물-영양소 상호작용 확인 경로로 분기한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        medications=["warfarin"],
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[NutrientIntake(nutrient_code="vitamin_k_ug", amount=75, unit="ug")],
+    )
+
+    assert response.routing_status == "referral_required"
+    assert response.results == []
+    assert any("약물-영양소 상호작용" in message for message in response.safety_messages)
+    assert not contains_forbidden_terms(response.safety_messages)
+
+
 def test_current_smoker_vitamin_c_reference_adds_iom_margin() -> None:
     """현재 흡연자는 비타민 C 기준에 +35mg 참고치를 반영한다."""
     profile = UserProfile(
