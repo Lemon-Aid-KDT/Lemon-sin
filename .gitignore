@@ -250,6 +250,21 @@ data/private/
 backend/data/private/
 data/processed/
 
+# Food image / YOLO large datasets and generated artifacts. Keep small
+# manifests, scripts, and documented result summaries tracked explicitly.
+data/food_images/aihub_yolo_50/
+data/food_images/aihub_yolo_50_balanced_500/
+data/food_images/raw/
+data/food_images/interim/
+data/food_images/processed/
+data/food_images/quarantine/
+*.pt
+runs/food_yolo/**
+!runs/food_yolo/
+!runs/food_yolo/**/
+!runs/food_yolo/**/results.csv
+wandb/
+
 # External OCR tool/source checkout. Keep out of repo history.
 /PaddleOCR-main/
 /PaddleOCR-main.zip
