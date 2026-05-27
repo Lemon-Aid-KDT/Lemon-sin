@@ -13,6 +13,7 @@ from src.models.schemas.user import PregnancyStatus, Sex, UserProfile
 
 NutrientCode = Annotated[str, Field(min_length=1, max_length=64)]
 UnitCode = Annotated[str, Field(min_length=1, max_length=16)]
+AuditKRItemScore = Annotated[int, Field(ge=0, le=4)]
 
 
 class NutrientStatus(StrEnum):
@@ -234,6 +235,55 @@ class NutritionAnalysisResponse(BaseModel):
     routing_status: Literal["ok", "referral_required"] = "ok"
     safety_messages: list[str] = Field(default_factory=list)
     note: str = "결과는 섭취 상태 참고용이며 개인 건강 상태를 확정하지 않습니다."
+
+
+class AuditKRRequest(BaseModel):
+    """AUDIT-KR 10문항 점수 입력.
+
+    Attributes:
+        sex: AUDIT-KR 알코올 사용장애 cut-off 선택용 성별.
+        item_scores: AUDIT-KR 10개 문항의 0-4점 점수 목록. 문항 텍스트는 UI 콘텐츠에서 관리한다.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sex": "female",
+                    "item_scores": [1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+                }
+            ]
+        }
+    )
+
+    sex: Sex
+    item_scores: list[AuditKRItemScore] = Field(min_length=10, max_length=10)
+
+
+class AuditKRResponse(BaseModel):
+    """AUDIT-KR self-check 점수화 결과.
+
+    Attributes:
+        score: 10문항 합산 점수.
+        risk_level: 위험 음주 또는 알코올 사용장애 cut-off 도달 여부.
+        risk_cutoff: 위험 음주 cut-off.
+        dependence_cutoff: 성별에 따른 알코올 사용장애 screening cut-off.
+        nutrition_priority_nutrients: 위험 음주 범위에서 우선 확인할 영양소 코드.
+        supplement_recommendation_paused: 영양제 자동 추천 보류 여부.
+        recommendation_messages: 사용자 노출용 안전 안내.
+        algorithm_version: AUDIT-KR scoring version.
+        note: 확정 진단 표현을 피하기 위한 안내.
+    """
+
+    score: int = Field(ge=0, le=40)
+    risk_level: Literal["low_risk", "risky_drinking", "dependence_cutoff"]
+    risk_cutoff: int
+    dependence_cutoff: int
+    nutrition_priority_nutrients: list[str] = Field(default_factory=list)
+    supplement_recommendation_paused: bool = False
+    recommendation_messages: list[str] = Field(default_factory=list)
+    algorithm_version: str
+    note: str = "AUDIT-KR 결과는 선별 참고용이며 진단이나 치료 판단을 대체하지 않습니다."
 
 
 class NutritionDiagnosisSummary(BaseModel):

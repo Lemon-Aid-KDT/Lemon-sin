@@ -21,6 +21,8 @@ from src.api.v1.examples import (
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
 from src.models.schemas.nutrition import (
+    AuditKRRequest,
+    AuditKRResponse,
     KDRILookupResponse,
     KDRIQuery,
     NutritionAnalysisRequest,
@@ -29,6 +31,7 @@ from src.models.schemas.nutrition import (
 )
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.user import PregnancyStatus, Sex
+from src.nutrition.audit_kr import score_audit_kr
 from src.nutrition.deficiency_analysis import analyze_nutrient_intakes
 from src.nutrition.kdris import get_kdris_dataset_context, get_kdris_for_profile
 from src.nutrition.unit_converter import UnitConversionError
@@ -174,6 +177,25 @@ async def analyze_nutrition(
         )
     except (UnitConversionError, ValueError) as exc:
         raise _unprocessable(exc) from exc
+
+
+@router.post(
+    "/audit-kr",
+    response_model=AuditKRResponse,
+    responses={
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+)
+async def score_audit_kr_self_check(request: AuditKRRequest) -> AuditKRResponse:
+    """AUDIT-KR 10문항 점수를 합산하고 안전 라우팅 결과를 반환한다.
+
+    Args:
+        request: AUDIT-KR 10개 항목 점수.
+
+    Returns:
+        위험 음주/상담 우선 여부와 영양 우선 확인 항목.
+    """
+    return score_audit_kr(request)
 
 
 @router.get(
