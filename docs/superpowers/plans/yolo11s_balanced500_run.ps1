@@ -60,12 +60,18 @@ if (-not $cacheFound) {
 }
 
 Write-Host ""
-Write-Host "=== 데이터셋 파일 개수 ===" -ForegroundColor Cyan
+Write-Host "=== 데이터셋 파일 개수 (jpg/txt만; .npy 캐시는 제외) ===" -ForegroundColor Cyan
 $dst = "C:\Lemon-Aid\Lemon-sin\data\food_images\aihub_yolo_50_balanced_500"
-foreach ($s in @('train\images','train\labels','val\images','val\labels')) {
-    $p = Join-Path $dst $s
-    $cnt = (Get-ChildItem $p -File -ErrorAction SilentlyContinue | Measure-Object).Count
-    Write-Host "  $s : $cnt files"
+$splits = @(
+    @{path='train\images'; filter='*.jpg'},
+    @{path='train\labels'; filter='*.txt'},
+    @{path='val\images';   filter='*.jpg'},
+    @{path='val\labels';   filter='*.txt'}
+)
+foreach ($s in $splits) {
+    $p = Join-Path $dst $s.path
+    $cnt = (Get-ChildItem $p -File -Filter $s.filter -ErrorAction SilentlyContinue | Measure-Object).Count
+    Write-Host ("  {0,-14} : {1} files" -f $s.path, $cnt)
 }
 
 Write-Host ""
