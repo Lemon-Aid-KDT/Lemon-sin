@@ -995,3 +995,25 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Operator model promotion/retraining focused tests: 13 passed
 - `black --check backend/scripts/promote_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_promote_model_candidate.py`: passed
 - `ruff check backend/scripts/promote_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_promote_model_candidate.py`: passed
+
+### 16.11 Phase 11 부분 구현 기록: operator model training run registration CLI
+
+구현 범위:
+
+- `backend/scripts/register_model_training_run.py`를 추가해 operator가 학습 실행 row를 sanitized metadata로 등록할 수 있게 함
+- `model_family`, `base_model`, `dataset_version_id`, `hyperparam_snapshot`, `metrics_snapshot`, optional private `artifact_ref`, initial `status`를 저장
+- hyperparams는 기존 retraining label snapshot sanitizer를 재사용해 raw/path/secret 계열 key/value를 차단
+- metrics snapshot은 flat numeric nonnegative value만 허용하고, artifact ref는 private relative reference만 허용
+
+보안 결정:
+
+- CLI stdout에는 training run id, model family, dataset version id, key count, artifact 등록 여부만 출력한다.
+- artifact ref, hyperparam 본문, metric 이름/값, storage URL/path, secret-like value는 stdout에 출력하지 않는다.
+- raw config 또는 public/absolute/traversing artifact ref가 들어오면 DB write 전에 fail-closed로 중단한다.
+- 실제 model registry candidate 생성과 promotion은 Phase 10 promotion CLI로 분리한다.
+
+검증:
+
+- Operator model training run registration/retraining focused tests: 14 passed
+- `black --check backend/scripts/register_model_training_run.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_training_run.py`: passed
+- `ruff check backend/scripts/register_model_training_run.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_training_run.py`: passed
