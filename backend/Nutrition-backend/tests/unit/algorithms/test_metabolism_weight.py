@@ -6,10 +6,13 @@ import pytest
 from pydantic import ValidationError
 from src.algorithms.metabolism import (
     calculate_bmr,
+    calculate_exercise_kcal_from_activity,
     calculate_exercise_kcal_from_mets,
     calculate_katch_mcardle_bmr,
     calculate_tdee,
+    calculate_tdee_with_activity_codes,
     get_activity_factor,
+    lookup_exercise_activity_mets,
 )
 from src.models.schemas.algorithm import WeightPredictionRequest
 from src.prediction.weight import (
@@ -91,6 +94,43 @@ def test_tdee_adds_mets_based_intentional_exercise() -> None:
         daily_steps=6500,
         weight_kg=50.0,
         intentional_exercises=[(7.0, 30.0)],
+    ) == pytest.approx(1929.0, abs=0.5)
+
+
+@pytest.mark.parametrize(
+    ("activity_code", "expected_mets"),
+    [
+        ("walking_moderate", 3.5),
+        ("walking_very_brisk", 5.0),
+        ("jogging_general", 7.0),
+        ("running_6mph", 9.8),
+        ("cycling_commute_self_selected", 6.8),
+        ("resistance_training_squats", 5.0),
+        ("yoga_hatha", 2.5),
+    ],
+)
+def test_exercise_activity_lookup_uses_compendium_values(
+    activity_code: str,
+    expected_mets: float,
+) -> None:
+    """지원 운동 코드를 Compendium 2011 METs 값으로 매핑한다."""
+    assert lookup_exercise_activity_mets(activity_code) == expected_mets  # type: ignore[arg-type]
+
+
+def test_tdee_adds_activity_code_based_intentional_exercise() -> None:
+    """운동 코드와 시간을 입력하면 METs 변환 후 TDEE에 더한다."""
+    activity_kcal = calculate_exercise_kcal_from_activity(
+        activity_code="jogging_general",
+        weight_kg=50.0,
+        minutes=30.0,
+    )
+
+    assert activity_kcal == pytest.approx(183.75, abs=0.01)
+    assert calculate_tdee_with_activity_codes(
+        estimated_bmr=1269.0,
+        daily_steps=6500,
+        weight_kg=50.0,
+        intentional_activities=[("jogging_general", 30.0)],
     ) == pytest.approx(1929.0, abs=0.5)
 
 

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Literal
+
 from src.models.schemas.user import Sex
 
 BMR_WEIGHT_COEFFICIENT = 10.0
@@ -23,6 +27,34 @@ KATCH_MCARDLE_BASE = 370.0
 KATCH_MCARDLE_LBM_COEFFICIENT = 21.6
 MIN_BODY_FAT_PERCENT = 10.0
 MAX_BODY_FAT_PERCENT = 55.0
+ExerciseActivityCode = Literal[
+    "walking_slow",
+    "walking_moderate",
+    "walking_brisk",
+    "walking_very_brisk",
+    "jogging_general",
+    "running_6mph",
+    "cycling_leisure",
+    "cycling_commute_self_selected",
+    "resistance_training_multiple",
+    "resistance_training_squats",
+    "yoga_hatha",
+]
+EXERCISE_ACTIVITY_METS: Mapping[ExerciseActivityCode, float] = MappingProxyType(
+    {
+        "walking_slow": 3.0,
+        "walking_moderate": 3.5,
+        "walking_brisk": 4.3,
+        "walking_very_brisk": 5.0,
+        "jogging_general": 7.0,
+        "running_6mph": 9.8,
+        "cycling_leisure": 4.0,
+        "cycling_commute_self_selected": 6.8,
+        "resistance_training_multiple": 3.5,
+        "resistance_training_squats": 5.0,
+        "yoga_hatha": 2.5,
+    }
+)
 
 
 def calculate_mifflin_bmr(weight_kg: float, height_cm: float, age: int, sex: Sex) -> float:
@@ -132,6 +164,73 @@ def calculate_exercise_kcal_from_mets(mets: float, weight_kg: float, minutes: fl
     if mets < 0 or weight_kg < 0 or minutes < 0:
         raise ValueError("mets, weight_kg and minutes must be non-negative")
     return mets * 3.5 * weight_kg / 200 * minutes
+
+
+def lookup_exercise_activity_mets(activity_code: ExerciseActivityCode) -> float:
+    """운동 활동 코드에 대응하는 Compendium 2011 METs 값을 반환한다.
+
+    Args:
+        activity_code: Lemon-Aid가 지원하는 운동 활동 코드.
+
+    Returns:
+        활동 코드에 대응하는 METs 값.
+
+    Raises:
+        KeyError: 지원하지 않는 활동 코드인 경우.
+    """
+    return EXERCISE_ACTIVITY_METS[activity_code]
+
+
+def calculate_exercise_kcal_from_activity(
+    activity_code: ExerciseActivityCode,
+    weight_kg: float,
+    minutes: float,
+) -> float:
+    """운동 활동 코드와 시간으로 의도 운동 열량을 계산한다.
+
+    Args:
+        activity_code: Lemon-Aid가 지원하는 운동 활동 코드.
+        weight_kg: 체중(kg).
+        minutes: 운동 시간(분).
+
+    Returns:
+        운동 소비 열량(kcal).
+
+    Raises:
+        ValueError: 체중 또는 운동 시간이 음수인 경우.
+    """
+    mets = lookup_exercise_activity_mets(activity_code)
+    return calculate_exercise_kcal_from_mets(mets=mets, weight_kg=weight_kg, minutes=minutes)
+
+
+def calculate_tdee_with_activity_codes(
+    estimated_bmr: float,
+    daily_steps: int,
+    *,
+    weight_kg: float,
+    intentional_activities: list[tuple[ExerciseActivityCode, float]] | None = None,
+) -> float:
+    """걸음수 PAL과 활동 코드 기반 의도 운동을 합산한 예상 TDEE를 계산한다.
+
+    Args:
+        estimated_bmr: 예상 BMR(kcal/day).
+        daily_steps: 일일 걸음수.
+        weight_kg: 운동 열량 계산용 체중(kg).
+        intentional_activities: (운동 활동 코드, 운동 시간 분) 목록.
+
+    Returns:
+        예상 TDEE(kcal/day).
+    """
+    intentional_exercises = [
+        (lookup_exercise_activity_mets(activity_code), minutes)
+        for activity_code, minutes in intentional_activities or []
+    ]
+    return calculate_tdee(
+        estimated_bmr=estimated_bmr,
+        daily_steps=daily_steps,
+        weight_kg=weight_kg,
+        intentional_exercises=intentional_exercises,
+    )
 
 
 def calculate_tdee(
