@@ -1084,3 +1084,31 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Backend unit collection: 1114 collected
 - `black --check backend/scripts/check_learning_vector_db_security.py backend/Nutrition-backend/tests/unit/scripts/test_check_learning_vector_db_security.py`: passed
 - `ruff check backend/scripts/check_learning_vector_db_security.py backend/Nutrition-backend/tests/unit/scripts/test_check_learning_vector_db_security.py`: passed
+
+### 16.15 Phase 15 부분 구현 기록: operator model candidate registration CLI
+
+구현 범위:
+
+- `backend/scripts/register_model_candidate.py`를 추가해 successful training run에서 `model_registry` candidate row를 생성
+- `task_type`은 training run `model_family`와 호환되는 값만 허용:
+  - `yolo` -> `supplement_roi_detection`, `food_detection`
+  - `paddleocr_det` -> `supplement_ocr_detection`
+  - `paddleocr_rec` -> `supplement_ocr_recognition`
+  - `food_classifier` -> `food_classification`
+  - `image_embedding` -> `image_embedding`
+- `artifact_ref`는 CLI 입력이 없으면 training run의 private artifact ref를 사용하고, 등록 직후 상태는 항상 `candidate`로 고정
+- staging/production 승격은 기존 `promote_model_candidate.py` metric gate를 통해서만 가능하도록 분리
+
+보안 결정:
+
+- CLI stdout에는 model id, training run id, task type, model version, deployment status, boolean guard만 출력한다.
+- artifact ref, metric snapshot, hyperparam snapshot, operator hash, raw eval payload, storage URL/path, secret-like value는 stdout에 출력하지 않는다.
+- model version은 safe tag 문자만 허용하고, artifact ref는 public URL/absolute path/traversal/secret-like marker를 차단한다.
+- training run이 `succeeded`가 아니거나 task family가 맞지 않으면 DB write 전에 fail-closed 처리한다.
+
+검증:
+
+- Operator model candidate registration/promotion focused tests: 10 passed
+- Backend unit collection: 1120 collected
+- `black --check backend/scripts/register_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_candidate.py`: passed
+- `ruff check backend/scripts/register_model_candidate.py backend/Nutrition-backend/tests/unit/scripts/test_register_model_candidate.py`: passed
