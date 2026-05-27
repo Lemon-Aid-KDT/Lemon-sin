@@ -105,8 +105,9 @@ redis-cli -u $REDIS_URL ping
   - 기본 실행은 앱과 같은 설정 로딩을 사용하므로 repo root `.env`와 `backend/.env`를
     읽는다. 특정 파일을 지정하려면 `--env-file path\to\.env`, CI처럼 dotenv를
     무시하려면 `--ignore-env-file`을 사용한다.
-  - medical source readiness도 함께 출력한다. `KDCA_HEALTHINFO_API_KEY`가 없으면
-    `kdca-healthinfo`는 `missing_api_key`로 표시된다. `MFDS_DATA_API_KEY`가 없으면
+  - medical source readiness도 함께 출력한다. `KDCA_HEALTHINFO_TOPIC_IDS_FILE` 또는
+    `KDCA_HEALTHINFO_TOPIC_IDS`가 없으면 `kdca-healthinfo`는 `missing_topic_ids`로 표시된다.
+    `MFDS_DATA_API_KEY`가 없으면
     `mfds-drug-safety`도 `missing_api_key`로 표시된다. Semantic Scholar는 key가
     있어도 검수 전 research backlog이므로 `not_reviewed`로 표시된다.
   - 키 수령 후 필수 source까지 종료코드로 검증할 때는 다음처럼 strict gate를 켠다:

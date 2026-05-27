@@ -179,7 +179,8 @@ python backend\scripts\smoke_ai_agent_server.py `
       배제한다고 명시한다.
 - [x] 의료 지식층 문서 번호가 기존 dev-guides `29`/`30`과 충돌하지 않도록
       사용자 승인 후 31번으로 확정되어 있다.
-- [x] backend Settings가 `KDCA_HEALTHINFO_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`
+- [x] backend Settings가 `KDCA_HEALTHINFO_TOPIC_IDS_FILE`, `KDCA_HEALTHINFO_TOPIC_IDS`,
+  `KDCA_HEALTHINFO_API_KEY`(legacy), `SEMANTIC_SCHOLAR_API_KEY`
       등 source API key placeholder를 실제 설정 필드로 읽는다.
 - [x] `.env.example`의 `ALLOWED_ORIGINS`가 Flutter web 고정 포트
       `http://localhost:52100`과 `http://127.0.0.1:52100`을 포함한다.
@@ -208,7 +209,8 @@ python backend\scripts\smoke_ai_agent_server.py `
 - PostgreSQL migration live smoke: 2026-05-25 `RUN_POSTGRES_MIGRATION_SMOKE=1`,
   `TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev`
   기준 1 passed로 재검증했다.
-- source API key: `KDCA_HEALTHINFO_API_KEY`, `MFDS_DATA_API_KEY`가 설정되면
+- source API key/topic id: `KDCA_HEALTHINFO_TOPIC_IDS_FILE` 또는
+  `KDCA_HEALTHINFO_TOPIC_IDS`, `MFDS_DATA_API_KEY`가 설정되면
   `kdca-healthinfo`, `mfds-drug-safety` readiness가 `ok`가 되어야 한다.
 - Semantic Scholar: `SEMANTIC_SCHOLAR_API_KEY`가 설정되어도 현재는 research
   backlog source라서 `not_reviewed`가 정상이다. 사용자-facing retrieval에
@@ -226,7 +228,7 @@ python backend\scripts\smoke_ai_agent_server.py `
 
 ```powershell
 cd C:\MyWorkspace\lemon_aid\ai-agent-backend-integration
-$env:KDCA_HEALTHINFO_API_KEY="<issued-kdca-key>"
+$env:KDCA_HEALTHINFO_TOPIC_IDS_FILE="backend/Nutrition-backend/config/kdca_healthinfo_topics.local.json"
 $env:MFDS_DATA_API_KEY="<issued-mfds-key-if-required>"
 python backend\scripts\check_ai_agent_runtime_prereqs.py `
   --require-medical-sources kdca-healthinfo mfds-drug-safety
@@ -301,4 +303,5 @@ python backend\scripts\smoke_ai_agent_server.py `
 - backend smoke: `second_used_tools`에 `agent_memory` 포함
 - backend smoke: `chat_used_tools`에 `agent_memory` 포함
 - preflight: SGLang port/env와 PostgreSQL port/env는 `ok`
-- 아직 남은 API key readiness: `KDCA_HEALTHINFO_API_KEY`, 필요 시 `MFDS_DATA_API_KEY`
+- 아직 남은 API/topic readiness: `KDCA_HEALTHINFO_TOPIC_IDS_FILE`의 주제별 4자리 ID,
+  필요 시 `MFDS_DATA_API_KEY`

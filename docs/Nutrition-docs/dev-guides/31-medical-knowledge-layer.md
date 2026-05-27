@@ -95,7 +95,8 @@ vector index는 source governance가 안정된 뒤에 붙인다.
     source id, source family, review status, owner, env key를 보관한다.
   - `LLM_QA_EVAL_SET`: chatbot policy가 다루는 230개 MVP Q&A 회귀 케이스를 보관한다.
 - `backend/Nutrition-backend/src/config.py`
-  - `KDCA_HEALTHINFO_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY` 등 source API key를
+  - `KDCA_HEALTHINFO_TOPIC_IDS_FILE`, `KDCA_HEALTHINFO_TOPIC_IDS`,
+    `SEMANTIC_SCHOLAR_API_KEY` 등 source API/topic id 설정을
     Settings 필드로 읽는다.
 - `backend/Nutrition-backend/src/services/medical_source_readiness.py`
   - live API 호출 없이 source status, API key configured 여부, review expiry를
@@ -106,7 +107,8 @@ RAG index, stale-source 자동 갱신은 아직 켜지지 않았다.
 
 API key 발급 후 첫 확인 순서:
 
-1. repo root `.env`, `backend/.env` 또는 실행 환경에 `KDCA_HEALTHINFO_API_KEY`, `MFDS_DATA_API_KEY`,
+1. repo root `.env`, `backend/.env` 또는 실행 환경에 `KDCA_HEALTHINFO_TOPIC_IDS_FILE`
+   또는 `KDCA_HEALTHINFO_TOPIC_IDS`, `MFDS_DATA_API_KEY`,
    필요 시 `SEMANTIC_SCHOLAR_API_KEY`를 설정한다.
 2. `python backend/scripts/check_ai_agent_runtime_prereqs.py`를 실행한다.
    특정 dotenv 파일을 지정하려면 `--env-file path\to\.env`를 붙인다.

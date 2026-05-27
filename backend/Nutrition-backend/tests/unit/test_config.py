@@ -150,7 +150,10 @@ def test_medical_source_api_settings_map_from_environment(tmp_path: Path) -> Non
             [
                 "DATA_GO_KR_SERVICE_KEY=data-go-key",
                 "MFDS_DATA_API_KEY=mfds-data-key",
-                "KDCA_HEALTHINFO_API_KEY=kdca-key",
+                "KDCA_HEALTHINFO_URL_TEMPLATE=https://example.test/{topic_id}.xml",
+                'KDCA_HEALTHINFO_TOPIC_IDS={"hypertension":"0001"}',
+                "KDCA_HEALTHINFO_TOPIC_IDS_FILE=config/kdca_healthinfo_topics.local.json",
+                "KDCA_HEALTHINFO_API_KEY=legacy-kdca-key",
                 "NCBI_API_KEY=ncbi-key",
                 "NCBI_TOOL_NAME=lemon-aid-test",
                 "NCBI_EMAIL=team@example.test",
@@ -170,8 +173,13 @@ def test_medical_source_api_settings_map_from_environment(tmp_path: Path) -> Non
     assert settings.data_go_kr_service_key.get_secret_value() == "data-go-key"
     assert settings.mfds_data_api_key is not None
     assert settings.mfds_data_api_key.get_secret_value() == "mfds-data-key"
+    assert settings.kdca_healthinfo_url_template == "https://example.test/{topic_id}.xml"
+    assert settings.kdca_healthinfo_topic_ids == {"hypertension": "0001"}
+    assert str(settings.kdca_healthinfo_topic_ids_file) == (
+        "config\\kdca_healthinfo_topics.local.json"
+    )
     assert settings.kdca_healthinfo_api_key is not None
-    assert settings.kdca_healthinfo_api_key.get_secret_value() == "kdca-key"
+    assert settings.kdca_healthinfo_api_key.get_secret_value() == "legacy-kdca-key"
     assert settings.ncbi_api_key is not None
     assert settings.ncbi_api_key.get_secret_value() == "ncbi-key"
     assert settings.ncbi_tool_name == "lemon-aid-test"

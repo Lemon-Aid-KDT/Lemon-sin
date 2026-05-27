@@ -18,9 +18,11 @@ def test_reviewed_medical_source_registry_tracks_keyed_sources() -> None:
     kdca = by_id["kdca-healthinfo"]
     assert kdca.status == "reviewed"
     assert kdca.publisher == "Korea Disease Control and Prevention Agency"
-    assert kdca.env_key == "KDCA_HEALTHINFO_API_KEY"
+    assert kdca.env_key is None
     assert "chronic_condition" in kdca.source_families
     assert {"hypertension", "diabetes", "kidney_disease"}.issubset(set(kdca.topics))
+    assert len(kdca.topic_id_requirements) == 54
+    assert ("hypertension", "고혈압") in kdca.topic_id_requirements
     assert kdca.last_reviewed_at
 
     semantic_scholar = by_id["semantic-scholar"]

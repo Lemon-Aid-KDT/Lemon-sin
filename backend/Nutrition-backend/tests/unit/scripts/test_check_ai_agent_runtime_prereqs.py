@@ -6,9 +6,21 @@ from datetime import date
 from textwrap import dedent
 from types import SimpleNamespace
 
+from lemon_ai_agent.knowledge import REVIEWED_MEDICAL_SOURCE_REGISTRY
 from src.config import Settings
 
 from scripts import check_ai_agent_runtime_prereqs as prereqs
+
+
+def _kdca_topic_ids() -> dict[str, str]:
+    by_id = {source.source_id: source for source in REVIEWED_MEDICAL_SOURCE_REGISTRY}
+    return {
+        topic_id: f"{index:04d}"
+        for index, (topic_id, _label) in enumerate(
+            by_id["kdca-healthinfo"].topic_id_requirements,
+            start=1,
+        )
+    }
 
 
 def test_database_host_port_uses_test_database_url_port() -> None:
@@ -47,7 +59,7 @@ def test_medical_source_readiness_lines_show_keyed_source_status() -> None:
         today=date(2026, 5, 24),
     )
 
-    assert "medical source kdca-healthinfo: missing (missing_api_key)" in lines
+    assert "medical source kdca-healthinfo: missing (missing_topic_ids; missing_topics=54)" in lines
     assert "medical source kdris-2025: ok" in lines
     assert "medical source semantic-scholar: missing (not_reviewed)" in lines
 
@@ -61,7 +73,7 @@ def test_required_medical_source_failures_report_missing_keys() -> None:
     )
 
     assert failures == [
-        "kdca-healthinfo=missing_api_key",
+        "kdca-healthinfo=missing_topic_ids",
         "mfds-drug-safety=missing_api_key",
     ]
 
@@ -71,7 +83,7 @@ def test_required_medical_source_failures_pass_with_configured_keys() -> None:
     failures = prereqs._required_medical_source_failures(
         Settings(
             _env_file=None,
-            kdca_healthinfo_api_key="kdca-key",
+            kdca_healthinfo_topic_ids=_kdca_topic_ids(),
             mfds_data_api_key="mfds-key",
         ),
         ("kdca-healthinfo", "mfds-drug-safety"),
@@ -83,11 +95,21 @@ def test_required_medical_source_failures_pass_with_configured_keys() -> None:
 
 def test_build_settings_loads_explicit_env_file(tmp_path) -> None:
     """Verify preflight can read user-provided API keys from a dotenv file."""
+    topic_ids_file = tmp_path / "kdca_healthinfo_topics.local.json"
+    topic_ids_file.write_text(
+        '{"topics": {'
+        + ", ".join(
+            f'"{topic_id}": {{"topic_id": "{value}"}}'
+            for topic_id, value in _kdca_topic_ids().items()
+        )
+        + "}}",
+        encoding="utf-8",
+    )
     env_file = tmp_path / ".env"
     env_file.write_text(
         dedent(
-            """
-            KDCA_HEALTHINFO_API_KEY=kdca-key
+            f"""
+            KDCA_HEALTHINFO_TOPIC_IDS_FILE={topic_ids_file}
             MFDS_DATA_API_KEY=mfds-key
             """
         ).strip(),
@@ -152,7 +174,7 @@ def test_exit_code_fails_required_medical_sources_and_ollama() -> None:
         args,
         postgres_ready=True,
         sglang_ready=True,
-        medical_source_failures=["kdca-healthinfo=missing_api_key"],
+        medical_source_failures=["kdca-healthinfo=missing_topic_ids"],
         ollama_failure="port_closed",
     )
 

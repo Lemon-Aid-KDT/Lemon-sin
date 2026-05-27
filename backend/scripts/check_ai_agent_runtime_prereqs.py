@@ -248,6 +248,8 @@ def _medical_source_readiness_lines(
     for source in readiness.sources:
         state = "ok" if source.ready else "missing"
         detail = f" ({source.error_code})" if source.error_code else ""
+        if source.missing_topic_ids:
+            detail = f" ({source.error_code}; missing_topics={len(source.missing_topic_ids)})"
         lines.append(f"medical source {source.source_id}: {state}{detail}")
     return lines
 

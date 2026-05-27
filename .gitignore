@@ -20,6 +20,7 @@ credentials/
 service-account*.json
 google-services.json
 GoogleService-Info.plist
+backend/Nutrition-backend/config/kdca_healthinfo_topics.local.json
 
 # -----------------------------------------------------------------------------
 # Python

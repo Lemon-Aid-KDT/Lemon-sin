@@ -51,7 +51,10 @@ python backend\scripts\check_ai_agent_runtime_prereqs.py `
   --require-ollama-parser-smoke
 ```
 
-Current result: all runtime/LLM gates pass, but `kdca-healthinfo=missing_api_key` fails until `KDCA_HEALTHINFO_API_KEY` is provided.
+Current result: all runtime/LLM gates pass, but `kdca-healthinfo=missing_topic_ids`
+fails until `KDCA_HEALTHINFO_TOPIC_IDS_FILE` points at the local
+`backend/Nutrition-backend/config/kdca_healthinfo_topics.local.json` file with
+all required KDCA 4-digit XML topic identifiers filled.
 
 ## Review notes
 

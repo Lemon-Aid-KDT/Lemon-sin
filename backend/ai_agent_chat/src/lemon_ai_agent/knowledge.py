@@ -54,6 +54,7 @@ class ReviewedMedicalSource:
     owner: str
     env_key: str | None = None
     topics: tuple[str, ...] = ()
+    topic_id_requirements: tuple[tuple[str, str], ...] = ()
     user_facing_allowed: bool = True
     note: str = ""
 
@@ -192,8 +193,69 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
         last_reviewed_at="2026-05-22",
         review_expires_at="2026-11-22",
         owner="AI Agent medical knowledge review",
-        env_key="KDCA_HEALTHINFO_API_KEY",
         topics=("hypertension", "diabetes", "kidney_disease", "stroke", "osteoporosis", "anemia"),
+        topic_id_requirements=(
+            ("hypertension", "고혈압"),
+            ("elderly_hypertension", "노인 고혈압"),
+            ("hypertension_exercise", "고혈압 환자의 운동요법"),
+            ("hypertension_diet", "고혈압 환자의 식이요법"),
+            ("hypertensive_retinopathy", "고혈압과 눈(고혈압망막병증)"),
+            ("hypertensive_kidney_disease", "고혈압성 콩팥병"),
+            ("gestational_hypertension_preeclampsia", "임신고혈압과 전자간증(임신중독증)"),
+            ("pediatric_adolescent_hypertension", "소아청소년기고혈압"),
+            ("hypertensive_heart_disease", "고혈압심장질환"),
+            ("elderly_diabetes", "노인 당뇨병"),
+            ("diabetic_retinopathy", "당뇨망막병증"),
+            ("diabetes_diet", "당뇨환자의 식이요법"),
+            ("chronic_diabetes_complications", "당뇨병 합병증(만성 합병증)"),
+            (
+                "acute_diabetes_complications_dka_hhs",
+                "당뇨병 합병증(급성 합병증_당뇨병케토산증, 고혈당고삼투질상태)",
+            ),
+            ("diabetes_medication", "당뇨환자의 약물요법"),
+            ("diabetes_exercise", "당뇨환자의 운동요법"),
+            ("diabetic_foot", "당뇨병성 족부병증"),
+            ("abnormal_urine_diabetes", "소변이상(당뇨)"),
+            ("diabetes", "당뇨병"),
+            ("gestational_diabetes", "임신당뇨병"),
+            ("acute_diabetes_complications_hypoglycemia", "당뇨병 합병증(급성 합병증_저혈당)"),
+            ("acute_diabetes_complications", "당뇨병 합병증(급성 합병증)"),
+            ("valvular_heart_disease", "심장 판막 질환"),
+            ("pericarditis_cardiac_tamponade", "심낭염(심장눌림증)"),
+            ("pacemaker", "심장박동조율기"),
+            ("stroke_rehabilitation", "뇌졸중 환자의 재활"),
+            ("stroke", "뇌졸중"),
+            ("osteoporosis", "골다공증"),
+            ("anemia", "빈혈"),
+            (
+                "metabolic_dysfunction_associated_steatotic_liver_disease",
+                "대사이상지방간질환",
+            ),
+            ("dyslipidemia_diet", "이상지질혈증 식사요법"),
+            ("dyslipidemia", "이상지질혈증"),
+            ("chronic_rhinitis", "만성비염"),
+            ("drinking", "음주"),
+            ("risky_drinking", "위험음주! 알려드리겠습니다!"),
+            ("functional_food", "건강기능식품"),
+            ("healthy_carbohydrate_intake", "건강하게 탄수화물 먹는 방법! 알려드리겠습니다!"),
+            ("healthy_salt_intake", "건강하게 염분 섭취하는 방법! 알려드리겠습니다!"),
+            ("national_health_screening", "건강검진(국가건강검진)"),
+            ("cancer_screening", "건강검진(암 검진)"),
+            ("healthy_weight_control_diet", "건강한 체중조절을 위한 식사"),
+            ("heavy_snow_health_rules", "겨울철 대설대비 건강수칙"),
+            ("cold_wave_health_rules", "겨울철 한파대비 건강수칙"),
+            ("healthy_aging", "건강노화"),
+            ("secondhand_smoke", "간접흡연"),
+            ("smoking", "흡연"),
+            ("elderly_exercise", "노인 운동"),
+            ("knee_osteoarthritis", "무릎관절염"),
+            ("exercise", "운동"),
+            ("weight_loss", "체중 감소"),
+            ("reading_prescription_and_medication_leaflet", "처방전과 약설명서 읽는 방법! 알려드리겠습니다!"),
+            ("supplements", "영양제"),
+            ("obesity", "비만"),
+            ("pediatric_obesity", "소아 비만"),
+        ),
         note="Use for Korean public-health definitions and user wording boundaries.",
     ),
     ReviewedMedicalSource(
@@ -500,7 +562,7 @@ _FOOD_SAFETY_KEYWORDS = (
 )
 
 
-def classify_question(question: str) -> QuestionClassification:
+def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
     normalized = " ".join(question.casefold().split())
     reasons: list[str] = []
 
