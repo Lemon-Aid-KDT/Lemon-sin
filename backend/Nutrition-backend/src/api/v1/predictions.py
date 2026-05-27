@@ -147,6 +147,8 @@ async def predict_weight(
         alcohol_kcal=request.alcohol_kcal + derived_alcohol_kcal,
         walking_cadence_steps_per_min=request.walking_cadence_steps_per_min,
         walking_cadence_minutes=request.walking_cadence_minutes,
+        exercise_average_heart_rate_bpm=request.exercise_average_heart_rate_bpm,
+        heart_rate_exercise_minutes=request.heart_rate_exercise_minutes,
         chronic_diseases=request.chronic_diseases,
         prediction_checkins=request.prediction_checkins,
         feature_hall_lite_weight_prediction=settings.feature_hall_lite_weight_prediction,
@@ -167,6 +169,7 @@ async def predict_weight(
             "prediction_status": response.prediction_status,
             "prediction_checkin_count": len(request.prediction_checkins),
             "walking_cadence_used": request.walking_cadence_steps_per_min is not None,
+            "exercise_heart_rate_used": request.exercise_average_heart_rate_bpm is not None,
         },
     )
     return response

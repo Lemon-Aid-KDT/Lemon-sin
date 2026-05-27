@@ -143,6 +143,8 @@ def _predict_one_period(
     alcohol_kcal: float,
     walking_cadence_steps_per_min: float | None,
     walking_cadence_minutes: float,
+    exercise_average_heart_rate_bpm: float | None,
+    heart_rate_exercise_minutes: float,
     chronic_diseases: list[str] | None,
     feature_hall_lite_weight_prediction: bool,
     engine: WeightPredictionEngine,
@@ -161,6 +163,8 @@ def _predict_one_period(
         alcohol_kcal: Alcohol kcal added separately to intake.
         walking_cadence_steps_per_min: Optional walking cadence in steps/min.
         walking_cadence_minutes: Minutes observed at the walking cadence.
+        exercise_average_heart_rate_bpm: Optional average exercise heart rate in bpm.
+        heart_rate_exercise_minutes: Minutes observed at that average heart rate.
         chronic_diseases: User condition codes for safety routing.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
         engine: Configured prediction engine.
@@ -187,6 +191,8 @@ def _predict_one_period(
                 measured_body_fat_pct=body_fat_pct,
                 walking_cadence_steps_per_min=walking_cadence_steps_per_min,
                 walking_cadence_minutes=walking_cadence_minutes,
+                exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+                heart_rate_exercise_minutes=heart_rate_exercise_minutes,
             )
             return _hall_result_to_weight_step(
                 result=result,
@@ -208,6 +214,8 @@ def _predict_one_period(
         alcohol_kcal=alcohol_kcal,
         walking_cadence_steps_per_min=walking_cadence_steps_per_min,
         walking_cadence_minutes=walking_cadence_minutes,
+        exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+        heart_rate_exercise_minutes=heart_rate_exercise_minutes,
         chronic_diseases=chronic_diseases,
     )
 
@@ -225,6 +233,8 @@ def predict_weight_periods_selected(
     alcohol_kcal: float = 0.0,
     walking_cadence_steps_per_min: float | None = None,
     walking_cadence_minutes: float = 0.0,
+    exercise_average_heart_rate_bpm: float | None = None,
+    heart_rate_exercise_minutes: float = 0.0,
     chronic_diseases: list[str] | None = None,
     prediction_checkins: list[WeightPredictionCheckIn] | None = None,
     feature_hall_lite_weight_prediction: bool = False,
@@ -244,6 +254,8 @@ def predict_weight_periods_selected(
         alcohol_kcal: Alcohol kcal added separately to intake.
         walking_cadence_steps_per_min: Optional walking cadence in steps/min.
         walking_cadence_minutes: Minutes observed at the walking cadence.
+        exercise_average_heart_rate_bpm: Optional average exercise heart rate in bpm.
+        heart_rate_exercise_minutes: Minutes observed at that average heart rate.
         chronic_diseases: User condition codes for safety routing.
         prediction_checkins: Weekly measured-weight follow-up values for mismatch warning.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
@@ -272,6 +284,8 @@ def predict_weight_periods_selected(
             alcohol_kcal=alcohol_kcal,
             walking_cadence_steps_per_min=walking_cadence_steps_per_min,
             walking_cadence_minutes=walking_cadence_minutes,
+            exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+            heart_rate_exercise_minutes=heart_rate_exercise_minutes,
             chronic_diseases=chronic_diseases,
             prediction_checkins=prediction_checkins,
         )
@@ -289,6 +303,8 @@ def predict_weight_periods_selected(
             alcohol_kcal=alcohol_kcal,
             walking_cadence_steps_per_min=walking_cadence_steps_per_min,
             walking_cadence_minutes=walking_cadence_minutes,
+            exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+            heart_rate_exercise_minutes=heart_rate_exercise_minutes,
             chronic_diseases=chronic_diseases,
             feature_hall_lite_weight_prediction=feature_hall_lite_weight_prediction,
             engine=engine,
@@ -301,6 +317,10 @@ def predict_weight_periods_selected(
     if walking_cadence_steps_per_min is not None and walking_cadence_minutes > 0:
         safety_warnings.append(
             "보행 cadence 기반 운동 열량을 Tudor-Locke 휴리스틱 METs로 환산해 TDEE에 반영했습니다."
+        )
+    if exercise_average_heart_rate_bpm is not None and heart_rate_exercise_minutes > 0:
+        safety_warnings.append(
+            "평균 운동 심박 기반 운동 열량을 Keytel 2005 회귀식으로 환산해 TDEE에 반영했습니다."
         )
     return WeightPredictionResponse(
         predictions=predictions,

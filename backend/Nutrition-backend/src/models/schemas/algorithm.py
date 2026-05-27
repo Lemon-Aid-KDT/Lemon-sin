@@ -263,6 +263,8 @@ class WeightPredictionRequest(BaseModel):
         body_fat_pct: 체지방률(%). 입력 시 BMR 보조 공식에 사용할 수 있다.
         walking_cadence_steps_per_min: 웨어러블에서 관측한 보행 cadence(steps/min).
         walking_cadence_minutes: cadence가 관측된 보행 시간(분).
+        exercise_average_heart_rate_bpm: 운동 구간 평균 심박수(bpm).
+        heart_rate_exercise_minutes: 평균 심박수가 관측된 운동 시간(분).
         chronic_diseases: 자동 체중 예측 안전 분기용 만성질환 코드.
         periods_days: 예측 기간 목록.
         prediction_checkins: 주간 실측 체중과 해당 주차 기대 범위 목록.
@@ -283,6 +285,8 @@ class WeightPredictionRequest(BaseModel):
                     "alcohol_abv_percent": None,
                     "walking_cadence_steps_per_min": None,
                     "walking_cadence_minutes": 0,
+                    "exercise_average_heart_rate_bpm": None,
+                    "heart_rate_exercise_minutes": 0,
                     "chronic_diseases": [],
                     "periods_days": [7, 30, 90],
                     "prediction_checkins": [],
@@ -303,6 +307,8 @@ class WeightPredictionRequest(BaseModel):
     body_fat_pct: float | None = Field(default=None, ge=0, le=70)
     walking_cadence_steps_per_min: float | None = Field(default=None, ge=0, le=250)
     walking_cadence_minutes: float = Field(default=0, ge=0, le=1440)
+    exercise_average_heart_rate_bpm: float | None = Field(default=None, ge=30, le=240)
+    heart_rate_exercise_minutes: float = Field(default=0, ge=0, le=1440)
     chronic_diseases: list[str] = Field(default_factory=list, max_length=10)
     periods_days: list[PredictionPeriodDays] = Field(
         default_factory=lambda: [7, 30, 90],
@@ -320,7 +326,8 @@ class WeightPredictionRequest(BaseModel):
 
         Raises:
             ValueError: alcohol_volume_ml > 0 이지만 alcohol_abv_percent 가 없는 경우,
-                보행 cadence 입력 쌍이 불완전한 경우, 또는 중복 주차 check-in 이 있는 경우.
+                보행 cadence 또는 운동 심박 입력 쌍이 불완전한 경우, 또는 중복 주차 check-in
+                이 있는 경우.
         """
         if self.alcohol_volume_ml > 0 and self.alcohol_abv_percent is None:
             raise ValueError("alcohol_abv_percent is required when alcohol_volume_ml is provided")
@@ -331,6 +338,17 @@ class WeightPredictionRequest(BaseModel):
         if self.walking_cadence_steps_per_min is not None and self.walking_cadence_minutes <= 0:
             raise ValueError(
                 "walking_cadence_minutes must be positive when walking_cadence_steps_per_min is provided"
+            )
+        if self.heart_rate_exercise_minutes > 0 and self.exercise_average_heart_rate_bpm is None:
+            raise ValueError(
+                "exercise_average_heart_rate_bpm is required when heart_rate_exercise_minutes is provided"
+            )
+        if (
+            self.exercise_average_heart_rate_bpm is not None
+            and self.heart_rate_exercise_minutes <= 0
+        ):
+            raise ValueError(
+                "heart_rate_exercise_minutes must be positive when exercise_average_heart_rate_bpm is provided"
             )
         week_indices = [checkin.week_index for checkin in self.prediction_checkins]
         if len(week_indices) != len(set(week_indices)):

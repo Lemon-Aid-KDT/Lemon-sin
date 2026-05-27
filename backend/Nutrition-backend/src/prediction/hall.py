@@ -169,6 +169,8 @@ def build_baseline(
     daily_steps: int,
     walking_cadence_steps_per_min: float | None = None,
     walking_cadence_minutes: float = 0.0,
+    exercise_average_heart_rate_bpm: float | None = None,
+    heart_rate_exercise_minutes: float = 0.0,
 ) -> HallBaseline:
     """Build an initial baseline that preserves existing BMR/TDEE behavior.
 
@@ -180,6 +182,8 @@ def build_baseline(
         daily_steps: Daily step count.
         walking_cadence_steps_per_min: Optional walking cadence in steps/min.
         walking_cadence_minutes: Minutes observed at the walking cadence.
+        exercise_average_heart_rate_bpm: Average exercise heart rate in bpm.
+        heart_rate_exercise_minutes: Minutes observed at that average heart rate.
 
     Returns:
         Baseline energy terms in kJ/day.
@@ -194,8 +198,12 @@ def build_baseline(
         estimated_bmr=initial_bmr_kcal,
         daily_steps=daily_steps,
         weight_kg=composition.weight_kg,
+        age=age,
+        sex=sex,
         walking_cadence_steps_per_min=walking_cadence_steps_per_min,
         walking_cadence_minutes=walking_cadence_minutes,
+        exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+        heart_rate_exercise_minutes=heart_rate_exercise_minutes,
     )
     initial_bmr_kj = kcal_to_kj(initial_bmr_kcal)
     initial_tdee_kj = kcal_to_kj(initial_tdee_kcal)
@@ -342,6 +350,8 @@ def predict_with_hall(
     measured_body_fat_pct: float | None = None,
     walking_cadence_steps_per_min: float | None = None,
     walking_cadence_minutes: float = 0.0,
+    exercise_average_heart_rate_bpm: float | None = None,
+    heart_rate_exercise_minutes: float = 0.0,
     save_daily_states: bool = False,
 ) -> HallLiteResult:
     """Predict body weight with the Hall-lite dynamic simulator.
@@ -357,6 +367,8 @@ def predict_with_hall(
         measured_body_fat_pct: Optional measured body-fat percentage.
         walking_cadence_steps_per_min: Optional walking cadence in steps/min.
         walking_cadence_minutes: Minutes observed at the walking cadence.
+        exercise_average_heart_rate_bpm: Average exercise heart rate in bpm.
+        heart_rate_exercise_minutes: Minutes observed at that average heart rate.
         save_daily_states: Whether to retain daily states in the result.
 
     Returns:
@@ -387,6 +399,8 @@ def predict_with_hall(
         daily_steps=daily_steps,
         walking_cadence_steps_per_min=walking_cadence_steps_per_min,
         walking_cadence_minutes=walking_cadence_minutes,
+        exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+        heart_rate_exercise_minutes=heart_rate_exercise_minutes,
     )
 
     composition = initial_composition

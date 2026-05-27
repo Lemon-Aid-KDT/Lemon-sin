@@ -33,6 +33,15 @@ CADENCE_MODERATE_WALKING_METS = 3.0
 CADENCE_MODERATE_PLUS_WALKING_METS = 4.0
 CADENCE_BRISK_WALKING_METS = 5.0
 CADENCE_VIGOROUS_WALKING_METS = 6.0
+KEYTEL_KJ_TO_KCAL = 4.184
+KEYTEL_MALE_BASE = -55.0969
+KEYTEL_MALE_HR_COEFFICIENT = 0.6309
+KEYTEL_MALE_WEIGHT_COEFFICIENT = 0.1988
+KEYTEL_MALE_AGE_COEFFICIENT = 0.2017
+KEYTEL_FEMALE_BASE = -20.4022
+KEYTEL_FEMALE_HR_COEFFICIENT = 0.4472
+KEYTEL_FEMALE_WEIGHT_COEFFICIENT = -0.1263
+KEYTEL_FEMALE_AGE_COEFFICIENT = 0.074
 KATCH_MCARDLE_BASE = 370.0
 KATCH_MCARDLE_LBM_COEFFICIENT = 21.6
 CUNNINGHAM_BASE = 370.0
@@ -266,6 +275,50 @@ def calculate_exercise_kcal_from_walking_cadence(
     return calculate_exercise_kcal_from_mets(mets=mets, weight_kg=weight_kg, minutes=minutes)
 
 
+def calculate_exercise_kcal_from_heart_rate(
+    average_heart_rate_bpm: float,
+    weight_kg: float,
+    age: int,
+    sex: Sex,
+    minutes: float,
+) -> float:
+    """평균 운동 심박수로 Keytel 2005 기반 운동 열량을 계산한다.
+
+    Args:
+        average_heart_rate_bpm: 운동 구간 평균 심박수(bpm).
+        weight_kg: 체중(kg).
+        age: 만 나이.
+        sex: "male" 또는 "female".
+        minutes: 운동 시간(분).
+
+    Returns:
+        심박 기반 운동 소비 열량(kcal). 낮은 심박 잡음으로 음수가 나오면 0으로 제한한다.
+
+    Raises:
+        ValueError: 평균 심박수, 체중, 나이 또는 시간이 유효하지 않은 경우.
+    """
+    if average_heart_rate_bpm <= 0:
+        raise ValueError("average_heart_rate_bpm must be positive")
+    if weight_kg < 0 or age < 0 or minutes < 0:
+        raise ValueError("weight_kg, age and minutes must be non-negative")
+
+    if sex == "male":
+        kj_per_min = (
+            KEYTEL_MALE_BASE
+            + KEYTEL_MALE_HR_COEFFICIENT * average_heart_rate_bpm
+            + KEYTEL_MALE_WEIGHT_COEFFICIENT * weight_kg
+            + KEYTEL_MALE_AGE_COEFFICIENT * age
+        )
+    else:
+        kj_per_min = (
+            KEYTEL_FEMALE_BASE
+            + KEYTEL_FEMALE_HR_COEFFICIENT * average_heart_rate_bpm
+            + KEYTEL_FEMALE_WEIGHT_COEFFICIENT * weight_kg
+            + KEYTEL_FEMALE_AGE_COEFFICIENT * age
+        )
+    return max(0.0, kj_per_min / KEYTEL_KJ_TO_KCAL * minutes)
+
+
 def lookup_exercise_activity_mets(activity_code: ExerciseActivityCode) -> float:
     """운동 활동 코드에 대응하는 Compendium 2011 METs 값을 반환한다.
 
@@ -338,9 +391,13 @@ def calculate_tdee(
     daily_steps: int,
     *,
     weight_kg: float | None = None,
+    age: int | None = None,
+    sex: Sex | None = None,
     intentional_exercises: list[tuple[float, float]] | None = None,
     walking_cadence_steps_per_min: float | None = None,
     walking_cadence_minutes: float = 0.0,
+    exercise_average_heart_rate_bpm: float | None = None,
+    heart_rate_exercise_minutes: float = 0.0,
 ) -> float:
     """예상 BMR과 활동계수로 예상 TDEE를 계산한다.
 
@@ -348,15 +405,19 @@ def calculate_tdee(
         estimated_bmr: 예상 BMR(kcal/day).
         daily_steps: 일일 걸음수.
         weight_kg: METs 기반 운동 열량 계산용 체중.
+        age: 심박 기반 운동 열량 계산용 만 나이.
+        sex: 심박 기반 운동 열량 계산용 성별.
         intentional_exercises: (METs, minutes) 목록.
         walking_cadence_steps_per_min: wearable 보행 cadence(steps/min).
         walking_cadence_minutes: cadence가 관측된 보행 시간(분).
+        exercise_average_heart_rate_bpm: 운동 구간 평균 심박수(bpm).
+        heart_rate_exercise_minutes: 평균 심박수가 관측된 운동 시간(분).
 
     Returns:
         예상 TDEE(kcal/day).
 
     Raises:
-        ValueError: 의도 운동 또는 cadence 입력이 있으나 체중이 없거나 cadence 쌍이 불완전한 경우.
+        ValueError: 의도 운동, cadence, 또는 심박 입력이 불완전한 경우.
     """
     exercise_kcal = 0.0
     if intentional_exercises:
@@ -375,5 +436,17 @@ def calculate_tdee(
             cadence_steps_per_min=walking_cadence_steps_per_min,
             weight_kg=weight_kg,
             minutes=walking_cadence_minutes,
+        )
+    if exercise_average_heart_rate_bpm is not None or heart_rate_exercise_minutes > 0:
+        if weight_kg is None or age is None or sex is None:
+            raise ValueError("weight_kg, age and sex are required when heart rate is provided")
+        if exercise_average_heart_rate_bpm is None or heart_rate_exercise_minutes <= 0:
+            raise ValueError("heart rate exercise requires both average heart rate and minutes")
+        exercise_kcal += calculate_exercise_kcal_from_heart_rate(
+            average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+            weight_kg=weight_kg,
+            age=age,
+            sex=sex,
+            minutes=heart_rate_exercise_minutes,
         )
     return round(estimated_bmr * get_activity_factor(daily_steps) + exercise_kcal, ENERGY_DECIMALS)

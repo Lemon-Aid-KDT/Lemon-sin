@@ -80,6 +80,19 @@ def test_selector_static_preserves_walking_cadence_inputs() -> None:
     assert selected.safety_warnings
 
 
+def test_selector_static_preserves_heart_rate_inputs() -> None:
+    """Verify exercise heart-rate inputs reach the static fallback path."""
+    kwargs = _base_kwargs()
+    kwargs["exercise_average_heart_rate_bpm"] = 130.0
+    kwargs["heart_rate_exercise_minutes"] = 30.0
+
+    selected = predict_weight_periods_selected(**kwargs)
+    static = predict_weight_periods(**kwargs)
+
+    assert selected == static
+    assert selected.safety_warnings
+
+
 def test_selector_auto_uses_hall_only_for_long_term_candidate() -> None:
     """Verify auto mode keeps short periods static and upgrades long periods."""
     kwargs = _base_kwargs()
@@ -184,3 +197,29 @@ def test_selector_hall_lite_preserves_walking_cadence_baseline() -> None:
         with_cadence.predictions[0].estimated_tdee > without_cadence.predictions[0].estimated_tdee
     )
     assert with_cadence.safety_warnings
+
+
+def test_selector_hall_lite_preserves_heart_rate_baseline() -> None:
+    """Verify exercise heart-rate inputs also reach Hall-lite baseline TDEE."""
+    kwargs = _base_kwargs()
+    kwargs["periods_days"] = [90]
+
+    without_heart_rate = predict_weight_periods_selected(
+        **kwargs,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.HALL_LITE,
+    )
+    with_heart_rate = predict_weight_periods_selected(
+        **kwargs,
+        exercise_average_heart_rate_bpm=130.0,
+        heart_rate_exercise_minutes=30.0,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.HALL_LITE,
+    )
+
+    assert with_heart_rate.predictions[0].model_name == "hall_lite"
+    assert (
+        with_heart_rate.predictions[0].estimated_tdee
+        > without_heart_rate.predictions[0].estimated_tdee
+    )
+    assert with_heart_rate.safety_warnings

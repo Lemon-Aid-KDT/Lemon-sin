@@ -189,6 +189,8 @@ def predict_weight_n_days(
     alcohol_kcal: float = 0.0,
     walking_cadence_steps_per_min: float | None = None,
     walking_cadence_minutes: float = 0.0,
+    exercise_average_heart_rate_bpm: float | None = None,
+    heart_rate_exercise_minutes: float = 0.0,
     chronic_diseases: list[str] | None = None,
 ) -> WeightPredictionStep:
     """N일 후 체중을 7-step 정적 근사로 예측한다.
@@ -205,6 +207,8 @@ def predict_weight_n_days(
         alcohol_kcal: 별도 입력된 알코올 열량.
         walking_cadence_steps_per_min: wearable 보행 cadence(steps/min).
         walking_cadence_minutes: cadence가 관측된 보행 시간(분).
+        exercise_average_heart_rate_bpm: 운동 구간 평균 심박수(bpm).
+        heart_rate_exercise_minutes: 평균 심박수가 관측된 운동 시간(분).
         chronic_diseases: 신뢰도 저하 또는 자동 계산 보류 조건.
 
     Returns:
@@ -229,8 +233,12 @@ def predict_weight_n_days(
         estimated_bmr=estimated_bmr,
         daily_steps=daily_steps,
         weight_kg=weight_kg,
+        age=age,
+        sex=sex,
         walking_cadence_steps_per_min=walking_cadence_steps_per_min,
         walking_cadence_minutes=walking_cadence_minutes,
+        exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+        heart_rate_exercise_minutes=heart_rate_exercise_minutes,
     )
     effective_alcohol_kcal = alcohol_kcal * ALCOHOL_STORAGE_KCAL_FACTOR
     daily_balance = daily_intake_kcal + effective_alcohol_kcal - estimated_tdee
@@ -288,6 +296,8 @@ def predict_weight_periods(
     alcohol_kcal: float = 0.0,
     walking_cadence_steps_per_min: float | None = None,
     walking_cadence_minutes: float = 0.0,
+    exercise_average_heart_rate_bpm: float | None = None,
+    heart_rate_exercise_minutes: float = 0.0,
     chronic_diseases: list[str] | None = None,
     prediction_checkins: list[WeightPredictionCheckIn] | None = None,
 ) -> WeightPredictionResponse:
@@ -305,6 +315,8 @@ def predict_weight_periods(
         alcohol_kcal: 별도 입력된 알코올 열량.
         walking_cadence_steps_per_min: wearable 보행 cadence(steps/min).
         walking_cadence_minutes: cadence가 관측된 보행 시간(분).
+        exercise_average_heart_rate_bpm: 운동 구간 평균 심박수(bpm).
+        heart_rate_exercise_minutes: 평균 심박수가 관측된 운동 시간(분).
         chronic_diseases: 신뢰도 저하 또는 자동 계산 보류 조건.
         prediction_checkins: 예측 후 주차별 실측 체중 확인값.
 
@@ -330,6 +342,8 @@ def predict_weight_periods(
             alcohol_kcal=alcohol_kcal,
             walking_cadence_steps_per_min=walking_cadence_steps_per_min,
             walking_cadence_minutes=walking_cadence_minutes,
+            exercise_average_heart_rate_bpm=exercise_average_heart_rate_bpm,
+            heart_rate_exercise_minutes=heart_rate_exercise_minutes,
             chronic_diseases=chronic_diseases,
         )
         for days in periods_days
@@ -344,6 +358,10 @@ def predict_weight_periods(
     if walking_cadence_steps_per_min is not None and walking_cadence_minutes > 0:
         safety_warnings.append(
             "보행 cadence 기반 운동 열량을 Tudor-Locke 휴리스틱 METs로 환산해 TDEE에 반영했습니다."
+        )
+    if exercise_average_heart_rate_bpm is not None and heart_rate_exercise_minutes > 0:
+        safety_warnings.append(
+            "평균 운동 심박 기반 운동 열량을 Keytel 2005 회귀식으로 환산해 TDEE에 반영했습니다."
         )
     return WeightPredictionResponse(
         predictions=predictions,

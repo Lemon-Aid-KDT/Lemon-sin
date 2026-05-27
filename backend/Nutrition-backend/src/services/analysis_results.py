@@ -169,6 +169,8 @@ async def store_weight_prediction_result(
         alcohol_kcal=request.alcohol_kcal,
         walking_cadence_steps_per_min=request.walking_cadence_steps_per_min,
         walking_cadence_minutes=request.walking_cadence_minutes,
+        exercise_average_heart_rate_bpm=request.exercise_average_heart_rate_bpm,
+        heart_rate_exercise_minutes=request.heart_rate_exercise_minutes,
         chronic_diseases=request.chronic_diseases,
         prediction_checkins=request.prediction_checkins,
     )

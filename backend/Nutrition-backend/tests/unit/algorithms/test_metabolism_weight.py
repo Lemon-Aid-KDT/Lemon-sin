@@ -8,6 +8,7 @@ from src.algorithms.metabolism import (
     calculate_bmr,
     calculate_cunningham_bmr,
     calculate_exercise_kcal_from_activity,
+    calculate_exercise_kcal_from_heart_rate,
     calculate_exercise_kcal_from_mets,
     calculate_exercise_kcal_from_walking_cadence,
     calculate_katch_mcardle_bmr,
@@ -152,6 +153,28 @@ def test_tdee_adds_walking_cadence_based_exercise() -> None:
     ) == pytest.approx(1876.0, abs=0.5)
 
 
+def test_tdee_adds_heart_rate_based_exercise() -> None:
+    """평균 운동 심박 입력은 Keytel 2005 식으로 TDEE에 운동 열량을 더한다."""
+    heart_rate_kcal = calculate_exercise_kcal_from_heart_rate(
+        average_heart_rate_bpm=130.0,
+        weight_kg=68.0,
+        age=50,
+        sex="female",
+        minutes=30.0,
+    )
+
+    assert heart_rate_kcal == pytest.approx(235.5, abs=0.1)
+    assert calculate_tdee(
+        estimated_bmr=1269.0,
+        daily_steps=6500,
+        weight_kg=68.0,
+        age=50,
+        sex="female",
+        exercise_average_heart_rate_bpm=130.0,
+        heart_rate_exercise_minutes=30.0,
+    ) == pytest.approx(1980.0, abs=0.5)
+
+
 @pytest.mark.parametrize(
     ("activity_code", "expected_mets"),
     [
@@ -275,6 +298,36 @@ def test_weight_prediction_walking_cadence_increases_tdee() -> None:
     )
 
 
+def test_weight_prediction_heart_rate_increases_tdee() -> None:
+    """운동 평균 심박 입력은 예측 TDEE에 심박 기반 운동 열량을 반영한다."""
+    baseline = predict_weight_n_days(
+        weight_kg=68.0,
+        height_cm=160,
+        age=50,
+        sex="female",
+        daily_steps=6500,
+        daily_intake_kcal=1500,
+        days=7,
+    )
+    with_heart_rate = predict_weight_n_days(
+        weight_kg=68.0,
+        height_cm=160,
+        age=50,
+        sex="female",
+        daily_steps=6500,
+        daily_intake_kcal=1500,
+        exercise_average_heart_rate_bpm=130.0,
+        heart_rate_exercise_minutes=30.0,
+        days=7,
+    )
+
+    assert with_heart_rate.estimated_tdee > baseline.estimated_tdee
+    assert with_heart_rate.estimated_tdee - baseline.estimated_tdee == pytest.approx(
+        235.0,
+        abs=0.5,
+    )
+
+
 def test_alcohol_kcal_conversion_uses_volume_and_abv() -> None:
     """주류 용량과 ABV로 알코올 유래 kcal을 계산한다."""
     assert calculate_alcohol_kcal_from_volume(volume_ml=500, abv_percent=5) == pytest.approx(
@@ -319,6 +372,31 @@ def test_weight_prediction_request_requires_cadence_and_minutes_pair() -> None:
             daily_steps=6500,
             daily_intake_kcal=1500,
             walking_cadence_steps_per_min=120,
+        )
+
+
+def test_weight_prediction_request_requires_heart_rate_and_minutes_pair() -> None:
+    """운동 평균 심박과 시간은 함께 입력해야 심박 기반 보정에 사용할 수 있다."""
+    with pytest.raises(ValidationError, match="exercise_average_heart_rate_bpm is required"):
+        WeightPredictionRequest(
+            age=50,
+            sex="female",
+            height_cm=160,
+            weight_kg=68,
+            daily_steps=6500,
+            daily_intake_kcal=1500,
+            heart_rate_exercise_minutes=30,
+        )
+
+    with pytest.raises(ValidationError, match="heart_rate_exercise_minutes must be positive"):
+        WeightPredictionRequest(
+            age=50,
+            sex="female",
+            height_cm=160,
+            weight_kg=68,
+            daily_steps=6500,
+            daily_intake_kcal=1500,
+            exercise_average_heart_rate_bpm=130,
         )
 
 

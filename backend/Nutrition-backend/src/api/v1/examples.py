@@ -88,6 +88,8 @@ WEIGHT_PREDICTION_REQUEST_EXAMPLES = {
             "daily_intake_kcal": 1500,
             "walking_cadence_steps_per_min": None,
             "walking_cadence_minutes": 0,
+            "exercise_average_heart_rate_bpm": None,
+            "heart_rate_exercise_minutes": 0,
             "periods_days": [7, 30, 90],
         },
     }
