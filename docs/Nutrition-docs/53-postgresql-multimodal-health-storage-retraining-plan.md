@@ -1159,3 +1159,29 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Backend unit collection: 1133 collected
 - `black --check backend/scripts/retire_model_version.py backend/Nutrition-backend/tests/unit/scripts/test_retire_model_version.py`: passed
 - `ruff check backend/scripts/retire_model_version.py backend/Nutrition-backend/tests/unit/scripts/test_retire_model_version.py`: passed
+
+### 16.18 Phase 18 부분 구현 기록: operator dataset lifecycle transition CLI
+
+구현 범위:
+
+- `backend/scripts/transition_learning_dataset_version.py`를 추가해 dataset version lifecycle을 dry-run/apply 방식으로 전환
+- 허용 전환은 순차 상태로 제한:
+  - `draft -> frozen -> training -> evaluated -> approved -> retired`
+  - 각 상태에서 `retired`는 안전 중단 경로로 허용
+- `frozen`, `training`, `evaluated`, `approved` 전환은 최종 `privacy_review_status=approved`를 요구
+- `training`, `evaluated`, `approved` 전환은 sanitized manifest hash가 기존 row 또는 CLI 입력에 있어야 진행
+- `--manifest-hash`는 lowercase SHA-256 hex만 허용하고, `--apply` 없이는 mutation하지 않음
+
+보안 결정:
+
+- CLI stdout에는 dataset id/key, 이전/대상 status, privacy review status, manifest hash 존재 여부, boolean guard만 출력한다.
+- manifest hash 원문, created_by_hash/operator hash, label snapshot, source ref, raw OCR/provider payload, storage URL/path, secret-like value는 stdout에 출력하지 않는다.
+- privacy review가 승인되지 않은 dataset은 frozen/training/evaluated/approved로 전환할 수 없다.
+- manifest hash가 없는 dataset은 training 이후 단계로 넘어갈 수 없도록 fail-closed 처리한다.
+
+검증:
+
+- Operator dataset lifecycle transition/export focused tests: 11 passed
+- Backend unit collection: 1140 collected
+- `black --check backend/scripts/transition_learning_dataset_version.py backend/Nutrition-backend/tests/unit/scripts/test_transition_learning_dataset_version.py`: passed
+- `ruff check backend/scripts/transition_learning_dataset_version.py backend/Nutrition-backend/tests/unit/scripts/test_transition_learning_dataset_version.py`: passed
