@@ -19,7 +19,7 @@ if str(NUTRITION_BACKEND_ROOT) not in sys.path:
 
 from src.config import get_settings  # noqa: E402
 
-SCHEMA_VERSION = "learning-vector-db-security-v8"
+SCHEMA_VERSION = "learning-vector-db-security-v9"
 LEARNING_VECTOR_TABLES = (
     "learning_image_objects",
     "image_embedding_jobs",
@@ -142,6 +142,7 @@ async def collect_security_report() -> dict[str, Any]:
             unsafe_security_definer_functions = []
             storage_bucket_report = await _learning_storage_bucket_report(connection)
             unsafe_storage_policies = await _unsafe_learning_storage_policies(connection)
+            unsafe_public_views = await _unsafe_public_views(connection)
             for table_name in SENSITIVE_INTERNAL_TABLES:
                 table_reports.append(
                     await _table_security_report(connection, table_name=table_name)
@@ -165,6 +166,7 @@ async def collect_security_report() -> dict[str, Any]:
         and not unsafe_privileges
         and not forbidden_columns
         and not unsafe_security_definer_functions
+        and not unsafe_public_views
         and storage_bucket_report["exists"]
         and storage_bucket_report["private"]
         and storage_bucket_report["file_size_limit_ok"]
@@ -183,6 +185,8 @@ async def collect_security_report() -> dict[str, Any]:
         "forbidden_columns": forbidden_columns,
         "unsafe_security_definer_function_count": len(unsafe_security_definer_functions),
         "unsafe_security_definer_functions": unsafe_security_definer_functions,
+        "unsafe_public_view_count": len(unsafe_public_views),
+        "unsafe_public_views": unsafe_public_views,
         "learning_storage_bucket": storage_bucket_report,
         "unsafe_learning_storage_policy_count": len(unsafe_storage_policies),
         "unsafe_learning_storage_policies": unsafe_storage_policies,
@@ -351,6 +355,97 @@ async def _unsafe_security_definer_functions(connection: Any) -> list[dict[str, 
         }
         for row in rows
     ]
+
+
+def _view_has_security_invoker(reloptions: str) -> bool:
+    """Return whether a Postgres view reloptions string enables security invoker.
+
+    Args:
+        reloptions: Comma-separated reloptions from ``pg_class.reloptions``.
+
+    Returns:
+        True when ``security_invoker=true`` is present.
+    """
+    normalized = "".join(char for char in reloptions.casefold() if not char.isspace())
+    return "security_invoker=true" in normalized
+
+
+def _public_view_exposure_reason(*, relkind: str, reloptions: str) -> str | None:
+    """Return the fail-closed reason for a public view exposed to API roles.
+
+    Args:
+        relkind: Postgres relation kind from ``pg_class.relkind``.
+        reloptions: Comma-separated reloptions from ``pg_class.reloptions``.
+
+    Returns:
+        Sanitized reason code when the view exposure is unsafe, otherwise None.
+    """
+    if relkind == "m":
+        return "materialized_view_exposed"
+    if relkind == "v" and not _view_has_security_invoker(reloptions):
+        return "security_invoker_missing"
+    return None
+
+
+async def _unsafe_public_views(connection: Any) -> list[dict[str, str]]:
+    """Return public views that could expose data through Supabase API roles.
+
+    Args:
+        connection: Async SQLAlchemy connection.
+
+    Returns:
+        Sanitized view summaries without view definitions or query text.
+    """
+    rows = (
+        (
+            await connection.execute(
+                text("""
+                SELECT
+                    n.nspname AS schema_name,
+                    c.relname AS view_name,
+                    c.relkind AS relkind,
+                    COALESCE(array_to_string(c.reloptions, ','), '') AS reloptions,
+                    COALESCE(grantee.rolname, 'PUBLIC') AS role_name,
+                    acl.privilege_type
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                CROSS JOIN LATERAL aclexplode(
+                    COALESCE(c.relacl, acldefault('r', c.relowner))
+                ) AS acl
+                LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+                WHERE n.nspname = 'public'
+                  AND c.relkind IN ('v', 'm')
+                  AND acl.privilege_type = 'SELECT'
+                  AND (
+                    acl.grantee = 0
+                    OR grantee.rolname IN ('anon', 'authenticated', 'service_role')
+                  )
+                ORDER BY n.nspname, c.relname, role_name
+                """),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    unsafe = []
+    for row in rows:
+        reason = _public_view_exposure_reason(
+            relkind=str(row["relkind"]),
+            reloptions=str(row["reloptions"]),
+        )
+        if reason is None:
+            continue
+        unsafe.append(
+            {
+                "schema": str(row["schema_name"]),
+                "view": str(row["view_name"]),
+                "object_type": ("materialized_view" if row["relkind"] == "m" else "view"),
+                "grantee": str(row["role_name"]),
+                "privilege_type": str(row["privilege_type"]),
+                "reason": reason,
+            }
+        )
+    return unsafe
 
 
 async def _learning_storage_bucket_report(connection: Any) -> dict[str, Any]:

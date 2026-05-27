@@ -1062,3 +1062,25 @@ Phase 1의 첫 구현 단위로 backend-only 공통 media layer를 추가했다.
 - Operator annotation review import/retraining focused tests: 14 passed
 - `black --check backend/scripts/import_annotation_review.py backend/Nutrition-backend/tests/unit/scripts/test_import_annotation_review.py`: passed
 - `ruff check backend/scripts/import_annotation_review.py backend/Nutrition-backend/tests/unit/scripts/test_import_annotation_review.py`: passed
+
+### 16.14 Phase 14 부분 구현 기록: Supabase public view exposure preflight
+
+구현 범위:
+
+- `backend/scripts/check_learning_vector_db_security.py`의 schema version을 `learning-vector-db-security-v9`로 갱신
+- public schema의 view/materialized view가 `PUBLIC`, `anon`, `authenticated`, `service_role`에 `SELECT`로 열려 있는지 preflight에 추가
+- 일반 view는 `security_invoker=true` reloption이 없으면 `security_invoker_missing`으로 fail-closed 처리
+- materialized view는 RLS가 적용되는 base table view가 아니라 저장된 결과이므로 client role에 `SELECT`가 있으면 `materialized_view_exposed`로 fail-closed 처리
+
+보안 결정:
+
+- report에는 schema, view name, object type, grantee, privilege type, reason code만 포함한다.
+- view definition SQL, query text, row data, raw OCR/provider payload, object URL/path, secret-like value는 출력하지 않는다.
+- Supabase Data API 역할에 노출되는 public view는 `security_invoker=true` 또는 grant 제거/비노출 schema 이동 중 하나를 명시적으로 선택해야 한다.
+
+검증:
+
+- Supabase public view exposure preflight focused tests: 4 passed
+- Backend unit collection: 1114 collected
+- `black --check backend/scripts/check_learning_vector_db_security.py backend/Nutrition-backend/tests/unit/scripts/test_check_learning_vector_db_security.py`: passed
+- `ruff check backend/scripts/check_learning_vector_db_security.py backend/Nutrition-backend/tests/unit/scripts/test_check_learning_vector_db_security.py`: passed

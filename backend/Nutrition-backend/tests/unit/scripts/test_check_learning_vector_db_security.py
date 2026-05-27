@@ -139,6 +139,37 @@ def test_preflight_constants_cover_supabase_learning_tables_and_raw_keys() -> No
     }.issubset(check_learning_vector_db_security.FORBIDDEN_COLUMNS)
 
 
+def test_view_security_helpers_detect_public_api_exposure() -> None:
+    """Verify public view exposure reasons stay sanitized and fail closed."""
+    assert check_learning_vector_db_security._view_has_security_invoker("{security_invoker=true}")
+    assert check_learning_vector_db_security._view_has_security_invoker(
+        "check_option=cascaded, security_invoker = true"
+    )
+    assert not check_learning_vector_db_security._view_has_security_invoker("")
+    assert not check_learning_vector_db_security._view_has_security_invoker("security_barrier=true")
+    assert (
+        check_learning_vector_db_security._public_view_exposure_reason(
+            relkind="m",
+            reloptions="security_invoker=true",
+        )
+        == "materialized_view_exposed"
+    )
+    assert (
+        check_learning_vector_db_security._public_view_exposure_reason(
+            relkind="v",
+            reloptions="security_barrier=true",
+        )
+        == "security_invoker_missing"
+    )
+    assert (
+        check_learning_vector_db_security._public_view_exposure_reason(
+            relkind="v",
+            reloptions="security_invoker=true",
+        )
+        is None
+    )
+
+
 @pytest.mark.asyncio
 async def test_run_preflight_outputs_sanitized_success(
     monkeypatch: pytest.MonkeyPatch,
@@ -153,6 +184,8 @@ async def test_run_preflight_outputs_sanitized_success(
             "vector_extension_schema": "extensions",
             "unsafe_security_definer_function_count": 0,
             "unsafe_security_definer_functions": [],
+            "unsafe_public_view_count": 0,
+            "unsafe_public_views": [],
             "unsafe_learning_storage_policy_count": 0,
             "unsafe_learning_storage_policies": [],
             "learning_storage_bucket": {
