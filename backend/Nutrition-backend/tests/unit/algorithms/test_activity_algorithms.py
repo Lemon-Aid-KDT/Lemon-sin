@@ -9,6 +9,7 @@ from src.algorithms.activity import (
     calculate_hr_factor,
     calculate_percentile_bonus,
     calculate_recommended_steps,
+    calculate_resting_hr_moving_median,
     calculate_target_hr_range,
     calculate_v1_score,
     calculate_v2_score,
@@ -79,6 +80,25 @@ def test_v2_heart_rate_fallback_and_score() -> None:
     assert score == pytest.approx(69.7, abs=0.5)
 
 
+def test_v2_target_hr_uses_karvonen_when_resting_hr_is_available() -> None:
+    """HRrest 입력이 있으면 ACSM HRR 범위로 목표 심박을 계산한다."""
+    target_range = calculate_target_hr_range(age=50, resting_heart_rate_bpm=68)
+
+    assert (target_range.low_bpm, target_range.high_bpm) == (110, 130)
+    assert target_range.method == "karvonen_hrr"
+    assert target_range.resting_heart_rate_bpm == 68
+
+
+def test_resting_hr_moving_median_excludes_drinking_next_day_outliers() -> None:
+    """음주 다음날 HRrest flag는 7일 이동 중앙값 계산에서 제외한다."""
+    median = calculate_resting_hr_moving_median(
+        [60, 61, 90, 62, 63, 64, 65],
+        drinking_next_day_flags=[False, False, True, False, False, False, False],
+    )
+
+    assert median == 63
+
+
 def test_v3_percentile_bonus_requires_minimum_sample() -> None:
     """비교군 표본이 30명 미만이면 백분위 보너스를 주지 않는다."""
     assert calculate_percentile_bonus(70.0, [50.0] * 20) == 0
@@ -133,6 +153,7 @@ def test_activity_score_50f_obese1_example() -> None:
             height_cm=160,
             weight_kg=68,
             chronic_diseases=["diabetes", "hypertension"],
+            resting_heart_rate_bpm=68,
         ),
         daily_steps=7000,
         target_hr_minutes=20,
@@ -147,3 +168,4 @@ def test_activity_score_50f_obese1_example() -> None:
     assert response.percentile_bonus == 0
     assert response.v4_score == pytest.approx(84.0, abs=0.2)
     assert response.score_label == "활동 동기 점수"
+    assert response.target_hr_range.method == "karvonen_hrr"

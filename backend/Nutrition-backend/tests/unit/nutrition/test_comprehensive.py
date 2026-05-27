@@ -246,3 +246,120 @@ class TestComputeComprehensive:
         )
 
         assert "supplement_recommendation_paused_audit_kr" in result.warnings
+
+    def test_wellness_goal_targets_include_extended_goal_matrix(self) -> None:
+        """면역·수면·장 건강 목적별 매트릭스를 응답에 별도 노출한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Vitamin C",
+                        "nutrient_code": "vitamin_c_mg",
+                        "amount": 100,
+                        "unit": "mg",
+                    },
+                    {
+                        "display_name": "Magnesium",
+                        "nutrient_code": "magnesium_mg",
+                        "amount": 200,
+                        "unit": "mg",
+                    },
+                    {
+                        "display_name": "Probiotic blend",
+                        "nutrient_code": None,
+                        "amount": 1,
+                        "unit": "capsule",
+                    },
+                ],
+            )
+        )
+
+        goals = {target.goal for target in result.wellness_goal_targets}
+        assert {"immune_support", "sleep_support", "gut_health"}.issubset(goals)
+        assert all("치료" not in target.message for target in result.wellness_goal_targets)
+
+    def test_specific_drug_supplement_interactions_are_prioritized(self) -> None:
+        """와파린·레보티록신 조합은 일반 경고보다 구체적 상호작용을 우선 표시한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Vitamin K",
+                        "nutrient_code": "vitamin_k_ug",
+                        "amount": 120,
+                        "unit": "ug",
+                    },
+                    {
+                        "display_name": "Calcium",
+                        "nutrient_code": "calcium_mg",
+                        "amount": 500,
+                        "unit": "mg",
+                    },
+                    {
+                        "display_name": "Omega-3",
+                        "nutrient_code": "omega3_mg",
+                        "amount": 1800,
+                        "unit": "mg",
+                    },
+                ],
+                medications=["warfarin", "levothyroxine"],
+            )
+        )
+        reasons = [caution.reason for caution in result.cautionary_components]
+
+        assert reasons[0] == "warfarin_vitamin_k_consistency_review"
+        assert "drug_absorption_spacing:levothyroxine" in reasons
+        assert "warfarin_omega3_bleeding_risk" in reasons
+
+    def test_liver_goal_alcohol_risk_and_nac_are_consult_routed(self) -> None:
+        """음주 위험·간질환 프로필에서는 간 건강 보조제 상담 분기를 강화한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Milk Thistle",
+                        "nutrient_code": None,
+                        "amount": 130,
+                        "unit": "mg",
+                    },
+                    {
+                        "display_name": "NAC",
+                        "nutrient_code": None,
+                        "amount": 600,
+                        "unit": "mg",
+                    },
+                ],
+                chronic_conditions=["liver_disease"],
+                audit_kr_score=8,
+            )
+        )
+        reasons = {caution.reason for caution in result.cautionary_components}
+        goals = {target.goal for target in result.wellness_goal_targets}
+
+        assert "liver_health" in goals
+        assert "alcohol_liver_supplement_consult" in reasons
+        assert "nac_medicine_class_review" in reasons
+        assert "liver_disease_supplement_consult" in reasons
+
+    def test_pregnancy_high_vitamin_a_triggers_high_caution(self) -> None:
+        """임신 중 고함량 비타민 A는 별도 high caution으로 분기한다."""
+        request = _make_request(
+            ingredients=[
+                {
+                    "display_name": "Vitamin A",
+                    "nutrient_code": "vitamin_a_ug",
+                    "amount": 3000,
+                    "unit": "ug",
+                }
+            ],
+            sex="female",
+        )
+        payload = request.model_dump()
+        payload["user_profile"]["is_pregnant"] = True
+
+        result = compute_comprehensive(ComprehensiveAnalysisRequest.model_validate(payload))
+
+        assert any(
+            caution.reason == "pregnancy_vitamin_a_ul_risk" and caution.severity == "high"
+            for caution in result.cautionary_components
+        )

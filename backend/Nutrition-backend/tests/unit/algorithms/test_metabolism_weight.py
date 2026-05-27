@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 from src.algorithms.metabolism import (
     calculate_bmr,
     calculate_exercise_kcal_from_mets,
@@ -10,7 +11,12 @@ from src.algorithms.metabolism import (
     calculate_tdee,
     get_activity_factor,
 )
-from src.prediction.weight import predict_weight_n_days, predict_weight_periods
+from src.models.schemas.algorithm import WeightPredictionRequest
+from src.prediction.weight import (
+    calculate_alcohol_kcal_from_volume,
+    predict_weight_n_days,
+    predict_weight_periods,
+)
 
 
 def test_bmr_50f_example() -> None:
@@ -142,6 +148,28 @@ def test_weight_prediction_alcohol_kcal_uses_storage_factor() -> None:
 
     assert prediction.daily_balance_kcal == pytest.approx(-115, abs=0.5)
     assert prediction.corrected_change_kg == pytest.approx(-0.19, abs=0.01)
+
+
+def test_alcohol_kcal_conversion_uses_volume_and_abv() -> None:
+    """주류 용량과 ABV로 알코올 유래 kcal을 계산한다."""
+    assert calculate_alcohol_kcal_from_volume(volume_ml=500, abv_percent=5) == pytest.approx(
+        138.1,
+        abs=0.1,
+    )
+
+
+def test_weight_prediction_request_requires_abv_when_alcohol_volume_is_set() -> None:
+    """주류 용량이 있으면 ABV도 함께 입력해야 자동 kcal 산입이 가능하다."""
+    with pytest.raises(ValidationError, match="alcohol_abv_percent is required"):
+        WeightPredictionRequest(
+            age=50,
+            sex="female",
+            height_cm=160,
+            weight_kg=68,
+            daily_steps=6500,
+            daily_intake_kcal=1500,
+            alcohol_volume_ml=360,
+        )
 
 
 def test_weight_prediction_disables_high_risk_conditions() -> None:

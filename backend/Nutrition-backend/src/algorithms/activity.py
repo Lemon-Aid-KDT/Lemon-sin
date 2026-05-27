@@ -32,6 +32,8 @@ NES_HR_MAX_BASE = 211.0
 NES_AGE_COEFFICIENT = 0.64
 TARGET_HR_LOW_RATIO = 0.64
 TARGET_HR_HIGH_RATIO = 0.76
+TARGET_HRR_LOW_RATIO = 0.40
+TARGET_HRR_HIGH_RATIO = 0.59
 TARGET_HR_FULL_CREDIT_MINUTES = 30.0
 NO_WEARABLE_HR_FACTOR = 0.7
 V2_BASE_MULTIPLIER = 0.7
@@ -190,22 +192,78 @@ def calculate_estimated_hr_max(age: int, formula: HRMaxFormula = "tanaka_2001") 
 def calculate_target_hr_range(
     age: int,
     formula: HRMaxFormula = "tanaka_2001",
+    resting_heart_rate_bpm: int | None = None,
 ) -> TargetHeartRateRange:
     """목표 심박 구간을 계산한다.
 
     Args:
         age: 만 나이.
         formula: HRmax 추정식.
+        resting_heart_rate_bpm: 안정시 심박수. 있으면 Karvonen HRR 방식을 사용한다.
 
     Returns:
         목표 심박 하한/상한.
     """
     hr_max = calculate_estimated_hr_max(age=age, formula=formula)
+    if resting_heart_rate_bpm is not None and resting_heart_rate_bpm < hr_max:
+        hrr = hr_max - resting_heart_rate_bpm
+        return TargetHeartRateRange(
+            low_bpm=round(hrr * TARGET_HRR_LOW_RATIO + resting_heart_rate_bpm),
+            high_bpm=round(hrr * TARGET_HRR_HIGH_RATIO + resting_heart_rate_bpm),
+            formula=formula,
+            method="karvonen_hrr",
+            resting_heart_rate_bpm=resting_heart_rate_bpm,
+        )
     return TargetHeartRateRange(
         low_bpm=round(hr_max * TARGET_HR_LOW_RATIO),
         high_bpm=round(hr_max * TARGET_HR_HIGH_RATIO),
         formula=formula,
     )
+
+
+def calculate_resting_hr_moving_median(
+    resting_hr_readings: list[int],
+    *,
+    drinking_next_day_flags: list[bool] | None = None,
+    window_days: int = 7,
+) -> int | None:
+    """안정시 심박 7일 이동 중앙값을 계산한다.
+
+    음주 다음날 HRrest outlier를 직접 점수 보정에 쓰지 않도록 flag가 있는
+    날짜를 제외한다.
+
+    Args:
+        resting_hr_readings: 오래된 값부터 최신 값까지의 안정시 심박수 목록.
+        drinking_next_day_flags: 같은 길이의 음주 다음날 여부 목록. True인 값은 제외한다.
+        window_days: 중앙값 계산에 사용할 최근 일수.
+
+    Returns:
+        중앙값 bpm. 유효 값이 없으면 None.
+
+    Raises:
+        ValueError: flags 길이가 readings와 다르거나 window_days가 1 미만인 경우.
+    """
+    if window_days < 1:
+        raise ValueError("window_days must be greater than or equal to 1")
+    if drinking_next_day_flags is not None and len(drinking_next_day_flags) != len(
+        resting_hr_readings
+    ):
+        raise ValueError("drinking_next_day_flags must match resting_hr_readings length")
+    recent_readings = resting_hr_readings[-window_days:]
+    recent_flags = (
+        drinking_next_day_flags[-window_days:]
+        if drinking_next_day_flags is not None
+        else [False] * len(recent_readings)
+    )
+    filtered = sorted(
+        reading for reading, skip in zip(recent_readings, recent_flags, strict=True) if not skip
+    )
+    if not filtered:
+        return None
+    middle = len(filtered) // 2
+    if len(filtered) % 2:
+        return filtered[middle]
+    return int(((filtered[middle - 1] + filtered[middle]) / 2) + 0.5)
 
 
 def calculate_hr_factor(target_hr_minutes: float | None) -> float:
@@ -334,6 +392,7 @@ def calculate_activity_score(request: ActivityScoreRequest) -> ActivityScoreResp
     target_hr_range = calculate_target_hr_range(
         age=request.profile.age,
         formula=request.hrmax_formula,
+        resting_heart_rate_bpm=request.profile.resting_heart_rate_bpm,
     )
     hr_factor = calculate_hr_factor(request.target_hr_minutes)
     v2_score = calculate_v2_score(v1_score=v1_score, hr_factor=hr_factor)

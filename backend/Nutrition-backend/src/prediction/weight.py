@@ -11,6 +11,9 @@ SHORT_TERM_LOSS_KCAL_FACTOR = 0.55
 LOSS_CORRECTION = 0.85
 GAIN_CORRECTION = 0.95
 ALCOHOL_STORAGE_KCAL_FACTOR = 1.30
+ALCOHOL_DENSITY_G_PER_ML = 0.789
+ALCOHOL_KCAL_PER_G = 7.0
+MAX_ABV_PERCENT = 100.0
 SHORT_TERM_DAYS = 7
 LONG_TERM_WARNING_DAYS = 90
 ROUND_KCAL_DECIMALS = 1
@@ -34,6 +37,27 @@ BLOCKING_CONDITIONS = {
     "prednisone",
 }
 LOW_CONFIDENCE_CONDITIONS = {"pcos", "diabetes_on_insulin", "diabetes_on_glp1"}
+
+
+def calculate_alcohol_kcal_from_volume(volume_ml: float, abv_percent: float) -> float:
+    """주류 용량과 도수로 알코올 kcal을 계산한다.
+
+    Args:
+        volume_ml: 주류 용량(ml).
+        abv_percent: 알코올 도수(% ABV).
+
+    Returns:
+        알코올 유래 열량(kcal).
+
+    Raises:
+        ValueError: 음수 입력 또는 100% 초과 ABV인 경우.
+    """
+    if volume_ml < 0:
+        raise ValueError("volume_ml must be non-negative")
+    if not 0 <= abv_percent <= MAX_ABV_PERCENT:
+        raise ValueError("abv_percent must be between 0 and 100")
+    alcohol_grams = volume_ml * (abv_percent / MAX_ABV_PERCENT) * ALCOHOL_DENSITY_G_PER_ML
+    return round(alcohol_grams * ALCOHOL_KCAL_PER_G, ROUND_KCAL_DECIMALS)
 
 
 def _normalized_conditions(chronic_diseases: list[str] | None) -> set[str]:

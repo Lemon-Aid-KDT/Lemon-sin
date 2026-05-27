@@ -32,6 +32,16 @@ ScoreLabel = Literal["excellent", "good", "moderate", "warning", "critical"]
 Severity = Literal["low", "medium", "high"]
 """주의 성분의 심각도 등급."""
 
+WellnessGoal = Literal[
+    "eye_health",
+    "liver_health",
+    "fatigue_recovery",
+    "immune_support",
+    "sleep_support",
+    "gut_health",
+]
+"""일반 웰니스 목적별 추천 매트릭스 키."""
+
 
 class ComprehensiveIngredient(BaseModel):
     """클라이언트가 보낸 ingredient 정보 (analyze endpoint 응답에서 추출).
@@ -179,6 +189,24 @@ class PurposeTarget(BaseModel):
     message: str
 
 
+class WellnessGoalTarget(BaseModel):
+    """일반 웰니스 목적별 적합도.
+
+    Attributes:
+        goal: 목적별 추천 매트릭스 키.
+        relevance_score: 0.0~1.0 본 supplement 의 목적 적합도.
+        evidence_level: 기능성/근거 강도.
+        message: 사용자 친화 한국어 안내.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    goal: WellnessGoal
+    relevance_score: float = Field(ge=0.0, le=1.0)
+    evidence_level: Literal["strong", "moderate", "weak", "insufficient"]
+    message: str
+
+
 class SupplementComprehensiveAnalysis(BaseModel):
     """`POST /api/v1/supplements/analyze/comprehensive` 응답.
 
@@ -192,6 +220,7 @@ class SupplementComprehensiveAnalysis(BaseModel):
         diet_score_label: 점수 라벨.
         diet_score_message: 사용자 친화 한국어 한 줄 코멘트.
         purpose_targets: 만성질환 인디케이션별 적합도 (카드 5).
+        wellness_goal_targets: 일반 웰니스 목적별 적합도 (눈·간·피로·면역·수면·장).
         chronic_disease_indications: matrix 기반 자동 매핑 결과.
         algorithm_version: 산출 로직 버전 (회귀 추적용).
         warnings: 산출 과정에서 발생한 경고.
@@ -208,6 +237,7 @@ class SupplementComprehensiveAnalysis(BaseModel):
     diet_score_label: ScoreLabel
     diet_score_message: str
     purpose_targets: list[PurposeTarget] = Field(default_factory=list)
+    wellness_goal_targets: list[WellnessGoalTarget] = Field(default_factory=list)
     chronic_disease_indications: list[ChronicCondition] = Field(default_factory=list)
     algorithm_version: str = "comprehensive-v1"
     warnings: list[str] = Field(default_factory=list)

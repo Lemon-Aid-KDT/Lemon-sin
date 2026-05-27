@@ -28,6 +28,8 @@ from src.models.schemas.supplement_comprehensive import (
     ScoreLabel,
     SupplementComprehensiveAnalysis,
     UserProfileInput,
+    WellnessGoal,
+    WellnessGoalTarget,
 )
 from src.utils.chronic_disease_matrix import (
     category_to_conditions,
@@ -42,6 +44,9 @@ _DEFICIT_NOISE_THRESHOLD = 0.05
 
 _MAX_NUTRIENTS_PER_CARD = 5
 """카드당 최대 항목 수 (UX: 한 화면에 너무 많은 정보 회피)."""
+
+_MAX_CAUTIONS_PER_CARD = 8
+"""안전 경고는 일반 매트릭스 경고에 밀리지 않도록 약간 더 넉넉히 유지한다."""
 
 _SCORE_EXCELLENT = 90
 _SCORE_GOOD = 75
@@ -75,6 +80,26 @@ _HIGH_RISK_DRUGS = {
     "statin",
     "metformin",
     "acetaminophen",
+}
+_MIN_HIGH_DOSE_OMEGA3_MG = 1000.0
+_MIN_HIGH_DOSE_VITAMIN_E_MG = 100.0
+_MIN_HIGH_DOSE_BETA_CAROTENE_MG = 20.0
+_BINDING_NUTRIENT_CODES = {"calcium_mg", "iron_mg", "magnesium_mg"}
+_CKD_CAUTION_NUTRIENT_CODES = {
+    "magnesium_mg",
+    "potassium_mg",
+    "vitamin_a_ug",
+    "vitamin_d_ug",
+    "vitamin_k_ug",
+}
+
+_GOAL_LABELS: dict[WellnessGoal, str] = {
+    "eye_health": "눈 건강",
+    "liver_health": "간 건강",
+    "fatigue_recovery": "피로 회복",
+    "immune_support": "면역 기능",
+    "sleep_support": "수면·긴장 완화",
+    "gut_health": "장 건강",
 }
 
 
@@ -231,6 +256,40 @@ def _ingredient_to_category_hint(display_name: str) -> str | None:
     return None
 
 
+def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
+    """텍스트가 키워드 중 하나를 포함하는지 확인한다.
+
+    Args:
+        text: Case-folded 검사 대상 텍스트.
+        keywords: Case-folded 키워드 목록.
+
+    Returns:
+        키워드 포함 여부.
+    """
+    return any(keyword in text for keyword in keywords)
+
+
+def _ingredient_matches(
+    ingredient: ComprehensiveIngredient,
+    *,
+    codes: set[str] | None = None,
+    keywords: tuple[str, ...] = (),
+) -> bool:
+    """성분 코드와 표시명을 함께 사용해 안전 분기 대상을 식별한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+        codes: 내부 nutrient_code 후보.
+        keywords: 표시명 기반 키워드 후보.
+
+    Returns:
+        코드 또는 표시명 중 하나가 일치하면 True.
+    """
+    code = (ingredient.nutrient_code or "").casefold()
+    name = ingredient.display_name.casefold()
+    return (codes is not None and code in codes) or _contains_any(name, keywords)
+
+
 class _ConditionInfo(TypedDict):
     """`_compute_chronic_indications_and_targets` 내부 임시 매핑."""
 
@@ -282,6 +341,118 @@ def _compute_chronic_indications_and_targets(
         )
     purpose_targets.sort(key=lambda t: t.relevance_score, reverse=True)
     return indications, purpose_targets
+
+
+def _compute_wellness_goal_targets(
+    ingredients: list[ComprehensiveIngredient],
+) -> list[WellnessGoalTarget]:
+    """목적별 분석 매트릭스의 일반 웰니스 목적 적합도를 산출한다.
+
+    Args:
+        ingredients: 분석 대상 영양제 성분.
+
+    Returns:
+        목적별 적합도 목록. 같은 목적이 여러 성분에서 잡히면 가장 높은 적합도를 사용한다.
+    """
+    targets: dict[WellnessGoal, WellnessGoalTarget] = {}
+
+    def add(
+        goal: WellnessGoal,
+        score: float,
+        evidence: str,
+        message: str,
+    ) -> None:
+        existing = targets.get(goal)
+        if existing is not None and existing.relevance_score >= score:
+            return
+        assert evidence in {"strong", "moderate", "weak", "insufficient"}
+        targets[goal] = WellnessGoalTarget(
+            goal=goal,
+            relevance_score=score,
+            evidence_level=evidence,  # type: ignore[arg-type]
+            message=message,
+        )
+
+    for ingredient in ingredients:
+        if _ingredient_matches(
+            ingredient,
+            codes={"lutein_mg", "zeaxanthin_mg"},
+            keywords=("lutein", "zeaxanthin", "루테인", "지아잔틴"),
+        ):
+            add(
+                "eye_health",
+                0.75,
+                "moderate",
+                "루테인·지아잔틴은 눈 건강 목적 성분으로 분류됩니다.",
+            )
+        if _ingredient_matches(
+            ingredient,
+            codes={"omega3_mg"},
+            keywords=("omega", "오메가", "epa", "dha", "fish oil"),
+        ):
+            add(
+                "eye_health",
+                0.35,
+                "insufficient",
+                "오메가-3는 눈 건강 목적에서는 보조 근거로만 표시합니다.",
+            )
+        if _ingredient_matches(
+            ingredient,
+            keywords=("milk thistle", "silymarin", "밀크씨슬", "실리마린"),
+        ):
+            add(
+                "liver_health",
+                0.55,
+                "weak",
+                "밀크씨슬은 기능성 표시 범위에서만 간 건강 목적을 표시합니다.",
+            )
+        if _ingredient_matches(
+            ingredient,
+            codes={"vitamin_b1_mg", "vitamin_b6_mg", "vitamin_b12_ug", "magnesium_mg"},
+            keywords=("vitamin b", "비타민 b", "thiamin", "coq10", "coenzyme", "마그네슘"),
+        ):
+            add("fatigue_recovery", 0.6, "weak", "피로 관련 성분은 결핍 보완 중심으로 안내합니다.")
+        if _ingredient_matches(
+            ingredient,
+            codes={"vitamin_c_mg", "vitamin_d_ug", "zinc_mg"},
+            keywords=("vitamin c", "vitamin d", "비타민 c", "비타민 d", "zinc", "아연"),
+        ):
+            add(
+                "immune_support",
+                0.55,
+                "weak",
+                "면역 목적은 결핍 확인과 기능성 표시 범위에서 안내합니다.",
+            )
+        if _ingredient_matches(
+            ingredient,
+            codes={"magnesium_mg"},
+            keywords=("magnesium", "마그네슘", "theanine", "테아닌", "gaba", "가바"),
+        ):
+            add(
+                "sleep_support",
+                0.45,
+                "weak",
+                "수면 목적은 긴장 완화·영양 균형 보조로만 표시합니다.",
+            )
+        if _ingredient_matches(
+            ingredient,
+            keywords=(
+                "probiotic",
+                "lactobacillus",
+                "bifido",
+                "fiber",
+                "psyllium",
+                "유산균",
+                "프로바이오틱",
+                "식이섬유",
+            ),
+        ):
+            add("gut_health", 0.6, "weak", "장 건강 목적은 균주·식이섬유 특성을 확인해 안내합니다.")
+
+    return sorted(
+        targets.values(),
+        key=lambda target: (-target.relevance_score, _GOAL_LABELS[target.goal]),
+    )
 
 
 _RELEVANCE_BY_EVIDENCE: dict[str, float] = {
@@ -336,7 +507,7 @@ def _compute_cautions(
 ) -> list[CautionaryComponent]:
     """매트릭스의 cautions 필드와 사용자 만성질환을 교차해 주의 성분 산출."""
     matrix = load_matrix()
-    seen: list[CautionaryComponent] = []
+    matrix_cautions: list[CautionaryComponent] = []
     for ing in ingredients:
         category = _ingredient_to_category_hint(ing.display_name)
         if category is None:
@@ -357,7 +528,7 @@ def _compute_cautions(
                 severity = "medium"
             else:
                 severity = "low"
-            seen.append(
+            matrix_cautions.append(
                 CautionaryComponent(
                     component=f"{ing.display_name} ({category})",
                     reason=caution,
@@ -367,7 +538,7 @@ def _compute_cautions(
             )
         # 회피 권장 페르소나일 때 추가 경고
         if profile.persona_recommendation in {"avoid_for_chronic", "avoid_for_ckd"}:
-            seen.append(
+            matrix_cautions.append(
                 CautionaryComponent(
                     component=ing.display_name,
                     reason=f"persona_avoid:{profile.persona_recommendation}",
@@ -376,8 +547,32 @@ def _compute_cautions(
                 )
             )
 
-    seen.extend(_compute_profile_safety_cautions(ingredients, user))
-    return seen[:5]
+    profile_cautions = _compute_profile_safety_cautions(ingredients, user)
+    return _dedupe_and_rank_cautions(profile_cautions + matrix_cautions)[:_MAX_CAUTIONS_PER_CARD]
+
+
+def _dedupe_and_rank_cautions(
+    cautions: list[CautionaryComponent],
+) -> list[CautionaryComponent]:
+    """중복 경고를 제거하고 안전 우선순위로 정렬한다.
+
+    Args:
+        cautions: 후보 경고 목록.
+
+    Returns:
+        심각도와 입력 순서를 반영한 경고 목록.
+    """
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+    indexed: list[tuple[int, CautionaryComponent]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    for index, caution in enumerate(cautions):
+        key = (caution.component.casefold(), caution.reason.casefold())
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        indexed.append((index, caution))
+    indexed.sort(key=lambda item: (severity_rank[item[1].severity], item[0]))
+    return [caution for _index, caution in indexed]
 
 
 def _compute_profile_safety_cautions(
@@ -399,40 +594,255 @@ def _compute_profile_safety_cautions(
         user.audit_kr_score is not None and user.audit_kr_score >= _AUDIT_KR_RISK_CUTOFF
     )
     medication_codes = {medication.casefold() for medication in user.medications}
+    chronic_conditions = {condition.casefold() for condition in user.chronic_conditions}
 
     for ingredient in ingredients:
-        code = (ingredient.nutrient_code or "").casefold()
-        name = ingredient.display_name.casefold()
-        amount = ingredient.amount or 0.0
-
-        is_beta_carotene = "beta" in name or "베타카로틴" in name or "beta_carotene" in code
-        is_vitamin_a = code == "vitamin_a_ug" or "vitamin a" in name or "비타민 a" in name
-        if is_smoker and (
-            (is_beta_carotene and amount >= _SMOKER_BETA_CAROTENE_WARNING_MG)
-            or (is_vitamin_a and amount >= _VITAMIN_A_UL_UG)
-        ):
-            cautions.append(
-                CautionaryComponent(
-                    component=ingredient.display_name,
-                    reason="smoker_beta_carotene_vitamin_a_risk",
-                    severity="high",
-                    message=(
-                        f"{ingredient.display_name}: 흡연자는 베타카로틴 또는 고함량 비타민 A "
-                        "보충제 섭취 전 전문가 상담이 필요합니다."
-                    ),
-                )
+        cautions.extend(
+            _compute_lifestyle_cautions_for_ingredient(
+                ingredient=ingredient,
+                is_smoker=is_smoker,
+                has_alcohol_risk=has_alcohol_risk,
+                is_pregnant=user.is_pregnant,
             )
-
-        if has_alcohol_risk and is_vitamin_a and amount >= _VITAMIN_A_UL_UG:
-            cautions.append(
-                CautionaryComponent(
-                    component=ingredient.display_name,
-                    reason="alcohol_vitamin_a_liver_risk",
-                    severity="high",
-                    message=f"{ingredient.display_name}: 음주 위험이 있으면 고함량 비타민 A는 간 안전성 확인이 필요합니다.",
-                )
+        )
+        cautions.extend(
+            _compute_drug_cautions_for_ingredient(
+                ingredient=ingredient,
+                medication_codes=medication_codes,
             )
+        )
+        cautions.extend(
+            _compute_condition_cautions_for_ingredient(
+                ingredient=ingredient,
+                chronic_conditions=chronic_conditions,
+            )
+        )
 
+    cautions.extend(
+        _compute_profile_summary_cautions(
+            user=user,
+            has_alcohol_risk=has_alcohol_risk,
+            medication_codes=medication_codes,
+        )
+    )
+    return cautions
+
+
+def _compute_lifestyle_cautions_for_ingredient(
+    *,
+    ingredient: ComprehensiveIngredient,
+    is_smoker: bool,
+    has_alcohol_risk: bool,
+    is_pregnant: bool,
+) -> list[CautionaryComponent]:
+    """흡연·음주·임신 상태에 따른 성분별 안전 경고를 산출한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+        is_smoker: 현재 또는 최근 흡연 여부.
+        has_alcohol_risk: AUDIT-KR 위험 음주 여부.
+        is_pregnant: 임신 여부.
+
+    Returns:
+        성분별 생활습관 안전 경고.
+    """
+    cautions: list[CautionaryComponent] = []
+    amount = ingredient.amount or 0.0
+    is_beta_carotene = _is_beta_carotene(ingredient)
+    is_vitamin_a = _is_vitamin_a(ingredient)
+    is_liver_supplement = _is_liver_support_supplement(ingredient)
+
+    if is_smoker and (
+        (is_beta_carotene and amount >= _SMOKER_BETA_CAROTENE_WARNING_MG)
+        or (is_vitamin_a and amount >= _VITAMIN_A_UL_UG)
+    ):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "smoker_beta_carotene_vitamin_a_risk",
+                "high",
+                "흡연자는 베타카로틴 또는 고함량 비타민 A 보충제 섭취 전 전문가 상담이 필요합니다.",
+            )
+        )
+    if is_pregnant and is_vitamin_a and amount >= _VITAMIN_A_UL_UG:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "pregnancy_vitamin_a_ul_risk",
+                "high",
+                "임신 중 고함량 레티놀형 비타민 A는 전문가 확인 전 추가 섭취를 피해야 합니다.",
+            )
+        )
+    if has_alcohol_risk and is_vitamin_a and amount >= _VITAMIN_A_UL_UG:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "alcohol_vitamin_a_liver_risk",
+                "high",
+                "음주 위험이 있으면 고함량 비타민 A는 간 안전성 확인이 필요합니다.",
+            )
+        )
+    if has_alcohol_risk and is_beta_carotene and amount >= _MIN_HIGH_DOSE_BETA_CAROTENE_MG:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "alcohol_beta_carotene_liver_risk",
+                "high",
+                "음주 위험이 있으면 고함량 베타카로틴 보충은 간 안전성 확인이 필요합니다.",
+            )
+        )
+    if has_alcohol_risk and is_liver_supplement:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "alcohol_liver_supplement_consult",
+                "medium",
+                "음주 위험이 있으면 간 건강 보조제는 자가 판단보다 의사·약사 상담 후 선택해야 합니다.",
+            )
+        )
+    if _is_nac(ingredient):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "nac_medicine_class_review",
+                "medium",
+                "NAC는 건강기능식품 추천이 아니라 의약품 상담 영역으로 분리해 확인하세요.",
+            )
+        )
+    return cautions
+
+
+def _compute_drug_cautions_for_ingredient(
+    *,
+    ingredient: ComprehensiveIngredient,
+    medication_codes: set[str],
+) -> list[CautionaryComponent]:
+    """약물-영양제 상호작용 경고를 산출한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+        medication_codes: Case-folded 약물 코드 집합.
+
+    Returns:
+        약물 상호작용 경고 목록.
+    """
+    cautions: list[CautionaryComponent] = []
+    code = (ingredient.nutrient_code or "").casefold()
+    amount = ingredient.amount or 0.0
+    if "warfarin" in medication_codes:
+        cautions.extend(_compute_warfarin_cautions(ingredient=ingredient, code=code, amount=amount))
+    if medication_codes & {"levothyroxine", "bisphosphonate"} and code in _BINDING_NUTRIENT_CODES:
+        drug_code = "levothyroxine" if "levothyroxine" in medication_codes else "bisphosphonate"
+        drug_label = "레보티록신" if drug_code == "levothyroxine" else "비스포스포네이트"
+        cautions.append(
+            _build_caution(
+                ingredient,
+                f"drug_absorption_spacing:{drug_code}",
+                "high",
+                f"{drug_label} 복용 중에는 칼슘·철분·마그네슘 보충제와 복용 간격을 전문가 지시에 맞춰 분리해야 합니다.",
+            )
+        )
+    if "metformin" in medication_codes and code == "vitamin_b12_ug":
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "metformin_b12_monitoring",
+                "medium",
+                "메트포르민 장기 복용자는 B12 상태 확인을 함께 권장합니다.",
+            )
+        )
+    if medication_codes & {"maoi", "ssri"} and _ingredient_matches(
+        ingredient,
+        keywords=("st john", "st. john", "hypericum", "세인트존스", "서양고추나물"),
+    ):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "serotonergic_st_johns_wort_risk",
+                "high",
+                "MAOI/SSRI 복용 중 세인트존스워트는 상호작용 위험이 있어 전문가 상담이 필요합니다.",
+            )
+        )
+    if "statin" in medication_codes and _ingredient_matches(
+        ingredient,
+        keywords=("red yeast", "홍국", "grapefruit", "자몽"),
+    ):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "statin_red_yeast_grapefruit_risk",
+                "high",
+                "스타틴 복용 중 홍국·자몽 성분은 상호작용 검토가 필요합니다.",
+            )
+        )
+    if medication_codes & {"chemo", "methotrexate"} and code in {"vitamin_c_mg", "vitamin_e_mg"}:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "oncology_high_dose_antioxidant_review",
+                "high",
+                "항암·면역억제 치료 중 고용량 항산화제는 의료진 확인 후 결정해야 합니다.",
+            )
+        )
+    return cautions
+
+
+def _compute_condition_cautions_for_ingredient(
+    *,
+    ingredient: ComprehensiveIngredient,
+    chronic_conditions: set[str],
+) -> list[CautionaryComponent]:
+    """만성질환별 보충제 안전 경고를 산출한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+        chronic_conditions: Case-folded 만성질환 코드 집합.
+
+    Returns:
+        만성질환 안전 경고 목록.
+    """
+    cautions: list[CautionaryComponent] = []
+    code = (ingredient.nutrient_code or "").casefold()
+    if "chronic_kidney_disease" in chronic_conditions and code in _CKD_CAUTION_NUTRIENT_CODES:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "ckd_supplement_accumulation_review",
+                "high",
+                "신장질환이 있으면 축적·전해질 위험을 의료진과 확인해야 합니다.",
+            )
+        )
+    if "liver_disease" in chronic_conditions and (
+        _is_liver_support_supplement(ingredient) or _is_vitamin_a(ingredient)
+    ):
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "liver_disease_supplement_consult",
+                "high",
+                "간질환이 있으면 간 건강 보조제와 고함량 지용성 비타민은 전문가 상담이 우선입니다.",
+            )
+        )
+    return cautions
+
+
+def _compute_profile_summary_cautions(
+    *,
+    user: UserProfileInput,
+    has_alcohol_risk: bool,
+    medication_codes: set[str],
+) -> list[CautionaryComponent]:
+    """성분과 무관한 사용자 프로필 수준 안전 경고를 산출한다.
+
+    Args:
+        user: 사용자 프로필.
+        has_alcohol_risk: AUDIT-KR 위험 음주 여부.
+        medication_codes: Case-folded 약물 코드 집합.
+
+    Returns:
+        프로필 수준 경고 목록.
+    """
+    cautions: list[CautionaryComponent] = []
     if has_alcohol_risk and "acetaminophen" in medication_codes:
         cautions.append(
             CautionaryComponent(
@@ -442,7 +852,6 @@ def _compute_profile_safety_cautions(
                 message="음주 위험이 있으면 아세트아미노펜 성분 약물과 보충제 선택 전 전문가 상담이 필요합니다.",
             )
         )
-
     if medication_codes & _HIGH_RISK_DRUGS:
         cautions.append(
             CautionaryComponent(
@@ -452,7 +861,6 @@ def _compute_profile_safety_cautions(
                 message="입력된 약물과 보충제 간 상호작용 가능성이 있어 약사 또는 의사 상담을 권장합니다.",
             )
         )
-
     if user.audit_kr_score is not None:
         dependence_cutoff = (
             _AUDIT_KR_DEPENDENCE_MALE if user.sex == "male" else _AUDIT_KR_DEPENDENCE_FEMALE
@@ -466,8 +874,113 @@ def _compute_profile_safety_cautions(
                     message="AUDIT-KR 점수가 높아 영양제 선택보다 전문 상담 연결이 우선입니다.",
                 )
             )
-
     return cautions
+
+
+def _compute_warfarin_cautions(
+    *,
+    ingredient: ComprehensiveIngredient,
+    code: str,
+    amount: float,
+) -> list[CautionaryComponent]:
+    """와파린 관련 영양소 경고를 산출한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+        code: Case-folded nutrient_code.
+        amount: 성분량.
+
+    Returns:
+        와파린 관련 경고 목록.
+    """
+    cautions: list[CautionaryComponent] = []
+    if code == "vitamin_k_ug":
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "warfarin_vitamin_k_consistency_review",
+                "high",
+                "와파린 복용 중에는 비타민 K 섭취량을 임의로 크게 바꾸지 말고 의료진과 일관성을 확인해야 합니다.",
+            )
+        )
+    if code == "omega3_mg" and amount >= _MIN_HIGH_DOSE_OMEGA3_MG:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "warfarin_omega3_bleeding_risk",
+                "high",
+                "와파린 복용 중 고함량 오메가-3는 출혈 위험 검토가 필요합니다.",
+            )
+        )
+    if code == "vitamin_e_mg" and amount >= _MIN_HIGH_DOSE_VITAMIN_E_MG:
+        cautions.append(
+            _build_caution(
+                ingredient,
+                "warfarin_vitamin_e_bleeding_risk",
+                "high",
+                "와파린 복용 중 고함량 비타민 E는 출혈 위험 검토가 필요합니다.",
+            )
+        )
+    return cautions
+
+
+def _build_caution(
+    ingredient: ComprehensiveIngredient,
+    reason: str,
+    severity: Literal["low", "medium", "high"],
+    message_suffix: str,
+) -> CautionaryComponent:
+    """성분명 prefix를 포함한 안전 경고 객체를 생성한다.
+
+    Args:
+        ingredient: 분석 대상 성분.
+        reason: 표준 경고 token.
+        severity: 심각도.
+        message_suffix: 성분명 뒤에 붙일 사용자 메시지.
+
+    Returns:
+        주의 성분 경고.
+    """
+    return CautionaryComponent(
+        component=ingredient.display_name,
+        reason=reason,
+        severity=severity,
+        message=f"{ingredient.display_name}: {message_suffix}",
+    )
+
+
+def _is_beta_carotene(ingredient: ComprehensiveIngredient) -> bool:
+    """베타카로틴 성분 여부를 판별한다."""
+    return _ingredient_matches(
+        ingredient,
+        codes={"beta_carotene_mg"},
+        keywords=("beta", "베타카로틴"),
+    )
+
+
+def _is_vitamin_a(ingredient: ComprehensiveIngredient) -> bool:
+    """비타민 A 성분 여부를 판별한다."""
+    return _ingredient_matches(
+        ingredient,
+        codes={"vitamin_a_ug"},
+        keywords=("vitamin a", "비타민 a"),
+    )
+
+
+def _is_nac(ingredient: ComprehensiveIngredient) -> bool:
+    """NAC 성분 여부를 판별한다."""
+    return _ingredient_matches(
+        ingredient,
+        keywords=("nac", "n-acetylcysteine", "acetylcysteine", "아세틸시스테인"),
+    )
+
+
+def _is_liver_support_supplement(ingredient: ComprehensiveIngredient) -> bool:
+    """간 건강 보조제 상담 분기 대상인지 판별한다."""
+    return _is_nac(ingredient) or _ingredient_matches(
+        ingredient,
+        keywords=("milk thistle", "silymarin", "밀크씨슬", "실리마린"),
+    )
 
 
 def _format_caution_message(caution_token: str, display_name: str) -> str:
@@ -562,6 +1075,7 @@ def compute_comprehensive(
         request.ingredients,
         request.user_profile,
     )
+    wellness_goal_targets = _compute_wellness_goal_targets(request.ingredients)
 
     score, score_label, score_message = _compute_diet_score(
         deficient=deficient,
@@ -580,6 +1094,7 @@ def compute_comprehensive(
         diet_score_label=score_label,
         diet_score_message=score_message,
         purpose_targets=purpose_targets,
+        wellness_goal_targets=wellness_goal_targets,
         chronic_disease_indications=indications,
         algorithm_version=ALGORITHM_VERSION,
         warnings=warnings,

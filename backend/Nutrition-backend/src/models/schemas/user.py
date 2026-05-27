@@ -25,6 +25,7 @@ class UserProfile(BaseModel):
         chronic_diseases: 활동점수 v4 계산에 사용할 만성질환 코드 목록.
         waist_cm: BMI 보완 지표인 허리-신장비 산출용 허리둘레.
         body_fat_pct: 체지방률(%). BMR 보완 공식과 BMI 보조 flag에 사용한다.
+        resting_heart_rate_bpm: 안정시 심박수. 입력 시 Karvonen HRR 목표 심박에 사용한다.
         smoking_status: 흡연 관련 영양/활동 안전 분기.
         audit_kr_score: 음주 위험 스크리닝 점수. None이면 미입력.
         medications: 약물-영양제 상호작용 안전 분기용 약물 코드 목록.
@@ -54,6 +55,7 @@ class UserProfile(BaseModel):
     chronic_diseases: list[DiseaseCode] = Field(default_factory=list, max_length=10)
     waist_cm: float | None = Field(default=None, gt=0, le=250)
     body_fat_pct: float | None = Field(default=None, ge=0, le=70)
+    resting_heart_rate_bpm: int | None = Field(default=None, ge=20, le=240)
     smoking_status: SmokingStatus = "never"
     audit_kr_score: int | None = Field(default=None, ge=0, le=40)
     medications: list[MedicationCode] = Field(default_factory=list, max_length=20)

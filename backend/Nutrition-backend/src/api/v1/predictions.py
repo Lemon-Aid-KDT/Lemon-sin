@@ -20,6 +20,7 @@ from src.db.dependencies import get_async_session
 from src.models.schemas.algorithm import WeightPredictionRequest, WeightPredictionResponse
 from src.models.schemas.privacy import ConsentType
 from src.prediction.selector import predict_weight_periods_selected
+from src.prediction.weight import calculate_alcohol_kcal_from_volume
 from src.security.auth import AuthenticatedUser, require_analysis_read
 from src.security.scopes import ApiScope
 from src.services.privacy import (
@@ -128,6 +129,12 @@ async def predict_weight(
         blocked_action="weight_prediction_compute_blocked",
         resource_type="weight_prediction",
     )
+    derived_alcohol_kcal = 0.0
+    if request.alcohol_volume_ml > 0 and request.alcohol_abv_percent is not None:
+        derived_alcohol_kcal = calculate_alcohol_kcal_from_volume(
+            volume_ml=request.alcohol_volume_ml,
+            abv_percent=request.alcohol_abv_percent,
+        )
     response = predict_weight_periods_selected(
         weight_kg=request.weight_kg,
         height_cm=request.height_cm,
@@ -137,7 +144,7 @@ async def predict_weight(
         daily_intake_kcal=request.daily_intake_kcal,
         periods_days=request.periods_days,
         body_fat_pct=request.body_fat_pct,
-        alcohol_kcal=request.alcohol_kcal,
+        alcohol_kcal=request.alcohol_kcal + derived_alcohol_kcal,
         chronic_diseases=request.chronic_diseases,
         feature_hall_lite_weight_prediction=settings.feature_hall_lite_weight_prediction,
         weight_prediction_engine=settings.weight_prediction_engine,

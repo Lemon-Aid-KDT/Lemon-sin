@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.models.schemas.user import Sex, UserProfile
 
@@ -78,11 +78,15 @@ class TargetHeartRateRange(BaseModel):
         low_bpm: 목표 심박 하한.
         high_bpm: 목표 심박 상한.
         formula: HRmax 계산식.
+        method: 목표 심박 산출 방식.
+        resting_heart_rate_bpm: Karvonen HRR 계산에 사용한 안정시 심박수.
     """
 
     low_bpm: int
     high_bpm: int
     formula: HRMaxFormula
+    method: Literal["percent_hrmax", "karvonen_hrr"] = "percent_hrmax"
+    resting_heart_rate_bpm: int | None = None
 
 
 class ActivityScoreRequest(BaseModel):
@@ -202,6 +206,8 @@ class WeightPredictionRequest(BaseModel):
         daily_steps: 일일 걸음수.
         daily_intake_kcal: 일일 섭취 열량.
         alcohol_kcal: 일일 섭취 열량에 별도로 더할 알코올 열량.
+        alcohol_volume_ml: 주류 용량(ml). ABV와 함께 입력하면 알코올 kcal을 자동 산출한다.
+        alcohol_abv_percent: 주류 도수(%). volume이 있으면 필요하다.
         body_fat_pct: 체지방률(%). 입력 시 BMR 보조 공식에 사용할 수 있다.
         chronic_diseases: 자동 체중 예측 안전 분기용 만성질환 코드.
         periods_days: 예측 기간 목록.
@@ -218,6 +224,8 @@ class WeightPredictionRequest(BaseModel):
                     "daily_steps": 6500,
                     "daily_intake_kcal": 1500,
                     "alcohol_kcal": 0,
+                    "alcohol_volume_ml": 0,
+                    "alcohol_abv_percent": None,
                     "chronic_diseases": [],
                     "periods_days": [7, 30, 90],
                 }
@@ -232,6 +240,8 @@ class WeightPredictionRequest(BaseModel):
     daily_steps: int = Field(ge=0)
     daily_intake_kcal: float = Field(ge=0)
     alcohol_kcal: float = Field(default=0, ge=0, le=5000)
+    alcohol_volume_ml: float = Field(default=0, ge=0, le=5000)
+    alcohol_abv_percent: float | None = Field(default=None, ge=0, le=100)
     body_fat_pct: float | None = Field(default=None, ge=0, le=70)
     chronic_diseases: list[str] = Field(default_factory=list, max_length=10)
     periods_days: list[PredictionPeriodDays] = Field(
@@ -239,6 +249,20 @@ class WeightPredictionRequest(BaseModel):
         min_length=1,
         max_length=12,
     )
+
+    @model_validator(mode="after")
+    def validate_alcohol_volume_inputs(self) -> WeightPredictionRequest:
+        """주류 용량 입력이 있으면 ABV도 함께 요구한다.
+
+        Returns:
+            검증된 요청 모델.
+
+        Raises:
+            ValueError: alcohol_volume_ml > 0 이지만 alcohol_abv_percent 가 없는 경우.
+        """
+        if self.alcohol_volume_ml > 0 and self.alcohol_abv_percent is None:
+            raise ValueError("alcohol_abv_percent is required when alcohol_volume_ml is provided")
+        return self
 
 
 class WeightPredictionResponse(BaseModel):
