@@ -167,6 +167,8 @@ def build_baseline(
     age: int,
     sex: Sex,
     daily_steps: int,
+    walking_cadence_steps_per_min: float | None = None,
+    walking_cadence_minutes: float = 0.0,
 ) -> HallBaseline:
     """Build an initial baseline that preserves existing BMR/TDEE behavior.
 
@@ -176,6 +178,8 @@ def build_baseline(
         age: Age in years.
         sex: Biological sex accepted by the current algorithm schemas.
         daily_steps: Daily step count.
+        walking_cadence_steps_per_min: Optional walking cadence in steps/min.
+        walking_cadence_minutes: Minutes observed at the walking cadence.
 
     Returns:
         Baseline energy terms in kJ/day.
@@ -189,6 +193,9 @@ def build_baseline(
     initial_tdee_kcal = calculate_tdee(
         estimated_bmr=initial_bmr_kcal,
         daily_steps=daily_steps,
+        weight_kg=composition.weight_kg,
+        walking_cadence_steps_per_min=walking_cadence_steps_per_min,
+        walking_cadence_minutes=walking_cadence_minutes,
     )
     initial_bmr_kj = kcal_to_kj(initial_bmr_kcal)
     initial_tdee_kj = kcal_to_kj(initial_tdee_kcal)
@@ -333,6 +340,8 @@ def predict_with_hall(
     daily_intake_kcal: float,
     n_days: int,
     measured_body_fat_pct: float | None = None,
+    walking_cadence_steps_per_min: float | None = None,
+    walking_cadence_minutes: float = 0.0,
     save_daily_states: bool = False,
 ) -> HallLiteResult:
     """Predict body weight with the Hall-lite dynamic simulator.
@@ -346,6 +355,8 @@ def predict_with_hall(
         daily_intake_kcal: Scenario intake in kcal/day.
         n_days: Simulation period in days.
         measured_body_fat_pct: Optional measured body-fat percentage.
+        walking_cadence_steps_per_min: Optional walking cadence in steps/min.
+        walking_cadence_minutes: Minutes observed at the walking cadence.
         save_daily_states: Whether to retain daily states in the result.
 
     Returns:
@@ -374,6 +385,8 @@ def predict_with_hall(
         age=age,
         sex=sex,
         daily_steps=daily_steps,
+        walking_cadence_steps_per_min=walking_cadence_steps_per_min,
+        walking_cadence_minutes=walking_cadence_minutes,
     )
 
     composition = initial_composition

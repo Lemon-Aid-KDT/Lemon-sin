@@ -9,12 +9,14 @@ from src.algorithms.metabolism import (
     calculate_cunningham_bmr,
     calculate_exercise_kcal_from_activity,
     calculate_exercise_kcal_from_mets,
+    calculate_exercise_kcal_from_walking_cadence,
     calculate_katch_mcardle_bmr,
     calculate_lean_body_mass_from_body_fat,
     calculate_tdee,
     calculate_tdee_with_activity_codes,
     get_activity_factor,
     lookup_exercise_activity_mets,
+    lookup_walking_cadence_mets,
 )
 from src.models.schemas.algorithm import WeightPredictionRequest
 from src.prediction.weight import (
@@ -114,6 +116,43 @@ def test_tdee_adds_mets_based_intentional_exercise() -> None:
 
 
 @pytest.mark.parametrize(
+    ("cadence_steps_per_min", "expected_mets"),
+    [
+        (0.0, 0.0),
+        (80.0, 2.0),
+        (100.0, 3.0),
+        (110.0, 4.0),
+        (120.0, 5.0),
+        (130.0, 6.0),
+    ],
+)
+def test_walking_cadence_lookup_uses_tudor_locke_thresholds(
+    cadence_steps_per_min: float,
+    expected_mets: float,
+) -> None:
+    """보행 cadence를 Tudor-Locke 2018 휴리스틱 METs 구간으로 매핑한다."""
+    assert lookup_walking_cadence_mets(cadence_steps_per_min) == expected_mets
+
+
+def test_tdee_adds_walking_cadence_based_exercise() -> None:
+    """보행 cadence와 시간이 있으면 wearable 기반 보행 열량을 TDEE에 더한다."""
+    cadence_kcal = calculate_exercise_kcal_from_walking_cadence(
+        cadence_steps_per_min=120.0,
+        weight_kg=50.0,
+        minutes=30.0,
+    )
+
+    assert cadence_kcal == pytest.approx(131.25, abs=0.01)
+    assert calculate_tdee(
+        estimated_bmr=1269.0,
+        daily_steps=6500,
+        weight_kg=50.0,
+        walking_cadence_steps_per_min=120.0,
+        walking_cadence_minutes=30.0,
+    ) == pytest.approx(1876.0, abs=0.5)
+
+
+@pytest.mark.parametrize(
     ("activity_code", "expected_mets"),
     [
         ("walking_moderate", 3.5),
@@ -206,6 +245,36 @@ def test_weight_prediction_alcohol_kcal_uses_storage_factor() -> None:
     assert prediction.corrected_change_kg == pytest.approx(-0.19, abs=0.01)
 
 
+def test_weight_prediction_walking_cadence_increases_tdee() -> None:
+    """보행 cadence 입력은 예측 TDEE에 wearable 기반 운동 열량을 반영한다."""
+    baseline = predict_weight_n_days(
+        weight_kg=68.0,
+        height_cm=160,
+        age=50,
+        sex="female",
+        daily_steps=6500,
+        daily_intake_kcal=1500,
+        days=7,
+    )
+    with_cadence = predict_weight_n_days(
+        weight_kg=68.0,
+        height_cm=160,
+        age=50,
+        sex="female",
+        daily_steps=6500,
+        daily_intake_kcal=1500,
+        walking_cadence_steps_per_min=120.0,
+        walking_cadence_minutes=30.0,
+        days=7,
+    )
+
+    assert with_cadence.estimated_tdee > baseline.estimated_tdee
+    assert with_cadence.estimated_tdee - baseline.estimated_tdee == pytest.approx(
+        178.0,
+        abs=0.5,
+    )
+
+
 def test_alcohol_kcal_conversion_uses_volume_and_abv() -> None:
     """주류 용량과 ABV로 알코올 유래 kcal을 계산한다."""
     assert calculate_alcohol_kcal_from_volume(volume_ml=500, abv_percent=5) == pytest.approx(
@@ -225,6 +294,31 @@ def test_weight_prediction_request_requires_abv_when_alcohol_volume_is_set() -> 
             daily_steps=6500,
             daily_intake_kcal=1500,
             alcohol_volume_ml=360,
+        )
+
+
+def test_weight_prediction_request_requires_cadence_and_minutes_pair() -> None:
+    """보행 cadence와 시간은 함께 입력해야 wearable 보정에 사용할 수 있다."""
+    with pytest.raises(ValidationError, match="walking_cadence_steps_per_min is required"):
+        WeightPredictionRequest(
+            age=50,
+            sex="female",
+            height_cm=160,
+            weight_kg=68,
+            daily_steps=6500,
+            daily_intake_kcal=1500,
+            walking_cadence_minutes=30,
+        )
+
+    with pytest.raises(ValidationError, match="walking_cadence_minutes must be positive"):
+        WeightPredictionRequest(
+            age=50,
+            sex="female",
+            height_cm=160,
+            weight_kg=68,
+            daily_steps=6500,
+            daily_intake_kcal=1500,
+            walking_cadence_steps_per_min=120,
         )
 
 

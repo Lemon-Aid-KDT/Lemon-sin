@@ -145,6 +145,8 @@ async def predict_weight(
         periods_days=request.periods_days,
         body_fat_pct=request.body_fat_pct,
         alcohol_kcal=request.alcohol_kcal + derived_alcohol_kcal,
+        walking_cadence_steps_per_min=request.walking_cadence_steps_per_min,
+        walking_cadence_minutes=request.walking_cadence_minutes,
         chronic_diseases=request.chronic_diseases,
         prediction_checkins=request.prediction_checkins,
         feature_hall_lite_weight_prediction=settings.feature_hall_lite_weight_prediction,
@@ -164,6 +166,7 @@ async def predict_weight(
             "engine": settings.weight_prediction_engine,
             "prediction_status": response.prediction_status,
             "prediction_checkin_count": len(request.prediction_checkins),
+            "walking_cadence_used": request.walking_cadence_steps_per_min is not None,
         },
     )
     return response

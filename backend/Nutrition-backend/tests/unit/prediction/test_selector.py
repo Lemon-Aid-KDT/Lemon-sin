@@ -67,6 +67,19 @@ def test_selector_static_engine_forces_static_when_feature_enabled() -> None:
     assert selected == static
 
 
+def test_selector_static_preserves_walking_cadence_inputs() -> None:
+    """Verify cadence inputs reach the static fallback path."""
+    kwargs = _base_kwargs()
+    kwargs["walking_cadence_steps_per_min"] = 120.0
+    kwargs["walking_cadence_minutes"] = 30.0
+
+    selected = predict_weight_periods_selected(**kwargs)
+    static = predict_weight_periods(**kwargs)
+
+    assert selected == static
+    assert selected.safety_warnings
+
+
 def test_selector_auto_uses_hall_only_for_long_term_candidate() -> None:
     """Verify auto mode keeps short periods static and upgrades long periods."""
     kwargs = _base_kwargs()
@@ -146,3 +159,28 @@ def test_selector_hall_lite_uses_measured_body_fat_for_partitioning() -> None:
     assert higher_body_fat.predictions[0].predicted_weight_kg > (
         estimated_body_fat.predictions[0].predicted_weight_kg
     )
+
+
+def test_selector_hall_lite_preserves_walking_cadence_baseline() -> None:
+    """Verify cadence inputs also reach Hall-lite baseline TDEE."""
+    kwargs = _base_kwargs()
+    kwargs["periods_days"] = [90]
+
+    without_cadence = predict_weight_periods_selected(
+        **kwargs,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.HALL_LITE,
+    )
+    with_cadence = predict_weight_periods_selected(
+        **kwargs,
+        walking_cadence_steps_per_min=120.0,
+        walking_cadence_minutes=30.0,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.HALL_LITE,
+    )
+
+    assert with_cadence.predictions[0].model_name == "hall_lite"
+    assert (
+        with_cadence.predictions[0].estimated_tdee > without_cadence.predictions[0].estimated_tdee
+    )
+    assert with_cadence.safety_warnings

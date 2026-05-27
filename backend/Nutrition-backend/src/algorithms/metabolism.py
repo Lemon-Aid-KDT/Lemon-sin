@@ -23,6 +23,16 @@ MODERATE_FACTOR = 1.550
 ACTIVE_FACTOR = 1.725
 VERY_ACTIVE_FACTOR = 1.900
 ENERGY_DECIMALS = 0
+CADENCE_MODERATE_CUTOFF_STEPS_PER_MIN = 100.0
+CADENCE_MODERATE_PLUS_CUTOFF_STEPS_PER_MIN = 110.0
+CADENCE_BRISK_CUTOFF_STEPS_PER_MIN = 120.0
+CADENCE_VIGOROUS_CUTOFF_STEPS_PER_MIN = 130.0
+CADENCE_NO_WALKING_METS = 0.0
+CADENCE_LIGHT_WALKING_METS = 2.0
+CADENCE_MODERATE_WALKING_METS = 3.0
+CADENCE_MODERATE_PLUS_WALKING_METS = 4.0
+CADENCE_BRISK_WALKING_METS = 5.0
+CADENCE_VIGOROUS_WALKING_METS = 6.0
 KATCH_MCARDLE_BASE = 370.0
 KATCH_MCARDLE_LBM_COEFFICIENT = 21.6
 CUNNINGHAM_BASE = 370.0
@@ -207,6 +217,55 @@ def calculate_exercise_kcal_from_mets(mets: float, weight_kg: float, minutes: fl
     return mets * 3.5 * weight_kg / 200 * minutes
 
 
+def lookup_walking_cadence_mets(cadence_steps_per_min: float) -> float:
+    """보행 cadence를 Tudor-Locke 2018 휴리스틱 METs로 변환한다.
+
+    Args:
+        cadence_steps_per_min: 분당 걸음수.
+
+    Returns:
+        Cadence 기반 보행 METs 값.
+
+    Raises:
+        ValueError: cadence가 음수인 경우.
+    """
+    if cadence_steps_per_min < 0:
+        raise ValueError("cadence_steps_per_min must be non-negative")
+    if cadence_steps_per_min == 0:
+        return CADENCE_NO_WALKING_METS
+    if cadence_steps_per_min >= CADENCE_VIGOROUS_CUTOFF_STEPS_PER_MIN:
+        return CADENCE_VIGOROUS_WALKING_METS
+    if cadence_steps_per_min >= CADENCE_BRISK_CUTOFF_STEPS_PER_MIN:
+        return CADENCE_BRISK_WALKING_METS
+    if cadence_steps_per_min >= CADENCE_MODERATE_PLUS_CUTOFF_STEPS_PER_MIN:
+        return CADENCE_MODERATE_PLUS_WALKING_METS
+    if cadence_steps_per_min >= CADENCE_MODERATE_CUTOFF_STEPS_PER_MIN:
+        return CADENCE_MODERATE_WALKING_METS
+    return CADENCE_LIGHT_WALKING_METS
+
+
+def calculate_exercise_kcal_from_walking_cadence(
+    cadence_steps_per_min: float,
+    weight_kg: float,
+    minutes: float,
+) -> float:
+    """보행 cadence와 시간으로 wearable 기반 보행 열량을 계산한다.
+
+    Args:
+        cadence_steps_per_min: 분당 걸음수.
+        weight_kg: 체중(kg).
+        minutes: 보행 시간(분).
+
+    Returns:
+        보행 소비 열량(kcal).
+
+    Raises:
+        ValueError: cadence, 체중 또는 시간이 음수인 경우.
+    """
+    mets = lookup_walking_cadence_mets(cadence_steps_per_min)
+    return calculate_exercise_kcal_from_mets(mets=mets, weight_kg=weight_kg, minutes=minutes)
+
+
 def lookup_exercise_activity_mets(activity_code: ExerciseActivityCode) -> float:
     """운동 활동 코드에 대응하는 Compendium 2011 METs 값을 반환한다.
 
@@ -280,6 +339,8 @@ def calculate_tdee(
     *,
     weight_kg: float | None = None,
     intentional_exercises: list[tuple[float, float]] | None = None,
+    walking_cadence_steps_per_min: float | None = None,
+    walking_cadence_minutes: float = 0.0,
 ) -> float:
     """예상 BMR과 활동계수로 예상 TDEE를 계산한다.
 
@@ -288,12 +349,14 @@ def calculate_tdee(
         daily_steps: 일일 걸음수.
         weight_kg: METs 기반 운동 열량 계산용 체중.
         intentional_exercises: (METs, minutes) 목록.
+        walking_cadence_steps_per_min: wearable 보행 cadence(steps/min).
+        walking_cadence_minutes: cadence가 관측된 보행 시간(분).
 
     Returns:
         예상 TDEE(kcal/day).
 
     Raises:
-        ValueError: 의도 운동 목록이 있으나 체중이 없는 경우.
+        ValueError: 의도 운동 또는 cadence 입력이 있으나 체중이 없거나 cadence 쌍이 불완전한 경우.
     """
     exercise_kcal = 0.0
     if intentional_exercises:
@@ -302,5 +365,15 @@ def calculate_tdee(
         exercise_kcal = sum(
             calculate_exercise_kcal_from_mets(mets=mets, weight_kg=weight_kg, minutes=minutes)
             for mets, minutes in intentional_exercises
+        )
+    if walking_cadence_steps_per_min is not None or walking_cadence_minutes > 0:
+        if weight_kg is None:
+            raise ValueError("weight_kg is required when walking cadence is provided")
+        if walking_cadence_steps_per_min is None or walking_cadence_minutes <= 0:
+            raise ValueError("walking cadence requires both cadence and positive minutes")
+        exercise_kcal += calculate_exercise_kcal_from_walking_cadence(
+            cadence_steps_per_min=walking_cadence_steps_per_min,
+            weight_kg=weight_kg,
+            minutes=walking_cadence_minutes,
         )
     return round(estimated_bmr * get_activity_factor(daily_steps) + exercise_kcal, ENERGY_DECIMALS)

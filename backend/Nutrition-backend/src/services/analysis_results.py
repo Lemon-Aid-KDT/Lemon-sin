@@ -165,6 +165,12 @@ async def store_weight_prediction_result(
         daily_steps=request.daily_steps,
         daily_intake_kcal=request.daily_intake_kcal,
         periods_days=request.periods_days,
+        body_fat_pct=request.body_fat_pct,
+        alcohol_kcal=request.alcohol_kcal,
+        walking_cadence_steps_per_min=request.walking_cadence_steps_per_min,
+        walking_cadence_minutes=request.walking_cadence_minutes,
+        chronic_diseases=request.chronic_diseases,
+        prediction_checkins=request.prediction_checkins,
     )
     return await _persist_result(
         session=session,

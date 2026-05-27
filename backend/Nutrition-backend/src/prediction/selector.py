@@ -141,6 +141,8 @@ def _predict_one_period(
     days: int,
     body_fat_pct: float | None,
     alcohol_kcal: float,
+    walking_cadence_steps_per_min: float | None,
+    walking_cadence_minutes: float,
     chronic_diseases: list[str] | None,
     feature_hall_lite_weight_prediction: bool,
     engine: WeightPredictionEngine,
@@ -157,6 +159,8 @@ def _predict_one_period(
         days: Prediction period in days.
         body_fat_pct: Optional body-fat percentage.
         alcohol_kcal: Alcohol kcal added separately to intake.
+        walking_cadence_steps_per_min: Optional walking cadence in steps/min.
+        walking_cadence_minutes: Minutes observed at the walking cadence.
         chronic_diseases: User condition codes for safety routing.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
         engine: Configured prediction engine.
@@ -181,6 +185,8 @@ def _predict_one_period(
                 daily_intake_kcal=effective_intake_kcal,
                 n_days=days,
                 measured_body_fat_pct=body_fat_pct,
+                walking_cadence_steps_per_min=walking_cadence_steps_per_min,
+                walking_cadence_minutes=walking_cadence_minutes,
             )
             return _hall_result_to_weight_step(
                 result=result,
@@ -200,6 +206,8 @@ def _predict_one_period(
         days=days,
         body_fat_pct=body_fat_pct,
         alcohol_kcal=alcohol_kcal,
+        walking_cadence_steps_per_min=walking_cadence_steps_per_min,
+        walking_cadence_minutes=walking_cadence_minutes,
         chronic_diseases=chronic_diseases,
     )
 
@@ -215,6 +223,8 @@ def predict_weight_periods_selected(
     periods_days: list[int],
     body_fat_pct: float | None = None,
     alcohol_kcal: float = 0.0,
+    walking_cadence_steps_per_min: float | None = None,
+    walking_cadence_minutes: float = 0.0,
     chronic_diseases: list[str] | None = None,
     prediction_checkins: list[WeightPredictionCheckIn] | None = None,
     feature_hall_lite_weight_prediction: bool = False,
@@ -232,6 +242,8 @@ def predict_weight_periods_selected(
         periods_days: Prediction periods in days.
         body_fat_pct: Optional body-fat percentage.
         alcohol_kcal: Alcohol kcal added separately to intake.
+        walking_cadence_steps_per_min: Optional walking cadence in steps/min.
+        walking_cadence_minutes: Minutes observed at the walking cadence.
         chronic_diseases: User condition codes for safety routing.
         prediction_checkins: Weekly measured-weight follow-up values for mismatch warning.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
@@ -258,6 +270,8 @@ def predict_weight_periods_selected(
             periods_days=periods_days,
             body_fat_pct=body_fat_pct,
             alcohol_kcal=alcohol_kcal,
+            walking_cadence_steps_per_min=walking_cadence_steps_per_min,
+            walking_cadence_minutes=walking_cadence_minutes,
             chronic_diseases=chronic_diseases,
             prediction_checkins=prediction_checkins,
         )
@@ -273,6 +287,8 @@ def predict_weight_periods_selected(
             days=days,
             body_fat_pct=body_fat_pct,
             alcohol_kcal=alcohol_kcal,
+            walking_cadence_steps_per_min=walking_cadence_steps_per_min,
+            walking_cadence_minutes=walking_cadence_minutes,
             chronic_diseases=chronic_diseases,
             feature_hall_lite_weight_prediction=feature_hall_lite_weight_prediction,
             engine=engine,
@@ -282,6 +298,10 @@ def predict_weight_periods_selected(
     safety_warnings: list[str] = []
     if alcohol_kcal > 0:
         safety_warnings.append("알코올 열량을 일일 섭취 열량에 별도 합산했습니다.")
+    if walking_cadence_steps_per_min is not None and walking_cadence_minutes > 0:
+        safety_warnings.append(
+            "보행 cadence 기반 운동 열량을 Tudor-Locke 휴리스틱 METs로 환산해 TDEE에 반영했습니다."
+        )
     return WeightPredictionResponse(
         predictions=predictions,
         safety_warnings=safety_warnings,
