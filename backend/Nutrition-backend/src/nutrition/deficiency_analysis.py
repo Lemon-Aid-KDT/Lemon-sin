@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.models.schemas.nutrition import (
+    KDRIReference,
     NutrientAnalysisResult,
     NutrientIntake,
     NutrientStatus,
@@ -10,16 +11,35 @@ from src.models.schemas.nutrition import (
 )
 from src.models.schemas.user import UserProfile
 from src.nutrition.chronic_priority import get_chronic_priority_match
-from src.nutrition.kdris import get_kdris_dataset_context, lookup_kdris_reference
+from src.nutrition.kdris import get_kdris_dataset_context, get_kdris_for_profile
 from src.nutrition.unit_converter import convert_amount
 
-DEFICIENT_THRESHOLD = 0.35
 LOW_THRESHOLD = 0.70
-EXCESSIVE_THRESHOLD = 1.30
+NEAR_UL_THRESHOLD = 0.80
+SMOKER_VITAMIN_C_ADDITIONAL_MG = 35.0
+AUDIT_KR_RISK_CUTOFF = 3
 RATIO_DECIMALS = 2
 AMOUNT_DECIMALS = 3
 FORBIDDEN_TERMS = ("진단", "치료", "처방", "복용량 변경")
 NUTRITION_ANALYSIS_ALGORITHM_VERSION = "nutrition-v1.0.0"
+HIGH_RISK_NUTRITION_ROUTE_FLAGS = {
+    "ckd",
+    "chronic_kidney_disease",
+    "cirrhosis",
+    "liver_disease",
+    "heart_failure",
+    "chf",
+    "thyroid",
+    "hypothyroidism",
+    "hyperthyroidism",
+    "cancer",
+    "ibd",
+}
+REFERENCE_TYPE_RECOMMENDED = {"RNI", "RDA"}
+REFERENCE_TYPE_AI = "AI"
+REFERENCE_TYPE_EAR = "EAR"
+CURRENT_SMOKING_STATUSES = {"current_light", "current_heavy"}
+AUDIT_KR_SUPPORT_NUTRIENTS = {"thiamin_mg", "folate_ug", "magnesium_mg", "zinc_mg"}
 
 
 def _message_for_status(status: NutrientStatus) -> str:
@@ -32,40 +52,167 @@ def _message_for_status(status: NutrientStatus) -> str:
         사용자 노출용 문구.
     """
     messages = {
+        NutrientStatus.AT_RISK_INADEQUATE: "평균 필요량 기준으로 낮은 섭취 가능성이 있어 확인이 필요합니다.",
+        NutrientStatus.BELOW_RDA: "권장섭취량보다 낮아 식사 구성을 확인해보세요.",
         NutrientStatus.DEFICIENT: "부족 가능성이 높아 섭취량 확인이 필요합니다.",
         NutrientStatus.LOW: "섭취량이 낮을 가능성이 있어 우선 확인 대상입니다.",
         NutrientStatus.ADEQUATE: "현재 입력 기준으로 적정 범위에 가깝습니다.",
+        NutrientStatus.EXCESSIVE_NEAR_UL: "상한 섭취량에 가까워 추가 섭취 여부 확인이 필요합니다.",
         NutrientStatus.EXCESSIVE: "섭취량이 기준보다 많아 조정 여부 확인이 필요합니다.",
         NutrientStatus.RISKY: "상한 섭취량을 초과할 수 있어 전문가 상담 권장 대상입니다.",
+        NutrientStatus.REFERRAL_REQUIRED: "일반 기준 자동 평가보다 전문가 상담이 우선입니다.",
     }
     return messages[status]
+
+
+def _normalized_diseases(profile: UserProfile) -> set[str]:
+    """사용자 질환 코드를 안전 라우팅 비교용으로 정규화한다.
+
+    Args:
+        profile: 사용자 프로필.
+
+    Returns:
+        Case-folded disease code set.
+    """
+    return {disease.casefold() for disease in profile.chronic_diseases}
+
+
+def _requires_referral_route(profile: UserProfile) -> bool:
+    """일반 KDRIs 자동 평가 대신 referral 상태를 반환해야 하는지 판단한다.
+
+    Args:
+        profile: 사용자 프로필.
+
+    Returns:
+        고위험 질환 flag가 있으면 True.
+    """
+    return bool(_normalized_diseases(profile) & HIGH_RISK_NUTRITION_ROUTE_FLAGS)
+
+
+def _is_current_smoker(profile: UserProfile) -> bool:
+    """현재 흡연자 비타민 C 참고 기준을 적용할지 판단한다.
+
+    Args:
+        profile: 사용자 프로필.
+
+    Returns:
+        현재 흡연 상태이면 True.
+    """
+    return profile.smoking_status in CURRENT_SMOKING_STATUSES
+
+
+def _analysis_reference_amount(reference: KDRIReference, profile: UserProfile) -> float:
+    """사용자 프로필에 맞는 분석 기준 섭취량을 반환한다.
+
+    Args:
+        reference: 선택된 KDRIs 기준값.
+        profile: 사용자 프로필.
+
+    Returns:
+        분석 기준 섭취량. 현재 흡연자의 비타민 C는 IOM/NIH ODS 참고치(+35mg)를 더한다.
+
+    Raises:
+        ValueError: 기준량이 없는 경우.
+    """
+    if reference.reference_amount is None:
+        raise ValueError(
+            f"KDRIs scalar reference not available for analysis: {reference.nutrient_code}"
+        )
+    amount = reference.reference_amount
+    if reference.nutrient_code == "vitamin_c_mg" and _is_current_smoker(profile):
+        return amount + SMOKER_VITAMIN_C_ADDITIONAL_MG
+    return amount
+
+
+def _select_reference_pair(
+    references: list[KDRIReference],
+    nutrient_code: str,
+) -> tuple[KDRIReference, KDRIReference | None]:
+    """분석 표시 기준과 EAR 기준을 함께 선택한다.
+
+    Args:
+        references: 프로필에 맞는 KDRIs 기준값 목록.
+        nutrient_code: 내부 영양소 코드.
+
+    Returns:
+        표시 기준(RNI/RDA 우선, 없으면 AI)과 EAR 기준.
+
+    Raises:
+        ValueError: 기준값이 없는 경우.
+    """
+    matches = [reference for reference in references if reference.nutrient_code == nutrient_code]
+    if not matches:
+        raise ValueError(f"KDRIs reference not found: {nutrient_code}")
+    recommended = next(
+        (
+            reference
+            for reference in matches
+            if reference.reference_type in REFERENCE_TYPE_RECOMMENDED
+            and reference.reference_amount is not None
+        ),
+        None,
+    )
+    if recommended is None:
+        recommended = next(
+            (
+                reference
+                for reference in matches
+                if reference.reference_type == REFERENCE_TYPE_AI
+                and reference.reference_amount is not None
+            ),
+            None,
+        )
+    if recommended is None:
+        recommended = next(
+            (reference for reference in matches if reference.reference_amount is not None),
+            None,
+        )
+    if recommended is None:
+        raise ValueError(f"KDRIs scalar reference not available for analysis: {nutrient_code}")
+    ear = next(
+        (
+            reference
+            for reference in matches
+            if reference.reference_type == REFERENCE_TYPE_EAR
+            and reference.reference_amount is not None
+        ),
+        None,
+    )
+    return recommended, ear
 
 
 def _classify_status(
     actual_amount: float,
     reference_amount: float,
     ul_amount: float | None,
+    *,
+    reference_type: str,
+    ear_amount: float | None,
 ) -> NutrientStatus:
-    """실제 섭취량을 기준값과 비교해 상태를 분류한다.
+    """실제 섭취량을 EAR/RDA/AI/UL 기준과 비교해 상태를 분류한다.
 
     Args:
         actual_amount: 기준 단위로 환산된 실제 섭취량.
         reference_amount: 기준 섭취량.
         ul_amount: 상한 섭취량.
+        reference_type: 표시 기준 유형.
+        ear_amount: 평균 필요량. 없으면 AI 또는 RDA fallback을 사용한다.
 
     Returns:
         섭취 상태.
     """
-    ratio = actual_amount / reference_amount
+    status = NutrientStatus.ADEQUATE
     if ul_amount is not None and actual_amount > ul_amount:
-        return NutrientStatus.RISKY
-    if ratio > EXCESSIVE_THRESHOLD:
-        return NutrientStatus.EXCESSIVE
-    if ratio < DEFICIENT_THRESHOLD:
-        return NutrientStatus.DEFICIENT
-    if ratio < LOW_THRESHOLD:
-        return NutrientStatus.LOW
-    return NutrientStatus.ADEQUATE
+        status = NutrientStatus.RISKY
+    elif ul_amount is not None and actual_amount >= ul_amount * NEAR_UL_THRESHOLD:
+        status = NutrientStatus.EXCESSIVE_NEAR_UL
+    elif (ear_amount is not None and actual_amount < ear_amount) or (
+        reference_type == REFERENCE_TYPE_AI and actual_amount < reference_amount * LOW_THRESHOLD
+    ):
+        status = NutrientStatus.AT_RISK_INADEQUATE
+    elif reference_type != REFERENCE_TYPE_AI and actual_amount < reference_amount:
+        status = NutrientStatus.BELOW_RDA
+    return status
 
 
 def contains_forbidden_terms(messages: list[str]) -> bool:
@@ -97,20 +244,38 @@ def analyze_nutrient_intakes(
         ValueError: 기준값이 없거나 단위 환산이 불가능한 영양소가 포함된 경우.
     """
     results: list[NutrientAnalysisResult] = []
+    dataset_context = get_kdris_dataset_context()
+    if _requires_referral_route(profile):
+        return NutritionAnalysisResponse(
+            results=[],
+            dataset_status=dataset_context["dataset_status"],
+            dataset_version=dataset_context["dataset_version"],
+            source_manifest_version=dataset_context["source_manifest_version"],
+            routing_status="referral_required",
+            safety_messages=[
+                "등록된 건강 상태에서는 일반 KDRIs 자동 평가보다 전문가 상담이 우선입니다.",
+            ],
+            note="결과는 보류되었으며 개인 건강 상태에 맞춘 상담을 권장합니다.",
+        )
+
+    profile_references = get_kdris_for_profile(
+        age=profile.age,
+        sex=profile.sex,
+        pregnancy_status=profile.pregnancy_status,
+    )
+    safety_messages: list[str] = []
+    if _is_current_smoker(profile):
+        safety_messages.append(
+            "현재 흡연자는 비타민 C 분석 기준에 IOM/NIH ODS 참고치 +35mg을 반영했습니다."
+        )
+    if profile.audit_kr_score is not None and profile.audit_kr_score >= AUDIT_KR_RISK_CUTOFF:
+        safety_messages.append(
+            "AUDIT-KR 위험 음주 범위에서는 B1, 엽산, 마그네슘, 아연 섭취 상태 확인을 우선 권장합니다."
+        )
 
     for intake in intakes:
-        reference = lookup_kdris_reference(
-            nutrient_code=intake.nutrient_code,
-            age=profile.age,
-            sex=profile.sex,
-            pregnancy_status=profile.pregnancy_status,
-        )
-        if reference is None:
-            raise ValueError(f"KDRIs reference not found: {intake.nutrient_code}")
-        if reference.reference_amount is None:
-            raise ValueError(
-                f"KDRIs scalar reference not available for analysis: {intake.nutrient_code}"
-            )
+        reference, ear_reference = _select_reference_pair(profile_references, intake.nutrient_code)
+        reference_amount = _analysis_reference_amount(reference, profile)
 
         actual_amount = convert_amount(
             amount=intake.amount,
@@ -126,17 +291,41 @@ def analyze_nutrient_intakes(
                 to_unit=reference.reference_unit,
                 nutrient_code=intake.nutrient_code,
             )
+        ear_amount = None
+        if ear_reference is not None:
+            ear_amount = convert_amount(
+                amount=ear_reference.reference_amount or 0.0,
+                from_unit=ear_reference.reference_unit,
+                to_unit=reference.reference_unit,
+                nutrient_code=intake.nutrient_code,
+            )
         status = _classify_status(
             actual_amount=actual_amount,
-            reference_amount=reference.reference_amount,
+            reference_amount=reference_amount,
             ul_amount=ul_amount,
+            reference_type=reference.reference_type,
+            ear_amount=ear_amount,
         )
-        ratio = actual_amount / reference.reference_amount
+        ratio = actual_amount / reference_amount
+        priority_seed = 0
+        if (
+            profile.audit_kr_score is not None
+            and profile.audit_kr_score >= AUDIT_KR_RISK_CUTOFF
+            and reference.nutrient_code in AUDIT_KR_SUPPORT_NUTRIENTS
+            and status
+            in (
+                NutrientStatus.AT_RISK_INADEQUATE,
+                NutrientStatus.BELOW_RDA,
+                NutrientStatus.DEFICIENT,
+                NutrientStatus.LOW,
+            )
+        ):
+            priority_seed = 1
         results.append(
             NutrientAnalysisResult(
                 nutrient_code=reference.nutrient_code,
                 nutrient_name=reference.nutrient_name,
-                reference_amount=reference.reference_amount,
+                reference_amount=reference_amount,
                 reference_type=reference.reference_type,
                 source_id=reference.source_id,
                 errata_version=reference.errata_version,
@@ -146,7 +335,7 @@ def analyze_nutrient_intakes(
                 ratio=round(ratio, RATIO_DECIMALS),
                 ul_amount=ul_amount,
                 status=status,
-                priority=0,
+                priority=priority_seed,
                 user_message=_message_for_status(status),
             )
         )
@@ -154,10 +343,21 @@ def analyze_nutrient_intakes(
     low_results = [
         result
         for result in results
-        if result.status in (NutrientStatus.DEFICIENT, NutrientStatus.LOW)
+        if result.status
+        in (
+            NutrientStatus.DEFICIENT,
+            NutrientStatus.LOW,
+            NutrientStatus.AT_RISK_INADEQUATE,
+            NutrientStatus.BELOW_RDA,
+        )
     ]
     priority_boosts: dict[str, int] = {}
     for result in low_results:
+        if result.priority > 0:
+            priority_boosts[result.nutrient_code] = result.priority
+            result.priority_context.append("audit_kr_risk")
+            result.priority_source_ids.append("audit_kr_profile")
+            result.user_message = "현재 프로필 기준으로 우선 확인 대상입니다."
         priority_match = get_chronic_priority_match(
             nutrient_code=result.nutrient_code,
             chronic_diseases=profile.chronic_diseases,
@@ -179,10 +379,10 @@ def analyze_nutrient_intakes(
     for index, result in enumerate(low_results, start=1):
         result.priority = index
 
-    dataset_context = get_kdris_dataset_context()
     return NutritionAnalysisResponse(
         results=results,
         dataset_status=dataset_context["dataset_status"],
         dataset_version=dataset_context["dataset_version"],
         source_manifest_version=dataset_context["source_manifest_version"],
+        safety_messages=safety_messages,
     )

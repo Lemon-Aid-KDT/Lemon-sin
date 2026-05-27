@@ -8,7 +8,14 @@ from typing import Final
 from src.models.schemas.algorithm import WeightPredictionResponse, WeightPredictionStep
 from src.models.schemas.user import Sex
 from src.prediction.hall import HallLiteResult, predict_with_hall
-from src.prediction.weight import KCAL_PER_KG_FAT, predict_weight_n_days, predict_weight_periods
+from src.prediction.weight import (
+    ALCOHOL_STORAGE_KCAL_FACTOR,
+    KCAL_PER_KG_FAT,
+    build_disabled_weight_prediction_response,
+    predict_weight_n_days,
+    predict_weight_periods,
+    should_disable_weight_prediction,
+)
 
 LONG_TERM_HALL_CANDIDATE_DAYS: Final[int] = 90
 HALL_LITE_MIN_AGE_YEARS: Final[int] = 18
@@ -94,6 +101,7 @@ def _hall_result_to_weight_step(
     initial_daily_balance_kcal = daily_intake_kcal - result.initial_tdee_kcal
     initial_cumulative_balance_kcal = initial_daily_balance_kcal * days
     theoretical_change_kg = initial_cumulative_balance_kcal / KCAL_PER_KG_FAT
+    range_band_kg = abs(result.weight_change_kg) * 0.10
 
     return WeightPredictionStep(
         days=days,
@@ -107,6 +115,12 @@ def _hall_result_to_weight_step(
         theoretical_change_kg=round(theoretical_change_kg, ROUND_CHANGE_DECIMALS),
         corrected_change_kg=round(result.weight_change_kg, ROUND_CHANGE_DECIMALS),
         predicted_weight_kg=result.predicted_weight_kg,
+        expected_weight_range_kg=(
+            round(result.predicted_weight_kg - range_band_kg, 2),
+            round(result.predicted_weight_kg + range_band_kg, 2),
+        ),
+        model_name="hall_lite",
+        confidence="low" if days >= LONG_TERM_HALL_CANDIDATE_DAYS else "medium",
         warning=HALL_LITE_WARNING,
     )
 
@@ -120,6 +134,9 @@ def _predict_one_period(
     daily_steps: int,
     daily_intake_kcal: float,
     days: int,
+    body_fat_pct: float | None,
+    alcohol_kcal: float,
+    chronic_diseases: list[str] | None,
     feature_hall_lite_weight_prediction: bool,
     engine: WeightPredictionEngine,
 ) -> WeightPredictionStep:
@@ -133,6 +150,9 @@ def _predict_one_period(
         daily_steps: Daily step count.
         daily_intake_kcal: Daily intake in kcal/day.
         days: Prediction period in days.
+        body_fat_pct: Optional body-fat percentage.
+        alcohol_kcal: Alcohol kcal added separately to intake.
+        chronic_diseases: User condition codes for safety routing.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
         engine: Configured prediction engine.
 
@@ -146,18 +166,19 @@ def _predict_one_period(
         days=days,
     ):
         try:
+            effective_intake_kcal = daily_intake_kcal + alcohol_kcal * ALCOHOL_STORAGE_KCAL_FACTOR
             result = predict_with_hall(
                 weight_kg=weight_kg,
                 height_cm=height_cm,
                 age=age,
                 sex=sex,
                 daily_steps=daily_steps,
-                daily_intake_kcal=daily_intake_kcal,
+                daily_intake_kcal=effective_intake_kcal,
                 n_days=days,
             )
             return _hall_result_to_weight_step(
                 result=result,
-                daily_intake_kcal=daily_intake_kcal,
+                daily_intake_kcal=effective_intake_kcal,
                 days=days,
             )
         except ValueError:
@@ -171,6 +192,9 @@ def _predict_one_period(
         daily_steps=daily_steps,
         daily_intake_kcal=daily_intake_kcal,
         days=days,
+        body_fat_pct=body_fat_pct,
+        alcohol_kcal=alcohol_kcal,
+        chronic_diseases=chronic_diseases,
     )
 
 
@@ -183,6 +207,9 @@ def predict_weight_periods_selected(
     daily_steps: int,
     daily_intake_kcal: float,
     periods_days: list[int],
+    body_fat_pct: float | None = None,
+    alcohol_kcal: float = 0.0,
+    chronic_diseases: list[str] | None = None,
     feature_hall_lite_weight_prediction: bool = False,
     weight_prediction_engine: str | WeightPredictionEngine = WeightPredictionEngine.STATIC_7STEP,
 ) -> WeightPredictionResponse:
@@ -196,6 +223,9 @@ def predict_weight_periods_selected(
         daily_steps: Daily step count.
         daily_intake_kcal: Daily intake in kcal/day.
         periods_days: Prediction periods in days.
+        body_fat_pct: Optional body-fat percentage.
+        alcohol_kcal: Alcohol kcal added separately to intake.
+        chronic_diseases: User condition codes for safety routing.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
         weight_prediction_engine: Configured prediction engine.
 
@@ -205,6 +235,9 @@ def predict_weight_periods_selected(
     Raises:
         ValueError: If the configured prediction engine is unsupported.
     """
+    if should_disable_weight_prediction(chronic_diseases):
+        return build_disabled_weight_prediction_response(chronic_diseases or [])
+
     engine = _coerce_engine(weight_prediction_engine)
     if not feature_hall_lite_weight_prediction or engine == WeightPredictionEngine.STATIC_7STEP:
         return predict_weight_periods(
@@ -215,6 +248,9 @@ def predict_weight_periods_selected(
             daily_steps=daily_steps,
             daily_intake_kcal=daily_intake_kcal,
             periods_days=periods_days,
+            body_fat_pct=body_fat_pct,
+            alcohol_kcal=alcohol_kcal,
+            chronic_diseases=chronic_diseases,
         )
 
     predictions = [
@@ -226,9 +262,15 @@ def predict_weight_periods_selected(
             daily_steps=daily_steps,
             daily_intake_kcal=daily_intake_kcal,
             days=days,
+            body_fat_pct=body_fat_pct,
+            alcohol_kcal=alcohol_kcal,
+            chronic_diseases=chronic_diseases,
             feature_hall_lite_weight_prediction=feature_hall_lite_weight_prediction,
             engine=engine,
         )
         for days in periods_days
     ]
-    return WeightPredictionResponse(predictions=predictions)
+    safety_warnings: list[str] = []
+    if alcohol_kcal > 0:
+        safety_warnings.append("알코올 열량을 일일 섭취 열량에 별도 합산했습니다.")
+    return WeightPredictionResponse(predictions=predictions, safety_warnings=safety_warnings)

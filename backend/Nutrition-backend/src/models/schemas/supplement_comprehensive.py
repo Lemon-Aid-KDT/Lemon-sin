@@ -59,6 +59,9 @@ class UserProfileInput(BaseModel):
         sex: 성별.
         chronic_conditions: 사용자가 보유한 만성질환 인디케이션.
         is_pregnant: 임신 여부 (KDRIs 분기에 사용, 선택).
+        smoking_status: 흡연자 베타카로틴/비타민A 경고 분기.
+        audit_kr_score: 음주 위험 스크리닝 점수. None이면 미입력.
+        medications: 약물-영양제 상호작용 경고용 약물 코드.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -67,6 +70,15 @@ class UserProfileInput(BaseModel):
     sex: Literal["male", "female"]
     chronic_conditions: list[ChronicCondition] = Field(default_factory=list, max_length=8)
     is_pregnant: bool = Field(default=False)
+    smoking_status: Literal[
+        "never",
+        "former_lt_1y",
+        "former_ge_1y",
+        "current_light",
+        "current_heavy",
+    ] = "never"
+    audit_kr_score: int | None = Field(default=None, ge=0, le=40)
+    medications: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ComprehensiveAnalysisRequest(BaseModel):

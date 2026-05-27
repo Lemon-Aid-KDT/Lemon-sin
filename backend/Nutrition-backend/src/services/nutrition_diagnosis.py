@@ -113,8 +113,17 @@ def build_nutrition_diagnosis_response(
         raise ValueError("Persisted nutrition analysis result contains unsafe user wording.")
 
     counts = _status_counts(diagnoses)
-    deficient_or_low_count = counts[NutrientStatus.DEFICIENT] + counts[NutrientStatus.LOW]
-    excessive_or_risky_count = counts[NutrientStatus.EXCESSIVE] + counts[NutrientStatus.RISKY]
+    deficient_or_low_count = (
+        counts[NutrientStatus.DEFICIENT]
+        + counts[NutrientStatus.LOW]
+        + counts[NutrientStatus.AT_RISK_INADEQUATE]
+        + counts[NutrientStatus.BELOW_RDA]
+    )
+    excessive_or_risky_count = (
+        counts[NutrientStatus.EXCESSIVE]
+        + counts[NutrientStatus.EXCESSIVE_NEAR_UL]
+        + counts[NutrientStatus.RISKY]
+    )
     summary = NutritionDiagnosisSummary(
         total_count=len(diagnoses),
         deficient_count=counts[NutrientStatus.DEFICIENT],

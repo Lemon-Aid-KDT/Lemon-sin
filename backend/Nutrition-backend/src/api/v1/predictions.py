@@ -136,6 +136,9 @@ async def predict_weight(
         daily_steps=request.daily_steps,
         daily_intake_kcal=request.daily_intake_kcal,
         periods_days=request.periods_days,
+        body_fat_pct=request.body_fat_pct,
+        alcohol_kcal=request.alcohol_kcal,
+        chronic_diseases=request.chronic_diseases,
         feature_hall_lite_weight_prediction=settings.feature_hall_lite_weight_prediction,
         weight_prediction_engine=settings.weight_prediction_engine,
     )
@@ -151,6 +154,7 @@ async def predict_weight(
         event_metadata={
             "periods_days": list(request.periods_days),
             "engine": settings.weight_prediction_engine,
+            "prediction_status": response.prediction_status,
         },
     )
     return response

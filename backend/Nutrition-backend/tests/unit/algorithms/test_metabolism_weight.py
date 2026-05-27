@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import pytest
-from src.algorithms.metabolism import calculate_bmr, calculate_tdee, get_activity_factor
+from src.algorithms.metabolism import (
+    calculate_bmr,
+    calculate_exercise_kcal_from_mets,
+    calculate_katch_mcardle_bmr,
+    calculate_tdee,
+    get_activity_factor,
+)
 from src.prediction.weight import predict_weight_n_days, predict_weight_periods
 
 
@@ -27,6 +33,21 @@ def test_bmr_male_female_constant_difference() -> None:
     female_bmr = calculate_bmr(weight_kg=70.0, height_cm=170, age=30, sex="female")
 
     assert male_bmr - female_bmr == 166.0
+
+
+def test_katch_mcardle_bmr_used_when_body_fat_is_available() -> None:
+    """체지방률이 유효하면 제지방량 기반 BMR을 계산한다."""
+    assert calculate_katch_mcardle_bmr(weight_kg=68.0, body_fat_pct=30.0) == 1398.0
+    assert (
+        calculate_bmr(
+            weight_kg=68.0,
+            height_cm=160,
+            age=50,
+            sex="female",
+            body_fat_pct=30.0,
+        )
+        == 1398.0
+    )
 
 
 @pytest.mark.parametrize(
@@ -54,6 +75,19 @@ def test_tdee_50f_example() -> None:
     assert tdee == pytest.approx(1745.0, abs=0.5)
 
 
+def test_tdee_adds_mets_based_intentional_exercise() -> None:
+    """METs와 운동 분 입력이 있으면 의도 운동 열량을 TDEE에 더한다."""
+    exercise_kcal = calculate_exercise_kcal_from_mets(mets=7.0, weight_kg=50.0, minutes=30.0)
+
+    assert exercise_kcal == pytest.approx(183.75, abs=0.01)
+    assert calculate_tdee(
+        estimated_bmr=1269.0,
+        daily_steps=6500,
+        weight_kg=50.0,
+        intentional_exercises=[(7.0, 30.0)],
+    ) == pytest.approx(1929.0, abs=0.5)
+
+
 def test_weight_prediction_50f_30days() -> None:
     """50세 여성 30일 체중 예측 예시를 검증한다."""
     prediction = predict_weight_n_days(
@@ -71,8 +105,9 @@ def test_weight_prediction_50f_30days() -> None:
     assert prediction.daily_balance_kcal == pytest.approx(-245, abs=0.5)
     assert prediction.cumulative_balance_kcal == pytest.approx(-7350, abs=2)
     assert prediction.theoretical_change_kg == pytest.approx(-0.955, abs=0.01)
-    assert prediction.corrected_change_kg == pytest.approx(-0.81, abs=0.01)
-    assert prediction.predicted_weight_kg == pytest.approx(67.19, abs=0.05)
+    assert prediction.corrected_change_kg == pytest.approx(-1.123, abs=0.01)
+    assert prediction.predicted_weight_kg == pytest.approx(66.88, abs=0.05)
+    assert prediction.expected_weight_range_kg == pytest.approx((66.77, 66.99), abs=0.01)
 
 
 def test_weight_prediction_periods_includes_long_term_warning() -> None:
@@ -89,3 +124,39 @@ def test_weight_prediction_periods_includes_long_term_warning() -> None:
 
     assert [prediction.days for prediction in response.predictions] == [7, 30, 90]
     assert response.predictions[-1].warning is not None
+    assert response.predictions[-1].confidence == "low"
+
+
+def test_weight_prediction_alcohol_kcal_uses_storage_factor() -> None:
+    """별도 알코올 kcal은 지방 저장 보정 계수를 적용해 balance에 반영한다."""
+    prediction = predict_weight_n_days(
+        weight_kg=68.0,
+        height_cm=160,
+        age=50,
+        sex="female",
+        daily_steps=6500,
+        daily_intake_kcal=1500,
+        alcohol_kcal=100,
+        days=7,
+    )
+
+    assert prediction.daily_balance_kcal == pytest.approx(-115, abs=0.5)
+    assert prediction.corrected_change_kg == pytest.approx(-0.19, abs=0.01)
+
+
+def test_weight_prediction_disables_high_risk_conditions() -> None:
+    """갑상선·CKD 등 고위험 조건에서는 자동 체중 예측을 보류한다."""
+    response = predict_weight_periods(
+        weight_kg=68.0,
+        height_cm=160,
+        age=50,
+        sex="female",
+        daily_steps=6500,
+        daily_intake_kcal=1500,
+        periods_days=[7, 30],
+        chronic_diseases=["hyperthyroidism"],
+    )
+
+    assert response.prediction_status == "disabled"
+    assert response.predictions == []
+    assert response.safety_warnings

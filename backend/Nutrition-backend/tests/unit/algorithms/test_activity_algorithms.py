@@ -28,6 +28,7 @@ from src.models.schemas.user import UserProfile
         (70.0, 170.0, 24.2, BMICategory.OVERWEIGHT),
         (80.0, 170.0, 27.7, BMICategory.OBESE_1),
         (90.0, 170.0, 31.1, BMICategory.OBESE_2),
+        (105.0, 170.0, 36.3, BMICategory.OBESE_3),
         (53.4, 170.0, 18.5, BMICategory.NORMAL),
         (66.4, 170.0, 23.0, BMICategory.OVERWEIGHT),
     ],
@@ -45,16 +46,21 @@ def test_bmi_classification(
     assert classify_bmi(bmi) == expected_category
 
 
+def test_bmi_classification_supports_who_standard_region() -> None:
+    """WHO 기준을 선택하면 동일 BMI도 다른 기준으로 분류할 수 있다."""
+    assert classify_bmi(32.0, region="who_standard") == BMICategory.OBESE_1
+
+
 def test_v1_recommended_steps_50f_obese1() -> None:
     """50대 여성 비만1단계 권장 걸음수 예시를 재현한다."""
     steps = calculate_recommended_steps("female", 50, BMICategory.OBESE_1)
 
-    assert steps == 7524
+    assert steps == 7980
 
 
 def test_v1_score_caps_at_120_percent() -> None:
     """권장 걸음수 대비 120% 초과 달성은 100점으로 제한된다."""
-    score = calculate_v1_score(actual_steps=15048, recommended_steps=7524)
+    score = calculate_v1_score(actual_steps=15960, recommended_steps=7980)
 
     assert score == pytest.approx(100.0, abs=0.01)
 
@@ -65,7 +71,9 @@ def test_v2_heart_rate_fallback_and_score() -> None:
     assert calculate_hr_factor(20) == pytest.approx(0.667, abs=0.01)
 
     target_range = calculate_target_hr_range(age=50)
-    assert (target_range.low_bpm, target_range.high_bpm) == (85, 119)
+    assert (target_range.low_bpm, target_range.high_bpm) == (111, 131)
+    guide_range = calculate_target_hr_range(age=50, formula="guide_220_age")
+    assert (guide_range.low_bpm, guide_range.high_bpm) == (109, 129)
 
     score = calculate_v2_score(v1_score=77.5, hr_factor=0.667)
     assert score == pytest.approx(69.7, abs=0.5)
@@ -91,6 +99,31 @@ def test_v4_disease_multiplier_ignores_unknown_codes() -> None:
     assert calculate_v4_score(72.7, 1.20) == pytest.approx(87.2, abs=0.1)
 
 
+def test_v4_smoking_multiplier_uses_max_not_stacked() -> None:
+    """흡연 가중치는 만성질환 가중치와 중복 합산하지 않고 더 큰 값을 사용한다."""
+    assert calculate_disease_multiplier(["diabetes"], "current_heavy") == 1.10
+    assert calculate_disease_multiplier(["cardiovascular"], "current_heavy") == 1.15
+    assert (
+        calculate_disease_multiplier(
+            ["diabetes", "hypertension", "cardiovascular"],
+            "current_heavy",
+        )
+        == 1.30
+    )
+
+
+def test_chronic_condition_recommended_steps_override_general_target() -> None:
+    """만성질환 권장 걸음수는 일반 나이/BMI 목표보다 보수적인 값을 사용한다."""
+    steps = calculate_recommended_steps(
+        "female",
+        50,
+        BMICategory.OBESE_1,
+        chronic_diseases=["diabetes", "hypertension"],
+    )
+
+    assert steps == 7500
+
+
 def test_activity_score_50f_obese1_example() -> None:
     """50대 여성 비만1단계 활동점수 v1-v4 흐름을 검증한다."""
     request = ActivityScoreRequest(
@@ -108,8 +141,9 @@ def test_activity_score_50f_obese1_example() -> None:
     response = calculate_activity_score(request)
 
     assert response.bmi.category == BMICategory.OBESE_1
-    assert response.recommended_steps == 7524
-    assert response.v1_score == pytest.approx(77.5, abs=0.1)
-    assert response.v2_score == pytest.approx(69.75, abs=0.1)
+    assert response.recommended_steps == 7500
+    assert response.v1_score == pytest.approx(77.78, abs=0.1)
+    assert response.v2_score == pytest.approx(70.0, abs=0.1)
     assert response.percentile_bonus == 0
-    assert response.v4_score == pytest.approx(83.7, abs=0.2)
+    assert response.v4_score == pytest.approx(84.0, abs=0.2)
+    assert response.score_label == "활동 동기 점수"

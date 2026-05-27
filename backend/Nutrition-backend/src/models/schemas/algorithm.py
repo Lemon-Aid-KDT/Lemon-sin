@@ -25,16 +25,18 @@ class EvidenceLevel(StrEnum):
 
 
 class BMICategory(StrEnum):
-    """한국·아시아 사용자 대상 BMI 기준 분류."""
+    """BMI 기준 분류."""
 
     UNDERWEIGHT = "underweight"
     NORMAL = "normal"
     OVERWEIGHT = "overweight"
     OBESE_1 = "obese_1"
     OBESE_2 = "obese_2"
+    OBESE_3 = "obese_3"
 
 
-HRMaxFormula = Literal["guide_220_age", "tanaka_2001"]
+BMIRegion = Literal["asia_kr", "who_standard"]
+HRMaxFormula = Literal["guide_220_age", "tanaka_2001", "gellish_2007", "nes_2013"]
 ActivityPeerScore = Annotated[float, Field(ge=0, le=100)]
 PredictionPeriodDays = Annotated[int, Field(ge=1, le=365)]
 
@@ -44,15 +46,29 @@ class BMIResult(BaseModel):
 
     Attributes:
         bmi: BMI 값(kg/m^2).
-        category: 한국·아시아 기준 BMI 분류.
+        category: 선택 기준의 BMI 분류.
+        region: BMI 기준 체계.
+        criteria_source: 기준 출처.
         evidence_level: 기준값 근거 수준.
         note: 사용자 노출 시 확정 표현을 피하기 위한 설명.
+        notes: 보완 지표와 사용자 맥락 안내.
+        waist_to_height_ratio: 허리-신장비. 허리둘레가 없으면 None.
+        central_obesity: WHtR 0.5 이상 여부. 허리둘레가 없으면 None.
+        body_fat_flag: 체지방률 참고 flag.
+        sarcopenic_obesity_suspected: 고령·정상 BMI·높은 체지방률 조합 flag.
     """
 
     bmi: float
     category: BMICategory
+    region: BMIRegion = "asia_kr"
+    criteria_source: str = "KSSO 2022"
     evidence_level: EvidenceLevel = EvidenceLevel.A
-    note: str = "BMI 기준 분류이며 체성분이나 질환 상태를 확정하지 않습니다."
+    note: str = "BMI 분류(스크리닝)이며 체성분이나 질환 상태를 확정하지 않습니다."
+    notes: list[str] = Field(default_factory=list)
+    waist_to_height_ratio: float | None = None
+    central_obesity: bool | None = None
+    body_fat_flag: Literal["high", "normal"] | None = None
+    sarcopenic_obesity_suspected: bool | None = None
 
 
 class TargetHeartRateRange(BaseModel):
@@ -94,7 +110,7 @@ class ActivityScoreRequest(BaseModel):
                     "daily_steps": 7000,
                     "target_hr_minutes": 20,
                     "group_v2_scores": [60.0, 62.0, 64.0],
-                    "hrmax_formula": "guide_220_age",
+                    "hrmax_formula": "tanaka_2001",
                 }
             ]
         }
@@ -104,7 +120,7 @@ class ActivityScoreRequest(BaseModel):
     daily_steps: int = Field(ge=0)
     target_hr_minutes: float | None = Field(default=None, ge=0)
     group_v2_scores: list[ActivityPeerScore] = Field(default_factory=list, max_length=500)
-    hrmax_formula: HRMaxFormula = "guide_220_age"
+    hrmax_formula: HRMaxFormula = "tanaka_2001"
 
 
 class ActivityScoreResponse(BaseModel):
@@ -121,6 +137,7 @@ class ActivityScoreResponse(BaseModel):
         v2_score: 심박 가중 점수.
         v3_score: 백분위 보너스 반영 점수.
         v4_score: 만성질환 가중 반영 점수.
+        score_label: UX 라벨. 질환 개선 효과가 아닌 활동 동기 보정임을 명확히 한다.
         note: 의료 확정 표현을 피하기 위한 안내.
     """
 
@@ -134,7 +151,8 @@ class ActivityScoreResponse(BaseModel):
     v2_score: float
     v3_score: float
     v4_score: float
-    note: str = "활동점수는 건강 행동 참고 지표이며 질환 개선 효과를 의미하지 않습니다."
+    score_label: str = "활동 동기 점수"
+    note: str = "활동 동기 점수는 건강 행동 참고 지표이며 질환 개선 효과를 의미하지 않습니다."
 
 
 class WeightPredictionStep(BaseModel):
@@ -149,6 +167,11 @@ class WeightPredictionStep(BaseModel):
         theoretical_change_kg: 7,700 kcal/kg 기준 이론 변화량.
         corrected_change_kg: 프로젝트 보정계수 적용 변화량.
         predicted_weight_kg: 예측 체중.
+        expected_weight_range_kg: 기대 체중 범위. 단정적 예측 표현을 피하기 위한 범위값.
+        model_name: 사용한 예측 모델 이름.
+        confidence: 기간과 사용자 상태를 반영한 신뢰도.
+        prediction_status: 계산 여부.
+        disabled_reason: 자동 계산이 보류된 사유.
         warning: 장기 예측 한계 안내.
     """
 
@@ -160,6 +183,11 @@ class WeightPredictionStep(BaseModel):
     theoretical_change_kg: float
     corrected_change_kg: float
     predicted_weight_kg: float
+    expected_weight_range_kg: tuple[float, float] | None = None
+    model_name: str = "static_energy_balance"
+    confidence: Literal["high", "medium", "low"] = "medium"
+    prediction_status: Literal["computed", "disabled"] = "computed"
+    disabled_reason: str | None = None
     warning: str | None = None
 
 
@@ -173,6 +201,9 @@ class WeightPredictionRequest(BaseModel):
         weight_kg: 현재 체중(kg).
         daily_steps: 일일 걸음수.
         daily_intake_kcal: 일일 섭취 열량.
+        alcohol_kcal: 일일 섭취 열량에 별도로 더할 알코올 열량.
+        body_fat_pct: 체지방률(%). 입력 시 BMR 보조 공식에 사용할 수 있다.
+        chronic_diseases: 자동 체중 예측 안전 분기용 만성질환 코드.
         periods_days: 예측 기간 목록.
     """
 
@@ -186,6 +217,8 @@ class WeightPredictionRequest(BaseModel):
                     "weight_kg": 68,
                     "daily_steps": 6500,
                     "daily_intake_kcal": 1500,
+                    "alcohol_kcal": 0,
+                    "chronic_diseases": [],
                     "periods_days": [7, 30, 90],
                 }
             ]
@@ -198,6 +231,9 @@ class WeightPredictionRequest(BaseModel):
     weight_kg: float = Field(ge=10, le=300)
     daily_steps: int = Field(ge=0)
     daily_intake_kcal: float = Field(ge=0)
+    alcohol_kcal: float = Field(default=0, ge=0, le=5000)
+    body_fat_pct: float | None = Field(default=None, ge=0, le=70)
+    chronic_diseases: list[str] = Field(default_factory=list, max_length=10)
     periods_days: list[PredictionPeriodDays] = Field(
         default_factory=lambda: [7, 30, 90],
         min_length=1,
@@ -210,12 +246,16 @@ class WeightPredictionResponse(BaseModel):
 
     Attributes:
         predictions: 기간별 예측 결과.
+        prediction_status: 전체 예측 상태.
+        safety_warnings: 자동 계산 보류 또는 신뢰도 저하 사유.
         evidence_level: 7,700 kcal/kg 정적 근사와 프로젝트 보정계수의 근거 수준.
         note: 장기 예측 한계 안내.
     """
 
     predictions: list[WeightPredictionStep]
+    prediction_status: Literal["computed", "disabled"] = "computed"
+    safety_warnings: list[str] = Field(default_factory=list)
     evidence_level: EvidenceLevel = EvidenceLevel.B
     note: str = (
-        "체중 예측은 단순 에너지 수지 기반 참고값이며 장기 대사 적응을 완전히 반영하지 않습니다."
+        "기대 체중 범위는 일반적 시나리오 기반 참고값이며 장기 대사 적응을 완전히 반영하지 않습니다."
     )

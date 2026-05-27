@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,11 +18,15 @@ UnitCode = Annotated[str, Field(min_length=1, max_length=16)]
 class NutrientStatus(StrEnum):
     """영양소 섭취 상태 분류."""
 
+    AT_RISK_INADEQUATE = "at_risk_inadequate"
+    BELOW_RDA = "below_rda"
     DEFICIENT = "deficient"
     LOW = "low"
     ADEQUATE = "adequate"
+    EXCESSIVE_NEAR_UL = "excessive_near_ul"
     EXCESSIVE = "excessive"
     RISKY = "risky"
+    REFERRAL_REQUIRED = "referral_required"
 
 
 class KDRIReference(BaseModel):
@@ -112,6 +116,8 @@ class KDRILookupResponse(BaseModel):
         dataset_status: 샘플/공식 데이터 상태.
         dataset_version: KDRIs 데이터셋 버전.
         source_manifest_version: source manifest schema version.
+        routing_status: 사용자 건강 상태에 따른 분석 라우팅 상태.
+        safety_messages: 만성질환·임신·약물 등으로 인한 안전 안내.
         note: 사용자 노출용 안전 문구.
     """
 
@@ -225,6 +231,8 @@ class NutritionAnalysisResponse(BaseModel):
     dataset_status: str
     dataset_version: str
     source_manifest_version: str
+    routing_status: Literal["ok", "referral_required"] = "ok"
+    safety_messages: list[str] = Field(default_factory=list)
     note: str = "결과는 섭취 상태 참고용이며 개인 건강 상태를 확정하지 않습니다."
 
 

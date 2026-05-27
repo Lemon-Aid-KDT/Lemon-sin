@@ -119,7 +119,7 @@ def test_nutrient_analysis_flags_deficient_and_risky() -> None:
 
     by_code = {result.nutrient_code: result for result in response.results}
 
-    assert by_code["vitamin_c_mg"].status == NutrientStatus.DEFICIENT
+    assert by_code["vitamin_c_mg"].status == NutrientStatus.AT_RISK_INADEQUATE
     assert by_code["vitamin_c_mg"].reference_type == "RNI"
     assert by_code["vitamin_c_mg"].source_id == "kns_2025_kdris_publication"
     assert by_code["vitamin_c_mg"].priority == 1
@@ -150,10 +150,10 @@ def test_chronic_priority_boosts_only_low_or_deficient_nutrients() -> None:
 
     by_code = {result.nutrient_code: result for result in response.results}
 
-    assert by_code["vitamin_c_mg"].status == NutrientStatus.DEFICIENT
+    assert by_code["vitamin_c_mg"].status == NutrientStatus.AT_RISK_INADEQUATE
     assert by_code["vitamin_c_mg"].ratio == 0.2
     assert by_code["vitamin_c_mg"].priority == 2
-    assert by_code["potassium_mg"].status == NutrientStatus.LOW
+    assert by_code["potassium_mg"].status == NutrientStatus.AT_RISK_INADEQUATE
     assert by_code["potassium_mg"].ratio == 0.57
     assert by_code["potassium_mg"].priority == 1
     assert by_code["potassium_mg"].priority_context == ["hypertension"]
@@ -161,7 +161,7 @@ def test_chronic_priority_boosts_only_low_or_deficient_nutrients() -> None:
     assert by_code["potassium_mg"].user_message == (
         "현재 입력과 만성질환 정보를 함께 볼 때 우선 확인 대상입니다."
     )
-    assert by_code["magnesium_mg"].status == NutrientStatus.ADEQUATE
+    assert by_code["magnesium_mg"].status == NutrientStatus.EXCESSIVE_NEAR_UL
     assert by_code["magnesium_mg"].priority == 0
     assert by_code["magnesium_mg"].priority_context == []
 
@@ -191,7 +191,7 @@ def test_unknown_chronic_disease_keeps_ratio_based_priority() -> None:
 
 
 def test_ckd_caution_nutrients_do_not_receive_priority_boost() -> None:
-    """신장질환 주의 영양소는 자동으로 부족 우선순위를 올리지 않는다."""
+    """신장질환은 일반 KDRIs 자동 평가 대신 referral route로 분기한다."""
     profile = UserProfile(
         age=30,
         sex="male",
@@ -207,11 +207,52 @@ def test_ckd_caution_nutrients_do_not_receive_priority_boost() -> None:
         ],
     )
 
-    by_code = {result.nutrient_code: result for result in response.results}
+    assert response.routing_status == "referral_required"
+    assert response.results == []
+    assert response.safety_messages
 
-    assert by_code["vitamin_c_mg"].priority == 1
-    assert by_code["potassium_mg"].priority == 2
-    assert by_code["potassium_mg"].priority_context == []
+
+def test_current_smoker_vitamin_c_reference_adds_iom_margin() -> None:
+    """현재 흡연자는 비타민 C 기준에 +35mg 참고치를 반영한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        smoking_status="current_light",
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[NutrientIntake(nutrient_code="vitamin_c_mg", amount=100, unit="mg")],
+    )
+
+    result = response.results[0]
+    assert result.reference_amount == 135
+    assert result.status == NutrientStatus.BELOW_RDA
+    assert response.safety_messages
+
+
+def test_audit_kr_risk_prioritizes_alcohol_support_nutrients() -> None:
+    """AUDIT-KR 위험 범위에서는 B1·엽산·마그네슘·아연 확인을 우선한다."""
+    profile = UserProfile(
+        age=30,
+        sex="male",
+        height_cm=170,
+        weight_kg=70,
+        audit_kr_score=8,
+    )
+    response = analyze_nutrient_intakes(
+        profile=profile,
+        intakes=[
+            NutrientIntake(nutrient_code="thiamin_mg", amount=0.4, unit="mg"),
+            NutrientIntake(nutrient_code="zinc_mg", amount=3, unit="mg"),
+        ],
+    )
+
+    by_code = {result.nutrient_code: result for result in response.results}
+    assert by_code["thiamin_mg"].priority_context == ["audit_kr_risk"]
+    assert by_code["zinc_mg"].priority_context == ["audit_kr_risk"]
+    assert response.safety_messages
 
 
 def test_chronic_priority_messages_do_not_contain_forbidden_terms() -> None:

@@ -7,13 +7,84 @@ from src.models.schemas.algorithm import WeightPredictionResponse, WeightPredict
 from src.models.schemas.user import Sex
 
 KCAL_PER_KG_FAT = 7700.0
+SHORT_TERM_LOSS_KCAL_FACTOR = 0.55
 LOSS_CORRECTION = 0.85
 GAIN_CORRECTION = 0.95
+ALCOHOL_STORAGE_KCAL_FACTOR = 1.30
+SHORT_TERM_DAYS = 7
 LONG_TERM_WARNING_DAYS = 90
 ROUND_KCAL_DECIMALS = 1
 ROUND_CHANGE_DECIMALS = 3
 ROUND_WEIGHT_DECIMALS = 2
 WEIGHT_PREDICTION_ALGORITHM_VERSION = "weight-v1.0.0"
+BLOCKING_CONDITIONS = {
+    "hypothyroidism",
+    "hypothyroid",
+    "hyperthyroidism",
+    "hyperthyroid",
+    "ckd",
+    "chronic_kidney_disease",
+    "dialysis",
+    "heart_failure",
+    "heart_failure_edema",
+    "cirrhosis",
+    "liver_cirrhosis",
+    "corticosteroid",
+    "steroid",
+    "prednisone",
+}
+LOW_CONFIDENCE_CONDITIONS = {"pcos", "diabetes_on_insulin", "diabetes_on_glp1"}
+
+
+def _normalized_conditions(chronic_diseases: list[str] | None) -> set[str]:
+    """Normalize condition codes for safety routing.
+
+    Args:
+        chronic_diseases: Raw condition codes.
+
+    Returns:
+        Case-folded condition code set.
+    """
+    return {condition.casefold() for condition in chronic_diseases or []}
+
+
+def build_disabled_weight_prediction_response(
+    chronic_diseases: list[str],
+) -> WeightPredictionResponse:
+    """Build a fail-closed response when automatic weight prediction is unsafe.
+
+    Args:
+        chronic_diseases: User-provided chronic disease codes.
+
+    Returns:
+        Disabled response without numeric projections.
+    """
+    normalized = sorted(_normalized_conditions(chronic_diseases) & BLOCKING_CONDITIONS)
+    return WeightPredictionResponse(
+        predictions=[],
+        prediction_status="disabled",
+        safety_warnings=[
+            "만성질환 또는 약물 영향으로 일반 체중 변화 공식 자동 계산을 보류합니다.",
+            (
+                f"blocked_conditions={','.join(normalized)}"
+                if normalized
+                else "blocked_conditions=unknown"
+            ),
+        ],
+        note="체중 변화는 체액·대사율·약물 영향이 클 수 있어 주치의 또는 임상영양사 상담을 권장합니다.",
+    )
+
+
+def should_disable_weight_prediction(chronic_diseases: list[str] | None) -> bool:
+    """Return whether automatic weight prediction should be disabled.
+
+    Args:
+        chronic_diseases: User-provided chronic disease codes.
+
+    Returns:
+        True when a high-risk condition is present.
+    """
+    return bool(_normalized_conditions(chronic_diseases) & BLOCKING_CONDITIONS)
 
 
 def predict_weight_n_days(
@@ -24,6 +95,9 @@ def predict_weight_n_days(
     daily_steps: int,
     daily_intake_kcal: float,
     days: int,
+    body_fat_pct: float | None = None,
+    alcohol_kcal: float = 0.0,
+    chronic_diseases: list[str] | None = None,
 ) -> WeightPredictionStep:
     """N일 후 체중을 7-step 정적 근사로 예측한다.
 
@@ -35,6 +109,9 @@ def predict_weight_n_days(
         daily_steps: 일일 걸음수.
         daily_intake_kcal: 일일 섭취 열량.
         days: 예측 기간(일).
+        body_fat_pct: 체지방률(%). 10~55 범위에서 BMR 보조 공식에 사용한다.
+        alcohol_kcal: 별도 입력된 알코올 열량.
+        chronic_diseases: 신뢰도 저하 또는 자동 계산 보류 조건.
 
     Returns:
         기간별 체중 예측 결과.
@@ -44,27 +121,39 @@ def predict_weight_n_days(
     """
     if days < 1:
         raise ValueError("days must be greater than or equal to 1")
+    if should_disable_weight_prediction(chronic_diseases):
+        raise ValueError("automatic weight prediction is disabled for the supplied conditions")
 
     estimated_bmr = calculate_bmr(
         weight_kg=weight_kg,
         height_cm=height_cm,
         age=age,
         sex=sex,
+        body_fat_pct=body_fat_pct,
     )
     estimated_tdee = calculate_tdee(estimated_bmr=estimated_bmr, daily_steps=daily_steps)
-    daily_balance = daily_intake_kcal - estimated_tdee
+    effective_alcohol_kcal = alcohol_kcal * ALCOHOL_STORAGE_KCAL_FACTOR
+    daily_balance = daily_intake_kcal + effective_alcohol_kcal - estimated_tdee
     cumulative_balance = daily_balance * days
     theoretical_change = cumulative_balance / KCAL_PER_KG_FAT
 
     if daily_balance < 0:
-        corrected_change = theoretical_change * LOSS_CORRECTION
+        kcal_factor = SHORT_TERM_LOSS_KCAL_FACTOR if days <= SHORT_TERM_DAYS else LOSS_CORRECTION
+        corrected_change = cumulative_balance / (KCAL_PER_KG_FAT * kcal_factor)
     elif daily_balance > 0:
-        corrected_change = theoretical_change * GAIN_CORRECTION
+        corrected_change = cumulative_balance / (KCAL_PER_KG_FAT * GAIN_CORRECTION)
     else:
         corrected_change = theoretical_change
 
+    confidence = "high" if days <= SHORT_TERM_DAYS else "medium"
+    normalized_conditions = _normalized_conditions(chronic_diseases)
+    if days >= LONG_TERM_WARNING_DAYS or normalized_conditions & LOW_CONFIDENCE_CONDITIONS:
+        confidence = "low"
+
+    predicted_weight = weight_kg + corrected_change
+    band = abs(corrected_change) * 0.10
     warning = (
-        "90일 이상 예측은 대사 적응을 반영하는 동적 모델 검토가 필요합니다."
+        "90일 이상 기대 체중 범위는 대사 적응을 반영하는 동적 모델 검토가 필요합니다."
         if days >= LONG_TERM_WARNING_DAYS
         else None
     )
@@ -77,7 +166,12 @@ def predict_weight_n_days(
         cumulative_balance_kcal=round(cumulative_balance, ROUND_KCAL_DECIMALS),
         theoretical_change_kg=round(theoretical_change, ROUND_CHANGE_DECIMALS),
         corrected_change_kg=round(corrected_change, ROUND_CHANGE_DECIMALS),
-        predicted_weight_kg=round(weight_kg + corrected_change, ROUND_WEIGHT_DECIMALS),
+        predicted_weight_kg=round(predicted_weight, ROUND_WEIGHT_DECIMALS),
+        expected_weight_range_kg=(
+            round(predicted_weight - band, ROUND_WEIGHT_DECIMALS),
+            round(predicted_weight + band, ROUND_WEIGHT_DECIMALS),
+        ),
+        confidence=confidence,  # type: ignore[arg-type]
         warning=warning,
     )
 
@@ -90,6 +184,9 @@ def predict_weight_periods(
     daily_steps: int,
     daily_intake_kcal: float,
     periods_days: list[int],
+    body_fat_pct: float | None = None,
+    alcohol_kcal: float = 0.0,
+    chronic_diseases: list[str] | None = None,
 ) -> WeightPredictionResponse:
     """여러 기간에 대한 체중 예측을 일괄 계산한다.
 
@@ -101,6 +198,9 @@ def predict_weight_periods(
         daily_steps: 일일 걸음수.
         daily_intake_kcal: 일일 섭취 열량.
         periods_days: 예측 기간 목록.
+        body_fat_pct: 체지방률(%).
+        alcohol_kcal: 별도 입력된 알코올 열량.
+        chronic_diseases: 신뢰도 저하 또는 자동 계산 보류 조건.
 
     Returns:
         기간별 체중 예측 API 응답.
@@ -108,6 +208,9 @@ def predict_weight_periods(
     Raises:
         ValueError: 예측 기간 중 1일 미만 값이 있는 경우.
     """
+    if should_disable_weight_prediction(chronic_diseases):
+        return build_disabled_weight_prediction_response(chronic_diseases or [])
+
     predictions = [
         predict_weight_n_days(
             weight_kg=weight_kg,
@@ -117,7 +220,17 @@ def predict_weight_periods(
             daily_steps=daily_steps,
             daily_intake_kcal=daily_intake_kcal,
             days=days,
+            body_fat_pct=body_fat_pct,
+            alcohol_kcal=alcohol_kcal,
+            chronic_diseases=chronic_diseases,
         )
         for days in periods_days
     ]
-    return WeightPredictionResponse(predictions=predictions)
+    safety_warnings: list[str] = []
+    if _normalized_conditions(chronic_diseases) & LOW_CONFIDENCE_CONDITIONS:
+        safety_warnings.append("일부 대사/약물 관련 조건으로 장기 예측 신뢰도를 낮게 표시합니다.")
+    if alcohol_kcal > 0:
+        safety_warnings.append(
+            "알코올 열량은 지방 저장 보정 계수를 적용해 일일 섭취 열량에 합산했습니다."
+        )
+    return WeightPredictionResponse(predictions=predictions, safety_warnings=safety_warnings)

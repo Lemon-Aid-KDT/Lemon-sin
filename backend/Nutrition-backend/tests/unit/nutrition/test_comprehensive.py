@@ -14,6 +14,9 @@ def _make_request(
     persona: str = "B",
     age: int = 52,
     sex: str = "male",
+    smoking_status: str = "never",
+    audit_kr_score: int | None = None,
+    medications: list[str] | None = None,
 ) -> ComprehensiveAnalysisRequest:
     """테스트용 요청 생성 헬퍼."""
     return ComprehensiveAnalysisRequest.model_validate(
@@ -24,6 +27,9 @@ def _make_request(
                 "age": age,
                 "sex": sex,
                 "chronic_conditions": chronic_conditions or [],
+                "smoking_status": smoking_status,
+                "audit_kr_score": audit_kr_score,
+                "medications": medications or [],
             },
             "ingredients": ingredients,
         }
@@ -179,3 +185,64 @@ class TestComputeComprehensive:
         """algorithm_version 이 응답에 포함된다."""
         result = compute_comprehensive(_make_request(ingredients=[]))
         assert result.algorithm_version == "comprehensive-v1"
+
+    def test_smoker_high_beta_carotene_triggers_high_caution(self) -> None:
+        """흡연자에게 베타카로틴 고함량 자동 경고를 노출한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Beta Carotene",
+                        "nutrient_code": "beta_carotene_mg",
+                        "amount": 6,
+                        "unit": "mg",
+                    }
+                ],
+                smoking_status="current_heavy",
+            )
+        )
+
+        assert any(
+            caution.reason == "smoker_beta_carotene_vitamin_a_risk" and caution.severity == "high"
+            for caution in result.cautionary_components
+        )
+
+    def test_audit_kr_vitamin_a_and_acetaminophen_trigger_cautions(self) -> None:
+        """AUDIT-KR 위험 범위에서는 Vit A와 아세트아미노펜 경고를 분리한다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Vitamin A",
+                        "nutrient_code": "vitamin_a_ug",
+                        "amount": 3000,
+                        "unit": "ug",
+                    }
+                ],
+                audit_kr_score=8,
+                medications=["acetaminophen"],
+            )
+        )
+        reasons = {caution.reason for caution in result.cautionary_components}
+
+        assert "alcohol_vitamin_a_liver_risk" in reasons
+        assert "alcohol_acetaminophen_liver_risk" in reasons
+
+    def test_audit_kr_dependence_pauses_supplement_recommendation(self) -> None:
+        """AUDIT-KR 의존 cut-off 이상에서는 추천 중단 warning을 남긴다."""
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Vitamin C",
+                        "nutrient_code": "vitamin_c_mg",
+                        "amount": 100,
+                        "unit": "mg",
+                    }
+                ],
+                sex="female",
+                audit_kr_score=8,
+            )
+        )
+
+        assert "supplement_recommendation_paused_audit_kr" in result.warnings

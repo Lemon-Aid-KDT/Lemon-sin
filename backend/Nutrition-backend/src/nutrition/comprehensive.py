@@ -59,6 +59,23 @@ _PERSONA_B_CAUTION_WEIGHT = 1.2
 
 _USER_CONDITION_BOOST = 0.15
 """사용자가 명시한 chronic_condition 의 relevance_score 가중치."""
+_SMOKER_BETA_CAROTENE_WARNING_MG = 6.0
+_VITAMIN_A_UL_UG = 3000.0
+_AUDIT_KR_RISK_CUTOFF = 3
+_AUDIT_KR_DEPENDENCE_MALE = 10
+_AUDIT_KR_DEPENDENCE_FEMALE = 8
+_HIGH_RISK_DRUGS = {
+    "warfarin",
+    "levothyroxine",
+    "methotrexate",
+    "chemo",
+    "bisphosphonate",
+    "maoi",
+    "ssri",
+    "statin",
+    "metformin",
+    "acetaminophen",
+}
 
 
 class _KdrisEntry:
@@ -315,7 +332,7 @@ _EVIDENCE_LABELS: dict[str, str] = {
 
 def _compute_cautions(
     ingredients: list[ComprehensiveIngredient],
-    user: UserProfileInput,  # noqa: ARG001 — 향후 user.chronic_conditions 교차에 사용 예정
+    user: UserProfileInput,
 ) -> list[CautionaryComponent]:
     """매트릭스의 cautions 필드와 사용자 만성질환을 교차해 주의 성분 산출."""
     matrix = load_matrix()
@@ -358,7 +375,99 @@ def _compute_cautions(
                     message=f"{ing.display_name}은(는) 만성질환자에게 일반적으로 권장되지 않아요.",
                 )
             )
+
+    seen.extend(_compute_profile_safety_cautions(ingredients, user))
     return seen[:5]
+
+
+def _compute_profile_safety_cautions(
+    ingredients: list[ComprehensiveIngredient],
+    user: UserProfileInput,
+) -> list[CautionaryComponent]:
+    """사용자 흡연·음주·약물 프로필 기반 P0 안전 경고를 산출한다.
+
+    Args:
+        ingredients: 분석 대상 성분.
+        user: 사용자 프로필.
+
+    Returns:
+        추가 안전 경고 목록.
+    """
+    cautions: list[CautionaryComponent] = []
+    is_smoker = user.smoking_status in {"former_lt_1y", "current_light", "current_heavy"}
+    has_alcohol_risk = (
+        user.audit_kr_score is not None and user.audit_kr_score >= _AUDIT_KR_RISK_CUTOFF
+    )
+    medication_codes = {medication.casefold() for medication in user.medications}
+
+    for ingredient in ingredients:
+        code = (ingredient.nutrient_code or "").casefold()
+        name = ingredient.display_name.casefold()
+        amount = ingredient.amount or 0.0
+
+        is_beta_carotene = "beta" in name or "베타카로틴" in name or "beta_carotene" in code
+        is_vitamin_a = code == "vitamin_a_ug" or "vitamin a" in name or "비타민 a" in name
+        if is_smoker and (
+            (is_beta_carotene and amount >= _SMOKER_BETA_CAROTENE_WARNING_MG)
+            or (is_vitamin_a and amount >= _VITAMIN_A_UL_UG)
+        ):
+            cautions.append(
+                CautionaryComponent(
+                    component=ingredient.display_name,
+                    reason="smoker_beta_carotene_vitamin_a_risk",
+                    severity="high",
+                    message=(
+                        f"{ingredient.display_name}: 흡연자는 베타카로틴 또는 고함량 비타민 A "
+                        "보충제 섭취 전 전문가 상담이 필요합니다."
+                    ),
+                )
+            )
+
+        if has_alcohol_risk and is_vitamin_a and amount >= _VITAMIN_A_UL_UG:
+            cautions.append(
+                CautionaryComponent(
+                    component=ingredient.display_name,
+                    reason="alcohol_vitamin_a_liver_risk",
+                    severity="high",
+                    message=f"{ingredient.display_name}: 음주 위험이 있으면 고함량 비타민 A는 간 안전성 확인이 필요합니다.",
+                )
+            )
+
+    if has_alcohol_risk and "acetaminophen" in medication_codes:
+        cautions.append(
+            CautionaryComponent(
+                component="acetaminophen",
+                reason="alcohol_acetaminophen_liver_risk",
+                severity="high",
+                message="음주 위험이 있으면 아세트아미노펜 성분 약물과 보충제 선택 전 전문가 상담이 필요합니다.",
+            )
+        )
+
+    if medication_codes & _HIGH_RISK_DRUGS:
+        cautions.append(
+            CautionaryComponent(
+                component="user_medications",
+                reason="drug_supplement_interaction_review",
+                severity="high",
+                message="입력된 약물과 보충제 간 상호작용 가능성이 있어 약사 또는 의사 상담을 권장합니다.",
+            )
+        )
+
+    if user.audit_kr_score is not None:
+        dependence_cutoff = (
+            _AUDIT_KR_DEPENDENCE_MALE if user.sex == "male" else _AUDIT_KR_DEPENDENCE_FEMALE
+        )
+        if user.audit_kr_score >= dependence_cutoff:
+            cautions.append(
+                CautionaryComponent(
+                    component="audit_kr",
+                    reason="audit_kr_dependence_cutoff",
+                    severity="high",
+                    message="AUDIT-KR 점수가 높아 영양제 선택보다 전문 상담 연결이 우선입니다.",
+                )
+            )
+
+    return cautions
 
 
 def _format_caution_message(caution_token: str, display_name: str) -> str:
@@ -435,6 +544,16 @@ def compute_comprehensive(
     intake_by_code = _compute_intake_by_code(request.ingredients)
     if not intake_by_code:
         warnings.append("no_recognized_nutrient_codes")
+    dependence_cutoff = (
+        _AUDIT_KR_DEPENDENCE_MALE
+        if request.user_profile.sex == "male"
+        else _AUDIT_KR_DEPENDENCE_FEMALE
+    )
+    if (
+        request.user_profile.audit_kr_score is not None
+        and request.user_profile.audit_kr_score >= dependence_cutoff
+    ):
+        warnings.append("supplement_recommendation_paused_audit_kr")
 
     deficient = _compute_deficient(intake_by_code)
     excessive = _compute_excessive(intake_by_code)

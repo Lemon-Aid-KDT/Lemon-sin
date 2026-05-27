@@ -97,3 +97,25 @@ def test_selector_underage_falls_back_to_static() -> None:
     static = predict_weight_periods(**kwargs)
 
     assert selected == static
+
+
+def test_selector_hall_lite_applies_alcohol_storage_factor() -> None:
+    """Verify Hall-lite receives the same alcohol kcal adjustment contract."""
+    base_kwargs = _base_kwargs()
+    base_kwargs["periods_days"] = [90]
+    with_alcohol = predict_weight_periods_selected(
+        **base_kwargs,
+        alcohol_kcal=100,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.HALL_LITE,
+    )
+    without_alcohol = predict_weight_periods_selected(
+        **base_kwargs,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.HALL_LITE,
+    )
+
+    assert with_alcohol.safety_warnings
+    assert with_alcohol.predictions[0].daily_balance_kcal == (
+        without_alcohol.predictions[0].daily_balance_kcal + 130
+    )

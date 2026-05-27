@@ -186,7 +186,7 @@ async def test_store_activity_result_persists_server_computed_snapshot() -> None
     assert record.owner_subject == "https://auth.example.com/::user_123"
     assert record.analysis_type == AnalysisType.ACTIVITY_SCORE.value
     assert record.input_snapshot["daily_steps"] == 7000
-    assert record.result_snapshot["recommended_steps"] == 7524
+    assert record.result_snapshot["recommended_steps"] == 7500
     assert "owner_subject" not in record.input_snapshot
 
 
