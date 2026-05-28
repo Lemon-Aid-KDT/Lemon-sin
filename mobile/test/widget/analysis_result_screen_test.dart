@@ -108,6 +108,37 @@ void main() {
     expect(find.textContaining('food_yolo_local:best.pt'), findsOneWidget);
     expect(find.textContaining('endpoint 연결 전'), findsNothing);
   });
+
+  testWidgets('confirms meal analysis into user-reviewed meal record', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository repository = _ReviewRepository();
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisResultScreen(mode: 'meal', controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _scrollResultDetails(tester);
+    expect(find.text('식단 확인'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '수정 비빔밥');
+    await tester.tap(find.text('확인 후 식단 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.confirmedMealId, '00000000-0000-0000-0000-000000000201');
+    expect(
+      repository.confirmedMealRequest?.foodItems.single.displayName,
+      '수정 비빔밥',
+    );
+    expect(
+      controller.lastRegisteredMeal?.foodItems.single.displayName,
+      '수정 비빔밥',
+    );
+  });
 }
 
 Future<void> _scrollResultDetails(WidgetTester tester) async {
@@ -121,6 +152,8 @@ class _ReviewRepository implements LemonAidRepository {
 
   final SupplementAnalysisPreview? _previewOverride;
   UserSupplementCreate? registeredRequest;
+  String? confirmedMealId;
+  MealConfirmationRequest? confirmedMealRequest;
   bool explainUsedLocalLlm = false;
 
   @override
@@ -137,6 +170,18 @@ class _ReviewRepository implements LemonAidRepository {
     String mealType = 'unknown',
   }) async {
     return MealImageAnalysisPreview.fromJson(_mealPreviewJson);
+  }
+
+  @override
+  Future<MealRecordResponse> confirmMealImagePreview(
+    String mealId,
+    MealConfirmationRequest request,
+  ) {
+    confirmedMealId = mealId;
+    confirmedMealRequest = request;
+    return Future<MealRecordResponse>.value(
+      _mealRecordFromRequest(mealId, request),
+    );
   }
 
   @override
@@ -443,6 +488,37 @@ final Map<String, Object?> _mealPreviewJson = <String, Object?>{
   'algorithm_version': 'food-image-preview-v1.0.0',
   'created_at': '2026-05-28T03:00:01Z',
 };
+
+MealRecordResponse _mealRecordFromRequest(
+  String mealId,
+  MealConfirmationRequest request,
+) {
+  final MealFoodItemInput item = request.foodItems.first;
+  return MealRecordResponse(
+    id: mealId,
+    status: 'confirmed',
+    mealType: request.mealType ?? 'unknown',
+    eatenAt: request.eatenAt ?? DateTime.utc(2026, 5, 28, 3),
+    foodItems: <MealFoodItemResponse>[
+      MealFoodItemResponse(
+        id: '00000000-0000-0000-0000-000000000301',
+        displayName: item.displayName,
+        portionAmount: item.portionAmount,
+        portionUnit: item.portionUnit,
+        kcal: item.kcal,
+        carbG: item.carbG,
+        proteinG: item.proteinG,
+        fatG: item.fatG,
+        sodiumMg: item.sodiumMg,
+        confidence: item.confidence,
+        source: item.source,
+      ),
+    ],
+    nutritionSummary: const <String, Object?>{'status': 'user_confirmed'},
+    confirmedAt: DateTime.utc(2026, 5, 28, 3, 5),
+    createdAt: DateTime.utc(2026, 5, 28, 3),
+  );
+}
 
 DashboardSummary _dashboardSummary() {
   return DashboardSummary(

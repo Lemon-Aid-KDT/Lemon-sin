@@ -270,6 +270,245 @@ class MealImageAnalysisPreview {
   }
 }
 
+/// User-confirmed meal food item input.
+class MealFoodItemInput {
+  /// Creates a confirmed meal food item input.
+  const MealFoodItemInput({
+    required this.displayName,
+    this.portionAmount,
+    this.portionUnit,
+    this.kcal,
+    this.carbG,
+    this.proteinG,
+    this.fatG,
+    this.sodiumMg,
+    this.confidence,
+    this.source = 'manual',
+  });
+
+  /// Food name confirmed by the user.
+  final String displayName;
+
+  /// Portion amount confirmed by the user.
+  final double? portionAmount;
+
+  /// Portion unit confirmed by the user.
+  final String? portionUnit;
+
+  /// Confirmed kcal value.
+  final double? kcal;
+
+  /// Confirmed carbohydrate grams.
+  final double? carbG;
+
+  /// Confirmed protein grams.
+  final double? proteinG;
+
+  /// Confirmed fat grams.
+  final double? fatG;
+
+  /// Confirmed sodium milligrams.
+  final double? sodiumMg;
+
+  /// Optional detector confidence retained for traceability.
+  final double? confidence;
+
+  /// Confirmed row source.
+  final String source;
+
+  /// Creates a confirmation input seeded from backend detector output.
+  factory MealFoodItemInput.fromCandidate(MealFoodCandidate candidate) {
+    return MealFoodItemInput(
+      displayName: candidate.displayName,
+      portionAmount: candidate.portionAmount,
+      portionUnit: candidate.portionUnit,
+      kcal: candidate.kcal,
+      carbG: candidate.carbG,
+      proteinG: candidate.proteinG,
+      fatG: candidate.fatG,
+      sodiumMg: candidate.sodiumMg,
+      confidence: candidate.confidence,
+      source: candidate.source,
+    );
+  }
+
+  /// Serializes the confirmed item for the backend API.
+  Map<String, Object?> toJson() {
+    return <String, Object?>{
+      'display_name': displayName,
+      if (portionAmount != null) 'portion_amount': portionAmount,
+      if (portionUnit != null) 'portion_unit': portionUnit,
+      if (kcal != null) 'kcal': kcal,
+      if (carbG != null) 'carb_g': carbG,
+      if (proteinG != null) 'protein_g': proteinG,
+      if (fatG != null) 'fat_g': fatG,
+      if (sodiumMg != null) 'sodium_mg': sodiumMg,
+      if (confidence != null) 'confidence': confidence,
+      'source': source,
+    };
+  }
+}
+
+/// User-confirmed meal preview registration request.
+class MealConfirmationRequest {
+  /// Creates a meal confirmation request.
+  const MealConfirmationRequest({
+    this.analysisId,
+    required this.foodItems,
+    this.mealType,
+    this.eatenAt,
+  });
+
+  /// Optional food image analysis preview id.
+  final String? analysisId;
+
+  /// User-confirmed food rows.
+  final List<MealFoodItemInput> foodItems;
+
+  /// Optional meal bucket override.
+  final String? mealType;
+
+  /// Optional meal timestamp override.
+  final DateTime? eatenAt;
+
+  /// Serializes the request for the backend API.
+  Map<String, Object?> toJson() {
+    return <String, Object?>{
+      if (analysisId != null) 'analysis_id': analysisId,
+      'food_items': foodItems
+          .map((MealFoodItemInput item) => item.toJson())
+          .toList(growable: false),
+      if (mealType != null) 'meal_type': mealType,
+      if (eatenAt != null) 'eaten_at': eatenAt!.toUtc().toIso8601String(),
+      'user_confirmed': true,
+    };
+  }
+}
+
+/// Persisted user-confirmed meal food item.
+class MealFoodItemResponse {
+  /// Creates a meal food item response.
+  const MealFoodItemResponse({
+    required this.id,
+    required this.displayName,
+    this.portionAmount,
+    this.portionUnit,
+    this.kcal,
+    this.carbG,
+    this.proteinG,
+    this.fatG,
+    this.sodiumMg,
+    this.confidence,
+    required this.source,
+  });
+
+  /// Persisted row id.
+  final String id;
+
+  /// User-confirmed food name.
+  final String displayName;
+
+  /// User-confirmed portion amount.
+  final double? portionAmount;
+
+  /// User-confirmed portion unit.
+  final String? portionUnit;
+
+  /// Confirmed kcal value.
+  final double? kcal;
+
+  /// Confirmed carbohydrate grams.
+  final double? carbG;
+
+  /// Confirmed protein grams.
+  final double? proteinG;
+
+  /// Confirmed fat grams.
+  final double? fatG;
+
+  /// Confirmed sodium milligrams.
+  final double? sodiumMg;
+
+  /// Optional detector confidence retained for traceability.
+  final double? confidence;
+
+  /// Confirmed row source.
+  final String source;
+
+  /// Parses a backend meal food item response.
+  factory MealFoodItemResponse.fromJson(Map<String, dynamic> json) {
+    return MealFoodItemResponse(
+      id: readString(json, 'id'),
+      displayName: readString(json, 'display_name'),
+      portionAmount: readOptionalDouble(json, 'portion_amount'),
+      portionUnit: readOptionalString(json, 'portion_unit'),
+      kcal: readOptionalDouble(json, 'kcal'),
+      carbG: readOptionalDouble(json, 'carb_g'),
+      proteinG: readOptionalDouble(json, 'protein_g'),
+      fatG: readOptionalDouble(json, 'fat_g'),
+      sodiumMg: readOptionalDouble(json, 'sodium_mg'),
+      confidence: readOptionalDouble(json, 'confidence'),
+      source: readString(json, 'source'),
+    );
+  }
+}
+
+/// Persisted user-confirmed meal response.
+class MealRecordResponse {
+  /// Creates a meal record response.
+  const MealRecordResponse({
+    required this.id,
+    required this.status,
+    required this.mealType,
+    required this.eatenAt,
+    required this.foodItems,
+    required this.nutritionSummary,
+    required this.confirmedAt,
+    required this.createdAt,
+  });
+
+  /// Persisted meal id.
+  final String id;
+
+  /// Meal lifecycle status.
+  final String status;
+
+  /// User-confirmed meal bucket.
+  final String mealType;
+
+  /// User-confirmed meal timestamp.
+  final DateTime eatenAt;
+
+  /// Confirmed food items.
+  final List<MealFoodItemResponse> foodItems;
+
+  /// Bounded confirmed nutrition summary.
+  final Map<String, Object?> nutritionSummary;
+
+  /// Confirmation timestamp.
+  final DateTime confirmedAt;
+
+  /// Server-side creation timestamp.
+  final DateTime createdAt;
+
+  /// Parses a backend meal confirmation response.
+  factory MealRecordResponse.fromJson(Map<String, dynamic> json) {
+    return MealRecordResponse(
+      id: readString(json, 'id'),
+      status: readString(json, 'status'),
+      mealType: readString(json, 'meal_type'),
+      eatenAt: DateTime.parse(readString(json, 'eaten_at')),
+      foodItems: readList(json, 'food_items')
+          .whereType<Map<String, dynamic>>()
+          .map(MealFoodItemResponse.fromJson)
+          .toList(growable: false),
+      nutritionSummary: _readOptionalJsonMap(json, 'nutrition_summary'),
+      confirmedAt: DateTime.parse(readString(json, 'confirmed_at')),
+      createdAt: DateTime.parse(readString(json, 'created_at')),
+    );
+  }
+}
+
 /// Multi-image supplement analysis response before user confirmation.
 class SupplementMultiImageAnalysisPreview {
   /// Creates a multi-image analysis preview.

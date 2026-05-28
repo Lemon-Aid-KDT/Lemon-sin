@@ -14,14 +14,23 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.models.db.meal import FoodImageAnalysisRun, MealRecord
-from src.models.schemas.meal import MealAnalysisStatus, MealType
+from src.models.schemas.meal import (
+    MealAnalysisStatus,
+    MealConfirmationRequest,
+    MealFoodItemInput,
+    MealType,
+)
 from src.security.auth import AuthenticatedUser
 from src.services.meal_image_analysis import (
     FOOD_IMAGE_ANALYSIS_ALGORITHM_VERSION,
+    MealConfirmationValidationError,
     MealImageAnalysisConflictError,
     MealImageValidationError,
+    MealPreviewStateError,
     ValidatedMealImage,
+    confirm_meal_record_from_preview,
     create_meal_image_analysis_preview,
+    meal_confirmation_to_response,
     meal_image_analysis_to_preview,
     read_and_validate_meal_image,
 )
@@ -71,6 +80,7 @@ class _FakeStoreSession:
         self.existing_meal = existing_meal
         self.added: list[object] = []
         self.refreshed: list[object] = []
+        self.committed = False
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -107,6 +117,21 @@ class _FakeStoreSession:
             None.
         """
         self.added.append(record)
+
+    async def flush(self) -> None:
+        """Match the async session flush interface.
+
+        Returns:
+            None.
+        """
+
+    async def commit(self) -> None:
+        """Record that the fake transaction was committed.
+
+        Returns:
+            None.
+        """
+        self.committed = True
 
     async def refresh(self, record: object) -> None:
         """Populate server-generated timestamps after fake persistence.
@@ -514,3 +539,104 @@ def test_meal_image_analysis_to_preview_is_sanitized() -> None:
     assert result.pipeline_metadata.raw_provider_payload_stored is False
     assert result.pipeline_metadata.requires_manual_entry is True
     assert result.algorithm_version == FOOD_IMAGE_ANALYSIS_ALGORITHM_VERSION
+
+
+@pytest.mark.asyncio
+async def test_confirm_meal_record_persists_user_confirmed_items() -> None:
+    """Verify meal image preview confirmation stores only reviewed food rows."""
+    meal, run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal)
+    request = MealConfirmationRequest(
+        analysis_id=run.id,
+        meal_type=MealType.LUNCH,
+        food_items=[
+            MealFoodItemInput(
+                display_name="비빔밥",
+                portion_amount=1,
+                portion_unit="bowl",
+                kcal=520,
+                carb_g=78,
+                protein_g=18,
+                fat_g=12,
+                sodium_mg=820,
+                confidence=0.88,
+                source="vision",
+            )
+        ],
+        user_confirmed=True,
+    )
+
+    result = await confirm_meal_record_from_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        meal_id=meal.id,
+        request=request,
+    )
+
+    assert fake_session.committed is True
+    assert result.meal_record.status == "confirmed"
+    assert result.meal_record.confirmed_at is not None
+    assert result.analysis_run is run
+    assert run.status == "confirmed"
+    assert result.meal_record.nutrition_summary == {
+        "status": "user_confirmed",
+        "items_count": 1,
+        "totals": {
+            "kcal": 520.0,
+            "carb_g": 78.0,
+            "protein_g": 18.0,
+            "fat_g": 12.0,
+            "sodium_mg": 820.0,
+        },
+    }
+    assert result.food_items[0].food_name_text == "비빔밥"
+    assert result.food_items[0].source == "vision"
+    serialized_records = str(result.meal_record.__dict__) + str(result.food_items[0].__dict__)
+    assert "provider_payload" not in serialized_records
+    assert "image_bytes" not in serialized_records
+
+    response = meal_confirmation_to_response(result)
+    assert response.status == MealAnalysisStatus.CONFIRMED
+    assert response.food_items[0].display_name == "비빔밥"
+    assert response.food_items[0].kcal == 520
+    assert response.nutrition_summary["status"] == "user_confirmed"
+
+
+@pytest.mark.asyncio
+async def test_confirm_meal_record_rejects_mismatched_analysis_id() -> None:
+    """Verify confirmation cannot attach another meal's analysis preview."""
+    meal, run = _existing_preview("a" * 64)
+    run.meal_id = uuid4()
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal)
+
+    with pytest.raises(MealConfirmationValidationError):
+        await confirm_meal_record_from_preview(
+            session=cast(AsyncSession, fake_session),
+            user=_user(),
+            meal_id=meal.id,
+            request=MealConfirmationRequest(
+                analysis_id=run.id,
+                food_items=[MealFoodItemInput(display_name="수정 음식")],
+                user_confirmed=True,
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_meal_record_rejects_non_review_state() -> None:
+    """Verify already-confirmed meal previews are not silently overwritten."""
+    meal, run = _existing_preview("a" * 64)
+    meal.status = MealAnalysisStatus.CONFIRMED.value
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal)
+
+    with pytest.raises(MealPreviewStateError):
+        await confirm_meal_record_from_preview(
+            session=cast(AsyncSession, fake_session),
+            user=_user(),
+            meal_id=meal.id,
+            request=MealConfirmationRequest(
+                analysis_id=run.id,
+                food_items=[MealFoodItemInput(display_name="수정 음식")],
+                user_confirmed=True,
+            ),
+        )

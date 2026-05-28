@@ -28,6 +28,7 @@ class AppController extends ChangeNotifier {
   SupplementAnalysisPreview? _analysisPreview;
   SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
   MealImageAnalysisPreview? _mealAnalysisPreview;
+  MealRecordResponse? _lastRegisteredMeal;
   UserSupplementResponse? _lastRegisteredSupplement;
   SupplementImpactPreviewResponse? _supplementImpactPreview;
   SupplementRecommendationExplainResponse? _supplementExplanation;
@@ -57,6 +58,9 @@ class AppController extends ChangeNotifier {
 
   /// Current meal image analysis preview.
   MealImageAnalysisPreview? get mealAnalysisPreview => _mealAnalysisPreview;
+
+  /// Most recently confirmed meal record.
+  MealRecordResponse? get lastRegisteredMeal => _lastRegisteredMeal;
 
   /// Most recently registered supplement.
   UserSupplementResponse? get lastRegisteredSupplement =>
@@ -124,6 +128,7 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _notice = 'Supplement preview is ready for review.';
@@ -144,6 +149,7 @@ class AppController extends ChangeNotifier {
       _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _notice = 'Supplement image batch is ready for review.';
@@ -158,6 +164,7 @@ class AppController extends ChangeNotifier {
       _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _notice = 'Supplement image batch was finalized for review.';
@@ -177,9 +184,38 @@ class AppController extends ChangeNotifier {
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _notice = 'Meal image preview is ready for review.';
+    });
+  }
+
+  /// Confirms the current meal image preview after user review.
+  Future<void> confirmMealImagePreview(MealConfirmationRequest request) async {
+    final MealImageAnalysisPreview? preview = _mealAnalysisPreview;
+    if (preview == null) {
+      _apiError = const ApiError(
+        statusCode: 0,
+        message: 'Analyze a meal image before confirming it.',
+      );
+      notifyListeners();
+      return;
+    }
+
+    await _run(() async {
+      _lastRegisteredMeal = await _repository.confirmMealImagePreview(
+        preview.mealId,
+        request,
+      );
+      _mealAnalysisPreview = null;
+      _analysisPreview = null;
+      _multiImageAnalysisPreview = null;
+      _lastRegisteredSupplement = null;
+      _supplementImpactPreview = null;
+      _supplementExplanation = null;
+      _dashboardSummary = await _repository.fetchDashboardSummary();
+      _notice = 'Meal record saved and dashboard refreshed.';
     });
   }
 
@@ -215,6 +251,7 @@ class AppController extends ChangeNotifier {
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
+      _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
@@ -299,6 +336,7 @@ class AppController extends ChangeNotifier {
     _analysisPreview = null;
     _multiImageAnalysisPreview = null;
     _mealAnalysisPreview = null;
+    _lastRegisteredMeal = null;
     _lastRegisteredSupplement = null;
     _supplementImpactPreview = null;
     _supplementExplanation = null;

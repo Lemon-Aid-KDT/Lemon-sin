@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.contract import P1_2_INTAKE_READY_STATUS, route_contract
@@ -18,14 +19,24 @@ from src.api.v1.examples import (
 )
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
-from src.models.schemas.meal import MealImageAnalysisPreview, MealType
+from src.models.schemas.meal import (
+    MealConfirmationRequest,
+    MealImageAnalysisPreview,
+    MealRecordResponse,
+    MealType,
+)
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser, require_meal_write
 from src.security.scopes import ApiScope
 from src.services.meal_image_analysis import (
+    MealConfirmationValidationError,
     MealImageAnalysisConflictError,
     MealImageValidationError,
+    MealPreviewNotFoundError,
+    MealPreviewStateError,
+    confirm_meal_record_from_preview,
     create_meal_image_analysis_preview,
+    meal_confirmation_to_response,
     meal_image_analysis_to_preview,
     read_and_validate_meal_image,
 )
@@ -202,3 +213,122 @@ async def analyze_meal_image(
         },
     )
     return preview
+
+
+@router.post(
+    "/{meal_id}/confirm",
+    response_model=MealRecordResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **MEAL_AUTH_RESPONSES,
+        200: {"description": "Food image preview confirmed by the user."},
+        404: {"description": "Meal preview was not found for the current user."},
+        409: {"description": "Meal preview state does not allow confirmation."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_WRITE,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def confirm_meal_image_preview(
+    meal_id: UUID,
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    request: Annotated[
+        MealConfirmationRequest,
+        Body(description="User-confirmed food rows for a meal image preview."),
+    ],
+) -> MealRecordResponse:
+    """Confirm a food image preview into a current-user meal record.
+
+    Args:
+        meal_id: Meal preview id returned by `/meals/analyze-image`.
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        request: User-confirmed food rows.
+
+    Returns:
+        Confirmed meal record without raw image data.
+
+    Raises:
+        HTTPException: If preview ownership, state, or payload validation fails.
+    """
+    try:
+        result = await confirm_meal_record_from_preview(
+            session=session,
+            user=current_user,
+            meal_id=meal_id,
+            request=request,
+        )
+    except MealPreviewNotFoundError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="meal_image_confirm_missing",
+            resource_type="meal_record",
+            resource_id=str(meal_id),
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"analysis_id_present": request.analysis_id is not None},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "meal_preview_not_found", "message": str(exc)},
+        ) from exc
+    except MealPreviewStateError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="meal_image_confirm_state_blocked",
+            resource_type="meal_record",
+            resource_id=str(meal_id),
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"analysis_id_present": request.analysis_id is not None},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "meal_preview_not_confirmable", "message": str(exc)},
+        ) from exc
+    except MealConfirmationValidationError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="meal_image_confirm_rejected",
+            resource_type="meal_record",
+            resource_id=str(meal_id),
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"analysis_id_present": request.analysis_id is not None},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "meal_confirmation_invalid", "message": str(exc)},
+        ) from exc
+
+    response = meal_confirmation_to_response(result)
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="meal_image_confirmed",
+        resource_type="meal_record",
+        resource_id=str(response.id),
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "analysis_id_present": request.analysis_id is not None,
+            "food_item_count": len(response.food_items),
+            "raw_image_stored": False,
+            "raw_provider_payload_stored": False,
+        },
+    )
+    return response

@@ -112,6 +112,40 @@ void main() {
     expect(controller.analysisPreview, isNull);
     expect(controller.notice, 'Meal image preview is ready for review.');
   });
+
+  test('confirmMealImagePreview stores user-confirmed meal', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository();
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+    await controller.confirmMealImagePreview(
+      const MealConfirmationRequest(
+        analysisId: '00000000-0000-0000-0000-000000000101',
+        mealType: 'lunch',
+        foodItems: <MealFoodItemInput>[
+          MealFoodItemInput(
+            displayName: '비빔밥',
+            kcal: 520,
+            confidence: 0.88,
+            source: 'vision',
+          ),
+        ],
+      ),
+    );
+
+    expect(repository.confirmMealCalls, 1);
+    expect(
+      repository.lastConfirmedMealId,
+      '00000000-0000-0000-0000-000000000201',
+    );
+    expect(
+      repository.lastMealConfirmationRequest?.foodItems.single.displayName,
+      '비빔밥',
+    );
+    expect(controller.mealAnalysisPreview, isNull);
+    expect(controller.lastRegisteredMeal?.foodItems.single.displayName, '비빔밥');
+    expect(controller.notice, 'Meal record saved and dashboard refreshed.');
+  });
 }
 
 UserSupplementCreate _registrationRequest() {
@@ -146,12 +180,15 @@ class _AutoInsightRepository implements LemonAidRepository {
   int explainCalls = 0;
   int analysisExplainCalls = 0;
   int finalizeCalls = 0;
+  int confirmMealCalls = 0;
   bool? lastExplainUsedLocalLlm;
   bool? lastAnalysisExplainUsedLocalLlm;
   String? lastAnalysisExplainId;
   String? lastFinalizeGroupId;
   String? lastMealImagePath;
   String? lastMealType;
+  String? lastConfirmedMealId;
+  MealConfirmationRequest? lastMealConfirmationRequest;
 
   @override
   Future<UserSupplementResponse> registerSupplement(
@@ -241,6 +278,17 @@ class _AutoInsightRepository implements LemonAidRepository {
     lastMealImagePath = imagePath;
     lastMealType = mealType;
     return MealImageAnalysisPreview.fromJson(_mealPreviewJson);
+  }
+
+  @override
+  Future<MealRecordResponse> confirmMealImagePreview(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    confirmMealCalls += 1;
+    lastConfirmedMealId = mealId;
+    lastMealConfirmationRequest = request;
+    return MealRecordResponse.fromJson(_mealRecordJson);
   }
 
   @override
@@ -414,5 +462,34 @@ final Map<String, Object?> _mealPreviewJson = <String, Object?>{
     'requires_manual_entry': false,
   },
   'algorithm_version': 'food-image-preview-v1.0.0',
+  'created_at': '2026-05-28T03:00:01Z',
+};
+
+final Map<String, Object?> _mealRecordJson = <String, Object?>{
+  'id': '00000000-0000-0000-0000-000000000201',
+  'status': 'confirmed',
+  'meal_type': 'lunch',
+  'eaten_at': '2026-05-28T03:00:00Z',
+  'food_items': <Object?>[
+    <String, Object?>{
+      'id': '00000000-0000-0000-0000-000000000301',
+      'display_name': '비빔밥',
+      'portion_amount': null,
+      'portion_unit': null,
+      'kcal': 520,
+      'carb_g': null,
+      'protein_g': null,
+      'fat_g': null,
+      'sodium_mg': null,
+      'confidence': 0.88,
+      'source': 'vision',
+    },
+  ],
+  'nutrition_summary': <String, Object?>{
+    'status': 'user_confirmed',
+    'items_count': 1,
+    'totals': <String, Object?>{'kcal': 520},
+  },
+  'confirmed_at': '2026-05-28T03:05:00Z',
   'created_at': '2026-05-28T03:00:01Z',
 };

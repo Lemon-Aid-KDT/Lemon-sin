@@ -26,6 +26,12 @@ abstract class LemonAidRepository {
     String mealType = 'unknown',
   });
 
+  /// Persists a user-confirmed meal image preview.
+  Future<MealRecordResponse> confirmMealImagePreview(
+    String mealId,
+    MealConfirmationRequest request,
+  );
+
   /// Creates a backend multi-image supplement analysis session.
   Future<SupplementAnalysisSession> createSupplementAnalysisSession();
 
@@ -162,6 +168,24 @@ class BackendLemonAidRepository implements LemonAidRepository {
       },
     );
     return MealImageAnalysisPreview.fromJson(json);
+  }
+
+  @override
+  Future<MealRecordResponse> confirmMealImagePreview(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    final String normalizedMealId = mealId.trim();
+    if (normalizedMealId.isEmpty) {
+      throw ArgumentError.value(mealId, 'mealId', 'Meal id is required');
+    }
+    final String encodedMealId = Uri.encodeComponent(normalizedMealId);
+    final Map<String, dynamic> json = await _apiClient.postJson(
+      '/meals/$encodedMealId/confirm',
+      body: request.toJson(),
+      expectedStatusCodes: const <int>{200},
+    );
+    return MealRecordResponse.fromJson(json);
   }
 
   @override

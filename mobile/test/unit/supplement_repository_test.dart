@@ -114,6 +114,58 @@ void main() {
     expect(response.pipelineMetadata.detectorUsed, isTrue);
   });
 
+  test(
+    'confirms meal image preview through meal confirmation endpoint',
+    () async {
+      late http.Request capturedRequest;
+      final ApiClient apiClient = ApiClient(
+        baseUrl: 'http://localhost:8000/api/v1',
+        httpClient: _CaptureJsonClient(
+          responseBody: _mealRecordResponse,
+          onRequest: (http.Request request) {
+            capturedRequest = request;
+          },
+        ),
+      );
+      addTearDown(apiClient.close);
+      final BackendLemonAidRepository repository = BackendLemonAidRepository(
+        apiClient: apiClient,
+      );
+
+      final MealRecordResponse response = await repository
+          .confirmMealImagePreview(
+            '00000000-0000-0000-0000-000000000201',
+            const MealConfirmationRequest(
+              analysisId: '00000000-0000-0000-0000-000000000101',
+              mealType: 'lunch',
+              foodItems: <MealFoodItemInput>[
+                MealFoodItemInput(
+                  displayName: '비빔밥',
+                  kcal: 520,
+                  confidence: 0.88,
+                  source: 'vision',
+                ),
+              ],
+            ),
+          );
+
+      final Map<String, dynamic> body =
+          jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+      expect(
+        capturedRequest.url.path,
+        '/api/v1/meals/00000000-0000-0000-0000-000000000201/confirm',
+      );
+      expect(body['analysis_id'], '00000000-0000-0000-0000-000000000101');
+      expect(body['user_confirmed'], isTrue);
+      expect(
+        (body['food_items'] as List<Object?>).single,
+        containsPair('display_name', '비빔밥'),
+      );
+      expect(response.status, 'confirmed');
+      expect(response.foodItems.single.displayName, '비빔밥');
+    },
+  );
+
   test('uploads multiple supplement images with role metadata', () async {
     final File front = _writeTinyPng(fileName: 'front.png');
     final File facts = _writeTinyPng(fileName: 'facts.png');
@@ -570,6 +622,35 @@ final Map<String, Object?> _mealPreviewResponse = <String, Object?>{
     'requires_manual_entry': false,
   },
   'algorithm_version': 'food-image-preview-v1.0.0',
+  'created_at': '2026-05-28T03:00:01Z',
+};
+
+final Map<String, Object?> _mealRecordResponse = <String, Object?>{
+  'id': '00000000-0000-0000-0000-000000000201',
+  'status': 'confirmed',
+  'meal_type': 'lunch',
+  'eaten_at': '2026-05-28T03:00:00Z',
+  'food_items': <Object?>[
+    <String, Object?>{
+      'id': '00000000-0000-0000-0000-000000000301',
+      'display_name': '비빔밥',
+      'portion_amount': null,
+      'portion_unit': null,
+      'kcal': 520,
+      'carb_g': null,
+      'protein_g': null,
+      'fat_g': null,
+      'sodium_mg': null,
+      'confidence': 0.88,
+      'source': 'vision',
+    },
+  ],
+  'nutrition_summary': <String, Object?>{
+    'status': 'user_confirmed',
+    'items_count': 1,
+    'totals': <String, Object?>{'kcal': 520},
+  },
+  'confirmed_at': '2026-05-28T03:05:00Z',
   'created_at': '2026-05-28T03:00:01Z',
 };
 

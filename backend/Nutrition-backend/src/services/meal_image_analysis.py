@@ -5,10 +5,11 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 from http import HTTPStatus
 from io import BytesIO
 from typing import Any, Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
@@ -16,12 +17,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.models.db.meal import FoodImageAnalysisRun, MealRecord
+from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
 from src.models.schemas.meal import (
     FoodImagePipelineMetadata,
     MealAnalysisStatus,
+    MealConfirmationRequest,
     MealFoodCandidate,
+    MealFoodItemInput,
+    MealFoodItemResponse,
     MealImageAnalysisPreview,
+    MealRecordResponse,
     MealType,
 )
 from src.security.auth import AuthenticatedUser
@@ -93,6 +98,21 @@ class MealImageAnalysisStoreResult:
 
 
 @dataclass(frozen=True)
+class MealConfirmationStoreResult:
+    """Stored user-confirmed meal result.
+
+    Attributes:
+        meal_record: Confirmed meal row.
+        food_items: Persisted user-confirmed food item rows.
+        analysis_run: Linked food image analysis run when provided.
+    """
+
+    meal_record: MealRecord
+    food_items: list[MealFoodItem]
+    analysis_run: FoodImageAnalysisRun | None
+
+
+@dataclass(frozen=True)
 class FoodDetectionResult:
     """Sanitized food detector outcome for one request.
 
@@ -143,6 +163,22 @@ class MealImageValidationError(ValueError):
 
 class MealImageAnalysisConflictError(ValueError):
     """Raised when an idempotency key is reused for different image bytes."""
+
+
+class MealConfirmationError(ValueError):
+    """Base error for user meal confirmation failures."""
+
+
+class MealConfirmationValidationError(MealConfirmationError):
+    """Raised when a user-confirmed meal payload is inconsistent."""
+
+
+class MealPreviewNotFoundError(MealConfirmationError):
+    """Raised when a meal preview row is absent or inaccessible."""
+
+
+class MealPreviewStateError(MealConfirmationError):
+    """Raised when a meal preview cannot be confirmed in its current state."""
 
 
 async def read_and_validate_meal_image(image: UploadFile, settings: Settings) -> ValidatedMealImage:
@@ -360,6 +396,115 @@ def meal_image_analysis_to_preview(
         ),
         algorithm_version=FOOD_IMAGE_ANALYSIS_ALGORITHM_VERSION,
         created_at=analysis_run.created_at,
+    )
+
+
+async def confirm_meal_record_from_preview(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    meal_id: UUID,
+    request: MealConfirmationRequest,
+) -> MealConfirmationStoreResult:
+    """Persist user-confirmed food rows for a meal image preview.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        meal_id: Meal preview identifier from `/meals/analyze-image`.
+        request: User-confirmed meal rows and optional preview trace id.
+
+    Returns:
+        Confirmed meal and food item rows.
+
+    Raises:
+        MealPreviewNotFoundError: If the meal or analysis preview is absent.
+        MealPreviewStateError: If the preview has already left review state.
+        MealConfirmationValidationError: If the analysis id does not match the meal.
+    """
+    owner_subject = build_owner_subject(user)
+    meal_record = await session.scalar(
+        select(MealRecord).where(
+            MealRecord.id == meal_id,
+            MealRecord.owner_subject == owner_subject,
+            MealRecord.deleted_at.is_(None),
+        )
+    )
+    if meal_record is None:
+        raise MealPreviewNotFoundError("Meal preview was not found.")
+    if meal_record.status != MealAnalysisStatus.REQUIRES_CONFIRMATION.value:
+        raise MealPreviewStateError("Meal preview cannot be confirmed in its current state.")
+
+    analysis_run: FoodImageAnalysisRun | None = None
+    if request.analysis_id is not None:
+        analysis_run = await session.scalar(
+            select(FoodImageAnalysisRun).where(
+                FoodImageAnalysisRun.id == request.analysis_id,
+                FoodImageAnalysisRun.owner_subject == owner_subject,
+            )
+        )
+        if analysis_run is None:
+            raise MealPreviewNotFoundError("Food image analysis preview was not found.")
+        if analysis_run.meal_id != meal_record.id:
+            raise MealConfirmationValidationError(
+                "Food image analysis preview does not belong to this meal."
+            )
+        if analysis_run.status != MealAnalysisStatus.REQUIRES_CONFIRMATION.value:
+            raise MealPreviewStateError(
+                "Food image analysis preview cannot be confirmed in its current state."
+            )
+
+    now = datetime.now(UTC)
+    food_items = [
+        _meal_food_item_from_input(meal_record.id, item, sort_order=index)
+        for index, item in enumerate(request.food_items)
+    ]
+    meal_record.meal_type = (request.meal_type or MealType(meal_record.meal_type)).value
+    meal_record.eaten_at = (
+        _normalize_eaten_at(request.eaten_at) if request.eaten_at else meal_record.eaten_at
+    )
+    meal_record.status = MealAnalysisStatus.CONFIRMED.value
+    meal_record.nutrition_summary = _confirmed_nutrition_summary(request.food_items)
+    meal_record.confidence = _mean_confidence(request.food_items)
+    meal_record.confirmed_at = now
+    if analysis_run is not None:
+        analysis_run.status = MealAnalysisStatus.CONFIRMED.value
+
+    for item in food_items:
+        session.add(item)
+
+    await session.commit()
+    await session.refresh(meal_record)
+    return MealConfirmationStoreResult(
+        meal_record=meal_record,
+        food_items=food_items,
+        analysis_run=analysis_run,
+    )
+
+
+def meal_confirmation_to_response(
+    result: MealConfirmationStoreResult,
+) -> MealRecordResponse:
+    """Convert confirmed meal rows into the public API response.
+
+    Args:
+        result: Persisted meal confirmation result.
+
+    Returns:
+        Current-user meal record response without owner identifiers.
+    """
+    meal_record = result.meal_record
+    if meal_record.confirmed_at is None:
+        raise MealConfirmationValidationError("Meal record is not confirmed.")
+    return MealRecordResponse(
+        id=meal_record.id,
+        status=MealAnalysisStatus(meal_record.status),
+        meal_type=MealType(meal_record.meal_type),
+        eaten_at=meal_record.eaten_at,
+        food_items=[_meal_food_item_to_response(item) for item in result.food_items],
+        nutrition_summary=_dict_or_empty(meal_record.nutrition_summary),
+        confirmed_at=meal_record.confirmed_at,
+        created_at=meal_record.created_at,
     )
 
 
@@ -653,6 +798,129 @@ def _normalize_eaten_at(value: datetime | None) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _meal_food_item_from_input(
+    meal_id: UUID,
+    item: MealFoodItemInput,
+    *,
+    sort_order: int,
+) -> MealFoodItem:
+    """Build a persisted food item from user-confirmed input.
+
+    Args:
+        meal_id: Parent meal id.
+        item: User-confirmed food item.
+        sort_order: Stable display order.
+
+    Returns:
+        Unsaved meal food item row.
+    """
+    return MealFoodItem(
+        id=uuid4(),
+        meal_id=meal_id,
+        food_name_text=item.display_name,
+        canonical_food_id=None,
+        portion_amount=_decimal_or_none(item.portion_amount),
+        portion_unit=item.portion_unit,
+        kcal=_decimal_or_none(item.kcal),
+        carb_g=_decimal_or_none(item.carb_g),
+        protein_g=_decimal_or_none(item.protein_g),
+        fat_g=_decimal_or_none(item.fat_g),
+        sodium_mg=_decimal_or_none(item.sodium_mg),
+        source=item.source,
+        confidence=_decimal_or_none(item.confidence),
+        sort_order=sort_order,
+    )
+
+
+def _meal_food_item_to_response(item: MealFoodItem) -> MealFoodItemResponse:
+    """Convert one persisted food item row to API response data.
+
+    Args:
+        item: Persisted meal food item row.
+
+    Returns:
+        Public meal food item response.
+    """
+    return MealFoodItemResponse(
+        id=item.id,
+        display_name=item.food_name_text,
+        portion_amount=_float_or_none(item.portion_amount),
+        portion_unit=item.portion_unit,
+        kcal=_float_or_none(item.kcal),
+        carb_g=_float_or_none(item.carb_g),
+        protein_g=_float_or_none(item.protein_g),
+        fat_g=_float_or_none(item.fat_g),
+        sodium_mg=_float_or_none(item.sodium_mg),
+        confidence=_float_or_none(item.confidence),
+        source=item.source,
+    )
+
+
+def _confirmed_nutrition_summary(
+    items: list[MealFoodItemInput],
+) -> dict[str, object]:
+    """Build a bounded nutrition summary from confirmed meal inputs.
+
+    Args:
+        items: User-confirmed food rows.
+
+    Returns:
+        JSON summary with numeric totals only.
+    """
+    totals: dict[str, float] = {}
+    for field_name in ("kcal", "carb_g", "protein_g", "fat_g", "sodium_mg"):
+        values = [getattr(item, field_name) for item in items]
+        numeric_values = [value for value in values if isinstance(value, int | float)]
+        if numeric_values:
+            totals[field_name] = round(float(sum(numeric_values)), 2)
+    return {
+        "status": "user_confirmed",
+        "items_count": len(items),
+        "totals": totals,
+    }
+
+
+def _mean_confidence(items: list[MealFoodItemInput]) -> Decimal | None:
+    """Return mean confidence across confirmed items when present.
+
+    Args:
+        items: User-confirmed food rows.
+
+    Returns:
+        Decimal mean confidence, or None when no item has confidence.
+    """
+    confidence_values = [
+        item.confidence for item in items if isinstance(item.confidence, int | float)
+    ]
+    if not confidence_values:
+        return None
+    return Decimal(str(round(sum(confidence_values) / len(confidence_values), 4)))
+
+
+def _decimal_or_none(value: float | None) -> Decimal | None:
+    """Convert a JSON numeric value to Decimal for persistence.
+
+    Args:
+        value: Optional numeric value.
+
+    Returns:
+        Decimal value or None.
+    """
+    return Decimal(str(value)) if value is not None else None
+
+
+def _float_or_none(value: Decimal | float | int | None) -> float | None:
+    """Convert a persisted numeric value to float for API responses.
+
+    Args:
+        value: Optional numeric value.
+
+    Returns:
+        Float value or None.
+    """
+    return float(value) if value is not None else None
 
 
 def _dict_or_empty(value: Any) -> dict[str, object]:

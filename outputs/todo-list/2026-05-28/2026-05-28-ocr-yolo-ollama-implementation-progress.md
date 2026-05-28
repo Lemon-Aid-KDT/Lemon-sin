@@ -82,6 +82,16 @@
 - 식단 분석 결과 화면은 source UIUX 카드 구조를 유지하면서 음식 후보,
   Food YOLO 사용 여부, warning code, manual-entry 필요 여부를 backend
   응답으로 표시한다.
+- `/api/v1/meals/{meal_id}/confirm`을 추가해 식단 이미지 preview를
+  사용자 확인 식단 기록으로 확정할 수 있게 했다.
+  - request: `analysis_id`, `food_items`, optional `meal_type`, optional
+    `eaten_at`, `user_confirmed=true`
+  - response: confirmed meal record, confirmed food item rows, bounded
+    nutrition summary
+  - raw image bytes, provider payload, object URI는 저장하거나 응답하지 않는다.
+- Flutter 결과 화면의 식단 모드는 더 이상 preview 후 home 이동으로 끝나지
+  않고, Food YOLO 후보 또는 직접 입력값을 `confirm` endpoint로 저장한다.
+  저장 후 dashboard summary를 refresh한다.
 
 ## 검증 결과
 
@@ -262,9 +272,21 @@
   - No issues found
 - `flutter test`
   - 65 passed
+- `PYTHONPATH=backend/Nutrition-backend /opt/anaconda3/bin/python -m pytest backend/Nutrition-backend/tests/unit/services/test_meal_image_analysis.py -q --no-cov`
+  - 11 passed
+- `flutter test test/unit/app_controller_test.dart test/unit/supplement_repository_test.dart test/widget/analysis_result_screen_test.dart`
+  - 23 passed
+- `flutter test`
+  - 68 passed
+- `flutter analyze`
+  - No issues found
+- FastAPI import/path check
+  - `/api/v1/meals/{meal_id}/confirm` present
 - 모바일 endpoint contract 확인
   - supplement: `POST /api/v1/supplements/analyze`, field `image`, fields `client_request_id`, `ocr_provider`
   - meal: `POST /api/v1/meals/analyze-image`, field `image`, fields `client_request_id`, `meal_type`
+  - meal confirm: `POST /api/v1/meals/{meal_id}/confirm`, body
+    `analysis_id`, `food_items`, `user_confirmed`
   - local Ollama explanation path는 기존 `/supplements/recommendations/explain` 및 analysis explain endpoint를 그대로 유지
 
 ## 남은 TODO
@@ -274,8 +296,8 @@
 - YOLO ROI가 켜진 Docker/runtime에서 `roi_count`, selected ROI, parser 결과가 review UI에 기대대로 반영되는지 확인한다.
 - 음식 YOLO는 `ENABLE_FOOD_YOLO_DETECTOR=true`로 Docker backend를 재기동한 뒤
   실제 식단 사진에서 후보명과 bbox가 review-only로 표시되는지 live smoke를 진행한다.
-- 음식 후보를 실제 식단 기록 confirmation/registration endpoint로 확정하는 흐름은
-  다음 phase에서 별도 구현한다.
+- 식단 confirmation endpoint는 연결됐으므로, 다음 단계는 실제 Android
+  emulator/식단 사진에서 후보 확인 후 저장되는 live smoke다.
 - Android emulator에서 gallery image -> multi-image batch -> manual correction -> registration -> analysis explanation까지 남은 end-to-end smoke를 진행한다.
 - Xcode native iOS는 gallery 입력 기반 OCR smoke를 진행하고, 실제 촬영은 물리 iPhone/ngrok flow에서 검증한다.
 - Android Studio run configuration에 `dev` flavor와 `LEMON_API_BASE_URL` dart define을 저장할지 팀 합의가 필요하다.

@@ -45,7 +45,18 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     text: 'daily',
   );
   final TextEditingController _timeOfDayController = TextEditingController();
+  final TextEditingController _mealNameController = TextEditingController();
+  final TextEditingController _mealPortionAmountController =
+      TextEditingController();
+  final TextEditingController _mealPortionUnitController =
+      TextEditingController();
+  final TextEditingController _mealKcalController = TextEditingController();
+  final TextEditingController _mealCarbController = TextEditingController();
+  final TextEditingController _mealProteinController = TextEditingController();
+  final TextEditingController _mealFatController = TextEditingController();
+  final TextEditingController _mealSodiumController = TextEditingController();
   String? _seededAnalysisId;
+  String? _seededMealAnalysisId;
 
   bool get _isMeal => widget.mode == 'meal';
 
@@ -58,6 +69,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     _ingredientUnitController.dispose();
     _frequencyController.dispose();
     _timeOfDayController.dispose();
+    _mealNameController.dispose();
+    _mealPortionAmountController.dispose();
+    _mealPortionUnitController.dispose();
+    _mealKcalController.dispose();
+    _mealCarbController.dispose();
+    _mealProteinController.dispose();
+    _mealFatController.dispose();
+    _mealSodiumController.dispose();
     super.dispose();
   }
 
@@ -70,8 +89,12 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     if (preview != null) {
       _seedCorrectionFields(preview);
     }
+    if (mealPreview != null) {
+      _seedMealCorrectionFields(mealPreview);
+    }
     final UserSupplementResponse? registered =
         controller?.lastRegisteredSupplement;
+    final MealRecordResponse? registeredMeal = controller?.lastRegisteredMeal;
     final ApiError? error = controller?.apiError;
     return Scaffold(
       backgroundColor: AppColor.section,
@@ -98,11 +121,12 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                     preview: preview,
                     mealPreview: mealPreview,
                     registered: registered,
+                    registeredMeal: registeredMeal,
                     busy: controller?.busy == true,
                   ),
                   const SizedBox(height: AppSpace.md),
                   if (_isMeal)
-                    ..._mealCards(mealPreview)
+                    ..._mealCards(mealPreview, registeredMeal)
                   else
                     ..._supplementCards(preview, registered),
                   if (!_isMeal) ...<Widget>[
@@ -156,7 +180,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
             AppSpace.md,
           ),
           child: _SaveButton(
-            label: _primaryLabel(preview, registered),
+            label: _primaryLabel(preview, registered, registeredMeal),
             busy: controller?.busy == true,
             onTap: () => _handlePrimaryAction(context),
           ),
@@ -165,7 +189,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     );
   }
 
-  List<Widget> _mealCards(MealImageAnalysisPreview? preview) {
+  List<Widget> _mealCards(
+    MealImageAnalysisPreview? preview,
+    MealRecordResponse? registeredMeal,
+  ) {
     final FoodImagePipelineMetadata? pipeline = preview?.pipelineMetadata;
     final List<MealFoodCandidate> candidates =
         preview?.foodCandidates ?? const <MealFoodCandidate>[];
@@ -211,10 +238,26 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         color: AppColor.brand,
         icon: Icons.workspace_premium_rounded,
         label: '분석 상태',
-        value: preview?.status ?? '분석 전',
-        desc: preview?.algorithmVersion ?? '식단 사진을 먼저 분석해주세요',
+        value: registeredMeal?.status ?? preview?.status ?? '분석 전',
+        desc: registeredMeal == null
+            ? preview?.algorithmVersion ?? '식단 사진을 먼저 분석해주세요'
+            : '${registeredMeal.foodItems.length}개 음식이 식단 기록으로 저장됐어요',
         big: true,
       ),
+      if (preview != null && registeredMeal == null) ...<Widget>[
+        const SizedBox(height: AppSpace.md),
+        _MealReviewCorrectionCard(
+          mealNameController: _mealNameController,
+          portionAmountController: _mealPortionAmountController,
+          portionUnitController: _mealPortionUnitController,
+          kcalController: _mealKcalController,
+          carbController: _mealCarbController,
+          proteinController: _mealProteinController,
+          fatController: _mealFatController,
+          sodiumController: _mealSodiumController,
+          requiresManualEntry: pipeline?.requiresManualEntry == true,
+        ),
+      ],
     ];
   }
 
@@ -318,11 +361,40 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     );
   }
 
+  void _seedMealCorrectionFields(MealImageAnalysisPreview preview) {
+    if (_seededMealAnalysisId == preview.analysisId) return;
+    _seededMealAnalysisId = preview.analysisId;
+    final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
+        ? null
+        : preview.foodCandidates.first;
+    _mealNameController.text = firstCandidate?.displayName ?? '';
+    _mealPortionAmountController.text = _formatOptionalAmount(
+      firstCandidate?.portionAmount,
+    );
+    _mealPortionUnitController.text = firstCandidate?.portionUnit ?? '';
+    _mealKcalController.text = _formatOptionalAmount(firstCandidate?.kcal);
+    _mealCarbController.text = _formatOptionalAmount(firstCandidate?.carbG);
+    _mealProteinController.text = _formatOptionalAmount(
+      firstCandidate?.proteinG,
+    );
+    _mealFatController.text = _formatOptionalAmount(firstCandidate?.fatG);
+    _mealSodiumController.text = _formatOptionalAmount(
+      firstCandidate?.sodiumMg,
+    );
+  }
+
   String _primaryLabel(
     SupplementAnalysisPreview? preview,
     UserSupplementResponse? registered,
+    MealRecordResponse? registeredMeal,
   ) {
-    if (_isMeal) return '홈으로 돌아가기';
+    if (_isMeal) {
+      if (registeredMeal != null) return '홈으로 돌아가기';
+      if (widget.controller?.mealAnalysisPreview == null) return '다시 촬영하기';
+      return _nonEmpty(_mealNameController.text) == null
+          ? '음식 직접 입력'
+          : '확인 후 식단 저장';
+    }
     if (registered != null) return '로컬 LLM 설명 보기';
     if (preview == null) return '다시 촬영하기';
     if (!_hasReviewIngredient(preview)) return '성분 직접 입력';
@@ -331,11 +403,36 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   Future<void> _handlePrimaryAction(BuildContext context) async {
     HapticFeedback.mediumImpact();
-    if (_isMeal || widget.controller == null) {
+    if (widget.controller == null) {
       context.go('/shell/home');
       return;
     }
     final AppController appController = widget.controller!;
+    if (_isMeal) {
+      final MealImageAnalysisPreview? mealPreview =
+          appController.mealAnalysisPreview;
+      if (appController.lastRegisteredMeal != null) {
+        context.go('/shell/home');
+        return;
+      }
+      if (mealPreview == null) {
+        appController.clearSupplementFlow();
+        if (context.mounted) {
+          context.go('/shell/camera');
+        }
+        return;
+      }
+      if (_nonEmpty(_mealNameController.text) == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('음식명을 입력한 뒤 식단 기록으로 저장해주세요.')),
+        );
+        return;
+      }
+      await appController.confirmMealImagePreview(
+        _mealConfirmationRequest(mealPreview),
+      );
+      return;
+    }
     if (appController.lastRegisteredSupplement != null) {
       await appController.explainSupplementRecommendation(useLocalLlm: true);
       return;
@@ -358,6 +455,35 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       _registrationRequest(preview),
       refreshImpact: true,
       explainWithLocalLlm: true,
+    );
+  }
+
+  MealConfirmationRequest _mealConfirmationRequest(
+    MealImageAnalysisPreview preview,
+  ) {
+    final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
+        ? null
+        : preview.foodCandidates.first;
+    return MealConfirmationRequest(
+      analysisId: preview.analysisId,
+      mealType: preview.mealType,
+      eatenAt: preview.eatenAt,
+      foodItems: <MealFoodItemInput>[
+        MealFoodItemInput(
+          displayName: _nonEmpty(_mealNameController.text) ?? '식단',
+          portionAmount: _parseOptionalDouble(
+            _mealPortionAmountController.text,
+          ),
+          portionUnit: _nonEmpty(_mealPortionUnitController.text),
+          kcal: _parseOptionalDouble(_mealKcalController.text),
+          carbG: _parseOptionalDouble(_mealCarbController.text),
+          proteinG: _parseOptionalDouble(_mealProteinController.text),
+          fatG: _parseOptionalDouble(_mealFatController.text),
+          sodiumMg: _parseOptionalDouble(_mealSodiumController.text),
+          confidence: firstCandidate?.confidence,
+          source: firstCandidate?.source ?? 'manual',
+        ),
+      ],
     );
   }
 
@@ -442,6 +568,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         : value.toString();
   }
 
+  static String _formatOptionalAmount(double? value) {
+    if (value == null) return '';
+    return _formatEditableAmount(value);
+  }
+
   static double? _parseOptionalDouble(String value) {
     final String trimmed = value.trim();
     if (trimmed.isEmpty) return null;
@@ -522,6 +653,7 @@ class _SummaryCard extends StatelessWidget {
     required this.preview,
     required this.mealPreview,
     required this.registered,
+    required this.registeredMeal,
     required this.busy,
   });
 
@@ -529,6 +661,7 @@ class _SummaryCard extends StatelessWidget {
   final SupplementAnalysisPreview? preview;
   final MealImageAnalysisPreview? mealPreview;
   final UserSupplementResponse? registered;
+  final MealRecordResponse? registeredMeal;
   final bool busy;
 
   @override
@@ -607,6 +740,9 @@ class _SummaryCard extends StatelessWidget {
 
   String _headline() {
     if (isMeal) {
+      if (registeredMeal != null) {
+        return '${registeredMeal!.foodItems.length}개 음식이 저장됐어요';
+      }
       final MealImageAnalysisPreview? preview = mealPreview;
       if (preview == null) return '식단 사진을 분석해주세요';
       final int count = preview.foodCandidates.length;
@@ -699,6 +835,149 @@ class _ResultCard extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MealReviewCorrectionCard extends StatelessWidget {
+  const _MealReviewCorrectionCard({
+    required this.mealNameController,
+    required this.portionAmountController,
+    required this.portionUnitController,
+    required this.kcalController,
+    required this.carbController,
+    required this.proteinController,
+    required this.fatController,
+    required this.sodiumController,
+    required this.requiresManualEntry,
+  });
+
+  final TextEditingController mealNameController;
+  final TextEditingController portionAmountController;
+  final TextEditingController portionUnitController;
+  final TextEditingController kcalController;
+  final TextEditingController carbController;
+  final TextEditingController proteinController;
+  final TextEditingController fatController;
+  final TextEditingController sodiumController;
+  final bool requiresManualEntry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadow.elev1,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  '식단 확인',
+                  style: TextStyle(
+                    color: AppColor.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+              if (requiresManualEntry)
+                const Icon(
+                  Icons.edit_note_rounded,
+                  color: AppColor.warning,
+                  size: 22,
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          _ReviewTextField(
+            controller: mealNameController,
+            label: '음식명',
+            hintText: '예: 비빔밥',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: portionAmountController,
+                  label: '분량',
+                  hintText: '1',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: portionUnitController,
+                  label: '단위',
+                  hintText: 'bowl',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: kcalController,
+                  label: 'kcal',
+                  hintText: '520',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: sodiumController,
+                  label: '나트륨 mg',
+                  hintText: '820',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: carbController,
+                  label: '탄수화물 g',
+                  hintText: '78',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: proteinController,
+                  label: '단백질 g',
+                  hintText: '18',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: fatController,
+                  label: '지방 g',
+                  hintText: '12',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
           ),
         ],
       ),

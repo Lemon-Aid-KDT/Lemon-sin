@@ -72,6 +72,114 @@ class MealFoodCandidate(BaseModel):
     source: Literal["vision", "manual", "database_match"]
 
 
+class MealFoodItemInput(BaseModel):
+    """User-confirmed food item submitted during meal confirmation.
+
+    Attributes:
+        display_name: User-confirmed food name.
+        portion_amount: User-confirmed portion amount.
+        portion_unit: User-confirmed portion unit.
+        kcal: User-confirmed or accepted estimated calories.
+        carb_g: User-confirmed or accepted estimated carbohydrate grams.
+        protein_g: User-confirmed or accepted estimated protein grams.
+        fat_g: User-confirmed or accepted estimated fat grams.
+        sodium_mg: User-confirmed or accepted estimated sodium milligrams.
+        confidence: Optional detector confidence retained for traceability.
+        source: Source of the confirmed row.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    display_name: str = Field(min_length=1, max_length=160)
+    portion_amount: float | None = Field(default=None, ge=0)
+    portion_unit: str | None = Field(default=None, max_length=40)
+    kcal: float | None = Field(default=None, ge=0)
+    carb_g: float | None = Field(default=None, ge=0)
+    protein_g: float | None = Field(default=None, ge=0)
+    fat_g: float | None = Field(default=None, ge=0)
+    sodium_mg: float | None = Field(default=None, ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    source: Literal["vision", "manual", "database_match"] = "manual"
+
+
+class MealConfirmationRequest(BaseModel):
+    """Request to confirm a meal image preview into a meal record.
+
+    Attributes:
+        analysis_id: Optional food image analysis id for preview traceability.
+        food_items: User-confirmed food rows.
+        meal_type: Optional user-confirmed meal bucket override.
+        eaten_at: Optional user-confirmed meal timestamp override.
+        user_confirmed: Must be true to prevent silent preview-to-record promotion.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_id: UUID | None = None
+    food_items: list[MealFoodItemInput] = Field(min_length=1, max_length=40)
+    meal_type: MealType | None = None
+    eaten_at: datetime | None = None
+    user_confirmed: Literal[True] = True
+
+
+class MealFoodItemResponse(BaseModel):
+    """Persisted current-user food item response.
+
+    Attributes:
+        id: Persisted food item identifier.
+        display_name: User-confirmed food name.
+        portion_amount: User-confirmed portion amount.
+        portion_unit: User-confirmed portion unit.
+        kcal: Confirmed calories.
+        carb_g: Confirmed carbohydrate grams.
+        protein_g: Confirmed protein grams.
+        fat_g: Confirmed fat grams.
+        sodium_mg: Confirmed sodium milligrams.
+        confidence: Optional detector confidence retained for review traceability.
+        source: Source of the confirmed row.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    display_name: str
+    portion_amount: float | None
+    portion_unit: str | None
+    kcal: float | None
+    carb_g: float | None
+    protein_g: float | None
+    fat_g: float | None
+    sodium_mg: float | None
+    confidence: float | None
+    source: Literal["vision", "manual", "database_match"]
+
+
+class MealRecordResponse(BaseModel):
+    """Persisted current-user meal response.
+
+    Attributes:
+        id: Persisted meal record identifier.
+        status: Meal lifecycle status.
+        meal_type: User-confirmed meal bucket.
+        eaten_at: User-confirmed meal timestamp.
+        food_items: User-confirmed food items.
+        nutrition_summary: Bounded confirmed nutrition summary.
+        confirmed_at: Confirmation timestamp.
+        created_at: Server-side record creation timestamp.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    status: MealAnalysisStatus
+    meal_type: MealType
+    eaten_at: datetime
+    food_items: list[MealFoodItemResponse]
+    nutrition_summary: dict[str, object] = Field(default_factory=dict)
+    confirmed_at: datetime
+    created_at: datetime
+
+
 class FoodImagePipelineMetadata(BaseModel):
     """Sanitized food image pipeline metadata for mobile smoke tests.
 
