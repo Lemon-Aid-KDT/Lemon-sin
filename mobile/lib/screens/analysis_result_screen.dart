@@ -152,29 +152,44 @@ class AnalysisResultScreen extends StatelessWidget {
       controller?.lastRequestedOcrProvider,
     );
     final int candidateCount = preview?.ingredientCandidates.length ?? 0;
-    final int sectionCount = preview?.labelSections.length ?? 0;
+    final int sectionCount =
+        pipeline?.sectionCount ?? preview?.labelSections.length ?? 0;
     final bool hasTextSignal =
+        pipeline?.ocrTextPresent == true ||
         candidateCount > 0 ||
         sectionCount > 0 ||
         (preview?.evidenceSpans.isNotEmpty ?? false);
     final int roiCount =
+        pipeline?.roiCount ??
         preview?.imageQualityReport?.detectedRois.length ??
         preview?.detectedProductRegions.length ??
         0;
+    final List<String> missingSections =
+        pipeline?.missingRequiredSections ??
+        preview?.missingRequiredSections ??
+        const <String>[];
+    final String confidenceBucket = pipeline?.ocrConfidenceBucket ?? 'none';
+    final bool parserUsed = pipeline?.llmParserUsed == true;
+    final String parserValue = parserUsed
+        ? (candidateCount > 0 || sectionCount > 0
+              ? 'parser on'
+              : 'parser empty')
+        : 'parser review';
     return <Widget>[
       _ResultCard(
         color: const Color(0xFF22B07D),
         icon: Icons.document_scanner_rounded,
         label: 'OCR',
         value: hasTextSignal ? provider : 'no text · $provider',
-        desc: '요청 $requested · 성분 후보 $candidateCount개 · 섹션 $sectionCount개',
+        desc:
+            '요청 $requested · 신뢰도 $confidenceBucket · 성분 $candidateCount개 · 섹션 $sectionCount개',
       ),
       const SizedBox(height: AppSpace.sm),
       _ResultCard(
         color: const Color(0xFFFF9500),
         icon: Icons.center_focus_strong_rounded,
         label: 'YOLO ROI',
-        value: pipeline?.visionRoiUsed == true ? 'on' : 'off',
+        value: pipeline?.visionRoiUsed == true ? 'on ($roiCount)' : 'off',
         desc: roiCount > 0
             ? '검출 ROI $roiCount개를 backend가 안전 메타데이터로 반환했어요'
             : 'ROI가 없거나 backend vision 설정이 꺼져 있어요',
@@ -184,8 +199,10 @@ class AnalysisResultScreen extends StatelessWidget {
         color: const Color(0xFF4D7BFF),
         icon: Icons.auto_awesome_rounded,
         label: 'Ollama',
-        value: pipeline?.llmParserUsed == true ? 'parser on' : 'parser review',
-        desc: '멀티모달 보조와 로컬 LLM 설명은 backend runtime 설정으로 제어해요',
+        value: parserValue,
+        desc: missingSections.isEmpty
+            ? '멀티모달 보조와 로컬 LLM 설명은 backend runtime 설정으로 제어해요'
+            : '추가 확인 필요: ${missingSections.join(', ')}',
       ),
       const SizedBox(height: AppSpace.sm),
       _ResultCard(
@@ -232,10 +249,11 @@ class AnalysisResultScreen extends StatelessWidget {
       }
       return;
     }
-    await appController.registerSupplement(_registrationRequest(preview));
-    if (appController.lastRegisteredSupplement != null) {
-      await appController.previewSupplementImpact();
-    }
+    await appController.registerSupplement(
+      _registrationRequest(preview),
+      refreshImpact: true,
+      explainWithLocalLlm: true,
+    );
   }
 
   UserSupplementCreate _registrationRequest(SupplementAnalysisPreview preview) {

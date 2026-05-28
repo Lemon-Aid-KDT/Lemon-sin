@@ -15,7 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
-from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
+from src.ocr.base import (
+    OCRAdapter,
+    OCRBlock,
+    OCRBoundingPoly,
+    OCRImageInput,
+    OCRPage,
+    OCRParagraph,
+    OCRResult,
+    OCRVertex,
+    OCRWord,
+)
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_image_analysis import (
     OCR_VERIFICATION_MISMATCH_CODE,
@@ -115,9 +125,16 @@ class _FakePipelineSession:
 class _FakeOCRAdapter(OCRAdapter):
     """Fake OCR adapter returning configured text."""
 
-    def __init__(self, text: str, *, confidence: float | None = 0.88) -> None:
+    def __init__(
+        self,
+        text: str,
+        *,
+        confidence: float | None = 0.88,
+        pages: tuple[OCRPage, ...] = (),
+    ) -> None:
         self.text = text
         self.confidence = confidence
+        self.pages = pages
         self.received_image: OCRImageInput | None = None
         self.call_count = 0
 
@@ -132,7 +149,12 @@ class _FakeOCRAdapter(OCRAdapter):
         """
         self.call_count += 1
         self.received_image = image
-        return OCRResult(text=self.text, provider="fake-ocr", confidence=self.confidence)
+        return OCRResult(
+            text=self.text,
+            provider="fake-ocr",
+            confidence=self.confidence,
+            pages=self.pages,
+        )
 
 
 class _FakeVisionAdapter(VisionAdapter):
@@ -286,6 +308,62 @@ def _parse_result() -> SupplementStructuredParseResult:
     )
 
 
+def _ocr_page() -> OCRPage:
+    """Return coordinate-bearing OCR words for deterministic layout parsing."""
+    words = (
+        _ocr_word("Supplement", 10, 10, 110, 40, 0, 0.92),
+        _ocr_word("Facts", 120, 10, 190, 40, 1, 0.91),
+        _ocr_word("Vitamin", 10, 50, 90, 80, 2, 0.9),
+        _ocr_word("D", 100, 50, 115, 80, 3, 0.9),
+        _ocr_word("25", 170, 50, 200, 80, 4, 0.88),
+        _ocr_word("ug", 205, 50, 230, 80, 5, 0.88),
+        _ocr_word("섭취방법", 10, 100, 90, 130, 6, 0.87),
+        _ocr_word("1일", 110, 100, 145, 130, 7, 0.86),
+        _ocr_word("1정", 155, 100, 190, 130, 8, 0.86),
+    )
+    paragraph = OCRParagraph(
+        text=" ".join(word.text for word in words),
+        confidence=0.89,
+        bounding_box=None,
+        words=words,
+    )
+    block = OCRBlock(
+        text=paragraph.text,
+        confidence=0.89,
+        bounding_box=None,
+        block_type="TEXT",
+        paragraphs=(paragraph,),
+    )
+    return OCRPage(width=300, height=200, confidence=0.89, blocks=(block,))
+
+
+def _ocr_word(
+    text: str,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    word_index: int,
+    confidence: float,
+) -> OCRWord:
+    """Return one OCR word with a rectangular bounding polygon."""
+    return OCRWord(
+        text=text,
+        confidence=confidence,
+        bounding_box=OCRBoundingPoly(
+            vertices=(
+                OCRVertex(x=left, y=top),
+                OCRVertex(x=right, y=top),
+                OCRVertex(x=right, y=bottom),
+                OCRVertex(x=left, y=bottom),
+            )
+        ),
+        block_index=0,
+        paragraph_index=0,
+        word_index=word_index,
+    )
+
+
 @pytest.mark.asyncio
 async def test_analyze_supplement_image_defaults_to_intake_only() -> None:
     """Verify the orchestration service preserves the existing intake-only behavior."""
@@ -306,8 +384,19 @@ async def test_analyze_supplement_image_defaults_to_intake_only() -> None:
     assert result.record.algorithm_version == "supplement-intake-v1.0.0"
     preview = supplement_analysis_run_to_preview(result.record)
     assert preview.pipeline_metadata.ocr_provider == "intake-only"
+    assert preview.pipeline_metadata.image_count == 1
+    assert preview.pipeline_metadata.image_role == "unknown"
+    assert preview.pipeline_metadata.ocr_text_present is False
+    assert preview.pipeline_metadata.ocr_confidence_bucket == "none"
     assert preview.pipeline_metadata.vision_roi_used is False
+    assert preview.pipeline_metadata.roi_count == 0
+    assert preview.pipeline_metadata.section_count == 0
     assert preview.pipeline_metadata.llm_parser_used is False
+    assert preview.pipeline_metadata.parser_contract_version is None
+    assert preview.pipeline_metadata.missing_required_sections == [
+        "supplement_facts",
+        "intake_method",
+    ]
     assert fake_session.committed is False
 
 
@@ -338,8 +427,42 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert result.record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
     preview = supplement_analysis_run_to_preview(result.record)
     assert preview.pipeline_metadata.ocr_provider == "fake-ocr"
+    assert preview.pipeline_metadata.ocr_text_present is True
+    assert preview.pipeline_metadata.ocr_confidence_bucket == "medium"
     assert preview.pipeline_metadata.llm_parser_used is True
+    assert preview.pipeline_metadata.parser_contract_version == result.record.algorithm_version
+    assert preview.pipeline_metadata.missing_required_sections == ["intake_method"]
     assert fake_session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_promotes_ocr_layout_to_preview_sections() -> None:
+    """Verify OCR coordinates become reviewable section evidence in the preview."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter(
+        "Supplement Facts\nVitamin D 25 ug\n섭취방법 1일 1정",
+        pages=(_ocr_page(),),
+    )
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        _settings(),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.layout_available is True
+    assert [section.section_type for section in preview.label_sections] == [
+        "supplement_facts",
+        "intake_method",
+    ]
+    assert preview.evidence_spans[-1].source_type == "ocr_layout"
+    assert preview.pipeline_metadata.section_count == 2
+    assert preview.pipeline_metadata.missing_required_sections == []
 
 
 @pytest.mark.asyncio
@@ -376,12 +499,20 @@ async def test_analyze_supplement_image_passes_yolo_roi_to_ocr_when_enabled() ->
     )
 
     assert result.vision_region == region
+    assert result.vision_regions == (region,)
     assert fake_vision.call_count == 1
     assert fake_ocr.received_image is not None
     assert fake_ocr.received_image.label_region == region
     assert result.record.parsed_snapshot["pipeline_metadata"]["vision_roi_used"] is True
+    assert result.record.parsed_snapshot["detected_product_regions"][0]["label"] == (
+        "supplement_label"
+    )
+    assert result.record.parsed_snapshot["detected_product_regions"][0]["selected"] is True
     preview = supplement_analysis_run_to_preview(result.record)
     assert preview.pipeline_metadata.vision_roi_used is True
+    assert preview.pipeline_metadata.roi_count == 1
+    assert preview.detected_product_regions[0].selected is True
+    assert preview.selected_region_id == "vision-1"
     assert preview.pipeline_metadata.ocr_provider == "fake-ocr"
     assert result.parser_used is True
 

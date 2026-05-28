@@ -27,11 +27,12 @@ TRUNCATED_OCR_TEXT_MARKER = (
 )
 SUPPLEMENT_PARSER_OUTPUT_CONTRACT = """
 Return one JSON object with:
-- parsed_product: product_name, manufacturer, serving_size, daily_servings.
-- ingredient_candidates: visible ingredients only; each item has display_name,
-  nutrient_code=null, amount, unit, confidence, source="ollama_structured".
-- low_confidence_fields: field paths that need review.
-- warnings: short non-medical review warnings.
+- parsed_product: product_name, manufacturer, serving_size, daily_servings
+- ingredient_candidates: visible items; nutrient_code=null; source="ollama_structured"
+- label_sections, intake_method, precautions, functional_claims from visible label text only
+- evidence_spans: short supporting excerpts, never full OCR text
+- missing_required_sections: allowed schema codes only
+- low_confidence_fields and warnings: short review signals
 Do not add keys outside the schema provided in the format field.
 """.strip()
 
@@ -47,8 +48,36 @@ TOP_LEVEL_OUTPUT_KEYS = frozenset(
     {
         "parsed_product",
         "ingredient_candidates",
+        "label_sections",
+        "intake_method",
+        "precautions",
+        "functional_claims",
+        "evidence_spans",
+        "missing_required_sections",
         "low_confidence_fields",
         "warnings",
+    }
+)
+SECTION_TYPES = frozenset(
+    {
+        "supplement_facts",
+        "nutrition_info",
+        "functional_info",
+        "intake_method",
+        "precautions",
+        "ingredients",
+        "storage_method",
+        "unknown",
+    }
+)
+MISSING_SECTION_TYPES = frozenset(
+    {
+        "supplement_facts",
+        "intake_method",
+        "ingredients",
+        "precautions",
+        "functional_info",
+        "barcode",
     }
 )
 PRODUCT_OUTPUT_KEYS = frozenset(
@@ -532,6 +561,8 @@ def _normalize_structured_parse_payload(value: Any) -> Any:
                 candidates.append(candidate)
         normalized["ingredient_candidates"] = candidates
 
+    _normalize_preview_payload_sections(value, normalized)
+
     low_confidence_fields = _string_list_value(value, "low_confidence_fields")
     if low_confidence_fields is not None:
         normalized["low_confidence_fields"] = low_confidence_fields
@@ -542,6 +573,70 @@ def _normalize_structured_parse_payload(value: Any) -> Any:
     if not normalized and value:
         return value
     return {key: item for key, item in normalized.items() if key in TOP_LEVEL_OUTPUT_KEYS}
+
+
+def _normalize_preview_payload_sections(
+    value: Mapping[str, Any],
+    normalized: dict[str, Any],
+) -> None:
+    """Add V3 review fields from a decoded model payload.
+
+    Args:
+        value: Decoded model payload.
+        normalized: Mutable normalized payload.
+    """
+    section_items = _list_value(value, "label_sections")
+    if section_items is not None:
+        normalized["label_sections"] = [
+            section
+            for index, item in enumerate(section_items[:40], start=1)
+            if (section := _normalize_label_section(item, index)) is not None
+        ]
+
+    intake_method = _mapping_value(value, "intake_method")
+    if intake_method is not None:
+        normalized["intake_method"] = _normalize_intake_method(intake_method)
+
+    _normalize_preview_payload_lists(value, normalized)
+
+
+def _normalize_preview_payload_lists(
+    value: Mapping[str, Any],
+    normalized: dict[str, Any],
+) -> None:
+    """Add bounded V3 review lists from a decoded model payload.
+
+    Args:
+        value: Decoded model payload.
+        normalized: Mutable normalized payload.
+    """
+    preview_lists = (
+        ("precautions", 40, _normalize_precaution),
+        ("functional_claims", 40, _normalize_functional_claim),
+        ("evidence_spans", 160, None),
+    )
+    for key, limit, normalizer in preview_lists:
+        items = _list_value(value, key)
+        if items is None:
+            continue
+        if key == "evidence_spans":
+            normalized[key] = [
+                span
+                for index, item in enumerate(items[:limit], start=1)
+                if (span := _normalize_evidence_span(item, index)) is not None
+            ]
+        elif normalizer is not None:
+            normalized[key] = [
+                item for raw in items[:limit] if (item := normalizer(raw)) is not None
+            ]
+
+    missing_required_sections = _string_list_value(value, "missing_required_sections")
+    if missing_required_sections is not None:
+        normalized["missing_required_sections"] = [
+            section
+            for section in missing_required_sections[:10]
+            if section in MISSING_SECTION_TYPES
+        ]
 
 
 def _load_structured_message_json(content: str) -> Any:
@@ -638,6 +733,144 @@ def _normalize_ingredient_candidate(value: Any) -> dict[str, Any] | None:
     return candidate
 
 
+def _normalize_label_section(value: Any, index: int) -> dict[str, Any] | None:
+    """Return one schema-shaped label section or None."""
+    if not isinstance(value, Mapping):
+        return None
+    section_type = _section_type(value.get("section_type"))
+    text_bundle = _bounded_string(value.get("text_bundle"), max_length=2_000)
+    heading_text = _bounded_string(value.get("heading_text"), max_length=120)
+    if text_bundle is None and heading_text is None:
+        return None
+    section: dict[str, Any] = {
+        "section_id": _bounded_string(value.get("section_id"), max_length=80)
+        or f"section-{index:03d}",
+        "section_type": section_type,
+        "requires_review": bool(value.get("requires_review", False)),
+        "evidence_refs": _bounded_string_list(value.get("evidence_refs"), max_items=80),
+    }
+    if heading_text is not None:
+        section["heading_text"] = heading_text
+    if text_bundle is not None:
+        section["text_bundle"] = text_bundle
+    confidence = _bounded_number(value.get("confidence"), minimum=0.0, maximum=1.0)
+    if confidence is not None:
+        section["confidence"] = confidence
+    return section
+
+
+def _normalize_intake_method(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return schema-shaped intake-method preview fields."""
+    intake: dict[str, Any] = {
+        "requires_review": bool(value.get("requires_review", False)),
+        "evidence_refs": _bounded_string_list(value.get("evidence_refs"), max_items=20),
+    }
+    text = _bounded_string(value.get("text"), max_length=500)
+    if text is not None:
+        intake["text"] = text
+    confidence = _bounded_number(value.get("confidence"), minimum=0.0, maximum=1.0)
+    if confidence is not None:
+        intake["confidence"] = confidence
+    structured = _mapping_value(value, "structured")
+    if structured is not None:
+        intake["structured"] = _normalize_structured_intake_method(structured)
+    return intake
+
+
+def _normalize_structured_intake_method(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return schema-shaped structured intake-method fields."""
+    structured: dict[str, Any] = {
+        "frequency": _bounded_string(value.get("frequency"), max_length=40) or "unknown",
+        "time_of_day": _bounded_string_list(value.get("time_of_day"), max_items=8),
+        "with_food": _bounded_string(value.get("with_food"), max_length=40) or "unknown",
+    }
+    times_per_day = _bounded_number(value.get("times_per_day"), minimum=0.0, maximum=20.0)
+    if times_per_day is not None:
+        structured["times_per_day"] = times_per_day
+    amount_per_time = _bounded_number(
+        value.get("amount_per_time"),
+        minimum=0.0,
+        maximum=1_000_000.0,
+    )
+    if amount_per_time is not None:
+        structured["amount_per_time"] = amount_per_time
+    amount_unit = _bounded_string(value.get("amount_unit"), max_length=40)
+    if amount_unit is not None:
+        structured["amount_unit"] = amount_unit
+    return structured
+
+
+def _normalize_precaution(value: Any) -> dict[str, Any] | None:
+    """Return one schema-shaped precaution or None."""
+    if not isinstance(value, Mapping):
+        return None
+    text = _bounded_string(value.get("text"), max_length=500)
+    if text is None:
+        return None
+    item: dict[str, Any] = {
+        "text": text,
+        "category": _bounded_string(value.get("category"), max_length=80) or "unknown",
+        "severity": _bounded_string(value.get("severity"), max_length=40) or "unknown",
+        "requires_review": bool(value.get("requires_review", False)),
+        "evidence_refs": _bounded_string_list(value.get("evidence_refs"), max_items=20),
+    }
+    confidence = _bounded_number(value.get("confidence"), minimum=0.0, maximum=1.0)
+    if confidence is not None:
+        item["confidence"] = confidence
+    return item
+
+
+def _normalize_functional_claim(value: Any) -> dict[str, Any] | None:
+    """Return one schema-shaped functional claim or None."""
+    if not isinstance(value, Mapping):
+        return None
+    text = _bounded_string(value.get("text"), max_length=500)
+    if text is None:
+        return None
+    item: dict[str, Any] = {
+        "text": text,
+        "claim_type": _bounded_string(value.get("claim_type"), max_length=80) or "unknown",
+        "requires_review": bool(value.get("requires_review", False)),
+        "evidence_refs": _bounded_string_list(value.get("evidence_refs"), max_items=20),
+    }
+    confidence = _bounded_number(value.get("confidence"), minimum=0.0, maximum=1.0)
+    if confidence is not None:
+        item["confidence"] = confidence
+    return item
+
+
+def _normalize_evidence_span(value: Any, index: int) -> dict[str, Any] | None:
+    """Return one schema-shaped evidence span or None."""
+    if not isinstance(value, Mapping):
+        return None
+    text_excerpt = _bounded_string(value.get("text_excerpt"), max_length=240)
+    if text_excerpt is None:
+        return None
+    span: dict[str, Any] = {
+        "span_id": _bounded_string(value.get("span_id"), max_length=120) or f"evidence-{index:03d}",
+        "source_type": _bounded_string(value.get("source_type"), max_length=80) or "ocr",
+        "section_type": _section_type(value.get("section_type")),
+        "text_excerpt": text_excerpt,
+    }
+    page_index = _bounded_number(value.get("page_index"), minimum=0.0, maximum=10_000.0)
+    if page_index is not None:
+        span["page_index"] = int(page_index)
+    cell_ref = _bounded_string(value.get("cell_ref"), max_length=160)
+    if cell_ref is not None:
+        span["cell_ref"] = cell_ref
+    confidence = _bounded_number(value.get("confidence"), minimum=0.0, maximum=1.0)
+    if confidence is not None:
+        span["confidence"] = confidence
+    return span
+
+
+def _section_type(value: Any) -> str:
+    """Return a schema-supported section type."""
+    if isinstance(value, str) and value in SECTION_TYPES:
+        return value
+    return "unknown"
+
+
 def _mapping_value(value: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
     """Return a nested mapping when present."""
     nested = value.get(key)
@@ -661,6 +894,19 @@ def _string_list_value(value: Mapping[str, Any], key: str) -> list[str] | None:
     for item in nested[:MAX_NORMALIZED_LIST_ITEMS]:
         if isinstance(item, str):
             strings.append(item)
+    return strings
+
+
+def _bounded_string_list(value: Any, *, max_items: int) -> list[str]:
+    """Return bounded non-empty strings from a string or list value."""
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    strings: list[str] = []
+    for item in value[:max_items]:
+        if isinstance(item, str) and item.strip():
+            strings.append(item.strip())
     return strings
 
 

@@ -6,6 +6,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.models.schemas.supplement import (
+    SupplementMissingRequiredSection,
+    SupplementPreviewEvidenceSpan,
+    SupplementPreviewFunctionalClaim,
+    SupplementPreviewIntakeMethod,
+    SupplementPreviewLabelSection,
+    SupplementPreviewPrecaution,
+)
+
 SUPPLEMENT_PARSER_OUTPUT_V2: Literal["supplement-parser-output-v2"] = "supplement-parser-output-v2"
 
 
@@ -55,6 +64,12 @@ class SupplementStructuredParseResult(BaseModel):
     Attributes:
         parsed_product: Product-level parsed fields.
         ingredient_candidates: Ingredient candidates that require user confirmation.
+        label_sections: Bounded label section summaries for mobile review.
+        intake_method: Label-supported intake instruction candidate.
+        precautions: Label-supported precaution candidates.
+        functional_claims: Label-supported functional claim candidates.
+        evidence_spans: Short bounded excerpts supporting preview fields.
+        missing_required_sections: Label sections still missing from evidence.
         low_confidence_fields: Field paths that need extra user review.
         warnings: Safe non-medical warnings for the preview UI.
     """
@@ -65,6 +80,26 @@ class SupplementStructuredParseResult(BaseModel):
     ingredient_candidates: list[SupplementParserIngredientCandidate] = Field(
         default_factory=list,
         max_length=80,
+    )
+    label_sections: list[SupplementPreviewLabelSection] = Field(
+        default_factory=list,
+        max_length=40,
+    )
+    intake_method: SupplementPreviewIntakeMethod = Field(
+        default_factory=SupplementPreviewIntakeMethod
+    )
+    precautions: list[SupplementPreviewPrecaution] = Field(default_factory=list, max_length=40)
+    functional_claims: list[SupplementPreviewFunctionalClaim] = Field(
+        default_factory=list,
+        max_length=40,
+    )
+    evidence_spans: list[SupplementPreviewEvidenceSpan] = Field(
+        default_factory=list,
+        max_length=160,
+    )
+    missing_required_sections: list[SupplementMissingRequiredSection] = Field(
+        default_factory=list,
+        max_length=10,
     )
     low_confidence_fields: list[str] = Field(default_factory=list, max_length=80)
     warnings: list[str] = Field(default_factory=list, max_length=20)

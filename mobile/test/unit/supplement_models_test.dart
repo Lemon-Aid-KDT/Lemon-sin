@@ -137,9 +137,17 @@ void main() {
           },
           'pipeline_metadata': <String, dynamic>{
             'intake_completed': true,
+            'image_count': 1,
+            'image_role': 'supplement_facts',
             'vision_roi_used': true,
             'ocr_provider': 'paddleocr_local',
+            'ocr_text_present': true,
+            'ocr_confidence_bucket': 'high',
+            'roi_count': 1,
+            'section_count': 1,
             'llm_parser_used': true,
+            'parser_contract_version': 'test-parser-v3',
+            'missing_required_sections': <String>['intake_method'],
             'raw_image_stored': false,
             'raw_ocr_text_stored': false,
           },
@@ -166,8 +174,18 @@ void main() {
     expect(preview.missingRequiredSections.single, 'supplement_facts');
     expect(preview.identityConflict?.conflictType, 'barcode_product_mismatch');
     expect(preview.pipelineMetadata.ocrProvider, 'paddleocr_local');
+    expect(preview.pipelineMetadata.imageCount, 1);
+    expect(preview.pipelineMetadata.imageRole, 'supplement_facts');
+    expect(preview.pipelineMetadata.ocrTextPresent, isTrue);
+    expect(preview.pipelineMetadata.ocrConfidenceBucket, 'high');
+    expect(preview.pipelineMetadata.roiCount, 1);
+    expect(preview.pipelineMetadata.sectionCount, 1);
     expect(preview.pipelineMetadata.visionRoiUsed, isTrue);
     expect(preview.pipelineMetadata.llmParserUsed, isTrue);
+    expect(preview.pipelineMetadata.parserContractVersion, 'test-parser-v3');
+    expect(preview.pipelineMetadata.missingRequiredSections, <String>[
+      'intake_method',
+    ]);
     expect(preview.pipelineMetadata.rawOcrTextStored, isFalse);
 
     final UserSupplementCreate request = UserSupplementCreate(
@@ -197,6 +215,81 @@ void main() {
 
     expect(request.toJson()['user_confirmed'], true);
     expect(request.toJson()['analysis_id'], preview.analysisId);
+  });
+
+  test('parses supplement analysis session response', () {
+    final SupplementAnalysisSession session =
+        SupplementAnalysisSession.fromJson(<String, dynamic>{
+          'analysis_group_id': 'multi-001',
+          'status': 'created',
+          'image_count': 0,
+          'max_images': 6,
+          'missing_required_sections': <String>[
+            'supplement_facts',
+            'intake_method',
+          ],
+          'action_required': 'additional_label_image_required',
+        });
+
+    expect(session.analysisGroupId, 'multi-001');
+    expect(session.status, 'created');
+    expect(session.imageCount, 0);
+    expect(session.maxImages, 6);
+    expect(session.missingRequiredSections, <String>[
+      'supplement_facts',
+      'intake_method',
+    ]);
+  });
+
+  test('parses multi-image supplement preview response', () {
+    final SupplementMultiImageAnalysisPreview response =
+        SupplementMultiImageAnalysisPreview.fromJson(<String, dynamic>{
+          'analysis_group_id': 'multi-001',
+          'image_count': 2,
+          'previews': <Map<String, dynamic>>[
+            _minimalPreview(
+              analysisId: '00000000-0000-0000-0000-000000000001',
+              imageRole: 'front_label',
+            ),
+            _minimalPreview(
+              analysisId: '00000000-0000-0000-0000-000000000002',
+              imageRole: 'supplement_facts',
+              hasIngredient: true,
+            ),
+          ],
+          'merged_preview': _minimalPreview(
+            analysisId: '00000000-0000-0000-0000-000000000002',
+            imageRole: 'mixed',
+            hasIngredient: true,
+          ),
+          'missing_required_sections': <String>['intake_method'],
+          'action_required': 'additional_label_image_required',
+          'pipeline_metadata': <String, dynamic>{
+            'intake_completed': true,
+            'image_count': 2,
+            'image_role': 'mixed',
+            'vision_roi_used': false,
+            'ocr_provider': 'intake-only',
+            'llm_parser_used': false,
+            'missing_required_sections': <String>['intake_method'],
+            'raw_image_stored': false,
+            'raw_ocr_text_stored': false,
+          },
+          'expires_at': '2026-05-15T00:00:00Z',
+        });
+
+    expect(response.analysisGroupId, 'multi-001');
+    expect(response.imageCount, 2);
+    expect(response.previews.last.imageRole, 'supplement_facts');
+    expect(response.mergedPreview?.imageRole, 'mixed');
+    expect(response.pipelineMetadata.imageCount, 2);
+    expect(response.pipelineMetadata.imageRole, 'mixed');
+    expect(response.missingRequiredSections, <String>['intake_method']);
+    expect(
+      response.primaryPreview?.analysisId,
+      '00000000-0000-0000-0000-000000000002',
+    );
+    expect(response.primaryPreview?.imageRole, 'mixed');
   });
 
   test('parses supplement impact preview response', () {
@@ -255,4 +348,45 @@ void main() {
       'supplement-impact-v1.0.0',
     );
   });
+}
+
+Map<String, dynamic> _minimalPreview({
+  required String analysisId,
+  required String imageRole,
+  bool hasIngredient = false,
+}) {
+  return <String, dynamic>{
+    'analysis_id': analysisId,
+    'status': 'requires_confirmation',
+    'parsed_product': <String, dynamic>{},
+    'ingredient_candidates': hasIngredient
+        ? <Map<String, dynamic>>[
+            <String, dynamic>{
+              'display_name': 'Vitamin D',
+              'nutrient_code': 'vitamin_d',
+              'amount': 25,
+              'unit': 'ug',
+              'confidence': 0.8,
+              'source': 'ocr_llm_preview',
+            },
+          ]
+        : <Map<String, dynamic>>[],
+    'matched_product_candidates': <Object>[],
+    'image_role': imageRole,
+    'pipeline_metadata': <String, dynamic>{
+      'intake_completed': true,
+      'image_count': 1,
+      'image_role': imageRole,
+      'vision_roi_used': false,
+      'ocr_provider': 'intake-only',
+      'llm_parser_used': false,
+      'raw_image_stored': false,
+      'raw_ocr_text_stored': false,
+    },
+    'low_confidence_fields': <String>[],
+    'warnings': <String>[],
+    'algorithm_version': 'test',
+    'source_manifest_version': null,
+    'expires_at': '2026-05-15T00:00:00Z',
+  };
 }

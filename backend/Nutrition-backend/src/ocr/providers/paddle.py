@@ -10,7 +10,18 @@ from tempfile import TemporaryDirectory
 from typing import Any, Protocol, cast
 
 from src.config import Settings
-from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.ocr.base import (
+    OCRAdapter,
+    OCRBlock,
+    OCRBoundingPoly,
+    OCRError,
+    OCRImageInput,
+    OCRPage,
+    OCRParagraph,
+    OCRResult,
+    OCRVertex,
+    OCRWord,
+)
 from src.ocr.preprocessing import OCRPreprocessingError, preprocess_local_ocr_image
 
 PADDLE_OCR_PROVIDER = "paddleocr_local"
@@ -24,6 +35,8 @@ PADDLE_MOBILE_TEXT_RECOGNITION_MODELS = {
 PADDLE_TEXT_KEYS = {"text", "inferText"}
 PADDLE_SCORE_KEYS = {"score", "confidence", "inferConfidence"}
 LEGACY_TEXT_SCORE_PAIR_LENGTH = 2
+PADDLE_BOX_COORDINATE_COUNT = 4
+PADDLE_POINT_COORDINATE_COUNT = 2
 
 
 class PaddlePredictor(Protocol):
@@ -103,7 +116,12 @@ class PaddleOCRAdapter(OCRAdapter):
         confidence = _average_scores(scores)
         if confidence is not None and confidence < self._settings.local_ocr_confidence_threshold:
             raise OCRError("PaddleOCR confidence is below LOCAL_OCR_CONFIDENCE_THRESHOLD.")
-        return OCRResult(text=text, provider=PADDLE_OCR_PROVIDER, confidence=confidence)
+        return OCRResult(
+            text=text,
+            provider=PADDLE_OCR_PROVIDER,
+            confidence=confidence,
+            pages=_collect_layout_pages(prediction, image),
+        )
 
 
 @lru_cache(maxsize=8)
@@ -285,15 +303,40 @@ def _collect_from_mapping(
         fragments: Accumulator for text fragments.
         scores: Accumulator for confidence scores.
     """
+    _collect_aligned_texts_and_scores(value, fragments=fragments, scores=scores)
     for key, nested_value in value.items():
-        if key in {"rec_texts", "texts"} and isinstance(nested_value, list):
-            fragments.extend(item for item in nested_value if isinstance(item, str))
-        elif key in PADDLE_TEXT_KEYS and isinstance(nested_value, str):
+        if key in {"rec_texts", "texts", "rec_scores", "scores"}:
+            continue
+        if key in PADDLE_TEXT_KEYS and isinstance(nested_value, str):
             fragments.append(nested_value)
-        elif key in {"rec_scores", "scores"} and isinstance(nested_value, list):
-            scores.extend(_score_values(nested_value))
         elif key in PADDLE_SCORE_KEYS:
             scores.extend(_score_values([nested_value]))
+
+
+def _collect_aligned_texts_and_scores(
+    value: dict[object, object],
+    *,
+    fragments: list[str],
+    scores: list[float],
+) -> None:
+    """Collect PaddleOCR text/score arrays with matching indices.
+
+    Args:
+        value: Result mapping.
+        fragments: Accumulator for text fragments.
+        scores: Accumulator for confidence scores.
+    """
+    for text_key, score_key in (("rec_texts", "rec_scores"), ("texts", "scores")):
+        raw_texts = value.get(text_key)
+        if not isinstance(raw_texts, list):
+            continue
+        raw_scores = value.get(score_key)
+        for index, text in enumerate(raw_texts):
+            if not isinstance(text, str) or not text.strip():
+                continue
+            fragments.append(text)
+            if isinstance(raw_scores, list) and index < len(raw_scores):
+                scores.extend(_score_values([raw_scores[index]]))
 
 
 def _collect_legacy_tuple(
@@ -365,3 +408,217 @@ def _average_scores(scores: list[float]) -> float | None:
     if not scores:
         return None
     return sum(scores) / len(scores)
+
+
+def _collect_layout_pages(value: object, image: OCRImageInput) -> tuple[OCRPage, ...]:
+    """Collect PaddleOCR layout lines into provider-neutral OCR pages.
+
+    Args:
+        value: PaddleOCR output in dict/list/object form.
+        image: Validated OCR image input used for page dimensions.
+
+    Returns:
+        Normalized OCR pages. Empty when Paddle returned flat text only.
+    """
+    pages: list[OCRPage] = []
+    _walk_layout_pages(value, image=image, pages=pages)
+    return tuple(pages)
+
+
+def _walk_layout_pages(
+    value: object,
+    *,
+    image: OCRImageInput,
+    pages: list[OCRPage],
+) -> None:
+    """Recursively walk common PaddleOCR result shapes for layout fields."""
+    if isinstance(value, dict):
+        page = _page_from_mapping(value, image)
+        if page is not None:
+            pages.append(page)
+            return
+        for nested_value in value.values():
+            _walk_layout_pages(nested_value, image=image, pages=pages)
+        return
+
+    if isinstance(value, list | tuple):
+        for item in value:
+            _walk_layout_pages(item, image=image, pages=pages)
+        return
+
+    parsed = _object_as_mapping(value)
+    if parsed is not None:
+        _walk_layout_pages(parsed, image=image, pages=pages)
+
+
+def _object_as_mapping(value: object) -> dict[object, object] | None:
+    """Return dict-like provider object data without exposing provider payload."""
+    json_value = getattr(value, "json", None)
+    if isinstance(json_value, dict):
+        return json_value
+    if callable(json_value):
+        try:
+            parsed = json_value()
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            parsed = to_dict()
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _page_from_mapping(value: dict[object, object], image: OCRImageInput) -> OCRPage | None:
+    """Build one OCR page from PaddleOCR line-level fields when present."""
+    raw_texts = value.get("rec_texts")
+    if not isinstance(raw_texts, list):
+        return None
+    text_items = [
+        (raw_index, item.strip())
+        for raw_index, item in enumerate(raw_texts)
+        if isinstance(item, str) and item.strip()
+    ]
+    if not text_items:
+        return None
+    scores = _score_values(
+        value.get("rec_scores") if isinstance(value.get("rec_scores"), list) else []
+    )
+    raw_polys = value.get("rec_polys") if "rec_polys" in value else value.get("dt_polys")
+    raw_boxes = value.get("rec_boxes")
+    blocks = tuple(
+        _line_block(
+            text=text,
+            confidence=scores[raw_index] if raw_index < len(scores) else None,
+            bounding_box=_line_bounding_poly(raw_polys, raw_boxes, raw_index),
+            index=block_index,
+        )
+        for block_index, (raw_index, text) in enumerate(text_items)
+    )
+    return OCRPage(
+        width=image.width,
+        height=image.height,
+        confidence=_average_scores(scores),
+        blocks=blocks,
+    )
+
+
+def _line_block(
+    *,
+    text: str,
+    confidence: float | None,
+    bounding_box: OCRBoundingPoly | None,
+    index: int,
+) -> OCRBlock:
+    """Build a line-level block from one PaddleOCR recognized text line."""
+    word = OCRWord(
+        text=text,
+        confidence=confidence,
+        bounding_box=bounding_box,
+        block_index=index,
+        paragraph_index=0,
+        word_index=0,
+    )
+    paragraph = OCRParagraph(
+        text=text,
+        confidence=confidence,
+        bounding_box=bounding_box,
+        words=(word,),
+    )
+    return OCRBlock(
+        text=text,
+        confidence=confidence,
+        bounding_box=bounding_box,
+        block_type="TEXT",
+        paragraphs=(paragraph,),
+    )
+
+
+def _line_bounding_poly(
+    raw_polys: object,
+    raw_boxes: object,
+    index: int,
+) -> OCRBoundingPoly | None:
+    """Return a line bounding polygon from PaddleOCR polygon or box fields."""
+    poly_value = _indexed_value(raw_polys, index)
+    poly = _poly_from_points(poly_value)
+    if poly is not None:
+        return poly
+    box_value = _indexed_value(raw_boxes, index)
+    return _poly_from_box(box_value)
+
+
+def _indexed_value(value: object, index: int) -> object | None:
+    """Return one indexed provider value from list-like or ndarray-like objects."""
+    if isinstance(value, list | tuple):
+        return value[index] if index < len(value) else None
+    shape = getattr(value, "shape", None)
+    if shape is not None:
+        try:
+            return value[index]  # type: ignore[index]
+        except Exception:
+            return None
+    return None
+
+
+def _poly_from_points(value: object) -> OCRBoundingPoly | None:
+    """Convert four-point PaddleOCR polygons into OCRBoundingPoly."""
+    points = _nested_numeric_pairs(value)
+    if not points:
+        return None
+    return OCRBoundingPoly(vertices=tuple(OCRVertex(x=float(x), y=float(y)) for x, y in points))
+
+
+def _poly_from_box(value: object) -> OCRBoundingPoly | None:
+    """Convert PaddleOCR rec_boxes [x_min, y_min, x_max, y_max] into a polygon."""
+    values = _numeric_sequence(value)
+    if len(values) != PADDLE_BOX_COORDINATE_COUNT:
+        return None
+    x_min, y_min, x_max, y_max = values
+    return OCRBoundingPoly(
+        vertices=(
+            OCRVertex(x=x_min, y=y_min),
+            OCRVertex(x=x_max, y=y_min),
+            OCRVertex(x=x_max, y=y_max),
+            OCRVertex(x=x_min, y=y_max),
+        )
+    )
+
+
+def _nested_numeric_pairs(value: object) -> list[tuple[float, float]]:
+    """Return coordinate pairs from nested list or ndarray-like values."""
+    if not isinstance(value, list | tuple):
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            try:
+                value = tolist()
+            except Exception:
+                return []
+    if not isinstance(value, list | tuple):
+        return []
+    points: list[tuple[float, float]] = []
+    for raw_point in value:
+        coordinates = _numeric_sequence(raw_point)
+        if len(coordinates) >= PADDLE_POINT_COORDINATE_COUNT:
+            points.append((coordinates[0], coordinates[1]))
+    return points
+
+
+def _numeric_sequence(value: object) -> list[float]:
+    """Return numeric items from a list-like value."""
+    if not isinstance(value, list | tuple):
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            try:
+                value = tolist()
+            except Exception:
+                return []
+    if not isinstance(value, list | tuple):
+        return []
+    return [float(item) for item in value if isinstance(item, int | float)]

@@ -110,6 +110,103 @@ async def test_google_vision_provider_falls_back_to_text_annotations() -> None:
 
 
 @pytest.mark.asyncio
+async def test_google_vision_provider_normalizes_full_text_layout_pages() -> None:
+    """Verify Google Vision page hierarchy is preserved in the OCR layout contract."""
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        """Return a fake fullTextAnnotation response with page hierarchy."""
+        return httpx.Response(
+            200,
+            json={
+                "responses": [
+                    {
+                        "fullTextAnnotation": {
+                            "text": "Vitamin D",
+                            "pages": [
+                                {
+                                    "width": 800,
+                                    "height": 600,
+                                    "confidence": 0.93,
+                                    "blocks": [
+                                        {
+                                            "blockType": "TEXT",
+                                            "confidence": 0.91,
+                                            "boundingBox": {
+                                                "vertices": [
+                                                    {"x": 10, "y": 20},
+                                                    {"x": 110, "y": 20},
+                                                    {"x": 110, "y": 60},
+                                                    {"x": 10, "y": 60},
+                                                ]
+                                            },
+                                            "paragraphs": [
+                                                {
+                                                    "confidence": 0.89,
+                                                    "words": [
+                                                        {
+                                                            "confidence": 0.88,
+                                                            "boundingBox": {
+                                                                "vertices": [
+                                                                    {"x": 10, "y": 20},
+                                                                    {"x": 70, "y": 20},
+                                                                ]
+                                                            },
+                                                            "symbols": [
+                                                                {"text": "V"},
+                                                                {"text": "i"},
+                                                                {"text": "t"},
+                                                                {"text": "a"},
+                                                                {"text": "m"},
+                                                                {"text": "i"},
+                                                                {"text": "n"},
+                                                            ],
+                                                        },
+                                                        {
+                                                            "confidence": 0.87,
+                                                            "symbols": [{"text": "D"}],
+                                                        },
+                                                    ],
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = GoogleVisionOCRAdapter(
+            auth_headers=GoogleVisionApiKeyAuthHeaders("secret-key"),
+            max_retries=0,
+            client=client,
+        )
+        result = await adapter.extract_text(_image_input())
+
+    assert result.text == "Vitamin D"
+    assert len(result.pages) == 1
+    page = result.pages[0]
+    assert page.width == 800
+    assert page.height == 600
+    assert page.confidence == pytest.approx(0.93)
+    block = page.blocks[0]
+    assert block.block_type == "TEXT"
+    assert block.text == "Vitamin D"
+    assert block.bounding_box is not None
+    assert block.bounding_box.vertices[0].x == 10
+    paragraph = block.paragraphs[0]
+    assert paragraph.text == "Vitamin D"
+    assert [word.text for word in paragraph.words] == ["Vitamin", "D"]
+    assert paragraph.words[0].block_index == 0
+    assert paragraph.words[0].paragraph_index == 0
+    assert paragraph.words[1].word_index == 1
+
+
+@pytest.mark.asyncio
 async def test_google_vision_provider_returns_empty_text_without_fake_confidence() -> None:
     """Verify empty OCR responses do not invent confidence scores."""
 

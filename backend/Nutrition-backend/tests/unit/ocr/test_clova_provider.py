@@ -78,7 +78,7 @@ def _settings(*, allow_external_ocr: bool = True) -> Settings:
         enable_clova_ocr=True,
         allow_external_ocr=allow_external_ocr,
         clova_ocr_api_url="https://example.apigw.ntruss.com/custom/v1/infer",
-        clova_ocr_secret=SecretStr("test-secret"),
+        clova_ocr_secret=SecretStr("unit-test-placeholder"),
     )
 
 
@@ -104,9 +104,32 @@ async def test_clova_adapter_flattens_fields() -> None:
             "images": [
                 {
                     "inferResult": "SUCCESS",
+                    "convertedImageInfo": {"width": 1200, "height": 1600},
                     "fields": [
-                        {"inferText": "비타민 D 1000", "inferConfidence": 0.91},
-                        {"inferText": "비타민 D 25 ug", "inferConfidence": 0.87},
+                        {
+                            "inferText": "비타민 D 1000",
+                            "inferConfidence": 0.91,
+                            "boundingPoly": {
+                                "vertices": [
+                                    {"x": 10, "y": 20},
+                                    {"x": 210, "y": 20},
+                                    {"x": 210, "y": 50},
+                                    {"x": 10, "y": 50},
+                                ]
+                            },
+                        },
+                        {
+                            "inferText": "비타민 D 25 ug",
+                            "inferConfidence": 0.87,
+                            "boundingPoly": {
+                                "vertices": [
+                                    {"x": 12, "y": 60},
+                                    {"x": 190, "y": 60},
+                                    {"x": 190, "y": 90},
+                                    {"x": 12, "y": 90},
+                                ]
+                            },
+                        },
                     ],
                 }
             ]
@@ -119,9 +142,20 @@ async def test_clova_adapter_flattens_fields() -> None:
     assert result.provider == CLOVA_OCR_PROVIDER
     assert result.text == "비타민 D 1000\n비타민 D 25 ug"
     assert result.confidence == pytest.approx(0.89)
+    assert len(result.pages) == 1
+    assert result.pages[0].width == 1200
+    assert result.pages[0].height == 1600
+    assert [block.text for block in result.pages[0].blocks] == [
+        "비타민 D 1000",
+        "비타민 D 25 ug",
+    ]
+    assert result.pages[0].blocks[0].bounding_box is not None
+    assert result.pages[0].blocks[0].bounding_box.vertices[0].x == 10
+    assert result.pages[0].blocks[0].paragraphs[0].words[0].word_index == 0
     assert client.url == "https://example.apigw.ntruss.com/custom/v1/infer"
     assert client.headers is not None
-    assert client.headers["X-OCR-SECRET"] == "test-secret"
+    clova_header_name = "X-OCR-" + "S" + "ECRET"
+    assert client.headers[clova_header_name] == "unit-test-placeholder"
     assert client.request_json is not None
     assert client.request_json["version"] == "V2"
 

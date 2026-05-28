@@ -20,6 +20,31 @@ abstract class LemonAidRepository {
     String ocrProvider = 'configured',
   });
 
+  /// Creates a backend multi-image supplement analysis session.
+  Future<SupplementAnalysisSession> createSupplementAnalysisSession();
+
+  /// Uploads one image into an existing multi-image analysis session.
+  Future<SupplementMultiImageAnalysisPreview>
+  uploadSupplementAnalysisSessionImage(
+    String analysisGroupId,
+    SupplementImageUpload image, {
+    String ocrProvider = 'configured',
+    String? clientRequestId,
+  });
+
+  /// Uploads several supplement label images as one analysis batch.
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) {
+    throw UnimplementedError();
+  }
+
+  /// Rebuilds the backend-merged preview for an existing multi-image batch.
+  Future<SupplementMultiImageAnalysisPreview> finalizeSupplementAnalysisSession(
+    String analysisGroupId,
+  );
+
   /// Parses user-reviewed OCR text for an existing preview.
   Future<SupplementAnalysisPreview> parseOcrText({
     required String analysisId,
@@ -108,6 +133,88 @@ class BackendLemonAidRepository implements LemonAidRepository {
   }
 
   @override
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) async {
+    if (images.isEmpty) {
+      throw ArgumentError.value(
+        images,
+        'images',
+        'At least one image is required',
+      );
+    }
+    for (final SupplementImageUpload image in images) {
+      _normalizeImageRole(image.role);
+    }
+    final SupplementAnalysisSession session =
+        await createSupplementAnalysisSession();
+    for (int index = 0; index < images.length; index += 1) {
+      await uploadSupplementAnalysisSessionImage(
+        session.analysisGroupId,
+        images[index],
+        ocrProvider: ocrProvider,
+        clientRequestId:
+            'mobile-${DateTime.now().microsecondsSinceEpoch}-$index',
+      );
+    }
+    return finalizeSupplementAnalysisSession(session.analysisGroupId);
+  }
+
+  @override
+  Future<SupplementAnalysisSession> createSupplementAnalysisSession() async {
+    final Map<String, dynamic> json = await _apiClient.postJson(
+      '/supplements/analysis-sessions',
+      expectedStatusCodes: const <int>{201},
+    );
+    return SupplementAnalysisSession.fromJson(json);
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview>
+  uploadSupplementAnalysisSessionImage(
+    String analysisGroupId,
+    SupplementImageUpload image, {
+    String ocrProvider = 'configured',
+    String? clientRequestId,
+  }) async {
+    final String normalizedGroupId = _normalizeAnalysisGroupId(analysisGroupId);
+    final String selectedOcrProvider = _normalizeOcrProvider(ocrProvider);
+    final String encodedGroupId = Uri.encodeComponent(normalizedGroupId);
+    final String selectedRole = _normalizeImageRole(image.role);
+    final Map<String, String> fields = <String, String>{
+      'ocr_provider': selectedOcrProvider,
+      'image_role': selectedRole,
+    };
+    final String? normalizedClientRequestId = clientRequestId?.trim();
+    if (normalizedClientRequestId != null &&
+        normalizedClientRequestId.isNotEmpty) {
+      fields['client_request_id'] = normalizedClientRequestId;
+    }
+    final Map<String, dynamic> json = await _apiClient.postMultipart(
+      '/supplements/analysis-sessions/$encodedGroupId/images',
+      fileField: 'image',
+      filePath: image.path,
+      fields: fields,
+      expectedStatusCodes: const <int>{202},
+    );
+    return SupplementMultiImageAnalysisPreview.fromJson(json);
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview> finalizeSupplementAnalysisSession(
+    String analysisGroupId,
+  ) async {
+    final String normalizedGroupId = _normalizeAnalysisGroupId(analysisGroupId);
+    final String encodedGroupId = Uri.encodeComponent(normalizedGroupId);
+    final Map<String, dynamic> json = await _apiClient.postJson(
+      '/supplements/analysis-sessions/$encodedGroupId/finalize',
+      expectedStatusCodes: const <int>{200},
+    );
+    return SupplementMultiImageAnalysisPreview.fromJson(json);
+  }
+
+  @override
   Future<SupplementAnalysisPreview> parseOcrText({
     required String analysisId,
     required SupplementOCRTextParseRequest request,
@@ -189,6 +296,36 @@ class BackendLemonAidRepository implements LemonAidRepository {
         value,
         'ocrProvider',
         'Unsupported OCR provider',
+      );
+    }
+    return normalized;
+  }
+
+  static String _normalizeImageRole(String value) {
+    final String normalized = value.trim().isEmpty ? 'unknown' : value.trim();
+    const Set<String> allowedRoles = <String>{
+      'unknown',
+      'front_label',
+      'supplement_facts',
+      'intake_method',
+      'ingredients',
+      'precautions',
+      'barcode',
+      'mixed',
+    };
+    if (!allowedRoles.contains(normalized)) {
+      throw ArgumentError.value(value, 'imageRole', 'Unsupported image role');
+    }
+    return normalized;
+  }
+
+  static String _normalizeAnalysisGroupId(String value) {
+    final String normalized = value.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        value,
+        'analysisGroupId',
+        'Analysis group id is required',
       );
     }
     return normalized;

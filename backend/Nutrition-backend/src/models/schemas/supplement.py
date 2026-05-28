@@ -33,6 +33,7 @@ SupplementImageRole = Literal[
     "unknown",
     "front_label",
     "supplement_facts",
+    "intake_method",
     "ingredients",
     "precautions",
     "barcode",
@@ -41,8 +42,10 @@ SupplementImageRole = Literal[
 SupplementImageSourceType = Literal["uploaded_image", "screenshot_or_catalog", "unknown"]
 SupplementMissingRequiredSection = Literal[
     "supplement_facts",
+    "intake_method",
     "ingredients",
     "precautions",
+    "functional_info",
     "barcode",
 ]
 
@@ -305,6 +308,7 @@ class SupplementParsedProduct(BaseModel):
 
 
 SupplementPreviewSectionType = Literal[
+    "supplement_facts",
     "nutrition_info",
     "functional_info",
     "intake_method",
@@ -517,6 +521,56 @@ class SupplementAnalysisPreview(BaseModel):
     algorithm_version: str
     source_manifest_version: str | None
     expires_at: datetime
+
+
+class SupplementMultiImageAnalysisPreview(BaseModel):
+    """Compatibility response for multi-image supplement-label analysis.
+
+    Attributes:
+        analysis_group_id: Ephemeral group identifier for the uploaded image batch.
+        image_count: Number of images accepted in the batch.
+        previews: Per-image analysis previews using the existing confirmation flow.
+        merged_preview: Bounded review preview assembled from per-image evidence.
+        missing_required_sections: Required sections still missing at the batch level.
+        action_required: Batch-level next action before relying on the preview.
+        pipeline_metadata: Sanitized aggregate OCR/YOLO/parser metadata.
+        expires_at: Earliest per-image preview expiration time.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_group_id: str = Field(min_length=1, max_length=120)
+    image_count: int = Field(ge=1, le=20)
+    previews: list[SupplementAnalysisPreview] = Field(min_length=1, max_length=20)
+    merged_preview: SupplementAnalysisPreview | None = None
+    missing_required_sections: list[SupplementMissingRequiredSection] = Field(default_factory=list)
+    action_required: SupplementImageRiskActionRequired = "review_required"
+    pipeline_metadata: SupplementImagePipelineMetadata
+    expires_at: datetime | None = None
+
+
+class SupplementAnalysisSessionResponse(BaseModel):
+    """Lightweight multi-image analysis session response.
+
+    Attributes:
+        analysis_group_id: Backend-created group identifier used by image uploads.
+        status: Session lifecycle status.
+        image_count: Number of accepted images currently tied to this group.
+        max_images: Maximum images accepted by the batch contract.
+        missing_required_sections: Required sections still expected from the user.
+        action_required: Next action before relying on the analysis session.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_group_id: str = Field(min_length=1, max_length=120)
+    status: Literal["created", "receiving_images", "ready_for_review"] = "created"
+    image_count: int = Field(default=0, ge=0, le=20)
+    max_images: int = Field(default=6, ge=1, le=20)
+    missing_required_sections: list[SupplementMissingRequiredSection] = Field(
+        default_factory=lambda: ["supplement_facts", "intake_method"]
+    )
+    action_required: SupplementImageRiskActionRequired = "additional_label_image_required"
 
 
 class SupplementServing(BaseModel):

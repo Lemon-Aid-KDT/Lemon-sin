@@ -124,3 +124,17 @@ def sanitize_unit(value: str | None) -> SanitizerResult:
     SQL keywords, or prompt-injection markers.
     """
     return _sanitize_blockable_field(value, "unit")
+
+
+def sanitize_preview_text(value: str | None, field: str) -> SanitizerResult:
+    """Sanitize bounded label-preview text emitted by OCR/LLM parsing.
+
+    Args:
+        value: Source label-preview string.
+        field: Stable field path used in sanitizer warning codes.
+
+    Returns:
+        Sanitized result with prompt-injection, URL, HTML, and SQL-shaped
+        payloads blocked.
+    """
+    return _sanitize_blockable_field(value, field)

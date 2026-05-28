@@ -17,6 +17,154 @@ Map<String, Object?> _readOptionalJsonMap(
   throw FormatException('Expected optional object field "$key".');
 }
 
+/// One locally selected supplement image and its intended label role.
+class SupplementImageUpload {
+  /// Creates a local supplement image upload descriptor.
+  const SupplementImageUpload({required this.path, this.role = 'unknown'});
+
+  /// Local image path selected by the user.
+  final String path;
+
+  /// Client-side image role hint sent to the backend.
+  final String role;
+}
+
+/// Lightweight backend-created multi-image analysis session.
+class SupplementAnalysisSession {
+  /// Creates a supplement analysis session descriptor.
+  const SupplementAnalysisSession({
+    required this.analysisGroupId,
+    required this.status,
+    required this.imageCount,
+    required this.maxImages,
+    required this.missingRequiredSections,
+    required this.actionRequired,
+  });
+
+  /// Backend group id used by subsequent image uploads.
+  final String analysisGroupId;
+
+  /// Session lifecycle status.
+  final String status;
+
+  /// Number of images currently tied to this session.
+  final int imageCount;
+
+  /// Maximum image count accepted by the backend.
+  final int maxImages;
+
+  /// Required label sections still expected from the user.
+  final List<String> missingRequiredSections;
+
+  /// Next action required before relying on this session.
+  final String actionRequired;
+
+  /// Parses a backend-created analysis session response.
+  factory SupplementAnalysisSession.fromJson(Map<String, dynamic> json) {
+    return SupplementAnalysisSession(
+      analysisGroupId: readString(json, 'analysis_group_id'),
+      status: readOptionalString(json, 'status') ?? 'created',
+      imageCount: readOptionalInt(json, 'image_count') ?? 0,
+      maxImages: readOptionalInt(json, 'max_images') ?? 6,
+      missingRequiredSections: readOptionalStringList(
+        json,
+        'missing_required_sections',
+      ),
+      actionRequired:
+          readOptionalString(json, 'action_required') ??
+          'additional_label_image_required',
+    );
+  }
+}
+
+/// Multi-image supplement analysis response before user confirmation.
+class SupplementMultiImageAnalysisPreview {
+  /// Creates a multi-image analysis preview.
+  const SupplementMultiImageAnalysisPreview({
+    required this.analysisGroupId,
+    required this.imageCount,
+    required this.previews,
+    this.mergedPreview,
+    required this.missingRequiredSections,
+    required this.actionRequired,
+    required this.pipelineMetadata,
+    required this.expiresAt,
+  });
+
+  /// Ephemeral backend group id for the uploaded batch.
+  final String analysisGroupId;
+
+  /// Number of accepted images in the batch.
+  final int imageCount;
+
+  /// Per-image analysis previews.
+  final List<SupplementAnalysisPreview> previews;
+
+  /// Backend-assembled merged review preview using bounded per-image evidence.
+  final SupplementAnalysisPreview? mergedPreview;
+
+  /// Required label sections still missing after aggregating the batch.
+  final List<String> missingRequiredSections;
+
+  /// Batch-level next action before relying on the preview.
+  final String actionRequired;
+
+  /// Sanitized aggregate OCR, YOLO, and parser metadata.
+  final SupplementImagePipelineMetadata pipelineMetadata;
+
+  /// Earliest preview expiration time when provided by the backend.
+  final DateTime? expiresAt;
+
+  /// Parses a backend multi-image analysis preview.
+  factory SupplementMultiImageAnalysisPreview.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return SupplementMultiImageAnalysisPreview(
+      analysisGroupId: readString(json, 'analysis_group_id'),
+      imageCount: readOptionalInt(json, 'image_count') ?? 1,
+      previews: readList(json, 'previews')
+          .whereType<Map<String, dynamic>>()
+          .map(SupplementAnalysisPreview.fromJson)
+          .toList(growable: false),
+      mergedPreview: readOptionalObject(json, 'merged_preview') == null
+          ? null
+          : SupplementAnalysisPreview.fromJson(
+              readObject(json, 'merged_preview'),
+            ),
+      missingRequiredSections: readOptionalStringList(
+        json,
+        'missing_required_sections',
+      ),
+      actionRequired: readOptionalString(json, 'action_required') ?? 'none',
+      pipelineMetadata: readOptionalObject(json, 'pipeline_metadata') == null
+          ? SupplementImagePipelineMetadata.intakeOnly
+          : SupplementImagePipelineMetadata.fromJson(
+              readObject(json, 'pipeline_metadata'),
+            ),
+      expiresAt: readOptionalString(json, 'expires_at') == null
+          ? null
+          : DateTime.parse(readString(json, 'expires_at')),
+    );
+  }
+
+  /// First preview that can seed the existing single-preview review flow.
+  SupplementAnalysisPreview? get primaryPreview {
+    if (mergedPreview != null) {
+      return mergedPreview;
+    }
+    if (previews.isEmpty) {
+      return null;
+    }
+    for (final SupplementAnalysisPreview preview in previews) {
+      if (preview.ingredientCandidates.isNotEmpty ||
+          preview.labelSections.isNotEmpty) {
+        return preview;
+      }
+    }
+    return previews.first;
+  }
+}
+
 /// Supplement OCR and parsing preview before user confirmation.
 class SupplementAnalysisPreview {
   /// Creates an analysis preview.
@@ -253,9 +401,17 @@ class SupplementImagePipelineMetadata {
   /// Creates image analysis pipeline metadata.
   const SupplementImagePipelineMetadata({
     required this.intakeCompleted,
+    this.imageCount = 1,
+    this.imageRole = 'unknown',
     required this.visionRoiUsed,
     required this.ocrProvider,
+    this.ocrTextPresent = false,
+    this.ocrConfidenceBucket = 'none',
+    this.roiCount = 0,
+    this.sectionCount = 0,
     required this.llmParserUsed,
+    this.parserContractVersion,
+    this.missingRequiredSections = const <String>[],
     required this.rawImageStored,
     required this.rawOcrTextStored,
   });
@@ -264,9 +420,17 @@ class SupplementImagePipelineMetadata {
   static const SupplementImagePipelineMetadata intakeOnly =
       SupplementImagePipelineMetadata(
         intakeCompleted: true,
+        imageCount: 1,
+        imageRole: 'unknown',
         visionRoiUsed: false,
         ocrProvider: 'intake-only',
+        ocrTextPresent: false,
+        ocrConfidenceBucket: 'none',
+        roiCount: 0,
+        sectionCount: 0,
         llmParserUsed: false,
+        parserContractVersion: null,
+        missingRequiredSections: <String>[],
         rawImageStored: false,
         rawOcrTextStored: false,
       );
@@ -274,14 +438,38 @@ class SupplementImagePipelineMetadata {
   /// Whether validated image intake completed.
   final bool intakeCompleted;
 
+  /// Number of uploaded images represented by this preview.
+  final int imageCount;
+
+  /// Inferred role for this image or capture group.
+  final String imageRole;
+
   /// Whether backend YOLO ROI metadata was used before OCR.
   final bool visionRoiUsed;
 
   /// OCR-like provider label selected by the backend, if any.
   final String? ocrProvider;
 
+  /// Whether OCR produced non-empty text without exposing the raw text.
+  final bool ocrTextPresent;
+
+  /// Coarse OCR confidence bucket returned by the backend.
+  final String ocrConfidenceBucket;
+
+  /// Number of safe ROI candidates represented by this preview.
+  final int roiCount;
+
+  /// Number of bounded label sections available for review.
+  final int sectionCount;
+
   /// Whether the structured parser ran after OCR text extraction.
   final bool llmParserUsed;
+
+  /// Backend parser contract or algorithm version.
+  final String? parserContractVersion;
+
+  /// Required label sections still missing from the evidence.
+  final List<String> missingRequiredSections;
 
   /// Whether raw image bytes were retained.
   final bool rawImageStored;
@@ -291,14 +479,46 @@ class SupplementImagePipelineMetadata {
 
   /// Parses sanitized pipeline metadata.
   factory SupplementImagePipelineMetadata.fromJson(Map<String, dynamic> json) {
+    final int imageCount = readOptionalInt(json, 'image_count') ?? 1;
+    final int roiCount = readOptionalInt(json, 'roi_count') ?? 0;
+    final int sectionCount = readOptionalInt(json, 'section_count') ?? 0;
     return SupplementImagePipelineMetadata(
       intakeCompleted: json['intake_completed'] != false,
+      imageCount: imageCount < 1 ? 1 : imageCount,
+      imageRole: readOptionalString(json, 'image_role') ?? 'unknown',
       visionRoiUsed: json['vision_roi_used'] == true,
       ocrProvider: readOptionalString(json, 'ocr_provider'),
+      ocrTextPresent: json['ocr_text_present'] == true,
+      ocrConfidenceBucket: _normalizeConfidenceBucket(
+        readOptionalString(json, 'ocr_confidence_bucket'),
+      ),
+      roiCount: roiCount < 0 ? 0 : roiCount,
+      sectionCount: sectionCount < 0 ? 0 : sectionCount,
       llmParserUsed: json['llm_parser_used'] == true,
+      parserContractVersion: readOptionalString(
+        json,
+        'parser_contract_version',
+      ),
+      missingRequiredSections: readOptionalStringList(
+        json,
+        'missing_required_sections',
+      ),
       rawImageStored: json['raw_image_stored'] == true,
       rawOcrTextStored: json['raw_ocr_text_stored'] == true,
     );
+  }
+
+  static String _normalizeConfidenceBucket(String? value) {
+    switch (value) {
+      case 'unknown':
+      case 'low':
+      case 'medium':
+      case 'high':
+        return value!;
+      case 'none':
+      default:
+        return 'none';
+    }
   }
 }
 

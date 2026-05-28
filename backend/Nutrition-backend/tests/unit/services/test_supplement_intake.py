@@ -393,3 +393,13 @@ def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
     assert body["low_confidence_fields"] == ["label_text"]
     assert "image_sha256" not in body
     assert "intake" not in body
+    assert preview.pipeline_metadata.image_count == 1
+    assert preview.pipeline_metadata.image_role == "unknown"
+    assert preview.pipeline_metadata.ocr_text_present is False
+    assert preview.pipeline_metadata.ocr_confidence_bucket == "none"
+    assert preview.pipeline_metadata.roi_count == 0
+    assert preview.pipeline_metadata.section_count == 0
+    assert preview.pipeline_metadata.missing_required_sections == [
+        "supplement_facts",
+        "intake_method",
+    ]

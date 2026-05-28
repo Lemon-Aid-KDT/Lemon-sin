@@ -137,26 +137,25 @@ async def test_yolo_label_detector_rejects_when_feature_flag_disabled() -> None:
 @pytest.mark.asyncio
 async def test_yolo_label_detector_selects_best_label_region() -> None:
     """Verify the detector returns ROI metadata rather than text facts."""
-    runner = _FakeRunner(
-        [
-            BoundingBox(
-                x=0,
-                y=0,
-                width=10,
-                height=8,
-                confidence=0.99,
-                label="supplement_bottle",
-            ),
-            BoundingBox(
-                x=2,
-                y=1,
-                width=4,
-                height=3,
-                confidence=0.55,
-                label="supplement_label",
-            ),
-        ]
-    )
+    regions = [
+        BoundingBox(
+            x=0,
+            y=0,
+            width=10,
+            height=8,
+            confidence=0.99,
+            label="supplement_bottle",
+        ),
+        BoundingBox(
+            x=2,
+            y=1,
+            width=4,
+            height=3,
+            confidence=0.55,
+            label="supplement_label",
+        ),
+    ]
+    runner = _FakeRunner(regions)
     detector = YoloLabelDetector(_settings(), runner=runner)
 
     region = await detector.detect_label_region(_png_bytes())
@@ -164,6 +163,7 @@ async def test_yolo_label_detector_selects_best_label_region() -> None:
     assert region.label == "supplement_label"
     assert region.model is None
     assert runner.received_image_bytes is not None
+    assert await detector.detect_regions(_png_bytes()) == regions
 
 
 @pytest.mark.asyncio

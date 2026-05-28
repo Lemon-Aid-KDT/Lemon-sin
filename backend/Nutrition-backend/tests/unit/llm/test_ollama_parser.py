@@ -154,6 +154,49 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
                     "confidence": 0.91,
                 }
             ],
+            "label_sections": [
+                {
+                    "section_type": "supplement_facts",
+                    "heading_text": "Supplement Facts",
+                    "text_bundle": "Vitamin D 25 ug",
+                    "confidence": 0.9,
+                    "evidence_refs": ["span-1"],
+                }
+            ],
+            "intake_method": {
+                "text": "1일 1정 섭취",
+                "structured": {
+                    "frequency": "daily",
+                    "times_per_day": 1,
+                    "amount_per_time": 1,
+                    "amount_unit": "tablet",
+                },
+                "confidence": 0.8,
+                "evidence_refs": ["span-2"],
+            },
+            "precautions": [
+                {
+                    "text": "임산부는 전문가와 상담",
+                    "category": "pregnancy",
+                    "severity": "caution",
+                    "confidence": 0.8,
+                }
+            ],
+            "functional_claims": [
+                {
+                    "text": "뼈 건강에 도움",
+                    "claim_type": "label_claim",
+                    "confidence": 0.7,
+                }
+            ],
+            "evidence_spans": [
+                {
+                    "section_type": "supplement_facts",
+                    "text_excerpt": "Vitamin D 25 ug",
+                    "confidence": 0.9,
+                }
+            ],
+            "missing_required_sections": ["intake_method", "not_allowed"],
             "low_confidence_fields": ["manufacturer"],
             "warnings": [],
         },
@@ -176,6 +219,12 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     assert fake_client.request_json["options"] == {"temperature": 0.0}
     assert result.parsed_product.product_name == "비타민 D 1000"
     assert result.ingredient_candidates[0].source == "ollama_structured"
+    assert result.label_sections[0].section_id == "section-001"
+    assert result.intake_method.text == "1일 1정 섭취"
+    assert result.precautions[0].category == "pregnancy"
+    assert result.functional_claims[0].claim_type == "label_claim"
+    assert result.evidence_spans[0].span_id == "evidence-001"
+    assert result.missing_required_sections == ["intake_method"]
 
 
 @pytest.mark.asyncio

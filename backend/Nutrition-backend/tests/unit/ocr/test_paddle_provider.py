@@ -104,6 +104,79 @@ async def test_paddle_adapter_flattens_prediction_text_and_scores() -> None:
 
 
 @pytest.mark.asyncio
+async def test_paddle_adapter_normalizes_line_layout_from_rec_polys() -> None:
+    """Verify PaddleOCR rec_texts and rec_polys become OCR layout pages."""
+    predictor = _FakePaddlePredictor(
+        [
+            {
+                "rec_texts": ["비타민 D 1000", "비타민 D 25 ug"],
+                "rec_scores": [0.92, 0.88],
+                "rec_polys": [
+                    [[1, 2], [9, 2], [9, 4], [1, 4]],
+                    [[1, 5], [9, 5], [9, 7], [1, 7]],
+                ],
+            }
+        ]
+    )
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_image_input())
+
+    assert result.provider == PADDLE_OCR_PROVIDER
+    assert result.text == "비타민 D 1000\n비타민 D 25 ug"
+    assert len(result.pages) == 1
+    page = result.pages[0]
+    assert page.width == 10
+    assert page.height == 8
+    assert page.confidence == pytest.approx(0.90)
+    assert [block.text for block in page.blocks] == ["비타민 D 1000", "비타민 D 25 ug"]
+    assert page.blocks[0].block_type == "TEXT"
+    assert page.blocks[0].paragraphs[0].words[0].text == "비타민 D 1000"
+    assert page.blocks[0].paragraphs[0].words[0].block_index == 0
+    assert page.blocks[1].paragraphs[0].words[0].block_index == 1
+    assert page.blocks[0].bounding_box is not None
+    assert page.blocks[0].bounding_box.vertices[0].x == 1
+    assert page.blocks[0].bounding_box.vertices[0].y == 2
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_normalizes_line_layout_from_rec_boxes() -> None:
+    """Verify PaddleOCR rec_boxes fallback produces rectangular layout polygons."""
+    predictor = _FakePaddlePredictor(
+        [
+            {
+                "rec_texts": ["", "아연 10 mg"],
+                "rec_scores": [0.50, 0.91],
+                "rec_boxes": [[0, 0, 1, 1], [2, 3, 8, 6]],
+            }
+        ]
+    )
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_image_input())
+
+    assert result.text == "아연 10 mg"
+    assert len(result.pages) == 1
+    word = result.pages[0].blocks[0].paragraphs[0].words[0]
+    assert word.text == "아연 10 mg"
+    assert word.confidence == pytest.approx(0.91)
+    assert word.block_index == 0
+    assert word.bounding_box is not None
+    assert [(vertex.x, vertex.y) for vertex in word.bounding_box.vertices] == [
+        (2, 3),
+        (8, 3),
+        (8, 6),
+        (2, 6),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_paddle_adapter_preprocess_mode_reencodes_temp_png_only() -> None:
     """Verify opt-in preprocessing changes only the local temporary OCR input."""
     predictor = _ReadingFakePaddlePredictor([{"rec_texts": ["아연 10 mg"], "rec_scores": [0.91]}])

@@ -23,10 +23,22 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../features/supplements/supplement_models.dart';
 import '../utils/design_tokens_v2.dart';
 import '../utils/device_env.dart';
 
 enum _CaptureMode { supplement, meal }
+
+class _CapturedSupplementImage {
+  const _CapturedSupplementImage({required this.file, required this.role});
+
+  final File file;
+  final String role;
+
+  SupplementImageUpload toUpload() {
+    return SupplementImageUpload(path: file.path, role: role);
+  }
+}
 
 const bool _enableEmulatorLiveCamera = bool.fromEnvironment(
   'LEMON_ENABLE_EMULATOR_LIVE_CAMERA',
@@ -60,6 +72,7 @@ class CameraScreen extends StatefulWidget {
   ///   onClose: Optional callback used by the app shell to return home.
   const CameraScreen({
     required this.onAnalyzeSupplementImage,
+    this.onAnalyzeSupplementImages,
     this.initialMode = 'supplement',
     this.imagePicker,
     this.useCameraPickerFallback,
@@ -80,6 +93,13 @@ class CameraScreen extends StatefulWidget {
   final Future<void> Function(String imagePath, {required String ocrProvider})
   onAnalyzeSupplementImage;
 
+  /// Sends multiple supplement label images to the backend batch endpoint.
+  final Future<void> Function(
+    List<SupplementImageUpload> images, {
+    required String ocrProvider,
+  })?
+  onAnalyzeSupplementImages;
+
   /// Closes the camera screen.
   final VoidCallback? onClose;
 
@@ -91,8 +111,10 @@ class _CameraScreenState extends State<CameraScreen>
     with WidgetsBindingObserver {
   late _CaptureMode _mode;
   File? _captured;
+  final List<_CapturedSupplementImage> _captures = <_CapturedSupplementImage>[];
   bool _picking = false;
   String _ocrProvider = 'configured';
+  String _imageRole = 'front_label';
   bool _lostDataChecked = false;
 
   // ─── 카메라 컨트롤러 ───
@@ -441,6 +463,51 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _captured = null);
   }
 
+  void _addCurrentToBatch() {
+    final File? captured = _captured;
+    if (captured == null || _mode != _CaptureMode.supplement) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _captures.add(_CapturedSupplementImage(file: captured, role: _imageRole));
+      _captured = null;
+      _imageRole = _nextImageRole();
+    });
+  }
+
+  void _removeBatchImage(int index) {
+    if (index < 0 || index >= _captures.length) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _captures.removeAt(index);
+      if (_captured == null) {
+        _imageRole = _nextImageRole();
+      }
+    });
+  }
+
+  String _nextImageRole() {
+    final Set<String> usedRoles = _captures
+        .map((_CapturedSupplementImage image) => image.role)
+        .toSet();
+    if (!usedRoles.contains('supplement_facts')) {
+      return 'supplement_facts';
+    }
+    if (!usedRoles.contains('intake_method')) {
+      return 'intake_method';
+    }
+    if (!usedRoles.contains('precautions')) {
+      return 'precautions';
+    }
+    return 'unknown';
+  }
+
+  List<SupplementImageUpload> _analysisUploads(File current) {
+    return <SupplementImageUpload>[
+      for (final _CapturedSupplementImage image in _captures) image.toUpload(),
+      SupplementImageUpload(path: current.path, role: _imageRole),
+    ];
+  }
+
   Future<void> _analyze() async {
     final File? captured = _captured;
     if (captured == null || _picking) return;
@@ -468,10 +535,18 @@ class _CameraScreenState extends State<CameraScreen>
     }
     setState(() => _picking = true);
     try {
-      await widget.onAnalyzeSupplementImage(
-        captured.path,
-        ocrProvider: _ocrProvider,
-      );
+      final List<SupplementImageUpload> uploads = _analysisUploads(captured);
+      if (uploads.length > 1 && widget.onAnalyzeSupplementImages != null) {
+        await widget.onAnalyzeSupplementImages!(
+          uploads,
+          ocrProvider: _ocrProvider,
+        );
+      } else {
+        await widget.onAnalyzeSupplementImage(
+          captured.path,
+          ocrProvider: _ocrProvider,
+        );
+      }
     } finally {
       if (mounted) setState(() => _picking = false);
     }
@@ -628,6 +703,20 @@ class _CameraScreenState extends State<CameraScreen>
               ),
             ),
           ),
+          if (_mode == _CaptureMode.supplement) ...[
+            const SizedBox(height: AppSpace.md),
+            _SupplementBatchStrip(
+              captures: _captures,
+              currentRole: _imageRole,
+              onRemove: _removeBatchImage,
+            ),
+            const SizedBox(height: AppSpace.sm),
+            _ImageRoleSelector(
+              value: _imageRole,
+              enabled: !_picking,
+              onChanged: (value) => setState(() => _imageRole = value),
+            ),
+          ],
           if (!kReleaseMode) ...[
             const SizedBox(height: AppSpace.md),
             _DebugOcrProviderSelector(
@@ -649,10 +738,25 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
                 const SizedBox(width: AppSpace.sm),
+                if (_mode == _CaptureMode.supplement) ...[
+                  Expanded(
+                    child: _GhostButton(
+                      label: '사진 추가',
+                      icon: Icons.add_photo_alternate_rounded,
+                      onTap: _addCurrentToBatch,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                ],
                 Expanded(
                   flex: 2,
                   child: _PrimaryButton(
-                    label: _picking ? '분석 중' : '분석하기',
+                    key: const ValueKey('supplement-preview-analyze'),
+                    label: _picking
+                        ? '분석 중'
+                        : _captures.isEmpty
+                        ? '분석하기'
+                        : '${_captures.length + 1}장 분석',
                     onTap: _analyze,
                   ),
                 ),
@@ -663,6 +767,261 @@ class _CameraScreenState extends State<CameraScreen>
         ],
       ),
     );
+  }
+}
+
+class _SupplementBatchStrip extends StatelessWidget {
+  const _SupplementBatchStrip({
+    required this.captures,
+    required this.currentRole,
+    required this.onRemove,
+  });
+
+  final List<_CapturedSupplementImage> captures;
+  final String currentRole;
+  final ValueChanged<int> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final int totalCount = captures.length + 1;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+      child: SizedBox(
+        height: 74,
+        child: Row(
+          children: [
+            _BatchCountBadge(count: totalCount),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: captures.length + 1,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(width: AppSpace.sm),
+                itemBuilder: (context, index) {
+                  if (index == captures.length) {
+                    return _BatchImageChip(
+                      label: _roleLabel(currentRole),
+                      selected: true,
+                      onRemove: null,
+                    );
+                  }
+                  final _CapturedSupplementImage image = captures[index];
+                  return _BatchImageChip(
+                    label: _roleLabel(image.role),
+                    file: image.file,
+                    selected: false,
+                    onRemove: () => onRemove(index),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BatchCountBadge extends StatelessWidget {
+  const _BatchCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 62,
+      height: 62,
+      decoration: BoxDecoration(
+        color: _CamTone.surfaceStrong,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: _CamTone.border),
+      ),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.collections_rounded,
+            color: AppColor.brand,
+            size: 18,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '$count장',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BatchImageChip extends StatelessWidget {
+  const _BatchImageChip({
+    required this.label,
+    required this.selected,
+    this.file,
+    this.onRemove,
+  });
+
+  final String label;
+  final bool selected;
+  final File? file;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      height: 62,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColor.brand.withValues(alpha: 0.18)
+              : _CamTone.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: selected ? AppColor.brand : _CamTone.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Stack(
+          children: [
+            if (file != null)
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  child: Image.file(file!, fit: BoxFit.cover),
+                ),
+              ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(
+                    alpha: file == null ? 0.0 : 0.42,
+                  ),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ),
+            if (onRemove != null)
+              Positioned(
+                top: 3,
+                right: 3,
+                child: GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageRoleSelector extends StatelessWidget {
+  const _ImageRoleSelector({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  static const List<({String value, String label})> _roles = [
+    (value: 'front_label', label: '앞면'),
+    (value: 'supplement_facts', label: '성분표'),
+    (value: 'intake_method', label: '섭취법'),
+    (value: 'precautions', label: '주의'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _CamTone.surfaceStrong,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(color: _CamTone.border),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            children: [
+              for (final role in _roles)
+                Expanded(
+                  child: _ProviderChoiceButton(
+                    label: role.label,
+                    selected: role.value == value,
+                    enabled: enabled,
+                    onTap: () => onChanged(role.value),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _roleLabel(String role) {
+  switch (role) {
+    case 'front_label':
+      return '앞면';
+    case 'supplement_facts':
+      return '성분표';
+    case 'intake_method':
+      return '섭취법';
+    case 'precautions':
+      return '주의';
+    case 'ingredients':
+      return '원료';
+    case 'barcode':
+      return '바코드';
+    default:
+      return '기타';
   }
 }
 
@@ -1604,36 +1963,51 @@ class _GalleryButtonState extends State<_GalleryButton> {
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-  const _PrimaryButton({required this.label, required this.onTap});
+  const _PrimaryButton({required this.label, required this.onTap, super.key});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColor.brandTint, AppColor.brand],
+    return SizedBox(
+      height: 56,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          foregroundColor: AppColor.ink,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          boxShadow: [
-            BoxShadow(
-              color: AppColor.brand.withValues(alpha: 0.40),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
         ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: AppColor.ink,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColor.brandTint, AppColor.brand],
+            ),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            boxShadow: [
+              BoxShadow(
+                color: AppColor.brand.withValues(alpha: 0.40),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: const TextStyle(
+                  color: AppColor.ink,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -1668,12 +2042,19 @@ class _GhostButton extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white, size: 18),
             const SizedBox(width: AppSpace.xs),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
+                ),
               ),
             ),
           ],

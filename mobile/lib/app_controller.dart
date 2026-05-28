@@ -26,6 +26,7 @@ class AppController extends ChangeNotifier {
   ConsentState? _consentState;
   DashboardSummary? _dashboardSummary;
   SupplementAnalysisPreview? _analysisPreview;
+  SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
   UserSupplementResponse? _lastRegisteredSupplement;
   SupplementImpactPreviewResponse? _supplementImpactPreview;
   SupplementRecommendationExplainResponse? _supplementExplanation;
@@ -48,6 +49,10 @@ class AppController extends ChangeNotifier {
 
   /// Current supplement analysis preview.
   SupplementAnalysisPreview? get analysisPreview => _analysisPreview;
+
+  /// Current multi-image supplement analysis preview, if the batch endpoint was used.
+  SupplementMultiImageAnalysisPreview? get multiImageAnalysisPreview =>
+      _multiImageAnalysisPreview;
 
   /// Most recently registered supplement.
   UserSupplementResponse? get lastRegisteredSupplement =>
@@ -112,10 +117,43 @@ class AppController extends ChangeNotifier {
         imagePath,
         ocrProvider: ocrProvider,
       );
+      _multiImageAnalysisPreview = null;
       _lastRegisteredSupplement = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _notice = 'Supplement preview is ready for review.';
+    });
+  }
+
+  /// Uploads a multi-image supplement label batch and stores its review preview.
+  Future<void> analyzeImages(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) async {
+    await _run(() async {
+      _lastRequestedOcrProvider = ocrProvider;
+      _multiImageAnalysisPreview = await _repository.analyzeSupplementImages(
+        images,
+        ocrProvider: ocrProvider,
+      );
+      _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
+      _lastRegisteredSupplement = null;
+      _supplementImpactPreview = null;
+      _supplementExplanation = null;
+      _notice = 'Supplement image batch is ready for review.';
+    });
+  }
+
+  /// Rebuilds the merged preview for the current multi-image analysis session.
+  Future<void> finalizeAnalysisSession(String analysisGroupId) async {
+    await _run(() async {
+      _multiImageAnalysisPreview = await _repository
+          .finalizeSupplementAnalysisSession(analysisGroupId);
+      _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
+      _lastRegisteredSupplement = null;
+      _supplementImpactPreview = null;
+      _supplementExplanation = null;
+      _notice = 'Supplement image batch was finalized for review.';
     });
   }
 
@@ -140,13 +178,25 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  /// Registers a user-confirmed supplement and refreshes dashboard summary.
-  Future<void> registerSupplement(UserSupplementCreate request) async {
+  /// Registers a user-confirmed supplement and optionally refreshes insights.
+  Future<void> registerSupplement(
+    UserSupplementCreate request, {
+    bool refreshImpact = false,
+    bool explainWithLocalLlm = false,
+  }) async {
     await _run(() async {
       _lastRegisteredSupplement = await _repository.registerSupplement(request);
       _analysisPreview = null;
+      _multiImageAnalysisPreview = null;
+      _supplementImpactPreview = null;
+      _supplementExplanation = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
       _notice = 'Supplement registered and dashboard refreshed.';
+      if (refreshImpact || explainWithLocalLlm) {
+        await _refreshPostRegistrationInsights(
+          explainWithLocalLlm: explainWithLocalLlm,
+        );
+      }
     });
   }
 
@@ -199,6 +249,7 @@ class AppController extends ChangeNotifier {
   /// Clears the current preview without sending data to the backend.
   void clearSupplementFlow() {
     _analysisPreview = null;
+    _multiImageAnalysisPreview = null;
     _lastRegisteredSupplement = null;
     _supplementImpactPreview = null;
     _supplementExplanation = null;
@@ -231,6 +282,45 @@ class AppController extends ChangeNotifier {
     } finally {
       _busy = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _refreshPostRegistrationInsights({
+    required bool explainWithLocalLlm,
+  }) async {
+    try {
+      _supplementImpactPreview = await _repository.previewSupplementImpact(
+        const SupplementImpactPreviewRequest(),
+      );
+      _notice = 'Supplement registered and impact check is ready.';
+    } on ApiError catch (error) {
+      _apiError = error;
+      _notice = 'Supplement registered, but impact check needs retry.';
+      return;
+    } on FormatException catch (error) {
+      _apiError = ApiError(statusCode: 0, message: error.message);
+      _notice = 'Supplement registered, but impact check needs retry.';
+      return;
+    }
+
+    if (!explainWithLocalLlm || _supplementImpactPreview == null) {
+      return;
+    }
+    try {
+      _supplementExplanation = await _repository
+          .explainSupplementRecommendation(
+            _supplementImpactPreview!,
+            useLocalLlm: true,
+          );
+      _notice = 'Supplement registered and local explanation is ready.';
+    } on ApiError catch (error) {
+      _apiError = error;
+      _notice =
+          'Supplement registered and impact check is ready; explanation needs retry.';
+    } on FormatException catch (error) {
+      _apiError = ApiError(statusCode: 0, message: error.message);
+      _notice =
+          'Supplement registered and impact check is ready; explanation needs retry.';
     }
   }
 

@@ -221,6 +221,37 @@ class _CameraWidgetRepository implements LemonAidRepository {
   }
 
   @override
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementAnalysisSession> createSupplementAnalysisSession() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview>
+  uploadSupplementAnalysisSessionImage(
+    String analysisGroupId,
+    SupplementImageUpload image, {
+    String ocrProvider = 'configured',
+    String? clientRequestId,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview> finalizeSupplementAnalysisSession(
+    String analysisGroupId,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
   void close() {}
 
   @override

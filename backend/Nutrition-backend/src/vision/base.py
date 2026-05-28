@@ -83,3 +83,21 @@ class VisionAdapter(ABC):
             VisionError: 호출 실패 또는 라벨 영역 미검출 시.
         """
         ...
+
+    async def detect_regions(self, image_bytes: bytes) -> list[BoundingBox]:
+        """이미지에서 OCR 전처리용 후보 영역 목록을 검출한다.
+
+        기존 단일 ROI 어댑터와의 호환성을 위해 기본 구현은
+        ``detect_label_region`` 결과 하나를 목록으로 감싼다. 다중 섹션
+        detector는 이 메서드를 override하여 여러 후보를 반환한다.
+
+        Args:
+            image_bytes: 이미지 원본 바이트(JPEG/PNG, 10MB 이하).
+
+        Returns:
+            OCR 전처리 및 리뷰 UI에 사용할 후보 영역 목록.
+
+        Raises:
+            VisionError: 호출 실패 또는 라벨 영역 미검출 시.
+        """
+        return [await self.detect_label_region(image_bytes)]

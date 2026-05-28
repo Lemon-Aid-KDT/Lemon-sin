@@ -134,6 +134,55 @@ class ApiClient {
     return _decodeBodyAsObject(responseBody);
   }
 
+  /// Sends a multipart request with multiple files using the same field name.
+  ///
+  /// Args:
+  ///   path: API path below `/api/v1`.
+  ///   fileField: Multipart file field name repeated for every file.
+  ///   filePaths: Local selected image paths.
+  ///   fields: Additional multipart form fields.
+  ///   expectedStatusCodes: Status codes considered successful.
+  ///
+  /// Returns:
+  ///   Decoded JSON object.
+  ///
+  /// Raises:
+  ///   ApiError: If the backend returns an unexpected status code.
+  ///   FormatException: If the success body is not a JSON object.
+  Future<Map<String, dynamic>> postMultipartFiles(
+    String path, {
+    required String fileField,
+    required List<String> filePaths,
+    Map<String, String> fields = const <String, String>{},
+    Set<int> expectedStatusCodes = const <int>{202},
+  }) async {
+    final http.MultipartRequest request =
+        http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(_headers())
+          ..fields.addAll(fields);
+    for (final String filePath in filePaths) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fileField,
+          filePath,
+          contentType: await _contentTypeForPath(filePath),
+        ),
+      );
+    }
+
+    final http.StreamedResponse streamedResponse = await _httpClient.send(
+      request,
+    );
+    final String responseBody = await streamedResponse.stream.bytesToString();
+    if (!expectedStatusCodes.contains(streamedResponse.statusCode)) {
+      throw ApiError.fromBody(
+        statusCode: streamedResponse.statusCode,
+        body: responseBody,
+      );
+    }
+    return _decodeBodyAsObject(responseBody);
+  }
+
   /// Releases the underlying HTTP client.
   void close() {
     _httpClient.close();

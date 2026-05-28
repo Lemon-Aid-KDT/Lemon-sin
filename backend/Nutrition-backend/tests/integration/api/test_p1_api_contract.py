@@ -123,6 +123,22 @@ def test_p1_contract_endpoints_are_registered_with_required_scopes() -> None:
             "p1_2_intake_ready",
             ["supplement:write"],
         ),
+        ("/api/v1/supplements/analyze-multi", "post"): (
+            "p1_2_intake_ready",
+            ["supplement:write"],
+        ),
+        ("/api/v1/supplements/analysis-sessions", "post"): (
+            "p1_2_intake_ready",
+            ["supplement:write"],
+        ),
+        ("/api/v1/supplements/analysis-sessions/{analysis_group_id}/images", "post"): (
+            "p1_2_intake_ready",
+            ["supplement:write"],
+        ),
+        ("/api/v1/supplements/analysis-sessions/{analysis_group_id}/finalize", "post"): (
+            "p1_2_intake_ready",
+            ["supplement:write"],
+        ),
         ("/api/v1/supplements/analyses/{analysis_id}/ocr-text", "post"): (
             "p1_2_intake_ready",
             ["supplement:write"],
@@ -169,6 +185,24 @@ def test_p1_contract_endpoints_expose_required_consents() -> None:
     assert schema["paths"]["/api/v1/supplements/analyze"]["post"]["x-conditional-consents"] == [
         "external_ocr_processing"
     ]
+    assert schema["paths"]["/api/v1/supplements/analyze-multi"]["post"]["x-required-consents"] == [
+        "ocr_image_processing"
+    ]
+    assert schema["paths"]["/api/v1/supplements/analyze-multi"]["post"][
+        "x-conditional-consents"
+    ] == ["external_ocr_processing"]
+    assert schema["paths"]["/api/v1/supplements/analysis-sessions"]["post"][
+        "x-required-consents"
+    ] == ["ocr_image_processing"]
+    assert schema["paths"]["/api/v1/supplements/analysis-sessions/{analysis_group_id}/images"][
+        "post"
+    ]["x-required-consents"] == ["ocr_image_processing"]
+    assert schema["paths"]["/api/v1/supplements/analysis-sessions/{analysis_group_id}/images"][
+        "post"
+    ]["x-conditional-consents"] == ["external_ocr_processing"]
+    assert schema["paths"]["/api/v1/supplements/analysis-sessions/{analysis_group_id}/finalize"][
+        "post"
+    ]["x-required-consents"] == ["ocr_image_processing"]
     assert schema["paths"]["/api/v1/supplements/analyses/{analysis_id}/ocr-text"]["post"][
         "x-required-consents"
     ] == ["ocr_image_processing"]

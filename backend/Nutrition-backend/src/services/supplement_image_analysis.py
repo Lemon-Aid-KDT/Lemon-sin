@@ -28,8 +28,16 @@ from src.llm.ollama import (
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.privacy import ConsentType
-from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
+from src.models.schemas.supplement_image import (
+    SupplementImagePipelineMetadata,
+    bucket_ocr_confidence,
+    count_snapshot_list,
+    infer_missing_required_sections,
+    parser_contract_version,
+    safe_snapshot_string,
+)
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.parsing.layout_parser import parse_label_layout
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_intake import (
     SupplementImageValidationError,
@@ -46,7 +54,11 @@ from src.services.supplement_parser import (
 )
 from src.utils.image_safety import ImageSafetyError, strip_image_metadata
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
-from src.vision.preprocessing import VisionPreprocessingError, crop_image_to_bounding_box
+from src.vision.preprocessing import (
+    VisionPreprocessingError,
+    crop_image_to_bounding_box,
+    select_best_label_region,
+)
 
 AUTOMATIC_OCR_UNAVAILABLE_WARNING = (
     "Automatic text extraction is unavailable. Continue by entering label details manually."
@@ -108,6 +120,7 @@ class SupplementImageAnalysisResult:
         reused_existing: Whether idempotency returned an existing preview.
         image_metadata: Validated image metadata.
         vision_region: Optional label-region ROI used by OCR.
+        vision_regions: Bounded candidate regions returned by the vision adapter.
         image_quality_report: Optional deterministic image-quality report.
         ocr_result: Optional OCR output used by the parser.
         parser_used: Whether structured OCR text parsing was invoked.
@@ -120,6 +133,7 @@ class SupplementImageAnalysisResult:
     reused_existing: bool
     image_metadata: ValidatedSupplementImage
     vision_region: BoundingBox | None
+    vision_regions: tuple[BoundingBox, ...]
     image_quality_report: ImageQualityReport | None
     ocr_result: OCRResult | None
     parser_used: bool
@@ -188,11 +202,12 @@ async def analyze_supplement_image(
         needs_learning_image_bytes=learning_gate_allowed,
         image_metadata=image_metadata,
     )
-    vision_region = await _detect_label_region_if_enabled(
+    vision_regions = await _detect_label_regions_if_enabled(
         image_bytes=image_bytes,
         settings=settings,
         vision_adapter=active_adapters.vision,
     )
+    vision_region = _select_vision_region(vision_regions)
     ocr_attempted = active_adapters.ocr is not None
     ocr_extraction = await _extract_ocr_if_configured(
         image_bytes=image_bytes,
@@ -264,17 +279,26 @@ async def analyze_supplement_image(
     pipeline_metadata = _build_pipeline_metadata(
         record=result_record,
         vision_region=vision_region,
+        vision_regions=vision_regions,
         ocr_result=ocr_result,
         parser_used=parsed_record is not None,
     )
-    if _should_store_pipeline_metadata(result_record, pipeline_metadata):
-        result_record = await _store_pipeline_metadata(session, result_record, pipeline_metadata)
+    if _should_store_pipeline_metadata(result_record, pipeline_metadata, vision_regions):
+        result_record = await _store_pipeline_metadata(
+            session,
+            result_record,
+            pipeline_metadata,
+            vision_regions=vision_regions,
+            selected_region=vision_region,
+            image_metadata=image_metadata,
+        )
 
     return SupplementImageAnalysisResult(
         record=result_record,
         reused_existing=intake.reused_existing,
         image_metadata=image_metadata,
         vision_region=vision_region,
+        vision_regions=vision_regions,
         image_quality_report=None,
         ocr_result=ocr_result,
         parser_used=parsed_record is not None,
@@ -288,6 +312,7 @@ def _build_pipeline_metadata(
     *,
     record: SupplementAnalysisRun,
     vision_region: BoundingBox | None,
+    vision_regions: tuple[BoundingBox, ...],
     ocr_result: OCRResult | None,
     parser_used: bool,
 ) -> SupplementImagePipelineMetadata:
@@ -296,17 +321,36 @@ def _build_pipeline_metadata(
     Args:
         record: Persisted supplement analysis run.
         vision_region: Optional YOLO-detected ROI used as OCR input metadata.
+        vision_regions: Candidate ROI list returned by the vision layer.
         ocr_result: OCR-like result selected for parsing, when available.
         parser_used: Whether structured text parsing ran.
 
     Returns:
         Non-sensitive pipeline metadata without raw image, OCR, or provider payloads.
     """
+    parsed_snapshot = record.parsed_snapshot if isinstance(record.parsed_snapshot, dict) else {}
+    parser_metadata = parsed_snapshot.get("parser_metadata")
+    ocr_text_present = bool(ocr_result is not None and ocr_result.text.strip())
+    ocr_confidence = ocr_result.confidence if ocr_result is not None else record.ocr_confidence
     return SupplementImagePipelineMetadata(
         intake_completed=True,
+        image_count=1,
+        image_role=safe_snapshot_string(parsed_snapshot.get("image_role"), default="unknown"),
         vision_roi_used=vision_region is not None,
         ocr_provider=ocr_result.provider if ocr_result is not None else record.ocr_provider,
+        ocr_text_present=ocr_text_present,
+        ocr_confidence_bucket=bucket_ocr_confidence(
+            ocr_confidence,
+            ocr_text_present=ocr_text_present,
+        ),
+        roi_count=len(vision_regions),
+        section_count=count_snapshot_list(parsed_snapshot.get("label_sections")),
         llm_parser_used=parser_used,
+        parser_contract_version=parser_contract_version(parser_metadata),
+        missing_required_sections=infer_missing_required_sections(
+            parsed_snapshot,
+            ocr_text_present=ocr_text_present,
+        ),
         raw_image_stored=False,
         raw_ocr_text_stored=False,
     )
@@ -315,12 +359,14 @@ def _build_pipeline_metadata(
 def _should_store_pipeline_metadata(
     record: SupplementAnalysisRun,
     metadata: SupplementImagePipelineMetadata,
+    vision_regions: tuple[BoundingBox, ...],
 ) -> bool:
     """Return whether metadata must be persisted beyond record-derived defaults.
 
     Args:
         record: Persisted supplement analysis run.
         metadata: Sanitized pipeline metadata built for the current execution.
+        vision_regions: Candidate ROI list returned by the vision layer.
 
     Returns:
         True when record fields cannot reconstruct the execution metadata.
@@ -328,7 +374,7 @@ def _should_store_pipeline_metadata(
     parsed_snapshot = record.parsed_snapshot if isinstance(record.parsed_snapshot, dict) else {}
     if isinstance(parsed_snapshot.get("pipeline_metadata"), dict):
         return True
-    if metadata.vision_roi_used:
+    if metadata.vision_roi_used or vision_regions:
         return True
     return metadata.ocr_provider is not None and metadata.ocr_provider != record.ocr_provider
 
@@ -337,6 +383,10 @@ async def _store_pipeline_metadata(
     session: AsyncSession,
     record: SupplementAnalysisRun,
     metadata: SupplementImagePipelineMetadata,
+    *,
+    vision_regions: tuple[BoundingBox, ...],
+    selected_region: BoundingBox | None,
+    image_metadata: ValidatedSupplementImage,
 ) -> SupplementAnalysisRun:
     """Persist sanitized pipeline metadata inside the preview snapshot.
 
@@ -344,16 +394,101 @@ async def _store_pipeline_metadata(
         session: Request-scoped async database session.
         record: Preview row to update.
         metadata: Non-sensitive pipeline metadata.
+        vision_regions: Candidate ROI list returned by the vision layer.
+        selected_region: ROI selected for OCR metadata, if any.
+        image_metadata: Decoded image metadata used for safe area ratios.
 
     Returns:
         Refreshed preview row.
     """
     parsed_snapshot = dict(record.parsed_snapshot or {})
+    detected_regions = _vision_regions_to_preview(
+        vision_regions,
+        selected_region=selected_region,
+        image_metadata=image_metadata,
+    )
+    if detected_regions:
+        parsed_snapshot["detected_product_regions"] = detected_regions
+        selected_region_id = next(
+            (region["region_id"] for region in detected_regions if region["selected"]),
+            None,
+        )
+        if selected_region_id is not None:
+            parsed_snapshot["selected_region_id"] = selected_region_id
     parsed_snapshot["pipeline_metadata"] = metadata.model_dump(exclude_none=True)
     record.parsed_snapshot = parsed_snapshot
     await session.commit()
     await session.refresh(record)
     return record
+
+
+def _select_vision_region(vision_regions: tuple[BoundingBox, ...]) -> BoundingBox | None:
+    """Select the single ROI used for existing OCR preprocessing.
+
+    Args:
+        vision_regions: Candidate ROI list returned by the vision layer.
+
+    Returns:
+        Best label-region candidate, or None when no usable candidate exists.
+    """
+    if not vision_regions:
+        return None
+    try:
+        return select_best_label_region(list(vision_regions))
+    except VisionPreprocessingError:
+        return None
+
+
+def _vision_regions_to_preview(
+    vision_regions: tuple[BoundingBox, ...],
+    *,
+    selected_region: BoundingBox | None,
+    image_metadata: ValidatedSupplementImage,
+) -> list[dict[str, object]]:
+    """Serialize detected regions into bounded review metadata.
+
+    Args:
+        vision_regions: Candidate ROI list returned by the vision layer.
+        selected_region: ROI selected for OCR metadata, if any.
+        image_metadata: Decoded image metadata used for safe area ratios.
+
+    Returns:
+        List of sanitized region dictionaries for preview snapshots.
+    """
+    regions: list[dict[str, object]] = []
+    for index, region in enumerate(vision_regions[:20], start=1):
+        regions.append(
+            {
+                "region_id": f"vision-{index}",
+                "label": region.label,
+                "x": region.x,
+                "y": region.y,
+                "width": region.width,
+                "height": region.height,
+                "confidence": region.confidence,
+                "area_ratio": _region_area_ratio(region, image_metadata),
+                "selected": _same_region(region, selected_region),
+            }
+        )
+    return regions
+
+
+def _same_region(candidate: BoundingBox, selected: BoundingBox | None) -> bool:
+    """Return whether two bounding boxes represent the selected ROI."""
+    if selected is None:
+        return False
+    return candidate == selected
+
+
+def _region_area_ratio(
+    region: BoundingBox,
+    image_metadata: ValidatedSupplementImage,
+) -> float | None:
+    """Return the region area ratio bounded to the input image size."""
+    image_area = image_metadata.width * image_metadata.height
+    if image_area <= 0:
+        return None
+    return min(1.0, max(0.0, (region.width * region.height) / image_area))
 
 
 async def _read_validated_image_bytes_if_needed(
@@ -404,12 +539,12 @@ async def _read_validated_image_bytes_if_needed(
         ) from exc
 
 
-async def _detect_label_region_if_enabled(
+async def _detect_label_regions_if_enabled(
     *,
     image_bytes: bytes | None,
     settings: Settings,
     vision_adapter: VisionAdapter | None,
-) -> BoundingBox | None:
+) -> tuple[BoundingBox, ...]:
     """Run label-region detection only when the vision feature flag is enabled.
 
     Args:
@@ -418,21 +553,21 @@ async def _detect_label_region_if_enabled(
         vision_adapter: Optional vision adapter.
 
     Returns:
-        Detected label region, or None when disabled.
+        Detected label regions, or an empty tuple when disabled.
 
     Raises:
         SupplementImageAnalysisConfigurationError: If the flag is enabled without an adapter.
     """
     if not settings.enable_vision_classifier:
-        return None
+        return ()
     if vision_adapter is None or image_bytes is None:
         raise SupplementImageAnalysisConfigurationError(
             "ENABLE_VISION_CLASSIFIER=true requires a VisionAdapter."
         )
     try:
-        return await vision_adapter.detect_label_region(image_bytes)
+        return tuple(await vision_adapter.detect_regions(image_bytes))
     except VisionError:
-        return None
+        return ()
 
 
 async def _extract_ocr_if_configured(
@@ -800,6 +935,7 @@ async def _parse_ocr_if_available(
             ocr_provider=ocr_result.provider,
             ocr_confidence=ocr_result.confidence,
             settings=settings,
+            ocr_layout=parse_label_layout(ocr_result),
             parser=parser,
         )
     except PARSER_RECOVERABLE_ERRORS:

@@ -29,7 +29,7 @@ void main() {
     expect(find.text('OCR'), findsOneWidget);
     expect(find.text('paddleocr_local'), findsOneWidget);
     expect(find.text('YOLO ROI'), findsOneWidget);
-    expect(find.text('on'), findsOneWidget);
+    expect(find.text('on (1)'), findsOneWidget);
     expect(find.text('Ollama'), findsOneWidget);
     expect(find.text('parser on'), findsOneWidget);
     expect(find.text('Analysis progress'), findsNothing);
@@ -44,6 +44,37 @@ class _ReviewRepository implements LemonAidRepository {
     String ocrProvider = 'configured',
   }) async {
     return _preview();
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementAnalysisSession> createSupplementAnalysisSession() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview>
+  uploadSupplementAnalysisSessionImage(
+    String analysisGroupId,
+    SupplementImageUpload image, {
+    String ocrProvider = 'configured',
+    String? clientRequestId,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview> finalizeSupplementAnalysisSession(
+    String analysisGroupId,
+  ) {
+    throw UnimplementedError();
   }
 
   @override
@@ -160,9 +191,17 @@ class _ReviewRepository implements LemonAidRepository {
       identityConflict: null,
       pipelineMetadata: const SupplementImagePipelineMetadata(
         intakeCompleted: true,
+        imageCount: 1,
+        imageRole: 'supplement_facts',
         visionRoiUsed: true,
         ocrProvider: 'paddleocr_local',
+        ocrTextPresent: true,
+        ocrConfidenceBucket: 'high',
+        roiCount: 1,
+        sectionCount: 1,
         llmParserUsed: true,
+        parserContractVersion: 'test-parser-v3',
+        missingRequiredSections: <String>[],
         rawImageStored: false,
         rawOcrTextStored: false,
       ),

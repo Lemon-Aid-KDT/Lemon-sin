@@ -442,7 +442,11 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     setState(() {
       _stage = _SupplementFlowStage.registering;
     });
-    await widget.controller.registerSupplement(request);
+    await widget.controller.registerSupplement(
+      request,
+      refreshImpact: true,
+      explainWithLocalLlm: true,
+    );
     if (widget.controller.lastRegisteredSupplement == null) {
       if (!mounted) {
         return;
@@ -461,10 +465,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       _stage = _SupplementFlowStage.registered;
       _selectedImage = null;
     });
-    await widget.controller.previewSupplementImpact();
-    if (!mounted) {
-      return;
-    }
     setState(() {
       _stage = widget.controller.supplementImpactPreview == null
           ? _SupplementFlowStage.registered
@@ -2069,6 +2069,9 @@ class _AiPipelineStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String actualProvider = metadata.ocrProvider ?? 'none';
+    final bool hasBackendText = metadata.ocrTextPresent;
+    final bool parserHasReviewData =
+        metadata.sectionCount > 0 || hasBackendText;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -2076,19 +2079,23 @@ class _AiPipelineStatus extends StatelessWidget {
         _PipelineChip(
           icon: Icons.text_snippet_outlined,
           label: 'OCR ${_formatProviderLabel(requestedOcrProvider)}',
-          value: _formatProviderLabel(actualProvider),
-          active: actualProvider != 'none' && actualProvider != 'intake-only',
+          value: hasBackendText
+              ? _formatProviderLabel(actualProvider)
+              : 'no text',
+          active: hasBackendText,
         ),
         _PipelineChip(
           icon: Icons.center_focus_strong_outlined,
           label: 'YOLO ROI',
-          value: metadata.visionRoiUsed ? 'used' : 'off',
+          value: metadata.visionRoiUsed ? '${metadata.roiCount} roi' : 'off',
           active: metadata.visionRoiUsed,
         ),
         _PipelineChip(
           icon: Icons.psychology_alt_outlined,
           label: 'Parser',
-          value: metadata.llmParserUsed ? 'used' : 'pending',
+          value: metadata.llmParserUsed
+              ? (parserHasReviewData ? 'used' : 'empty')
+              : 'pending',
           active: metadata.llmParserUsed,
         ),
         _PipelineChip(

@@ -17,13 +17,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaSupplementParser
 from src.models.db.supplement import SupplementAnalysisRun
-from src.models.schemas.supplement import SupplementAnalysisStatus
+from src.models.schemas.label_layout import LabelLayout, LabelSection
+from src.models.schemas.supplement import (
+    SupplementAnalysisStatus,
+    SupplementMissingRequiredSection,
+    SupplementPreviewEvidenceSpan,
+    SupplementPreviewLabelSection,
+)
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.supplement_text_sanitizer import (
     sanitize_ingredient_name,
     sanitize_manufacturer,
+    sanitize_preview_text,
     sanitize_product_name,
     sanitize_serving_size,
     sanitize_unit,
@@ -39,6 +46,17 @@ SUPPLEMENT_PARSER_PROVIDER = "ollama"
 OLLAMA_VISION_ASSIST_PROVIDER = "ollama_vision_assist"
 OCR_PROVIDER_MAX_LENGTH = 64
 OCR_LOW_CONFIDENCE_THRESHOLD = Decimal("0.80")
+LAYOUT_TEXT_BUNDLE_MAX_CHARS = 2_000
+LAYOUT_EVIDENCE_EXCERPT_MAX_CHARS = 240
+LAYOUT_SECTION_TYPE_MAP = {
+    "daily_intake": "intake_method",
+    "nutrition_function_info": "supplement_facts",
+    "intake_method": "intake_method",
+    "precautions": "precautions",
+    "ingredients": "ingredients",
+    "functionality": "functional_info",
+    "storage_method": "storage_method",
+}
 
 
 class SupplementOCRTextParser(Protocol):
@@ -99,6 +117,7 @@ async def parse_supplement_analysis_ocr_text(
     ocr_provider: str,
     ocr_confidence: float | None,
     settings: Settings,
+    ocr_layout: LabelLayout | None = None,
     parser: SupplementOCRTextParser | None = None,
 ) -> SupplementParserStoreResult:
     """Parse OCR text and store the structured preview on an owned analysis row.
@@ -112,6 +131,7 @@ async def parse_supplement_analysis_ocr_text(
         ocr_provider: OCR provider label.
         ocr_confidence: Optional OCR confidence from 0.0 to 1.0.
         settings: Runtime settings.
+        ocr_layout: Optional deterministic layout parsed from provider OCR coordinates.
         parser: Optional parser adapter, primarily for tests.
 
     Returns:
@@ -153,6 +173,7 @@ async def parse_supplement_analysis_ocr_text(
         previous_snapshot=record.parsed_snapshot,
         ocr_confidence=normalized_confidence,
         ocr_provider=normalized_provider,
+        ocr_layout=ocr_layout,
         settings=settings,
     )
     record.warnings = _build_warning_list(parse_result.warnings, normalized_provider)
@@ -285,6 +306,7 @@ def _sanitize_parser_result(
         warnings.extend(unit_res.warnings)
         surviving_ingredients.append(candidate)
     snapshot["ingredient_candidates"] = surviving_ingredients
+    snapshot = _sanitize_preview_fields(snapshot, warnings)
 
     deduped: list[str] = []
     seen: set[str] = set()
@@ -295,6 +317,98 @@ def _sanitize_parser_result(
     snapshot["warnings"] = deduped
 
     return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _sanitize_preview_fields(snapshot: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
+    """Sanitize V3 review fields without exposing raw OCR or model payloads.
+
+    Args:
+        snapshot: Parser result dump being prepared for storage.
+        warnings: Mutable warning list to receive sanitizer codes.
+
+    Returns:
+        Snapshot with unsafe review fields removed or normalized.
+    """
+    for section in snapshot.get("label_sections", []):
+        if not isinstance(section, dict):
+            continue
+        _sanitize_optional_text_field(
+            section, "heading_text", "label_section.heading_text", warnings
+        )
+        _sanitize_optional_text_field(section, "text_bundle", "label_section.text_bundle", warnings)
+
+    intake_method = snapshot.get("intake_method")
+    if isinstance(intake_method, dict):
+        _sanitize_optional_text_field(intake_method, "text", "intake_method.text", warnings)
+
+    _sanitize_required_text_items(
+        snapshot.get("precautions"),
+        field_key="text",
+        warning_field="precaution.text",
+        warnings=warnings,
+    )
+    _sanitize_required_text_items(
+        snapshot.get("functional_claims"),
+        field_key="text",
+        warning_field="functional_claim.text",
+        warnings=warnings,
+    )
+    _sanitize_required_text_items(
+        snapshot.get("evidence_spans"),
+        field_key="text_excerpt",
+        warning_field="evidence_span.text_excerpt",
+        warnings=warnings,
+    )
+    return snapshot
+
+
+def _sanitize_optional_text_field(
+    target: dict[str, Any],
+    key: str,
+    warning_field: str,
+    warnings: list[str],
+) -> None:
+    """Sanitize an optional text field in place.
+
+    Args:
+        target: Mutable parser output object.
+        key: Field name to sanitize.
+        warning_field: Stable warning field name.
+        warnings: Mutable warning list.
+    """
+    result = sanitize_preview_text(target.get(key), warning_field)
+    warnings.extend(result.warnings)
+    target[key] = result.value or None
+
+
+def _sanitize_required_text_items(
+    items: Any,
+    *,
+    field_key: str,
+    warning_field: str,
+    warnings: list[str],
+) -> None:
+    """Sanitize required text fields and drop unsafe items in place.
+
+    Args:
+        items: Candidate parser-output list.
+        field_key: Required text field inside each list item.
+        warning_field: Stable warning field name.
+        warnings: Mutable warning list.
+    """
+    if not isinstance(items, list):
+        return
+    surviving: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        result = sanitize_preview_text(item.get(field_key), warning_field)
+        warnings.extend(result.warnings)
+        if not result.value:
+            continue
+        item[field_key] = result.value
+        surviving.append(item)
+    items[:] = surviving
 
 
 def _normalize_ocr_provider(ocr_provider: str) -> str:
@@ -342,6 +456,7 @@ def _build_parsed_snapshot(
     previous_snapshot: dict[str, Any],
     ocr_confidence: Decimal | None,
     ocr_provider: str,
+    ocr_layout: LabelLayout | None,
     settings: Settings,
 ) -> dict[str, Any]:
     """Build the sanitized JSON snapshot persisted for user confirmation.
@@ -351,6 +466,7 @@ def _build_parsed_snapshot(
         previous_snapshot: Existing preview snapshot, used only to preserve intake metadata.
         ocr_confidence: Provider-level OCR confidence.
         ocr_provider: OCR-like provider that produced the parser input.
+        ocr_layout: Optional deterministic layout parsed from OCR coordinates.
         settings: Runtime settings used for model and algorithm metadata.
 
     Returns:
@@ -360,12 +476,33 @@ def _build_parsed_snapshot(
         parse_result.low_confidence_fields,
         ocr_confidence,
     )
+    layout_sections, layout_evidence_spans, layout_fallback_reason = _layout_context_to_preview(
+        ocr_layout
+    )
+    label_sections = _merge_label_sections(parse_result.label_sections, layout_sections)
+    evidence_spans = _merge_evidence_spans(parse_result.evidence_spans, layout_evidence_spans)
+    missing_required_sections = _merge_missing_required_sections(
+        parse_result.missing_required_sections,
+        label_sections,
+        intake_text=parse_result.intake_method.text,
+    )
     snapshot: dict[str, Any] = {
         "parsed_product": parse_result.parsed_product.model_dump(exclude_none=True),
         "ingredient_candidates": [
             candidate.model_dump(exclude_none=True)
             for candidate in parse_result.ingredient_candidates
         ],
+        "layout_available": bool(label_sections),
+        "label_sections": [section.model_dump(exclude_none=True) for section in label_sections],
+        "intake_method": parse_result.intake_method.model_dump(exclude_none=True),
+        "precautions": [
+            precaution.model_dump(exclude_none=True) for precaution in parse_result.precautions
+        ],
+        "functional_claims": [
+            claim.model_dump(exclude_none=True) for claim in parse_result.functional_claims
+        ],
+        "evidence_spans": [span.model_dump(exclude_none=True) for span in evidence_spans],
+        "missing_required_sections": missing_required_sections,
         "low_confidence_fields": low_confidence_fields,
         "parser_metadata": {
             "provider": SUPPLEMENT_PARSER_PROVIDER,
@@ -377,10 +514,190 @@ def _build_parsed_snapshot(
             "raw_model_response_stored": False,
         },
     }
+    if ocr_layout is not None:
+        snapshot["parser_metadata"]["layout_provider"] = ocr_layout.provider
+        snapshot["parser_metadata"]["layout_page_count"] = ocr_layout.page_count
+        snapshot["parser_metadata"]["layout_warning_count"] = len(ocr_layout.warnings)
+    if layout_fallback_reason is not None:
+        snapshot["layout_fallback_reason"] = layout_fallback_reason
     intake = previous_snapshot.get("intake")
     if isinstance(intake, dict):
         snapshot["intake"] = intake
     return snapshot
+
+
+def _layout_context_to_preview(
+    ocr_layout: LabelLayout | None,
+) -> tuple[list[SupplementPreviewLabelSection], list[SupplementPreviewEvidenceSpan], str | None]:
+    """Convert deterministic OCR layout sections into bounded preview objects.
+
+    Args:
+        ocr_layout: Parsed provider-neutral label layout.
+
+    Returns:
+        Preview sections, evidence spans, and an optional fallback reason.
+    """
+    if ocr_layout is None:
+        return [], [], None
+
+    sections: list[SupplementPreviewLabelSection] = []
+    evidence_spans: list[SupplementPreviewEvidenceSpan] = []
+    for raw_index, section in enumerate(ocr_layout.sections, start=1):
+        preview_type = LAYOUT_SECTION_TYPE_MAP.get(section.section_type)
+        if preview_type is None:
+            continue
+        text_bundle = _section_text_bundle(section)
+        sanitized_bundle = sanitize_preview_text(text_bundle, "layout_section.text_bundle").value
+        if not sanitized_bundle:
+            continue
+
+        section_id = f"layout-section-{raw_index}"
+        span_id = f"layout-span-{raw_index}"
+        heading_text = sanitize_preview_text(
+            section.anchor_text,
+            "layout_section.heading_text",
+        ).value
+        confidence = _section_confidence(section)
+        sections.append(
+            SupplementPreviewLabelSection.model_validate(
+                {
+                    "section_id": section_id,
+                    "section_type": preview_type,
+                    "heading_text": heading_text,
+                    "text_bundle": sanitized_bundle,
+                    "confidence": confidence,
+                    "requires_review": False,
+                    "evidence_refs": [span_id],
+                }
+            )
+        )
+        evidence_excerpt = sanitize_preview_text(
+            sanitized_bundle[:LAYOUT_EVIDENCE_EXCERPT_MAX_CHARS],
+            "layout_section.evidence_excerpt",
+        ).value
+        if evidence_excerpt:
+            evidence_spans.append(
+                SupplementPreviewEvidenceSpan.model_validate(
+                    {
+                        "span_id": span_id,
+                        "source_type": "ocr_layout",
+                        "section_type": preview_type,
+                        "text_excerpt": evidence_excerpt,
+                        "page_index": _section_page_index(section),
+                        "cell_ref": section_id,
+                        "confidence": confidence,
+                    }
+                )
+            )
+
+    if sections:
+        return sections, evidence_spans, None
+    if ocr_layout.warnings:
+        return [], [], ocr_layout.warnings[0]
+    return [], [], None
+
+
+def _section_text_bundle(section: LabelSection) -> str:
+    """Build a bounded section text bundle from deterministic layout rows.
+
+    Args:
+        section: Parsed label section.
+
+    Returns:
+        Bounded section text assembled in visual row order.
+    """
+    rows: list[str] = []
+    for row in section.rows:
+        row_text = " | ".join(cell.text for cell in sorted(row, key=lambda item: item.column_index))
+        if row_text.strip():
+            rows.append(row_text.strip())
+    return "\n".join(rows)[:LAYOUT_TEXT_BUNDLE_MAX_CHARS].strip()
+
+
+def _section_page_index(section: LabelSection) -> int | None:
+    """Return the first page index represented by a layout section."""
+    if section.anchor_box is not None:
+        return section.anchor_box.page_index
+    for row in section.rows:
+        if row:
+            return row[0].bounding_box.page_index
+    return None
+
+
+def _section_confidence(section: LabelSection) -> float | None:
+    """Return the average confidence across a deterministic layout section."""
+    values = [
+        cell.confidence for row in section.rows for cell in row if cell.confidence is not None
+    ]
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _merge_label_sections(
+    parser_sections: list[SupplementPreviewLabelSection],
+    layout_sections: list[SupplementPreviewLabelSection],
+) -> list[SupplementPreviewLabelSection]:
+    """Prefer deterministic layout sections and append non-duplicate parser sections."""
+    if not layout_sections:
+        return list(parser_sections)
+    merged = list(layout_sections)
+    seen_types = {section.section_type for section in merged}
+    for section in parser_sections:
+        if section.section_type in seen_types:
+            continue
+        merged.append(section)
+        seen_types.add(section.section_type)
+    return merged
+
+
+def _merge_evidence_spans(
+    parser_spans: list[SupplementPreviewEvidenceSpan],
+    layout_spans: list[SupplementPreviewEvidenceSpan],
+) -> list[SupplementPreviewEvidenceSpan]:
+    """Merge parser and layout evidence by stable span id."""
+    merged: list[SupplementPreviewEvidenceSpan] = []
+    seen_ids: set[str] = set()
+    for span in [*parser_spans, *layout_spans]:
+        if span.span_id in seen_ids:
+            continue
+        merged.append(span)
+        seen_ids.add(span.span_id)
+    return merged
+
+
+def _merge_missing_required_sections(
+    parser_missing: list[SupplementMissingRequiredSection],
+    label_sections: list[SupplementPreviewLabelSection],
+    *,
+    intake_text: str | None,
+) -> list[SupplementMissingRequiredSection]:
+    """Remove missing-section markers proven present by parser or layout evidence."""
+    present_types = {section.section_type for section in label_sections}
+    if intake_text and intake_text.strip():
+        present_types.add("intake_method")
+
+    normalized: list[SupplementMissingRequiredSection] = []
+    seen: set[str] = set()
+    for section in parser_missing:
+        if _is_required_section_present(section, present_types):
+            continue
+        if section not in seen:
+            normalized.append(section)
+            seen.add(section)
+    return normalized
+
+
+def _is_required_section_present(
+    section: SupplementMissingRequiredSection,
+    present_types: set[str],
+) -> bool:
+    """Return whether a required section has supporting preview evidence."""
+    if section == "supplement_facts":
+        return bool({"supplement_facts", "nutrition_info", "ingredients"} & present_types)
+    if section == "functional_info":
+        return "functional_info" in present_types
+    return section in present_types
 
 
 def _build_low_confidence_fields(

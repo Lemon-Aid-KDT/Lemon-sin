@@ -8,6 +8,7 @@ import 'app_providers.dart';
 import 'core/config/app_config.dart';
 import 'features/auth/token_session.dart';
 import 'features/consent/consent_gate_screen.dart';
+import 'features/supplements/supplement_models.dart';
 import 'features/supplements/supplement_repository.dart';
 import 'screens/analysis_result_screen.dart' as source_analysis;
 import 'screens/camera_screen.dart' as source_camera;
@@ -290,6 +291,18 @@ class _SupplementCameraBranch extends ConsumerWidget {
       onAnalyzeSupplementImage:
           (String imagePath, {required String ocrProvider}) async {
             await controller.analyzeImage(imagePath, ocrProvider: ocrProvider);
+            if (!context.mounted) return;
+            if (controller.analysisPreview != null &&
+                controller.apiError == null) {
+              context.go('/shell/home/analysis-result?mode=supplement');
+            }
+          },
+      onAnalyzeSupplementImages:
+          (
+            List<SupplementImageUpload> images, {
+            required String ocrProvider,
+          }) async {
+            await controller.analyzeImages(images, ocrProvider: ocrProvider);
             if (!context.mounted) return;
             if (controller.analysisPreview != null &&
                 controller.apiError == null) {

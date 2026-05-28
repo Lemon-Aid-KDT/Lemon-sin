@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/screens/camera_screen.dart';
 
 void main() {
@@ -30,7 +31,7 @@ void main() {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(seconds: 1));
     });
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
 
     expect(picker.lastMaxWidth, 2400);
     expect(picker.lastImageQuality, 95);
@@ -64,7 +65,7 @@ void main() {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(seconds: 1));
     });
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
 
     expect(picker.lastSource, ImageSource.camera);
     expect(picker.lastMaxWidth, 2400);
@@ -72,6 +73,59 @@ void main() {
     expect(picker.lastRequestFullMetadata, isFalse);
     expect(find.text('미리보기'), findsOneWidget);
     expect(find.text('분석하기'), findsOneWidget);
+  });
+
+  testWidgets('supplement preview can add images into a batch', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File source = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(source.path);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          imagePicker: picker,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+          onAnalyzeSupplementImages:
+              (
+                List<SupplementImageUpload> images, {
+                required String ocrProvider,
+              }) async {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.byIcon(Icons.photo_library_rounded));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pump(const Duration(milliseconds: 600));
+
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('사진 추가'),
+            matching: find.byType(GestureDetector),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2장'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.photo_library_rounded));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.text('2장'), findsOneWidget);
+    expect(find.text('성분표'), findsWidgets);
+    expect(find.text('2장 분석'), findsOneWidget);
   });
 }
 

@@ -11,7 +11,18 @@ from uuid import uuid4
 import httpx
 
 from src.config import Settings
-from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.ocr.base import (
+    OCRAdapter,
+    OCRBlock,
+    OCRBoundingPoly,
+    OCRError,
+    OCRImageInput,
+    OCRPage,
+    OCRParagraph,
+    OCRResult,
+    OCRVertex,
+    OCRWord,
+)
 
 CLOVA_OCR_PROVIDER = "clova_ocr"
 HTTP_ERROR_STATUS_MIN = 400
@@ -262,7 +273,175 @@ def _parse_clova_response(payload: dict[str, Any]) -> OCRResult:
         text="\n".join(_dedupe_preserve_order(fragments)),
         provider=CLOVA_OCR_PROVIDER,
         confidence=_average(confidences),
+        pages=_extract_layout_pages(first_image),
     )
+
+
+def _extract_layout_pages(image_payload: dict[str, Any]) -> tuple[OCRPage, ...]:
+    """Normalize CLOVA OCR fields into the OCR layout contract.
+
+    Args:
+        image_payload: One CLOVA image response object.
+
+    Returns:
+        One OCR page with line-level blocks, or an empty tuple when no fields are usable.
+    """
+    fields = image_payload.get("fields")
+    if not isinstance(fields, list):
+        return ()
+    blocks = tuple(
+        _layout_block(
+            text=text,
+            confidence=confidence,
+            bounding_box=bounding_box,
+            index=index,
+        )
+        for index, (text, confidence, bounding_box) in enumerate(_layout_lines(fields))
+    )
+    if not blocks:
+        return ()
+    image_info = image_payload.get("convertedImageInfo")
+    if not isinstance(image_info, dict):
+        image_info = {}
+    return (
+        OCRPage(
+            width=_optional_int(image_info.get("width")),
+            height=_optional_int(image_info.get("height")),
+            confidence=_average(
+                [block.confidence for block in blocks if block.confidence is not None]
+            ),
+            blocks=blocks,
+        ),
+    )
+
+
+def _layout_lines(
+    fields: list[object],
+) -> list[tuple[str, float | None, OCRBoundingPoly | None]]:
+    """Return line-level CLOVA OCR fields in provider order.
+
+    Args:
+        fields: CLOVA ``fields`` response array.
+
+    Returns:
+        Text, confidence, and optional bounding polygon tuples.
+    """
+    lines: list[tuple[str, float | None, OCRBoundingPoly | None]] = []
+    seen: set[tuple[str, tuple[tuple[float, float], ...]]] = set()
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        _append_layout_line(field, lines=lines, seen=seen)
+        sub_fields = field.get("subFields")
+        if isinstance(sub_fields, list):
+            for sub_field in sub_fields:
+                if isinstance(sub_field, dict):
+                    _append_layout_line(sub_field, lines=lines, seen=seen)
+    return lines
+
+
+def _append_layout_line(
+    field: dict[object, object],
+    *,
+    lines: list[tuple[str, float | None, OCRBoundingPoly | None]],
+    seen: set[tuple[str, tuple[tuple[float, float], ...]]],
+) -> None:
+    """Append one sanitized CLOVA layout line when text is present."""
+    text = field.get("inferText")
+    if not isinstance(text, str) or not text.strip():
+        return
+    stripped = text.strip()
+    bounding_box = _parse_bounding_poly(field.get("boundingPoly"))
+    fingerprint = (stripped, _poly_fingerprint(bounding_box))
+    if fingerprint in seen:
+        return
+    seen.add(fingerprint)
+    lines.append(
+        (
+            stripped,
+            _optional_confidence(field.get("inferConfidence")),
+            bounding_box,
+        )
+    )
+
+
+def _layout_block(
+    *,
+    text: str,
+    confidence: float | None,
+    bounding_box: OCRBoundingPoly | None,
+    index: int,
+) -> OCRBlock:
+    """Build a line-level OCR block from one CLOVA field."""
+    word = OCRWord(
+        text=text,
+        confidence=confidence,
+        bounding_box=bounding_box,
+        block_index=index,
+        paragraph_index=0,
+        word_index=0,
+    )
+    paragraph = OCRParagraph(
+        text=text,
+        confidence=confidence,
+        bounding_box=bounding_box,
+        words=(word,),
+    )
+    return OCRBlock(
+        text=text,
+        confidence=confidence,
+        bounding_box=bounding_box,
+        block_type="TEXT",
+        paragraphs=(paragraph,),
+    )
+
+
+def _parse_bounding_poly(value: object) -> OCRBoundingPoly | None:
+    """Parse CLOVA ``boundingPoly.vertices`` into provider-neutral vertices."""
+    if not isinstance(value, dict):
+        return None
+    raw_vertices = value.get("vertices")
+    if not isinstance(raw_vertices, list):
+        return None
+    vertices: list[OCRVertex] = []
+    for raw_vertex in raw_vertices:
+        if not isinstance(raw_vertex, dict):
+            continue
+        x = _optional_float(raw_vertex.get("x"))
+        y = _optional_float(raw_vertex.get("y"))
+        if x is not None and y is not None:
+            vertices.append(OCRVertex(x=x, y=y))
+    if not vertices:
+        return None
+    return OCRBoundingPoly(vertices=tuple(vertices))
+
+
+def _poly_fingerprint(poly: OCRBoundingPoly | None) -> tuple[tuple[float, float], ...]:
+    """Return a stable fingerprint for layout-line deduplication."""
+    if poly is None:
+        return ()
+    return tuple((vertex.x, vertex.y) for vertex in poly.vertices)
+
+
+def _optional_confidence(value: object) -> float | None:
+    """Return a bounded confidence value when present."""
+    if isinstance(value, int | float) and 0 <= value <= 1:
+        return float(value)
+    return None
+
+
+def _optional_int(value: object) -> int | None:
+    """Return a non-negative integer value when present."""
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
+def _optional_float(value: object) -> float | None:
+    """Return a numeric value when present."""
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 def _dedupe_preserve_order(values: list[str]) -> list[str]:

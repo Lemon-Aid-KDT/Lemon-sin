@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -12,12 +13,14 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Path,
     Query,
     Request,
     Response,
     UploadFile,
     status,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.contract import (
@@ -55,11 +58,14 @@ from src.llm.ollama import (
     OllamaConfigurationError,
     OllamaStructuredOutputError,
 )
+from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import (
     SupplementAnalysisPreview,
+    SupplementAnalysisSessionResponse,
     SupplementBarcodeLookupRequest,
     SupplementBarcodeLookupResponse,
+    SupplementMultiImageAnalysisPreview,
     UserSupplementCreate,
     UserSupplementListResponse,
     UserSupplementResponse,
@@ -68,6 +74,7 @@ from src.models.schemas.supplement_comprehensive import (
     ComprehensiveAnalysisRequest,
     SupplementComprehensiveAnalysis,
 )
+from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
 from src.models.schemas.supplement_parser import SupplementOCRTextParseRequest
 from src.models.schemas.supplement_recommendation import (
     SupplementImpactPreviewRequest,
@@ -91,6 +98,7 @@ from src.security.auth import (
     require_supplement_write,
 )
 from src.security.scopes import ApiScope
+from src.security.subjects import build_owner_subject
 from src.services.privacy import (
     AuditOutcome,
     ConsentRequiredError,
@@ -155,6 +163,19 @@ COMMON_SUPPLEMENT_RESPONSES: dict[int | str, dict[str, Any]] = {
 require_supplement_recommendation_read = require_scopes(
     ApiScope.SUPPLEMENT_READ,
     ApiScope.ANALYSIS_READ,
+)
+MAX_MULTI_IMAGE_ANALYSIS_IMAGES = 6
+MULTI_IMAGE_ROLE_VALUES = frozenset(
+    {
+        "unknown",
+        "front_label",
+        "supplement_facts",
+        "intake_method",
+        "ingredients",
+        "precautions",
+        "barcode",
+        "mixed",
+    }
 )
 
 
@@ -281,6 +302,624 @@ def _ocr_provider_warning_codes(codes: tuple[str, ...]) -> list[str]:
         Warning codes excluding image-quality review hints.
     """
     return [code for code in codes if not code.startswith("image_quality:")]
+
+
+def _validate_multi_image_roles(
+    image_count: int,
+    image_roles: list[str] | None,
+    image_roles_json: str | None = None,
+) -> list[str]:
+    """Validate optional multi-image role form values.
+
+    Args:
+        image_count: Number of uploaded images.
+        image_roles: Optional client role values.
+        image_roles_json: Optional JSON-encoded role list for clients that cannot
+            repeat multipart form field names.
+
+    Returns:
+        One role value per image.
+
+    Raises:
+        HTTPException: If the role count or value is invalid.
+    """
+    if image_count < 1 or image_count > MAX_MULTI_IMAGE_ANALYSIS_IMAGES:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="image_count_invalid",
+            message=f"Upload between 1 and {MAX_MULTI_IMAGE_ANALYSIS_IMAGES} images.",
+        )
+    if image_roles is None and image_roles_json:
+        image_roles = _parse_multi_image_roles_json(image_roles_json)
+    if image_roles is None:
+        return ["unknown"] * image_count
+    normalized = [role.strip() for role in image_roles]
+    if len(normalized) != image_count:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="image_role_count_mismatch",
+            message="image_roles must contain exactly one value per uploaded image.",
+        )
+    invalid = [role for role in normalized if role not in MULTI_IMAGE_ROLE_VALUES]
+    if invalid:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="image_role_invalid",
+            message="image_roles contains an unsupported supplement image role.",
+        )
+    return normalized
+
+
+def _parse_multi_image_roles_json(image_roles_json: str) -> list[str]:
+    """Parse JSON-encoded role values from multipart form data.
+
+    Args:
+        image_roles_json: JSON string expected to contain only string role values.
+
+    Returns:
+        Role values parsed from JSON.
+
+    Raises:
+        HTTPException: If the JSON shape is invalid.
+    """
+    try:
+        parsed = json.loads(image_roles_json)
+    except json.JSONDecodeError as exc:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="image_roles_invalid_json",
+            message="image_roles_json must be a JSON array of role strings.",
+        ) from exc
+    if not isinstance(parsed, list) or not all(isinstance(role, str) for role in parsed):
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="image_roles_invalid_json",
+            message="image_roles_json must be a JSON array of role strings.",
+        )
+    return parsed
+
+
+def _multi_image_client_request_id(client_request_id: str | None, index: int) -> str | None:
+    """Derive a per-image idempotency key hint for a multi-image batch.
+
+    Args:
+        client_request_id: Optional batch-level client id.
+        index: Zero-based image index.
+
+    Returns:
+        Per-image client id hint, or None when the batch has no id.
+    """
+    if client_request_id is None or not client_request_id.strip():
+        return None
+    return f"{client_request_id.strip()}:{index + 1}"
+
+
+def _session_image_client_request_id(
+    analysis_group_id: str,
+    client_request_id: str | None,
+    image_role: str,
+) -> str:
+    """Build an idempotency hint scoped to an analysis session image upload.
+
+    Args:
+        analysis_group_id: Backend-created group identifier.
+        client_request_id: Optional client-supplied image idempotency hint.
+        image_role: Client-supplied image role.
+
+    Returns:
+        Bounded client idempotency hint for existing intake persistence.
+    """
+    suffix = client_request_id.strip() if client_request_id and client_request_id.strip() else None
+    if suffix is None:
+        suffix = f"{image_role}-{uuid4().hex[:12]}"
+    return f"{analysis_group_id}:{suffix}"[:80]
+
+
+async def _annotate_multi_image_record(
+    session: AsyncSession,
+    result_record: Any,
+    *,
+    image_role: str,
+    analysis_group_id: str,
+    image_count: int,
+) -> None:
+    """Persist non-sensitive batch metadata on a per-image preview.
+
+    Args:
+        session: Request-scoped async database session.
+        result_record: Supplement analysis ORM row.
+        image_role: Client-supplied or unknown image role.
+        analysis_group_id: Ephemeral batch group identifier.
+        image_count: Number of images in the batch.
+    """
+    parsed_snapshot = dict(result_record.parsed_snapshot or {})
+    parsed_snapshot["image_role"] = image_role
+    parsed_snapshot["multi_image_group_id"] = analysis_group_id
+    pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
+    pipeline_metadata["image_count"] = image_count
+    pipeline_metadata["image_role"] = image_role
+    parsed_snapshot["pipeline_metadata"] = pipeline_metadata
+    result_record.parsed_snapshot = parsed_snapshot
+    await session.commit()
+
+
+async def _refresh_multi_image_count(
+    session: AsyncSession,
+    analysis_runs: list[SupplementAnalysisRun],
+) -> None:
+    """Persist the latest group image count on every per-image snapshot.
+
+    Args:
+        session: Request-scoped async database session.
+        analysis_runs: Current group rows loaded for the owner.
+    """
+    image_count = len(analysis_runs)
+    for record in analysis_runs:
+        parsed_snapshot = dict(record.parsed_snapshot or {})
+        pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
+        pipeline_metadata["image_count"] = image_count
+        parsed_snapshot["pipeline_metadata"] = pipeline_metadata
+        record.parsed_snapshot = parsed_snapshot
+    if analysis_runs:
+        await session.commit()
+
+
+def _build_multi_image_response(
+    *,
+    analysis_group_id: str,
+    previews: list[SupplementAnalysisPreview],
+) -> SupplementMultiImageAnalysisPreview:
+    """Build a sanitized aggregate response for a multi-image batch.
+
+    Args:
+        analysis_group_id: Ephemeral group identifier.
+        previews: Per-image analysis previews.
+
+    Returns:
+        Batch-level multi-image preview.
+    """
+    missing_sections = _aggregate_missing_sections(previews)
+    pipeline_metadata = _aggregate_pipeline_metadata(previews, missing_sections)
+    merged_preview = _build_merged_multi_image_preview(
+        analysis_group_id=analysis_group_id,
+        previews=previews,
+        missing_sections=missing_sections,
+        pipeline_metadata=pipeline_metadata,
+    )
+    return SupplementMultiImageAnalysisPreview(
+        analysis_group_id=analysis_group_id,
+        image_count=len(previews),
+        previews=previews,
+        merged_preview=merged_preview,
+        missing_required_sections=missing_sections,
+        action_required=(
+            "additional_label_image_required" if missing_sections else "review_required"
+        ),
+        pipeline_metadata=pipeline_metadata,
+        expires_at=min((preview.expires_at for preview in previews), default=None),
+    )
+
+
+def _build_analysis_session_response(
+    analysis_group_id: str,
+    *,
+    image_count: int = 0,
+    max_images: int = MAX_MULTI_IMAGE_ANALYSIS_IMAGES,
+) -> SupplementAnalysisSessionResponse:
+    """Build a lightweight session response without raw image or OCR data.
+
+    Args:
+        analysis_group_id: Backend-created group identifier.
+        image_count: Number of accepted images currently tied to the group.
+        max_images: Maximum images accepted by the session.
+
+    Returns:
+        Sanitized multi-image analysis session response.
+    """
+    missing_required_sections: list[str] = []
+    if image_count == 0:
+        missing_required_sections = ["supplement_facts", "intake_method"]
+    return SupplementAnalysisSessionResponse(
+        analysis_group_id=analysis_group_id,
+        status=(
+            "created"
+            if image_count == 0
+            else "receiving_images" if missing_required_sections else "ready_for_review"
+        ),
+        image_count=image_count,
+        max_images=max_images,
+        missing_required_sections=missing_required_sections,
+        action_required=(
+            "additional_label_image_required"
+            if missing_required_sections or image_count == 0
+            else "review_required"
+        ),
+    )
+
+
+async def _load_multi_image_analysis_runs(
+    session: AsyncSession,
+    *,
+    owner_subject: str,
+    analysis_group_id: str,
+) -> list[SupplementAnalysisRun]:
+    """Load current-user analysis rows that belong to one multi-image group.
+
+    Args:
+        session: Request-scoped async database session.
+        owner_subject: Issuer-qualified authenticated subject.
+        analysis_group_id: Backend-created multi-image group identifier.
+
+    Returns:
+        Analysis rows ordered by creation time.
+    """
+    result = await session.scalars(
+        select(SupplementAnalysisRun)
+        .where(
+            SupplementAnalysisRun.owner_subject == owner_subject,
+            SupplementAnalysisRun.parsed_snapshot["multi_image_group_id"].as_string()
+            == analysis_group_id,
+        )
+        .order_by(SupplementAnalysisRun.created_at.asc())
+    )
+    return list(result.all())
+
+
+def _build_merged_multi_image_preview(
+    *,
+    analysis_group_id: str,
+    previews: list[SupplementAnalysisPreview],
+    missing_sections: list[str],
+    pipeline_metadata: SupplementImagePipelineMetadata,
+) -> SupplementAnalysisPreview | None:
+    """Build a bounded review preview from per-image batch evidence.
+
+    Args:
+        analysis_group_id: Ephemeral group identifier.
+        previews: Per-image previews already sanitized by the intake pipeline.
+        missing_sections: Batch-level missing section codes.
+        pipeline_metadata: Aggregate non-sensitive pipeline metadata.
+
+    Returns:
+        A merged preview using one persisted preview id for confirmation traceability.
+    """
+    if not previews:
+        return None
+    base = _select_merged_preview_base(previews)
+    merged = _MergedPreviewParts()
+    for preview_index, preview in enumerate(previews, start=1):
+        span_ref_map = _append_prefixed_evidence_spans(merged, preview, preview_index)
+        _append_prefixed_label_sections(merged, preview, preview_index, span_ref_map)
+        _append_unique_ingredients(merged, preview)
+        _append_unique_precautions(merged, preview, span_ref_map)
+        _append_unique_functional_claims(merged, preview, span_ref_map)
+
+    intake_method = _select_intake_method(previews, merged.span_ref_maps)
+    return base.model_copy(
+        update={
+            "parsed_product": _select_parsed_product(previews),
+            "ingredient_candidates": merged.ingredients or base.ingredient_candidates,
+            "layout_available": bool(merged.label_sections) or base.layout_available,
+            "label_sections": merged.label_sections,
+            "intake_method": intake_method,
+            "precautions": merged.precautions,
+            "functional_claims": merged.functional_claims,
+            "evidence_spans": merged.evidence_spans,
+            "action_required": (
+                "additional_label_image_required" if missing_sections else "review_required"
+            ),
+            "missing_required_sections": missing_sections,
+            "image_role": "mixed" if len(previews) > 1 else base.image_role,
+            "multi_image_group_id": analysis_group_id,
+            "pipeline_metadata": pipeline_metadata,
+            "warnings": _merge_preview_warnings(previews),
+            "expires_at": min(
+                (preview.expires_at for preview in previews), default=base.expires_at
+            ),
+        },
+        deep=True,
+    )
+
+
+class _MergedPreviewParts:
+    """Mutable accumulators for a sanitized multi-image preview merge."""
+
+    def __init__(self) -> None:
+        self.label_sections: list[Any] = []
+        self.evidence_spans: list[Any] = []
+        self.ingredients: list[Any] = []
+        self.precautions: list[Any] = []
+        self.functional_claims: list[Any] = []
+        self.section_keys: set[tuple[str, str, str]] = set()
+        self.span_ids: set[str] = set()
+        self.ingredient_keys: set[tuple[str, str, str, str]] = set()
+        self.precaution_texts: set[str] = set()
+        self.claim_texts: set[str] = set()
+        self.span_ref_maps: dict[int, dict[str, str]] = {}
+
+
+def _select_merged_preview_base(
+    previews: list[SupplementAnalysisPreview],
+) -> SupplementAnalysisPreview:
+    """Select the persisted preview id that best represents the merged batch."""
+    return max(
+        previews,
+        key=lambda preview: (
+            len(preview.ingredient_candidates),
+            len(preview.label_sections),
+            bool(preview.parsed_product.product_name),
+            bool(preview.intake_method.text),
+        ),
+    )
+
+
+def _append_prefixed_evidence_spans(
+    merged: _MergedPreviewParts,
+    preview: SupplementAnalysisPreview,
+    preview_index: int,
+) -> dict[str, str]:
+    """Append evidence spans with image-scoped ids to avoid cross-image collisions."""
+    ref_map: dict[str, str] = {}
+    for span in preview.evidence_spans:
+        new_id = _bounded_prefixed_id("span", preview_index, span.span_id, max_length=120)
+        suffix = 2
+        while new_id in merged.span_ids:
+            new_id = _bounded_prefixed_id(
+                f"span{suffix}",
+                preview_index,
+                span.span_id,
+                max_length=120,
+            )
+            suffix += 1
+        merged.span_ids.add(new_id)
+        ref_map[span.span_id] = new_id
+        merged.evidence_spans.append(span.model_copy(update={"span_id": new_id}, deep=True))
+    merged.span_ref_maps[preview_index] = ref_map
+    return ref_map
+
+
+def _append_prefixed_label_sections(
+    merged: _MergedPreviewParts,
+    preview: SupplementAnalysisPreview,
+    preview_index: int,
+    span_ref_map: dict[str, str],
+) -> None:
+    """Append unique label sections with image-scoped evidence references."""
+    for section in preview.label_sections:
+        key = (
+            section.section_type,
+            section.heading_text or "",
+            section.text_bundle or "",
+        )
+        if key in merged.section_keys:
+            continue
+        merged.section_keys.add(key)
+        merged.label_sections.append(
+            section.model_copy(
+                update={
+                    "section_id": _bounded_prefixed_id(
+                        "section",
+                        preview_index,
+                        section.section_id,
+                        max_length=80,
+                    ),
+                    "evidence_refs": [span_ref_map.get(ref, ref) for ref in section.evidence_refs],
+                },
+                deep=True,
+            )
+        )
+
+
+def _append_unique_ingredients(
+    merged: _MergedPreviewParts,
+    preview: SupplementAnalysisPreview,
+) -> None:
+    """Append bounded unique ingredient candidates from a per-image preview."""
+    for ingredient in preview.ingredient_candidates:
+        key = (
+            ingredient.display_name,
+            ingredient.nutrient_code or "",
+            str(ingredient.amount),
+            ingredient.unit or "",
+        )
+        if key in merged.ingredient_keys:
+            continue
+        merged.ingredient_keys.add(key)
+        merged.ingredients.append(ingredient)
+
+
+def _append_unique_precautions(
+    merged: _MergedPreviewParts,
+    preview: SupplementAnalysisPreview,
+    span_ref_map: dict[str, str],
+) -> None:
+    """Append unique precaution candidates with remapped evidence refs."""
+    for precaution in preview.precautions:
+        key = precaution.text
+        if key in merged.precaution_texts:
+            continue
+        merged.precaution_texts.add(key)
+        merged.precautions.append(
+            precaution.model_copy(
+                update={
+                    "evidence_refs": [
+                        span_ref_map.get(ref, ref) for ref in precaution.evidence_refs
+                    ]
+                },
+                deep=True,
+            )
+        )
+
+
+def _append_unique_functional_claims(
+    merged: _MergedPreviewParts,
+    preview: SupplementAnalysisPreview,
+    span_ref_map: dict[str, str],
+) -> None:
+    """Append unique functional claims with remapped evidence refs."""
+    for claim in preview.functional_claims:
+        key = claim.text
+        if key in merged.claim_texts:
+            continue
+        merged.claim_texts.add(key)
+        merged.functional_claims.append(
+            claim.model_copy(
+                update={
+                    "evidence_refs": [span_ref_map.get(ref, ref) for ref in claim.evidence_refs]
+                },
+                deep=True,
+            )
+        )
+
+
+def _select_intake_method(
+    previews: list[SupplementAnalysisPreview],
+    span_ref_maps: dict[int, dict[str, str]],
+) -> Any:
+    """Return the first label-supported intake method with remapped evidence refs."""
+    for preview_index, preview in enumerate(previews, start=1):
+        if not preview.intake_method.text:
+            continue
+        span_ref_map = span_ref_maps.get(preview_index, {})
+        return preview.intake_method.model_copy(
+            update={
+                "evidence_refs": [
+                    span_ref_map.get(ref, ref) for ref in preview.intake_method.evidence_refs
+                ]
+            },
+            deep=True,
+        )
+    return previews[0].intake_method
+
+
+def _select_parsed_product(previews: list[SupplementAnalysisPreview]) -> Any:
+    """Return the richest parsed product candidate across a batch."""
+    return max(
+        (preview.parsed_product for preview in previews),
+        key=lambda product: (
+            bool(product.product_name),
+            bool(product.manufacturer),
+            bool(product.serving_size),
+            product.daily_servings is not None,
+        ),
+    )
+
+
+def _merge_preview_warnings(previews: list[SupplementAnalysisPreview]) -> list[str]:
+    """Merge safe preview warnings in first-seen order."""
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for preview in previews:
+        for warning in preview.warnings:
+            if warning in seen:
+                continue
+            seen.add(warning)
+            warnings.append(warning)
+    return warnings
+
+
+def _bounded_prefixed_id(
+    prefix: str,
+    preview_index: int,
+    value: str,
+    *,
+    max_length: int,
+) -> str:
+    """Build a stable bounded id that identifies the source image."""
+    return f"image{preview_index}-{prefix}-{value}"[:max_length]
+
+
+def _aggregate_missing_sections(
+    previews: list[SupplementAnalysisPreview],
+) -> list[str]:
+    """Infer batch-level missing sections from per-image previews.
+
+    Args:
+        previews: Per-image analysis previews.
+
+    Returns:
+        Required section codes still missing at the batch level.
+    """
+    has_facts = any(
+        preview.ingredient_candidates
+        or any(
+            section.section_type in {"supplement_facts", "ingredients", "nutrition_info"}
+            for section in preview.label_sections
+        )
+        for preview in previews
+    )
+    has_intake = any(
+        preview.intake_method.text
+        or preview.image_role == "intake_method"
+        or any(section.section_type == "intake_method" for section in preview.label_sections)
+        for preview in previews
+    )
+    missing: list[str] = []
+    if not has_facts:
+        missing.append("supplement_facts")
+    if not has_intake:
+        missing.append("intake_method")
+    return missing
+
+
+def _aggregate_pipeline_metadata(
+    previews: list[SupplementAnalysisPreview],
+    missing_sections: list[str],
+) -> SupplementImagePipelineMetadata:
+    """Aggregate non-sensitive pipeline metadata for a multi-image response.
+
+    Args:
+        previews: Per-image analysis previews.
+        missing_sections: Batch-level missing section codes.
+
+    Returns:
+        Sanitized aggregate pipeline metadata.
+    """
+    providers = {
+        metadata.ocr_provider
+        for preview in previews
+        if (metadata := preview.pipeline_metadata).ocr_provider
+    }
+    parser_versions = {
+        metadata.parser_contract_version
+        for preview in previews
+        if (metadata := preview.pipeline_metadata).parser_contract_version
+    }
+    return SupplementImagePipelineMetadata(
+        intake_completed=all(preview.pipeline_metadata.intake_completed for preview in previews),
+        image_count=len(previews),
+        image_role="mixed" if len(previews) > 1 else previews[0].image_role,
+        vision_roi_used=any(preview.pipeline_metadata.vision_roi_used for preview in previews),
+        ocr_provider=_aggregate_label(providers),
+        ocr_text_present=any(preview.pipeline_metadata.ocr_text_present for preview in previews),
+        ocr_confidence_bucket=_aggregate_confidence_bucket(previews),
+        roi_count=sum(preview.pipeline_metadata.roi_count for preview in previews),
+        section_count=sum(preview.pipeline_metadata.section_count for preview in previews),
+        llm_parser_used=any(preview.pipeline_metadata.llm_parser_used for preview in previews),
+        parser_contract_version=_aggregate_label(parser_versions),
+        missing_required_sections=missing_sections,
+        raw_image_stored=False,
+        raw_ocr_text_stored=False,
+    )
+
+
+def _aggregate_label(values: set[str | None]) -> str | None:
+    """Return a stable aggregate label for provider/version fields."""
+    labels = {value for value in values if value}
+    if not labels:
+        return None
+    if len(labels) == 1:
+        return next(iter(labels))
+    return "mixed"
+
+
+def _aggregate_confidence_bucket(previews: list[SupplementAnalysisPreview]) -> str:
+    """Return the lowest non-empty OCR confidence bucket across previews."""
+    buckets = [preview.pipeline_metadata.ocr_confidence_bucket for preview in previews]
+    for bucket in ("low", "medium", "high", "unknown"):
+        if bucket in buckets:
+            return bucket
+    return "none"
 
 
 async def _commit_consent_read_transaction(session: AsyncSession) -> None:
@@ -566,6 +1205,671 @@ async def analyze_supplement_label(
         },
     )
     return supplement_analysis_run_to_preview(result_record)
+
+
+@router.post(
+    "/analysis-sessions",
+    response_model=SupplementAnalysisSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        consents=(ConsentType.OCR_IMAGE_PROCESSING,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def create_supplement_analysis_session(
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementAnalysisSessionResponse:
+    """Create a lightweight multi-image supplement analysis session id.
+
+    Args:
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Backend-created group id for subsequent session image uploads.
+
+    Raises:
+        HTTPException: If OCR image processing consent is missing.
+    """
+    try:
+        await require_user_consent(
+            session,
+            current_user,
+            ConsentType.OCR_IMAGE_PROCESSING,
+        )
+    except ConsentRequiredError as exc:
+        await _commit_consent_read_transaction(session)
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_analysis_session_create_blocked",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"missing_consents": [ConsentType.OCR_IMAGE_PROCESSING.value]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "consent_required",
+                "message": str(exc),
+                "required_consents": [ConsentType.OCR_IMAGE_PROCESSING.value],
+            },
+        ) from exc
+
+    await _commit_consent_read_transaction(session)
+    response = _build_analysis_session_response(f"multi-{uuid4()}")
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_image_analysis_session_created",
+        resource_type="supplement_analysis_run",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "image_count": 0,
+            "max_images": response.max_images,
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+        },
+    )
+    return response
+
+
+@router.post(
+    "/analysis-sessions/{analysis_group_id}/images",
+    response_model=SupplementMultiImageAnalysisPreview,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        413: {"content": {"application/json": {"examples": PAYLOAD_TOO_LARGE_EXAMPLE}}},
+        409: {
+            "description": "client_request_id was already used for different image bytes.",
+        },
+        415: {"content": {"application/json": {"examples": UNSUPPORTED_MEDIA_TYPE_EXAMPLE}}},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+        429: {"content": {"application/json": {"examples": TOO_MANY_REQUESTS_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        consents=(ConsentType.OCR_IMAGE_PROCESSING,),
+        conditional_consents=(ConsentType.EXTERNAL_OCR_PROCESSING,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def upload_supplement_analysis_session_image(
+    http_request: Request,
+    analysis_group_id: Annotated[
+        str,
+        Path(
+            min_length=1,
+            max_length=120,
+            description="Backend-created multi-image analysis group id.",
+        ),
+    ],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    image: Annotated[
+        UploadFile,
+        File(description="Supplement label image file for this analysis session."),
+    ],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    adapters: Annotated[
+        SupplementImageAnalysisAdapters,
+        Depends(get_supplement_image_analysis_adapters),
+    ],
+    client_request_id: Annotated[str | None, Form(max_length=80)] = None,
+    ocr_provider: Annotated[SupplementOCRProviderSelector, Form()] = "configured",
+    image_role: Annotated[str, Form(max_length=80)] = "unknown",
+) -> SupplementMultiImageAnalysisPreview:
+    """Upload one image into a multi-photo supplement analysis session.
+
+    Args:
+        http_request: Current FastAPI request.
+        analysis_group_id: Backend-created multi-image analysis group id.
+        current_user: Authenticated owner.
+        image: Uploaded supplement label image.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        adapters: Configured OCR/parser/vision adapters.
+        client_request_id: Optional per-image client idempotency hint.
+        ocr_provider: Request-level OCR provider selector.
+        image_role: Role label for this image.
+
+    Returns:
+        Batch preview containing all current session image previews.
+
+    Raises:
+        HTTPException: If consent, image validation, role validation, or idempotency fails.
+    """
+    [validated_role] = _validate_multi_image_roles(1, [image_role])
+    selected_adapters = _select_supplement_image_analysis_adapters(
+        settings=settings,
+        configured_adapters=adapters,
+        ocr_provider=ocr_provider,
+    )
+    required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
+    missing_consents: list[ConsentType] = []
+    last_consent_error: ConsentRequiredError | None = None
+    for consent_type in required_consents:
+        try:
+            await require_user_consent(session, current_user, consent_type)
+        except ConsentRequiredError as exc:
+            missing_consents.append(consent_type)
+            last_consent_error = exc
+
+    await _commit_consent_read_transaction(session)
+
+    if missing_consents:
+        missing_values = [consent.value for consent in missing_consents]
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action=(
+                "supplement_external_ocr_blocked"
+                if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
+                else "supplement_image_analysis_session_image_blocked"
+            ),
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"missing_consents": missing_values},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "consent_required",
+                "message": str(last_consent_error),
+                "required_consents": missing_values,
+            },
+        ) from last_consent_error
+
+    existing_runs = await _load_multi_image_analysis_runs(
+        session,
+        owner_subject=build_owner_subject(current_user),
+        analysis_group_id=analysis_group_id,
+    )
+    if len(existing_runs) >= MAX_MULTI_IMAGE_ANALYSIS_IMAGES:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="image_count_invalid",
+            message=f"Upload between 1 and {MAX_MULTI_IMAGE_ANALYSIS_IMAGES} images.",
+        )
+
+    try:
+        learning_consents = await _collect_learning_consents_if_enabled(
+            session,
+            current_user,
+            settings,
+        )
+        await _commit_consent_read_transaction(session)
+        result = await analyze_supplement_image(
+            session=session,
+            user=current_user,
+            image=image,
+            client_request_id=_session_image_client_request_id(
+                analysis_group_id,
+                client_request_id,
+                validated_role,
+            ),
+            settings=settings,
+            adapters=selected_adapters,
+            learning_consents=learning_consents,
+            learning_object_store=build_learning_object_store(settings),
+        )
+        await _annotate_multi_image_record(
+            session,
+            result.record,
+            image_role=validated_role,
+            analysis_group_id=analysis_group_id,
+            image_count=len(existing_runs) + 1,
+        )
+        if result.ocr_attempted:
+            provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action=(
+                    "supplement_ocr_provider_failed"
+                    if provider_warning_codes
+                    else "supplement_ocr_provider_completed"
+                ),
+                resource_type="supplement_analysis_run",
+                resource_id=str(result.record.id),
+                outcome="failed" if provider_warning_codes else "success",
+                request=http_request,
+                settings=settings,
+                event_metadata={
+                    "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
+                    "ocr_confidence_present": (
+                        result.ocr_result.confidence is not None if result.ocr_result else False
+                    ),
+                    "warning_codes": provider_warning_codes,
+                    "raw_image_stored": False,
+                    "raw_ocr_text_stored": False,
+                },
+            )
+    except SupplementImageValidationError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_analysis_session_image_rejected",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"validation_code": exc.code},
+        )
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    except SupplementIntakeConflictError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_analysis_session_image_conflict",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"client_request_id_present": bool(client_request_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "idempotency_conflict",
+                "message": str(exc),
+            },
+        ) from exc
+
+    analysis_runs = await _load_multi_image_analysis_runs(
+        session,
+        owner_subject=build_owner_subject(current_user),
+        analysis_group_id=analysis_group_id,
+    )
+    await _refresh_multi_image_count(session, analysis_runs)
+    previews = [supplement_analysis_run_to_preview(record) for record in analysis_runs]
+    response = _build_multi_image_response(
+        analysis_group_id=analysis_group_id,
+        previews=previews,
+    )
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_image_analysis_session_image_uploaded",
+        resource_type="supplement_analysis_run",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "image_count": response.image_count,
+            "ocr_provider": response.pipeline_metadata.ocr_provider,
+            "missing_required_sections": list(response.missing_required_sections),
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+        },
+    )
+    return response
+
+
+@router.post(
+    "/analyze-multi",
+    response_model=SupplementMultiImageAnalysisPreview,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        413: {"content": {"application/json": {"examples": PAYLOAD_TOO_LARGE_EXAMPLE}}},
+        409: {
+            "description": "client_request_id was already used for different image bytes.",
+        },
+        415: {"content": {"application/json": {"examples": UNSUPPORTED_MEDIA_TYPE_EXAMPLE}}},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+        429: {"content": {"application/json": {"examples": TOO_MANY_REQUESTS_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        consents=(ConsentType.OCR_IMAGE_PROCESSING,),
+        conditional_consents=(ConsentType.EXTERNAL_OCR_PROCESSING,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def analyze_supplement_label_multi(
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    images: Annotated[
+        list[UploadFile],
+        File(description="Supplement label image files for one review batch."),
+    ],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    adapters: Annotated[
+        SupplementImageAnalysisAdapters,
+        Depends(get_supplement_image_analysis_adapters),
+    ],
+    client_request_id: Annotated[str | None, Form(max_length=80)] = None,
+    ocr_provider: Annotated[SupplementOCRProviderSelector, Form()] = "configured",
+    image_roles: Annotated[list[str] | None, Form()] = None,
+    image_roles_json: Annotated[str | None, Form(max_length=1000)] = None,
+) -> SupplementMultiImageAnalysisPreview:
+    """Create per-image previews for a multi-photo supplement label batch.
+
+    Args:
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        images: Uploaded supplement label images.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        adapters: Configured OCR/parser/vision adapters.
+        client_request_id: Optional batch idempotency hint.
+        ocr_provider: Request-level OCR provider selector.
+        image_roles: Optional role labels aligned one-to-one with ``images``.
+        image_roles_json: Optional JSON-encoded roles for multipart clients that
+            cannot repeat form field names.
+
+    Returns:
+        Batch preview containing existing per-image analysis previews.
+
+    Raises:
+        HTTPException: If consent, image validation, role validation, or idempotency fails.
+    """
+    roles = _validate_multi_image_roles(len(images), image_roles, image_roles_json)
+    selected_adapters = _select_supplement_image_analysis_adapters(
+        settings=settings,
+        configured_adapters=adapters,
+        ocr_provider=ocr_provider,
+    )
+    required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
+    missing_consents: list[ConsentType] = []
+    last_consent_error: ConsentRequiredError | None = None
+    for consent_type in required_consents:
+        try:
+            await require_user_consent(session, current_user, consent_type)
+        except ConsentRequiredError as exc:
+            missing_consents.append(consent_type)
+            last_consent_error = exc
+
+    await _commit_consent_read_transaction(session)
+
+    if missing_consents:
+        missing_values = [consent.value for consent in missing_consents]
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action=(
+                "supplement_external_ocr_blocked"
+                if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
+                else "supplement_image_multi_intake_blocked"
+            ),
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"missing_consents": missing_values},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "consent_required",
+                "message": str(last_consent_error),
+                "required_consents": missing_values,
+            },
+        ) from last_consent_error
+
+    analysis_group_id = f"multi-{uuid4()}"
+    previews: list[SupplementAnalysisPreview] = []
+    try:
+        learning_consents = await _collect_learning_consents_if_enabled(
+            session,
+            current_user,
+            settings,
+        )
+        await _commit_consent_read_transaction(session)
+        for index, image in enumerate(images):
+            result = await analyze_supplement_image(
+                session=session,
+                user=current_user,
+                image=image,
+                client_request_id=_multi_image_client_request_id(client_request_id, index),
+                settings=settings,
+                adapters=selected_adapters,
+                learning_consents=learning_consents,
+                learning_object_store=build_learning_object_store(settings),
+            )
+            await _annotate_multi_image_record(
+                session,
+                result.record,
+                image_role=roles[index],
+                analysis_group_id=analysis_group_id,
+                image_count=len(images),
+            )
+            if result.ocr_attempted:
+                provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+                await record_sensitive_audit_event(
+                    session,
+                    current_user,
+                    action=(
+                        "supplement_ocr_provider_failed"
+                        if provider_warning_codes
+                        else "supplement_ocr_provider_completed"
+                    ),
+                    resource_type="supplement_analysis_run",
+                    resource_id=str(result.record.id),
+                    outcome="failed" if provider_warning_codes else "success",
+                    request=http_request,
+                    settings=settings,
+                    event_metadata={
+                        "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
+                        "ocr_confidence_present": (
+                            result.ocr_result.confidence is not None if result.ocr_result else False
+                        ),
+                        "warning_codes": provider_warning_codes,
+                        "raw_image_stored": False,
+                        "raw_ocr_text_stored": False,
+                    },
+                )
+            previews.append(supplement_analysis_run_to_preview(result.record))
+    except SupplementImageValidationError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_multi_intake_rejected",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"validation_code": exc.code},
+        )
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    except SupplementIntakeConflictError as exc:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_multi_intake_conflict",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"client_request_id_present": bool(client_request_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "idempotency_conflict",
+                "message": str(exc),
+            },
+        ) from exc
+
+    response = _build_multi_image_response(
+        analysis_group_id=analysis_group_id,
+        previews=previews,
+    )
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_image_multi_intake_created",
+        resource_type="supplement_analysis_run",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "image_count": response.image_count,
+            "ocr_provider": response.pipeline_metadata.ocr_provider,
+            "parser_used": response.pipeline_metadata.llm_parser_used,
+            "vision_roi_used": response.pipeline_metadata.vision_roi_used,
+            "missing_required_sections": list(response.missing_required_sections),
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+        },
+    )
+    return response
+
+
+@router.post(
+    "/analysis-sessions/{analysis_group_id}/finalize",
+    response_model=SupplementMultiImageAnalysisPreview,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        404: {"description": "Multi-image analysis session was not found."},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        consents=(ConsentType.OCR_IMAGE_PROCESSING,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def finalize_supplement_analysis_session(
+    http_request: Request,
+    analysis_group_id: Annotated[
+        str,
+        Path(
+            min_length=1,
+            max_length=120,
+            description="Backend-created multi-image analysis group id.",
+        ),
+    ],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementMultiImageAnalysisPreview:
+    """Rebuild a safe merged preview for an existing multi-image analysis batch.
+
+    Args:
+        http_request: Current FastAPI request.
+        analysis_group_id: Backend-created multi-image analysis group id.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Batch preview assembled from persisted, current-user per-image previews.
+
+    Raises:
+        HTTPException: If consent is missing or the group is absent.
+    """
+    try:
+        await require_user_consent(
+            session,
+            current_user,
+            ConsentType.OCR_IMAGE_PROCESSING,
+        )
+    except ConsentRequiredError as exc:
+        await _commit_consent_read_transaction(session)
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_analysis_session_finalize_blocked",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"missing_consents": [ConsentType.OCR_IMAGE_PROCESSING.value]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "consent_required",
+                "message": str(exc),
+                "required_consents": [ConsentType.OCR_IMAGE_PROCESSING.value],
+            },
+        ) from exc
+
+    await _commit_consent_read_transaction(session)
+
+    analysis_runs = await _load_multi_image_analysis_runs(
+        session,
+        owner_subject=build_owner_subject(current_user),
+        analysis_group_id=analysis_group_id,
+    )
+    if not analysis_runs:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_analysis_session_finalize_missing",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="blocked",
+            request=http_request,
+            settings=settings,
+            event_metadata={"analysis_group_id_present": bool(analysis_group_id)},
+        )
+        raise _supplement_http_error(
+            status.HTTP_404_NOT_FOUND,
+            code="analysis_session_not_found",
+            message="Supplement analysis session was not found.",
+        )
+
+    previews = [supplement_analysis_run_to_preview(record) for record in analysis_runs]
+    response = _build_multi_image_response(
+        analysis_group_id=analysis_group_id,
+        previews=previews,
+    )
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_image_analysis_session_finalized",
+        resource_type="supplement_analysis_run",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "image_count": response.image_count,
+            "missing_required_sections": list(response.missing_required_sections),
+            "raw_image_stored": False,
+            "raw_ocr_text_stored": False,
+        },
+    )
+    return response
 
 
 @router.post(

@@ -23,10 +23,23 @@ from src.models.schemas.supplement import (
     MatchedSupplementCandidate,
     SupplementAnalysisPreview,
     SupplementAnalysisStatus,
+    SupplementDetectedProductRegion,
     SupplementIngredientCandidate,
     SupplementParsedProduct,
+    SupplementPreviewEvidenceSpan,
+    SupplementPreviewFunctionalClaim,
+    SupplementPreviewIntakeMethod,
+    SupplementPreviewLabelSection,
+    SupplementPreviewPrecaution,
 )
-from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
+from src.models.schemas.supplement_image import (
+    SupplementImagePipelineMetadata,
+    bucket_ocr_confidence,
+    count_snapshot_list,
+    infer_missing_required_sections,
+    parser_contract_version,
+    safe_snapshot_string,
+)
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.utils.image_safety import (
@@ -195,6 +208,10 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
     """
     parsed_snapshot = _dict_or_empty(record.parsed_snapshot)
     match_snapshot = _dict_or_empty(record.match_snapshot)
+    label_sections = [
+        SupplementPreviewLabelSection.model_validate(item)
+        for item in _dict_items(parsed_snapshot.get("label_sections"))
+    ]
     return SupplementAnalysisPreview(
         analysis_id=record.id,
         status=SupplementAnalysisStatus(record.status),
@@ -209,6 +226,37 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
             MatchedSupplementCandidate.model_validate(item)
             for item in _dict_items(match_snapshot.get("matched_product_candidates"))
         ],
+        layout_available=bool(parsed_snapshot.get("layout_available") or label_sections),
+        layout_fallback_reason=_optional_string(parsed_snapshot.get("layout_fallback_reason")),
+        label_sections=label_sections,
+        intake_method=SupplementPreviewIntakeMethod.model_validate(
+            _dict_or_empty(parsed_snapshot.get("intake_method"))
+        ),
+        precautions=[
+            SupplementPreviewPrecaution.model_validate(item)
+            for item in _dict_items(parsed_snapshot.get("precautions"))
+        ],
+        functional_claims=[
+            SupplementPreviewFunctionalClaim.model_validate(item)
+            for item in _dict_items(parsed_snapshot.get("functional_claims"))
+        ],
+        evidence_spans=[
+            SupplementPreviewEvidenceSpan.model_validate(item)
+            for item in _dict_items(parsed_snapshot.get("evidence_spans"))
+        ],
+        analysis_scope=_optional_string(parsed_snapshot.get("analysis_scope")) or "unknown",
+        action_required=_optional_string(parsed_snapshot.get("action_required")) or "none",
+        detected_product_regions=[
+            SupplementDetectedProductRegion.model_validate(item)
+            for item in _dict_items(parsed_snapshot.get("detected_product_regions"))
+        ],
+        selected_region_id=_optional_string(parsed_snapshot.get("selected_region_id")),
+        missing_required_sections=list(
+            _string_items(parsed_snapshot.get("missing_required_sections"))
+        ),
+        image_role=_optional_string(parsed_snapshot.get("image_role")) or "unknown",
+        multi_image_group_id=_optional_string(parsed_snapshot.get("multi_image_group_id")),
+        source_type=_optional_string(parsed_snapshot.get("source_type")) or "uploaded_image",
         low_confidence_fields=list(_string_items(parsed_snapshot.get("low_confidence_fields"))),
         pipeline_metadata=_build_pipeline_metadata(record, parsed_snapshot),
         warnings=list(_string_items(record.warnings)),
@@ -232,11 +280,27 @@ def _build_pipeline_metadata(
         Non-sensitive OCR/YOLO/parser metadata for mobile smoke tests.
     """
     raw_metadata = parsed_snapshot.get("pipeline_metadata")
+    parser_metadata = parsed_snapshot.get("parser_metadata")
+    ocr_text_present = bool(record.ocr_text_hash)
     metadata: dict[str, Any] = {
         "intake_completed": True,
+        "image_count": 1,
+        "image_role": safe_snapshot_string(parsed_snapshot.get("image_role"), default="unknown"),
         "vision_roi_used": False,
         "ocr_provider": record.ocr_provider,
-        "llm_parser_used": isinstance(parsed_snapshot.get("parser_metadata"), dict),
+        "ocr_text_present": ocr_text_present,
+        "ocr_confidence_bucket": bucket_ocr_confidence(
+            record.ocr_confidence,
+            ocr_text_present=ocr_text_present,
+        ),
+        "roi_count": count_snapshot_list(parsed_snapshot.get("detected_product_regions")),
+        "section_count": count_snapshot_list(parsed_snapshot.get("label_sections")),
+        "llm_parser_used": isinstance(parser_metadata, dict),
+        "parser_contract_version": parser_contract_version(parser_metadata),
+        "missing_required_sections": infer_missing_required_sections(
+            parsed_snapshot,
+            ocr_text_present=ocr_text_present,
+        ),
         "raw_image_stored": False,
         "raw_ocr_text_stored": False,
     }
@@ -519,3 +583,15 @@ def _string_items(value: Any) -> Iterable[str]:
         for item in value:
             if isinstance(item, str):
                 yield item
+
+
+def _optional_string(value: Any) -> str | None:
+    """Return a string value when present.
+
+    Args:
+        value: Candidate value.
+
+    Returns:
+        String value or None.
+    """
+    return value if isinstance(value, str) else None
