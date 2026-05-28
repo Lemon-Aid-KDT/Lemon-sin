@@ -299,12 +299,14 @@ class BackendLemonAidRepository implements LemonAidRepository {
   Future<SupplementImpactPreviewResponse> previewSupplementImpact(
     SupplementImpactPreviewRequest request,
   ) async {
-    final Map<String, dynamic> json = await _apiClient.postJson(
-      '/nutrition/supplement-impact/preview',
-      body: request.toJson(),
-      expectedStatusCodes: const <int>{200},
-    );
-    return SupplementImpactPreviewResponse.fromJson(json);
+    if (request.selectedSupplementIds.isNotEmpty ||
+        !request.includeAllActiveSupplements) {
+      throw UnsupportedError(
+        'Selected supplement impact preview is not available in the current '
+        'backend contract.',
+      );
+    }
+    return fetchLatestSupplementRecommendation();
   }
 
   @override

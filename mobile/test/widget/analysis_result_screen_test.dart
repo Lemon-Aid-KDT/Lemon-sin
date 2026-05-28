@@ -64,7 +64,8 @@ void main() {
       await tester.enterText(find.byType(TextField).at(3), '25');
       await tester.enterText(find.byType(TextField).at(4), 'mcg');
 
-      await tester.tap(find.text('성분 직접 입력'));
+      expect(find.text('확인 후 저장'), findsOneWidget);
+      await tester.tap(find.text('확인 후 저장'));
       await tester.pumpAndSettle();
 
       expect(repository.registeredRequest?.displayName, '수정 비타민 D');
@@ -86,6 +87,41 @@ void main() {
       expect(controller.lastRegisteredSupplement?.displayName, '수정 비타민 D');
     },
   );
+
+  testWidgets('normalizes OCR provider source for supplement registration', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository sourceRepository = _ReviewRepository();
+    final _ReviewRepository repository = _ReviewRepository(
+      preview: sourceRepository._preview(
+        ingredientSource: 'clova_ocr',
+        includeSecondIngredient: true,
+      ),
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'clova',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('확인 후 저장'));
+    await tester.pumpAndSettle();
+
+    expect(
+      repository.registeredRequest?.ingredients.first.source,
+      'user_confirmed',
+    );
+    expect(
+      repository.registeredRequest?.ingredients.last.source,
+      'ocr_llm_preview',
+    );
+    expect(repository.registeredRequest?.evidenceRefs, <String>['span-1']);
+  });
 
   testWidgets('renders meal analysis with food YOLO endpoint data', (
     WidgetTester tester,
@@ -307,7 +343,33 @@ class _ReviewRepository implements LemonAidRepository {
     );
   }
 
-  SupplementAnalysisPreview _preview() {
+  SupplementAnalysisPreview _preview({
+    String ingredientSource = 'ocr_llm_preview',
+    bool includeSecondIngredient = false,
+  }) {
+    final List<SupplementIngredientCandidate> ingredients =
+        <SupplementIngredientCandidate>[
+          SupplementIngredientCandidate(
+            displayName: 'Vitamin D',
+            nutrientCode: 'vitamin_d',
+            amount: 25,
+            unit: 'mcg',
+            confidence: 0.92,
+            source: ingredientSource,
+          ),
+        ];
+    if (includeSecondIngredient) {
+      ingredients.add(
+        SupplementIngredientCandidate(
+          displayName: 'Sunflower oil',
+          nutrientCode: null,
+          amount: null,
+          unit: null,
+          confidence: 0.81,
+          source: ingredientSource,
+        ),
+      );
+    }
     return SupplementAnalysisPreview(
       analysisId: 'analysis-1',
       status: 'requires_confirmation',
@@ -317,16 +379,7 @@ class _ReviewRepository implements LemonAidRepository {
         servingSize: 'capsule',
         dailyServings: 1,
       ),
-      ingredientCandidates: const <SupplementIngredientCandidate>[
-        SupplementIngredientCandidate(
-          displayName: 'Vitamin D',
-          nutrientCode: 'vitamin_d',
-          amount: 25,
-          unit: 'mcg',
-          confidence: 0.92,
-          source: 'ocr_llm_preview',
-        ),
-      ],
+      ingredientCandidates: ingredients,
       layoutAvailable: true,
       layoutFallbackReason: null,
       labelSections: const <SupplementPreviewLabelSection>[

@@ -34,6 +34,7 @@ services:
       args:
         INSTALL_LOCAL_OCR: ${INSTALL_LOCAL_OCR:-true}
         INSTALL_VISION: ${INSTALL_VISION:-false}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
         PRELOAD_PADDLEOCR: ${PRELOAD_PADDLEOCR:-false}
         PRELOAD_PADDLEOCR_LANGUAGE: ${LOCAL_OCR_LANGUAGE:-korean}
     restart: unless-stopped
@@ -48,6 +49,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - lemon-aid-paddle-cache:/home/lemon/.paddlex
+      - ./data/nutrition_reference:/app/data/nutrition_reference:ro
       - ./runs/food_yolo:/app/runs/food_yolo:ro
     environment:
       ENVIRONMENT: development

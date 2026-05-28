@@ -57,11 +57,23 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   final TextEditingController _mealSodiumController = TextEditingController();
   String? _seededAnalysisId;
   String? _seededMealAnalysisId;
+  bool _seedingCorrectionFields = false;
 
   bool get _isMeal => widget.mode == 'meal';
 
   @override
+  void initState() {
+    super.initState();
+    for (final TextEditingController controller in _primaryActionControllers) {
+      controller.addListener(_handlePrimaryActionFieldChanged);
+    }
+  }
+
+  @override
   void dispose() {
+    for (final TextEditingController controller in _primaryActionControllers) {
+      controller.removeListener(_handlePrimaryActionFieldChanged);
+    }
     _productNameController.dispose();
     _manufacturerController.dispose();
     _ingredientNameController.dispose();
@@ -78,6 +90,30 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     _mealFatController.dispose();
     _mealSodiumController.dispose();
     super.dispose();
+  }
+
+  List<TextEditingController> get _primaryActionControllers =>
+      <TextEditingController>[
+        _productNameController,
+        _manufacturerController,
+        _ingredientNameController,
+        _ingredientAmountController,
+        _ingredientUnitController,
+        _frequencyController,
+        _timeOfDayController,
+        _mealNameController,
+        _mealPortionAmountController,
+        _mealPortionUnitController,
+        _mealKcalController,
+        _mealCarbController,
+        _mealProteinController,
+        _mealFatController,
+        _mealSodiumController,
+      ];
+
+  void _handlePrimaryActionFieldChanged() {
+    if (!mounted || _seedingCorrectionFields) return;
+    setState(() {});
   }
 
   @override
@@ -340,47 +376,56 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   void _seedCorrectionFields(SupplementAnalysisPreview preview) {
     if (_seededAnalysisId == preview.analysisId) return;
-    _seededAnalysisId = preview.analysisId;
-    _productNameController.text = preview.parsedProduct.productName ?? '';
-    _manufacturerController.text = preview.parsedProduct.manufacturer ?? '';
-    final SupplementIngredientCandidate? firstCandidate =
-        preview.ingredientCandidates.isEmpty
-        ? null
-        : preview.ingredientCandidates.first;
-    _ingredientNameController.text = firstCandidate?.displayName ?? '';
-    _ingredientAmountController.text = firstCandidate?.amount == null
-        ? ''
-        : _formatEditableAmount(firstCandidate!.amount!);
-    _ingredientUnitController.text = firstCandidate?.unit ?? '';
-    _frequencyController.text =
-        preview.intakeMethod.structured.frequency == 'unknown'
-        ? 'daily'
-        : preview.intakeMethod.structured.frequency;
-    _timeOfDayController.text = preview.intakeMethod.structured.timeOfDay.join(
-      ', ',
-    );
+    _seedingCorrectionFields = true;
+    try {
+      _seededAnalysisId = preview.analysisId;
+      _productNameController.text = preview.parsedProduct.productName ?? '';
+      _manufacturerController.text = preview.parsedProduct.manufacturer ?? '';
+      final SupplementIngredientCandidate? firstCandidate =
+          preview.ingredientCandidates.isEmpty
+          ? null
+          : preview.ingredientCandidates.first;
+      _ingredientNameController.text = firstCandidate?.displayName ?? '';
+      _ingredientAmountController.text = firstCandidate?.amount == null
+          ? ''
+          : _formatEditableAmount(firstCandidate!.amount!);
+      _ingredientUnitController.text = firstCandidate?.unit ?? '';
+      _frequencyController.text =
+          preview.intakeMethod.structured.frequency == 'unknown'
+          ? 'daily'
+          : preview.intakeMethod.structured.frequency;
+      _timeOfDayController.text = preview.intakeMethod.structured.timeOfDay
+          .join(', ');
+    } finally {
+      _seedingCorrectionFields = false;
+    }
   }
 
   void _seedMealCorrectionFields(MealImageAnalysisPreview preview) {
     if (_seededMealAnalysisId == preview.analysisId) return;
-    _seededMealAnalysisId = preview.analysisId;
-    final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
-        ? null
-        : preview.foodCandidates.first;
-    _mealNameController.text = firstCandidate?.displayName ?? '';
-    _mealPortionAmountController.text = _formatOptionalAmount(
-      firstCandidate?.portionAmount,
-    );
-    _mealPortionUnitController.text = firstCandidate?.portionUnit ?? '';
-    _mealKcalController.text = _formatOptionalAmount(firstCandidate?.kcal);
-    _mealCarbController.text = _formatOptionalAmount(firstCandidate?.carbG);
-    _mealProteinController.text = _formatOptionalAmount(
-      firstCandidate?.proteinG,
-    );
-    _mealFatController.text = _formatOptionalAmount(firstCandidate?.fatG);
-    _mealSodiumController.text = _formatOptionalAmount(
-      firstCandidate?.sodiumMg,
-    );
+    _seedingCorrectionFields = true;
+    try {
+      _seededMealAnalysisId = preview.analysisId;
+      final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
+          ? null
+          : preview.foodCandidates.first;
+      _mealNameController.text = firstCandidate?.displayName ?? '';
+      _mealPortionAmountController.text = _formatOptionalAmount(
+        firstCandidate?.portionAmount,
+      );
+      _mealPortionUnitController.text = firstCandidate?.portionUnit ?? '';
+      _mealKcalController.text = _formatOptionalAmount(firstCandidate?.kcal);
+      _mealCarbController.text = _formatOptionalAmount(firstCandidate?.carbG);
+      _mealProteinController.text = _formatOptionalAmount(
+        firstCandidate?.proteinG,
+      );
+      _mealFatController.text = _formatOptionalAmount(firstCandidate?.fatG);
+      _mealSodiumController.text = _formatOptionalAmount(
+        firstCandidate?.sodiumMg,
+      );
+    } finally {
+      _seedingCorrectionFields = false;
+    }
   }
 
   String _primaryLabel(
@@ -501,7 +546,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                 amount: candidate.amount,
                 unit: candidate.unit,
                 confidence: candidate.confidence,
-                source: candidate.source,
+                source: _registrationIngredientSource(candidate.source),
               ),
         )
         .toList(growable: false);
@@ -554,6 +599,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       }
     }
     return refs;
+  }
+
+  String _registrationIngredientSource(String source) {
+    final String normalized = source.trim();
+    if (normalized == 'user_confirmed' || normalized == 'ocr_llm_preview') {
+      return normalized;
+    }
+    return 'ocr_llm_preview';
   }
 
   bool _hasReviewIngredient(SupplementAnalysisPreview preview) {

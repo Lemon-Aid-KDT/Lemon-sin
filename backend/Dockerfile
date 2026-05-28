@@ -2,6 +2,7 @@ FROM python:3.13-slim
 
 ARG INSTALL_LOCAL_OCR=true
 ARG INSTALL_VISION=false
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG PRELOAD_PADDLEOCR=false
 ARG PRELOAD_PADDLEOCR_LANGUAGE=korean
 
@@ -10,7 +11,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/Nutrition-backend \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true \
+    YOLO_CONFIG_DIR=/home/lemon/.config/Ultralytics
 
 WORKDIR /app
 
@@ -34,7 +36,8 @@ RUN pip install --upgrade pip \
         pip install "paddlepaddle==3.2.0" "paddleocr>=3.0"; \
     fi \
     && if [ "${INSTALL_VISION}" = "true" ]; then \
-        pip install "torch>=2.2" "ultralytics>=8.1"; \
+        pip install --index-url "${TORCH_INDEX_URL}" "torch>=2.2" "torchvision>=0.17" \
+        && pip install "ultralytics>=8.1"; \
     fi
 
 COPY alembic.ini ./
@@ -46,6 +49,7 @@ RUN if [ "${PRELOAD_PADDLEOCR}" = "true" ]; then \
         LOCAL_OCR_LANGUAGE="${PRELOAD_PADDLEOCR_LANGUAGE}" python scripts/preload_paddleocr.py; \
     fi \
     && mkdir -p /home/lemon/.paddlex \
+    && mkdir -p /home/lemon/.config/Ultralytics \
     && chown -R lemon:lemon /app /home/lemon /opt/venv
 
 USER lemon

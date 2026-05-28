@@ -35,6 +35,8 @@ class OCRProviderReadiness(BaseModel):
     Attributes:
         selector: Request-level OCR selector.
         configured: Whether an OCR adapter can be built from settings.
+        status: Safe configuration-level provider status for operators.
+        status_reason: Stable non-secret reason for non-ready provider states.
         provider_label: Stable provider label used by preview metadata.
         external_ocr: Whether this selector may send image bytes to an external OCR provider.
         error_class: Exception class name when configuration fails.
@@ -44,6 +46,8 @@ class OCRProviderReadiness(BaseModel):
 
     selector: SupplementOCRProviderSelector
     configured: bool
+    status: Literal["ready", "disabled", "degraded", "misconfigured"]
+    status_reason: str | None = Field(default=None, max_length=120)
     provider_label: str | None = Field(default=None, max_length=80)
     external_ocr: bool
     error_class: str | None = Field(default=None, max_length=120)
@@ -79,6 +83,11 @@ class VisionReadiness(BaseModel):
     Attributes:
         classifier_enabled: Whether YOLO ROI detection is enabled.
         roi_preprocessing_policy: OCR ROI preprocessing policy.
+        food_yolo_enabled: Whether food image YOLO candidate detection is enabled.
+        food_yolo_model_configured: Whether a food YOLO model path is configured.
+        food_yolo_model_label: Safe local model label for food YOLO metadata.
+        food_yolo_min_confidence: Minimum confidence accepted for food YOLO candidates.
+        food_yolo_max_detections: Maximum food YOLO candidates returned for review.
         multimodal_llm_enabled: Whether local multimodal LLM calls are enabled.
         multimodal_ocr_assist_policy: Policy for local vision OCR assist.
         multimodal_verification_enabled: Whether accepted OCR can be sampled for verification.
@@ -88,6 +97,11 @@ class VisionReadiness(BaseModel):
 
     classifier_enabled: bool
     roi_preprocessing_policy: str
+    food_yolo_enabled: bool
+    food_yolo_model_configured: bool
+    food_yolo_model_label: str | None = Field(default=None, max_length=80)
+    food_yolo_min_confidence: float
+    food_yolo_max_detections: int
     multimodal_llm_enabled: bool
     multimodal_ocr_assist_policy: str
     multimodal_verification_enabled: bool
@@ -169,6 +183,17 @@ def build_readiness_response(settings: Settings) -> ReadinessResponse:
         vision=VisionReadiness(
             classifier_enabled=settings.enable_vision_classifier,
             roi_preprocessing_policy=settings.ocr_roi_preprocessing_policy,
+            food_yolo_enabled=settings.enable_food_yolo_detector,
+            food_yolo_model_configured=bool(
+                settings.meal_yolo_model_path and settings.meal_yolo_model_path.strip()
+            ),
+            food_yolo_model_label=(
+                settings.meal_yolo_model_label.strip()
+                if settings.enable_food_yolo_detector and settings.meal_yolo_model_label.strip()
+                else None
+            ),
+            food_yolo_min_confidence=settings.meal_yolo_min_confidence,
+            food_yolo_max_detections=settings.meal_yolo_max_detections,
             multimodal_llm_enabled=settings.enable_multimodal_llm,
             multimodal_ocr_assist_policy=settings.multimodal_ocr_assist_policy,
             multimodal_verification_enabled=settings.enable_multimodal_verification,
@@ -206,16 +231,48 @@ def _provider_readiness(
         return OCRProviderReadiness(
             selector=selector,
             configured=False,
+            status="misconfigured",
+            status_reason="configuration_error",
             provider_label=None,
             external_ocr=is_external_ocr_pipeline_enabled(settings, selector),
             error_class=exc.__class__.__name__,
         )
+    external_ocr = is_external_ocr_pipeline_enabled(settings, selector)
+    status, status_reason = _provider_status(
+        configured=adapters.ocr is not None,
+        external_ocr=external_ocr,
+    )
     return OCRProviderReadiness(
         selector=selector,
         configured=adapters.ocr is not None,
+        status=status,
+        status_reason=status_reason,
         provider_label=_adapter_provider_label(adapters.ocr),
-        external_ocr=is_external_ocr_pipeline_enabled(settings, selector),
+        external_ocr=external_ocr,
     )
+
+
+def _provider_status(
+    *,
+    configured: bool,
+    external_ocr: bool,
+) -> tuple[Literal["ready", "disabled", "degraded", "misconfigured"], str | None]:
+    """Return a sanitized provider status without calling vendor services.
+
+    Args:
+        configured: Whether an adapter is available for the selector.
+        external_ocr: Whether the selector may call an external OCR provider.
+
+    Returns:
+        Status and stable reason. External OCR is degraded until an explicit live
+        smoke verifies credentials, because this readiness endpoint intentionally
+        avoids vendor calls and never exposes credential material.
+    """
+    if not configured:
+        return "disabled", "adapter_disabled"
+    if external_ocr:
+        return "degraded", "live_auth_not_checked"
+    return "ready", None
 
 
 def _adapter_provider_label(adapter: object | None) -> str | None:

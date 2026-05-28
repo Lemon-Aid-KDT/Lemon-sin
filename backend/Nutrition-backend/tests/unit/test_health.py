@@ -31,6 +31,13 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
         google_vision_auth_mode="api_key",
         google_cloud_api_key="placeholder-key",  # pragma: allowlist secret
         allow_google_api_key_auth=True,
+        enable_food_yolo_detector=True,
+        meal_yolo_model_path="/app/runs/food_yolo/example/weights/best.pt",
+        meal_yolo_model_label="food_yolo_local",
+        meal_yolo_min_confidence=0.35,
+        meal_yolo_max_detections=12,
+        enable_multimodal_llm=True,
+        multimodal_ocr_assist_policy="ocr_empty_only",
     )
     client = TestClient(create_app(settings=settings))
 
@@ -41,13 +48,30 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
     assert body["status"] == "ok"
     assert body["ocr"]["primary_provider"] == "clova"
     assert body["ocr"]["live_provider_auth_checked"] is False
+    assert body["vision"]["classifier_enabled"] is False
+    assert body["vision"]["food_yolo_enabled"] is True
+    assert body["vision"]["food_yolo_model_configured"] is True
+    assert body["vision"]["food_yolo_model_label"] == "food_yolo_local"
+    assert body["vision"]["food_yolo_min_confidence"] == 0.35
+    assert body["vision"]["food_yolo_max_detections"] == 12
+    assert body["vision"]["multimodal_llm_enabled"] is True
+    assert body["vision"]["multimodal_ocr_assist_policy"] == "ocr_empty_only"
     assert body["parser"]["live_model_checked"] is False
     provider_rows = {row["selector"]: row for row in body["ocr"]["providers"]}
     assert provider_rows["configured"]["provider_label"] == "clova_ocr"
+    assert provider_rows["configured"]["status"] == "degraded"
+    assert provider_rows["configured"]["status_reason"] == "live_auth_not_checked"
     assert provider_rows["paddleocr"]["provider_label"] == "paddleocr_local"
+    assert provider_rows["paddleocr"]["status"] == "ready"
+    assert provider_rows["paddleocr"]["status_reason"] is None
     assert provider_rows["google_vision"]["provider_label"] == "google_vision_document"
+    assert provider_rows["google_vision"]["status"] == "degraded"
+    assert provider_rows["google_vision"]["status_reason"] == "live_auth_not_checked"
     assert provider_rows["clova"]["provider_label"] == "clova_ocr"
+    assert provider_rows["clova"]["status"] == "degraded"
+    assert provider_rows["clova"]["status_reason"] == "live_auth_not_checked"
     response_text = response.text
     assert "placeholder-value" not in response_text
     assert "placeholder-key" not in response_text
     assert "example.test" not in response_text
+    assert "/app/runs/food_yolo/example/weights/best.pt" not in response_text

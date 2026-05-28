@@ -18,6 +18,7 @@ from src.models.db.supplement import (
 )
 from src.models.schemas.supplement import SupplementAnalysisStatus, UserSupplementCreate
 from src.security.auth import AuthenticatedUser
+from src.services import supplement_registration as registration_service
 from src.services.supplement_matching import normalize_supplement_text
 from src.services.supplement_registration import (
     SupplementPreviewExpiredError,
@@ -176,7 +177,7 @@ def _user() -> AuthenticatedUser:
 def _request(
     *,
     analysis_id: object | None = None,
-    nutrient_code: str = "vitamin_d_ug",
+    nutrient_code: str | None = "vitamin_d_ug",
     evidence_refs: list[str] | None = None,
 ) -> UserSupplementCreate:
     """Return a confirmed supplement creation request.
@@ -362,6 +363,32 @@ async def test_create_user_supplement_confirms_preview_and_persists_rows() -> No
     assert preview.confirmed_at is not None
     assert preview.source_manifest_version == "mfds-2026-05"
     assert preview.match_snapshot["matched_product_candidates"][0]["source_id"] == "mfds:P-001"
+
+
+@pytest.mark.asyncio
+async def test_create_user_supplement_allows_manual_ingredient_without_nutrient_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify manual un-mapped ingredients do not require reference allowlist data."""
+
+    def fail_load_nutrient_codes() -> frozenset[str]:
+        raise AssertionError("nutrient reference data should not be loaded")
+
+    monkeypatch.setattr(
+        registration_service,
+        "_load_nutrient_codes",
+        fail_load_nutrient_codes,
+    )
+    session = _FakeRegistrationSession(scalars_results=[[], []])
+
+    result = await create_user_supplement_from_confirmation(
+        cast(AsyncSession, session),
+        _user(),
+        _request(nutrient_code=None),
+    )
+
+    assert session.committed is True
+    assert result.ingredients[0].nutrient_code is None
 
 
 @pytest.mark.asyncio

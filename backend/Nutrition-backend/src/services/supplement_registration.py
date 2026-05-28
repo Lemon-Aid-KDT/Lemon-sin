@@ -477,14 +477,13 @@ def _validate_nutrient_codes(request: UserSupplementCreate) -> None:
     Raises:
         SupplementRegistrationValidationError: If an unknown nutrient code is present.
     """
+    provided_codes = {
+        ingredient.nutrient_code for ingredient in request.ingredients if ingredient.nutrient_code
+    }
+    if not provided_codes:
+        return
     allowed_codes = _load_nutrient_codes()
-    unknown_codes = sorted(
-        {
-            ingredient.nutrient_code
-            for ingredient in request.ingredients
-            if ingredient.nutrient_code and ingredient.nutrient_code not in allowed_codes
-        }
-    )
+    unknown_codes = sorted(code for code in provided_codes if code not in allowed_codes)
     if unknown_codes:
         raise SupplementRegistrationValidationError(
             f"Unknown nutrient_code values: {', '.join(unknown_codes)}"

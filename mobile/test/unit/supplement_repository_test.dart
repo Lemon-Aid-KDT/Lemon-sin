@@ -417,6 +417,60 @@ void main() {
     },
   );
 
+  test(
+    'uses latest recommendation endpoint for default impact preview',
+    () async {
+      late http.Request capturedRequest;
+      final ApiClient apiClient = ApiClient(
+        baseUrl: 'http://localhost:8000/api/v1',
+        httpClient: _CaptureJsonClient(
+          responseBody: _impactPreviewResponse,
+          onRequest: (http.Request request) {
+            capturedRequest = request;
+          },
+        ),
+      );
+      addTearDown(apiClient.close);
+      final BackendLemonAidRepository repository = BackendLemonAidRepository(
+        apiClient: apiClient,
+      );
+
+      final SupplementImpactPreviewResponse response = await repository
+          .previewSupplementImpact(const SupplementImpactPreviewRequest());
+
+      expect(capturedRequest.method, 'GET');
+      expect(
+        capturedRequest.url.path,
+        '/api/v1/supplements/recommendations/latest',
+      );
+      expect(capturedRequest.body, isEmpty);
+      expect(response.calculationVersion, 'supplement-impact-v1.0.0');
+    },
+  );
+
+  test('rejects unsupported selected supplement impact preview', () async {
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'http://localhost:8000/api/v1',
+      httpClient: _CaptureJsonClient(onRequest: (_) {}),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    expect(
+      () => repository.previewSupplementImpact(
+        const SupplementImpactPreviewRequest(
+          selectedSupplementIds: <String>[
+            '00000000-0000-0000-0000-000000000001',
+          ],
+          includeAllActiveSupplements: false,
+        ),
+      ),
+      throwsA(isA<UnsupportedError>()),
+    );
+  });
+
   test('requests local Ollama explanation for analysis preview', () async {
     late http.Request capturedRequest;
     final ApiClient apiClient = ApiClient(
