@@ -15,6 +15,8 @@
 - `e39ee3a feat(mobile): 분석 결과 수동 보정 연결`
 - `cdad9ce feat(supplement): 분석 preview Ollama 설명 연결`
 - `b53b196 feat(ocr): provider 구조화 benchmark 보강`
+- `bd382b5 fix(mobile): Xcode Flutter UIUX 경로 정렬`
+- 이번 추가 구현: 음식 YOLO local `best.pt`를 식단 이미지 endpoint의 review-only 후보 생성 경로로 연결
 - 이번 추가 확인 대상: Android emulator dev flavor 실행, AVD camera provider 원인 분리, iPhone 17 Pro Xcode simulator 실행
 
 ## 수행한 작업
@@ -57,6 +59,29 @@
 - Android 우선 smoke 흐름에서 카메라 사용이 불안정한 emulator 환경은 gallery/picker fallback을 유지한다.
 - Android `dev` flavor와 iOS simulator 모두 같은 Flutter shell을 사용한다.
 - Android flavor가 `dev`, `staging`, `prod`로 나뉘어 있으므로 emulator 실행은 `--flavor dev`를 지정해야 한다.
+
+### 음식 YOLO endpoint 연결
+
+- 팀원이 전달한 local ignored 모델 경로는 repo 기준
+  `runs/food_yolo/exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true/weights/best.pt`로 유지한다.
+- supplement label ROI용 `ENABLE_VISION_CLASSIFIER`와 음식 탐지용
+  `ENABLE_FOOD_YOLO_DETECTOR`를 분리했다.
+- `backend/Nutrition-backend/src/vision/food_yolo.py`를 추가해 Ultralytics
+  결과를 음식 후보명, confidence, bbox, sanitized model label만 포함하는
+  review-only metadata로 정규화한다.
+- `/api/v1/meals/analyze-image`는 `ENABLE_FOOD_YOLO_DETECTOR=true`와
+  `MEAL_YOLO_MODEL_PATH`가 있을 때만 local food YOLO를 실행한다.
+- detector 실패, 빈 후보, 미설정 상태는 stable warning code와 manual-entry
+  상태로 degrade하며 raw image bytes나 provider payload는 DB/API 응답에
+  저장하지 않는다.
+- Docker backend에는 `./runs/food_yolo:/app/runs/food_yolo:ro` read-only
+  bind mount와 `MEAL_YOLO_*` 환경변수 placeholder를 추가했다.
+- Flutter 17 Pro 카메라의 식단 모드 `분석하기` 버튼은 더 이상 mock/snackbar로
+  막히지 않고 `BackendLemonAidRepository.analyzeMealImage()`를 통해
+  `POST /api/v1/meals/analyze-image`를 호출한다.
+- 식단 분석 결과 화면은 source UIUX 카드 구조를 유지하면서 음식 후보,
+  Food YOLO 사용 여부, warning code, manual-entry 필요 여부를 backend
+  응답으로 표시한다.
 
 ## 검증 결과
 
@@ -223,11 +248,34 @@
   - 17 Pro 스타일 home shell 확인
   - 하단 중앙 `+` action palette 확인
 
+### 음식 YOLO endpoint 연결 검증 결과
+
+- `PYTHONPATH=backend/Nutrition-backend /opt/anaconda3/bin/python -m pytest backend/Nutrition-backend/tests/unit/services/test_meal_image_analysis.py backend/Nutrition-backend/tests/unit/vision/test_food_yolo.py backend/Nutrition-backend/tests/unit/test_config.py -q --no-cov`
+  - 82 passed
+- `black --check backend/Nutrition-backend/src/api/v1/meals.py backend/Nutrition-backend/src/config.py backend/Nutrition-backend/src/services/meal_image_analysis.py backend/Nutrition-backend/src/vision/food_yolo.py backend/Nutrition-backend/tests/unit/services/test_meal_image_analysis.py backend/Nutrition-backend/tests/unit/test_config.py backend/Nutrition-backend/tests/unit/vision/test_food_yolo.py`
+  - passed
+- `ruff check` on the same changed backend Python files
+  - passed
+- `dart format --output=none --set-exit-if-changed lib test`
+  - passed
+- `flutter analyze`
+  - No issues found
+- `flutter test`
+  - 65 passed
+- 모바일 endpoint contract 확인
+  - supplement: `POST /api/v1/supplements/analyze`, field `image`, fields `client_request_id`, `ocr_provider`
+  - meal: `POST /api/v1/meals/analyze-image`, field `image`, fields `client_request_id`, `meal_type`
+  - local Ollama explanation path는 기존 `/supplements/recommendations/explain` 및 analysis explain endpoint를 그대로 유지
+
 ## 남은 TODO
 
 - Google Vision provider는 HTTP 401을 해결할 수 있도록 API key 활성화, Vision API 권한, billing/project 제한을 확인한다.
 - 실제 촬영 이미지 fixture로 provider benchmark manifest를 생성하고 `b53b196`의 구조화 지표를 비교한다.
 - YOLO ROI가 켜진 Docker/runtime에서 `roi_count`, selected ROI, parser 결과가 review UI에 기대대로 반영되는지 확인한다.
+- 음식 YOLO는 `ENABLE_FOOD_YOLO_DETECTOR=true`로 Docker backend를 재기동한 뒤
+  실제 식단 사진에서 후보명과 bbox가 review-only로 표시되는지 live smoke를 진행한다.
+- 음식 후보를 실제 식단 기록 confirmation/registration endpoint로 확정하는 흐름은
+  다음 phase에서 별도 구현한다.
 - Android emulator에서 gallery image -> multi-image batch -> manual correction -> registration -> analysis explanation까지 남은 end-to-end smoke를 진행한다.
 - Xcode native iOS는 gallery 입력 기반 OCR smoke를 진행하고, 실제 촬영은 물리 iPhone/ngrok flow에서 검증한다.
 - Android Studio run configuration에 `dev` flavor와 `LEMON_API_BASE_URL` dart define을 저장할지 팀 합의가 필요하다.

@@ -309,6 +309,14 @@ class _SupplementCameraBranch extends ConsumerWidget {
               context.go('/shell/home/analysis-result?mode=supplement');
             }
           },
+      onAnalyzeMealImage: (String imagePath) async {
+        await controller.analyzeMealImage(imagePath);
+        if (!context.mounted) return;
+        if (controller.mealAnalysisPreview != null &&
+            controller.apiError == null) {
+          context.go('/shell/home/analysis-result?mode=meal');
+        }
+      },
     );
   }
 }

@@ -20,6 +20,12 @@ abstract class LemonAidRepository {
     String ocrProvider = 'configured',
   });
 
+  /// Uploads a selected meal image for review-only food analysis.
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  });
+
   /// Creates a backend multi-image supplement analysis session.
   Future<SupplementAnalysisSession> createSupplementAnalysisSession();
 
@@ -136,6 +142,26 @@ class BackendLemonAidRepository implements LemonAidRepository {
       },
     );
     return SupplementAnalysisPreview.fromJson(json);
+  }
+
+  @override
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) async {
+    final String selectedMealType = _normalizeMealType(mealType);
+    final String clientRequestId =
+        'mobile-meal-${DateTime.now().microsecondsSinceEpoch}';
+    final Map<String, dynamic> json = await _apiClient.postMultipart(
+      '/meals/analyze-image',
+      fileField: 'image',
+      filePath: imagePath,
+      fields: <String, String>{
+        'client_request_id': clientRequestId,
+        'meal_type': selectedMealType,
+      },
+    );
+    return MealImageAnalysisPreview.fromJson(json);
   }
 
   @override
@@ -343,6 +369,21 @@ class BackendLemonAidRepository implements LemonAidRepository {
     };
     if (!allowedRoles.contains(normalized)) {
       throw ArgumentError.value(value, 'imageRole', 'Unsupported image role');
+    }
+    return normalized;
+  }
+
+  static String _normalizeMealType(String value) {
+    final String normalized = value.trim().isEmpty ? 'unknown' : value.trim();
+    const Set<String> allowedMealTypes = <String>{
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+      'unknown',
+    };
+    if (!allowedMealTypes.contains(normalized)) {
+      throw ArgumentError.value(value, 'mealType', 'Unsupported meal type');
     }
     return normalized;
   }

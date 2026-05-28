@@ -27,6 +27,7 @@ class AppController extends ChangeNotifier {
   DashboardSummary? _dashboardSummary;
   SupplementAnalysisPreview? _analysisPreview;
   SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
+  MealImageAnalysisPreview? _mealAnalysisPreview;
   UserSupplementResponse? _lastRegisteredSupplement;
   SupplementImpactPreviewResponse? _supplementImpactPreview;
   SupplementRecommendationExplainResponse? _supplementExplanation;
@@ -53,6 +54,9 @@ class AppController extends ChangeNotifier {
   /// Current multi-image supplement analysis preview, if the batch endpoint was used.
   SupplementMultiImageAnalysisPreview? get multiImageAnalysisPreview =>
       _multiImageAnalysisPreview;
+
+  /// Current meal image analysis preview.
+  MealImageAnalysisPreview? get mealAnalysisPreview => _mealAnalysisPreview;
 
   /// Most recently registered supplement.
   UserSupplementResponse? get lastRegisteredSupplement =>
@@ -118,6 +122,7 @@ class AppController extends ChangeNotifier {
         ocrProvider: ocrProvider,
       );
       _multiImageAnalysisPreview = null;
+      _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
@@ -137,6 +142,7 @@ class AppController extends ChangeNotifier {
         ocrProvider: ocrProvider,
       );
       _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
+      _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
@@ -150,10 +156,30 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = await _repository
           .finalizeSupplementAnalysisSession(analysisGroupId);
       _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
+      _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _notice = 'Supplement image batch was finalized for review.';
+    });
+  }
+
+  /// Uploads a meal image and stores its review-only food detection preview.
+  Future<void> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) async {
+    await _run(() async {
+      _mealAnalysisPreview = await _repository.analyzeMealImage(
+        imagePath,
+        mealType: mealType,
+      );
+      _analysisPreview = null;
+      _multiImageAnalysisPreview = null;
+      _lastRegisteredSupplement = null;
+      _supplementImpactPreview = null;
+      _supplementExplanation = null;
+      _notice = 'Meal image preview is ready for review.';
     });
   }
 
@@ -188,6 +214,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredSupplement = await _repository.registerSupplement(request);
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
+      _mealAnalysisPreview = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
@@ -271,6 +298,7 @@ class AppController extends ChangeNotifier {
   void clearSupplementFlow() {
     _analysisPreview = null;
     _multiImageAnalysisPreview = null;
+    _mealAnalysisPreview = null;
     _lastRegisteredSupplement = null;
     _supplementImpactPreview = null;
     _supplementExplanation = null;

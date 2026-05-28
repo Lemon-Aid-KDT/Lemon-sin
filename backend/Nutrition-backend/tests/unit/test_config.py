@@ -128,6 +128,11 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.multimodal_verification_sample_rate == 0.0
     assert settings.multimodal_verification_threshold == 0.80
     assert settings.enable_vision_classifier is False
+    assert settings.enable_food_yolo_detector is False
+    assert settings.meal_yolo_model_path is None
+    assert settings.meal_yolo_model_label == "food_yolo_local"
+    assert settings.meal_yolo_min_confidence == 0.25
+    assert settings.meal_yolo_max_detections == 20
     assert settings.ocr_roi_preprocessing_policy == "disabled"
     assert settings.enable_local_ocr is True
     assert settings.local_ocr_provider == "paddleocr"
@@ -402,6 +407,40 @@ def test_production_rejects_vision_classifier_without_signoff() -> None:
     kwargs["enable_vision_classifier"] = True
 
     with pytest.raises(ValidationError, match="ENABLE_VISION_CLASSIFIER"):
+        Settings(**kwargs)
+
+
+def test_development_food_yolo_requires_model_path() -> None:
+    """Verify food YOLO cannot be enabled without an explicit local model path."""
+    with pytest.raises(ValidationError, match="MEAL_YOLO_MODEL_PATH"):
+        Settings(_env_file=None, enable_food_yolo_detector=True)
+
+
+def test_development_food_yolo_settings_load() -> None:
+    """Verify local food YOLO settings can be enabled for operator smoke tests."""
+    settings = Settings(
+        _env_file=None,
+        enable_food_yolo_detector=True,
+        meal_yolo_model_path="/app/runs/food_yolo/example/weights/best.pt",
+        meal_yolo_model_label="food_yolo_local",
+        meal_yolo_min_confidence=0.42,
+        meal_yolo_max_detections=7,
+    )
+
+    assert settings.enable_food_yolo_detector is True
+    assert settings.meal_yolo_model_path == "/app/runs/food_yolo/example/weights/best.pt"
+    assert settings.meal_yolo_model_label == "food_yolo_local"
+    assert settings.meal_yolo_min_confidence == 0.42
+    assert settings.meal_yolo_max_detections == 7
+
+
+def test_production_rejects_food_yolo_without_signoff() -> None:
+    """Verify production cannot enable food YOLO before validation sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs["enable_food_yolo_detector"] = True
+    kwargs["meal_yolo_model_path"] = "/app/runs/food_yolo/example/weights/best.pt"
+
+    with pytest.raises(ValidationError, match="ENABLE_FOOD_YOLO_DETECTOR"):
         Settings(**kwargs)
 
 

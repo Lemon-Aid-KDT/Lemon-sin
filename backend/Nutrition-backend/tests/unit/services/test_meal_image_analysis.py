@@ -25,6 +25,8 @@ from src.services.meal_image_analysis import (
     meal_image_analysis_to_preview,
     read_and_validate_meal_image,
 )
+from src.vision.base import BoundingBox, VisionError
+from src.vision.food_yolo import FoodDetection
 from starlette.datastructures import Headers
 
 
@@ -122,16 +124,58 @@ class _FakeStoreSession:
         self.refreshed.append(record)
 
 
+class _FakeFoodDetector:
+    """Fake food detector for meal image preview tests."""
+
+    def __init__(self, detections: list[FoodDetection] | None = None) -> None:
+        """Initialize fake detector output.
+
+        Args:
+            detections: Detections returned by detect_foods.
+        """
+        self.detections = detections or []
+        self.received_image_bytes: bytes | None = None
+
+    def detect_foods(self, image_bytes: bytes) -> list[FoodDetection]:
+        """Return configured detections while capturing input bytes.
+
+        Args:
+            image_bytes: Request-local normalized image bytes.
+
+        Returns:
+            Configured detections.
+        """
+        self.received_image_bytes = image_bytes
+        return self.detections
+
+
+class _FailingFoodDetector:
+    """Fake food detector that fails safely."""
+
+    def detect_foods(self, _image_bytes: bytes) -> list[FoodDetection]:
+        """Raise a stable vision error.
+
+        Args:
+            image_bytes: Request-local normalized image bytes.
+
+        Raises:
+            VisionError: Always raised.
+        """
+        raise VisionError("detector unavailable")
+
+
 def _settings(
     *,
     supplement_image_max_bytes: int = 5 * 1024 * 1024,
     supplement_image_max_pixels: int = 12_000_000,
+    enable_food_yolo_detector: bool = False,
 ) -> Settings:
     """Return settings for meal image analysis tests.
 
     Args:
         supplement_image_max_bytes: Maximum image byte size.
         supplement_image_max_pixels: Maximum decoded image pixels.
+        enable_food_yolo_detector: Whether the optional food detector is enabled.
 
     Returns:
         Settings object.
@@ -139,6 +183,13 @@ def _settings(
     return Settings(
         supplement_image_max_bytes=supplement_image_max_bytes,
         supplement_image_max_pixels=supplement_image_max_pixels,
+        enable_food_yolo_detector=enable_food_yolo_detector,
+        meal_yolo_model_path=(
+            "/app/runs/food_yolo/exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true/"
+            "weights/best.pt"
+            if enable_food_yolo_detector
+            else None
+        ),
     )
 
 
@@ -201,6 +252,33 @@ def _image_metadata(sha256: str = "a" * 64) -> ValidatedMealImage:
         size_bytes=128,
         width=3,
         height=2,
+        normalized_bytes=_png_bytes(),
+    )
+
+
+def _food_detection(label: str = "비빔밥", confidence: float = 0.88) -> FoodDetection:
+    """Return a sanitized food detection fixture.
+
+    Args:
+        label: Candidate label.
+        confidence: Candidate confidence.
+
+    Returns:
+        Food detection fixture.
+    """
+    return FoodDetection(
+        label=label,
+        confidence=confidence,
+        bbox=BoundingBox(
+            x=1,
+            y=2,
+            width=10,
+            height=12,
+            confidence=confidence,
+            label=label,
+            model="food_yolo_local:best.pt",
+        ),
+        model="food_yolo_local:best.pt",
     )
 
 
@@ -288,18 +366,86 @@ async def test_create_meal_image_preview_stores_manual_entry_preview_only() -> N
     assert fake_session.refreshed == [result.meal_record, result.analysis_run]
     assert result.meal_record.meal_type == "lunch"
     assert result.meal_record.eaten_at == eaten_at
-    assert result.meal_record.nutrition_summary == {"items": [], "totals": {}}
+    assert result.meal_record.nutrition_summary == {
+        "status": "analysis_unavailable",
+        "items": [],
+        "totals": {},
+        "detector_used": False,
+    }
     assert result.analysis_run.media_object_id is None
     assert result.analysis_run.image_sha256 == "a" * 64
     assert result.analysis_run.detected_items_snapshot == {"items": []}
     assert result.analysis_run.nutrition_estimate_snapshot == {
         "status": "analysis_unavailable",
+        "items": [],
         "totals": {},
+        "detector_used": False,
     }
     serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
     assert "raw-client-name" not in serialized_records
     assert "provider_payload" not in serialized_records
     assert "image_bytes" not in serialized_records
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_uses_food_yolo_candidates() -> None:
+    """Verify enabled food YOLO stores review candidates without raw payloads."""
+    fake_session = _FakeStoreSession()
+    detector = _FakeFoodDetector([_food_detection()])
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(enable_food_yolo_detector=True),
+        food_detector=detector,
+    )
+
+    assert detector.received_image_bytes == _png_bytes()
+    assert result.analysis_run.detector_model == "food_yolo_local:best.pt"
+    assert result.analysis_run.detected_items_snapshot["items"][0]["display_name"] == "비빔밥"
+    assert result.analysis_run.warning_codes == ["food_detection_review_required"]
+
+    preview = meal_image_analysis_to_preview(result)
+    assert preview.food_candidates[0].display_name == "비빔밥"
+    assert preview.food_candidates[0].confidence == 0.88
+    assert preview.pipeline_metadata.detector_used is True
+    assert preview.pipeline_metadata.requires_manual_entry is False
+    serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
+    assert "provider_payload" not in serialized_records
+    assert "image_bytes" not in serialized_records
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_degrades_when_food_yolo_fails() -> None:
+    """Verify detector failures degrade to manual entry without leaking details."""
+    fake_session = _FakeStoreSession()
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(enable_food_yolo_detector=True),
+        food_detector=_FailingFoodDetector(),
+    )
+
+    assert result.analysis_run.detector_model == "food_yolo_local:best.pt"
+    assert result.analysis_run.detected_items_snapshot == {"items": []}
+    assert result.analysis_run.warning_codes == [
+        "food_detector_unavailable",
+        "manual_entry_required",
+    ]
+
+    preview = meal_image_analysis_to_preview(result)
+    assert preview.food_candidates == []
+    assert preview.pipeline_metadata.detector_used is False
+    assert preview.pipeline_metadata.requires_manual_entry is True
 
 
 @pytest.mark.asyncio

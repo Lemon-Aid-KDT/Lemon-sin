@@ -491,6 +491,33 @@ class Settings(BaseSettings):
         max_length=10,
         description="YOLO ROI 보조에서 허용하는 object-detection class labels.",
     )
+    enable_food_yolo_detector: bool = Field(
+        default=False,
+        description=(
+            "식단 이미지 음식 후보 탐지용 local YOLO 활성화. 기본값 false이며 "
+            "사용자 확인용 후보만 생성한다."
+        ),
+    )
+    meal_yolo_model_path: str | None = Field(
+        default=None,
+        description="식단 이미지 음식 탐지 YOLO 모델 경로. 예: /app/runs/food_yolo/.../best.pt",
+    )
+    meal_yolo_model_label: str = Field(
+        default="food_yolo_local",
+        description="식단 YOLO 모델을 API metadata에 노출할 때 쓰는 안전한 라벨.",
+    )
+    meal_yolo_min_confidence: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="식단 YOLO 후보 최소 confidence. Ultralytics predict 기본값과 같은 0.25.",
+    )
+    meal_yolo_max_detections: int = Field(
+        default=20,
+        ge=1,
+        le=50,
+        description="식단 YOLO가 review UI에 반환할 최대 후보 수.",
+    )
     enable_image_learning_pipeline: bool = Field(
         default=False,
         description="가명화 영양제 이미지의 학습 데이터셋 적재 활성화. docs/17 §9 게이트 #3 필요.",
@@ -590,6 +617,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 "GOOGLE_VISION_AUTH_MODE=api_key requires "
                 "ALLOW_GOOGLE_API_KEY_AUTH=true (non-production only)."
+            )
+        if self.enable_food_yolo_detector and not (
+            self.meal_yolo_model_path and self.meal_yolo_model_path.strip()
+        ):
+            raise ValueError(
+                "MEAL_YOLO_MODEL_PATH is required when ENABLE_FOOD_YOLO_DETECTOR=true."
             )
         if self.allow_google_api_key_auth and self.environment == "production":
             raise ValueError(
@@ -743,6 +776,10 @@ class Settings(BaseSettings):
                 (
                     self.enable_vision_classifier,
                     "ENABLE_VISION_CLASSIFIER=true requires docs/17 §9 gate #2 sign-off.",
+                ),
+                (
+                    self.enable_food_yolo_detector,
+                    "ENABLE_FOOD_YOLO_DETECTOR=true requires food YOLO validation sign-off.",
                 ),
                 (
                     self.ocr_roi_preprocessing_policy != "disabled",

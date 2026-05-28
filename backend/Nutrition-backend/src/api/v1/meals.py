@@ -176,6 +176,8 @@ async def analyze_meal_image(
             },
         ) from exc
 
+    preview = meal_image_analysis_to_preview(result)
+
     await record_sensitive_audit_event(
         session,
         current_user,
@@ -193,10 +195,10 @@ async def analyze_meal_image(
             "image_size_bytes": result.image_metadata.size_bytes,
             "meal_type": meal_type.value,
             "reused_existing": result.reused_existing,
-            "detector_used": False,
-            "classifier_used": False,
+            "detector_used": preview.pipeline_metadata.detector_used,
+            "classifier_used": preview.pipeline_metadata.classifier_used,
             "raw_image_stored": False,
             "raw_provider_payload_stored": False,
         },
     )
-    return meal_image_analysis_to_preview(result)
+    return preview

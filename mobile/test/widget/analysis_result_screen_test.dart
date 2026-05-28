@@ -83,6 +83,31 @@ void main() {
       expect(controller.lastRegisteredSupplement?.displayName, '수정 비타민 D');
     },
   );
+
+  testWidgets('renders meal analysis with food YOLO endpoint data', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _ReviewRepository(),
+    );
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisResultScreen(mode: 'meal', controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('식단 분석'), findsOneWidget);
+    expect(find.text('음식 후보 1개를 찾았어요'), findsOneWidget);
+    expect(find.text('음식 후보'), findsOneWidget);
+    expect(find.text('비빔밥'), findsOneWidget);
+    expect(find.text('Food YOLO'), findsOneWidget);
+    expect(find.text('on'), findsOneWidget);
+    expect(find.textContaining('food_yolo_local:best.pt'), findsOneWidget);
+    expect(find.textContaining('endpoint 연결 전'), findsNothing);
+  });
 }
 
 Future<void> _scrollResultDetails(WidgetTester tester) async {
@@ -104,6 +129,14 @@ class _ReviewRepository implements LemonAidRepository {
     String ocrProvider = 'configured',
   }) async {
     return _previewOverride ?? _preview();
+  }
+
+  @override
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) async {
+    return MealImageAnalysisPreview.fromJson(_mealPreviewJson);
   }
 
   @override
@@ -369,6 +402,47 @@ SupplementAnalysisPreview _emptyCandidatePreview() {
     expiresAt: DateTime.utc(2026, 5, 26),
   );
 }
+
+final Map<String, Object?> _mealPreviewJson = <String, Object?>{
+  'analysis_id': '00000000-0000-0000-0000-000000000101',
+  'meal_id': '00000000-0000-0000-0000-000000000201',
+  'status': 'requires_confirmation',
+  'meal_type': 'lunch',
+  'eaten_at': '2026-05-28T03:00:00Z',
+  'food_candidates': <Object?>[
+    <String, Object?>{
+      'display_name': '비빔밥',
+      'portion_amount': null,
+      'portion_unit': null,
+      'kcal': null,
+      'carb_g': null,
+      'protein_g': null,
+      'fat_g': null,
+      'sodium_mg': null,
+      'confidence': 0.88,
+      'source': 'vision',
+    },
+  ],
+  'nutrition_estimate_summary': <String, Object?>{
+    'status': 'detected_review_required',
+    'items': <Object?>[],
+    'totals': <String, Object?>{},
+    'detector_used': true,
+  },
+  'warning_codes': <String>['food_detection_review_required'],
+  'pipeline_metadata': <String, Object?>{
+    'intake_completed': true,
+    'detector_model': 'food_yolo_local:best.pt',
+    'classifier_model': null,
+    'detector_used': true,
+    'classifier_used': false,
+    'raw_image_stored': false,
+    'raw_provider_payload_stored': false,
+    'requires_manual_entry': false,
+  },
+  'algorithm_version': 'food-image-preview-v1.0.0',
+  'created_at': '2026-05-28T03:00:01Z',
+};
 
 DashboardSummary _dashboardSummary() {
   return DashboardSummary(

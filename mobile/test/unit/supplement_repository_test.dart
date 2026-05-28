@@ -75,6 +75,45 @@ void main() {
     expect(capturedRequest.files.single.contentType.mimeType, 'image/png');
   });
 
+  test('uploads meal images to the food analysis endpoint', () async {
+    final File image = _writeTinyPng(fileName: 'meal.png');
+    addTearDown(() {
+      if (image.existsSync()) {
+        image.deleteSync();
+      }
+    });
+    late http.MultipartRequest capturedRequest;
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'http://localhost:8000/api/v1',
+      httpClient: _CaptureMultipartClient(
+        responseBody: _mealPreviewResponse,
+        onRequest: (http.MultipartRequest request) {
+          capturedRequest = request;
+        },
+      ),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    final MealImageAnalysisPreview response = await repository.analyzeMealImage(
+      image.path,
+      mealType: 'lunch',
+    );
+
+    expect(capturedRequest.url.path, '/api/v1/meals/analyze-image');
+    expect(capturedRequest.fields['meal_type'], 'lunch');
+    expect(
+      capturedRequest.fields['client_request_id'],
+      startsWith('mobile-meal-'),
+    );
+    expect(capturedRequest.files.single.field, 'image');
+    expect(capturedRequest.files.single.contentType.mimeType, 'image/png');
+    expect(response.foodCandidates.single.displayName, '비빔밥');
+    expect(response.pipelineMetadata.detectorUsed, isTrue);
+  });
+
   test('uploads multiple supplement images with role metadata', () async {
     final File front = _writeTinyPng(fileName: 'front.png');
     final File facts = _writeTinyPng(fileName: 'facts.png');
@@ -491,6 +530,47 @@ final Map<String, Object?> _multiPreviewResponse = <String, Object?>{
     'raw_ocr_text_stored': false,
   },
   'expires_at': '2026-05-21T00:00:00Z',
+};
+
+final Map<String, Object?> _mealPreviewResponse = <String, Object?>{
+  'analysis_id': '00000000-0000-0000-0000-000000000101',
+  'meal_id': '00000000-0000-0000-0000-000000000201',
+  'status': 'requires_confirmation',
+  'meal_type': 'lunch',
+  'eaten_at': '2026-05-28T03:00:00Z',
+  'food_candidates': <Object?>[
+    <String, Object?>{
+      'display_name': '비빔밥',
+      'portion_amount': null,
+      'portion_unit': null,
+      'kcal': null,
+      'carb_g': null,
+      'protein_g': null,
+      'fat_g': null,
+      'sodium_mg': null,
+      'confidence': 0.88,
+      'source': 'vision',
+    },
+  ],
+  'nutrition_estimate_summary': <String, Object?>{
+    'status': 'detected_review_required',
+    'items': <Object?>[],
+    'totals': <String, Object?>{},
+    'detector_used': true,
+  },
+  'warning_codes': <String>['food_detection_review_required'],
+  'pipeline_metadata': <String, Object?>{
+    'intake_completed': true,
+    'detector_model': 'food_yolo_local:best.pt',
+    'classifier_model': null,
+    'detector_used': true,
+    'classifier_used': false,
+    'raw_image_stored': false,
+    'raw_provider_payload_stored': false,
+    'requires_manual_entry': false,
+  },
+  'algorithm_version': 'food-image-preview-v1.0.0',
+  'created_at': '2026-05-28T03:00:01Z',
 };
 
 final Map<String, Object?> _impactPreviewResponse = <String, Object?>{

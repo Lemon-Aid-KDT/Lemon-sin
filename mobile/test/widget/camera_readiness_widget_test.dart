@@ -221,6 +221,14 @@ class _CameraWidgetRepository implements LemonAidRepository {
   }
 
   @override
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
     List<SupplementImageUpload> images, {
     String ocrProvider = 'configured',

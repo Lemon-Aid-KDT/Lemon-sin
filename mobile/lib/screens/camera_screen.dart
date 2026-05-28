@@ -73,6 +73,7 @@ class CameraScreen extends StatefulWidget {
   const CameraScreen({
     required this.onAnalyzeSupplementImage,
     this.onAnalyzeSupplementImages,
+    this.onAnalyzeMealImage,
     this.initialMode = 'supplement',
     this.imagePicker,
     this.useCameraPickerFallback,
@@ -99,6 +100,9 @@ class CameraScreen extends StatefulWidget {
     required String ocrProvider,
   })?
   onAnalyzeSupplementImages;
+
+  /// Sends a meal image to the backend food analysis endpoint.
+  final Future<void> Function(String imagePath)? onAnalyzeMealImage;
 
   /// Closes the camera screen.
   final VoidCallback? onClose;
@@ -525,12 +529,23 @@ class _CameraScreenState extends State<CameraScreen>
     if (!mounted) return;
     HapticFeedback.mediumImpact();
     if (_mode == _CaptureMode.meal) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('식단 분석 endpoint는 아직 연결 전이에요. 영양제 OCR로 테스트해주세요.'),
-          backgroundColor: AppColor.ink,
-        ),
-      );
+      final Future<void> Function(String imagePath)? analyzer =
+          widget.onAnalyzeMealImage;
+      if (analyzer == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('식단 분석 연결을 확인해주세요. 갤러리 사진은 유지됩니다.'),
+            backgroundColor: AppColor.ink,
+          ),
+        );
+        return;
+      }
+      setState(() => _picking = true);
+      try {
+        await analyzer(captured.path);
+      } finally {
+        if (mounted) setState(() => _picking = false);
+      }
       return;
     }
     setState(() => _picking = true);

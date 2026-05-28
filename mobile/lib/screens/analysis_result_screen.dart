@@ -65,6 +65,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   Widget build(BuildContext context) {
     final AppController? controller = widget.controller;
     final SupplementAnalysisPreview? preview = controller?.analysisPreview;
+    final MealImageAnalysisPreview? mealPreview =
+        controller?.mealAnalysisPreview;
     if (preview != null) {
       _seedCorrectionFields(preview);
     }
@@ -94,12 +96,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                   _SummaryCard(
                     isMeal: _isMeal,
                     preview: preview,
+                    mealPreview: mealPreview,
                     registered: registered,
                     busy: controller?.busy == true,
                   ),
                   const SizedBox(height: AppSpace.md),
                   if (_isMeal)
-                    ..._mealCards()
+                    ..._mealCards(mealPreview)
                   else
                     ..._supplementCards(preview, registered),
                   if (!_isMeal) ...<Widget>[
@@ -162,38 +165,54 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     );
   }
 
-  List<Widget> _mealCards() {
+  List<Widget> _mealCards(MealImageAnalysisPreview? preview) {
+    final FoodImagePipelineMetadata? pipeline = preview?.pipelineMetadata;
+    final List<MealFoodCandidate> candidates =
+        preview?.foodCandidates ?? const <MealFoodCandidate>[];
+    final bool hasCandidates = candidates.isNotEmpty;
+    final String firstCandidate = hasCandidates
+        ? candidates.first.displayName
+        : '후보 없음';
+    final String candidateValue = candidates.length > 1
+        ? '$firstCandidate 외 ${candidates.length - 1}개'
+        : firstCandidate;
+    final String detectorModel = pipeline?.detectorModel ?? 'not configured';
+    final String warningText = preview == null || preview.warningCodes.isEmpty
+        ? 'warning 없음'
+        : preview.warningCodes.join(', ');
     return <Widget>[
-      const _ResultCard(
+      _ResultCard(
         color: Color(0xFF22B07D),
         icon: Icons.eco_rounded,
-        label: '부족 영양소',
-        value: '비타민 D · 마그네슘',
-        desc: '식단 endpoint 연결 전까지 UI 기준 화면으로 유지해요',
+        label: '음식 후보',
+        value: candidateValue,
+        desc: hasCandidates
+            ? 'YOLO 후보는 등록 전 사용자 확인이 필요해요'
+            : '사진은 업로드됐지만 음식 후보는 직접 입력이 필요해요',
       ),
       const SizedBox(height: AppSpace.sm),
-      const _ResultCard(
+      _ResultCard(
         color: Color(0xFFFF9500),
-        icon: Icons.warning_amber_rounded,
-        label: '과다 섭취',
-        value: '나트륨 · 당류',
-        desc: '식단 분석 endpoint가 확정되면 실제 수치로 교체합니다',
+        icon: Icons.center_focus_strong_rounded,
+        label: 'Food YOLO',
+        value: pipeline?.detectorUsed == true ? 'on' : 'review',
+        desc: '모델 $detectorModel · 원본 이미지와 payload는 저장하지 않아요',
       ),
       const SizedBox(height: AppSpace.sm),
-      const _ResultCard(
+      _ResultCard(
         color: Color(0xFFFF6B6B),
         icon: Icons.shield_outlined,
-        label: '주의 성분',
-        value: '검토 대기',
-        desc: '만성질환·복약 교차 점검은 backend 결과만 표시합니다',
+        label: '수동 확인',
+        value: pipeline?.requiresManualEntry == false ? '후보 확인' : '직접 입력',
+        desc: warningText,
       ),
       const SizedBox(height: AppSpace.sm),
-      const _ResultCard(
+      _ResultCard(
         color: AppColor.brand,
         icon: Icons.workspace_premium_rounded,
-        label: '오늘 식단 점수',
-        value: '78점',
-        desc: '현재 화면은 UIUX branch 기준의 식단 점수 데모입니다',
+        label: '분석 상태',
+        value: preview?.status ?? '분석 전',
+        desc: preview?.algorithmVersion ?? '식단 사진을 먼저 분석해주세요',
         big: true,
       ),
     ];
@@ -501,12 +520,14 @@ class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.isMeal,
     required this.preview,
+    required this.mealPreview,
     required this.registered,
     required this.busy,
   });
 
   final bool isMeal;
   final SupplementAnalysisPreview? preview;
+  final MealImageAnalysisPreview? mealPreview;
   final UserSupplementResponse? registered;
   final bool busy;
 
@@ -585,7 +606,16 @@ class _SummaryCard extends StatelessWidget {
   }
 
   String _headline() {
-    if (isMeal) return '오늘 식사는 균형이 잘 잡혔어요';
+    if (isMeal) {
+      final MealImageAnalysisPreview? preview = mealPreview;
+      if (preview == null) return '식단 사진을 분석해주세요';
+      final int count = preview.foodCandidates.length;
+      if (count > 0) return '음식 후보 $count개를 찾았어요';
+      if (preview.pipelineMetadata.requiresManualEntry) {
+        return '음식 후보를 직접 확인해주세요';
+      }
+      return '식단 분석이 끝났어요';
+    }
     if (registered != null) return '${registered!.displayName} 저장이 끝났어요';
     final int count = preview?.ingredientCandidates.length ?? 0;
     if (count > 0) return '성분 후보 $count개를 찾았어요';

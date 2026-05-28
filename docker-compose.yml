@@ -48,6 +48,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - lemon-aid-paddle-cache:/home/lemon/.paddlex
+      - ./runs/food_yolo:/app/runs/food_yolo:ro
     environment:
       ENVIRONMENT: development
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -86,6 +87,11 @@ services:
       ENABLE_VISION_CLASSIFIER: ${ENABLE_VISION_CLASSIFIER:-false}
       VISION_CLASSIFIER_MODEL: ${VISION_CLASSIFIER_MODEL:-yolov8n.pt}
       OCR_ROI_PREPROCESSING_POLICY: ${OCR_ROI_PREPROCESSING_POLICY:-disabled}
+      ENABLE_FOOD_YOLO_DETECTOR: ${ENABLE_FOOD_YOLO_DETECTOR:-false}
+      MEAL_YOLO_MODEL_PATH: ${MEAL_YOLO_MODEL_PATH:-/app/runs/food_yolo/exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true/weights/best.pt}
+      MEAL_YOLO_MODEL_LABEL: ${MEAL_YOLO_MODEL_LABEL:-food_yolo_local}
+      MEAL_YOLO_MIN_CONFIDENCE: ${MEAL_YOLO_MIN_CONFIDENCE:-0.25}
+      MEAL_YOLO_MAX_DETECTIONS: ${MEAL_YOLO_MAX_DETECTIONS:-20}
       ENABLE_MULTIMODAL_LLM: ${ENABLE_MULTIMODAL_LLM:-false}
       MULTIMODAL_OCR_ASSIST_POLICY: ${MULTIMODAL_OCR_ASSIST_POLICY:-disabled}
       ENABLE_MULTIMODAL_VERIFICATION: ${ENABLE_MULTIMODAL_VERIFICATION:-false}

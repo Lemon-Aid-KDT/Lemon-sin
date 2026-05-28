@@ -127,6 +127,60 @@ void main() {
     expect(find.text('성분표'), findsWidgets);
     expect(find.text('2장 분석'), findsOneWidget);
   });
+
+  testWidgets('meal preview calls the real meal analysis callback', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File source = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(source.path);
+    String? analyzedPath;
+    String? supplementPath;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          initialMode: 'meal',
+          imagePicker: picker,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {
+                supplementPath = imagePath;
+              },
+          onAnalyzeMealImage: (String imagePath) async {
+            analyzedPath = imagePath;
+          },
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.byIcon(Icons.photo_library_rounded));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('사진 추가'), findsNothing);
+    expect(find.text('분석하기'), findsOneWidget);
+    final Finder analyzeButton = find.byKey(
+      const ValueKey('supplement-preview-analyze'),
+    );
+    await tester.ensureVisible(analyzeButton);
+    await tester.pump();
+    final TextButton textButton = tester.widget<TextButton>(
+      find.descendant(of: analyzeButton, matching: find.byType(TextButton)),
+    );
+    await tester.runAsync(() async {
+      textButton.onPressed!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+
+    expect(analyzedPath, isNotNull);
+    expect(supplementPath, isNull);
+    expect(find.textContaining('endpoint는 아직 연결 전'), findsNothing);
+  });
 }
 
 Future<void> _usePhoneSurface(WidgetTester tester) async {

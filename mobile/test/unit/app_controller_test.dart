@@ -96,6 +96,22 @@ void main() {
     expect(controller.supplementExplanation?.llmUsed, isTrue);
     expect(controller.notice, 'Analysis explanation is ready.');
   });
+
+  test('analyzeMealImage stores food detection preview', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository();
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+    expect(repository.lastMealImagePath, '/tmp/meal.png');
+    expect(repository.lastMealType, 'lunch');
+    expect(
+      controller.mealAnalysisPreview?.foodCandidates.single.displayName,
+      '비빔밥',
+    );
+    expect(controller.analysisPreview, isNull);
+    expect(controller.notice, 'Meal image preview is ready for review.');
+  });
 }
 
 UserSupplementCreate _registrationRequest() {
@@ -134,6 +150,8 @@ class _AutoInsightRepository implements LemonAidRepository {
   bool? lastAnalysisExplainUsedLocalLlm;
   String? lastAnalysisExplainId;
   String? lastFinalizeGroupId;
+  String? lastMealImagePath;
+  String? lastMealType;
 
   @override
   Future<UserSupplementResponse> registerSupplement(
@@ -213,6 +231,16 @@ class _AutoInsightRepository implements LemonAidRepository {
     return SupplementAnalysisPreview.fromJson(
       _multiPreviewJson['merged_preview']! as Map<String, Object?>,
     );
+  }
+
+  @override
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) async {
+    lastMealImagePath = imagePath;
+    lastMealType = mealType;
+    return MealImageAnalysisPreview.fromJson(_mealPreviewJson);
   }
 
   @override
@@ -346,4 +374,45 @@ final Map<String, Object?> _multiPreviewJson = <String, Object?>{
     'raw_ocr_text_stored': false,
   },
   'expires_at': '2026-05-28T00:00:00Z',
+};
+
+final Map<String, Object?> _mealPreviewJson = <String, Object?>{
+  'analysis_id': '00000000-0000-0000-0000-000000000101',
+  'meal_id': '00000000-0000-0000-0000-000000000201',
+  'status': 'requires_confirmation',
+  'meal_type': 'lunch',
+  'eaten_at': '2026-05-28T03:00:00Z',
+  'food_candidates': <Object?>[
+    <String, Object?>{
+      'display_name': '비빔밥',
+      'portion_amount': null,
+      'portion_unit': null,
+      'kcal': null,
+      'carb_g': null,
+      'protein_g': null,
+      'fat_g': null,
+      'sodium_mg': null,
+      'confidence': 0.88,
+      'source': 'vision',
+    },
+  ],
+  'nutrition_estimate_summary': <String, Object?>{
+    'status': 'detected_review_required',
+    'items': <Object?>[],
+    'totals': <String, Object?>{},
+    'detector_used': true,
+  },
+  'warning_codes': <String>['food_detection_review_required'],
+  'pipeline_metadata': <String, Object?>{
+    'intake_completed': true,
+    'detector_model': 'food_yolo_local:best.pt',
+    'classifier_model': null,
+    'detector_used': true,
+    'classifier_used': false,
+    'raw_image_stored': false,
+    'raw_provider_payload_stored': false,
+    'requires_manual_entry': false,
+  },
+  'algorithm_version': 'food-image-preview-v1.0.0',
+  'created_at': '2026-05-28T03:00:01Z',
 };

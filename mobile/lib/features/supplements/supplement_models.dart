@@ -77,6 +77,199 @@ class SupplementAnalysisSession {
   }
 }
 
+/// Review-only food candidate returned from the meal image endpoint.
+class MealFoodCandidate {
+  /// Creates a meal food candidate.
+  const MealFoodCandidate({
+    required this.displayName,
+    this.portionAmount,
+    this.portionUnit,
+    this.kcal,
+    this.carbG,
+    this.proteinG,
+    this.fatG,
+    this.sodiumMg,
+    required this.confidence,
+    required this.source,
+  });
+
+  /// Candidate food name that must be reviewed by the user.
+  final String displayName;
+
+  /// Optional portion amount.
+  final double? portionAmount;
+
+  /// Optional portion unit.
+  final String? portionUnit;
+
+  /// Optional kcal estimate.
+  final double? kcal;
+
+  /// Optional carbohydrate estimate.
+  final double? carbG;
+
+  /// Optional protein estimate.
+  final double? proteinG;
+
+  /// Optional fat estimate.
+  final double? fatG;
+
+  /// Optional sodium estimate.
+  final double? sodiumMg;
+
+  /// Detector confidence.
+  final double confidence;
+
+  /// Candidate source such as `vision` or `manual`.
+  final String source;
+
+  /// Parses a meal food candidate.
+  factory MealFoodCandidate.fromJson(Map<String, dynamic> json) {
+    return MealFoodCandidate(
+      displayName: readString(json, 'display_name'),
+      portionAmount: readOptionalDouble(json, 'portion_amount'),
+      portionUnit: readOptionalString(json, 'portion_unit'),
+      kcal: readOptionalDouble(json, 'kcal'),
+      carbG: readOptionalDouble(json, 'carb_g'),
+      proteinG: readOptionalDouble(json, 'protein_g'),
+      fatG: readOptionalDouble(json, 'fat_g'),
+      sodiumMg: readOptionalDouble(json, 'sodium_mg'),
+      confidence: readDouble(json, 'confidence'),
+      source: readString(json, 'source'),
+    );
+  }
+}
+
+/// Sanitized meal image pipeline metadata for OCR/YOLO/Ollama smoke tests.
+class FoodImagePipelineMetadata {
+  /// Creates food image pipeline metadata.
+  const FoodImagePipelineMetadata({
+    required this.intakeCompleted,
+    this.detectorModel,
+    this.classifierModel,
+    required this.detectorUsed,
+    required this.classifierUsed,
+    required this.rawImageStored,
+    required this.rawProviderPayloadStored,
+    required this.requiresManualEntry,
+  });
+
+  /// Whether upload validation and hashing completed.
+  final bool intakeCompleted;
+
+  /// Sanitized detector model label.
+  final String? detectorModel;
+
+  /// Sanitized classifier model label.
+  final String? classifierModel;
+
+  /// Whether the detector ran.
+  final bool detectorUsed;
+
+  /// Whether a classifier ran.
+  final bool classifierUsed;
+
+  /// Whether raw image bytes were retained.
+  final bool rawImageStored;
+
+  /// Whether provider payloads were retained.
+  final bool rawProviderPayloadStored;
+
+  /// Whether the user should manually complete food details.
+  final bool requiresManualEntry;
+
+  /// Parses sanitized meal pipeline metadata.
+  factory FoodImagePipelineMetadata.fromJson(Map<String, dynamic> json) {
+    return FoodImagePipelineMetadata(
+      intakeCompleted: json['intake_completed'] != false,
+      detectorModel: readOptionalString(json, 'detector_model'),
+      classifierModel: readOptionalString(json, 'classifier_model'),
+      detectorUsed: json['detector_used'] == true,
+      classifierUsed: json['classifier_used'] == true,
+      rawImageStored: json['raw_image_stored'] == true,
+      rawProviderPayloadStored: json['raw_provider_payload_stored'] == true,
+      requiresManualEntry: json['requires_manual_entry'] == true,
+    );
+  }
+}
+
+/// Meal image analysis response before user confirmation.
+class MealImageAnalysisPreview {
+  /// Creates a meal image analysis preview.
+  const MealImageAnalysisPreview({
+    required this.analysisId,
+    required this.mealId,
+    required this.status,
+    required this.mealType,
+    required this.eatenAt,
+    required this.foodCandidates,
+    required this.nutritionEstimateSummary,
+    required this.warningCodes,
+    required this.pipelineMetadata,
+    required this.algorithmVersion,
+    this.createdAt,
+  });
+
+  /// Food image analysis id.
+  final String analysisId;
+
+  /// Linked meal preview id.
+  final String mealId;
+
+  /// Preview status.
+  final String status;
+
+  /// Meal bucket selected by the user.
+  final String mealType;
+
+  /// Meal timestamp returned by the backend.
+  final DateTime eatenAt;
+
+  /// Review-only detected food candidates.
+  final List<MealFoodCandidate> foodCandidates;
+
+  /// Bounded nutrition estimate summary.
+  final Map<String, Object?> nutritionEstimateSummary;
+
+  /// Stable warning codes.
+  final List<String> warningCodes;
+
+  /// Sanitized pipeline metadata.
+  final FoodImagePipelineMetadata pipelineMetadata;
+
+  /// Backend algorithm contract version.
+  final String algorithmVersion;
+
+  /// Optional backend creation timestamp.
+  final DateTime? createdAt;
+
+  /// Parses a meal image analysis preview.
+  factory MealImageAnalysisPreview.fromJson(Map<String, dynamic> json) {
+    final String? createdAt = readOptionalString(json, 'created_at');
+    return MealImageAnalysisPreview(
+      analysisId: readString(json, 'analysis_id'),
+      mealId: readString(json, 'meal_id'),
+      status: readString(json, 'status'),
+      mealType: readString(json, 'meal_type'),
+      eatenAt: DateTime.parse(readString(json, 'eaten_at')),
+      foodCandidates: readOptionalList(json, 'food_candidates')
+          .whereType<Map<String, dynamic>>()
+          .map(MealFoodCandidate.fromJson)
+          .toList(growable: false),
+      nutritionEstimateSummary: _readOptionalJsonMap(
+        json,
+        'nutrition_estimate_summary',
+      ),
+      warningCodes: readOptionalStringList(json, 'warning_codes'),
+      pipelineMetadata: FoodImagePipelineMetadata.fromJson(
+        readObject(json, 'pipeline_metadata'),
+      ),
+      algorithmVersion: readString(json, 'algorithm_version'),
+      createdAt: createdAt == null ? null : DateTime.parse(createdAt),
+    );
+  }
+}
+
 /// Multi-image supplement analysis response before user confirmation.
 class SupplementMultiImageAnalysisPreview {
   /// Creates a multi-image analysis preview.
