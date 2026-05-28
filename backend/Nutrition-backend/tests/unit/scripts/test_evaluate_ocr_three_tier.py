@@ -181,6 +181,67 @@ def test_evaluate_manifest_records_llm_metrics_separately(tmp_path: Path) -> Non
     assert metrics["llm_parse_success_rate"] == 1.0
 
 
+def test_evaluate_manifest_reports_structured_v3_metrics(tmp_path: Path) -> None:
+    """Verify V3 section/intake/claim metrics are benchmarked without raw text."""
+    manifest_path = tmp_path / "manifest.jsonl"
+    _write_manifest(
+        manifest_path,
+        [
+            {
+                "fixture_id": "fixture-1",
+                "expected": {
+                    "ingredients": [
+                        {"display_name": "Vitamin D", "amount": 25, "unit": "mcg"},
+                        {"display_name": "Zinc", "amount": 10, "unit": "mg"},
+                    ],
+                    "label_sections": [
+                        {"section_type": "supplement_facts"},
+                        {"section_type": "intake_method"},
+                    ],
+                    "intake_method": {"text": "1일 1정"},
+                    "precautions": [{"text": "임산부는 전문가와 상담"}],
+                    "functional_claims": [{"text": "뼈 건강에 필요"}],
+                },
+                "observations": [
+                    {
+                        "provider": "paddleocr_local",
+                        "status": "completed",
+                        "text_non_empty": True,
+                        "parser_success": True,
+                        "parsed_ingredients": [
+                            {
+                                "display_name": "Vitamin D",
+                                "amount": 25,
+                                "unit": "mcg",
+                            },
+                            {
+                                "display_name": "Magnesium",
+                                "amount": 10,
+                                "unit": "mg",
+                            },
+                        ],
+                        "label_sections": [{"section_type": "supplement_facts"}],
+                        "intake_method": {"text": "1일 1정"},
+                        "functional_claims": [{"text": "뼈 건강에 필요"}],
+                    }
+                ],
+            }
+        ],
+    )
+
+    summary = evaluate.evaluate_manifest(manifest_path)
+    metrics = summary["providers"]["paddleocr_local"]  # type: ignore[index]
+    assert isinstance(metrics, dict)
+    assert metrics["ingredient_name_exact_rate"] == 0.5
+    assert metrics["ingredient_amount_unit_exact_rate"] == 0.5
+    assert metrics["ingredient_false_hallucination_rate"] == 0.5
+    assert metrics["intake_method_extraction_rate"] == 1.0
+    assert metrics["precaution_extraction_rate"] == 0.0
+    assert metrics["functional_claim_extraction_rate"] == 1.0
+    assert metrics["section_type_recall"] == 0.5
+    assert summary["raw_ocr_text_stored"] is False
+
+
 def test_evaluate_manifest_reports_scoreable_ingredient_metric(tmp_path: Path) -> None:
     """Verify package-count expected contaminants do not define the scoreable KPI."""
     manifest_path = tmp_path / "manifest.jsonl"

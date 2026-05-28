@@ -40,6 +40,7 @@ PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
     re.compile(r"^\d+\s*(?:정|포|캡슐|개입)\s*\(?$", re.IGNORECASE),
 )
+AMOUNT_MATCH_TOLERANCE = 1e-6
 GENERIC_EXPECTED_HEADING_TOKENS = (
     "nutrition facts",
     "supplement facts",
@@ -78,9 +79,21 @@ class ProviderMetrics:
     total_latency_ms: float = 0.0
     ingredient_name_matches: int = 0
     ingredient_name_total: int = 0
+    ingredient_amount_unit_matches: int = 0
+    ingredient_amount_unit_total: int = 0
+    unexpected_ingredient_count: int = 0
+    observed_ingredient_count: int = 0
     scoreable_ingredient_name_matches: int = 0
     scoreable_ingredient_name_total: int = 0
     errors: int = 0
+    intake_method_expected_count: int = 0
+    intake_method_detected_count: int = 0
+    precaution_expected_count: int = 0
+    precaution_detected_count: int = 0
+    functional_claim_expected_count: int = 0
+    functional_claim_detected_count: int = 0
+    section_type_matches: int = 0
+    section_type_total: int = 0
     # LLM parser metrics (separate from OCR regex matching).
     llm_parse_attempt_count: int = 0
     llm_parse_success_count: int = 0
@@ -122,11 +135,35 @@ class ProviderMetrics:
                 self.ingredient_name_matches,
                 self.ingredient_name_total,
             ),
+            "ingredient_amount_unit_exact_rate": _rate(
+                self.ingredient_amount_unit_matches,
+                self.ingredient_amount_unit_total,
+            ),
+            "ingredient_false_hallucination_rate": _rate(
+                self.unexpected_ingredient_count,
+                self.observed_ingredient_count,
+            ),
             "scoreable_ingredient_name_exact_rate": _rate(
                 self.scoreable_ingredient_name_matches,
                 self.scoreable_ingredient_name_total,
             ),
             "errors": self.errors,
+            "intake_method_extraction_rate": _rate(
+                self.intake_method_detected_count,
+                self.intake_method_expected_count,
+            ),
+            "precaution_extraction_rate": _rate(
+                self.precaution_detected_count,
+                self.precaution_expected_count,
+            ),
+            "functional_claim_extraction_rate": _rate(
+                self.functional_claim_detected_count,
+                self.functional_claim_expected_count,
+            ),
+            "section_type_recall": _rate(
+                self.section_type_matches,
+                self.section_type_total,
+            ),
             "llm_parse_attempt_count": self.llm_parse_attempt_count,
             "llm_parse_success_rate": _rate(
                 self.llm_parse_success_count,
@@ -186,6 +223,40 @@ class ExpectedIngredientQuality:
     scoreable_names: set[str]
     warning_codes: tuple[str, ...]
     is_provisional: bool
+
+
+@dataclass(frozen=True)
+class IngredientFact:
+    """Normalized ingredient fact used for provider benchmark comparisons.
+
+    Attributes:
+        name: Normalized ingredient name.
+        amount: Numeric amount when available.
+        unit: Normalized unit when available.
+    """
+
+    name: str
+    amount: float | None
+    unit: str | None
+
+
+@dataclass(frozen=True)
+class ExpectedStructuredFields:
+    """Expected V3 structured fields used for provider benchmark metrics.
+
+    Attributes:
+        ingredients: Expected ingredient facts.
+        intake_method_present: Whether intake method text/structure is expected.
+        precaution_present: Whether precaution rows are expected.
+        functional_claim_present: Whether functional claim rows are expected.
+        section_types: Expected label section type tokens.
+    """
+
+    ingredients: tuple[IngredientFact, ...]
+    intake_method_present: bool
+    precaution_present: bool
+    functional_claim_present: bool
+    section_types: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -277,7 +348,9 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
         if isinstance(image_path, str) and not _manifest_image_exists(manifest_path, image_path):
             accumulator.missing_image_count += 1
 
-        expected_quality = _expected_ingredient_quality(row.get("expected"))
+        expected = row.get("expected")
+        expected_quality = _expected_ingredient_quality(expected)
+        expected_structured = _expected_structured_fields(expected)
         expected_names = expected_quality.names
         if expected_quality.scoreable_names:
             accumulator.scoreable_fixture_count += 1
@@ -300,6 +373,7 @@ def evaluate_manifest(manifest_path: Path) -> dict[str, object]:
                 observation=observation,
                 expected_names=expected_names,
                 scoreable_expected_names=expected_quality.scoreable_names,
+                expected_structured=expected_structured,
                 expected_conditions=expected_conditions,
             )
 
@@ -569,7 +643,7 @@ def _expected_ingredient_quality(value: object) -> ExpectedIngredientQuality:
             warning_codes=(),
             is_provisional=False,
         )
-    ingredients = value.get("ingredients")
+    ingredients = _expected_ingredient_rows(value)
     if not isinstance(ingredients, list):
         return ExpectedIngredientQuality(
             names=set(),
@@ -601,6 +675,24 @@ def _expected_ingredient_quality(value: object) -> ExpectedIngredientQuality:
         warning_codes=tuple(warning_codes),
         is_provisional=_is_provisional_expected(value),
     )
+
+
+def _expected_ingredient_rows(value: dict[str, object]) -> list[object] | None:
+    """Return expected ingredient rows across V2/V3 snapshot variants.
+
+    Args:
+        value: Expected fixture object.
+
+    Returns:
+        Ingredient row list, or ``None`` when unavailable.
+    """
+    ingredients = value.get("ingredients")
+    if isinstance(ingredients, list):
+        return ingredients
+    ingredient_candidates = value.get("ingredient_candidates")
+    if isinstance(ingredient_candidates, list):
+        return ingredient_candidates
+    return None
 
 
 def _expected_ingredient_display_name(ingredient: dict[str, object]) -> str | None:
@@ -668,12 +760,119 @@ def _expected_ingredient_contaminant_code(normalized_name: str) -> str | None:
     return None
 
 
+def _expected_structured_fields(value: object) -> ExpectedStructuredFields:
+    """Extract expected structured fields for V3 benchmark metrics.
+
+    Args:
+        value: Expected fixture object.
+
+    Returns:
+        Normalized expected structured fields.
+    """
+    if not isinstance(value, dict):
+        return ExpectedStructuredFields(
+            ingredients=(),
+            intake_method_present=False,
+            precaution_present=False,
+            functional_claim_present=False,
+            section_types=frozenset(),
+        )
+    return ExpectedStructuredFields(
+        ingredients=tuple(_ingredient_facts(_expected_ingredient_rows(value))),
+        intake_method_present=_intake_method_present(value.get("intake_method")),
+        precaution_present=bool(_list_of_dicts(value.get("precautions"))),
+        functional_claim_present=bool(_list_of_dicts(value.get("functional_claims"))),
+        section_types=frozenset(_section_types(value.get("label_sections"))),
+    )
+
+
+def _ingredient_facts(value: object) -> list[IngredientFact]:
+    """Extract normalized ingredient facts from V2/V3 rows.
+
+    Args:
+        value: Candidate ingredient list.
+
+    Returns:
+        Ingredient facts with comparable name, amount, and unit.
+    """
+    if not isinstance(value, list):
+        return []
+    facts: list[IngredientFact] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        name = _expected_ingredient_display_name(item)
+        if not isinstance(name, str):
+            continue
+        normalized_name = _normalize_token(name)
+        if not normalized_name:
+            continue
+        facts.append(
+            IngredientFact(
+                name=normalized_name,
+                amount=_numeric_value(item.get("amount")),
+                unit=_normalize_optional_unit(item.get("unit")),
+            )
+        )
+    return facts
+
+
+def _numeric_value(value: object) -> float | None:
+    """Return a rounded numeric value for amount comparisons."""
+    if isinstance(value, int | float) and value >= 0:
+        return round(float(value), 6)
+    return None
+
+
+def _normalize_optional_unit(value: object) -> str | None:
+    """Return a normalized unit token when present."""
+    if not isinstance(value, str):
+        return None
+    normalized = _normalize_token(value)
+    return normalized or None
+
+
+def _intake_method_present(value: object) -> bool:
+    """Return whether an intake method row carries expected content."""
+    if not isinstance(value, dict):
+        return False
+    text = value.get("text")
+    if isinstance(text, str) and text.strip():
+        return True
+    structured = value.get("structured")
+    if not isinstance(structured, dict):
+        return False
+    frequency = structured.get("frequency")
+    if isinstance(frequency, str) and frequency.strip() and frequency != "unknown":
+        return True
+    time_of_day = structured.get("time_of_day")
+    return isinstance(time_of_day, list) and bool(time_of_day)
+
+
+def _list_of_dicts(value: object) -> list[dict[str, object]]:
+    """Return dictionary rows from a list-like field."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _section_types(value: object) -> set[str]:
+    """Extract normalized label section type tokens."""
+    tokens: set[str] = set()
+    for item in _list_of_dicts(value):
+        section_type = item.get("section_type")
+        if isinstance(section_type, str) and section_type.strip():
+            tokens.add(_safe_diagnostic_token(section_type.strip()))
+    return tokens
+
+
 def _add_observation(
     accumulator: EvaluationAccumulator,
     *,
     observation: dict[str, object],
     expected_names: set[str],
     scoreable_expected_names: set[str],
+    expected_structured: ExpectedStructuredFields,
     expected_conditions: list[str] | None = None,
 ) -> None:
     """Add one provider observation to aggregate metrics.
@@ -683,6 +882,7 @@ def _add_observation(
         observation: Observation row.
         expected_names: Expected normalized ingredient names.
         scoreable_expected_names: Expected names that passed quality gates.
+        expected_structured: Expected V3 structured fields.
         expected_conditions: Chronic-disease indications declared in the V3
             ``expected.chronic_disease_indications`` field. Used to bucket
             ingredient-accuracy contributions per B-persona condition.
@@ -726,6 +926,13 @@ def _add_observation(
         total_attr="scoreable_ingredient_name_total",
         condition_match_map=metrics.scoreable_matches_by_condition,
         condition_total_map=metrics.scoreable_total_by_condition,
+    )
+    observed_facts = _ingredient_facts(observation.get("parsed_ingredients"))
+    _add_structured_accuracy(
+        metrics=metrics,
+        observation=observation,
+        expected_structured=expected_structured,
+        observed_facts=observed_facts,
     )
 
     llm_parse_status = observation.get("llm_parse_status")
@@ -858,6 +1065,114 @@ def _add_condition_accuracy(
     for condition in expected_conditions:
         condition_total_map[condition] = condition_total_map.get(condition, 0) + total
         condition_match_map[condition] = condition_match_map.get(condition, 0) + matches
+
+
+def _add_structured_accuracy(
+    *,
+    metrics: ProviderMetrics,
+    observation: dict[str, object],
+    expected_structured: ExpectedStructuredFields,
+    observed_facts: list[IngredientFact],
+) -> None:
+    """Add V3 structured extraction metrics to provider aggregates.
+
+    Args:
+        metrics: Mutable provider metrics.
+        observation: Redacted provider observation.
+        expected_structured: Expected structured fields.
+        observed_facts: Parsed ingredient facts observed from OCR/parser output.
+    """
+    _add_amount_unit_accuracy(metrics, expected_structured.ingredients, observed_facts)
+    _add_unexpected_ingredient_rate(metrics, expected_structured.ingredients, observed_facts)
+    _add_binary_presence_metric(
+        metrics=metrics,
+        expected=expected_structured.intake_method_present,
+        observed=_intake_method_present(observation.get("intake_method")),
+        expected_attr="intake_method_expected_count",
+        detected_attr="intake_method_detected_count",
+    )
+    _add_binary_presence_metric(
+        metrics=metrics,
+        expected=expected_structured.precaution_present,
+        observed=bool(_list_of_dicts(observation.get("precautions"))),
+        expected_attr="precaution_expected_count",
+        detected_attr="precaution_detected_count",
+    )
+    _add_binary_presence_metric(
+        metrics=metrics,
+        expected=expected_structured.functional_claim_present,
+        observed=bool(_list_of_dicts(observation.get("functional_claims"))),
+        expected_attr="functional_claim_expected_count",
+        detected_attr="functional_claim_detected_count",
+    )
+    observed_sections = _section_types(observation.get("label_sections"))
+    if expected_structured.section_types:
+        metrics.section_type_total += len(expected_structured.section_types)
+        metrics.section_type_matches += len(
+            expected_structured.section_types.intersection(observed_sections)
+        )
+
+
+def _add_amount_unit_accuracy(
+    metrics: ProviderMetrics,
+    expected_facts: tuple[IngredientFact, ...],
+    observed_facts: list[IngredientFact],
+) -> None:
+    """Add exact name+amount+unit match counts."""
+    expected_scoreable = [
+        fact for fact in expected_facts if fact.amount is not None and fact.unit is not None
+    ]
+    if not expected_scoreable:
+        return
+    metrics.ingredient_amount_unit_total += len(expected_scoreable)
+    for expected in expected_scoreable:
+        if any(_ingredient_amount_unit_matches(expected, observed) for observed in observed_facts):
+            metrics.ingredient_amount_unit_matches += 1
+
+
+def _ingredient_amount_unit_matches(expected: IngredientFact, observed: IngredientFact) -> bool:
+    """Return whether two ingredient facts match name, amount, and unit."""
+    return (
+        expected.name == observed.name
+        and expected.amount is not None
+        and observed.amount is not None
+        and abs(expected.amount - observed.amount) <= AMOUNT_MATCH_TOLERANCE
+        and expected.unit == observed.unit
+    )
+
+
+def _add_unexpected_ingredient_rate(
+    metrics: ProviderMetrics,
+    expected_facts: tuple[IngredientFact, ...],
+    observed_facts: list[IngredientFact],
+) -> None:
+    """Add observed ingredient false-positive counts."""
+    if not observed_facts:
+        return
+    expected_names = {fact.name for fact in expected_facts}
+    metrics.observed_ingredient_count += len(observed_facts)
+    if not expected_names:
+        metrics.unexpected_ingredient_count += len(observed_facts)
+        return
+    metrics.unexpected_ingredient_count += sum(
+        1 for fact in observed_facts if fact.name not in expected_names
+    )
+
+
+def _add_binary_presence_metric(
+    *,
+    metrics: ProviderMetrics,
+    expected: bool,
+    observed: bool,
+    expected_attr: str,
+    detected_attr: str,
+) -> None:
+    """Add one expected/observed boolean extraction contribution."""
+    if not expected:
+        return
+    setattr(metrics, expected_attr, getattr(metrics, expected_attr) + 1)
+    if observed:
+        setattr(metrics, detected_attr, getattr(metrics, detected_attr) + 1)
 
 
 def _accumulate_language_metric(
@@ -1052,6 +1367,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
                 f"- Failure count: `{failure_count}`",
             ]
         )
+    _append_structured_metrics(lines, providers)
     lines.extend(
         [
             "",
@@ -1100,6 +1416,40 @@ def _render_markdown(summary: dict[str, object]) -> str:
             lines.append("")
     lines.append("")
     return "\n".join(lines)
+
+
+def _append_structured_metrics(lines: list[str], providers: object) -> None:
+    """Append V3 structured parser benchmark rows to a Markdown report.
+
+    Args:
+        lines: Mutable Markdown line buffer.
+        providers: Provider metrics object from the summary.
+    """
+    lines.extend(
+        [
+            "",
+            "## Structured Parser V3 Metrics",
+            "",
+            "| Provider | Amount+unit exact | Intake method | Precautions | Functional claims | Section type recall | Ingredient false hallucination |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    if not isinstance(providers, dict):
+        return
+    for provider, raw_metrics in providers.items():
+        if not isinstance(raw_metrics, dict):
+            continue
+        lines.append(
+            "| {provider} | {amount_unit} | {intake} | {precautions} | {claims} | {sections} | {hallucination} |".format(
+                provider=provider,
+                amount_unit=raw_metrics.get("ingredient_amount_unit_exact_rate"),
+                intake=raw_metrics.get("intake_method_extraction_rate"),
+                precautions=raw_metrics.get("precaution_extraction_rate"),
+                claims=raw_metrics.get("functional_claim_extraction_rate"),
+                sections=raw_metrics.get("section_type_recall"),
+                hallucination=raw_metrics.get("ingredient_false_hallucination_rate"),
+            )
+        )
 
 
 if __name__ == "__main__":
