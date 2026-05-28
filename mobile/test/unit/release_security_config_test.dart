@@ -52,4 +52,17 @@ void main() {
     expect(arbitraryLoadsIndex, greaterThan(atsIndex));
     expect(falseIndex, greaterThan(arbitraryLoadsIndex));
   });
+
+  test('iOS ATS allows local simulator backend networking only', () {
+    final String infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
+    final int atsIndex = infoPlist.indexOf('<key>NSAppTransportSecurity</key>');
+    final int localNetworkingIndex = infoPlist.indexOf(
+      '<key>NSAllowsLocalNetworking</key>',
+    );
+    final int trueIndex = infoPlist.indexOf('<true/>', localNetworkingIndex);
+
+    expect(atsIndex, isNonNegative);
+    expect(localNetworkingIndex, greaterThan(atsIndex));
+    expect(trueIndex, greaterThan(localNetworkingIndex));
+  });
 }
