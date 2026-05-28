@@ -80,6 +80,7 @@ class _FakeStoreSession:
         self.existing_meal = existing_meal
         self.added: list[object] = []
         self.refreshed: list[object] = []
+        self.flush_count = 0
         self.committed = False
 
     def begin(self) -> _TransactionContext:
@@ -124,6 +125,7 @@ class _FakeStoreSession:
         Returns:
             None.
         """
+        self.flush_count += 1
 
     async def commit(self) -> None:
         """Record that the fake transaction was committed.
@@ -388,6 +390,7 @@ async def test_create_meal_image_preview_stores_manual_entry_preview_only() -> N
 
     assert result.reused_existing is False
     assert fake_session.added == [result.meal_record, result.analysis_run]
+    assert fake_session.flush_count == 1
     assert fake_session.refreshed == [result.meal_record, result.analysis_run]
     assert result.meal_record.meal_type == "lunch"
     assert result.meal_record.eaten_at == eaten_at
@@ -430,6 +433,7 @@ async def test_create_meal_image_preview_uses_food_yolo_candidates() -> None:
     )
 
     assert detector.received_image_bytes == _png_bytes()
+    assert fake_session.flush_count == 1
     assert result.analysis_run.detector_model == "food_yolo_local:best.pt"
     assert result.analysis_run.detected_items_snapshot["items"][0]["display_name"] == "비빔밥"
     assert result.analysis_run.warning_codes == ["food_detection_review_required"]

@@ -330,6 +330,8 @@ async def create_meal_image_analysis_preview(
                 confirmed_at=None,
                 deleted_at=None,
             )
+            session.add(meal_record)
+            await session.flush()
             analysis_run = FoodImageAnalysisRun(
                 id=uuid4(),
                 owner_subject=owner_subject,
@@ -346,7 +348,6 @@ async def create_meal_image_analysis_preview(
                 nutrition_estimate_snapshot=nutrition_estimate_snapshot,
                 warning_codes=list(detection.warning_codes),
             )
-            session.add(meal_record)
             session.add(analysis_run)
             reused_existing = False
 
