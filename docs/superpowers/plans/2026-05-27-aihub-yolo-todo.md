@@ -26,23 +26,22 @@
 
 ## 진행 중 🔄
 
-- [ ] exp01 YOLOv8n PC2 baseline 시작 대기
-  - 실행 명령: `cd C:\Lemon-Aid\Lemon-sin\docs\superpowers\plans; .\baseline_run.ps1`
-  - run name: `exp01_yolov8n_baseline_pc2_b48_w8_cache_disk_det_true`
-  - 설정: model=yolov8n.pt, epochs=50, batch=48, workers=8, cache=disk, imgsz=640, deterministic=true, seed=42, patience=15, plots=false
-  - 예상 시간: 초기 cache=disk 캐싱 7~8시간 + 50 epoch × 약 75분 = 약 70시간
+- [x] **계획 변경**: yolov8n 풀데이터 baseline 대신 yolo11s + balanced_500으로 방향 전환 (2026-05-27)
+  - spec/plan 신규 작성: [2026-05-27-aihub-yolo-balanced500-yolo11s-design.md](2026-05-27-aihub-yolo-balanced500-yolo11s-design.md), [-plan.md](2026-05-27-aihub-yolo-balanced500-yolo11s-plan.md)
+  - val도 cap=100으로 다운샘플 (모델 적합성 빠른 검증용)
+- [x] exp03 YOLO11s + balanced_500 PC2 학습 완료 (2026-05-28)
+  - 50/50 epoch, 10.46 시간 소요
+  - best mAP50=0.823, mAP50-95=0.788 (epoch 48)
+  - 결과 분석: [2026-05-28-exp03-yolo11s-balanced500-results.md](2026-05-28-exp03-yolo11s-balanced500-results.md)
 
 ## 다음 작업 📋
 
-- [ ] PC2 baseline 진행 모니터링
-  - PowerShell 명령으로 results.csv, weights/, GPU, RAM 진척 추적
-  - epoch별 mAP50/mAP50-95 기록
-- [ ] PC2 baseline 완료 후 validation plots 실행 (handoff §16)
-  - confusion matrix, PR curve, F1 curve, class별 metric
-- [ ] PC1 vs PC2 baseline 비교 (handoff §19.2 원칙: 직접 비교 금지, 각자 baseline 대비)
-- [ ] PC1의 exp02 YOLO11s 결과 확인 (별도 컴퓨터에서 진행 중)
-- [ ] class별 AP, confusion matrix 분석 → 약한 클래스 식별
-- [ ] 약한 클래스 기반 후속 실험 설계 (exp03~exp08, handoff §18)
+- [x] exp03 validation plots 실행 → confusion_matrix.png, PR/F1/R/P curves, predictions.json 생성 (2026-05-28)
+- [x] 약한 클래스 9개 식별 (AP50 < 0.70): mala-hot-pot, stir-fried-pork, sweet-and-sour-pork, spicy-seafood-noodles, noodle-soup, seafood-stew, takoyaki, stew, rice-soup
+- [x] 핵심 패턴 파악: 국물·찌개 혼동 군(8개), 돼지고기 혼동 군(2개), 소수 표본 클래스(4개)
+- [ ] confusion_matrix.png 시각 확인 → 국물·찌개 8개 클래스 혼동 방향 파악
+- [ ] PC1의 yolov8n + balanced_500 결과 입수 → 같은 val 기준 직접 비교
+- [ ] exp04 설계 (약한 클래스 보강): cap 증가 / augmentation 강화 / 더 큰 모델 / class-balanced loss 중 선택
 
 ## 환경 스냅샷
 
