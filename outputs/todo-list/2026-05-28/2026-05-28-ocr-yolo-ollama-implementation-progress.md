@@ -96,6 +96,10 @@
   - `ocr_provider=clova`: HTTP 202, provider `clova_ocr`, OCR text present, confidence bucket `high`, ingredient 후보 1개
   - `ocr_provider=configured`: HTTP 202, provider `clova_ocr`, OCR text present, confidence bucket `high`, ingredient 후보 1개
   - `ocr_provider=google_vision`: HTTP 202, recoverable `intake-only`, OCR text not present, automatic text extraction unavailable warning
+- Google Vision direct adapter check
+  - backend container 내부에서 같은 fixture로 adapter를 직접 호출했다.
+  - 결과: `OCRError`, Google Vision HTTP 401
+  - 판정: route/selector 문제가 아니라 현재 runtime credential/API key 권한 문제로 분리한다.
 - 다중 이미지 OCR smoke
   - `/api/v1/supplements/analyze-multi`: HTTP 202
   - `image_count=2`, `preview_count=2`, merged provider `clova_ocr`, merged OCR text present, merged ingredient 후보 1개
@@ -109,12 +113,12 @@
 - endpoint 연결 문제는 아니다. backend 최신 이미지 기준으로 단일/다중 이미지 endpoint와 등록 전 설명 endpoint가 모두 응답한다.
 - PaddleOCR은 OCR text는 있으나 ingredient 후보가 0개라 parser/section 품질 개선 대상이다.
 - CLOVA/configured는 같은 fixture에서 ingredient 후보 1개를 만들었다.
-- Google Vision은 credential 또는 provider 실행 경로를 별도 확인해야 한다. 현재 route는 실패를 intake-only로 안전하게 degrade한다.
+- Google Vision은 현재 HTTP 401 credential/API key 권한 문제로 분리됐다. route는 실패를 intake-only로 안전하게 degrade한다.
 - YOLO ROI와 multimodal vision assist는 runtime flag가 꺼져 있어 이번 smoke에서는 off가 정상이다.
 
 ## 남은 TODO
 
-- Google Vision provider는 route degrade가 아닌 실제 OCR 성공 경로가 되도록 credential/provider status를 분리 확인한다.
+- Google Vision provider는 HTTP 401을 해결할 수 있도록 API key 활성화, Vision API 권한, billing/project 제한을 확인한다.
 - 실제 촬영 이미지 fixture로 provider benchmark manifest를 생성하고 `b53b196`의 구조화 지표를 비교한다.
 - YOLO ROI가 켜진 Docker/runtime에서 `roi_count`, selected ROI, parser 결과가 review UI에 기대대로 반영되는지 확인한다.
 - Android emulator에서 gallery image -> multi-image batch -> review -> manual correction -> registration -> analysis explanation까지 end-to-end smoke를 진행한다.
