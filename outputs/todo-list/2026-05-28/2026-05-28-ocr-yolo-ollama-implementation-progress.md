@@ -148,21 +148,48 @@
   - 17 Pro 스타일 home shell과 하단 `+` UI가 iOS simulator에서도 확인됐다.
   - iOS simulator는 물리 카메라가 없으므로 실제 촬영 smoke는 gallery 또는 실제 iPhone/ngrok flow로 분리한다.
 
+## Xcode native iOS 작업 공간 편입
+
+- `mobile/ios-native`에 있던 SwiftUI OCR smoke 기능 소스를
+  `mobile/Lemon-Aid-ios/Lemon-Aid` 앱 target으로 선별 이식했다.
+- `mobile/Lemon-Aid-ios/.git`은 팀 repo 일반 폴더 편입을 위해
+  `/private/tmp/lemon-aid-ios-nested-git-backup-20260528`로 백업 이동했다.
+- 기존 Xcode SwiftData 기본 템플릿은 제거하고 `RootView` + `AppState` +
+  `LemonAidAPI` 흐름으로 앱 entry를 교체했다.
+- `Info.plist`에는 카메라/사진 선택 권한과 local backend 연결용 ATS 설정을
+  병합했다.
+- `mobile/Lemon-Aid-ios/README.md`에 Xcode project, scheme, endpoint 계약,
+  local environment variable 주입 방식을 정리했다.
+- 임시 원본 `mobile/ios-native` 폴더는 중복 혼동을 줄이기 위해
+  `/private/tmp/lemon-ios-native-source-backup-20260528`로 백업 이동했다.
+
+### Xcode native iOS 검증 결과
+
+- `plutil -lint mobile/Lemon-Aid-ios/Lemon-Aid/Info.plist mobile/Lemon-Aid-ios/Lemon-Aid/Lemon_Aid.entitlements`
+  - passed
+- `xcodebuild -project mobile/Lemon-Aid-ios/Lemon-Aid.xcodeproj -scheme Lemon-Aid -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=7B2E1A72-B3C9-4102-8E3C-0009CCBFB4FB' -derivedDataPath /private/tmp/lemon-aid-ios-xcode-derived CODE_SIGNING_ALLOWED=NO build`
+  - build succeeded
+- `simctl install 7B2E1A72-B3C9-4102-8E3C-0009CCBFB4FB /private/tmp/lemon-aid-ios-xcode-derived/Build/Products/Debug-iphonesimulator/Lemon-Aid.app`
+  - install succeeded
+- `SIMCTL_CHILD_LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1 simctl launch 7B2E1A72-B3C9-4102-8E3C-0009CCBFB4FB yeongs.Lemon-Aid`
+  - launch succeeded
+- screenshot:
+  - `/private/tmp/lemon-aid-ios-native-shell.png`
+  - 17 Pro 스타일 native home shell 확인
+
 ## 남은 TODO
 
 - Google Vision provider는 HTTP 401을 해결할 수 있도록 API key 활성화, Vision API 권한, billing/project 제한을 확인한다.
 - 실제 촬영 이미지 fixture로 provider benchmark manifest를 생성하고 `b53b196`의 구조화 지표를 비교한다.
 - YOLO ROI가 켜진 Docker/runtime에서 `roi_count`, selected ROI, parser 결과가 review UI에 기대대로 반영되는지 확인한다.
 - Android emulator에서 gallery image -> multi-image batch -> manual correction -> registration -> analysis explanation까지 남은 end-to-end smoke를 진행한다.
-- iOS simulator는 gallery 입력 기반 OCR smoke를 진행하고, 실제 촬영은 물리 iPhone/ngrok flow에서 검증한다.
+- Xcode native iOS는 gallery 입력 기반 OCR smoke를 진행하고, 실제 촬영은 물리 iPhone/ngrok flow에서 검증한다.
 - Android Studio run configuration에 `dev` flavor와 `LEMON_API_BASE_URL` dart define을 저장할지 팀 합의가 필요하다.
 
 ## 주의할 파일/커밋 제외 항목
 
 - 기존 untracked 항목은 이번 작업 범위에서 건드리지 않는다.
   - `.omc/`
-  - `mobile/Lemon-Aid-ios/`
   - `mobile/assets/mascot/Mascot_AppIcon_Rebuild_Assets/`
-  - `mobile/ios-native/`
 - 로컬 `.env`, ngrok token, gateway token, provider credential, raw OCR/provider payload, 이미지 원본, object URI는 절대 stage하지 않는다.
 - 음식 YOLO `best.pt`는 ignored local artifact이며 supplement label ROI 모델로 오인하지 않는다.
