@@ -6,6 +6,7 @@ from typing import Any
 
 from src.prediction.selector import (
     HALL_LITE_WARNING,
+    MEDICAL_LIMITER_WARNING,
     WeightPredictionEngine,
     predict_weight_periods_selected,
 )
@@ -97,3 +98,26 @@ def test_selector_underage_falls_back_to_static() -> None:
     static = predict_weight_periods(**kwargs)
 
     assert selected == static
+
+
+def test_selector_medical_limiter_context_disables_long_term_hall_prediction() -> None:
+    """Verify long-term automatic prediction is downgraded for medical limiter contexts."""
+    kwargs = _base_kwargs()
+
+    selected = predict_weight_periods_selected(
+        **kwargs,
+        feature_hall_lite_weight_prediction=True,
+        weight_prediction_engine=WeightPredictionEngine.AUTO,
+        risk_context={
+            "conditions": ["thyroid_disease", "ckd"],
+            "medications": ["systemic_steroid"],
+        },
+    )
+    static = predict_weight_periods(**kwargs)
+
+    assert [step.predicted_weight_kg for step in selected.predictions] == [
+        step.predicted_weight_kg for step in static.predictions
+    ]
+    assert selected.predictions[0].warning is None
+    assert selected.predictions[1].warning is None
+    assert selected.predictions[2].warning == MEDICAL_LIMITER_WARNING

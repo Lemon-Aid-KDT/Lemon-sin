@@ -10,7 +10,6 @@ from lemon_ai_agent.schemas import (
     ReferenceRange,
 )
 
-
 NUTRIENT_ALIASES = {
     "vitamin d": "vitamin d",
     "vitamin-d": "vitamin d",
@@ -37,6 +36,9 @@ UNIT_TO_MCG = {
     "mg": 1_000.0,
     "mcg": 1.0,
 }
+
+LOW_RATIO_THRESHOLD = 0.7
+HIGH_RATIO_THRESHOLD = 1.3
 
 
 class NutritionEngine:
@@ -147,9 +149,9 @@ class NutritionEngine:
         if reference.upper_limit is not None and amount > reference.upper_limit:
             return FindingLevel.RISKY
         ratio = amount / reference.target if reference.target > 0 else 1.0
-        if ratio < 0.7:
+        if ratio < LOW_RATIO_THRESHOLD:
             return FindingLevel.LOW
-        if ratio > 1.3:
+        if ratio > HIGH_RATIO_THRESHOLD:
             return FindingLevel.HIGH
         return FindingLevel.ADEQUATE
 

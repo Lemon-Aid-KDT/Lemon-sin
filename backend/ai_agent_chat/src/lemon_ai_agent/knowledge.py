@@ -28,6 +28,20 @@ SourceFamily = Literal[
 
 SourceStatus = Literal["draft", "reviewed", "deprecated"]
 SourceType = Literal["public_health", "nutrition_standard", "drug_safety", "paper_index"]
+ChatIntent = Literal[
+    "meal",
+    "exercise",
+    "sleep",
+    "weight",
+    "symptom",
+    "supplement",
+    "medication",
+    "lab_result",
+    "general_question",
+]
+Condition = Literal["diabetes", "hypertension", "kidney_disease"]
+CautionLevel = Literal["general", "condition_context", "boundary", "emergency"]
+EvidenceType = Literal["official_guideline", "official_reference", "paper_candidate"]
 
 
 @dataclass(frozen=True)
@@ -63,6 +77,29 @@ class ReviewedMedicalSource:
 class QuestionClassification:
     category: QuestionCategory
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ChatIntentAnalysis:
+    primary_intent: ChatIntent
+    category: QuestionCategory
+    related_conditions: tuple[Condition, ...]
+    red_flags: tuple[str, ...]
+    boundary: tuple[str, ...]
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MedicalKnowledgeItem:
+    source: str
+    topic: str
+    intent: ChatIntent
+    condition: Condition | None
+    concrete_guidance: str
+    caution_level: CautionLevel
+    evidence_type: EvidenceType
+    reviewed_status: SourceStatus
+    source_url: str
 
 
 @dataclass(frozen=True)
@@ -103,6 +140,14 @@ SOURCE_REGISTRY: dict[SourceFamily, tuple[KnowledgeSource, ...]] = {
         KnowledgeSource(
             "NIDDK Diabetes Overview",
             "https://www.niddk.nih.gov/health-information/diabetes/overview",
+        ),
+        KnowledgeSource(
+            "NIDDK Healthy Living with Diabetes",
+            "https://www.niddk.nih.gov/health-information/diabetes/overview/diet-eating-physical-activity",
+        ),
+        KnowledgeSource(
+            "CDC Diabetes Meal Planning",
+            "https://www.cdc.gov/diabetes/healthy-eating/diabetes-meal-planning.html",
         ),
         KnowledgeSource(
             "NIDDK Kidney Disease",
@@ -165,6 +210,7 @@ SOURCE_REGISTRY: dict[SourceFamily, tuple[KnowledgeSource, ...]] = {
             "CDC Physical Activity Guidelines",
             "https://www.cdc.gov/physical-activity/php/guidelines-recommendations/index.html",
         ),
+        KnowledgeSource("CDC Sleep", "https://www.cdc.gov/sleep/about/index.html"),
         KnowledgeSource("CDC Adult BMI", "https://www.cdc.gov/bmi/adult-calculator/index.html"),
     ),
     "food_safety_allergy": (
@@ -311,6 +357,90 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
     ),
 )
 
+MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
+    MedicalKnowledgeItem(
+        source="CDC Diabetes Meal Planning",
+        topic="diabetes_plate_method",
+        intent="meal",
+        condition="diabetes",
+        concrete_guidance=(
+            "당뇨 식사 맥락에서는 한 접시를 비전분 채소 1/2, 단백질 1/4, "
+            "탄수화물 1/4 구조로 잡고 탄수화물 양을 한 번에 몰리지 않게 조절한다."
+        ),
+        caution_level="condition_context",
+        evidence_type="official_guideline",
+        reviewed_status="reviewed",
+        source_url="https://www.cdc.gov/diabetes/healthy-eating/diabetes-meal-planning.html",
+    ),
+    MedicalKnowledgeItem(
+        source="NIDDK Healthy Living with Diabetes",
+        topic="diabetes_healthy_living",
+        intent="general_question",
+        condition="diabetes",
+        concrete_guidance=(
+            "당뇨 생활관리는 식사 계획, 신체활동, 체중관리, 약 복용 여부, "
+            "혈당 기록을 함께 보며 문제를 예방하거나 늦추는 방향으로 관리한다."
+        ),
+        caution_level="condition_context",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url=(
+            "https://www.niddk.nih.gov/health-information/diabetes/overview/"
+            "diet-eating-physical-activity"
+        ),
+    ),
+    MedicalKnowledgeItem(
+        source="CDC Adult Physical Activity Guidelines",
+        topic="adult_activity",
+        intent="exercise",
+        condition=None,
+        concrete_guidance=(
+            "성인은 주 150분 중강도 유산소 활동과 주 2일 이상 주요 근육군 "
+            "근력운동을 목표로 한다."
+        ),
+        caution_level="general",
+        evidence_type="official_guideline",
+        reviewed_status="reviewed",
+        source_url="https://www.cdc.gov/physical-activity-basics/guidelines/adults.html",
+    ),
+    MedicalKnowledgeItem(
+        source="CDC Sleep",
+        topic="adult_sleep",
+        intent="sleep",
+        condition=None,
+        concrete_guidance="성인은 하루 7시간 이상 수면을 일반적인 건강관리 기준으로 삼는다.",
+        caution_level="general",
+        evidence_type="official_guideline",
+        reviewed_status="reviewed",
+        source_url="https://www.cdc.gov/sleep/about/index.html",
+    ),
+    MedicalKnowledgeItem(
+        source="CDC Heat and Athletes",
+        topic="exercise_dizziness",
+        intent="symptom",
+        condition=None,
+        concrete_guidance=(
+            "운동 중 어지럽거나 힘이 빠지면 활동을 멈추고 서늘한 곳으로 이동하며 "
+            "수분을 보충하고 증상 변화를 관찰한다."
+        ),
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://www.cdc.gov/heat-health/risk-factors/heat-and-athletes.html",
+    ),
+    MedicalKnowledgeItem(
+        source="Semantic Scholar Graph API",
+        topic="paper_discovery_backlog",
+        intent="general_question",
+        condition=None,
+        concrete_guidance="논문 후보 수집과 검수 카드 작성에만 사용한다.",
+        caution_level="boundary",
+        evidence_type="paper_candidate",
+        reviewed_status="draft",
+        source_url="https://www.semanticscholar.org/product/api",
+    ),
+)
+
 RESPONSE_CONTRACTS: dict[QuestionCategory, ResponseContract] = {
     "general_info": ResponseContract(
         sections=("요약", "주의", "다음 행동", "출처 메모"),
@@ -454,11 +584,32 @@ _DOSAGE_DECISION_KEYWORDS = (
     "dosage",
 )
 
+_MEDICAL_DECISION_KEYWORDS = (
+    "진단",
+    "치료",
+    "처방",
+    "검사 수치",
+    "검사 결과",
+    "혈액검사",
+    "ldl",
+    "hdl",
+    "hba1c",
+    "a1c",
+    "ast",
+    "alt",
+    "크레아티닌",
+    "사구체",
+    "egfr",
+    "lab value",
+    "lab result",
+)
+
 _DRUG_KEYWORDS = (
     "복약",
     "처방약",
     "혈압약",
     "당뇨약",
+    "갑상선약",
     "약을",
     "약이",
     "약과",
@@ -466,7 +617,18 @@ _DRUG_KEYWORDS = (
     "약 복용",
     "약 목록",
     "와파린",
+    "항응고제",
+    "메트포민",
+    "아세트아미노펜",
+    "타이레놀",
+    "maoi",
     "warfarin",
+    "anticoagulant",
+    "metformin",
+    "acetaminophen",
+    "tylenol",
+    "levothyroxine",
+    "thyroid",
     "statin",
     "medication",
     "drug",
@@ -478,11 +640,37 @@ _SUPPLEMENT_KEYWORDS = (
     "건기식",
     "건강기능식품",
     "비타민",
+    "비타민 a",
+    "비타민 b12",
+    "비타민 e",
+    "베타카로틴",
     "마그네슘",
     "칼슘",
     "철분",
     "오메가",
+    "은행잎",
     "supplement",
+    "vitamin a",
+    "vitamin b12",
+    "b12",
+    "vitamin e",
+    "beta carotene",
+    "beta-carotene",
+    "omega",
+    "ginkgo",
+)
+
+_P0_INTERACTION_BOUNDARY_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("와파린", "warfarin"), ("비타민 k", "vitamin k")),
+    (("갑상선약", "levothyroxine", "thyroid"), ("칼슘", "철분", "calcium", "iron")),
+    (("메트포민", "metformin"), ("비타민 b12", "b12", "vitamin b12")),
+    (
+        ("항응고제", "warfarin", "anticoagulant"),
+        ("오메가", "omega", "은행잎", "ginkgo", "비타민 e", "vitamin e"),
+    ),
+    (("maoi", "모노아민산화효소"), ("티라민", "tyramine")),
+    (("흡연", "흡연자", "smoker", "smoking"), ("베타카로틴", "beta carotene", "beta-carotene", "비타민 a", "vitamin a")),
+    (("음주", "술", "alcohol", "drinking"), ("비타민 a", "vitamin a", "아세트아미노펜", "acetaminophen", "타이레놀", "tylenol")),
 )
 
 _CHRONIC_KEYWORDS = (
@@ -552,6 +740,39 @@ _LIFESTYLE_KEYWORDS = (
     "exercise",
 )
 
+_MEAL_INTENT_KEYWORDS = (
+    "식사",
+    "식단",
+    "아침",
+    "점심",
+    "저녁",
+    "간식",
+    "밥",
+    "라면",
+    "찌개",
+    "초콜릿",
+    "아이스크림",
+    "먹",
+    "meal",
+    "food",
+)
+
+_SLEEP_INTENT_KEYWORDS = ("수면", "잠", "sleep")
+
+_WEIGHT_INTENT_KEYWORDS = ("체중", "살", "bmi", "weight")
+
+_SYMPTOM_INTENT_KEYWORDS = (
+    "어지러",
+    "어지럼",
+    "현기증",
+    "증상",
+    "통증",
+    "불편",
+    "dizzy",
+    "dizziness",
+    "symptom",
+)
+
 _FOOD_SAFETY_KEYWORDS = (
     "알레르기",
     "알러지",
@@ -562,7 +783,7 @@ _FOOD_SAFETY_KEYWORDS = (
 )
 
 
-def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
+def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911, PLR0912
     normalized = " ".join(question.casefold().split())
     reasons: list[str] = []
 
@@ -592,9 +813,17 @@ def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
             reasons.append("chronic condition context")
         return QuestionClassification("drug_or_interaction", tuple(reasons))
 
+    if _has_p0_interaction_boundary(normalized):
+        reasons.append("P0 interaction or context boundary candidate")
+        return QuestionClassification("drug_or_interaction", tuple(reasons))
+
     if has_drug_context and has_supplement_context:
         reasons.append("drug and supplement context")
         return QuestionClassification("drug_or_interaction", tuple(reasons))
+
+    if _contains_any(normalized, _MEDICAL_DECISION_KEYWORDS):
+        reasons.append("medical decision or lab-value interpretation request")
+        return QuestionClassification("out_of_scope", tuple(reasons))
 
     if has_chronic_context:
         reasons.append("chronic condition keyword")
@@ -618,6 +847,46 @@ def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
 
     reasons.append("default general health information")
     return QuestionClassification("general_info", tuple(reasons))
+
+
+def analyze_chat_intent(
+    question: str,
+    context: dict[str, object] | None = None,
+) -> ChatIntentAnalysis:
+    normalized = " ".join(question.casefold().split())
+    classification = classify_question(question)
+    primary_intent = _primary_intent(normalized)
+    related_conditions = _related_conditions(normalized, context or {}, primary_intent)
+    red_flags = _matched_keywords(normalized, _EMERGENCY_KEYWORDS)
+    boundary = _boundary_labels(classification.category)
+    reasons = (
+        f"primary_intent={primary_intent}",
+        *classification.reasons,
+    )
+    return ChatIntentAnalysis(
+        primary_intent=primary_intent,
+        category=classification.category,
+        related_conditions=related_conditions,
+        red_flags=red_flags,
+        boundary=boundary,
+        reasons=reasons,
+    )
+
+
+def select_medical_knowledge(
+    analysis: ChatIntentAnalysis,
+) -> tuple[MedicalKnowledgeItem, ...]:
+    """Return reviewed, user-facing knowledge items relevant to the intent."""
+    selected: list[MedicalKnowledgeItem] = []
+    for item in MEDICAL_KNOWLEDGE_ITEMS:
+        if item.reviewed_status != "reviewed" or item.evidence_type == "paper_candidate":
+            continue
+        if item.condition is not None and item.condition not in analysis.related_conditions:
+            continue
+        if _knowledge_item_matches_intent(item, analysis):
+            selected.append(item)
+
+    return tuple(selected)
 
 
 def policy_for_question(question: str) -> AnswerPolicy:
@@ -662,6 +931,13 @@ def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword.casefold() in text for keyword in keywords)
 
 
+def _has_p0_interaction_boundary(text: str) -> bool:
+    return any(
+        _contains_any(text, first_group) and _contains_any(text, second_group)
+        for first_group, second_group in _P0_INTERACTION_BOUNDARY_GROUPS
+    )
+
+
 def _has_nutrition_analysis_intent(text: str) -> bool:
     if _contains_any(text, _NUTRITION_KEYWORDS):
         return True
@@ -670,6 +946,113 @@ def _has_nutrition_analysis_intent(text: str) -> bool:
         text,
         _NUTRITION_CONTEXT_KEYWORDS,
     )
+
+
+def _primary_intent(text: str) -> ChatIntent:
+    intent_keywords: tuple[tuple[ChatIntent, tuple[str, ...]], ...] = (
+        ("medication", _DRUG_KEYWORDS),
+        ("lab_result", _MEDICAL_DECISION_KEYWORDS),
+        ("supplement", _SUPPLEMENT_KEYWORDS),
+        ("symptom", (*_SYMPTOM_INTENT_KEYWORDS, *_EMERGENCY_KEYWORDS)),
+        ("meal", _MEAL_INTENT_KEYWORDS),
+        ("exercise", _LIFESTYLE_KEYWORDS),
+        ("sleep", _SLEEP_INTENT_KEYWORDS),
+        ("weight", _WEIGHT_INTENT_KEYWORDS),
+    )
+    for intent, keywords in intent_keywords:
+        if _contains_any(text, keywords):
+            return intent
+    return "general_question"
+
+
+def _related_conditions(
+    text: str,
+    context: dict[str, object],
+    primary_intent: ChatIntent,
+) -> tuple[Condition, ...]:
+    conditions: list[Condition] = []
+    if _contains_any(text, ("당뇨", "혈당", "diabetes", "glucose")):
+        conditions.append("diabetes")
+    if _contains_any(text, ("고혈압", "혈압", "hypertension", "blood pressure")):
+        conditions.append("hypertension")
+    if _contains_any(text, ("콩팥", "신장", "kidney", "renal")):
+        conditions.append("kidney_disease")
+
+    for profile_condition in _profile_conditions(context):
+        if _profile_condition_is_relevant(profile_condition, text, primary_intent):
+            conditions.append(profile_condition)
+
+    return tuple(dict.fromkeys(conditions))
+
+
+def _profile_conditions(context: dict[str, object]) -> tuple[Condition, ...]:
+    profile = context.get("profile")
+    if not isinstance(profile, dict):
+        return ()
+
+    raw_conditions = profile.get("chronic_conditions")
+    if not isinstance(raw_conditions, list):
+        return ()
+
+    conditions: list[Condition] = []
+    for raw_condition in raw_conditions:
+        condition = str(raw_condition).casefold()
+        if condition in {"diabetes", "당뇨"}:
+            conditions.append("diabetes")
+        elif condition in {"hypertension", "고혈압"}:
+            conditions.append("hypertension")
+        elif condition in {"kidney", "renal", "kidney_disease", "신장", "콩팥"}:
+            conditions.append("kidney_disease")
+    return tuple(dict.fromkeys(conditions))
+
+
+def _profile_condition_is_relevant(
+    condition: Condition,
+    text: str,
+    primary_intent: ChatIntent,
+) -> bool:
+    if condition == "diabetes":
+        return primary_intent in {"meal", "exercise", "symptom", "weight"}
+    if condition == "hypertension":
+        return (
+            primary_intent == "meal"
+            and _contains_any(text, ("나트륨", "소금", "짠", "국물", "라면", "찌개", "가공식품"))
+        )
+    if condition == "kidney_disease":
+        return (
+            primary_intent in {"meal", "supplement"}
+            and _contains_any(text, ("나트륨", "소금", "짠", "단백질", "영양제"))
+        )
+    return False
+
+
+def _matched_keywords(text: str, keywords: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(keyword for keyword in keywords if keyword.casefold() in text)
+
+
+def _boundary_labels(category: QuestionCategory) -> tuple[str, ...]:
+    if category == "symptom_or_emergency":
+        return ("emergency",)
+    if category == "mental_health_risk":
+        return ("mental_health",)
+    if category == "drug_or_interaction":
+        return ("drug_or_interaction",)
+    if category == "out_of_scope":
+        return ("medical_decision",)
+    return ()
+
+
+def _knowledge_item_matches_intent(
+    item: MedicalKnowledgeItem,
+    analysis: ChatIntentAnalysis,
+) -> bool:
+    if item.intent == analysis.primary_intent:
+        return True
+    if analysis.category == "chronic_condition_context" and item.condition in analysis.related_conditions:
+        return True
+    if analysis.primary_intent == "meal" and item.intent in {"exercise", "sleep"}:
+        return item.condition is None and "diabetes" in analysis.related_conditions
+    return False
 
 
 def _build_eval_cases() -> tuple[QAEvalCase, ...]:

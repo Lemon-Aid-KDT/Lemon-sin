@@ -11,7 +11,7 @@ class FakeLLMClient:
         self.provider = "fake"
         self.model = "fake-local-llm"
 
-    def generate(self, request: LLMRequest) -> LLMResponse:
+    def generate(self, _request: LLMRequest) -> LLMResponse:
         return LLMResponse(
             text=self.response_text,
             provider=self.provider,

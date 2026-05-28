@@ -14,6 +14,8 @@ from lemon_ai_agent.guards.safety import SafetyGuard
         "이 영양제를 먹고 약을 끊으세요.",
         "복용량을 바꾸세요.",
         "현재 약 용량을 늘리세요.",
+        "고혈압이 있으면 라면을 먹는 것은 안 돼요.",
+        "고혈압이 있으면 라면을 먹지 않아야 합니다.",
         "Take more of this medicine.",
         "Stop taking your medicine.",
     ],
@@ -56,6 +58,28 @@ def test_safety_guard_blocks_unsupported_numeric_health_claims() -> None:
 
     assert result.allowed is False
     assert "Unsupported numeric medical claim detected" in result.warnings
+
+
+def test_safety_guard_blocks_unsupported_numeric_ranges() -> None:
+    """Verify invented range-style nutrient targets are treated as numeric claims."""
+    result = SafetyGuard().check_grounding(
+        "다음 끼니에서는 나트륨을 200-300mg으로 맞추세요.",
+        allowed_context="Confirmed meal: lunch ramen sodium 2600mg.",
+    )
+
+    assert result.allowed is False
+    assert "Unsupported numeric medical claim detected" in result.warnings
+
+
+def test_safety_guard_allows_grounded_numbers_with_spacing_difference() -> None:
+    """Verify supplied amounts can be repeated even when spacing differs."""
+    result = SafetyGuard().check_grounding(
+        "확인된 나트륨은 2600 mg입니다.",
+        allowed_context="점심: 라면, 나트륨 2600mg",
+    )
+
+    assert result.allowed is True
+    assert result.warnings == []
 
 
 def test_safety_guard_allows_grounded_evidence_terms() -> None:

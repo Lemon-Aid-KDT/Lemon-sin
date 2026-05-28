@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Final
 
@@ -15,6 +16,36 @@ HALL_LITE_MIN_AGE_YEARS: Final[int] = 18
 ROUND_KCAL_DECIMALS: Final[int] = 1
 ROUND_CHANGE_DECIMALS: Final[int] = 3
 HALL_LITE_WARNING = "Hall-lite 동적 시뮬레이션 참고값입니다. 실제 체중 변화는 개인 상태와 측정 오차에 따라 달라질 수 있습니다."
+MEDICAL_LIMITER_WARNING = (
+    "갑상선 질환, 만성 콩팥병, 간질환, 스테로이드 복용, 당뇨 약물처럼 "
+    "체중 변동에 큰 영향을 줄 수 있는 맥락에서는 장기 자동 예측을 낮은 신뢰도 "
+    "참고값으로만 봐야 합니다."
+)
+MEDICAL_LIMITER_LONG_TERM_DAYS: Final[int] = 90
+MEDICAL_LIMITER_TERMS: Final[frozenset[str]] = frozenset(
+    {
+        "thyroid",
+        "thyroid_disease",
+        "갑상선",
+        "ckd",
+        "chronic_kidney_disease",
+        "kidney_disease",
+        "콩팥",
+        "신장질환",
+        "liver",
+        "liver_disease",
+        "간질환",
+        "steroid",
+        "systemic_steroid",
+        "스테로이드",
+        "insulin",
+        "sglt2",
+        "glp1",
+        "sulfonylurea",
+        "diabetes_medication",
+        "당뇨약",
+    }
+)
 
 
 class WeightPredictionEngine(StrEnum):
@@ -73,6 +104,50 @@ def _should_use_hall_lite(
     if engine == WeightPredictionEngine.HALL_LITE:
         return True
     return engine == WeightPredictionEngine.AUTO and days >= LONG_TERM_HALL_CANDIDATE_DAYS
+
+
+def _flatten_risk_context_values(risk_context: Mapping[str, object] | None) -> tuple[str, ...]:
+    """Return normalized string tokens from a flexible risk context mapping."""
+    if not risk_context:
+        return ()
+
+    values: list[str] = []
+    for value in risk_context.values():
+        if isinstance(value, str):
+            values.append(value.casefold())
+            continue
+        if isinstance(value, list | tuple | set):
+            values.extend(str(item).casefold() for item in value)
+            continue
+        if value is not None:
+            values.append(str(value).casefold())
+    return tuple(values)
+
+
+def _has_medical_limiter(risk_context: Mapping[str, object] | None) -> bool:
+    """Check whether long-term automatic weight prediction should be downgraded."""
+    values = _flatten_risk_context_values(risk_context)
+    return any(
+        limiter in value or value in limiter
+        for value in values
+        for limiter in MEDICAL_LIMITER_TERMS
+    )
+
+
+def _with_medical_limiter_warnings(
+    response: WeightPredictionResponse,
+) -> WeightPredictionResponse:
+    """Attach low-confidence warnings to long-term periods without changing schema."""
+    return response.model_copy(
+        update={
+            "predictions": [
+                step.model_copy(update={"warning": MEDICAL_LIMITER_WARNING})
+                if step.days >= MEDICAL_LIMITER_LONG_TERM_DAYS
+                else step
+                for step in response.predictions
+            ]
+        }
+    )
 
 
 def _hall_result_to_weight_step(
@@ -185,6 +260,7 @@ def predict_weight_periods_selected(
     periods_days: list[int],
     feature_hall_lite_weight_prediction: bool = False,
     weight_prediction_engine: str | WeightPredictionEngine = WeightPredictionEngine.STATIC_7STEP,
+    risk_context: Mapping[str, object] | None = None,
 ) -> WeightPredictionResponse:
     """Predict periods through the configured safe model selector.
 
@@ -198,6 +274,8 @@ def predict_weight_periods_selected(
         periods_days: Prediction periods in days.
         feature_hall_lite_weight_prediction: Hall-lite feature flag.
         weight_prediction_engine: Configured prediction engine.
+        risk_context: Optional condition/medication context used only to downgrade
+            long-term automatic predictions.
 
     Returns:
         Existing API-compatible response.
@@ -206,6 +284,18 @@ def predict_weight_periods_selected(
         ValueError: If the configured prediction engine is unsupported.
     """
     engine = _coerce_engine(weight_prediction_engine)
+    if _has_medical_limiter(risk_context):
+        static_response = predict_weight_periods(
+            weight_kg=weight_kg,
+            height_cm=height_cm,
+            age=age,
+            sex=sex,
+            daily_steps=daily_steps,
+            daily_intake_kcal=daily_intake_kcal,
+            periods_days=periods_days,
+        )
+        return _with_medical_limiter_warnings(static_response)
+
     if not feature_hall_lite_weight_prediction or engine == WeightPredictionEngine.STATIC_7STEP:
         return predict_weight_periods(
             weight_kg=weight_kg,

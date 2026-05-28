@@ -23,6 +23,17 @@ FORBIDDEN_TERMS = (
     "당뇨입니다",
     "고혈압입니다",
     "신장질환입니다",
+    "완전히 금지",
+    "절대 먹지",
+    "절대 금지",
+    "먹으면 안 된다",
+    "먹으면 안 돼",
+    "먹는 것은 안 돼",
+    "먹으면 안 됩니다",
+    "안 돼요",
+    "먹지 않아야",
+    "먹지 말아야",
+    "먹지 마세요",
     "take more of this medicine",
     "stop taking your medicine",
 )
@@ -50,9 +61,15 @@ UNSUPPORTED_EVIDENCE_TERMS = (
 )
 
 NUMERIC_MEDICAL_CLAIM_PATTERN = re.compile(
-    r"\b\d+(?:\.\d+)?\s*(?:mg/dl|mg|mcg|µg|ug|iu|g|kcal|mmhg|%)\b",
+    r"\b\d+(?:\.\d+)?(?:\s*(?:-|~|\u2013|\u2014|to|에서|부터)\s*\d+(?:\.\d+)?)?"
+    r"\s*(?:mg/dl|mg|mcg|µg|ug|iu|g|kcal|mmhg|%)(?=\b|[^A-Za-z0-9_]|$)",
     re.IGNORECASE,
 )
+
+
+def _compact_numeric_text(text: str) -> str:
+    """Normalize cosmetic spacing so supplied numeric facts can be repeated."""
+    return re.sub(r"\s+", "", text.casefold().replace("µ", "u"))
 
 
 @dataclass(frozen=True)
@@ -89,8 +106,9 @@ class SafetyGuard:
             if lowered_term in lowered_text and lowered_term not in lowered_context:
                 warnings.append("Unsupported medical fact detected")
 
+        compact_context = _compact_numeric_text(lowered_context)
         for claim in NUMERIC_MEDICAL_CLAIM_PATTERN.findall(text):
-            if claim.lower() not in lowered_context:
+            if _compact_numeric_text(claim) not in compact_context:
                 warnings.append("Unsupported numeric medical claim detected")
                 break
 
