@@ -29,6 +29,7 @@ venv/
 env/
 ENV/
 .pytest_cache/
+backend/.pytest-basetemp-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -106,9 +107,24 @@ logs/
 *.bak
 *.backup
 *.orig
+_archive/
 
 # ── 시스템·민감 정보 (혹시 모를 누출 차단) ──────
 *.pid
 secrets/
 .secrets/
 private/
+
+# ── Meal vision / YOLO 학습 부산물 ─────────────
+models/
+ml/outputs/
+ml/data/raw/
+ml/data/processed/
+ml/notebooks/.ipynb_checkpoints/
+*.pt
+runs/
+wandb/
+
+# Large datasets (DO NOT COMMIT)
+data/food_images/
+
