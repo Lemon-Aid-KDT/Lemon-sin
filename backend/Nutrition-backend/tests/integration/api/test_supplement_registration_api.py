@@ -94,6 +94,7 @@ def _payload() -> dict[str, object]:
         ],
         "serving": {"amount": 1, "unit": "capsule", "daily_servings": 1},
         "intake_schedule": {"frequency": "daily", "time_of_day": ["morning"]},
+        "evidence_refs": ["span-1"],
         "user_confirmed": True,
     }
 
@@ -112,6 +113,7 @@ def _stored_supplement() -> UserSupplement:
         manufacturer="Sample Nutrition",
         serving_snapshot={"amount": 1, "unit": "capsule", "daily_servings": 1},
         intake_schedule={"frequency": "daily", "time_of_day": ["morning"]},
+        evidence_refs=["span-1"],
         user_confirmed_at=now,
         created_at=now,
         updated_at=now,
@@ -152,19 +154,22 @@ def test_create_user_supplement_uses_current_user_confirmation(
         _session: object,
         user: AuthenticatedUser,
         request: UserSupplementCreate,
+        _settings: object,
     ) -> UserSupplementStoreResult:
         """Capture route inputs and return a stored row.
 
         Args:
-            _session: Fake session dependency.
-            user: Authenticated user passed by the route.
-            request: Validated request payload.
+                _session: Fake session dependency.
+                user: Authenticated user passed by the route.
+                request: Validated request payload.
+                _settings: Route settings passed through by the API.
 
-        Returns:
+            Returns:
             Fake persisted supplement result.
         """
         captured["subject"] = user.subject
         captured["analysis_id"] = request.analysis_id
+        captured["evidence_refs"] = request.evidence_refs
         return UserSupplementStoreResult(supplement=supplement, ingredients=[ingredient])
 
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
@@ -179,8 +184,10 @@ def test_create_user_supplement_uses_current_user_confirmation(
     assert response.status_code == status.HTTP_201_CREATED
     assert captured["subject"] == "local-dev-user"
     assert str(captured["analysis_id"]) == "11111111-1111-4111-8111-111111111111"
+    assert captured["evidence_refs"] == ["span-1"]
     body = response.json()
     assert body["display_name"] == "Vitamin D 1000 IU"
+    assert body["evidence_refs"] == ["span-1"]
     assert "owner_subject" not in body
 
 

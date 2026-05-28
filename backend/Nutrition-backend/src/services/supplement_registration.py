@@ -20,6 +20,8 @@ from src.models.db.supplement import (
     UserSupplementIngredient,
 )
 from src.models.schemas.supplement import (
+    USER_SUPPLEMENT_EVIDENCE_REF_LIMIT,
+    USER_SUPPLEMENT_EVIDENCE_REF_MAX_LENGTH,
     SupplementAnalysisStatus,
     SupplementIngredientCandidate,
     SupplementIntakeSchedule,
@@ -75,6 +77,7 @@ async def create_user_supplement_from_confirmation(
     session: AsyncSession,
     user: AuthenticatedUser,
     request: UserSupplementCreate,
+    _settings: object | None = None,
 ) -> UserSupplementStoreResult:
     """Persist a user-confirmed supplement and optional preview confirmation.
 
@@ -82,6 +85,7 @@ async def create_user_supplement_from_confirmation(
         session: Request-scoped async database session.
         user: Authenticated owner.
         request: User-confirmed supplement creation request.
+        _settings: Optional route settings reserved for audit-compatible callers.
 
     Returns:
         Persisted supplement and ingredient rows.
@@ -102,6 +106,7 @@ async def create_user_supplement_from_confirmation(
         request.analysis_id,
         now,
     )
+    evidence_refs = _validate_preview_evidence_refs(request.evidence_refs, preview)
     match = await match_supplement_product(session, request)
     supplement = UserSupplement(
         owner_subject=owner_subject,
@@ -115,6 +120,7 @@ async def create_user_supplement_from_confirmation(
             if request.intake_schedule is not None
             else {}
         ),
+        evidence_refs=evidence_refs,
         user_confirmed_at=now,
     )
     session.add(supplement)
@@ -278,6 +284,7 @@ def user_supplement_to_response(
             if supplement.intake_schedule
             else None
         ),
+        evidence_refs=_safe_evidence_refs(supplement.evidence_refs),
         user_confirmed_at=supplement.user_confirmed_at,
         created_at=supplement.created_at,
     )
@@ -322,6 +329,87 @@ async def _get_owned_preview_for_confirmation(
     if preview.confirmed_at is not None:
         raise SupplementPreviewStateError("Supplement analysis preview was already confirmed.")
     return preview
+
+
+def _validate_preview_evidence_refs(
+    evidence_refs: list[str],
+    preview: SupplementAnalysisRun | None,
+) -> list[str]:
+    """Validate confirmed evidence ids against the linked preview.
+
+    Args:
+        evidence_refs: User-confirmed evidence ids from the registration request.
+        preview: Optional source analysis preview row.
+
+    Returns:
+        Safe evidence ids in request order.
+
+    Raises:
+        SupplementRegistrationValidationError: If refs are supplied without a
+            source preview or any ref is absent from the preview evidence spans.
+    """
+    if not evidence_refs:
+        return []
+    if preview is None:
+        raise SupplementRegistrationValidationError(
+            "evidence_refs require a linked analysis preview."
+        )
+    allowed_refs = _preview_evidence_ref_ids(preview)
+    unknown_refs = [ref for ref in evidence_refs if ref not in allowed_refs]
+    if unknown_refs:
+        raise SupplementRegistrationValidationError(
+            "Unknown evidence_refs for analysis preview: " + ", ".join(unknown_refs[:5])
+        )
+    return list(evidence_refs)
+
+
+def _preview_evidence_ref_ids(preview: SupplementAnalysisRun) -> set[str]:
+    """Return evidence ids present in a preview parsed snapshot.
+
+    Args:
+        preview: Source analysis preview row.
+
+    Returns:
+        Set of sanitized evidence span ids.
+    """
+    snapshot = preview.parsed_snapshot if isinstance(preview.parsed_snapshot, dict) else {}
+    spans = snapshot.get("evidence_spans")
+    if not isinstance(spans, list):
+        return set()
+    ids: set[str] = set()
+    for span in spans:
+        if not isinstance(span, dict):
+            continue
+        span_id = span.get("span_id")
+        if isinstance(span_id, str) and span_id.strip():
+            ids.add(span_id.strip())
+    return ids
+
+
+def _safe_evidence_refs(value: object) -> list[str]:
+    """Return bounded evidence refs from persisted JSON.
+
+    Args:
+        value: Persisted JSON value.
+
+    Returns:
+        Evidence refs safe for the public current-user response.
+    """
+    if not isinstance(value, list):
+        return []
+    refs: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        ref = item.strip()
+        if not ref or len(ref) > USER_SUPPLEMENT_EVIDENCE_REF_MAX_LENGTH or ref in seen:
+            continue
+        seen.add(ref)
+        refs.append(ref)
+        if len(refs) >= USER_SUPPLEMENT_EVIDENCE_REF_LIMIT:
+            break
+    return refs
 
 
 async def _list_owned_supplements(

@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
@@ -48,6 +48,8 @@ SupplementMissingRequiredSection = Literal[
     "functional_info",
     "barcode",
 ]
+USER_SUPPLEMENT_EVIDENCE_REF_LIMIT = 80
+USER_SUPPLEMENT_EVIDENCE_REF_MAX_LENGTH = 120
 
 
 class SupplementAnalysisStatus(StrEnum):
@@ -364,7 +366,10 @@ class SupplementPreviewLabelSection(BaseModel):
     text_bundle: str | None = Field(default=None, max_length=2_000)
     confidence: float | None = Field(default=None, ge=0, le=1)
     requires_review: bool = False
-    evidence_refs: list[str] = Field(default_factory=list, max_length=80)
+    evidence_refs: list[str] = Field(
+        default_factory=list,
+        max_length=USER_SUPPLEMENT_EVIDENCE_REF_LIMIT,
+    )
 
 
 class SupplementPreviewStructuredIntakeMethod(BaseModel):
@@ -635,6 +640,7 @@ class UserSupplementCreate(BaseModel):
         ingredients: User-confirmed ingredient list.
         serving: User-confirmed serving values.
         intake_schedule: User-confirmed intake schedule.
+        evidence_refs: Preview evidence ids supporting the confirmed values.
         user_confirmed: Must be true because preview values cannot be stored as final data.
     """
 
@@ -646,7 +652,27 @@ class UserSupplementCreate(BaseModel):
     ingredients: list[UserSupplementIngredientInput] = Field(min_length=1, max_length=80)
     serving: SupplementServing
     intake_schedule: SupplementIntakeSchedule | None = None
+    evidence_refs: list[str] = Field(
+        default_factory=list,
+        max_length=USER_SUPPLEMENT_EVIDENCE_REF_LIMIT,
+    )
     user_confirmed: Literal[True] = True
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def normalize_evidence_refs(cls, values: list[str]) -> list[str]:
+        """Normalize bounded evidence references for safe storage.
+
+        Args:
+            values: Candidate preview evidence ids.
+
+        Returns:
+            Trimmed unique evidence ids.
+
+        Raises:
+            ValueError: If an evidence id is blank or too long.
+        """
+        return _normalize_user_supplement_evidence_refs(values)
 
 
 class UserSupplementResponse(BaseModel):
@@ -659,6 +685,7 @@ class UserSupplementResponse(BaseModel):
         ingredients: Stored ingredient list.
         serving: Stored serving values.
         intake_schedule: Stored intake schedule.
+        evidence_refs: Preview evidence ids that supported the stored values.
         user_confirmed_at: Time when the user confirmed the values.
         created_at: Server-side record creation time.
     """
@@ -671,6 +698,7 @@ class UserSupplementResponse(BaseModel):
     ingredients: list[SupplementIngredientCandidate]
     serving: SupplementServing
     intake_schedule: SupplementIntakeSchedule | None
+    evidence_refs: list[str] = Field(default_factory=list, max_length=80)
     user_confirmed_at: datetime
     created_at: datetime
 
@@ -687,3 +715,30 @@ class UserSupplementListResponse(BaseModel):
     results: list[UserSupplementResponse]
     limit: int
     offset: int
+
+
+def _normalize_user_supplement_evidence_refs(values: list[str]) -> list[str]:
+    """Return a trimmed, unique evidence-ref list.
+
+    Args:
+        values: Candidate evidence ids supplied by the user-confirmed flow.
+
+    Returns:
+        Evidence ids in original order with duplicates removed.
+
+    Raises:
+        ValueError: If any id is blank or exceeds the storage bound.
+    """
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        ref = value.strip()
+        if not ref:
+            raise ValueError("evidence_refs values must be non-empty.")
+        if len(ref) > USER_SUPPLEMENT_EVIDENCE_REF_MAX_LENGTH:
+            raise ValueError("evidence_refs values must be 120 characters or fewer.")
+        if ref in seen:
+            continue
+        seen.add(ref)
+        normalized.append(ref)
+    return normalized

@@ -536,7 +536,24 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         frequency: _nonEmpty(_frequencyController.text) ?? 'daily',
         timeOfDay: _splitCsv(_timeOfDayController.text),
       ),
+      evidenceRefs: _registrationEvidenceRefs(preview),
     );
+  }
+
+  List<String> _registrationEvidenceRefs(SupplementAnalysisPreview preview) {
+    final Set<String> seen = <String>{};
+    final List<String> refs = <String>[];
+    for (final SupplementPreviewEvidenceSpan span in preview.evidenceSpans) {
+      final String ref = span.spanId.trim();
+      if (ref.isEmpty || !seen.add(ref)) {
+        continue;
+      }
+      refs.add(ref);
+      if (refs.length >= 80) {
+        break;
+      }
+    }
+    return refs;
   }
 
   bool _hasReviewIngredient(SupplementAnalysisPreview preview) {

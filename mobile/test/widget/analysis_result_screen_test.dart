@@ -79,6 +79,9 @@ void main() {
         repository.registeredRequest?.ingredients.single.source,
         'user_confirmed',
       );
+      expect(repository.registeredRequest?.evidenceRefs, <String>[
+        'span-empty',
+      ]);
       expect(repository.explainUsedLocalLlm, isTrue);
       expect(controller.lastRegisteredSupplement?.displayName, '수정 비타민 D');
     },

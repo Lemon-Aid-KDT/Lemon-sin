@@ -174,37 +174,42 @@ def _user() -> AuthenticatedUser:
 
 
 def _request(
-    *, analysis_id: object | None = None, nutrient_code: str = "vitamin_d_ug"
+    *,
+    analysis_id: object | None = None,
+    nutrient_code: str = "vitamin_d_ug",
+    evidence_refs: list[str] | None = None,
 ) -> UserSupplementCreate:
     """Return a confirmed supplement creation request.
 
     Args:
         analysis_id: Optional source analysis id.
         nutrient_code: Ingredient nutrient code.
+        evidence_refs: Optional preview evidence ids.
 
     Returns:
         User supplement creation request.
     """
-    return UserSupplementCreate.model_validate(
-        {
-            "analysis_id": analysis_id,
-            "display_name": "Vitamin D 1000 IU",
-            "manufacturer": "Sample Nutrition",
-            "ingredients": [
-                {
-                    "display_name": "Vitamin D",
-                    "nutrient_code": nutrient_code,
-                    "amount": 25,
-                    "unit": "ug",
-                    "confidence": 1,
-                    "source": "user_confirmed",
-                }
-            ],
-            "serving": {"amount": 1, "unit": "capsule", "daily_servings": 1},
-            "intake_schedule": {"frequency": "daily", "time_of_day": ["morning"]},
-            "user_confirmed": True,
-        }
-    )
+    payload = {
+        "analysis_id": analysis_id,
+        "display_name": "Vitamin D 1000 IU",
+        "manufacturer": "Sample Nutrition",
+        "ingredients": [
+            {
+                "display_name": "Vitamin D",
+                "nutrient_code": nutrient_code,
+                "amount": 25,
+                "unit": "ug",
+                "confidence": 1,
+                "source": "user_confirmed",
+            }
+        ],
+        "serving": {"amount": 1, "unit": "capsule", "daily_servings": 1},
+        "intake_schedule": {"frequency": "daily", "time_of_day": ["morning"]},
+        "user_confirmed": True,
+    }
+    if evidence_refs is not None:
+        payload["evidence_refs"] = evidence_refs
+    return UserSupplementCreate.model_validate(payload)
 
 
 def _preview(analysis_id: object | None = None, *, expired: bool = False) -> SupplementAnalysisRun:
@@ -227,7 +232,17 @@ def _preview(analysis_id: object | None = None, *, expired: bool = False) -> Sup
         image_mime_type="image/png",
         image_size_bytes=128,
         ocr_provider="ollama",
-        parsed_snapshot={"parsed_product": {"product_name": "Vitamin D 1000 IU"}},
+        parsed_snapshot={
+            "parsed_product": {"product_name": "Vitamin D 1000 IU"},
+            "evidence_spans": [
+                {
+                    "span_id": "span-1",
+                    "source_type": "ocr_layout",
+                    "section_type": "supplement_facts",
+                    "text_excerpt": "Vitamin D 25 ug",
+                }
+            ],
+        },
         match_snapshot={"matched_product_candidates": []},
         warnings=[],
         algorithm_version="supplement-ollama-parser-v1.0.0",
@@ -331,7 +346,7 @@ async def test_create_user_supplement_confirms_preview_and_persists_rows() -> No
     result = await create_user_supplement_from_confirmation(
         cast(AsyncSession, session),
         _user(),
-        _request(analysis_id=preview.id),
+        _request(analysis_id=preview.id, evidence_refs=["span-1"]),
     )
 
     assert session.flushed is True
@@ -341,6 +356,7 @@ async def test_create_user_supplement_confirms_preview_and_persists_rows() -> No
     assert result.supplement.owner_subject == "https://auth.example.com/::user_123"
     assert result.supplement.source_analysis_run_id == preview.id
     assert result.supplement.matched_product_id == product.id
+    assert result.supplement.evidence_refs == ["span-1"]
     assert result.ingredients[0].user_supplement_id == result.supplement.id
     assert preview.status == SupplementAnalysisStatus.CONFIRMED.value
     assert preview.confirmed_at is not None
@@ -359,6 +375,37 @@ async def test_create_user_supplement_rejects_unknown_nutrient_code() -> None:
             _user(),
             _request(nutrient_code="fake_code"),
         )
+
+
+@pytest.mark.asyncio
+async def test_create_user_supplement_rejects_unknown_evidence_ref() -> None:
+    """Verify confirmed evidence refs must exist in the linked preview."""
+    preview = _preview()
+    session = _FakeRegistrationSession(scalar_result=preview)
+
+    with pytest.raises(SupplementRegistrationValidationError, match="Unknown evidence_refs"):
+        await create_user_supplement_from_confirmation(
+            cast(AsyncSession, session),
+            _user(),
+            _request(analysis_id=preview.id, evidence_refs=["missing-span"]),
+        )
+
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_create_user_supplement_rejects_evidence_ref_without_preview() -> None:
+    """Verify evidence refs cannot be stored without a source preview."""
+    session = _FakeRegistrationSession()
+
+    with pytest.raises(SupplementRegistrationValidationError, match="linked analysis preview"):
+        await create_user_supplement_from_confirmation(
+            cast(AsyncSession, session),
+            _user(),
+            _request(evidence_refs=["span-1"]),
+        )
+
+    assert session.committed is False
 
     assert session.added == []
 

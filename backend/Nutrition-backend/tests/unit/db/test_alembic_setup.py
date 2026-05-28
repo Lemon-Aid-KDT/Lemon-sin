@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0018_create_learning_dataset_model_registry_tables"]
+    assert script.get_heads() == ["0019_add_user_supplement_evidence_refs"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0018_create_learning_dataset_model_registry_tables"]
+    assert script.get_heads() == ["0019_add_user_supplement_evidence_refs"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -255,6 +255,23 @@ def test_user_supplement_fk_index_migration_adds_no_data_exposure() -> None:
     assert "POLICY" not in migration
     assert "raw_ocr_text" not in migration
     assert "provider_payload" not in migration
+
+
+def test_user_supplement_evidence_refs_migration_adds_no_raw_data() -> None:
+    """Verify evidence-ref migration stores only sanitized reference ids."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0019_add_user_supplement_evidence_refs.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert migration_path.is_file()
+    assert "evidence_refs" in migration
+    assert "jsonb_typeof(evidence_refs) = 'array'" in migration
+    assert "raw OCR text" in migration
+    assert "provider payloads" in migration
+    assert "image bytes" in migration
+    assert "GRANT " not in migration
+    assert "POLICY" not in migration
 
 
 def test_backend_only_media_migration_file_exists() -> None:

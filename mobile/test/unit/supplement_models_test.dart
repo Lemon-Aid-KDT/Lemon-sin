@@ -211,10 +211,12 @@ void main() {
         frequency: 'daily',
         timeOfDay: <String>['morning'],
       ),
+      evidenceRefs: const <String>['span-001', 'span-002'],
     );
 
     expect(request.toJson()['user_confirmed'], true);
     expect(request.toJson()['analysis_id'], preview.analysisId);
+    expect(request.toJson()['evidence_refs'], <String>['span-001', 'span-002']);
   });
 
   test('parses supplement analysis session response', () {

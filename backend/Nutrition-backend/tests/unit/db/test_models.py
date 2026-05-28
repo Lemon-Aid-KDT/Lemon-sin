@@ -446,6 +446,7 @@ def test_supplement_tables_are_registered_with_required_columns() -> None:
         "display_name",
         "serving_snapshot",
         "intake_schedule",
+        "evidence_refs",
         "deleted_at",
     }.issubset(set(user_supplement.c.keys()))
     assert {

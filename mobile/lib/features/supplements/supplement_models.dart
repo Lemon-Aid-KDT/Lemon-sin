@@ -1579,6 +1579,7 @@ class UserSupplementCreate {
     required this.ingredients,
     required this.serving,
     required this.intakeSchedule,
+    this.evidenceRefs = const <String>[],
   });
 
   /// Temporary analysis identifier used for traceability.
@@ -1599,6 +1600,9 @@ class UserSupplementCreate {
   /// Optional user-confirmed intake schedule.
   final SupplementIntakeSchedule? intakeSchedule;
 
+  /// Preview evidence ids that support the confirmed values.
+  final List<String> evidenceRefs;
+
   /// Serializes the request to backend JSON.
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -1612,6 +1616,7 @@ class UserSupplementCreate {
           .toList(growable: false),
       'serving': serving.toJson(),
       'intake_schedule': intakeSchedule?.toJson(),
+      'evidence_refs': evidenceRefs,
       'user_confirmed': true,
     };
   }
@@ -1715,6 +1720,7 @@ class UserSupplementResponse {
     required this.id,
     required this.displayName,
     required this.manufacturer,
+    this.evidenceRefs = const <String>[],
   });
 
   /// Persisted supplement identifier.
@@ -1726,12 +1732,16 @@ class UserSupplementResponse {
   /// User-confirmed manufacturer.
   final String? manufacturer;
 
+  /// Preview evidence ids that supported the stored supplement.
+  final List<String> evidenceRefs;
+
   /// Parses a backend persisted supplement response.
   factory UserSupplementResponse.fromJson(Map<String, dynamic> json) {
     return UserSupplementResponse(
       id: readString(json, 'id'),
       displayName: readString(json, 'display_name'),
       manufacturer: readOptionalString(json, 'manufacturer'),
+      evidenceRefs: readOptionalStringList(json, 'evidence_refs'),
     );
   }
 }

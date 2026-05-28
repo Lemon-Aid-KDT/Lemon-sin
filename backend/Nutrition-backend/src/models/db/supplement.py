@@ -207,6 +207,7 @@ class UserSupplement(TimestampMixin, Base):
         manufacturer: User-confirmed manufacturer.
         serving_snapshot: User-confirmed serving values.
         intake_schedule: User-confirmed intake schedule.
+        evidence_refs: Bounded preview evidence ids supporting confirmed values.
         user_confirmed_at: Time when the user confirmed values.
         deleted_at: Soft-delete timestamp for current-user hiding and future audit.
         created_at: Server-side record creation timestamp.
@@ -216,6 +217,7 @@ class UserSupplement(TimestampMixin, Base):
     __tablename__ = "user_supplements"
     __table_args__ = (
         CheckConstraint("display_name <> ''", name="display_name_nonempty"),
+        CheckConstraint("jsonb_typeof(evidence_refs) = 'array'", name="evidence_refs_array"),
         Index("ix_user_supplements_owner_created_at", "owner_subject", "created_at"),
         Index("ix_user_supplements_owner_deleted_at", "owner_subject", "deleted_at"),
         Index("ix_user_supplements_source_analysis_run_id", "source_analysis_run_id"),
@@ -242,6 +244,7 @@ class UserSupplement(TimestampMixin, Base):
     intake_schedule: Mapped[dict[str, Any]] = mapped_column(
         postgresql.JSONB, nullable=False, default=dict
     )
+    evidence_refs: Mapped[list[str]] = mapped_column(postgresql.JSONB, nullable=False, default=list)
     user_confirmed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
