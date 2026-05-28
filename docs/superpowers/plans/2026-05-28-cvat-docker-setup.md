@@ -6,6 +6,48 @@
 
 ---
 
+## 전체 파이프라인
+
+```
+1. 크롤링 → 음식별 폴더로 수집 (mala-hot-pot/, stir-fried-pork/, ...)
+2. CVAT 라벨링 → 폴더당 task 1개, 단일 클래스로 bbox 작업
+3. YOLO 포맷 export → images/ + labels/ ZIP
+4. 파일명 정규화 + 기존 AIHub 데이터에 병합
+5. downsample_balanced.py 재실행 → balanced 데이터셋 재생성
+6. 모델 재학습
+```
+
+---
+
+## 크롤링 우선순위 전략
+
+`docs/superpowers/plans/2026-05-28-class-dataset-ap50-summary.csv` 기준:
+
+| 우선순위 | 조건 | 크롤링 목표 | cap 조정 |
+|---|---|---|---|
+| 🔴 최우선 | 원본 < 500장 + AP50 낮음 | 500장까지 채우기 | 현행 유지 (500) |
+| 🟠 2순위 | 원본 >= 500장 + AP50 낮음 | 다양성 확보용 추가 | 500 → 1000으로 증가 |
+| 🟡 낮음 | 원본 >= 500장 + AP50 높음 | 불필요 | 현행 유지 |
+
+> 원본 >= 500 클래스는 다운샘플링에서 희석되므로 cap을 함께 올려야 크롤링 효과가 반영됨.
+> 크롤링 이미지는 다양한 각도·조명·배경을 포함해 AIHub 단일 촬영 환경의 한계를 보완함.
+
+### 클래스별 크롤링 목표량
+
+| class | orig_train | AP50 | 크롤링 목표 | 비고 |
+|---|---:|---:|---:|---|
+| stir-fried-pork | 240 | 0.267 | 260장 | 500까지 채우기 |
+| mala-hot-pot | 270 | 0.267 | 230장 | 500까지 채우기 |
+| sweet-and-sour-pork | 290 | 0.443 | 210장 | 500까지 채우기 |
+| takoyaki | 410 | 0.582 | 90장 | 500까지 채우기 |
+| rice-soup | 460 | 0.693 | 40장 | 500까지 채우기 |
+| noodle-soup | 5620 | 0.551 | 300장+ | cap 1000으로 증가 |
+| seafood-stew | 3220 | 0.556 | 300장+ | cap 1000으로 증가 |
+| spicy-seafood-noodles | 1640 | 0.478 | 300장+ | cap 1000으로 증가 |
+| stew | 1620 | 0.622 | 200장+ | cap 1000으로 증가 |
+
+---
+
 ## 0. 사전 요구사항 확인
 
 - Windows 11 (WSL2 활성화 필요)
@@ -107,69 +149,26 @@ http://localhost:8080
 2. Project name: `aihub-yolo-50-crawl-labeling`
 3. **Labels** 탭 → **From file** 선택
 
-### 3-2. 라벨 파일 준비 (50개 클래스)
+### 3-2. Task 생성 방식 — 폴더(음식)당 task 1개 + 단일 클래스
 
-아래 내용을 `cvat_labels.json`으로 저장 후 업로드:
+크롤링 이미지는 음식별로 폴더가 구분되어 있으므로, task마다 클래스를 1개만 등록한다.
+라벨러는 클래스 선택 없이 해당 음식에 박스만 치면 된다.
 
-```json
-[
-  {"name": "salad"},
-  {"name": "mixed-rice-bowl"},
-  {"name": "rice-bowl"},
-  {"name": "fried-rice"},
-  {"name": "rice-soup"},
-  {"name": "rice-porridge"},
-  {"name": "seaweed-rice-roll"},
-  {"name": "spicy-rice-cakes"},
-  {"name": "dumplings"},
-  {"name": "fish-cake"},
-  {"name": "fried-food-platter"},
-  {"name": "savory-pancake"},
-  {"name": "korean-blood-sausage"},
-  {"name": "takoyaki"},
-  {"name": "soup"},
-  {"name": "stew"},
-  {"name": "hot-pot"},
-  {"name": "noodle-soup"},
-  {"name": "cold-noodles"},
-  {"name": "spicy-mixed-noodles"},
-  {"name": "ramen"},
-  {"name": "black-bean-noodles"},
-  {"name": "spicy-seafood-noodles"},
-  {"name": "fried-chicken"},
-  {"name": "pork-cutlet"},
-  {"name": "grilled-pork-belly"},
-  {"name": "grilled-beef"},
-  {"name": "barbecue-ribs"},
-  {"name": "bulgogi"},
-  {"name": "stir-fried-pork"},
-  {"name": "braised-chicken"},
-  {"name": "chicken-galbi"},
-  {"name": "braised-pork-hock"},
-  {"name": "grilled-fish"},
-  {"name": "raw-fish"},
-  {"name": "sushi"},
-  {"name": "seafood-stew"},
-  {"name": "shrimp-dish"},
-  {"name": "squid-dish"},
-  {"name": "sweet-and-sour-pork"},
-  {"name": "mala-hot-pot"},
-  {"name": "dim-sum"},
-  {"name": "udon"},
-  {"name": "pasta"},
-  {"name": "pizza"},
-  {"name": "hamburger"},
-  {"name": "sandwich"},
-  {"name": "curry"},
-  {"name": "bread"},
-  {"name": "cake"}
-]
-```
+**Task 생성 절차:**
+
+1. 프로젝트 내 **Create new task**
+2. Task name: 폴더명과 동일하게 설정 (예: `mala-hot-pot`)
+3. **Labels** 탭 → **Add label** → 해당 음식 이름만 입력 (예: `mala-hot-pot`)
+4. **Select files** → 해당 폴더의 이미지 업로드
+5. **Submit & Open**
+
+> 50개 클래스 전체 라벨을 한 task에 넣지 않는다. 음식별로 task를 분리하면
+> 라벨러 실수(잘못된 클래스 선택)를 원천 차단할 수 있다.
 
 ### 3-3. Task 생성 (이미지 업로드)
 
 1. 프로젝트 내 **Create new task**
-2. Task name 예: `crawl-batch-01-mala-hot-pot`
+2. Task name 예: `crawl-mala-hot-pot-batch01`
 3. **Select files** → 크롤링 이미지 업로드 (jpg/png)
 4. **Submit & Open**
 
@@ -211,14 +210,49 @@ exp03 best.pt를 Ultralytics YOLO detector로 래핑해 Nuclio에 배포하면
 
 ---
 
-## 5. YOLO 포맷 Export
+## 5. YOLO 포맷 Export 및 AIHub 데이터 병합
 
-라벨링 완료 후:
+### 5-1. Export
 
 1. Task 선택 → **Actions** → **Export task dataset**
 2. Format: **YOLO 1.1** 선택
 3. ZIP 다운로드 → `images/` + `labels/` 구조로 압축됨
-4. 압축 해제 후 `data/food_images/aihub_yolo_50_crawl/` 아래 배치
+
+### 5-2. 파일명 정규화
+
+AIHub 데이터의 stem 형식: `train_A13001_s02_p02_594f120b`
+크롤링 파일명이 중복되지 않도록 rename 필요:
+
+```
+crawl_mala_hot_pot_0001.jpg
+crawl_mala_hot_pot_0002.jpg
+...
+```
+
+향후 `scripts/data/` 에 rename + 병합 스크립트를 추가 예정.
+
+### 5-3. 기존 데이터셋에 병합
+
+```
+data/food_images/aihub_yolo_50/train/images/  ← 크롤링 이미지 복사
+data/food_images/aihub_yolo_50/train/labels/  ← 크롤링 라벨 복사
+```
+
+### 5-4. balanced 데이터셋 재생성
+
+병합 후 `downsample_balanced.py` 재실행. cap 조정 전략:
+
+- 원본 < 500 클래스: cap=500 유지 (크롤링으로 채워진 만큼 전부 반영)
+- 원본 >= 500 + AP50 낮은 클래스: `--cap 1000` 으로 증가
+
+```powershell
+python scripts/data/downsample_balanced.py `
+    --src data/food_images/aihub_yolo_50 `
+    --dst data/food_images/aihub_yolo_50_crawl_balanced `
+    --cap 1000 `
+    --val-cap 100 `
+    --seed 42
+```
 
 ---
 
@@ -240,5 +274,4 @@ docker compose down -v
 ## 참고
 
 - CVAT 공식 문서: https://docs.cvat.ai/
-- 크롤링 우선 타겟 클래스: `docs/superpowers/plans/2026-05-28-class-dataset-ap50-summary.csv`
-  - 최우선: mala-hot-pot(270장), stir-fried-pork(240장), sweet-and-sour-pork(290장)
+- 클래스별 데이터 수 및 AP50: `docs/superpowers/plans/2026-05-28-class-dataset-ap50-summary.csv`
