@@ -20,6 +20,9 @@ from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement import SupplementAnalysisStatus
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_recommendation import (
+    SupplementRecommendationExplainResponse,
+)
 from src.services.privacy import ConsentRequiredError
 from src.services.supplement_parser import (
     SupplementAnalysisExpiredError,
@@ -248,6 +251,131 @@ def _payload() -> dict[str, object]:
         "ocr_provider": "manual",
         "ocr_confidence": 0.91,
     }
+
+
+def test_explain_supplement_analysis_preview_returns_safe_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify analysis-preview explanation uses sanitized parsed fields."""
+    fake_session = _FakeSupplementOCRTextSession()
+    analysis_id = uuid4()
+    received: dict[str, Any] = {}
+
+    async def fake_load_supplement_analysis_run_for_owner(
+        *_args: object, **kwargs: Any
+    ) -> SupplementAnalysisRun:
+        """Capture owner-scoped load arguments and return a preview row."""
+        received.update(kwargs)
+        return _analysis_run(kwargs["analysis_id"])
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    client = _client(fake_session, monkeypatch)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{analysis_id}/explain",
+        json={"use_local_llm": False},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert received["analysis_id"] == analysis_id
+    assert received["owner_subject"] == "local-development::local-dev-user"
+    body = response.json()
+    assert body["llm_used"] is False
+    assert body["safe_user_message"] == "등록 전 라벨 분석 결과를 확인하세요."
+    assert "성분 후보 1개" in " ".join(body["explanation_bullets"])
+    assert "raw_ocr_text" not in json.dumps(body, ensure_ascii=False)
+    assert len(fake_session.added_audits) == 1
+    audit_metadata = fake_session.added_audits[0].event_metadata
+    assert audit_metadata["raw_ocr_text_stored"] is False
+    assert audit_metadata["raw_provider_payload_stored"] is False
+    assert audit_metadata["raw_llm_response_stored"] is False
+    assert audit_metadata["object_uri_stored"] is False
+
+
+def test_explain_supplement_analysis_preview_propagates_local_llm_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the route passes the local LLM flag without exposing OCR text."""
+    fake_session = _FakeSupplementOCRTextSession()
+    analysis_id = uuid4()
+    captured: dict[str, Any] = {}
+
+    async def fake_load_supplement_analysis_run_for_owner(
+        *_args: object, **kwargs: Any
+    ) -> SupplementAnalysisRun:
+        """Return a preview row for the requested analysis id."""
+        return _analysis_run(kwargs["analysis_id"])
+
+    async def fake_explain_supplement_analysis_preview(
+        record: SupplementAnalysisRun,
+        request: object,
+        *_args: object,
+    ) -> SupplementRecommendationExplainResponse:
+        """Capture request options and return a safe explanation."""
+        captured["analysis_id"] = record.id
+        captured["use_local_llm"] = request.use_local_llm
+        return SupplementRecommendationExplainResponse(
+            safe_user_message="Analysis explanation ready.",
+            explanation_bullets=["Review parsed label fields."],
+            clinical_disclaimer="Reference information only.",
+            blocked_terms_detected=[],
+            llm_used=True,
+            warnings=[],
+        )
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    monkeypatch.setattr(
+        supplements,
+        "explain_supplement_analysis_preview",
+        fake_explain_supplement_analysis_preview,
+    )
+    client = _client(fake_session, monkeypatch)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{analysis_id}/explain",
+        json={"use_local_llm": True},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert captured == {"analysis_id": analysis_id, "use_local_llm": True}
+    body = response.json()
+    assert body["llm_used"] is True
+    assert "ocr_text" not in json.dumps(body, ensure_ascii=False).lower()
+
+
+def test_explain_supplement_analysis_preview_returns_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify explanation is owner-scoped and fails closed when missing."""
+    fake_session = _FakeSupplementOCRTextSession()
+
+    async def fake_load_supplement_analysis_run_for_owner(*_args: object, **_kwargs: Any) -> None:
+        """Return no analysis row for the current user."""
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    client = _client(fake_session, monkeypatch)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{uuid4()}/explain",
+        json={"use_local_llm": False},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["detail"]["code"] == "supplement_analysis_not_found"
+    assert len(fake_session.added_audits) == 1
+    assert fake_session.added_audits[0].event_metadata["reason"] == "analysis_not_found"
 
 
 def test_parse_supplement_ocr_text_returns_confirmation_preview(

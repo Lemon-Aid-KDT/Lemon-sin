@@ -71,6 +71,12 @@ abstract class LemonAidRepository {
     bool useLocalLlm = false,
   });
 
+  /// Builds a safe explanation for an unregistered analysis preview.
+  Future<SupplementRecommendationExplainResponse> explainSupplementAnalysis(
+    String analysisId, {
+    bool useLocalLlm = false,
+  });
+
   /// Releases repository resources.
   void close();
 }
@@ -273,6 +279,28 @@ class BackendLemonAidRepository implements LemonAidRepository {
         'locale': 'ko-KR',
         'use_local_llm': useLocalLlm,
       },
+      expectedStatusCodes: const <int>{200},
+    );
+    return SupplementRecommendationExplainResponse.fromJson(json);
+  }
+
+  @override
+  Future<SupplementRecommendationExplainResponse> explainSupplementAnalysis(
+    String analysisId, {
+    bool useLocalLlm = false,
+  }) async {
+    final String normalizedAnalysisId = analysisId.trim();
+    if (normalizedAnalysisId.isEmpty) {
+      throw ArgumentError.value(
+        analysisId,
+        'analysisId',
+        'Analysis id is required',
+      );
+    }
+    final String encodedAnalysisId = Uri.encodeComponent(normalizedAnalysisId);
+    final Map<String, dynamic> json = await _apiClient.postJson(
+      '/supplements/analyses/$encodedAnalysisId/explain',
+      body: <String, dynamic>{'locale': 'ko-KR', 'use_local_llm': useLocalLlm},
       expectedStatusCodes: const <int>{200},
     );
     return SupplementRecommendationExplainResponse.fromJson(json);

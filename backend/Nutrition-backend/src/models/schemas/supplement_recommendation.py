@@ -227,6 +227,20 @@ class SupplementRecommendationExplainRequest(BaseModel):
     use_local_llm: bool = False
 
 
+class SupplementAnalysisExplainRequest(BaseModel):
+    """Request a safe explanation for an OCR analysis preview.
+
+    Attributes:
+        locale: Response locale.
+        use_local_llm: Whether to attempt local Ollama wording refinement.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    locale: Literal["ko-KR"] = "ko-KR"
+    use_local_llm: bool = False
+
+
 class SupplementRecommendationExplainResponse(BaseModel):
     """Safe explanation response for supplement impact preview.
 

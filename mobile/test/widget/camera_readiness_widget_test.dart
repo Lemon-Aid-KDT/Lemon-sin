@@ -319,6 +319,14 @@ class _CameraWidgetRepository implements LemonAidRepository {
   }
 
   @override
+  Future<SupplementRecommendationExplainResponse> explainSupplementAnalysis(
+    String analysisId, {
+    bool useLocalLlm = false,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<SupplementAnalysisPreview> parseOcrText({
     required String analysisId,
     required SupplementOCRTextParseRequest request,

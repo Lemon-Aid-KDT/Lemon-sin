@@ -118,6 +118,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                         missingSections: preview.missingRequiredSections,
                         evidenceSpans: preview.evidenceSpans,
                       ),
+                      const SizedBox(height: AppSpace.md),
+                      _AnalysisExplanationCard(
+                        explanation: controller?.supplementExplanation,
+                        busy: controller?.busy == true,
+                        onExplain: controller == null
+                            ? null
+                            : () => _handleAnalysisExplanation(controller),
+                      ),
                     ],
                     if (controller?.supplementImpactPreview !=
                         null) ...<Widget>[
@@ -389,6 +397,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   bool _hasReviewIngredient(SupplementAnalysisPreview preview) {
     return _nonEmpty(_ingredientNameController.text) != null ||
         preview.ingredientCandidates.isNotEmpty;
+  }
+
+  Future<void> _handleAnalysisExplanation(AppController controller) async {
+    HapticFeedback.selectionClick();
+    await controller.explainSupplementAnalysis(useLocalLlm: true);
   }
 
   UserSupplementIngredientInput? _correctedIngredient() {
@@ -1019,6 +1032,88 @@ class _ImpactPreviewCard extends StatelessWidget {
                 ),
               ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalysisExplanationCard extends StatelessWidget {
+  const _AnalysisExplanationCard({
+    required this.explanation,
+    required this.busy,
+    required this.onExplain,
+  });
+
+  final SupplementRecommendationExplainResponse? explanation;
+  final bool busy;
+  final VoidCallback? onExplain;
+
+  @override
+  Widget build(BuildContext context) {
+    final SupplementRecommendationExplainResponse? current = explanation;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadow.elev1,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '등록 전 로컬 설명',
+            style: TextStyle(
+              color: AppColor.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Text(
+            current?.safeUserMessage ?? 'Ollama가 등록 전 분석 후보와 누락 섹션을 요약해요.',
+            style: const TextStyle(
+              color: AppColor.inkSecondary,
+              fontSize: 14,
+              height: 1.45,
+              letterSpacing: 0,
+            ),
+          ),
+          if (current != null) ...<Widget>[
+            const SizedBox(height: AppSpace.sm),
+            for (final String bullet in current.explanationBullets.take(3))
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '· $bullet',
+                  style: const TextStyle(
+                    color: AppColor.inkSecondary,
+                    fontSize: 13,
+                    height: 1.35,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+          ],
+          const SizedBox(height: AppSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: busy ? null : onExplain,
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(busy ? '요청 중' : '분석 설명 받기'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColor.ink,
+                side: const BorderSide(color: AppColor.brand),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -77,6 +78,7 @@ from src.models.schemas.supplement_comprehensive import (
 from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
 from src.models.schemas.supplement_parser import SupplementOCRTextParseRequest
 from src.models.schemas.supplement_recommendation import (
+    SupplementAnalysisExplainRequest,
     SupplementImpactPreviewRequest,
     SupplementImpactPreviewResponse,
     SupplementRecommendationExplainRequest,
@@ -114,6 +116,7 @@ from src.services.supplement_barcode_lookup import (
 )
 from src.services.supplement_explanation import (
     SupplementExplanationError,
+    explain_supplement_analysis_preview,
     explain_supplement_recommendation,
 )
 from src.services.supplement_image_analysis import (
@@ -563,6 +566,30 @@ async def _load_multi_image_analysis_runs(
         .order_by(SupplementAnalysisRun.created_at.asc())
     )
     return list(result.all())
+
+
+async def _load_supplement_analysis_run_for_owner(
+    session: AsyncSession,
+    *,
+    owner_subject: str,
+    analysis_id: UUID,
+) -> SupplementAnalysisRun | None:
+    """Load one current-user supplement analysis preview.
+
+    Args:
+        session: Request-scoped async database session.
+        owner_subject: Issuer-qualified authenticated subject.
+        analysis_id: Analysis preview identifier.
+
+    Returns:
+        Matching supplement analysis run, or None.
+    """
+    return await session.scalar(
+        select(SupplementAnalysisRun).where(
+            SupplementAnalysisRun.owner_subject == owner_subject,
+            SupplementAnalysisRun.id == analysis_id,
+        )
+    )
 
 
 def _build_merged_multi_image_preview(
@@ -2172,6 +2199,200 @@ async def parse_supplement_analysis_ocr_text_preview(
         },
     )
     return supplement_analysis_run_to_preview(result.record)
+
+
+@router.post(
+    "/analyses/{analysis_id}/explain",
+    response_model=SupplementRecommendationExplainResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **SUPPLEMENT_AUTH_RESPONSES,
+        200: {"description": "Safe local explanation for a supplement analysis preview."},
+        403: {"content": {"application/json": {"examples": CONSENT_REQUIRED_EXAMPLE}}},
+        404: {"description": "Supplement analysis preview was not found for the current user."},
+        409: {"description": "Supplement analysis preview is expired."},
+        422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_WRITE,),
+        consents=(ConsentType.OCR_IMAGE_PROCESSING,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def explain_supplement_analysis_preview_route(
+    analysis_id: UUID,
+    http_request: Request,
+    request: Annotated[SupplementAnalysisExplainRequest, Body()],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementRecommendationExplainResponse:
+    """Explain a stored analysis preview before user-confirmed registration.
+
+    Args:
+        analysis_id: Existing supplement analysis preview identifier.
+        http_request: Current FastAPI request.
+        request: Explanation options.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Safe explanation based only on sanitized parsed preview fields.
+
+    Raises:
+        HTTPException: If consent is missing, the preview is unavailable, expired,
+            or fallback wording fails safety validation.
+    """
+    try:
+        await require_user_consent(session, current_user, ConsentType.OCR_IMAGE_PROCESSING)
+    except ConsentRequiredError as exc:
+        await _record_analysis_preview_explain_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="blocked",
+            reason="consent_required",
+            response=None,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "consent_required",
+                "message": str(exc),
+                "required_consents": [ConsentType.OCR_IMAGE_PROCESSING.value],
+            },
+        ) from exc
+
+    record = await _load_supplement_analysis_run_for_owner(
+        session,
+        owner_subject=build_owner_subject(current_user),
+        analysis_id=analysis_id,
+    )
+    if record is None:
+        await _record_analysis_preview_explain_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="not_found",
+            reason="analysis_not_found",
+            response=None,
+        )
+        raise _supplement_http_error(
+            status.HTTP_404_NOT_FOUND,
+            code="supplement_analysis_not_found",
+            message="Supplement analysis preview was not found.",
+        )
+    if _analysis_preview_is_expired(record):
+        await _record_analysis_preview_explain_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="blocked",
+            reason="analysis_expired",
+            response=None,
+        )
+        raise _supplement_http_error(
+            status.HTTP_409_CONFLICT,
+            code="supplement_analysis_expired",
+            message="Supplement analysis preview has expired.",
+        )
+
+    try:
+        response = await explain_supplement_analysis_preview(record, request, settings)
+    except SupplementExplanationError as exc:
+        await _record_analysis_preview_explain_audit(
+            session,
+            current_user,
+            http_request,
+            settings,
+            analysis_id,
+            outcome="blocked",
+            reason="unsafe_supplement_explanation",
+            response=None,
+        )
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="unsafe_supplement_explanation",
+            message=str(exc),
+        ) from exc
+
+    await _record_analysis_preview_explain_audit(
+        session,
+        current_user,
+        http_request,
+        settings,
+        analysis_id,
+        outcome="success",
+        reason="explained",
+        response=response,
+    )
+    return response
+
+
+def _analysis_preview_is_expired(record: SupplementAnalysisRun) -> bool:
+    """Return whether a stored analysis preview is no longer usable."""
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at <= datetime.now(UTC)
+
+
+async def _record_analysis_preview_explain_audit(
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    http_request: Request,
+    settings: Settings,
+    analysis_id: UUID,
+    *,
+    outcome: AuditOutcome,
+    reason: str,
+    response: SupplementRecommendationExplainResponse | None,
+) -> None:
+    """Record sanitized audit metadata for analysis-preview explanations.
+
+    Args:
+        session: Request-scoped async database session.
+        current_user: Authenticated actor.
+        http_request: Current FastAPI request.
+        settings: Runtime settings.
+        analysis_id: Supplement analysis preview identifier.
+        outcome: Sanitized audit outcome.
+        reason: Stable reason code.
+        response: Safe explanation response, if generated.
+
+    Returns:
+        None.
+    """
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="supplement_analysis_preview_explained",
+        resource_type="supplement_analysis_run",
+        resource_id=str(analysis_id),
+        outcome=outcome,
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "reason": reason,
+            "llm_used": response.llm_used if response is not None else False,
+            "warning_count": len(response.warnings) if response is not None else 0,
+            "blocked_term_count": (
+                len(response.blocked_terms_detected) if response is not None else 0
+            ),
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "raw_llm_response_stored": False,
+            "raw_image_stored": False,
+            "object_uri_stored": False,
+        },
+    )
 
 
 async def _record_ocr_text_parse_audit(

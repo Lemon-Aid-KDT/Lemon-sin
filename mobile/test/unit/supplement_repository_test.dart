@@ -325,6 +325,38 @@ void main() {
       expect(response.llmUsed, isTrue);
     },
   );
+
+  test('requests local Ollama explanation for analysis preview', () async {
+    late http.Request capturedRequest;
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'http://localhost:8000/api/v1',
+      httpClient: _CaptureJsonClient(
+        onRequest: (http.Request request) {
+          capturedRequest = request;
+        },
+      ),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    final SupplementRecommendationExplainResponse response = await repository
+        .explainSupplementAnalysis(
+          '00000000-0000-0000-0000-000000000001',
+          useLocalLlm: true,
+        );
+
+    final Map<String, dynamic> body =
+        jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+    expect(
+      capturedRequest.url.path,
+      '/api/v1/supplements/analyses/00000000-0000-0000-0000-000000000001/explain',
+    );
+    expect(body['locale'], 'ko-KR');
+    expect(body['use_local_llm'], isTrue);
+    expect(response.llmUsed, isTrue);
+  });
 }
 
 class _CaptureMultipartClient extends http.BaseClient {

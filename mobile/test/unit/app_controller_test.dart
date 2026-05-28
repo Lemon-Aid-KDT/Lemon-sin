@@ -79,6 +79,23 @@ void main() {
     );
     expect(controller.apiError, isNull);
   });
+
+  test('explainSupplementAnalysis uses current preview id', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository();
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeImage('/tmp/supplement-label.png');
+    await controller.explainSupplementAnalysis(useLocalLlm: true);
+
+    expect(repository.analysisExplainCalls, 1);
+    expect(
+      repository.lastAnalysisExplainId,
+      '00000000-0000-0000-0000-000000000001',
+    );
+    expect(repository.lastAnalysisExplainUsedLocalLlm, isTrue);
+    expect(controller.supplementExplanation?.llmUsed, isTrue);
+    expect(controller.notice, 'Analysis explanation is ready.');
+  });
 }
 
 UserSupplementCreate _registrationRequest() {
@@ -111,8 +128,11 @@ class _AutoInsightRepository implements LemonAidRepository {
   int registerCalls = 0;
   int impactCalls = 0;
   int explainCalls = 0;
+  int analysisExplainCalls = 0;
   int finalizeCalls = 0;
   bool? lastExplainUsedLocalLlm;
+  bool? lastAnalysisExplainUsedLocalLlm;
+  String? lastAnalysisExplainId;
   String? lastFinalizeGroupId;
 
   @override
@@ -189,8 +209,10 @@ class _AutoInsightRepository implements LemonAidRepository {
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
     String imagePath, {
     String ocrProvider = 'configured',
-  }) {
-    throw UnimplementedError();
+  }) async {
+    return SupplementAnalysisPreview.fromJson(
+      _multiPreviewJson['merged_preview']! as Map<String, Object?>,
+    );
   }
 
   @override
@@ -251,6 +273,24 @@ class _AutoInsightRepository implements LemonAidRepository {
   Future<SupplementImpactPreviewResponse>
   fetchLatestSupplementRecommendation() {
     throw UnimplementedError();
+  }
+
+  @override
+  Future<SupplementRecommendationExplainResponse> explainSupplementAnalysis(
+    String analysisId, {
+    bool useLocalLlm = false,
+  }) async {
+    analysisExplainCalls += 1;
+    lastAnalysisExplainId = analysisId;
+    lastAnalysisExplainUsedLocalLlm = useLocalLlm;
+    return const SupplementRecommendationExplainResponse(
+      safeUserMessage: 'Analysis explanation ready.',
+      explanationBullets: <String>['Review extracted label fields.'],
+      clinicalDisclaimer: 'Reference information only.',
+      blockedTermsDetected: <String>[],
+      llmUsed: true,
+      warnings: <String>[],
+    );
   }
 }
 

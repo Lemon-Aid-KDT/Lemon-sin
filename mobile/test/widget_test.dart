@@ -236,6 +236,14 @@ class _FakeRepository implements LemonAidRepository {
     throw UnimplementedError();
   }
 
+  @override
+  Future<SupplementRecommendationExplainResponse> explainSupplementAnalysis(
+    String analysisId, {
+    bool useLocalLlm = false,
+  }) {
+    throw UnimplementedError();
+  }
+
   ConsentStatus _consent(String consentType) {
     return ConsentStatus(
       consentType: consentType,

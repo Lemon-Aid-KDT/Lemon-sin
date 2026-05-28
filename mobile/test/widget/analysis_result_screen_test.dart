@@ -209,6 +209,23 @@ class _ReviewRepository implements LemonAidRepository {
     );
   }
 
+  @override
+  Future<SupplementRecommendationExplainResponse> explainSupplementAnalysis(
+    String analysisId, {
+    bool useLocalLlm = false,
+  }) {
+    return Future<SupplementRecommendationExplainResponse>.value(
+      const SupplementRecommendationExplainResponse(
+        safeUserMessage: 'Analysis explanation ready.',
+        explanationBullets: <String>['성분 후보를 등록 전에 확인합니다.'],
+        clinicalDisclaimer: 'Reference information only.',
+        blockedTermsDetected: <String>[],
+        llmUsed: true,
+        warnings: <String>[],
+      ),
+    );
+  }
+
   SupplementAnalysisPreview _preview() {
     return SupplementAnalysisPreview(
       analysisId: 'analysis-1',

@@ -246,6 +246,27 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// Builds a safe explanation for the current analysis preview before saving.
+  Future<void> explainSupplementAnalysis({bool useLocalLlm = false}) async {
+    final SupplementAnalysisPreview? preview = _analysisPreview;
+    if (preview == null) {
+      _apiError = const ApiError(
+        statusCode: 0,
+        message: 'Analyze an image before requesting an explanation.',
+      );
+      notifyListeners();
+      return;
+    }
+
+    await _run(() async {
+      _supplementExplanation = await _repository.explainSupplementAnalysis(
+        preview.analysisId,
+        useLocalLlm: useLocalLlm,
+      );
+      _notice = 'Analysis explanation is ready.';
+    });
+  }
+
   /// Clears the current preview without sending data to the backend.
   void clearSupplementFlow() {
     _analysisPreview = null;

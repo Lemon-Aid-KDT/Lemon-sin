@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
 
 from pydantic import ValidationError
@@ -14,7 +16,9 @@ from src.llm.ollama import (
     OllamaConfigurationError,
     extract_ollama_message_content,
 )
+from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement_recommendation import (
+    SupplementAnalysisExplainRequest,
     SupplementRecommendationExplainRequest,
     SupplementRecommendationExplainResponse,
 )
@@ -28,6 +32,15 @@ medical claims. Do not tell the user to change a dose, treat a disease, diagnose
 a condition, or change medication. Use only the provided deterministic preview.
 Return only JSON matching the supplied schema.
 """.strip()
+
+SUPPLEMENT_ANALYSIS_EXPLAIN_SYSTEM_PROMPT = """
+You explain a supplement OCR analysis preview for a healthcare app.
+Use only the provided sanitized fields. Do not infer unseen ingredients, amounts,
+risks, diagnoses, treatments, or dosage changes. Do not ask the user to change
+medication. Return only JSON matching the supplied schema.
+""".strip()
+HIGH_CONFIDENCE_THRESHOLD = 0.85
+MEDIUM_CONFIDENCE_THRESHOLD = 0.6
 
 
 class SupplementExplanationError(RuntimeError):
@@ -56,6 +69,36 @@ async def explain_supplement_recommendation(
         response = await _explain_with_local_ollama(request, settings)
     except (OllamaClientError, OllamaConfigurationError, SupplementExplanationError):
         return build_deterministic_explanation(request, warnings=("llm_explanation_unavailable",))
+    return response
+
+
+async def explain_supplement_analysis_preview(
+    record: SupplementAnalysisRun,
+    request: SupplementAnalysisExplainRequest,
+    settings: Settings,
+) -> SupplementRecommendationExplainResponse:
+    """Return a safe explanation for an OCR analysis preview before registration.
+
+    Args:
+        record: Stored supplement analysis preview. Raw OCR text must not be present.
+        request: Explanation options.
+        settings: Runtime settings.
+
+    Returns:
+        Safe explanation response. If local LLM refinement is disabled or rejected,
+        a deterministic fallback is returned.
+    """
+    fallback = build_deterministic_analysis_explanation(record, warnings=())
+    if not request.use_local_llm:
+        return fallback
+
+    try:
+        response = await _explain_analysis_with_local_ollama(record, settings)
+    except (OllamaClientError, OllamaConfigurationError, SupplementExplanationError):
+        return build_deterministic_analysis_explanation(
+            record,
+            warnings=("llm_explanation_unavailable",),
+        )
     return response
 
 
@@ -106,6 +149,65 @@ def build_deterministic_explanation(
     return response
 
 
+def build_deterministic_analysis_explanation(
+    record: SupplementAnalysisRun,
+    *,
+    warnings: tuple[str, ...],
+) -> SupplementRecommendationExplainResponse:
+    """Build a pre-registration analysis explanation without calling an LLM.
+
+    Args:
+        record: Stored supplement analysis preview.
+        warnings: Safe warning strings.
+
+    Returns:
+        Deterministic explanation response.
+    """
+    context = _build_analysis_explanation_context(record)
+    ingredient_count = int(context["ingredient_count"])
+    missing_sections = list(context["missing_required_sections"])
+    bullets: list[str] = []
+
+    product_name = context["product_name"]
+    if isinstance(product_name, str) and product_name:
+        bullets.append(f"제품명 후보는 {product_name}입니다.")
+    else:
+        bullets.append("제품명은 라벨을 보며 직접 확인해야 합니다.")
+
+    if ingredient_count:
+        bullets.append(f"성분 후보 {ingredient_count}개를 등록 전 검토하세요.")
+    else:
+        bullets.append("성분 후보가 비어 있어 수동 입력이나 추가 사진이 필요합니다.")
+
+    if context["intake_method_present"]:
+        bullets.append("섭취 방법 후보가 있어 저장 전 빈도와 1회량을 확인할 수 있습니다.")
+    else:
+        bullets.append("섭취 방법은 아직 충분하지 않아 직접 확인이 필요합니다.")
+
+    if context["precaution_count"]:
+        bullets.append(f"주의 문구 후보 {context['precaution_count']}개가 있습니다.")
+    if context["functional_claim_count"]:
+        bullets.append(f"기능성 문구 후보 {context['functional_claim_count']}개가 있습니다.")
+    if missing_sections:
+        bullets.append(f"추가 확인 섹션: {', '.join(missing_sections[:4])}")
+
+    message = (
+        "등록 전 라벨 분석 결과를 확인하세요."
+        if ingredient_count
+        else "성분 후보가 부족해 제품명과 성분을 직접 확인해야 합니다."
+    )
+    response = SupplementRecommendationExplainResponse(
+        safe_user_message=message,
+        explanation_bullets=bullets[:6],
+        clinical_disclaimer=SUPPLEMENT_IMPACT_DISCLAIMER,
+        blocked_terms_detected=[],
+        llm_used=False,
+        warnings=list(warnings),
+    )
+    _reject_forbidden_response(response)
+    return response
+
+
 async def _explain_with_local_ollama(
     request: SupplementRecommendationExplainRequest,
     settings: Settings,
@@ -130,6 +232,38 @@ async def _explain_with_local_ollama(
         response = SupplementRecommendationExplainResponse.model_validate_json(content)
     except ValidationError as exc:
         raise SupplementExplanationError("Local explanation output failed validation.") from exc
+    response.clinical_disclaimer = SUPPLEMENT_IMPACT_DISCLAIMER
+    response.llm_used = True
+    _reject_forbidden_response(response)
+    return response
+
+
+async def _explain_analysis_with_local_ollama(
+    record: SupplementAnalysisRun,
+    settings: Settings,
+) -> SupplementRecommendationExplainResponse:
+    """Call local Ollama for a pre-registration analysis explanation.
+
+    Args:
+        record: Stored supplement analysis preview.
+        settings: Runtime settings.
+
+    Returns:
+        Validated safe explanation response.
+
+    Raises:
+        OllamaClientError: If the local API call fails.
+        SupplementExplanationError: If the output is unsafe or schema-invalid.
+    """
+    payload = _build_analysis_explanation_payload(record, settings)
+    data = await OllamaChatClient(settings).post_chat(payload)
+    content = extract_ollama_message_content(data)
+    try:
+        response = SupplementRecommendationExplainResponse.model_validate_json(content)
+    except ValidationError as exc:
+        raise SupplementExplanationError(
+            "Local analysis explanation output failed validation."
+        ) from exc
     response.clinical_disclaimer = SUPPLEMENT_IMPACT_DISCLAIMER
     response.llm_used = True
     _reject_forbidden_response(response)
@@ -173,6 +307,161 @@ def _build_explanation_payload(
         "format": schema,
         "options": {"temperature": 0},
     }
+
+
+def _build_analysis_explanation_payload(
+    record: SupplementAnalysisRun,
+    settings: Settings,
+) -> dict[str, Any]:
+    """Build an Ollama Chat payload from sanitized analysis fields only.
+
+    Args:
+        record: Stored supplement analysis preview.
+        settings: Runtime settings.
+
+    Returns:
+        Ollama chat payload.
+    """
+    schema = SupplementRecommendationExplainResponse.model_json_schema()
+    context = _build_analysis_explanation_context(record)
+    context_json = json.dumps(context, ensure_ascii=False)
+    user_prompt = (
+        "Rewrite this supplement label analysis preview in concise Korean. "
+        "Use only the sanitized fields in the JSON context. Do not add new "
+        "ingredients, amounts, product claims, medical risks, or advice. "
+        "Return JSON that conforms to the schema.\n\n"
+        "<analysis_preview_context>\n"
+        f"{context_json}\n"
+        "</analysis_preview_context>\n\n"
+        "JSON Schema:\n"
+        f"{json.dumps(schema, ensure_ascii=False)}"
+    )
+    return {
+        "model": settings.ollama_model,
+        "messages": [
+            {"role": "system", "content": SUPPLEMENT_ANALYSIS_EXPLAIN_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "options": {"temperature": 0},
+    }
+
+
+def _build_analysis_explanation_context(record: SupplementAnalysisRun) -> dict[str, Any]:
+    """Build bounded fields safe to send to the local explanation model.
+
+    Args:
+        record: Stored supplement analysis preview.
+
+    Returns:
+        Sanitized analysis context without raw OCR text, image bytes, object URIs,
+        or provider payloads.
+    """
+    snapshot = _mapping(record.parsed_snapshot)
+    parsed_product = _mapping(snapshot.get("parsed_product"))
+    ingredient_candidates = _list_of_mappings(snapshot.get("ingredient_candidates"))
+    intake_method = _mapping(snapshot.get("intake_method"))
+    return {
+        "status": _safe_text(record.status, limit=60),
+        "ocr_provider": _safe_text(record.ocr_provider, limit=80),
+        "ocr_confidence_bucket": _confidence_bucket(record.ocr_confidence),
+        "product_name": _safe_text(parsed_product.get("product_name"), limit=120),
+        "manufacturer": _safe_text(parsed_product.get("manufacturer"), limit=120),
+        "ingredient_count": len(ingredient_candidates),
+        "ingredients": [_ingredient_summary(candidate) for candidate in ingredient_candidates[:6]],
+        "label_section_types": [
+            _safe_text(section.get("section_type"), limit=80)
+            for section in _list_of_mappings(snapshot.get("label_sections"))[:8]
+        ],
+        "intake_method_present": bool(intake_method),
+        "precaution_count": len(_list_of_mappings(snapshot.get("precautions"))),
+        "functional_claim_count": len(_list_of_mappings(snapshot.get("functional_claims"))),
+        "missing_required_sections": _safe_string_list(
+            snapshot.get("missing_required_sections"),
+            max_items=8,
+            limit=80,
+        ),
+        "low_confidence_fields": _safe_string_list(
+            snapshot.get("low_confidence_fields"),
+            max_items=12,
+            limit=80,
+        ),
+        "warnings": [
+            _safe_text(warning, limit=140)
+            for warning in list(record.warnings or [])[:6]
+            if _safe_text(warning, limit=140)
+        ],
+    }
+
+
+def _ingredient_summary(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    """Return bounded ingredient fields for explanation context.
+
+    Args:
+        candidate: Parsed ingredient candidate.
+
+    Returns:
+        Safe ingredient summary.
+    """
+    return {
+        "display_name": _safe_text(candidate.get("display_name"), limit=120),
+        "amount_present": candidate.get("amount") is not None,
+        "unit": _safe_text(candidate.get("unit"), limit=40),
+        "confidence_bucket": _confidence_bucket(candidate.get("confidence")),
+    }
+
+
+def _mapping(value: Any) -> Mapping[str, Any]:
+    """Return value when it is a mapping, otherwise an empty mapping."""
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def _list_of_mappings(value: Any) -> list[Mapping[str, Any]]:
+    """Return bounded mappings from a possibly invalid list value."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _safe_string_list(value: Any, *, max_items: int, limit: int) -> list[str]:
+    """Return bounded non-empty strings from a possibly invalid list value."""
+    if not isinstance(value, list):
+        return []
+    strings: list[str] = []
+    for item in value:
+        text = _safe_text(item, limit=limit)
+        if text:
+            strings.append(text)
+        if len(strings) >= max_items:
+            break
+    return strings
+
+
+def _safe_text(value: Any, *, limit: int) -> str | None:
+    """Return a bounded string or None for non-string/empty values."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    return text[:limit]
+
+
+def _confidence_bucket(value: Any) -> str:
+    """Return a coarse confidence bucket without exposing provider payloads."""
+    if isinstance(value, Decimal | int | float):
+        numeric = float(value)
+    else:
+        return "none"
+    if numeric >= HIGH_CONFIDENCE_THRESHOLD:
+        return "high"
+    if numeric >= MEDIUM_CONFIDENCE_THRESHOLD:
+        return "medium"
+    return "low"
 
 
 def _reject_forbidden_response(response: SupplementRecommendationExplainResponse) -> None:
