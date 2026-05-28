@@ -55,11 +55,15 @@ LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1 \
 ```
 
 Then open `ios/Runner.xcworkspace` in Xcode and run the `Runner` scheme on an
-iOS simulator. `LEMON_API_BASE_URL`, `LEMON_API_TOKEN`,
+`iPhone 17 Pro` iOS 26.5 simulator. `LEMON_API_BASE_URL`, `LEMON_API_TOKEN`,
 `LEMON_DEV_GATEWAY_TOKEN`, and `LEMON_CERTIFICATE_PINS` are compile-time
 Flutter values, so pass them through `flutter build`/`flutter run`
 `--dart-define` values or the helper script. Xcode scheme runtime environment
 variables alone do not update `String.fromEnvironment` values in Dart.
+
+If Xcode shows files such as `ContentView.swift`, `AppState.swift`, or the
+scheme `Lemon-Aid`, the native smoke shell is open instead of the Flutter app.
+Close that window and open `mobile/ios/Runner.xcworkspace`.
 
 Official references:
 

@@ -258,6 +258,45 @@
   - 17 Pro 스타일 home shell 확인
   - 하단 중앙 `+` action palette 확인
 
+### iOS 26.5 Flutter Runner 재정렬
+
+- Flutter iOS Runner의 deployment target을 iOS 26.5로 재정렬했다.
+  - `mobile/ios/Runner.xcodeproj/project.pbxproj`
+  - `mobile/ios/Podfile`
+  - `mobile/ios/Podfile.lock`
+- CocoaPods target도 `post_install`에서 `IPHONEOS_DEPLOYMENT_TARGET=26.5`로
+  맞춰 Xcode workspace 빌드와 Flutter CLI 빌드가 같은 기준을 쓰게 했다.
+- Xcode에서 다른 UI가 보인 원인은 `mobile/Lemon-Aid-ios/Lemon-Aid.xcodeproj`
+  native smoke shell을 실행했기 때문이다. Android Studio와 같은 UIUX는
+  `mobile/ios/Runner.xcworkspace`의 `Runner` scheme이 기준이다.
+- `mobile/scripts/prepare-ios-flutter-uiux-xcode.sh`를 정리해 Xcode 실행 전
+  Flutter iOS simulator build와 dart-define 준비를 한 번에 수행하도록 했다.
+- iOS 26.5 simulator에서 native smoke bundle `yeongs.Lemon-Aid`를 제거하고
+  Flutter bundle `com.example.lemonAidMobile`을 설치/실행해 혼동을 줄였다.
+
+### iOS 26.5 Flutter Runner 재검증 결과
+
+- `LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1 ./scripts/prepare-ios-flutter-uiux-xcode.sh`
+  - `flutter pub get` passed
+  - `flutter build ios --simulator --debug` passed
+- XcodeBuildMCP build/install/launch
+  - workspace: `mobile/ios/Runner.xcworkspace`
+  - scheme: `Runner`
+  - simulator: iPhone 17 Pro iOS 26.5
+  - bundle id: `com.example.lemonAidMobile`
+  - result: succeeded
+- XcodeBuildMCP screenshot
+  - `/var/folders/jj/jmmwhm2j6yq4m7x46gjbzz8r0000gn/T/screenshot_optimized_0075a75e-5a4d-4ba0-a105-4668092d5702.jpg`
+  - 17 Pro 스타일 Flutter home shell, 하단 5-tab navigation, 중앙 `+` 버튼 확인
+- `flutter analyze`
+  - No issues found
+- `flutter test`
+  - 68 passed
+- `git diff --check`
+  - passed
+- `detect-secrets scan` on changed iOS/doc/script files
+  - no findings
+
 ### 음식 YOLO endpoint 연결 검증 결과
 
 - `PYTHONPATH=backend/Nutrition-backend /opt/anaconda3/bin/python -m pytest backend/Nutrition-backend/tests/unit/services/test_meal_image_analysis.py backend/Nutrition-backend/tests/unit/vision/test_food_yolo.py backend/Nutrition-backend/tests/unit/test_config.py -q --no-cov`
