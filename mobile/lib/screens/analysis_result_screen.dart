@@ -10,7 +10,7 @@ import '../features/supplements/supplement_models.dart';
 import '../utils/design_tokens_v2.dart';
 
 /// Source-style analysis result screen backed by the real Lemon-Aid endpoints.
-class AnalysisResultScreen extends StatelessWidget {
+class AnalysisResultScreen extends StatefulWidget {
   /// Creates the analysis result screen.
   ///
   /// Args:
@@ -28,11 +28,46 @@ class AnalysisResultScreen extends StatelessWidget {
   /// Current backend-connected app state.
   final AppController? controller;
 
-  bool get _isMeal => mode == 'meal';
+  @override
+  State<AnalysisResultScreen> createState() => _AnalysisResultScreenState();
+}
+
+class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
+  final TextEditingController _productNameController = TextEditingController();
+  final TextEditingController _manufacturerController = TextEditingController();
+  final TextEditingController _ingredientNameController =
+      TextEditingController();
+  final TextEditingController _ingredientAmountController =
+      TextEditingController();
+  final TextEditingController _ingredientUnitController =
+      TextEditingController();
+  final TextEditingController _frequencyController = TextEditingController(
+    text: 'daily',
+  );
+  final TextEditingController _timeOfDayController = TextEditingController();
+  String? _seededAnalysisId;
+
+  bool get _isMeal => widget.mode == 'meal';
+
+  @override
+  void dispose() {
+    _productNameController.dispose();
+    _manufacturerController.dispose();
+    _ingredientNameController.dispose();
+    _ingredientAmountController.dispose();
+    _ingredientUnitController.dispose();
+    _frequencyController.dispose();
+    _timeOfDayController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final AppController? controller = widget.controller;
     final SupplementAnalysisPreview? preview = controller?.analysisPreview;
+    if (preview != null) {
+      _seedCorrectionFields(preview);
+    }
     final UserSupplementResponse? registered =
         controller?.lastRegisteredSupplement;
     final ApiError? error = controller?.apiError;
@@ -70,12 +105,26 @@ class AnalysisResultScreen extends StatelessWidget {
                   if (!_isMeal) ...<Widget>[
                     const SizedBox(height: AppSpace.md),
                     _IngredientPreviewCard(preview: preview),
+                    if (preview != null) ...<Widget>[
+                      const SizedBox(height: AppSpace.md),
+                      _ReviewCorrectionCard(
+                        productNameController: _productNameController,
+                        manufacturerController: _manufacturerController,
+                        ingredientNameController: _ingredientNameController,
+                        ingredientAmountController: _ingredientAmountController,
+                        ingredientUnitController: _ingredientUnitController,
+                        frequencyController: _frequencyController,
+                        timeOfDayController: _timeOfDayController,
+                        missingSections: preview.missingRequiredSections,
+                        evidenceSpans: preview.evidenceSpans,
+                      ),
+                    ],
                     if (controller?.supplementImpactPreview !=
                         null) ...<Widget>[
                       const SizedBox(height: AppSpace.md),
                       _ImpactPreviewCard(
                         preview: controller!.supplementImpactPreview!,
-                        explanation: controller!.supplementExplanation,
+                        explanation: controller.supplementExplanation,
                       ),
                     ],
                   ],
@@ -149,7 +198,7 @@ class AnalysisResultScreen extends StatelessWidget {
     final SupplementImagePipelineMetadata? pipeline = preview?.pipelineMetadata;
     final String provider = _ocrProviderLabel(pipeline?.ocrProvider);
     final String requested = _ocrProviderLabel(
-      controller?.lastRequestedOcrProvider,
+      widget.controller?.lastRequestedOcrProvider,
     );
     final int candidateCount = preview?.ingredientCandidates.length ?? 0;
     final int sectionCount =
@@ -219,6 +268,29 @@ class AnalysisResultScreen extends StatelessWidget {
     ];
   }
 
+  void _seedCorrectionFields(SupplementAnalysisPreview preview) {
+    if (_seededAnalysisId == preview.analysisId) return;
+    _seededAnalysisId = preview.analysisId;
+    _productNameController.text = preview.parsedProduct.productName ?? '';
+    _manufacturerController.text = preview.parsedProduct.manufacturer ?? '';
+    final SupplementIngredientCandidate? firstCandidate =
+        preview.ingredientCandidates.isEmpty
+        ? null
+        : preview.ingredientCandidates.first;
+    _ingredientNameController.text = firstCandidate?.displayName ?? '';
+    _ingredientAmountController.text = firstCandidate?.amount == null
+        ? ''
+        : _formatEditableAmount(firstCandidate!.amount!);
+    _ingredientUnitController.text = firstCandidate?.unit ?? '';
+    _frequencyController.text =
+        preview.intakeMethod.structured.frequency == 'unknown'
+        ? 'daily'
+        : preview.intakeMethod.structured.frequency;
+    _timeOfDayController.text = preview.intakeMethod.structured.timeOfDay.join(
+      ', ',
+    );
+  }
+
   String _primaryLabel(
     SupplementAnalysisPreview? preview,
     UserSupplementResponse? registered,
@@ -226,27 +298,33 @@ class AnalysisResultScreen extends StatelessWidget {
     if (_isMeal) return '홈으로 돌아가기';
     if (registered != null) return '로컬 LLM 설명 보기';
     if (preview == null) return '다시 촬영하기';
-    if (preview.ingredientCandidates.isEmpty) return '다시 촬영하기';
+    if (!_hasReviewIngredient(preview)) return '성분 직접 입력';
     return '확인 후 저장';
   }
 
   Future<void> _handlePrimaryAction(BuildContext context) async {
     HapticFeedback.mediumImpact();
-    if (_isMeal || controller == null) {
+    if (_isMeal || widget.controller == null) {
       context.go('/shell/home');
       return;
     }
-    final AppController appController = controller!;
+    final AppController appController = widget.controller!;
     if (appController.lastRegisteredSupplement != null) {
       await appController.explainSupplementRecommendation(useLocalLlm: true);
       return;
     }
     final SupplementAnalysisPreview? preview = appController.analysisPreview;
-    if (preview == null || preview.ingredientCandidates.isEmpty) {
+    if (preview == null) {
       appController.clearSupplementFlow();
       if (context.mounted) {
         context.go('/shell/camera');
       }
+      return;
+    }
+    if (!_hasReviewIngredient(preview)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('성분명을 입력하거나 라벨 사진을 다시 추가해주세요.')),
+      );
       return;
     }
     await appController.registerSupplement(
@@ -257,7 +335,9 @@ class AnalysisResultScreen extends StatelessWidget {
   }
 
   UserSupplementCreate _registrationRequest(SupplementAnalysisPreview preview) {
-    final List<UserSupplementIngredientInput> ingredients = preview
+    final UserSupplementIngredientInput? correctedIngredient =
+        _correctedIngredient();
+    final List<UserSupplementIngredientInput> previewIngredients = preview
         .ingredientCandidates
         .take(8)
         .map(
@@ -272,13 +352,22 @@ class AnalysisResultScreen extends StatelessWidget {
               ),
         )
         .toList(growable: false);
+    final List<UserSupplementIngredientInput> ingredients =
+        correctedIngredient == null
+        ? previewIngredients
+        : <UserSupplementIngredientInput>[
+            correctedIngredient,
+            for (final UserSupplementIngredientInput ingredient
+                in previewIngredients.skip(1))
+              ingredient,
+          ];
     final String fallbackName = ingredients.isEmpty
         ? '영양제'
         : ingredients.first.displayName;
     return UserSupplementCreate(
       analysisId: preview.analysisId,
-      displayName: _nonEmpty(preview.parsedProduct.productName) ?? fallbackName,
-      manufacturer: _nonEmpty(preview.parsedProduct.manufacturer),
+      displayName: _nonEmpty(_productNameController.text) ?? fallbackName,
+      manufacturer: _nonEmpty(_manufacturerController.text),
       ingredients: ingredients,
       serving: SupplementServing(
         amount: preview.intakeMethod.structured.amountPerTime,
@@ -291,12 +380,48 @@ class AnalysisResultScreen extends StatelessWidget {
             1,
       ),
       intakeSchedule: SupplementIntakeSchedule(
-        frequency: preview.intakeMethod.structured.frequency == 'unknown'
-            ? 'daily'
-            : preview.intakeMethod.structured.frequency,
-        timeOfDay: preview.intakeMethod.structured.timeOfDay,
+        frequency: _nonEmpty(_frequencyController.text) ?? 'daily',
+        timeOfDay: _splitCsv(_timeOfDayController.text),
       ),
     );
+  }
+
+  bool _hasReviewIngredient(SupplementAnalysisPreview preview) {
+    return _nonEmpty(_ingredientNameController.text) != null ||
+        preview.ingredientCandidates.isNotEmpty;
+  }
+
+  UserSupplementIngredientInput? _correctedIngredient() {
+    final String? name = _nonEmpty(_ingredientNameController.text);
+    if (name == null) return null;
+    return UserSupplementIngredientInput(
+      displayName: name,
+      nutrientCode: null,
+      amount: _parseOptionalDouble(_ingredientAmountController.text),
+      unit: _nonEmpty(_ingredientUnitController.text),
+      confidence: 1,
+      source: 'user_confirmed',
+    );
+  }
+
+  static String _formatEditableAmount(double value) {
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toString();
+  }
+
+  static double? _parseOptionalDouble(String value) {
+    final String trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return double.tryParse(trimmed);
+  }
+
+  static List<String> _splitCsv(String value) {
+    return value
+        .split(',')
+        .map((String part) => part.trim())
+        .where((String part) => part.isNotEmpty)
+        .toList(growable: false);
   }
 
   String _ocrProviderLabel(String? provider) {
@@ -622,6 +747,222 @@ class _IngredientPreviewCard extends StatelessWidget {
         : amount.toStringAsFixed(2);
     return unit == null || unit.isEmpty ? amountText : '$amountText $unit';
   }
+}
+
+class _ReviewCorrectionCard extends StatelessWidget {
+  const _ReviewCorrectionCard({
+    required this.productNameController,
+    required this.manufacturerController,
+    required this.ingredientNameController,
+    required this.ingredientAmountController,
+    required this.ingredientUnitController,
+    required this.frequencyController,
+    required this.timeOfDayController,
+    required this.missingSections,
+    required this.evidenceSpans,
+  });
+
+  final TextEditingController productNameController;
+  final TextEditingController manufacturerController;
+  final TextEditingController ingredientNameController;
+  final TextEditingController ingredientAmountController;
+  final TextEditingController ingredientUnitController;
+  final TextEditingController frequencyController;
+  final TextEditingController timeOfDayController;
+  final List<String> missingSections;
+  final List<SupplementPreviewEvidenceSpan> evidenceSpans;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadow.elev1,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '확인 후 수정',
+            style: TextStyle(
+              color: AppColor.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: AppSpace.xs),
+          Text(
+            missingSections.isEmpty
+                ? '라벨과 대조해 저장할 값을 확인하세요.'
+                : '추가 확인 필요: ${missingSections.map(_roleLabel).join(', ')}',
+            style: const TextStyle(
+              color: AppColor.inkSecondary,
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          _ReviewTextField(
+            controller: productNameController,
+            label: '제품명',
+            hintText: '예: 비타민 D',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          _ReviewTextField(
+            controller: manufacturerController,
+            label: '제조사',
+            hintText: '라벨에 있으면 입력',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          _ReviewTextField(
+            controller: ingredientNameController,
+            label: '대표 성분',
+            hintText: '예: Vitamin D',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: ingredientAmountController,
+                  label: '함량',
+                  hintText: '25',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: ingredientUnitController,
+                  label: '단위',
+                  hintText: 'mg, mcg, IU',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: frequencyController,
+                  label: '주기',
+                  hintText: 'daily',
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: timeOfDayController,
+                  label: '복용 시간',
+                  hintText: 'morning, evening',
+                ),
+              ),
+            ],
+          ),
+          if (evidenceSpans.isNotEmpty) ...<Widget>[
+            const SizedBox(height: AppSpace.md),
+            const Text(
+              '근거 일부',
+              style: TextStyle(
+                color: AppColor.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: AppSpace.xs),
+            for (final SupplementPreviewEvidenceSpan span in evidenceSpans.take(
+              2,
+            ))
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${_roleLabel(span.sectionType)} · ${span.textExcerpt}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColor.inkSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewTextField extends StatelessWidget {
+  const _ReviewTextField({
+    required this.controller,
+    required this.label,
+    required this.hintText,
+    this.keyboardType,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hintText;
+  final TextInputType? keyboardType;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(
+        color: AppColor.ink,
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hintText,
+        isDense: true,
+        filled: true,
+        fillColor: const Color(0xFFF6F7F5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: Color(0xFFE3E6E0)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: Color(0xFFE3E6E0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(color: AppColor.brand, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+String _roleLabel(String value) {
+  return switch (value) {
+    'front_label' => '앞면',
+    'supplement_facts' => '성분표',
+    'ingredients' => '원료',
+    'intake_method' => '섭취법',
+    'precautions' => '주의',
+    'functional_info' || 'functional_claims' => '기능성',
+    'barcode' => '바코드',
+    'mixed' => '묶음',
+    _ => value.isEmpty ? '기타' : value,
+  };
 }
 
 class _ImpactPreviewCard extends StatelessWidget {

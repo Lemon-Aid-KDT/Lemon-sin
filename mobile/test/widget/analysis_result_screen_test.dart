@@ -32,18 +32,78 @@ void main() {
     expect(find.text('on (1)'), findsOneWidget);
     expect(find.text('Ollama'), findsOneWidget);
     expect(find.text('parser on'), findsOneWidget);
+    await _scrollResultDetails(tester);
+    expect(find.text('확인 후 수정'), findsOneWidget);
     expect(find.text('Analysis progress'), findsNothing);
     expect(find.textContaining('OCR Auto'), findsNothing);
   });
+
+  testWidgets(
+    'registers user-corrected ingredient when OCR candidates are empty',
+    (WidgetTester tester) async {
+      final _ReviewRepository repository = _ReviewRepository(
+        preview: _emptyCandidatePreview(),
+      );
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeImage(
+        '/tmp/supplement-label.jpg',
+        ocrProvider: 'paddleocr',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: AnalysisResultScreen(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('성분 직접 입력'), findsOneWidget);
+      await _scrollResultDetails(tester);
+      expect(find.text('확인 후 수정'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).at(0), '수정 비타민 D');
+      await tester.enterText(find.byType(TextField).at(1), 'Lemon Lab');
+      await tester.enterText(find.byType(TextField).at(2), 'Vitamin D3');
+      await tester.enterText(find.byType(TextField).at(3), '25');
+      await tester.enterText(find.byType(TextField).at(4), 'mcg');
+
+      await tester.tap(find.text('성분 직접 입력'));
+      await tester.pumpAndSettle();
+
+      expect(repository.registeredRequest?.displayName, '수정 비타민 D');
+      expect(repository.registeredRequest?.manufacturer, 'Lemon Lab');
+      expect(
+        repository.registeredRequest?.ingredients.single.displayName,
+        'Vitamin D3',
+      );
+      expect(repository.registeredRequest?.ingredients.single.amount, 25);
+      expect(repository.registeredRequest?.ingredients.single.unit, 'mcg');
+      expect(
+        repository.registeredRequest?.ingredients.single.source,
+        'user_confirmed',
+      );
+      expect(repository.explainUsedLocalLlm, isTrue);
+      expect(controller.lastRegisteredSupplement?.displayName, '수정 비타민 D');
+    },
+  );
+}
+
+Future<void> _scrollResultDetails(WidgetTester tester) async {
+  await tester.drag(find.byType(ListView), const Offset(0, -700));
+  await tester.pumpAndSettle();
 }
 
 class _ReviewRepository implements LemonAidRepository {
+  _ReviewRepository({SupplementAnalysisPreview? preview})
+    : _previewOverride = preview;
+
+  final SupplementAnalysisPreview? _previewOverride;
+  UserSupplementCreate? registeredRequest;
+  bool explainUsedLocalLlm = false;
+
   @override
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
     String imagePath, {
     String ocrProvider = 'configured',
   }) async {
-    return _preview();
+    return _previewOverride ?? _preview();
   }
 
   @override
@@ -87,7 +147,7 @@ class _ReviewRepository implements LemonAidRepository {
 
   @override
   Future<DashboardSummary> fetchDashboardSummary({int days = 30}) {
-    throw UnimplementedError();
+    return Future<DashboardSummary>.value(_dashboardSummary());
   }
 
   @override
@@ -107,14 +167,21 @@ class _ReviewRepository implements LemonAidRepository {
   Future<UserSupplementResponse> registerSupplement(
     UserSupplementCreate request,
   ) {
-    throw UnimplementedError();
+    registeredRequest = request;
+    return Future<UserSupplementResponse>.value(
+      UserSupplementResponse(
+        id: 'supplement-1',
+        displayName: request.displayName,
+        manufacturer: request.manufacturer,
+      ),
+    );
   }
 
   @override
   Future<SupplementImpactPreviewResponse> previewSupplementImpact(
     SupplementImpactPreviewRequest request,
   ) {
-    throw UnimplementedError();
+    return Future<SupplementImpactPreviewResponse>.value(_impactPreview());
   }
 
   @override
@@ -129,7 +196,17 @@ class _ReviewRepository implements LemonAidRepository {
     SupplementImpactPreviewResponse preview, {
     bool useLocalLlm = false,
   }) {
-    throw UnimplementedError();
+    explainUsedLocalLlm = useLocalLlm;
+    return Future<SupplementRecommendationExplainResponse>.value(
+      const SupplementRecommendationExplainResponse(
+        safeUserMessage: 'Local explanation ready.',
+        explanationBullets: <String>['라벨 확인 값을 기준으로 설명합니다.'],
+        clinicalDisclaimer: 'Reference information only.',
+        blockedTermsDetected: <String>[],
+        llmUsed: true,
+        warnings: <String>[],
+      ),
+    );
   }
 
   SupplementAnalysisPreview _preview() {
@@ -212,4 +289,111 @@ class _ReviewRepository implements LemonAidRepository {
       expiresAt: DateTime.utc(2026, 5, 26),
     );
   }
+}
+
+SupplementAnalysisPreview _emptyCandidatePreview() {
+  return SupplementAnalysisPreview(
+    analysisId: 'analysis-empty',
+    status: 'requires_confirmation',
+    parsedProduct: const SupplementParsedProduct(
+      productName: null,
+      manufacturer: null,
+      servingSize: null,
+      dailyServings: null,
+    ),
+    ingredientCandidates: const <SupplementIngredientCandidate>[],
+    layoutAvailable: true,
+    layoutFallbackReason: null,
+    labelSections: const <SupplementPreviewLabelSection>[],
+    intakeMethod: SupplementPreviewIntakeMethod.empty,
+    precautions: const <SupplementPreviewPrecaution>[],
+    functionalClaims: const <SupplementPreviewFunctionalClaim>[],
+    evidenceSpans: const <SupplementPreviewEvidenceSpan>[
+      SupplementPreviewEvidenceSpan(
+        spanId: 'span-empty',
+        sourceType: 'ocr',
+        sectionType: 'supplement_facts',
+        textExcerpt: '라벨 일부만 확인됨',
+        pageIndex: null,
+        cellRef: null,
+        confidence: 0.42,
+      ),
+    ],
+    imageQualityReport: null,
+    analysisScope: 'supplement_label',
+    actionRequired: 'review_required',
+    detectedProductRegions: const <SupplementDetectedProductRegion>[],
+    selectedRegionId: null,
+    missingRequiredSections: const <String>['supplement_facts'],
+    imageRole: 'unknown',
+    multiImageGroupId: null,
+    sourceType: 'uploaded_image',
+    identityConflict: null,
+    pipelineMetadata: const SupplementImagePipelineMetadata(
+      intakeCompleted: true,
+      imageCount: 1,
+      imageRole: 'unknown',
+      visionRoiUsed: false,
+      ocrProvider: 'paddleocr_local',
+      ocrTextPresent: true,
+      ocrConfidenceBucket: 'low',
+      roiCount: 0,
+      sectionCount: 0,
+      llmParserUsed: true,
+      parserContractVersion: 'test-parser-v3',
+      missingRequiredSections: <String>['supplement_facts'],
+      rawImageStored: false,
+      rawOcrTextStored: false,
+    ),
+    lowConfidenceFields: const <String>['ingredient_candidates'],
+    warnings: const <String>['Automatic parsing needs review.'],
+    algorithmVersion: 'test',
+    sourceManifestVersion: null,
+    expiresAt: DateTime.utc(2026, 5, 26),
+  );
+}
+
+DashboardSummary _dashboardSummary() {
+  return DashboardSummary(
+    asOf: DateTime.utc(2026, 5, 28),
+    nutrition: const DashboardNutritionSummary(
+      dataStatus: 'partial',
+      lowCount: 0,
+      highCount: 0,
+      datasetVersion: 'test',
+    ),
+    activity: const DashboardActivitySummary(
+      dataStatus: 'partial',
+      latestSteps: null,
+      latestActivityScore: null,
+    ),
+    weight: const DashboardWeightSummary(
+      dataStatus: 'partial',
+      latestWeightKg: null,
+      predictedWeightKg: null,
+    ),
+    supplements: const DashboardSupplementSummary(
+      registeredCount: 1,
+      requiresReviewCount: 0,
+    ),
+    disclaimers: const <String>[],
+    algorithmVersion: 'test',
+  );
+}
+
+SupplementImpactPreviewResponse _impactPreview() {
+  return const SupplementImpactPreviewResponse(
+    calculationVersion: 'supplement-impact-v1.0.0',
+    referenceVersion: '2025',
+    sourceManifestVersion: null,
+    dataStatus: 'partial',
+    currentSupplementContributions: <SupplementContributionAggregate>[],
+    deficiencySupportCandidates: <SupplementNutritionInsight>[],
+    excessOrDuplicateRisks: <SupplementNutritionInsight>[],
+    missingProfileFields: <String>[],
+    safeUserMessage: 'Impact ready.',
+    clinicalDisclaimer: 'Reference information only.',
+    warnings: <String>[],
+    requiresUserConfirmation: true,
+  );
 }
