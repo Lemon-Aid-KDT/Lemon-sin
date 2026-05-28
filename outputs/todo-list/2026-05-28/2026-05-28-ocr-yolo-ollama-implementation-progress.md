@@ -72,13 +72,49 @@
 - `detect-secrets scan backend/scripts/evaluate_ocr_three_tier.py backend/Nutrition-backend/tests/unit/scripts/test_evaluate_ocr_three_tier.py`
   - no findings
 
+## Runtime smoke 결과
+
+- Docker backend는 source bind mount가 아니라 image-only 구조라서 최신 checkout 기준으로 `docker compose up -d --build backend`를 실행했다.
+  - `lemon-aid-backend-1`: healthy
+  - `lemon-aid-db-1`: healthy
+  - `lemon-aid-redis-1`: healthy
+- `/health`
+  - HTTP 200
+- `/ready`
+  - OCR providers: `configured`, `paddleocr`, `google_vision`, `clova` configured
+  - `ENABLE_VISION_CLASSIFIER=false` 상태라 `YOLO ROI: off`는 정상
+  - `ENABLE_MULTIMODAL_LLM=false` 상태라 vision assist는 off
+- `/openapi.json`
+  - `/api/v1/supplements/analyze-multi`: present
+  - `/api/v1/supplements/analysis-sessions`: present
+  - `/api/v1/supplements/analysis-sessions/{analysis_group_id}/images`: present
+  - `/api/v1/supplements/analysis-sessions/{analysis_group_id}/finalize`: present
+  - `/api/v1/supplements/analyses/{analysis_id}/explain`: present
+- 단일 이미지 OCR smoke
+  - 첫 fixture는 upload limit 초과로 HTTP 413이어서 더 작은 fixture로 재시도했다.
+  - `ocr_provider=paddleocr`: HTTP 202, provider `paddleocr_local`, OCR text present, confidence bucket `medium`, ingredient 후보 0개
+  - `ocr_provider=clova`: HTTP 202, provider `clova_ocr`, OCR text present, confidence bucket `high`, ingredient 후보 1개
+  - `ocr_provider=configured`: HTTP 202, provider `clova_ocr`, OCR text present, confidence bucket `high`, ingredient 후보 1개
+  - `ocr_provider=google_vision`: HTTP 202, recoverable `intake-only`, OCR text not present, automatic text extraction unavailable warning
+- 다중 이미지 OCR smoke
+  - `/api/v1/supplements/analyze-multi`: HTTP 202
+  - `image_count=2`, `preview_count=2`, merged provider `clova_ocr`, merged OCR text present, merged ingredient 후보 1개
+  - merged missing section: `intake_method`
+- 등록 전 analysis explain smoke
+  - `/api/v1/supplements/analyses/{analysis_id}/explain`: HTTP 200
+  - `use_local_llm=true`, `llm_used=true`, explanation bullet 6개, blocked terms 0개
+
+### Runtime smoke 판정
+
+- endpoint 연결 문제는 아니다. backend 최신 이미지 기준으로 단일/다중 이미지 endpoint와 등록 전 설명 endpoint가 모두 응답한다.
+- PaddleOCR은 OCR text는 있으나 ingredient 후보가 0개라 parser/section 품질 개선 대상이다.
+- CLOVA/configured는 같은 fixture에서 ingredient 후보 1개를 만들었다.
+- Google Vision은 credential 또는 provider 실행 경로를 별도 확인해야 한다. 현재 route는 실패를 intake-only로 안전하게 degrade한다.
+- YOLO ROI와 multimodal vision assist는 runtime flag가 꺼져 있어 이번 smoke에서는 off가 정상이다.
+
 ## 남은 TODO
 
-- live OCR smoke를 provider별로 다시 실행한다.
-  - `configured`
-  - `paddleocr`
-  - `clova`
-  - `google_vision`은 credential 상태를 먼저 분리 확인한다.
+- Google Vision provider는 route degrade가 아닌 실제 OCR 성공 경로가 되도록 credential/provider status를 분리 확인한다.
 - 실제 촬영 이미지 fixture로 provider benchmark manifest를 생성하고 `b53b196`의 구조화 지표를 비교한다.
 - YOLO ROI가 켜진 Docker/runtime에서 `roi_count`, selected ROI, parser 결과가 review UI에 기대대로 반영되는지 확인한다.
 - Android emulator에서 gallery image -> multi-image batch -> review -> manual correction -> registration -> analysis explanation까지 end-to-end smoke를 진행한다.
