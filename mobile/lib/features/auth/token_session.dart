@@ -70,14 +70,18 @@ class TokenSessionController extends ChangeNotifier {
   /// Args:
   ///   store: Persistence boundary for an externally issued JWT.
   ///   releaseMode: Whether release-mode access restrictions apply.
+  ///   bootstrapTimeout: Maximum wait for persisted token storage.
   TokenSessionController({
     required BearerTokenStore store,
     bool releaseMode = kReleaseMode,
+    Duration bootstrapTimeout = const Duration(seconds: 2),
   }) : _store = store,
-       _releaseMode = releaseMode;
+       _releaseMode = releaseMode,
+       _bootstrapTimeout = bootstrapTimeout;
 
   final BearerTokenStore _store;
   final bool _releaseMode;
+  final Duration _bootstrapTimeout;
 
   bool _bootstrapped = false;
   String? _bearerToken;
@@ -96,7 +100,16 @@ class TokenSessionController extends ChangeNotifier {
 
   /// Loads any persisted external bearer token.
   Future<void> bootstrap() async {
-    _bearerToken = _normalizeToken(await _store.readBearerToken());
+    try {
+      _bearerToken = _normalizeToken(
+        await _store.readBearerToken().timeout(
+          _bootstrapTimeout,
+          onTimeout: () => null,
+        ),
+      );
+    } on Object {
+      _bearerToken = null;
+    }
     _bootstrapped = true;
     notifyListeners();
   }

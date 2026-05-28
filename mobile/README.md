@@ -33,6 +33,40 @@ If the backend runs with JWT auth enabled, also pass:
 
 Local backend development can run without `LEMON_API_TOKEN` when `AUTH_MODE=disabled`.
 
+## Xcode With The Same Flutter UIUX
+
+The Android Studio app UIUX is implemented in Flutter under `mobile/lib`.
+To see the same UIUX in Xcode, open and run the Flutter iOS workspace:
+
+```text
+mobile/ios/Runner.xcworkspace
+```
+
+Do not use `mobile/Lemon-Aid-ios/Lemon-Aid.xcodeproj` for UIUX parity checks.
+That project is a small native SwiftUI smoke shell for endpoint diagnostics and
+does not render the Flutter dashboard, bottom action palette, camera flow, or
+review screens.
+
+Before opening Xcode, prepare the ignored Flutter iOS build settings:
+
+```sh
+LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1 \
+  ./scripts/prepare-ios-flutter-uiux-xcode.sh
+```
+
+Then open `ios/Runner.xcworkspace` in Xcode and run the `Runner` scheme on an
+iOS simulator. `LEMON_API_BASE_URL`, `LEMON_API_TOKEN`,
+`LEMON_DEV_GATEWAY_TOKEN`, and `LEMON_CERTIFICATE_PINS` are compile-time
+Flutter values, so pass them through `flutter build`/`flutter run`
+`--dart-define` values or the helper script. Xcode scheme runtime environment
+variables alone do not update `String.fromEnvironment` values in Dart.
+
+Official references:
+
+- Flutter iOS setup: <https://docs.flutter.dev/platform-integration/ios/setup>
+- Flutter iOS build and release: <https://docs.flutter.dev/deployment/ios>
+- Apple simulator run workflow: <https://developer.apple.com/documentation/xcode/running-your-app-in-simulator-or-on-a-device>
+
 ## Device Smoke
 
 The local device smoke completed on 2026-05-16 with Flutter `3.41.9`.

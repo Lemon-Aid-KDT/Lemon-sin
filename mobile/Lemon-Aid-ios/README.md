@@ -1,8 +1,12 @@
-# Lemon Aid Native iOS
+# Lemon Aid Native iOS Smoke Shell
 
 이 폴더는 Xcode에서 직접 실행하는 Lemon Aid SwiftUI native smoke 앱이다.
-Flutter 앱을 대체하지 않고, OCR/YOLO/Ollama backend endpoint 연결을 iOS
-native shell에서 빠르게 검증하기 위한 작업 공간이다.
+Android Studio에서 빌드한 Flutter 앱 UIUX와 동일한 앱이 아니다. Flutter
+UIUX parity를 확인하려면 `mobile/ios/Runner.xcworkspace`를 열어 `Runner`
+scheme을 실행한다.
+
+이 native shell은 Flutter 앱을 대체하지 않고, OCR/YOLO/Ollama backend
+endpoint 연결을 iOS native shell에서 빠르게 검증하기 위한 작업 공간이다.
 
 ## Xcode 실행 기준
 
@@ -27,6 +31,19 @@ LEMON_DEV_GATEWAY_TOKEN=<optional local gateway token>
 `.env`, ngrok token, gateway token, provider credential, raw OCR text,
 provider raw payload, image bytes, object URI는 앱 bundle이나 문서에 넣지
 않는다.
+
+## Flutter UIUX와 구분
+
+사용자에게 보여줄 17 Pro 스타일 dashboard, 하단 `+` action palette,
+camera/review flow는 Flutter `mobile/lib`가 원본이다. Xcode에서 그 UI를
+확인하려면 아래 workspace를 사용한다.
+
+```text
+mobile/ios/Runner.xcworkspace
+```
+
+이 native project에 Flutter UI를 다시 손으로 포팅하지 않는다. 포팅 방식은
+Flutter와 SwiftUI 양쪽 UI를 계속 동기화해야 해서 회귀 위험이 크다.
 
 ## Endpoint 계약
 

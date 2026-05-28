@@ -177,6 +177,52 @@
   - `/private/tmp/lemon-aid-ios-native-shell.png`
   - 17 Pro 스타일 native home shell 확인
 
+## Xcode Flutter UIUX parity 정렬
+
+- Xcode에서 Android Studio 앱과 같은 UIUX를 확인하려면 native SwiftUI smoke
+  shell이 아니라 Flutter iOS Runner workspace를 사용해야 한다.
+  - UIUX 원본: `mobile/lib`
+  - Xcode workspace: `mobile/ios/Runner.xcworkspace`
+  - scheme: `Runner`
+- `mobile/Lemon-Aid-ios/Lemon-Aid.xcodeproj`는 OCR/YOLO/Ollama endpoint
+  진단용 native smoke shell로 유지한다. Flutter dashboard, 하단 `+` action
+  palette, camera/review flow를 이 프로젝트에 손으로 재구현하지 않는다.
+- `mobile/scripts/prepare-ios-flutter-uiux-xcode.sh`를 추가해 Xcode 실행 전
+  Flutter iOS build 설정과 `--dart-define` 값을 준비할 수 있게 했다.
+  - 기본 local simulator API base: `http://127.0.0.1:8000/api/v1`
+  - 선택 값: `LEMON_API_TOKEN`, `LEMON_DEV_GATEWAY_TOKEN`,
+    `LEMON_CERTIFICATE_PINS`
+  - `.env`나 token 값을 Flutter asset으로 bundle하지 않는다.
+- `mobile/README.md`와 `mobile/Lemon-Aid-ios/README.md`에 Xcode에서 어떤
+  project/workspace를 열어야 하는지 명시했다.
+- iOS Runner splash가 secure storage bootstrap 지연 시 멈출 수 있어
+  `TokenSessionController.bootstrap()`에 timeout/fallback을 추가했다.
+  - debug/local smoke: token storage가 지연되면 dev bypass로 shell 진입
+  - release: token storage 실패 시 token 없이 login 경로 유지
+
+### Xcode Flutter UIUX parity 검증 결과
+
+- `dart format --output=none --set-exit-if-changed lib/features/auth/token_session.dart test/unit/token_session_test.dart`
+  - passed
+- `flutter test test/unit/token_session_test.dart`
+  - 5 passed
+- `./scripts/prepare-ios-flutter-uiux-xcode.sh`
+  - `flutter pub get` passed
+  - `flutter build ios --simulator --debug` passed
+- `xcodebuild` equivalent through XcodeBuildMCP with
+  `workspacePath=mobile/ios/Runner.xcworkspace`, `scheme=Runner`,
+  `CODE_SIGNING_ALLOWED=NO`
+  - build succeeded
+- XcodeBuildMCP simulator install/launch
+  - simulator: iPhone 17 Pro iOS 26.5
+  - bundle id: `com.example.lemonAidMobile`
+  - install succeeded
+  - launch succeeded
+- XcodeBuildMCP screenshot 확인
+  - Flutter splash 확인
+  - 17 Pro 스타일 home shell 확인
+  - 하단 중앙 `+` action palette 확인
+
 ## 남은 TODO
 
 - Google Vision provider는 HTTP 401을 해결할 수 있도록 API key 활성화, Vision API 권한, billing/project 제한을 확인한다.

@@ -28,6 +28,37 @@ void main() {
     expect(controller.canEnterShell, isFalse);
   });
 
+  test('falls back when token storage bootstrap hangs in debug mode', () async {
+    final TokenSessionController controller = TokenSessionController(
+      store: _NeverCompletingBearerTokenStore(),
+      releaseMode: false,
+      bootstrapTimeout: const Duration(milliseconds: 20),
+    );
+
+    await controller.bootstrap();
+
+    expect(controller.bootstrapped, isTrue);
+    expect(controller.bearerToken, isNull);
+    expect(controller.canEnterShell, isTrue);
+  });
+
+  test(
+    'falls back to login when token storage bootstrap fails in release mode',
+    () async {
+      final TokenSessionController controller = TokenSessionController(
+        store: _ThrowingBearerTokenStore(),
+        releaseMode: true,
+        bootstrapTimeout: const Duration(milliseconds: 20),
+      );
+
+      await controller.bootstrap();
+
+      expect(controller.bootstrapped, isTrue);
+      expect(controller.bearerToken, isNull);
+      expect(controller.canEnterShell, isFalse);
+    },
+  );
+
   test('stores normalized externally issued bearer token', () async {
     final MemoryBearerTokenStore store = MemoryBearerTokenStore();
     final TokenSessionController controller = TokenSessionController(
@@ -41,4 +72,29 @@ void main() {
     expect(await store.readBearerToken(), 'jwt-access-token');
     expect(controller.canEnterShell, isTrue);
   });
+}
+
+class _NeverCompletingBearerTokenStore implements BearerTokenStore {
+  @override
+  Future<String?> readBearerToken() =>
+      Future<String?>.delayed(const Duration(days: 1));
+
+  @override
+  Future<void> writeBearerToken(String token) async {}
+
+  @override
+  Future<void> clearBearerToken() async {}
+}
+
+class _ThrowingBearerTokenStore implements BearerTokenStore {
+  @override
+  Future<String?> readBearerToken() {
+    throw StateError('storage unavailable');
+  }
+
+  @override
+  Future<void> writeBearerToken(String token) async {}
+
+  @override
+  Future<void> clearBearerToken() async {}
 }
