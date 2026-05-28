@@ -174,14 +174,7 @@ http://localhost:8080
 > 50개 클래스 전체 라벨을 한 task에 넣지 않는다. 음식별로 task를 분리하면
 > 라벨러 실수(잘못된 클래스 선택)를 원천 차단할 수 있다.
 
-### 3-3. Task 생성 (이미지 업로드)
-
-1. 프로젝트 내 **Create new task**
-2. Task name 예: `crawl-mala-hot-pot-batch01`
-3. **Select files** → 크롤링 이미지 업로드 (jpg/png)
-4. **Submit & Open**
-
-### 3-4. 팀원 공유
+### 3-3. 팀원 공유
 
 1. CVAT이 실행 중인 PC의 로컬 IP 확인:
 
@@ -251,10 +244,15 @@ data/food_images/aihub_yolo_50/train/labels/  ← 크롤링 라벨 복사
 
 병합 후 `downsample_balanced.py` 재실행. cap 조정 전략:
 
-- 원본 < 500 클래스: cap=500 유지 (크롤링으로 채워진 만큼 전부 반영)
-- 원본 >= 500 + AP50 낮은 클래스: `--cap 1000` 으로 증가
+| 조건 | cap | 이유 |
+|---|---|---|
+| 원본 < 500 + AP50 낮음 (🔴) | 500 유지 | 크롤링으로 채워진 만큼 전부 반영 |
+| 원본 < 500 + AP50 높음 (🟡 과적합 의심) | 500 유지 | 크롤링으로 다양성 추가, 전부 반영 |
+| 원본 >= 500 + AP50 낮음 (🟠) | 1000으로 증가 | 희석 방지, 크롤링 이미지가 학습에 반영되도록 |
 
 ```powershell
+# 클래스별 cap을 다르게 설정해야 하므로 향후 per-class cap 기능 추가 예정
+# 현재는 전체 cap을 1000으로 올려 일괄 적용
 python scripts/data/downsample_balanced.py `
     --src data/food_images/aihub_yolo_50 `
     --dst data/food_images/aihub_yolo_50_crawl_balanced `
