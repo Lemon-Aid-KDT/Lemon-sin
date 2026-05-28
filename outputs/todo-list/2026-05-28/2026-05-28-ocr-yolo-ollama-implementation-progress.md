@@ -15,6 +15,7 @@
 - `e39ee3a feat(mobile): 분석 결과 수동 보정 연결`
 - `cdad9ce feat(supplement): 분석 preview Ollama 설명 연결`
 - `b53b196 feat(ocr): provider 구조화 benchmark 보강`
+- 이번 추가 확인 대상: Android emulator dev flavor 실행, AVD camera provider 원인 분리, iPhone 17 Pro Xcode simulator 실행
 
 ## 수행한 작업
 
@@ -54,6 +55,8 @@
 
 - 17 Pro 스타일 카메라/분석 결과 UI에서 다중 이미지 추가, provider 선택, missing section 안내, manual correction, 등록 전 Ollama 설명 호출 흐름을 연결했다.
 - Android 우선 smoke 흐름에서 카메라 사용이 불안정한 emulator 환경은 gallery/picker fallback을 유지한다.
+- Android `dev` flavor와 iOS simulator 모두 같은 Flutter shell을 사용한다.
+- Android flavor가 `dev`, `staging`, `prod`로 나뉘어 있으므로 emulator 실행은 `--flavor dev`를 지정해야 한다.
 
 ## 검증 결과
 
@@ -71,6 +74,15 @@
   - passed
 - `detect-secrets scan backend/scripts/evaluate_ocr_three_tier.py backend/Nutrition-backend/tests/unit/scripts/test_evaluate_ocr_three_tier.py`
   - no findings
+- Android emulator run
+  - `flutter run -d emulator-5554 --flavor dev --no-resident --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1`
+  - dev debug APK build/install/run passed
+- iOS simulator run
+  - `flutter run -d 71FB0384-0C75-4CC4-925A-2A6598CAE89A --no-resident --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1`
+  - Xcode build/install/run passed
+- iOS simulator screenshot
+  - `simctl io ... screenshot /private/tmp/lemon-ios-xcode-home.png`
+  - 17 Pro 스타일 home shell 확인
 
 ## Runtime smoke 결과
 
@@ -116,13 +128,34 @@
 - Google Vision은 현재 HTTP 401 credential/API key 권한 문제로 분리됐다. route는 실패를 intake-only로 안전하게 degrade한다.
 - YOLO ROI와 multimodal vision assist는 runtime flag가 꺼져 있어 이번 smoke에서는 off가 정상이다.
 
+## Android/iOS 앱 실행 판정
+
+- Android 첫 실행에서 flavor 미지정 `flutter run`은 launch activity 확인 단계에서 실패했다.
+  - 원인: Android Gradle 설정이 `dev`, `staging`, `prod` product flavor를 사용한다.
+  - 조치: Android Studio/Flutter run config에는 `--flavor dev`를 지정한다.
+- Android `dev` flavor 실행은 성공했다.
+  - API base는 emulator host loopback인 `http://10.0.2.2:8000/api/v1`를 사용했다.
+  - 17 Pro 스타일 home shell, 하단 `+` action palette, `영양제 촬영` 진입을 확인했다.
+- Android camera fallback 모드는 정상이다.
+  - live preview 플래그가 꺼진 기본 실행에서는 앱이 emulator 안내 문구를 보여주고, 셔터는 Android 카메라 앱 촬영 fallback으로 동작한다.
+- Android live preview 검정 화면의 1차 원인은 앱 코드가 아니라 AVD camera provider 설정이다.
+  - `webcam1` back camera 상태에서는 emulator provider가 프레임을 얻지 못했다.
+  - `-camera-back virtualscene`으로 재기동하면 virtual scene camera가 활성화된다.
+- Android virtual scene camera 재실행 후 실제 분석 review 화면까지 도달했다.
+  - snackbar는 preview ready 상태를 표시했다.
+  - 이 결과는 카메라 선택 이후 mobile -> backend analyze endpoint 연결이 살아 있음을 의미한다.
+- iOS는 현재 Mac의 Xcode/iPhone 17 Pro simulator에서 Flutter app build/install/run이 통과했다.
+  - 17 Pro 스타일 home shell과 하단 `+` UI가 iOS simulator에서도 확인됐다.
+  - iOS simulator는 물리 카메라가 없으므로 실제 촬영 smoke는 gallery 또는 실제 iPhone/ngrok flow로 분리한다.
+
 ## 남은 TODO
 
 - Google Vision provider는 HTTP 401을 해결할 수 있도록 API key 활성화, Vision API 권한, billing/project 제한을 확인한다.
 - 실제 촬영 이미지 fixture로 provider benchmark manifest를 생성하고 `b53b196`의 구조화 지표를 비교한다.
 - YOLO ROI가 켜진 Docker/runtime에서 `roi_count`, selected ROI, parser 결과가 review UI에 기대대로 반영되는지 확인한다.
-- Android emulator에서 gallery image -> multi-image batch -> review -> manual correction -> registration -> analysis explanation까지 end-to-end smoke를 진행한다.
-- iOS simulator는 Xcode/device 상태가 안정화된 뒤 같은 flow로 재검증한다.
+- Android emulator에서 gallery image -> multi-image batch -> manual correction -> registration -> analysis explanation까지 남은 end-to-end smoke를 진행한다.
+- iOS simulator는 gallery 입력 기반 OCR smoke를 진행하고, 실제 촬영은 물리 iPhone/ngrok flow에서 검증한다.
+- Android Studio run configuration에 `dev` flavor와 `LEMON_API_BASE_URL` dart define을 저장할지 팀 합의가 필요하다.
 
 ## 주의할 파일/커밋 제외 항목
 
