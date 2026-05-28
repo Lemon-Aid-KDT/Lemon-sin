@@ -4,6 +4,18 @@
 >
 > 환경: Windows 11, PC2 (RTX 4060 Laptop 8GB)
 
+## 설치 완료 기록
+
+| 항목 | 내용 |
+|---|---|
+| 완료일 | 2026-05-28 |
+| Docker Desktop | 29.5.2 (AMD64, WSL2 백엔드) |
+| Docker Compose | v5.1.3 |
+| CVAT | cvat-ai/cvat (최신 dev) |
+| 접속 URL | http://localhost:8080 |
+| 관리자 계정 | bell0925 |
+| 상태 | 전체 컨테이너 정상 구동 확인 |
+
 ---
 
 ## 전체 파이프라인
