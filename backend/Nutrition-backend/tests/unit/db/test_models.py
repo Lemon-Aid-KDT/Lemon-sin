@@ -5,7 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import CheckConstraint, Index, Numeric, Table
+from sqlalchemy import CheckConstraint, Date, Index, Numeric, String, Table, Text
+from sqlalchemy.dialects import postgresql
 from src.db.base import Base
 from src.models.db import (
     AgentMemory,
@@ -501,3 +502,218 @@ def test_agent_memory_constraints_and_indexes_are_defined() -> None:
     assert "ck_agent_runs_agent_runs_approval_status_allowed" in run_constraint_names
     assert "ix_agent_memory_owner_type" in memory_index_names
     assert "ix_agent_runs_owner_created_at" in run_index_names
+
+
+def test_medical_source_governance_tables_are_registered() -> None:
+    """Verify medical source governance tables are registered in ORM metadata."""
+    assert {
+        "medical_sources",
+        "medical_source_versions",
+        "medical_evidence_items",
+        "medical_policy_boundaries",
+        "medical_rag_chunks",
+    }.issubset(Base.metadata.tables)
+
+
+def test_medical_sources_table_contract() -> None:
+    """Verify medical source registry table columns and lookup index."""
+    table = cast(Table, Base.metadata.tables["medical_sources"])
+    id_type = cast(String, table.c.id.type)
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert set(table.c.keys()) == {
+        "id",
+        "source_family",
+        "publisher",
+        "title",
+        "canonical_url",
+        "jurisdiction",
+        "source_type",
+        "default_review_status",
+        "owner",
+        "created_at",
+        "updated_at",
+    }
+    assert table.c.id.primary_key is True
+    assert id_type.length == 80
+    assert table.c.source_family.nullable is False
+    assert table.c.default_review_status.nullable is False
+    assert {
+        "ck_medical_sources_default_review_status",
+        "ck_medical_sources_source_type",
+    }.issubset(constraint_names)
+    assert "ix_medical_sources_family_status" in index_names
+
+
+def test_medical_source_versions_table_contract() -> None:
+    """Verify source version table stores review and expiry dates."""
+    table = cast(Table, Base.metadata.tables["medical_source_versions"])
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert {
+        "id",
+        "source_id",
+        "version_label",
+        "published_at",
+        "reviewed_at",
+        "expires_at",
+        "review_status",
+        "reviewer",
+        "review_note",
+        "created_at",
+        "updated_at",
+    } == set(table.c.keys())
+    assert isinstance(table.c.id.type, postgresql.UUID)
+    assert table.c.id.primary_key is True
+    assert isinstance(table.c.published_at.type, Date)
+    assert isinstance(table.c.reviewed_at.type, Date)
+    assert isinstance(table.c.expires_at.type, Date)
+    assert isinstance(table.c.review_note.type, Text)
+    assert "ck_medical_source_versions_review_status" in constraint_names
+    assert "ix_medical_source_versions_source_status_expires" in index_names
+
+
+def test_medical_evidence_items_table_contract() -> None:
+    """Verify evidence items preserve reviewed claim wording boundaries."""
+    table = cast(Table, Base.metadata.tables["medical_evidence_items"])
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert {
+        "id",
+        "source_version_id",
+        "topic",
+        "audience",
+        "claim_summary",
+        "allowed_user_wording",
+        "blocked_wording",
+        "applicability_note",
+        "caution_level",
+        "review_status",
+        "algorithm_version",
+        "created_at",
+        "updated_at",
+    } == set(table.c.keys())
+    assert isinstance(table.c.id.type, postgresql.UUID)
+    assert isinstance(table.c.claim_summary.type, Text)
+    assert isinstance(table.c.allowed_user_wording.type, Text)
+    assert isinstance(table.c.blocked_wording.type, Text)
+    assert isinstance(table.c.applicability_note.type, Text)
+    assert {
+        "ck_medical_evidence_items_caution_level",
+        "ck_medical_evidence_items_review_status",
+    }.issubset(constraint_names)
+    assert "ix_medical_evidence_items_topic_audience_status" in index_names
+
+
+def test_medical_policy_boundaries_table_contract() -> None:
+    """Verify safety boundaries can be shared by classifiers and contract tests."""
+    table = cast(Table, Base.metadata.tables["medical_policy_boundaries"])
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert {
+        "id",
+        "boundary_code",
+        "topic",
+        "trigger_intent",
+        "response_status",
+        "required_warning_code",
+        "allowed_response_pattern",
+        "blocked_response_pattern",
+        "source_version_id",
+        "review_status",
+        "created_at",
+        "updated_at",
+    } == set(table.c.keys())
+    assert isinstance(table.c.id.type, postgresql.UUID)
+    assert isinstance(table.c.allowed_response_pattern.type, Text)
+    assert isinstance(table.c.blocked_response_pattern.type, Text)
+    assert {
+        "ck_medical_policy_boundaries_response_status",
+        "ck_medical_policy_boundaries_review_status",
+    }.issubset(constraint_names)
+    assert "ix_medical_policy_boundaries_code_status" in index_names
+
+
+def test_medical_rag_chunks_table_contract() -> None:
+    """Verify RAG chunks only store reviewed snippets and indexable metadata."""
+    table = cast(Table, Base.metadata.tables["medical_rag_chunks"])
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert {
+        "id",
+        "evidence_item_id",
+        "source_version_id",
+        "chunk_text",
+        "chunk_hash",
+        "embedding_status",
+        "review_status",
+        "expires_at",
+        "created_at",
+        "updated_at",
+    } == set(table.c.keys())
+    assert isinstance(table.c.id.type, postgresql.UUID)
+    assert isinstance(table.c.chunk_text.type, Text)
+    assert isinstance(table.c.expires_at.type, Date)
+    assert {
+        "ck_medical_rag_chunks_embedding_status",
+        "ck_medical_rag_chunks_review_status",
+    }.issubset(constraint_names)
+    assert "ix_medical_rag_chunks_status_embedding_expires" in index_names
+    assert "ix_medical_rag_chunks_chunk_hash" in index_names
+
+
+def test_medical_source_governance_tables_exclude_raw_payload_columns() -> None:
+    """Verify medical source governance tables do not persist raw AI or OCR payloads."""
+    table_names = {
+        "medical_sources",
+        "medical_source_versions",
+        "medical_evidence_items",
+        "medical_policy_boundaries",
+        "medical_rag_chunks",
+    }
+    forbidden_columns = {
+        "raw_prompt",
+        "full_prompt",
+        "prompt",
+        "raw_llm_response",
+        "provider_payload",
+        "raw_ocr_text",
+        "raw_image",
+        "raw_image_bytes",
+        "image_base64",
+        "exif",
+        "file_name",
+        "original_file_name",
+    }
+    actual_columns = {
+        column_name
+        for table_name in table_names
+        for column_name in Base.metadata.tables[table_name].c.keys()
+    }
+
+    assert forbidden_columns.isdisjoint(actual_columns)

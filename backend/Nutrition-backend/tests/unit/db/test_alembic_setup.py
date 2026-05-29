@@ -18,7 +18,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0008_create_reminder_preferences"]
+    assert script.get_heads() == ["0009_create_medical_source_governance_tables"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -29,7 +29,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0008_create_reminder_preferences"]
+    assert script.get_heads() == ["0009_create_medical_source_governance_tables"]
 
 
 def test_initial_migration_file_exists() -> None:
@@ -96,3 +96,15 @@ def test_alembic_version_table_supports_long_revision_ids() -> None:
     command.upgrade(config, "head", sql=True)
 
     assert "version_num VARCHAR(80)" in output.getvalue()
+
+
+def test_medical_source_governance_migration_file_exists() -> None:
+    """Verify the medical source governance migration file exists."""
+    migration_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "0009_create_medical_source_governance_tables.py"
+    )
+
+    assert migration_path.is_file()

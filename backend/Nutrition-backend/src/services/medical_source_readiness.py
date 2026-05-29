@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from lemon_ai_agent.knowledge import REVIEWED_MEDICAL_SOURCE_REGISTRY, ReviewedMedicalSource
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import BACKEND_ROOT, PROJECT_ROOT, Settings
+from src.models.db.medical_source import MedicalSource, MedicalSourceVersion
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,61 @@ class MedicalSourceReadiness:
     sources: tuple[MedicalSourceStatus, ...]
 
 
+@dataclass(frozen=True)
+class MedicalSourceReadinessRecord:
+    source_id: str
+    title: str
+    source_family: str
+    review_status: str
+    reviewed_at: date
+    expires_at: date
+
+
+class MedicalSourceGovernanceRepository:
+    """Read reviewed source-governance readiness metadata from the application DB."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_readiness_records(self) -> tuple[MedicalSourceReadinessRecord, ...]:
+        """Return the latest source-version rows needed for readiness checks."""
+        statement = (
+            select(
+                MedicalSource.id.label("source_id"),
+                MedicalSource.title.label("title"),
+                MedicalSource.source_family.label("source_family"),
+                MedicalSourceVersion.review_status.label("review_status"),
+                MedicalSourceVersion.reviewed_at.label("reviewed_at"),
+                MedicalSourceVersion.expires_at.label("expires_at"),
+            )
+            .join(MedicalSourceVersion, MedicalSourceVersion.source_id == MedicalSource.id)
+            .order_by(
+                MedicalSource.id.asc(),
+                MedicalSourceVersion.reviewed_at.desc(),
+                MedicalSourceVersion.created_at.desc(),
+            )
+        )
+        result = await self._session.execute(statement)
+        records: list[MedicalSourceReadinessRecord] = []
+        seen_source_ids: set[str] = set()
+        for row in result.all():
+            source_id = str(row.source_id)
+            if source_id in seen_source_ids:
+                continue
+            seen_source_ids.add(source_id)
+            records.append(
+                MedicalSourceReadinessRecord(
+                    source_id=source_id,
+                    title=str(row.title),
+                    source_family=str(row.source_family),
+                    review_status=str(row.review_status),
+                    reviewed_at=row.reviewed_at,
+                    expires_at=row.expires_at,
+                )
+            )
+        return tuple(records)
+
+
 def build_medical_source_readiness(
     settings: Settings,
     *,
@@ -55,6 +113,101 @@ def build_medical_source_readiness(
     return MedicalSourceReadiness(
         ready=all(source.ready for source in statuses if source.user_facing_allowed),
         sources=statuses,
+    )
+
+
+async def build_medical_source_readiness_from_db(
+    session: AsyncSession,
+    settings: Settings,
+    *,
+    today: date | None = None,
+    allow_registry_fallback: bool | None = None,
+) -> MedicalSourceReadiness:
+    """Return readiness from DB rows, with registry fallback only outside production."""
+    records = await MedicalSourceGovernanceRepository(session).list_readiness_records()
+    fallback_allowed = (
+        settings.environment != "production"
+        if allow_registry_fallback is None
+        else allow_registry_fallback
+    )
+    return build_medical_source_readiness_from_records(
+        records,
+        today=today,
+        allow_registry_fallback=fallback_allowed,
+        settings=settings,
+    )
+
+
+def build_medical_source_readiness_from_records(
+    records: list[MedicalSourceReadinessRecord] | tuple[MedicalSourceReadinessRecord, ...],
+    *,
+    today: date | None = None,
+    allow_registry_fallback: bool = False,
+    settings: Settings | None = None,
+) -> MedicalSourceReadiness:
+    """Return readiness from DB-backed source governance records.
+
+    Empty DB-backed records fail closed unless the caller explicitly opts into
+    the local/dev registry fallback for bootstrap checks.
+    """
+    current_date = today or datetime.now(UTC).date()
+    if not records:
+        if allow_registry_fallback:
+            return build_medical_source_readiness(settings or Settings(), today=current_date)
+        return MedicalSourceReadiness(
+            ready=False,
+            sources=(
+                MedicalSourceStatus(
+                    source_id="medical-source-governance",
+                    title="Medical source governance DB",
+                    status="missing",
+                    configured=False,
+                    ready=False,
+                    error_code="no_reviewed_sources",
+                    env_key=None,
+                    missing_topic_ids=(),
+                    source_families=(),
+                    topics=(),
+                    user_facing_allowed=False,
+                    last_reviewed_at="",
+                    review_expires_at="",
+                ),
+            ),
+        )
+
+    statuses = tuple(_db_record_status(record, current_date) for record in records)
+    return MedicalSourceReadiness(
+        ready=any(source.ready and source.user_facing_allowed for source in statuses),
+        sources=statuses,
+    )
+
+
+def _db_record_status(
+    record: MedicalSourceReadinessRecord,
+    today: date,
+) -> MedicalSourceStatus:
+    status = record.review_status
+    user_facing_allowed = status == "reviewed" and today <= record.expires_at
+    error_code: str | None = None
+    if status != "reviewed":
+        error_code = "not_reviewed"
+    elif today > record.expires_at:
+        error_code = "source_stale"
+
+    return MedicalSourceStatus(
+        source_id=record.source_id,
+        title=record.title,
+        status=status,
+        configured=error_code is None,
+        ready=error_code is None,
+        error_code=error_code,
+        env_key=None,
+        missing_topic_ids=(),
+        source_families=(record.source_family,),
+        topics=(),
+        user_facing_allowed=user_facing_allowed,
+        last_reviewed_at=record.reviewed_at.isoformat(),
+        review_expires_at=record.expires_at.isoformat(),
     )
 
 

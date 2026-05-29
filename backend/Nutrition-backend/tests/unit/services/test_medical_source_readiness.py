@@ -5,10 +5,17 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 from lemon_ai_agent.knowledge import REVIEWED_MEDICAL_SOURCE_REGISTRY
 from src.config import Settings
-from src.services.medical_source_readiness import build_medical_source_readiness
+from src.services.medical_source_readiness import (
+    MedicalSourceGovernanceRepository,
+    MedicalSourceReadinessRecord,
+    build_medical_source_readiness,
+    build_medical_source_readiness_from_db,
+    build_medical_source_readiness_from_records,
+)
 
 NUTRITION_BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
@@ -121,3 +128,180 @@ def test_kdca_topic_ids_example_matches_required_topics() -> None:
     assert isinstance(topics, dict)
 
     assert set(topics) == set(_kdca_topic_ids())
+
+
+def test_db_backed_readiness_uses_only_reviewed_unexpired_sources() -> None:
+    """Verify DB-backed readiness exposes only reviewed current source families."""
+    readiness = build_medical_source_readiness_from_records(
+        [
+            MedicalSourceReadinessRecord(
+                source_id="kdca-healthinfo",
+                title="KDCA health information",
+                source_family="public_health_guidance",
+                review_status="reviewed",
+                reviewed_at=date(2026, 5, 22),
+                expires_at=date(2026, 11, 22),
+            ),
+            MedicalSourceReadinessRecord(
+                source_id="semantic-scholar",
+                title="Semantic Scholar candidate papers",
+                source_family="paper_research",
+                review_status="paper_candidate",
+                reviewed_at=date(2026, 5, 22),
+                expires_at=date(2026, 11, 22),
+            ),
+        ],
+        today=date(2026, 5, 24),
+    )
+    by_id = {source.source_id: source for source in readiness.sources}
+
+    assert readiness.ready is True
+    assert by_id["kdca-healthinfo"].ready is True
+    assert by_id["kdca-healthinfo"].source_families == ("public_health_guidance",)
+    assert by_id["kdca-healthinfo"].status == "reviewed"
+    assert by_id["semantic-scholar"].ready is False
+    assert by_id["semantic-scholar"].user_facing_allowed is False
+    assert by_id["semantic-scholar"].error_code == "not_reviewed"
+
+
+def test_db_backed_readiness_fails_closed_when_no_reviewed_sources() -> None:
+    """Verify production-like DB readiness fails closed when governance rows are empty."""
+    readiness = build_medical_source_readiness_from_records(
+        [],
+        today=date(2026, 5, 24),
+        allow_registry_fallback=False,
+    )
+
+    assert readiness.ready is False
+    assert len(readiness.sources) == 1
+    assert readiness.sources[0].source_id == "medical-source-governance"
+    assert readiness.sources[0].ready is False
+    assert readiness.sources[0].error_code == "no_reviewed_sources"
+    assert readiness.sources[0].user_facing_allowed is False
+
+
+def test_db_backed_readiness_marks_reviewed_expired_source_stale() -> None:
+    """Verify reviewed DB sources become non-ready after expiry."""
+    readiness = build_medical_source_readiness_from_records(
+        [
+            MedicalSourceReadinessRecord(
+                source_id="kdca-healthinfo",
+                title="KDCA health information",
+                source_family="public_health_guidance",
+                review_status="reviewed",
+                reviewed_at=date(2026, 5, 22),
+                expires_at=date(2026, 5, 23),
+            ),
+        ],
+        today=date(2026, 5, 24),
+    )
+
+    assert readiness.ready is False
+    assert readiness.sources[0].ready is False
+    assert readiness.sources[0].error_code == "source_stale"
+    assert readiness.sources[0].user_facing_allowed is False
+
+
+def test_local_registry_fallback_remains_explicit_dev_only() -> None:
+    """Verify registry fallback is an explicit local/dev bootstrap path."""
+    readiness = build_medical_source_readiness_from_records(
+        [],
+        today=date(2026, 5, 24),
+        allow_registry_fallback=True,
+        settings=Settings(_env_file=None, kdca_healthinfo_topic_ids=_kdca_topic_ids()),
+    )
+    by_id = {source.source_id: source for source in readiness.sources}
+
+    assert "kdca-healthinfo" in by_id
+    assert by_id["kdca-healthinfo"].ready is True
+    assert all(source.error_code != "no_reviewed_sources" for source in readiness.sources)
+
+
+class _FakeResult:
+    def __init__(self, rows: list[SimpleNamespace]) -> None:
+        self._rows = rows
+
+    def all(self) -> list[SimpleNamespace]:
+        return self._rows
+
+
+class _FakeSession:
+    def __init__(self, rows: list[SimpleNamespace]) -> None:
+        self.rows = rows
+        self.statement: object | None = None
+
+    async def execute(self, statement: object) -> _FakeResult:
+        self.statement = statement
+        return _FakeResult(self.rows)
+
+
+async def test_medical_source_governance_repository_maps_db_rows() -> None:
+    """Verify the DB-backed repository maps source/version rows into readiness records."""
+    session = _FakeSession(
+        [
+            SimpleNamespace(
+                source_id="kdca-healthinfo",
+                title="KDCA health information",
+                source_family="public_health_guidance",
+                review_status="reviewed",
+                reviewed_at=date(2026, 5, 22),
+                expires_at=date(2026, 11, 22),
+            )
+        ]
+    )
+
+    records = await MedicalSourceGovernanceRepository(session).list_readiness_records()
+
+    assert session.statement is not None
+    assert records == (
+        MedicalSourceReadinessRecord(
+            source_id="kdca-healthinfo",
+            title="KDCA health information",
+            source_family="public_health_guidance",
+            review_status="reviewed",
+            reviewed_at=date(2026, 5, 22),
+            expires_at=date(2026, 11, 22),
+        ),
+    )
+
+
+async def test_db_readiness_fails_closed_for_empty_production_db() -> None:
+    """Verify production-like DB readiness does not fall back to the static registry."""
+    readiness = await build_medical_source_readiness_from_db(
+        _FakeSession([]),
+        Settings(
+            _env_file=None,
+            environment="production",
+            database_url="postgresql+asyncpg://lemon_prod:secret@db.example.com:5432/lemon",
+            allowed_origins=["https://app.example.com"],
+            allowed_hosts=["api.example.com"],
+            auth_mode="jwt",
+            jwt_issuer="https://issuer.example.com",
+            jwt_audience="lemon-api",
+            jwt_jwks_url="https://issuer.example.com/.well-known/jwks.json",
+            jwt_token_use_claim="token_use",
+            jwt_token_use_allowed_values=["access"],
+            privacy_hash_secret="prod-privacy-secret",
+            allow_sample_kdris=False,
+            kdris_data_version="2025",
+            kdris_data_path="data/nutrition_reference/kdris/kdris_2025.csv",
+        ),
+        today=date(2026, 5, 24),
+    )
+
+    assert readiness.ready is False
+    assert readiness.sources[0].error_code == "no_reviewed_sources"
+
+
+async def test_db_readiness_allows_registry_fallback_for_development_empty_db() -> None:
+    """Verify development DB readiness can use the registry bootstrap fallback."""
+    readiness = await build_medical_source_readiness_from_db(
+        _FakeSession([]),
+        Settings(_env_file=None, kdca_healthinfo_topic_ids=_kdca_topic_ids()),
+        today=date(2026, 5, 24),
+    )
+
+    by_id = {source.source_id: source for source in readiness.sources}
+    assert "kdca-healthinfo" in by_id
+    assert by_id["kdca-healthinfo"].error_code is None
+    assert all(source.error_code != "no_reviewed_sources" for source in readiness.sources)
