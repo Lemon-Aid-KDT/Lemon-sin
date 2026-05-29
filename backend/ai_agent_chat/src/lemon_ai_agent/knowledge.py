@@ -7,6 +7,7 @@ QuestionCategory = Literal[
     "general_info",
     "nutrition_analysis",
     "supplement_question",
+    "medication_supplement_caution",
     "drug_or_interaction",
     "chronic_condition_context",
     "symptom_or_emergency",
@@ -87,11 +88,13 @@ class ChatIntentAnalysis:
     red_flags: tuple[str, ...]
     boundary: tuple[str, ...]
     reasons: tuple[str, ...]
+    normalized_question: str = ""
 
 
 @dataclass(frozen=True)
 class MedicalKnowledgeItem:
     source: str
+    source_id: str
     topic: str
     intent: ChatIntent
     condition: Condition | None
@@ -100,6 +103,11 @@ class MedicalKnowledgeItem:
     evidence_type: EvidenceType
     reviewed_status: SourceStatus
     source_url: str
+    allowed_guidance: tuple[str, ...] = ()
+    specific_examples: tuple[str, ...] = ()
+    checklist: tuple[str, ...] = ()
+    caution_conditions: tuple[str, ...] = ()
+    must_not_say: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -360,6 +368,7 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
 MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     MedicalKnowledgeItem(
         source="CDC Diabetes Meal Planning",
+        source_id="kdca-healthinfo",
         topic="diabetes_plate_method",
         intent="meal",
         condition="diabetes",
@@ -371,9 +380,18 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
         evidence_type="official_guideline",
         reviewed_status="reviewed",
         source_url="https://www.cdc.gov/diabetes/healthy-eating/diabetes-meal-planning.html",
+        allowed_guidance=(
+            "저녁 탄수화물은 한 번에 몰리지 않게 줄이고 채소와 단백질 반찬을 곁들인다.",
+            "식사, 활동, 수면, 체중 기록을 함께 보며 반복 패턴을 조정한다.",
+        ),
+        specific_examples=("비전분 채소", "두부", "달걀", "생선구이", "콩류"),
+        checklist=("밥·면·빵 양", "달콤한 간식", "다음 식사 구성", "혈당 기록 여부"),
+        caution_conditions=("저혈당 증상", "약 복용 중인 경우", "증상이 악화되는 경우"),
+        must_not_say=("당뇨가 치료됩니다", "탄수화물을 완전히 끊으세요", "약을 조절하세요"),
     ),
     MedicalKnowledgeItem(
         source="NIDDK Healthy Living with Diabetes",
+        source_id="kdca-healthinfo",
         topic="diabetes_healthy_living",
         intent="general_question",
         condition="diabetes",
@@ -388,9 +406,17 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
             "https://www.niddk.nih.gov/health-information/diabetes/overview/"
             "diet-eating-physical-activity"
         ),
+        allowed_guidance=(
+            "식사 계획, 신체활동, 수면, 체중 기록을 한꺼번에 큰 목표보다 작은 행동으로 나눈다.",
+        ),
+        specific_examples=("걷기", "식사 기록", "수면 기록", "체중 기록"),
+        checklist=("식사 시간", "활동량", "수면 시간", "체중 변화", "약 복용 여부"),
+        caution_conditions=("검사수치 해석", "처방 변경", "저혈당 의심 증상"),
+        must_not_say=("혈당약을 바꾸세요", "검사수치만으로 치료를 결정하세요"),
     ),
     MedicalKnowledgeItem(
         source="CDC Adult Physical Activity Guidelines",
+        source_id="kdca-healthinfo",
         topic="adult_activity",
         intent="exercise",
         condition=None,
@@ -402,9 +428,15 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
         evidence_type="official_guideline",
         reviewed_status="reviewed",
         source_url="https://www.cdc.gov/physical-activity-basics/guidelines/adults.html",
+        allowed_guidance=("걷기부터 시작하고 강도와 시간을 기록한다.",),
+        specific_examples=("걷기", "자전거", "가벼운 근력운동"),
+        checklist=("운동 시간", "강도", "어지러움", "숨참", "통증"),
+        caution_conditions=("가슴 통증", "숨참", "실신", "마비"),
+        must_not_say=("통증이 있어도 계속하세요", "약을 줄이고 운동하세요"),
     ),
     MedicalKnowledgeItem(
         source="CDC Sleep",
+        source_id="kdca-healthinfo",
         topic="adult_sleep",
         intent="sleep",
         condition=None,
@@ -413,9 +445,15 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
         evidence_type="official_guideline",
         reviewed_status="reviewed",
         source_url="https://www.cdc.gov/sleep/about/index.html",
+        allowed_guidance=("수면 시간을 기록하고 식사·카페인·활동 패턴과 함께 본다.",),
+        specific_examples=("취침 시간", "기상 시간", "카페인", "야식"),
+        checklist=("수면 시간", "낮 졸림", "카페인 섭취", "야식 여부"),
+        caution_conditions=("심한 불면", "호흡 문제", "정신건강 위험"),
+        must_not_say=("수면제를 복용하세요", "진단명입니다"),
     ),
     MedicalKnowledgeItem(
         source="CDC Heat and Athletes",
+        source_id="kdca-healthinfo",
         topic="exercise_dizziness",
         intent="symptom",
         condition=None,
@@ -427,9 +465,219 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
         evidence_type="official_reference",
         reviewed_status="reviewed",
         source_url="https://www.cdc.gov/heat-health/risk-factors/heat-and-athletes.html",
+        allowed_guidance=("운동을 멈추고 휴식, 수분 보충, 서늘한 장소 이동을 우선한다.",),
+        specific_examples=("휴식", "수분 보충", "서늘한 곳", "증상 기록"),
+        checklist=("어지러움", "탈수 가능성", "식사 간격", "운동 강도"),
+        caution_conditions=("가슴 통증", "숨참", "실신", "마비", "증상 악화"),
+        must_not_say=("계속 운동하세요", "원인은 이것입니다"),
+    ),
+    MedicalKnowledgeItem(
+        source="KDRIs 2025",
+        source_id="kdris-2025",
+        topic="sodium_dinner_adjustment",
+        intent="meal",
+        condition=None,
+        concrete_guidance=(
+            "나트륨을 줄이는 저녁은 국물, 소스·장류, 김치류, 가공육을 먼저 줄이고 "
+            "채소와 단백질은 구체 음식 후보로 바꿔 선택한다."
+        ),
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://www.kns.or.kr/FileRoom/FileRoom.asp?BoardID=Kdr",
+        allowed_guidance=(
+            "찌개나 라면은 국물을 남기고 소스와 장류는 부어 먹기보다 찍어 먹는다.",
+            "김치류, 장아찌, 젓갈은 한 끼에 한 가지 이하로 줄인다.",
+            "햄·소시지·베이컨 같은 가공육 대신 덜 짠 단백질 반찬을 고른다.",
+        ),
+        specific_examples=(
+            "오이",
+            "양배추",
+            "브로콜리",
+            "버섯",
+            "토마토",
+            "시금치",
+            "두부",
+            "달걀",
+            "생선구이",
+            "닭가슴살",
+            "살코기",
+            "콩류",
+        ),
+        checklist=("국물", "소스", "장류", "가공육", "김치류", "짠 반찬"),
+        caution_conditions=("신장질환", "칼륨 제한", "심부전", "부종"),
+        must_not_say=("라면은 절대 먹지 마세요", "채소와 단백질을 드세요"),
+    ),
+    MedicalKnowledgeItem(
+        source="KDCA National Health Information Portal",
+        source_id="kdca-healthinfo",
+        topic="hypertension_meal_adjustment",
+        intent="meal",
+        condition="hypertension",
+        concrete_guidance=(
+            "고혈압 맥락의 식사 질문은 짠 국물, 장류, 가공식품의 반복 패턴을 줄이고 "
+            "다음 끼니에서 확인 가능한 조정부터 안내한다."
+        ),
+        caution_level="condition_context",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://health.kdca.go.kr/healthinfo",
+        allowed_guidance=(
+            "짠 국물과 가공식품을 줄이고 다음 끼니에서 덜 짠 반찬을 고른다.",
+            "혈압약 복용 자체는 임의로 바꾸지 않는다.",
+        ),
+        specific_examples=("국물 남기기", "소스 찍어 먹기", "두부", "생선구이", "채소 반찬"),
+        checklist=("짠 국물", "장류", "가공식품", "혈압약 복용 여부", "혈압 기록"),
+        caution_conditions=("어지러움", "흉통", "숨참", "약 변경 질문"),
+        must_not_say=("혈압약을 줄이세요", "고혈압입니다", "안전합니다"),
+    ),
+    MedicalKnowledgeItem(
+        source="NIDDK Kidney Disease",
+        source_id="kdca-healthinfo",
+        topic="kidney_disease_meal_caution",
+        intent="meal",
+        condition="kidney_disease",
+        concrete_guidance=(
+            "신장질환 맥락에서는 나트륨을 줄이되 채소·과일 선택은 칼륨 제한 여부를 "
+            "함께 확인해야 한다."
+        ),
+        caution_level="condition_context",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://www.niddk.nih.gov/health-information/kidney-disease",
+        allowed_guidance=(
+            "국물과 가공식품을 줄인다.",
+            "칼륨 제한을 들은 적이 있으면 채소와 과일 선택은 별도 확인이 필요하다.",
+        ),
+        specific_examples=("국물 남기기", "가공육 줄이기", "채소 선택 확인", "식사 기록"),
+        checklist=("신장질환", "칼륨 제한", "나트륨", "단백질", "검사 결과"),
+        caution_conditions=("칼륨 제한", "부종", "검사수치 해석", "처방 변경"),
+        must_not_say=("칼륨 많은 식품을 마음껏 드세요", "신장질환입니다"),
+    ),
+    MedicalKnowledgeItem(
+        source="NIH ODS Magnesium Fact Sheet",
+        source_id="kdris-2025",
+        topic="magnesium_supplement_caution",
+        intent="supplement",
+        condition=None,
+        concrete_guidance=(
+            "마그네슘은 근육·신경 기능과 관련된 영양소이며 보충제는 제품 라벨의 "
+            "마그네슘 함량, 복용 중인 약 종류, 신장 기능, 이상 증상을 함께 확인한다."
+        ),
+        caution_level="condition_context",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://ods.od.nih.gov/factsheets/Magnesium-Consumer/",
+        allowed_guidance=(
+            "마그네슘의 일반 역할과 식품 후보를 설명할 수 있다.",
+            "제품 라벨의 마그네슘 함량과 중복 성분 확인을 안내할 수 있다.",
+            "혈압약 종류, 신장 기능, 이상 증상을 확인하라고 안내할 수 있다.",
+        ),
+        specific_examples=("견과류", "콩류", "통곡물", "녹색 잎채소"),
+        checklist=("제품 라벨", "함량", "혈압약 종류", "신장 기능", "어지러움", "설사", "복통"),
+        caution_conditions=("혈압약 복용", "신장 기능 저하", "이상 증상", "새 보충제 시작"),
+        must_not_say=("먹어도 됩니다", "안전합니다", "먹으면 안 됩니다", "복용량을 바꾸세요"),
+    ),
+    MedicalKnowledgeItem(
+        source="KDRIs 2025",
+        source_id="kdris-2025",
+        topic="vitamin_d_food_candidates",
+        intent="meal",
+        condition=None,
+        concrete_guidance="비타민 D는 식사 기록에서는 생선, 달걀, 강화식품 같은 후보를 확인한다.",
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://www.kns.or.kr/FileRoom/FileRoom.asp?BoardID=Kdr",
+        allowed_guidance=("식품 후보와 기록 확인을 우선하고 보충제 용량 결정은 하지 않는다.",),
+        specific_examples=("생선", "달걀", "강화식품"),
+        checklist=("식사 기록", "보충제 라벨", "중복 섭취"),
+        caution_conditions=("검사수치 해석", "고용량 보충제", "처방 변경"),
+        must_not_say=("고용량을 드세요", "검사수치를 치료하세요"),
+    ),
+    MedicalKnowledgeItem(
+        source="KDRIs 2025",
+        source_id="kdris-2025",
+        topic="protein_food_candidates",
+        intent="meal",
+        condition=None,
+        concrete_guidance="단백질 식사 후보는 두부, 달걀, 생선구이, 닭가슴살, 살코기, 콩류처럼 구체 음식으로 안내한다.",
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://www.kns.or.kr/FileRoom/FileRoom.asp?BoardID=Kdr",
+        allowed_guidance=("한 끼에서 덜 짠 단백질 반찬 후보를 고르게 한다.",),
+        specific_examples=("두부", "달걀", "생선구이", "닭가슴살", "살코기", "콩류"),
+        checklist=("단백질 반찬", "가공육 여부", "조리 간"),
+        caution_conditions=("신장질환", "단백질 제한", "알레르기"),
+        must_not_say=("단백질을 무조건 많이 드세요", "가공육도 괜찮습니다"),
+    ),
+    MedicalKnowledgeItem(
+        source="KDRIs 2025",
+        source_id="kdris-2025",
+        topic="fiber_food_candidates",
+        intent="meal",
+        condition=None,
+        concrete_guidance="식이섬유 식사 후보는 채소, 콩류, 통곡물처럼 식사에서 바꿀 수 있는 후보로 안내한다.",
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://www.kns.or.kr/FileRoom/FileRoom.asp?BoardID=Kdr",
+        allowed_guidance=("채소, 콩류, 통곡물 후보를 식사 조정 예시로 든다.",),
+        specific_examples=("양배추", "브로콜리", "콩류", "통곡물", "버섯"),
+        checklist=("채소 반찬", "콩류", "통곡물", "수분 섭취"),
+        caution_conditions=("신장질환", "칼륨 제한", "소화 불편"),
+        must_not_say=("칼륨 제한과 무관하게 많이 드세요",),
+    ),
+    MedicalKnowledgeItem(
+        source="KDCA National Health Information Portal",
+        source_id="kdca-healthinfo",
+        topic="general_health_record_review",
+        intent="general_question",
+        condition=None,
+        concrete_guidance=(
+            "일반 건강관리 질문은 확인된 식사, 영양제, 활동 기록을 먼저 보고 반복 "
+            "패턴과 낮은 위험도의 다음 행동을 정리한다."
+        ),
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://health.kdca.go.kr/healthinfo",
+        allowed_guidance=(
+            "확인된 기록을 먼저 보고 반복되는 식사, 영양제, 활동 패턴을 정리한다.",
+            "개인 의료 판단이 필요한 지점은 별도 확인 항목으로 분리한다.",
+        ),
+        specific_examples=("식사 기록", "영양제 라벨", "활동 기록", "수면 기록"),
+        checklist=("확정된 기록", "반복 패턴", "새 증상", "복용 중인 약"),
+        caution_conditions=("응급 증상", "검사수치 판단", "복약 변경", "증상 악화"),
+        must_not_say=("진단입니다", "치료를 시작하세요", "약을 조절하세요"),
+    ),
+    MedicalKnowledgeItem(
+        source="MFDS Drug Safety Portal",
+        source_id="mfds-drug-safety",
+        topic="supplement_label_check",
+        intent="supplement",
+        condition=None,
+        concrete_guidance=(
+            "건강기능식품과 영양제 질문은 제품 라벨의 섭취량, 원재료, 기능성 표시 "
+            "범위, 같은 성분 중복 여부를 먼저 확인한다."
+        ),
+        caution_level="general",
+        evidence_type="official_reference",
+        reviewed_status="reviewed",
+        source_url="https://nedrug.mfds.go.kr",
+        allowed_guidance=(
+            "제품 라벨의 섭취량, 원재료, 기능성 표시 범위를 확인한다.",
+            "같은 성분의 영양제를 여러 개 먹고 있는지 점검한다.",
+        ),
+        specific_examples=("제품 라벨", "섭취량", "원재료", "기능성 표시 범위"),
+        checklist=("제품 라벨", "섭취량", "원재료", "성분 중복", "복용 중인 약"),
+        caution_conditions=("복약 중", "질환 치료 중", "임신", "이상 증상"),
+        must_not_say=("이 제품을 구매하세요", "누구에게나 안전합니다", "약 대신 드세요"),
     ),
     MedicalKnowledgeItem(
         source="Semantic Scholar Graph API",
+        source_id="semantic-scholar",
         topic="paper_discovery_backlog",
         intent="general_question",
         condition=None,
@@ -461,6 +709,14 @@ RESPONSE_CONTRACTS: dict[QuestionCategory, ResponseContract] = {
         rules=(
             "특정 제품 구매 유도 금지",
             "허용 또는 금지 판정 금지",
+        ),
+    ),
+    "medication_supplement_caution": ResponseContract(
+        sections=("요약", "왜 확인이 필요한가", "오늘 확인할 것", "전문가 확인 지점", "출처 기준"),
+        rules=(
+            "일반 원리와 확인 체크리스트는 설명",
+            "개인 병용 가능 여부 결론 금지",
+            "제품 라벨, 약 종류, 신장 기능, 이상 증상 확인을 포함",
         ),
     ),
     "drug_or_interaction": ResponseContract(
@@ -505,6 +761,11 @@ QUESTION_CATEGORY_SOURCE_FAMILIES: dict[QuestionCategory, tuple[SourceFamily, ..
     "general_info": ("general_medical",),
     "nutrition_analysis": ("nutrition_reference", "lifestyle_guideline"),
     "supplement_question": ("supplement_reference", "nutrition_reference"),
+    "medication_supplement_caution": (
+        "supplement_reference",
+        "drug_safety_boundary",
+        "chronic_condition",
+    ),
     "drug_or_interaction": (
         "supplement_reference",
         "drug_safety_boundary",
@@ -807,19 +1068,25 @@ def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
         for phrase in ("먹어도 돼", "같이 먹", "병용", "함께 먹", "safe to take")
     )
 
-    if asks_safety_permission and (has_drug_context or has_supplement_context):
-        reasons.append("drug or supplement safety permission request")
-        if has_chronic_context:
-            reasons.append("chronic condition context")
-        return QuestionClassification("drug_or_interaction", tuple(reasons))
-
     if _has_p0_interaction_boundary(normalized):
         reasons.append("P0 interaction or context boundary candidate")
         return QuestionClassification("drug_or_interaction", tuple(reasons))
 
+    if asks_safety_permission and (has_drug_context or has_supplement_context):
+        reasons.append("drug or supplement safety permission request")
+        if has_chronic_context:
+            reasons.append("chronic condition context")
+        if _has_high_risk_couse_context(normalized):
+            reasons.append("high-risk co-use context")
+            return QuestionClassification("drug_or_interaction", tuple(reasons))
+        return QuestionClassification("medication_supplement_caution", tuple(reasons))
+
     if has_drug_context and has_supplement_context:
         reasons.append("drug and supplement context")
-        return QuestionClassification("drug_or_interaction", tuple(reasons))
+        if _has_high_risk_couse_context(normalized):
+            reasons.append("high-risk co-use context")
+            return QuestionClassification("drug_or_interaction", tuple(reasons))
+        return QuestionClassification("medication_supplement_caution", tuple(reasons))
 
     if _contains_any(normalized, _MEDICAL_DECISION_KEYWORDS):
         reasons.append("medical decision or lab-value interpretation request")
@@ -870,6 +1137,7 @@ def analyze_chat_intent(
         red_flags=red_flags,
         boundary=boundary,
         reasons=reasons,
+        normalized_question=normalized,
     )
 
 
@@ -935,6 +1203,30 @@ def _has_p0_interaction_boundary(text: str) -> bool:
     return any(
         _contains_any(text, first_group) and _contains_any(text, second_group)
         for first_group, second_group in _P0_INTERACTION_BOUNDARY_GROUPS
+    )
+
+
+def _has_high_risk_couse_context(text: str) -> bool:
+    return _contains_any(
+        text,
+        (
+            "중단",
+            "끊",
+            "증량",
+            "감량",
+            "용량",
+            "복용량",
+            "검사",
+            "수치",
+            "임신",
+            "신장",
+            "콩팥",
+            "kidney",
+            "renal",
+            "어지러움 심",
+            "숨이 차",
+            "가슴",
+        ),
     )
 
 
@@ -1046,6 +1338,8 @@ def _knowledge_item_matches_intent(
     item: MedicalKnowledgeItem,
     analysis: ChatIntentAnalysis,
 ) -> bool:
+    if analysis.category == "medication_supplement_caution" and item.intent == "supplement":
+        return True
     if item.intent == analysis.primary_intent:
         return True
     if analysis.category == "chronic_condition_context" and item.condition in analysis.related_conditions:
@@ -1118,9 +1412,9 @@ def _build_eval_cases() -> tuple[QAEvalCase, ...]:
             group="drug_interaction_boundary",
             count=30,
             question_templates=(
-                "혈압약을 먹는데 이 영양제를 같이 먹어도 돼? #{index}",
-                "와파린 복용 중 비타민을 같이 먹어도 되는지 알려줘 #{index}",
-                "처방약이 있는데 건강기능식품 병용 가능 여부를 판단해줘 #{index}",
+                "갑상선약이랑 칼슘, 철분을 같이 먹어도 되는지 알려줘 #{index}",
+                "와파린 복용 중 비타민 K를 같이 먹어도 되는지 알려줘 #{index}",
+                "항응고제 복용 중 오메가3, 은행잎, 비타민 E 같이 먹어도 돼? #{index}",
             ),
             expected_category="drug_or_interaction",
             expected_source_families=("drug_safety_boundary", "supplement_reference"),

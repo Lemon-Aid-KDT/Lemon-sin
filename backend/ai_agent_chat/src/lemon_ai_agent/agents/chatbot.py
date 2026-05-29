@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+from lemon_ai_agent.answer_card import AnswerCard
 from lemon_ai_agent.chat_session import ChatbotRequest, ChatbotResponse
-from lemon_ai_agent.guards.safety import SafetyGuard
+from lemon_ai_agent.chat_turn import ChatTurnModule, ChatTurnPlan
+from lemon_ai_agent.guards.safety import SafetyEnvelope, SafetyGuard
 from lemon_ai_agent.knowledge import (
     AnswerPolicy,
     ChatIntentAnalysis,
     MedicalKnowledgeItem,
-    analyze_chat_intent,
     contract_summary,
-    policy_for_question,
-    select_medical_knowledge,
     source_family_summary,
 )
-from lemon_ai_agent.llm import LLMMessage, LLMRequest, LocalLLMClient
+from lemon_ai_agent.llm import LLMCompletion, LLMMessage, LLMRequest, LocalLLMClient
 
 MEAL_LABELS = {
     "breakfast": "아침",
@@ -55,64 +54,74 @@ class ChatbotAgent:
     """Answers user chat with the same safety boundary as Daily Coaching."""
 
     def __init__(self, llm_client: LocalLLMClient | None = None) -> None:
-        self._llm_client = llm_client
+        self._completion = LLMCompletion(llm_client)
+        self._has_llm_client = llm_client is not None
         self._safety_guard = SafetyGuard()
+        self._safety_envelope = SafetyEnvelope(self._safety_guard)
+        self._chat_turn = ChatTurnModule()
 
-    def answer(self, request: ChatbotRequest) -> ChatbotResponse:
+    def answer(self, request: ChatbotRequest) -> ChatbotResponse:  # noqa: PLR0911
         warnings: list[str] = []
-        policy = policy_for_question(request.message)
-        analysis = analyze_chat_intent(request.message, request.context)
-        knowledge_items = select_medical_knowledge(analysis)
-        boundary_response = self._boundary_response(request, policy, warnings)
+        turn = self._chat_turn.plan(request)
+        boundary_response = self._boundary_response(turn, warnings)
         if boundary_response is not None:
             return boundary_response
+        if turn.answerability == "unknown_no_reviewed_source":
+            warnings.extend(turn.retrieval_warnings)
+            return self._unknown_response(turn, warnings)
 
-        fallback = self._fallback_response(request, warnings, policy, analysis, knowledge_items)
+        if not self._has_llm_client:
+            return self._fallback_response(turn, warnings)
 
-        if self._llm_client is None:
-            return fallback
-
-        try:
-            llm_response = self._llm_client.generate(
-                self._build_llm_request(request, policy, analysis, knowledge_items)
-            )
-        except Exception as exc:
-            warnings.append(f"chatbot llm fallback: {exc}")
-            return self._fallback_response(request, warnings, policy, analysis, knowledge_items)
-
-        check = self._safety_guard.check_text(llm_response.text)
-        warnings.extend(check.warnings)
-        if not check.allowed:
-            return self._fallback_response(request, warnings, policy, analysis, knowledge_items)
-        grounding_check = self._safety_guard.check_grounding(
-            llm_response.text,
-            self._grounding_context(request, knowledge_items),
+        completion = self._completion.complete(
+            self._build_llm_request(turn)
         )
-        warnings.extend(grounding_check.warnings)
-        has_required_shape = self._has_required_response_shape(llm_response.text)
+        if not completion.ok:
+            warnings.extend(completion.warnings)
+            return self._fallback_response(turn, warnings)
+
+        safety = self._safety_envelope.screen_llm_output(
+            completion.text,
+            self._grounding_context(turn),
+        )
+        warnings.extend(safety.warnings)
+        card_phrase_check = self._safety_guard.check_forbidden_phrases(
+            completion.text,
+            self._card_must_not_say(turn.answer_cards),
+        )
+        warnings.extend(card_phrase_check.warnings)
+        has_required_shape = self._has_required_response_shape(completion.text)
         if not has_required_shape:
             warnings.append("Chatbot response contract not followed")
-        if not grounding_check.allowed or not has_required_shape:
-            return self._fallback_response(request, warnings, policy, analysis, knowledge_items)
+        if not safety.allowed or not card_phrase_check.allowed or not has_required_shape:
+            return self._fallback_response(turn, warnings)
+        if not self._has_required_card_specificity(completion.text, turn):
+            warnings.append("Chatbot response card detail not followed")
+            return self._fallback_response(turn, warnings)
 
         return ChatbotResponse(
             request_id=request.request_id,
-            message=llm_response.text,
-            provider=llm_response.provider,
+            message=safety.text,
+            provider=completion.provider,
             used_tools=CHATBOT_TOOLS.copy(),
             safety_warnings=warnings,
-            source_families=list(policy.source_families),
+            source_families=turn.source_families,
+            answerability=turn.answerability,
+            sources=turn.sources,
             requires_user_approval=False,
         )
 
     def _fallback_response(
         self,
-        request: ChatbotRequest,
+        turn: ChatTurnPlan,
         warnings: list[str],
-        policy: AnswerPolicy,
-        analysis: ChatIntentAnalysis,
-        knowledge_items: tuple[MedicalKnowledgeItem, ...],
     ) -> ChatbotResponse:
+        if turn.policy.category == "medication_supplement_caution":
+            return self._medication_supplement_caution_response(turn, warnings)
+        if self._is_sodium_meal_question(turn):
+            return self._sodium_meal_response(turn, warnings)
+
+        request = turn.request
         summary = self._safe_summary(request.context)
         confirmed_foods = self._confirmed_food_summary(request.context)
         if summary:
@@ -122,11 +131,11 @@ class ChatbotAgent:
         else:
             summary_sentence = "현재 확인된 기록을 기준으로 답변드릴 수 있습니다."
 
-        if analysis.primary_intent == "symptom" and not analysis.boundary:
-            next_action = self._symptom_next_action(analysis)
-        elif policy.category == "chronic_condition_context":
+        if turn.analysis.primary_intent == "symptom" and not turn.analysis.boundary:
+            next_action = self._symptom_next_action(turn.analysis)
+        elif turn.policy.category == "chronic_condition_context":
             next_action = self._chronic_condition_next_action(request)
-        elif policy.category == "supplement_question":
+        elif turn.policy.category == "supplement_question":
             next_action = (
                 "제품 라벨의 섭취량, 원재료, 기능성 표시를 확인하고 같은 성분의 "
                 "중복 섭취를 피하세요."
@@ -134,8 +143,11 @@ class ChatbotAgent:
         else:
             next_action = "확정된 식사, 영양제, 건강 기록을 먼저 확인해 주세요."
 
-        caution = self._fallback_caution(request, policy, analysis)
-        management_points = self._fallback_management_points(analysis, knowledge_items)
+        caution = self._fallback_caution(request, turn.policy, turn.analysis)
+        management_points = self._fallback_management_points(
+            turn.analysis,
+            turn.knowledge_items,
+        )
 
         return ChatbotResponse(
             request_id=request.request_id,
@@ -149,22 +161,22 @@ class ChatbotAgent:
                 "관리 포인트\n"
                 f"- {management_points}\n"
                 "출처 기준\n"
-                f"- {self._source_basis(knowledge_items)}"
+                f"- {self._source_basis(turn.knowledge_items)}"
             ),
             provider="deterministic",
             used_tools=CHATBOT_TOOLS.copy(),
             safety_warnings=warnings,
-            source_families=list(policy.source_families),
+            source_families=turn.source_families,
+            answerability=turn.answerability,
+            sources=turn.sources,
             requires_user_approval=False,
         )
 
     def _build_llm_request(
         self,
-        request: ChatbotRequest,
-        policy: AnswerPolicy,
-        analysis: ChatIntentAnalysis,
-        knowledge_items: tuple[MedicalKnowledgeItem, ...],
+        turn: ChatTurnPlan,
     ) -> LLMRequest:
+        request = turn.request
         history = "\n".join(
             f"{turn.role}: {turn.content}" for turn in request.conversation[-6:]
         )
@@ -198,6 +210,17 @@ class ChatbotAgent:
                         "Do not create new health facts without a listed source family. "
                         "Do not create new health judgments beyond the supplied context. "
                         "Do not use Semantic Scholar as a user-facing source. "
+                        "Use only the provided reviewed answer cards as factual grounding. "
+                        "If no reviewed answer card is provided, do not answer with model knowledge. "
+                        "Do not answer with only broad categories such as vegetables or protein; "
+                        "use concrete examples from the provided knowledge cards. "
+                        "For medication/supplement co-use questions, explain general principles "
+                        "and checklist items, but do not conclude whether the user personally can "
+                        "or cannot take them together. "
+                        "Professional-confirmation wording must attach to the decision point; "
+                        "it must not replace the useful checklist. "
+                        "For emergency questions, do not provide long differential diagnosis; "
+                        "prioritize risk reason and immediate action. "
                         "For source basis, write briefly like: "
                         "'출처 기준: 질병관리청 건강정보, KDRIs 영양 기준'."
                     ),
@@ -206,18 +229,18 @@ class ChatbotAgent:
                     role="user",
                     content=(
                         f"User message: {request.message.strip()}\n"
-                        f"Question category: {policy.category}\n"
-                        f"Classification reasons: {', '.join(policy.reasons)}\n"
+                        f"Question category: {turn.policy.category}\n"
+                        f"Classification reasons: {', '.join(turn.policy.reasons)}\n"
                         "Allowed source families:\n"
-                        f"{source_family_summary(policy.source_families)}\n"
+                        f"{source_family_summary(turn.policy.source_families)}\n"
                         "Response contract:\n"
-                        f"{contract_summary(policy.contract)}\n"
+                        f"{contract_summary(turn.policy.contract)}\n"
                         "Intent analysis:\n"
-                        f"{self._intent_analysis_summary(analysis)}\n"
+                        f"{self._intent_analysis_summary(turn.analysis)}\n"
                         "Reviewed knowledge items:\n"
-                        f"{self._knowledge_items_summary(knowledge_items)}\n"
+                        f"{self._answer_cards_summary(turn.answer_cards)}\n"
                         "Answer strategy:\n"
-                        f"{self._answer_strategy(analysis, knowledge_items)}\n"
+                        f"{self._answer_strategy(turn.analysis, turn.knowledge_items)}\n"
                         f"Recent conversation:\n{history or 'none'}\n"
                         "Confirmed meal and nutrient context:\n"
                         f"{confirmed_foods}\n"
@@ -231,10 +254,11 @@ class ChatbotAgent:
 
     def _boundary_response(
         self,
-        request: ChatbotRequest,
-        policy: AnswerPolicy,
+        turn: ChatTurnPlan,
         warnings: list[str],
     ) -> ChatbotResponse | None:
+        request = turn.request
+        policy = turn.policy
         if policy.category == "symptom_or_emergency":
             warnings.append("Emergency escalation boundary applied")
             return self._deterministic_response(
@@ -242,13 +266,16 @@ class ChatbotAgent:
                 policy,
                 (
                     "즉시 안내: 가슴 통증, 숨참, 마비, 실신처럼 응급 가능성이 있는 "
-                    "증상은 식단 코칭보다 긴급 확인이 우선입니다. 지금 증상이 "
-                    "지속되거나 심하면 119에 연락하거나 가까운 응급실로 이동하세요. "
+                    "증상은 단순 피로나 소화불량으로 단정할 수 없고 심장이나 폐 쪽 "
+                    "응급 신호일 수 있습니다. 지금 증상이 지속되거나 심하면 119에 "
+                    "연락하거나 가까운 응급실로 이동하세요. "
                     "주의: Lemon Aid는 이런 상황에서 개인 의료 판단을 대신하지 "
                     "않습니다. 연결 자원: E-Gen 응급의료포털과 보건복지상담센터 "
                     "129를 참고할 수 있습니다."
                 ),
                 warnings,
+                answerability=turn.answerability,
+                sources=turn.sources,
             )
 
         if policy.category == "mental_health_risk":
@@ -265,6 +292,8 @@ class ChatbotAgent:
                     "국가정신건강정보포털을 이용할 수 있습니다."
                 ),
                 warnings,
+                answerability=turn.answerability,
+                sources=turn.sources,
             )
 
         if policy.category == "drug_or_interaction":
@@ -281,6 +310,8 @@ class ChatbotAgent:
                     "것이 안전합니다."
                 ),
                 warnings,
+                answerability=turn.answerability,
+                sources=turn.sources,
             )
 
         if policy.category == "out_of_scope":
@@ -296,9 +327,118 @@ class ChatbotAgent:
                     "필요하면 검사 결과를 바탕으로 전문가와 상담하세요."
                 ),
                 warnings,
+                answerability=turn.answerability,
+                sources=turn.sources,
             )
 
         return None
+
+    def _unknown_response(
+        self,
+        turn: ChatTurnPlan,
+        warnings: list[str],
+    ) -> ChatbotResponse:
+        request = turn.request
+        return ChatbotResponse(
+            request_id=request.request_id,
+            message=(
+                "요약\n"
+                "- 현재 검수된 지식 안에서 답할 수 없습니다.\n"
+                "현재 답할 수 없는 이유\n"
+                "- 이 질문에 맞는 reviewed answer card가 아직 없어 LLM 일반 지식으로 "
+                "병용 가능 여부나 건강 판단을 채우지 않습니다.\n"
+                "필요한 검수 지식\n"
+                "- 정확한 약 이름, 제품 라벨, 성분명, 복용 목적, 관련 질환과 함께 "
+                "검수된 출처가 필요합니다.\n"
+                "지금 할 수 있는 안전한 행동\n"
+                "- 새로 시작하거나 함께 복용할지 결정하기 전에는 제품 라벨과 약 목록을 "
+                "가지고 약사 또는 의사에게 확인하세요."
+            ),
+            provider="deterministic",
+            used_tools=CHATBOT_TOOLS.copy(),
+            safety_warnings=warnings,
+            source_families=turn.source_families,
+            answerability=turn.answerability,
+            sources=[],
+            requires_user_approval=False,
+        )
+
+    def _medication_supplement_caution_response(
+        self,
+        turn: ChatTurnPlan,
+        warnings: list[str],
+    ) -> ChatbotResponse:
+        request = turn.request
+        return self._deterministic_response(
+            request,
+            turn.policy,
+            (
+                "요약\n"
+                "- 마그네슘은 근육·신경 기능과 관련된 영양소라 관심을 가질 수 있습니다.\n"
+                "주의 조건\n"
+                "- 혈압약을 복용 중이면 제품 라벨의 마그네슘 함량, 혈압약 종류, "
+                "신장 기능, 다른 영양제 중복 여부를 함께 봐야 합니다.\n"
+                "오늘 할 일\n"
+                "- 제품 라벨과 복용 중인 혈압약 이름을 확인하고, 최근 어지러움, "
+                "설사, 복통 같은 이상 증상이 있었는지 정리하세요.\n"
+                "관리 포인트\n"
+                "- 식품으로는 견과류, 콩류, 통곡물, 녹색 잎채소처럼 마그네슘을 "
+                "포함한 후보를 우선 고려할 수 있습니다. 보충제를 새로 시작하거나 "
+                "복용량을 정하는 지점은 약 이름과 제품 라벨을 가지고 약사 또는 "
+                "의사에게 확인하세요.\n"
+                "출처 기준\n"
+                f"- {self._source_basis(turn.knowledge_items)}"
+            ),
+            warnings,
+            answerability=turn.answerability,
+            sources=turn.sources,
+        )
+
+    def _sodium_meal_response(
+        self,
+        turn: ChatTurnPlan,
+        warnings: list[str],
+    ) -> ChatbotResponse:
+        request = turn.request
+        confirmed_foods = self._confirmed_food_summary(request.context)
+        safe_summary = self._safe_summary(request.context)
+        if safe_summary:
+            summary_sentence = f"현재 입력 기준으로 {safe_summary}"
+        elif confirmed_foods:
+            summary_sentence = f"확인된 기록은 {confirmed_foods}입니다."
+        else:
+            summary_sentence = "오늘 저녁 나트륨을 줄이려면 국물, 소스, 장류, 가공육을 먼저 줄이는 쪽이 실용적입니다."
+        kidney_caution = ""
+        if "kidney_disease" in turn.analysis.related_conditions:
+            kidney_caution = (
+                " 신장질환이나 콩팥 관련으로 칼륨 제한을 들은 적이 있다면 "
+                "채소와 과일 선택은 따로 확인이 필요합니다."
+            )
+
+        return self._deterministic_response(
+            request,
+            turn.policy,
+            (
+                "요약\n"
+                f"- {summary_sentence}\n"
+                "주의 조건\n"
+                "- 찌개나 라면은 국물을 남기고, 간장·쌈장·고추장·드레싱 같은 "
+                f"소스와 장류는 부어 먹기보다 찍어 먹는 쪽이 좋습니다.{kidney_caution}\n"
+                "오늘 할 일\n"
+                "- 김치류, 장아찌, 젓갈은 한 가지 이하로 줄이고 햄·소시지·베이컨 "
+                "같은 가공육 대신 두부, 달걀, 생선구이, 닭가슴살, 살코기, 콩류 중에서 고르세요. "
+                "직접 확인 가능한 기록을 우선 점검하세요.\n"
+                "관리 포인트\n"
+                "- 채소는 오이, 양배추, 브로콜리, 버섯, 토마토, 시금치처럼 "
+                "양념을 약하게 해도 먹기 쉬운 후보로 바꿔 보세요. 다음 끼니에서도 "
+                "짠 국물과 소스 양을 다시 확인하세요.\n"
+                "출처 기준\n"
+                f"- {self._source_basis(turn.knowledge_items)}"
+            ),
+            warnings,
+            answerability=turn.answerability,
+            sources=turn.sources,
+        )
 
     def _deterministic_response(
         self,
@@ -306,6 +446,9 @@ class ChatbotAgent:
         policy: AnswerPolicy,
         message: str,
         warnings: list[str],
+        *,
+        answerability: str = "answerable",
+        sources: list[dict[str, str]] | None = None,
     ) -> ChatbotResponse:
         return ChatbotResponse(
             request_id=request.request_id,
@@ -314,6 +457,8 @@ class ChatbotAgent:
             used_tools=CHATBOT_TOOLS.copy(),
             safety_warnings=warnings,
             source_families=list(policy.source_families),
+            answerability=answerability,
+            sources=sources or [],
             requires_user_approval=False,
         )
 
@@ -329,17 +474,30 @@ class ChatbotAgent:
 
     def _grounding_context(
         self,
-        request: ChatbotRequest,
-        knowledge_items: tuple[MedicalKnowledgeItem, ...],
+        turn: ChatTurnPlan,
     ) -> str:
+        request = turn.request
         conversation = "\n".join(turn.content for turn in request.conversation[-6:])
         summary = self._safe_summary(request.context)
         confirmed_foods = self._confirmed_food_summary(request.context)
-        knowledge = "\n".join(item.concrete_guidance for item in knowledge_items)
-        return "\n".join((request.message, conversation, summary, confirmed_foods, knowledge))
+        knowledge = "\n".join(item.concrete_guidance for item in turn.knowledge_items)
+        cards = "\n".join(self._answer_card_text(card) for card in turn.answer_cards)
+        return "\n".join((request.message, conversation, summary, confirmed_foods, knowledge, cards))
 
     def _has_required_response_shape(self, text: str) -> bool:
         return all(section in text for section in REQUIRED_CHATBOT_SECTIONS)
+
+    def _has_required_card_specificity(self, text: str, turn: ChatTurnPlan) -> bool:
+        if turn.policy.category == "medication_supplement_caution":
+            required_terms = ("마그네슘", "제품 라벨", "함량", "혈압약 종류", "신장 기능")
+            return all(term in text for term in required_terms)
+        return True
+
+    def _card_must_not_say(self, answer_cards: tuple[AnswerCard, ...]) -> tuple[str, ...]:
+        phrases: list[str] = []
+        for card in answer_cards:
+            phrases.extend(card.must_not_say)
+        return tuple(dict.fromkeys(phrases))
 
     def _fallback_caution(
         self,
@@ -396,14 +554,26 @@ class ChatbotAgent:
 
         source_names = []
         for item in knowledge_items:
-            if item.source.startswith("CDC"):
+            if item.source_id == "kdca-healthinfo":
+                source_names.append("질병관리청 건강정보")
+            elif item.source_id == "kdris-2025":
+                source_names.append("KDRIs 영양 기준")
+            elif item.source.startswith("CDC"):
                 source_names.append("CDC")
             elif item.source.startswith("NIDDK"):
                 source_names.append("NIDDK")
             else:
                 source_names.append(item.source)
 
-        return ", ".join(dict.fromkeys(source_names))
+        unique_sources = list(dict.fromkeys(source_names))
+        if "질병관리청 건강정보" in unique_sources and "KDRIs 영양 기준" in unique_sources:
+            ordered = [
+                "질병관리청 건강정보",
+                "KDRIs 영양 기준",
+                *(source for source in unique_sources if source not in {"질병관리청 건강정보", "KDRIs 영양 기준"}),
+            ]
+            return ", ".join(ordered)
+        return ", ".join(unique_sources)
 
     def _intent_analysis_summary(self, analysis: ChatIntentAnalysis) -> str:
         related = ", ".join(analysis.related_conditions) or "none"
@@ -420,13 +590,36 @@ class ChatbotAgent:
     ) -> str:
         if not knowledge_items:
             return "none"
-        return "\n".join(
-            (
-                f"- {item.source} | topic={item.topic} | intent={item.intent} | "
-                f"condition={item.condition or 'general'} | guidance={item.concrete_guidance} | "
-                f"url={item.source_url}"
-            )
-            for item in knowledge_items
+        return "\n".join(self._knowledge_card_text(item) for item in knowledge_items)
+
+    def _answer_cards_summary(
+        self,
+        answer_cards: tuple[AnswerCard, ...],
+    ) -> str:
+        if not answer_cards:
+            return "none"
+        return "\n".join(self._answer_card_text(card) for card in answer_cards)
+
+    def _answer_card_text(self, card: AnswerCard) -> str:
+        return (
+            f"- card_id={card.card_id} | answerability={card.answerability} | "
+            f"source_id={card.source_id} | source_family={card.source_family} | "
+            f"review_status={card.review_status} | version={card.version_label} | "
+            f"topic={card.topic} | intent={card.intent} | condition={card.condition or 'general'} | "
+            f"guidance={card.concrete_guidance} | allowed={'; '.join(card.allowed_guidance)} | "
+            f"examples={', '.join(card.specific_examples)} | checklist={', '.join(card.checklist)} | "
+            f"cautions={', '.join(card.caution_conditions)} | must_not_say={', '.join(card.must_not_say)} | "
+            f"url={card.source_url}"
+        )
+
+    def _knowledge_card_text(self, item: MedicalKnowledgeItem) -> str:
+        return (
+            f"- {item.source} | source_id={item.source_id} | topic={item.topic} | "
+            f"intent={item.intent} | condition={item.condition or 'general'} | "
+            f"guidance={item.concrete_guidance} | allowed={'; '.join(item.allowed_guidance)} | "
+            f"examples={', '.join(item.specific_examples)} | checklist={', '.join(item.checklist)} | "
+            f"cautions={', '.join(item.caution_conditions)} | must_not_say={', '.join(item.must_not_say)} | "
+            f"url={item.source_url}"
         )
 
     def _answer_strategy(
@@ -436,11 +629,35 @@ class ChatbotAgent:
     ) -> str:
         if analysis.boundary:
             return "Apply the boundary response and do not provide normal coaching."
+        if analysis.category == "medication_supplement_caution":
+            return (
+                "Explain the general nutrient role and checklist from the card, "
+                "but do not decide personal co-use safety."
+            )
         if analysis.primary_intent == "symptom":
             return "Start with red-flag screening, then rest, hydration, cool place, and observation."
         if knowledge_items:
             return "Use the reviewed guidance items as concrete coaching points without exposing raw retrieval."
         return "Use general health-management coaching only within the allowed source families."
+
+    def _is_sodium_meal_question(self, turn: ChatTurnPlan) -> bool:
+        text = self._condition_context(turn.request)
+        return turn.analysis.primary_intent == "meal" and self._has_any_context_term(
+            text,
+            (
+                "나트륨",
+                "소금",
+                "짠",
+                "고혈압",
+                "혈압",
+                "라면",
+                "찌개",
+                "국물",
+                "소스",
+                "장류",
+                "가공육",
+            ),
+        )
 
     def _chronic_condition_caution(self, request: ChatbotRequest) -> str:
         condition_context = self._condition_context(request)

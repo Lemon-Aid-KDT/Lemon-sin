@@ -15,9 +15,14 @@ FORBIDDEN_TERMS = (
     "치료",
     "처방",
     "복용해도 됩니다",
+    "먹어도 됩니다",
+    "함께 먹어도 됩니다",
+    "같이 먹어도 됩니다",
     "복용량을 바꾸",
     "약을 중단",
     "약을 끊",
+    "약을 줄이",
+    "혈압약을 줄이",
     "용량을 늘리",
     "용량을 줄이",
     "당뇨입니다",
@@ -119,6 +124,20 @@ class SafetyGuard:
                 warnings.append("Unsupported numeric medical claim detected")
                 break
 
+        return SafetyCheckResult(allowed=not warnings, warnings=warnings)
+
+    def check_forbidden_phrases(
+        self,
+        text: str,
+        forbidden_phrases: tuple[str, ...],
+    ) -> SafetyCheckResult:
+        """Block answer-card-specific phrases that must never be user-facing."""
+        lowered = text.lower()
+        warnings: list[str] = []
+        for phrase in forbidden_phrases:
+            if phrase and phrase.lower() in lowered:
+                warnings.append("Answer card forbidden phrase detected")
+                break
         return SafetyCheckResult(allowed=not warnings, warnings=warnings)
 
     def sanitize_or_raise(self, text: str) -> str:

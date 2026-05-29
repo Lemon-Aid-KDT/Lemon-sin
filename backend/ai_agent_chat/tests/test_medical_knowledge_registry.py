@@ -86,6 +86,28 @@ def test_reviewed_medical_knowledge_selection_suppresses_draft_paper_sources() -
     assert "Semantic Scholar Graph API" not in {item.source for item in items}
 
 
+def test_user_facing_knowledge_cards_are_reviewed_structured_and_source_backed() -> None:
+    """Verify answer cards carry enough reviewed detail for deterministic fallback."""
+    reviewed_source_ids = {
+        source.source_id
+        for source in REVIEWED_MEDICAL_SOURCE_REGISTRY
+        if source.status == "reviewed" and source.user_facing_allowed
+    }
+
+    user_facing_cards = [
+        item for item in MEDICAL_KNOWLEDGE_ITEMS if item.reviewed_status == "reviewed"
+    ]
+
+    assert 8 <= len(user_facing_cards) <= 40
+    for item in user_facing_cards:
+        assert item.source_id in reviewed_source_ids
+        assert item.allowed_guidance
+        assert item.specific_examples
+        assert item.checklist
+        assert item.must_not_say
+        assert item.source_url
+
+
 def test_p0_interaction_and_context_questions_route_to_boundary_policy() -> None:
     """P0 interaction candidates stay deterministic until source review is complete."""
     questions = [
@@ -100,3 +122,15 @@ def test_p0_interaction_and_context_questions_route_to_boundary_policy() -> None
 
     for question in questions:
         assert policy_for_question(question).category == "drug_or_interaction"
+
+
+def test_magnesium_blood_pressure_med_routes_to_caution_not_boundary_policy() -> None:
+    """Common magnesium plus blood-pressure-medication questions are explainable."""
+    policy = policy_for_question("혈압약 먹는데 마그네슘 영양제 같이 먹어도 돼?")
+
+    assert policy.category == "medication_supplement_caution"
+    assert policy.source_families == (
+        "supplement_reference",
+        "drug_safety_boundary",
+        "chronic_condition",
+    )

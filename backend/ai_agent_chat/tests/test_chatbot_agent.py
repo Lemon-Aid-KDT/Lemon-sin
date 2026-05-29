@@ -96,6 +96,28 @@ def _diabetes_improvement_request() -> ChatbotRequest:
     )
 
 
+def _sodium_dinner_request(
+    *,
+    kidney_context: bool = False,
+) -> ChatbotRequest:
+    profile = {"chronic_conditions": ["kidney_disease"]} if kidney_context else {}
+    return ChatbotRequest(
+        request_id="chatbot-sodium-dinner",
+        user_id="local-dev-user",
+        message="오늘 저녁 나트륨을 줄이려면 어떤 음식으로 바꾸면 좋아?",
+        context={"profile": profile},
+    )
+
+
+def _magnesium_blood_pressure_med_request() -> ChatbotRequest:
+    return ChatbotRequest(
+        request_id="chatbot-magnesium-bp-med",
+        user_id="local-dev-user",
+        message="혈압약 먹는데 마그네슘 영양제 같이 먹어도 돼?",
+        context={"profile": {"chronic_conditions": ["hypertension"]}},
+    )
+
+
 def test_chatbot_without_llm_returns_safe_korean_fallback() -> None:
     """Verify chatbot fallback is product Korean and hides raw internals."""
     response = ChatbotAgent().answer(_request())
@@ -292,6 +314,18 @@ def test_chatbot_missing_required_sections_falls_back() -> None:
     assert "Chatbot response contract not followed" in response.safety_warnings
 
 
+def test_chatbot_empty_llm_output_falls_back() -> None:
+    """Verify empty model text cannot become an empty chat response."""
+    client = _CapturingLLMClient(text=" ")
+
+    response = ChatbotAgent(llm_client=client).answer(_hypertension_ramen_request())
+
+    assert response.provider == "deterministic"
+    assert "요약" in response.message
+    assert "출처 기준" in response.message
+    assert "LLM response text was empty" in response.safety_warnings
+
+
 def test_chatbot_blocks_ban_diagnosis_and_treatment_phrasing() -> None:
     """Verify chronic-condition certainty and absolute-ban wording are blocked."""
     client = _CapturingLLMClient(
@@ -375,29 +409,83 @@ def test_chatbot_chronic_condition_diagnosis_text_falls_back() -> None:
     assert "Forbidden medical expression detected" in response.safety_warnings
 
 
-def test_chatbot_drug_question_returns_boundary_without_llm() -> None:
-    """Verify medication co-use questions never ask the LLM for allow/ban text."""
+def test_chatbot_magnesium_blood_pressure_med_question_gives_caution_checklist() -> None:
+    """Verify lower-risk medication/supplement co-use gets concrete caution guidance."""
     client = _CapturingLLMClient()
-    request = ChatbotRequest(
-        request_id="chatbot-drug-boundary",
-        user_id="local-dev-user",
-        message="혈압약을 먹는데 이 영양제를 같이 먹어도 돼?",
-    )
+    request = _magnesium_blood_pressure_med_request()
 
     response = ChatbotAgent(llm_client=client).answer(request)
 
-    assert response.provider == "deterministic"
+    assert client.request is not None
     assert response.source_families == [
         "supplement_reference",
         "drug_safety_boundary",
         "chronic_condition",
     ]
-    assert client.request is None
-    assert "의사" in response.message
-    assert "약사" in response.message
+    required_terms = [
+        "마그네슘",
+        "제품 라벨",
+        "함량",
+        "혈압약 종류",
+        "신장 기능",
+        "어지러움",
+        "설사",
+        "복통",
+        "약사",
+        "의사",
+    ]
+    for term in required_terms:
+        assert term in response.message
     assert "먹어도 됩니다" not in response.message
-    assert "금지로 판정하지 않습니다" in response.message
-    assert "Drug interaction boundary applied" in response.safety_warnings
+    assert "안전합니다" not in response.message
+    assert "먹으면 안 됩니다" not in response.message
+    assert "복용량을 바꾸세요" not in response.message
+    assert "Drug interaction boundary applied" not in response.safety_warnings
+    assert response.answerability == "answerable_with_caution"
+    assert any(source["source_id"] == "kdris-2025" for source in response.sources)
+
+
+def test_chatbot_unknown_question_does_not_call_llm_or_hallucinate() -> None:
+    """No reviewed card means unknown response, not broad LLM medical knowledge."""
+    client = _CapturingLLMClient(text="셀레늄은 리튬과 함께 먹어도 됩니다.")
+
+    response = ChatbotAgent(llm_client=client).answer(
+        ChatbotRequest(
+            request_id="chatbot-unknown-source",
+            user_id="local-dev-user",
+            message="리튬 약을 먹는데 셀레늄 영양제 같이 먹어도 돼?",
+        )
+    )
+
+    assert client.request is None
+    assert response.provider == "deterministic"
+    assert response.answerability == "unknown_no_reviewed_source"
+    assert "현재 검수된 지식 안에서 답할 수 없습니다" in response.message
+    assert "셀레늄은 리튬과 함께 먹어도 됩니다" not in response.message
+    assert response.sources == []
+
+
+def test_chatbot_sodium_dinner_fallback_uses_specific_food_and_action_cards() -> None:
+    """Verify sodium dinner fallback is more specific than broad food categories."""
+    response = ChatbotAgent().answer(_sodium_dinner_request())
+
+    adjustment_terms = ["국물", "소스", "장류", "가공육", "김치"]
+    vegetable_terms = ["오이", "양배추", "브로콜리", "버섯", "토마토", "시금치"]
+    protein_terms = ["두부", "달걀", "생선구이", "닭가슴살", "살코기", "콩류"]
+
+    assert sum(term in response.message for term in adjustment_terms) >= 2
+    assert sum(term in response.message for term in vegetable_terms) >= 3
+    assert sum(term in response.message for term in protein_terms) >= 3
+    assert "채소와 단백질을 드세요" not in response.message
+
+
+def test_chatbot_sodium_dinner_with_kidney_context_warns_about_potassium() -> None:
+    """Verify kidney-disease context adds caution before broad vegetable advice."""
+    response = ChatbotAgent().answer(_sodium_dinner_request(kidney_context=True))
+
+    assert "신장질환" in response.message or "콩팥" in response.message
+    assert "칼륨" in response.message
+    assert "채소" in response.message
 
 
 def test_chatbot_p0_interaction_examples_return_boundary_without_llm() -> None:
@@ -469,8 +557,11 @@ def test_chatbot_emergency_and_mental_health_questions_escalate_without_llm() ->
 
     assert emergency_client.request is None
     assert mental_client.request is None
+    assert "심장" in emergency.message or "폐" in emergency.message
+    assert "단순 피로" in emergency.message or "소화불량" in emergency.message
     assert "119" in emergency.message
     assert "E-Gen" in emergency.message
+    assert "식사" not in emergency.message
     assert "109" in mental.message
     assert "체중 관리 조언보다 현재 안전 확인" in mental.message
     assert "Emergency escalation boundary applied" in emergency.safety_warnings

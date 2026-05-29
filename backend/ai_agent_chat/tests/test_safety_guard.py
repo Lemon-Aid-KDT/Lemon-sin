@@ -38,6 +38,37 @@ def test_safety_guard_allows_professional_consult_boundary_language() -> None:
     assert result.warnings == []
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "먹어도 되는지 여부는 약 종류와 상태에 따라 달라질 수 있습니다.",
+        "제품 라벨의 마그네슘 함량을 확인하세요.",
+    ],
+)
+def test_safety_guard_allows_actionable_caution_language(text: str) -> None:
+    """Verify useful caution wording is not blocked as an allow/ban decision."""
+    result = SafetyGuard().check_text(text)
+
+    assert result.allowed is True
+    assert result.warnings == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "혈압약과 함께 먹어도 됩니다.",
+        "혈압약을 줄이세요.",
+        "라면은 절대 먹지 마세요.",
+    ],
+)
+def test_safety_guard_blocks_personal_allow_ban_and_med_change_language(text: str) -> None:
+    """Verify personal co-use conclusions and medication changes are blocked."""
+    result = SafetyGuard().check_text(text)
+
+    assert result.allowed is False
+    assert "Forbidden medical expression detected" in result.warnings
+
+
 def test_safety_guard_blocks_unsupported_evidence_claims() -> None:
     """Verify evidence/effect claims must be present in the grounding context."""
     result = SafetyGuard().check_grounding(
@@ -102,3 +133,14 @@ def test_safety_guard_allows_grounded_numeric_health_claims() -> None:
 
     assert result.allowed is True
     assert result.warnings == []
+
+
+def test_safety_guard_blocks_answer_card_must_not_say_phrases() -> None:
+    """Verify card-specific blocked wording can be enforced after generation."""
+    result = SafetyGuard().check_forbidden_phrases(
+        "이 제품은 누구에게나 안전합니다.",
+        forbidden_phrases=("누구에게나 안전합니다", "약 대신 드세요"),
+    )
+
+    assert result.allowed is False
+    assert "Answer card forbidden phrase detected" in result.warnings
