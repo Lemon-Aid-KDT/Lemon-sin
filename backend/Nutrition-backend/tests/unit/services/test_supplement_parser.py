@@ -262,6 +262,18 @@ def _minimal_parse_result() -> SupplementStructuredParseResult:
     )
 
 
+def _empty_parse_result() -> SupplementStructuredParseResult:
+    """Return parser output with no ingredient candidates."""
+    return SupplementStructuredParseResult.model_validate(
+        {
+            "ingredient_candidates": [],
+            "missing_required_sections": ["supplement_facts", "intake_method"],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+
 def _label_layout() -> LabelLayout:
     """Return deterministic OCR layout with facts and intake sections."""
     return LabelLayout.model_validate(
@@ -469,6 +481,75 @@ async def test_parse_supplement_analysis_ocr_text_merges_deterministic_layout() 
     assert record.parsed_snapshot["evidence_spans"][-1]["cell_ref"] == "layout-section-2"
     assert record.parsed_snapshot["missing_required_sections"] == []
     assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_candidates() -> None:
+    """Verify explicit OCR amount patterns survive when the LLM returns no ingredients."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    result = await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "정x 3개입( 72g",
+                "건강기능식품 500mg",
+                "원재료명 및 함량 비타민 D 25mcg",
+                "아연\t10 mg\t50%",
+            ]
+        ),
+        "paddleocr_local",
+        0.74,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    assert result.parse_result.ingredient_candidates[0].source == "ocr_pattern_fallback"
+    assert candidates == [
+        {
+            "display_name": "비타민 D",
+            "amount": 25.0,
+            "unit": "ug",
+            "confidence": 0.55,
+            "source": "ocr_pattern_fallback",
+        },
+        {
+            "display_name": "아연",
+            "amount": 10.0,
+            "unit": "mg",
+            "confidence": 0.55,
+            "source": "ocr_pattern_fallback",
+        },
+    ]
+    assert "ingredient_candidates" in record.parsed_snapshot["low_confidence_fields"]
+    assert "ocr_text" in record.parsed_snapshot["low_confidence_fields"]
+    assert "ocr_pattern_fallback_requires_review" in record.warnings
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_does_not_duplicate_parser_candidate() -> None:
+    """Verify OCR pattern fallback does not duplicate a parser-provided ingredient."""
+    record = _analysis_run()
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, _FakeParserSession(record)),
+        _user(),
+        record.id,
+        "비타민 D 25mcg",
+        "paddleocr_local",
+        0.91,
+        _settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["source"] == "ollama_structured"
 
 
 @pytest.mark.asyncio

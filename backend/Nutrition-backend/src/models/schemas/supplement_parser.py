@@ -55,7 +55,7 @@ class SupplementParserIngredientCandidate(BaseModel):
     amount: float | None = Field(default=None, ge=0, le=1_000_000)
     unit: str | None = Field(default=None, max_length=40)
     confidence: float = Field(ge=0, le=1)
-    source: Literal["ollama_structured"] = "ollama_structured"
+    source: Literal["ollama_structured", "ocr_pattern_fallback"] = "ollama_structured"
 
 
 class SupplementStructuredParseResult(BaseModel):

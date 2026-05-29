@@ -29,6 +29,10 @@ SUPPLEMENT_PARSER_OUTPUT_CONTRACT = """
 Return one JSON object with:
 - parsed_product: product_name, manufacturer, serving_size, daily_servings
 - ingredient_candidates: visible items; nutrient_code=null; source="ollama_structured"
+- Ingredient rule: name+amount+unit rows ("비타민 D 25 μg", "아연 10 mg",
+  "EPA 180 mg") become candidates.
+- Ignore package counts ("30정", "180g", "500mg") unless attached to a named
+  ingredient row.
 - label_sections, intake_method, precautions, functional_claims from visible label text only
 - evidence_spans: short supporting excerpts, never full OCR text
 - missing_required_sections: allowed schema codes only

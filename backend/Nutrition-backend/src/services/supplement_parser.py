@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -40,6 +41,8 @@ from src.services.supplement_text_sanitizer import (
 SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
     "Structured OCR parsing is a preview. Review and confirm every field before saving."
 )
+OCR_PATTERN_FALLBACK_WARNING = "ocr_pattern_fallback_requires_review"
+OCR_PATTERN_FALLBACK_SOURCE = "ocr_pattern_fallback"
 SUPPLEMENT_IMAGE_ASSIST_WARNING = (
     "Image-assisted text extraction is a fallback preview. Review every field before saving."
 )
@@ -58,6 +61,23 @@ LAYOUT_SECTION_TYPE_MAP = {
     "functionality": "functional_info",
     "storage_method": "storage_method",
 }
+INGREDIENT_AMOUNT_PATTERN = re.compile(
+    r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
+    r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
+    r"(?P<unit>mg|g|mcg|μg|ug|㎍|iu|IU|%)\b"
+)
+TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•"
+MAX_PATTERN_FALLBACK_INGREDIENTS = 20
+INGREDIENT_MIN_NAME_CHARS = 2
+INGREDIENT_MAX_NAME_CHARS = 80
+PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"^(?:g|mg|kg|ml|l)\s*(?:x\s*)?\d*\s*(?:포|정|캡슐|개입)?\s*\(?$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
+    re.compile(r"^\d+\s*(?:정|포|캡슐|개입)\s*\(?$", re.IGNORECASE),
+)
 
 
 class SupplementOCRTextParser(Protocol):
@@ -165,6 +185,8 @@ async def parse_supplement_analysis_ocr_text(
     parse_result = await active_parser.parse_supplement_ocr_text(normalized_text)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
     parse_result = _sanitize_parser_result(parse_result)
+    parse_result = _merge_ocr_pattern_fallbacks(parse_result, normalized_text)
+    _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
     record.ocr_provider = normalized_provider
     record.ocr_confidence = normalized_confidence
@@ -411,6 +433,271 @@ def _sanitize_required_text_items(
         item[field_key] = result.value
         surviving.append(item)
     items[:] = surviving
+
+
+def _merge_ocr_pattern_fallbacks(
+    parse_result: SupplementStructuredParseResult,
+    ocr_text: str,
+) -> SupplementStructuredParseResult:
+    """Add explicit OCR amount patterns only when the LLM missed candidates.
+
+    The fallback is intentionally narrow: it only converts visible
+    ``name + amount + unit`` text into review-required ingredient candidates.
+    It does not infer ingredients from product names, package counts, or section
+    headings, and it still stores no raw OCR text.
+
+    Args:
+        parse_result: Sanitized LLM parser output.
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Parser result with bounded fallback candidates merged in.
+    """
+    fallback_candidates = _extract_ocr_pattern_ingredient_candidates(ocr_text)
+    if not fallback_candidates:
+        return parse_result
+
+    snapshot = parse_result.model_dump()
+    existing_candidates = _list_of_mappings(snapshot.get("ingredient_candidates"))
+    existing_keys = {_ingredient_candidate_key(candidate) for candidate in existing_candidates}
+    added = False
+    for candidate in fallback_candidates:
+        key = _ingredient_candidate_key(candidate)
+        if key in existing_keys:
+            continue
+        existing_candidates.append(candidate)
+        existing_keys.add(key)
+        added = True
+        if len(existing_candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+            break
+
+    if not added:
+        return parse_result
+
+    snapshot["ingredient_candidates"] = existing_candidates
+    snapshot["warnings"] = _append_unique_string(
+        snapshot.get("warnings"),
+        OCR_PATTERN_FALLBACK_WARNING,
+    )
+    snapshot["low_confidence_fields"] = _append_unique_string(
+        snapshot.get("low_confidence_fields"),
+        "ingredient_candidates",
+    )
+    return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, Any]]:
+    """Extract review-required ingredients from explicit OCR amount patterns.
+
+    Args:
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Bounded schema-shaped ingredient candidates.
+    """
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, float, str]] = set()
+    for line in _ocr_lines(ocr_text):
+        for match in INGREDIENT_AMOUNT_PATTERN.finditer(line):
+            name = _clean_ingredient_name(match.group("name"))
+            if not name:
+                continue
+            amount = _parse_ingredient_amount(match.group("amount"))
+            unit = _normalize_ingredient_unit(match.group("unit"))
+            key = (_ingredient_name_key(name), amount, unit)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(
+                {
+                    "display_name": name,
+                    "nutrient_code": None,
+                    "amount": amount,
+                    "unit": unit,
+                    "confidence": 0.55,
+                    "source": OCR_PATTERN_FALLBACK_SOURCE,
+                }
+            )
+            if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+                return candidates
+    return candidates
+
+
+def _ocr_lines(ocr_text: str) -> list[str]:
+    """Return bounded non-empty OCR lines.
+
+    Args:
+        ocr_text: OCR text held only in request memory.
+
+    Returns:
+        Non-empty lines capped for deterministic fallback work.
+    """
+    return [line.strip() for line in ocr_text.splitlines() if line.strip()][:300]
+
+
+def _clean_ingredient_name(value: str) -> str:
+    """Normalize a regex-captured ingredient name.
+
+    Args:
+        value: Ingredient prefix captured before an amount and unit.
+
+    Returns:
+        Cleaned ingredient name, or an empty string when the prefix is unsafe.
+    """
+    cleaned = re.sub(r"^[^A-Za-z가-힣]+", "", value)
+    cleaned = _strip_ingredient_heading_prefix(cleaned)
+    cleaned = re.sub(r"[:\uff1a|·•]+$", "", cleaned).strip(TRAILING_INGREDIENT_PUNCTUATION)
+    cleaned = " ".join(cleaned.split())
+    if not (INGREDIENT_MIN_NAME_CHARS <= len(cleaned) <= INGREDIENT_MAX_NAME_CHARS):
+        return ""
+    if _looks_like_non_ingredient_heading(cleaned):
+        return ""
+    if _looks_like_packaging_quantity_token(cleaned):
+        return ""
+    if not re.search(r"[A-Za-z가-힣]", cleaned):
+        return ""
+    return cleaned
+
+
+def _strip_ingredient_heading_prefix(value: str) -> str:
+    """Remove common Korean/English section prefixes from a candidate.
+
+    Args:
+        value: Candidate ingredient prefix.
+
+    Returns:
+        Candidate with non-ingredient section wording removed.
+    """
+    cleaned = value.strip()
+    patterns = (
+        r"^(?:nutrition facts|supplement facts)\s*[:\uff1a|·•-]*\s*",
+        r"^(?:영양\s*정보|영양\s*기능\s*정보|기능\s*정보)\s*[:\uff1a|·•-]*\s*",
+        r"^(?:원재료명|원료명)\s*(?:및\s*함량)?\s*[:\uff1a|·•-]*\s*",
+        r"^(?:1일\s*)?(?:섭취량|섭취\s*방법)\s*[:\uff1a|·•-]*\s*",
+    )
+    for pattern in patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
+
+
+def _looks_like_non_ingredient_heading(value: str) -> bool:
+    """Return whether text is a generic label heading, not an ingredient.
+
+    Args:
+        value: Cleaned ingredient candidate.
+
+    Returns:
+        True when the candidate is likely a section or package descriptor.
+    """
+    normalized = _ingredient_name_key(value)
+    heading_tokens = (
+        "nutrition facts",
+        "supplement facts",
+        "영양 정보",
+        "영양정보",
+        "영양 기능 정보",
+        "영양기능정보",
+        "섭취 방법",
+        "섭취방법",
+        "주의 사항",
+        "주의사항",
+        "원재료명",
+        "원료명",
+        "기능 정보",
+        "기능정보",
+        "건강기능식품",
+        "총 내용량",
+        "내용량",
+        "제조원",
+        "보관",
+        "유통기한",
+    )
+    return any(token in normalized for token in heading_tokens)
+
+
+def _looks_like_packaging_quantity_token(value: str) -> bool:
+    """Return whether a candidate is a package quantity fragment.
+
+    Args:
+        value: Cleaned ingredient candidate.
+
+    Returns:
+        True when the value is a bounded package/serving-count fragment.
+    """
+    normalized = _ingredient_name_key(value)
+    if not normalized:
+        return False
+    return any(pattern.fullmatch(normalized) for pattern in PACKAGING_QUANTITY_PATTERNS)
+
+
+def _parse_ingredient_amount(value: str) -> int | float:
+    """Parse a visible numeric ingredient amount.
+
+    Args:
+        value: OCR amount text.
+
+    Returns:
+        Integer when exact, otherwise float.
+    """
+    numeric_value = float(value.replace(",", ""))
+    return int(numeric_value) if numeric_value.is_integer() else numeric_value
+
+
+def _normalize_ingredient_unit(value: str) -> str:
+    """Normalize common OCR unit variants.
+
+    Args:
+        value: OCR unit text.
+
+    Returns:
+        Normalized unit string.
+    """
+    stripped = value.strip()
+    if stripped in {"μg", "㎍"} or stripped.casefold() in {"mcg", "ug"}:
+        return "ug"
+    if stripped.casefold() == "iu":
+        return "IU"
+    return stripped.casefold() if stripped != "%" else "%"
+
+
+def _ingredient_candidate_key(candidate: dict[str, Any]) -> tuple[str, float | None, str | None]:
+    """Return a stable dedupe key for ingredient candidates."""
+    amount = candidate.get("amount")
+    normalized_amount = float(amount) if isinstance(amount, int | float) else None
+    unit = candidate.get("unit")
+    return (
+        _ingredient_name_key(str(candidate.get("display_name") or "")),
+        normalized_amount,
+        str(unit).casefold() if unit is not None else None,
+    )
+
+
+def _ingredient_name_key(value: str) -> str:
+    """Return a normalized ingredient name key for comparison."""
+    return " ".join(value.casefold().split())
+
+
+def _list_of_mappings(value: Any) -> list[dict[str, Any]]:
+    """Return dict items from a parser snapshot value."""
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _append_unique_string(value: Any, item: str) -> list[str]:
+    """Append a bounded string to a list-shaped parser field once.
+
+    Args:
+        value: Existing parser field.
+        item: String to append.
+
+    Returns:
+        Deduplicated list.
+    """
+    items = [entry for entry in value if isinstance(entry, str)] if isinstance(value, list) else []
+    if item not in items:
+        items.append(item)
+    return items
 
 
 def _normalize_ocr_provider(ocr_provider: str) -> str:

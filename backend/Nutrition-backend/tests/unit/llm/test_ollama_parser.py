@@ -217,6 +217,10 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     assert fake_client.request_json["think"] is False
     assert fake_client.request_json["format"]["type"] == "object"
     assert fake_client.request_json["options"] == {"temperature": 0.0}
+    user_prompt = fake_client.request_json["messages"][1]["content"]
+    assert "비타민 D 25 μg" in user_prompt
+    assert "ingredient_candidates" in user_prompt
+    assert "package counts" in user_prompt
     assert result.parsed_product.product_name == "비타민 D 1000"
     assert result.ingredient_candidates[0].source == "ollama_structured"
     assert result.label_sections[0].section_id == "section-001"

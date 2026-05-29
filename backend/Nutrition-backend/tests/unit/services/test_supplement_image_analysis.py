@@ -421,7 +421,7 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert result.ocr_result.provider == "fake-ocr"
     assert fake_ocr.received_image is not None
     assert fake_ocr.received_image.mime_type == "image/png"
-    assert fake_parser.received_text == "비타민 D 1000\n비타민 D 25 ug"
+    assert fake_parser.received_text == "비타민 D 1000\n비타민 D 25 μg"
     assert result.record.ocr_provider == "fake-ocr"
     assert result.record.parsed_snapshot["parsed_product"]["product_name"] == "비타민 D 1000"
     assert result.record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
@@ -646,7 +646,7 @@ async def test_analyze_supplement_image_calls_multimodal_when_ocr_is_empty() -> 
 
     assert fake_ocr.call_count == 1
     assert fake_multimodal.call_count == 1
-    assert fake_parser.received_text == "비타민 D 1000\n비타민 D 25 ug"
+    assert fake_parser.received_text == "비타민 D 1000\n비타민 D 25 μg"
     assert result.ocr_result is not None
     assert result.ocr_result.provider == "ollama_vision_assist"
     assert result.record.parsed_snapshot["parser_metadata"]["input_provider"] == (
