@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from lemon_ai_agent.guards.safety import SafetyGuard
-from lemon_ai_agent.llm import LLMMessage, LLMRequest, LocalLLMClient
+from lemon_ai_agent.guards.safety import SafetyEnvelope, SafetyGuard
+from lemon_ai_agent.llm import LLMCompletion, LLMMessage, LLMRequest, LocalLLMClient
 from lemon_ai_agent.schemas import DailyCoachingResult
 
 
@@ -9,8 +9,10 @@ class ChatAgent:
     """Explains computed coaching results without exposing internal traces."""
 
     def __init__(self, llm_client: LocalLLMClient | None = None) -> None:
-        self._llm_client = llm_client
+        self._completion = LLMCompletion(llm_client)
+        self._has_llm_client = llm_client is not None
         self._safety_guard = SafetyGuard()
+        self._safety_envelope = SafetyEnvelope(self._safety_guard)
         self.last_llm_warnings: list[str] = []
         self.last_llm_error: str | None = None
         self.last_provider = "deterministic"
@@ -21,36 +23,32 @@ class ChatAgent:
         self.last_provider = "deterministic"
         fallback = self._deterministic_answer(result)
 
-        if self._llm_client is None:
+        if not self._has_llm_client:
             return fallback
 
-        try:
-            response = self._llm_client.generate(self._build_llm_request(question, result))
-        except Exception as exc:
-            self.last_llm_error = str(exc)
+        completion = self._completion.complete(self._build_llm_request(question, result))
+        if not completion.ok:
+            self.last_llm_error = completion.fallback_reason
+            self.last_llm_warnings.extend(completion.warnings)
             return fallback
 
-        check = self._safety_guard.check_text(response.text)
-        self.last_llm_warnings.extend(check.warnings)
-        if not check.allowed:
-            return fallback
-        grounding_check = self._safety_guard.check_grounding(
-            response.text,
+        safety = self._safety_envelope.screen_llm_output(
+            completion.text,
             self._grounding_context(result),
         )
-        self.last_llm_warnings.extend(grounding_check.warnings)
-        if not grounding_check.allowed:
+        self.last_llm_warnings.extend(safety.warnings)
+        if not safety.allowed:
             return fallback
 
-        self.last_provider = response.provider
-        return response.text
+        self.last_provider = completion.provider
+        return safety.text
 
     def _deterministic_answer(self, result: DailyCoachingResult) -> str:
         recommendation_titles = ", ".join(
             _ko_recommendation_title(recommendation.title)
             for recommendation in result.recommendations[:3]
         )
-        _, warnings = self._safety_guard.sanitize_trace(result.trace[:4])
+        _, warnings = self._safety_envelope.screen_trace(result.trace[:4])
         self.last_llm_warnings.extend(warnings)
 
         if not recommendation_titles:
@@ -81,7 +79,7 @@ class ChatAgent:
         recommendations = "; ".join(
             f"{item.title}: {item.rationale}" for item in result.recommendations[:3]
         )
-        trace_lines, warnings = self._safety_guard.sanitize_trace(result.trace[:4])
+        trace_lines, warnings = self._safety_envelope.screen_trace(result.trace[:4])
         self.last_llm_warnings.extend(warnings)
         internal_notes = " / ".join(trace_lines)
 

@@ -130,3 +130,16 @@ def test_unsupported_evidence_claim_falls_back_to_deterministic_message() -> Non
     assert "임상시험" not in message
     assert "혈압을 낮춥니다" not in message
     assert "Unsupported medical fact detected" in agent.last_llm_warnings
+
+
+def test_empty_llm_output_falls_back_to_deterministic_message() -> None:
+    """Verify empty model text is handled before safety checks."""
+    client = _CapturingLLMClient(text=" ")
+    agent = ChatAgent(llm_client=client)
+
+    message = agent.answer("오늘 코칭 내용을 요약해 주세요.", _result())
+
+    assert agent.last_provider == "deterministic"
+    assert agent.last_llm_error == "llm_empty_response"
+    assert "LLM response text was empty" in agent.last_llm_warnings
+    assert "오늘의 요약" in message

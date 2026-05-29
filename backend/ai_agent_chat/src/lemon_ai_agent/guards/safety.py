@@ -78,6 +78,13 @@ class SafetyCheckResult:
     warnings: list[str]
 
 
+@dataclass(frozen=True)
+class SafetyEnvelopeResult:
+    allowed: bool
+    text: str
+    warnings: tuple[str, ...]
+
+
 class SafetyGuard:
     """Policy guard for health-management coaching text."""
 
@@ -134,3 +141,47 @@ class SafetyGuard:
             warnings.extend(f"Trace text blocked: {warning}" for warning in result.warnings)
 
         return safe_trace, warnings
+
+
+class SafetyEnvelope:
+    """Applies user-facing safety checks in caller-safe combinations."""
+
+    def __init__(self, guard: SafetyGuard | None = None) -> None:
+        self._guard = guard or SafetyGuard()
+
+    def screen_llm_output(
+        self,
+        text: str,
+        grounding_context: str,
+    ) -> SafetyEnvelopeResult:
+        warnings: list[str] = []
+
+        text_check = self._guard.check_text(text)
+        warnings.extend(text_check.warnings)
+
+        grounding_check = self._guard.check_grounding(text, grounding_context)
+        warnings.extend(grounding_check.warnings)
+
+        allowed = text_check.allowed and grounding_check.allowed
+        return SafetyEnvelopeResult(
+            allowed=allowed,
+            text=text if allowed else "",
+            warnings=tuple(warnings),
+        )
+
+    def screen_text(
+        self,
+        text: str,
+        *,
+        replacement: str = "text withheld by policy guard",
+    ) -> SafetyEnvelopeResult:
+        check = self._guard.check_text(text)
+        return SafetyEnvelopeResult(
+            allowed=check.allowed,
+            text=text if check.allowed else replacement,
+            warnings=tuple(check.warnings),
+        )
+
+    def screen_trace(self, trace: list[str]) -> tuple[list[str], tuple[str, ...]]:
+        safe_trace, warnings = self._guard.sanitize_trace(trace)
+        return safe_trace, tuple(warnings)

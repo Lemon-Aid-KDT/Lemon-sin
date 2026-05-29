@@ -6,20 +6,14 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from lemon_ai_agent.agents.chat import ChatAgent
-from lemon_ai_agent.guards.safety import SafetyGuard
+from lemon_ai_agent.app_intake import AppIntakeModule
+from lemon_ai_agent.guards.safety import SafetyEnvelope, SafetyGuard
 from lemon_ai_agent.llm import LocalLLMClient
 from lemon_ai_agent.orchestrator import DailyHealthAgent
 from lemon_ai_agent.schemas import (
     DailyCoachingResult,
-    DailyIntake,
-    FoodIntake,
-    HealthTrend,
-    IntakeSource,
-    NutrientAmount,
     ProposedAction,
     ReferenceRange,
-    SupplementIntake,
-    UserProfile,
 )
 
 AgentStatus = Literal["preview", "completed", "failed"]
@@ -118,13 +112,14 @@ class DailyHealthAgentAppAdapter:
         include_debug_trace: bool = False,
         agent_name: str = "daily_health_agent",
     ) -> None:
-        self._default_references = default_references or []
+        self._app_intake = AppIntakeModule(default_references)
         self._chat_agent = ChatAgent(llm_client=llm_client)
         self._run_logger = run_logger
         self._memory_writer = memory_writer
         self._include_debug_trace = include_debug_trace
         self._agent_name = agent_name
         self._safety_guard = SafetyGuard()
+        self._safety_envelope = SafetyEnvelope(self._safety_guard)
         self._provider = self._resolve_provider(llm_client)
 
     def run(self, agent_input: AgentInput) -> AgentOutput:
@@ -136,16 +131,17 @@ class DailyHealthAgentAppAdapter:
             "safety_guard",
             "chat_agent",
         ]
-        if self._build_agent_memory(agent_input).get("summaries"):
-            used_tools.append("agent_memory")
 
         try:
-            references = self._build_references(agent_input.payload)
-            result = DailyHealthAgent(references).run(
-                profile=self._build_profile(agent_input),
-                intake=self._build_intake(agent_input),
-                trends=self._build_trends(agent_input.payload),
-                agent_memory=self._build_agent_memory(agent_input),
+            app_intake = self._app_intake.parse(agent_input)
+            if app_intake.agent_memory.get("summaries"):
+                used_tools.append("agent_memory")
+
+            result = DailyHealthAgent(app_intake.references).run(
+                profile=app_intake.profile,
+                intake=app_intake.intake,
+                trends=app_intake.trends,
+                agent_memory=app_intake.agent_memory,
             )
             message = self._chat_agent.answer("오늘 코칭 내용을 요약해 주세요.", result)
             output = self._to_output(
@@ -186,99 +182,6 @@ class DailyHealthAgentAppAdapter:
             )
             self._record_run(output, error=str(exc))
             return output
-
-    def _build_profile(self, agent_input: AgentInput) -> UserProfile:
-        profile = agent_input.context.get("profile", agent_input.context)
-        return UserProfile(
-            user_id=agent_input.user_id,
-            age=int(profile.get("age", 0)),
-            gender=profile.get("gender", "other"),
-            goals=list(profile.get("goals", [])),
-            chronic_conditions=list(profile.get("chronic_conditions", [])),
-            medications=list(profile.get("medications", [])),
-        )
-
-    def _build_intake(self, agent_input: AgentInput) -> DailyIntake:
-        payload = agent_input.payload
-        return DailyIntake(
-            user_id=agent_input.user_id,
-            date=str(payload["date"]),
-            sources=[self._build_source(item) for item in payload.get("sources", [])],
-            foods=[self._build_food(item) for item in payload.get("foods", [])],
-            supplements=[
-                self._build_supplement(item)
-                for item in payload.get("supplements", [])
-            ],
-        )
-
-    def _build_references(self, payload: dict[str, Any]) -> list[ReferenceRange]:
-        if "reference_ranges" not in payload:
-            return self._default_references
-
-        return [
-            ReferenceRange(
-                nutrient=str(item["nutrient"]),
-                target=float(item["target"]),
-                unit=str(item["unit"]),
-                upper_limit=(
-                    None
-                    if item.get("upper_limit") is None
-                    else float(item["upper_limit"])
-                ),
-            )
-            for item in payload.get("reference_ranges", [])
-        ]
-
-    def _build_trends(self, payload: dict[str, Any]) -> list[HealthTrend]:
-        return [
-            HealthTrend(
-                metric=str(item["metric"]),
-                direction=item.get("direction", "unknown"),
-                severity=item.get("severity", "info"),
-                summary=str(item.get("summary", "")),
-            )
-            for item in payload.get("health_trends", [])
-        ]
-
-    def _build_agent_memory(self, agent_input: AgentInput) -> dict[str, Any]:
-        memory = agent_input.context.get("agent_memory", {})
-        return memory if isinstance(memory, dict) else {}
-
-    def _build_source(self, item: dict[str, Any]) -> IntakeSource:
-        return IntakeSource(
-            source_type=item["source_type"],
-            image_id=item.get("image_id"),
-            raw_ocr_text=item.get("raw_ocr_text"),
-            user_confirmed=bool(item.get("user_confirmed", False)),
-        )
-
-    def _build_food(self, item: dict[str, Any]) -> FoodIntake:
-        return FoodIntake(
-            name=str(item["name"]),
-            meal_type=item["meal_type"],
-            serving_label=str(item.get("serving_label", "")),
-            nutrients=[
-                self._build_nutrient(nutrient)
-                for nutrient in item.get("nutrients", [])
-            ],
-        )
-
-    def _build_supplement(self, item: dict[str, Any]) -> SupplementIntake:
-        return SupplementIntake(
-            product_name=str(item["product_name"]),
-            ingredients=[
-                self._build_nutrient(ingredient)
-                for ingredient in item.get("ingredients", [])
-            ],
-            times_per_day=int(item.get("times_per_day", 1)),
-        )
-
-    def _build_nutrient(self, item: dict[str, Any]) -> NutrientAmount:
-        return NutrientAmount(
-            name=str(item["name"]),
-            amount=float(item["amount"]),
-            unit=str(item["unit"]),
-        )
 
     def _to_output(
         self,
@@ -374,10 +277,8 @@ class DailyHealthAgentAppAdapter:
         )
 
     def _safe_text(self, text: str) -> tuple[str, list[str]]:
-        check = self._safety_guard.check_text(text)
-        if check.allowed:
-            return text, []
-        return "text withheld by policy guard", check.warnings
+        result = self._safety_envelope.screen_text(text)
+        return result.text, list(result.warnings)
 
     def _record_run(self, output: AgentOutput, error: str | None = None) -> None:
         if self._run_logger is None:
