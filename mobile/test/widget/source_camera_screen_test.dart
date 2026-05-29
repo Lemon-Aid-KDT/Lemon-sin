@@ -75,6 +75,33 @@ void main() {
     expect(find.text('분석하기'), findsOneWidget);
   });
 
+  testWidgets('debug supplement image path bypasses Android photo picker', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File source = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(source.path);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          imagePicker: picker,
+          debugSupplementImagePath: source.path,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.text('디버그 샘플'));
+    await tester.pumpAndSettle();
+
+    expect(picker.lastSource, isNull);
+    expect(find.text('미리보기'), findsOneWidget);
+    expect(find.text('분석하기'), findsOneWidget);
+  });
+
   testWidgets('supplement preview can add images into a batch', (
     WidgetTester tester,
   ) async {

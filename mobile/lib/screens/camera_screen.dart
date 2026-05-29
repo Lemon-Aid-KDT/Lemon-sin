@@ -43,6 +43,9 @@ class _CapturedSupplementImage {
 const bool _enableEmulatorLiveCamera = bool.fromEnvironment(
   'LEMON_ENABLE_EMULATOR_LIVE_CAMERA',
 );
+const String _debugSupplementImagePathFromEnv = String.fromEnvironment(
+  'LEMON_DEBUG_SUPPLEMENT_IMAGE_PATH',
+);
 
 // ═══════════════════════════════════════════
 // 카메라 화면 UI 톤 — LADS Flat 2.0 + Soft UI.
@@ -77,6 +80,7 @@ class CameraScreen extends StatefulWidget {
     this.initialMode = 'supplement',
     this.imagePicker,
     this.useCameraPickerFallback,
+    this.debugSupplementImagePath,
     this.onClose,
     super.key,
   });
@@ -89,6 +93,9 @@ class CameraScreen extends StatefulWidget {
 
   /// Optional camera picker fallback override used by widget tests.
   final bool? useCameraPickerFallback;
+
+  /// Optional debug-only local image path used when Android Photo Picker stalls.
+  final String? debugSupplementImagePath;
 
   /// Sends a supplement image to the backend OCR analysis endpoint.
   final Future<void> Function(String imagePath, {required String ocrProvider})
@@ -186,6 +193,15 @@ class _CameraScreenState extends State<CameraScreen>
   bool get _canUseCameraPickerFallback =>
       widget.useCameraPickerFallback ??
       (_isEmulator && !_enableEmulatorLiveCamera);
+
+  String get _debugSupplementImagePath =>
+      (widget.debugSupplementImagePath ?? _debugSupplementImagePathFromEnv)
+          .trim();
+
+  bool get _canLoadDebugSupplementImage =>
+      !kReleaseMode &&
+      _mode == _CaptureMode.supplement &&
+      _debugSupplementImagePath.isNotEmpty;
 
   Future<void> _startCameraAfterDeviceProbe() async {
     final bool isEmulator = await DeviceEnv.isEmulator;
@@ -340,6 +356,10 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _pickFromGallery() async {
+    if (_canLoadDebugSupplementImage) {
+      await _loadDebugSupplementImage();
+      return;
+    }
     await _pickImageFromPicker(
       source: ImageSource.gallery,
       errorMessage: '갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.',
@@ -351,6 +371,40 @@ class _CameraScreenState extends State<CameraScreen>
       source: ImageSource.camera,
       errorMessage: '카메라 앱 촬영 이미지를 불러오지 못했어요. 갤러리로 테스트해주세요.',
     );
+  }
+
+  Future<void> _loadDebugSupplementImage() async {
+    if (_picking || !_canLoadDebugSupplementImage) return;
+    setState(() => _picking = true);
+    HapticFeedback.lightImpact();
+    try {
+      final File sourceFile = File(_debugSupplementImagePath);
+      if (!sourceFile.existsSync() || sourceFile.lengthSync() == 0) {
+        throw const FormatException('debug image unavailable');
+      }
+      final File cached = await _copyPickedImageToCache(
+        XFile(
+          sourceFile.path,
+          name: sourceFile.uri.pathSegments.isNotEmpty
+              ? sourceFile.uri.pathSegments.last
+              : 'debug-supplement.jpg',
+        ),
+      );
+      if (mounted) {
+        setState(() => _captured = cached);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('디버그 샘플 이미지를 불러오지 못했어요. 경로와 권한을 확인해주세요.'),
+            backgroundColor: AppColor.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
   }
 
   Future<void> _pickImageFromPicker({
@@ -665,6 +719,9 @@ class _CameraScreenState extends State<CameraScreen>
               },
               onShutter: _shutter,
               onGallery: _pickFromGallery,
+              onDebugSupplementImage: _canLoadDebugSupplementImage
+                  ? _loadDebugSupplementImage
+                  : null,
               loading: _picking,
               enabled:
                   _controller?.value.isInitialized == true ||
@@ -1641,6 +1698,7 @@ class _BottomControls extends StatelessWidget {
   final ValueChanged<_CaptureMode> onModeChange;
   final VoidCallback onShutter;
   final VoidCallback onGallery;
+  final VoidCallback? onDebugSupplementImage;
   final bool loading;
   final bool enabled;
 
@@ -1649,6 +1707,7 @@ class _BottomControls extends StatelessWidget {
     required this.onModeChange,
     required this.onShutter,
     required this.onGallery,
+    this.onDebugSupplementImage,
     required this.loading,
     required this.enabled,
   });
@@ -1701,6 +1760,10 @@ class _BottomControls extends StatelessWidget {
           ),
           const SizedBox(height: AppSpace.lg),
           _ModeSegment(mode: mode, onChange: onModeChange),
+          if (onDebugSupplementImage != null) ...[
+            const SizedBox(height: AppSpace.md),
+            _DebugSampleButton(onTap: onDebugSupplementImage!),
+          ],
           const SizedBox(height: AppSpace.xl),
           // 셔터 정중앙 · 갤러리 좌측 끝 · 우측 균형 빈자리
           // Stack 으로 셔터를 화면 정중앙에 고정, 갤러리는 좌측에.
@@ -1724,6 +1787,50 @@ class _BottomControls extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DebugSampleButton extends StatelessWidget {
+  const _DebugSampleButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '디버그 샘플 이미지',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            border: Border.all(color: _CamTone.border, width: 1),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.science_rounded, color: Colors.white, size: 18),
+              SizedBox(width: AppSpace.xs),
+              Text(
+                '디버그 샘플',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
