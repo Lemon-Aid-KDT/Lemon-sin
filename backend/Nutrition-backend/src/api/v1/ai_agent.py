@@ -36,6 +36,7 @@ from src.services.agent_memory import (
     record_agent_run,
     upsert_daily_coaching_memory,
 )
+from src.services.medical_source_readiness import build_medical_source_readiness_from_db
 from src.services.privacy import (
     ConsentRequiredError,
     record_sensitive_audit_event,
@@ -86,6 +87,8 @@ class ChatbotApiResponse(BaseModel):
     used_tools: list[str] = Field(default_factory=list)
     safety_warnings: list[str] = Field(default_factory=list)
     source_families: list[str] = Field(default_factory=list)
+    answerability: str = "answerable"
+    sources: list[dict[str, str]] = Field(default_factory=list)
     requires_user_approval: bool = False
 
 
@@ -172,6 +175,30 @@ def _memory_summary_for_chat(memory_context: dict[str, object]) -> str:
             return f"최근 데일리 코칭 메모리에서 {nutrients} 패턴을 참고했습니다."
 
     return "최근 데일리 코칭 메모리를 참고했습니다."
+
+
+async def _production_medical_source_gate(
+    session: AsyncSession,
+    settings: Settings,
+) -> tuple[bool, list[str]]:
+    """Fail closed for production chat if reviewed source governance is unavailable."""
+    if settings.environment != "production":
+        return True, []
+
+    readiness = await build_medical_source_readiness_from_db(
+        session,
+        settings,
+        allow_registry_fallback=False,
+    )
+    if readiness.ready:
+        return True, []
+
+    error_codes = [
+        source.error_code or source.status
+        for source in readiness.sources
+        if not source.ready
+    ]
+    return False, list(dict.fromkeys(error_codes or ["no_reviewed_sources"]))
 
 
 @router.post(
@@ -290,6 +317,31 @@ async def run_chatbot(
         blocked_action="ai_agent_chat_blocked",
         blocked_resource_type="ai_agent_chat",
     )
+    sources_ready, source_warnings = await _production_medical_source_gate(session, settings)
+    if not sources_ready:
+        return ChatbotApiResponse(
+            request_id=request.request_id,
+            message=(
+                "요약\n"
+                "- 현재 검수된 의료 지식 출처가 준비되지 않아 답변할 수 없습니다.\n"
+                "현재 답할 수 없는 이유\n"
+                "- production 환경에서는 reviewed source governance DB가 준비된 경우에만 "
+                "건강 답변을 생성합니다.\n"
+                "필요한 검수 지식\n"
+                "- reviewed source, source version, expiry, user-facing 허용 상태가 필요합니다.\n"
+                "지금 할 수 있는 안전한 행동\n"
+                "- 긴급 증상이 있으면 119 또는 가까운 응급실을 이용하고, 복약·치료 판단은 "
+                "의사 또는 약사에게 확인하세요."
+            ),
+            provider="deterministic",
+            used_tools=["medical_source_readiness"],
+            safety_warnings=source_warnings,
+            source_families=[],
+            answerability="unknown_no_reviewed_source",
+            sources=[],
+            requires_user_approval=False,
+        )
+
     memory_context = await load_agent_memory_context(session, current_user, settings)
     context = dict(request.context)
     context["agent_memory"] = memory_context
@@ -335,5 +387,7 @@ async def run_chatbot(
         used_tools=used_tools,
         safety_warnings=chatbot_response.safety_warnings,
         source_families=chatbot_response.source_families,
+        answerability=chatbot_response.answerability,
+        sources=chatbot_response.sources,
         requires_user_approval=chatbot_response.requires_user_approval,
     )
