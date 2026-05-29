@@ -42,11 +42,12 @@ PADDLE_POINT_COORDINATE_COUNT = 2
 class PaddlePredictor(Protocol):
     """Protocol for the small PaddleOCR API surface used by this adapter."""
 
-    def predict(self, image_path: str) -> Any:
+    def predict(self, image_path: str, **kwargs: object) -> Any:
         """Run OCR prediction for one local image path.
 
         Args:
             image_path: Local image path.
+            kwargs: Optional PaddleOCR 3.x ``predict`` tuning parameters.
 
         Returns:
             Provider-specific prediction object.
@@ -106,10 +107,11 @@ class PaddleOCRAdapter(OCRAdapter):
         with TemporaryDirectory(prefix="lemon-paddleocr-") as temporary_directory:
             image_path = Path(temporary_directory) / f"supplement_label{suffix}"
             image_path.write_bytes(image_bytes)
-            prediction = predictor.predict(str(image_path))
+            prediction = predictor.predict(str(image_path), **_predict_kwargs(self._settings))
 
         fragments, scores = _collect_text_and_scores(prediction)
-        text = "\n".join(fragments).strip()
+        pages = _collect_layout_pages(prediction, image)
+        text = _build_reading_order_text(fragments=fragments, pages=pages)
         if not text:
             raise OCRError("PaddleOCR returned no readable text.")
 
@@ -120,7 +122,7 @@ class PaddleOCRAdapter(OCRAdapter):
             text=text,
             provider=PADDLE_OCR_PROVIDER,
             confidence=confidence,
-            pages=_collect_layout_pages(prediction, image),
+            pages=pages,
         )
 
 
@@ -230,6 +232,26 @@ def _suffix_for_mime_type(mime_type: str) -> str:
     if mime_type == "image/webp":
         return ".webp"
     return ".png"
+
+
+def _predict_kwargs(settings: Settings) -> dict[str, object]:
+    """Build optional PaddleOCR 3.x prediction-time tuning parameters.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        Keyword arguments for ``PaddleOCR.predict``. Empty means the upstream
+        pipeline defaults are preserved.
+    """
+    kwargs: dict[str, object] = {}
+    if settings.local_ocr_text_det_limit_side_len is not None:
+        kwargs["text_det_limit_side_len"] = settings.local_ocr_text_det_limit_side_len
+    if settings.local_ocr_text_det_limit_type is not None:
+        kwargs["text_det_limit_type"] = settings.local_ocr_text_det_limit_type
+    if settings.local_ocr_text_rec_score_thresh is not None:
+        kwargs["text_rec_score_thresh"] = settings.local_ocr_text_rec_score_thresh
+    return kwargs
 
 
 def _collect_text_and_scores(value: object) -> tuple[list[str], list[float]]:
@@ -408,6 +430,135 @@ def _average_scores(scores: list[float]) -> float | None:
     if not scores:
         return None
     return sum(scores) / len(scores)
+
+
+def _build_reading_order_text(*, fragments: list[str], pages: tuple[OCRPage, ...]) -> str:
+    """Build parser-friendly OCR text from layout when Paddle returns coordinates.
+
+    Dense supplement facts labels often contain table-like rows. PaddleOCR 3.x
+    can return line coordinates, so same-row blocks are joined with tabs before
+    the local LLM parser sees the text. If layout is unavailable, the provider
+    text order is preserved.
+
+    Args:
+        fragments: Provider text fragments in PaddleOCR output order.
+        pages: Normalized OCR layout pages.
+
+    Returns:
+        Text for downstream parsing.
+    """
+    layout_text = _layout_text_for_parser(pages)
+    if layout_text:
+        return layout_text
+    return "\n".join(fragments).strip()
+
+
+def _layout_text_for_parser(pages: tuple[OCRPage, ...]) -> str:
+    """Return row-grouped OCR text from normalized pages.
+
+    Args:
+        pages: OCR layout pages.
+
+    Returns:
+        Newline-delimited reading order text, or an empty string when layout is
+        unavailable.
+    """
+    rows: list[str] = []
+    for page in pages:
+        rows.extend(_layout_rows_for_page(page))
+    return "\n".join(row for row in rows if row).strip()
+
+
+def _layout_rows_for_page(page: OCRPage) -> list[str]:
+    """Group one OCR page into top-to-bottom, left-to-right text rows.
+
+    Args:
+        page: OCR page.
+
+    Returns:
+        Row text. Multiple blocks on the same row are tab-separated.
+    """
+    positioned: list[tuple[float, float, float, str]] = []
+    unpositioned: list[str] = []
+    for block in page.blocks:
+        text = block.text.strip()
+        if not text:
+            continue
+        position = _block_position(block)
+        if position is None:
+            unpositioned.append(text)
+            continue
+        x_min, y_center, height = position
+        positioned.append((y_center, x_min, height, text))
+
+    if not positioned:
+        return unpositioned
+
+    rows = _group_positioned_blocks(positioned)
+    if unpositioned:
+        rows.extend(unpositioned)
+    return rows
+
+
+def _block_position(block: OCRBlock) -> tuple[float, float, float] | None:
+    """Return sortable block geometry.
+
+    Args:
+        block: OCR block.
+
+    Returns:
+        ``(x_min, y_center, height)`` or ``None`` when the block has no usable
+        coordinates.
+    """
+    if block.bounding_box is None or not block.bounding_box.vertices:
+        return None
+    x_values = [vertex.x for vertex in block.bounding_box.vertices]
+    y_values = [vertex.y for vertex in block.bounding_box.vertices]
+    y_min = min(y_values)
+    y_max = max(y_values)
+    return min(x_values), (y_min + y_max) / 2, max(y_max - y_min, 1.0)
+
+
+def _group_positioned_blocks(blocks: list[tuple[float, float, float, str]]) -> list[str]:
+    """Group positioned OCR blocks into visual rows.
+
+    Args:
+        blocks: Tuples of ``(y_center, x_min, height, text)``.
+
+    Returns:
+        Row text in visual reading order.
+    """
+    rows: list[list[tuple[float, float, float, str]]] = []
+    for block in sorted(blocks, key=lambda item: (item[0], item[1])):
+        target_row = _matching_row(rows, block)
+        if target_row is None:
+            rows.append([block])
+        else:
+            target_row.append(block)
+    return ["\t".join(item[3] for item in sorted(row, key=lambda item: item[1])) for row in rows]
+
+
+def _matching_row(
+    rows: list[list[tuple[float, float, float, str]]],
+    block: tuple[float, float, float, str],
+) -> list[tuple[float, float, float, str]] | None:
+    """Return the first row close enough to accept a block.
+
+    Args:
+        rows: Existing visual rows.
+        block: Candidate positioned block.
+
+    Returns:
+        Matching row or ``None``.
+    """
+    y_center, _x_min, height, _text = block
+    for row in rows:
+        row_center = sum(item[0] for item in row) / len(row)
+        row_height = sum(item[2] for item in row) / len(row)
+        tolerance = max(2.0, max(row_height, height) * 0.65)
+        if abs(y_center - row_center) <= tolerance:
+            return row
+    return None
 
 
 def _collect_layout_pages(value: object, image: OCRImageInput) -> tuple[OCRPage, ...]:

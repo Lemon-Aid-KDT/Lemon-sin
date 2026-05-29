@@ -467,6 +467,31 @@ class Settings(BaseSettings):
             "regression investigations."
         ),
     )
+    local_ocr_text_det_limit_side_len: int | None = Field(
+        default=None,
+        ge=256,
+        le=4096,
+        description=(
+            "Optional PaddleOCR predict() text_det_limit_side_len override for "
+            "dense supplement labels. None keeps the upstream pipeline default."
+        ),
+    )
+    local_ocr_text_det_limit_type: Literal["min", "max"] | None = Field(
+        default=None,
+        description=(
+            "Optional PaddleOCR predict() text_det_limit_type override. Set only "
+            "during measured OCR tuning runs."
+        ),
+    )
+    local_ocr_text_rec_score_thresh: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Optional PaddleOCR predict() text_rec_score_thresh override. None "
+            "keeps the upstream recognition-score default."
+        ),
+    )
     paddle_disable_model_source_check: bool = Field(
         default=True,
         description=(

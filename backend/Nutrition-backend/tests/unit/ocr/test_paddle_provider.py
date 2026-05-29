@@ -28,17 +28,20 @@ class _FakePaddlePredictor:
     def __init__(self, prediction: object) -> None:
         self.prediction = prediction
         self.received_path: str | None = None
+        self.received_kwargs: dict[str, object] = {}
 
-    def predict(self, image_path: str) -> object:
+    def predict(self, image_path: str, **kwargs: object) -> object:
         """Capture the image path and return configured prediction data.
 
         Args:
             image_path: Temporary image path.
+            kwargs: PaddleOCR prediction-time tuning parameters.
 
         Returns:
             Fake prediction data.
         """
         self.received_path = image_path
+        self.received_kwargs = dict(kwargs)
         return self.prediction
 
 
@@ -50,9 +53,10 @@ class _ReadingFakePaddlePredictor(_FakePaddlePredictor):
         super().__init__(prediction)
         self.received_bytes: bytes | None = None
 
-    def predict(self, image_path: str) -> object:
+    def predict(self, image_path: str, **kwargs: object) -> object:
         """Capture temporary file bytes and return configured prediction data."""
         self.received_path = image_path
+        self.received_kwargs = dict(kwargs)
         with Path(image_path).open("rb") as file:
             self.received_bytes = file.read()
         return self.prediction
@@ -143,6 +147,34 @@ async def test_paddle_adapter_normalizes_line_layout_from_rec_polys() -> None:
 
 
 @pytest.mark.asyncio
+async def test_paddle_adapter_builds_row_grouped_text_for_parser() -> None:
+    """Verify same-row layout cells are ordered before OCR text reaches the parser."""
+    predictor = _FakePaddlePredictor(
+        [
+            {
+                "rec_texts": ["10 mg", "아연", "50%", "25 μg", "비타민 D"],
+                "rec_scores": [0.92, 0.93, 0.91, 0.88, 0.90],
+                "rec_polys": [
+                    [[4, 2], [6, 2], [6, 4], [4, 4]],
+                    [[1, 2], [3, 2], [3, 4], [1, 4]],
+                    [[7, 2], [9, 2], [9, 4], [7, 4]],
+                    [[4, 8], [6, 8], [6, 10], [4, 10]],
+                    [[1, 8], [3, 8], [3, 10], [1, 10]],
+                ],
+            }
+        ]
+    )
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_image_input())
+
+    assert result.text == "아연\t10 mg\t50%\n비타민 D\t25 μg"
+
+
+@pytest.mark.asyncio
 async def test_paddle_adapter_normalizes_line_layout_from_rec_boxes() -> None:
     """Verify PaddleOCR rec_boxes fallback produces rectangular layout polygons."""
     predictor = _FakePaddlePredictor(
@@ -215,6 +247,31 @@ async def test_paddle_adapter_preprocess_failure_is_bounded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
+    """Verify operator OCR tuning flags are passed to PaddleOCR predict()."""
+    predictor = _FakePaddlePredictor([{"rec_texts": ["아연 10 mg"], "rec_scores": [0.91]}])
+    adapter = PaddleOCRAdapter(
+        Settings(
+            _env_file=None,
+            enable_local_ocr=True,
+            local_ocr_text_det_limit_side_len=1216,
+            local_ocr_text_det_limit_type="max",
+            local_ocr_text_rec_score_thresh=0.15,
+        ),
+        predictor=predictor,
+    )
+
+    result = await adapter.extract_text(_image_input())
+
+    assert result.text == "아연 10 mg"
+    assert predictor.received_kwargs == {
+        "text_det_limit_side_len": 1216,
+        "text_det_limit_type": "max",
+        "text_rec_score_thresh": 0.15,
+    }
+
+
+@pytest.mark.asyncio
 async def test_paddle_adapter_requires_local_ocr_gate() -> None:
     """Verify the adapter fails closed when ENABLE_LOCAL_OCR is explicitly disabled."""
     adapter = PaddleOCRAdapter(
@@ -248,7 +305,7 @@ class _RecordingFakePaddleOCR:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
 
-    def predict(self, image_path: str) -> object:  # noqa: ARG002
+    def predict(self, image_path: str, **kwargs: object) -> object:  # noqa: ARG002
         """Return an empty prediction for kwarg-focused tests."""
         return []
 

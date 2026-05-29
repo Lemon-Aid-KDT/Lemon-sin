@@ -384,7 +384,7 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
 
     assert result.record is record
     assert result.parse_result.parsed_product.product_name == "비타민 D 1000"
-    assert fake_parser.received_text == "비타민 D 1000\n1 tablet당 비타민 D 25 ug"
+    assert fake_parser.received_text == "비타민 D 1000\n1 tablet 당 비타민 D 25 μg"
     assert fake_session.committed is True
     assert fake_session.refreshed is record
     assert record.ocr_provider == "manual-test"
@@ -562,6 +562,13 @@ def test_normalize_ocr_text_rejects_blank_or_oversized_text() -> None:
 
     with pytest.raises(SupplementParserInputError):
         normalize_ocr_text("x" * 101, 100)
+
+
+def test_normalize_ocr_text_prepares_units_for_llm_parser() -> None:
+    """Verify OCR unit and Korean-English spacing noise is reduced before parsing."""
+    assert normalize_ocr_text("엽산400ugDFE\r\n비타민D 25ug", 100) == (
+        "엽산 400μg DFE\n비타민 D 25μg"
+    )
 
 
 def test_hash_ocr_text_depends_on_privacy_secret() -> None:

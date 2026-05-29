@@ -33,7 +33,7 @@ COPY requirements.txt pyproject.toml ./
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
     && if [ "${INSTALL_LOCAL_OCR}" = "true" ]; then \
-        pip install "paddlepaddle==3.2.0" "paddleocr>=3.0"; \
+        pip install "paddlepaddle==3.2.0" "paddleocr>=3.6,<3.7"; \
     fi \
     && if [ "${INSTALL_VISION}" = "true" ]; then \
         pip install --index-url "${TORCH_INDEX_URL}" "torch>=2.2" "torchvision>=0.17" \

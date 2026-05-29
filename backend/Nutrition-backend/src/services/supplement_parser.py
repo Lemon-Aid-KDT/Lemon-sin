@@ -25,6 +25,7 @@ from src.models.schemas.supplement import (
     SupplementPreviewLabelSection,
 )
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.ocr.text_normalizer import normalize_ocr_text as normalize_provider_ocr_text
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.supplement_text_sanitizer import (
@@ -201,6 +202,7 @@ def normalize_ocr_text(ocr_text: str, max_chars: int) -> str:
     normalized = "\n".join(
         line.rstrip() for line in ocr_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     ).strip()
+    normalized = normalize_provider_ocr_text(normalized)
     if not normalized:
         raise SupplementParserInputError("OCR text is empty.")
     if len(normalized) > max_chars:

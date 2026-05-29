@@ -22,7 +22,7 @@ learning = [
 # evaluation and review gate pass.
 ocr-local = [
     "paddlepaddle==3.2.0",
-    "paddleocr>=3.0",
+    "paddleocr>=3.6,<3.7",
 ]
 
 [tool.black]
