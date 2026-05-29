@@ -75,11 +75,17 @@ OCR_ROI_CROP_UNAVAILABLE_WARNING = (
 OCR_VERIFICATION_MISMATCH_WARNING = (
     "Automatic text verification found a mismatch. Review the extracted label details manually."
 )
+SUPPLEMENT_FACTS_REQUIRED_WARNING = "supplement_facts_required"
+SUPPLEMENT_FACTS_RETAKE_MESSAGE = (
+    "제품명은 확인했지만 성분표가 보이지 않아요. 성분표를 다시 찍어주세요."
+)
 AUTOMATIC_OCR_UNAVAILABLE_CODE = "automatic_ocr_unavailable"
 OCR_TEXT_EMPTY_CODE = "ocr_text_empty"
 OCR_PARSE_PREVIEW_UNAVAILABLE_CODE = "ocr_parse_preview_unavailable"
 OCR_ROI_CROP_UNAVAILABLE_CODE = "ocr_roi_crop_unavailable"
 OCR_VERIFICATION_MISMATCH_CODE = "ocr_verification_mismatch"
+SUPPLEMENT_FACTS_REQUIRED_CODE = "supplement_facts_required"
+SUPPLEMENT_FACTS_SECTION_TYPES = frozenset({"supplement_facts", "ingredients", "nutrition_info"})
 PARSER_RECOVERABLE_ERRORS = (
     SupplementParserInputError,
     OllamaClientError,
@@ -149,6 +155,17 @@ class _OCRExtractionResult:
     ocr_result: OCRResult | None
     warning_code: str | None = None
     warning_message: str | None = None
+
+
+@dataclass(frozen=True)
+class _SupplementFactsGuidance:
+    """Internal retake guidance for previews missing ingredient evidence."""
+
+    image_quality_report: ImageQualityReport
+    missing_required_sections: tuple[str, ...]
+    image_role: str
+    analysis_scope: str
+    action_required: str
 
 
 async def analyze_supplement_image(
@@ -263,6 +280,18 @@ async def analyze_supplement_image(
         await _store_preview_warnings(session, parsed_record or intake.record, warning_messages)
 
     result_record = parsed_record or intake.record
+    facts_guidance = _build_supplement_facts_guidance(
+        record=result_record,
+        ocr_result=ocr_result,
+        parser_used=parsed_record is not None,
+    )
+    if facts_guidance is not None:
+        warning_codes = (*warning_codes, SUPPLEMENT_FACTS_REQUIRED_CODE)
+        result_record = await _store_supplement_facts_guidance(
+            session,
+            result_record,
+            facts_guidance,
+        )
     learning_object = None
     if learning_object_store is not None:
         learning_object = await maybe_store_learning_image_object(
@@ -299,7 +328,9 @@ async def analyze_supplement_image(
         image_metadata=image_metadata,
         vision_region=vision_region,
         vision_regions=vision_regions,
-        image_quality_report=None,
+        image_quality_report=(
+            facts_guidance.image_quality_report if facts_guidance is not None else None
+        ),
         ocr_result=ocr_result,
         parser_used=parsed_record is not None,
         ocr_attempted=ocr_attempted,
@@ -354,6 +385,152 @@ def _build_pipeline_metadata(
         raw_image_stored=False,
         raw_ocr_text_stored=False,
     )
+
+
+def _build_supplement_facts_guidance(
+    *,
+    record: SupplementAnalysisRun,
+    ocr_result: OCRResult | None,
+    parser_used: bool,
+) -> _SupplementFactsGuidance | None:
+    """Build retake guidance when OCR text lacks ingredient amount evidence.
+
+    Args:
+        record: Persisted analysis row after parser execution.
+        ocr_result: OCR result held in request memory.
+        parser_used: Whether structured parsing completed.
+
+    Returns:
+        Safe retake guidance, or ``None`` when the preview has usable ingredient
+        evidence or the issue belongs to a different failure mode.
+    """
+    if not parser_used or ocr_result is None or not ocr_result.text.strip():
+        return None
+
+    parsed_snapshot = record.parsed_snapshot if isinstance(record.parsed_snapshot, dict) else {}
+    ingredient_count = count_snapshot_list(parsed_snapshot.get("ingredient_candidates"))
+    if ingredient_count > 0:
+        return None
+
+    section_types = _snapshot_section_types(parsed_snapshot)
+    has_facts_section = bool(SUPPLEMENT_FACTS_SECTION_TYPES & section_types)
+    missing_sections = _with_unique_sections(
+        parsed_snapshot.get("missing_required_sections"),
+        "ingredients" if has_facts_section else "supplement_facts",
+    )
+    reason_code = "partial_table" if has_facts_section else "cover_only"
+    return _SupplementFactsGuidance(
+        image_quality_report=ImageQualityReport.model_validate(
+            {
+                "status": "retake_recommended",
+                "issues": [
+                    {
+                        "reason_code": reason_code,
+                        "severity": "retake",
+                        "message": SUPPLEMENT_FACTS_RETAKE_MESSAGE,
+                        "evidence": {
+                            "ocr_text_present": True,
+                            "ingredient_candidate_count": 0,
+                            "facts_section_present": has_facts_section,
+                        },
+                    }
+                ],
+                "metrics": {
+                    "ingredient_candidate_count": 0,
+                    "label_section_count": count_snapshot_list(
+                        parsed_snapshot.get("label_sections")
+                    ),
+                },
+                "detected_rois": [],
+                "retake_reasons": [reason_code],
+            }
+        ),
+        missing_required_sections=tuple(missing_sections),
+        image_role="mixed" if has_facts_section else "front_label",
+        analysis_scope="full_image_review" if has_facts_section else "identity_only",
+        action_required="additional_label_image_required",
+    )
+
+
+async def _store_supplement_facts_guidance(
+    session: AsyncSession,
+    record: SupplementAnalysisRun,
+    guidance: _SupplementFactsGuidance,
+) -> SupplementAnalysisRun:
+    """Persist safe missing-section guidance without raw OCR or image data.
+
+    Args:
+        session: Request-scoped async database session.
+        record: Preview row to update.
+        guidance: Safe retake guidance.
+
+    Returns:
+        Refreshed preview row.
+    """
+    parsed_snapshot = dict(record.parsed_snapshot or {})
+    parsed_snapshot["image_quality_report"] = guidance.image_quality_report.model_dump(
+        exclude_none=True
+    )
+    parsed_snapshot["missing_required_sections"] = list(guidance.missing_required_sections)
+    parsed_snapshot["action_required"] = guidance.action_required
+    parsed_snapshot["analysis_scope"] = guidance.analysis_scope
+    parsed_snapshot["image_role"] = guidance.image_role
+    record.parsed_snapshot = parsed_snapshot
+    record.warnings = _append_unique_warning(
+        record.warnings,
+        SUPPLEMENT_FACTS_REQUIRED_WARNING,
+    )
+    await session.commit()
+    await session.refresh(record)
+    return record
+
+
+def _snapshot_section_types(parsed_snapshot: dict[str, object]) -> set[str]:
+    """Return section types present in a sanitized parsed snapshot."""
+    label_sections = parsed_snapshot.get("label_sections")
+    if not isinstance(label_sections, list):
+        return set()
+    return {
+        section.get("section_type")
+        for section in label_sections
+        if isinstance(section, dict) and isinstance(section.get("section_type"), str)
+    }
+
+
+def _with_unique_sections(value: object, required_section: str) -> list[str]:
+    """Append one missing-section marker to an existing bounded section list."""
+    sections: list[str] = []
+    seen: set[str] = set()
+    if isinstance(value, list):
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            sections.append(normalized)
+            seen.add(normalized)
+    if required_section not in seen:
+        sections.insert(0, required_section)
+    return sections[:10]
+
+
+def _append_unique_warning(value: object, warning: str) -> list[str]:
+    """Append a safe warning code while preserving existing warning order."""
+    warnings: list[str] = []
+    seen: set[str] = set()
+    if isinstance(value, list):
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            warnings.append(normalized)
+            seen.add(normalized)
+    if warning not in seen:
+        warnings.append(warning)
+    return warnings
 
 
 def _should_store_pipeline_metadata(

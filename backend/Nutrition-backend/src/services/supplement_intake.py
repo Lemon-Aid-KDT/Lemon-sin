@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.supplement import (
     MatchedSupplementCandidate,
     SupplementAnalysisPreview,
@@ -244,6 +245,9 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
             SupplementPreviewEvidenceSpan.model_validate(item)
             for item in _dict_items(parsed_snapshot.get("evidence_spans"))
         ],
+        image_quality_report=_optional_image_quality_report(
+            parsed_snapshot.get("image_quality_report")
+        ),
         analysis_scope=_optional_string(parsed_snapshot.get("analysis_scope")) or "unknown",
         action_required=_optional_string(parsed_snapshot.get("action_required")) or "none",
         detected_product_regions=[
@@ -308,6 +312,20 @@ def _build_pipeline_metadata(
         metadata.update(raw_metadata)
         metadata["ocr_provider"] = metadata.get("ocr_provider") or record.ocr_provider
     return SupplementImagePipelineMetadata.model_validate(metadata)
+
+
+def _optional_image_quality_report(value: Any) -> ImageQualityReport | None:
+    """Parse a stored image-quality report only when present.
+
+    Args:
+        value: Candidate parsed snapshot field.
+
+    Returns:
+        Parsed quality report, or ``None`` when absent.
+    """
+    if not isinstance(value, dict):
+        return None
+    return ImageQualityReport.model_validate(value)
 
 
 async def create_supplement_analysis_intake(

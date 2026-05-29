@@ -132,6 +132,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         controller?.lastRegisteredSupplement;
     final MealRecordResponse? registeredMeal = controller?.lastRegisteredMeal;
     final ApiError? error = controller?.apiError;
+    final bool needsSupplementFactsPhoto =
+        !_isMeal && _needsSupplementFactsPhoto(preview);
     return Scaffold(
       backgroundColor: AppColor.section,
       body: SafeArea(
@@ -166,8 +168,18 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                   else
                     ..._supplementCards(preview, registered),
                   if (!_isMeal) ...<Widget>[
+                    if (needsSupplementFactsPhoto) ...<Widget>[
+                      const SizedBox(height: AppSpace.md),
+                      _SupplementFactsRetakeCard(
+                        onCaptureFacts: () =>
+                            _openSupplementFactsCamera(context),
+                      ),
+                    ],
                     const SizedBox(height: AppSpace.md),
-                    _IngredientPreviewCard(preview: preview),
+                    _IngredientPreviewCard(
+                      preview: preview,
+                      needsSupplementFactsPhoto: needsSupplementFactsPhoto,
+                    ),
                     if (preview != null) ...<Widget>[
                       const SizedBox(height: AppSpace.md),
                       _ReviewCorrectionCard(
@@ -399,6 +411,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     } finally {
       _seedingCorrectionFields = false;
     }
+  }
+
+  void _openSupplementFactsCamera(BuildContext context) {
+    HapticFeedback.selectionClick();
+    context.go('/shell/camera?mode=supplement&role=supplement_facts');
   }
 
   void _seedMealCorrectionFields(MealImageAnalysisPreview preview) {
@@ -673,6 +690,23 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   }
 }
 
+bool _needsSupplementFactsPhoto(SupplementAnalysisPreview? preview) {
+  if (preview == null || preview.ingredientCandidates.isNotEmpty) {
+    return false;
+  }
+  final Set<String> missingSections = <String>{
+    ...preview.missingRequiredSections,
+    ...preview.pipelineMetadata.missingRequiredSections,
+  };
+  final Set<String> retakeReasons = preview.imageQualityReport == null
+      ? <String>{}
+      : preview.imageQualityReport!.retakeReasons.toSet();
+  return missingSections.contains('supplement_facts') ||
+      missingSections.contains('ingredients') ||
+      retakeReasons.contains('cover_only') ||
+      retakeReasons.contains('partial_table');
+}
+
 class _ResultTopBar extends StatelessWidget {
   const _ResultTopBar({required this.isMeal});
 
@@ -711,6 +745,84 @@ class _ResultTopBar extends StatelessWidget {
           ),
           const Spacer(),
           const SizedBox(width: 40, height: 40),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupplementFactsRetakeCard extends StatelessWidget {
+  const _SupplementFactsRetakeCard({required this.onCaptureFacts});
+
+  final VoidCallback onCaptureFacts;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E8),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: const Color(0xFFFFD08A)),
+        boxShadow: AppShadow.elev1,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColor.brand.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.fact_check_rounded,
+                  color: AppColor.ink,
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: AppSpace.md),
+              const Expanded(
+                child: Text(
+                  '제품명은 확인했지만 성분표가 보이지 않아요. 성분표를 다시 찍어주세요.',
+                  style: TextStyle(
+                    color: AppColor.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    height: 1.38,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onCaptureFacts,
+              icon: const Icon(Icons.camera_alt_rounded),
+              label: const Text('성분표 촬영하기'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColor.brand,
+                foregroundColor: AppColor.ink,
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1056,9 +1168,13 @@ class _MealReviewCorrectionCard extends StatelessWidget {
 }
 
 class _IngredientPreviewCard extends StatelessWidget {
-  const _IngredientPreviewCard({required this.preview});
+  const _IngredientPreviewCard({
+    required this.preview,
+    required this.needsSupplementFactsPhoto,
+  });
 
   final SupplementAnalysisPreview? preview;
+  final bool needsSupplementFactsPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -1087,9 +1203,11 @@ class _IngredientPreviewCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpace.md),
           if (candidates.isEmpty)
-            const Text(
-              '사진은 업로드됐지만 성분 후보가 비어 있어요. 더 선명한 라벨 사진으로 다시 테스트해주세요.',
-              style: TextStyle(
+            Text(
+              needsSupplementFactsPhoto
+                  ? '성분명과 함량은 성분표 근거가 있을 때만 후보로 만들어요. 제품 앞면만으로는 성분을 추론하지 않습니다.'
+                  : '사진은 업로드됐지만 성분 후보가 비어 있어요. 더 선명한 라벨 사진으로 다시 테스트해주세요.',
+              style: const TextStyle(
                 color: AppColor.inkSecondary,
                 fontSize: 14,
                 height: 1.45,

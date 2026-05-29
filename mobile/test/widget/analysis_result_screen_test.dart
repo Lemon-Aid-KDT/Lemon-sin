@@ -32,6 +32,8 @@ void main() {
     expect(find.text('on (1)'), findsOneWidget);
     expect(find.text('Ollama'), findsOneWidget);
     expect(find.text('parser on'), findsOneWidget);
+    expect(find.text('제품명은 확인했지만 성분표가 보이지 않아요. 성분표를 다시 찍어주세요.'), findsNothing);
+    expect(find.text('성분표 촬영하기'), findsNothing);
     await _scrollResultDetails(tester);
     expect(find.text('확인 후 수정'), findsOneWidget);
     expect(find.text('Analysis progress'), findsNothing);
@@ -56,6 +58,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('성분 직접 입력'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('성분표 촬영하기'), 240);
+      expect(
+        find.text('제품명은 확인했지만 성분표가 보이지 않아요. 성분표를 다시 찍어주세요.'),
+        findsOneWidget,
+      );
+      expect(find.text('성분표 촬영하기'), findsOneWidget);
       await _scrollResultDetails(tester);
       expect(find.text('확인 후 수정'), findsOneWidget);
       await tester.enterText(find.byType(TextField).at(0), '수정 비타민 D');

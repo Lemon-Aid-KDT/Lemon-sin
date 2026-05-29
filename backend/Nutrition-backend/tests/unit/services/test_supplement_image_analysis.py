@@ -29,6 +29,7 @@ from src.ocr.base import (
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_image_analysis import (
     OCR_VERIFICATION_MISMATCH_CODE,
+    SUPPLEMENT_FACTS_REQUIRED_CODE,
     SupplementImageAnalysisAdapters,
     analyze_supplement_image,
 )
@@ -308,6 +309,23 @@ def _parse_result() -> SupplementStructuredParseResult:
     )
 
 
+def _front_label_parse_result() -> SupplementStructuredParseResult:
+    """Return a parse result with product identity but no ingredient evidence.
+
+    Returns:
+        Structured parse result for a front-label-only OCR case.
+    """
+    return SupplementStructuredParseResult.model_validate(
+        {
+            "parsed_product": {"product_name": "레몬 비타민 D"},
+            "ingredient_candidates": [],
+            "missing_required_sections": [],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+
 def _ocr_page() -> OCRPage:
     """Return coordinate-bearing OCR words for deterministic layout parsing."""
     words = (
@@ -433,6 +451,41 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert preview.pipeline_metadata.parser_contract_version == result.record.algorithm_version
     assert preview.pipeline_metadata.missing_required_sections == ["intake_method"]
     assert fake_session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_keeps_front_label_ocr_but_requests_facts() -> None:
+    """Verify front-label OCR stays usable without inventing ingredient candidates."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("레몬 비타민 D 1000\n60 capsules", confidence=0.86)
+    fake_parser = _FakeParser(_front_label_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        _settings(),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    assert result.parser_used is True
+    assert result.image_quality_report is not None
+    assert result.image_quality_report.status == "retake_recommended"
+    assert result.image_quality_report.retake_reasons == ["cover_only"]
+    assert SUPPLEMENT_FACTS_REQUIRED_CODE in result.ocr_warning_codes
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.parsed_product.product_name == "레몬 비타민 D"
+    assert preview.ingredient_candidates == []
+    assert preview.missing_required_sections == ["supplement_facts"]
+    assert preview.pipeline_metadata.missing_required_sections == ["supplement_facts"]
+    assert preview.action_required == "additional_label_image_required"
+    assert preview.analysis_scope == "identity_only"
+    assert preview.image_role == "front_label"
+    assert preview.image_quality_report is not None
+    assert preview.image_quality_report.issues[0].reason_code == "cover_only"
+    assert "supplement_facts_required" in preview.warnings
+    assert "60 capsules" not in preview.model_dump_json()
 
 
 @pytest.mark.asyncio

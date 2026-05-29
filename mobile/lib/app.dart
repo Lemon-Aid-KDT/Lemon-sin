@@ -165,6 +165,8 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                   return _SupplementCameraBranch(
                     initialMode:
                         state.uri.queryParameters['mode'] ?? 'supplement',
+                    initialImageRole:
+                        state.uri.queryParameters['role'] ?? 'front_label',
                   );
                 },
               ),
@@ -274,9 +276,13 @@ class _LemonAidShell extends ConsumerWidget {
 }
 
 class _SupplementCameraBranch extends ConsumerWidget {
-  const _SupplementCameraBranch({required this.initialMode});
+  const _SupplementCameraBranch({
+    required this.initialMode,
+    required this.initialImageRole,
+  });
 
   final String initialMode;
+  final String initialImageRole;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -285,8 +291,9 @@ class _SupplementCameraBranch extends ConsumerWidget {
       return ConsentGateScreen(controller: controller);
     }
     return source_camera.CameraScreen(
-      key: ValueKey<String>('camera-$initialMode'),
+      key: ValueKey<String>('camera-$initialMode-$initialImageRole'),
       initialMode: initialMode,
+      initialImageRole: initialImageRole,
       onClose: () => context.go('/shell/home'),
       onAnalyzeSupplementImage:
           (String imagePath, {required String ocrProvider}) async {

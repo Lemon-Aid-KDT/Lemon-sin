@@ -78,6 +78,7 @@ class CameraScreen extends StatefulWidget {
     this.onAnalyzeSupplementImages,
     this.onAnalyzeMealImage,
     this.initialMode = 'supplement',
+    this.initialImageRole = 'front_label',
     this.imagePicker,
     this.useCameraPickerFallback,
     this.debugSupplementImagePath,
@@ -87,6 +88,9 @@ class CameraScreen extends StatefulWidget {
 
   /// Initial capture mode selected from the quick action palette.
   final String initialMode;
+
+  /// Initial supplement image role selected from analysis-result retake actions.
+  final String initialImageRole;
 
   /// Optional image picker override used by widget tests.
   final ImagePicker? imagePicker;
@@ -125,7 +129,7 @@ class _CameraScreenState extends State<CameraScreen>
   final List<_CapturedSupplementImage> _captures = <_CapturedSupplementImage>[];
   bool _picking = false;
   String _ocrProvider = 'configured';
-  String _imageRole = 'front_label';
+  late String _imageRole;
   bool _lostDataChecked = false;
 
   // ─── 카메라 컨트롤러 ───
@@ -144,6 +148,7 @@ class _CameraScreenState extends State<CameraScreen>
     _mode = widget.initialMode == 'meal'
         ? _CaptureMode.meal
         : _CaptureMode.supplement;
+    _imageRole = _normalizeInitialImageRole(widget.initialImageRole);
     WidgetsBinding.instance.addObserver(this);
     _isEmulator = DeviceEnv.isEmulatorSync;
     _startCameraAfterDeviceProbe();
@@ -159,6 +164,11 @@ class _CameraScreenState extends State<CameraScreen>
       _mode = widget.initialMode == 'meal'
           ? _CaptureMode.meal
           : _CaptureMode.supplement;
+    }
+    if (oldWidget.initialImageRole != widget.initialImageRole &&
+        _captured == null &&
+        _captures.isEmpty) {
+      _imageRole = _normalizeInitialImageRole(widget.initialImageRole);
     }
   }
 
@@ -605,7 +615,10 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _picking = true);
     try {
       final List<SupplementImageUpload> uploads = _analysisUploads(captured);
-      if (uploads.length > 1 && widget.onAnalyzeSupplementImages != null) {
+      final bool shouldUseRoleAwareUpload =
+          widget.onAnalyzeSupplementImages != null &&
+          (uploads.length > 1 || _imageRole != 'front_label');
+      if (shouldUseRoleAwareUpload) {
         await widget.onAnalyzeSupplementImages!(
           uploads,
           ocrProvider: _ocrProvider,
@@ -840,6 +853,17 @@ class _CameraScreenState extends State<CameraScreen>
       ),
     );
   }
+}
+
+String _normalizeInitialImageRole(String value) {
+  const Set<String> allowedRoles = <String>{
+    'front_label',
+    'supplement_facts',
+    'intake_method',
+    'precautions',
+  };
+  final String normalized = value.trim();
+  return allowedRoles.contains(normalized) ? normalized : 'front_label';
 }
 
 class _SupplementBatchStrip extends StatelessWidget {

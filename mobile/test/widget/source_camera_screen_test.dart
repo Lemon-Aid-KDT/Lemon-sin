@@ -155,6 +155,64 @@ void main() {
     expect(find.text('2장 분석'), findsOneWidget);
   });
 
+  testWidgets('supplement facts retake uses role-aware upload for one image', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File source = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(source.path);
+    String? singleImagePath;
+    List<SupplementImageUpload>? uploadedImages;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          initialImageRole: 'supplement_facts',
+          imagePicker: picker,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {
+                singleImagePath = imagePath;
+              },
+          onAnalyzeSupplementImages:
+              (
+                List<SupplementImageUpload> images, {
+                required String ocrProvider,
+              }) async {
+                uploadedImages = images;
+              },
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.byIcon(Icons.photo_library_rounded));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('성분표'), findsWidgets);
+    final Finder analyzeButton = find.byKey(
+      const ValueKey('supplement-preview-analyze'),
+    );
+    await tester.ensureVisible(analyzeButton);
+    await tester.pump();
+    final TextButton textButton = tester.widget<TextButton>(
+      find.descendant(of: analyzeButton, matching: find.byType(TextButton)),
+    );
+    await tester.runAsync(() async {
+      textButton.onPressed!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+
+    expect(singleImagePath, isNull);
+    expect(uploadedImages, isNotNull);
+    expect(uploadedImages, hasLength(1));
+    expect(uploadedImages!.single.role, 'supplement_facts');
+  });
+
   testWidgets('meal preview calls the real meal analysis callback', (
     WidgetTester tester,
   ) async {
