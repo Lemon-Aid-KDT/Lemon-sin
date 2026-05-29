@@ -284,8 +284,8 @@ async def test_paddle_adapter_requires_local_ocr_gate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_paddle_adapter_rejects_low_confidence_prediction() -> None:
-    """Verify weak local OCR output escalates instead of being accepted."""
+async def test_paddle_adapter_returns_low_confidence_prediction_for_review() -> None:
+    """Verify weak OCR text is preserved for parser and user review."""
     adapter = PaddleOCRAdapter(
         Settings(
             _env_file=None,
@@ -295,8 +295,11 @@ async def test_paddle_adapter_rejects_low_confidence_prediction() -> None:
         predictor=_FakePaddlePredictor([{"rec_texts": ["흐린 텍스트"], "rec_scores": [0.50]}]),
     )
 
-    with pytest.raises(OCRError, match="confidence"):
-        await adapter.extract_text(_image_input())
+    result = await adapter.extract_text(_image_input())
+
+    assert result.provider == PADDLE_OCR_PROVIDER
+    assert result.text == "흐린 텍스트"
+    assert result.confidence == pytest.approx(0.50)
 
 
 class _RecordingFakePaddleOCR:

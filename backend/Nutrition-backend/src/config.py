@@ -252,7 +252,8 @@ class Settings(BaseSettings):
         local_ocr_provider: Local OCR provider selector.
         local_ocr_language: Language setting passed to local OCR providers.
         local_ocr_device: Optional local OCR runtime device selector.
-        local_ocr_confidence_threshold: Minimum confidence for local OCR fallback candidates.
+        local_ocr_confidence_threshold: Legacy calibration value for local OCR diagnostics.
+            Low-confidence OCR text is still returned for parser and user review.
         local_ocr_model_profile: Local PaddleOCR model profile used for diagnostic comparisons.
         local_ocr_preprocess_mode: Optional local OCR-only image preprocessing mode.
         enable_clova_ocr: Whether NAVER Cloud CLOVA OCR fallback may run.
@@ -439,7 +440,15 @@ class Settings(BaseSettings):
     local_ocr_provider: Literal["paddleocr"] = Field(default="paddleocr")
     local_ocr_language: str = Field(default="korean")
     local_ocr_device: str | None = Field(default=None)
-    local_ocr_confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    local_ocr_confidence_threshold: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Legacy local OCR diagnostic threshold. The Paddle adapter preserves "
+            "low-confidence text so downstream review and fallback logic can decide."
+        ),
+    )
     local_ocr_model_profile: Literal["mobile", "server_detection", "server"] = Field(
         default="mobile",
         description=(

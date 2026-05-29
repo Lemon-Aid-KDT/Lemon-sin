@@ -81,6 +81,8 @@ class PaddleOCRAdapter(OCRAdapter):
 
         Returns:
             OCR result with joined text and averaged confidence when available.
+            Low-confidence text is still returned so the preview pipeline can
+            run parser/LLM review and expose a bounded confidence bucket.
 
         Raises:
             OCRError: If local OCR is disabled, unavailable, or returns no text.
@@ -115,13 +117,10 @@ class PaddleOCRAdapter(OCRAdapter):
         if not text:
             raise OCRError("PaddleOCR returned no readable text.")
 
-        confidence = _average_scores(scores)
-        if confidence is not None and confidence < self._settings.local_ocr_confidence_threshold:
-            raise OCRError("PaddleOCR confidence is below LOCAL_OCR_CONFIDENCE_THRESHOLD.")
         return OCRResult(
             text=text,
             provider=PADDLE_OCR_PROVIDER,
-            confidence=confidence,
+            confidence=_average_scores(scores),
             pages=pages,
         )
 
