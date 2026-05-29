@@ -276,6 +276,8 @@ models/checkpoints/
 # Logs & Temporary
 # -----------------------------------------------------------------------------
 *.log
+*.err
+*.out
 logs/
 tmp/
 temp/
