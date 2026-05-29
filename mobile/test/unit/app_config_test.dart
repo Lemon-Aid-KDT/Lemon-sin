@@ -1,7 +1,34 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/core/config/app_config.dart';
 
 void main() {
+  test('defaults Android emulator runs to host loopback', () {
+    final AppConfig config = AppConfig.fromEnvironment(
+      platform: TargetPlatform.android,
+    );
+
+    expect(config.apiBaseUrl, 'http://10.0.2.2:8000/api/v1');
+  });
+
+  test('defaults iOS simulator runs to localhost backend', () {
+    final AppConfig config = AppConfig.fromEnvironment(
+      platform: TargetPlatform.iOS,
+    );
+
+    expect(config.apiBaseUrl, 'http://127.0.0.1:8000/api/v1');
+  });
+
+  test('keeps release defaults fail closed without explicit HTTPS pins', () {
+    expect(
+      () => AppConfig.fromEnvironment(
+        platform: TargetPlatform.android,
+        releaseMode: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('allows local development HTTP and token values', () {
     final AppConfig config = AppConfig.fromValues(
       apiBaseUrl: 'http://127.0.0.1:8000/api/v1/',

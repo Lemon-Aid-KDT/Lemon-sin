@@ -30,11 +30,11 @@ class AppConfig {
   ///
   /// Returns:
   ///   AppConfig with a normalized base URL and optional token.
-  factory AppConfig.fromEnvironment({bool releaseMode = kReleaseMode}) {
-    const String rawBaseUrl = String.fromEnvironment(
-      'LEMON_API_BASE_URL',
-      defaultValue: 'http://127.0.0.1:8000/api/v1',
-    );
+  factory AppConfig.fromEnvironment({
+    bool releaseMode = kReleaseMode,
+    TargetPlatform? platform,
+  }) {
+    const String rawBaseUrl = String.fromEnvironment('LEMON_API_BASE_URL');
     const String rawToken = String.fromEnvironment('LEMON_API_TOKEN');
     const String rawDevGatewayToken = String.fromEnvironment(
       'LEMON_DEV_GATEWAY_TOKEN',
@@ -44,12 +44,29 @@ class AppConfig {
     );
 
     return AppConfig.fromValues(
-      apiBaseUrl: rawBaseUrl,
+      apiBaseUrl: rawBaseUrl.trim().isEmpty
+          ? defaultApiBaseUrlForPlatform(platform ?? defaultTargetPlatform)
+          : rawBaseUrl,
       apiToken: rawToken,
       devGatewayToken: rawDevGatewayToken,
       certificatePins: _splitCommaSeparated(rawCertificatePins),
       releaseMode: releaseMode,
     );
+  }
+
+  /// Returns the local backend URL that works for the current simulator host.
+  ///
+  /// Args:
+  ///   platform: Target Flutter platform.
+  ///
+  /// Returns:
+  ///   Android emulator host-loopback URL or localhost for Apple/desktop runs.
+  @visibleForTesting
+  static String defaultApiBaseUrlForPlatform(TargetPlatform platform) {
+    return switch (platform) {
+      TargetPlatform.android => 'http://10.0.2.2:8000/api/v1',
+      _ => 'http://127.0.0.1:8000/api/v1',
+    };
   }
 
   /// Builds configuration from explicit values.
