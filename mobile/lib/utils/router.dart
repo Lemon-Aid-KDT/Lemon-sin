@@ -29,6 +29,7 @@ import '../screens/health_screen.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/common/main_shell.dart';
 import '../devtools/tokens_preview.dart';
+import '../prototypes/agent_chat_camera_prototype.dart';
 
 /// 앱 라우트 경로
 class AppRoute {
@@ -55,6 +56,9 @@ class AppRoute {
 
   // ─── Devtools (디버그 빌드 전용 — 다이어리 §4 토큰 검증) ───
   static const String tokensPreview = '/devtools/tokens';
+
+  // ─── PROTOTYPE — throwaway UI, taedong-design 이식 검토용 ───
+  static const String agentChatPrototype = '/prototype/agent-chat';
 }
 
 /// Riverpod ChangeNotifier 어댑터 — AuthState 변경 시 go_router refresh.
@@ -83,7 +87,8 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
                           path == AppRoute.signup ||
                           path == AppRoute.verifyEmail ||
                           path == AppRoute.consent ||
-                          path == AppRoute.splash;
+                          path == AppRoute.splash ||
+                          path == AppRoute.agentChatPrototype;
       // 로그인 안 됐는데 보호 라우트로 가려는 경우
       if (!auth.isAuthenticated && !isAuthRoute) {
         return AppRoute.login;
@@ -295,6 +300,11 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
       path: AppRoute.tokensPreview,
       name: 'tokensPreview',
       builder: (context, state) => const TokensPreview(),
+    ),
+    GoRoute(
+      path: AppRoute.agentChatPrototype,
+      name: 'agentChatPrototype',
+      builder: (context, state) => const AgentChatCameraPrototype(),
     ),
   ],
 

@@ -19,6 +19,8 @@ dependencies:
 
   # 라우팅
   go_router: ^17.2.3
+  flutter_web_plugins:
+    sdk: flutter
 
   # SVG (카카오·구글 등 브랜드 로고)
   flutter_svg: ^2.0.10+1
@@ -118,6 +120,7 @@ flutter:
     - assets/mascot/gold-frames/
     - assets/mascot/tablet-frames/
     - assets/design_system/
+    - assets/mock/
 
   # 폰트 패밀리 (다이어리 §4.5a)
   # 현재 Pretendard만 활성. Gmarket Sans / Plus Jakarta Sans 는
