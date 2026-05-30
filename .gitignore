@@ -77,6 +77,14 @@ uploads/
 tmp/
 temp/
 
+# ── exp06 / data-yolo 산출물·테스트·로컬 (커밋 제외) ──
+_aihub_test_*/
+outputs/
+.claude/settings.local.json
+/_tile_*.png
+/_top.png
+docs/superpowers/plans/exp06_review/**/*.png
+
 # ── OS ─────────────────────────────────────────
 .DS_Store
 .DS_Store?
