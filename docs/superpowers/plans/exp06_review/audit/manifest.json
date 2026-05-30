@@ -1,0 +1,1142 @@
+{
+  "soup": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_soup.png",
+    "codes": [
+      {
+        "code": "A13030",
+        "name": "초계탕",
+        "train": 390,
+        "val": 50
+      },
+      {
+        "code": "A13040",
+        "name": "황태닭개장",
+        "train": 370,
+        "val": 30
+      },
+      {
+        "code": "A13017",
+        "name": "반계탕",
+        "train": 350,
+        "val": 40
+      },
+      {
+        "code": "A13042",
+        "name": "황태떡국",
+        "train": 320,
+        "val": 10
+      },
+      {
+        "code": "A13004",
+        "name": "나주곰탕",
+        "train": 300,
+        "val": 40
+      },
+      {
+        "code": "A13041",
+        "name": "황태닭곰탕",
+        "train": 290,
+        "val": 40
+      },
+      {
+        "code": "A13038",
+        "name": "황태국",
+        "train": 270,
+        "val": 40
+      },
+      {
+        "code": "A13021",
+        "name": "술국",
+        "train": 260,
+        "val": 40
+      },
+      {
+        "code": "C04001",
+        "name": "브로콜리수프",
+        "train": 260,
+        "val": 30
+      },
+      {
+        "code": "C04003",
+        "name": "양송이수프",
+        "train": 260,
+        "val": 20
+      },
+      {
+        "code": "C04005",
+        "name": "크림수프",
+        "train": 260,
+        "val": 30
+      },
+      {
+        "code": "A13043",
+        "name": "황태만두국",
+        "train": 250,
+        "val": 40
+      },
+      {
+        "code": "A13044",
+        "name": "황태미역국",
+        "train": 250,
+        "val": 20
+      },
+      {
+        "code": "A13049",
+        "name": "황태콩나물해장국",
+        "train": 250,
+        "val": 20
+      },
+      {
+        "code": "B12063",
+        "name": "떡만둣국",
+        "train": 250,
+        "val": 30
+      },
+      {
+        "code": "C04002",
+        "name": "쇠고기수프",
+        "train": 230,
+        "val": 40
+      },
+      {
+        "code": "B12111",
+        "name": "시래기해장국",
+        "train": 210,
+        "val": 40
+      },
+      {
+        "code": "C04004",
+        "name": "콘수프",
+        "train": 210,
+        "val": 60
+      },
+      {
+        "code": "B12114",
+        "name": "양평해장국",
+        "train": 190,
+        "val": 70
+      },
+      {
+        "code": "B12041",
+        "name": "다슬기해장국",
+        "train": 110,
+        "val": 10
+      },
+      {
+        "code": "B12123",
+        "name": "올갱이해장국",
+        "train": 110,
+        "val": 20
+      },
+      {
+        "code": "B12070",
+        "name": "매생이국",
+        "train": 100,
+        "val": 30
+      }
+    ]
+  },
+  "hot-pot": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_hot-pot.png",
+    "codes": [
+      {
+        "code": "A13047",
+        "name": "황태전골",
+        "train": 370,
+        "val": 20
+      },
+      {
+        "code": "A13033",
+        "name": "추어전골",
+        "train": 360,
+        "val": 30
+      },
+      {
+        "code": "B12069",
+        "name": "만두전골",
+        "train": 270,
+        "val": 30
+      },
+      {
+        "code": "B12109",
+        "name": "순대전골",
+        "train": 270,
+        "val": 30
+      },
+      {
+        "code": "B12058",
+        "name": "두부버섯전골",
+        "train": 180,
+        "val": 80
+      },
+      {
+        "code": "B12005",
+        "name": "갈비탕",
+        "train": 170,
+        "val": 0
+      },
+      {
+        "code": "B12035",
+        "name": "낙지전골",
+        "train": 110,
+        "val": 10
+      }
+    ]
+  },
+  "rice-soup": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_rice-soup.png",
+    "codes": [
+      {
+        "code": "A13039",
+        "name": "황태국밥",
+        "train": 260,
+        "val": 30
+      },
+      {
+        "code": "B12024",
+        "name": "굴국밥",
+        "train": 110,
+        "val": 20
+      },
+      {
+        "code": "B12071",
+        "name": "매생이굴국밥",
+        "train": 90,
+        "val": 20
+      }
+    ]
+  },
+  "rice-bowl": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_rice-bowl.png",
+    "codes": [
+      {
+        "code": "A14026",
+        "name": "돈부리덮밥",
+        "train": 330,
+        "val": 60
+      },
+      {
+        "code": "B11020",
+        "name": "닭갈비컵밥",
+        "train": 280,
+        "val": 20
+      },
+      {
+        "code": "B11050",
+        "name": "불고기덮밥",
+        "train": 280,
+        "val": 0
+      },
+      {
+        "code": "B11012",
+        "name": "컵밥",
+        "train": 260,
+        "val": 0
+      },
+      {
+        "code": "A14150",
+        "name": "훈제연어덮밥",
+        "train": 250,
+        "val": 40
+      },
+      {
+        "code": "B11098",
+        "name": "참치마요덮밥",
+        "train": 250,
+        "val": 40
+      },
+      {
+        "code": "B12002",
+        "name": "간장달걀밥",
+        "train": 250,
+        "val": 20
+      },
+      {
+        "code": "B11011",
+        "name": "김치참치마요컵밥",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "B11079",
+        "name": "스팸김치컵밥",
+        "train": 240,
+        "val": 30
+      },
+      {
+        "code": "B11094",
+        "name": "제육컵밥",
+        "train": 240,
+        "val": 10
+      },
+      {
+        "code": "B11108",
+        "name": "치킨마요덮밥",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "B12120",
+        "name": "연어회덮밥",
+        "train": 240,
+        "val": 30
+      },
+      {
+        "code": "B11010",
+        "name": "김치알컵밥",
+        "train": 230,
+        "val": 60
+      },
+      {
+        "code": "B11099",
+        "name": "참치마요컵밥",
+        "train": 230,
+        "val": 10
+      },
+      {
+        "code": "B11053",
+        "name": "불닭마요컵밥",
+        "train": 220,
+        "val": 40
+      },
+      {
+        "code": "B12034",
+        "name": "낙지덮밥",
+        "train": 130,
+        "val": 10
+      },
+      {
+        "code": "B12149",
+        "name": "칠리새우덮밥",
+        "train": 100,
+        "val": 30
+      }
+    ]
+  },
+  "mixed-rice-bowl": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_mixed-rice-bowl.png",
+    "codes": [
+      {
+        "code": "A13014",
+        "name": "멍게비빔밥",
+        "train": 320,
+        "val": 30
+      },
+      {
+        "code": "B11093",
+        "name": "전주비빔컵밥",
+        "train": 260,
+        "val": 20
+      },
+      {
+        "code": "B12126",
+        "name": "비빔밥",
+        "train": 140,
+        "val": 0
+      },
+      {
+        "code": "B12030",
+        "name": "꼬막비빔밥",
+        "train": 130,
+        "val": 20
+      },
+      {
+        "code": "B12053",
+        "name": "돌솥비빔밥",
+        "train": 120,
+        "val": 20
+      }
+    ]
+  },
+  "ramen": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_ramen.png",
+    "codes": [
+      {
+        "code": "A14027",
+        "name": "돈코츠라멘",
+        "train": 380,
+        "val": 30
+      },
+      {
+        "code": "A14086",
+        "name": "시오라멘",
+        "train": 360,
+        "val": 50
+      },
+      {
+        "code": "A14052",
+        "name": "미소라멘",
+        "train": 350,
+        "val": 40
+      },
+      {
+        "code": "A14114",
+        "name": "차슈라멘",
+        "train": 350,
+        "val": 20
+      },
+      {
+        "code": "A14084",
+        "name": "소유라멘",
+        "train": 290,
+        "val": 80
+      },
+      {
+        "code": "A14024",
+        "name": "냉라멘",
+        "train": 280,
+        "val": 10
+      },
+      {
+        "code": "B12062",
+        "name": "떡만두라면",
+        "train": 270,
+        "val": 30
+      },
+      {
+        "code": "B12068",
+        "name": "만두라면",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "B12166",
+        "name": "해물라면",
+        "train": 240,
+        "val": 70
+      }
+    ]
+  },
+  "curry": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_curry.png",
+    "codes": [
+      {
+        "code": "A14140",
+        "name": "푸팟퐁커리",
+        "train": 380,
+        "val": 90
+      },
+      {
+        "code": "A14002",
+        "name": "가이 팟 퐁 커리",
+        "train": 360,
+        "val": 50
+      },
+      {
+        "code": "A14046",
+        "name": "마살라커리",
+        "train": 350,
+        "val": 40
+      },
+      {
+        "code": "A14016",
+        "name": "꿍 팟 퐁 커리",
+        "train": 340,
+        "val": 40
+      },
+      {
+        "code": "A14102",
+        "name": "우삼겹커리",
+        "train": 330,
+        "val": 80
+      },
+      {
+        "code": "A14119",
+        "name": "치킨커리",
+        "train": 320,
+        "val": 30
+      },
+      {
+        "code": "A14124",
+        "name": "카레우동",
+        "train": 320,
+        "val": 20
+      },
+      {
+        "code": "C02122",
+        "name": "카레고로케",
+        "train": 260,
+        "val": 10
+      },
+      {
+        "code": "B11111",
+        "name": "카레컵밥",
+        "train": 230,
+        "val": 30
+      }
+    ]
+  },
+  "dumplings": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_dumplings.png",
+    "codes": [
+      {
+        "code": "A13031",
+        "name": "추어만두",
+        "train": 390,
+        "val": 50
+      },
+      {
+        "code": "A14003",
+        "name": "가지만두",
+        "train": 330,
+        "val": 40
+      },
+      {
+        "code": "B12112",
+        "name": "야끼만두",
+        "train": 270,
+        "val": 10
+      },
+      {
+        "code": "B12101",
+        "name": "새우만두",
+        "train": 240,
+        "val": 50
+      },
+      {
+        "code": "B12008",
+        "name": "만두",
+        "train": 150,
+        "val": 0
+      },
+      {
+        "code": "B12004",
+        "name": "갈비만두",
+        "train": 110,
+        "val": 20
+      },
+      {
+        "code": "B12022",
+        "name": "교자만두",
+        "train": 110,
+        "val": 20
+      },
+      {
+        "code": "B12038",
+        "name": "납작만두",
+        "train": 110,
+        "val": 40
+      },
+      {
+        "code": "B12073",
+        "name": "메밀만두",
+        "train": 90,
+        "val": 40
+      }
+    ]
+  },
+  "sushi": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_sushi.png",
+    "codes": [
+      {
+        "code": "B12140",
+        "name": "전복초밥",
+        "train": 280,
+        "val": 0
+      },
+      {
+        "code": "B12102",
+        "name": "새우장초밥",
+        "train": 270,
+        "val": 10
+      },
+      {
+        "code": "B12045",
+        "name": "달걀초밥",
+        "train": 260,
+        "val": 10
+      },
+      {
+        "code": "B12037",
+        "name": "날치알초밥",
+        "train": 250,
+        "val": 30
+      },
+      {
+        "code": "B12125",
+        "name": "우럭초밥",
+        "train": 250,
+        "val": 50
+      },
+      {
+        "code": "B12107",
+        "name": "소고기초밥",
+        "train": 230,
+        "val": 20
+      },
+      {
+        "code": "B12108",
+        "name": "소고기타다끼초밥",
+        "train": 230,
+        "val": 50
+      },
+      {
+        "code": "B12001",
+        "name": "가리비초밥",
+        "train": 220,
+        "val": 40
+      },
+      {
+        "code": "B12128",
+        "name": "육회초밥",
+        "train": 220,
+        "val": 40
+      }
+    ]
+  },
+  "salad": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_salad.png",
+    "codes": [
+      {
+        "code": "B12014",
+        "name": "고구마샐러드",
+        "train": 270,
+        "val": 30
+      },
+      {
+        "code": "B12046",
+        "name": "닭가슴살샐러드",
+        "train": 270,
+        "val": 10
+      },
+      {
+        "code": "B12042",
+        "name": "단호박샐러드",
+        "train": 260,
+        "val": 40
+      },
+      {
+        "code": "B12096",
+        "name": "비프샐러드",
+        "train": 260,
+        "val": 30
+      },
+      {
+        "code": "B12156",
+        "name": "콘샐러드",
+        "train": 250,
+        "val": 10
+      },
+      {
+        "code": "B12097",
+        "name": "빈대떡",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "B12119",
+        "name": "연어샐러드",
+        "train": 240,
+        "val": 60
+      },
+      {
+        "code": "B12059",
+        "name": "두부샐러드",
+        "train": 230,
+        "val": 60
+      },
+      {
+        "code": "B12066",
+        "name": "리코타치즈샐러드",
+        "train": 230,
+        "val": 30
+      },
+      {
+        "code": "B12152",
+        "name": "케이준샐러드",
+        "train": 230,
+        "val": 40
+      },
+      {
+        "code": "B12088",
+        "name": "버섯샐러드",
+        "train": 220,
+        "val": 50
+      },
+      {
+        "code": "B12147",
+        "name": "치킨샐러드",
+        "train": 220,
+        "val": 50
+      }
+    ]
+  },
+  "spicy-rice-cakes": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_spicy-rice-cakes.png",
+    "codes": [
+      {
+        "code": "B11009",
+        "name": "떡볶이",
+        "train": 280,
+        "val": 0
+      },
+      {
+        "code": "B11096",
+        "name": "차돌떡볶이",
+        "train": 260,
+        "val": 30
+      },
+      {
+        "code": "B11103",
+        "name": "치즈떡볶이",
+        "train": 260,
+        "val": 10
+      },
+      {
+        "code": "B11013",
+        "name": "까르보나라떡볶이",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "B11048",
+        "name": "부대떡볶이",
+        "train": 240,
+        "val": 60
+      },
+      {
+        "code": "B11038",
+        "name": "마라떡볶이",
+        "train": 230,
+        "val": 30
+      },
+      {
+        "code": "B11087",
+        "name": "우삼겹떡볶이",
+        "train": 230,
+        "val": 20
+      },
+      {
+        "code": "B11090",
+        "name": "자장떡볶이",
+        "train": 230,
+        "val": 40
+      },
+      {
+        "code": "B11119",
+        "name": "투움바떡볶이",
+        "train": 230,
+        "val": 20
+      },
+      {
+        "code": "B11036",
+        "name": "로제떡볶이",
+        "train": 220,
+        "val": 20
+      },
+      {
+        "code": "B11117",
+        "name": "크림떡볶이",
+        "train": 190,
+        "val": 80
+      }
+    ]
+  },
+  "seaweed-rice-roll": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_seaweed-rice-roll.png",
+    "codes": [
+      {
+        "code": "B11032",
+        "name": "땡초김밥",
+        "train": 270,
+        "val": 20
+      },
+      {
+        "code": "B11055",
+        "name": "새우김밥",
+        "train": 270,
+        "val": 20
+      },
+      {
+        "code": "B11078",
+        "name": "스팸김밥",
+        "train": 260,
+        "val": 40
+      },
+      {
+        "code": "B11040",
+        "name": "멸치김밥",
+        "train": 250,
+        "val": 40
+      },
+      {
+        "code": "B11033",
+        "name": "땡초멸치김밥",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "B11015",
+        "name": "꼬마김밥",
+        "train": 230,
+        "val": 60
+      },
+      {
+        "code": "B11018",
+        "name": "누드김밥",
+        "train": 220,
+        "val": 60
+      },
+      {
+        "code": "B11054",
+        "name": "빨간참치김밥",
+        "train": 220,
+        "val": 50
+      },
+      {
+        "code": "B11101",
+        "name": "충무김밥",
+        "train": 220,
+        "val": 10
+      },
+      {
+        "code": "B11029",
+        "name": "돈가스김밥",
+        "train": 200,
+        "val": 60
+      }
+    ]
+  },
+  "grilled-fish": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_grilled-fish.png",
+    "codes": [
+      {
+        "code": "A13001",
+        "name": "가자미구이",
+        "train": 280,
+        "val": 30
+      },
+      {
+        "code": "B12135",
+        "name": "조기구이",
+        "train": 240,
+        "val": 20
+      },
+      {
+        "code": "B12100",
+        "name": "삼치구이",
+        "train": 220,
+        "val": 40
+      },
+      {
+        "code": "B12007",
+        "name": "갈치구이",
+        "train": 130,
+        "val": 10
+      },
+      {
+        "code": "B12025",
+        "name": "굴비구이",
+        "train": 120,
+        "val": 10
+      },
+      {
+        "code": "B12031",
+        "name": "꽁치구이",
+        "train": 120,
+        "val": 30
+      },
+      {
+        "code": "B12017",
+        "name": "고등어구이",
+        "train": 110,
+        "val": 20
+      }
+    ]
+  },
+  "barbecue-ribs": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_barbecue-ribs.png",
+    "codes": [
+      {
+        "code": "A13015",
+        "name": "물갈비",
+        "train": 360,
+        "val": 40
+      },
+      {
+        "code": "A14077",
+        "name": "소갈비살꼬지",
+        "train": 360,
+        "val": 50
+      },
+      {
+        "code": "A14091",
+        "name": "양갈비살꼬치",
+        "train": 340,
+        "val": 50
+      },
+      {
+        "code": "B12006",
+        "name": "갈비찜",
+        "train": 280,
+        "val": 30
+      },
+      {
+        "code": "B12061",
+        "name": "갈비찜",
+        "train": 280,
+        "val": 30
+      },
+      {
+        "code": "B12105",
+        "name": "석갈비",
+        "train": 120,
+        "val": 20
+      },
+      {
+        "code": "B12081",
+        "name": "묵은지갈비찜",
+        "train": 100,
+        "val": 20
+      }
+    ]
+  },
+  "raw-fish": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_raw-fish.png",
+    "codes": [
+      {
+        "code": "A13012",
+        "name": "막회",
+        "train": 310,
+        "val": 20
+      },
+      {
+        "code": "A13003",
+        "name": "광어회",
+        "train": 300,
+        "val": 70
+      },
+      {
+        "code": "A13016",
+        "name": "물회",
+        "train": 300,
+        "val": 50
+      },
+      {
+        "code": "A13026",
+        "name": "오징어회",
+        "train": 260,
+        "val": 30
+      },
+      {
+        "code": "A13019",
+        "name": "산낙지회",
+        "train": 250,
+        "val": 40
+      },
+      {
+        "code": "A13020",
+        "name": "소라숙회",
+        "train": 230,
+        "val": 50
+      }
+    ]
+  },
+  "shrimp-dish": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_shrimp-dish.png",
+    "codes": [
+      {
+        "code": "A14129",
+        "name": "크림새우",
+        "train": 330,
+        "val": 20
+      },
+      {
+        "code": "A13010",
+        "name": "마라새우",
+        "train": 290,
+        "val": 0
+      },
+      {
+        "code": "A14014",
+        "name": "깐쇼새우",
+        "train": 250,
+        "val": 40
+      },
+      {
+        "code": "B12085",
+        "name": "민물새우튀김",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "A13011",
+        "name": "대하찜",
+        "train": 230,
+        "val": 50
+      },
+      {
+        "code": "B12148",
+        "name": "칠리새우",
+        "train": 120,
+        "val": 20
+      }
+    ]
+  },
+  "pasta": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_pasta.png",
+    "codes": [
+      {
+        "code": "A14066",
+        "name": "빠네로제파스타",
+        "train": 420,
+        "val": 60
+      },
+      {
+        "code": "A14060",
+        "name": "볼로네제토마토파스타",
+        "train": 400,
+        "val": 20
+      },
+      {
+        "code": "A14061",
+        "name": "봉골레파스타",
+        "train": 390,
+        "val": 40
+      },
+      {
+        "code": "A14012",
+        "name": "까르보나라파스타",
+        "train": 380,
+        "val": 30
+      },
+      {
+        "code": "A14023",
+        "name": "날치알크림파스타",
+        "train": 360,
+        "val": 70
+      },
+      {
+        "code": "A14036",
+        "name": "로제파스타",
+        "train": 340,
+        "val": 10
+      },
+      {
+        "code": "A14051",
+        "name": "명란크림파스타",
+        "train": 340,
+        "val": 40
+      },
+      {
+        "code": "A14057",
+        "name": "베이컨크림파스타",
+        "train": 340,
+        "val": 40
+      },
+      {
+        "code": "A14099",
+        "name": "오일파스타",
+        "train": 330,
+        "val": 40
+      },
+      {
+        "code": "A14141",
+        "name": "풍기크림파스타",
+        "train": 330,
+        "val": 20
+      },
+      {
+        "code": "A14090",
+        "name": "알리오올리오파스타",
+        "train": 320,
+        "val": 70
+      },
+      {
+        "code": "A14089",
+        "name": "아라비아따파스타",
+        "train": 310,
+        "val": 20
+      },
+      {
+        "code": "A14054",
+        "name": "바질크림파스타",
+        "train": 280,
+        "val": 70
+      },
+      {
+        "code": "A14073",
+        "name": "새우오일파스타",
+        "train": 270,
+        "val": 30
+      },
+      {
+        "code": "A14071",
+        "name": "새우로제파스타",
+        "train": 260,
+        "val": 50
+      },
+      {
+        "code": "A14067",
+        "name": "빠네크림파스타",
+        "train": 240,
+        "val": 20
+      },
+      {
+        "code": "A14074",
+        "name": "새우크림파스타",
+        "train": 240,
+        "val": 40
+      },
+      {
+        "code": "A14075",
+        "name": "새우토마토스파게티",
+        "train": 240,
+        "val": 40
+      }
+    ]
+  },
+  "pork-cutlet": {
+    "montage": "C:\\Lemon-sin\\docs\\superpowers\\plans\\exp06_review\\audit\\audit_pork-cutlet.png",
+    "codes": [
+      {
+        "code": "A14126",
+        "name": "카츠나베",
+        "train": 350,
+        "val": 10
+      },
+      {
+        "code": "A14034",
+        "name": "로스카츠(등심)",
+        "train": 340,
+        "val": 40
+      },
+      {
+        "code": "A14151",
+        "name": "히레카츠(안심)",
+        "train": 330,
+        "val": 10
+      },
+      {
+        "code": "A14127",
+        "name": "카츠동",
+        "train": 300,
+        "val": 50
+      },
+      {
+        "code": "B12013",
+        "name": "고구마돈가스",
+        "train": 270,
+        "val": 20
+      },
+      {
+        "code": "B12015",
+        "name": "고구마치즈돈가스",
+        "train": 270,
+        "val": 20
+      },
+      {
+        "code": "B11035",
+        "name": "로제돈가스",
+        "train": 230,
+        "val": 40
+      },
+      {
+        "code": "B12163",
+        "name": "피자돈까스",
+        "train": 210,
+        "val": 60
+      }
+    ]
+  }
+}
