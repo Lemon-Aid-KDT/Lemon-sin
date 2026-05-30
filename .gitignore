@@ -76,6 +76,11 @@ lemon-redis-data/
 uploads/
 tmp/
 temp/
+_aihub_test_*/
+
+# ── 생성 산출물·로컬 설정 (커밋 제외) ──────────────
+outputs/manual-*/
+.claude/settings.local.json
 
 # ── OS ─────────────────────────────────────────
 .DS_Store
