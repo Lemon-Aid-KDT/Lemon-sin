@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -74,6 +76,7 @@ flutter:
     - assets/mascot/
     - assets/mascot/frames/
     - assets/mascot/gold-frames/
+    - assets/mock/
     - assets/mascot/poses/
     - assets/mascot/poses/2x/
     - assets/mascot/tablet-frames/
