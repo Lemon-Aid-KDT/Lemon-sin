@@ -328,8 +328,13 @@ backend: `config.py`, `llm/ollama_vision.py`, `utils/logger.py`, `services/suppl
 - **alembic 체인**: heads=`0022`, down_revision=`0021`.
 - **app boot**: `RateLimitMiddleware`+`SecureHeadersMiddleware`+`TrustedHostMiddleware` 등록 확인.
 
-### 13.4 잔여(후속 권장, 미적용)
-- 프롬프트 인젝션: 한국어 마커 추가·구조화 필드 allowlist 강화(현재 영어 blocklist + 사람검수 게이트로 1차 방어).
-- `PRIVACY_HASH_SECRET` 최소 길이 검증자, audit 전용 pepper 분리.
+### 13.4 추가 보안 — 완료 (2026-05-31, commit 4e9b1c2 + 7f2a9d3)
+- ✅ **프롬프트 인젝션 한국어 마커**: `supplement_text_sanitizer._INJECTION_KO_PATTERNS`(이전 지시 무시/시스템 프롬프트/너는 이제/역할 무시 등) 추가. NFKC 정규화 후 매칭. 검증: 한국어 인젝션 5/5 차단 + 정당한 한국어 섭취안내 보존(오탐 0).
+- ✅ **`PRIVACY_HASH_SECRET` 최소 길이 검증자**: `privacy_hash_secret_min_length`(기본 32) + production 검증자가 짧은 비밀 거부. 검증: short→reject, long(≥32)→pass.
+- ✅ **audit 전용 pepper**: `privacy_hash_secret_audit_pepper` + `privacy._audit_secret()`. audit_logs 액터-주체 해시를 별도 키로 HMAC(미설정 시 privacy_hash_secret으로 fallback해 기존 해시값 안정). 검증: pepper 설정 시 해시 변경, 미설정 시 동일(하위호환).
+- 검증 합계: 변경영역 pytest 30 passed(privacy+sanitizer) · black/ruff clean · 런타임 재빌드 반영.
+
+### 13.5 잔여(후속 권장, 미적용)
 - CI에 `pip-audit`/`flutter pub outdated` 의존성 감사 추가.
+- 구조화 필드 allowlist 추가 강화(현재 blocklist + 사람검수 게이트로 방어).
 - (로드맵) 요청경로를 비소유자 역할 + per-row 정책으로 이행 → 그때 `FORCE RLS` 의미.
