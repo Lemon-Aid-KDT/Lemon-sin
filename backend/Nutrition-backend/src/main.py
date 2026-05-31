@@ -15,6 +15,7 @@ from src.api.v1.examples import HEALTH_RESPONSE_EXAMPLES
 from src.api.v1.router import api_router
 from src.config import Settings, get_settings
 from src.db.session import dispose_engine
+from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.secure_headers import SecureHeadersMiddleware
 from src.readiness import ReadinessResponse, build_readiness_response
 from src.utils.image_safety import configure_pillow_limits
@@ -76,6 +77,9 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
             allow_headers=["Content-Type", "Authorization"],
         )
     app.add_middleware(SecureHeadersMiddleware, settings=settings)
+    # Rate limit + concurrency cap on the expensive OCR/LLM endpoints. Added last
+    # so it runs first (outermost) and sheds load before any heavier work.
+    app.add_middleware(RateLimitMiddleware, settings=settings)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
