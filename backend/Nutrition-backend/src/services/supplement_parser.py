@@ -43,6 +43,8 @@ SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
 )
 OCR_PATTERN_FALLBACK_WARNING = "ocr_pattern_fallback_requires_review"
 OCR_PATTERN_FALLBACK_SOURCE = "ocr_pattern_fallback"
+EXCIPIENT_FILTERED_WARNING = "ingredient.excipient_filtered"
+INGREDIENT_AMOUNT_MISSING_WARNING = "ingredient.amount_missing"
 SUPPLEMENT_IMAGE_ASSIST_WARNING = (
     "Image-assisted text extraction is a fallback preview. Review every field before saving."
 )
@@ -65,6 +67,8 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
     r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
     r"(?P<unit>mg|g|mcg|μg|ug|㎍|iu|IU|%)\b"
+    # Optional trailing %DV (영양성분기준치) after a real unit, e.g. "1000 mg 100%".
+    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?"
 )
 TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•"
 MAX_PATTERN_FALLBACK_INGREDIENTS = 20
@@ -77,6 +81,37 @@ PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
     re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
     re.compile(r"^\d+\s*(?:정|포|캡슐|개입)\s*\(?$", re.IGNORECASE),
+)
+# Inactive excipients / capsule-coating materials that the LLM sometimes lists as
+# ingredients. Matched by exact normalized name only (never substring) so genuine
+# active nutrients are never dropped.
+# Maintenance: extend when a new LLM model surfaces more excipient false-positives
+# (e.g., additional Korean coating agents); keep entries exact-match, lowercase-normalized.
+_EXCIPIENT_NAME_KEYS: frozenset[str] = frozenset(
+    {
+        "gelatin",
+        "젤라틴",
+        "glycerin",
+        "glycerine",
+        "글리세린",
+        "purified water",
+        "정제수",
+        "softgel",
+        "sunflower oil",
+        "해바라기씨유",
+        "soybean oil",
+        "대두유",
+        "silicon dioxide",
+        "이산화규소",
+        "magnesium stearate",
+        "스테아린산마그네슘",
+        "microcrystalline cellulose",
+        "결정셀룰로스",
+        "titanium dioxide",
+        "이산화티타늄",
+        "hydroxypropyl methylcellulose",
+        "hpmc",
+    }
 )
 
 
@@ -319,16 +354,27 @@ def _sanitize_parser_result(
     snapshot["parsed_product"] = product
 
     surviving_ingredients: list[dict[str, Any]] = []
+    amount_missing = False
     for candidate in snapshot.get("ingredient_candidates", []):
         name_res = sanitize_ingredient_name(candidate.get("display_name"))
         if not name_res.value:
             warnings.extend(name_res.warnings)
             continue
+        # Drop inactive excipients (gelatin, glycerin, purified water, ...) the
+        # LLM sometimes emits as ingredients; they are not nutrient content.
+        if _is_excipient_name(name_res.value):
+            warnings.append(EXCIPIENT_FILTERED_WARNING)
+            continue
         unit_res = sanitize_unit(candidate.get("unit"))
         candidate["display_name"] = name_res.value
         candidate["unit"] = unit_res.value or None
         warnings.extend(unit_res.warnings)
+        if candidate.get("amount") is None:
+            amount_missing = True
         surviving_ingredients.append(candidate)
+    # Flag (do not drop) name-only candidates so reviewers see missing 함량/단위.
+    if amount_missing:
+        warnings.append(INGREDIENT_AMOUNT_MISSING_WARNING)
     snapshot["ingredient_candidates"] = surviving_ingredients
     snapshot = _sanitize_preview_fields(snapshot, warnings)
 
@@ -439,7 +485,7 @@ def _merge_ocr_pattern_fallbacks(
     parse_result: SupplementStructuredParseResult,
     ocr_text: str,
 ) -> SupplementStructuredParseResult:
-    """Add explicit OCR amount patterns only when the LLM missed candidates.
+    """Enrich missing amounts and add explicit OCR amount-pattern candidates.
 
     The fallback is intentionally narrow: it only converts visible
     ``name + amount + unit`` text into review-required ingredient candidates.
@@ -459,6 +505,34 @@ def _merge_ocr_pattern_fallbacks(
 
     snapshot = parse_result.model_dump()
     existing_candidates = _list_of_mappings(snapshot.get("ingredient_candidates"))
+
+    # 1) Enrich existing name-only candidates (amount is None) with an amount/unit
+    #    from a name-matched OCR amount pattern, instead of adding a duplicate row.
+    fallback_by_name: dict[str, dict[str, Any]] = {}
+    for candidate in fallback_candidates:
+        name_key = _ingredient_name_key(str(candidate.get("display_name") or ""))
+        if name_key and name_key not in fallback_by_name:
+            fallback_by_name[name_key] = candidate
+    enriched = False
+    for candidate in existing_candidates:
+        if candidate.get("amount") is not None:
+            continue
+        match = fallback_by_name.get(
+            _ingredient_name_key(str(candidate.get("display_name") or ""))
+        )
+        if match is None:
+            continue
+        candidate["amount"] = match.get("amount")
+        if not candidate.get("unit"):
+            candidate["unit"] = match.get("unit")
+        if (
+            candidate.get("daily_value_percent") is None
+            and match.get("daily_value_percent") is not None
+        ):
+            candidate["daily_value_percent"] = match.get("daily_value_percent")
+        enriched = True
+
+    # 2) Add genuinely-new OCR amount-pattern candidates the LLM missed.
     existing_keys = {_ingredient_candidate_key(candidate) for candidate in existing_candidates}
     added = False
     for candidate in fallback_candidates:
@@ -471,7 +545,7 @@ def _merge_ocr_pattern_fallbacks(
         if len(existing_candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
             break
 
-    if not added:
+    if not enriched and not added:
         return parse_result
 
     snapshot["ingredient_candidates"] = existing_candidates
@@ -502,8 +576,14 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
             name = _clean_ingredient_name(match.group("name"))
             if not name:
                 continue
+            # Excipients can also appear as "name + amount + unit" in OCR text;
+            # keep the fallback path consistent with the LLM-path excipient filter.
+            if _is_excipient_name(name):
+                continue
             amount = _parse_ingredient_amount(match.group("amount"))
             unit = _normalize_ingredient_unit(match.group("unit"))
+            dv_raw = match.group("dv")
+            daily_value_percent = _parse_ingredient_amount(dv_raw) if dv_raw else None
             key = (_ingredient_name_key(name), amount, unit)
             if key in seen:
                 continue
@@ -514,6 +594,7 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
                     "nutrient_code": None,
                     "amount": amount,
                     "unit": unit,
+                    "daily_value_percent": daily_value_percent,
                     "confidence": 0.55,
                     "source": OCR_PATTERN_FALLBACK_SOURCE,
                 }
@@ -675,6 +756,19 @@ def _ingredient_candidate_key(candidate: dict[str, Any]) -> tuple[str, float | N
 def _ingredient_name_key(value: str) -> str:
     """Return a normalized ingredient name key for comparison."""
     return " ".join(value.casefold().split())
+
+
+def _is_excipient_name(value: str) -> bool:
+    """Return whether a sanitized ingredient name is a known inactive excipient.
+
+    Args:
+        value: Sanitized ingredient display name.
+
+    Returns:
+        True only on an exact normalized match against the excipient allowlist,
+        so genuine active nutrients are never dropped.
+    """
+    return _ingredient_name_key(value) in _EXCIPIENT_NAME_KEYS
 
 
 def _list_of_mappings(value: Any) -> list[dict[str, Any]]:

@@ -54,6 +54,7 @@ class SupplementParserIngredientCandidate(BaseModel):
     nutrient_code: Literal[None] = Field(default=None)
     amount: float | None = Field(default=None, ge=0, le=1_000_000)
     unit: str | None = Field(default=None, max_length=40)
+    daily_value_percent: float | None = Field(default=None, ge=0, le=10000)
     confidence: float = Field(ge=0, le=1)
     source: Literal["ollama_structured", "ocr_pattern_fallback"] = "ollama_structured"
 

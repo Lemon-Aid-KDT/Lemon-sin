@@ -521,6 +521,7 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
             "display_name": "아연",
             "amount": 10.0,
             "unit": "mg",
+            "daily_value_percent": 50.0,
             "confidence": 0.55,
             "source": "ocr_pattern_fallback",
         },

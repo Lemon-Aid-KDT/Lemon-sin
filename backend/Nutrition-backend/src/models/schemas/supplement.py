@@ -84,6 +84,7 @@ class SupplementIngredientCandidate(BaseModel):
     nutrient_code: str | None = Field(default=None, max_length=80)
     amount: float | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, max_length=40)
+    daily_value_percent: float | None = Field(default=None, ge=0, le=10000)
     confidence: float = Field(ge=0, le=1)
     source: str = Field(min_length=1, max_length=80)
 
@@ -600,12 +601,20 @@ class SupplementIntakeSchedule(BaseModel):
     Attributes:
         frequency: Human-readable frequency.
         time_of_day: Optional time labels such as morning or evening.
+        times_per_day: Confirmed daily intake count (carried from the label preview).
+        amount_per_time: Confirmed amount per intake.
+        amount_unit: Confirmed intake amount unit.
+        with_food: Whether the label mentions food timing.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     frequency: str = Field(min_length=1, max_length=80)
     time_of_day: list[str] = Field(default_factory=list, max_length=8)
+    times_per_day: float | None = Field(default=None, ge=0, le=20)
+    amount_per_time: float | None = Field(default=None, ge=0, le=1_000_000)
+    amount_unit: str | None = Field(default=None, max_length=40)
+    with_food: str = Field(default="unknown", max_length=40)
 
 
 class UserSupplementIngredientInput(BaseModel):
@@ -626,6 +635,7 @@ class UserSupplementIngredientInput(BaseModel):
     nutrient_code: str | None = Field(default=None, max_length=80)
     amount: float | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, max_length=40)
+    daily_value_percent: float | None = Field(default=None, ge=0, le=10000)
     confidence: float = Field(default=1.0, ge=0, le=1)
     source: Literal["user_confirmed", "ocr_llm_preview"] = "user_confirmed"
 

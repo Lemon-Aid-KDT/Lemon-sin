@@ -133,6 +133,7 @@ async def create_user_supplement_from_confirmation(
             nutrient_code=ingredient.nutrient_code,
             amount=_decimal_or_none(ingredient.amount),
             unit=ingredient.unit,
+            daily_value_percent=_decimal_or_none(ingredient.daily_value_percent),
             confidence=Decimal(str(ingredient.confidence)),
             source=ingredient.source,
             sort_order=index,
