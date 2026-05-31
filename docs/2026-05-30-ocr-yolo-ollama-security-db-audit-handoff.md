@@ -334,7 +334,8 @@ backend: `config.py`, `llm/ollama_vision.py`, `utils/logger.py`, `services/suppl
 - ✅ **audit 전용 pepper**: `privacy_hash_secret_audit_pepper` + `privacy._audit_secret()`. audit_logs 액터-주체 해시를 별도 키로 HMAC(미설정 시 privacy_hash_secret으로 fallback해 기존 해시값 안정). 검증: pepper 설정 시 해시 변경, 미설정 시 동일(하위호환).
 - 검증 합계: 변경영역 pytest 30 passed(privacy+sanitizer) · black/ruff clean · 런타임 재빌드 반영.
 
-### 13.5 잔여(후속 권장, 미적용)
-- CI에 `pip-audit`/`flutter pub outdated` 의존성 감사 추가.
-- 구조화 필드 allowlist 추가 강화(현재 blocklist + 사람검수 게이트로 방어).
-- (로드맵) 요청경로를 비소유자 역할 + per-row 정책으로 이행 → 그때 `FORCE RLS` 의미.
+### 13.5 후속 권장 — 처리 결과 (2026-05-31)
+- ✅ **CI 의존성 감사 + 전체 게이트**: `.github/workflows/ci.yml` 신설(이전엔 `.github/` 자체 부재). jobs: `lint`(black/ruff), `backend-test`(clean env pytest — compose env 오염 회피), `mobile-build`(flutter analyze/test), `security`(gitleaks + detect-secrets baseline), `dependency-audit`(pip-audit + flutter pub outdated, 주간 cron + PR/푸시). 실제 경로(`backend/Nutrition-backend/tests`)·버전(flutter 3.41.9, python 3.13)에 맞춤. 검증: YAML valid, detect-secrets step 로컬 재현 PASS.
+  - 부수: detect-secrets가 `logger.py`의 DB-URL 레다크션 정규식 주석을 "Basic Auth Credentials"로 오탐 → 주석을 `{user}:{password}` 플레이스홀더로 변경(정규식 동작 불변, 마스킹 검증 유지)해 CI security step 통과.
+- ✅ **구조화 필드 allowlist 강화**: `sanitize_unit`에 `_ALLOWED_UNIT_KEYS` allowlist(mass/volume/IU/%DV/CFU/한국어 제형 단위) + `_normalize_unit_key`. 정규 단위가 아니면 `sanitizer.blocked:unit`으로 드롭(crafted 라벨의 unit 필드 자유텍스트 밀반입 차단). 검증: 정규 단위 14/14 보존, 비정상 8/8 차단, 회귀 70 tests 0 fail.
+- ⏸ **(로드맵 유지) FORCE RLS**: 요청경로를 비소유자 역할 + per-row 정책으로 이행 → 그때 `FORCE ROW LEVEL SECURITY` 의미. **백엔드 소유자 접속 모델 변경이 필요한 대공사라 별도 설계·승인 후 착수**(현재는 ENABLE+REVOKE+ALTER DEFAULT PRIVILEGES로 fail-closed 유지).
