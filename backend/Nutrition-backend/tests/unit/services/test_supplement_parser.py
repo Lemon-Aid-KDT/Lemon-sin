@@ -533,6 +533,84 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
 
 
 @pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_mines_ingredient_declaration_names() -> None:
+    """Verify a 원재료명-only label yields name-only candidates without amounts.
+
+    This is the safety-sensitive path: an ingredient declaration list (no facts
+    table) must still produce ingredient NAME candidates, each with amount/unit
+    left null, marked ``source=ingredient_declaration``, with excipients dropped,
+    and without the parser fabricating any amount.
+    """
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "[원재료명] 이노시톨, 레몬과즙분말, 카롬추출분말, 구연산, 효소처리스테비아, 젤라틴",
+        "paddleocr_local",
+        0.93,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    assert candidates, "expected name-only candidates from the 원재료명 declaration"
+    names = {candidate["display_name"] for candidate in candidates}
+    assert "이노시톨" in names
+    assert "효소처리스테비아" in names
+    # Excipient dropped via the shared denylist.
+    assert "젤라틴" not in names
+    # Name-only: no fabricated amount/unit, declaration provenance recorded.
+    for candidate in candidates:
+        assert candidate["source"] == "ingredient_declaration"
+        assert "amount" not in candidate or candidate["amount"] is None
+        assert "unit" not in candidate or candidate["unit"] is None
+    # A clear "names only, confirm amounts" review signal is surfaced. (The
+    # ingredient.amount_missing warning is produced only for LLM-stage candidates,
+    # before the declaration merge; the declaration warning is the right signal.)
+    assert "ingredient_declaration_names_only_requires_review" in record.warnings
+    assert "ingredient_candidates" in record.parsed_snapshot["low_confidence_fields"]
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_ingredient_declaration_does_not_override_facts_amounts() -> None:
+    """Verify facts-table amounts win and the declaration adds only new names.
+
+    When the same name appears both in a facts-table candidate (with an amount)
+    and in the 원재료명 declaration, the amount-bearing candidate must be kept and
+    no duplicate name-only row is added. New declaration-only names may still be
+    appended.
+    """
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "비타민 D 25mcg\n원재료명: 비타민 D, 이노시톨",
+        "paddleocr_local",
+        0.93,
+        _settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    # The LLM-provided 비타민 D (with amount) is kept and NOT replaced/duplicated.
+    assert by_name["비타민 D"]["source"] == "ollama_structured"
+    assert by_name["비타민 D"]["amount"] == 25
+    assert sum(1 for c in candidates if c["display_name"] == "비타민 D") == 1
+    # A declaration-only name is still added as name-only.
+    assert "이노시톨" in by_name
+    assert by_name["이노시톨"]["source"] == "ingredient_declaration"
+    assert by_name["이노시톨"].get("amount") is None
+
+
+@pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_does_not_duplicate_parser_candidate() -> None:
     """Verify OCR pattern fallback does not duplicate a parser-provided ingredient."""
     record = _analysis_run()

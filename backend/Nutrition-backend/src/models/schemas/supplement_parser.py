@@ -45,7 +45,10 @@ class SupplementParserIngredientCandidate(BaseModel):
         amount: Ingredient amount per serving when visible.
         unit: Ingredient unit when visible.
         confidence: Extraction confidence from 0.0 to 1.0.
-        source: Stable parser source marker.
+        source: Stable parser source marker. ``ingredient_declaration`` marks a
+            name-only candidate mined from the Korean 원재료명 / 원료명 declaration
+            list; such candidates carry no trustworthy amount/unit and must be
+            confirmed manually.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -56,7 +59,11 @@ class SupplementParserIngredientCandidate(BaseModel):
     unit: str | None = Field(default=None, max_length=40)
     daily_value_percent: float | None = Field(default=None, ge=0, le=10000)
     confidence: float = Field(ge=0, le=1)
-    source: Literal["ollama_structured", "ocr_pattern_fallback"] = "ollama_structured"
+    source: Literal[
+        "ollama_structured",
+        "ocr_pattern_fallback",
+        "ingredient_declaration",
+    ] = "ollama_structured"
 
 
 class SupplementStructuredParseResult(BaseModel):

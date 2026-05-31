@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -43,6 +44,11 @@ SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
 )
 OCR_PATTERN_FALLBACK_WARNING = "ocr_pattern_fallback_requires_review"
 OCR_PATTERN_FALLBACK_SOURCE = "ocr_pattern_fallback"
+# Name-only candidates mined from the Korean 원재료명 / 원료명 declaration list.
+# They never carry a trustworthy amount/unit, so the UI must confirm amounts.
+INGREDIENT_DECLARATION_SOURCE = "ingredient_declaration"
+INGREDIENT_DECLARATION_WARNING = "ingredient_declaration_names_only_requires_review"
+INGREDIENT_DECLARATION_CONFIDENCE = 0.4
 EXCIPIENT_FILTERED_WARNING = "ingredient.excipient_filtered"
 INGREDIENT_AMOUNT_MISSING_WARNING = "ingredient.amount_missing"
 SUPPLEMENT_IMAGE_ASSIST_WARNING = (
@@ -82,6 +88,39 @@ PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
     re.compile(r"^\d+\s*(?:정|포|캡슐|개입)\s*\(?$", re.IGNORECASE),
 )
+# Recognizes a line as a Korean ingredient-declaration header (원재료명 / 원료명 /
+# 성분명). Only such lines are mined for name-only candidates, so marketing copy
+# and stray OCR text are never treated as an ingredient list. The regex keeps
+# the fullwidth punctuation Korean labels legitimately use; the per-line lint
+# suppressions on the regex strings mark those chars as intentional, not typos.
+INGREDIENT_DECLARATION_HEADER_PATTERN = re.compile(
+    r"^[\s\[\]【】()<>:：·•\-]*"  # noqa: RUF001
+    r"(?:원\s*재\s*료\s*명"  # 원재료명
+    r"|원\s*료\s*명"  # 원료명
+    r"|성\s*분\s*명)"  # 성분명
+    r"\s*(?:및\s*함량)?"  # optional "및 함량"
+    r"\s*[)\]】]?\s*[:：]?",  # noqa: RUF001
+    re.IGNORECASE,
+)
+# Separators inside a declaration list: commas, middots, slashes, semicolons and
+# Korean enumeration marks. Plain spaces are NOT separators, so multi-word names
+# ("비타민 D", "코엔자임 Q10") stay intact. See the header note above.
+INGREDIENT_DECLARATION_SPLIT_PATTERN = re.compile(r"[,，、;；/·∙ㆍ‧・]+")  # noqa: RUF001
+# Inline/trailing parentheticals (source qualifiers, %DV notes, English glosses)
+# are dropped so the canonical ingredient name remains.
+INGREDIENT_DECLARATION_PAREN_PATTERN = re.compile(r"[(（【\[][^)）】\]]*[)）】\]]?")  # noqa: RUF001
+# Explicit declared percentage literally present in the text, e.g.
+# "이노시톨 88.8889%". Captured only when present; never inferred.
+INGREDIENT_DECLARATION_PERCENT_PATTERN = re.compile(r"(?P<percent>\d+(?:[.,]\d+)?)\s*%")
+# A trailing "<amount><unit>" or bare trailing number glued onto a declaration
+# token (e.g. "비타민 D 25mcg"). Such tokens are amount-bearing rows handled by
+# the OCR amount-pattern path; here we strip the amount so the declaration stays
+# strictly name-only ("비타민 D") and dedupes against the amount-bearing candidate.
+INGREDIENT_DECLARATION_TRAILING_AMOUNT_PATTERN = re.compile(
+    r"\s*\d+(?:[.,]\d+)?\s*(?:mg|g|kg|mcg|μg|ug|㎍|iu|ml|l|억|%)?\s*$",
+    re.IGNORECASE,
+)
+MAX_DECLARATION_INGREDIENTS = 40
 # Inactive excipients / capsule-coating materials that the LLM sometimes lists as
 # ingredients. Matched by exact normalized name only (never substring) so genuine
 # active nutrients are never dropped.
@@ -485,12 +524,15 @@ def _merge_ocr_pattern_fallbacks(
     parse_result: SupplementStructuredParseResult,
     ocr_text: str,
 ) -> SupplementStructuredParseResult:
-    """Enrich missing amounts and add explicit OCR amount-pattern candidates.
+    """Enrich missing amounts and add deterministic OCR-derived candidates.
 
-    The fallback is intentionally narrow: it only converts visible
-    ``name + amount + unit`` text into review-required ingredient candidates.
-    It does not infer ingredients from product names, package counts, or section
-    headings, and it still stores no raw OCR text.
+    Two deterministic sources are merged on top of the LLM output:
+      1. ``name + amount + unit`` rows from the OCR text (carry amounts).
+      2. Name-only items from a Korean 원재료명 / 원료명 declaration list (no
+         amount/unit — never fabricated; marked ``source=ingredient_declaration``).
+    The amount-bearing source is applied first so that, on dedupe, a real amount
+    always wins over a name-only declaration hit. It does not infer ingredients
+    from product names or package counts, and it still stores no raw OCR text.
 
     Args:
         parse_result: Sanitized LLM parser output.
@@ -500,7 +542,13 @@ def _merge_ocr_pattern_fallbacks(
         Parser result with bounded fallback candidates merged in.
     """
     fallback_candidates = _extract_ocr_pattern_ingredient_candidates(ocr_text)
-    if not fallback_candidates:
+    # These candidates are appended after _sanitize_parser_result runs, so content-
+    # sanitize them here (before enrich + add) or injection / HTML / SQL / URL /
+    # control-char payloads in the OCR text would bypass the filter the LLM path
+    # applies and persist into parsed_snapshot.ingredient_candidates.
+    fallback_candidates, fallback_warnings = _sanitize_ocr_pattern_candidates(fallback_candidates)
+    declaration_candidates = _extract_ingredient_declaration_candidates(ocr_text)
+    if not fallback_candidates and not declaration_candidates and not fallback_warnings:
         return parse_result
 
     snapshot = parse_result.model_dump()
@@ -508,18 +556,83 @@ def _merge_ocr_pattern_fallbacks(
 
     # 1) Enrich existing name-only candidates (amount is None) with an amount/unit
     #    from a name-matched OCR amount pattern, instead of adding a duplicate row.
+    enriched = _enrich_missing_amounts_from_fallbacks(existing_candidates, fallback_candidates)
+
+    # 2) Add genuinely-new OCR amount-pattern candidates the LLM missed.
+    existing_keys = {_ingredient_candidate_key(candidate) for candidate in existing_candidates}
+    existing_name_keys = {
+        _ingredient_name_key(str(candidate.get("display_name") or ""))
+        for candidate in existing_candidates
+    }
+    added = False
+    for candidate in fallback_candidates:
+        key = _ingredient_candidate_key(candidate)
+        if key in existing_keys:
+            continue
+        existing_candidates.append(candidate)
+        existing_keys.add(key)
+        existing_name_keys.add(_ingredient_name_key(str(candidate.get("display_name") or "")))
+        added = True
+        if len(existing_candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+            break
+
+    # 3) Add name-only 원재료명 declaration candidates for genuinely-new names.
+    declaration_added = _merge_declaration_candidates(
+        existing_candidates,
+        declaration_candidates,
+        existing_name_keys,
+    )
+
+    if not enriched and not added and not declaration_added and not fallback_warnings:
+        return parse_result
+
+    snapshot["ingredient_candidates"] = existing_candidates
+    warnings = snapshot.get("warnings")
+    # Surface sanitizer codes for any blocked fallback candidate, even when every
+    # mined candidate was dropped (so the audit trail records the blocked rows).
+    for code in fallback_warnings:
+        warnings = _append_unique_string(warnings, code)
+    if added or enriched:
+        warnings = _append_unique_string(warnings, OCR_PATTERN_FALLBACK_WARNING)
+    if declaration_added:
+        warnings = _append_unique_string(warnings, INGREDIENT_DECLARATION_WARNING)
+    snapshot["warnings"] = warnings
+    if added or enriched or declaration_added:
+        snapshot["low_confidence_fields"] = _append_unique_string(
+            snapshot.get("low_confidence_fields"),
+            "ingredient_candidates",
+        )
+    return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _enrich_missing_amounts_from_fallbacks(
+    existing_candidates: list[dict[str, Any]],
+    fallback_candidates: list[dict[str, Any]],
+) -> bool:
+    """Fill amount/unit on name-only candidates from name-matched OCR patterns.
+
+    Existing candidates that already carry an amount are left untouched. Matching
+    is by normalized name, so an amount-bearing OCR pattern enriches a name-only
+    LLM candidate instead of producing a duplicate row.
+
+    Args:
+        existing_candidates: Candidate list mutated in place.
+        fallback_candidates: Amount-bearing OCR pattern candidates.
+
+    Returns:
+        True when at least one candidate was enriched.
+    """
     fallback_by_name: dict[str, dict[str, Any]] = {}
     for candidate in fallback_candidates:
         name_key = _ingredient_name_key(str(candidate.get("display_name") or ""))
         if name_key and name_key not in fallback_by_name:
             fallback_by_name[name_key] = candidate
+
     enriched = False
     for candidate in existing_candidates:
         if candidate.get("amount") is not None:
             continue
-        match = fallback_by_name.get(
-            _ingredient_name_key(str(candidate.get("display_name") or ""))
-        )
+        match = fallback_by_name.get(_ingredient_name_key(str(candidate.get("display_name") or "")))
         if match is None:
             continue
         candidate["amount"] = match.get("amount")
@@ -531,33 +644,39 @@ def _merge_ocr_pattern_fallbacks(
         ):
             candidate["daily_value_percent"] = match.get("daily_value_percent")
         enriched = True
+    return enriched
 
-    # 2) Add genuinely-new OCR amount-pattern candidates the LLM missed.
-    existing_keys = {_ingredient_candidate_key(candidate) for candidate in existing_candidates}
-    added = False
-    for candidate in fallback_candidates:
-        key = _ingredient_candidate_key(candidate)
-        if key in existing_keys:
-            continue
-        existing_candidates.append(candidate)
-        existing_keys.add(key)
-        added = True
+
+def _merge_declaration_candidates(
+    existing_candidates: list[dict[str, Any]],
+    declaration_candidates: list[dict[str, Any]],
+    existing_name_keys: set[str],
+) -> bool:
+    """Append name-only 원재료명 declaration candidates for new names only.
+
+    A name already present from the LLM or the amount-pattern path (with or
+    without an amount) is left untouched, so trustworthy amounts always win over
+    a name-only declaration hit.
+
+    Args:
+        existing_candidates: Candidate list mutated in place.
+        declaration_candidates: Name-only declaration candidates to merge.
+        existing_name_keys: Normalized names already present; updated in place.
+
+    Returns:
+        True when at least one declaration candidate was appended.
+    """
+    declaration_added = False
+    for candidate in declaration_candidates:
         if len(existing_candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
             break
-
-    if not enriched and not added:
-        return parse_result
-
-    snapshot["ingredient_candidates"] = existing_candidates
-    snapshot["warnings"] = _append_unique_string(
-        snapshot.get("warnings"),
-        OCR_PATTERN_FALLBACK_WARNING,
-    )
-    snapshot["low_confidence_fields"] = _append_unique_string(
-        snapshot.get("low_confidence_fields"),
-        "ingredient_candidates",
-    )
-    return SupplementStructuredParseResult.model_validate(snapshot)
+        name_key = _ingredient_name_key(str(candidate.get("display_name") or ""))
+        if name_key in existing_name_keys:
+            continue
+        existing_candidates.append(candidate)
+        existing_name_keys.add(name_key)
+        declaration_added = True
+    return declaration_added
 
 
 def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, Any]]:
@@ -602,6 +721,167 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
             if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
                 return candidates
     return candidates
+
+
+def _sanitize_ocr_pattern_candidates(
+    candidates: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Apply output-stage content sanitization to OCR amount-pattern candidates.
+
+    The deterministic amount-pattern fallback mines candidates straight from OCR
+    text and :func:`_merge_ocr_pattern_fallbacks` appends them *after*
+    :func:`_sanitize_parser_result` has already run. Unlike LLM candidates, their
+    ``display_name`` / ``unit`` would otherwise reach the API preview without
+    passing the prompt-injection / HTML / SQL / URL / control-char filter. This
+    mirrors the LLM-path candidate loop in :func:`_sanitize_parser_result`: a
+    candidate whose ``display_name`` is blocked is dropped, a blocked ``unit`` is
+    cleared to ``None``, and the sanitizer warning codes are returned so the
+    caller can record them. Excipient filtering already happens in
+    :func:`_extract_ocr_pattern_ingredient_candidates`, so it is not repeated here.
+
+    Args:
+        candidates: Raw fallback candidates from
+            :func:`_extract_ocr_pattern_ingredient_candidates`.
+
+    Returns:
+        Tuple of (surviving sanitized candidates, sanitizer warning codes).
+    """
+    surviving: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for candidate in candidates:
+        name_res = sanitize_ingredient_name(candidate.get("display_name"))
+        if not name_res.value:
+            warnings.extend(name_res.warnings)
+            continue
+        unit_res = sanitize_unit(candidate.get("unit"))
+        candidate["display_name"] = name_res.value
+        candidate["unit"] = unit_res.value or None
+        warnings.extend(unit_res.warnings)
+        surviving.append(candidate)
+    return surviving, warnings
+
+
+def _extract_ingredient_declaration_candidates(ocr_text: str) -> list[dict[str, Any]]:
+    """Mine ingredient NAMES from a Korean 원재료명 / 원료명 declaration list.
+
+    Unlike :func:`_extract_ocr_pattern_ingredient_candidates` (which requires a
+    visible ``name + amount + unit``), this reads the ingredient-declaration
+    section and emits name-only candidates. Per the app's safety posture these
+    candidates always carry ``amount=None`` and ``unit=None`` — amounts are never
+    fabricated. The only numeric value captured is an explicit ``<name> NN.NN%``
+    declared percentage when it is literally present in the text.
+
+    Provenance is recorded via ``source=INGREDIENT_DECLARATION_SOURCE`` so the UI
+    and downstream code can distinguish declaration-sourced (name-only) candidates
+    from facts-table candidates that carry real amounts. Excipients are dropped
+    and the leading ``원재료명/원료명(및 함량)`` header is stripped, matching the
+    existing fallback path.
+
+    Args:
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Bounded schema-shaped name-only ingredient candidates.
+    """
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for line in _ocr_lines(ocr_text):
+        header = INGREDIENT_DECLARATION_HEADER_PATTERN.match(line)
+        if header is None:
+            continue
+        declaration_body = line[header.end() :]
+        for name, percent in _split_ingredient_declaration(declaration_body):
+            cleaned = _clean_declaration_ingredient_name(name)
+            if not cleaned:
+                continue
+            # Declaration names skip ``_sanitize_parser_result`` (it runs before
+            # this fallback), so route them through the same injection / HTML /
+            # SQL / control-char filter here. Sanitize FIRST, then run the
+            # excipient check and dedup on the sanitized value so a payload can
+            # never slip past via the pre-sanitized string.
+            name_result = sanitize_ingredient_name(cleaned)
+            if not name_result.value:
+                continue
+            cleaned = name_result.value
+            # Reuse the shared excipient denylist so 젤라틴/정제수/이산화규소 etc. are
+            # dropped exactly as on every other ingredient path.
+            if _is_excipient_name(cleaned):
+                continue
+            name_key = _ingredient_name_key(cleaned)
+            if name_key in seen:
+                continue
+            seen.add(name_key)
+            candidate: dict[str, Any] = {
+                "display_name": cleaned,
+                "nutrient_code": None,
+                "amount": None,
+                "unit": None,
+                "daily_value_percent": percent,
+                "confidence": INGREDIENT_DECLARATION_CONFIDENCE,
+                "source": INGREDIENT_DECLARATION_SOURCE,
+            }
+            candidates.append(candidate)
+            if len(candidates) >= MAX_DECLARATION_INGREDIENTS:
+                return candidates
+    return candidates
+
+
+def _split_ingredient_declaration(text: str) -> list[tuple[str, float | None]]:
+    """Split a 원재료명 declaration body into ``(name, declared_percent)`` tuples.
+
+    The declared percent is populated only when an explicit ``NN.NN%`` is present
+    next to the name (e.g. "이노시톨 88.8889%"); otherwise it is ``None``. No
+    amount or unit is ever derived here.
+
+    Args:
+        text: Declaration text after the header prefix has been removed.
+
+    Returns:
+        Ordered ``(raw_name, declared_percent)`` tuples, before name cleaning.
+    """
+    results: list[tuple[str, float | None]] = []
+    for token in INGREDIENT_DECLARATION_SPLIT_PATTERN.split(text):
+        piece = token.strip()
+        if not piece:
+            continue
+        percent: float | None = None
+        percent_match = INGREDIENT_DECLARATION_PERCENT_PATTERN.search(piece)
+        if percent_match is not None:
+            percent = _parse_ingredient_amount(percent_match.group("percent"))
+            piece = INGREDIENT_DECLARATION_PERCENT_PATTERN.sub("", piece)
+        results.append((piece, percent))
+    return results
+
+
+def _clean_declaration_ingredient_name(value: str) -> str:
+    """Normalize a single name token from a 원재료명 declaration list.
+
+    Drops inline parentheticals and the same heading prefixes / packaging tokens
+    the OCR-pattern path rejects, so the result is a bare ingredient name or an
+    empty string when the token is not a usable name.
+
+    Args:
+        value: Raw name token split from the declaration body.
+
+    Returns:
+        Cleaned ingredient name, or an empty string when unusable.
+    """
+    cleaned = INGREDIENT_DECLARATION_PAREN_PATTERN.sub(" ", value)
+    cleaned = _strip_ingredient_heading_prefix(cleaned)
+    # Strip a trailing amount/unit so name-only candidates never embed a number
+    # (the amount-pattern path owns "name + amount + unit" rows).
+    cleaned = INGREDIENT_DECLARATION_TRAILING_AMOUNT_PATTERN.sub("", cleaned)
+    cleaned = cleaned.strip(TRAILING_INGREDIENT_PUNCTUATION)
+    cleaned = " ".join(cleaned.split())
+    if not (INGREDIENT_MIN_NAME_CHARS <= len(cleaned) <= INGREDIENT_MAX_NAME_CHARS):
+        return ""
+    if _looks_like_non_ingredient_heading(cleaned):
+        return ""
+    if _looks_like_packaging_quantity_token(cleaned):
+        return ""
+    if not re.search(r"[A-Za-z가-힣]", cleaned):
+        return ""
+    return cleaned
 
 
 def _ocr_lines(ocr_text: str) -> list[str]:
@@ -754,8 +1034,15 @@ def _ingredient_candidate_key(candidate: dict[str, Any]) -> tuple[str, float | N
 
 
 def _ingredient_name_key(value: str) -> str:
-    """Return a normalized ingredient name key for comparison."""
-    return " ".join(value.casefold().split())
+    """Return a normalized ingredient name key for comparison.
+
+    NFC-normalizes first so that the same Korean ingredient name dedupes across
+    sources even when one source emits decomposed (NFD) Hangul and another emits
+    precomposed (NFC) — e.g. a 원재료명 declaration name vs the same name from the
+    facts-table/amount-pattern path. Without this, a name-only declaration
+    candidate could be appended as a duplicate of an amount-bearing candidate.
+    """
+    return " ".join(unicodedata.normalize("NFC", value).casefold().split())
 
 
 def _is_excipient_name(value: str) -> bool:

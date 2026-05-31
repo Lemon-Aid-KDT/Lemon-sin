@@ -26,18 +26,18 @@ TRUNCATED_OCR_TEXT_MARKER = (
     "[middle OCR lines omitted to keep the local structured-output prompt bounded]"
 )
 SUPPLEMENT_PARSER_OUTPUT_CONTRACT = """
-Return one JSON object with:
+Return one JSON object.
 - parsed_product: product_name, manufacturer, serving_size, daily_servings
-- ingredient_candidates: visible items; nutrient_code=null; source="ollama_structured"
-- Ingredient rule: name+amount+unit rows ("비타민 D 25 μg", "아연 10 mg",
-  "EPA 180 mg") become candidates.
-- Ignore package counts ("30정", "180g", "500mg") unless attached to a named
-  ingredient row.
-- label_sections, intake_method, precautions, functional_claims from visible label text only
-- evidence_spans: short supporting excerpts, never full OCR text
-- missing_required_sections: allowed schema codes only
-- low_confidence_fields and warnings: short review signals
-Do not add keys outside the schema provided in the format field.
+- ingredient_candidates (nutrient_code=null; source="ollama_structured"):
+  name+amount+unit rows ("비타민 D 25 μg", "아연 10 mg", "EPA 180 mg") ->
+  candidates with that amount+unit; also take NAMES from the declaration
+  list (원재료명/원료명/성분명) with amount=null, unit=null. Amounts come ONLY
+  from the facts table; never invented.
+- Ignore package counts ("30정", "180g") unless attached to a named row.
+- label_sections, intake_method, precautions, functional_claims: as seen
+- evidence_spans: short excerpts, never full OCR text
+- missing_required_sections, low_confidence_fields, warnings: brief
+No keys outside the schema in the format field.
 """.strip()
 
 SUPPLEMENT_PARSER_SYSTEM_PROMPT = """

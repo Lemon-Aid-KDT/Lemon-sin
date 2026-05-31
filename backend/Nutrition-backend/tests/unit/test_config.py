@@ -140,7 +140,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.local_ocr_device is None
     assert settings.local_ocr_confidence_threshold == 0.75
     assert settings.local_ocr_model_profile == "mobile"
-    assert settings.local_ocr_preprocess_mode == "none"
+    assert settings.local_ocr_preprocess_mode == "autocontrast"
     assert settings.enable_clova_ocr is False
     assert settings.vision_roi_min_confidence == 0.50
     assert settings.vision_roi_allowed_classes == [

@@ -27,6 +27,7 @@ from src.ocr.base import (
     OCRWord,
 )
 from src.security.auth import AuthenticatedUser
+from src.services import supplement_image_analysis
 from src.services.supplement_image_analysis import (
     OCR_VERIFICATION_MISMATCH_CODE,
     SUPPLEMENT_FACTS_REQUIRED_CODE,
@@ -797,3 +798,83 @@ async def test_analyze_supplement_image_records_multimodal_verification_mismatch
     assert fake_parser.received_text == "비타민 D 1000"
     assert OCR_VERIFICATION_MISMATCH_CODE in result.ocr_warning_codes
     assert result.record.warnings
+
+
+@pytest.mark.asyncio
+async def test_multimodal_verification_sampled_branch_is_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the fractional verification-sampling RNG draw-below-rate path runs.
+
+    The sampling decision uses the module-level ``random()``. With a fractional
+    ``multimodal_verification_sample_rate`` the result depends on that draw, which
+    is flaky-prone in tests. Pinning ``random`` to a value *below* the rate
+    deterministically forces the sampled branch, so verification runs (the
+    adapter is called exactly once) without changing production probabilities.
+    """
+    monkeypatch.setattr(supplement_image_analysis, "random", lambda: 0.4)
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    fake_multimodal = _FakeMultimodalOCRAdapter("마그네슘 400")
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_multimodal_verification=True,
+            multimodal_verification_sample_rate=0.5,
+            multimodal_verification_threshold=0.95,
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            multimodal_ocr=fake_multimodal,
+        ),
+    )
+
+    assert fake_multimodal.call_count == 1
+    assert OCR_VERIFICATION_MISMATCH_CODE in result.ocr_warning_codes
+
+
+@pytest.mark.asyncio
+async def test_multimodal_verification_skipped_branch_is_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the fractional verification-sampling RNG draw-at-or-above-rate path skips.
+
+    Pinning the module-level ``random`` to a value *at or above* the fractional
+    rate deterministically forces the non-sampled branch, so verification is
+    skipped (the adapter is never called and no mismatch warning is emitted).
+    """
+    monkeypatch.setattr(supplement_image_analysis, "random", lambda: 0.6)
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    fake_multimodal = _FakeMultimodalOCRAdapter("마그네슘 400")
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_multimodal_verification=True,
+            multimodal_verification_sample_rate=0.5,
+            multimodal_verification_threshold=0.95,
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            multimodal_ocr=fake_multimodal,
+        ),
+    )
+
+    assert fake_multimodal.call_count == 0
+    assert OCR_VERIFICATION_MISMATCH_CODE not in result.ocr_warning_codes

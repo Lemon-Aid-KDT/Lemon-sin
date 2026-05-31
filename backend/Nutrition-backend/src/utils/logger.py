@@ -100,12 +100,24 @@ class RedactingFilter(logging.Filter):
         Returns:
             ``True`` so the record continues through the logging pipeline.
         """
-        try:
-            message = record.getMessage()
-        except Exception:
-            return True
-        record.msg = _redact_text(message)
-        record.args = None
+        # Redact the message template and any args IN PLACE, preserving the args
+        # container shape. We must NOT pre-render and null ``record.args``: some
+        # formatters (notably uvicorn's AccessFormatter) unpack the args tuple
+        # themselves — ``(addr, method, path, ver, status) = record.args`` — so
+        # clearing it raises "cannot unpack non-iterable NoneType" at format time
+        # and breaks every access log line. Redacting msg + args separately keeps
+        # both the standard ``msg % args`` path and arg-consuming formatters working.
+        if isinstance(record.msg, str):
+            record.msg = _redact_text(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _redact_text(arg) if isinstance(arg, str) else arg for arg in record.args
+            )
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: (_redact_text(value) if isinstance(value, str) else value)
+                for key, value in record.args.items()
+            }
 
         # Scrub string values in structured extras (skip standard LogRecord attrs).
         for key, value in record.__dict__.items():

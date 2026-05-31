@@ -517,10 +517,15 @@ class Settings(BaseSettings):
         "autocontrast",
         "grayscale_autocontrast",
     ] = Field(
-        default="none",
+        default="autocontrast",
         description=(
-            "Opt-in local PaddleOCR input preprocessing for diagnostic reruns. "
-            "The default keeps provider input bytes unchanged."
+            "Local PaddleOCR input preprocessing mode. Defaults to a conservative "
+            "autocontrast pass: it stretches contrast to the full dynamic range, "
+            "which is a near-identity enhancement on already-clean images, never "
+            "binarizes/deskews, preserves color, and cannot crash on arbitrary "
+            "photos (a decode failure degrades to manual entry, not an error). "
+            "It reduces truncated/garbled fragments on dense, low-contrast Korean "
+            "labels. Override via LOCAL_OCR_PREPROCESS_MODE=none to disable."
         ),
     )
     local_ocr_use_textline_orientation: bool = Field(
