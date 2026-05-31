@@ -14,6 +14,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from src.config import resolve_nutrition_reference_root
 from src.models.schemas.chronic_disease_matrix import (
     CategoryProfile,
     ChronicCondition,
@@ -30,15 +31,12 @@ _EVIDENCE_RANK: dict[EvidenceLevel, int] = {
 }
 """``EvidenceLevel`` 순서 비교를 위한 정수 매핑."""
 
-_DEFAULT_MATRIX_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "data"
-    / "nutrition_reference"
-    / "chronic_disease_supplement_matrix.json"
-)
-"""기본 매트릭스 JSON 위치 (저장소 루트 기준 상대 경로 환원).
+_DEFAULT_MATRIX_PATH = resolve_nutrition_reference_root() / "chronic_disease_supplement_matrix.json"
+"""기본 매트릭스 JSON 위치.
 
-``parents[4]`` = ``Lemon-Aid/`` (utils → src → Nutrition-backend → backend → Lemon-Aid).
+레포(``Lemon-Aid/data/nutrition_reference``)와 컨테이너(``/app/data/nutrition_reference``)
+의 디렉터리 깊이가 달라 고정 ``parents[N]`` 오프셋이 한쪽에서 어긋나므로,
+:func:`src.config.resolve_nutrition_reference_root` 로 마커 기반 탐색한다.
 """
 
 

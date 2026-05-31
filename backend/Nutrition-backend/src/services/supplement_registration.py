@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from functools import lru_cache
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import resolve_nutrition_reference_root
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     UserSupplement,
@@ -34,9 +34,7 @@ from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.supplement_matching import match_supplement_product
 
-REFERENCE_DATA_PATH = (
-    Path(__file__).resolve().parents[4] / "data" / "nutrition_reference" / "nutrient"
-)
+REFERENCE_DATA_PATH = resolve_nutrition_reference_root() / "nutrient"
 NUTRIENT_CODES_PATH = REFERENCE_DATA_PATH / "nutrient_codes.json"
 
 

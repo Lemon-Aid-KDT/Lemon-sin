@@ -9,12 +9,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict, cast
 
-from src.config import Settings, get_settings
+from src.config import (
+    PROJECT_ROOT,
+    Settings,
+    get_settings,
+    resolve_nutrition_reference_root,
+)
 from src.models.schemas.nutrition import KDRIReference
 from src.models.schemas.user import PregnancyStatus, Sex
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-NUTRITION_REFERENCE_ROOT = PROJECT_ROOT / "data" / "nutrition_reference"
+NUTRITION_REFERENCE_ROOT = resolve_nutrition_reference_root()
 KDRIS_REFERENCE_ROOT = NUTRITION_REFERENCE_ROOT / "kdris"
 DEFAULT_KDRIS_2020_CSV = KDRIS_REFERENCE_ROOT / "kdris_2020.csv"
 DEFAULT_KDRIS_2025_CSV = KDRIS_REFERENCE_ROOT / "kdris_2025.csv"

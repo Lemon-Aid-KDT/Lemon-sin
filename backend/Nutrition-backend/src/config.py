@@ -28,6 +28,45 @@ DEFAULT_PRIVACY_HASH_SECRET = (
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE_CANDIDATES = (PROJECT_ROOT / ".env", BACKEND_ROOT / ".env")
+
+NUTRITION_REFERENCE_MARKER = Path("data") / "nutrition_reference"
+
+
+def resolve_nutrition_reference_root(explicit: str | None = None) -> Path:
+    """Resolve the ``data/nutrition_reference`` root deterministically.
+
+    The repository layout (``Lemon-Aid/data/nutrition_reference``) and the Docker
+    image layout (``/app/data/nutrition_reference``, mounted read-only) place the
+    reference data at different depths relative to the source tree, so a fixed
+    ``parents[N]`` offset resolves correctly in one layout but not the other.
+
+    This walks upward from the source file (and, as a secondary anchor, the
+    process working directory) and returns the first ancestor that actually
+    contains ``data/nutrition_reference``. An explicit override (settings /
+    ``NUTRITION_REFERENCE_PATH``) always wins. The returned path is not required
+    to exist when an override is given, so callers can fail fast with a clear
+    message at startup.
+
+    Args:
+        explicit: Optional override path (absolute, or relative to CWD).
+
+    Returns:
+        Absolute path to the reference-data root (existing when discovered).
+    """
+    if explicit:
+        candidate = Path(explicit)
+        return candidate if candidate.is_absolute() else (Path.cwd() / candidate).resolve()
+    anchors = (Path(__file__).resolve().parent, Path.cwd().resolve())
+    for anchor in anchors:
+        for parent in (anchor, *anchor.parents):
+            candidate = parent / NUTRITION_REFERENCE_MARKER
+            if candidate.is_dir():
+                return candidate.resolve()
+    # No marker found on disk: return the repository-relative location so the
+    # error surfaced by the caller names the canonical expected path.
+    return (PROJECT_ROOT / NUTRITION_REFERENCE_MARKER).resolve()
+
+
 JWT_CORE_REQUIRED_CLAIMS = {"aud", "exp", "iat", "iss", "sub"}
 WILDCARD_VALUES = {"*"}
 ASYMMETRIC_JWT_ALGORITHMS = {
@@ -368,6 +407,15 @@ class Settings(BaseSettings):
 
     supplement_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     supplement_image_max_pixels: int = Field(default=12_000_000, ge=1, le=25_000_000)
+
+    # Abuse controls for the expensive OCR + LLM inference endpoints. The limiter
+    # is in-process (no external dependency) and path-scoped; it sheds floods per
+    # caller, and the concurrency cap bounds how many inferences run in parallel.
+    rate_limit_enabled: bool = Field(default=True)
+    rate_limit_analyze_per_minute: int = Field(default=12, ge=1, le=600)
+    rate_limit_analyze_burst: int = Field(default=6, ge=1, le=600)
+    inference_max_concurrency: int = Field(default=4, ge=1, le=64)
+    inference_acquire_timeout_sec: float = Field(default=20.0, ge=0.1, le=120.0)
     supplement_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     supplement_ocr_text_max_chars: int = Field(default=12_000, ge=100, le=50_000)
     supplement_parser_algorithm_version: str = Field(
