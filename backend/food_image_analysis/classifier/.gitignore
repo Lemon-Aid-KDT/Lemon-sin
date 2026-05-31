@@ -1,0 +1,6 @@
+embeddings/
+models/
+__pycache__/
+*.npz
+*.joblib
+*.log
