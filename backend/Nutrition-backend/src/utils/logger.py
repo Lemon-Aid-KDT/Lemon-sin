@@ -15,6 +15,12 @@ import sys
 
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"Bearer\s+[A-Za-z0-9._\-+/=]+", re.IGNORECASE), "Bearer ***REDACTED***"),
+    # Bare JWTs (Supabase anon/service-role keys, access tokens) without a Bearer prefix.
+    (re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"), "***JWT***"),
+    # Common API-key prefixes (Stripe, Supabase, Google).
+    (re.compile(r"\b(?:sk-|sk_live_|sk_test_|sbp_|AIza)[A-Za-z0-9_\-]{16,}\b"), "***APIKEY***"),
+    # Korean mobile numbers (01X-XXXX-XXXX), optional hyphens — PII for a health app.
+    (re.compile(r"\b01[0-9]-?\d{3,4}-?\d{4}\b"), "***PHONE***"),
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "***EMAIL***"),
     (re.compile(r"\b[a-f0-9]{32,}\b"), "***HASH***"),
 )
@@ -63,3 +69,12 @@ def setup_logging(level: str = "INFO") -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level.upper())
+
+    # Uvicorn installs its own handlers and uvicorn.access uses propagate=False,
+    # so the root handler's filter does not reach request access lines. Attach the
+    # redaction filter directly to the uvicorn loggers so access/error logs are
+    # masked too. Guarded so repeated setup_logging calls stay idempotent.
+    for uvicorn_logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        uvicorn_logger = logging.getLogger(uvicorn_logger_name)
+        if not any(isinstance(existing, RedactingFilter) for existing in uvicorn_logger.filters):
+            uvicorn_logger.addFilter(RedactingFilter())

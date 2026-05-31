@@ -876,7 +876,18 @@ async def _extract_multimodal_ocr_if_allowed(
                 label_region=label_region,
             )
         )
-    except (OCRError, OllamaClientError, OllamaConfigurationError, OllamaStructuredOutputError):
+    except (
+        OCRError,
+        OllamaClientError,
+        OllamaConfigurationError,
+        OllamaStructuredOutputError,
+    ) as exc:
+        # Diagnostic only: log the failure class (no raw OCR text / payload / secrets)
+        # so a silently-skipped vision fallback is observable once the gate opens.
+        logger.warning(
+            "Multimodal vision OCR fallback failed (%s); using primary OCR result.",
+            exc.__class__.__name__,
+        )
         return ocr_result
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -121,12 +122,7 @@ class OllamaVisionAssistAdapter(OCRAdapter):
         )
         response_data = await self.client.post_chat(payload)
         content = extract_ollama_message_content(response_data)
-        try:
-            result = OllamaVisionTextCandidateResult.model_validate_json(content)
-        except ValidationError as exc:
-            raise OllamaStructuredOutputError(
-                "Ollama vision assist output failed schema validation."
-            ) from exc
+        result = _parse_vision_candidate_result(content)
         return OCRResult(
             text=_candidate_text(result),
             provider=OLLAMA_VISION_ASSIST_PROVIDER,
@@ -257,8 +253,68 @@ def _build_vision_chat_payload(
         "stream": False,
         "think": False,
         "format": schema,
-        "options": {"temperature": settings.ollama_temperature},
+        "options": {"temperature": settings.ollama_vision_temperature},
     }
+
+
+def _vision_json_candidates(content: str) -> list[str]:
+    """Return JSON-object candidates from raw model content.
+
+    Local vision models sometimes wrap structured output in markdown code fences
+    or add prose around the JSON object. This mirrors the text parser's tolerance
+    so a fenced/padded response is not rejected outright.
+
+    Args:
+        content: Raw assistant message content.
+
+    Returns:
+        Ordered, de-duplicated candidate strings to attempt JSON validation on.
+    """
+    candidates: list[str] = []
+    raw = content.strip()
+    if raw:
+        candidates.append(raw)
+    fenced = raw
+    if fenced.startswith("```"):
+        fenced = re.sub(r"^```[A-Za-z0-9]*\s*", "", fenced)
+        fenced = re.sub(r"\s*```$", "", fenced).strip()
+        if fenced and fenced not in candidates:
+            candidates.append(fenced)
+    start = fenced.find("{")
+    end = fenced.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        substring = fenced[start : end + 1].strip()
+        if substring and substring not in candidates:
+            candidates.append(substring)
+    return candidates
+
+
+def _parse_vision_candidate_result(content: str) -> OllamaVisionTextCandidateResult:
+    """Validate vision-assist output, tolerating markdown fences and prose.
+
+    Args:
+        content: Raw assistant message content.
+
+    Returns:
+        Schema-validated vision candidate result.
+
+    Raises:
+        OllamaStructuredOutputError: If no candidate passes schema validation.
+    """
+    candidates = _vision_json_candidates(content)
+    if not candidates:
+        raise OllamaStructuredOutputError(
+            "Ollama vision assist returned empty content."
+        )
+    last_error: ValidationError | None = None
+    for candidate in candidates:
+        try:
+            return OllamaVisionTextCandidateResult.model_validate_json(candidate)
+        except ValidationError as exc:
+            last_error = exc
+    raise OllamaStructuredOutputError(
+        "Ollama vision assist output failed schema validation."
+    ) from last_error
 
 
 def _candidate_text(result: OllamaVisionTextCandidateResult) -> str:

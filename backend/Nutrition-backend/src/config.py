@@ -337,6 +337,7 @@ class Settings(BaseSettings):
     ollama_vision_model: str | None = Field(default="gemma4:e4b")
     ollama_timeout_sec: int = Field(default=60, ge=1)
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    ollama_vision_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
 
     ocr_primary_provider: Literal["none", "google_vision", "paddleocr", "clova"] = Field(
