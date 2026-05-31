@@ -4,7 +4,7 @@
 # 주의: 백틱 줄-연속은 CRLF에서 PowerShell 파싱이 깨지므로 인자 배열 splatting 사용.
 
 param(
-    [int]$Batch = 32,
+    [int]$Batch = 16,
     [int]$Epochs = 50,
     [string]$RunName = "exp07_yolo26s_taxo63bal500_pc1"
 )
