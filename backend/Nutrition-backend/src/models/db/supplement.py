@@ -87,6 +87,8 @@ class SupplementProductIngredient(TimestampMixin, Base):
         nutrient_code: Internal nutrient code when mapped to KDRIs/nutrient catalog.
         amount: Ingredient amount per serving when available.
         unit: Ingredient unit when available.
+        daily_value_percent: Percentage of the daily reference intake
+            (%DV / 영양성분기준치) when present on the label.
         source_payload: Sanitized original source ingredient payload.
         sort_order: Display and deterministic processing order.
         created_at: Server-side record creation timestamp.
@@ -96,6 +98,10 @@ class SupplementProductIngredient(TimestampMixin, Base):
     __tablename__ = "supplement_product_ingredients"
     __table_args__ = (
         CheckConstraint("amount IS NULL OR amount >= 0", name="amount_nonnegative"),
+        CheckConstraint(
+            "daily_value_percent IS NULL OR daily_value_percent >= 0",
+            name="daily_value_percent_nonnegative",
+        ),
         CheckConstraint("sort_order >= 0", name="sort_order_nonnegative"),
         Index("ix_supplement_product_ingredients_product_id", "product_id"),
         Index("ix_supplement_product_ingredients_nutrient_code", "nutrient_code"),
@@ -111,6 +117,7 @@ class SupplementProductIngredient(TimestampMixin, Base):
     nutrient_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 6), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    daily_value_percent: Mapped[Decimal | None] = mapped_column(Numeric(7, 3), nullable=True)
     source_payload: Mapped[dict[str, Any]] = mapped_column(
         postgresql.JSONB, nullable=False, default=dict
     )
@@ -263,6 +270,7 @@ class UserSupplementIngredient(TimestampMixin, Base):
         nutrient_code: Internal nutrient code when mapped.
         amount: User-confirmed amount.
         unit: User-confirmed unit.
+        daily_value_percent: User-confirmed %DV (영양성분기준치) when present on the label.
         confidence: Confidence retained from extraction or 1.0 for user edits.
         source: Source label such as user_confirmed or ocr_llm_preview.
         sort_order: Display and deterministic processing order.
@@ -273,6 +281,10 @@ class UserSupplementIngredient(TimestampMixin, Base):
     __tablename__ = "user_supplement_ingredients"
     __table_args__ = (
         CheckConstraint("amount IS NULL OR amount >= 0", name="amount_nonnegative"),
+        CheckConstraint(
+            "daily_value_percent IS NULL OR daily_value_percent >= 0",
+            name="daily_value_percent_nonnegative",
+        ),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
         CheckConstraint("sort_order >= 0", name="sort_order_nonnegative"),
         Index("ix_user_supplement_ingredients_supplement_id", "user_supplement_id"),
@@ -289,6 +301,7 @@ class UserSupplementIngredient(TimestampMixin, Base):
     nutrient_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 6), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    daily_value_percent: Mapped[Decimal | None] = mapped_column(Numeric(7, 3), nullable=True)
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False, default=1)
     source: Mapped[str] = mapped_column(String(80), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
