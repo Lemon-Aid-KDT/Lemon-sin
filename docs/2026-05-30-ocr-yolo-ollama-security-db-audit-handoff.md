@@ -339,3 +339,28 @@ backend: `config.py`, `llm/ollama_vision.py`, `utils/logger.py`, `services/suppl
   - 부수: detect-secrets가 `logger.py`의 DB-URL 레다크션 정규식 주석을 "Basic Auth Credentials"로 오탐 → 주석을 `{user}:{password}` 플레이스홀더로 변경(정규식 동작 불변, 마스킹 검증 유지)해 CI security step 통과.
 - ✅ **구조화 필드 allowlist 강화**: `sanitize_unit`에 `_ALLOWED_UNIT_KEYS` allowlist(mass/volume/IU/%DV/CFU/한국어 제형 단위) + `_normalize_unit_key`. 정규 단위가 아니면 `sanitizer.blocked:unit`으로 드롭(crafted 라벨의 unit 필드 자유텍스트 밀반입 차단). 검증: 정규 단위 14/14 보존, 비정상 8/8 차단, 회귀 70 tests 0 fail.
 - ⏸ **(로드맵 유지) FORCE RLS**: 요청경로를 비소유자 역할 + per-row 정책으로 이행 → 그때 `FORCE ROW LEVEL SECURITY` 의미. **백엔드 소유자 접속 모델 변경이 필요한 대공사라 별도 설계·승인 후 착수**(현재는 ENABLE+REVOKE+ALTER DEFAULT PRIVILEGES로 fail-closed 유지).
+
+---
+
+## 14. FORCE RLS 로드맵 — 마이그레이션·세션 배선 파일 작성 + 증명 (2026-05-31)
+
+> §13.5의 "⏸ (로드맵 유지) FORCE RLS"를 진전: 설계문서(`docs/2026-05-31-force-rls-rollout-design.md`)에 이어 **마이그레이션 3종 + 세션 배선 헬퍼 + 단위테스트 + POC를 파일로 작성하고 throwaway DB로 증명**. **라이브 미적용**(별도 승인 게이트 유지).
+
+### 14.1 작성된 산출물
+- **0023a** `backend/alembic/versions/0023a_create_lemon_app_request_role.py` — 비superuser 요청 역할 `lemon_app`(LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE **NOBYPASSRLS**) 생성 + 사용자데이터 28테이블 CRUD / 카탈로그 9테이블 SELECT / 시퀀스 USAGE·SELECT. **비밀번호는 마이그레이션에 미포함**(운영자가 시크릿으로 `ALTER ROLE … PASSWORD` 별도 설정). down_revision=0022.
+- **0023b** `…_create_rls_owner_policies.py` — 4 아키타입 per-row 정책 32개: plaintext owner(10) / hashed owner(10) / FK child(8) / catalog read(4). GUC `current_setting('app.current_subject'|'…_hash', true)` 기준, 미설정 시 NULL→0행(fail-closed). **8개 FK child 컬럼은 라이브 스키마와 실측 대조 확인**.
+- **0023c** `…_force_row_level_security.py` — 32테이블 `FORCE ROW LEVEL SECURITY`. downgrade=`NO FORCE`(정책/역할 보존). ⚠️ `lemon_app` 접속 검증 전 적용 금지(소유자도 정책 적용 대상이 됨).
+- **세션 배선** `backend/Nutrition-backend/src/db/rls_context.py` — `set_request_rls_context(session, *, subject, subject_hash)`: `set_config(name, value, true)`로 트랜잭션-로컬 GUC 주입(bind 파라미터 → SQL 인젝션 불가, commit/rollback 시 자동 해제 → 풀 누수 없음). **현재 호출부 없음(inert)** — 라이브 `lemon`(superuser) 접속에선 GUC가 무시되어 동작 불변.
+- **단위테스트** `tests/unit/db/test_rls_context.py` — 양쪽 GUC 설정 / None→빈문자열 fail-closed / 인젝션 문자열 bind 전달 = **3 passed**.
+- **POC** `backend/scripts/db_poc/force_rls_poc.sql` — 4 아키타입을 throwaway DB에서 증명(소유자행 read / 교차소유자 WITH CHECK 차단 / 카탈로그 read / GUC 미설정 fail-closed).
+
+### 14.2 증명 (실측, throwaway DB)
+- 임시 DB에 `alembic upgrade head`(0001…0023c) 성공 → **forced=32 / policies=32 / head=0023c**. downgrade `0023c→0023b` → **forced=0**(롤백 동작). 종료 후 임시 DB·`lemon_app` 역할 drop으로 클러스터 원복.
+- **라이브 `lemon` DB 무변경 확인**: forced=0 / lemon_app=0 / head=**0022**(0023a/b/c 미적용).
+- **린트**: 5개 py 파일 black(`--line-length=100`)·ruff 통과(팀 CI 동일 설정).
+
+### 14.3 라이브 적용 전 남은 단계 (전부 승인 게이트)
+1. `lemon_app` 비밀번호 시크릿 발급 → `ALTER ROLE lemon_app PASSWORD '<secret>'`(마이그레이션 밖, 운영자 수동).
+2. 세션 배선 활성화: 요청 트랜잭션 시작부에서 `set_request_rls_context()` 호출 + `AuthenticatedUser`→subject/subject_hash 해석 연결(현재 inert).
+3. 스테이징: 0023a/b/c 적용 → `DATABASE_URL`을 `lemon_app`로 전환 → 통합테스트(소유자행만 / 교차차단 / 카탈로그 read / GUC 미설정 0행) 통과 확인.
+4. 프로덕션: 스테이징 green 후 **별도 승인** 하에 동일 순서로 적용.
