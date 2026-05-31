@@ -14,12 +14,17 @@ from src.security.subjects import build_owner_subject
 MAX_REQUEST_ID_LENGTH = 64
 
 
-def hash_with_privacy_secret(value: str | None, settings: Settings) -> str | None:
+def hash_with_privacy_secret(
+    value: str | None, settings: Settings, *, secret_override: str | None = None
+) -> str | None:
     """Hash a value with the configured privacy HMAC secret.
 
     Args:
         value: Sensitive value to hash.
         settings: Application settings containing the privacy hash secret.
+        secret_override: Optional explicit HMAC secret. When provided (and
+            non-empty) it is used instead of ``privacy_hash_secret`` — used for
+            the audit pepper so an audit-subject hash is keyed independently.
 
     Returns:
         Hex-encoded SHA-256 HMAC, or None for empty input.
@@ -31,12 +36,33 @@ def hash_with_privacy_secret(value: str | None, settings: Settings) -> str | Non
     if not normalized_value:
         return None
 
-    secret = settings.privacy_hash_secret.get_secret_value()
+    secret = secret_override or settings.privacy_hash_secret.get_secret_value()
     return hmac.new(
         secret.encode("utf-8"),
         normalized_value.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+
+
+def _audit_secret(settings: Settings) -> str | None:
+    """Return the dedicated audit pepper when configured, else ``None``.
+
+    Using a separate pepper for audit actor-subject hashes means a leak of the
+    general ``privacy_hash_secret`` cannot also be used to correlate audit
+    owner-subject hashes back to known subjects. When unset, callers fall back to
+    the privacy hash secret, keeping existing audit-hash values stable (no
+    migration required).
+
+    Args:
+        settings: Application settings.
+
+    Returns:
+        The audit pepper string, or ``None`` to use the privacy hash secret.
+    """
+    pepper = settings.privacy_hash_secret_audit_pepper
+    if pepper is not None and pepper.get_secret_value().strip():
+        return pepper.get_secret_value()
+    return None
 
 
 def hash_actor_subject(user: AuthenticatedUser, settings: Settings) -> str:
@@ -52,7 +78,9 @@ def hash_actor_subject(user: AuthenticatedUser, settings: Settings) -> str:
     Raises:
         ValueError: If the authenticated subject is invalid.
     """
-    subject_hash = hash_with_privacy_secret(build_owner_subject(user), settings)
+    subject_hash = hash_with_privacy_secret(
+        build_owner_subject(user), settings, secret_override=_audit_secret(settings)
+    )
     if subject_hash is None:
         raise ValueError("Authenticated owner subject is invalid.")
     return subject_hash

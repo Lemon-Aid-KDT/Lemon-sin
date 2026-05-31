@@ -25,6 +25,9 @@ DEFAULT_VISION_ROI_ALLOWED_CLASSES = ["supplement_label", "supplement_bottle", "
 DEFAULT_PRIVACY_HASH_SECRET = (
     "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
 )
+# Minimum production length for the privacy HMAC secret (~192 bits of entropy at
+# base64). Enforced only in production; dev keeps the short sentinel above.
+DEFAULT_PRIVACY_HASH_SECRET_MIN_LENGTH = 32
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE_CANDIDATES = (PROJECT_ROOT / ".env", BACKEND_ROOT / ".env")
@@ -369,6 +372,10 @@ class Settings(BaseSettings):
     jwt_jwks_timeout_seconds: int = Field(default=5, ge=1, le=30)
     oidc_discovery_url: str | None = Field(default=None)
     privacy_hash_secret: SecretStr = Field(default=SecretStr(DEFAULT_PRIVACY_HASH_SECRET))
+    privacy_hash_secret_min_length: int = Field(
+        default=DEFAULT_PRIVACY_HASH_SECRET_MIN_LENGTH, ge=16, le=512
+    )
+    privacy_hash_secret_audit_pepper: SecretStr | None = Field(default=None)
 
     llm_provider: Literal["ollama"] = "ollama"
     ollama_base_url: str = Field(default="http://127.0.0.1:11434")
@@ -835,6 +842,16 @@ class Settings(BaseSettings):
                 (
                     not privacy_hash_secret or privacy_hash_secret == DEFAULT_PRIVACY_HASH_SECRET,
                     "PRIVACY_HASH_SECRET must be set to a non-default value in production.",
+                ),
+                (
+                    # Length/entropy floor: the HMAC peppers audit_logs actor-subject
+                    # hashes; a short secret is brute-forceable to correlate hashes
+                    # to known subjects. Only checked once a real secret is set.
+                    bool(privacy_hash_secret)
+                    and privacy_hash_secret != DEFAULT_PRIVACY_HASH_SECRET
+                    and len(privacy_hash_secret) < self.privacy_hash_secret_min_length,
+                    "PRIVACY_HASH_SECRET must be at least "
+                    f"{self.privacy_hash_secret_min_length} characters in production.",
                 ),
                 (
                     self.allow_sample_kdris,
