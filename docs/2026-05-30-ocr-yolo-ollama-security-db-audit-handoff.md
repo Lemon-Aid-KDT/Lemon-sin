@@ -304,3 +304,32 @@ backend: `config.py`, `llm/ollama_vision.py`, `utils/logger.py`, `services/suppl
 - **적용 완료(런타임 반영)**: 0020 RLS·0021 %DV가 라이브 DB에 존재, 백엔드는 신 이미지로 healthy.
 - **커밋/푸시 미수행**(원 제약 유지) — 변경 파일·신 이미지·마이그레이션은 적용됐으나 git 커밋은 사용자 몫.
 - 비밀/OCR 원문 미반출, PROMPT 보존 유지.
+
+---
+
+## 13. 보안 강화 라운드 (2026-05-31) — Docker 위생 점검 + 보안 리뷰 기반 개선
+
+> 트리거: "추후 개선 제안 브레인스토밍 + 보안/해킹 취약점 신중 분석 + Docker 컨테이너 최신 빌드/혼동 점검". security-reviewer(opus) 리뷰 + 직접 교차검증.
+
+### 13.1 Docker 컨테이너 위생 점검 — ✅ 클린
+- **실행 컨테이너 == 최신 `:dev` 이미지**(SHA `18a0572…` 완전 일치). 런타임에 0020/0021·%DV·전화번호 레다크션·vision_temp 전부 반영, DB head=0021.
+- dangling 이미지 0, 잔류 one-off(`…-backend-run-*`) 0, 중복/혼동 lemon 컨테이너 0. `ajin-*` 5개는 별개 프로젝트(정상).
+- 빌드 캐시 **18.05GB 회수**(`docker builder prune`, 21.66→3.6GB). 이미지/컨테이너 무영향.
+
+### 13.2 적용한 개선 (파일만 → 검증 → 적용)
+- **M1 — 경로 정합화(런타임 버그 수정)**: `config.resolve_nutrition_reference_root()` 정규 리졸버 신설(마커 `data/nutrition_reference` 상향 탐색 + env override). `supplement_registration.py`·`chronic_disease_matrix.py`·`kdris.py`의 `parents[4]` 고정 오프셋을 이 리졸버로 교체. **컨테이너에서 `parents[4]=/` → 데이터 미발견으로 nutrient_code 등록/매트릭스 로드가 500나던 버그 해결**(라이브 검증: nutrient_codes 30·matrix 43 LOADED). fallback 체인이 아닌 단일 탐색 알고리즘(SLOP 회피).
+- **H2 — 로그 레다크션 누수 채널 보강**: `RedactingFilter`가 메시지뿐 아니라 `extra={}` 값·예외 트레이스백까지 스크럽. DB-URL 자격증명(비번만 마스킹)·`Authorization` 헤더 패턴 추가. 과다매칭 완화(32자 req-id 보존, 40자+ hex만 마스킹). 단위테스트 `test_logger_redaction.py` 추가.
+- **H1 — RLS 보완(신규 `0022`)**: 유일하게 누락됐던 `audit_logs`에 ENABLE RLS+REVOKE 적용 + `ALTER DEFAULT PRIVILEGES`로 **미래 테이블 PUBLIC/anon/authenticated/service_role 자동 grant 차단**(stray GRANT 재노출 벡터 봉쇄). ⚠️ `FORCE RLS`는 **백엔드가 소유자(lemon)로 접속**하므로 적용 시 자기잠금 → 의도적으로 제외(에이전트 제안 정정).
+- **H3 — Rate limit + 동시성 캡(신규 미들웨어)**: `middleware/rate_limit.py` — `/analyze*`·`/meals/analyze-image`·`/analysis-sessions/*`에 caller(토큰해시/IP)별 토큰버킷 rate limit(429) + 전역 `asyncio.Semaphore` 추론 동시성 캡(초과 시 503). 외부 의존성 0(in-process). config에 `rate_limit_*`/`inference_*` 필드. 단위테스트 `test_rate_limit.py`(10건). *멀티이미지(`analyze-multi`)는 1요청 내 순차 처리라 미들웨어로 충분 — Ollama 호출부 세마포어는 과설계로 미적용.*
+
+### 13.3 검증 (컨테이너 실측, data `/data` 마운트)
+- **pytest 53 passed**(rate_limit 10 + logger_redaction 13 + chronic_matrix + registration + parser + excipient). M1 덕에 이전 세션의 registration/matrix 컨테이너 실패가 **해소**됨.
+- **ruff: All checks passed! / black: 9 files clean**(팀 CI 게이트 통과).
+- **alembic 체인**: heads=`0022`, down_revision=`0021`.
+- **app boot**: `RateLimitMiddleware`+`SecureHeadersMiddleware`+`TrustedHostMiddleware` 등록 확인.
+
+### 13.4 잔여(후속 권장, 미적용)
+- 프롬프트 인젝션: 한국어 마커 추가·구조화 필드 allowlist 강화(현재 영어 blocklist + 사람검수 게이트로 1차 방어).
+- `PRIVACY_HASH_SECRET` 최소 길이 검증자, audit 전용 pepper 분리.
+- CI에 `pip-audit`/`flutter pub outdated` 의존성 감사 추가.
+- (로드맵) 요청경로를 비소유자 역할 + per-row 정책으로 이행 → 그때 `FORCE RLS` 의미.
