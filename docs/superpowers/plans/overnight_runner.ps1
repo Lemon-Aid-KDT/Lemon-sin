@@ -20,7 +20,7 @@ $exp08ps1 = "$plans\exp08_yolo11s_taxo63bal500_run.ps1"
 # 시스템이 잠들지 않게 유지 (스크립트 종료 시 자동 해제)
 $sig = '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);'
 Add-Type -MemberDefinition $sig -Name PowerUtil -Namespace Win32 -ErrorAction SilentlyContinue
-[void][Win32.PowerUtil]::SetThreadExecutionState(0x80000001)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+[void][Win32.PowerUtil]::SetThreadExecutionState([uint32]2147483649)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
 
 function Log($m) {
     $line = "{0}  {1}" -f (Get-Date -Format 'MM-dd HH:mm:ss'), $m
