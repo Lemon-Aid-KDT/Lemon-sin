@@ -76,7 +76,7 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-        exclude: ^(\.git/|\.venv/|node_modules/)
+        exclude: ^(\.git/|\.venv/|node_modules/|mobile/uiux/)
 
   # ---------------------------------------------------------------------------
   # 커밋 메시지 컨벤션 검증 (Conventional Commits)
