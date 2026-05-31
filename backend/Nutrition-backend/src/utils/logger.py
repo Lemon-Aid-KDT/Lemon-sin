@@ -16,8 +16,8 @@ import re
 import sys
 
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # Database URL credentials (postgresql+asyncpg://user:password@host) — mask the
-    # password only, keep scheme/host so connection errors stay diagnosable.
+    # Database URL credentials (e.g. postgresql+asyncpg://{user}:{password}@{host})
+    # — mask the password only, keep scheme/host so connection errors stay diagnosable.
     (
         re.compile(r"(?P<scheme>[a-z][a-z0-9+.\-]*://)(?P<user>[^:/@\s]+):[^@/\s]+@"),
         r"\g<scheme>\g<user>:***@",
