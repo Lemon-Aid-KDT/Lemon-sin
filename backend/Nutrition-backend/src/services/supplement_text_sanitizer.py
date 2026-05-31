@@ -34,6 +34,21 @@ _INJECTION_KEYWORDS: tuple[str, ...] = (
     "BEGIN INSTRUCTIONS",
     "DISREGARD PREVIOUS",
 )
+# Korean prompt-injection markers. Label text is attacker-controllable (the user
+# photographs it), so a Korean-only payload would bypass the upper-cased English
+# keyword scan above. NFKC normalization runs before matching. None of these
+# phrases occur on a genuine supplement-facts label, so substring matching here
+# does not risk dropping legitimate ingredient/intake text. Whitespace-tolerant
+# regexes catch spaced variants ("이전 지시 무시").
+_INJECTION_KO_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"(?:이전|위|앞|상기)\s*(?:의\s*)?(?:지시|명령|지침|프롬프트)\s*(?:사항)?\s*(?:을|를)?\s*(?:무시|잊)"
+    ),
+    re.compile(r"지시\s*사항\s*(?:을|를)?\s*무시"),
+    re.compile(r"시스템\s*(?:프롬프트|지시|메시지)"),
+    re.compile(r"(?:너는|당신은|넌)\s*이제(?:부터)?"),
+    re.compile(r"역할\s*(?:을|를)?\s*무시"),
+)
 
 
 @dataclass(frozen=True)
@@ -60,9 +75,15 @@ def _strip_controls(value: str) -> str:
 
 
 def _contains_injection_keyword(value: str) -> bool:
-    """Return True when any prompt-injection marker is present (case-insensitive)."""
+    """Return True when any prompt-injection marker is present.
+
+    Checks the upper-cased English keyword list and the Korean regex markers so a
+    Korean-only payload cannot slip past the English scan.
+    """
     upper = value.upper()
-    return any(keyword in upper for keyword in _INJECTION_KEYWORDS)
+    if any(keyword in upper for keyword in _INJECTION_KEYWORDS):
+        return True
+    return any(pattern.search(value) for pattern in _INJECTION_KO_PATTERNS)
 
 
 def _is_blockable(value: str, *, allow_html: bool = False, allow_url: bool = False) -> bool:
