@@ -1221,6 +1221,7 @@ class SupplementIngredientCandidate {
     required this.unit,
     required this.confidence,
     required this.source,
+    this.dailyValuePercent,
   });
 
   /// Ingredient display name.
@@ -1241,6 +1242,9 @@ class SupplementIngredientCandidate {
   /// Source that produced this candidate.
   final String source;
 
+  /// Label %DV (영양성분기준치) when parsed from the label, else null.
+  final double? dailyValuePercent;
+
   /// Parses a backend ingredient candidate.
   factory SupplementIngredientCandidate.fromJson(Map<String, dynamic> json) {
     return SupplementIngredientCandidate(
@@ -1250,6 +1254,7 @@ class SupplementIngredientCandidate {
       unit: readOptionalString(json, 'unit'),
       confidence: readDouble(json, 'confidence'),
       source: readString(json, 'source'),
+      dailyValuePercent: readOptionalDouble(json, 'daily_value_percent'),
     );
   }
 }
@@ -1632,6 +1637,7 @@ class UserSupplementIngredientInput {
     required this.unit,
     required this.confidence,
     required this.source,
+    this.dailyValuePercent,
   });
 
   /// User-confirmed ingredient name.
@@ -1652,6 +1658,9 @@ class UserSupplementIngredientInput {
   /// Source marker accepted by the backend.
   final String source;
 
+  /// User-confirmed %DV (영양성분기준치) when present on the label.
+  final double? dailyValuePercent;
+
   /// Serializes the ingredient row to backend JSON.
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -1659,6 +1668,7 @@ class UserSupplementIngredientInput {
       'nutrient_code': nutrientCode,
       'amount': amount,
       'unit': unit,
+      if (dailyValuePercent != null) 'daily_value_percent': dailyValuePercent,
       'confidence': confidence,
       'source': source,
     };
@@ -1699,6 +1709,10 @@ class SupplementIntakeSchedule {
   const SupplementIntakeSchedule({
     required this.frequency,
     required this.timeOfDay,
+    this.timesPerDay,
+    this.amountPerTime,
+    this.amountUnit,
+    this.withFood,
   });
 
   /// Human-readable frequency.
@@ -1707,9 +1721,28 @@ class SupplementIntakeSchedule {
   /// Optional time labels such as morning or evening.
   final List<String> timeOfDay;
 
+  /// Confirmed daily intake count carried from the label preview.
+  final double? timesPerDay;
+
+  /// Confirmed amount per intake.
+  final double? amountPerTime;
+
+  /// Confirmed intake amount unit.
+  final String? amountUnit;
+
+  /// Whether the label mentions food timing.
+  final String? withFood;
+
   /// Serializes intake schedule to backend JSON.
   Map<String, dynamic> toJson() {
-    return <String, dynamic>{'frequency': frequency, 'time_of_day': timeOfDay};
+    return <String, dynamic>{
+      'frequency': frequency,
+      'time_of_day': timeOfDay,
+      if (timesPerDay != null) 'times_per_day': timesPerDay,
+      if (amountPerTime != null) 'amount_per_time': amountPerTime,
+      if (amountUnit != null) 'amount_unit': amountUnit,
+      if (withFood != null) 'with_food': withFood,
+    };
   }
 }
 

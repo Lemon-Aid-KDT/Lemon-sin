@@ -3,6 +3,11 @@ import '../consent/consent_models.dart';
 import '../dashboard/dashboard_models.dart';
 import 'supplement_models.dart';
 
+/// Canonical UUID format used by backend path identifiers (e.g. meal id).
+final RegExp _kUuidPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
 /// Repository contract used by the mobile app controller.
 abstract class LemonAidRepository {
   /// Fetches current-user consent state.
@@ -178,6 +183,11 @@ class BackendLemonAidRepository implements LemonAidRepository {
     final String normalizedMealId = mealId.trim();
     if (normalizedMealId.isEmpty) {
       throw ArgumentError.value(mealId, 'mealId', 'Meal id is required');
+    }
+    // Backend declares meal_id as a UUID path param; validate client-side so a
+    // malformed preview id fails fast with a clear error instead of a raw 422.
+    if (!_kUuidPattern.hasMatch(normalizedMealId)) {
+      throw ArgumentError.value(mealId, 'mealId', 'Meal id must be a UUID');
     }
     final String encodedMealId = Uri.encodeComponent(normalizedMealId);
     final Map<String, dynamic> json = await _apiClient.postJson(

@@ -8,7 +8,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../app_controller.dart';
 import '../../core/api/api_error.dart';
-import '../../shared/theme/lemon_design_tokens.dart';
 import '../../shared/widgets/error_panel.dart';
 import '../../utils/device_env.dart';
 import 'camera_readiness.dart';
@@ -62,7 +61,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   CameraReadinessSnapshot _cameraReadiness = CameraReadinessSnapshot.probing(
     platform: defaultTargetPlatform,
   );
-  String _ocrProvider = 'configured';
 
   @override
   void initState() {
@@ -116,8 +114,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
         selectedImage: _selectedImage,
         stage: _stage,
         cameraReadiness: _cameraReadiness,
-        ocrProvider: _ocrProvider,
-        onOcrProviderChanged: _setOcrProvider,
         onRefreshCameraReadiness: _refreshCameraReadiness,
         onCamera: _captureLiveImage,
         onGallery: () => _pickImage(ImageSource.gallery),
@@ -150,7 +146,11 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
               busy: widget.controller.busy,
             ),
             const SizedBox(height: 16),
-            _PreviewCard(preview: preview, requestedOcrProvider: _ocrProvider),
+            _PreviewCard(
+              preview: preview,
+              requestedOcrProvider:
+                  widget.controller.lastRequestedOcrProvider ?? 'configured',
+            ),
             const SizedBox(height: 16),
             _OcrTextCard(
               controller: _ocrTextController,
@@ -344,7 +344,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     setState(() {
       _stage = _SupplementFlowStage.ocrProcessing;
     });
-    await widget.controller.analyzeImage(image.path, ocrProvider: _ocrProvider);
+    await widget.controller.analyzeImage(image.path);
     if (!mounted) {
       return;
     }
@@ -352,12 +352,6 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       _stage = widget.controller.analysisPreview == null
           ? _SupplementFlowStage.imageSelected
           : _SupplementFlowStage.confirmationRequired;
-    });
-  }
-
-  void _setOcrProvider(String value) {
-    setState(() {
-      _ocrProvider = value;
     });
   }
 
@@ -488,6 +482,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       unit: _emptyToNull(draft.unitController.text),
       confidence: draft.confidence,
       source: draft.source,
+      dailyValuePercent: draft.dailyValuePercent,
     );
   }
 
@@ -731,8 +726,6 @@ class _BlackCaptureSurface extends StatelessWidget {
     required this.selectedImage,
     required this.stage,
     required this.cameraReadiness,
-    required this.ocrProvider,
-    required this.onOcrProviderChanged,
     required this.onRefreshCameraReadiness,
     required this.onCamera,
     required this.onGallery,
@@ -747,8 +740,6 @@ class _BlackCaptureSurface extends StatelessWidget {
   final _SelectedLabelImage? selectedImage;
   final _SupplementFlowStage stage;
   final CameraReadinessSnapshot cameraReadiness;
-  final String ocrProvider;
-  final ValueChanged<String> onOcrProviderChanged;
   final VoidCallback onRefreshCameraReadiness;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
@@ -793,14 +784,6 @@ class _BlackCaptureSurface extends StatelessWidget {
                     : SupplementLabelPreviewFrame(imagePath: image.path),
               ),
             ),
-            if (!kReleaseMode) ...<Widget>[
-              const SizedBox(height: 14),
-              _OcrProviderSelector(
-                value: ocrProvider,
-                enabled: !busy && !_processing,
-                onChanged: onOcrProviderChanged,
-              ),
-            ],
             if (_processing) ...<Widget>[
               const SizedBox(height: 14),
               const _CaptureStatusPill(
@@ -827,127 +810,6 @@ class _BlackCaptureSurface extends StatelessWidget {
               ),
             const SizedBox(height: 18),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OcrProviderSelector extends StatelessWidget {
-  const _OcrProviderSelector({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final String value;
-  final bool enabled;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    const List<_OcrProviderChoice> choices = <_OcrProviderChoice>[
-      _OcrProviderChoice(value: 'configured', label: 'Auto'),
-      _OcrProviderChoice(value: 'paddleocr', label: 'Paddle'),
-      _OcrProviderChoice(value: 'google_vision', label: 'Vision'),
-      _OcrProviderChoice(value: 'clova', label: 'CLOVA'),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(LemonRadius.lg),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(2, 0, 2, 8),
-                child: Text(
-                  'OCR provider',
-                  style: TextStyle(
-                    color: Color(0xFFC8C8C8),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ),
-              Row(
-                children: <Widget>[
-                  for (final _OcrProviderChoice choice in choices)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: _OcrProviderButton(
-                          choice: choice,
-                          selected: choice.value == value,
-                          enabled: enabled,
-                          onTap: () => onChanged(choice.value),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OcrProviderChoice {
-  const _OcrProviderChoice({required this.value, required this.label});
-
-  final String value;
-  final String label;
-}
-
-class _OcrProviderButton extends StatelessWidget {
-  const _OcrProviderButton({
-    required this.choice,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final _OcrProviderChoice choice;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38,
-      child: TextButton(
-        onPressed: enabled ? onTap : null,
-        style: TextButton.styleFrom(
-          padding: EdgeInsets.zero,
-          backgroundColor: selected ? LemonColors.lemon : Colors.transparent,
-          foregroundColor: selected ? LemonColors.ink : Colors.white,
-          disabledForegroundColor: const Color(0xFF777777),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(LemonRadius.md),
-          ),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            choice.label,
-            maxLines: 1,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
         ),
       ),
     );
@@ -2172,7 +2034,7 @@ String? _ocrNoticeText(
     if (requestedOcrProvider == 'configured') {
       return '자동 OCR이 실행 결과 없이 intake-only로 돌아왔어요. 백엔드 OCR env, provider 권한, API base URL을 확인해주세요.';
     }
-    return '$providerLabel OCR 요청은 백엔드에 도달했지만 자동 추출 결과가 없어요. provider 권한과 키 설정을 확인하거나 다른 OCR을 선택해주세요.';
+    return '$providerLabel OCR 요청은 백엔드에 도달했지만 자동 추출 결과가 없어요. provider 권한과 키 설정을 확인하거나 더 선명한 라벨 사진으로 다시 시도해주세요.';
   }
   if (!preview.pipelineMetadata.llmParserUsed) {
     final String providerLabel = _formatProviderLabel(actualProvider);
@@ -3068,6 +2930,7 @@ class _IngredientDraft {
     required this.selected,
     required this.requiresReview,
     required this.evidenceRefs,
+    this.dailyValuePercent,
   }) : displayNameController = TextEditingController(text: displayName),
        nutrientCodeController = TextEditingController(text: nutrientCode ?? ''),
        amountController = TextEditingController(text: amount?.toString() ?? ''),
@@ -3089,6 +2952,7 @@ class _IngredientDraft {
       selected: !requiresReview,
       requiresReview: requiresReview,
       evidenceRefs: const <String>[],
+      dailyValuePercent: candidate.dailyValuePercent,
     );
   }
 
@@ -3112,6 +2976,7 @@ class _IngredientDraft {
   final TextEditingController unitController;
   final double confidence;
   final String source;
+  final double? dailyValuePercent;
   bool selected;
   final bool requiresReview;
   final List<String> evidenceRefs;

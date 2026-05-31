@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -20,15 +21,28 @@ class ApiClient {
     String? bearerToken,
     String? devGatewayToken,
     http.Client? httpClient,
+    Duration requestTimeout = const Duration(seconds: 30),
+    Duration uploadTimeout = const Duration(seconds: 60),
+    int maxUploadBytes = _defaultMaxUploadBytes,
   }) : _baseUrl = _normalizeBaseUrl(baseUrl),
        _bearerToken = bearerToken,
        _devGatewayToken = devGatewayToken,
-       _httpClient = httpClient ?? http.Client();
+       _httpClient = httpClient ?? http.Client(),
+       _requestTimeout = requestTimeout,
+       _uploadTimeout = uploadTimeout,
+       _maxUploadBytes = maxUploadBytes;
+
+  /// Default client-side cap for image uploads (10 MB). Failing fast avoids an
+  /// indefinite hang and a server 413 with no user guidance.
+  static const int _defaultMaxUploadBytes = 10 * 1024 * 1024;
 
   final String _baseUrl;
   final String? _bearerToken;
   final String? _devGatewayToken;
   final http.Client _httpClient;
+  final Duration _requestTimeout;
+  final Duration _uploadTimeout;
+  final int _maxUploadBytes;
 
   /// Sends a JSON GET request and returns a decoded object map.
   ///
@@ -46,9 +60,12 @@ class ApiClient {
     String path, {
     Map<String, String>? queryParameters,
   }) async {
-    final http.Response response = await _httpClient.get(
-      _uri(path, queryParameters: queryParameters),
-      headers: _headers(),
+    final http.Response response = await _withTimeout(
+      _httpClient.get(
+        _uri(path, queryParameters: queryParameters),
+        headers: _headers(),
+      ),
+      _requestTimeout,
     );
     return _decodeObject(response, expectedStatusCodes: const <int>{200});
   }
@@ -78,10 +95,9 @@ class ApiClient {
       encodedBody = jsonEncode(body);
     }
 
-    final http.Response response = await _httpClient.post(
-      _uri(path),
-      headers: headers,
-      body: encodedBody,
+    final http.Response response = await _withTimeout(
+      _httpClient.post(_uri(path), headers: headers, body: encodedBody),
+      _requestTimeout,
     );
     return _decodeObject(response, expectedStatusCodes: expectedStatusCodes);
   }
@@ -108,6 +124,7 @@ class ApiClient {
     Map<String, String> fields = const <String, String>{},
     Set<int> expectedStatusCodes = const <int>{202},
   }) async {
+    await _ensureUploadableSize(filePath);
     final MediaType contentType = await _contentTypeForPath(filePath);
     final http.MultipartRequest request =
         http.MultipartRequest('POST', _uri(path))
@@ -121,8 +138,9 @@ class ApiClient {
             ),
           );
 
-    final http.StreamedResponse streamedResponse = await _httpClient.send(
-      request,
+    final http.StreamedResponse streamedResponse = await _withTimeout(
+      _httpClient.send(request),
+      _uploadTimeout,
     );
     final String responseBody = await streamedResponse.stream.bytesToString();
     if (!expectedStatusCodes.contains(streamedResponse.statusCode)) {
@@ -161,6 +179,7 @@ class ApiClient {
           ..headers.addAll(_headers())
           ..fields.addAll(fields);
     for (final String filePath in filePaths) {
+      await _ensureUploadableSize(filePath);
       request.files.add(
         await http.MultipartFile.fromPath(
           fileField,
@@ -170,8 +189,9 @@ class ApiClient {
       );
     }
 
-    final http.StreamedResponse streamedResponse = await _httpClient.send(
-      request,
+    final http.StreamedResponse streamedResponse = await _withTimeout(
+      _httpClient.send(request),
+      _uploadTimeout,
     );
     final String responseBody = await streamedResponse.stream.bytesToString();
     if (!expectedStatusCodes.contains(streamedResponse.statusCode)) {
@@ -207,6 +227,31 @@ class ApiClient {
       return decoded;
     }
     throw const FormatException('Expected a JSON object response.');
+  }
+
+  /// Awaits [future] but converts a timeout into a user-safe [ApiError].
+  Future<T> _withTimeout<T>(Future<T> future, Duration timeout) async {
+    try {
+      return await future.timeout(timeout);
+    } on TimeoutException {
+      throw const ApiError(
+        statusCode: 408,
+        message: '서버 응답이 지연되고 있어요. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
+    }
+  }
+
+  /// Rejects oversized uploads before sending so the user gets clear guidance
+  /// instead of an indefinite hang or a bare server 413.
+  Future<void> _ensureUploadableSize(String filePath) async {
+    final int length = await File(filePath).length();
+    if (length > _maxUploadBytes) {
+      final int limitMb = (_maxUploadBytes / (1024 * 1024)).round();
+      throw ApiError(
+        statusCode: 413,
+        message: '이미지가 너무 커요(최대 ${limitMb}MB). 더 작은 사진으로 다시 시도해주세요.',
+      );
+    }
   }
 
   Map<String, String> _headers() {
@@ -254,7 +299,10 @@ class ApiClient {
     if (lowerPath.endsWith('.webp')) {
       return MediaType('image', 'webp');
     }
-    return MediaType('application', 'octet-stream');
+    throw const ApiError(
+      statusCode: 415,
+      message: '지원하지 않는 이미지 형식이에요. JPEG·PNG·WEBP 사진으로 다시 시도해주세요.',
+    );
   }
 
   static Future<MediaType?> _sniffImageContentType(String filePath) async {

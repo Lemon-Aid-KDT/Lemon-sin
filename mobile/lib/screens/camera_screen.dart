@@ -46,6 +46,31 @@ const bool _enableEmulatorLiveCamera = bool.fromEnvironment(
 const String _debugSupplementImagePathFromEnv = String.fromEnvironment(
   'LEMON_DEBUG_SUPPLEMENT_IMAGE_PATH',
 );
+const String _macCameraBridgeUrlFromEnv = String.fromEnvironment(
+  'LEMON_MAC_CAMERA_BRIDGE_URL',
+);
+const Duration _macCameraPreviewPollInterval = Duration(milliseconds: 180);
+
+@visibleForTesting
+bool shouldUseCameraPickerFallback({
+  required bool isEmulator,
+  required TargetPlatform platform,
+  required bool enableEmulatorLiveCamera,
+  required bool hasMacCameraBridge,
+  bool? override,
+}) {
+  if (override != null) {
+    return override;
+  }
+  if (!isEmulator || enableEmulatorLiveCamera) {
+    return false;
+  }
+  if ((platform == TargetPlatform.iOS || platform == TargetPlatform.android) &&
+      hasMacCameraBridge) {
+    return false;
+  }
+  return true;
+}
 
 // ═══════════════════════════════════════════
 // 카메라 화면 UI 톤 — LADS Flat 2.0 + Soft UI.
@@ -78,10 +103,14 @@ class CameraScreen extends StatefulWidget {
     this.onAnalyzeSupplementImages,
     this.onAnalyzeMealImage,
     this.initialMode = 'supplement',
-    this.initialImageRole = 'front_label',
+    this.initialImageRole = 'unknown',
     this.imagePicker,
     this.useCameraPickerFallback,
     this.debugSupplementImagePath,
+    this.macCameraBridgeUrl,
+    this.macCameraPreviewFrameOverride,
+    this.macCameraCaptureOverride,
+    this.isEmulatorOverride,
     this.onClose,
     super.key,
   });
@@ -100,6 +129,19 @@ class CameraScreen extends StatefulWidget {
 
   /// Optional debug-only local image path used when Android Photo Picker stalls.
   final String? debugSupplementImagePath;
+
+  /// Optional debug-only localhost bridge for taking iOS Simulator photos with
+  /// the host Mac camera.
+  final String? macCameraBridgeUrl;
+
+  /// Optional Mac camera preview-frame override used by widget tests.
+  final Future<Uint8List> Function()? macCameraPreviewFrameOverride;
+
+  /// Optional Mac camera capture override used by widget tests.
+  final Future<File> Function()? macCameraCaptureOverride;
+
+  /// Optional emulator/simulator classification override used by widget tests.
+  final bool? isEmulatorOverride;
 
   /// Sends a supplement image to the backend OCR analysis endpoint.
   final Future<void> Function(String imagePath, {required String ocrProvider})
@@ -128,7 +170,6 @@ class _CameraScreenState extends State<CameraScreen>
   File? _captured;
   final List<_CapturedSupplementImage> _captures = <_CapturedSupplementImage>[];
   bool _picking = false;
-  String _ocrProvider = 'configured';
   late String _imageRole;
   bool _lostDataChecked = false;
 
@@ -141,6 +182,11 @@ class _CameraScreenState extends State<CameraScreen>
   CameraLensDirection _lens = CameraLensDirection.back;
   // 에뮬 여부 — 카메라 영상 정렬 보정용
   bool _isEmulator = false;
+  Timer? _macPreviewTimer;
+  bool _macPreviewFetching = false;
+  Uint8List? _macPreviewFrame;
+  int? _macPreviewFrameId;
+  String? _macPreviewError;
 
   @override
   void initState() {
@@ -150,7 +196,7 @@ class _CameraScreenState extends State<CameraScreen>
         : _CaptureMode.supplement;
     _imageRole = _normalizeInitialImageRole(widget.initialImageRole);
     WidgetsBinding.instance.addObserver(this);
-    _isEmulator = DeviceEnv.isEmulatorSync;
+    _isEmulator = widget.isEmulatorOverride ?? DeviceEnv.isEmulatorSync;
     _startCameraAfterDeviceProbe();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _recoverLostGalleryPick();
@@ -200,9 +246,13 @@ class _CameraScreenState extends State<CameraScreen>
 
   bool _initInFlight = false;
 
-  bool get _canUseCameraPickerFallback =>
-      widget.useCameraPickerFallback ??
-      (_isEmulator && !_enableEmulatorLiveCamera);
+  bool get _canUseCameraPickerFallback => shouldUseCameraPickerFallback(
+    isEmulator: _isEmulator,
+    platform: defaultTargetPlatform,
+    enableEmulatorLiveCamera: _enableEmulatorLiveCamera,
+    hasMacCameraBridge: _canUseMacCameraBridge,
+    override: widget.useCameraPickerFallback,
+  );
 
   String get _debugSupplementImagePath =>
       (widget.debugSupplementImagePath ?? _debugSupplementImagePathFromEnv)
@@ -213,8 +263,47 @@ class _CameraScreenState extends State<CameraScreen>
       _mode == _CaptureMode.supplement &&
       _debugSupplementImagePath.isNotEmpty;
 
+  String get _macCameraBridgeUrl {
+    final String configured =
+        (widget.macCameraBridgeUrl ?? _macCameraBridgeUrlFromEnv)
+            .trim()
+            .replaceFirst(RegExp(r'/+$'), '');
+    if (configured.isNotEmpty || kReleaseMode || !_isEmulator) {
+      return configured;
+    }
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'http://127.0.0.1:8755',
+      TargetPlatform.android => 'http://10.0.2.2:8755',
+      _ => '',
+    };
+  }
+
+  bool get _supportsMacCameraBridge =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android;
+
+  bool get _canUseMacCameraBridge =>
+      !kReleaseMode &&
+      _isEmulator &&
+      _supportsMacCameraBridge &&
+      _macCameraBridgeUrl.isNotEmpty;
+
+  String get _cameraFallbackMessage {
+    if (_canUseMacCameraBridge) {
+      return 'Mac 카메라 live preview를 연결 중이에요.\nbridge를 켜면 화면이 바로 표시돼요.';
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS && _isEmulator) {
+      return 'iOS Simulator는 기기 카메라를 직접 보고하지 않을 수 있어요.\nMac camera bridge를 켜거나 갤러리로 OCR을 테스트해주세요.';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android && _isEmulator) {
+      return 'Android Emulator는 Mac 카메라 bridge로 live preview를 볼 수 있어요.\n8755 포트의 bridge를 켜거나 갤러리로 OCR을 테스트해주세요.';
+    }
+    return '에뮬레이터 live preview는 실행 옵션으로 켜요.\n셔터를 누르면 카메라 앱 촬영으로 열려요.';
+  }
+
   Future<void> _startCameraAfterDeviceProbe() async {
-    final bool isEmulator = await DeviceEnv.isEmulator;
+    final bool isEmulator =
+        widget.isEmulatorOverride ?? await DeviceEnv.isEmulator;
     if (!mounted) return;
     if (_isEmulator != isEmulator) {
       setState(() => _isEmulator = isEmulator);
@@ -241,11 +330,20 @@ class _CameraScreenState extends State<CameraScreen>
       });
     }
     try {
+      if (_canUseMacCameraBridge) {
+        _startMacCameraPreviewLoop();
+        if (mounted) {
+          setState(() {
+            _initError = null;
+            _initializing = false;
+          });
+        }
+        return;
+      }
       if (_canUseCameraPickerFallback) {
         if (mounted) {
           setState(() {
-            _initError =
-                '에뮬레이터 live preview는 실행 옵션으로 켜요.\n셔터는 Android 카메라 앱 촬영으로 열려요.';
+            _initError = _cameraFallbackMessage;
             _initializing = false;
           });
         }
@@ -255,7 +353,9 @@ class _CameraScreenState extends State<CameraScreen>
       if (_cameras == null || _cameras!.isEmpty) {
         if (mounted) {
           setState(() {
-            _initError = '연결된 카메라가 없어요';
+            _initError = defaultTargetPlatform == TargetPlatform.iOS
+                ? 'iOS Simulator가 카메라를 보고하지 않았어요.\nMac camera bridge를 켜거나 갤러리로 OCR을 테스트해주세요.'
+                : '연결된 카메라가 없어요';
             _initializing = false;
           });
         }
@@ -292,7 +392,7 @@ class _CameraScreenState extends State<CameraScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _initError = '카메라를 열 수 없어요\n${e.toString()}';
+          _initError = '카메라를 열 수 없어요.\n권한과 실행 환경을 확인한 뒤 다시 시도해주세요.';
           _initializing = false;
         });
       }
@@ -302,6 +402,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _disposeCamera() async {
+    _stopMacCameraPreviewLoop();
     final c = _controller;
     _controller = null;
     await c?.dispose();
@@ -322,6 +423,10 @@ class _CameraScreenState extends State<CameraScreen>
     final c = _controller;
     if (_picking) return;
     if (c == null || !c.value.isInitialized) {
+      if (_canUseMacCameraBridge) {
+        await _captureFromMacCameraBridge();
+        return;
+      }
       if (_canUseCameraPickerFallback) {
         await _pickFromCameraApp();
       }
@@ -350,6 +455,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   // 카메라 전후면 토글
   Future<void> _toggleLens() async {
+    if (_canUseMacCameraBridge) return;
     HapticFeedback.selectionClick();
     final next = _lens == CameraLensDirection.back
         ? CameraLensDirection.front
@@ -381,6 +487,96 @@ class _CameraScreenState extends State<CameraScreen>
       source: ImageSource.camera,
       errorMessage: '카메라 앱 촬영 이미지를 불러오지 못했어요. 갤러리로 테스트해주세요.',
     );
+  }
+
+  Future<void> _captureFromMacCameraBridge() async {
+    if (_picking || !_canUseMacCameraBridge) return;
+    setState(() => _picking = true);
+    HapticFeedback.mediumImpact();
+    final Uint8List? previewFrame = _macPreviewFrame;
+    if (previewFrame != null && previewFrame.isNotEmpty) {
+      try {
+        final File captured = _writeCapturedBytes(
+          previewFrame,
+          extension: '.jpg',
+        );
+        if (mounted) {
+          setState(() => _captured = captured);
+        }
+        return;
+      } catch (_) {
+        // Fall through to the bridge capture endpoint if the cached frame
+        // cannot be materialized.
+      } finally {
+        if (mounted) setState(() => _picking = false);
+      }
+    }
+    final Future<File> Function()? captureOverride =
+        widget.macCameraCaptureOverride;
+    if (captureOverride != null) {
+      try {
+        final File captured = await captureOverride();
+        if (!captured.existsSync() || captured.lengthSync() == 0) {
+          throw const FormatException('empty mac camera capture override');
+        }
+        if (mounted) {
+          setState(() => _captured = captured);
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Mac 카메라 촬영에 실패했어요. bridge 실행 상태와 카메라 권한을 확인해주세요.'),
+              backgroundColor: AppColor.danger,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _picking = false);
+      }
+      return;
+    }
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 3);
+    try {
+      final Uri captureUri = Uri.parse('$_macCameraBridgeUrl/capture');
+      final HttpClientRequest request = await client
+          .getUrl(captureUri)
+          .timeout(const Duration(seconds: 3));
+      request.headers.set(
+        HttpHeaders.acceptHeader,
+        'image/jpeg,image/png;q=0.9',
+      );
+      final HttpClientResponse response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
+      final ContentType? contentType = response.headers.contentType;
+      final Uint8List bytes = await consolidateHttpClientResponseBytes(
+        response,
+      );
+      if (response.statusCode != HttpStatus.ok || bytes.isEmpty) {
+        throw const FormatException('empty mac camera capture');
+      }
+      final File captured = _writeCapturedBytes(
+        bytes,
+        extension: _extensionForContentType(contentType),
+      );
+      if (mounted) {
+        setState(() => _captured = captured);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mac 카메라 촬영에 실패했어요. bridge 실행 상태와 카메라 권한을 확인해주세요.'),
+            backgroundColor: AppColor.danger,
+          ),
+        );
+      }
+    } finally {
+      client.close(force: true);
+      if (mounted) setState(() => _picking = false);
+    }
   }
 
   Future<void> _loadDebugSupplementImage() async {
@@ -510,6 +706,126 @@ class _CameraScreenState extends State<CameraScreen>
     return output;
   }
 
+  File _writeCapturedBytes(Uint8List bytes, {required String extension}) {
+    final String outputPath =
+        '${Directory.systemTemp.path}/lemon_aid_ocr_${DateTime.now().microsecondsSinceEpoch}$extension';
+    final File output = File(outputPath);
+    output.writeAsBytesSync(bytes, flush: true);
+    if (output.lengthSync() == 0) {
+      throw const FormatException('empty captured image');
+    }
+    return output;
+  }
+
+  void _startMacCameraPreviewLoop() {
+    if (_macPreviewTimer != null || !_canUseMacCameraBridge) return;
+    _macPreviewError = null;
+    _scheduleMacCameraPreviewFetch(Duration.zero);
+  }
+
+  void _stopMacCameraPreviewLoop() {
+    _macPreviewTimer?.cancel();
+    _macPreviewTimer = null;
+    _macPreviewFetching = false;
+  }
+
+  void _scheduleMacCameraPreviewFetch(Duration delay) {
+    _macPreviewTimer?.cancel();
+    _macPreviewTimer = Timer(delay, () {
+      _macPreviewTimer = null;
+      if (!_canUseMacCameraBridge || _captured != null) return;
+      unawaited(_fetchMacCameraPreviewFrame());
+    });
+  }
+
+  Future<void> _fetchMacCameraPreviewFrame() async {
+    if (_macPreviewFetching || !_canUseMacCameraBridge || _captured != null) {
+      return;
+    }
+    _macPreviewFetching = true;
+    bool shouldContinuePreview = false;
+    try {
+      final Future<Uint8List> Function()? previewOverride =
+          widget.macCameraPreviewFrameOverride;
+      final Uint8List bytes;
+      int? nextFrameId;
+      if (previewOverride != null) {
+        bytes = await previewOverride();
+      } else {
+        final HttpClient client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 2);
+        try {
+          final Map<String, String> query = <String, String>{
+            't': DateTime.now().microsecondsSinceEpoch.toString(),
+            if (_macPreviewFrameId != null)
+              'after': _macPreviewFrameId.toString(),
+          };
+          final Uri frameUri = Uri.parse(
+            '$_macCameraBridgeUrl/frame.jpg',
+          ).replace(queryParameters: query);
+          final HttpClientRequest request = await client
+              .getUrl(frameUri)
+              .timeout(const Duration(seconds: 2));
+          request.headers.set(HttpHeaders.acceptHeader, 'image/jpeg');
+          request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+          final HttpClientResponse response = await request.close().timeout(
+            const Duration(seconds: 5),
+          );
+          bytes = await consolidateHttpClientResponseBytes(response);
+          nextFrameId = int.tryParse(
+            response.headers.value('x-lemon-frame-id') ?? '',
+          );
+          if (response.statusCode != HttpStatus.ok || bytes.isEmpty) {
+            throw const FormatException('empty mac camera preview');
+          }
+        } finally {
+          client.close(force: true);
+        }
+      }
+      if (!mounted || bytes.isEmpty) return;
+      setState(() {
+        _macPreviewFrame = bytes;
+        _macPreviewFrameId = nextFrameId ?? _macPreviewFrameId;
+        _macPreviewError = null;
+      });
+      shouldContinuePreview = true;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _macPreviewFrameId = null;
+          _macPreviewError = _macCameraPreviewErrorMessage(error);
+        });
+      }
+      shouldContinuePreview = true;
+    } finally {
+      _macPreviewFetching = false;
+      if (mounted &&
+          shouldContinuePreview &&
+          _canUseMacCameraBridge &&
+          _captured == null) {
+        _scheduleMacCameraPreviewFetch(_macCameraPreviewPollInterval);
+      }
+    }
+  }
+
+  String _macCameraPreviewErrorMessage(Object error) {
+    if (error is SocketException) {
+      return 'Mac camera bridge에 연결할 수 없어요.\n8755 포트의 bridge 실행 상태를 확인해주세요.';
+    }
+    if (error is TimeoutException) {
+      return 'Mac 카메라 프리뷰 응답이 지연되고 있어요.\nbridge와 카메라 권한을 확인해주세요.';
+    }
+    return 'Mac 카메라 프리뷰 연결 중이에요.\n성분표가 보이도록 카메라를 준비해주세요.';
+  }
+
+  String _extensionForContentType(ContentType? contentType) {
+    return switch (contentType?.mimeType.toLowerCase()) {
+      'image/png' => '.png',
+      'image/webp' => '.webp',
+      _ => '.jpg',
+    };
+  }
+
   String _imageExtension(String value) {
     final String lower = value.toLowerCase();
     for (final String extension in <String>[
@@ -529,6 +845,9 @@ class _CameraScreenState extends State<CameraScreen>
   void _retake() {
     HapticFeedback.selectionClick();
     setState(() => _captured = null);
+    if (_canUseMacCameraBridge) {
+      _startMacCameraPreviewLoop();
+    }
   }
 
   void _addCurrentToBatch() {
@@ -554,18 +873,6 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   String _nextImageRole() {
-    final Set<String> usedRoles = _captures
-        .map((_CapturedSupplementImage image) => image.role)
-        .toSet();
-    if (!usedRoles.contains('supplement_facts')) {
-      return 'supplement_facts';
-    }
-    if (!usedRoles.contains('intake_method')) {
-      return 'intake_method';
-    }
-    if (!usedRoles.contains('precautions')) {
-      return 'precautions';
-    }
     return 'unknown';
   }
 
@@ -581,6 +888,9 @@ class _CameraScreenState extends State<CameraScreen>
     if (captured == null || _picking) return;
     if (!await captured.exists() || await captured.length() == 0) {
       if (mounted) {
+        // Clear the stale preview so the user returns to the capture view
+        // instead of being stuck on a missing/empty image.
+        setState(() => _captured = null);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('선택한 이미지 파일이 비어 있어요. 다시 촬영하거나 선택해주세요.'),
@@ -617,16 +927,17 @@ class _CameraScreenState extends State<CameraScreen>
       final List<SupplementImageUpload> uploads = _analysisUploads(captured);
       final bool shouldUseRoleAwareUpload =
           widget.onAnalyzeSupplementImages != null &&
-          (uploads.length > 1 || _imageRole != 'front_label');
+          (uploads.length > 1 ||
+              (_imageRole != 'unknown' && _imageRole != 'front_label'));
       if (shouldUseRoleAwareUpload) {
         await widget.onAnalyzeSupplementImages!(
           uploads,
-          ocrProvider: _ocrProvider,
+          ocrProvider: 'configured',
         );
       } else {
         await widget.onAnalyzeSupplementImage(
           captured.path,
-          ocrProvider: _ocrProvider,
+          ocrProvider: 'configured',
         );
       }
     } finally {
@@ -638,6 +949,7 @@ class _CameraScreenState extends State<CameraScreen>
   Widget build(BuildContext context) {
     // 화면 재진입 시 컨트롤러 죽어있으면 다시 켜기
     if (_captured == null &&
+        !_canUseMacCameraBridge &&
         !_initializing &&
         _initError == null &&
         (_controller == null || !_controller!.value.isInitialized)) {
@@ -698,6 +1010,9 @@ class _CameraScreenState extends State<CameraScreen>
           error: _initError,
           isFront: _lens == CameraLensDirection.front,
           isEmulator: _isEmulator,
+          macPreviewFrame: _macPreviewFrame,
+          macPreviewActive: _canUseMacCameraBridge,
+          macPreviewMessage: _macPreviewError ?? _cameraFallbackMessage,
         ),
         _GuideOverlay(mode: _mode),
         Positioned(
@@ -713,7 +1028,7 @@ class _CameraScreenState extends State<CameraScreen>
                   () => context.canPop()
                       ? context.pop()
                       : context.go('/shell/home'),
-              onFlip: _toggleLens,
+              onFlip: _canUseMacCameraBridge ? null : _toggleLens,
               isFront: _lens == CameraLensDirection.front,
             ),
           ),
@@ -738,6 +1053,7 @@ class _CameraScreenState extends State<CameraScreen>
               loading: _picking,
               enabled:
                   _controller?.value.isInitialized == true ||
+                  _canUseMacCameraBridge ||
                   _canUseCameraPickerFallback,
             ),
           ),
@@ -792,23 +1108,10 @@ class _CameraScreenState extends State<CameraScreen>
             const SizedBox(height: AppSpace.md),
             _SupplementBatchStrip(
               captures: _captures,
-              currentRole: _imageRole,
               onRemove: _removeBatchImage,
             ),
             const SizedBox(height: AppSpace.sm),
-            _ImageRoleSelector(
-              value: _imageRole,
-              enabled: !_picking,
-              onChanged: (value) => setState(() => _imageRole = value),
-            ),
-          ],
-          if (!kReleaseMode) ...[
-            const SizedBox(height: AppSpace.md),
-            _DebugOcrProviderSelector(
-              value: _ocrProvider,
-              enabled: !_picking,
-              onChanged: (value) => setState(() => _ocrProvider = value),
-            ),
+            const _AutoAnalysisBadge(),
           ],
           const SizedBox(height: AppSpace.md),
           Padding(
@@ -857,24 +1160,20 @@ class _CameraScreenState extends State<CameraScreen>
 
 String _normalizeInitialImageRole(String value) {
   const Set<String> allowedRoles = <String>{
+    'unknown',
     'front_label',
     'supplement_facts',
     'intake_method',
     'precautions',
   };
   final String normalized = value.trim();
-  return allowedRoles.contains(normalized) ? normalized : 'front_label';
+  return allowedRoles.contains(normalized) ? normalized : 'unknown';
 }
 
 class _SupplementBatchStrip extends StatelessWidget {
-  const _SupplementBatchStrip({
-    required this.captures,
-    required this.currentRole,
-    required this.onRemove,
-  });
+  const _SupplementBatchStrip({required this.captures, required this.onRemove});
 
   final List<_CapturedSupplementImage> captures;
-  final String currentRole;
   final ValueChanged<int> onRemove;
 
   @override
@@ -897,14 +1196,14 @@ class _SupplementBatchStrip extends StatelessWidget {
                 itemBuilder: (context, index) {
                   if (index == captures.length) {
                     return _BatchImageChip(
-                      label: _roleLabel(currentRole),
+                      label: '현재 사진',
                       selected: true,
                       onRemove: null,
                     );
                   }
                   final _CapturedSupplementImage image = captures[index];
                   return _BatchImageChip(
-                    label: _roleLabel(image.role),
+                    label: '추가 사진 ${index + 1}',
                     file: image.file,
                     selected: false,
                     onRemove: () => onRemove(index),
@@ -1053,162 +1352,39 @@ class _BatchImageChip extends StatelessWidget {
   }
 }
 
-class _ImageRoleSelector extends StatelessWidget {
-  const _ImageRoleSelector({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final String value;
-  final bool enabled;
-  final ValueChanged<String> onChanged;
-
-  static const List<({String value, String label})> _roles = [
-    (value: 'front_label', label: '앞면'),
-    (value: 'supplement_facts', label: '성분표'),
-    (value: 'intake_method', label: '섭취법'),
-    (value: 'precautions', label: '주의'),
-  ];
+class _AutoAnalysisBadge extends StatelessWidget {
+  const _AutoAnalysisBadge();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
-      child: DecoratedBox(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: AppSpace.sm,
+        ),
         decoration: BoxDecoration(
           color: _CamTone.surfaceStrong,
           borderRadius: BorderRadius.circular(AppRadius.full),
           border: Border.all(color: _CamTone.border),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Row(
-            children: [
-              for (final role in _roles)
-                Expanded(
-                  child: _ProviderChoiceButton(
-                    label: role.label,
-                    selected: role.value == value,
-                    enabled: enabled,
-                    onTap: () => onChanged(role.value),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-String _roleLabel(String role) {
-  switch (role) {
-    case 'front_label':
-      return '앞면';
-    case 'supplement_facts':
-      return '성분표';
-    case 'intake_method':
-      return '섭취법';
-    case 'precautions':
-      return '주의';
-    case 'ingredients':
-      return '원료';
-    case 'barcode':
-      return '바코드';
-    default:
-      return '기타';
-  }
-}
-
-class _DebugOcrProviderSelector extends StatelessWidget {
-  const _DebugOcrProviderSelector({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final String value;
-  final bool enabled;
-  final ValueChanged<String> onChanged;
-
-  static const List<({String value, String label})> _choices = [
-    (value: 'configured', label: 'Auto'),
-    (value: 'paddleocr', label: 'Paddle'),
-    (value: 'google_vision', label: 'Vision'),
-    (value: 'clova', label: 'CLOVA'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _CamTone.surfaceStrong,
-          borderRadius: BorderRadius.circular(AppRadius.full),
-          border: Border.all(color: _CamTone.border),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Row(
-            children: [
-              for (final choice in _choices)
-                Expanded(
-                  child: _ProviderChoiceButton(
-                    label: choice.label,
-                    selected: choice.value == value,
-                    enabled: enabled,
-                    onTap: () => onChanged(choice.value),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProviderChoiceButton extends StatelessWidget {
-  const _ProviderChoiceButton({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: TextButton(
-        onPressed: enabled ? onTap : null,
-        style: TextButton.styleFrom(
-          padding: EdgeInsets.zero,
-          foregroundColor: selected ? AppColor.ink : Colors.white,
-          disabledForegroundColor: Colors.white.withValues(alpha: 0.38),
-          backgroundColor: selected ? AppColor.brand : Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.full),
-          ),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            maxLines: 1,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(Icons.auto_awesome_rounded, color: AppColor.brand, size: 18),
+            SizedBox(width: AppSpace.xs),
+            Text(
+              '자동 분석',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -1333,16 +1509,54 @@ class _FullScreenPreview extends StatelessWidget {
   final String? error;
   final bool isFront;
   final bool isEmulator;
+  final Uint8List? macPreviewFrame;
+  final bool macPreviewActive;
+  final String? macPreviewMessage;
   const _FullScreenPreview({
     required this.controller,
     required this.initializing,
     required this.error,
     this.isFront = false,
     this.isEmulator = false,
+    this.macPreviewFrame,
+    this.macPreviewActive = false,
+    this.macPreviewMessage,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (macPreviewActive) {
+      final Uint8List? frame = macPreviewFrame;
+      if (frame == null) {
+        return Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: _SpinnerWithLabel(
+            label: macPreviewMessage ?? 'Mac 카메라 프리뷰 연결 중이에요',
+          ),
+        );
+      }
+      return ClipRect(
+        child: SizedBox.expand(
+          child: Image.memory(
+            frame,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.low,
+            gaplessPlayback: true,
+            semanticLabel: 'Mac 카메라 실시간 프리뷰',
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: _SpinnerWithLabel(
+                  label: macPreviewMessage ?? 'Mac 카메라 프리뷰 연결 중이에요',
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
     if (initializing) {
       return Container(
         color: Colors.black,
@@ -1984,6 +2198,7 @@ class _ShutterButtonState extends State<_ShutterButton> {
       child: Opacity(
         opacity: opacity,
         child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: widget.loading ? null : widget.onTap,
           onTapDown: (_) => _setPressed(true),
           onTapUp: (_) => _setPressed(false),

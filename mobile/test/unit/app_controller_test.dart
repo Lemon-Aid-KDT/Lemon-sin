@@ -113,6 +113,42 @@ void main() {
     expect(controller.notice, 'Meal image preview is ready for review.');
   });
 
+  test('startSupplementImageAnalysis completes in background', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      analysisDelay: const Duration(milliseconds: 20),
+    );
+    final AppController controller = AppController(repository: repository);
+
+    await controller.startSupplementImageAnalysis('/tmp/supplement-label.png');
+
+    expect(controller.analysisJob.isRunning, isTrue);
+    expect(controller.analysisPreview, isNull);
+
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    expect(controller.analysisJob.phase, AnalysisJobPhase.completed);
+    expect(controller.hasUnreadAnalysisCompletion, isTrue);
+    expect(
+      controller.completedAnalysisRoute,
+      '/shell/home/analysis-result?mode=supplement',
+    );
+    expect(controller.notice, '분석이 완료 되었어요.');
+    expect(controller.analysisPreview?.analysisId, isNotEmpty);
+    expect(
+      repository.ocrProviders,
+      containsAll(<String>[
+        'configured',
+        'paddleocr',
+        'clova',
+        'google_vision',
+      ]),
+    );
+
+    controller.markAnalysisCompletionRead();
+
+    expect(controller.hasUnreadAnalysisCompletion, isFalse);
+  });
+
   test('confirmMealImagePreview stores user-confirmed meal', () async {
     final _AutoInsightRepository repository = _AutoInsightRepository();
     final AppController controller = AppController(repository: repository);
@@ -146,6 +182,39 @@ void main() {
     expect(controller.lastRegisteredMeal?.foodItems.single.displayName, '비빔밥');
     expect(controller.notice, 'Meal record saved and dashboard refreshed.');
   });
+
+  test('registerSupplement blocks when health consent is missing', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository()
+      ..consents = <String, bool>{
+        AppController.ocrConsent: true,
+        AppController.healthConsent: false,
+      };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+
+    await controller.registerSupplement(_registrationRequest());
+
+    expect(controller.consentRequired, isTrue);
+    expect(controller.apiError?.statusCode, 403);
+    expect(repository.registerCalls, 0);
+    expect(controller.lastRegisteredSupplement, isNull);
+  });
+
+  test('registerSupplement proceeds after health consent is present', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository()
+      ..consents = <String, bool>{
+        AppController.ocrConsent: true,
+        AppController.healthConsent: true,
+      };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+
+    await controller.registerSupplement(_registrationRequest());
+
+    expect(controller.consentRequired, isFalse);
+    expect(repository.registerCalls, 1);
+    expect(controller.lastRegisteredSupplement?.displayName, 'Vitamin D');
+  });
 }
 
 UserSupplementCreate _registrationRequest() {
@@ -172,9 +241,14 @@ UserSupplementCreate _registrationRequest() {
 }
 
 class _AutoInsightRepository implements LemonAidRepository {
-  _AutoInsightRepository({this.failExplanation = false});
+  _AutoInsightRepository({
+    this.failExplanation = false,
+    this.analysisDelay = Duration.zero,
+  });
 
   final bool failExplanation;
+  final Duration analysisDelay;
+  Map<String, bool> consents = const <String, bool>{};
   int registerCalls = 0;
   int impactCalls = 0;
   int explainCalls = 0;
@@ -189,6 +263,7 @@ class _AutoInsightRepository implements LemonAidRepository {
   String? lastMealType;
   String? lastConfirmedMealId;
   MealConfirmationRequest? lastMealConfirmationRequest;
+  final List<String> ocrProviders = <String>[];
 
   @override
   Future<UserSupplementResponse> registerSupplement(
@@ -265,6 +340,10 @@ class _AutoInsightRepository implements LemonAidRepository {
     String imagePath, {
     String ocrProvider = 'configured',
   }) async {
+    if (analysisDelay > Duration.zero) {
+      await Future<void>.delayed(analysisDelay);
+    }
+    ocrProviders.add(ocrProvider);
     return SupplementAnalysisPreview.fromJson(
       _multiPreviewJson['merged_preview']! as Map<String, Object?>,
     );
@@ -328,8 +407,21 @@ class _AutoInsightRepository implements LemonAidRepository {
   void close() {}
 
   @override
-  Future<ConsentState> fetchConsents() {
-    throw UnimplementedError();
+  Future<ConsentState> fetchConsents() async {
+    return ConsentState(
+      consents: <ConsentStatus>[
+        for (final MapEntry<String, bool> entry in consents.entries)
+          ConsentStatus(
+            consentType: entry.key,
+            policyVersion: 'v1',
+            title: entry.key,
+            required: true,
+            granted: entry.value,
+            occurredAt: null,
+            revokedAt: null,
+          ),
+      ],
+    );
   }
 
   @override
