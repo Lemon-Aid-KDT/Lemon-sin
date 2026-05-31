@@ -116,3 +116,40 @@ def test_unit_passes_normal_unit() -> None:
     result = sanitize_unit("mg")
     assert result.value == "mg"
     assert result.warnings == ()
+
+
+@pytest.mark.parametrize(
+    "unit",
+    [
+        "mg",
+        "g",
+        "mcg",
+        "ug",
+        "μg",
+        "IU",
+        "%",
+        "%DV",
+        "캡슐",
+        "정",
+        "포",
+        "ml",
+        "billion CFU",
+        "mg/g",
+    ],
+)
+def test_unit_allowlist_preserves_known_units(unit: str) -> None:
+    """Known supplement-label units pass the allowlist unchanged."""
+    result = sanitize_unit(unit)
+    assert result.value != ""
+    assert result.warnings == ()
+
+
+@pytest.mark.parametrize(
+    "unit",
+    ["arbitrary text here", "admin password", "eval(this)", "정제수 100", "<b>tag", "free form"],
+)
+def test_unit_allowlist_blocks_unknown_tokens(unit: str) -> None:
+    """Unknown / free-text unit tokens are dropped, not persisted."""
+    result = sanitize_unit(unit)
+    assert result.value == ""
+    assert "sanitizer.blocked:unit" in result.warnings

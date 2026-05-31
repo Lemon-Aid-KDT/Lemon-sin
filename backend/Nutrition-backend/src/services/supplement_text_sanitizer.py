@@ -51,6 +51,71 @@ _INJECTION_KO_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 
+# Allowlist of supplement-label measurement units (case/format-normalized). The
+# unit field is a short structured token, so an allowlist is safe here even
+# though free-text fields use a blocklist. Covers metric mass/volume, IU, %DV,
+# microbial counts (CFU), and Korean dosage-form counters (정/캡슐/포/병/ml...).
+# Maintenance: add a normalized key when a real label surfaces a new unit.
+_ALLOWED_UNIT_KEYS: frozenset[str] = frozenset(
+    {
+        # mass
+        "mg",
+        "g",
+        "kg",
+        "mcg",
+        "ug",
+        "µg",
+        "ng",
+        # volume
+        "ml",
+        "l",
+        "cc",
+        # international / activity units
+        "iu",
+        "ie",
+        # percent / daily value
+        "%",
+        "%dv",
+        "%rda",
+        "% 영양성분기준치",
+        # microbial counts
+        "cfu",
+        "billion cfu",
+        "million cfu",
+        "억",
+        "억 cfu",
+        # Korean dosage-form counters
+        "정",
+        "캡슐",
+        "포",
+        "병",
+        "스틱",
+        "환",
+        "방울",
+        "회분",
+        "회",
+        "개",
+        # ratio / unitless concentrates
+        "mg/g",
+        "mg/ml",
+    }
+)
+
+
+def _normalize_unit_key(value: str) -> str:
+    """Normalize a unit token for allowlist comparison.
+
+    Args:
+        value: Raw unit text (already control-stripped + NFKC-normalized).
+
+    Returns:
+        Lowercased, whitespace-collapsed key (μg/㎍ → ug) for membership tests.
+    """
+    key = " ".join(value.split()).casefold()
+    # Collapse micro-gram variants to a single canonical key.
+    return key.replace("μg", "ug").replace("㎍", "ug")
+
+
 @dataclass(frozen=True)
 class SanitizerResult:
     """Result of sanitizing a single free-text field.
@@ -139,12 +204,27 @@ def sanitize_ingredient_name(value: str | None) -> SanitizerResult:
 
 
 def sanitize_unit(value: str | None) -> SanitizerResult:
-    """Sanitize ``ingredient_candidates[].unit``.
+    """Sanitize ``ingredient_candidates[].unit`` against a unit allowlist.
 
-    Units are short tokens (mg, IU, %DV) that should never carry URLs, HTML,
-    SQL keywords, or prompt-injection markers.
+    The unit is a short structured token, so on top of the shared blocklist
+    (injection/HTML/SQL/URL) it is checked against :data:`_ALLOWED_UNIT_KEYS`.
+    Anything outside the known supplement-label units is dropped with
+    ``sanitizer.blocked:unit`` rather than persisted, so a crafted label cannot
+    smuggle arbitrary free text through the unit field. ``None``/blank passes
+    through as an empty result (the unit is simply absent).
+
+    Args:
+        value: Raw unit string, may be ``None``.
+
+    Returns:
+        Sanitized result; blocked when the normalized unit is not allowlisted.
     """
-    return _sanitize_blockable_field(value, "unit")
+    blockable = _sanitize_blockable_field(value, "unit")
+    if blockable.value == "":
+        return blockable
+    if _normalize_unit_key(blockable.value) not in _ALLOWED_UNIT_KEYS:
+        return SanitizerResult("", ("sanitizer.blocked:unit",))
+    return blockable
 
 
 def sanitize_preview_text(value: str | None, field: str) -> SanitizerResult:
