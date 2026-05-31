@@ -1,6 +1,7 @@
-# exp07: YOLO26s + taxonomy v2 balanced (exp06와 동일 데이터/설정, 모델만 교체)
+﻿# exp07: YOLO26s + taxonomy v2 balanced (exp06와 동일 데이터/설정, 모델만 교체)
 # 변경 변수 = 모델(yolo11s -> yolo26s) 하나. 비교 baseline = exp06.
 # 주의: MuSGD 옵티마이저 자동선택 버그 가능 -> 학습 시작 로그에서 실제 optimizer/lr 확인.
+# 주의: 백틱 줄-연속은 CRLF에서 PowerShell 파싱이 깨지므로 인자 배열 splatting 사용.
 
 param(
     [int]$Batch = 32,
@@ -72,18 +73,21 @@ Write-Host "(yolo26s ~9.5M, b48은 8GB OOM 위험 -> 기본 32. exp06과 동일 
 Write-Host "[주의] 학습 시작 로그에서 실제 optimizer(MuSGD/AdamW)/lr 확인할 것" -ForegroundColor Yellow
 Write-Host ""
 
-& $yolo detect train `
-    model=yolo26s.pt `
-    data="$dataYaml" `
-    epochs=$Epochs `
-    imgsz=640 `
-    batch=$Batch `
-    workers=8 `
-    cache=disk `
-    device=0 `
-    seed=42 `
-    deterministic=true `
-    patience=15 `
-    plots=false `
-    project="$project" `
-    name=$fullName
+$trainArgs = @(
+    "detect", "train",
+    "model=yolo26s.pt",
+    "data=$dataYaml",
+    "epochs=$Epochs",
+    "imgsz=640",
+    "batch=$Batch",
+    "workers=8",
+    "cache=disk",
+    "device=0",
+    "seed=42",
+    "deterministic=true",
+    "patience=15",
+    "plots=false",
+    "project=$project",
+    "name=$fullName"
+)
+& $yolo @trainArgs
