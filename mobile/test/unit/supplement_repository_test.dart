@@ -586,7 +586,12 @@ final Map<String, Object?> _sessionResponse = <String, Object?>{
   'status': 'created',
   'image_count': 0,
   'max_images': 6,
-  'missing_required_sections': <String>['supplement_facts', 'intake_method'],
+  'missing_required_sections': <String>[
+    'product_name',
+    'supplement_facts',
+    'intake_method',
+    'precautions',
+  ],
   'action_required': 'additional_label_image_required',
 };
 

@@ -42,10 +42,10 @@ To see the same UIUX in Xcode, open and run the Flutter iOS workspace:
 mobile/ios/Runner.xcworkspace
 ```
 
-Do not use `mobile/Lemon-Aid-ios/Lemon-Aid.xcodeproj` for UIUX parity checks.
-That project is a small native SwiftUI smoke shell for endpoint diagnostics and
-does not render the Flutter dashboard, bottom action palette, camera flow, or
-review screens.
+The old native SwiftUI smoke shell under `mobile/Lemon-Aid-ios` has been
+removed because it rendered a different app and confused Xcode simulator
+testing. The only supported iOS target for UIUX parity is the Flutter Runner
+workspace above.
 
 Before opening Xcode, prepare the ignored Flutter iOS build settings:
 
@@ -61,15 +61,61 @@ Flutter values, so pass them through `flutter build`/`flutter run`
 `--dart-define` values or the helper script. Xcode scheme runtime environment
 variables alone do not update `String.fromEnvironment` values in Dart.
 
-If Xcode shows files such as `ContentView.swift`, `AppState.swift`, or the
-scheme `Lemon-Aid`, the native smoke shell is open instead of the Flutter app.
-Close that window and open `mobile/ios/Runner.xcworkspace`.
+Flutter screens are Dart-rendered, so Xcode's SwiftUI Canvas Preview is not the
+authoritative preview surface for this app. Use Xcode `Product > Run` or
+`flutter run` with the `Runner` scheme and verify the UI in Simulator.
+
+If Xcode shows a scheme other than `Runner`, close that window and open
+`mobile/ios/Runner.xcworkspace`.
+
+### iOS Simulator With Mac Camera
+
+The iOS Simulator does not behave like a physical iPhone camera device. Apple
+documents that Simulator is not a replacement for every hardware feature, and
+camera-specific verification should still be confirmed on real hardware before
+release. For local OCR smoke, this project provides a debug-only localhost
+bridge that lets the Flutter iOS Simulator shutter button capture one JPEG from
+the host Mac camera. The bridge also streams debug preview frames so the
+simulator camera screen can show the label alignment before capture.
+
+List the Mac camera devices:
+
+```sh
+./scripts/dev_mac_camera_bridge.py --list-devices
+```
+
+Start the bridge with the MacBook camera, usually device `0`:
+
+```sh
+./scripts/dev_mac_camera_bridge.py \
+  --listen-host 127.0.0.1 \
+  --listen-port 8755 \
+  --device 0
+```
+
+Then build or run the Flutter Runner with the bridge URL:
+
+```sh
+LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1 \
+LEMON_MAC_CAMERA_BRIDGE_URL=http://127.0.0.1:8755 \
+  ./scripts/prepare-ios-flutter-uiux-xcode.sh
+```
+
+With that dart define present, the iOS Simulator camera screen polls
+`/frame.jpg` from the localhost bridge and renders the latest Mac camera frame
+behind the existing guide overlay. Pressing the shutter stores the visible frame
+or falls back to `/capture`, then continues into the same preview and OCR
+analysis flow as a normal captured image. The bridge is disabled in release
+builds and must not be used as a substitute for final physical iPhone camera
+testing.
 
 Official references:
 
 - Flutter iOS setup: <https://docs.flutter.dev/platform-integration/ios/setup>
 - Flutter iOS build and release: <https://docs.flutter.dev/deployment/ios>
+- Flutter camera plugin: <https://pub.dev/packages/camera>
 - Apple simulator run workflow: <https://developer.apple.com/documentation/xcode/running-your-app-in-simulator-or-on-a-device>
+- Apple Simulator versus hardware: <https://developer.apple.com/documentation/xcode/testing-in-simulator-versus-testing-on-hardware-devices>
 
 ## Device Smoke
 

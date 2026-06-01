@@ -138,6 +138,7 @@ class _FakeOCRAdapter(OCRAdapter):
         self.confidence = confidence
         self.pages = pages
         self.received_image: OCRImageInput | None = None
+        self.received_images: list[OCRImageInput] = []
         self.call_count = 0
 
     async def extract_text(self, image: OCRImageInput) -> OCRResult:
@@ -151,6 +152,7 @@ class _FakeOCRAdapter(OCRAdapter):
         """
         self.call_count += 1
         self.received_image = image
+        self.received_images.append(image)
         return OCRResult(
             text=self.text,
             provider="fake-ocr",
@@ -304,6 +306,20 @@ def _parse_result() -> SupplementStructuredParseResult:
                     "confidence": 0.91,
                 }
             ],
+            "intake_method": {
+                "text": "하루 1회 1캡슐",
+                "confidence": 0.86,
+                "evidence_refs": ["intake-1"],
+            },
+            "precautions": [
+                {
+                    "text": "임신 중이면 전문가와 상담하세요.",
+                    "category": "pregnancy",
+                    "severity": "warning",
+                    "confidence": 0.84,
+                    "evidence_refs": ["precaution-1"],
+                }
+            ],
             "low_confidence_fields": [],
             "warnings": [],
         }
@@ -413,8 +429,10 @@ async def test_analyze_supplement_image_defaults_to_intake_only() -> None:
     assert preview.pipeline_metadata.llm_parser_used is False
     assert preview.pipeline_metadata.parser_contract_version is None
     assert preview.pipeline_metadata.missing_required_sections == [
+        "product_name",
         "supplement_facts",
         "intake_method",
+        "precautions",
     ]
     assert fake_session.committed is False
 
@@ -450,7 +468,7 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert preview.pipeline_metadata.ocr_confidence_bucket == "medium"
     assert preview.pipeline_metadata.llm_parser_used is True
     assert preview.pipeline_metadata.parser_contract_version == result.record.algorithm_version
-    assert preview.pipeline_metadata.missing_required_sections == ["intake_method"]
+    assert preview.pipeline_metadata.missing_required_sections == []
     assert fake_session.committed is True
 
 
@@ -478,8 +496,16 @@ async def test_analyze_supplement_image_keeps_front_label_ocr_but_requests_facts
     preview = supplement_analysis_run_to_preview(result.record)
     assert preview.parsed_product.product_name == "레몬 비타민 D"
     assert preview.ingredient_candidates == []
-    assert preview.missing_required_sections == ["supplement_facts"]
-    assert preview.pipeline_metadata.missing_required_sections == ["supplement_facts"]
+    assert preview.missing_required_sections == [
+        "supplement_facts",
+        "intake_method",
+        "precautions",
+    ]
+    assert preview.pipeline_metadata.missing_required_sections == [
+        "supplement_facts",
+        "intake_method",
+        "precautions",
+    ]
     assert preview.action_required == "additional_label_image_required"
     assert preview.analysis_scope == "identity_only"
     assert preview.image_role == "front_label"
@@ -605,10 +631,14 @@ async def test_analyze_supplement_image_crops_primary_ocr_input_when_policy_enab
 
     assert result.vision_region == region
     assert fake_ocr.received_image is not None
-    assert fake_ocr.received_image.label_region is None
-    assert fake_ocr.received_image.mime_type == "image/png"
-    assert fake_ocr.received_image.width == 2
-    assert fake_ocr.received_image.height == 2
+    assert len(fake_ocr.received_images) == 2
+    assert fake_ocr.received_images[0].label_region is None
+    assert fake_ocr.received_images[0].mime_type == "image/png"
+    assert fake_ocr.received_images[0].width == 2
+    assert fake_ocr.received_images[0].height == 2
+    assert fake_ocr.received_images[1].label_region is None
+    assert fake_ocr.received_images[1].width == 3
+    assert fake_ocr.received_images[1].height == 2
     assert fake_parser.received_text == "비타민 D 1000"
 
 

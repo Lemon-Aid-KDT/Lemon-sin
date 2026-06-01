@@ -13,7 +13,6 @@ from __future__ import annotations
 from io import BytesIO
 
 from PIL import Image
-
 from src.ocr.preprocessing import preprocess_local_ocr_image
 
 

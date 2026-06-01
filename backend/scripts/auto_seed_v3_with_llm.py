@@ -27,10 +27,13 @@ import argparse
 import asyncio
 import json
 import sys
+from collections import Counter
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import httpx
+from PIL import Image
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PACKAGE_ROOT = SCRIPT_DIR.parent / "Nutrition-backend"
@@ -39,6 +42,7 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from src.config import get_settings  # noqa: E402
 from src.llm.ollama import _build_chat_payload  # noqa: E402
+from src.ocr.base import OCRImageInput  # noqa: E402
 from src.ocr.providers.paddle import PaddleOCRAdapter  # noqa: E402
 
 AUTO_SEEDED_WARNING = "auto_seeded_by_qwen3_5_9b"
@@ -67,12 +71,6 @@ async def _extract_text(image_path: Path, settings: Any) -> str:
     Returns:
         Recognized text. Empty string when extraction fails.
     """
-    from io import BytesIO
-
-    from PIL import Image
-
-    from src.ocr.base import OCRImageInput
-
     adapter = PaddleOCRAdapter(settings)
     image_bytes = image_path.read_bytes()
     with Image.open(BytesIO(image_bytes)) as im:
@@ -210,7 +208,7 @@ async def _process_fixture(
     image_path = work_dir / image_rel
     try:
         text = await _extract_text(image_path, settings)
-    except Exception as exc:  # noqa: BLE001 — best-effort batch processing
+    except Exception as exc:
         return fixture_id, f"ocr_error:{type(exc).__name__}", 0
     if not text:
         return fixture_id, "ocr_empty", 0
@@ -246,8 +244,6 @@ async def main_async() -> None:
         results.append(result)
 
     print("---")
-    from collections import Counter
-
     status_counts = Counter(r[1] for r in results)
     print(f"Status: {dict(status_counts)}")
     print(f"OK: {status_counts.get('ok', 0)}/{len(results)}")

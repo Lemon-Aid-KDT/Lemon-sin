@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.models.schemas.taxonomy import FoodCatalogItemReference
+
 
 class MealType(StrEnum):
     """Supported user meal buckets.
@@ -84,6 +86,7 @@ class MealFoodItemInput(BaseModel):
         protein_g: User-confirmed or accepted estimated protein grams.
         fat_g: User-confirmed or accepted estimated fat grams.
         sodium_mg: User-confirmed or accepted estimated sodium milligrams.
+        food_catalog_item_id: Optional curated food taxonomy item identifier.
         confidence: Optional detector confidence retained for traceability.
         source: Source of the confirmed row.
     """
@@ -98,6 +101,7 @@ class MealFoodItemInput(BaseModel):
     protein_g: float | None = Field(default=None, ge=0)
     fat_g: float | None = Field(default=None, ge=0)
     sodium_mg: float | None = Field(default=None, ge=0)
+    food_catalog_item_id: UUID | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     source: Literal["vision", "manual", "database_match"] = "manual"
 
@@ -135,6 +139,8 @@ class MealFoodItemResponse(BaseModel):
         protein_g: Confirmed protein grams.
         fat_g: Confirmed fat grams.
         sodium_mg: Confirmed sodium milligrams.
+        food_catalog_item_id: Curated food taxonomy item id when confirmed.
+        catalog_item: Safe catalog taxonomy summary when available.
         confidence: Optional detector confidence retained for review traceability.
         source: Source of the confirmed row.
     """
@@ -150,6 +156,8 @@ class MealFoodItemResponse(BaseModel):
     protein_g: float | None
     fat_g: float | None
     sodium_mg: float | None
+    food_catalog_item_id: UUID | None
+    catalog_item: FoodCatalogItemReference | None = None
     confidence: float | None
     source: Literal["vision", "manual", "database_match"]
 
@@ -178,6 +186,20 @@ class MealRecordResponse(BaseModel):
     nutrition_summary: dict[str, object] = Field(default_factory=dict)
     confirmed_at: datetime
     created_at: datetime
+
+
+class MealRecordListResponse(BaseModel):
+    """Paginated current-user meal list response.
+
+    Attributes:
+        results: Confirmed meal records visible to the current owner.
+        limit: Maximum requested row count.
+        offset: Requested row offset.
+    """
+
+    results: list[MealRecordResponse]
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
 
 
 class FoodImagePipelineMetadata(BaseModel):

@@ -8,8 +8,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 OCRConfidenceBucket = Literal["none", "unknown", "low", "medium", "high"]
+PipelineStageStatus = Literal["success", "warning", "failed", "skipped"]
 OCR_CONFIDENCE_MEDIUM_THRESHOLD = Decimal("0.80")
 OCR_CONFIDENCE_HIGH_THRESHOLD = Decimal("0.90")
+REQUIRED_SUPPLEMENT_SECTIONS = (
+    "product_name",
+    "supplement_facts",
+    "intake_method",
+    "precautions",
+)
 
 
 class SupplementImagePipelineMetadata(BaseModel):
@@ -20,6 +27,9 @@ class SupplementImagePipelineMetadata(BaseModel):
         image_count: Number of images represented by the preview.
         image_role: Inferred role of this image in the analysis flow.
         vision_roi_used: Whether a vision-detected ROI was used before OCR.
+        ocr_status: OCR stage status for LED-only client display.
+        vision_status: Vision ROI stage status for LED-only client display.
+        llm_status: Structured parser stage status for LED-only client display.
         ocr_provider: OCR provider that produced text, if any.
         ocr_text_present: Whether OCR produced non-empty text without exposing it.
         ocr_confidence_bucket: Coarse OCR confidence band for diagnostics.
@@ -38,6 +48,9 @@ class SupplementImagePipelineMetadata(BaseModel):
     image_count: int = Field(default=1, ge=1, le=20)
     image_role: str = Field(default="unknown", min_length=1, max_length=80)
     vision_roi_used: bool = False
+    ocr_status: PipelineStageStatus = "skipped"
+    vision_status: PipelineStageStatus = "skipped"
+    llm_status: PipelineStageStatus = "skipped"
     ocr_provider: str | None = Field(default=None, max_length=64)
     ocr_text_present: bool = False
     ocr_confidence_bucket: OCRConfidenceBucket = "none"
@@ -137,14 +150,11 @@ def infer_missing_required_sections(
         Missing-section codes for developer and review UI diagnostics.
     """
     raw_sections = parsed_snapshot.get("missing_required_sections")
+    explicit_missing: list[str] = []
     if isinstance(raw_sections, list):
-        normalized = [
-            item.strip() for item in raw_sections if isinstance(item, str) and item.strip()
-        ]
-        if normalized:
-            return normalized[:10]
+        explicit_missing = _normalize_missing_sections(raw_sections)
 
-    missing: list[str] = []
+    missing: list[str] = list(explicit_missing)
     label_sections = parsed_snapshot.get("label_sections")
     section_types = (
         {
@@ -156,11 +166,20 @@ def infer_missing_required_sections(
         else set()
     )
 
+    parsed_product = parsed_snapshot.get("parsed_product")
+    has_product_name = (
+        isinstance(parsed_product, dict)
+        and isinstance(parsed_product.get("product_name"), str)
+        and bool(parsed_product["product_name"].strip())
+    )
+    if not has_product_name:
+        _append_missing_section(missing, "product_name")
+
     ingredient_candidates = parsed_snapshot.get("ingredient_candidates")
     has_ingredients = isinstance(ingredient_candidates, list) and bool(ingredient_candidates)
     has_facts_section = bool({"supplement_facts", "ingredients", "nutrition_info"} & section_types)
     if not ocr_text_present or not (has_ingredients or has_facts_section):
-        missing.append("supplement_facts")
+        _append_missing_section(missing, "supplement_facts")
 
     intake = parsed_snapshot.get("intake_method")
     has_intake_method = (
@@ -169,5 +188,35 @@ def infer_missing_required_sections(
         and bool(intake["text"].strip())
     ) or "intake_method" in section_types
     if not has_intake_method:
-        missing.append("intake_method")
-    return missing
+        _append_missing_section(missing, "intake_method")
+
+    precautions = parsed_snapshot.get("precautions")
+    has_precautions = (
+        isinstance(precautions, list) and bool(precautions)
+    ) or "precautions" in section_types
+    if not has_precautions:
+        _append_missing_section(missing, "precautions")
+    return missing[:10]
+
+
+def _normalize_missing_sections(values: list[object]) -> list[str]:
+    """Return required-section markers in stable contract order.
+
+    Args:
+        values: Candidate missing-section strings from parser metadata.
+
+    Returns:
+        Bounded list containing only supported required-section markers.
+    """
+    seen = {
+        item.strip()
+        for item in values
+        if isinstance(item, str) and item.strip() in REQUIRED_SUPPLEMENT_SECTIONS
+    }
+    return [section for section in REQUIRED_SUPPLEMENT_SECTIONS if section in seen]
+
+
+def _append_missing_section(sections: list[str], section: str) -> None:
+    """Append a missing-section marker if it is not already present."""
+    if section not in sections:
+        sections.append(section)

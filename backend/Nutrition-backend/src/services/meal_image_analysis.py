@@ -13,11 +13,18 @@ from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
+from src.models.db.meal import (
+    FoodCatalogItem,
+    FoodCourse,
+    FoodCuisine,
+    FoodImageAnalysisRun,
+    MealFoodItem,
+    MealRecord,
+)
 from src.models.schemas.meal import (
     FoodImagePipelineMetadata,
     MealAnalysisStatus,
@@ -26,12 +33,18 @@ from src.models.schemas.meal import (
     MealFoodItemInput,
     MealFoodItemResponse,
     MealImageAnalysisPreview,
+    MealRecordListResponse,
     MealRecordResponse,
     MealType,
 )
+from src.models.schemas.taxonomy import FoodCatalogItemReference
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.supplement_intake import derive_idempotency_key, detect_image_mime
+from src.services.taxonomy_catalog import (
+    load_food_catalog_item_references,
+    validate_food_catalog_filters,
+)
 from src.utils.image_safety import (
     ImageSafetyError,
     safe_load_with_bomb_guard,
@@ -110,6 +123,7 @@ class MealConfirmationStoreResult:
     meal_record: MealRecord
     food_items: list[MealFoodItem]
     analysis_run: FoodImageAnalysisRun | None
+    catalog_item_refs: dict[UUID, FoodCatalogItemReference] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -455,6 +469,7 @@ async def confirm_meal_record_from_preview(
                 "Food image analysis preview cannot be confirmed in its current state."
             )
 
+    catalog_item_refs = await _validate_food_catalog_item_inputs(session, request.food_items)
     now = datetime.now(UTC)
     food_items = [
         _meal_food_item_from_input(meal_record.id, item, sort_order=index)
@@ -480,6 +495,83 @@ async def confirm_meal_record_from_preview(
         meal_record=meal_record,
         food_items=food_items,
         analysis_run=analysis_run,
+        catalog_item_refs=catalog_item_refs,
+    )
+
+
+async def list_user_meal_records(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    limit: int,
+    offset: int,
+    cuisine_code: str | None = None,
+    course_code: str | None = None,
+    food_catalog_item_id: UUID | None = None,
+    from_eaten_at: datetime | None = None,
+    to_eaten_at: datetime | None = None,
+) -> MealRecordListResponse:
+    """List confirmed meal records visible to the current owner.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        limit: Maximum row count.
+        offset: Row offset.
+        cuisine_code: Optional cuisine taxonomy filter.
+        course_code: Optional course taxonomy filter.
+        food_catalog_item_id: Optional exact food catalog item filter.
+        from_eaten_at: Optional inclusive lower meal timestamp.
+        to_eaten_at: Optional inclusive upper meal timestamp.
+
+    Returns:
+        Paginated current-user meal records.
+
+    Raises:
+        TaxonomyFilterNotFoundError: If a supplied taxonomy filter has no active match.
+        ValueError: If the timestamp range is invalid.
+    """
+    normalized_from = _normalize_optional_datetime(from_eaten_at)
+    normalized_to = _normalize_optional_datetime(to_eaten_at)
+    if normalized_from is not None and normalized_to is not None and normalized_from > normalized_to:
+        raise ValueError("from_eaten_at must be before or equal to to_eaten_at.")
+
+    await validate_food_catalog_filters(
+        session,
+        cuisine_code=cuisine_code,
+        course_code=course_code,
+        food_catalog_item_id=food_catalog_item_id,
+    )
+    meal_records = await _list_owned_confirmed_meals(
+        session=session,
+        user=user,
+        limit=limit,
+        offset=offset,
+        cuisine_code=cuisine_code,
+        course_code=course_code,
+        food_catalog_item_id=food_catalog_item_id,
+        from_eaten_at=normalized_from,
+        to_eaten_at=normalized_to,
+    )
+    food_items_by_meal = await _load_food_items_for_meals(
+        session,
+        [meal_record.id for meal_record in meal_records],
+    )
+    catalog_refs = await _load_catalog_refs_for_food_items(
+        session,
+        [item for items in food_items_by_meal.values() for item in items],
+    )
+    return MealRecordListResponse(
+        results=[
+            meal_record_to_response(
+                meal_record,
+                food_items_by_meal.get(meal_record.id, []),
+                catalog_item_refs=catalog_refs,
+            )
+            for meal_record in meal_records
+        ],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -494,7 +586,32 @@ def meal_confirmation_to_response(
     Returns:
         Current-user meal record response without owner identifiers.
     """
-    meal_record = result.meal_record
+    return meal_record_to_response(
+        result.meal_record,
+        result.food_items,
+        catalog_item_refs=result.catalog_item_refs,
+    )
+
+
+def meal_record_to_response(
+    meal_record: MealRecord,
+    food_items: list[MealFoodItem],
+    *,
+    catalog_item_refs: dict[UUID, FoodCatalogItemReference] | None = None,
+) -> MealRecordResponse:
+    """Convert confirmed meal rows into the public API response.
+
+    Args:
+        meal_record: Persisted confirmed meal row.
+        food_items: Persisted food item rows for the meal.
+        catalog_item_refs: Catalog references keyed by food catalog item id.
+
+    Returns:
+        Current-user meal record response without owner identifiers.
+
+    Raises:
+        MealConfirmationValidationError: If the meal record is not confirmed.
+    """
     if meal_record.confirmed_at is None:
         raise MealConfirmationValidationError("Meal record is not confirmed.")
     return MealRecordResponse(
@@ -502,7 +619,10 @@ def meal_confirmation_to_response(
         status=MealAnalysisStatus(meal_record.status),
         meal_type=MealType(meal_record.meal_type),
         eaten_at=meal_record.eaten_at,
-        food_items=[_meal_food_item_to_response(item) for item in result.food_items],
+        food_items=[
+            _meal_food_item_to_response(item, catalog_item_refs=catalog_item_refs or {})
+            for item in food_items
+        ],
         nutrition_summary=_dict_or_empty(meal_record.nutrition_summary),
         confirmed_at=meal_record.confirmed_at,
         created_at=meal_record.created_at,
@@ -801,6 +921,149 @@ def _normalize_eaten_at(value: datetime | None) -> datetime:
     return value.astimezone(UTC)
 
 
+def _normalize_optional_datetime(value: datetime | None) -> datetime | None:
+    """Normalize an optional timestamp into UTC.
+
+    Args:
+        value: User-selected timestamp or None.
+
+    Returns:
+        UTC-aware timestamp or None.
+    """
+    if value is None:
+        return None
+    return _normalize_eaten_at(value)
+
+
+async def _validate_food_catalog_item_inputs(
+    session: AsyncSession,
+    food_items: list[MealFoodItemInput],
+) -> dict[UUID, FoodCatalogItemReference]:
+    """Validate active food catalog item ids supplied by confirmation input.
+
+    Args:
+        session: Request-scoped async database session.
+        food_items: User-confirmed food rows.
+
+    Returns:
+        Active catalog references keyed by catalog item id.
+
+    Raises:
+        MealConfirmationValidationError: If any supplied catalog item is missing or inactive.
+    """
+    catalog_ids = [
+        item.food_catalog_item_id
+        for item in food_items
+        if item.food_catalog_item_id is not None
+    ]
+    if not catalog_ids:
+        return {}
+    refs = await load_food_catalog_item_references(session, catalog_ids)
+    missing = [catalog_id for catalog_id in catalog_ids if catalog_id not in refs]
+    if missing:
+        raise MealConfirmationValidationError("Food catalog item was not found.")
+    return refs
+
+
+async def _list_owned_confirmed_meals(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    limit: int,
+    offset: int,
+    cuisine_code: str | None,
+    course_code: str | None,
+    food_catalog_item_id: UUID | None,
+    from_eaten_at: datetime | None,
+    to_eaten_at: datetime | None,
+) -> list[MealRecord]:
+    """Load confirmed meal records for a current user with optional taxonomy filters."""
+    stmt = select(MealRecord).where(
+        MealRecord.owner_subject == build_owner_subject(user),
+        MealRecord.deleted_at.is_(None),
+        MealRecord.status == MealAnalysisStatus.CONFIRMED.value,
+    )
+    if from_eaten_at is not None:
+        stmt = stmt.where(MealRecord.eaten_at >= from_eaten_at)
+    if to_eaten_at is not None:
+        stmt = stmt.where(MealRecord.eaten_at <= to_eaten_at)
+
+    normalized_cuisine = _normalized_filter(cuisine_code)
+    normalized_course = _normalized_filter(course_code)
+    if (
+        normalized_cuisine is not None
+        or normalized_course is not None
+        or food_catalog_item_id is not None
+    ):
+        stmt = (
+            stmt.join(MealFoodItem, MealFoodItem.meal_id == MealRecord.id)
+            .join(FoodCatalogItem, MealFoodItem.food_catalog_item_id == FoodCatalogItem.id)
+            .join(FoodCuisine, FoodCatalogItem.cuisine_id == FoodCuisine.id)
+            .join(FoodCourse, FoodCatalogItem.course_id == FoodCourse.id)
+            .where(
+                FoodCatalogItem.is_active.is_(True),
+                FoodCuisine.is_active.is_(True),
+                FoodCourse.is_active.is_(True),
+            )
+            .distinct()
+        )
+        if normalized_cuisine is not None:
+            stmt = stmt.where(FoodCuisine.cuisine_code == normalized_cuisine)
+        if normalized_course is not None:
+            stmt = stmt.where(FoodCourse.course_code == normalized_course)
+        if food_catalog_item_id is not None:
+            stmt = stmt.where(FoodCatalogItem.id == food_catalog_item_id)
+
+    result = await session.scalars(
+        stmt.order_by(desc(MealRecord.eaten_at), desc(MealRecord.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.all())
+
+
+async def _load_food_items_for_meals(
+    session: AsyncSession,
+    meal_ids: list[UUID],
+) -> dict[UUID, list[MealFoodItem]]:
+    """Load food item rows grouped by meal id."""
+    ids = list(dict.fromkeys(meal_ids))
+    if not ids:
+        return {}
+    result = await session.scalars(
+        select(MealFoodItem)
+        .where(MealFoodItem.meal_id.in_(ids))
+        .order_by(MealFoodItem.meal_id.asc(), MealFoodItem.sort_order.asc())
+    )
+    grouped: dict[UUID, list[MealFoodItem]] = {}
+    for item in result.all():
+        grouped.setdefault(item.meal_id, []).append(item)
+    return grouped
+
+
+async def _load_catalog_refs_for_food_items(
+    session: AsyncSession,
+    food_items: list[MealFoodItem],
+) -> dict[UUID, FoodCatalogItemReference]:
+    """Load catalog references for confirmed food item rows."""
+    return await load_food_catalog_item_references(
+        session,
+        [
+            item.food_catalog_item_id
+            for item in food_items
+            if item.food_catalog_item_id is not None
+        ],
+    )
+
+
+def _normalized_filter(value: str | None) -> str | None:
+    """Trim optional taxonomy filter text and normalize blanks to None."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 def _meal_food_item_from_input(
     meal_id: UUID,
     item: MealFoodItemInput,
@@ -821,6 +1084,7 @@ def _meal_food_item_from_input(
         id=uuid4(),
         meal_id=meal_id,
         food_name_text=item.display_name,
+        food_catalog_item_id=item.food_catalog_item_id,
         canonical_food_id=None,
         portion_amount=_decimal_or_none(item.portion_amount),
         portion_unit=item.portion_unit,
@@ -835,15 +1099,21 @@ def _meal_food_item_from_input(
     )
 
 
-def _meal_food_item_to_response(item: MealFoodItem) -> MealFoodItemResponse:
+def _meal_food_item_to_response(
+    item: MealFoodItem,
+    *,
+    catalog_item_refs: dict[UUID, FoodCatalogItemReference],
+) -> MealFoodItemResponse:
     """Convert one persisted food item row to API response data.
 
     Args:
         item: Persisted meal food item row.
+        catalog_item_refs: Catalog references keyed by food catalog item id.
 
     Returns:
         Public meal food item response.
     """
+    catalog_item_id = item.food_catalog_item_id
     return MealFoodItemResponse(
         id=item.id,
         display_name=item.food_name_text,
@@ -854,6 +1124,12 @@ def _meal_food_item_to_response(item: MealFoodItem) -> MealFoodItemResponse:
         protein_g=_float_or_none(item.protein_g),
         fat_g=_float_or_none(item.fat_g),
         sodium_mg=_float_or_none(item.sodium_mg),
+        food_catalog_item_id=catalog_item_id,
+        catalog_item=(
+            catalog_item_refs.get(catalog_item_id)
+            if catalog_item_id is not None
+            else None
+        ),
         confidence=_float_or_none(item.confidence),
         source=item.source,
     )

@@ -20,6 +20,7 @@ import asyncio
 import base64
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -201,8 +202,6 @@ async def main_async() -> None:
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     work_dir = args.manifest.parent
     print(f"model={args.model} timeout={args.timeout_sec}s")
-
-    from collections import Counter
 
     statuses: list[tuple[str, str]] = []
     for case in manifest.get("cases", []):

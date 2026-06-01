@@ -49,7 +49,29 @@ docs/docs-2026-05-31-backend-ocr-security
    - 검증:
      - `flutter test test/widget/analysis_result_screen_test.dart` 통과
      - `flutter analyze lib/screens/analysis_result_screen.dart test/widget/analysis_result_screen_test.dart` 통과
-     - `git diff --check` 통과
+   - `git diff --check` 통과
+
+5. Backend taxonomy/API filter
+   - 영양제 category catalog와 음식 cuisine/course/item catalog 모델/마이그레이션 추가
+   - `GET /api/v1/supplements/categories`
+   - `GET /api/v1/meals/cuisines`
+   - `GET /api/v1/meals/foods`
+   - `GET /api/v1/supplements` category/q filter
+   - `GET /api/v1/meals` cuisine/course/catalog item/date filter
+   - `meal:read` scope 추가, 기존 식단 분석/확정은 `meal:write` 유지
+   - stale taxonomy filter는 `422 taxonomy_filter_not_found` 반환
+   - 검증:
+     - `.venv/bin/python -m ruff check Nutrition-backend/src` 통과
+     - targeted pytest 42개 통과
+
+6. 모바일 background analysis / chat handoff
+   - 새 분석 시작 시 이전 preview/result를 즉시 비워 stale result 오인을 줄임
+   - 분석 완료 notice에서 `결과 보기` action으로 결과 화면 이동 가능
+   - local LLM/impact check가 실패해도 저장된 supplement 결과는 유지
+   - chat 탭으로 사용자 안전 설명 draft를 1회성 전달 가능
+   - 검증:
+     - targeted `flutter test` 통과
+     - targeted `flutter analyze` 통과
 
 남은 blocker:
 - Vercel Preview에 아래 필수 env가 없다.
@@ -60,6 +82,7 @@ docs/docs-2026-05-31-backend-ocr-security
 - 로컬 `.env.local`의 loopback/private URL은 Vercel Preview에 넣으면 안 된다.
 - 실제 물리 iPhone `박준영의 iPhone`은 아직 `flutter devices`에서 연결되지 않는다.
 - 실제 기기에서 OCR 근거 표/성분 체크박스/다중 영양제 탭 수동 QA는 아직 별도 실행하지 않았다.
+- 다중 사진을 여러 영양제로 자동 그룹핑하는 UX는 per-image preview/tab과 backend merged preview 계약이 섞일 수 있으므로, 실제 4장/3영양제 시나리오에서 추가 확인이 필요하다.
 
 다음 작업 우선순위:
 1. 사용자가 Vercel Preview env 값을 제공하거나, public HTTPS backend가 준비되면 값 노출 없이 `vercel env add <KEY> preview`로 등록한다.
@@ -68,6 +91,8 @@ docs/docs-2026-05-31-backend-ocr-security
 4. 명시 승인을 받은 뒤 Preview deploy를 진행한다.
 5. Preview URL이 나오면 `LEMON_WEB_SMOKE_URL=<preview-url> npm run smoke:remote`를 실행한다.
 6. iOS Simulator camera preview가 필요하면 Mac camera bridge 8755 프로세스를 먼저 실행한다.
+7. taxonomy 모바일 필터 UI 연결은 다음 단계로 분리한다.
+8. 여러 영양제 이미지를 한 번에 업로드하는 경우, backend batch 계약이 `한 영양제 보강 세션`인지 `여러 영양제 그룹`인지 먼저 확정한 뒤 UI grouping을 보완한다.
 
 규칙:
 - raw OCR text, provider payload, image 원문, Supabase key, env secret, ngrok token은 출력하거나 stage하지 않는다.

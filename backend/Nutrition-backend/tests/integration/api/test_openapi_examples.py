@@ -84,7 +84,7 @@ def test_openapi_contains_success_response_examples() -> None:
     ]["application/json"]["examples"]
 
     assert health_examples["healthy"]["value"] == {"status": "ok", "version": "0.1.0"}
-    assert activity_examples["activity_score"]["value"]["recommended_steps"] == 7524
+    assert activity_examples["activity_score"]["value"]["recommended_steps"] == 7500
     assert kdris_examples["kdris_lookup_sample"]["value"]["dataset_status"].startswith(
         "implementation_sample"
     )

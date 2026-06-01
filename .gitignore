@@ -348,6 +348,7 @@ node_modules/
 .npm
 .yarn
 package-lock.json
+!frontend/package-lock.json
 yarn.lock
 
 # === 통합 재구성 (2026-05-21) ===

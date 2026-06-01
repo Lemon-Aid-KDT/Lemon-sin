@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,6 +9,171 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/screens/camera_screen.dart';
 
 void main() {
+  test('emulator Mac camera bridge bypasses picker-camera fallback', () {
+    expect(
+      shouldUseCameraPickerFallback(
+        isEmulator: true,
+        platform: TargetPlatform.iOS,
+        enableEmulatorLiveCamera: false,
+        hasMacCameraBridge: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldUseCameraPickerFallback(
+        isEmulator: true,
+        platform: TargetPlatform.android,
+        enableEmulatorLiveCamera: false,
+        hasMacCameraBridge: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldUseCameraPickerFallback(
+        isEmulator: true,
+        platform: TargetPlatform.android,
+        enableEmulatorLiveCamera: false,
+        hasMacCameraBridge: false,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('iOS simulator Mac camera bridge opens OCR preview', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final File source = _writeTinyPng();
+      int previewRequests = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CameraScreen(
+            isEmulatorOverride: true,
+            macCameraBridgeUrl: 'http://127.0.0.1:8755',
+            macCameraPreviewFrameOverride: () async {
+              previewRequests += 1;
+              return base64Decode(_testFrameJpegBase64);
+            },
+            macCameraCaptureOverride: () async => source,
+            onAnalyzeSupplementImage:
+                (String imagePath, {required String ocrProvider}) async {},
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.textContaining('Mac 카메라 bridge'), findsNothing);
+      expect(find.byType(Image), findsOneWidget);
+      final Image previewImage = tester.widget<Image>(find.byType(Image));
+      expect(previewImage.gaplessPlayback, isTrue);
+      expect(previewImage.filterQuality, FilterQuality.low);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(previewRequests, greaterThan(1));
+
+      await tester.tap(find.bySemanticsLabel('사진 촬영'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('미리보기'), findsOneWidget);
+      expect(find.text('분석하기'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Mac camera bridge shutter works before first preview frame', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final File source = _writeTinyPng();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CameraScreen(
+            isEmulatorOverride: true,
+            macCameraBridgeUrl: 'http://127.0.0.1:8755',
+            macCameraPreviewFrameOverride: () async {
+              throw const SocketException('test bridge unavailable');
+            },
+            macCameraCaptureOverride: () async => source,
+            onAnalyzeSupplementImage:
+                (String imagePath, {required String ocrProvider}) async {},
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(find.textContaining('8755 포트'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('사진 촬영'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('미리보기'), findsOneWidget);
+      expect(find.text('분석하기'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Android emulator Mac camera bridge opens live OCR preview', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final File source = _writeTinyPng();
+      int previewRequests = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CameraScreen(
+            isEmulatorOverride: true,
+            macCameraPreviewFrameOverride: () async {
+              previewRequests += 1;
+              return base64Decode(_testFrameJpegBase64);
+            },
+            macCameraCaptureOverride: () async => source,
+            onAnalyzeSupplementImage:
+                (String imagePath, {required String ocrProvider}) async {},
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.textContaining('8755 포트'), findsNothing);
+      expect(find.byType(Image), findsOneWidget);
+      final Image previewImage = tester.widget<Image>(find.byType(Image));
+      expect(previewImage.gaplessPlayback, isTrue);
+      expect(previewImage.filterQuality, FilterQuality.low);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(previewRequests, greaterThan(1));
+
+      await tester.tap(find.bySemanticsLabel('사진 촬영'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('미리보기'), findsOneWidget);
+      expect(find.text('분석하기'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('gallery pick opens the OCR preview with safer picker options', (
     WidgetTester tester,
   ) async {
@@ -151,7 +317,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(find.text('2장'), findsOneWidget);
-    expect(find.text('성분표'), findsWidgets);
+    expect(find.text('추가 사진 1'), findsOneWidget);
+    expect(find.text('현재 사진'), findsOneWidget);
+    expect(find.text('자동 분석'), findsOneWidget);
     expect(find.text('2장 분석'), findsOneWidget);
   });
 
@@ -192,7 +360,7 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(find.text('성분표'), findsWidgets);
+    expect(find.text('자동 분석'), findsOneWidget);
     final Finder analyzeButton = find.byKey(
       const ValueKey('supplement-preview-analyze'),
     );
@@ -277,11 +445,15 @@ File _writeTinyPng() {
   final File file = File(
     '${Directory.systemTemp.path}/lemon_camera_test_${DateTime.now().microsecondsSinceEpoch}.png',
   );
-  const String base64Png =
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
-  file.writeAsBytesSync(base64Decode(base64Png));
+  file.writeAsBytesSync(base64Decode(_tinyPngBase64));
   return file;
 }
+
+const String _tinyPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+const String _testFrameJpegBase64 =
+    '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjExLjEwMAD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABLAAEBAAAAAAAAAAAAAAAAAAAACAEBAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAABEBAAAAAAAAAAAAAAAAAAAAAP/AABEIAAIAAgMBIgACEQADEQD/2gAMAwEAAhEDEQA/AJ/AB//Z';
 
 class _FakeImagePicker extends ImagePicker {
   _FakeImagePicker(this.path);

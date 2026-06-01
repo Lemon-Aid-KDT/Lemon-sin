@@ -263,7 +263,7 @@ def test_analyze_supplement_label_runs_paddleocr_default_path(
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert seen_consents == [ConsentType.OCR_IMAGE_PROCESSING]
     assert fake_ocr.call_count == 1
-    assert fake_parser.received_text == "비타민 D 1000\nVitamin D 25 ug"
+    assert fake_parser.received_text == "비타민 D 1000\nVitamin D 25 μg"
     assert fake_session.added_analysis is not None
     assert fake_session.added_analysis.ocr_provider == PADDLE_OCR_PROVIDER
     body = response.json()

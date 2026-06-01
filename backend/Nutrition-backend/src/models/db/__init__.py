@@ -9,7 +9,14 @@ from src.models.db.health import (
     HealthSyncBatch,
 )
 from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
-from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
+from src.models.db.meal import (
+    FoodCatalogItem,
+    FoodCourse,
+    FoodCuisine,
+    FoodImageAnalysisRun,
+    MealFoodItem,
+    MealRecord,
+)
 from src.models.db.media import MediaObject, MediaProcessingRun, SupplementImageEvidence
 from src.models.db.medical import (
     MedicalRecordCollection,
@@ -29,7 +36,9 @@ from src.models.db.retraining import (
 )
 from src.models.db.supplement import (
     SupplementAnalysisRun,
+    SupplementCategory,
     SupplementProduct,
+    SupplementProductCategory,
     SupplementProductIngredient,
     UserSupplement,
     UserSupplementIngredient,
@@ -45,6 +54,9 @@ __all__ = [
     "ConsentPolicy",
     "ConsentRecord",
     "DeletionRequest",
+    "FoodCatalogItem",
+    "FoodCourse",
+    "FoodCuisine",
     "FoodImageAnalysisRun",
     "HealthDailySummary",
     "HealthMetricSample",
@@ -69,8 +81,10 @@ __all__ = [
     "PrescriptionItem",
     "RegulatedDocument",
     "SupplementAnalysisRun",
+    "SupplementCategory",
     "SupplementImageEvidence",
     "SupplementProduct",
+    "SupplementProductCategory",
     "SupplementProductIngredient",
     "User",
     "UserSupplement",

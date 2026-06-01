@@ -7,6 +7,7 @@ runtime behavior remains intake-only unless adapters are explicitly provided.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from difflib import SequenceMatcher
@@ -60,6 +61,8 @@ from src.vision.preprocessing import (
     select_best_label_region,
 )
 
+logger = logging.getLogger(__name__)
+
 AUTOMATIC_OCR_UNAVAILABLE_WARNING = (
     "Automatic text extraction is unavailable. Continue by entering label details manually."
 )
@@ -86,6 +89,7 @@ OCR_ROI_CROP_UNAVAILABLE_CODE = "ocr_roi_crop_unavailable"
 OCR_VERIFICATION_MISMATCH_CODE = "ocr_verification_mismatch"
 SUPPLEMENT_FACTS_REQUIRED_CODE = "supplement_facts_required"
 SUPPLEMENT_FACTS_SECTION_TYPES = frozenset({"supplement_facts", "ingredients", "nutrition_info"})
+MAX_PRIMARY_OCR_ROI_CANDIDATES = 3
 PARSER_RECOVERABLE_ERRORS = (
     SupplementParserInputError,
     OllamaClientError,
@@ -229,7 +233,8 @@ async def analyze_supplement_image(
     ocr_extraction = await _extract_ocr_if_configured(
         image_bytes=image_bytes,
         image_metadata=image_metadata,
-        label_region=vision_region,
+        label_regions=vision_regions,
+        selected_region=vision_region,
         ocr_adapter=active_adapters.ocr,
         settings=settings,
     )
@@ -310,7 +315,10 @@ async def analyze_supplement_image(
         vision_region=vision_region,
         vision_regions=vision_regions,
         ocr_result=ocr_result,
+        ocr_attempted=ocr_attempted,
+        warning_codes=warning_codes,
         parser_used=parsed_record is not None,
+        settings=settings,
     )
     if _should_store_pipeline_metadata(result_record, pipeline_metadata, vision_regions):
         result_record = await _store_pipeline_metadata(
@@ -345,7 +353,10 @@ def _build_pipeline_metadata(
     vision_region: BoundingBox | None,
     vision_regions: tuple[BoundingBox, ...],
     ocr_result: OCRResult | None,
+    ocr_attempted: bool,
+    warning_codes: tuple[str, ...],
     parser_used: bool,
+    settings: Settings,
 ) -> SupplementImagePipelineMetadata:
     """Build sanitized OCR/YOLO/parser metadata for preview response diagnostics.
 
@@ -354,7 +365,10 @@ def _build_pipeline_metadata(
         vision_region: Optional YOLO-detected ROI used as OCR input metadata.
         vision_regions: Candidate ROI list returned by the vision layer.
         ocr_result: OCR-like result selected for parsing, when available.
+        ocr_attempted: Whether a primary OCR adapter was configured and attempted.
+        warning_codes: Safe warning codes accumulated during OCR/parser stages.
         parser_used: Whether structured text parsing ran.
+        settings: Runtime settings that determine skipped versus warning states.
 
     Returns:
         Non-sensitive pipeline metadata without raw image, OCR, or provider payloads.
@@ -368,6 +382,20 @@ def _build_pipeline_metadata(
         image_count=1,
         image_role=safe_snapshot_string(parsed_snapshot.get("image_role"), default="unknown"),
         vision_roi_used=vision_region is not None,
+        ocr_status=_ocr_stage_status(
+            ocr_text_present=ocr_text_present,
+            ocr_attempted=ocr_attempted,
+            warning_codes=warning_codes,
+        ),
+        vision_status=_vision_stage_status(
+            settings=settings,
+            vision_regions=vision_regions,
+        ),
+        llm_status=_llm_stage_status(
+            parser_used=parser_used,
+            ocr_text_present=ocr_text_present,
+            warning_codes=warning_codes,
+        ),
         ocr_provider=ocr_result.provider if ocr_result is not None else record.ocr_provider,
         ocr_text_present=ocr_text_present,
         ocr_confidence_bucket=bucket_ocr_confidence(
@@ -385,6 +413,73 @@ def _build_pipeline_metadata(
         raw_image_stored=False,
         raw_ocr_text_stored=False,
     )
+
+
+def _ocr_stage_status(
+    *,
+    ocr_text_present: bool,
+    ocr_attempted: bool,
+    warning_codes: tuple[str, ...],
+) -> str:
+    """Return the public OCR stage status without exposing OCR text.
+
+    Args:
+        ocr_text_present: Whether the selected OCR result contains text.
+        ocr_attempted: Whether primary OCR was configured for this run.
+        warning_codes: Safe warning codes accumulated during the run.
+
+    Returns:
+        One of ``success``, ``warning``, ``failed``, or ``skipped``.
+    """
+    if ocr_text_present:
+        return "success"
+    if not ocr_attempted:
+        return "skipped"
+    if AUTOMATIC_OCR_UNAVAILABLE_CODE in warning_codes:
+        return "failed"
+    return "warning"
+
+
+def _vision_stage_status(
+    *,
+    settings: Settings,
+    vision_regions: tuple[BoundingBox, ...],
+) -> str:
+    """Return the public vision ROI stage status.
+
+    Args:
+        settings: Runtime feature flags.
+        vision_regions: Candidate regions returned by the vision adapter.
+
+    Returns:
+        One of ``success``, ``warning``, ``failed``, or ``skipped``.
+    """
+    if vision_regions:
+        return "success"
+    return "warning" if settings.enable_vision_classifier else "skipped"
+
+
+def _llm_stage_status(
+    *,
+    parser_used: bool,
+    ocr_text_present: bool,
+    warning_codes: tuple[str, ...],
+) -> str:
+    """Return the public local-parser stage status.
+
+    Args:
+        parser_used: Whether structured parsing completed.
+        ocr_text_present: Whether OCR produced non-empty text for parsing.
+        warning_codes: Safe warning codes accumulated during the run.
+
+    Returns:
+        One of ``success``, ``warning``, ``failed``, or ``skipped``.
+    """
+    if parser_used:
+        return "success"
+    if OCR_PARSE_PREVIEW_UNAVAILABLE_CODE in warning_codes:
+        return "failed"
+    return "warning" if ocr_text_present else "skipped"
 
 
 def _build_supplement_facts_guidance(
@@ -414,9 +509,14 @@ def _build_supplement_facts_guidance(
 
     section_types = _snapshot_section_types(parsed_snapshot)
     has_facts_section = bool(SUPPLEMENT_FACTS_SECTION_TYPES & section_types)
-    missing_sections = _with_unique_sections(
+    guidance_snapshot = dict(parsed_snapshot)
+    guidance_snapshot["missing_required_sections"] = _with_unique_sections(
         parsed_snapshot.get("missing_required_sections"),
         "ingredients" if has_facts_section else "supplement_facts",
+    )
+    missing_sections = infer_missing_required_sections(
+        guidance_snapshot,
+        ocr_text_present=True,
     )
     reason_code = "partial_table" if has_facts_section else "cover_only"
     return _SupplementFactsGuidance(
@@ -552,6 +652,12 @@ def _should_store_pipeline_metadata(
     if isinstance(parsed_snapshot.get("pipeline_metadata"), dict):
         return True
     if metadata.vision_roi_used or vision_regions:
+        return True
+    if (
+        metadata.ocr_status != "skipped"
+        or metadata.vision_status != "skipped"
+        or metadata.llm_status != "skipped"
+    ):
         return True
     return metadata.ocr_provider is not None and metadata.ocr_provider != record.ocr_provider
 
@@ -751,7 +857,8 @@ async def _extract_ocr_if_configured(
     *,
     image_bytes: bytes | None,
     image_metadata: ValidatedSupplementImage,
-    label_region: BoundingBox | None,
+    label_regions: tuple[BoundingBox, ...],
+    selected_region: BoundingBox | None,
     ocr_adapter: OCRAdapter | None,
     settings: Settings,
 ) -> _OCRExtractionResult:
@@ -760,7 +867,8 @@ async def _extract_ocr_if_configured(
     Args:
         image_bytes: Validated image bytes, if loaded for adapter use.
         image_metadata: Validated image metadata.
-        label_region: Optional label-region ROI from the vision layer.
+        label_regions: Candidate label-region ROIs from the vision layer.
+        selected_region: Best ROI selected for preview metadata.
         ocr_adapter: Optional OCR adapter.
         settings: Runtime settings controlling ROI preprocessing.
 
@@ -769,15 +877,23 @@ async def _extract_ocr_if_configured(
     """
     if ocr_adapter is None or image_bytes is None:
         return _OCRExtractionResult(ocr_result=None)
-    ocr_input, warning_code, warning_message = _prepare_primary_ocr_image_input(
+
+    ocr_inputs, warning_code, warning_message = _prepare_primary_ocr_image_inputs(
         image_bytes=image_bytes,
         image_metadata=image_metadata,
-        label_region=label_region,
+        label_regions=label_regions,
+        selected_region=selected_region,
         settings=settings,
     )
-    try:
-        result = await ocr_adapter.extract_text(ocr_input)
-    except OCRError:
+    results: list[OCRResult] = []
+    for ocr_input in ocr_inputs:
+        try:
+            results.append(await ocr_adapter.extract_text(ocr_input))
+        except OCRError:
+            continue
+
+    result = _merge_ocr_results(results)
+    if result is None:
         return _OCRExtractionResult(
             ocr_result=None,
             warning_code=AUTOMATIC_OCR_UNAVAILABLE_CODE,
@@ -787,6 +903,124 @@ async def _extract_ocr_if_configured(
         ocr_result=result,
         warning_code=warning_code,
         warning_message=warning_message,
+    )
+
+
+def _prepare_primary_ocr_image_inputs(
+    *,
+    image_bytes: bytes,
+    image_metadata: ValidatedSupplementImage,
+    label_regions: tuple[BoundingBox, ...],
+    selected_region: BoundingBox | None,
+    settings: Settings,
+) -> tuple[list[OCRImageInput], str | None, str | None]:
+    """Build one or more OCR inputs for ROI-first extraction plus fallback.
+
+    Args:
+        image_bytes: Validated source image bytes.
+        image_metadata: Validated image metadata.
+        label_regions: Candidate label regions from vision detection.
+        selected_region: Best label region used first when present.
+        settings: Runtime settings controlling ROI preprocessing.
+
+    Returns:
+        OCR inputs plus optional warning code and message.
+    """
+    if settings.ocr_roi_preprocessing_policy != "crop_before_primary" or not label_regions:
+        ocr_input, warning_code, warning_message = _prepare_primary_ocr_image_input(
+            image_bytes=image_bytes,
+            image_metadata=image_metadata,
+            label_region=selected_region,
+            settings=settings,
+        )
+        return [ocr_input], warning_code, warning_message
+
+    inputs: list[OCRImageInput] = []
+    warning_code: str | None = None
+    warning_message: str | None = None
+    for region in _ordered_ocr_regions(label_regions, selected_region):
+        ocr_input, crop_warning_code, crop_warning_message = _prepare_primary_ocr_image_input(
+            image_bytes=image_bytes,
+            image_metadata=image_metadata,
+            label_region=region,
+            settings=settings,
+        )
+        if crop_warning_code is not None and warning_code is None:
+            warning_code = crop_warning_code
+            warning_message = crop_warning_message
+        if ocr_input.label_region is None and ocr_input.image_bytes == image_bytes:
+            continue
+        inputs.append(ocr_input)
+
+    inputs.append(
+        OCRImageInput(
+            image_bytes=image_bytes,
+            mime_type=image_metadata.mime_type,
+            width=image_metadata.width,
+            height=image_metadata.height,
+            label_region=None,
+        )
+    )
+    return inputs, warning_code, warning_message
+
+
+def _ordered_ocr_regions(
+    label_regions: tuple[BoundingBox, ...],
+    selected_region: BoundingBox | None,
+) -> list[BoundingBox]:
+    """Return a bounded ROI list with the selected region first.
+
+    Args:
+        label_regions: Candidate regions from the vision adapter.
+        selected_region: Best region selected by existing scorer.
+
+    Returns:
+        De-duplicated regions capped for OCR provider cost control.
+    """
+    ordered: list[BoundingBox] = []
+    for region in (selected_region, *label_regions):
+        if region is None or region in ordered:
+            continue
+        ordered.append(region)
+        if len(ordered) >= MAX_PRIMARY_OCR_ROI_CANDIDATES:
+            break
+    return ordered
+
+
+def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
+    """Merge multi-ROI OCR text in memory without preserving raw provider payloads.
+
+    Args:
+        results: OCR results returned by one provider for ROI and fallback inputs.
+
+    Returns:
+        A single OCR result for parser input, or ``None`` if every call failed.
+    """
+    if not results:
+        return None
+    usable = [result for result in results if result.text.strip()]
+    if not usable:
+        return results[-1]
+    if len(usable) == 1:
+        return usable[0]
+
+    text_parts: list[str] = []
+    seen_texts: set[str] = set()
+    confidences: list[float] = []
+    for result in usable:
+        normalized = "\n".join(line.strip() for line in result.text.splitlines() if line.strip())
+        if not normalized or normalized in seen_texts:
+            continue
+        text_parts.append(normalized)
+        seen_texts.add(normalized)
+        if result.confidence is not None:
+            confidences.append(result.confidence)
+    confidence = sum(confidences) / len(confidences) if confidences else None
+    return OCRResult(
+        text="\n\n".join(text_parts),
+        provider=usable[0].provider,
+        confidence=confidence,
+        pages=(),
     )
 
 

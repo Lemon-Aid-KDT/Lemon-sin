@@ -166,7 +166,7 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                     initialMode:
                         state.uri.queryParameters['mode'] ?? 'supplement',
                     initialImageRole:
-                        state.uri.queryParameters['role'] ?? 'front_label',
+                        state.uri.queryParameters['role'] ?? 'unknown',
                   );
                 },
               ),
@@ -177,7 +177,14 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
               GoRoute(
                 path: '/shell/chat',
                 builder: (BuildContext context, GoRouterState state) {
-                  return const source_chat.ChatScreen();
+                  return Consumer(
+                    builder:
+                        (BuildContext context, WidgetRef ref, Widget? child) {
+                          return source_chat.ChatScreen(
+                            controller: ref.watch(appControllerProvider),
+                          );
+                        },
+                  );
                 },
               ),
             ],
@@ -233,6 +240,7 @@ class _LemonAidShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppController controller = ref.watch(appControllerProvider);
     final bool isCamera = navigationShell.currentIndex == _cameraIndex;
+    final String? completedAnalysisRoute = controller.completedAnalysisRoute;
 
     return Stack(
       children: <Widget>[
@@ -266,7 +274,19 @@ class _LemonAidShell extends ConsumerWidget {
               bottom: false,
               child: _NoticePanel(
                 message: controller.notice!,
-                onDismissed: controller.clearMessages,
+                actionLabel: completedAnalysisRoute == null ? null : '결과 보기',
+                onAction: completedAnalysisRoute == null
+                    ? null
+                    : () {
+                        final String route = completedAnalysisRoute;
+                        controller.markAnalysisCompletionRead();
+                        controller.clearMessages();
+                        context.go(route);
+                      },
+                onDismissed: () {
+                  controller.markAnalysisCompletionRead();
+                  controller.clearMessages();
+                },
               ),
             ),
           ),
@@ -297,32 +317,23 @@ class _SupplementCameraBranch extends ConsumerWidget {
       onClose: () => context.go('/shell/home'),
       onAnalyzeSupplementImage:
           (String imagePath, {required String ocrProvider}) async {
-            await controller.analyzeImage(imagePath, ocrProvider: ocrProvider);
+            await controller.startSupplementImageAnalysis(imagePath);
             if (!context.mounted) return;
-            if (controller.analysisPreview != null &&
-                controller.apiError == null) {
-              context.go('/shell/home/analysis-result?mode=supplement');
-            }
+            context.go('/shell/home/analysis-result?mode=supplement');
           },
       onAnalyzeSupplementImages:
           (
             List<SupplementImageUpload> images, {
             required String ocrProvider,
           }) async {
-            await controller.analyzeImages(images, ocrProvider: ocrProvider);
+            await controller.startSupplementImageBatchAnalysis(images);
             if (!context.mounted) return;
-            if (controller.analysisPreview != null &&
-                controller.apiError == null) {
-              context.go('/shell/home/analysis-result?mode=supplement');
-            }
+            context.go('/shell/home/analysis-result?mode=supplement');
           },
       onAnalyzeMealImage: (String imagePath) async {
-        await controller.analyzeMealImage(imagePath);
+        await controller.startMealImageAnalysis(imagePath);
         if (!context.mounted) return;
-        if (controller.mealAnalysisPreview != null &&
-            controller.apiError == null) {
-          context.go('/shell/home/analysis-result?mode=meal');
-        }
+        context.go('/shell/home/analysis-result?mode=meal');
       },
     );
   }
@@ -498,10 +509,17 @@ class _NeutralBranch extends StatelessWidget {
 }
 
 class _NoticePanel extends StatelessWidget {
-  const _NoticePanel({required this.message, required this.onDismissed});
+  const _NoticePanel({
+    required this.message,
+    required this.onDismissed,
+    this.actionLabel,
+    this.onAction,
+  });
 
   final String message;
   final VoidCallback onDismissed;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -510,6 +528,15 @@ class _NoticePanel extends StatelessWidget {
       child: ListTile(
         leading: const Icon(Icons.check_circle_outline),
         title: Text(message),
+        subtitle: actionLabel == null
+            ? null
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: onAction,
+                  child: Text(actionLabel!),
+                ),
+              ),
         trailing: IconButton(
           tooltip: 'Dismiss',
           onPressed: onDismissed,

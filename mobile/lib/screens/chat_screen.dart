@@ -11,10 +11,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_controller.dart';
 import '../utils/design_tokens_v2.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  /// Creates the chat tab.
+  ///
+  /// Args:
+  ///   controller: Optional app controller that may provide a one-shot
+  ///     supplement explanation draft from the analysis result flow.
+  const ChatScreen({this.controller, super.key});
+
+  /// App controller used to consume analysis-to-chat explanation drafts.
+  final AppController? controller;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -25,6 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollCtl = ScrollController();
   final List<_Message> _messages = [];
   bool _thinking = false;
+  int? _appliedDraftId;
 
   static const List<String> _suggestions = [
     '비타민 D 얼마나 먹어야 해?',
@@ -54,6 +64,34 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _schedulePendingDraft();
+  }
+
+  @override
+  void didUpdateWidget(ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _schedulePendingDraft();
+  }
+
+  void _schedulePendingDraft() {
+    final ChatExplanationDraft? draft =
+        widget.controller?.pendingChatExplanationDraft;
+    if (draft == null || draft.id == _appliedDraftId) return;
+    _appliedDraftId = draft.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(_Message(text: draft.userPrompt, mine: true));
+        _messages.add(_Message(text: draft.assistantMessage, mine: false));
+      });
+      widget.controller?.markChatExplanationDraftDelivered(draft.id);
+      _scrollToBottom();
+    });
+  }
+
   String _mockReply(String q) {
     if (q.contains('비타민')) {
       return '보통 성인은 비타민 D 1000IU 정도가 권장돼요. 햇볕을 적게 본 날은 보충을 고려해볼 수 있어요.\n\n복용 중인 약이 있다면 의사·약사와 상의해주세요.';
@@ -78,6 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _schedulePendingDraft();
     return Scaffold(
       backgroundColor: AppColor.section,
       body: Column(

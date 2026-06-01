@@ -287,6 +287,7 @@ def test_explain_supplement_analysis_preview_returns_safe_fallback(
     assert body["llm_used"] is False
     assert body["safe_user_message"] == "등록 전 라벨 분석 결과를 확인하세요."
     assert "성분 후보 1개" in " ".join(body["explanation_bullets"])
+    assert "비타민 D 25 ug" in " ".join(body["explanation_bullets"])
     assert "raw_ocr_text" not in json.dumps(body, ensure_ascii=False)
     assert len(fake_session.added_audits) == 1
     audit_metadata = fake_session.added_audits[0].event_metadata

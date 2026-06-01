@@ -836,6 +836,9 @@ class SupplementImagePipelineMetadata {
     this.imageCount = 1,
     this.imageRole = 'unknown',
     required this.visionRoiUsed,
+    this.ocrStatus = 'skipped',
+    this.visionStatus = 'skipped',
+    this.llmStatus = 'skipped',
     required this.ocrProvider,
     this.ocrTextPresent = false,
     this.ocrConfidenceBucket = 'none',
@@ -855,6 +858,9 @@ class SupplementImagePipelineMetadata {
         imageCount: 1,
         imageRole: 'unknown',
         visionRoiUsed: false,
+        ocrStatus: 'skipped',
+        visionStatus: 'skipped',
+        llmStatus: 'skipped',
         ocrProvider: 'intake-only',
         ocrTextPresent: false,
         ocrConfidenceBucket: 'none',
@@ -878,6 +884,15 @@ class SupplementImagePipelineMetadata {
 
   /// Whether backend YOLO ROI metadata was used before OCR.
   final bool visionRoiUsed;
+
+  /// OCR stage status for LED-only client display.
+  final String ocrStatus;
+
+  /// Vision ROI stage status for LED-only client display.
+  final String visionStatus;
+
+  /// Local parser stage status for LED-only client display.
+  final String llmStatus;
 
   /// OCR-like provider label selected by the backend, if any.
   final String? ocrProvider;
@@ -919,6 +934,11 @@ class SupplementImagePipelineMetadata {
       imageCount: imageCount < 1 ? 1 : imageCount,
       imageRole: readOptionalString(json, 'image_role') ?? 'unknown',
       visionRoiUsed: json['vision_roi_used'] == true,
+      ocrStatus: _normalizeStageStatus(readOptionalString(json, 'ocr_status')),
+      visionStatus: _normalizeStageStatus(
+        readOptionalString(json, 'vision_status'),
+      ),
+      llmStatus: _normalizeStageStatus(readOptionalString(json, 'llm_status')),
       ocrProvider: readOptionalString(json, 'ocr_provider'),
       ocrTextPresent: json['ocr_text_present'] == true,
       ocrConfidenceBucket: _normalizeConfidenceBucket(
@@ -950,6 +970,18 @@ class SupplementImagePipelineMetadata {
       case 'none':
       default:
         return 'none';
+    }
+  }
+
+  static String _normalizeStageStatus(String? value) {
+    switch (value) {
+      case 'success':
+      case 'warning':
+      case 'failed':
+      case 'skipped':
+        return value!;
+      default:
+        return 'skipped';
     }
   }
 }
@@ -1584,6 +1616,7 @@ class UserSupplementCreate {
     required this.ingredients,
     required this.serving,
     required this.intakeSchedule,
+    this.precautionSnapshot = const <String>[],
     this.evidenceRefs = const <String>[],
   });
 
@@ -1605,6 +1638,9 @@ class UserSupplementCreate {
   /// Optional user-confirmed intake schedule.
   final SupplementIntakeSchedule? intakeSchedule;
 
+  /// User-confirmed precaution sentences from the label.
+  final List<String> precautionSnapshot;
+
   /// Preview evidence ids that support the confirmed values.
   final List<String> evidenceRefs;
 
@@ -1621,6 +1657,7 @@ class UserSupplementCreate {
           .toList(growable: false),
       'serving': serving.toJson(),
       'intake_schedule': intakeSchedule?.toJson(),
+      'precaution_snapshot': precautionSnapshot,
       'evidence_refs': evidenceRefs,
       'user_confirmed': true,
     };
@@ -1753,6 +1790,7 @@ class UserSupplementResponse {
     required this.id,
     required this.displayName,
     required this.manufacturer,
+    this.precautionSnapshot = const <String>[],
     this.evidenceRefs = const <String>[],
   });
 
@@ -1765,6 +1803,9 @@ class UserSupplementResponse {
   /// User-confirmed manufacturer.
   final String? manufacturer;
 
+  /// User-confirmed precaution sentences from the label.
+  final List<String> precautionSnapshot;
+
   /// Preview evidence ids that supported the stored supplement.
   final List<String> evidenceRefs;
 
@@ -1774,6 +1815,7 @@ class UserSupplementResponse {
       id: readString(json, 'id'),
       displayName: readString(json, 'display_name'),
       manufacturer: readOptionalString(json, 'manufacturer'),
+      precautionSnapshot: readOptionalStringList(json, 'precaution_snapshot'),
       evidenceRefs: readOptionalStringList(json, 'evidence_refs'),
     );
   }

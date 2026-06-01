@@ -400,6 +400,8 @@ def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
     assert preview.pipeline_metadata.roi_count == 0
     assert preview.pipeline_metadata.section_count == 0
     assert preview.pipeline_metadata.missing_required_sections == [
+        "product_name",
         "supplement_facts",
         "intake_method",
+        "precautions",
     ]

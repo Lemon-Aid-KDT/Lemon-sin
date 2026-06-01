@@ -6,7 +6,18 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.contract import P1_2_INTAKE_READY_STATUS, route_contract
@@ -22,11 +33,13 @@ from src.db.dependencies import get_async_session
 from src.models.schemas.meal import (
     MealConfirmationRequest,
     MealImageAnalysisPreview,
+    MealRecordListResponse,
     MealRecordResponse,
     MealType,
 )
 from src.models.schemas.privacy import ConsentType
-from src.security.auth import AuthenticatedUser, require_meal_write
+from src.models.schemas.taxonomy import FoodCatalogItemListResponse, FoodCuisineListResponse
+from src.security.auth import AuthenticatedUser, require_meal_read, require_meal_write
 from src.security.scopes import ApiScope
 from src.services.meal_image_analysis import (
     MealConfirmationValidationError,
@@ -36,6 +49,7 @@ from src.services.meal_image_analysis import (
     MealPreviewStateError,
     confirm_meal_record_from_preview,
     create_meal_image_analysis_preview,
+    list_user_meal_records,
     meal_confirmation_to_response,
     meal_image_analysis_to_preview,
     read_and_validate_meal_image,
@@ -44,6 +58,11 @@ from src.services.privacy import (
     ConsentRequiredError,
     record_sensitive_audit_event,
     require_user_consent,
+)
+from src.services.taxonomy_catalog import (
+    TaxonomyFilterNotFoundError,
+    list_food_catalog_items,
+    list_food_cuisines,
 )
 
 router = APIRouter(prefix="/meals", tags=["meals"])
@@ -213,6 +232,167 @@ async def analyze_meal_image(
         },
     )
     return preview
+
+
+@router.get(
+    "/cuisines",
+    response_model=FoodCuisineListResponse,
+    responses={**MEAL_AUTH_RESPONSES},
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_READ,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def list_food_cuisine_catalog(
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+) -> FoodCuisineListResponse:
+    """List active food cuisines and nested courses for meal filter UIs.
+
+    Args:
+        current_user: Authenticated caller; only used to enforce read scope.
+        session: Request-scoped async database session.
+
+    Returns:
+        Active food cuisine catalog response.
+    """
+    del current_user
+    return await list_food_cuisines(session)
+
+
+@router.get(
+    "/foods",
+    response_model=FoodCatalogItemListResponse,
+    responses={**MEAL_AUTH_RESPONSES},
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_READ,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def list_food_catalog(
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    cuisine_code: Annotated[str | None, Query(max_length=40)] = None,
+    course_code: Annotated[str | None, Query(max_length=60)] = None,
+    q: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> FoodCatalogItemListResponse:
+    """List active food catalog items for selection UIs.
+
+    Args:
+        current_user: Authenticated caller; only used to enforce read scope.
+        session: Request-scoped async database session.
+        cuisine_code: Optional active cuisine code filter.
+        course_code: Optional active course code filter.
+        q: Optional canonical food name substring.
+        limit: Maximum result count.
+        offset: Result offset.
+
+    Returns:
+        Paginated active food catalog item response.
+    """
+    del current_user
+    return await list_food_catalog_items(
+        session,
+        cuisine_code=cuisine_code,
+        course_code=course_code,
+        q=q,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "",
+    response_model=MealRecordListResponse,
+    responses={**MEAL_AUTH_RESPONSES},
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_READ,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def list_meal_records(
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    cuisine_code: Annotated[str | None, Query(max_length=40)] = None,
+    course_code: Annotated[str | None, Query(max_length=60)] = None,
+    food_catalog_item_id: Annotated[UUID | None, Query()] = None,
+    from_eaten_at: Annotated[datetime | None, Query()] = None,
+    to_eaten_at: Annotated[datetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> MealRecordListResponse:
+    """List current-user confirmed meals with optional taxonomy filters.
+
+    Args:
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        cuisine_code: Optional active cuisine code filter.
+        course_code: Optional active course code filter.
+        food_catalog_item_id: Optional active food catalog item filter.
+        from_eaten_at: Optional inclusive lower eaten-at timestamp.
+        to_eaten_at: Optional inclusive upper eaten-at timestamp.
+        limit: Maximum result count.
+        offset: Result offset.
+
+    Returns:
+        Paginated current-user confirmed meal records.
+
+    Raises:
+        HTTPException: If taxonomy filters are stale or timestamp range is invalid.
+    """
+    try:
+        response = await list_user_meal_records(
+            session=session,
+            user=current_user,
+            limit=limit,
+            offset=offset,
+            cuisine_code=cuisine_code,
+            course_code=course_code,
+            food_catalog_item_id=food_catalog_item_id,
+            from_eaten_at=from_eaten_at,
+            to_eaten_at=to_eaten_at,
+        )
+    except TaxonomyFilterNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "taxonomy_filter_not_found", "message": str(exc)},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_meal_query", "message": str(exc)},
+        ) from exc
+
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="meal_listed",
+        resource_type="meal_record",
+        resource_id=None,
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "count": len(response.results),
+            "limit": limit,
+            "offset": offset,
+            "cuisine_code_present": cuisine_code is not None,
+            "course_code_present": course_code is not None,
+            "food_catalog_item_id_present": food_catalog_item_id is not None,
+            "from_eaten_at_present": from_eaten_at is not None,
+            "to_eaten_at_present": to_eaten_at is not None,
+        },
+    )
+    return response
 
 
 @router.post(

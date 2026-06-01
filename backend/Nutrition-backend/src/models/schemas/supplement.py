@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
+from src.models.schemas.taxonomy import SupplementCategorySummary
 
 SupplementImageRiskActionRequired = Literal[
     "none",
@@ -41,6 +42,7 @@ SupplementImageRole = Literal[
 ]
 SupplementImageSourceType = Literal["uploaded_image", "screenshot_or_catalog", "unknown"]
 SupplementMissingRequiredSection = Literal[
+    "product_name",
     "supplement_facts",
     "intake_method",
     "ingredients",
@@ -50,6 +52,8 @@ SupplementMissingRequiredSection = Literal[
 ]
 USER_SUPPLEMENT_EVIDENCE_REF_LIMIT = 80
 USER_SUPPLEMENT_EVIDENCE_REF_MAX_LENGTH = 120
+USER_SUPPLEMENT_PRECAUTION_LIMIT = 40
+USER_SUPPLEMENT_PRECAUTION_MAX_LENGTH = 500
 
 
 class SupplementAnalysisStatus(StrEnum):
@@ -650,6 +654,7 @@ class UserSupplementCreate(BaseModel):
         ingredients: User-confirmed ingredient list.
         serving: User-confirmed serving values.
         intake_schedule: User-confirmed intake schedule.
+        precaution_snapshot: User-confirmed label precaution sentences.
         evidence_refs: Preview evidence ids supporting the confirmed values.
         user_confirmed: Must be true because preview values cannot be stored as final data.
     """
@@ -662,6 +667,10 @@ class UserSupplementCreate(BaseModel):
     ingredients: list[UserSupplementIngredientInput] = Field(min_length=1, max_length=80)
     serving: SupplementServing
     intake_schedule: SupplementIntakeSchedule | None = None
+    precaution_snapshot: list[str] = Field(
+        default_factory=list,
+        max_length=USER_SUPPLEMENT_PRECAUTION_LIMIT,
+    )
     evidence_refs: list[str] = Field(
         default_factory=list,
         max_length=USER_SUPPLEMENT_EVIDENCE_REF_LIMIT,
@@ -684,6 +693,22 @@ class UserSupplementCreate(BaseModel):
         """
         return _normalize_user_supplement_evidence_refs(values)
 
+    @field_validator("precaution_snapshot")
+    @classmethod
+    def normalize_precaution_snapshot(cls, values: list[str]) -> list[str]:
+        """Normalize user-confirmed precautions for storage.
+
+        Args:
+            values: Candidate precaution sentences confirmed by the user.
+
+        Returns:
+            Trimmed unique precaution sentences.
+
+        Raises:
+            ValueError: If a precaution sentence is too long.
+        """
+        return _normalize_user_supplement_precautions(values)
+
 
 class UserSupplementResponse(BaseModel):
     """Persisted current-user supplement response.
@@ -695,7 +720,9 @@ class UserSupplementResponse(BaseModel):
         ingredients: Stored ingredient list.
         serving: Stored serving values.
         intake_schedule: Stored intake schedule.
+        precaution_snapshot: User-confirmed label precaution sentences.
         evidence_refs: Preview evidence ids that supported the stored values.
+        categories: Curated categories attached through the matched reference product.
         user_confirmed_at: Time when the user confirmed the values.
         created_at: Server-side record creation time.
     """
@@ -708,7 +735,12 @@ class UserSupplementResponse(BaseModel):
     ingredients: list[SupplementIngredientCandidate]
     serving: SupplementServing
     intake_schedule: SupplementIntakeSchedule | None
+    precaution_snapshot: list[str] = Field(
+        default_factory=list,
+        max_length=USER_SUPPLEMENT_PRECAUTION_LIMIT,
+    )
     evidence_refs: list[str] = Field(default_factory=list, max_length=80)
+    categories: list[SupplementCategorySummary] = Field(default_factory=list)
     user_confirmed_at: datetime
     created_at: datetime
 
@@ -751,4 +783,31 @@ def _normalize_user_supplement_evidence_refs(values: list[str]) -> list[str]:
             continue
         seen.add(ref)
         normalized.append(ref)
+    return normalized
+
+
+def _normalize_user_supplement_precautions(values: list[str]) -> list[str]:
+    """Return trimmed user-confirmed precaution sentences.
+
+    Args:
+        values: Candidate precaution sentences supplied by the user-confirmed flow.
+
+    Returns:
+        Precaution sentences in original order with duplicates removed.
+
+    Raises:
+        ValueError: If any sentence exceeds the storage bound.
+    """
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = value.strip()
+        if not text:
+            continue
+        if len(text) > USER_SUPPLEMENT_PRECAUTION_MAX_LENGTH:
+            raise ValueError("precaution_snapshot values must be 500 characters or fewer.")
+        if text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
     return normalized

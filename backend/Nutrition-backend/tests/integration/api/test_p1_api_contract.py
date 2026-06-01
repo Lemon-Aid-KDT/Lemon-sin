@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
-from src.api.v1 import dashboard
+from src.api.v1 import dashboard, meals, supplements
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
 from src.main import create_app
@@ -20,6 +21,19 @@ from src.models.schemas.dashboard import (
     DashboardSupplementSummary,
     DashboardWeightSummary,
 )
+from src.models.schemas.meal import MealRecordListResponse
+from src.models.schemas.taxonomy import (
+    FoodCatalogItemListResponse,
+    FoodCatalogItemSummary,
+    FoodCourseSummary,
+    FoodCuisineListResponse,
+    FoodCuisineSummary,
+    SupplementCategoryListResponse,
+    SupplementCategorySummary,
+)
+from src.security import auth as auth_dependencies
+from src.security.auth import AuthenticatedUser
+from src.services.taxonomy_catalog import TaxonomyFilterNotFoundError
 
 
 def _openapi_schema() -> dict[str, Any]:
@@ -79,6 +93,18 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
     Returns:
         None.
     """
+
+
+def _user_with_scopes(*scopes: str) -> AuthenticatedUser:
+    """Return an authenticated test principal with explicit scopes.
+
+    Args:
+        scopes: OAuth scopes exposed to the route dependency under test.
+
+    Returns:
+        Authenticated user fixture.
+    """
+    return AuthenticatedUser(subject="user_123", scopes=tuple(scopes))
 
 
 def _dashboard_response() -> DashboardSummaryResponse:
@@ -151,8 +177,24 @@ def test_p1_contract_endpoints_are_registered_with_required_scopes() -> None:
             "p1_2_intake_ready",
             ["meal:write"],
         ),
+        ("/api/v1/meals/cuisines", "get"): (
+            "p1_2_intake_ready",
+            ["meal:read"],
+        ),
+        ("/api/v1/meals/foods", "get"): (
+            "p1_2_intake_ready",
+            ["meal:read"],
+        ),
+        ("/api/v1/meals", "get"): (
+            "p1_2_intake_ready",
+            ["meal:read"],
+        ),
         ("/api/v1/supplements", "post"): ("p1_4_registration_ready", ["supplement:write"]),
         ("/api/v1/supplements", "get"): ("p1_4_registration_ready", ["supplement:read"]),
+        ("/api/v1/supplements/categories", "get"): (
+            "p1_4_registration_ready",
+            ["supplement:read"],
+        ),
         ("/api/v1/supplements/{supplement_id}", "get"): (
             "p1_4_registration_ready",
             ["supplement:read"],
@@ -261,6 +303,189 @@ def test_p1_dashboard_endpoint_returns_summary_after_auth_in_development(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["algorithm_version"] == "dashboard-v1.0.0"
+
+
+def test_taxonomy_catalog_endpoints_return_safe_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify taxonomy catalog routes serialize active lookup rows."""
+    captured: dict[str, object] = {}
+
+    async def fake_list_supplement_categories(
+        _session: object,
+        *,
+        q: str | None,
+        limit: int,
+        offset: int,
+    ) -> SupplementCategoryListResponse:
+        """Return a supplement taxonomy fixture through the route layer."""
+        captured["supplement_category_query"] = (q, limit, offset)
+        return SupplementCategoryListResponse(
+            results=[
+                SupplementCategorySummary(
+                    id=uuid4(),
+                    category_key="vitamin",
+                    display_name="비타민",
+                    sort_order=1,
+                )
+            ],
+            limit=limit,
+            offset=offset,
+        )
+
+    async def fake_list_food_cuisines(_session: object) -> FoodCuisineListResponse:
+        """Return a cuisine taxonomy fixture through the route layer."""
+        return FoodCuisineListResponse(
+            results=[
+                FoodCuisineSummary(
+                    id=uuid4(),
+                    cuisine_code="korean",
+                    display_name_ko="한식",
+                    display_name_en="Korean",
+                    sort_order=1,
+                    courses=[
+                        FoodCourseSummary(
+                            id=uuid4(),
+                            course_code="soup_stew",
+                            display_name_ko="국·탕·찌개",
+                            display_name_en="Soup and Stew",
+                            sort_order=2,
+                        )
+                    ],
+                )
+            ]
+        )
+
+    async def fake_list_food_catalog_items(
+        _session: object,
+        *,
+        cuisine_code: str | None,
+        course_code: str | None,
+        q: str | None,
+        limit: int,
+        offset: int,
+    ) -> FoodCatalogItemListResponse:
+        """Return a food catalog fixture through the route layer."""
+        captured["food_catalog_query"] = (cuisine_code, course_code, q, limit, offset)
+        return FoodCatalogItemListResponse(
+            results=[
+                FoodCatalogItemSummary(
+                    id=uuid4(),
+                    cuisine_code="korean",
+                    course_code="soup_stew",
+                    canonical_name_ko="된장찌개",
+                    canonical_name_en="Soybean Paste Stew",
+                    source="manual_seed",
+                )
+            ],
+            limit=limit,
+            offset=offset,
+        )
+
+    monkeypatch.setattr(supplements, "list_supplement_categories", fake_list_supplement_categories)
+    monkeypatch.setattr(meals, "list_food_cuisines", fake_list_food_cuisines)
+    monkeypatch.setattr(meals, "list_food_catalog_items", fake_list_food_catalog_items)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    client = TestClient(app)
+
+    supplement_response = client.get("/api/v1/supplements/categories?q=vit&limit=3&offset=1")
+    cuisine_response = client.get("/api/v1/meals/cuisines")
+    food_response = client.get(
+        "/api/v1/meals/foods?cuisine_code=korean&course_code=soup_stew&q=찌개&limit=5"
+    )
+
+    assert supplement_response.status_code == status.HTTP_200_OK
+    assert supplement_response.json()["results"][0]["category_key"] == "vitamin"
+    assert captured["supplement_category_query"] == ("vit", 3, 1)
+    assert cuisine_response.status_code == status.HTTP_200_OK
+    assert cuisine_response.json()["results"][0]["courses"][0]["course_code"] == "soup_stew"
+    assert food_response.status_code == status.HTTP_200_OK
+    assert food_response.json()["results"][0]["canonical_name_ko"] == "된장찌개"
+    assert captured["food_catalog_query"] == ("korean", "soup_stew", "찌개", 5, 0)
+
+
+def test_user_supplement_taxonomy_filter_not_found_returns_422(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify stale supplement taxonomy filters fail with a stable 422 code."""
+
+    async def fake_list_user_supplement_records(*_args: object, **_kwargs: object) -> object:
+        """Raise the service-level stale taxonomy filter error."""
+        raise TaxonomyFilterNotFoundError("Supplement category filter was not found.")
+
+    monkeypatch.setattr(
+        supplements,
+        "list_user_supplement_records",
+        fake_list_user_supplement_records,
+    )
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    client = TestClient(app)
+
+    response = client.get("/api/v1/supplements?category_key=stale")
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"]["code"] == "taxonomy_filter_not_found"
+
+
+def test_meal_list_requires_meal_read_scope_and_returns_empty_filtered_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify meal list read access is separate from meal write access."""
+
+    async def fake_current_user_write_only() -> AuthenticatedUser:
+        """Return a principal that can write meals but cannot read them."""
+        return _user_with_scopes("meal:write")
+
+    async def fake_current_user_read() -> AuthenticatedUser:
+        """Return a principal that can read meals."""
+        return _user_with_scopes("meal:read")
+
+    async def fake_list_user_meal_records(
+        *,
+        limit: int,
+        offset: int,
+        **_kwargs: object,
+    ) -> MealRecordListResponse:
+        """Return an empty current-user meal page."""
+        return MealRecordListResponse(results=[], limit=limit, offset=offset)
+
+    monkeypatch.setattr(meals, "list_user_meal_records", fake_list_user_meal_records)
+    monkeypatch.setattr(meals, "record_sensitive_audit_event", _record_noop_audit)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[auth_dependencies.require_current_user] = fake_current_user_write_only
+    client = TestClient(app)
+
+    forbidden_response = client.get("/api/v1/meals")
+
+    app.dependency_overrides[auth_dependencies.require_current_user] = fake_current_user_read
+    ok_response = client.get("/api/v1/meals?cuisine_code=korean&course_code=soup_stew")
+
+    assert forbidden_response.status_code == status.HTTP_403_FORBIDDEN
+    assert ok_response.status_code == status.HTTP_200_OK
+    assert ok_response.json() == {"results": [], "limit": 20, "offset": 0}
+
+
+def test_meal_taxonomy_filter_not_found_returns_422(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify stale meal taxonomy filters fail with a stable 422 code."""
+
+    async def fake_list_user_meal_records(*_args: object, **_kwargs: object) -> object:
+        """Raise the service-level stale taxonomy filter error."""
+        raise TaxonomyFilterNotFoundError("Food cuisine filter was not found.")
+
+    monkeypatch.setattr(meals, "list_user_meal_records", fake_list_user_meal_records)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    client = TestClient(app)
+
+    response = client.get("/api/v1/meals?cuisine_code=stale")
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"]["code"] == "taxonomy_filter_not_found"
 
 
 def test_p1_contract_endpoints_reject_missing_jwt_credentials() -> None:

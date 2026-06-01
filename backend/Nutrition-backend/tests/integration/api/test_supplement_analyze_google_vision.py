@@ -275,7 +275,7 @@ def test_analyze_supplement_label_runs_google_vision_ocr_and_parser(
         ConsentType.EXTERNAL_OCR_PROCESSING,
     ]
     assert fake_ocr.call_count == 1
-    assert fake_parser.received_text == "비타민 D 1000\nVitamin D 25 ug"
+    assert fake_parser.received_text == "비타민 D 1000\nVitamin D 25 μg"
     assert fake_session.added_analysis is not None
     assert fake_session.added_analysis.ocr_provider == "google_vision_document"
     assert fake_session.added_analysis.ocr_text_hash is not None

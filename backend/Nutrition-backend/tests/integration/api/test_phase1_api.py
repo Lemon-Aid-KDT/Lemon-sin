@@ -120,7 +120,7 @@ def test_activity_score_api(monkeypatch: pytest.MonkeyPatch) -> None:
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["bmi"]["category"] == "obese_1"
-    assert body["recommended_steps"] == 7524
+    assert body["recommended_steps"] == 7500
     assert body["v4_score"] > body["v3_score"]
 
 
@@ -146,7 +146,7 @@ def test_weight_prediction_api(monkeypatch: pytest.MonkeyPatch) -> None:
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert [prediction["days"] for prediction in body["predictions"]] == [7, 30, 90]
-    assert body["predictions"][1]["predicted_weight_kg"] == 67.19
+    assert body["predictions"][1]["predicted_weight_kg"] == 66.88
 
 
 def test_weight_prediction_api_can_route_hall_lite_when_enabled(
@@ -185,7 +185,7 @@ def test_weight_prediction_api_can_route_hall_lite_when_enabled(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert body["predictions"][0]["predicted_weight_kg"] == 67.19
+    assert body["predictions"][0]["predicted_weight_kg"] == 66.88
     assert body["predictions"][1]["warning"] == HALL_LITE_WARNING
 
 
@@ -224,7 +224,7 @@ def test_nutrition_analysis_api(kdris_2025_client: TestClient) -> None:
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     statuses = {result["nutrient_code"]: result["status"] for result in body["results"]}
-    assert statuses["vitamin_c_mg"] == "deficient"
+    assert statuses["vitamin_c_mg"] == "at_risk_inadequate"
     assert statuses["vitamin_a_ug"] == "risky"
     assert body["dataset_status"] == "official_2025_approved"
     assert body["dataset_version"] == "2025"

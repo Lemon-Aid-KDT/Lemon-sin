@@ -130,6 +130,40 @@ class AnalysisJobSnapshot {
   }
 }
 
+/// User-safe supplement context queued for the chat tab.
+class ChatExplanationDraft {
+  /// Creates a one-shot chat explanation draft.
+  ///
+  /// Args:
+  ///   id: Monotonic local identifier used to consume the draft once.
+  ///   title: Short supplement title shown in chat.
+  ///   userPrompt: User-side prompt inserted into the chat transcript.
+  ///   assistantMessage: LemonBot-side explanation inserted after the prompt.
+  ///   createdAt: Local creation timestamp for traceability.
+  const ChatExplanationDraft({
+    required this.id,
+    required this.title,
+    required this.userPrompt,
+    required this.assistantMessage,
+    required this.createdAt,
+  });
+
+  /// Monotonic local identifier used to consume the draft once.
+  final int id;
+
+  /// Short supplement title shown in chat.
+  final String title;
+
+  /// User-side prompt inserted into the chat transcript.
+  final String userPrompt;
+
+  /// LemonBot-side explanation inserted after the prompt.
+  final String assistantMessage;
+
+  /// Local creation timestamp for traceability.
+  final DateTime createdAt;
+}
+
 class _SupplementAnalysisAttempt {
   const _SupplementAnalysisAttempt({
     required this.provider,
@@ -182,11 +216,14 @@ class AppController extends ChangeNotifier {
   MealImageAnalysisPreview? _mealAnalysisPreview;
   MealRecordResponse? _lastRegisteredMeal;
   UserSupplementResponse? _lastRegisteredSupplement;
+  UserSupplementCreate? _lastRegisteredSupplementRequest;
   SupplementImpactPreviewResponse? _supplementImpactPreview;
   SupplementRecommendationExplainResponse? _supplementExplanation;
+  ChatExplanationDraft? _pendingChatExplanationDraft;
   String? _lastRequestedOcrProvider;
   AnalysisJobSnapshot _analysisJob = const AnalysisJobSnapshot.idle();
   int _analysisJobSerial = 0;
+  int _chatDraftSerial = 0;
   bool _consentRequired = false;
 
   static const List<String> _automaticOcrProviders = <String>[
@@ -234,6 +271,10 @@ class AppController extends ChangeNotifier {
   UserSupplementResponse? get lastRegisteredSupplement =>
       _lastRegisteredSupplement;
 
+  /// User-confirmed request that produced the most recently registered supplement.
+  UserSupplementCreate? get lastRegisteredSupplementRequest =>
+      _lastRegisteredSupplementRequest;
+
   /// Latest deterministic supplement impact preview.
   SupplementImpactPreviewResponse? get supplementImpactPreview =>
       _supplementImpactPreview;
@@ -241,6 +282,10 @@ class AppController extends ChangeNotifier {
   /// Latest safe supplement explanation.
   SupplementRecommendationExplainResponse? get supplementExplanation =>
       _supplementExplanation;
+
+  /// One-shot supplement explanation draft waiting for the chat tab.
+  ChatExplanationDraft? get pendingChatExplanationDraft =>
+      _pendingChatExplanationDraft;
 
   /// Most recent mobile-selected OCR provider for smoke-test diagnostics.
   String? get lastRequestedOcrProvider => _lastRequestedOcrProvider;
@@ -306,9 +351,11 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _notice = 'Supplement preview is ready for review.';
     });
   }
@@ -326,9 +373,11 @@ class AppController extends ChangeNotifier {
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _notice = 'Supplement image batch is ready for review.';
     });
   }
@@ -392,9 +441,11 @@ class AppController extends ChangeNotifier {
       _analysisPreview = _multiImageAnalysisPreview?.primaryPreview;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _notice = 'Supplement image batch was finalized for review.';
     });
   }
@@ -412,9 +463,11 @@ class AppController extends ChangeNotifier {
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _notice = 'Meal image preview is ready for review.';
     });
   }
@@ -440,8 +493,10 @@ class AppController extends ChangeNotifier {
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
       _notice = 'Meal record saved and dashboard refreshed.';
     });
@@ -494,12 +549,14 @@ class AppController extends ChangeNotifier {
     }
     await _run(() async {
       _lastRegisteredSupplement = await _repository.registerSupplement(request);
+      _lastRegisteredSupplementRequest = request;
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
       _notice = 'Supplement registered and dashboard refreshed.';
       if (refreshImpact || explainWithLocalLlm) {
@@ -583,6 +640,36 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// Queues the latest supplement context so the chat tab can explain it.
+  ///
+  /// Returns true when a draft was created. The draft intentionally contains
+  /// only user-confirmed fields and safe summaries, not raw OCR text or
+  /// provider payloads.
+  bool queueSupplementExplanationForChat() {
+    final ChatExplanationDraft? draft = _buildSupplementChatDraft();
+    if (draft == null) {
+      _apiError = const ApiError(
+        statusCode: 0,
+        message: '저장된 영양제 정보가 없어 챗으로 설명을 보낼 수 없어요.',
+      );
+      _notice = null;
+      notifyListeners();
+      return false;
+    }
+    _pendingChatExplanationDraft = draft;
+    _apiError = null;
+    _notice = '챗으로 영양제 정보를 보냈어요.';
+    notifyListeners();
+    return true;
+  }
+
+  /// Clears a chat explanation draft after the chat screen consumed it.
+  void markChatExplanationDraftDelivered(int id) {
+    if (_pendingChatExplanationDraft?.id != id) return;
+    _pendingChatExplanationDraft = null;
+    notifyListeners();
+  }
+
   /// Clears the current preview without sending data to the backend.
   void clearSupplementFlow() {
     _analysisPreview = null;
@@ -590,8 +677,10 @@ class AppController extends ChangeNotifier {
     _mealAnalysisPreview = null;
     _lastRegisteredMeal = null;
     _lastRegisteredSupplement = null;
+    _lastRegisteredSupplementRequest = null;
     _supplementImpactPreview = null;
     _supplementExplanation = null;
+    _pendingChatExplanationDraft = null;
     _lastRequestedOcrProvider = null;
     if (!_analysisJob.isRunning) {
       _analysisJob = const AnalysisJobSnapshot.idle();
@@ -632,6 +721,15 @@ class AppController extends ChangeNotifier {
 
   int _beginAnalysisJob(String mode) {
     _analysisJobSerial += 1;
+    _analysisPreview = null;
+    _multiImageAnalysisPreview = null;
+    _mealAnalysisPreview = null;
+    _lastRegisteredSupplement = null;
+    _lastRegisteredSupplementRequest = null;
+    _lastRegisteredMeal = null;
+    _supplementImpactPreview = null;
+    _supplementExplanation = null;
+    _pendingChatExplanationDraft = null;
     _analysisJob = AnalysisJobSnapshot.running(mode: mode);
     _apiError = null;
     _notice = '분석을 하고 있어요.';
@@ -656,9 +754,11 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _apiError = null;
       _notice = '분석이 완료 되었어요.';
       _analysisJob = _analysisJob.completed(message: _notice!);
@@ -685,9 +785,11 @@ class AppController extends ChangeNotifier {
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _apiError = null;
       _notice = '분석이 완료 되었어요.';
       _analysisJob = _analysisJob.completed(message: _notice!);
@@ -708,9 +810,11 @@ class AppController extends ChangeNotifier {
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
       _lastRegisteredSupplement = null;
+      _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _pendingChatExplanationDraft = null;
       _apiError = null;
       _notice = '분석이 완료 되었어요.';
       _analysisJob = _analysisJob.completed(message: _notice!);
@@ -860,6 +964,296 @@ class AppController extends ChangeNotifier {
     if (retakeReasons.contains('cover_only')) score -= 500;
     if (retakeReasons.contains('partial_table')) score -= 350;
     return score;
+  }
+
+  ChatExplanationDraft? _buildSupplementChatDraft() {
+    final UserSupplementResponse? registered = _lastRegisteredSupplement;
+    final UserSupplementCreate? request = _lastRegisteredSupplementRequest;
+    final SupplementAnalysisPreview? analysis = _analysisPreview;
+    if (registered == null && request == null && analysis == null) {
+      return null;
+    }
+
+    final String title = _firstNonEmpty(<String?>[
+      registered?.displayName,
+      request?.displayName,
+      analysis?.parsedProduct.productName,
+      '영양제',
+    ])!;
+    final List<String> contextLines = _supplementChatContextLines(
+      request: request,
+      analysis: analysis,
+    );
+    final String prompt =
+        '$title 성분과 함유량을 다시 정리하고, 내 건강 정보 기준으로 섭취 주의점을 쉽게 설명해줘.';
+    final List<String> answer = <String>[
+      '전달받은 $title 정보를 기준으로 정리할게요.',
+      '',
+      '성분과 함유량',
+      ..._supplementChatIngredientLines(request: request, analysis: analysis),
+      '',
+      '내 정보 기준 확인',
+      ..._supplementChatImpactLines(),
+      '',
+      '주의사항',
+      ..._supplementChatPrecautionLines(request: request, analysis: analysis),
+      '',
+      if (_supplementExplanation != null) ...<String>[
+        _supplementExplanation!.safeUserMessage,
+        for (final String bullet in _supplementExplanation!.explanationBullets)
+          '· $bullet',
+      ],
+      for (final String line in contextLines) '· $line',
+      '의료적 진단·처방이 아닌 건강관리 참고 정보예요. 복용 중인 약이나 질환이 있으면 의사·약사와 확인해주세요.',
+    ];
+
+    _chatDraftSerial += 1;
+    return ChatExplanationDraft(
+      id: _chatDraftSerial,
+      title: title,
+      userPrompt: prompt,
+      assistantMessage: answer.join('\n'),
+      createdAt: DateTime.now(),
+    );
+  }
+
+  List<String> _supplementChatContextLines({
+    required UserSupplementCreate? request,
+    required SupplementAnalysisPreview? analysis,
+  }) {
+    final List<String> lines = <String>[];
+    if (request != null) {
+      if (request.manufacturer?.trim().isNotEmpty == true) {
+        lines.add('제조사: ${request.manufacturer!.trim()}');
+      }
+      if (request.ingredients.isEmpty) {
+        lines.add('성분: 등록된 성분 후보가 부족해 라벨 재촬영 또는 직접 입력이 필요해요.');
+      } else {
+        lines.add(
+          '성분: ${request.ingredients.map(_formatConfirmedIngredient).join(', ')}',
+        );
+      }
+      lines.add('섭취량: ${_formatServing(request.serving)}');
+      final SupplementIntakeSchedule? schedule = request.intakeSchedule;
+      if (schedule != null) {
+        lines.add('섭취 방법: ${_formatIntakeSchedule(schedule)}');
+      }
+      if (request.precautionSnapshot.isEmpty) {
+        lines.add('주의사항: 라벨에서 확인된 주의 문구가 부족해요.');
+      } else {
+        lines.add('주의사항: ${request.precautionSnapshot.take(3).join(' / ')}');
+      }
+      return lines;
+    }
+
+    if (analysis != null) {
+      final String? productName = analysis.parsedProduct.productName;
+      if (productName?.trim().isNotEmpty == true) {
+        lines.add('제품명 후보: ${productName!.trim()}');
+      }
+      if (analysis.ingredientCandidates.isEmpty) {
+        lines.add('성분: OCR 성분 후보가 비어 있어 더 선명한 성분표 사진이 필요해요.');
+      } else {
+        lines.add(
+          '성분 후보: ${analysis.ingredientCandidates.map(_formatPreviewIngredient).join(', ')}',
+        );
+      }
+      if (analysis.precautions.isEmpty) {
+        lines.add('주의사항: 주의사항 영역이 비어 있어 추가 촬영이 필요해요.');
+      } else {
+        lines.add(
+          '주의사항 후보: ${analysis.precautions.map((SupplementPreviewPrecaution item) => item.text).take(3).join(' / ')}',
+        );
+      }
+    }
+    return lines;
+  }
+
+  List<String> _supplementChatIngredientLines({
+    required UserSupplementCreate? request,
+    required SupplementAnalysisPreview? analysis,
+  }) {
+    final List<String> lines = <String>[];
+    if (request != null) {
+      for (final UserSupplementIngredientInput ingredient
+          in request.ingredients.take(8)) {
+        lines.add('· ${_formatConfirmedIngredientForChat(ingredient)}');
+      }
+      if (lines.isEmpty) {
+        lines.add('· 저장된 성분이 부족해 라벨 재촬영 또는 직접 입력이 필요해요.');
+      }
+      return lines;
+    }
+    if (analysis != null) {
+      for (final SupplementIngredientCandidate ingredient
+          in analysis.ingredientCandidates.take(8)) {
+        lines.add('· ${_formatPreviewIngredientForChat(ingredient)}');
+      }
+    }
+    if (lines.isEmpty) {
+      lines.add('· 성분 후보가 비어 있어 더 선명한 성분표 사진이 필요해요.');
+    }
+    return lines;
+  }
+
+  List<String> _supplementChatImpactLines() {
+    final SupplementImpactPreviewResponse? preview = _supplementImpactPreview;
+    if (preview == null) {
+      return <String>[
+        '· 건강 정보 DB와 연결한 영향도 계산은 아직 완료되지 않았어요.',
+        '· 우선 라벨에서 사용자가 확인한 성분 기준으로 참고 설명만 제공합니다.',
+      ];
+    }
+    final List<String> lines = <String>['· ${preview.safeUserMessage}'];
+    if (preview.excessOrDuplicateRisks.isNotEmpty) {
+      lines.add(
+        '· 중복·상한 확인 필요: ${preview.excessOrDuplicateRisks.map(_formatInsightForChat).take(3).join(' / ')}',
+      );
+    } else {
+      lines.add('· 현재 계산 결과에서 중복·상한 위험 신호는 표시되지 않았어요.');
+    }
+    if (preview.deficiencySupportCandidates.isNotEmpty) {
+      lines.add(
+        '· 부족 보완 후보: ${preview.deficiencySupportCandidates.map(_formatInsightForChat).take(3).join(' / ')}',
+      );
+    }
+    if (preview.missingProfileFields.isNotEmpty) {
+      lines.add(
+        '· 개인화 보강 필요: ${preview.missingProfileFields.take(3).join(', ')}',
+      );
+    }
+    return lines;
+  }
+
+  List<String> _supplementChatPrecautionLines({
+    required UserSupplementCreate? request,
+    required SupplementAnalysisPreview? analysis,
+  }) {
+    final List<String> precautions =
+        request?.precautionSnapshot.isNotEmpty == true
+        ? request!.precautionSnapshot
+        : analysis?.precautions
+                  .map((SupplementPreviewPrecaution item) => item.text)
+                  .toList(growable: false) ??
+              const <String>[];
+    if (precautions.isEmpty) {
+      return <String>['· 라벨에서 확인된 주의 문구가 부족해요. 주의사항 영역을 한 장 더 촬영해주세요.'];
+    }
+    return <String>[
+      for (final String precaution in precautions.take(4))
+        '· ${precaution.trim()}',
+    ];
+  }
+
+  String _formatConfirmedIngredient(UserSupplementIngredientInput ingredient) {
+    final List<String> parts = <String>[ingredient.displayName.trim()];
+    if (ingredient.amount != null) {
+      parts.add(_formatAmount(ingredient.amount!));
+    }
+    if (ingredient.unit?.trim().isNotEmpty == true) {
+      parts.add(ingredient.unit!.trim());
+    }
+    return parts.join(' ');
+  }
+
+  String _formatConfirmedIngredientForChat(
+    UserSupplementIngredientInput ingredient,
+  ) {
+    final String name = ingredient.displayName.trim();
+    final List<String> amountParts = <String>[];
+    if (ingredient.amount != null) {
+      amountParts.add(_formatAmount(ingredient.amount!));
+    }
+    if (ingredient.unit?.trim().isNotEmpty == true) {
+      amountParts.add(ingredient.unit!.trim());
+    }
+    if (amountParts.isEmpty) return '$name: 함량 확인 필요';
+    return '$name: ${amountParts.join(' ')}';
+  }
+
+  String _formatPreviewIngredientForChat(
+    SupplementIngredientCandidate ingredient,
+  ) {
+    final String name = ingredient.displayName.trim();
+    final List<String> amountParts = <String>[];
+    if (ingredient.amount != null) {
+      amountParts.add(_formatAmount(ingredient.amount!));
+    }
+    if (ingredient.unit?.trim().isNotEmpty == true) {
+      amountParts.add(ingredient.unit!.trim());
+    }
+    if (amountParts.isEmpty) return '$name: 함량 확인 필요';
+    return '$name: ${amountParts.join(' ')}';
+  }
+
+  String _formatInsightForChat(SupplementNutritionInsight insight) {
+    final String name = insight.nutrientName?.trim().isNotEmpty == true
+        ? insight.nutrientName!.trim()
+        : insight.nutrientCode.trim();
+    final List<String> amountParts = <String>[];
+    if (insight.estimatedTotalAmount != null) {
+      amountParts.add(_formatAmount(insight.estimatedTotalAmount!));
+    } else if (insight.supplementDailyAmount != null) {
+      amountParts.add(_formatAmount(insight.supplementDailyAmount!));
+    }
+    if (insight.referenceUnit?.trim().isNotEmpty == true) {
+      amountParts.add(insight.referenceUnit!.trim());
+    }
+    final String amountText = amountParts.isEmpty
+        ? ''
+        : ' ${amountParts.join(' ')}';
+    return '$name$amountText';
+  }
+
+  String _formatPreviewIngredient(SupplementIngredientCandidate ingredient) {
+    final List<String> parts = <String>[ingredient.displayName.trim()];
+    if (ingredient.amount != null) {
+      parts.add(_formatAmount(ingredient.amount!));
+    }
+    if (ingredient.unit?.trim().isNotEmpty == true) {
+      parts.add(ingredient.unit!.trim());
+    }
+    return parts.join(' ');
+  }
+
+  String _formatServing(SupplementServing serving) {
+    final List<String> parts = <String>[];
+    if (serving.amount != null) {
+      parts.add(_formatAmount(serving.amount!));
+    }
+    if (serving.unit?.trim().isNotEmpty == true) {
+      parts.add(serving.unit!.trim());
+    }
+    parts.add('하루 ${_formatAmount(serving.dailyServings)}회');
+    return parts.join(' ');
+  }
+
+  String _formatIntakeSchedule(SupplementIntakeSchedule schedule) {
+    final List<String> parts = <String>[schedule.frequency.trim()];
+    if (schedule.timeOfDay.isNotEmpty) {
+      parts.add(schedule.timeOfDay.join(', '));
+    }
+    if (schedule.withFood?.trim().isNotEmpty == true) {
+      parts.add(schedule.withFood!.trim());
+    }
+    return parts.where((String value) => value.isNotEmpty).join(' · ');
+  }
+
+  String _formatAmount(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+    return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+  }
+
+  String? _firstNonEmpty(Iterable<String?> values) {
+    for (final String? value in values) {
+      final String? normalized = value?.trim();
+      if (normalized != null && normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+    return null;
   }
 
   ApiError _apiErrorFromObject(Object error) {

@@ -60,6 +60,39 @@ void main() {
     },
   );
 
+  test(
+    'queues registered supplement details for chat when impact fails',
+    () async {
+      final _AutoInsightRepository repository = _AutoInsightRepository(
+        failImpact: true,
+      );
+      final AppController controller = AppController(repository: repository);
+
+      await controller.registerSupplement(
+        _registrationRequest(),
+        refreshImpact: true,
+        explainWithLocalLlm: true,
+      );
+
+      expect(controller.lastRegisteredSupplement?.displayName, 'Vitamin D');
+      expect(controller.supplementImpactPreview, isNull);
+      expect(controller.apiError?.message, 'impact unavailable');
+
+      final bool queued = controller.queueSupplementExplanationForChat();
+      final ChatExplanationDraft draft =
+          controller.pendingChatExplanationDraft!;
+
+      expect(queued, isTrue);
+      expect(draft.userPrompt, contains('Vitamin D'));
+      expect(draft.assistantMessage, contains('성분: Vitamin D 25 mcg'));
+      expect(draft.assistantMessage, contains('영향도 계산은 아직 완료되지 않았어요'));
+
+      controller.markChatExplanationDraftDelivered(draft.id);
+
+      expect(controller.pendingChatExplanationDraft, isNull);
+    },
+  );
+
   test('finalizeAnalysisSession stores merged preview for review', () async {
     final _AutoInsightRepository repository = _AutoInsightRepository();
     final AppController controller = AppController(repository: repository);
@@ -96,6 +129,31 @@ void main() {
     expect(controller.supplementExplanation?.llmUsed, isTrue);
     expect(controller.notice, 'Analysis explanation is ready.');
   });
+
+  test(
+    'new background supplement analysis clears stale preview immediately',
+    () async {
+      final _AutoInsightRepository repository = _AutoInsightRepository(
+        analysisDelay: const Duration(milliseconds: 20),
+      );
+      final AppController controller = AppController(repository: repository);
+
+      await controller.analyzeImage('/tmp/old-label.png');
+      expect(controller.analysisPreview, isNotNull);
+
+      await controller.startSupplementImageAnalysis('/tmp/new-label.png');
+
+      expect(controller.analysisPreview, isNull);
+      expect(controller.lastRegisteredSupplement, isNull);
+      expect(controller.analysisJob.isRunning, isTrue);
+      expect(controller.notice, '분석을 하고 있어요.');
+
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+
+      expect(controller.analysisPreview, isNotNull);
+      expect(controller.analysisJob.phase, AnalysisJobPhase.completed);
+    },
+  );
 
   test('analyzeMealImage stores food detection preview', () async {
     final _AutoInsightRepository repository = _AutoInsightRepository();
@@ -243,10 +301,12 @@ UserSupplementCreate _registrationRequest() {
 class _AutoInsightRepository implements LemonAidRepository {
   _AutoInsightRepository({
     this.failExplanation = false,
+    this.failImpact = false,
     this.analysisDelay = Duration.zero,
   });
 
   final bool failExplanation;
+  final bool failImpact;
   final Duration analysisDelay;
   Map<String, bool> consents = const <String, bool>{};
   int registerCalls = 0;
@@ -311,6 +371,9 @@ class _AutoInsightRepository implements LemonAidRepository {
     SupplementImpactPreviewRequest request,
   ) async {
     impactCalls += 1;
+    if (failImpact) {
+      throw const ApiError(statusCode: 503, message: 'impact unavailable');
+    }
     return _impactPreview();
   }
 

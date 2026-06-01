@@ -235,7 +235,7 @@ def _parse_result() -> SupplementStructuredParseResult:
                     "confidence": 0.82,
                 },
             ],
-            "missing_required_sections": ["precautions"],
+            "missing_required_sections": [],
             "low_confidence_fields": ["manufacturer"],
             "warnings": ["제조사명은 확인이 필요합니다."],
         }
@@ -255,7 +255,7 @@ def _minimal_parse_result() -> SupplementStructuredParseResult:
                     "confidence": 0.91,
                 }
             ],
-            "missing_required_sections": ["supplement_facts", "intake_method"],
+            "missing_required_sections": ["supplement_facts", "intake_method", "precautions"],
             "low_confidence_fields": [],
             "warnings": [],
         }
@@ -267,7 +267,12 @@ def _empty_parse_result() -> SupplementStructuredParseResult:
     return SupplementStructuredParseResult.model_validate(
         {
             "ingredient_candidates": [],
-            "missing_required_sections": ["supplement_facts", "intake_method"],
+            "missing_required_sections": [
+                "product_name",
+                "supplement_facts",
+                "intake_method",
+                "precautions",
+            ],
             "low_confidence_fields": [],
             "warnings": [],
         }
@@ -413,7 +418,7 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
     assert record.parsed_snapshot["precautions"][0]["category"] == "pregnancy"
     assert record.parsed_snapshot["functional_claims"][0]["claim_type"] == "label_claim"
     assert record.parsed_snapshot["evidence_spans"][0]["text_excerpt"] == "Vitamin D 25 ug"
-    assert record.parsed_snapshot["missing_required_sections"] == ["precautions"]
+    assert record.parsed_snapshot["missing_required_sections"] == []
     assert record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
     assert record.parsed_snapshot["parser_metadata"]["raw_model_response_stored"] is False
     assert record.parsed_snapshot["parser_metadata"]["input_provider"] == "manual-test"
@@ -427,7 +432,7 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
     assert preview.precautions[0].category == "pregnancy"
     assert preview.functional_claims[0].text == "뼈 건강에 도움"
     assert preview.evidence_spans[0].span_id == "span-1"
-    assert preview.missing_required_sections == ["precautions"]
+    assert preview.missing_required_sections == []
 
 
 @pytest.mark.asyncio
@@ -479,7 +484,7 @@ async def test_parse_supplement_analysis_ocr_text_merges_deterministic_layout() 
     assert record.parsed_snapshot["label_sections"][0]["evidence_refs"] == ["layout-span-1"]
     assert record.parsed_snapshot["evidence_spans"][-1]["source_type"] == "ocr_layout"
     assert record.parsed_snapshot["evidence_spans"][-1]["cell_ref"] == "layout-section-2"
-    assert record.parsed_snapshot["missing_required_sections"] == []
+    assert record.parsed_snapshot["missing_required_sections"] == ["precautions"]
     assert "ocr_text" not in record.parsed_snapshot
 
 

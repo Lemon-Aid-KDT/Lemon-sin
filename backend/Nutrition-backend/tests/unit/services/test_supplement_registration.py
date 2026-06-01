@@ -76,9 +76,11 @@ class _FakeRegistrationSession:
         *,
         scalar_result: object | None = None,
         scalars_results: list[list[object]] | None = None,
+        execute_results: list[list[object]] | None = None,
     ) -> None:
         self.scalar_result = scalar_result
         self.scalars_results = [_ScalarResult(rows) for rows in (scalars_results or [])]
+        self.execute_results = [_ScalarResult(rows) for rows in (execute_results or [])]
         self.added: list[object] = []
         self.committed = False
         self.refreshed: object | None = None
@@ -113,6 +115,19 @@ class _FakeRegistrationSession:
             Fake scalar result.
         """
         return self.scalars_results.pop(0)
+
+    async def execute(self, _statement: object) -> _ScalarResult:
+        """Return the next configured execute result.
+
+        Args:
+            _statement: SQLAlchemy statement.
+
+        Returns:
+            Fake row result.
+        """
+        if not self.execute_results:
+            return _ScalarResult([])
+        return self.execute_results.pop(0)
 
     def add(self, record: object) -> None:
         """Capture a persisted ORM object.

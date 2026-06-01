@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from decimal import Decimal
+from math import isfinite
 from typing import Any
 
 from pydantic import ValidationError
@@ -41,6 +42,7 @@ medication. Return only JSON matching the supplied schema.
 """.strip()
 HIGH_CONFIDENCE_THRESHOLD = 0.85
 MEDIUM_CONFIDENCE_THRESHOLD = 0.6
+MAX_SAFE_PROMPT_NUMBER = 1_000_000
 
 
 class SupplementExplanationError(RuntimeError):
@@ -174,12 +176,21 @@ def build_deterministic_analysis_explanation(
     else:
         bullets.append("제품명은 라벨을 보며 직접 확인해야 합니다.")
 
-    if ingredient_count:
+    ingredient_summary = _format_context_ingredients(context["ingredients"])
+    if ingredient_count and ingredient_summary:
+        bullets.append(
+            f"성분 후보 {ingredient_count}개: {ingredient_summary}를 등록 전 검토하세요."
+        )
+    elif ingredient_count:
         bullets.append(f"성분 후보 {ingredient_count}개를 등록 전 검토하세요.")
     else:
         bullets.append("성분 후보가 비어 있어 수동 입력이나 추가 사진이 필요합니다.")
 
-    if context["intake_method_present"]:
+    intake_method = _mapping(context["intake_method"])
+    intake_text = intake_method.get("text")
+    if isinstance(intake_text, str) and intake_text:
+        bullets.append(f"섭취 방법 후보: {intake_text}")
+    elif context["intake_method_present"]:
         bullets.append("섭취 방법 후보가 있어 저장 전 빈도와 1회량을 확인할 수 있습니다.")
     else:
         bullets.append("섭취 방법은 아직 충분하지 않아 직접 확인이 필요합니다.")
@@ -327,8 +338,10 @@ def _build_analysis_explanation_payload(
     context_json = json.dumps(context, ensure_ascii=False)
     user_prompt = (
         "Rewrite this supplement label analysis preview in concise Korean. "
-        "Use only the sanitized fields in the JSON context. Do not add new "
-        "ingredients, amounts, product claims, medical risks, or advice. "
+        "Use only the sanitized OCR-derived fields in the JSON context. "
+        "Restate ingredient names and amounts only from the provided "
+        "ingredients[].amount_text values. Do not add new ingredients, amounts, "
+        "product claims, medical risks, or advice. "
         "Return JSON that conforms to the schema.\n\n"
         "<analysis_preview_context>\n"
         f"{context_json}\n"
@@ -363,6 +376,8 @@ def _build_analysis_explanation_context(record: SupplementAnalysisRun) -> dict[s
     parsed_product = _mapping(snapshot.get("parsed_product"))
     ingredient_candidates = _list_of_mappings(snapshot.get("ingredient_candidates"))
     intake_method = _mapping(snapshot.get("intake_method"))
+    label_sections = _list_of_mappings(snapshot.get("label_sections"))
+    precautions = _list_of_mappings(snapshot.get("precautions"))
     return {
         "status": _safe_text(record.status, limit=60),
         "ocr_provider": _safe_text(record.ocr_provider, limit=80),
@@ -371,12 +386,22 @@ def _build_analysis_explanation_context(record: SupplementAnalysisRun) -> dict[s
         "manufacturer": _safe_text(parsed_product.get("manufacturer"), limit=120),
         "ingredient_count": len(ingredient_candidates),
         "ingredients": [_ingredient_summary(candidate) for candidate in ingredient_candidates[:6]],
-        "label_section_types": [
-            _safe_text(section.get("section_type"), limit=80)
-            for section in _list_of_mappings(snapshot.get("label_sections"))[:8]
+        "label_section_excerpts": [
+            section
+            for section in (_label_section_summary(section) for section in label_sections[:6])
+            if section["text_excerpt"]
         ],
+        "label_section_types": [
+            _safe_text(section.get("section_type"), limit=80) for section in label_sections[:8]
+        ],
+        "intake_method": _intake_method_summary(intake_method),
         "intake_method_present": bool(intake_method),
-        "precaution_count": len(_list_of_mappings(snapshot.get("precautions"))),
+        "precautions": [
+            precaution
+            for precaution in (_precaution_summary(item) for item in precautions[:4])
+            if precaution["text"]
+        ],
+        "precaution_count": len(precautions),
         "functional_claim_count": len(_list_of_mappings(snapshot.get("functional_claims"))),
         "missing_required_sections": _safe_string_list(
             snapshot.get("missing_required_sections"),
@@ -407,10 +432,131 @@ def _ingredient_summary(candidate: Mapping[str, Any]) -> dict[str, Any]:
     """
     return {
         "display_name": _safe_text(candidate.get("display_name"), limit=120),
+        "amount": _safe_number(candidate.get("amount")),
+        "amount_text": _format_amount_text(candidate.get("amount"), candidate.get("unit")),
         "amount_present": candidate.get("amount") is not None,
         "unit": _safe_text(candidate.get("unit"), limit=40),
         "confidence_bucket": _confidence_bucket(candidate.get("confidence")),
     }
+
+
+def _label_section_summary(section: Mapping[str, Any]) -> dict[str, str | None]:
+    """Return a bounded OCR-derived label section excerpt.
+
+    Args:
+        section: Parsed label section mapping.
+
+    Returns:
+        Safe section type, heading, and bounded text excerpt.
+    """
+    return {
+        "section_type": _safe_text(section.get("section_type"), limit=80),
+        "heading_text": _safe_text(section.get("heading_text"), limit=120),
+        "text_excerpt": _safe_text(section.get("text_bundle"), limit=220),
+    }
+
+
+def _intake_method_summary(intake_method: Mapping[str, Any]) -> dict[str, Any]:
+    """Return bounded intake-method fields for explanation context.
+
+    Args:
+        intake_method: Parsed intake-method mapping.
+
+    Returns:
+        Safe intake-method summary.
+    """
+    structured = _mapping(intake_method.get("structured"))
+    return {
+        "text": _safe_text(intake_method.get("text"), limit=180),
+        "frequency": _safe_text(structured.get("frequency"), limit=40),
+        "times_per_day": _safe_number(structured.get("times_per_day")),
+        "amount_per_time": _safe_number(structured.get("amount_per_time")),
+        "amount_unit": _safe_text(structured.get("amount_unit"), limit=40),
+    }
+
+
+def _precaution_summary(precaution: Mapping[str, Any]) -> dict[str, str | None]:
+    """Return a bounded precaution sentence for explanation context.
+
+    Args:
+        precaution: Parsed precaution mapping.
+
+    Returns:
+        Safe precaution summary.
+    """
+    return {
+        "text": _safe_text(precaution.get("text"), limit=220),
+        "category": _safe_text(precaution.get("category"), limit=80),
+        "severity": _safe_text(precaution.get("severity"), limit=80),
+    }
+
+
+def _format_context_ingredients(value: Any) -> str:
+    """Format sanitized ingredient summaries for deterministic user wording.
+
+    Args:
+        value: Ingredient summary list from the explanation context.
+
+    Returns:
+        Comma-separated safe ingredient and amount summary.
+    """
+    if not isinstance(value, list):
+        return ""
+    formatted: list[str] = []
+    for item in value[:3]:
+        if not isinstance(item, Mapping):
+            continue
+        display_name = item.get("display_name")
+        if not isinstance(display_name, str) or not display_name:
+            continue
+        amount_text = item.get("amount_text")
+        if isinstance(amount_text, str) and amount_text:
+            formatted.append(f"{display_name} {amount_text}")
+        else:
+            formatted.append(f"{display_name} 함량 확인 필요")
+    return ", ".join(formatted)
+
+
+def _format_amount_text(amount: Any, unit: Any) -> str | None:
+    """Return a display-safe ingredient amount string.
+
+    Args:
+        amount: Parsed numeric amount.
+        unit: Parsed unit string.
+
+    Returns:
+        Bounded amount text, or None when amount is absent.
+    """
+    numeric = _safe_number(amount)
+    if numeric is None:
+        return None
+    amount_text = str(numeric)
+    normalized_unit = _safe_text(unit, limit=40)
+    if normalized_unit:
+        return f"{amount_text} {normalized_unit}"
+    return amount_text
+
+
+def _safe_number(value: Any) -> int | float | None:
+    """Return a JSON-serializable number for safe prompt context.
+
+    Args:
+        value: Candidate numeric value.
+
+    Returns:
+        int or float when finite and reasonably bounded; otherwise None.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, Decimal | int | float):
+        numeric = float(value)
+    else:
+        return None
+    if not isfinite(numeric) or not -MAX_SAFE_PROMPT_NUMBER <= numeric <= MAX_SAFE_PROMPT_NUMBER:
+        return None
+    if numeric.is_integer():
+        return int(numeric)
+    return numeric
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

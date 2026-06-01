@@ -140,6 +140,9 @@ void main() {
             'image_count': 1,
             'image_role': 'supplement_facts',
             'vision_roi_used': true,
+            'ocr_status': 'success',
+            'vision_status': 'success',
+            'llm_status': 'warning',
             'ocr_provider': 'paddleocr_local',
             'ocr_text_present': true,
             'ocr_confidence_bucket': 'high',
@@ -174,6 +177,9 @@ void main() {
     expect(preview.missingRequiredSections.single, 'supplement_facts');
     expect(preview.identityConflict?.conflictType, 'barcode_product_mismatch');
     expect(preview.pipelineMetadata.ocrProvider, 'paddleocr_local');
+    expect(preview.pipelineMetadata.ocrStatus, 'success');
+    expect(preview.pipelineMetadata.visionStatus, 'success');
+    expect(preview.pipelineMetadata.llmStatus, 'warning');
     expect(preview.pipelineMetadata.imageCount, 1);
     expect(preview.pipelineMetadata.imageRole, 'supplement_facts');
     expect(preview.pipelineMetadata.ocrTextPresent, isTrue);
@@ -211,11 +217,15 @@ void main() {
         frequency: 'daily',
         timeOfDay: <String>['morning'],
       ),
+      precautionSnapshot: const <String>['임신 중이면 전문가와 상담하세요.'],
       evidenceRefs: const <String>['span-001', 'span-002'],
     );
 
     expect(request.toJson()['user_confirmed'], true);
     expect(request.toJson()['analysis_id'], preview.analysisId);
+    expect(request.toJson()['precaution_snapshot'], <String>[
+      '임신 중이면 전문가와 상담하세요.',
+    ]);
     expect(request.toJson()['evidence_refs'], <String>['span-001', 'span-002']);
   });
 
@@ -227,8 +237,10 @@ void main() {
           'image_count': 0,
           'max_images': 6,
           'missing_required_sections': <String>[
+            'product_name',
             'supplement_facts',
             'intake_method',
+            'precautions',
           ],
           'action_required': 'additional_label_image_required',
         });
@@ -238,8 +250,10 @@ void main() {
     expect(session.imageCount, 0);
     expect(session.maxImages, 6);
     expect(session.missingRequiredSections, <String>[
+      'product_name',
       'supplement_facts',
       'intake_method',
+      'precautions',
     ]);
   });
 

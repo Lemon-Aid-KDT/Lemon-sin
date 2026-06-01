@@ -84,6 +84,7 @@ from src.models.schemas.supplement_recommendation import (
     SupplementRecommendationExplainRequest,
     SupplementRecommendationExplainResponse,
 )
+from src.models.schemas.taxonomy import SupplementCategoryListResponse
 from src.nutrition.comprehensive import compute_comprehensive
 from src.ocr.factory import (
     OCRConfigurationError,
@@ -147,6 +148,10 @@ from src.services.supplement_registration import (
     list_user_supplement_records,
     soft_delete_user_supplement,
     user_supplement_to_response,
+)
+from src.services.taxonomy_catalog import (
+    TaxonomyFilterNotFoundError,
+    list_supplement_categories,
 )
 
 router = APIRouter(prefix="/supplements", tags=["supplements"])
@@ -521,7 +526,12 @@ def _build_analysis_session_response(
     """
     missing_required_sections: list[str] = []
     if image_count == 0:
-        missing_required_sections = ["supplement_facts", "intake_method"]
+        missing_required_sections = [
+            "product_name",
+            "supplement_facts",
+            "intake_method",
+            "precautions",
+        ]
     return SupplementAnalysisSessionResponse(
         analysis_group_id=analysis_group_id,
         status=(
@@ -875,17 +885,27 @@ def _aggregate_missing_sections(
         )
         for preview in previews
     )
+    has_product_name = any(preview.parsed_product.product_name for preview in previews)
     has_intake = any(
         preview.intake_method.text
         or preview.image_role == "intake_method"
         or any(section.section_type == "intake_method" for section in preview.label_sections)
         for preview in previews
     )
+    has_precautions = any(
+        preview.precautions
+        or any(section.section_type == "precautions" for section in preview.label_sections)
+        for preview in previews
+    )
     missing: list[str] = []
+    if not has_product_name:
+        missing.append("product_name")
     if not has_facts:
         missing.append("supplement_facts")
     if not has_intake:
         missing.append("intake_method")
+    if not has_precautions:
+        missing.append("precautions")
     return missing
 
 
@@ -917,6 +937,15 @@ def _aggregate_pipeline_metadata(
         image_count=len(previews),
         image_role="mixed" if len(previews) > 1 else previews[0].image_role,
         vision_roi_used=any(preview.pipeline_metadata.vision_roi_used for preview in previews),
+        ocr_status=_aggregate_pipeline_status(
+            [preview.pipeline_metadata.ocr_status for preview in previews]
+        ),
+        vision_status=_aggregate_pipeline_status(
+            [preview.pipeline_metadata.vision_status for preview in previews]
+        ),
+        llm_status=_aggregate_pipeline_status(
+            [preview.pipeline_metadata.llm_status for preview in previews]
+        ),
         ocr_provider=_aggregate_label(providers),
         ocr_text_present=any(preview.pipeline_metadata.ocr_text_present for preview in previews),
         ocr_confidence_bucket=_aggregate_confidence_bucket(previews),
@@ -928,6 +957,14 @@ def _aggregate_pipeline_metadata(
         raw_image_stored=False,
         raw_ocr_text_stored=False,
     )
+
+
+def _aggregate_pipeline_status(values: list[str]) -> str:
+    """Return one LED status for multiple preview stage statuses."""
+    for stage_status in ("failed", "warning", "success"):
+        if stage_status in values:
+            return stage_status
+    return "skipped"
 
 
 def _aggregate_label(values: set[str | None]) -> str | None:
@@ -2544,7 +2581,11 @@ async def create_user_supplement(
             "learning_embedding_job_enqueued": learning_job is not None,
         },
     )
-    return user_supplement_to_response(result.supplement, result.ingredients)
+    return user_supplement_to_response(
+        result.supplement,
+        result.ingredients,
+        categories=result.categories,
+    )
 
 
 async def _collect_learning_consents_if_enabled(
@@ -2740,6 +2781,9 @@ async def list_user_supplements(
     settings: Annotated[Settings, Depends(get_settings)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    category_key: Annotated[str | None, Query(max_length=120)] = None,
+    category_id: Annotated[UUID | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
 ) -> UserSupplementListResponse:
     """List supplement records owned by the current user.
 
@@ -2750,6 +2794,9 @@ async def list_user_supplements(
         settings: Application settings.
         limit: Maximum result count.
         offset: Result offset.
+        category_key: Optional active supplement category key filter.
+        category_id: Optional active supplement category id filter.
+        q: Optional display-name or manufacturer substring filter.
 
     Returns:
         Paginated supplement list.
@@ -2758,7 +2805,21 @@ async def list_user_supplements(
         HTTPException: If owner identity cannot be persisted safely.
     """
     try:
-        response = await list_user_supplement_records(session, current_user, limit, offset)
+        response = await list_user_supplement_records(
+            session,
+            current_user,
+            limit,
+            offset,
+            category_key=category_key,
+            category_id=category_id,
+            q=q,
+        )
+    except TaxonomyFilterNotFoundError as exc:
+        raise _supplement_http_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="taxonomy_filter_not_found",
+            message=str(exc),
+        ) from exc
     except ValueError as exc:
         raise _supplement_http_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -2774,9 +2835,48 @@ async def list_user_supplements(
         outcome="success",
         request=http_request,
         settings=settings,
-        event_metadata={"count": len(response.results), "limit": limit, "offset": offset},
+        event_metadata={
+            "count": len(response.results),
+            "limit": limit,
+            "offset": offset,
+            "category_key_present": category_key is not None,
+            "category_id_present": category_id is not None,
+            "q_present": bool(q),
+        },
     )
     return response
+
+
+@router.get(
+    "/categories",
+    response_model=SupplementCategoryListResponse,
+    responses={**COMMON_SUPPLEMENT_RESPONSES},
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_READ,),
+        contract_status=P1_4_SUPPLEMENT_REGISTRATION_READY_STATUS,
+    ),
+)
+async def list_supplement_category_catalog(
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_read)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    q: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> SupplementCategoryListResponse:
+    """List active supplement categories for current-user filter UIs.
+
+    Args:
+        current_user: Authenticated caller; only used to enforce read scope.
+        session: Request-scoped async database session.
+        q: Optional category key or display-name substring.
+        limit: Maximum result count.
+        offset: Result offset.
+
+    Returns:
+        Paginated active supplement category catalog response.
+    """
+    del current_user
+    return await list_supplement_categories(session, q=q, limit=limit, offset=offset)
 
 
 @router.get(
@@ -2840,7 +2940,11 @@ async def get_user_supplement(
         request=http_request,
         settings=settings,
     )
-    return user_supplement_to_response(result.supplement, result.ingredients)
+    return user_supplement_to_response(
+        result.supplement,
+        result.ingredients,
+        categories=result.categories,
+    )
 
 
 @router.delete(

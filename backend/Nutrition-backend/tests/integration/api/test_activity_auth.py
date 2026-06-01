@@ -144,7 +144,7 @@ def test_returns_200_and_emits_audit_event_when_consent_granted(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["bmi"]["category"] == "obese_1"
-    assert body["recommended_steps"] == 7524
+    assert body["recommended_steps"] == 7500
     assert len(captured_audits) == 1
     assert captured_audits[0]["kwargs"]["action"] == "activity_score_compute"
     assert captured_audits[0]["kwargs"]["resource_type"] == "activity_score"

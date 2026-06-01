@@ -13,13 +13,14 @@ from fastapi import UploadFile
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
-from src.models.db.meal import FoodImageAnalysisRun, MealRecord
+from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
 from src.models.schemas.meal import (
     MealAnalysisStatus,
     MealConfirmationRequest,
     MealFoodItemInput,
     MealType,
 )
+from src.models.schemas.taxonomy import FoodCatalogItemReference
 from src.security.auth import AuthenticatedUser
 from src.services.meal_image_analysis import (
     FOOD_IMAGE_ANALYSIS_ALGORITHM_VERSION,
@@ -32,6 +33,7 @@ from src.services.meal_image_analysis import (
     create_meal_image_analysis_preview,
     meal_confirmation_to_response,
     meal_image_analysis_to_preview,
+    meal_record_to_response,
     read_and_validate_meal_image,
 )
 from src.vision.base import BoundingBox, VisionError
@@ -604,6 +606,45 @@ async def test_confirm_meal_record_persists_user_confirmed_items() -> None:
     assert response.food_items[0].display_name == "비빔밥"
     assert response.food_items[0].kcal == 520
     assert response.nutrition_summary["status"] == "user_confirmed"
+
+
+def test_meal_record_to_response_attaches_food_catalog_reference() -> None:
+    """Verify confirmed meal response includes safe food taxonomy metadata."""
+    meal, _run = _existing_preview("a" * 64)
+    now = datetime.now(UTC)
+    meal.status = MealAnalysisStatus.CONFIRMED.value
+    meal.confirmed_at = now
+    catalog_item_id = uuid4()
+    food_item = MealFoodItem(
+        id=uuid4(),
+        meal_id=meal.id,
+        food_name_text="된장찌개",
+        food_catalog_item_id=catalog_item_id,
+        portion_amount=1,
+        portion_unit="bowl",
+        kcal=180,
+        source="database_match",
+        sort_order=0,
+        created_at=now,
+        updated_at=now,
+    )
+
+    response = meal_record_to_response(
+        meal,
+        [food_item],
+        catalog_item_refs={
+            catalog_item_id: FoodCatalogItemReference(
+                cuisine_code="korean",
+                course_code="soup_stew",
+                canonical_name_ko="된장찌개",
+                canonical_name_en="Soybean Paste Stew",
+            )
+        },
+    )
+
+    assert response.food_items[0].food_catalog_item_id == catalog_item_id
+    assert response.food_items[0].catalog_item is not None
+    assert response.food_items[0].catalog_item.cuisine_code == "korean"
 
 
 @pytest.mark.asyncio

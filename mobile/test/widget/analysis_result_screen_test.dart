@@ -42,10 +42,21 @@ void main() {
     );
     expect(find.text('영양제명'), findsOneWidget);
     expect(find.text('상세 성분 및 함량'), findsOneWidget);
+    expect(find.byType(Table), findsOneWidget);
     expect(find.text('성분명'), findsOneWidget);
     expect(find.text('함량'), findsOneWidget);
     expect(find.text('Vitamin D'), findsOneWidget);
     expect(find.text('25 mcg'), findsOneWidget);
+    expect(
+      tester
+          .widgetList<Text>(find.text('Vitamin D'))
+          .any(
+            (Text widget) =>
+                widget.style?.fontWeight == FontWeight.w900 &&
+                widget.style?.fontSize == 16,
+          ),
+      isTrue,
+    );
     expect(find.text('섭취 방법'), findsOneWidget);
 
     await tester.tap(
@@ -110,7 +121,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('성분 직접 입력'), findsOneWidget);
+      expect(find.text('제품명이 보이게 한 장 더 촬영해주세요'), findsOneWidget);
       expect(find.text('성분표가 보이게 한 장 더 촬영해주세요'), findsOneWidget);
+      expect(find.text('성분명과 함량을 확인할 수 없어요.'), findsOneWidget);
 
       await tester.tap(find.byTooltip('영양제명 수정'));
       await tester.pumpAndSettle();
@@ -243,6 +256,22 @@ void main() {
       find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
       findsOneWidget,
     );
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
+          )
+          .value,
+      isFalse,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
@@ -252,6 +281,22 @@ void main() {
       find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
     );
     await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
+          )
+          .value,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
+          )
+          .value,
+      isTrue,
+    );
     await tester.tap(find.byTooltip('상세 성분 및 함량 수정'));
     await tester.pumpAndSettle();
 

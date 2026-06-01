@@ -27,11 +27,15 @@ if [[ -n "${LEMON_CERTIFICATE_PINS:-}" ]]; then
   build_args+=(--dart-define=LEMON_CERTIFICATE_PINS="${LEMON_CERTIFICATE_PINS}")
 fi
 
+if [[ -n "${LEMON_MAC_CAMERA_BRIDGE_URL:-}" ]]; then
+  build_args+=(--dart-define=LEMON_MAC_CAMERA_BRIDGE_URL="${LEMON_MAC_CAMERA_BRIDGE_URL}")
+fi
+
 flutter pub get
 flutter "${build_args[@]}"
 
 cat <<'EOF'
 Prepared Flutter iOS Runner for Xcode.
 Open mobile/ios/Runner.xcworkspace and run the Runner scheme.
-Do not open mobile/Lemon-Aid-ios/Lemon-Aid.xcodeproj for Flutter UIUX parity.
+The old mobile/Lemon-Aid-ios native smoke shell was removed; use Runner only.
 EOF

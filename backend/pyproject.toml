@@ -63,7 +63,11 @@ convention = "google"
 known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
+"Nutrition-backend/src/ocr/field_extractor.py" = ["RUF001"]
+"Nutrition-backend/src/ocr/text_normalizer.py" = ["RUF001", "RUF002", "RUF003"]
 "Nutrition-backend/tests/**/*.py" = ["PLR2004"]
+"Nutrition-backend/tests/unit/ocr/test_field_extractor.py" = ["PLR2004", "RUF001"]
+"Nutrition-backend/tests/unit/ocr/test_text_normalizer.py" = ["PLR2004", "RUF001", "RUF002"]
 "ai_agent_chat/tests/**/*.py" = ["PLR2004"]
 
 [tool.mypy]

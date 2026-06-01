@@ -127,7 +127,7 @@ void main() {
     expect(find.text('분석하기'), findsOneWidget);
   });
 
-  testWidgets('selected OCR provider reaches real analysis flow', (
+  testWidgets('automatic OCR providers reach real analysis flow', (
     WidgetTester tester,
   ) async {
     final File image = _writeTinyPng();
@@ -158,13 +158,19 @@ void main() {
 
     await tester.tap(find.byTooltip('갤러리'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Paddle'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('분석하기'));
     await tester.pumpAndSettle();
 
     expect(repository.lastImagePath, image.path);
-    expect(repository.lastOcrProvider, 'paddleocr');
+    expect(
+      repository.ocrProviders,
+      containsAll(<String>[
+        'configured',
+        'paddleocr',
+        'clova',
+        'google_vision',
+      ]),
+    );
     expect(picker.lastMaxWidth, 2400);
     expect(picker.lastImageQuality, 95);
     expect(find.text('Preview'), findsOneWidget);
@@ -205,6 +211,7 @@ class _CameraWidgetRepository implements LemonAidRepository {
   final ApiError? analyzeError;
   String? lastImagePath;
   String? lastOcrProvider;
+  final List<String> ocrProviders = <String>[];
 
   @override
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
@@ -213,6 +220,7 @@ class _CameraWidgetRepository implements LemonAidRepository {
   }) async {
     lastImagePath = imagePath;
     lastOcrProvider = ocrProvider;
+    ocrProviders.add(ocrProvider);
     final ApiError? error = analyzeError;
     if (error != null) {
       throw error;

@@ -240,6 +240,10 @@ def test_list_user_supplements_returns_owner_scoped_response(
         _user: AuthenticatedUser,
         limit: int,
         offset: int,
+        *,
+        category_key: str | None = None,
+        category_id: object | None = None,
+        q: str | None = None,
     ) -> UserSupplementListResponse:
         """Return a fake list response.
 
@@ -248,10 +252,16 @@ def test_list_user_supplements_returns_owner_scoped_response(
             _user: Authenticated user passed by the route.
             limit: Requested limit.
             offset: Requested offset.
+            category_key: Optional category key filter passed by the route.
+            category_id: Optional category id filter passed by the route.
+            q: Optional text filter passed by the route.
 
         Returns:
             Fake list response.
         """
+        assert category_key is None
+        assert category_id is None
+        assert q is None
         return UserSupplementListResponse(results=[response_model], limit=limit, offset=offset)
 
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)

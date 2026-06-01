@@ -416,8 +416,16 @@ def test_analyze_supplement_label_multi_accepts_roles_and_returns_group(
     assert body["merged_preview"]["multi_image_group_id"] == body["analysis_group_id"]
     assert body["merged_preview"]["image_role"] == "mixed"
     assert body["merged_preview"]["pipeline_metadata"]["image_count"] == 2
-    assert body["merged_preview"]["missing_required_sections"] == ["supplement_facts"]
-    assert body["missing_required_sections"] == ["supplement_facts"]
+    assert body["merged_preview"]["missing_required_sections"] == [
+        "product_name",
+        "supplement_facts",
+        "precautions",
+    ]
+    assert body["missing_required_sections"] == [
+        "product_name",
+        "supplement_facts",
+        "precautions",
+    ]
     assert body["action_required"] == "additional_label_image_required"
     assert all("ocr_text" not in preview for preview in body["previews"])
     assert "ocr_text" not in body["merged_preview"]
@@ -497,7 +505,12 @@ def test_create_supplement_analysis_session_returns_upload_contract(
     assert body["status"] == "created"
     assert body["image_count"] == 0
     assert body["max_images"] == 6
-    assert body["missing_required_sections"] == ["supplement_facts", "intake_method"]
+    assert body["missing_required_sections"] == [
+        "product_name",
+        "supplement_facts",
+        "intake_method",
+        "precautions",
+    ]
     assert body["action_required"] == "additional_label_image_required"
     assert len(fake_session.added_audits) == 1
 
@@ -604,12 +617,29 @@ def test_finalize_supplement_analysis_session_returns_merged_group(
                     "confidence": 0.82,
                     "evidence_refs": ["facts-intake"],
                 },
+                {
+                    "section_id": "precautions",
+                    "section_type": "precautions",
+                    "heading_text": "주의사항",
+                    "text_bundle": "주의사항 확인",
+                    "confidence": 0.8,
+                    "evidence_refs": ["facts-precaution"],
+                },
             ],
             "intake_method": {
                 "text": "섭취 방법 확인",
                 "confidence": 0.82,
                 "evidence_refs": ["facts-intake"],
             },
+            "precautions": [
+                {
+                    "text": "주의사항 확인",
+                    "category": "unknown",
+                    "severity": "warning",
+                    "confidence": 0.8,
+                    "evidence_refs": ["facts-precaution"],
+                }
+            ],
             "evidence_spans": [
                 {
                     "span_id": "facts-vitamin-c",
@@ -624,6 +654,13 @@ def test_finalize_supplement_analysis_session_returns_merged_group(
                     "section_type": "intake_method",
                     "text_excerpt": "섭취 방법 확인",
                     "confidence": 0.82,
+                },
+                {
+                    "span_id": "facts-precaution",
+                    "source_type": "ocr_layout",
+                    "section_type": "precautions",
+                    "text_excerpt": "주의사항 확인",
+                    "confidence": 0.8,
                 },
             ],
         },

@@ -7,12 +7,158 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 from src.models.db.mixins import TimestampMixin
+
+
+class FoodCuisine(TimestampMixin, Base):
+    """Persist a top-level food cuisine taxonomy entry.
+
+    Attributes:
+        id: Stable cuisine identifier.
+        cuisine_code: Stable machine key such as korean or western.
+        display_name_ko: Korean user-facing cuisine label.
+        display_name_en: English cuisine label for search/imports.
+        sort_order: Display and deterministic processing order.
+        is_active: Whether the cuisine should be used in classification.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "food_cuisines"
+    __table_args__ = (
+        UniqueConstraint("cuisine_code", name="uq_food_cuisines_cuisine_code"),
+        CheckConstraint("cuisine_code <> ''", name="cuisine_code_nonempty"),
+        CheckConstraint("display_name_ko <> ''", name="display_name_ko_nonempty"),
+        CheckConstraint("display_name_en <> ''", name="display_name_en_nonempty"),
+        CheckConstraint("sort_order >= 0", name="sort_order_nonnegative"),
+        Index("ix_food_cuisines_active_sort", "is_active", "sort_order"),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    cuisine_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    display_name_ko: Mapped[str] = mapped_column(String(80), nullable=False)
+    display_name_en: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class FoodCourse(TimestampMixin, Base):
+    """Persist a cuisine-specific course/category entry.
+
+    Attributes:
+        id: Stable course identifier.
+        cuisine_id: Parent cuisine identifier.
+        course_code: Cuisine-local machine key such as soup_stew.
+        display_name_ko: Korean user-facing course label.
+        display_name_en: English course label for search/imports.
+        sort_order: Display and deterministic processing order.
+        is_active: Whether the course should be used in classification.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "food_courses"
+    __table_args__ = (
+        UniqueConstraint("cuisine_id", "course_code", name="uq_food_courses_cuisine_course"),
+        CheckConstraint("course_code <> ''", name="course_code_nonempty"),
+        CheckConstraint("display_name_ko <> ''", name="display_name_ko_nonempty"),
+        CheckConstraint("display_name_en <> ''", name="display_name_en_nonempty"),
+        CheckConstraint("sort_order >= 0", name="sort_order_nonnegative"),
+        Index("ix_food_courses_cuisine_sort", "cuisine_id", "sort_order"),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    cuisine_id: Mapped[UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("food_cuisines.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    course_code: Mapped[str] = mapped_column(String(60), nullable=False)
+    display_name_ko: Mapped[str] = mapped_column(String(80), nullable=False)
+    display_name_en: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class FoodCatalogItem(TimestampMixin, Base):
+    """Persist a canonical food item under a cuisine and course.
+
+    Attributes:
+        id: Stable food catalog item identifier.
+        cuisine_id: Parent cuisine identifier.
+        course_id: Parent course identifier.
+        canonical_name_ko: Korean canonical food name, e.g. 된장찌개.
+        canonical_name_en: Optional English food name.
+        aliases: Bounded alternate names used for search/matching.
+        nutrition_reference: Optional curated nutrition values per serving.
+        source: Import source such as manual_seed or external_dataset.
+        source_payload: Sanitized source metadata; no raw images or provider payloads.
+        is_active: Whether the food item should be used for classification/matching.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "food_catalog_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "cuisine_id",
+            "course_id",
+            "canonical_name_ko",
+            name="uq_food_catalog_items_cuisine_course_name",
+        ),
+        CheckConstraint("canonical_name_ko <> ''", name="canonical_name_ko_nonempty"),
+        CheckConstraint("jsonb_typeof(aliases) = 'array'", name="aliases_array"),
+        CheckConstraint(
+            "jsonb_typeof(nutrition_reference) = 'object'",
+            name="nutrition_reference_object",
+        ),
+        CheckConstraint("jsonb_typeof(source_payload) = 'object'", name="source_payload_object"),
+        CheckConstraint("source <> ''", name="source_nonempty"),
+        Index("ix_food_catalog_items_cuisine_course", "cuisine_id", "course_id"),
+        Index("ix_food_catalog_items_name_ko", "canonical_name_ko"),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    cuisine_id: Mapped[UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("food_cuisines.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    course_id: Mapped[UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("food_courses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    canonical_name_ko: Mapped[str] = mapped_column(String(120), nullable=False)
+    canonical_name_en: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    aliases: Mapped[list[str]] = mapped_column(postgresql.JSONB, nullable=False, default=list)
+    nutrition_reference: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=dict,
+    )
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=dict,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class MealRecord(TimestampMixin, Base):
@@ -86,6 +232,7 @@ class MealFoodItem(TimestampMixin, Base):
         id: Stable meal food item identifier.
         meal_id: Parent meal record identifier.
         food_name_text: User-confirmed bounded food name.
+        food_catalog_item_id: Optional curated food taxonomy item identifier.
         canonical_food_id: Optional future curated food-master identifier.
         portion_amount: User-confirmed portion amount.
         portion_unit: User-confirmed portion unit.
@@ -122,6 +269,7 @@ class MealFoodItem(TimestampMixin, Base):
         ),
         CheckConstraint("sort_order >= 0", name="sort_order_nonnegative"),
         Index("ix_meal_food_items_meal_id", "meal_id"),
+        Index("ix_meal_food_items_food_catalog_item_id", "food_catalog_item_id"),
         Index("ix_meal_food_items_canonical_food_id", "canonical_food_id"),
     )
 
@@ -132,6 +280,11 @@ class MealFoodItem(TimestampMixin, Base):
         nullable=False,
     )
     food_name_text: Mapped[str] = mapped_column(String(160), nullable=False)
+    food_catalog_item_id: Mapped[UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("food_catalog_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     canonical_food_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     portion_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     portion_unit: Mapped[str | None] = mapped_column(String(40), nullable=True)

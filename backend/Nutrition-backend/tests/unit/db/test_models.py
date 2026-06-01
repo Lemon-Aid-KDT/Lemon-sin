@@ -15,6 +15,9 @@ from src.models.db import (
     ConsentPolicy,
     ConsentRecord,
     DeletionRequest,
+    FoodCatalogItem,
+    FoodCourse,
+    FoodCuisine,
     FoodImageAnalysisRun,
     HealthDailySummary,
     HealthMetricSample,
@@ -39,8 +42,10 @@ from src.models.db import (
     PrescriptionItem,
     RegulatedDocument,
     SupplementAnalysisRun,
+    SupplementCategory,
     SupplementImageEvidence,
     SupplementProduct,
+    SupplementProductCategory,
     SupplementProductIngredient,
     User,
     UserSupplement,
@@ -401,17 +406,31 @@ def test_medical_record_constraints_and_indexes_are_fail_closed() -> None:
 
 def test_supplement_tables_are_registered_with_required_columns() -> None:
     """Verify P1 supplement tables are registered in shared ORM metadata."""
+    supplement_category = cast(Table, SupplementCategory.__table__)
     supplement_product = cast(Table, SupplementProduct.__table__)
+    supplement_product_category = cast(Table, SupplementProductCategory.__table__)
     supplement_product_ingredient = cast(Table, SupplementProductIngredient.__table__)
     supplement_analysis_run = cast(Table, SupplementAnalysisRun.__table__)
     user_supplement = cast(Table, UserSupplement.__table__)
     user_supplement_ingredient = cast(Table, UserSupplementIngredient.__table__)
 
+    assert "supplement_categories" in Base.metadata.tables
     assert "supplement_products" in Base.metadata.tables
+    assert "supplement_product_categories" in Base.metadata.tables
     assert "supplement_product_ingredients" in Base.metadata.tables
     assert "supplement_analysis_runs" in Base.metadata.tables
     assert "user_supplements" in Base.metadata.tables
     assert "user_supplement_ingredients" in Base.metadata.tables
+    assert {
+        "category_key",
+        "display_name",
+        "source_folder_name",
+        "source_path",
+        "source_payload",
+        "source_manifest_version",
+        "sort_order",
+        "is_active",
+    }.issubset(set(supplement_category.c.keys()))
     assert {
         "source_provider",
         "source_product_id",
@@ -420,6 +439,15 @@ def test_supplement_tables_are_registered_with_required_columns() -> None:
         "source_payload",
         "source_manifest_version",
     }.issubset(set(supplement_product.c.keys()))
+    assert {
+        "product_id",
+        "category_id",
+        "source",
+        "confidence",
+        "is_primary",
+        "source_payload",
+        "sort_order",
+    }.issubset(set(supplement_product_category.c.keys()))
     assert {
         "product_id",
         "standard_name",
@@ -446,6 +474,7 @@ def test_supplement_tables_are_registered_with_required_columns() -> None:
         "display_name",
         "serving_snapshot",
         "intake_schedule",
+        "precaution_snapshot",
         "evidence_refs",
         "deleted_at",
     }.issubset(set(user_supplement.c.keys()))
@@ -461,17 +490,32 @@ def test_supplement_tables_are_registered_with_required_columns() -> None:
 
 def test_supplement_constraints_and_indexes_are_defined() -> None:
     """Verify P1 supplement tables expose deterministic constraints and lookup indexes."""
+    supplement_category = cast(Table, SupplementCategory.__table__)
     supplement_product = cast(Table, SupplementProduct.__table__)
+    supplement_product_category = cast(Table, SupplementProductCategory.__table__)
     supplement_analysis_run = cast(Table, SupplementAnalysisRun.__table__)
     user_supplement = cast(Table, UserSupplement.__table__)
     user_supplement_ingredient = cast(Table, UserSupplementIngredient.__table__)
+    category_constraint_names = {constraint.name for constraint in supplement_category.constraints}
     product_constraint_names = {constraint.name for constraint in supplement_product.constraints}
+    product_category_constraint_names = {
+        constraint.name for constraint in supplement_product_category.constraints
+    }
     run_constraint_names = {constraint.name for constraint in supplement_analysis_run.constraints}
     ingredient_constraint_names = {
         constraint.name for constraint in user_supplement_ingredient.constraints
     }
+    user_supplement_constraint_names = {
+        constraint.name for constraint in user_supplement.constraints
+    }
+    category_index_names = {
+        index.name for index in supplement_category.indexes if isinstance(index, Index)
+    }
     product_index_names = {
         index.name for index in supplement_product.indexes if isinstance(index, Index)
+    }
+    product_category_index_names = {
+        index.name for index in supplement_product_category.indexes if isinstance(index, Index)
     }
     run_index_names = {
         index.name for index in supplement_analysis_run.indexes if isinstance(index, Index)
@@ -483,12 +527,24 @@ def test_supplement_constraints_and_indexes_are_defined() -> None:
         index.name for index in user_supplement_ingredient.indexes if isinstance(index, Index)
     }
 
+    assert "uq_supplement_categories_category_key" in category_constraint_names
+    assert "ck_supplement_categories_category_key_nonempty" in category_constraint_names
     assert "uq_supplement_products_source_provider_product_id" in product_constraint_names
     assert "ck_supplement_products_source_provider_nonempty" in product_constraint_names
+    assert (
+        "uq_supplement_product_categories_product_category"
+        in product_category_constraint_names
+    )
+    assert "ck_supplement_product_categories_confidence_range" in (
+        product_category_constraint_names
+    )
     assert "ck_supplement_analysis_runs_status_allowed" in run_constraint_names
     assert "ck_supplement_analysis_runs_ocr_confidence_range" in run_constraint_names
+    assert "ck_user_supplements_precaution_snapshot_array" in user_supplement_constraint_names
     assert "ck_user_supplement_ingredients_confidence_range" in ingredient_constraint_names
+    assert "ix_supplement_categories_active_sort" in category_index_names
     assert "ix_supplement_products_normalized_name" in product_index_names
+    assert "ix_supplement_product_categories_category_id" in product_category_index_names
     assert "ix_supplement_analysis_runs_owner_created_at" in run_index_names
     assert "ix_supplement_analysis_runs_owner_status_created_at" in run_index_names
     assert "ix_user_supplements_source_analysis_run_id" in user_supplement_index_names
@@ -1001,13 +1057,45 @@ def test_media_constraints_and_indexes_are_fail_closed() -> None:
 
 def test_meal_tables_are_registered_without_raw_payload_columns() -> None:
     """Verify meal and food image tables retain sanitized preview metadata only."""
+    food_cuisine = cast(Table, FoodCuisine.__table__)
+    food_course = cast(Table, FoodCourse.__table__)
+    food_catalog_item = cast(Table, FoodCatalogItem.__table__)
     meal_record = cast(Table, MealRecord.__table__)
     meal_food_item = cast(Table, MealFoodItem.__table__)
     food_image_run = cast(Table, FoodImageAnalysisRun.__table__)
 
+    assert "food_cuisines" in Base.metadata.tables
+    assert "food_courses" in Base.metadata.tables
+    assert "food_catalog_items" in Base.metadata.tables
     assert "meal_records" in Base.metadata.tables
     assert "meal_food_items" in Base.metadata.tables
     assert "food_image_analysis_runs" in Base.metadata.tables
+    assert {
+        "cuisine_code",
+        "display_name_ko",
+        "display_name_en",
+        "sort_order",
+        "is_active",
+    }.issubset(set(food_cuisine.c.keys()))
+    assert {
+        "cuisine_id",
+        "course_code",
+        "display_name_ko",
+        "display_name_en",
+        "sort_order",
+        "is_active",
+    }.issubset(set(food_course.c.keys()))
+    assert {
+        "cuisine_id",
+        "course_id",
+        "canonical_name_ko",
+        "canonical_name_en",
+        "aliases",
+        "nutrition_reference",
+        "source",
+        "source_payload",
+        "is_active",
+    }.issubset(set(food_catalog_item.c.keys()))
     assert {
         "owner_subject",
         "client_request_id",
@@ -1023,6 +1111,7 @@ def test_meal_tables_are_registered_without_raw_payload_columns() -> None:
     assert {
         "meal_id",
         "food_name_text",
+        "food_catalog_item_id",
         "canonical_food_id",
         "portion_amount",
         "portion_unit",
@@ -1052,7 +1141,12 @@ def test_meal_tables_are_registered_without_raw_payload_columns() -> None:
     }.issubset(set(food_image_run.c.keys()))
 
     all_columns = (
-        set(meal_record.c.keys()) | set(meal_food_item.c.keys()) | set(food_image_run.c.keys())
+        set(food_cuisine.c.keys())
+        | set(food_course.c.keys())
+        | set(food_catalog_item.c.keys())
+        | set(meal_record.c.keys())
+        | set(meal_food_item.c.keys())
+        | set(food_image_run.c.keys())
     )
     forbidden_columns = {
         "image_base64",
@@ -1070,9 +1164,27 @@ def test_meal_tables_are_registered_without_raw_payload_columns() -> None:
 
 def test_meal_constraints_and_indexes_are_fail_closed() -> None:
     """Verify meal/food image tables constrain user-scoped sanitized records."""
+    food_cuisine = cast(Table, FoodCuisine.__table__)
+    food_course = cast(Table, FoodCourse.__table__)
+    food_catalog_item = cast(Table, FoodCatalogItem.__table__)
     meal_record = cast(Table, MealRecord.__table__)
     meal_food_item = cast(Table, MealFoodItem.__table__)
     food_image_run = cast(Table, FoodImageAnalysisRun.__table__)
+    cuisine_constraint_names = {
+        constraint.name
+        for constraint in food_cuisine.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    course_constraint_names = {
+        constraint.name
+        for constraint in food_course.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    food_catalog_constraint_names = {
+        constraint.name
+        for constraint in food_catalog_item.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
     meal_constraint_names = {
         constraint.name
         for constraint in meal_record.constraints
@@ -1088,10 +1200,19 @@ def test_meal_constraints_and_indexes_are_fail_closed() -> None:
         for constraint in food_image_run.constraints
         if isinstance(constraint, CheckConstraint)
     }
+    cuisine_index_names = {index.name for index in food_cuisine.indexes if isinstance(index, Index)}
+    course_index_names = {index.name for index in food_course.indexes if isinstance(index, Index)}
+    food_catalog_index_names = {
+        index.name for index in food_catalog_item.indexes if isinstance(index, Index)
+    }
     meal_index_names = {index.name for index in meal_record.indexes if isinstance(index, Index)}
     item_index_names = {index.name for index in meal_food_item.indexes if isinstance(index, Index)}
     run_index_names = {index.name for index in food_image_run.indexes if isinstance(index, Index)}
 
+    assert "ck_food_cuisines_cuisine_code_nonempty" in cuisine_constraint_names
+    assert "ck_food_courses_course_code_nonempty" in course_constraint_names
+    assert "ck_food_catalog_items_aliases_array" in food_catalog_constraint_names
+    assert "ck_food_catalog_items_nutrition_reference_object" in food_catalog_constraint_names
     assert "ck_meal_records_owner_subject_nonempty" in meal_constraint_names
     assert "ck_meal_records_meal_type_allowed" in meal_constraint_names
     assert "ck_meal_records_meal_status_allowed" in meal_constraint_names
@@ -1103,8 +1224,12 @@ def test_meal_constraints_and_indexes_are_fail_closed() -> None:
     assert "ck_food_image_analysis_runs_food_image_status_allowed" in run_constraint_names
     assert "ck_food_image_analysis_runs_detected_items_snapshot_object" in run_constraint_names
     assert "ck_food_image_analysis_runs_warning_codes_array" in run_constraint_names
+    assert "ix_food_cuisines_active_sort" in cuisine_index_names
+    assert "ix_food_courses_cuisine_sort" in course_index_names
+    assert "ix_food_catalog_items_cuisine_course" in food_catalog_index_names
     assert "ix_meal_records_owner_eaten_at" in meal_index_names
     assert "ix_meal_records_owner_status" in meal_index_names
+    assert "ix_meal_food_items_food_catalog_item_id" in item_index_names
     assert "ix_meal_food_items_meal_id" in item_index_names
     assert "ix_food_image_analysis_runs_owner_created_at" in run_index_names
     assert "ix_food_image_analysis_runs_owner_status_created_at" in run_index_names

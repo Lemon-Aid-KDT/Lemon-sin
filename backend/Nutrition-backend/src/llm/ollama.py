@@ -20,8 +20,8 @@ HTTP_NOT_FOUND = 404
 SUPPLEMENT_PARSER_PROVIDER = "ollama"
 SUPPLEMENT_PARSER_SOURCE = "ollama_structured"
 MAX_OLLAMA_OCR_PROMPT_CHARS = 12_000
-OLLAMA_OCR_PROMPT_HEAD_CHARS = 8_000
-OLLAMA_OCR_PROMPT_TAIL_CHARS = 4_000
+OLLAMA_OCR_PROMPT_HEAD_CHARS = 7_600
+OLLAMA_OCR_PROMPT_TAIL_CHARS = 3_900
 TRUNCATED_OCR_TEXT_MARKER = (
     "[middle OCR lines omitted to keep the local structured-output prompt bounded]"
 )
@@ -34,7 +34,10 @@ Return one JSON object.
   list (원재료명/원료명/성분명) with amount=null, unit=null. Amounts come ONLY
   from the facts table; never invented.
 - Ignore package counts ("30정", "180g") unless attached to a named row.
-- label_sections, intake_method, precautions, functional_claims: as seen
+- Required sections are product_name, supplement_facts, intake_method, precautions.
+- label_sections, intake_method, functional_claims: as seen
+- precautions: return each visible caution/warning sentence as a separate array
+  item; do not summarize, merge, or rewrite the wording beyond OCR cleanup.
 - evidence_spans: short excerpts, never full OCR text
 - missing_required_sections, low_confidence_fields, warnings: brief
 No keys outside the schema in the format field.
@@ -76,6 +79,7 @@ SECTION_TYPES = frozenset(
 )
 MISSING_SECTION_TYPES = frozenset(
     {
+        "product_name",
         "supplement_facts",
         "intake_method",
         "ingredients",

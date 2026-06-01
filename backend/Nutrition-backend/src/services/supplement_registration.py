@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from functools import lru_cache
 from uuid import UUID
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import resolve_nutrition_reference_root
 from src.models.db.supplement import (
     SupplementAnalysisRun,
+    SupplementCategory,
+    SupplementProductCategory,
     UserSupplement,
     UserSupplementIngredient,
 )
@@ -30,9 +32,11 @@ from src.models.schemas.supplement import (
     UserSupplementListResponse,
     UserSupplementResponse,
 )
+from src.models.schemas.taxonomy import SupplementCategorySummary
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.supplement_matching import match_supplement_product
+from src.services.taxonomy_catalog import resolve_supplement_category_filter
 
 REFERENCE_DATA_PATH = resolve_nutrition_reference_root() / "nutrient"
 NUTRIENT_CODES_PATH = REFERENCE_DATA_PATH / "nutrient_codes.json"
@@ -45,10 +49,12 @@ class UserSupplementStoreResult:
     Attributes:
         supplement: Persisted user supplement row.
         ingredients: Persisted ingredient rows.
+        categories: Curated categories attached through the matched reference product.
     """
 
     supplement: UserSupplement
     ingredients: list[UserSupplementIngredient]
+    categories: list[SupplementCategorySummary] = field(default_factory=list)
 
 
 class SupplementRegistrationError(ValueError):
@@ -118,6 +124,7 @@ async def create_user_supplement_from_confirmation(
             if request.intake_schedule is not None
             else {}
         ),
+        precaution_snapshot=request.precaution_snapshot,
         evidence_refs=evidence_refs,
         user_confirmed_at=now,
     )
@@ -154,7 +161,15 @@ async def create_user_supplement_from_confirmation(
 
     await session.commit()
     await session.refresh(supplement)
-    return UserSupplementStoreResult(supplement=supplement, ingredients=ingredients)
+    categories = await _load_categories_for_products(
+        session,
+        [supplement.matched_product_id] if supplement.matched_product_id else [],
+    )
+    return UserSupplementStoreResult(
+        supplement=supplement,
+        ingredients=ingredients,
+        categories=categories.get(supplement.matched_product_id, []),
+    )
 
 
 async def list_user_supplement_records(
@@ -162,6 +177,10 @@ async def list_user_supplement_records(
     user: AuthenticatedUser,
     limit: int,
     offset: int,
+    *,
+    category_key: str | None = None,
+    category_id: UUID | None = None,
+    q: str | None = None,
 ) -> UserSupplementListResponse:
     """List active user supplement records visible to the current owner.
 
@@ -170,17 +189,40 @@ async def list_user_supplement_records(
         user: Authenticated owner.
         limit: Maximum row count.
         offset: Row offset.
+        category_key: Optional curated supplement category key filter.
+        category_id: Optional curated supplement category id filter.
+        q: Optional supplement display-name or manufacturer substring filter.
 
     Returns:
         Paginated response model.
     """
-    records = await _list_owned_supplements(session, user, limit, offset)
+    category = await resolve_supplement_category_filter(
+        session,
+        category_key=category_key,
+        category_id=category_id,
+    )
+    records = await _list_owned_supplements(
+        session,
+        user,
+        limit,
+        offset,
+        category=category,
+        q=q,
+    )
     ingredients = await _load_ingredients_for_supplements(
         session, [record.id for record in records]
     )
+    categories = await _load_categories_for_products(
+        session,
+        [record.matched_product_id for record in records if record.matched_product_id],
+    )
     return UserSupplementListResponse(
         results=[
-            user_supplement_to_response(record, ingredients.get(record.id, []))
+            user_supplement_to_response(
+                record,
+                ingredients.get(record.id, []),
+                categories=categories.get(record.matched_product_id, []),
+            )
             for record in records
         ],
         limit=limit,
@@ -213,9 +255,14 @@ async def get_user_supplement_record(
     if record is None:
         return None
     ingredients = await _load_ingredients_for_supplements(session, [record.id])
+    categories = await _load_categories_for_products(
+        session,
+        [record.matched_product_id] if record.matched_product_id else [],
+    )
     return UserSupplementStoreResult(
         supplement=record,
         ingredients=ingredients.get(record.id, []),
+        categories=categories.get(record.matched_product_id, []),
     )
 
 
@@ -251,12 +298,15 @@ async def soft_delete_user_supplement(
 def user_supplement_to_response(
     supplement: UserSupplement,
     ingredients: Iterable[UserSupplementIngredient],
+    *,
+    categories: Iterable[SupplementCategorySummary] | None = None,
 ) -> UserSupplementResponse:
     """Convert persisted supplement rows into the public API response.
 
     Args:
         supplement: Persisted user supplement row.
         ingredients: Persisted ingredient rows.
+        categories: Curated categories attached through the matched reference product.
 
     Returns:
         Public user supplement response without owner identifiers.
@@ -283,7 +333,9 @@ def user_supplement_to_response(
             if supplement.intake_schedule
             else None
         ),
+        precaution_snapshot=list(supplement.precaution_snapshot or []),
         evidence_refs=_safe_evidence_refs(supplement.evidence_refs),
+        categories=list(categories or []),
         user_confirmed_at=supplement.user_confirmed_at,
         created_at=supplement.created_at,
     )
@@ -416,6 +468,9 @@ async def _list_owned_supplements(
     user: AuthenticatedUser,
     limit: int,
     offset: int,
+    *,
+    category: SupplementCategory | None = None,
+    q: str | None = None,
 ) -> list[UserSupplement]:
     """Load active supplement rows for a current user.
 
@@ -424,21 +479,90 @@ async def _list_owned_supplements(
         user: Authenticated owner.
         limit: Maximum row count.
         offset: Row offset.
+        category: Optional active category row to filter by.
+        q: Optional display-name or manufacturer substring.
 
     Returns:
         Active supplement rows.
     """
-    result = await session.scalars(
-        select(UserSupplement)
-        .where(
-            UserSupplement.owner_subject == build_owner_subject(user),
-            UserSupplement.deleted_at.is_(None),
+    stmt = select(UserSupplement).where(
+        UserSupplement.owner_subject == build_owner_subject(user),
+        UserSupplement.deleted_at.is_(None),
+    )
+    if category is not None:
+        stmt = (
+            stmt.join(
+                SupplementProductCategory,
+                UserSupplement.matched_product_id == SupplementProductCategory.product_id,
+            )
+            .where(SupplementProductCategory.category_id == category.id)
+            .distinct()
         )
-        .order_by(desc(UserSupplement.created_at))
-        .limit(limit)
-        .offset(offset)
+    query_text = _normalized_query(q)
+    if query_text:
+        pattern = f"%{query_text}%"
+        stmt = stmt.where(
+            or_(
+                UserSupplement.display_name.ilike(pattern),
+                UserSupplement.manufacturer.ilike(pattern),
+            )
+        )
+    result = await session.scalars(
+        stmt.order_by(desc(UserSupplement.created_at)).limit(limit).offset(offset)
     )
     return list(result.all())
+
+
+async def _load_categories_for_products(
+    session: AsyncSession,
+    product_ids: list[UUID],
+) -> dict[UUID, list[SupplementCategorySummary]]:
+    """Load active supplement categories grouped by product id.
+
+    Args:
+        session: Request-scoped async database session.
+        product_ids: Matched reference product ids.
+
+    Returns:
+        Mapping from reference product id to public category summaries.
+    """
+    ids = list(dict.fromkeys(product_ids))
+    if not ids:
+        return {}
+    result = await session.execute(
+        select(SupplementProductCategory.product_id, SupplementCategory)
+        .join(SupplementCategory, SupplementProductCategory.category_id == SupplementCategory.id)
+        .where(
+            SupplementProductCategory.product_id.in_(ids),
+            SupplementCategory.is_active.is_(True),
+        )
+        .order_by(
+            SupplementProductCategory.product_id.asc(),
+            SupplementProductCategory.is_primary.desc(),
+            SupplementProductCategory.sort_order.asc(),
+            SupplementCategory.sort_order.asc(),
+            SupplementCategory.display_name.asc(),
+        )
+    )
+    grouped: dict[UUID, list[SupplementCategorySummary]] = {}
+    for product_id, category in result.all():
+        grouped.setdefault(product_id, []).append(
+            SupplementCategorySummary(
+                id=category.id,
+                category_key=category.category_key,
+                display_name=category.display_name,
+                sort_order=category.sort_order,
+            )
+        )
+    return grouped
+
+
+def _normalized_query(value: str | None) -> str | None:
+    """Trim optional query text and normalize blanks to None."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 async def _load_ingredients_for_supplements(

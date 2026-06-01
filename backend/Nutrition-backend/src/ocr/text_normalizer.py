@@ -98,9 +98,7 @@ def normalize_ko_en_spacing(text: str) -> str:
         >>> normalize_ko_en_spacing("비타민 C 1000mg")
         '비타민 C 1000mg'
     """
-    out = _KO_TO_ALNUM.sub(r"\1 \2", text)
-    out = _ALNUM_TO_KO.sub(r"\1 \2", out)
-    return out
+    return _ALNUM_TO_KO.sub(r"\1 \2", _KO_TO_ALNUM.sub(r"\1 \2", text))
 
 
 def normalize_ocr_text(text: str) -> str:
