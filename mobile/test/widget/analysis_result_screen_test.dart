@@ -359,6 +359,70 @@ void main() {
     expect(find.text('1000 mg'), findsOneWidget);
   });
 
+  testWidgets(
+    'groups front and facts photos into supplement-level result tabs',
+    (WidgetTester tester) async {
+      final SupplementMultiImageAnalysisPreview multiPreview =
+          _threeSupplementMultiPreview();
+      final _ReviewRepository repository = _ReviewRepository(
+        multiPreview: multiPreview,
+      );
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeImages(const <SupplementImageUpload>[
+        SupplementImageUpload(path: '/tmp/lemon-multi-front.jpg'),
+        SupplementImageUpload(path: '/tmp/lemon-multi-facts.jpg'),
+        SupplementImageUpload(path: '/tmp/omega-plus.jpg'),
+        SupplementImageUpload(path: '/tmp/magnesium-calm.jpg'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(home: AnalysisResultScreen(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-3')),
+        findsNothing,
+      );
+      expect(find.text('Merged batch'), findsNothing);
+      expect(find.text('Lemon Multi'), findsWidgets);
+      expect(find.text('Vitamin C'), findsOneWidget);
+      expect(find.text('500 mg'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Omega Plus'), findsWidgets);
+      expect(find.text('Omega-3'), findsOneWidget);
+      expect(find.text('1000 mg'), findsOneWidget);
+      expect(find.text('Vitamin C'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-2')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Magnesium Calm'), findsWidgets);
+      expect(find.text('Magnesium'), findsOneWidget);
+      expect(find.text('200 mg'), findsOneWidget);
+      expect(find.text('Omega-3'), findsNothing);
+    },
+  );
+
   testWidgets('renders meal analysis with food YOLO endpoint data', (
     WidgetTester tester,
   ) async {
@@ -588,26 +652,34 @@ class _ReviewRepository implements LemonAidRepository {
 
   SupplementAnalysisPreview _preview({
     String analysisId = 'analysis-1',
-    String productName = '비타민 D',
-    String manufacturer = 'Lemon Lab',
+    String? productName = '비타민 D',
+    String? manufacturer = 'Lemon Lab',
     String ingredientName = 'Vitamin D',
     double? ingredientAmount = 25,
     String? ingredientUnit = 'mcg',
     String ingredientSource = 'ocr_llm_preview',
     bool includeSecondIngredient = false,
+    bool includeIngredientCandidates = true,
+    bool includeSupplementFactsSection = true,
+    bool includeIntakeSection = true,
+    bool includePrecautionsSection = true,
+    String imageRole = 'supplement_facts',
+    List<String> missingRequiredSections = const <String>[],
   }) {
     final List<SupplementIngredientCandidate> ingredients =
-        <SupplementIngredientCandidate>[
-          SupplementIngredientCandidate(
-            displayName: ingredientName,
-            nutrientCode: ingredientName.toLowerCase().replaceAll(' ', '_'),
-            amount: ingredientAmount,
-            unit: ingredientUnit,
-            confidence: 0.92,
-            source: ingredientSource,
-          ),
-        ];
-    if (includeSecondIngredient) {
+        includeIngredientCandidates
+        ? <SupplementIngredientCandidate>[
+            SupplementIngredientCandidate(
+              displayName: ingredientName,
+              nutrientCode: ingredientName.toLowerCase().replaceAll(' ', '_'),
+              amount: ingredientAmount,
+              unit: ingredientUnit,
+              confidence: 0.92,
+              source: ingredientSource,
+            ),
+          ]
+        : <SupplementIngredientCandidate>[];
+    if (includeIngredientCandidates && includeSecondIngredient) {
       ingredients.add(
         SupplementIngredientCandidate(
           displayName: 'Sunflower oil',
@@ -622,6 +694,72 @@ class _ReviewRepository implements LemonAidRepository {
     final String ingredientText =
         '$ingredientName ${ingredientAmount?.toStringAsFixed(0) ?? ''} ${ingredientUnit ?? ''}'
             .trim();
+    final List<SupplementPreviewLabelSection> labelSections =
+        <SupplementPreviewLabelSection>[
+          if (includeSupplementFactsSection)
+            SupplementPreviewLabelSection(
+              sectionId: 'section-1',
+              sectionType: 'supplement_facts',
+              headingText: 'Supplement Facts',
+              textBundle: ingredientText,
+              confidence: 0.91,
+              requiresReview: false,
+              evidenceRefs: const <String>['span-1'],
+            ),
+          if (includeIntakeSection)
+            const SupplementPreviewLabelSection(
+              sectionId: 'section-2',
+              sectionType: 'intake_method',
+              headingText: 'Directions',
+              textBundle: '하루 1회 1캡슐',
+              confidence: 0.9,
+              requiresReview: false,
+              evidenceRefs: <String>['span-2'],
+            ),
+          if (includePrecautionsSection)
+            const SupplementPreviewLabelSection(
+              sectionId: 'section-3',
+              sectionType: 'precautions',
+              headingText: 'Warning',
+              textBundle: '임신 중이면 전문가와 상담하세요.',
+              confidence: 0.88,
+              requiresReview: false,
+              evidenceRefs: <String>['span-3'],
+            ),
+        ];
+    final List<SupplementPreviewEvidenceSpan> evidenceSpans =
+        <SupplementPreviewEvidenceSpan>[
+          if (includeSupplementFactsSection)
+            SupplementPreviewEvidenceSpan(
+              spanId: 'span-1',
+              sourceType: 'ocr',
+              sectionType: 'supplement_facts',
+              textExcerpt: ingredientText,
+              pageIndex: null,
+              cellRef: null,
+              confidence: 0.91,
+            ),
+          if (includeIntakeSection)
+            const SupplementPreviewEvidenceSpan(
+              spanId: 'span-2',
+              sourceType: 'ocr',
+              sectionType: 'intake_method',
+              textExcerpt: '하루 1회 1캡슐',
+              pageIndex: null,
+              cellRef: null,
+              confidence: 0.9,
+            ),
+          if (includePrecautionsSection)
+            const SupplementPreviewEvidenceSpan(
+              spanId: 'span-3',
+              sourceType: 'ocr',
+              sectionType: 'precautions',
+              textExcerpt: '임신 중이면 전문가와 상담하세요.',
+              pageIndex: null,
+              cellRef: null,
+              confidence: 0.88,
+            ),
+        ];
     return SupplementAnalysisPreview(
       analysisId: analysisId,
       status: 'requires_confirmation',
@@ -634,103 +772,51 @@ class _ReviewRepository implements LemonAidRepository {
       ingredientCandidates: ingredients,
       layoutAvailable: true,
       layoutFallbackReason: null,
-      labelSections: <SupplementPreviewLabelSection>[
-        SupplementPreviewLabelSection(
-          sectionId: 'section-1',
-          sectionType: 'supplement_facts',
-          headingText: 'Supplement Facts',
-          textBundle: ingredientText,
-          confidence: 0.91,
-          requiresReview: false,
-          evidenceRefs: const <String>['span-1'],
-        ),
-        const SupplementPreviewLabelSection(
-          sectionId: 'section-2',
-          sectionType: 'intake_method',
-          headingText: 'Directions',
-          textBundle: '하루 1회 1캡슐',
-          confidence: 0.9,
-          requiresReview: false,
-          evidenceRefs: <String>['span-2'],
-        ),
-        const SupplementPreviewLabelSection(
-          sectionId: 'section-3',
-          sectionType: 'precautions',
-          headingText: 'Warning',
-          textBundle: '임신 중이면 전문가와 상담하세요.',
-          confidence: 0.88,
-          requiresReview: false,
-          evidenceRefs: <String>['span-3'],
-        ),
-      ],
-      intakeMethod: const SupplementPreviewIntakeMethod(
-        text: '하루 1회 1캡슐',
-        structured: SupplementPreviewStructuredIntakeMethod(
-          frequency: 'daily',
-          timeOfDay: <String>['morning'],
-          timesPerDay: 1,
-          amountPerTime: 1,
-          amountUnit: 'capsule',
-          withFood: 'unknown',
-        ),
-        confidence: 0.9,
-        requiresReview: false,
-        evidenceRefs: <String>['span-2'],
-      ),
-      precautions: const <SupplementPreviewPrecaution>[
-        SupplementPreviewPrecaution(
-          text: '임신 중이면 전문가와 상담하세요.',
-          category: 'pregnancy',
-          severity: 'review',
-          confidence: 0.88,
-          requiresReview: false,
-          evidenceRefs: <String>['span-3'],
-        ),
-      ],
+      labelSections: labelSections,
+      intakeMethod: includeIntakeSection
+          ? const SupplementPreviewIntakeMethod(
+              text: '하루 1회 1캡슐',
+              structured: SupplementPreviewStructuredIntakeMethod(
+                frequency: 'daily',
+                timeOfDay: <String>['morning'],
+                timesPerDay: 1,
+                amountPerTime: 1,
+                amountUnit: 'capsule',
+                withFood: 'unknown',
+              ),
+              confidence: 0.9,
+              requiresReview: false,
+              evidenceRefs: <String>['span-2'],
+            )
+          : SupplementPreviewIntakeMethod.empty,
+      precautions: includePrecautionsSection
+          ? const <SupplementPreviewPrecaution>[
+              SupplementPreviewPrecaution(
+                text: '임신 중이면 전문가와 상담하세요.',
+                category: 'pregnancy',
+                severity: 'review',
+                confidence: 0.88,
+                requiresReview: false,
+                evidenceRefs: <String>['span-3'],
+              ),
+            ]
+          : const <SupplementPreviewPrecaution>[],
       functionalClaims: const <SupplementPreviewFunctionalClaim>[],
-      evidenceSpans: <SupplementPreviewEvidenceSpan>[
-        SupplementPreviewEvidenceSpan(
-          spanId: 'span-1',
-          sourceType: 'ocr',
-          sectionType: 'supplement_facts',
-          textExcerpt: ingredientText,
-          pageIndex: null,
-          cellRef: null,
-          confidence: 0.91,
-        ),
-        const SupplementPreviewEvidenceSpan(
-          spanId: 'span-2',
-          sourceType: 'ocr',
-          sectionType: 'intake_method',
-          textExcerpt: '하루 1회 1캡슐',
-          pageIndex: null,
-          cellRef: null,
-          confidence: 0.9,
-        ),
-        const SupplementPreviewEvidenceSpan(
-          spanId: 'span-3',
-          sourceType: 'ocr',
-          sectionType: 'precautions',
-          textExcerpt: '임신 중이면 전문가와 상담하세요.',
-          pageIndex: null,
-          cellRef: null,
-          confidence: 0.88,
-        ),
-      ],
+      evidenceSpans: evidenceSpans,
       imageQualityReport: null,
       analysisScope: 'supplement_label',
       actionRequired: 'none',
       detectedProductRegions: const <SupplementDetectedProductRegion>[],
       selectedRegionId: null,
-      missingRequiredSections: const <String>[],
-      imageRole: 'supplement_facts',
+      missingRequiredSections: missingRequiredSections,
+      imageRole: imageRole,
       multiImageGroupId: null,
       sourceType: 'uploaded_image',
       identityConflict: null,
-      pipelineMetadata: const SupplementImagePipelineMetadata(
+      pipelineMetadata: SupplementImagePipelineMetadata(
         intakeCompleted: true,
         imageCount: 1,
-        imageRole: 'supplement_facts',
+        imageRole: imageRole,
         visionRoiUsed: true,
         ocrStatus: 'success',
         visionStatus: 'success',
@@ -739,10 +825,10 @@ class _ReviewRepository implements LemonAidRepository {
         ocrTextPresent: true,
         ocrConfidenceBucket: 'high',
         roiCount: 1,
-        sectionCount: 3,
+        sectionCount: labelSections.length,
         llmParserUsed: true,
         parserContractVersion: 'test-parser-v3',
-        missingRequiredSections: <String>[],
+        missingRequiredSections: missingRequiredSections,
         rawImageStored: false,
         rawOcrTextStored: false,
       ),
@@ -778,6 +864,77 @@ class _ReviewRepository implements LemonAidRepository {
       expiresAt: previews.first.expiresAt,
     );
   }
+}
+
+SupplementMultiImageAnalysisPreview _threeSupplementMultiPreview() {
+  final _ReviewRepository source = _ReviewRepository();
+  final List<SupplementAnalysisPreview> previews = <SupplementAnalysisPreview>[
+    source._preview(
+      analysisId: 'analysis-a-front',
+      productName: 'Lemon Multi',
+      manufacturer: 'Lemon Lab',
+      includeIngredientCandidates: false,
+      includeSupplementFactsSection: false,
+      includeIntakeSection: false,
+      includePrecautionsSection: false,
+      imageRole: 'front_label',
+      missingRequiredSections: const <String>[
+        'supplement_facts',
+        'intake_method',
+        'precautions',
+      ],
+    ),
+    source._preview(
+      analysisId: 'analysis-a-facts',
+      productName: null,
+      manufacturer: null,
+      ingredientName: 'Vitamin C',
+      ingredientAmount: 500,
+      ingredientUnit: 'mg',
+      includeIntakeSection: false,
+      includePrecautionsSection: false,
+      missingRequiredSections: const <String>[
+        'product_name',
+        'intake_method',
+        'precautions',
+      ],
+    ),
+    source._preview(
+      analysisId: 'analysis-b',
+      productName: 'Omega Plus',
+      manufacturer: 'Ocean Lab',
+      ingredientName: 'Omega-3',
+      ingredientAmount: 1000,
+      ingredientUnit: 'mg',
+      missingRequiredSections: const <String>[],
+    ),
+    source._preview(
+      analysisId: 'analysis-c',
+      productName: 'Magnesium Calm',
+      manufacturer: 'Mineral Lab',
+      ingredientName: 'Magnesium',
+      ingredientAmount: 200,
+      ingredientUnit: 'mg',
+      missingRequiredSections: const <String>[],
+    ),
+  ];
+  return SupplementMultiImageAnalysisPreview(
+    analysisGroupId: 'multi-analysis-three-products',
+    imageCount: previews.length,
+    previews: previews,
+    mergedPreview: source._preview(
+      analysisId: 'analysis-global',
+      productName: 'Merged batch',
+      manufacturer: 'Global Lab',
+      ingredientName: 'Global Ingredient',
+      ingredientAmount: 1,
+      ingredientUnit: 'mg',
+    ),
+    missingRequiredSections: const <String>[],
+    actionRequired: 'none',
+    pipelineMetadata: previews.first.pipelineMetadata,
+    expiresAt: previews.first.expiresAt,
+  );
 }
 
 class _PendingReviewRepository extends _ReviewRepository {

@@ -128,14 +128,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   @override
   Widget build(BuildContext context) {
     final AppController? controller = widget.controller;
-    final List<SupplementAnalysisPreview> supplementPreviews =
-        _supplementReviewPreviews(controller);
+    final List<_SupplementReviewGroup> supplementGroups =
+        _supplementReviewGroups(controller);
     final int activeSupplementPreviewIndex = _activeSupplementPreviewIndex(
-      supplementPreviews,
+      supplementGroups.length,
     );
-    final SupplementAnalysisPreview? preview = supplementPreviews.isEmpty
+    final SupplementAnalysisPreview? preview = supplementGroups.isEmpty
         ? null
-        : supplementPreviews[activeSupplementPreviewIndex];
+        : supplementGroups[activeSupplementPreviewIndex].preview;
     final MealImageAnalysisPreview? mealPreview =
         controller?.mealAnalysisPreview;
     if (preview != null) {
@@ -172,9 +172,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                     _StatusBanner(error: error),
                     const SizedBox(height: AppSpace.md),
                   ],
-                  if (!_isMeal && supplementPreviews.length > 1) ...<Widget>[
+                  if (!_isMeal && supplementGroups.length > 1) ...<Widget>[
                     _SupplementPreviewTabs(
-                      previews: supplementPreviews,
+                      groups: supplementGroups,
                       selectedIndex: activeSupplementPreviewIndex,
                       onSelected: (int index) {
                         setState(() {
@@ -367,24 +367,553 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     ];
   }
 
-  List<SupplementAnalysisPreview> _supplementReviewPreviews(
+  List<_SupplementReviewGroup> _supplementReviewGroups(
     AppController? controller,
   ) {
     final List<SupplementAnalysisPreview> multiPreviews =
         controller?.multiImageAnalysisPreview?.previews ??
         const <SupplementAnalysisPreview>[];
-    if (multiPreviews.length > 1) return multiPreviews;
+    if (multiPreviews.length > 1) {
+      return _groupSupplementPreviews(multiPreviews);
+    }
     final SupplementAnalysisPreview? singlePreview =
         controller?.analysisPreview;
-    if (singlePreview == null) return const <SupplementAnalysisPreview>[];
-    return <SupplementAnalysisPreview>[singlePreview];
+    if (singlePreview == null) return const <_SupplementReviewGroup>[];
+    return <_SupplementReviewGroup>[
+      _SupplementReviewGroup(
+        label: _supplementPreviewLabel(singlePreview, 0),
+        preview: singlePreview,
+        sourcePreviews: <SupplementAnalysisPreview>[singlePreview],
+      ),
+    ];
   }
 
-  int _activeSupplementPreviewIndex(List<SupplementAnalysisPreview> previews) {
-    if (previews.isEmpty) return 0;
+  List<_SupplementReviewGroup> _groupSupplementPreviews(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    final List<_MutableSupplementReviewGroup> groups =
+        <_MutableSupplementReviewGroup>[];
+    for (final SupplementAnalysisPreview preview in previews) {
+      final String? identityKey = _supplementIdentityKey(preview);
+      if (identityKey != null) {
+        final _MutableSupplementReviewGroup? existing = groups
+            .cast<_MutableSupplementReviewGroup?>()
+            .firstWhere(
+              (_MutableSupplementReviewGroup? group) =>
+                  group?.identityKey == identityKey,
+              orElse: () => null,
+            );
+        if (existing != null) {
+          existing.previews.add(preview);
+          continue;
+        }
+        groups.add(
+          _MutableSupplementReviewGroup(
+            identityKey: identityKey,
+            previews: <SupplementAnalysisPreview>[preview],
+          ),
+        );
+        continue;
+      }
+
+      final _MutableSupplementReviewGroup? previous = groups.isEmpty
+          ? null
+          : groups.last;
+      if (previous != null &&
+          _canAttachIdentitylessPreview(previous, preview)) {
+        previous.previews.add(preview);
+        continue;
+      }
+      groups.add(
+        _MutableSupplementReviewGroup(
+          identityKey: null,
+          previews: <SupplementAnalysisPreview>[preview],
+        ),
+      );
+    }
+
+    return <_SupplementReviewGroup>[
+      for (int index = 0; index < groups.length; index++)
+        _buildSupplementReviewGroup(groups[index].previews, index),
+    ];
+  }
+
+  _SupplementReviewGroup _buildSupplementReviewGroup(
+    List<SupplementAnalysisPreview> previews,
+    int index,
+  ) {
+    final SupplementAnalysisPreview preview = _mergeSupplementGroupPreview(
+      previews,
+    );
+    return _SupplementReviewGroup(
+      label: _supplementPreviewLabel(preview, index),
+      preview: preview,
+      sourcePreviews: previews,
+    );
+  }
+
+  bool _canAttachIdentitylessPreview(
+    _MutableSupplementReviewGroup previous,
+    SupplementAnalysisPreview preview,
+  ) {
+    if (!_hasSupplementFactsEvidence(preview)) return false;
+    final bool previousHasProductIdentity = previous.previews.any(
+      (SupplementAnalysisPreview item) => _supplementIdentityKey(item) != null,
+    );
+    if (!previousHasProductIdentity) return false;
+    return !previous.previews.any(_hasSupplementFactsEvidence);
+  }
+
+  SupplementAnalysisPreview _mergeSupplementGroupPreview(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    if (previews.length == 1) return previews.first;
+    final SupplementAnalysisPreview base = _representativePreview(previews);
+    final SupplementParsedProduct parsedProduct = _mergedParsedProduct(
+      previews,
+      base,
+    );
+    final List<SupplementIngredientCandidate> ingredients = _mergedIngredients(
+      previews,
+    );
+    final List<SupplementPreviewLabelSection> labelSections =
+        _mergedLabelSections(previews);
+    final List<SupplementPreviewPrecaution> precautions = _mergedPrecautions(
+      previews,
+    );
+    final List<SupplementPreviewFunctionalClaim> functionalClaims =
+        _mergedFunctionalClaims(previews);
+    final List<SupplementPreviewEvidenceSpan> evidenceSpans =
+        _mergedEvidenceSpans(previews);
+    final SupplementPreviewIntakeMethod intakeMethod = _mergedIntakeMethod(
+      previews,
+      base,
+    );
+    final List<String> missingRequiredSections = _calculatedMissingSections(
+      parsedProduct: parsedProduct,
+      ingredients: ingredients,
+      labelSections: labelSections,
+      intakeMethod: intakeMethod,
+      precautions: precautions,
+    );
+    return SupplementAnalysisPreview(
+      analysisId: base.analysisId,
+      status: base.status,
+      parsedProduct: parsedProduct,
+      ingredientCandidates: ingredients,
+      layoutAvailable: previews.any(
+        (SupplementAnalysisPreview preview) => preview.layoutAvailable,
+      ),
+      layoutFallbackReason: base.layoutFallbackReason,
+      labelSections: labelSections,
+      intakeMethod: intakeMethod,
+      precautions: precautions,
+      functionalClaims: functionalClaims,
+      evidenceSpans: evidenceSpans,
+      imageQualityReport: base.imageQualityReport,
+      analysisScope: base.analysisScope,
+      actionRequired: _mergedActionRequired(previews),
+      detectedProductRegions: base.detectedProductRegions,
+      selectedRegionId: base.selectedRegionId,
+      missingRequiredSections: missingRequiredSections,
+      imageRole: 'mixed',
+      multiImageGroupId: base.multiImageGroupId,
+      sourceType: base.sourceType,
+      identityConflict: base.identityConflict,
+      pipelineMetadata: _mergedPipelineMetadata(
+        previews,
+        missingRequiredSections,
+        labelSections.length,
+      ),
+      lowConfidenceFields: _mergedStrings(
+        previews.map(
+          (SupplementAnalysisPreview preview) => preview.lowConfidenceFields,
+        ),
+      ),
+      warnings: _mergedStrings(
+        previews.map((SupplementAnalysisPreview preview) => preview.warnings),
+      ),
+      algorithmVersion: base.algorithmVersion,
+      sourceManifestVersion: base.sourceManifestVersion,
+      expiresAt: base.expiresAt,
+    );
+  }
+
+  SupplementAnalysisPreview _representativePreview(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    SupplementAnalysisPreview best = previews.first;
+    int bestScore = _previewMergeScore(best);
+    for (final SupplementAnalysisPreview preview in previews.skip(1)) {
+      final int score = _previewMergeScore(preview);
+      if (score > bestScore) {
+        best = preview;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  int _previewMergeScore(SupplementAnalysisPreview preview) {
+    return preview.ingredientCandidates.length * 6 +
+        preview.labelSections.length * 4 +
+        preview.evidenceSpans.length +
+        (_nonEmpty(preview.parsedProduct.productName) == null ? 0 : 5) +
+        (_nonEmpty(preview.parsedProduct.manufacturer) == null ? 0 : 2) +
+        (_nonEmpty(preview.intakeMethod.text) == null ? 0 : 3) +
+        preview.precautions.length * 3;
+  }
+
+  SupplementParsedProduct _mergedParsedProduct(
+    List<SupplementAnalysisPreview> previews,
+    SupplementAnalysisPreview base,
+  ) {
+    return SupplementParsedProduct(
+      productName:
+          _firstNonEmpty(
+            previews.map(
+              (SupplementAnalysisPreview preview) =>
+                  preview.parsedProduct.productName,
+            ),
+          ) ??
+          base.parsedProduct.productName,
+      manufacturer:
+          _firstNonEmpty(
+            previews.map(
+              (SupplementAnalysisPreview preview) =>
+                  preview.parsedProduct.manufacturer,
+            ),
+          ) ??
+          base.parsedProduct.manufacturer,
+      servingSize:
+          _firstNonEmpty(
+            previews.map(
+              (SupplementAnalysisPreview preview) =>
+                  preview.parsedProduct.servingSize,
+            ),
+          ) ??
+          base.parsedProduct.servingSize,
+      dailyServings:
+          _firstDailyServings(previews) ?? base.parsedProduct.dailyServings,
+    );
+  }
+
+  List<SupplementIngredientCandidate> _mergedIngredients(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    final Set<String> seen = <String>{};
+    final List<SupplementIngredientCandidate> merged =
+        <SupplementIngredientCandidate>[];
+    for (final SupplementAnalysisPreview preview in previews) {
+      for (final SupplementIngredientCandidate ingredient
+          in preview.ingredientCandidates) {
+        final String key = _ingredientKey(ingredient);
+        if (seen.add(key)) merged.add(ingredient);
+      }
+    }
+    return merged;
+  }
+
+  List<SupplementPreviewLabelSection> _mergedLabelSections(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    final Set<String> seen = <String>{};
+    final List<SupplementPreviewLabelSection> merged =
+        <SupplementPreviewLabelSection>[];
+    for (final SupplementAnalysisPreview preview in previews) {
+      for (final SupplementPreviewLabelSection section
+          in preview.labelSections) {
+        final String key = <String>[
+          section.sectionType,
+          section.headingText ?? '',
+          section.textBundle ?? '',
+        ].map(_normalizeKeyPart).join('|');
+        if (seen.add(key)) merged.add(section);
+      }
+    }
+    return merged;
+  }
+
+  List<SupplementPreviewPrecaution> _mergedPrecautions(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    final Set<String> seen = <String>{};
+    final List<SupplementPreviewPrecaution> merged =
+        <SupplementPreviewPrecaution>[];
+    for (final SupplementAnalysisPreview preview in previews) {
+      for (final SupplementPreviewPrecaution precaution
+          in preview.precautions) {
+        final String key = _normalizeKeyPart(precaution.text);
+        if (seen.add(key)) merged.add(precaution);
+      }
+    }
+    return merged;
+  }
+
+  List<SupplementPreviewFunctionalClaim> _mergedFunctionalClaims(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    final Set<String> seen = <String>{};
+    final List<SupplementPreviewFunctionalClaim> merged =
+        <SupplementPreviewFunctionalClaim>[];
+    for (final SupplementAnalysisPreview preview in previews) {
+      for (final SupplementPreviewFunctionalClaim claim
+          in preview.functionalClaims) {
+        final String key = _normalizeKeyPart(claim.text);
+        if (seen.add(key)) merged.add(claim);
+      }
+    }
+    return merged;
+  }
+
+  List<SupplementPreviewEvidenceSpan> _mergedEvidenceSpans(
+    List<SupplementAnalysisPreview> previews,
+  ) {
+    final Set<String> seen = <String>{};
+    final List<SupplementPreviewEvidenceSpan> merged =
+        <SupplementPreviewEvidenceSpan>[];
+    for (final SupplementAnalysisPreview preview in previews) {
+      for (final SupplementPreviewEvidenceSpan span in preview.evidenceSpans) {
+        final String key = span.spanId.isEmpty
+            ? _normalizeKeyPart('${span.sectionType}|${span.textExcerpt}')
+            : span.spanId;
+        if (seen.add(key)) merged.add(span);
+      }
+    }
+    return merged;
+  }
+
+  SupplementPreviewIntakeMethod _mergedIntakeMethod(
+    List<SupplementAnalysisPreview> previews,
+    SupplementAnalysisPreview base,
+  ) {
+    for (final SupplementAnalysisPreview preview in previews) {
+      if (_nonEmpty(preview.intakeMethod.text) != null) {
+        return preview.intakeMethod;
+      }
+    }
+    return base.intakeMethod;
+  }
+
+  SupplementImagePipelineMetadata _mergedPipelineMetadata(
+    List<SupplementAnalysisPreview> previews,
+    List<String> missingRequiredSections,
+    int sectionCount,
+  ) {
+    final SupplementImagePipelineMetadata base = _representativePreview(
+      previews,
+    ).pipelineMetadata;
+    return SupplementImagePipelineMetadata(
+      intakeCompleted: previews.every(
+        (SupplementAnalysisPreview preview) =>
+            preview.pipelineMetadata.intakeCompleted,
+      ),
+      imageCount: previews.length,
+      imageRole: 'mixed',
+      visionRoiUsed: previews.any(
+        (SupplementAnalysisPreview preview) =>
+            preview.pipelineMetadata.visionRoiUsed,
+      ),
+      ocrStatus: _mergedStageStatus(
+        previews.map(
+          (SupplementAnalysisPreview preview) =>
+              preview.pipelineMetadata.ocrStatus,
+        ),
+      ),
+      visionStatus: _mergedStageStatus(
+        previews.map(
+          (SupplementAnalysisPreview preview) =>
+              preview.pipelineMetadata.visionStatus,
+        ),
+      ),
+      llmStatus: _mergedStageStatus(
+        previews.map(
+          (SupplementAnalysisPreview preview) =>
+              preview.pipelineMetadata.llmStatus,
+        ),
+      ),
+      ocrProvider:
+          _firstNonEmpty(
+            previews.map(
+              (SupplementAnalysisPreview preview) =>
+                  preview.pipelineMetadata.ocrProvider,
+            ),
+          ) ??
+          base.ocrProvider,
+      ocrTextPresent: previews.any(
+        (SupplementAnalysisPreview preview) =>
+            preview.pipelineMetadata.ocrTextPresent,
+      ),
+      ocrConfidenceBucket: _mergedConfidenceBucket(
+        previews.map(
+          (SupplementAnalysisPreview preview) =>
+              preview.pipelineMetadata.ocrConfidenceBucket,
+        ),
+      ),
+      roiCount: previews.fold<int>(
+        0,
+        (int total, SupplementAnalysisPreview preview) =>
+            total + preview.pipelineMetadata.roiCount,
+      ),
+      sectionCount: sectionCount,
+      llmParserUsed: previews.any(
+        (SupplementAnalysisPreview preview) =>
+            preview.pipelineMetadata.llmParserUsed,
+      ),
+      parserContractVersion:
+          _firstNonEmpty(
+            previews.map(
+              (SupplementAnalysisPreview preview) =>
+                  preview.pipelineMetadata.parserContractVersion,
+            ),
+          ) ??
+          base.parserContractVersion,
+      missingRequiredSections: missingRequiredSections,
+      rawImageStored: previews.any(
+        (SupplementAnalysisPreview preview) =>
+            preview.pipelineMetadata.rawImageStored,
+      ),
+      rawOcrTextStored: previews.any(
+        (SupplementAnalysisPreview preview) =>
+            preview.pipelineMetadata.rawOcrTextStored,
+      ),
+    );
+  }
+
+  List<String> _calculatedMissingSections({
+    required SupplementParsedProduct parsedProduct,
+    required List<SupplementIngredientCandidate> ingredients,
+    required List<SupplementPreviewLabelSection> labelSections,
+    required SupplementPreviewIntakeMethod intakeMethod,
+    required List<SupplementPreviewPrecaution> precautions,
+  }) {
+    final Set<String> sectionTypes = labelSections
+        .map((SupplementPreviewLabelSection section) => section.sectionType)
+        .toSet();
+    return <String>[
+      if (_nonEmpty(parsedProduct.productName) == null) 'product_name',
+      if (ingredients.isEmpty && !sectionTypes.contains('supplement_facts'))
+        'supplement_facts',
+      if (_nonEmpty(intakeMethod.text) == null &&
+          !sectionTypes.contains('intake_method'))
+        'intake_method',
+      if (precautions.isEmpty && !sectionTypes.contains('precautions'))
+        'precautions',
+    ];
+  }
+
+  String _mergedActionRequired(List<SupplementAnalysisPreview> previews) {
+    if (previews.any(
+      (SupplementAnalysisPreview preview) =>
+          preview.actionRequired == 'blocked',
+    )) {
+      return 'blocked';
+    }
+    if (previews.any(
+      (SupplementAnalysisPreview preview) =>
+          preview.actionRequired == 'additional_label_image_required',
+    )) {
+      return 'additional_label_image_required';
+    }
+    if (previews.any(
+      (SupplementAnalysisPreview preview) =>
+          preview.actionRequired == 'review_required',
+    )) {
+      return 'review_required';
+    }
+    return previews.first.actionRequired;
+  }
+
+  bool _hasSupplementFactsEvidence(SupplementAnalysisPreview preview) {
+    if (preview.ingredientCandidates.isNotEmpty) return true;
+    return preview.labelSections.any(
+      (SupplementPreviewLabelSection section) =>
+          section.sectionType == 'supplement_facts',
+    );
+  }
+
+  String? _supplementIdentityKey(SupplementAnalysisPreview preview) {
+    final String? productName = _nonEmpty(preview.parsedProduct.productName);
+    final String? manufacturer = _nonEmpty(preview.parsedProduct.manufacturer);
+    if (productName == null && manufacturer == null) return null;
+    return <String>[
+      ?manufacturer,
+      ?productName,
+    ].map(_normalizeKeyPart).join('|');
+  }
+
+  String _supplementPreviewLabel(SupplementAnalysisPreview preview, int index) {
+    final String? productName =
+        _nonEmpty(preview.parsedProduct.productName) ??
+        _nonEmpty(
+          preview.ingredientCandidates.isEmpty
+              ? null
+              : preview.ingredientCandidates.first.displayName,
+        );
+    return productName ?? '영양제 ${index + 1}';
+  }
+
+  String _ingredientKey(SupplementIngredientCandidate ingredient) {
+    return <String>[
+      ingredient.displayName,
+      ingredient.amount?.toString() ?? '',
+      ingredient.unit ?? '',
+    ].map(_normalizeKeyPart).join('|');
+  }
+
+  String _mergedStageStatus(Iterable<String> statuses) {
+    final Set<String> values = statuses.toSet();
+    if (values.contains('success')) return 'success';
+    if (values.contains('warning')) return 'warning';
+    if (values.contains('failed')) return 'failed';
+    return 'skipped';
+  }
+
+  String _mergedConfidenceBucket(Iterable<String> buckets) {
+    final Set<String> values = buckets.toSet();
+    if (values.contains('high')) return 'high';
+    if (values.contains('medium')) return 'medium';
+    if (values.contains('low')) return 'low';
+    if (values.contains('unknown')) return 'unknown';
+    return 'none';
+  }
+
+  List<String> _mergedStrings(Iterable<List<String>> values) {
+    final Set<String> seen = <String>{};
+    final List<String> merged = <String>[];
+    for (final List<String> list in values) {
+      for (final String value in list) {
+        if (seen.add(value)) merged.add(value);
+      }
+    }
+    return merged;
+  }
+
+  String? _firstNonEmpty(Iterable<String?> values) {
+    for (final String? value in values) {
+      final String? normalized = _nonEmpty(value);
+      if (normalized != null) return normalized;
+    }
+    return null;
+  }
+
+  double? _firstDailyServings(List<SupplementAnalysisPreview> previews) {
+    for (final SupplementAnalysisPreview preview in previews) {
+      final double? dailyServings = preview.parsedProduct.dailyServings;
+      if (dailyServings != null) return dailyServings;
+    }
+    return null;
+  }
+
+  String _normalizeKeyPart(String value) {
+    return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  int _activeSupplementPreviewIndex(int itemCount) {
+    if (itemCount == 0) return 0;
     if (_selectedSupplementPreviewIndex < 0) return 0;
-    if (_selectedSupplementPreviewIndex >= previews.length) {
-      return previews.length - 1;
+    if (_selectedSupplementPreviewIndex >= itemCount) {
+      return itemCount - 1;
     }
     return _selectedSupplementPreviewIndex;
   }
@@ -931,11 +1460,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       }
       return;
     }
-    final List<SupplementAnalysisPreview> reviewPreviews =
-        _supplementReviewPreviews(appController);
-    final SupplementAnalysisPreview? preview = reviewPreviews.isEmpty
+    final List<_SupplementReviewGroup> reviewGroups = _supplementReviewGroups(
+      appController,
+    );
+    final SupplementAnalysisPreview? preview = reviewGroups.isEmpty
         ? null
-        : reviewPreviews[_activeSupplementPreviewIndex(reviewPreviews)];
+        : reviewGroups[_activeSupplementPreviewIndex(reviewGroups.length)]
+              .preview;
     if (preview == null) {
       appController.clearSupplementFlow();
       if (context.mounted) {
@@ -1260,6 +1791,28 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     if (trimmed == null || trimmed.isEmpty) return null;
     return trimmed;
   }
+}
+
+class _SupplementReviewGroup {
+  const _SupplementReviewGroup({
+    required this.label,
+    required this.preview,
+    required this.sourcePreviews,
+  });
+
+  final String label;
+  final SupplementAnalysisPreview preview;
+  final List<SupplementAnalysisPreview> sourcePreviews;
+}
+
+class _MutableSupplementReviewGroup {
+  _MutableSupplementReviewGroup({
+    required this.identityKey,
+    required this.previews,
+  });
+
+  final String? identityKey;
+  final List<SupplementAnalysisPreview> previews;
 }
 
 class _IngredientReviewDraft {
@@ -1932,12 +2485,12 @@ class _SummaryCard extends StatelessWidget {
 
 class _SupplementPreviewTabs extends StatelessWidget {
   const _SupplementPreviewTabs({
-    required this.previews,
+    required this.groups,
     required this.selectedIndex,
     required this.onSelected,
   });
 
-  final List<SupplementAnalysisPreview> previews;
+  final List<_SupplementReviewGroup> groups;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -1947,11 +2500,11 @@ class _SupplementPreviewTabs extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: <Widget>[
-          for (int index = 0; index < previews.length; index++) ...<Widget>[
+          for (int index = 0; index < groups.length; index++) ...<Widget>[
             ChoiceChip(
               key: ValueKey<String>('supplement-preview-tab-$index'),
               selected: selectedIndex == index,
-              label: Text(_labelFor(previews[index], index)),
+              label: Text(groups[index].label),
               selectedColor: AppColor.brand,
               labelStyle: TextStyle(
                 color: selectedIndex == index
@@ -1962,24 +2515,11 @@ class _SupplementPreviewTabs extends StatelessWidget {
               ),
               onSelected: (_) => onSelected(index),
             ),
-            if (index < previews.length - 1) const SizedBox(width: AppSpace.xs),
+            if (index < groups.length - 1) const SizedBox(width: AppSpace.xs),
           ],
         ],
       ),
     );
-  }
-
-  String _labelFor(SupplementAnalysisPreview preview, int index) {
-    final String? productName =
-        _AnalysisResultScreenState._nonEmpty(
-          preview.parsedProduct.productName,
-        ) ??
-        _AnalysisResultScreenState._nonEmpty(
-          preview.ingredientCandidates.isEmpty
-              ? null
-              : preview.ingredientCandidates.first.displayName,
-        );
-    return productName ?? '영양제 ${index + 1}';
   }
 }
 
