@@ -95,7 +95,7 @@ async def test_paddle_adapter_flattens_prediction_text_and_scores() -> None:
         [{"rec_texts": ["비타민 D 1000", "비타민 D 25 ug"], "rec_scores": [0.92, 0.88]}]
     )
     adapter = PaddleOCRAdapter(
-        Settings(_env_file=None, enable_local_ocr=True),
+        Settings(_env_file=None, enable_local_ocr=True, local_ocr_preprocess_mode="none"),
         predictor=predictor,
     )
 
@@ -123,7 +123,7 @@ async def test_paddle_adapter_normalizes_line_layout_from_rec_polys() -> None:
         ]
     )
     adapter = PaddleOCRAdapter(
-        Settings(_env_file=None, enable_local_ocr=True),
+        Settings(_env_file=None, enable_local_ocr=True, local_ocr_preprocess_mode="none"),
         predictor=predictor,
     )
 
@@ -165,7 +165,7 @@ async def test_paddle_adapter_builds_row_grouped_text_for_parser() -> None:
         ]
     )
     adapter = PaddleOCRAdapter(
-        Settings(_env_file=None, enable_local_ocr=True),
+        Settings(_env_file=None, enable_local_ocr=True, local_ocr_preprocess_mode="none"),
         predictor=predictor,
     )
 
@@ -187,7 +187,7 @@ async def test_paddle_adapter_normalizes_line_layout_from_rec_boxes() -> None:
         ]
     )
     adapter = PaddleOCRAdapter(
-        Settings(_env_file=None, enable_local_ocr=True),
+        Settings(_env_file=None, enable_local_ocr=True, local_ocr_preprocess_mode="none"),
         predictor=predictor,
     )
 
@@ -254,6 +254,7 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
         Settings(
             _env_file=None,
             enable_local_ocr=True,
+            local_ocr_preprocess_mode="none",
             local_ocr_text_det_limit_side_len=1216,
             local_ocr_text_det_limit_type="max",
             local_ocr_text_rec_score_thresh=0.15,
@@ -290,6 +291,7 @@ async def test_paddle_adapter_returns_low_confidence_prediction_for_review() -> 
         Settings(
             _env_file=None,
             enable_local_ocr=True,
+            local_ocr_preprocess_mode="none",
             local_ocr_confidence_threshold=0.75,
         ),
         predictor=_FakePaddlePredictor([{"rec_texts": ["흐린 텍스트"], "rec_scores": [0.50]}]),
@@ -461,6 +463,7 @@ async def test_paddle_adapter_propagates_textline_orientation_setting(
             Settings(
                 _env_file=None,
                 enable_local_ocr=True,
+                local_ocr_preprocess_mode="none",
                 local_ocr_use_textline_orientation=True,
             )
         )
