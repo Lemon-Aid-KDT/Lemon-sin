@@ -99,6 +99,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.supabase_storage_s3_secret_access_key is None
     assert settings.media_object_storage_provider == "disabled"
     assert "testserver" in settings.allowed_hosts
+    assert "10.0.2.2" in settings.allowed_hosts
     assert settings.auth_mode == "disabled"
     assert settings.supplement_image_max_bytes == 5 * 1024 * 1024
     assert settings.supplement_image_max_pixels == 12_000_000

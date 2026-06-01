@@ -55,10 +55,67 @@ void main() {
       await expectLater(
         api.getJson('/dashboard/summary'),
         throwsA(
-          isA<ApiError>().having((ApiError e) => e.statusCode, 'statusCode', 408),
+          isA<ApiError>().having(
+            (ApiError e) => e.statusCode,
+            'statusCode',
+            408,
+          ),
         ),
       );
     });
+
+    test('maps a socket failure to a safe network ApiError', () async {
+      final _FakeClient client = _FakeClient((http.BaseRequest request) async {
+        throw const SocketException('Connection refused');
+      });
+      final ApiClient api = ApiClient(
+        baseUrl: 'https://api.example.com/api/v1',
+        httpClient: client,
+      );
+
+      await expectLater(
+        api.getJson('/dashboard/summary'),
+        throwsA(
+          isA<ApiError>()
+              .having((ApiError e) => e.statusCode, 'statusCode', 0)
+              .having((ApiError e) => e.code, 'code', 'network_unavailable')
+              .having(
+                (ApiError e) => e.message,
+                'message',
+                contains('서버에 연결하지 못했어요'),
+              ),
+        ),
+      );
+    });
+
+    test(
+      'maps a package http client failure to a safe network ApiError',
+      () async {
+        final _FakeClient client = _FakeClient((
+          http.BaseRequest request,
+        ) async {
+          throw http.ClientException('Connection closed before full header');
+        });
+        final ApiClient api = ApiClient(
+          baseUrl: 'https://api.example.com/api/v1',
+          httpClient: client,
+        );
+
+        await expectLater(
+          api.getJson('/dashboard/summary'),
+          throwsA(
+            isA<ApiError>()
+                .having((ApiError e) => e.statusCode, 'statusCode', 0)
+                .having((ApiError e) => e.code, 'code', 'network_unavailable')
+                .having(
+                  (ApiError e) => e.message,
+                  'message',
+                  contains('서버에 연결하지 못했어요'),
+                ),
+          ),
+        );
+      },
+    );
 
     test('rejects an oversized upload before sending (413)', () async {
       final _FakeClient client = _FakeClient((http.BaseRequest request) async {
@@ -72,9 +129,17 @@ void main() {
       final String path = _writeTempFile('big.jpg', List<int>.filled(64, 0xFF));
 
       await expectLater(
-        api.postMultipart('/supplements/analyze', fileField: 'image', filePath: path),
+        api.postMultipart(
+          '/supplements/analyze',
+          fileField: 'image',
+          filePath: path,
+        ),
         throwsA(
-          isA<ApiError>().having((ApiError e) => e.statusCode, 'statusCode', 413),
+          isA<ApiError>().having(
+            (ApiError e) => e.statusCode,
+            'statusCode',
+            413,
+          ),
         ),
       );
       expect(client.sendCount, 0, reason: 'must fail fast before any upload');
@@ -92,9 +157,17 @@ void main() {
       final String path = _writeTempFile('label.heic', <int>[0, 1, 2, 3, 4, 5]);
 
       await expectLater(
-        api.postMultipart('/supplements/analyze', fileField: 'image', filePath: path),
+        api.postMultipart(
+          '/supplements/analyze',
+          fileField: 'image',
+          filePath: path,
+        ),
         throwsA(
-          isA<ApiError>().having((ApiError e) => e.statusCode, 'statusCode', 415),
+          isA<ApiError>().having(
+            (ApiError e) => e.statusCode,
+            'statusCode',
+            415,
+          ),
         ),
       );
       expect(client.sendCount, 0, reason: 'unsupported format must not upload');
@@ -102,54 +175,67 @@ void main() {
   });
 
   group('BackendLemonAidRepository.registerSupplement', () {
-    test('POSTs the confirmation to /supplements and maps a 403 to ApiError', () async {
-      final _FakeClient client = _FakeClient((http.BaseRequest request) async {
-        return _jsonResponse(<String, dynamic>{
-          'code': 'consent_required',
-          'message': 'sensitive health consent required',
-        }, 403);
-      });
-      final BackendLemonAidRepository repository = BackendLemonAidRepository(
-        apiClient: ApiClient(
-          baseUrl: 'https://api.example.com/api/v1',
-          httpClient: client,
-        ),
-      );
-
-      const UserSupplementCreate request = UserSupplementCreate(
-        analysisId: null,
-        displayName: 'Vitamin C',
-        manufacturer: 'Lemon Labs',
-        ingredients: <UserSupplementIngredientInput>[
-          UserSupplementIngredientInput(
-            displayName: 'Vitamin C',
-            nutrientCode: null,
-            amount: 1000,
-            unit: 'mg',
-            confidence: 1,
-            source: 'user_confirmed',
+    test(
+      'POSTs the confirmation to /supplements and maps a 403 to ApiError',
+      () async {
+        final _FakeClient client = _FakeClient((
+          http.BaseRequest request,
+        ) async {
+          return _jsonResponse(<String, dynamic>{
+            'code': 'consent_required',
+            'message': 'sensitive health consent required',
+          }, 403);
+        });
+        final BackendLemonAidRepository repository = BackendLemonAidRepository(
+          apiClient: ApiClient(
+            baseUrl: 'https://api.example.com/api/v1',
+            httpClient: client,
           ),
-        ],
-        serving: SupplementServing(amount: 1, unit: 'tablet', dailyServings: 1),
-        intakeSchedule: SupplementIntakeSchedule(
-          frequency: 'daily',
-          timeOfDay: <String>[],
-        ),
-      );
+        );
 
-      await expectLater(
-        repository.registerSupplement(request),
-        throwsA(
-          isA<ApiError>().having((ApiError e) => e.statusCode, 'statusCode', 403),
-        ),
-      );
+        const UserSupplementCreate request = UserSupplementCreate(
+          analysisId: null,
+          displayName: 'Vitamin C',
+          manufacturer: 'Lemon Labs',
+          ingredients: <UserSupplementIngredientInput>[
+            UserSupplementIngredientInput(
+              displayName: 'Vitamin C',
+              nutrientCode: null,
+              amount: 1000,
+              unit: 'mg',
+              confidence: 1,
+              source: 'user_confirmed',
+            ),
+          ],
+          serving: SupplementServing(
+            amount: 1,
+            unit: 'tablet',
+            dailyServings: 1,
+          ),
+          intakeSchedule: SupplementIntakeSchedule(
+            frequency: 'daily',
+            timeOfDay: <String>[],
+          ),
+        );
 
-      final http.BaseRequest? sent = client.lastRequest;
-      expect(sent, isNotNull);
-      expect(sent!.method, 'POST');
-      expect(sent.url.path, endsWith('/supplements'));
-      expect(sent.url.path, isNot(endsWith('/supplements/analyze')));
-      expect((sent as http.Request).body, contains('Vitamin C'));
-    });
+        await expectLater(
+          repository.registerSupplement(request),
+          throwsA(
+            isA<ApiError>().having(
+              (ApiError e) => e.statusCode,
+              'statusCode',
+              403,
+            ),
+          ),
+        );
+
+        final http.BaseRequest? sent = client.lastRequest;
+        expect(sent, isNotNull);
+        expect(sent!.method, 'POST');
+        expect(sent.url.path, endsWith('/supplements'));
+        expect(sent.url.path, isNot(endsWith('/supplements/analyze')));
+        expect((sent as http.Request).body, contains('Vitamin C'));
+      },
+    );
   });
 }

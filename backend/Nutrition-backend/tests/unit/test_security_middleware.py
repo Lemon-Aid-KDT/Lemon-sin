@@ -18,6 +18,16 @@ def test_trusted_host_allows_configured_host() -> None:
     assert response.status_code == status.HTTP_200_OK
 
 
+def test_trusted_host_default_allows_android_emulator_host() -> None:
+    """Verify local defaults allow Android emulator host-loopback requests."""
+    app = create_app(settings=Settings(_env_file=None))
+    client = TestClient(app)
+
+    response = client.get("/health", headers={"host": "10.0.2.2:8000"})
+
+    assert response.status_code == status.HTTP_200_OK
+
+
 def test_trusted_host_blocks_unconfigured_host() -> None:
     """Verify unknown Host headers are rejected."""
     app = create_app(settings=Settings(allowed_hosts=["api.example.com"]))

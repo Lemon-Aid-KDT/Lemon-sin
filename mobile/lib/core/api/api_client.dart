@@ -35,6 +35,8 @@ class ApiClient {
   /// Default client-side cap for image uploads (10 MB). Failing fast avoids an
   /// indefinite hang and a server 413 with no user guidance.
   static const int _defaultMaxUploadBytes = 10 * 1024 * 1024;
+  static const String _networkUnavailableMessage =
+      '서버에 연결하지 못했어요. backend 실행 상태와 API 주소를 확인한 뒤 다시 시도해주세요.';
 
   final String _baseUrl;
   final String? _bearerToken;
@@ -237,6 +239,18 @@ class ApiClient {
       throw const ApiError(
         statusCode: 408,
         message: '서버 응답이 지연되고 있어요. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
+    } on SocketException {
+      throw const ApiError(
+        statusCode: 0,
+        code: 'network_unavailable',
+        message: _networkUnavailableMessage,
+      );
+    } on http.ClientException {
+      throw const ApiError(
+        statusCode: 0,
+        code: 'network_unavailable',
+        message: _networkUnavailableMessage,
       );
     }
   }

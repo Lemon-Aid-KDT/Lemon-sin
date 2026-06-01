@@ -16,7 +16,7 @@ DEFAULT_DATABASE_URL = (
 )
 POSTGRESQL_ASYNCPG_DRIVER = "postgresql+asyncpg"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
-DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "10.0.2.2", "testserver"]
 DEFAULT_JWT_ALGORITHMS = ["RS256"]
 DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]

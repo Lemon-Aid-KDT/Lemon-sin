@@ -18,11 +18,14 @@
 
 이번 커밋 포함 대상:
 
-- `mobile/lib/screens/analysis_result_screen.dart`
-- `mobile/test/widget/analysis_result_screen_test.dart`
+- `backend/Nutrition-backend/src/config.py`
+- `backend/Nutrition-backend/tests/unit/test_config.py`
+- `backend/Nutrition-backend/tests/unit/test_security_middleware.py`
+- `mobile/lib/core/api/api_client.dart`
+- `mobile/test/unit/api_client_robustness_test.dart`
 - `outputs/todo-list/2026-06-02/README.md`
-- `outputs/todo-list/2026-06-02/2026-06-02-analysis-result-grouping-summary.md`
 - `outputs/todo-list/2026-06-02/2026-06-02-server-runtime-response-check.md`
+- `outputs/todo-list/2026-06-02/2026-06-02-server-network-hardening-summary.md`
 - `outputs/todo-list/2026-06-02/2026-06-02-verification-and-git-publish.md`
 
 명시적 제외 대상:
@@ -39,8 +42,21 @@
 
 ```bash
 cd mobile
-flutter test test/widget/analysis_result_screen_test.dart
-flutter analyze lib/screens/analysis_result_screen.dart test/widget/analysis_result_screen_test.dart
+flutter test test/unit/api_client_robustness_test.dart test/unit/app_config_test.dart
+flutter analyze lib/core/api/api_client.dart lib/core/config/app_config.dart test/unit/api_client_robustness_test.dart test/unit/app_config_test.dart
+```
+
+```bash
+cd backend
+.venv/bin/python -m pytest --no-cov Nutrition-backend/tests/unit/test_config.py Nutrition-backend/tests/unit/test_security_middleware.py
+.venv/bin/python -m ruff check Nutrition-backend/src/config.py Nutrition-backend/tests/unit/test_config.py Nutrition-backend/tests/unit/test_security_middleware.py
+```
+
+```bash
+curl -sS -m 5 -i http://localhost:8000/health
+curl -sS -m 5 -i http://127.0.0.1:8000/ready
+curl -sS -m 5 -i http://localhost:8000/api/v1/dashboard/summary
+curl -sS -m 5 -i -H 'Host: 10.0.2.2:8000' http://localhost:8000/health
 ```
 
 ```bash
@@ -53,36 +69,60 @@ detect-secrets scan <staged files>
 
 ## 4. 검증 결과
 
-### 위젯 테스트
+### 모바일 단위 테스트
 
-`flutter test test/widget/analysis_result_screen_test.dart`
+`flutter test test/unit/api_client_robustness_test.dart test/unit/app_config_test.dart`
 
 결과:
 
 ```text
-All tests passed!
+17 passed
 ```
 
 확인된 항목:
 
-- 기존 source-style 분석 결과 렌더링
-- background analysis 중 분석 화면 표시
-- OCR 후보가 비어 있을 때 직접 입력 등록
-- OCR provider source 정규화
-- name-only 성분 후보 선택
-- 기존 multi-image 탭 전환
-- 전면 라벨과 성분표 라벨을 제품 단위로 그룹화
-- 식단 YOLO 분석 결과 렌더링
-- 식단 분석 결과 confirm 흐름
+- timeout 오류가 기존 408 사용자 메시지로 유지됨
+- socket failure가 `network_unavailable`으로 매핑됨
+- `package:http` client failure가 `network_unavailable`으로 매핑됨
+- iOS/Android/web/local base URL config 기본값 회귀 없음
 
 ### 정적 분석
 
-`flutter analyze lib/screens/analysis_result_screen.dart test/widget/analysis_result_screen_test.dart`
+`flutter analyze lib/core/api/api_client.dart lib/core/config/app_config.dart test/unit/api_client_robustness_test.dart test/unit/app_config_test.dart`
 
 결과:
 
 ```text
 No issues found!
+```
+
+### Backend 테스트/린트
+
+`pytest` 결과:
+
+```text
+75 passed
+```
+
+`ruff` 결과:
+
+```text
+All checks passed!
+```
+
+확인된 항목:
+
+- default settings에 `10.0.2.2` 포함
+- trusted host middleware가 `Host: 10.0.2.2:8000` 요청 허용
+- 기존 security middleware 동작 회귀 없음
+
+### Runtime 응답
+
+```text
+GET /health -> 200
+GET /ready -> 200
+GET /api/v1/dashboard/summary -> 200
+GET /health with Host: 10.0.2.2:8000 -> 200
 ```
 
 ### Diff whitespace
@@ -120,17 +160,20 @@ results: {}
 Conventional Commits 형식을 사용한다.
 
 ```text
-fix(mobile): group supplement analysis previews by product
+fix(api): harden local backend connectivity errors
 
 Why:
-Multi-image supplement analysis could show front-label and facts-label
-captures as separate results, making users confuse stale or partial results
-with the current supplement. Grouping previews by product identity keeps the
-review screen aligned with the actual supplement count.
+Mobile clients could surface opaque server-response failures when the backend
+port was unavailable or when Android emulator requests used the 10.0.2.2 Host
+header. Normalizing network failures and allowing the emulator Host in local
+defaults keeps simulator debugging actionable without broadening production
+settings.
 
 Tested:
-- flutter test test/widget/analysis_result_screen_test.dart
-- flutter analyze lib/screens/analysis_result_screen.dart test/widget/analysis_result_screen_test.dart
+- flutter test test/unit/api_client_robustness_test.dart test/unit/app_config_test.dart
+- flutter analyze lib/core/api/api_client.dart lib/core/config/app_config.dart test/unit/api_client_robustness_test.dart test/unit/app_config_test.dart
+- .venv/bin/python -m pytest --no-cov Nutrition-backend/tests/unit/test_config.py Nutrition-backend/tests/unit/test_security_middleware.py
+- .venv/bin/python -m ruff check Nutrition-backend/src/config.py Nutrition-backend/tests/unit/test_config.py Nutrition-backend/tests/unit/test_security_middleware.py
 - git diff --check
 - git diff --cached --check
 ```
