@@ -8,6 +8,7 @@ import '../app_controller.dart';
 import '../core/api/api_error.dart';
 import '../features/supplements/supplement_models.dart';
 import '../utils/design_tokens_v2.dart';
+import '../utils/mascot_poses.dart';
 
 /// Source-style analysis result screen backed by the real Lemon-Aid endpoints.
 class AnalysisResultScreen extends StatefulWidget {
@@ -41,9 +42,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       TextEditingController();
   final TextEditingController _ingredientUnitController =
       TextEditingController();
-  final TextEditingController _frequencyController = TextEditingController(
-    text: 'daily',
-  );
+  final TextEditingController _frequencyController = TextEditingController();
+  final TextEditingController _intakeMethodTextController =
+      TextEditingController();
+  final TextEditingController _precautionsController = TextEditingController();
   final TextEditingController _timeOfDayController = TextEditingController();
   final TextEditingController _mealNameController = TextEditingController();
   final TextEditingController _mealPortionAmountController =
@@ -57,6 +59,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   final TextEditingController _mealSodiumController = TextEditingController();
   String? _seededAnalysisId;
   String? _seededMealAnalysisId;
+  int _selectedSupplementPreviewIndex = 0;
+  List<_IngredientReviewDraft> _ingredientDrafts =
+      const <_IngredientReviewDraft>[];
   bool _seedingCorrectionFields = false;
 
   bool get _isMeal => widget.mode == 'meal';
@@ -80,6 +85,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     _ingredientAmountController.dispose();
     _ingredientUnitController.dispose();
     _frequencyController.dispose();
+    _intakeMethodTextController.dispose();
+    _precautionsController.dispose();
     _timeOfDayController.dispose();
     _mealNameController.dispose();
     _mealPortionAmountController.dispose();
@@ -100,6 +107,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         _ingredientAmountController,
         _ingredientUnitController,
         _frequencyController,
+        _intakeMethodTextController,
+        _precautionsController,
         _timeOfDayController,
         _mealNameController,
         _mealPortionAmountController,
@@ -119,7 +128,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   @override
   Widget build(BuildContext context) {
     final AppController? controller = widget.controller;
-    final SupplementAnalysisPreview? preview = controller?.analysisPreview;
+    final List<SupplementAnalysisPreview> supplementPreviews =
+        _supplementReviewPreviews(controller);
+    final int activeSupplementPreviewIndex = _activeSupplementPreviewIndex(
+      supplementPreviews,
+    );
+    final SupplementAnalysisPreview? preview = supplementPreviews.isEmpty
+        ? null
+        : supplementPreviews[activeSupplementPreviewIndex];
     final MealImageAnalysisPreview? mealPreview =
         controller?.mealAnalysisPreview;
     if (preview != null) {
@@ -132,8 +148,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         controller?.lastRegisteredSupplement;
     final MealRecordResponse? registeredMeal = controller?.lastRegisteredMeal;
     final ApiError? error = controller?.apiError;
-    final bool needsSupplementFactsPhoto =
-        !_isMeal && _needsSupplementFactsPhoto(preview);
+    final AnalysisJobSnapshot? analysisJob = controller?.analysisJob;
+    if (analysisJob?.isRunning == true && analysisJob?.mode == widget.mode) {
+      return _AnalysisInProgressScreen(isMeal: _isMeal);
+    }
     return Scaffold(
       backgroundColor: AppColor.section,
       body: SafeArea(
@@ -154,6 +172,19 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                     _StatusBanner(error: error),
                     const SizedBox(height: AppSpace.md),
                   ],
+                  if (!_isMeal && supplementPreviews.length > 1) ...<Widget>[
+                    _SupplementPreviewTabs(
+                      previews: supplementPreviews,
+                      selectedIndex: activeSupplementPreviewIndex,
+                      onSelected: (int index) {
+                        setState(() {
+                          _selectedSupplementPreviewIndex = index;
+                          _seededAnalysisId = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                  ],
                   _SummaryCard(
                     isMeal: _isMeal,
                     preview: preview,
@@ -161,47 +192,24 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                     registered: registered,
                     registeredMeal: registeredMeal,
                     busy: controller?.busy == true,
+                    onTap: !_isMeal && preview != null
+                        ? () => _showOcrTextTable(context, preview)
+                        : null,
                   ),
                   const SizedBox(height: AppSpace.md),
                   if (_isMeal)
                     ..._mealCards(mealPreview, registeredMeal)
                   else
-                    ..._supplementCards(preview, registered),
-                  if (!_isMeal) ...<Widget>[
-                    if (needsSupplementFactsPhoto) ...<Widget>[
-                      const SizedBox(height: AppSpace.md),
-                      _SupplementFactsRetakeCard(
-                        onCaptureFacts: () =>
-                            _openSupplementFactsCamera(context),
-                      ),
-                    ],
+                    ..._supplementCards(preview),
+                  if (!_isMeal && preview != null) ...<Widget>[
                     const SizedBox(height: AppSpace.md),
-                    _IngredientPreviewCard(
-                      preview: preview,
-                      needsSupplementFactsPhoto: needsSupplementFactsPhoto,
+                    _AnalysisExplanationCard(
+                      explanation: controller?.supplementExplanation,
+                      busy: controller?.busy == true,
+                      onExplain: controller == null
+                          ? null
+                          : () => _handleAnalysisExplanation(controller),
                     ),
-                    if (preview != null) ...<Widget>[
-                      const SizedBox(height: AppSpace.md),
-                      _ReviewCorrectionCard(
-                        productNameController: _productNameController,
-                        manufacturerController: _manufacturerController,
-                        ingredientNameController: _ingredientNameController,
-                        ingredientAmountController: _ingredientAmountController,
-                        ingredientUnitController: _ingredientUnitController,
-                        frequencyController: _frequencyController,
-                        timeOfDayController: _timeOfDayController,
-                        missingSections: preview.missingRequiredSections,
-                        evidenceSpans: preview.evidenceSpans,
-                      ),
-                      const SizedBox(height: AppSpace.md),
-                      _AnalysisExplanationCard(
-                        explanation: controller?.supplementExplanation,
-                        busy: controller?.busy == true,
-                        onExplain: controller == null
-                            ? null
-                            : () => _handleAnalysisExplanation(controller),
-                      ),
-                    ],
                     if (controller?.supplementImpactPreview !=
                         null) ...<Widget>[
                       const SizedBox(height: AppSpace.md),
@@ -309,81 +317,498 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     ];
   }
 
-  List<Widget> _supplementCards(
-    SupplementAnalysisPreview? preview,
-    UserSupplementResponse? registered,
-  ) {
+  List<Widget> _supplementCards(SupplementAnalysisPreview? preview) {
     final SupplementImagePipelineMetadata? pipeline = preview?.pipelineMetadata;
-    final String provider = _ocrProviderLabel(pipeline?.ocrProvider);
-    final String requested = _ocrProviderLabel(
-      widget.controller?.lastRequestedOcrProvider,
-    );
-    final int candidateCount = preview?.ingredientCandidates.length ?? 0;
-    final int sectionCount =
-        pipeline?.sectionCount ?? preview?.labelSections.length ?? 0;
-    final bool hasTextSignal =
-        pipeline?.ocrTextPresent == true ||
-        candidateCount > 0 ||
-        sectionCount > 0 ||
-        (preview?.evidenceSpans.isNotEmpty ?? false);
-    final int roiCount =
-        pipeline?.roiCount ??
-        preview?.imageQualityReport?.detectedRois.length ??
-        preview?.detectedProductRegions.length ??
-        0;
-    final List<String> missingSections =
-        pipeline?.missingRequiredSections ??
-        preview?.missingRequiredSections ??
-        const <String>[];
-    final String confidenceBucket = pipeline?.ocrConfidenceBucket ?? 'none';
-    final bool parserUsed = pipeline?.llmParserUsed == true;
-    final String parserValue = parserUsed
-        ? (candidateCount > 0 || sectionCount > 0
-              ? 'parser on'
-              : 'parser empty')
-        : 'parser review';
+    final List<String> missingSections = _missingRequiredSections(preview);
     return <Widget>[
-      _ResultCard(
-        color: const Color(0xFF22B07D),
-        icon: Icons.document_scanner_rounded,
-        label: 'OCR',
-        value: hasTextSignal ? provider : 'no text · $provider',
-        desc:
-            '요청 $requested · 신뢰도 $confidenceBucket · 성분 $candidateCount개 · 섹션 $sectionCount개',
+      if (pipeline != null) ...<Widget>[
+        _PipelineLedStrip(metadata: pipeline),
+        const SizedBox(height: AppSpace.sm),
+      ],
+      _SupplementInfoCard(
+        icon: Icons.medication_rounded,
+        title: '영양제명',
+        body: _productInfoBody(preview),
+        missingMessage: missingSections.contains('product_name')
+            ? '제품명이 보이게 한 장 더 촬영해주세요'
+            : null,
+        onEdit: preview == null ? null : () => _editProductInfo(context),
       ),
       const SizedBox(height: AppSpace.sm),
-      _ResultCard(
-        color: const Color(0xFFFF9500),
-        icon: Icons.center_focus_strong_rounded,
-        label: 'YOLO ROI',
-        value: pipeline?.visionRoiUsed == true ? 'on ($roiCount)' : 'off',
-        desc: roiCount > 0
-            ? '검출 ROI $roiCount개를 backend가 안전 메타데이터로 반환했어요'
-            : 'ROI가 없거나 backend vision 설정이 꺼져 있어요',
-      ),
-      const SizedBox(height: AppSpace.sm),
-      _ResultCard(
-        color: const Color(0xFF4D7BFF),
-        icon: Icons.auto_awesome_rounded,
-        label: 'Ollama',
-        value: parserValue,
-        desc: missingSections.isEmpty
-            ? '멀티모달 보조와 로컬 LLM 설명은 backend runtime 설정으로 제어해요'
-            : '추가 확인 필요: ${missingSections.join(', ')}',
-      ),
-      const SizedBox(height: AppSpace.sm),
-      _ResultCard(
-        color: const Color(0xFFFF6B6B),
+      _SupplementInfoCard(
         icon: Icons.fact_check_rounded,
-        label: '확인 상태',
-        value: registered != null ? '저장 완료' : preview?.status ?? '분석 전',
-        desc:
-            registered?.displayName ??
-            preview?.actionRequired ??
-            '카메라에서 영양제 사진을 분석해주세요',
-        big: true,
+        title: '상세 성분 및 함량',
+        bodyWidget: _ingredientInfoTable(preview),
+        missingMessage: missingSections.contains('supplement_facts')
+            ? '성분표가 보이게 한 장 더 촬영해주세요'
+            : null,
+        onEdit: preview == null ? null : () => _editIngredientInfo(context),
+      ),
+      const SizedBox(height: AppSpace.sm),
+      _SupplementInfoCard(
+        icon: Icons.schedule_rounded,
+        title: '섭취 방법',
+        body: _intakeInfoBody(preview),
+        missingMessage: missingSections.contains('intake_method')
+            ? '사진을 더 찍어서 보강해주세요.'
+            : null,
+        onEdit: preview == null ? null : () => _editIntakeInfo(context),
+      ),
+      const SizedBox(height: AppSpace.sm),
+      _SupplementInfoCard(
+        icon: Icons.shield_rounded,
+        title: '섭취 시 주의사항',
+        body: _precautionInfoBody(preview),
+        missingMessage: missingSections.contains('precautions')
+            ? '사진을 더 찍어서 보강해주세요.'
+            : null,
+        onEdit: preview == null ? null : () => _editPrecautionsInfo(context),
       ),
     ];
+  }
+
+  List<SupplementAnalysisPreview> _supplementReviewPreviews(
+    AppController? controller,
+  ) {
+    final List<SupplementAnalysisPreview> multiPreviews =
+        controller?.multiImageAnalysisPreview?.previews ??
+        const <SupplementAnalysisPreview>[];
+    if (multiPreviews.length > 1) return multiPreviews;
+    final SupplementAnalysisPreview? singlePreview =
+        controller?.analysisPreview;
+    if (singlePreview == null) return const <SupplementAnalysisPreview>[];
+    return <SupplementAnalysisPreview>[singlePreview];
+  }
+
+  int _activeSupplementPreviewIndex(List<SupplementAnalysisPreview> previews) {
+    if (previews.isEmpty) return 0;
+    if (_selectedSupplementPreviewIndex < 0) return 0;
+    if (_selectedSupplementPreviewIndex >= previews.length) {
+      return previews.length - 1;
+    }
+    return _selectedSupplementPreviewIndex;
+  }
+
+  List<String> _missingRequiredSections(SupplementAnalysisPreview? preview) {
+    final List<String> pipelineMissing =
+        preview?.pipelineMetadata.missingRequiredSections ?? const <String>[];
+    if (pipelineMissing.isNotEmpty) return pipelineMissing;
+    return preview?.missingRequiredSections ?? const <String>[];
+  }
+
+  String _productInfoBody(SupplementAnalysisPreview? preview) {
+    final String? productName =
+        _nonEmpty(_productNameController.text) ??
+        preview?.parsedProduct.productName;
+    final String? manufacturer =
+        _nonEmpty(_manufacturerController.text) ??
+        preview?.parsedProduct.manufacturer;
+    if (productName == null && manufacturer == null) {
+      return '제품명을 확인할 수 없어요.';
+    }
+    if (manufacturer == null) return productName!;
+    if (productName == null) return manufacturer;
+    return '$productName\n$manufacturer';
+  }
+
+  Widget _ingredientInfoTable(SupplementAnalysisPreview? preview) {
+    final List<_IngredientAmountRowData> rows = _ingredientAmountRows(preview);
+    if (rows.isEmpty) {
+      return const Text(
+        '성분명과 함량을 확인할 수 없어요.',
+        style: TextStyle(
+          color: AppColor.ink,
+          fontSize: 15,
+          height: 1.45,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      );
+    }
+    return _IngredientAmountTable(
+      rows: rows,
+      onSelectionChanged: _setIngredientDraftSelected,
+    );
+  }
+
+  List<_IngredientAmountRowData> _ingredientAmountRows(
+    SupplementAnalysisPreview? preview,
+  ) {
+    if (_ingredientDrafts.isNotEmpty) {
+      return <_IngredientAmountRowData>[
+        for (int index = 0; index < _ingredientDrafts.length; index++)
+          _ingredientAmountRowFromDraft(_ingredientDrafts[index], index),
+      ];
+    }
+    final List<SupplementIngredientCandidate> candidates =
+        preview?.ingredientCandidates.take(5).toList(growable: false) ??
+        const <SupplementIngredientCandidate>[];
+    return candidates
+        .map(_ingredientAmountRowFromCandidate)
+        .toList(growable: false);
+  }
+
+  String _intakeInfoBody(SupplementAnalysisPreview? preview) {
+    if (_missingRequiredSections(preview).contains('intake_method')) {
+      return '해당 이미지에는 해당하는 내용이 없습니다';
+    }
+    final String? directText = _nonEmpty(_intakeMethodTextController.text);
+    if (directText != null) return directText;
+    final String? previewText = _nonEmpty(preview?.intakeMethod.text);
+    if (previewText != null) return previewText;
+    final List<String> parts = <String>[
+      if (_nonEmpty(_frequencyController.text) != null)
+        _nonEmpty(_frequencyController.text)!,
+      if (_splitCsv(_timeOfDayController.text).isNotEmpty)
+        _splitCsv(_timeOfDayController.text).join(', '),
+    ];
+    final String structured = parts
+        .where((String value) => value.trim().isNotEmpty)
+        .join(' · ');
+    return structured.isEmpty ? '섭취 방법을 확인할 수 없어요.' : structured;
+  }
+
+  String _precautionInfoBody(SupplementAnalysisPreview? preview) {
+    if (_missingRequiredSections(preview).contains('precautions')) {
+      return '해당 이미지에는 해당하는 내용이 없습니다';
+    }
+    final List<String> confirmed = _confirmedPrecautions();
+    if (confirmed.isNotEmpty) return confirmed.join('\n');
+    final List<String> precautions =
+        preview?.precautions
+            .map((SupplementPreviewPrecaution item) => item.text)
+            .toList() ??
+        const <String>[];
+    if (precautions.isEmpty) {
+      return '주의사항을 확인할 수 없어요.';
+    }
+    return precautions.join('\n');
+  }
+
+  _IngredientAmountRowData _ingredientAmountRowFromCandidate(
+    SupplementIngredientCandidate candidate,
+  ) {
+    return _IngredientAmountRowData(
+      name: candidate.displayName,
+      amount: _ingredientAmountText(candidate.amount, candidate.unit),
+    );
+  }
+
+  _IngredientAmountRowData _ingredientAmountRowFromDraft(
+    _IngredientReviewDraft draft,
+    int index,
+  ) {
+    return _IngredientAmountRowData(
+      draftIndex: index,
+      selected: draft.selected,
+      name: draft.displayName.isEmpty ? '성분명 확인 필요' : draft.displayName,
+      amount: _ingredientAmountText(
+        _parseOptionalDouble(draft.amountText),
+        draft.unit,
+      ),
+    );
+  }
+
+  String _ingredientAmountText(double? amount, String? unit) {
+    if (amount == null) return '함량 확인 필요';
+    final String amountText = _formatEditableAmount(amount);
+    final String? normalizedUnit = _nonEmpty(unit);
+    if (normalizedUnit == null) return amountText;
+    return '$amountText $normalizedUnit';
+  }
+
+  Future<void> _editProductInfo(BuildContext context) async {
+    await _showEditDialog(
+      context,
+      title: '영양제명 수정',
+      fields: <Widget>[
+        _ReviewTextField(
+          controller: _productNameController,
+          label: '제품명',
+          hintText: '예: 비타민 D',
+        ),
+        const SizedBox(height: AppSpace.sm),
+        _ReviewTextField(
+          controller: _manufacturerController,
+          label: '제조사',
+          hintText: '라벨에 있으면 입력',
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editIngredientInfo(BuildContext context) async {
+    if (_ingredientDrafts.length <= 1) {
+      final bool? confirmed = await _showEditDialog(
+        context,
+        title: '성분 및 함량 수정',
+        fields: <Widget>[
+          _ReviewTextField(
+            controller: _ingredientNameController,
+            label: '대표 성분',
+            hintText: '예: Vitamin D',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: _ingredientAmountController,
+                  label: '함량',
+                  hintText: '25',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: _ingredientUnitController,
+                  label: '단위',
+                  hintText: 'mg, mcg, IU',
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+      if (confirmed == true && mounted) {
+        setState(_syncSingleIngredientDraftFromFields);
+      }
+      return;
+    }
+
+    final List<int> selectedIndexes = <int>[
+      for (int index = 0; index < _ingredientDrafts.length; index++)
+        if (_ingredientDrafts[index].selected) index,
+    ];
+    if (selectedIndexes.length == 1) {
+      await _editSingleIngredientDraft(context, selectedIndexes.single);
+      return;
+    }
+
+    List<_IngredientReviewDraft> drafts = _ingredientDrafts
+        .map((_IngredientReviewDraft draft) => draft)
+        .toList();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text('성분 선택 및 수정'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Text(
+                        '체크된 성분만 저장돼요. 기타 원료처럼 함량이 없는 후보는 기본으로 제외했어요.',
+                        style: TextStyle(
+                          color: AppColor.inkSecondary,
+                          fontSize: 13,
+                          height: 1.35,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      for (int index = 0; index < drafts.length; index++) ...[
+                        _IngredientReviewTile(
+                          draft: drafts[index],
+                          onChanged: (_IngredientReviewDraft next) {
+                            setDialogState(() {
+                              drafts = <_IngredientReviewDraft>[
+                                for (int i = 0; i < drafts.length; i++)
+                                  i == index ? next : drafts[i],
+                              ];
+                            });
+                          },
+                        ),
+                        if (index < drafts.length - 1)
+                          const SizedBox(height: AppSpace.sm),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('저장'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (confirmed == true && mounted) {
+      setState(() {
+        _ingredientDrafts = drafts;
+        _syncPrimaryIngredientControllers();
+      });
+    }
+  }
+
+  Future<void> _editSingleIngredientDraft(
+    BuildContext context,
+    int draftIndex,
+  ) async {
+    final _IngredientReviewDraft draft = _ingredientDrafts[draftIndex];
+    final TextEditingController nameController = TextEditingController(
+      text: draft.displayName,
+    );
+    final TextEditingController amountController = TextEditingController(
+      text: draft.amountText,
+    );
+    final TextEditingController unitController = TextEditingController(
+      text: draft.unit,
+    );
+    try {
+      final bool? confirmed = await _showEditDialog(
+        context,
+        title: '선택 성분 수정',
+        fields: <Widget>[
+          _ReviewTextField(
+            controller: nameController,
+            label: '대표 성분',
+            hintText: '예: Vitamin D',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: amountController,
+                  label: '함량',
+                  hintText: '25',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: unitController,
+                  label: '단위',
+                  hintText: 'mg, mcg, IU',
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+      if (confirmed == true && mounted) {
+        setState(() {
+          _ingredientDrafts = <_IngredientReviewDraft>[
+            for (int index = 0; index < _ingredientDrafts.length; index++)
+              index == draftIndex
+                  ? _ingredientDrafts[index].copyWith(
+                      displayName: nameController.text,
+                      amountText: amountController.text,
+                      unit: unitController.text,
+                      selected: true,
+                    )
+                  : _ingredientDrafts[index],
+          ];
+          _syncPrimaryIngredientControllers();
+        });
+      }
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameController.dispose();
+        amountController.dispose();
+        unitController.dispose();
+      });
+    }
+  }
+
+  Future<void> _editIntakeInfo(BuildContext context) async {
+    await _showEditDialog(
+      context,
+      title: '섭취 방법 수정',
+      fields: <Widget>[
+        _ReviewTextField(
+          controller: _intakeMethodTextController,
+          label: '라벨 문장',
+          hintText: '예: 하루 1회 1정',
+        ),
+        const SizedBox(height: AppSpace.sm),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: _ReviewTextField(
+                controller: _frequencyController,
+                label: '주기',
+                hintText: 'daily',
+              ),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: _ReviewTextField(
+                controller: _timeOfDayController,
+                label: '복용 시간',
+                hintText: 'morning, evening',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editPrecautionsInfo(BuildContext context) async {
+    await _showEditDialog(
+      context,
+      title: '주의사항 수정',
+      fields: <Widget>[
+        _ReviewTextField(
+          controller: _precautionsController,
+          label: '주의사항',
+          hintText: '한 줄에 한 문장씩 입력',
+          maxLines: 5,
+        ),
+      ],
+    );
+  }
+
+  Future<bool?> _showEditDialog(
+    BuildContext context, {
+    required String title,
+    required List<Widget> fields,
+  }) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: fields),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('저장'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true && mounted) {
+      setState(() {});
+    }
+    return confirmed;
   }
 
   void _seedCorrectionFields(SupplementAnalysisPreview preview) {
@@ -393,29 +818,33 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       _seededAnalysisId = preview.analysisId;
       _productNameController.text = preview.parsedProduct.productName ?? '';
       _manufacturerController.text = preview.parsedProduct.manufacturer ?? '';
-      final SupplementIngredientCandidate? firstCandidate =
-          preview.ingredientCandidates.isEmpty
-          ? null
-          : preview.ingredientCandidates.first;
+      SupplementIngredientCandidate? firstCandidate;
+      for (final SupplementIngredientCandidate candidate
+          in preview.ingredientCandidates) {
+        if (candidate.amount != null && _nonEmpty(candidate.unit) != null) {
+          firstCandidate = candidate;
+          break;
+        }
+      }
       _ingredientNameController.text = firstCandidate?.displayName ?? '';
       _ingredientAmountController.text = firstCandidate?.amount == null
           ? ''
           : _formatEditableAmount(firstCandidate!.amount!);
       _ingredientUnitController.text = firstCandidate?.unit ?? '';
+      _ingredientDrafts = _seedIngredientDrafts(preview.ingredientCandidates);
       _frequencyController.text =
           preview.intakeMethod.structured.frequency == 'unknown'
-          ? 'daily'
+          ? ''
           : preview.intakeMethod.structured.frequency;
+      _intakeMethodTextController.text = preview.intakeMethod.text ?? '';
+      _precautionsController.text = preview.precautions
+          .map((SupplementPreviewPrecaution precaution) => precaution.text)
+          .join('\n');
       _timeOfDayController.text = preview.intakeMethod.structured.timeOfDay
           .join(', ');
     } finally {
       _seedingCorrectionFields = false;
     }
-  }
-
-  void _openSupplementFactsCamera(BuildContext context) {
-    HapticFeedback.selectionClick();
-    context.go('/shell/camera?mode=supplement&role=supplement_facts');
   }
 
   void _seedMealCorrectionFields(MealImageAnalysisPreview preview) {
@@ -457,7 +886,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           ? '음식 직접 입력'
           : '확인 후 식단 저장';
     }
-    if (registered != null) return '로컬 LLM 설명 보기';
+    if (registered != null) return '챗으로 설명 보내기';
     if (preview == null) return '다시 촬영하기';
     if (!_hasReviewIngredient(preview)) return '성분 직접 입력';
     return '확인 후 저장';
@@ -496,10 +925,17 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       return;
     }
     if (appController.lastRegisteredSupplement != null) {
-      await appController.explainSupplementRecommendation(useLocalLlm: true);
+      final bool queued = appController.queueSupplementExplanationForChat();
+      if (queued && context.mounted) {
+        context.go('/shell/chat');
+      }
       return;
     }
-    final SupplementAnalysisPreview? preview = appController.analysisPreview;
+    final List<SupplementAnalysisPreview> reviewPreviews =
+        _supplementReviewPreviews(appController);
+    final SupplementAnalysisPreview? preview = reviewPreviews.isEmpty
+        ? null
+        : reviewPreviews[_activeSupplementPreviewIndex(reviewPreviews)];
     if (preview == null) {
       appController.clearSupplementFlow();
       if (context.mounted) {
@@ -518,6 +954,109 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       refreshImpact: true,
       explainWithLocalLlm: true,
     );
+    if (!context.mounted || appController.lastRegisteredSupplement == null) {
+      return;
+    }
+    final bool queued = appController.queueSupplementExplanationForChat();
+    if (queued) {
+      GoRouter.maybeOf(context)?.go('/shell/chat');
+    }
+  }
+
+  Future<void> _showOcrTextTable(
+    BuildContext context,
+    SupplementAnalysisPreview preview,
+  ) async {
+    final List<_OcrTextRowData> rows = _ocrTextRows(preview);
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('OCR 텍스트 전체'),
+          content: SizedBox(
+            key: const ValueKey<String>('ocr-text-table'),
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: rows.isEmpty
+                  ? const Text(
+                      '표시할 OCR 텍스트가 없습니다.',
+                      style: TextStyle(
+                        color: AppColor.inkSecondary,
+                        fontSize: 14,
+                        height: 1.45,
+                        letterSpacing: 0,
+                      ),
+                    )
+                  : _OcrTextTable(rows: rows),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('닫기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<_OcrTextRowData> _ocrTextRows(SupplementAnalysisPreview preview) {
+    final List<_OcrTextRowData> rows = <_OcrTextRowData>[];
+    for (final SupplementPreviewEvidenceSpan span in preview.evidenceSpans) {
+      final String? text = _nonEmpty(span.textExcerpt);
+      if (text == null) continue;
+      rows.add(
+        _OcrTextRowData(
+          section: _sectionLabel(span.sectionType),
+          source: span.sourceType.toUpperCase(),
+          text: text,
+          confidence: _confidenceLabel(span.confidence),
+        ),
+      );
+    }
+    if (rows.isNotEmpty) return rows;
+    for (final SupplementPreviewLabelSection section in preview.labelSections) {
+      final String? text = _nonEmpty(section.textBundle);
+      if (text == null) continue;
+      rows.add(
+        _OcrTextRowData(
+          section: _sectionLabel(section.sectionType),
+          source: 'SECTION',
+          text: text,
+          confidence: _confidenceLabel(section.confidence),
+        ),
+      );
+    }
+    return rows;
+  }
+
+  void _setIngredientDraftSelected(int index, bool selected) {
+    if (index < 0 || index >= _ingredientDrafts.length) return;
+    setState(() {
+      _ingredientDrafts = <_IngredientReviewDraft>[
+        for (int i = 0; i < _ingredientDrafts.length; i++)
+          i == index
+              ? _ingredientDrafts[i].copyWith(selected: selected)
+              : _ingredientDrafts[i],
+      ];
+      _syncPrimaryIngredientControllers();
+    });
+  }
+
+  static String _sectionLabel(String sectionType) {
+    return switch (sectionType) {
+      'supplement_facts' || 'ingredients' || 'ingredient_candidates' => '성분표',
+      'intake_method' => '섭취 방법',
+      'precautions' => '주의사항',
+      'product_name' => '제품명',
+      _ => sectionType,
+    };
+  }
+
+  static String _confidenceLabel(double? confidence) {
+    if (confidence == null) return '-';
+    return '${(confidence * 100).round()}%';
   }
 
   MealConfirmationRequest _mealConfirmationRequest(
@@ -550,32 +1089,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   }
 
   UserSupplementCreate _registrationRequest(SupplementAnalysisPreview preview) {
-    final UserSupplementIngredientInput? correctedIngredient =
-        _correctedIngredient();
-    final List<UserSupplementIngredientInput> previewIngredients = preview
-        .ingredientCandidates
-        .take(8)
-        .map(
-          (SupplementIngredientCandidate candidate) =>
-              UserSupplementIngredientInput(
-                displayName: candidate.displayName,
-                nutrientCode: candidate.nutrientCode,
-                amount: candidate.amount,
-                unit: candidate.unit,
-                confidence: candidate.confidence,
-                source: _registrationIngredientSource(candidate.source),
-              ),
-        )
-        .toList(growable: false);
     final List<UserSupplementIngredientInput> ingredients =
-        correctedIngredient == null
-        ? previewIngredients
-        : <UserSupplementIngredientInput>[
-            correctedIngredient,
-            for (final UserSupplementIngredientInput ingredient
-                in previewIngredients.skip(1))
-              ingredient,
-          ];
+        _selectedIngredientInputs();
     final String fallbackName = ingredients.isEmpty
         ? '영양제'
         : ingredients.first.displayName;
@@ -598,6 +1113,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         frequency: _nonEmpty(_frequencyController.text) ?? 'daily',
         timeOfDay: _splitCsv(_timeOfDayController.text),
       ),
+      precautionSnapshot: _confirmedPrecautions(),
       evidenceRefs: _registrationEvidenceRefs(preview),
     );
   }
@@ -626,9 +1142,25 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return 'ocr_llm_preview';
   }
 
+  List<String> _confirmedPrecautions() {
+    final Set<String> seen = <String>{};
+    final List<String> values = <String>[];
+    for (final String line in _precautionsController.text.split('\n')) {
+      final String normalized = line.trim();
+      if (normalized.isEmpty || !seen.add(normalized)) {
+        continue;
+      }
+      values.add(normalized);
+      if (values.length >= 40) {
+        break;
+      }
+    }
+    return values;
+  }
+
   bool _hasReviewIngredient(SupplementAnalysisPreview preview) {
-    return _nonEmpty(_ingredientNameController.text) != null ||
-        preview.ingredientCandidates.isNotEmpty;
+    return _selectedIngredientInputs().isNotEmpty ||
+        _correctedIngredient() != null;
   }
 
   Future<void> _handleAnalysisExplanation(AppController controller) async {
@@ -647,6 +1179,55 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       confidence: 1,
       source: 'user_confirmed',
     );
+  }
+
+  List<UserSupplementIngredientInput> _selectedIngredientInputs() {
+    final List<UserSupplementIngredientInput> selected = _ingredientDrafts
+        .where(
+          (_IngredientReviewDraft draft) => draft.selected && draft.isValid,
+        )
+        .map(
+          (_IngredientReviewDraft draft) => draft.toInput(
+            source: _registrationIngredientSource(draft.source),
+          ),
+        )
+        .toList(growable: false);
+    if (selected.isNotEmpty) return selected;
+    final UserSupplementIngredientInput? corrected = _correctedIngredient();
+    if (corrected == null) return const <UserSupplementIngredientInput>[];
+    return <UserSupplementIngredientInput>[corrected];
+  }
+
+  void _syncSingleIngredientDraftFromFields() {
+    final UserSupplementIngredientInput? corrected = _correctedIngredient();
+    if (corrected == null) {
+      _ingredientDrafts = const <_IngredientReviewDraft>[];
+      return;
+    }
+    _ingredientDrafts = <_IngredientReviewDraft>[
+      _IngredientReviewDraft.fromInput(corrected),
+    ];
+  }
+
+  void _syncPrimaryIngredientControllers() {
+    _IngredientReviewDraft? firstSelected;
+    for (final _IngredientReviewDraft draft in _ingredientDrafts) {
+      if (draft.selected && draft.isValid) {
+        firstSelected = draft;
+        break;
+      }
+    }
+    _ingredientNameController.text = firstSelected?.displayName ?? '';
+    _ingredientAmountController.text = firstSelected?.amountText ?? '';
+    _ingredientUnitController.text = firstSelected?.unit ?? '';
+  }
+
+  List<_IngredientReviewDraft> _seedIngredientDrafts(
+    List<SupplementIngredientCandidate> candidates,
+  ) {
+    return candidates
+        .map(_IngredientReviewDraft.fromCandidate)
+        .toList(growable: false);
   }
 
   static String _formatEditableAmount(double value) {
@@ -674,15 +1255,6 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         .toList(growable: false);
   }
 
-  String _ocrProviderLabel(String? provider) {
-    final String value = provider?.trim() ?? '';
-    if (value.isEmpty || value == 'configured') return 'Auto';
-    if (value == 'paddleocr') return 'Paddle';
-    if (value == 'google_vision') return 'Google Vision';
-    if (value == 'clova') return 'CLOVA';
-    return value;
-  }
-
   static String? _nonEmpty(String? value) {
     final String? trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) return null;
@@ -690,21 +1262,496 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   }
 }
 
-bool _needsSupplementFactsPhoto(SupplementAnalysisPreview? preview) {
-  if (preview == null || preview.ingredientCandidates.isNotEmpty) {
-    return false;
+class _IngredientReviewDraft {
+  const _IngredientReviewDraft({
+    required this.displayName,
+    required this.amountText,
+    required this.unit,
+    required this.selected,
+    required this.nutrientCode,
+    required this.confidence,
+    required this.source,
+    required this.dailyValuePercent,
+  });
+
+  factory _IngredientReviewDraft.fromCandidate(
+    SupplementIngredientCandidate candidate,
+  ) {
+    final String amountText = candidate.amount == null
+        ? ''
+        : _AnalysisResultScreenState._formatEditableAmount(candidate.amount!);
+    final bool hasAmountAndUnit =
+        candidate.amount != null &&
+        _AnalysisResultScreenState._nonEmpty(candidate.unit) != null;
+    return _IngredientReviewDraft(
+      displayName: candidate.displayName,
+      amountText: amountText,
+      unit: candidate.unit ?? '',
+      selected: hasAmountAndUnit,
+      nutrientCode: candidate.nutrientCode,
+      confidence: candidate.confidence,
+      source: candidate.source,
+      dailyValuePercent: candidate.dailyValuePercent,
+    );
   }
-  final Set<String> missingSections = <String>{
-    ...preview.missingRequiredSections,
-    ...preview.pipelineMetadata.missingRequiredSections,
-  };
-  final Set<String> retakeReasons = preview.imageQualityReport == null
-      ? <String>{}
-      : preview.imageQualityReport!.retakeReasons.toSet();
-  return missingSections.contains('supplement_facts') ||
-      missingSections.contains('ingredients') ||
-      retakeReasons.contains('cover_only') ||
-      retakeReasons.contains('partial_table');
+
+  factory _IngredientReviewDraft.fromInput(
+    UserSupplementIngredientInput input,
+  ) {
+    return _IngredientReviewDraft(
+      displayName: input.displayName,
+      amountText: input.amount == null
+          ? ''
+          : _AnalysisResultScreenState._formatEditableAmount(input.amount!),
+      unit: input.unit ?? '',
+      selected: true,
+      nutrientCode: input.nutrientCode,
+      confidence: input.confidence,
+      source: input.source,
+      dailyValuePercent: input.dailyValuePercent,
+    );
+  }
+
+  final String displayName;
+  final String amountText;
+  final String unit;
+  final bool selected;
+  final String? nutrientCode;
+  final double confidence;
+  final String source;
+  final double? dailyValuePercent;
+
+  bool get isValid {
+    return _AnalysisResultScreenState._nonEmpty(displayName) != null;
+  }
+
+  UserSupplementIngredientInput toInput({required String source}) {
+    return UserSupplementIngredientInput(
+      displayName: displayName.trim(),
+      nutrientCode: nutrientCode,
+      amount: _AnalysisResultScreenState._parseOptionalDouble(amountText),
+      unit: _AnalysisResultScreenState._nonEmpty(unit),
+      confidence: selected ? 1 : confidence,
+      source: selected ? 'user_confirmed' : source,
+      dailyValuePercent: dailyValuePercent,
+    );
+  }
+
+  _IngredientReviewDraft copyWith({
+    String? displayName,
+    String? amountText,
+    String? unit,
+    bool? selected,
+  }) {
+    return _IngredientReviewDraft(
+      displayName: displayName ?? this.displayName,
+      amountText: amountText ?? this.amountText,
+      unit: unit ?? this.unit,
+      selected: selected ?? this.selected,
+      nutrientCode: nutrientCode,
+      confidence: confidence,
+      source: source,
+      dailyValuePercent: dailyValuePercent,
+    );
+  }
+}
+
+class _IngredientReviewTile extends StatelessWidget {
+  const _IngredientReviewTile({required this.draft, required this.onChanged});
+
+  final _IngredientReviewDraft draft;
+  final ValueChanged<_IngredientReviewDraft> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.sm),
+      decoration: BoxDecoration(
+        color: AppColor.section,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: draft.selected ? AppColor.brand : const Color(0xFFE4E7E2),
+        ),
+      ),
+      child: Column(
+        children: <Widget>[
+          CheckboxListTile(
+            value: draft.selected,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(
+              draft.displayName.isEmpty ? '성분명 없음' : draft.displayName,
+              style: const TextStyle(
+                color: AppColor.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+            subtitle: Text(
+              draft.amountText.isEmpty && draft.unit.isEmpty
+                  ? '함량이 없어 기본 제외됨'
+                  : '${draft.amountText} ${draft.unit}'.trim(),
+              style: const TextStyle(
+                color: AppColor.inkSecondary,
+                fontSize: 12,
+                letterSpacing: 0,
+              ),
+            ),
+            onChanged: (bool? value) {
+              onChanged(draft.copyWith(selected: value ?? false));
+            },
+          ),
+          TextFormField(
+            initialValue: draft.displayName,
+            decoration: const InputDecoration(
+              labelText: '성분명',
+              isDense: true,
+              filled: true,
+            ),
+            onChanged: (String value) {
+              onChanged(draft.copyWith(displayName: value));
+            },
+          ),
+          const SizedBox(height: AppSpace.xs),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: TextFormField(
+                  initialValue: draft.amountText,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: '함량',
+                    isDense: true,
+                    filled: true,
+                  ),
+                  onChanged: (String value) {
+                    onChanged(draft.copyWith(amountText: value));
+                  },
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: TextFormField(
+                  initialValue: draft.unit,
+                  decoration: const InputDecoration(
+                    labelText: '단위',
+                    isDense: true,
+                    filled: true,
+                  ),
+                  onChanged: (String value) {
+                    onChanged(draft.copyWith(unit: value));
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IngredientAmountRowData {
+  const _IngredientAmountRowData({
+    required this.name,
+    required this.amount,
+    this.draftIndex,
+    this.selected = false,
+  });
+
+  final String name;
+  final String amount;
+  final int? draftIndex;
+  final bool selected;
+}
+
+class _IngredientAmountTable extends StatelessWidget {
+  const _IngredientAmountTable({
+    required this.rows,
+    required this.onSelectionChanged,
+  });
+
+  final List<_IngredientAmountRowData> rows;
+  final void Function(int index, bool selected) onSelectionChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFE7EAF0)),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Table(
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          columnWidths: const <int, TableColumnWidth>{
+            0: FixedColumnWidth(42),
+            1: FlexColumnWidth(1.35),
+            2: FlexColumnWidth(1),
+          },
+          border: const TableBorder(
+            horizontalInside: BorderSide(color: Color(0xFFE7EAF0)),
+          ),
+          children: <TableRow>[
+            const TableRow(
+              decoration: BoxDecoration(color: Color(0xFFFFF7D6)),
+              children: <Widget>[
+                _IngredientAmountCell(text: '선택', isHeader: true),
+                _IngredientAmountCell(text: '성분명', isHeader: true),
+                _IngredientAmountCell(text: '함량', isHeader: true),
+              ],
+            ),
+            for (final MapEntry<int, _IngredientAmountRowData> entry
+                in rows.asMap().entries)
+              TableRow(
+                children: <Widget>[
+                  _IngredientSelectionCell(
+                    row: entry.value,
+                    rowIndex: entry.key,
+                    onSelectionChanged: onSelectionChanged,
+                  ),
+                  _IngredientAmountCell(text: entry.value.name),
+                  _IngredientAmountCell(text: entry.value.amount),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IngredientSelectionCell extends StatelessWidget {
+  const _IngredientSelectionCell({
+    required this.row,
+    required this.rowIndex,
+    required this.onSelectionChanged,
+  });
+
+  final _IngredientAmountRowData row;
+  final int rowIndex;
+  final void Function(int index, bool selected) onSelectionChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final int? draftIndex = row.draftIndex;
+    return Center(
+      child: Checkbox(
+        key: ValueKey<String>('ingredient-row-checkbox-$rowIndex'),
+        value: row.selected,
+        visualDensity: VisualDensity.compact,
+        onChanged: draftIndex == null
+            ? null
+            : (bool? selected) {
+                onSelectionChanged(draftIndex, selected ?? false);
+              },
+      ),
+    );
+  }
+}
+
+class _OcrTextRowData {
+  const _OcrTextRowData({
+    required this.section,
+    required this.source,
+    required this.text,
+    required this.confidence,
+  });
+
+  final String section;
+  final String source;
+  final String text;
+  final String confidence;
+}
+
+class _OcrTextTable extends StatelessWidget {
+  const _OcrTextTable({required this.rows});
+
+  final List<_OcrTextRowData> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFE7EAF0)),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Table(
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          columnWidths: const <int, TableColumnWidth>{
+            0: FixedColumnWidth(76),
+            1: FixedColumnWidth(70),
+            2: FlexColumnWidth(1),
+            3: FixedColumnWidth(58),
+          },
+          border: const TableBorder(
+            horizontalInside: BorderSide(color: Color(0xFFE7EAF0)),
+          ),
+          children: <TableRow>[
+            const TableRow(
+              decoration: BoxDecoration(color: Color(0xFFFFF7D6)),
+              children: <Widget>[
+                _IngredientAmountCell(text: '구역', isHeader: true),
+                _IngredientAmountCell(text: '출처', isHeader: true),
+                _IngredientAmountCell(text: '텍스트', isHeader: true),
+                _IngredientAmountCell(text: '신뢰도', isHeader: true),
+              ],
+            ),
+            for (final _OcrTextRowData row in rows)
+              TableRow(
+                children: <Widget>[
+                  _IngredientAmountCell(text: row.section),
+                  _IngredientAmountCell(text: row.source),
+                  _IngredientAmountCell(text: row.text),
+                  _IngredientAmountCell(text: row.confidence),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IngredientAmountCell extends StatelessWidget {
+  const _IngredientAmountCell({required this.text, this.isHeader = false});
+
+  final String text;
+  final bool isHeader;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.sm,
+        vertical: AppSpace.xs,
+      ),
+      child: Text(
+        text,
+        softWrap: true,
+        style: TextStyle(
+          color: isHeader ? AppColor.inkSecondary : AppColor.ink,
+          fontSize: isHeader ? 12 : 16,
+          height: 1.35,
+          fontWeight: isHeader ? FontWeight.w900 : FontWeight.w900,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalysisInProgressScreen extends StatelessWidget {
+  const _AnalysisInProgressScreen({required this.isMeal});
+
+  final bool isMeal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColor.section,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: <Widget>[
+            _ResultTopBar(isMeal: isMeal),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpace.page,
+                  AppSpace.xl,
+                  AppSpace.page,
+                  AppSpace.xl,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Container(
+                          width: 172,
+                          height: 172,
+                          padding: const EdgeInsets.all(AppSpace.md),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(AppRadius.xl),
+                            boxShadow: AppShadow.elev1,
+                          ),
+                          child: Image.asset(
+                            MascotFor.analyzing.asset,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.lg),
+                        const Text(
+                          '분석을 하고 있어요.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColor.ink,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            height: 1.18,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.sm),
+                        Text(
+                          isMeal
+                              ? '식단 후보를 확인하는 동안 다른 탭을 사용해도 괜찮아요.'
+                              : 'OCR, YOLO, LLM 후보를 함께 확인하는 동안 다른 탭을 사용해도 괜찮아요.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColor.inkSecondary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            height: 1.45,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.lg),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () => context.go('/shell/home'),
+                            icon: const Icon(Icons.home_rounded),
+                            label: const Text('메인으로 이동'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColor.brand,
+                              foregroundColor: AppColor.ink,
+                              textStyle: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.full,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ResultTopBar extends StatelessWidget {
@@ -751,84 +1798,6 @@ class _ResultTopBar extends StatelessWidget {
   }
 }
 
-class _SupplementFactsRetakeCard extends StatelessWidget {
-  const _SupplementFactsRetakeCard({required this.onCaptureFacts});
-
-  final VoidCallback onCaptureFacts;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7E8),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: const Color(0xFFFFD08A)),
-        boxShadow: AppShadow.elev1,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColor.brand.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.fact_check_rounded,
-                  color: AppColor.ink,
-                  size: 23,
-                ),
-              ),
-              const SizedBox(width: AppSpace.md),
-              const Expanded(
-                child: Text(
-                  '제품명은 확인했지만 성분표가 보이지 않아요. 성분표를 다시 찍어주세요.',
-                  style: TextStyle(
-                    color: AppColor.ink,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    height: 1.38,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpace.md),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: onCaptureFacts,
-              icon: const Icon(Icons.camera_alt_rounded),
-              label: const Text('성분표 촬영하기'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColor.brand,
-                foregroundColor: AppColor.ink,
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.isMeal,
@@ -837,6 +1806,7 @@ class _SummaryCard extends StatelessWidget {
     required this.registered,
     required this.registeredMeal,
     required this.busy,
+    required this.onTap,
   });
 
   final bool isMeal;
@@ -845,10 +1815,12 @@ class _SummaryCard extends StatelessWidget {
   final UserSupplementResponse? registered;
   final MealRecordResponse? registeredMeal;
   final bool busy;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final Widget card = Container(
+      key: const ValueKey<String>('supplement-candidate-summary'),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(
         AppSpace.cardInside,
@@ -906,8 +1878,8 @@ class _SummaryCard extends StatelessWidget {
                   _headline(),
                   style: const TextStyle(
                     color: AppColor.ink,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 0,
                     height: 1.3,
                   ),
@@ -918,6 +1890,8 @@ class _SummaryCard extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return card;
+    return GestureDetector(onTap: onTap, child: card);
   }
 
   String _headline() {
@@ -935,10 +1909,77 @@ class _SummaryCard extends StatelessWidget {
       return '식단 분석이 끝났어요';
     }
     if (registered != null) return '${registered!.displayName} 저장이 끝났어요';
-    final int count = preview?.ingredientCandidates.length ?? 0;
-    if (count > 0) return '성분 후보 $count개를 찾았어요';
+    final List<SupplementIngredientCandidate> candidates =
+        preview?.ingredientCandidates ??
+        const <SupplementIngredientCandidate>[];
+    final int selectedByDefault = candidates
+        .where(
+          (SupplementIngredientCandidate candidate) =>
+              candidate.amount != null &&
+              candidate.unit?.trim().isNotEmpty == true,
+        )
+        .length;
+    if (selectedByDefault > 0 && selectedByDefault < candidates.length) {
+      return '저장 후보 $selectedByDefault개 · 검토 후보 ${candidates.length}개';
+    }
+    if (selectedByDefault > 0) return '성분 후보 $selectedByDefault개를 찾았어요';
+    final int count = candidates.length;
+    if (count > 0) return '검토가 필요한 성분 후보 $count개';
     if (preview != null) return '성분 후보가 비어 있어 다시 확인이 필요해요';
     return '카메라로 영양제 라벨을 촬영해주세요';
+  }
+}
+
+class _SupplementPreviewTabs extends StatelessWidget {
+  const _SupplementPreviewTabs({
+    required this.previews,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<SupplementAnalysisPreview> previews;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: <Widget>[
+          for (int index = 0; index < previews.length; index++) ...<Widget>[
+            ChoiceChip(
+              key: ValueKey<String>('supplement-preview-tab-$index'),
+              selected: selectedIndex == index,
+              label: Text(_labelFor(previews[index], index)),
+              selectedColor: AppColor.brand,
+              labelStyle: TextStyle(
+                color: selectedIndex == index
+                    ? AppColor.ink
+                    : AppColor.inkSecondary,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+              onSelected: (_) => onSelected(index),
+            ),
+            if (index < previews.length - 1) const SizedBox(width: AppSpace.xs),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _labelFor(SupplementAnalysisPreview preview, int index) {
+    final String? productName =
+        _AnalysisResultScreenState._nonEmpty(
+          preview.parsedProduct.productName,
+        ) ??
+        _AnalysisResultScreenState._nonEmpty(
+          preview.ingredientCandidates.isEmpty
+              ? null
+              : preview.ingredientCandidates.first.displayName,
+        );
+    return productName ?? '영양제 ${index + 1}';
   }
 }
 
@@ -1167,120 +2208,74 @@ class _MealReviewCorrectionCard extends StatelessWidget {
   }
 }
 
-class _IngredientPreviewCard extends StatelessWidget {
-  const _IngredientPreviewCard({
-    required this.preview,
-    required this.needsSupplementFactsPhoto,
-  });
+class _PipelineLedStrip extends StatelessWidget {
+  const _PipelineLedStrip({required this.metadata});
 
-  final SupplementAnalysisPreview? preview;
-  final bool needsSupplementFactsPhoto;
+  final SupplementImagePipelineMetadata metadata;
 
   @override
   Widget build(BuildContext context) {
-    final List<SupplementIngredientCandidate> candidates =
-        preview?.ingredientCandidates.take(5).toList(growable: false) ??
-        const <SupplementIngredientCandidate>[];
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside),
-      decoration: BoxDecoration(
-        color: AppColor.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: AppShadow.elev1,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Text(
-            '성분 후보',
-            style: TextStyle(
-              color: AppColor.ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: AppSpace.md),
-          if (candidates.isEmpty)
-            Text(
-              needsSupplementFactsPhoto
-                  ? '성분명과 함량은 성분표 근거가 있을 때만 후보로 만들어요. 제품 앞면만으로는 성분을 추론하지 않습니다.'
-                  : '사진은 업로드됐지만 성분 후보가 비어 있어요. 더 선명한 라벨 사진으로 다시 테스트해주세요.',
-              style: const TextStyle(
-                color: AppColor.inkSecondary,
-                fontSize: 14,
-                height: 1.45,
-                letterSpacing: 0,
-              ),
-            )
-          else
-            for (final SupplementIngredientCandidate candidate in candidates)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.sm),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        candidate.displayName,
-                        style: const TextStyle(
-                          color: AppColor.ink,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      _amountText(candidate),
-                      style: const TextStyle(
-                        color: AppColor.inkSecondary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-        ],
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        _PipelineLed(status: metadata.ocrStatus, stage: 'ocr'),
+        const SizedBox(width: AppSpace.xs),
+        _PipelineLed(status: metadata.visionStatus, stage: 'vision'),
+        const SizedBox(width: AppSpace.xs),
+        _PipelineLed(status: metadata.llmStatus, stage: 'llm'),
+      ],
+    );
+  }
+}
+
+class _PipelineLed extends StatelessWidget {
+  const _PipelineLed({required this.status, required this.stage});
+
+  final String status;
+  final String stage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '$stage $status',
+      child: Container(
+        key: ValueKey<String>('pipeline-led-$stage-$status'),
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: _statusColor(status),
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }
 
-  String _amountText(SupplementIngredientCandidate candidate) {
-    final double? amount = candidate.amount;
-    final String? unit = candidate.unit;
-    if (amount == null) return '검토';
-    final String amountText = amount == amount.roundToDouble()
-        ? amount.toStringAsFixed(0)
-        : amount.toStringAsFixed(2);
-    return unit == null || unit.isEmpty ? amountText : '$amountText $unit';
+  Color _statusColor(String status) {
+    return switch (status) {
+      'success' => const Color(0xFF22B07D),
+      'warning' => const Color(0xFFFFC107),
+      'failed' => const Color(0xFFFF6B6B),
+      _ => const Color(0xFFC7CDD6),
+    };
   }
 }
 
-class _ReviewCorrectionCard extends StatelessWidget {
-  const _ReviewCorrectionCard({
-    required this.productNameController,
-    required this.manufacturerController,
-    required this.ingredientNameController,
-    required this.ingredientAmountController,
-    required this.ingredientUnitController,
-    required this.frequencyController,
-    required this.timeOfDayController,
-    required this.missingSections,
-    required this.evidenceSpans,
-  });
+class _SupplementInfoCard extends StatelessWidget {
+  const _SupplementInfoCard({
+    required this.icon,
+    required this.title,
+    this.body,
+    this.bodyWidget,
+    required this.missingMessage,
+    required this.onEdit,
+  }) : assert(body != null || bodyWidget != null);
 
-  final TextEditingController productNameController;
-  final TextEditingController manufacturerController;
-  final TextEditingController ingredientNameController;
-  final TextEditingController ingredientAmountController;
-  final TextEditingController ingredientUnitController;
-  final TextEditingController frequencyController;
-  final TextEditingController timeOfDayController;
-  final List<String> missingSections;
-  final List<SupplementPreviewEvidenceSpan> evidenceSpans;
+  final IconData icon;
+  final String title;
+  final String? body;
+  final Widget? bodyWidget;
+  final String? missingMessage;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -1295,118 +2290,60 @@ class _ReviewCorrectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            '확인 후 수정',
-            style: TextStyle(
-              color: AppColor.ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: AppSpace.xs),
-          Text(
-            missingSections.isEmpty
-                ? '라벨과 대조해 저장할 값을 확인하세요.'
-                : '추가 확인 필요: ${missingSections.map(_roleLabel).join(', ')}',
-            style: const TextStyle(
-              color: AppColor.inkSecondary,
-              fontSize: 13,
-              height: 1.4,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: AppSpace.md),
-          _ReviewTextField(
-            controller: productNameController,
-            label: '제품명',
-            hintText: '예: 비타민 D',
-          ),
-          const SizedBox(height: AppSpace.sm),
-          _ReviewTextField(
-            controller: manufacturerController,
-            label: '제조사',
-            hintText: '라벨에 있으면 입력',
-          ),
-          const SizedBox(height: AppSpace.sm),
-          _ReviewTextField(
-            controller: ingredientNameController,
-            label: '대표 성분',
-            hintText: '예: Vitamin D',
-          ),
-          const SizedBox(height: AppSpace.sm),
           Row(
             children: <Widget>[
-              Expanded(
-                child: _ReviewTextField(
-                  controller: ingredientAmountController,
-                  label: '함량',
-                  hintText: '25',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColor.brand.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(13),
                 ),
+                child: Icon(icon, color: AppColor.brand, size: 22),
               ),
               const SizedBox(width: AppSpace.sm),
               Expanded(
-                child: _ReviewTextField(
-                  controller: ingredientUnitController,
-                  label: '단위',
-                  hintText: 'mg, mcg, IU',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpace.sm),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _ReviewTextField(
-                  controller: frequencyController,
-                  label: '주기',
-                  hintText: 'daily',
-                ),
-              ),
-              const SizedBox(width: AppSpace.sm),
-              Expanded(
-                child: _ReviewTextField(
-                  controller: timeOfDayController,
-                  label: '복용 시간',
-                  hintText: 'morning, evening',
-                ),
-              ),
-            ],
-          ),
-          if (evidenceSpans.isNotEmpty) ...<Widget>[
-            const SizedBox(height: AppSpace.md),
-            const Text(
-              '근거 일부',
-              style: TextStyle(
-                color: AppColor.ink,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-              ),
-            ),
-            const SizedBox(height: AppSpace.xs),
-            for (final SupplementPreviewEvidenceSpan span in evidenceSpans.take(
-              2,
-            ))
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  '${_roleLabel(span.sectionType)} · ${span.textExcerpt}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  title,
                   style: const TextStyle(
-                    color: AppColor.inkSecondary,
-                    fontSize: 12,
-                    height: 1.35,
+                    color: AppColor.ink,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 0,
                   ),
                 ),
               ),
+              IconButton(
+                tooltip: '$title 수정',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          bodyWidget ??
+              Text(
+                body!,
+                style: const TextStyle(
+                  color: AppColor.ink,
+                  fontSize: 17,
+                  height: 1.45,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
+              ),
+          if (missingMessage != null) ...<Widget>[
+            const SizedBox(height: AppSpace.sm),
+            Text(
+              missingMessage!,
+              style: const TextStyle(
+                color: Color(0xFFD87900),
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
           ],
         ],
       ),
@@ -1420,18 +2357,21 @@ class _ReviewTextField extends StatelessWidget {
     required this.label,
     required this.hintText,
     this.keyboardType,
+    this.maxLines = 1,
   });
 
   final TextEditingController controller;
   final String label;
   final String hintText;
   final TextInputType? keyboardType;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      maxLines: maxLines,
       style: const TextStyle(
         color: AppColor.ink,
         fontSize: 14,
@@ -1459,20 +2399,6 @@ class _ReviewTextField extends StatelessWidget {
       ),
     );
   }
-}
-
-String _roleLabel(String value) {
-  return switch (value) {
-    'front_label' => '앞면',
-    'supplement_facts' => '성분표',
-    'ingredients' => '원료',
-    'intake_method' => '섭취법',
-    'precautions' => '주의',
-    'functional_info' || 'functional_claims' => '기능성',
-    'barcode' => '바코드',
-    'mixed' => '묶음',
-    _ => value.isEmpty ? '기타' : value,
-  };
 }
 
 class _ImpactPreviewCard extends StatelessWidget {
