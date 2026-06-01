@@ -23,6 +23,14 @@
 - `2026-06-02-verification-and-git-publish.md`
   - 이번 커밋에 포함한 파일, 제외한 파일, 검증 명령, 커밋/푸시 기준 정리
 
+- `2026-06-02-ocr-yolo-precaution-analysis.md`
+  - 주의사항/알레르기 문구가 OCR 결과에 안정적으로 반영되지 않는 원인 조사 기록
+  - YOLO ROI taxonomy, 다중 ROI OCR, OCR page merge, serving-size 오탐 후보를 분리해서 정리
+
+- `2026-06-02-ocr-yolo-next-implementation-plan.md`
+  - 코드 수정 전 설계 검토 결과와 다음 구현 순서
+  - 테스트/검증 명령, 제외해야 하는 데이터, 공식 문서 기준 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -34,3 +42,4 @@
 - Android emulator 기본 Host인 `10.0.2.2`를 backend 개발 기본 allowlist에 포함했다.
 - Flutter API client는 `SocketException`과 `http.ClientException`을 `network_unavailable` 오류로 정규화해 사용자에게 backend 실행 상태/API 주소 확인 메시지를 보여준다.
 - 이번 Git 작업은 팀 repo `Lemon-Aid-KDT/Lemon-sin.git`의 현재 브랜치 `docs/docs-2026-05-31-backend-ocr-security`에 커밋/푸시한다.
+- OCR/YOLO 추가 조사에서는 코드 변경 전 원인 분석을 우선 진행했으며, 주의사항 누락과 `1회 제공량(26g)` 성분 후보 오탐은 서로 다른 문제로 분리했다.
