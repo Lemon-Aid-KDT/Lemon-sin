@@ -71,6 +71,10 @@
   - COCO/food/label-only 모델이 영양제 섹션 detector로 잘못 사용되지 않도록 model class-name guard를 추가한 작업 요약
   - `/ready`에 안전한 supplement YOLO 계약 정보를 노출한 내용과 검증 결과 정리
 
+- `2026-06-02-supplement-section-yolo-dataset-contract.md`
+  - 영양제 섹션 YOLO26 custom detector 학습 전 dataset YAML과 validator를 추가한 작업 요약
+  - `supplement_facts`, `precautions`, `intake_method`, `ingredients` class 계약과 annotation 준비 전 blocker 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -97,3 +101,5 @@
 - 다음 구현에서는 default COCO/food model을 영양제 섹션 detector로 오인하지 않도록 class-name/readiness guard와 데이터셋 계약을 먼저 추가해야 한다.
 - backend Ultralytics runner는 이제 모델 class names가 supplement ROI taxonomy와 섹션 class를 포함하지 않으면 inference 전에 fail-closed 처리한다.
 - `/ready`는 raw model path를 노출하지 않고 supplement YOLO의 allowed label과 required section label 계약만 노출한다.
+- 영양제 섹션 detector dataset YAML은 `data/supplement_images/section_yolo/dataset.yaml`로 고정했다.
+- dataset validator는 class 계약 검증을 통과했지만, 실제 annotation image/label 파일은 아직 없어 `--require-files` 검증은 다음 단계 blocker로 남아 있다.
