@@ -137,9 +137,25 @@ class TestExtractIngredientDeclarationCandidates:
             "1회제공량(26g)",
             "1회 제공량 26g",
             "1회제공량 26g",
+            "1회 제공량 (26 g)",
+            "1회제공량( 26 g )",
+            "제품명 ABC 1회 제공량(26g)",
+            "총 내용량 26g",
+            "내용량 26g",
             "Serving Size 26g",
             "Amount Per Serving 26g",
             "Servings Per Container 60",
+        ):
+            assert _extract_ocr_pattern_ingredient_candidates(text) == []
+
+    def test_ocr_pattern_ignores_split_serving_size_fragments(self) -> None:
+        """Fragmented serving-size OCR rows must not become ingredient candidates."""
+        for text in (
+            "1회 제공량\n(26g)",
+            "1회\n제공량(26g)",
+            "회 제공량(26g)",
+            "제공량(26g)",
+            "1회제공량(\n26g)",
         ):
             assert _extract_ocr_pattern_ingredient_candidates(text) == []
 

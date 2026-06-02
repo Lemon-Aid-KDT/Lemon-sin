@@ -27,6 +27,7 @@ from src.ocr.base import (
     OCRVertex,
     OCRWord,
 )
+from src.parsing.layout_parser import parse_label_layout
 from src.security.auth import AuthenticatedUser
 from src.services import supplement_image_analysis
 from src.services.supplement_image_analysis import (
@@ -485,13 +486,15 @@ def _ocr_page() -> OCRPage:
 def _ocr_warning_page() -> OCRPage:
     """Return OCR words for deterministic warning/precaution layout parsing."""
     words = (
-        _ocr_word("Warnings", 10, 10, 110, 40, 0, 0.91),
-        _ocr_word("Contains", 10, 50, 95, 80, 1, 0.9),
-        _ocr_word("soy.", 105, 50, 150, 80, 2, 0.89),
-        _ocr_word("If", 10, 90, 30, 120, 3, 0.88),
-        _ocr_word("pregnant,", 40, 90, 125, 120, 4, 0.88),
-        _ocr_word("consult", 135, 90, 205, 120, 5, 0.88),
-        _ocr_word("doctor.", 215, 90, 285, 120, 6, 0.88),
+        _ocr_word("Warning", 10, 10, 105, 40, 0, 0.91),
+        _ocr_word("Allergy", 10, 50, 95, 80, 1, 0.9),
+        _ocr_word("Information", 105, 50, 210, 80, 2, 0.89),
+        _ocr_word("Contains", 10, 90, 95, 120, 3, 0.89),
+        _ocr_word("soy.", 105, 90, 150, 120, 4, 0.89),
+        _ocr_word("If", 10, 130, 30, 160, 5, 0.88),
+        _ocr_word("pregnant,", 40, 130, 125, 160, 6, 0.88),
+        _ocr_word("consult", 135, 130, 205, 160, 7, 0.88),
+        _ocr_word("doctor.", 215, 130, 285, 160, 8, 0.88),
     )
     paragraph = OCRParagraph(
         text=" ".join(word.text for word in words),
@@ -506,7 +509,35 @@ def _ocr_warning_page() -> OCRPage:
         block_type="TEXT",
         paragraphs=(paragraph,),
     )
-    return OCRPage(width=300, height=160, confidence=0.89, blocks=(block,))
+    return OCRPage(width=300, height=200, confidence=0.89, blocks=(block,))
+
+
+def _ocr_contains_allergen_page() -> OCRPage:
+    """Return OCR words where the ROI starts directly at an allergen statement."""
+    words = (
+        _ocr_word("Contains", 10, 10, 95, 40, 0, 0.9),
+        _ocr_word("soy", 105, 10, 140, 40, 1, 0.9),
+        _ocr_word("and", 150, 10, 185, 40, 2, 0.89),
+        _ocr_word("milk.", 195, 10, 245, 40, 3, 0.89),
+        _ocr_word("Consult", 10, 50, 85, 80, 4, 0.88),
+        _ocr_word("doctor", 95, 50, 160, 80, 5, 0.88),
+        _ocr_word("before", 170, 50, 235, 80, 6, 0.88),
+        _ocr_word("use.", 245, 50, 290, 80, 7, 0.88),
+    )
+    paragraph = OCRParagraph(
+        text=" ".join(word.text for word in words),
+        confidence=0.89,
+        bounding_box=None,
+        words=words,
+    )
+    block = OCRBlock(
+        text=paragraph.text,
+        confidence=0.89,
+        bounding_box=None,
+        block_type="TEXT",
+        paragraphs=(paragraph,),
+    )
+    return OCRPage(width=320, height=120, confidence=0.89, blocks=(block,))
 
 
 def _ocr_word(
@@ -534,6 +565,23 @@ def _ocr_word(
         paragraph_index=0,
         word_index=word_index,
     )
+
+
+def test_parse_label_layout_detects_allergen_contains_roi_without_heading() -> None:
+    """Allergen-only ROI crops should still become precaution sections."""
+    layout = parse_label_layout(
+        OCRResult(
+            text="Contains soy and milk.\nConsult doctor before use.",
+            provider="fake-ocr",
+            confidence=0.89,
+            pages=(_ocr_contains_allergen_page(),),
+        )
+    )
+
+    assert len(layout.sections) == 1
+    assert layout.sections[0].section_type == "precautions"
+    assert layout.sections[0].anchor_text == "Contains allergen"
+    assert layout.sections[0].rows[0][0].text == "Contains soy and milk."
 
 
 @pytest.mark.asyncio
@@ -792,7 +840,7 @@ async def test_analyze_supplement_image_preserves_multi_roi_precaution_layout() 
                 pages=(_ocr_page(),),
             ),
             OCRResult(
-                text="Warnings\nContains soy. If pregnant, consult doctor.",
+                text="Warning\nAllergy Information\nContains soy. If pregnant, consult doctor.",
                 provider="fake-ocr",
                 confidence=0.88,
                 pages=(_ocr_warning_page(),),
@@ -810,7 +858,7 @@ async def test_analyze_supplement_image_preserves_multi_roi_precaution_layout() 
                 pages=(),
             ),
             OCRResult(
-                text="Supplement Facts\nVitamin D 25 ug\nWarnings\nContains soy.",
+                text="Supplement Facts\nVitamin D 25 ug\nWarning\nContains soy.",
                 provider="fake-ocr",
                 confidence=0.82,
                 pages=(),
@@ -873,7 +921,8 @@ async def test_analyze_supplement_image_preserves_multi_roi_precaution_layout() 
     assert result.ocr_result is not None
     assert result.ocr_result.pages == (_ocr_page(), _ocr_warning_page())
     assert fake_parser.received_text is not None
-    assert "Warnings" in fake_parser.received_text
+    assert "Warning" in fake_parser.received_text
+    assert "Allergy Information" in fake_parser.received_text
     assert "Contains soy" in fake_parser.received_text
     assert [image.width for image in fake_ocr.received_images] == [1, 1, 1, 1, 3]
     preview = supplement_analysis_run_to_preview(result.record)

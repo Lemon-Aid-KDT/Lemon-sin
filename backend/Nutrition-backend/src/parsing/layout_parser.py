@@ -61,8 +61,13 @@ SECTION_KEYWORDS: dict[SectionType, tuple[str, ...]] = {
         "섭취시 주의사항",
         "주의사항",
         "주의",
+        "Warning",
         "Warnings",
         "Caution",
+        "Allergy Information",
+        "Allergen Information",
+        "Allergy Warning",
+        "Allergen Warning",
     ),
     "ingredients": (
         "원재료명",
@@ -80,6 +85,10 @@ SECTION_KEYWORDS: dict[SectionType, tuple[str, ...]] = {
         "Storage Instructions",
     ),
 }
+PRECAUTION_ALLERGEN_ROW_PATTERN = re.compile(
+    r"\bcontains\b.*\b(?:soy|milk|egg|fish|shellfish|wheat|peanut|tree\s+nut|sesame|gluten)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -583,6 +592,13 @@ def _detect_anchor(row: _LayoutRowCandidate) -> _AnchorMatch | None:
             if best_match is None or len(normalized_keyword) > len(best_match[2]):
                 best_match = (section_type, keyword, normalized_keyword)
     if best_match is None:
+        if _looks_like_precaution_row(row.text):
+            return _AnchorMatch(
+                row_order=row.row_order,
+                section_type="precautions",
+                anchor_text="Contains allergen",
+                anchor_box=row.bounding_box,
+            )
         return None
 
     section_type, keyword, normalized_keyword = best_match
@@ -592,6 +608,37 @@ def _detect_anchor(row: _LayoutRowCandidate) -> _AnchorMatch | None:
         section_type=section_type,
         anchor_text=keyword,
         anchor_box=anchor_box,
+    )
+
+
+def _looks_like_precaution_row(value: str) -> bool:
+    """Return whether a row is a warning-like allergen statement.
+
+    Args:
+        value: Visual row text reconstructed from OCR words.
+
+    Returns:
+        True for bounded allergen statements that should start a precaution section.
+    """
+    normalized = _normalize_anchor_text(value)
+    if any(token in normalized for token in ("allergy", "allergen", "알레르", "알러지")):
+        return True
+    if PRECAUTION_ALLERGEN_ROW_PATTERN.search(value):
+        return True
+    return "함유" in normalized and any(
+        token in normalized
+        for token in (
+            "대두",
+            "우유",
+            "난류",
+            "계란",
+            "밀",
+            "땅콩",
+            "견과",
+            "조개",
+            "갑각류",
+            "글루텐",
+        )
     )
 
 

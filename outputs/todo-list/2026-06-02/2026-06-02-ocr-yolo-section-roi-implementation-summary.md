@@ -92,8 +92,13 @@ OCR layout parser가 `precautions` 섹션을 만들었지만 LLM structured pars
   - section ROI alias가 내부 표준 label로 정규화되는지 확인
 - `test_analyze_supplement_image_preserves_multi_roi_precaution_layout`
   - fake YOLO가 성분표/주의사항/섭취방법 ROI를 반환할 때 OCR crop 순서, parser 입력, layout page 보존을 확인
+  - 단수 `Warning`과 `Allergy Information` row도 `precautions` evidence로 유지되는지 확인
+- `test_parse_label_layout_detects_allergen_contains_roi_without_heading`
+  - heading 없이 `Contains soy and milk`로 시작하는 allergen-only ROI가 `precautions` section으로 분류되는지 확인
 - `test_ocr_pattern_ignores_serving_size_headers`
   - `1회 제공량(26g)` 계열이 성분 후보가 되지 않는지 확인
+- `test_ocr_pattern_ignores_split_serving_size_fragments`
+  - `1회 제공량\n(26g)`, `1회\n제공량(26g)` 같은 OCR fragment가 성분 후보가 되지 않는지 확인
 - `test_ocr_pattern_keeps_real_amount_candidate`
   - 정상 성분명 + 함량 문장은 유지되는지 확인
 - `test_parse_supplement_analysis_ocr_text_promotes_layout_precautions`

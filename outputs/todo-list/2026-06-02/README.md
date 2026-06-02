@@ -35,6 +35,10 @@
   - 영양제 라벨 섹션 ROI taxonomy 확장, OCR page merge 보존, serving-size 오탐 제거 구현 요약
   - Ultralytics 공식 문서 기준과 custom section model 필요 조건 정리
 
+- `2026-06-02-precaution-anchor-serving-fragment-followup.md`
+  - 단수 `Warning`, 알레르기 정보, `Contains <allergen>` ROI가 `precautions` layout evidence로 잡히도록 보강한 내용
+  - `1회 제공량(26g)` 줄 깨짐/앞뒤 텍스트 혼합 케이스가 성분 후보로 들어오지 않도록 회귀 테스트 추가
+
 - `2026-06-02-ocr-yolo-section-roi-verification.md`
   - backend unit/ruff/regression/parser 직접 재현 검증 결과
   - 실제 Ultralytics runtime smoke가 막힌 이유와 다음 작업 정리
@@ -71,6 +75,8 @@
 - `1회 제공량(26g)`, `Serving Size`, `Amount Per Serving` 계열은 성분 후보에서 제외하고, 실제 성분명과 함량이 있는 문장은 유지하도록 테스트를 추가했다.
 - 실제 이미지 기반 YOLO runtime smoke는 custom supplement section `.pt` 모델과 backend vision runtime 설치가 필요해 다음 단계로 남겼다.
 - OCR layout에 `precautions` 섹션이 보이면 LLM parser가 놓쳐도 structured `precautions` 배열로 승격하도록 보완했다.
+- 단수 `Warning`, `Allergy Information`, heading 없는 `Contains soy and milk` 같은 ROI OCR row도 `precautions` anchor로 분류하도록 추가 보강했다.
+- `1회 제공량(26g)`은 줄 깨짐, 괄호 공백, 앞뒤 텍스트 혼합 케이스까지 성분 후보 오탐 회귀 테스트를 추가했다.
 - Gemma/Ollama 기반 멀티모달 검증은 기존 OCR 유사도 비교에서 OCR 텍스트와 이미지/ROI를 직접 대조하는 structured verification 계약으로 보완했다.
 - 분석 미리보기 설명은 `include_profile_context=true`일 때 민감 건강 동의 확인 후 최신 body profile snapshot의 sanitized bucket을 설명 context에 포함한다.
 - 분석 미리보기 설명은 `include_medical_context=true`일 때 민감 건강 동의 확인 후 사용자 의료정보 DB의 질환/복약 요약 bucket을 설명 context에 포함한다.
