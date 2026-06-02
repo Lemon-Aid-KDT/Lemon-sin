@@ -47,6 +47,10 @@
   - local Ollama/Gemma vision model이 OCR 텍스트를 이미지와 직접 대조하는 structured verification 계약 구현 요약
   - `match | partial | mismatch | uncertain`, 필수 섹션 누락, backend warning 연결 및 검증 결과 정리
 
+- `2026-06-02-supplement-analysis-profile-context-summary.md`
+  - 영양제 OCR 분석 미리보기 설명에 사용자 최신 건강 프로필 snapshot을 opt-in으로 연결한 작업 요약
+  - `sensitive_health_analysis` 동의 gate, sanitized profile bucket, audit flag, 회귀 테스트 결과 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -64,4 +68,5 @@
 - 실제 이미지 기반 YOLO runtime smoke는 custom supplement section `.pt` 모델과 backend vision runtime 설치가 필요해 다음 단계로 남겼다.
 - OCR layout에 `precautions` 섹션이 보이면 LLM parser가 놓쳐도 structured `precautions` 배열로 승격하도록 보완했다.
 - Gemma/Ollama 기반 멀티모달 검증은 기존 OCR 유사도 비교에서 OCR 텍스트와 이미지/ROI를 직접 대조하는 structured verification 계약으로 보완했다.
-- 개인 맞춤 설명은 custom section detector, local model availability, 사용자 정보 DB context end-to-end 확인 뒤 최종 연결해야 한다.
+- 분석 미리보기 설명은 `include_profile_context=true`일 때 민감 건강 동의 확인 후 최신 body profile snapshot의 sanitized bucket을 설명 context에 포함한다.
+- 개인 맞춤 설명의 다음 단계는 질환/복약 정보 DB까지 결합하는 context bucket과 실제 local Ollama/Gemma live smoke다.

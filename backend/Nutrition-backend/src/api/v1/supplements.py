@@ -102,6 +102,7 @@ from src.security.auth import (
 )
 from src.security.scopes import ApiScope
 from src.security.subjects import build_owner_subject
+from src.services.health_profile import get_latest_body_profile_snapshot
 from src.services.privacy import (
     AuditOutcome,
     ConsentRequiredError,
@@ -2341,8 +2342,44 @@ async def explain_supplement_analysis_preview_route(
             message="Supplement analysis preview has expired.",
         )
 
+    profile_snapshot = None
+    if request.include_profile_context:
+        try:
+            await require_user_consent(
+                session,
+                current_user,
+                ConsentType.SENSITIVE_HEALTH_ANALYSIS,
+            )
+        except ConsentRequiredError as exc:
+            await _record_analysis_preview_explain_audit(
+                session,
+                current_user,
+                http_request,
+                settings,
+                analysis_id,
+                outcome="blocked",
+                reason="sensitive_health_consent_required",
+                response=None,
+                profile_context_requested=True,
+                profile_context_included=False,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "consent_required",
+                    "message": str(exc),
+                    "required_consents": [ConsentType.SENSITIVE_HEALTH_ANALYSIS.value],
+                },
+            ) from exc
+        profile_snapshot = await get_latest_body_profile_snapshot(session, current_user)
+
     try:
-        response = await explain_supplement_analysis_preview(record, request, settings)
+        response = await explain_supplement_analysis_preview(
+            record,
+            request,
+            settings,
+            profile_snapshot=profile_snapshot,
+        )
     except SupplementExplanationError as exc:
         await _record_analysis_preview_explain_audit(
             session,
@@ -2353,6 +2390,8 @@ async def explain_supplement_analysis_preview_route(
             outcome="blocked",
             reason="unsafe_supplement_explanation",
             response=None,
+            profile_context_requested=request.include_profile_context,
+            profile_context_included=profile_snapshot is not None,
         )
         raise _supplement_http_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -2369,6 +2408,8 @@ async def explain_supplement_analysis_preview_route(
         outcome="success",
         reason="explained",
         response=response,
+        profile_context_requested=request.include_profile_context,
+        profile_context_included=profile_snapshot is not None,
     )
     return response
 
@@ -2391,6 +2432,8 @@ async def _record_analysis_preview_explain_audit(
     outcome: AuditOutcome,
     reason: str,
     response: SupplementRecommendationExplainResponse | None,
+    profile_context_requested: bool = False,
+    profile_context_included: bool = False,
 ) -> None:
     """Record sanitized audit metadata for analysis-preview explanations.
 
@@ -2403,6 +2446,8 @@ async def _record_analysis_preview_explain_audit(
         outcome: Sanitized audit outcome.
         reason: Stable reason code.
         response: Safe explanation response, if generated.
+        profile_context_requested: Whether the request asked to use profile context.
+        profile_context_included: Whether a profile snapshot was loaded.
 
     Returns:
         None.
@@ -2428,6 +2473,9 @@ async def _record_analysis_preview_explain_audit(
             "raw_llm_response_stored": False,
             "raw_image_stored": False,
             "object_uri_stored": False,
+            "profile_context_requested": profile_context_requested,
+            "profile_context_included": profile_context_included,
+            "raw_profile_payload_stored": False,
         },
     )
 

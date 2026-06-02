@@ -113,4 +113,5 @@ pass
 
 - 실제 Gemma4/Ollama vision model이 local runtime에 설치되어 있는지 live smoke가 필요하다.
 - 영양제 섹션 custom YOLO26 `.pt`가 아직 없어 `precautions`, `supplement_facts`, `intake_method` ROI 품질은 검증하지 못했다.
-- 개인 정보 DB 기반 추천/경고/의사 상담 안내는 현재 supplement explanation service의 sanitized context 흐름을 기준으로 추가 end-to-end 검증이 필요하다.
+- 개인 정보 DB 기반 안내는 우선 최신 body profile snapshot의 sanitized bucket을 opt-in으로 explanation context에 연결했다.
+- 질환/복약 정보 DB까지 포함하는 추천/경고/의사 상담 안내는 추가 context 설계와 live LLM smoke가 필요하다.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from decimal import Decimal
 from math import isfinite
 from typing import Any
@@ -17,6 +18,7 @@ from src.llm.ollama import (
     OllamaConfigurationError,
     extract_ollama_message_content,
 )
+from src.models.db.health import BodyProfileSnapshot
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement_recommendation import (
     SupplementAnalysisExplainRequest,
@@ -43,6 +45,7 @@ medication. Return only JSON matching the supplied schema.
 HIGH_CONFIDENCE_THRESHOLD = 0.85
 MEDIUM_CONFIDENCE_THRESHOLD = 0.6
 MAX_SAFE_PROMPT_NUMBER = 1_000_000
+MAX_PROFILE_AGE = 120
 
 
 class SupplementExplanationError(RuntimeError):
@@ -78,6 +81,8 @@ async def explain_supplement_analysis_preview(
     record: SupplementAnalysisRun,
     request: SupplementAnalysisExplainRequest,
     settings: Settings,
+    *,
+    profile_snapshot: BodyProfileSnapshot | None = None,
 ) -> SupplementRecommendationExplainResponse:
     """Return a safe explanation for an OCR analysis preview before registration.
 
@@ -85,21 +90,35 @@ async def explain_supplement_analysis_preview(
         record: Stored supplement analysis preview. Raw OCR text must not be present.
         request: Explanation options.
         settings: Runtime settings.
+        profile_snapshot: Optional latest current-user profile snapshot. The caller
+            must enforce sensitive-health consent before providing this value.
 
     Returns:
         Safe explanation response. If local LLM refinement is disabled or rejected,
         a deterministic fallback is returned.
     """
-    fallback = build_deterministic_analysis_explanation(record, warnings=())
+    fallback = build_deterministic_analysis_explanation(
+        record,
+        warnings=(),
+        include_profile_context=request.include_profile_context,
+        profile_snapshot=profile_snapshot,
+    )
     if not request.use_local_llm:
         return fallback
 
     try:
-        response = await _explain_analysis_with_local_ollama(record, settings)
+        response = await _explain_analysis_with_local_ollama(
+            record,
+            settings,
+            include_profile_context=request.include_profile_context,
+            profile_snapshot=profile_snapshot,
+        )
     except (OllamaClientError, OllamaConfigurationError, SupplementExplanationError):
         return build_deterministic_analysis_explanation(
             record,
             warnings=("llm_explanation_unavailable",),
+            include_profile_context=request.include_profile_context,
+            profile_snapshot=profile_snapshot,
         )
     return response
 
@@ -155,17 +174,25 @@ def build_deterministic_analysis_explanation(
     record: SupplementAnalysisRun,
     *,
     warnings: tuple[str, ...],
+    include_profile_context: bool = False,
+    profile_snapshot: BodyProfileSnapshot | None = None,
 ) -> SupplementRecommendationExplainResponse:
     """Build a pre-registration analysis explanation without calling an LLM.
 
     Args:
         record: Stored supplement analysis preview.
         warnings: Safe warning strings.
+        include_profile_context: Whether profile context was requested.
+        profile_snapshot: Optional latest current-user profile snapshot.
 
     Returns:
         Deterministic explanation response.
     """
-    context = _build_analysis_explanation_context(record)
+    context = _build_analysis_explanation_context(
+        record,
+        include_profile_context=include_profile_context,
+        profile_snapshot=profile_snapshot,
+    )
     ingredient_count = int(context["ingredient_count"])
     missing_sections = list(context["missing_required_sections"])
     bullets: list[str] = []
@@ -199,6 +226,7 @@ def build_deterministic_analysis_explanation(
         bullets.append(f"주의 문구 후보 {context['precaution_count']}개가 있습니다.")
     if context["functional_claim_count"]:
         bullets.append(f"기능성 문구 후보 {context['functional_claim_count']}개가 있습니다.")
+    _append_profile_context_bullets(bullets, context)
     if missing_sections:
         bullets.append(f"추가 확인 섹션: {', '.join(missing_sections[:4])}")
 
@@ -252,12 +280,17 @@ async def _explain_with_local_ollama(
 async def _explain_analysis_with_local_ollama(
     record: SupplementAnalysisRun,
     settings: Settings,
+    *,
+    include_profile_context: bool,
+    profile_snapshot: BodyProfileSnapshot | None,
 ) -> SupplementRecommendationExplainResponse:
     """Call local Ollama for a pre-registration analysis explanation.
 
     Args:
         record: Stored supplement analysis preview.
         settings: Runtime settings.
+        include_profile_context: Whether profile context was requested.
+        profile_snapshot: Optional latest current-user profile snapshot.
 
     Returns:
         Validated safe explanation response.
@@ -266,7 +299,12 @@ async def _explain_analysis_with_local_ollama(
         OllamaClientError: If the local API call fails.
         SupplementExplanationError: If the output is unsafe or schema-invalid.
     """
-    payload = _build_analysis_explanation_payload(record, settings)
+    payload = _build_analysis_explanation_payload(
+        record,
+        settings,
+        include_profile_context=include_profile_context,
+        profile_snapshot=profile_snapshot,
+    )
     data = await OllamaChatClient(settings).post_chat(payload)
     content = extract_ollama_message_content(data)
     try:
@@ -323,25 +361,37 @@ def _build_explanation_payload(
 def _build_analysis_explanation_payload(
     record: SupplementAnalysisRun,
     settings: Settings,
+    *,
+    include_profile_context: bool,
+    profile_snapshot: BodyProfileSnapshot | None,
 ) -> dict[str, Any]:
     """Build an Ollama Chat payload from sanitized analysis fields only.
 
     Args:
         record: Stored supplement analysis preview.
         settings: Runtime settings.
+        include_profile_context: Whether profile context was requested.
+        profile_snapshot: Optional latest current-user profile snapshot.
 
     Returns:
         Ollama chat payload.
     """
     schema = SupplementRecommendationExplainResponse.model_json_schema()
-    context = _build_analysis_explanation_context(record)
+    context = _build_analysis_explanation_context(
+        record,
+        include_profile_context=include_profile_context,
+        profile_snapshot=profile_snapshot,
+    )
     context_json = json.dumps(context, ensure_ascii=False)
     user_prompt = (
         "Rewrite this supplement label analysis preview in concise Korean. "
-        "Use only the sanitized OCR-derived fields in the JSON context. "
+        "Use only the sanitized OCR-derived fields and optional profile bucket "
+        "fields in the JSON context. "
         "Restate ingredient names and amounts only from the provided "
         "ingredients[].amount_text values. Do not add new ingredients, amounts, "
-        "product claims, medical risks, or advice. "
+        "product claims, medical risks, diagnoses, or dosage advice. "
+        "If profile_context.available is true, explain only why the user should "
+        "review label precautions against that profile bucket. "
         "Return JSON that conforms to the schema.\n\n"
         "<analysis_preview_context>\n"
         f"{context_json}\n"
@@ -362,11 +412,18 @@ def _build_analysis_explanation_payload(
     }
 
 
-def _build_analysis_explanation_context(record: SupplementAnalysisRun) -> dict[str, Any]:
+def _build_analysis_explanation_context(
+    record: SupplementAnalysisRun,
+    *,
+    include_profile_context: bool = False,
+    profile_snapshot: BodyProfileSnapshot | None = None,
+) -> dict[str, Any]:
     """Build bounded fields safe to send to the local explanation model.
 
     Args:
         record: Stored supplement analysis preview.
+        include_profile_context: Whether profile context was requested.
+        profile_snapshot: Optional latest current-user profile snapshot.
 
     Returns:
         Sanitized analysis context without raw OCR text, image bytes, object URIs,
@@ -418,7 +475,138 @@ def _build_analysis_explanation_context(record: SupplementAnalysisRun) -> dict[s
             for warning in list(record.warnings or [])[:6]
             if _safe_text(warning, limit=140)
         ],
+        "profile_context_requested": include_profile_context,
+        "profile_context": _profile_context_summary(
+            profile_snapshot if include_profile_context else None
+        ),
     }
+
+
+def _profile_context_summary(profile_snapshot: BodyProfileSnapshot | None) -> dict[str, Any]:
+    """Return a bounded current-user profile bucket for explanation context.
+
+    Args:
+        profile_snapshot: Latest current-user body profile snapshot.
+
+    Returns:
+        Sanitized profile bucket without owner identifiers, consent snapshots, or
+        exact source metadata.
+    """
+    if profile_snapshot is None:
+        return {"available": False}
+    return {
+        "available": True,
+        "sex": _safe_text(profile_snapshot.sex, limit=20),
+        "age_band": _age_band(profile_snapshot.birth_year),
+        "height_cm_present": profile_snapshot.height_cm is not None,
+        "weight_kg_present": profile_snapshot.weight_kg is not None,
+        "waist_cm_present": profile_snapshot.waist_cm is not None,
+        "pregnancy_status": _safe_text(profile_snapshot.pregnancy_status, limit=40),
+        "lactation_status": _safe_text(profile_snapshot.lactation_status, limit=40),
+        "activity_level": _safe_text(profile_snapshot.activity_level, limit=40),
+    }
+
+
+def _age_band(birth_year: int | None) -> str | None:
+    """Return a coarse age band from a birth year.
+
+    Args:
+        birth_year: Profile birth year.
+
+    Returns:
+        Coarse age bucket, or None when unavailable.
+    """
+    if birth_year is None:
+        return None
+    current_year = datetime.now(UTC).year
+    age = current_year - birth_year
+    if age < 0 or age > MAX_PROFILE_AGE:
+        return None
+    decade = age // 10 * 10
+    return f"{decade}s"
+
+
+def _append_profile_context_bullets(
+    bullets: list[str],
+    context: Mapping[str, Any],
+) -> None:
+    """Append deterministic profile-context bullets when requested.
+
+    Args:
+        bullets: Mutable explanation bullet list.
+        context: Sanitized analysis explanation context.
+
+    Returns:
+        None.
+    """
+    profile_context = _mapping(context.get("profile_context"))
+    if profile_context.get("available"):
+        bullets.append(_profile_context_bullet(profile_context))
+        if _has_profile_precaution_overlap(context):
+            bullets.append("개인 상태와 라벨 주의 문구가 겹칠 수 있어 전문가 상담 여부를 확인하세요.")
+        return
+    if context.get("profile_context_requested"):
+        bullets.append("개인 프로필이 없어 일반 라벨 확인 기준으로만 설명합니다.")
+
+
+def _profile_context_bullet(profile_context: Mapping[str, Any]) -> str:
+    """Build deterministic wording for included profile context.
+
+    Args:
+        profile_context: Sanitized profile context mapping.
+
+    Returns:
+        Safe Korean explanation bullet.
+    """
+    present_fields: list[str] = []
+    for key, label in (
+        ("sex", "성별"),
+        ("age_band", "연령대"),
+        ("activity_level", "활동 수준"),
+        ("pregnancy_status", "임신 상태"),
+        ("lactation_status", "수유 상태"),
+    ):
+        if profile_context.get(key):
+            present_fields.append(label)
+    if profile_context.get("height_cm_present") or profile_context.get("weight_kg_present"):
+        present_fields.append("신체 정보")
+    if profile_context.get("waist_cm_present"):
+        present_fields.append("허리둘레")
+    if not present_fields:
+        return "개인 프로필은 있으나 설명에 쓸 수 있는 필드는 제한적입니다."
+    return f"개인 프로필({', '.join(present_fields[:5])})을 함께 확인합니다."
+
+
+def _has_profile_precaution_overlap(context: Mapping[str, Any]) -> bool:
+    """Return whether profile buckets overlap visible precaution categories.
+
+    Args:
+        context: Sanitized analysis explanation context.
+
+    Returns:
+        True when pregnancy or lactation profile buckets overlap precaution text.
+    """
+    profile_context = _mapping(context.get("profile_context"))
+    if not profile_context.get("available"):
+        return False
+    pregnancy_status = profile_context.get("pregnancy_status")
+    lactation_status = profile_context.get("lactation_status")
+    if not pregnancy_status and not lactation_status:
+        return False
+    precautions = _list_of_mappings(context.get("precautions"))
+    for precaution in precautions:
+        category = _safe_text(precaution.get("category"), limit=80)
+        text = _safe_text(precaution.get("text"), limit=220)
+        haystack = f"{category or ''} {text or ''}".casefold()
+        if pregnancy_status and any(
+            token in haystack for token in ("pregnancy", "pregnant", "임신")
+        ):
+            return True
+        if lactation_status and any(
+            token in haystack for token in ("lactation", "nursing", "수유")
+        ):
+            return True
+    return False
 
 
 def _ingredient_summary(candidate: Mapping[str, Any]) -> dict[str, Any]:

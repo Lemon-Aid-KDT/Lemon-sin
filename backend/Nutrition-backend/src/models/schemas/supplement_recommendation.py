@@ -233,12 +233,15 @@ class SupplementAnalysisExplainRequest(BaseModel):
     Attributes:
         locale: Response locale.
         use_local_llm: Whether to attempt local Ollama wording refinement.
+        include_profile_context: Whether to include the current user's latest
+            consent-gated health profile snapshot in the explanation context.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     locale: Literal["ko-KR"] = "ko-KR"
     use_local_llm: bool = False
+    include_profile_context: bool = False
 
 
 class SupplementRecommendationExplainResponse(BaseModel):

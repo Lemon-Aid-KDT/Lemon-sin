@@ -16,8 +16,10 @@ from src.api.v1 import supplements
 from src.db.dependencies import get_async_session
 from src.llm.ollama import OllamaClientError, OllamaStructuredOutputError
 from src.main import create_app
+from src.models.db.health import BodyProfileSnapshot
 from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import SupplementAnalysisStatus
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.models.schemas.supplement_recommendation import (
@@ -194,6 +196,29 @@ def _analysis_run(analysis_id: UUID) -> SupplementAnalysisRun:
     )
 
 
+def _profile_snapshot() -> BodyProfileSnapshot:
+    """Return a current-user body profile snapshot fixture.
+
+    Returns:
+        Sanitized profile row fixture used by explanation route tests.
+    """
+    return BodyProfileSnapshot(
+        id=uuid4(),
+        owner_subject="local-development::local-dev-user",
+        effective_at=datetime.now(UTC),
+        source="manual",
+        sex="female",
+        birth_year=1995,
+        height_cm=Decimal("165.0"),
+        weight_kg=Decimal("55.0"),
+        waist_cm=None,
+        pregnancy_status="pregnant",
+        lactation_status="not_lactating",
+        activity_level="low_active",
+        consent_snapshot={"consent_type": "sensitive_health_analysis"},
+    )
+
+
 def _parse_result() -> SupplementStructuredParseResult:
     """Return a valid structured parser result.
 
@@ -315,10 +340,13 @@ def test_explain_supplement_analysis_preview_propagates_local_llm_flag(
         record: SupplementAnalysisRun,
         request: object,
         *_args: object,
+        **kwargs: object,
     ) -> SupplementRecommendationExplainResponse:
         """Capture request options and return a safe explanation."""
         captured["analysis_id"] = record.id
         captured["use_local_llm"] = request.use_local_llm
+        captured["include_profile_context"] = request.include_profile_context
+        captured["profile_snapshot"] = kwargs.get("profile_snapshot")
         return SupplementRecommendationExplainResponse(
             safe_user_message="Analysis explanation ready.",
             explanation_bullets=["Review parsed label fields."],
@@ -346,10 +374,137 @@ def test_explain_supplement_analysis_preview_propagates_local_llm_flag(
     )
 
     assert response.status_code == status.HTTP_200_OK
-    assert captured == {"analysis_id": analysis_id, "use_local_llm": True}
+    assert captured == {
+        "analysis_id": analysis_id,
+        "use_local_llm": True,
+        "include_profile_context": False,
+        "profile_snapshot": None,
+    }
     body = response.json()
     assert body["llm_used"] is True
     assert "ocr_text" not in json.dumps(body, ensure_ascii=False).lower()
+
+
+def test_explain_supplement_analysis_preview_can_include_profile_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify profile context is opt-in, consent-gated, and sanitized."""
+    fake_session = _FakeSupplementOCRTextSession()
+    analysis_id = uuid4()
+    consent_checks: list[ConsentType] = []
+
+    async def fake_load_supplement_analysis_run_for_owner(
+        *_args: object, **kwargs: Any
+    ) -> SupplementAnalysisRun:
+        """Return a preview row for the requested analysis id."""
+        return _analysis_run(kwargs["analysis_id"])
+
+    async def fake_get_latest_body_profile_snapshot(*_args: object) -> BodyProfileSnapshot:
+        """Return a latest profile row fixture."""
+        return _profile_snapshot()
+
+    async def fake_require_user_consent(
+        _session: object,
+        _user: object,
+        consent_type: ConsentType,
+    ) -> None:
+        """Capture required consent buckets."""
+        consent_checks.append(consent_type)
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    monkeypatch.setattr(
+        supplements,
+        "get_latest_body_profile_snapshot",
+        fake_get_latest_body_profile_snapshot,
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    client = TestClient(app)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{analysis_id}/explain",
+        json={"include_profile_context": True},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert consent_checks == [
+        ConsentType.OCR_IMAGE_PROCESSING,
+        ConsentType.SENSITIVE_HEALTH_ANALYSIS,
+    ]
+    body = response.json()
+    serialized_body = json.dumps(body, ensure_ascii=False)
+    assert "개인 프로필" in serialized_body
+    assert "owner_subject" not in serialized_body
+    assert "consent_snapshot" not in serialized_body
+    audit_metadata = fake_session.added_audits[0].event_metadata
+    assert audit_metadata["profile_context_requested"] is True
+    assert audit_metadata["profile_context_included"] is True
+    assert audit_metadata["raw_profile_payload_stored"] is False
+
+
+def test_explain_supplement_analysis_preview_requires_profile_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify profile-context explanation fails closed without health consent."""
+    fake_session = _FakeSupplementOCRTextSession()
+    analysis_id = uuid4()
+    profile_loaded = False
+
+    async def fake_load_supplement_analysis_run_for_owner(
+        *_args: object, **kwargs: Any
+    ) -> SupplementAnalysisRun:
+        """Return a preview row before the profile-consent check."""
+        return _analysis_run(kwargs["analysis_id"])
+
+    async def fake_get_latest_body_profile_snapshot(*_args: object) -> BodyProfileSnapshot:
+        """Fail if the route tries to load profile data without consent."""
+        nonlocal profile_loaded
+        profile_loaded = True
+        return _profile_snapshot()
+
+    async def fake_require_user_consent(
+        _session: object,
+        _user: object,
+        consent_type: ConsentType,
+    ) -> None:
+        """Allow OCR consent but deny sensitive health consent."""
+        if consent_type == ConsentType.SENSITIVE_HEALTH_ANALYSIS:
+            raise ConsentRequiredError("Sensitive health analysis consent is required.")
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    monkeypatch.setattr(
+        supplements,
+        "get_latest_body_profile_snapshot",
+        fake_get_latest_body_profile_snapshot,
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    client = TestClient(app)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{analysis_id}/explain",
+        json={"include_profile_context": True},
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["detail"]["required_consents"] == [
+        ConsentType.SENSITIVE_HEALTH_ANALYSIS.value
+    ]
+    assert profile_loaded is False
+    audit_metadata = fake_session.added_audits[0].event_metadata
+    assert audit_metadata["reason"] == "sensitive_health_consent_required"
+    assert audit_metadata["profile_context_requested"] is True
+    assert audit_metadata["profile_context_included"] is False
 
 
 def test_explain_supplement_analysis_preview_returns_not_found(
