@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -17,18 +18,40 @@ from src.models.db.medical import (
     PatientStatusSnapshot,
 )
 from src.models.schemas.medical import (
+    ClinicalStatus,
     MedicalRecordConfirmRequest,
     MedicalRecordCreateRequest,
     MedicalRecordListResponse,
     MedicalRecordResponse,
     MedicalRecordStatus,
+    MedicationActiveStatus,
     PatientConditionResponse,
     PatientMedicationResponse,
     PatientStatusSnapshotCreate,
     PatientStatusSnapshotResponse,
 )
+from src.nutrition.chronic_priority import canonicalize_conditions
 from src.security.auth import AuthenticatedUser
 from src.security.privacy import hash_actor_subject
+
+MAX_MEDICAL_CONTEXT_RECORDS = 50
+MAX_MEDICAL_CONTEXT_CODES = 12
+MEDICATION_REVIEW_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "anticoagulant_review": ("warfarin", "와파린", "anticoagulant", "항응고"),
+    "thyroid_or_bone_binding_review": (
+        "levothyroxine",
+        "레보티록신",
+        "thyroxine",
+        "갑상선",
+        "bisphosphonate",
+        "비스포스포네이트",
+    ),
+    "metformin_b12_review": ("metformin", "메트포르민"),
+    "serotonergic_review": ("maoi", "ssri", "세로토닌", "serotonin"),
+    "statin_red_yeast_review": ("statin", "스타틴"),
+    "oncology_or_immunosuppressant_review": ("chemo", "methotrexate", "항암", "메토트렉세이트"),
+    "acetaminophen_liver_review": ("acetaminophen", "아세트아미노펜", "타이레놀"),
+}
 
 
 class MedicalRecordNotFoundError(ValueError):
@@ -37,6 +60,38 @@ class MedicalRecordNotFoundError(ValueError):
 
 class MedicalRecordStateError(ValueError):
     """Raised when a medical record collection cannot transition as requested."""
+
+
+@dataclass(frozen=True)
+class MedicalContextSummary:
+    """Bounded current-user medical context for safe explanation prompts.
+
+    Attributes:
+        condition_count: Number of active or unknown condition rows considered.
+        canonical_condition_codes: Known condition codes matched by source-backed
+            nutrition rule aliases. User-entered raw condition text is excluded.
+        uncategorized_condition_count: Condition rows that did not map to a known code.
+        active_medication_count: Number of active or unknown medication rows considered.
+        medication_review_categories: Safe interaction-review buckets matched from
+            medication names. Raw medication names and doses are excluded.
+        uncategorized_medication_count: Medication rows without a known review bucket.
+    """
+
+    condition_count: int = 0
+    canonical_condition_codes: tuple[str, ...] = ()
+    uncategorized_condition_count: int = 0
+    active_medication_count: int = 0
+    medication_review_categories: tuple[str, ...] = ()
+    uncategorized_medication_count: int = 0
+
+    @property
+    def available(self) -> bool:
+        """Return whether any bounded medical context is available.
+
+        Returns:
+            True when at least one condition or medication row was summarized.
+        """
+        return self.condition_count > 0 or self.active_medication_count > 0
 
 
 async def create_medical_record(
@@ -169,6 +224,94 @@ async def list_medical_records(
         )
         for collection in collections
     ]
+
+
+async def get_current_medical_context_summary(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    settings: Settings,
+    *,
+    limit: int = MAX_MEDICAL_CONTEXT_RECORDS,
+) -> MedicalContextSummary:
+    """Return a bounded current-user condition and medication summary.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        settings: Application settings.
+        limit: Maximum active medical collections to inspect.
+
+    Returns:
+        Current-user medical context summary without raw condition names,
+        medication names, doses, owner hashes, consent snapshots, or source IDs.
+
+    Raises:
+        ValueError: If owner identity cannot be hashed safely.
+    """
+    owner_hash = hash_actor_subject(user, settings)
+    result = await session.scalars(
+        select(MedicalRecordCollection)
+        .where(
+            MedicalRecordCollection.owner_subject_hash == owner_hash,
+            MedicalRecordCollection.status == MedicalRecordStatus.ACTIVE.value,
+            MedicalRecordCollection.deleted_at.is_(None),
+        )
+        .order_by(desc(MedicalRecordCollection.created_at))
+        .limit(limit)
+    )
+    collections = list(result.all())
+    collection_ids = [record.id for record in collections]
+    conditions = await _conditions_for_collections(session, collection_ids)
+    medications = await _medications_for_collections(session, collection_ids)
+    return build_medical_context_summary(conditions, medications)
+
+
+def build_medical_context_summary(
+    conditions: Sequence[PatientCondition],
+    medications: Sequence[PatientMedication],
+) -> MedicalContextSummary:
+    """Build a sanitized medical-context summary from child rows.
+
+    Args:
+        conditions: Current-user condition rows.
+        medications: Current-user medication rows.
+
+    Returns:
+        Bounded medical context summary that excludes raw condition and
+        medication text.
+    """
+    active_conditions = [
+        row
+        for row in conditions
+        if row.clinical_status in {ClinicalStatus.ACTIVE.value, ClinicalStatus.UNKNOWN.value}
+    ][:MAX_MEDICAL_CONTEXT_RECORDS]
+    active_medications = [
+        row
+        for row in medications
+        if row.active_status
+        in {
+            MedicationActiveStatus.ACTIVE.value,
+            MedicationActiveStatus.UNKNOWN.value,
+        }
+    ][:MAX_MEDICAL_CONTEXT_RECORDS]
+    canonical_condition_codes = canonicalize_conditions(
+        [row.condition_text for row in active_conditions]
+    )[:MAX_MEDICAL_CONTEXT_CODES]
+    medication_review_categories = _medication_review_categories(active_medications)
+    return MedicalContextSummary(
+        condition_count=len(active_conditions),
+        canonical_condition_codes=tuple(canonical_condition_codes),
+        uncategorized_condition_count=max(
+            0,
+            len(active_conditions) - len(canonical_condition_codes),
+        ),
+        active_medication_count=len(active_medications),
+        medication_review_categories=medication_review_categories,
+        uncategorized_medication_count=max(
+            0,
+            len(active_medications) - len(medication_review_categories),
+        ),
+    )
 
 
 async def confirm_medical_record(
@@ -343,6 +486,48 @@ def medical_records_to_response(records: list[MedicalRecordResponse]) -> Medical
         List response.
     """
     return MedicalRecordListResponse(records=records)
+
+
+def _medication_review_categories(
+    medications: Sequence[PatientMedication],
+) -> tuple[str, ...]:
+    """Return safe medication-review categories from medication rows.
+
+    Args:
+        medications: Active medication rows.
+
+    Returns:
+        Deduplicated review category codes. Raw medication names are not returned.
+    """
+    categories: list[str] = []
+    seen: set[str] = set()
+    for medication in medications:
+        category = _medication_review_category(medication.medication_name_text)
+        if category is None or category in seen:
+            continue
+        categories.append(category)
+        seen.add(category)
+        if len(categories) >= MAX_MEDICAL_CONTEXT_CODES:
+            break
+    return tuple(categories)
+
+
+def _medication_review_category(medication_name: str) -> str | None:
+    """Map a medication name to a non-identifying review bucket.
+
+    Args:
+        medication_name: User-confirmed medication name.
+
+    Returns:
+        Safe review category code, or None when no known bucket matches.
+    """
+    normalized = medication_name.strip().casefold()
+    if not normalized:
+        return None
+    for category, keywords in MEDICATION_REVIEW_KEYWORDS.items():
+        if any(keyword.casefold() in normalized for keyword in keywords):
+            return category
+    return None
 
 
 def patient_status_to_response(record: PatientStatusSnapshot) -> PatientStatusSnapshotResponse:

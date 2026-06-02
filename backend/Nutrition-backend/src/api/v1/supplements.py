@@ -103,6 +103,7 @@ from src.security.auth import (
 from src.security.scopes import ApiScope
 from src.security.subjects import build_owner_subject
 from src.services.health_profile import get_latest_body_profile_snapshot
+from src.services.medical_records import get_current_medical_context_summary
 from src.services.privacy import (
     AuditOutcome,
     ConsentRequiredError,
@@ -2343,7 +2344,9 @@ async def explain_supplement_analysis_preview_route(
         )
 
     profile_snapshot = None
-    if request.include_profile_context:
+    medical_context_summary = None
+    sensitive_context_requested = request.include_profile_context or request.include_medical_context
+    if sensitive_context_requested:
         try:
             await require_user_consent(
                 session,
@@ -2360,8 +2363,10 @@ async def explain_supplement_analysis_preview_route(
                 outcome="blocked",
                 reason="sensitive_health_consent_required",
                 response=None,
-                profile_context_requested=True,
+                profile_context_requested=request.include_profile_context,
                 profile_context_included=False,
+                medical_context_requested=request.include_medical_context,
+                medical_context_included=False,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -2371,7 +2376,14 @@ async def explain_supplement_analysis_preview_route(
                     "required_consents": [ConsentType.SENSITIVE_HEALTH_ANALYSIS.value],
                 },
             ) from exc
+    if request.include_profile_context:
         profile_snapshot = await get_latest_body_profile_snapshot(session, current_user)
+    if request.include_medical_context:
+        medical_context_summary = await get_current_medical_context_summary(
+            session,
+            current_user,
+            settings,
+        )
 
     try:
         response = await explain_supplement_analysis_preview(
@@ -2379,6 +2391,7 @@ async def explain_supplement_analysis_preview_route(
             request,
             settings,
             profile_snapshot=profile_snapshot,
+            medical_context_summary=medical_context_summary,
         )
     except SupplementExplanationError as exc:
         await _record_analysis_preview_explain_audit(
@@ -2392,6 +2405,9 @@ async def explain_supplement_analysis_preview_route(
             response=None,
             profile_context_requested=request.include_profile_context,
             profile_context_included=profile_snapshot is not None,
+            medical_context_requested=request.include_medical_context,
+            medical_context_included=medical_context_summary is not None
+            and medical_context_summary.available,
         )
         raise _supplement_http_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -2410,6 +2426,9 @@ async def explain_supplement_analysis_preview_route(
         response=response,
         profile_context_requested=request.include_profile_context,
         profile_context_included=profile_snapshot is not None,
+        medical_context_requested=request.include_medical_context,
+        medical_context_included=medical_context_summary is not None
+        and medical_context_summary.available,
     )
     return response
 
@@ -2434,6 +2453,8 @@ async def _record_analysis_preview_explain_audit(
     response: SupplementRecommendationExplainResponse | None,
     profile_context_requested: bool = False,
     profile_context_included: bool = False,
+    medical_context_requested: bool = False,
+    medical_context_included: bool = False,
 ) -> None:
     """Record sanitized audit metadata for analysis-preview explanations.
 
@@ -2448,6 +2469,8 @@ async def _record_analysis_preview_explain_audit(
         response: Safe explanation response, if generated.
         profile_context_requested: Whether the request asked to use profile context.
         profile_context_included: Whether a profile snapshot was loaded.
+        medical_context_requested: Whether the request asked to use medical context.
+        medical_context_included: Whether medical summary rows were available.
 
     Returns:
         None.
@@ -2476,6 +2499,9 @@ async def _record_analysis_preview_explain_audit(
             "profile_context_requested": profile_context_requested,
             "profile_context_included": profile_context_included,
             "raw_profile_payload_stored": False,
+            "medical_context_requested": medical_context_requested,
+            "medical_context_included": medical_context_included,
+            "raw_medical_payload_stored": False,
         },
     )
 

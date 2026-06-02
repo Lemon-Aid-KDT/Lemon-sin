@@ -108,6 +108,6 @@ All checks passed!
 ## 5. 남은 작업
 
 - 모바일에서 `include_profile_context=true`를 언제 켤지 UX 정책 확정
-- 사용자 질환/복약 정보 DB까지 결합하는 별도 context bucket 설계
+- 사용자 질환/복약 정보 DB context bucket은 `include_medical_context=true` 계약으로 별도 구현됨
 - 실제 local Ollama/Gemma model이 profile bucket과 label precautions를 입력받았을 때 schema-valid response를 반환하는 live smoke
 - custom supplement YOLO26 `.pt` 기반 ROI 품질 검증

@@ -235,6 +235,8 @@ class SupplementAnalysisExplainRequest(BaseModel):
         use_local_llm: Whether to attempt local Ollama wording refinement.
         include_profile_context: Whether to include the current user's latest
             consent-gated health profile snapshot in the explanation context.
+        include_medical_context: Whether to include bounded condition/medication
+            summary buckets from the current user's consent-gated medical DB.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -242,6 +244,7 @@ class SupplementAnalysisExplainRequest(BaseModel):
     locale: Literal["ko-KR"] = "ko-KR"
     use_local_llm: bool = False
     include_profile_context: bool = False
+    include_medical_context: bool = False
 
 
 class SupplementRecommendationExplainResponse(BaseModel):

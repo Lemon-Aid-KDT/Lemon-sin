@@ -9,7 +9,12 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
-from src.models.db.medical import MedicalRecordCollection, PatientCondition, PatientStatusSnapshot
+from src.models.db.medical import (
+    MedicalRecordCollection,
+    PatientCondition,
+    PatientMedication,
+    PatientStatusSnapshot,
+)
 from src.models.schemas.medical import (
     MedicalRecordCreateRequest,
     PatientConditionInput,
@@ -18,6 +23,7 @@ from src.models.schemas.medical import (
 from src.security.auth import AuthenticatedUser
 from src.security.privacy import hash_actor_subject
 from src.services.medical_records import (
+    build_medical_context_summary,
     create_medical_record,
     get_latest_patient_status_snapshot,
     medical_record_to_response,
@@ -238,3 +244,50 @@ def test_medical_response_hides_code_hash() -> None:
 
     serialized = response.model_dump(mode="json")
     assert "condition_code_hash" not in serialized
+
+
+def test_medical_context_summary_uses_buckets_without_raw_text() -> None:
+    """Verify supplement explanations receive only bounded medical buckets."""
+    collection_id = uuid4()
+    conditions = [
+        PatientCondition(
+            id=uuid4(),
+            medical_collection_id=collection_id,
+            condition_text="high blood pressure",
+            clinical_status="active",
+            source="user_confirmed",
+        ),
+        PatientCondition(
+            id=uuid4(),
+            medical_collection_id=collection_id,
+            condition_text="사용자 확인 질환명",
+            clinical_status="inactive",
+            source="user_confirmed",
+        ),
+    ]
+    medications = [
+        PatientMedication(
+            id=uuid4(),
+            medical_collection_id=collection_id,
+            medication_name_text="Warfarin 5 mg",
+            active_status="active",
+        ),
+        PatientMedication(
+            id=uuid4(),
+            medical_collection_id=collection_id,
+            medication_name_text="Stopped medication",
+            active_status="stopped",
+        ),
+    ]
+
+    summary = build_medical_context_summary(conditions, medications)
+
+    serialized = str(summary)
+    assert summary.available is True
+    assert summary.condition_count == 1
+    assert summary.canonical_condition_codes == ("hypertension",)
+    assert summary.active_medication_count == 1
+    assert summary.medication_review_categories == ("anticoagulant_review",)
+    assert "Warfarin" not in serialized
+    assert "high blood pressure" not in serialized
+    assert "사용자 확인 질환명" not in serialized

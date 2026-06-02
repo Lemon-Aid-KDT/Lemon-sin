@@ -114,4 +114,5 @@ pass
 - 실제 Gemma4/Ollama vision model이 local runtime에 설치되어 있는지 live smoke가 필요하다.
 - 영양제 섹션 custom YOLO26 `.pt`가 아직 없어 `precautions`, `supplement_facts`, `intake_method` ROI 품질은 검증하지 못했다.
 - 개인 정보 DB 기반 안내는 우선 최신 body profile snapshot의 sanitized bucket을 opt-in으로 explanation context에 연결했다.
-- 질환/복약 정보 DB까지 포함하는 추천/경고/의사 상담 안내는 추가 context 설계와 live LLM smoke가 필요하다.
+- 질환/복약 정보 DB 기반 안내는 raw text가 아닌 condition/medication summary bucket을 opt-in으로 explanation context에 연결했다.
+- 다음 검증은 실제 local Ollama/Gemma runtime에서 profile/medical bucket이 안전 문장으로 유지되는지 확인하는 live smoke다.

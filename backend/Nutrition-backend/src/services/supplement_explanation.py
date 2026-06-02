@@ -26,6 +26,7 @@ from src.models.schemas.supplement_recommendation import (
     SupplementRecommendationExplainResponse,
 )
 from src.nutrition.deficiency_analysis import FORBIDDEN_TERMS, contains_forbidden_terms
+from src.services.medical_records import MedicalContextSummary
 from src.services.supplement_recommendation import SUPPLEMENT_IMPACT_DISCLAIMER
 
 SUPPLEMENT_EXPLAIN_SYSTEM_PROMPT = """
@@ -83,6 +84,7 @@ async def explain_supplement_analysis_preview(
     settings: Settings,
     *,
     profile_snapshot: BodyProfileSnapshot | None = None,
+    medical_context_summary: MedicalContextSummary | None = None,
 ) -> SupplementRecommendationExplainResponse:
     """Return a safe explanation for an OCR analysis preview before registration.
 
@@ -91,6 +93,8 @@ async def explain_supplement_analysis_preview(
         request: Explanation options.
         settings: Runtime settings.
         profile_snapshot: Optional latest current-user profile snapshot. The caller
+            must enforce sensitive-health consent before providing this value.
+        medical_context_summary: Optional current-user medical summary. The caller
             must enforce sensitive-health consent before providing this value.
 
     Returns:
@@ -102,6 +106,8 @@ async def explain_supplement_analysis_preview(
         warnings=(),
         include_profile_context=request.include_profile_context,
         profile_snapshot=profile_snapshot,
+        include_medical_context=request.include_medical_context,
+        medical_context_summary=medical_context_summary,
     )
     if not request.use_local_llm:
         return fallback
@@ -112,6 +118,8 @@ async def explain_supplement_analysis_preview(
             settings,
             include_profile_context=request.include_profile_context,
             profile_snapshot=profile_snapshot,
+            include_medical_context=request.include_medical_context,
+            medical_context_summary=medical_context_summary,
         )
     except (OllamaClientError, OllamaConfigurationError, SupplementExplanationError):
         return build_deterministic_analysis_explanation(
@@ -119,6 +127,8 @@ async def explain_supplement_analysis_preview(
             warnings=("llm_explanation_unavailable",),
             include_profile_context=request.include_profile_context,
             profile_snapshot=profile_snapshot,
+            include_medical_context=request.include_medical_context,
+            medical_context_summary=medical_context_summary,
         )
     return response
 
@@ -176,6 +186,8 @@ def build_deterministic_analysis_explanation(
     warnings: tuple[str, ...],
     include_profile_context: bool = False,
     profile_snapshot: BodyProfileSnapshot | None = None,
+    include_medical_context: bool = False,
+    medical_context_summary: MedicalContextSummary | None = None,
 ) -> SupplementRecommendationExplainResponse:
     """Build a pre-registration analysis explanation without calling an LLM.
 
@@ -184,6 +196,8 @@ def build_deterministic_analysis_explanation(
         warnings: Safe warning strings.
         include_profile_context: Whether profile context was requested.
         profile_snapshot: Optional latest current-user profile snapshot.
+        include_medical_context: Whether medical context was requested.
+        medical_context_summary: Optional current-user medical summary.
 
     Returns:
         Deterministic explanation response.
@@ -192,6 +206,8 @@ def build_deterministic_analysis_explanation(
         record,
         include_profile_context=include_profile_context,
         profile_snapshot=profile_snapshot,
+        include_medical_context=include_medical_context,
+        medical_context_summary=medical_context_summary,
     )
     ingredient_count = int(context["ingredient_count"])
     missing_sections = list(context["missing_required_sections"])
@@ -227,6 +243,7 @@ def build_deterministic_analysis_explanation(
     if context["functional_claim_count"]:
         bullets.append(f"기능성 문구 후보 {context['functional_claim_count']}개가 있습니다.")
     _append_profile_context_bullets(bullets, context)
+    _append_medical_context_bullets(bullets, context)
     if missing_sections:
         bullets.append(f"추가 확인 섹션: {', '.join(missing_sections[:4])}")
 
@@ -283,6 +300,8 @@ async def _explain_analysis_with_local_ollama(
     *,
     include_profile_context: bool,
     profile_snapshot: BodyProfileSnapshot | None,
+    include_medical_context: bool,
+    medical_context_summary: MedicalContextSummary | None,
 ) -> SupplementRecommendationExplainResponse:
     """Call local Ollama for a pre-registration analysis explanation.
 
@@ -291,6 +310,8 @@ async def _explain_analysis_with_local_ollama(
         settings: Runtime settings.
         include_profile_context: Whether profile context was requested.
         profile_snapshot: Optional latest current-user profile snapshot.
+        include_medical_context: Whether medical context was requested.
+        medical_context_summary: Optional current-user medical summary.
 
     Returns:
         Validated safe explanation response.
@@ -304,6 +325,8 @@ async def _explain_analysis_with_local_ollama(
         settings,
         include_profile_context=include_profile_context,
         profile_snapshot=profile_snapshot,
+        include_medical_context=include_medical_context,
+        medical_context_summary=medical_context_summary,
     )
     data = await OllamaChatClient(settings).post_chat(payload)
     content = extract_ollama_message_content(data)
@@ -364,6 +387,8 @@ def _build_analysis_explanation_payload(
     *,
     include_profile_context: bool,
     profile_snapshot: BodyProfileSnapshot | None,
+    include_medical_context: bool,
+    medical_context_summary: MedicalContextSummary | None,
 ) -> dict[str, Any]:
     """Build an Ollama Chat payload from sanitized analysis fields only.
 
@@ -372,6 +397,8 @@ def _build_analysis_explanation_payload(
         settings: Runtime settings.
         include_profile_context: Whether profile context was requested.
         profile_snapshot: Optional latest current-user profile snapshot.
+        include_medical_context: Whether medical context was requested.
+        medical_context_summary: Optional current-user medical summary.
 
     Returns:
         Ollama chat payload.
@@ -381,17 +408,22 @@ def _build_analysis_explanation_payload(
         record,
         include_profile_context=include_profile_context,
         profile_snapshot=profile_snapshot,
+        include_medical_context=include_medical_context,
+        medical_context_summary=medical_context_summary,
     )
     context_json = json.dumps(context, ensure_ascii=False)
     user_prompt = (
         "Rewrite this supplement label analysis preview in concise Korean. "
-        "Use only the sanitized OCR-derived fields and optional profile bucket "
-        "fields in the JSON context. "
+        "Use only the sanitized OCR-derived fields and optional profile/medical "
+        "bucket fields in the JSON context. "
         "Restate ingredient names and amounts only from the provided "
         "ingredients[].amount_text values. Do not add new ingredients, amounts, "
         "product claims, medical risks, diagnoses, or dosage advice. "
         "If profile_context.available is true, explain only why the user should "
         "review label precautions against that profile bucket. "
+        "If medical_context.available is true, use only condition counts, "
+        "canonical condition codes, and medication review categories; never quote "
+        "raw condition names, raw medication names, doses, or frequencies. "
         "Return JSON that conforms to the schema.\n\n"
         "<analysis_preview_context>\n"
         f"{context_json}\n"
@@ -417,6 +449,8 @@ def _build_analysis_explanation_context(
     *,
     include_profile_context: bool = False,
     profile_snapshot: BodyProfileSnapshot | None = None,
+    include_medical_context: bool = False,
+    medical_context_summary: MedicalContextSummary | None = None,
 ) -> dict[str, Any]:
     """Build bounded fields safe to send to the local explanation model.
 
@@ -424,6 +458,8 @@ def _build_analysis_explanation_context(
         record: Stored supplement analysis preview.
         include_profile_context: Whether profile context was requested.
         profile_snapshot: Optional latest current-user profile snapshot.
+        include_medical_context: Whether medical context was requested.
+        medical_context_summary: Optional current-user medical summary.
 
     Returns:
         Sanitized analysis context without raw OCR text, image bytes, object URIs,
@@ -479,6 +515,10 @@ def _build_analysis_explanation_context(
         "profile_context": _profile_context_summary(
             profile_snapshot if include_profile_context else None
         ),
+        "medical_context_requested": include_medical_context,
+        "medical_context": _medical_context_summary(
+            medical_context_summary if include_medical_context else None
+        ),
     }
 
 
@@ -504,6 +544,38 @@ def _profile_context_summary(profile_snapshot: BodyProfileSnapshot | None) -> di
         "pregnancy_status": _safe_text(profile_snapshot.pregnancy_status, limit=40),
         "lactation_status": _safe_text(profile_snapshot.lactation_status, limit=40),
         "activity_level": _safe_text(profile_snapshot.activity_level, limit=40),
+    }
+
+
+def _medical_context_summary(
+    medical_context_summary: MedicalContextSummary | None,
+) -> dict[str, Any]:
+    """Return bounded current-user medical context for explanation prompts.
+
+    Args:
+        medical_context_summary: Consent-gated current-user medical summary.
+
+    Returns:
+        Sanitized medical context without owner identifiers, raw condition text,
+        raw medication text, medication doses, source IDs, or consent snapshots.
+    """
+    if medical_context_summary is None or not medical_context_summary.available:
+        return {"available": False}
+    return {
+        "available": True,
+        "condition_count": medical_context_summary.condition_count,
+        "canonical_condition_codes": list(
+            medical_context_summary.canonical_condition_codes[:8]
+        ),
+        "uncategorized_condition_count": medical_context_summary.uncategorized_condition_count,
+        "active_medication_count": medical_context_summary.active_medication_count,
+        "medication_review_categories": list(
+            medical_context_summary.medication_review_categories[:8]
+        ),
+        "uncategorized_medication_count": (
+            medical_context_summary.uncategorized_medication_count
+        ),
+        "raw_medical_text_included": False,
     }
 
 
@@ -549,6 +621,29 @@ def _append_profile_context_bullets(
         bullets.append("개인 프로필이 없어 일반 라벨 확인 기준으로만 설명합니다.")
 
 
+def _append_medical_context_bullets(
+    bullets: list[str],
+    context: Mapping[str, Any],
+) -> None:
+    """Append deterministic medical-context bullets when requested.
+
+    Args:
+        bullets: Mutable explanation bullet list.
+        context: Sanitized analysis explanation context.
+
+    Returns:
+        None.
+    """
+    medical_context = _mapping(context.get("medical_context"))
+    if medical_context.get("available"):
+        bullets.append(_medical_context_bullet(medical_context))
+        if _has_medical_precaution_overlap(context):
+            bullets.append("의료정보 요약과 라벨 주의 문구가 겹쳐 전문가 상담 여부를 확인하세요.")
+        return
+    if context.get("medical_context_requested"):
+        bullets.append("의료정보 요약이 없어 일반 라벨 확인 기준으로만 설명합니다.")
+
+
 def _profile_context_bullet(profile_context: Mapping[str, Any]) -> str:
     """Build deterministic wording for included profile context.
 
@@ -575,6 +670,41 @@ def _profile_context_bullet(profile_context: Mapping[str, Any]) -> str:
     if not present_fields:
         return "개인 프로필은 있으나 설명에 쓸 수 있는 필드는 제한적입니다."
     return f"개인 프로필({', '.join(present_fields[:5])})을 함께 확인합니다."
+
+
+def _medical_context_bullet(medical_context: Mapping[str, Any]) -> str:
+    """Build deterministic wording for included medical context.
+
+    Args:
+        medical_context: Sanitized medical context mapping.
+
+    Returns:
+        Safe Korean explanation bullet.
+    """
+    condition_count = _bounded_int(medical_context.get("condition_count"))
+    medication_count = _bounded_int(medical_context.get("active_medication_count"))
+    category_count = len(_safe_string_list(
+        medical_context.get("medication_review_categories"),
+        max_items=8,
+        limit=80,
+    ))
+    condition_code_count = len(_safe_string_list(
+        medical_context.get("canonical_condition_codes"),
+        max_items=8,
+        limit=80,
+    ))
+    detail_parts: list[str] = []
+    if condition_count:
+        detail_parts.append(f"질환 {condition_count}개")
+    if medication_count:
+        detail_parts.append(f"복약 {medication_count}개")
+    if condition_code_count:
+        detail_parts.append(f"질환 분류 {condition_code_count}개")
+    if category_count:
+        detail_parts.append(f"복약 검토 분류 {category_count}개")
+    if not detail_parts:
+        return "의료정보 요약은 있으나 설명에 쓸 수 있는 필드는 제한적입니다."
+    return f"의료정보 요약({', '.join(detail_parts[:4])})을 함께 확인합니다."
 
 
 def _has_profile_precaution_overlap(context: Mapping[str, Any]) -> bool:
@@ -605,6 +735,46 @@ def _has_profile_precaution_overlap(context: Mapping[str, Any]) -> bool:
         if lactation_status and any(
             token in haystack for token in ("lactation", "nursing", "수유")
         ):
+            return True
+    return False
+
+
+def _has_medical_precaution_overlap(context: Mapping[str, Any]) -> bool:
+    """Return whether medical buckets overlap visible precaution text.
+
+    Args:
+        context: Sanitized analysis explanation context.
+
+    Returns:
+        True when medication or condition buckets should raise review urgency.
+    """
+    medical_context = _mapping(context.get("medical_context"))
+    if not medical_context.get("available"):
+        return False
+    has_medication_review = bool(
+        _safe_string_list(
+            medical_context.get("medication_review_categories"),
+            max_items=8,
+            limit=80,
+        )
+    )
+    has_condition_review = bool(
+        _safe_string_list(
+            medical_context.get("canonical_condition_codes"),
+            max_items=8,
+            limit=80,
+        )
+    )
+    if has_medication_review:
+        return True
+    if not has_condition_review:
+        return False
+    precautions = _list_of_mappings(context.get("precautions"))
+    for precaution in precautions:
+        category = _safe_text(precaution.get("category"), limit=80)
+        text = _safe_text(precaution.get("text"), limit=220)
+        haystack = f"{category or ''} {text or ''}".casefold()
+        if any(token in haystack for token in ("condition", "disease", "질환", "상담")):
             return True
     return False
 
@@ -745,6 +915,20 @@ def _safe_number(value: Any) -> int | float | None:
     if numeric.is_integer():
         return int(numeric)
     return numeric
+
+
+def _bounded_int(value: Any) -> int:
+    """Return a bounded non-negative integer for deterministic wording.
+
+    Args:
+        value: Candidate integer-like value.
+
+    Returns:
+        Non-negative integer capped by ``MAX_SAFE_PROMPT_NUMBER``.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, min(value, MAX_SAFE_PROMPT_NUMBER))
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

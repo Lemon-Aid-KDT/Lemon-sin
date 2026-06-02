@@ -25,6 +25,7 @@ from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.models.schemas.supplement_recommendation import (
     SupplementRecommendationExplainResponse,
 )
+from src.services.medical_records import MedicalContextSummary
 from src.services.privacy import ConsentRequiredError
 from src.services.supplement_parser import (
     SupplementAnalysisExpiredError,
@@ -219,6 +220,20 @@ def _profile_snapshot() -> BodyProfileSnapshot:
     )
 
 
+def _medical_context_summary() -> MedicalContextSummary:
+    """Return a current-user medical context summary fixture.
+
+    Returns:
+        Sanitized medical context summary without raw medical text.
+    """
+    return MedicalContextSummary(
+        condition_count=1,
+        canonical_condition_codes=("hypertension",),
+        active_medication_count=1,
+        medication_review_categories=("anticoagulant_review",),
+    )
+
+
 def _parse_result() -> SupplementStructuredParseResult:
     """Return a valid structured parser result.
 
@@ -346,7 +361,9 @@ def test_explain_supplement_analysis_preview_propagates_local_llm_flag(
         captured["analysis_id"] = record.id
         captured["use_local_llm"] = request.use_local_llm
         captured["include_profile_context"] = request.include_profile_context
+        captured["include_medical_context"] = request.include_medical_context
         captured["profile_snapshot"] = kwargs.get("profile_snapshot")
+        captured["medical_context_summary"] = kwargs.get("medical_context_summary")
         return SupplementRecommendationExplainResponse(
             safe_user_message="Analysis explanation ready.",
             explanation_bullets=["Review parsed label fields."],
@@ -378,7 +395,9 @@ def test_explain_supplement_analysis_preview_propagates_local_llm_flag(
         "analysis_id": analysis_id,
         "use_local_llm": True,
         "include_profile_context": False,
+        "include_medical_context": False,
         "profile_snapshot": None,
+        "medical_context_summary": None,
     }
     body = response.json()
     assert body["llm_used"] is True
@@ -447,6 +466,72 @@ def test_explain_supplement_analysis_preview_can_include_profile_context(
     assert audit_metadata["raw_profile_payload_stored"] is False
 
 
+def test_explain_supplement_analysis_preview_can_include_medical_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify medical context is opt-in, consent-gated, and summarized."""
+    fake_session = _FakeSupplementOCRTextSession()
+    analysis_id = uuid4()
+    consent_checks: list[ConsentType] = []
+    medical_loaded = False
+
+    async def fake_load_supplement_analysis_run_for_owner(
+        *_args: object, **kwargs: Any
+    ) -> SupplementAnalysisRun:
+        """Return a preview row for the requested analysis id."""
+        return _analysis_run(kwargs["analysis_id"])
+
+    async def fake_get_current_medical_context_summary(*_args: object) -> MedicalContextSummary:
+        """Return a sanitized latest medical context summary fixture."""
+        nonlocal medical_loaded
+        medical_loaded = True
+        return _medical_context_summary()
+
+    async def fake_require_user_consent(
+        _session: object,
+        _user: object,
+        consent_type: ConsentType,
+    ) -> None:
+        """Capture required consent buckets."""
+        consent_checks.append(consent_type)
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    monkeypatch.setattr(
+        supplements,
+        "get_current_medical_context_summary",
+        fake_get_current_medical_context_summary,
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    client = TestClient(app)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{analysis_id}/explain",
+        json={"include_medical_context": True},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert medical_loaded is True
+    assert consent_checks == [
+        ConsentType.OCR_IMAGE_PROCESSING,
+        ConsentType.SENSITIVE_HEALTH_ANALYSIS,
+    ]
+    body = response.json()
+    serialized_body = json.dumps(body, ensure_ascii=False)
+    assert "의료정보 요약" in serialized_body
+    assert "warfarin" not in serialized_body.casefold()
+    assert "사용자 확인" not in serialized_body
+    audit_metadata = fake_session.added_audits[0].event_metadata
+    assert audit_metadata["medical_context_requested"] is True
+    assert audit_metadata["medical_context_included"] is True
+    assert audit_metadata["raw_medical_payload_stored"] is False
+
+
 def test_explain_supplement_analysis_preview_requires_profile_consent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -505,6 +590,69 @@ def test_explain_supplement_analysis_preview_requires_profile_consent(
     assert audit_metadata["reason"] == "sensitive_health_consent_required"
     assert audit_metadata["profile_context_requested"] is True
     assert audit_metadata["profile_context_included"] is False
+    assert audit_metadata["medical_context_requested"] is False
+    assert audit_metadata["medical_context_included"] is False
+
+
+def test_explain_supplement_analysis_preview_requires_medical_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify medical-context explanation fails closed before loading medical DB."""
+    fake_session = _FakeSupplementOCRTextSession()
+    analysis_id = uuid4()
+    medical_loaded = False
+
+    async def fake_load_supplement_analysis_run_for_owner(
+        *_args: object, **kwargs: Any
+    ) -> SupplementAnalysisRun:
+        """Return a preview row before the medical-consent check."""
+        return _analysis_run(kwargs["analysis_id"])
+
+    async def fake_get_current_medical_context_summary(*_args: object) -> MedicalContextSummary:
+        """Fail if the route tries to load medical context without consent."""
+        nonlocal medical_loaded
+        medical_loaded = True
+        return _medical_context_summary()
+
+    async def fake_require_user_consent(
+        _session: object,
+        _user: object,
+        consent_type: ConsentType,
+    ) -> None:
+        """Allow OCR consent but deny sensitive health consent."""
+        if consent_type == ConsentType.SENSITIVE_HEALTH_ANALYSIS:
+            raise ConsentRequiredError("Sensitive health analysis consent is required.")
+
+    monkeypatch.setattr(
+        supplements,
+        "_load_supplement_analysis_run_for_owner",
+        fake_load_supplement_analysis_run_for_owner,
+    )
+    monkeypatch.setattr(
+        supplements,
+        "get_current_medical_context_summary",
+        fake_get_current_medical_context_summary,
+    )
+    monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    client = TestClient(app)
+
+    response = client.post(
+        f"/api/v1/supplements/analyses/{analysis_id}/explain",
+        json={"include_medical_context": True},
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["detail"]["required_consents"] == [
+        ConsentType.SENSITIVE_HEALTH_ANALYSIS.value
+    ]
+    assert medical_loaded is False
+    audit_metadata = fake_session.added_audits[0].event_metadata
+    assert audit_metadata["reason"] == "sensitive_health_consent_required"
+    assert audit_metadata["profile_context_requested"] is False
+    assert audit_metadata["medical_context_requested"] is True
+    assert audit_metadata["medical_context_included"] is False
 
 
 def test_explain_supplement_analysis_preview_returns_not_found(

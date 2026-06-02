@@ -51,6 +51,10 @@
   - 영양제 OCR 분석 미리보기 설명에 사용자 최신 건강 프로필 snapshot을 opt-in으로 연결한 작업 요약
   - `sensitive_health_analysis` 동의 gate, sanitized profile bucket, audit flag, 회귀 테스트 결과 정리
 
+- `2026-06-02-supplement-analysis-medical-context-summary.md`
+  - 영양제 OCR 분석 미리보기 설명에 사용자 질환/복약 DB 요약 bucket을 opt-in으로 연결한 작업 요약
+  - 원문 질환명/약명/용량을 LLM에 전달하지 않는 safe medical context, consent gate, audit flag 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -69,4 +73,5 @@
 - OCR layout에 `precautions` 섹션이 보이면 LLM parser가 놓쳐도 structured `precautions` 배열로 승격하도록 보완했다.
 - Gemma/Ollama 기반 멀티모달 검증은 기존 OCR 유사도 비교에서 OCR 텍스트와 이미지/ROI를 직접 대조하는 structured verification 계약으로 보완했다.
 - 분석 미리보기 설명은 `include_profile_context=true`일 때 민감 건강 동의 확인 후 최신 body profile snapshot의 sanitized bucket을 설명 context에 포함한다.
-- 개인 맞춤 설명의 다음 단계는 질환/복약 정보 DB까지 결합하는 context bucket과 실제 local Ollama/Gemma live smoke다.
+- 분석 미리보기 설명은 `include_medical_context=true`일 때 민감 건강 동의 확인 후 사용자 의료정보 DB의 질환/복약 요약 bucket을 설명 context에 포함한다.
+- 개인 맞춤 설명의 다음 단계는 모바일 요청 연결, comprehensive nutrition engine 결합, 실제 local Ollama/Gemma live smoke다.
