@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 from src.config import Settings
 from src.vision.base import BoundingBox, VisionError
+from src.vision.taxonomy import normalize_vision_label
 from src.vision.ultralytics_runner import UltralyticsYoloRunner
 from src.vision.yolo import YoloLabelDetector
 
@@ -200,6 +201,14 @@ def test_ultralytics_runner_normalizes_allowed_boxes_without_text_extraction() -
             model="local-supplement-roi.pt",
         )
     ]
+
+
+def test_vision_taxonomy_normalizes_section_roi_aliases() -> None:
+    """Verify custom YOLO section labels survive normalization for OCR routing."""
+    assert normalize_vision_label("Supplement Facts Panel") == "supplement_facts"
+    assert normalize_vision_label("allergy-warning") == "precautions"
+    assert normalize_vision_label("Suggested Use") == "intake_method"
+    assert normalize_vision_label("Other Ingredients") == "ingredients"
 
 
 def test_ultralytics_runner_fails_closed_without_allowed_boxes() -> None:

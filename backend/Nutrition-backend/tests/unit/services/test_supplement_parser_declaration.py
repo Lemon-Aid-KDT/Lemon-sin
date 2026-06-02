@@ -130,6 +130,27 @@ class TestExtractIngredientDeclarationCandidates:
         assert vitamin_c["unit"] == "mg"
         assert vitamin_c["source"] == OCR_PATTERN_FALLBACK_SOURCE
 
+    def test_ocr_pattern_ignores_serving_size_headers(self) -> None:
+        """Serving-size rows are facts-table headings, not nutrient candidates."""
+        for text in (
+            "1회 제공량(26g)",
+            "1회제공량(26g)",
+            "1회 제공량 26g",
+            "1회제공량 26g",
+            "Serving Size 26g",
+            "Amount Per Serving 26g",
+            "Servings Per Container 60",
+        ):
+            assert _extract_ocr_pattern_ingredient_candidates(text) == []
+
+    def test_ocr_pattern_keeps_real_amount_candidate(self) -> None:
+        """A real nutrient name followed by an amount remains parseable."""
+        candidates = _extract_ocr_pattern_ingredient_candidates("비타민 C 26g")
+        assert len(candidates) == 1
+        assert candidates[0]["display_name"] == "비타민 C"
+        assert candidates[0]["amount"] == 26
+        assert candidates[0]["unit"] == "g"
+
 
 class TestDeclarationCandidatesSanitizeInjection:
     """Declaration names must pass the injection / HTML / control-char filter.

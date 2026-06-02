@@ -161,10 +161,37 @@ class _FakeOCRAdapter(OCRAdapter):
         )
 
 
+class _SequenceOCRAdapter(OCRAdapter):
+    """Fake OCR adapter returning one configured result per call."""
+
+    def __init__(self, results: list[OCRResult]) -> None:
+        self.results = results
+        self.received_images: list[OCRImageInput] = []
+
+    async def extract_text(self, image: OCRImageInput) -> OCRResult:
+        """Capture each OCR input and return the matching configured result.
+
+        Args:
+            image: OCR image input.
+
+        Returns:
+            Configured OCR result for the call index.
+        """
+        self.received_images.append(image)
+        index = min(len(self.received_images) - 1, len(self.results) - 1)
+        return self.results[index]
+
+
 class _FakeVisionAdapter(VisionAdapter):
     """Fake vision adapter returning a configured ROI."""
 
-    def __init__(self, region: BoundingBox | None = None, *, fail: bool = False) -> None:
+    def __init__(
+        self,
+        region: BoundingBox | None = None,
+        *,
+        regions: list[BoundingBox] | None = None,
+        fail: bool = False,
+    ) -> None:
         self.region = region or BoundingBox(
             x=0,
             y=0,
@@ -173,6 +200,7 @@ class _FakeVisionAdapter(VisionAdapter):
             confidence=0.9,
             label="supplement_label",
         )
+        self.regions = regions
         self.fail = fail
         self.call_count = 0
 
@@ -193,6 +221,24 @@ class _FakeVisionAdapter(VisionAdapter):
             raise VisionError("fake detector failure")
         assert image_bytes
         return self.region
+
+    async def detect_regions(self, image_bytes: bytes) -> list[BoundingBox]:
+        """Return configured detector regions.
+
+        Args:
+            image_bytes: Validated image bytes.
+
+        Returns:
+            Configured ROI list.
+
+        Raises:
+            VisionError: When configured to fail.
+        """
+        self.call_count += 1
+        if self.fail:
+            raise VisionError("fake detector failure")
+        assert image_bytes
+        return self.regions or [self.region]
 
 
 class _FakeMultimodalOCRAdapter(OCRAdapter):
@@ -370,6 +416,33 @@ def _ocr_page() -> OCRPage:
         paragraphs=(paragraph,),
     )
     return OCRPage(width=300, height=200, confidence=0.89, blocks=(block,))
+
+
+def _ocr_warning_page() -> OCRPage:
+    """Return OCR words for deterministic warning/precaution layout parsing."""
+    words = (
+        _ocr_word("Warnings", 10, 10, 110, 40, 0, 0.91),
+        _ocr_word("Contains", 10, 50, 95, 80, 1, 0.9),
+        _ocr_word("soy.", 105, 50, 150, 80, 2, 0.89),
+        _ocr_word("If", 10, 90, 30, 120, 3, 0.88),
+        _ocr_word("pregnant,", 40, 90, 125, 120, 4, 0.88),
+        _ocr_word("consult", 135, 90, 205, 120, 5, 0.88),
+        _ocr_word("doctor.", 215, 90, 285, 120, 6, 0.88),
+    )
+    paragraph = OCRParagraph(
+        text=" ".join(word.text for word in words),
+        confidence=0.89,
+        bounding_box=None,
+        words=words,
+    )
+    block = OCRBlock(
+        text=paragraph.text,
+        confidence=0.89,
+        bounding_box=None,
+        block_type="TEXT",
+        paragraphs=(paragraph,),
+    )
+    return OCRPage(width=300, height=160, confidence=0.89, blocks=(block,))
 
 
 def _ocr_word(
@@ -640,6 +713,110 @@ async def test_analyze_supplement_image_crops_primary_ocr_input_when_policy_enab
     assert fake_ocr.received_images[1].width == 3
     assert fake_ocr.received_images[1].height == 2
     assert fake_parser.received_text == "비타민 D 1000"
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_preserves_multi_roi_precaution_layout() -> None:
+    """Verify section ROI OCR preserves warning text and layout sections."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _SequenceOCRAdapter(
+        [
+            OCRResult(
+                text="Supplement Facts\nVitamin D 25 ug",
+                provider="fake-ocr",
+                confidence=0.9,
+                pages=(_ocr_page(),),
+            ),
+            OCRResult(
+                text="Warnings\nContains soy. If pregnant, consult doctor.",
+                provider="fake-ocr",
+                confidence=0.88,
+                pages=(_ocr_warning_page(),),
+            ),
+            OCRResult(
+                text="Suggested Use\nTake 1 softgel daily with food.",
+                provider="fake-ocr",
+                confidence=0.87,
+                pages=(),
+            ),
+            OCRResult(
+                text="Front Label\nVitamin D",
+                provider="fake-ocr",
+                confidence=0.84,
+                pages=(),
+            ),
+            OCRResult(
+                text="Supplement Facts\nVitamin D 25 ug\nWarnings\nContains soy.",
+                provider="fake-ocr",
+                confidence=0.82,
+                pages=(),
+            ),
+        ]
+    )
+    fake_parser = _FakeParser(_parse_result())
+    regions = [
+        BoundingBox(
+            x=1,
+            y=0,
+            width=1,
+            height=1,
+            confidence=0.84,
+            label="supplement_label",
+        ),
+        BoundingBox(
+            x=0,
+            y=0,
+            width=1,
+            height=1,
+            confidence=0.91,
+            label="supplement_facts",
+        ),
+        BoundingBox(
+            x=1,
+            y=1,
+            width=1,
+            height=1,
+            confidence=0.89,
+            label="precautions",
+        ),
+        BoundingBox(
+            x=2,
+            y=1,
+            width=1,
+            height=1,
+            confidence=0.88,
+            label="intake_method",
+        ),
+    ]
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_vision_classifier=True,
+            ocr_roi_preprocessing_policy="crop_before_primary",
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            vision=_FakeVisionAdapter(regions=regions),
+        ),
+    )
+
+    assert result.ocr_result is not None
+    assert result.ocr_result.pages == (_ocr_page(), _ocr_warning_page())
+    assert fake_parser.received_text is not None
+    assert "Warnings" in fake_parser.received_text
+    assert "Contains soy" in fake_parser.received_text
+    assert [image.width for image in fake_ocr.received_images] == [1, 1, 1, 1, 3]
+    preview = supplement_analysis_run_to_preview(result.record)
+    section_types = {section.section_type for section in preview.label_sections}
+    assert "supplement_facts" in section_types
+    assert "precautions" in section_types
+    assert preview.pipeline_metadata.section_count >= 2
 
 
 @pytest.mark.asyncio

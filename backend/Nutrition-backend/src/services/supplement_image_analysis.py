@@ -37,7 +37,7 @@ from src.models.schemas.supplement_image import (
     parser_contract_version,
     safe_snapshot_string,
 )
-from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRResult
+from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRPage, OCRResult
 from src.parsing.layout_parser import parse_label_layout
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_intake import (
@@ -60,6 +60,7 @@ from src.vision.preprocessing import (
     crop_image_to_bounding_box,
     select_best_label_region,
 )
+from src.vision.taxonomy import label_priority
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ OCR_ROI_CROP_UNAVAILABLE_CODE = "ocr_roi_crop_unavailable"
 OCR_VERIFICATION_MISMATCH_CODE = "ocr_verification_mismatch"
 SUPPLEMENT_FACTS_REQUIRED_CODE = "supplement_facts_required"
 SUPPLEMENT_FACTS_SECTION_TYPES = frozenset({"supplement_facts", "ingredients", "nutrition_info"})
-MAX_PRIMARY_OCR_ROI_CANDIDATES = 3
+MAX_PRIMARY_OCR_ROI_CANDIDATES = 4
 PARSER_RECOVERABLE_ERRORS = (
     SupplementParserInputError,
     OllamaClientError,
@@ -968,7 +969,7 @@ def _ordered_ocr_regions(
     label_regions: tuple[BoundingBox, ...],
     selected_region: BoundingBox | None,
 ) -> list[BoundingBox]:
-    """Return a bounded ROI list with the selected region first.
+    """Return a bounded ROI list prioritized for section-level OCR.
 
     Args:
         label_regions: Candidate regions from the vision adapter.
@@ -977,14 +978,15 @@ def _ordered_ocr_regions(
     Returns:
         De-duplicated regions capped for OCR provider cost control.
     """
-    ordered: list[BoundingBox] = []
+    unique_regions: list[BoundingBox] = []
     for region in (selected_region, *label_regions):
-        if region is None or region in ordered:
+        if region is None or region in unique_regions:
             continue
-        ordered.append(region)
-        if len(ordered) >= MAX_PRIMARY_OCR_ROI_CANDIDATES:
-            break
-    return ordered
+        unique_regions.append(region)
+    return sorted(
+        unique_regions,
+        key=lambda region: (label_priority(region.label), -region.confidence),
+    )[:MAX_PRIMARY_OCR_ROI_CANDIDATES]
 
 
 def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
@@ -1007,12 +1009,14 @@ def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
     text_parts: list[str] = []
     seen_texts: set[str] = set()
     confidences: list[float] = []
+    pages: list[OCRPage] = []
     for result in usable:
         normalized = "\n".join(line.strip() for line in result.text.splitlines() if line.strip())
         if not normalized or normalized in seen_texts:
             continue
         text_parts.append(normalized)
         seen_texts.add(normalized)
+        pages.extend(result.pages)
         if result.confidence is not None:
             confidences.append(result.confidence)
     confidence = sum(confidences) / len(confidences) if confidences else None
@@ -1020,7 +1024,7 @@ def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
         text="\n\n".join(text_parts),
         provider=usable[0].provider,
         confidence=confidence,
-        pages=(),
+        pages=tuple(pages),
     )
 
 

@@ -1,7 +1,7 @@
 # 2026-06-02 작업 문서 인덱스
 
 > 작성 기준: 2026-06-02 섹션 작업
-> 범위: 모바일 분석 결과 그룹화, 서버 응답 점검, 네트워크 오류 처리 보완, 검증 및 GitHub 브랜치 푸시
+> 범위: 모바일 분석 결과 그룹화, 서버 응답 점검, 네트워크 오류 처리 보완, OCR/YOLO 섹션 ROI 보완, 검증 및 GitHub 브랜치 푸시
 
 ---
 
@@ -31,6 +31,14 @@
   - 코드 수정 전 설계 검토 결과와 다음 구현 순서
   - 테스트/검증 명령, 제외해야 하는 데이터, 공식 문서 기준 정리
 
+- `2026-06-02-ocr-yolo-section-roi-implementation-summary.md`
+  - 영양제 라벨 섹션 ROI taxonomy 확장, OCR page merge 보존, serving-size 오탐 제거 구현 요약
+  - Ultralytics 공식 문서 기준과 custom section model 필요 조건 정리
+
+- `2026-06-02-ocr-yolo-section-roi-verification.md`
+  - backend unit/ruff/regression/parser 직접 재현 검증 결과
+  - 실제 Ultralytics runtime smoke가 막힌 이유와 다음 작업 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -43,3 +51,6 @@
 - Flutter API client는 `SocketException`과 `http.ClientException`을 `network_unavailable` 오류로 정규화해 사용자에게 backend 실행 상태/API 주소 확인 메시지를 보여준다.
 - 이번 Git 작업은 팀 repo `Lemon-Aid-KDT/Lemon-sin.git`의 현재 브랜치 `docs/docs-2026-05-31-backend-ocr-security`에 커밋/푸시한다.
 - OCR/YOLO 추가 조사에서는 코드 변경 전 원인 분석을 우선 진행했으며, 주의사항 누락과 `1회 제공량(26g)` 성분 후보 오탐은 서로 다른 문제로 분리했다.
+- backend OCR/YOLO 구현은 섹션 ROI label(`supplement_facts`, `precautions`, `intake_method`, `ingredients`)을 인식하고 OCR merge에서 layout page를 보존하도록 갱신했다.
+- `1회 제공량(26g)`, `Serving Size`, `Amount Per Serving` 계열은 성분 후보에서 제외하고, 실제 성분명과 함량이 있는 문장은 유지하도록 테스트를 추가했다.
+- 실제 이미지 기반 YOLO runtime smoke는 custom supplement section `.pt` 모델과 backend vision runtime 설치가 필요해 다음 단계로 남겼다.

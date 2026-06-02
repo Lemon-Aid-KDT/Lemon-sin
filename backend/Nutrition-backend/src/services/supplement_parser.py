@@ -76,7 +76,7 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     # Optional trailing %DV (영양성분기준치) after a real unit, e.g. "1000 mg 100%".
     r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?"
 )
-TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•"
+TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•()"
 MAX_PATTERN_FALLBACK_INGREDIENTS = 20
 INGREDIENT_MIN_NAME_CHARS = 2
 INGREDIENT_MAX_NAME_CHARS = 80
@@ -935,6 +935,9 @@ def _strip_ingredient_heading_prefix(value: str) -> str:
         r"^(?:영양\s*정보|영양\s*기능\s*정보|기능\s*정보)\s*[:\uff1a|·•-]*\s*",
         r"^(?:원재료명|원료명)\s*(?:및\s*함량)?\s*[:\uff1a|·•-]*\s*",
         r"^(?:1일\s*)?(?:섭취량|섭취\s*방법)\s*[:\uff1a|·•-]*\s*",
+        r"^(?:(?:1\s*)?회\s*)?제공량\s*[\(:\uff1a|·•-]*\s*",
+        r"^(?:serving\s*size|amount\s*per\s*serving|servings?\s*per\s*container)"
+        r"\s*[\(:\uff1a|·•-]*\s*",
     )
     for pattern in patterns:
         cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
@@ -969,6 +972,14 @@ def _looks_like_non_ingredient_heading(value: str) -> bool:
         "건강기능식품",
         "총 내용량",
         "내용량",
+        "1회 제공량",
+        "1회제공량",
+        "회 제공량",
+        "회제공량",
+        "제공량",
+        "serving size",
+        "amount per serving",
+        "servings per container",
         "제조원",
         "보관",
         "유통기한",

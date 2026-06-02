@@ -145,6 +145,10 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.enable_clova_ocr is False
     assert settings.vision_roi_min_confidence == 0.50
     assert settings.vision_roi_allowed_classes == [
+        "supplement_facts",
+        "precautions",
+        "intake_method",
+        "ingredients",
         "supplement_label",
         "supplement_bottle",
         "blister_pack",

@@ -20,7 +20,15 @@ DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "10.0.2.2", "testserver"]
 DEFAULT_JWT_ALGORITHMS = ["RS256"]
 DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
-DEFAULT_VISION_ROI_ALLOWED_CLASSES = ["supplement_label", "supplement_bottle", "blister_pack"]
+DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
+    "supplement_facts",
+    "precautions",
+    "intake_method",
+    "ingredients",
+    "supplement_label",
+    "supplement_bottle",
+    "blister_pack",
+]
 # Deliberately insecure development sentinel; production validation rejects this exact value.
 DEFAULT_PRIVACY_HASH_SECRET = (
     "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
@@ -300,7 +308,7 @@ class Settings(BaseSettings):
         local_ocr_preprocess_mode: Optional local OCR-only image preprocessing mode.
         enable_clova_ocr: Whether NAVER Cloud CLOVA OCR fallback may run.
         vision_roi_min_confidence: Minimum detection confidence accepted for a YOLO ROI.
-        vision_roi_allowed_classes: Allowed non-text object labels accepted from YOLO.
+        vision_roi_allowed_classes: Allowed OCR ROI object or label-section classes from YOLO.
         feature_hall_lite_weight_prediction: Whether Hall-lite weight prediction can run.
         weight_prediction_engine: Internal weight prediction engine selector.
         kdris_data_version: KDRIs dataset version used by runtime lookup.
@@ -584,7 +592,7 @@ class Settings(BaseSettings):
         default_factory=_default_vision_roi_allowed_classes,
         min_length=1,
         max_length=10,
-        description="YOLO ROI 보조에서 허용하는 object-detection class labels.",
+        description="YOLO ROI 보조에서 허용하는 object-detection 또는 label-section class labels.",
     )
     enable_food_yolo_detector: bool = Field(
         default=False,
