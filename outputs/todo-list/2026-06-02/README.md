@@ -95,6 +95,14 @@
   - OCR layout의 absolute section bbox를 YOLO normalized section label snapshot으로 변환하는 helper 추가 요약
   - raw OCR text 없이 기존 supplement section YOLO export bridge에 연결되는지 검증한 내용 정리
 
+- `2026-06-02-current-work-final-publish-summary.md`
+  - 2026-06-02 섹션에서 완료한 OCR/YOLO/Ollama/개인화 context 작업과 현재 GitHub 게시 상태 정리
+  - 이번 문서 커밋 대상, 제외 파일, 다음 blocker, 공식 문서 링크 정리
+
+- `2026-06-02-next-section-continuation-prompt.md`
+  - 다음 Codex 섹션에서 이어서 사용할 수 있는 repo/branch/remote/검증/규칙/다음 구현 순서 프롬프트
+  - AnnotationTask review queue 연결과 training export guard 구현 방향 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -131,3 +139,4 @@
 - 다음 단계는 human-reviewed section bbox annotation과 operator-only source map을 준비한 뒤 실제 dataset materialize, `--require-files` 검증, YOLO26 custom 학습, crop OCR, Ollama/Gemma verification 순서로 진행한다.
 - OCR layout에서 나온 `LabelBox`는 이제 `build_supplement_section_yolo_label_snapshot`을 통해 raw OCR text 없이 normalized YOLO section bbox 후보로 변환할 수 있다.
 - 이 후보 snapshot은 privacy review/human review를 거치면 기존 `build_supplement_section_yolo_detection_export` 경로로 들어갈 수 있다.
+- 다음 구현은 후보 snapshot을 `AnnotationTask` operator review queue에 연결하고, review 승인 전 training export를 막는 guard를 추가하는 것이다.
