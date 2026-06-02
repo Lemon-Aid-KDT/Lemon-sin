@@ -67,6 +67,10 @@
   - 현재 repo에 존재하는 YOLO 관련 모델/데이터를 점검한 결과 정리
   - 음식 YOLO 가중치와 영양제 섹션 detector를 혼동하지 않기 위한 다음 구현 기준 정리
 
+- `2026-06-02-yolo26-model-contract-guard-summary.md`
+  - COCO/food/label-only 모델이 영양제 섹션 detector로 잘못 사용되지 않도록 model class-name guard를 추가한 작업 요약
+  - `/ready`에 안전한 supplement YOLO 계약 정보를 노출한 내용과 검증 결과 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -91,3 +95,5 @@
 - 개인 맞춤 설명의 다음 단계는 모바일 요청 연결, comprehensive nutrition engine 결합, 실제 local Ollama/Gemma live smoke다.
 - 현재 repo에서 확인된 `.pt` 가중치는 음식 YOLO 실험 `best.pt`뿐이며, 영양제 섹션 전용 custom YOLO26 detector는 아직 확인되지 않았다.
 - 다음 구현에서는 default COCO/food model을 영양제 섹션 detector로 오인하지 않도록 class-name/readiness guard와 데이터셋 계약을 먼저 추가해야 한다.
+- backend Ultralytics runner는 이제 모델 class names가 supplement ROI taxonomy와 섹션 class를 포함하지 않으면 inference 전에 fail-closed 처리한다.
+- `/ready`는 raw model path를 노출하지 않고 supplement YOLO의 allowed label과 required section label 계약만 노출한다.

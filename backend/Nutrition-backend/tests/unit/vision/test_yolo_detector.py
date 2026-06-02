@@ -56,9 +56,10 @@ class _FakeModel:
     def __init__(self) -> None:
         self.names: dict[int, str] = {
             0: "supplement_label",
-            1: "supplement_bottle",
+            1: "Supplement Facts Panel",
             2: "person",
         }
+        self.prediction_called = False
 
     def predict(self, *, source: Any, conf: float, verbose: bool) -> list[_Result]:
         """Return a fake result list matching the Ultralytics result shape.
@@ -72,9 +73,70 @@ class _FakeModel:
             Fake result list.
         """
         assert source.size == (10, 8)
-        assert conf == 0.5
+        assert 0.0 <= conf <= 1.0
         assert verbose is False
+        self.prediction_called = True
         return [_Result()]
+
+
+class _CocoModel:
+    """Fake COCO model that must not be accepted as supplement detector."""
+
+    def __init__(self) -> None:
+        self.names: dict[int, str] = {0: "person", 1: "bicycle"}
+
+    def predict(self, *, source: Any, conf: float, verbose: bool) -> list[_Result]:
+        """Raise if called; incompatible models should fail before inference.
+
+        Args:
+            source: Unused source image.
+            conf: Unused confidence threshold.
+            verbose: Unused verbose flag.
+
+        Raises:
+            AssertionError: Always, because prediction should not run.
+        """
+        _ = (source, conf, verbose)
+        raise AssertionError("COCO model should fail before prediction")
+
+
+class _LabelOnlyModel:
+    """Fake supplement object model without section ROI labels."""
+
+    def __init__(self) -> None:
+        self.names: dict[int, str] = {0: "supplement_label", 1: "supplement_bottle"}
+
+    def predict(self, *, source: Any, conf: float, verbose: bool) -> list[_Result]:
+        """Raise if called; label-only models are not section detectors.
+
+        Args:
+            source: Unused source image.
+            conf: Unused confidence threshold.
+            verbose: Unused verbose flag.
+
+        Raises:
+            AssertionError: Always, because prediction should not run.
+        """
+        _ = (source, conf, verbose)
+        raise AssertionError("Label-only model should fail before prediction")
+
+
+class _NoNamesModel:
+    """Fake model with no class names metadata."""
+
+    def predict(self, *, source: Any, conf: float, verbose: bool) -> list[_Result]:
+        """Raise if called; model names are required for safety.
+
+        Args:
+            source: Unused source image.
+            conf: Unused confidence threshold.
+            verbose: Unused verbose flag.
+
+        Raises:
+            AssertionError: Always, because prediction should not run.
+        """
+        _ = (source, conf, verbose)
+        raise AssertionError("Model without names should fail before prediction")
 
 
 def _settings(
@@ -109,6 +171,42 @@ def _fake_model_factory(_name: str) -> _FakeModel:
         Fake model satisfying the runner protocol.
     """
     return _FakeModel()
+
+
+def _coco_model_factory(_name: str) -> _CocoModel:
+    """Return a fake COCO detector.
+
+    Args:
+        _name: Model name accepted for parity with the production model factory.
+
+    Returns:
+        Fake COCO model.
+    """
+    return _CocoModel()
+
+
+def _label_only_model_factory(_name: str) -> _LabelOnlyModel:
+    """Return a fake supplement object detector without section labels.
+
+    Args:
+        _name: Model name accepted for parity with the production model factory.
+
+    Returns:
+        Fake label-only model.
+    """
+    return _LabelOnlyModel()
+
+
+def _no_names_model_factory(_name: str) -> _NoNamesModel:
+    """Return a fake model without class names.
+
+    Args:
+        _name: Model name accepted for parity with the production model factory.
+
+    Returns:
+        Fake model without names metadata.
+    """
+    return _NoNamesModel()
 
 
 def _png_bytes(width: int = 10, height: int = 8) -> bytes:
@@ -183,7 +281,7 @@ def test_ultralytics_runner_normalizes_allowed_boxes_without_text_extraction() -
     """Verify Ultralytics boxes become bounded ROI metadata only."""
     runner = UltralyticsYoloRunner(
         model_name="local-supplement-roi.pt",
-        allowed_labels={"supplement_bottle", "supplement_label", "blister_pack"},
+        allowed_labels={"supplement_facts", "supplement_label", "blister_pack"},
         min_confidence=0.5,
         model_factory=_fake_model_factory,
     )
@@ -197,7 +295,7 @@ def test_ultralytics_runner_normalizes_allowed_boxes_without_text_extraction() -
             width=9,
             height=6,
             confidence=0.86,
-            label="supplement_bottle",
+            label="supplement_facts",
             model="local-supplement-roi.pt",
         )
     ]
@@ -215,10 +313,49 @@ def test_ultralytics_runner_fails_closed_without_allowed_boxes() -> None:
     """Verify unknown classes are ignored and produce a stable vision error."""
     runner = UltralyticsYoloRunner(
         model_name="local-supplement-roi.pt",
-        allowed_labels={"blister_pack"},
-        min_confidence=0.5,
+        allowed_labels={"supplement_facts"},
+        min_confidence=0.95,
         model_factory=_fake_model_factory,
     )
 
     with pytest.raises(VisionError, match="allowed supplement ROI"):
+        runner.detect_regions(_png_bytes())
+
+
+def test_ultralytics_runner_rejects_coco_model_before_prediction() -> None:
+    """Verify COCO class names cannot masquerade as supplement section detection."""
+    runner = UltralyticsYoloRunner(
+        model_name="yolo26n.pt",
+        allowed_labels={"supplement_facts", "precautions"},
+        min_confidence=0.5,
+        model_factory=_coco_model_factory,
+    )
+
+    with pytest.raises(VisionError, match="supplement ROI taxonomy"):
+        runner.detect_regions(_png_bytes())
+
+
+def test_ultralytics_runner_rejects_label_only_model_before_prediction() -> None:
+    """Verify a bottle/label model is not enough for section-level OCR routing."""
+    runner = UltralyticsYoloRunner(
+        model_name="local-supplement-label.pt",
+        allowed_labels={"supplement_label", "supplement_bottle"},
+        min_confidence=0.5,
+        model_factory=_label_only_model_factory,
+    )
+
+    with pytest.raises(VisionError, match="section ROI classes"):
+        runner.detect_regions(_png_bytes())
+
+
+def test_ultralytics_runner_rejects_model_without_class_names() -> None:
+    """Verify class-name metadata is required before YOLO inference runs."""
+    runner = UltralyticsYoloRunner(
+        model_name="local-supplement-roi.pt",
+        allowed_labels={"supplement_facts", "precautions"},
+        min_confidence=0.5,
+        model_factory=_no_names_model_factory,
+    )
+
+    with pytest.raises(VisionError, match="supplement ROI taxonomy"):
         runner.detect_regions(_png_bytes())

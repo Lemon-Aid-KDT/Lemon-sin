@@ -49,6 +49,22 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
     assert body["ocr"]["primary_provider"] == "clova"
     assert body["ocr"]["live_provider_auth_checked"] is False
     assert body["vision"]["classifier_enabled"] is False
+    assert body["vision"]["supplement_yolo_contract"] == "disabled"
+    assert body["vision"]["supplement_yolo_allowed_labels"] == [
+        "blister_pack",
+        "ingredients",
+        "intake_method",
+        "precautions",
+        "supplement_bottle",
+        "supplement_facts",
+        "supplement_label",
+    ]
+    assert body["vision"]["supplement_yolo_required_section_labels"] == [
+        "ingredients",
+        "intake_method",
+        "precautions",
+        "supplement_facts",
+    ]
     assert body["vision"]["food_yolo_enabled"] is True
     assert body["vision"]["food_yolo_model_configured"] is True
     assert body["vision"]["food_yolo_model_label"] == "food_yolo_local"

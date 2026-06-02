@@ -11,7 +11,7 @@ from PIL import Image, UnidentifiedImageError
 from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard
 from src.vision.base import BoundingBox, VisionError
 from src.vision.preprocessing import VisionPreprocessingError, clamp_bounding_box
-from src.vision.taxonomy import normalize_vision_label
+from src.vision.taxonomy import VISION_SECTION_LABELS, normalize_vision_label
 
 XYXY_COORDINATE_COUNT = 4
 
@@ -82,6 +82,11 @@ class UltralyticsYoloRunner:
         """
         image, image_width, image_height = _decode_image(image_bytes)
         model = self._load_model()
+        names = _extract_model_names(model)
+        _validate_model_class_contract(
+            names=names,
+            allowed_labels=self.allowed_labels,
+        )
         try:
             prediction_results = model.predict(
                 source=image,
@@ -92,7 +97,7 @@ class UltralyticsYoloRunner:
             raise VisionError("Ultralytics YOLO prediction failed.") from exc
         return _normalize_prediction_results(
             prediction_results=prediction_results,
-            names=_extract_model_names(model),
+            names=names,
             image_width=image_width,
             image_height=image_height,
             allowed_labels=self.allowed_labels,
@@ -257,10 +262,71 @@ def _extract_model_names(model: _PredictModel) -> Mapping[Any, Any] | Sequence[A
     Returns:
         Model class labels, when exposed by the detector.
     """
-    names = getattr(model, "names", None)
+    try:
+        names = getattr(model, "names", None)
+    except AttributeError:
+        return None
     if isinstance(names, Mapping | Sequence) and not isinstance(names, str | bytes):
         return names
     return None
+
+
+def _validate_model_class_contract(
+    *,
+    names: Mapping[Any, Any] | Sequence[Any] | None,
+    allowed_labels: set[str],
+) -> None:
+    """Fail closed when a YOLO model is not a supplement section detector.
+
+    Args:
+        names: Model class-id to label mapping exposed by Ultralytics.
+        allowed_labels: Canonical ROI labels accepted by the pipeline.
+
+    Raises:
+        VisionError: If class names are missing or incompatible with supplement ROI OCR.
+    """
+    supported_labels = _supported_supplement_labels(names)
+    if not supported_labels:
+        raise VisionError("YOLO model class names do not match supplement ROI taxonomy.")
+    if not (supported_labels & allowed_labels):
+        raise VisionError(
+            "YOLO model class names do not match configured VISION_ROI_ALLOWED_CLASSES."
+        )
+    if not (supported_labels & VISION_SECTION_LABELS):
+        raise VisionError("YOLO model must expose supplement section ROI classes.")
+
+
+def _supported_supplement_labels(
+    names: Mapping[Any, Any] | Sequence[Any] | None,
+) -> set[str]:
+    """Return supplement ROI labels exposed by a loaded YOLO model.
+
+    Args:
+        names: Model class-id to label mapping exposed by Ultralytics.
+
+    Returns:
+        Canonical supplement ROI labels present in the model class names.
+    """
+    if names is None:
+        return set()
+    return {
+        normalized
+        for label in _iter_model_name_values(names)
+        if (normalized := normalize_vision_label(label)) is not None
+    }
+
+
+def _iter_model_name_values(names: Mapping[Any, Any] | Sequence[Any]) -> list[str]:
+    """Extract string label values from a model class-name mapping.
+
+    Args:
+        names: Mapping or sequence exposed by the loaded detector.
+
+    Returns:
+        Raw string labels.
+    """
+    values = names.values() if isinstance(names, Mapping) else names
+    return [value for value in values if isinstance(value, str)]
 
 
 def _as_list(value: Any) -> list[Any]:

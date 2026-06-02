@@ -15,6 +15,7 @@ from src.ocr.factory import (
     is_external_ocr_pipeline_enabled,
 )
 from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
+from src.vision.taxonomy import VISION_SECTION_LABELS, normalize_vision_label_set
 
 OCR_PROVIDER_SELECTORS: tuple[SupplementOCRProviderSelector, ...] = (
     "configured",
@@ -83,6 +84,9 @@ class VisionReadiness(BaseModel):
     Attributes:
         classifier_enabled: Whether YOLO ROI detection is enabled.
         roi_preprocessing_policy: OCR ROI preprocessing policy.
+        supplement_yolo_contract: Safe class-name contract required for supplement ROI detection.
+        supplement_yolo_allowed_labels: Canonical configured labels accepted for supplement ROI OCR.
+        supplement_yolo_required_section_labels: Required section labels for custom detector readiness.
         food_yolo_enabled: Whether food image YOLO candidate detection is enabled.
         food_yolo_model_configured: Whether a food YOLO model path is configured.
         food_yolo_model_label: Safe local model label for food YOLO metadata.
@@ -97,6 +101,12 @@ class VisionReadiness(BaseModel):
 
     classifier_enabled: bool
     roi_preprocessing_policy: str
+    supplement_yolo_contract: Literal[
+        "disabled",
+        "section_roi_model_required",
+    ]
+    supplement_yolo_allowed_labels: list[str]
+    supplement_yolo_required_section_labels: list[str]
     food_yolo_enabled: bool
     food_yolo_model_configured: bool
     food_yolo_model_label: str | None = Field(default=None, max_length=80)
@@ -183,6 +193,15 @@ def build_readiness_response(settings: Settings) -> ReadinessResponse:
         vision=VisionReadiness(
             classifier_enabled=settings.enable_vision_classifier,
             roi_preprocessing_policy=settings.ocr_roi_preprocessing_policy,
+            supplement_yolo_contract=(
+                "section_roi_model_required"
+                if settings.enable_vision_classifier
+                else "disabled"
+            ),
+            supplement_yolo_allowed_labels=normalize_vision_label_set(
+                settings.vision_roi_allowed_classes
+            ),
+            supplement_yolo_required_section_labels=sorted(VISION_SECTION_LABELS),
             food_yolo_enabled=settings.enable_food_yolo_detector,
             food_yolo_model_configured=bool(
                 settings.meal_yolo_model_path and settings.meal_yolo_model_path.strip()

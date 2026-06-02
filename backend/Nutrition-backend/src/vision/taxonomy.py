@@ -28,6 +28,14 @@ class VisionLabel(StrEnum):
 
 
 VISION_DETECTION_LABELS = frozenset(label.value for label in VisionLabel)
+VISION_SECTION_LABELS = frozenset(
+    {
+        VisionLabel.SUPPLEMENT_FACTS.value,
+        VisionLabel.PRECAUTIONS.value,
+        VisionLabel.INTAKE_METHOD.value,
+        VisionLabel.INGREDIENTS.value,
+    }
+)
 VISION_LABEL_ALIASES = {
     "nutrition_facts": VisionLabel.SUPPLEMENT_FACTS.value,
     "nutrition_facts_panel": VisionLabel.SUPPLEMENT_FACTS.value,
@@ -88,6 +96,24 @@ def normalize_vision_label(label: str) -> str | None:
         normalized
         if normalized in VISION_DETECTION_LABELS
         else VISION_LABEL_ALIASES.get(normalized)
+    )
+
+
+def normalize_vision_label_set(labels: list[str]) -> list[str]:
+    """Normalize configured detector labels into stable supplement ROI labels.
+
+    Args:
+        labels: Raw configured label names or aliases.
+
+    Returns:
+        Sorted canonical labels that belong to the supplement ROI taxonomy.
+    """
+    return sorted(
+        {
+            normalized
+            for label in labels
+            if (normalized := normalize_vision_label(label)) is not None
+        }
     )
 
 
