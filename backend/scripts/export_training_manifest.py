@@ -25,6 +25,7 @@ from src.learning.retraining import (  # noqa: E402
     build_dataset_export_manifest,
     build_paddleocr_detection_export,
     build_paddleocr_recognition_export,
+    build_supplement_section_yolo_detection_export,
     build_yolo_detection_export,
     candidate_from_dataset_item,
 )
@@ -36,11 +37,13 @@ from src.models.db.retraining import (  # noqa: E402
 SUMMARY_SCHEMA_VERSION = "learning-training-manifest-export-summary-v1"
 EXPORT_KIND_DATASET = "dataset"
 EXPORT_KIND_YOLO_DETECTION = "yolo_detection"
+EXPORT_KIND_SUPPLEMENT_SECTION_YOLO_DETECTION = "supplement_section_yolo_detection"
 EXPORT_KIND_PADDLEOCR_DETECTION = "paddleocr_detection"
 EXPORT_KIND_PADDLEOCR_RECOGNITION = "paddleocr_recognition"
 EXPORT_KIND_CHOICES = (
     EXPORT_KIND_DATASET,
     EXPORT_KIND_YOLO_DETECTION,
+    EXPORT_KIND_SUPPLEMENT_SECTION_YOLO_DETECTION,
     EXPORT_KIND_PADDLEOCR_DETECTION,
     EXPORT_KIND_PADDLEOCR_RECOGNITION,
 )
@@ -200,6 +203,8 @@ def _artifact_for_export_kind(
         return dataset_manifest
     if export_kind == EXPORT_KIND_YOLO_DETECTION:
         return build_yolo_detection_export(dataset_manifest)
+    if export_kind == EXPORT_KIND_SUPPLEMENT_SECTION_YOLO_DETECTION:
+        return build_supplement_section_yolo_detection_export(dataset_manifest)
     if export_kind == EXPORT_KIND_PADDLEOCR_DETECTION:
         return build_paddleocr_detection_export(dataset_manifest)
     if export_kind == EXPORT_KIND_PADDLEOCR_RECOGNITION:

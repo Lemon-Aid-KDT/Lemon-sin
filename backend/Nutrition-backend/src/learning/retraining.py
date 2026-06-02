@@ -19,15 +19,23 @@ from src.models.db.retraining import (
     ModelRegistryEntry,
     ModelTrainingRun,
 )
+from src.vision.taxonomy import VISION_SECTION_LABELS, normalize_vision_label
 
 DATASET_EXPORT_SCHEMA_VERSION = "learning-dataset-export-v1"
 YOLO_EXPORT_SCHEMA_VERSION = "learning-yolo-detect-export-v1"
+SUPPLEMENT_SECTION_YOLO_EXPORT_SCHEMA_VERSION = "supplement-section-yolo-detect-export-v1"
 PADDLEOCR_DETECTION_EXPORT_SCHEMA_VERSION = "learning-paddleocr-det-export-v1"
 PADDLEOCR_RECOGNITION_EXPORT_SCHEMA_VERSION = "learning-paddleocr-rec-export-v1"
 MODEL_PROMOTION_GATE_SCHEMA_VERSION = "learning-model-promotion-gate-v1"
 HUMAN_REVIEWED_STATUS = "human_reviewed"
 SHA256_HEX_LENGTH = 64
 MAX_RECOGNITION_TEXT_LABEL_LENGTH = 512
+SUPPLEMENT_SECTION_CLASS_NAMES = (
+    "supplement_facts",
+    "precautions",
+    "intake_method",
+    "ingredients",
+)
 SKIPPED_LABEL_STATUSES = frozenset({"rejected", "revoked"})
 PRIVATE_SOURCE_REF_PREFIXES = ("media:", "learning_image:")
 RAW_FORBIDDEN_LABEL_KEYS = frozenset(
@@ -248,6 +256,47 @@ def build_yolo_detection_export(manifest: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": YOLO_EXPORT_SCHEMA_VERSION,
         "item_count": len(rows),
+        "items": rows,
+    }
+
+
+def build_supplement_section_yolo_detection_export(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """Build a sanitized supplement-section YOLO detection export contract.
+
+    This export is stricter than the generic YOLO export. Each box must carry a
+    semantic section label so the class id is derived from the fixed supplement
+    section contract instead of trusting upstream numeric ids.
+
+    Args:
+        manifest: Output from ``build_dataset_export_manifest``.
+
+    Returns:
+        YOLO detection export rows for supplement OCR section training.
+
+    Raises:
+        RetrainingSecurityError: If a row is not a supplement section ROI label.
+    """
+    rows = []
+    split_counts = {"train": 0, "val": 0, "test": 0, "holdout": 0}
+    for row in _manifest_items_for_task(manifest, "yolo_detection"):
+        if row.get("source_domain") != "supplement":
+            raise RetrainingSecurityError(
+                "Supplement section YOLO export only accepts supplement source rows."
+            )
+        labels = _normalize_supplement_section_box_labels(row["label_snapshot"].get("boxes"))
+        rows.append(
+            {
+                "source_ref": row["source_ref"],
+                "split": row["split"],
+                "labels": labels,
+            }
+        )
+        split_counts[row["split"]] += 1
+    return {
+        "schema_version": SUPPLEMENT_SECTION_YOLO_EXPORT_SCHEMA_VERSION,
+        "class_names": list(SUPPLEMENT_SECTION_CLASS_NAMES),
+        "item_count": len(rows),
+        "split_counts": split_counts,
         "items": rows,
     }
 
@@ -529,6 +578,84 @@ def _normalize_box_labels(raw_boxes: object) -> list[dict[str, Any]]:
             normalized[key] = float(value)
         boxes.append(normalized)
     return boxes
+
+
+def _normalize_supplement_section_box_labels(raw_boxes: object) -> list[dict[str, Any]]:
+    """Validate and map supplement section box labels to fixed YOLO class ids.
+
+    Args:
+        raw_boxes: Raw label snapshot boxes.
+
+    Returns:
+        Normalized YOLO boxes with canonical section labels.
+
+    Raises:
+        RetrainingSecurityError: If a box has no supported section label.
+    """
+    if not isinstance(raw_boxes, list) or not raw_boxes:
+        raise RetrainingSecurityError("Supplement section export requires at least one box.")
+    boxes = []
+    for raw_box in raw_boxes:
+        if not isinstance(raw_box, Mapping):
+            raise RetrainingSecurityError("Supplement section box must be an object.")
+        label = _canonical_supplement_section_label(raw_box)
+        normalized = {
+            "class_id": SUPPLEMENT_SECTION_CLASS_NAMES.index(label),
+            "label": label,
+        }
+        normalized.update(_normalized_detection_coordinates(raw_box))
+        boxes.append(normalized)
+    return boxes
+
+
+def _canonical_supplement_section_label(raw_box: Mapping[str, Any]) -> str:
+    """Return the canonical supplement section label for one box.
+
+    Args:
+        raw_box: Raw box mapping.
+
+    Returns:
+        Canonical section label.
+
+    Raises:
+        RetrainingSecurityError: If the label is missing or not a section label.
+    """
+    raw_label = (
+        raw_box.get("label")
+        or raw_box.get("class_name")
+        or raw_box.get("section_type")
+    )
+    if not isinstance(raw_label, str) or not raw_label.strip():
+        raise RetrainingSecurityError("Supplement section boxes require a semantic label.")
+    label = normalize_vision_label(raw_label)
+    if label not in VISION_SECTION_LABELS:
+        raise RetrainingSecurityError("Supplement section box label is not allowed.")
+    return label
+
+
+def _normalized_detection_coordinates(raw_box: Mapping[str, Any]) -> dict[str, float]:
+    """Validate normalized YOLO coordinates for one box.
+
+    Args:
+        raw_box: Raw box mapping.
+
+    Returns:
+        Normalized coordinate mapping.
+
+    Raises:
+        RetrainingSecurityError: If any coordinate is missing or out of range.
+    """
+    coordinates: dict[str, float] = {}
+    for key in ("x_center", "y_center", "width", "height"):
+        value = raw_box.get(key)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not 0 <= float(value) <= 1
+        ):
+            raise RetrainingSecurityError("Detection box coordinates must be normalized.")
+        coordinates[key] = float(value)
+    return coordinates
 
 
 def _confirmed_text_label(raw_label: object) -> str:

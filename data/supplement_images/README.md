@@ -34,6 +34,21 @@ cd backend
 첫 번째 명령은 class 계약만 검증한다. 두 번째 명령은 실제 이미지/라벨 파일까지
 검증하므로 annotation이 준비된 뒤에 통과해야 한다.
 
+privacy-approved learning dataset에서 section annotation을 내보낼 때는 generic
+`yolo_detection` 대신 section 전용 export kind를 사용한다.
+
+```bash
+cd backend
+.venv/bin/python scripts/export_training_manifest.py \
+  --dataset-version-id <privacy-approved-dataset-version-id> \
+  --export-kind supplement_section_yolo_detection \
+  --output ../outputs/generated/training/supplement-section-yolo-export.json
+```
+
+이 export는 `label`, `class_name`, `section_type` 중 하나로 들어온 semantic section
+label을 고정 class id로 변환한다. 숫자 class id만 있는 bbox나 `supplement_label`
+같은 전체 라벨 bbox는 섹션 detector 학습 입력으로 통과시키지 않는다.
+
 ```text
 supplement_images/
 ├── raw/

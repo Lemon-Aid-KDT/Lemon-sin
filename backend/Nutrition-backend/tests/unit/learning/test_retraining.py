@@ -15,6 +15,7 @@ from src.learning.retraining import (
     build_dataset_export_manifest,
     build_paddleocr_detection_export,
     build_paddleocr_recognition_export,
+    build_supplement_section_yolo_detection_export,
     build_yolo_detection_export,
     candidate_from_dataset_item,
     evaluate_model_promotion_gate,
@@ -197,6 +198,96 @@ def test_yolo_export_uses_normalized_labels_without_paths() -> None:
             }
         ],
     }
+
+
+def test_supplement_section_yolo_export_maps_semantic_labels_to_class_ids() -> None:
+    """Verify supplement section export derives class ids from section labels."""
+    candidate = _candidate(
+        label_snapshot={
+            "boxes": [
+                {
+                    "label": "supplement_facts",
+                    "x_center": 0.5,
+                    "y_center": 0.4,
+                    "width": 0.7,
+                    "height": 0.3,
+                },
+                {
+                    "label": "allergy_warning",
+                    "x_center": 0.5,
+                    "y_center": 0.8,
+                    "width": 0.7,
+                    "height": 0.2,
+                },
+            ]
+        },
+    )
+    manifest = build_dataset_export_manifest(_dataset(), [candidate])
+
+    export = build_supplement_section_yolo_detection_export(manifest)
+
+    assert export["schema_version"] == "supplement-section-yolo-detect-export-v1"
+    assert export["class_names"] == [
+        "supplement_facts",
+        "precautions",
+        "intake_method",
+        "ingredients",
+    ]
+    assert export["split_counts"]["train"] == 1
+    assert export["items"] == [
+        {
+            "source_ref": candidate.source_ref,
+            "split": "train",
+            "labels": [
+                {
+                    "class_id": 0,
+                    "label": "supplement_facts",
+                    "x_center": 0.5,
+                    "y_center": 0.4,
+                    "width": 0.7,
+                    "height": 0.3,
+                },
+                {
+                    "class_id": 1,
+                    "label": "precautions",
+                    "x_center": 0.5,
+                    "y_center": 0.8,
+                    "width": 0.7,
+                    "height": 0.2,
+                },
+            ],
+        }
+    ]
+
+
+def test_supplement_section_yolo_export_rejects_numeric_only_boxes() -> None:
+    """Verify section training exports require semantic bbox labels."""
+    candidate = _candidate()
+    manifest = build_dataset_export_manifest(_dataset(), [candidate])
+
+    with pytest.raises(RetrainingSecurityError, match="semantic label"):
+        build_supplement_section_yolo_detection_export(manifest)
+
+
+def test_supplement_section_yolo_export_rejects_label_only_regions() -> None:
+    """Verify whole-label boxes cannot be used as section detector labels."""
+    candidate = _candidate(
+        label_snapshot={
+            "boxes": [
+                {
+                    "label": "supplement_label",
+                    "x_center": 0.5,
+                    "y_center": 0.5,
+                    "width": 0.7,
+                    "height": 0.8,
+                }
+            ]
+        },
+    )
+    manifest = build_dataset_export_manifest(_dataset(), [candidate])
+
+    with pytest.raises(RetrainingSecurityError, match="not allowed"):
+        build_supplement_section_yolo_detection_export(manifest)
 
 
 def test_paddleocr_exports_require_confirmed_text_and_detection_boxes() -> None:

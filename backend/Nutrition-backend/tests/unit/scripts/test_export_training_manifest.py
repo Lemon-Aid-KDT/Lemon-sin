@@ -209,6 +209,56 @@ async def test_export_training_manifest_returns_redacted_summary(
     assert "unreviewed text" not in serialized_summary
 
 
+@pytest.mark.asyncio
+async def test_export_training_manifest_supports_supplement_section_yolo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify operator export can emit supplement section YOLO contracts."""
+    dataset = _dataset()
+    item = _dataset_item(
+        dataset_version_id=dataset.id,
+        task_type="yolo_detection",
+        label_snapshot={
+            "boxes": [
+                {
+                    "label": "supplement_facts",
+                    "x_center": 0.5,
+                    "y_center": 0.5,
+                    "width": 0.6,
+                    "height": 0.4,
+                },
+                {
+                    "label": "warning",
+                    "x_center": 0.5,
+                    "y_center": 0.8,
+                    "width": 0.6,
+                    "height": 0.2,
+                },
+            ]
+        },
+    )
+    _patch_sessionmaker(monkeypatch, dataset_version=dataset, rows=[item])
+
+    artifact, summary = await manifest_exporter.export_training_manifest(
+        dataset_version_id=dataset.id,
+        export_kind="supplement_section_yolo_detection",
+    )
+
+    assert artifact["schema_version"] == "supplement-section-yolo-detect-export-v1"
+    assert artifact["class_names"] == [
+        "supplement_facts",
+        "precautions",
+        "intake_method",
+        "ingredients",
+    ]
+    assert artifact["items"][0]["labels"][1]["label"] == "precautions"
+    assert summary["export_kind"] == "supplement_section_yolo_detection"
+    serialized_summary = json.dumps(summary, ensure_ascii=False)
+    assert "media:" not in serialized_summary
+    assert "supplement_facts" not in serialized_summary
+    assert "precautions" not in serialized_summary
+
+
 def test_main_writes_manifest_and_summary_without_printing_private_values(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

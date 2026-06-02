@@ -75,6 +75,10 @@
   - 영양제 섹션 YOLO26 custom detector 학습 전 dataset YAML과 validator를 추가한 작업 요약
   - `supplement_facts`, `precautions`, `intake_method`, `ingredients` class 계약과 annotation 준비 전 blocker 정리
 
+- `2026-06-02-supplement-section-yolo-export-bridge.md`
+  - privacy-reviewed annotation manifest를 supplement section YOLO 학습 export로 변환하는 bridge 추가 요약
+  - semantic bbox label을 고정 class id로 변환하고 numeric-only/whole-label bbox를 거부하는 기준 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -103,3 +107,5 @@
 - `/ready`는 raw model path를 노출하지 않고 supplement YOLO의 allowed label과 required section label 계약만 노출한다.
 - 영양제 섹션 detector dataset YAML은 `data/supplement_images/section_yolo/dataset.yaml`로 고정했다.
 - dataset validator는 class 계약 검증을 통과했지만, 실제 annotation image/label 파일은 아직 없어 `--require-files` 검증은 다음 단계 blocker로 남아 있다.
+- `supplement_section_yolo_detection` export kind를 추가해 privacy-reviewed annotation이 semantic section label 기준으로만 YOLO 학습 export에 들어가도록 제한했다.
+- 숫자 class id만 있는 bbox나 `supplement_label` 전체 라벨 bbox는 section detector 학습 입력으로 거부된다.
