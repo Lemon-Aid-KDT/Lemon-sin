@@ -32,6 +32,15 @@ Do not infer ingredients, amounts, dosage, health effects, risks, or product fac
 from outside knowledge. Do not provide medical or nutrition advice. If text is not
 visible, return an empty list or null. Return only JSON matching the supplied schema.
 """.strip()
+OLLAMA_VISION_VERIFY_SYSTEM_PROMPT = """
+You are a local supplement label OCR verification component.
+Compare the provided OCR text with only the visible text in the image.
+Do not infer hidden text, ingredients, amounts, dosage, health effects, risks, or
+medical advice. Mark missing critical sections when product name, supplement
+facts, intake method, or precautions are absent from the visible image. Return
+only JSON matching the supplied schema.
+""".strip()
+MAX_VERIFICATION_OCR_TEXT_CHARS = 4_000
 
 
 class OllamaVisionTextCandidateResult(BaseModel):
@@ -54,6 +63,53 @@ class OllamaVisionTextCandidateResult(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("visible_text_fragments", "low_confidence_fields", "warnings")
+    @classmethod
+    def _normalize_string_list(cls, values: list[str]) -> list[str]:
+        """Normalize model-produced string lists and remove duplicates.
+
+        Args:
+            values: Candidate string values.
+
+        Returns:
+            Trimmed non-empty strings in first-seen order.
+        """
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            stripped = value.strip()
+            if not stripped or stripped in seen:
+                continue
+            normalized.append(stripped)
+            seen.add(stripped)
+        return normalized
+
+
+class OllamaVisionTextVerificationResult(BaseModel):
+    """Validated visible-text verification returned by a local vision model.
+
+    Attributes:
+        verification_status: Overall match decision for OCR text versus image text.
+        confidence: Model confidence in the verification decision.
+        source_region: Whether the image submitted was full image or YOLO ROI.
+        matched_fragments: OCR fragments that are visibly supported.
+        missing_fragments: OCR fragments not supported by the visible image.
+        missing_critical_sections: Required supplement sections not visible in the image.
+        warnings: Non-medical warnings to surface in preview metadata.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    verification_status: Literal["match", "partial", "mismatch", "uncertain"]
+    confidence: float = Field(ge=0, le=1)
+    source_region: Literal["full_image", "yolo_roi"]
+    matched_fragments: list[str] = Field(default_factory=list, max_length=30)
+    missing_fragments: list[str] = Field(default_factory=list, max_length=30)
+    missing_critical_sections: list[
+        Literal["product_name", "supplement_facts", "intake_method", "precautions"]
+    ] = Field(default_factory=list, max_length=4)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("matched_fragments", "missing_fragments", "warnings")
     @classmethod
     def _normalize_string_list(cls, values: list[str]) -> list[str]:
         """Normalize model-produced string lists and remove duplicates.
@@ -128,6 +184,41 @@ class OllamaVisionAssistAdapter(OCRAdapter):
             provider=OLLAMA_VISION_ASSIST_PROVIDER,
             confidence=None,
         )
+
+    async def verify_text(
+        self,
+        image: OCRImageInput,
+        text: str,
+    ) -> OllamaVisionTextVerificationResult:
+        """Verify OCR text against visible image text with local Ollama vision.
+
+        Args:
+            image: Validated image input. If ``label_region`` is present, only that
+                crop is sent to the local vision model.
+            text: OCR text selected for parsing. It is sent only to local Ollama and
+                is not persisted by this adapter.
+
+        Returns:
+            Schema-validated verification result.
+
+        Raises:
+            OllamaConfigurationError: If the feature flag or local model is invalid.
+            OllamaClientError: If the local Ollama API call fails.
+            OllamaStructuredOutputError: If model output fails schema validation.
+        """
+        _validate_vision_settings(self.settings)
+        image_payload, source_region = _build_image_payload(image)
+        schema = OllamaVisionTextVerificationResult.model_json_schema()
+        payload = _build_vision_verification_payload(
+            image_payload=image_payload,
+            source_region=source_region,
+            ocr_text=text,
+            schema=schema,
+            settings=self.settings,
+        )
+        response_data = await self.client.post_chat(payload)
+        content = extract_ollama_message_content(response_data)
+        return _parse_vision_verification_result(content)
 
 
 async def check_ollama_vision_readiness(
@@ -257,6 +348,52 @@ def _build_vision_chat_payload(
     }
 
 
+def _build_vision_verification_payload(
+    *,
+    image_payload: str,
+    source_region: Literal["full_image", "yolo_roi"],
+    ocr_text: str,
+    schema: dict[str, object],
+    settings: Settings,
+) -> dict[str, object]:
+    """Build an Ollama Chat API payload for OCR text verification.
+
+    Args:
+        image_payload: Base64-encoded image bytes.
+        source_region: Source marker for the submitted image.
+        ocr_text: OCR text selected by the backend pipeline.
+        schema: JSON Schema for structured output.
+        settings: Runtime settings.
+
+    Returns:
+        JSON payload for ``POST /api/chat``.
+    """
+    bounded_text = ocr_text.strip()[:MAX_VERIFICATION_OCR_TEXT_CHARS]
+    user_prompt = (
+        "Verify whether the OCR text below is visibly supported by this supplement image. "
+        f"The submitted image source is {source_region}. "
+        "Classify the result as match, partial, mismatch, or uncertain. "
+        "Report missing critical sections only from this allowed set: "
+        "product_name, supplement_facts, intake_method, precautions. "
+        "Do not add advice or outside facts.\n\n"
+        "OCR text to verify:\n"
+        f"{bounded_text}\n\n"
+        "Return JSON that conforms to this JSON Schema:\n"
+        f"{json.dumps(schema, ensure_ascii=False)}"
+    )
+    return {
+        "model": settings.ollama_vision_model,
+        "messages": [
+            {"role": "system", "content": OLLAMA_VISION_VERIFY_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt, "images": [image_payload]},
+        ],
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "options": {"temperature": settings.ollama_vision_temperature},
+    }
+
+
 def _vision_json_candidates(content: str) -> list[str]:
     """Return JSON-object candidates from raw model content.
 
@@ -314,6 +451,34 @@ def _parse_vision_candidate_result(content: str) -> OllamaVisionTextCandidateRes
             last_error = exc
     raise OllamaStructuredOutputError(
         "Ollama vision assist output failed schema validation."
+    ) from last_error
+
+
+def _parse_vision_verification_result(content: str) -> OllamaVisionTextVerificationResult:
+    """Validate vision verification output, tolerating markdown fences and prose.
+
+    Args:
+        content: Raw assistant message content.
+
+    Returns:
+        Schema-validated vision verification result.
+
+    Raises:
+        OllamaStructuredOutputError: If no candidate passes schema validation.
+    """
+    candidates = _vision_json_candidates(content)
+    if not candidates:
+        raise OllamaStructuredOutputError(
+            "Ollama vision verification returned empty content."
+        )
+    last_error: ValidationError | None = None
+    for candidate in candidates:
+        try:
+            return OllamaVisionTextVerificationResult.model_validate_json(candidate)
+        except ValidationError as exc:
+            last_error = exc
+    raise OllamaStructuredOutputError(
+        "Ollama vision verification output failed schema validation."
     ) from last_error
 
 

@@ -73,6 +73,23 @@
   - visible warning layout rows가 structured `precautions`로 승격되는지 검증
   - pregnancy/allergy category, severity, evidence ref, missing section 재계산을 검증
 
+추가로 Gemma/Ollama vision 단계의 역할을 OCR 재시도에서 OCR 검증으로 분리했다.
+
+- `ollama_vision.py`
+  - `OllamaVisionTextVerificationResult` schema 추가
+  - `verify_text(image, text)`로 OCR 텍스트와 이미지 또는 YOLO ROI crop을 local vision model에 전달
+  - `match | partial | mismatch | uncertain` 상태와 `missing_critical_sections`를 schema로 강제
+  - 외부 지식, 복용 조언, 의료 조언 생성을 금지하고 raw OCR/provider payload 저장을 하지 않음
+- `supplement_image_analysis.py`
+  - adapter가 `verify_text(...)`를 지원하면 structured verification 경로를 우선 사용
+  - `mismatch`, 필수 섹션 누락, threshold 미만 `partial`은 기존 OCR verification warning으로 연결
+  - protocol 미지원 adapter는 기존 `extract_text(...)` 유사도 검증 fallback 유지
+- `test_ollama_vision_assist.py`, `test_supplement_image_analysis.py`
+  - schema-valid verification payload
+  - schema-invalid output reject
+  - structured verification 우선 경로
+  - structured verification match/mismatch warning 분기 검증
+
 ---
 
 ## 5. 설계 자체 점검
@@ -84,6 +101,7 @@
 | 주의사항 문장 요약/변형 위험 | 존재 | fallback은 보이는 문장을 그대로 저장하고 category/severity만 보조 태깅 |
 | raw OCR/provider payload 노출 위험 | 존재 | preview sanitizer와 bounded snapshot만 저장 |
 | 의료 조언 과잉 위험 | 존재 | 개인 맞춤 안내는 경고/상담 권고로 제한하고 진단/처방 금지 |
+| vision model 검증이 OCR 재시도로 흐를 위험 | 존재 | `verify_text` schema 계약으로 OCR 대조/필수 섹션 누락만 반환 |
 
 ---
 
@@ -107,11 +125,32 @@ cd backend
 121 passed
 ```
 
+추가 검증:
+
+```bash
+cd backend
+.venv/bin/python -m pytest --no-cov \
+  Nutrition-backend/tests/unit/llm/test_ollama_vision_assist.py \
+  Nutrition-backend/tests/unit/services/test_supplement_image_analysis.py \
+  Nutrition-backend/tests/unit/services/test_supplement_parser.py \
+  Nutrition-backend/tests/unit/services/test_supplement_parser_declaration.py \
+  Nutrition-backend/tests/unit/vision/test_yolo_detector.py \
+  Nutrition-backend/tests/unit/test_config.py
+```
+
+결과:
+
+```text
+134 passed
+```
+
 ```bash
 cd backend
 .venv/bin/python -m ruff check \
-  Nutrition-backend/src/services/supplement_parser.py \
-  Nutrition-backend/tests/unit/services/test_supplement_parser.py
+  Nutrition-backend/src/llm/ollama_vision.py \
+  Nutrition-backend/src/services/supplement_image_analysis.py \
+  Nutrition-backend/tests/unit/llm/test_ollama_vision_assist.py \
+  Nutrition-backend/tests/unit/services/test_supplement_image_analysis.py
 ```
 
 결과:
@@ -128,5 +167,5 @@ All checks passed!
 2. `VISION_YOLO_MODEL_PATH`에 custom section model 연결
 3. 실제 라벨 이미지에서 `precautions`, `intake_method`, `supplement_facts` bbox smoke test
 4. Gemma/Ollama vision model의 실제 local availability 확인
-5. OCR structured fields + 사용자 정보 DB를 입력으로 하는 schema-validated explanation endpoint 연결
+5. OCR structured fields + 사용자 정보 DB를 입력으로 하는 schema-validated explanation endpoint end-to-end 확인
 6. Android/iOS 실제 화면에서 4개 정보 카드와 편집 흐름 확인

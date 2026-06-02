@@ -13,6 +13,7 @@ from decimal import Decimal
 from difflib import SequenceMatcher
 from http import HTTPStatus
 from random import random
+from typing import Protocol, runtime_checkable
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from src.llm.ollama import (
     OllamaConfigurationError,
     OllamaStructuredOutputError,
 )
+from src.llm.ollama_vision import OllamaVisionTextVerificationResult
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.privacy import ConsentType
@@ -101,6 +103,19 @@ PARSER_RECOVERABLE_ERRORS = (
 
 class SupplementImageAnalysisConfigurationError(RuntimeError):
     """Raised when a feature flag is enabled without the required adapter."""
+
+
+@runtime_checkable
+class _MultimodalTextVerifier(Protocol):
+    """Optional protocol for local vision models that verify OCR text directly."""
+
+    async def verify_text(
+        self,
+        image: OCRImageInput,
+        text: str,
+    ) -> OllamaVisionTextVerificationResult:
+        """Verify OCR text against visible image text."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -1206,15 +1221,24 @@ async def _verify_ocr_with_multimodal_if_allowed(
     assert ocr_result is not None
     assert multimodal_adapter is not None
     assert image_bytes is not None
+    verification_input = OCRImageInput(
+        image_bytes=image_bytes,
+        mime_type=image_metadata.mime_type,
+        width=image_metadata.width,
+        height=image_metadata.height,
+        label_region=label_region,
+    )
+    if isinstance(multimodal_adapter, _MultimodalTextVerifier):
+        return await _verify_ocr_with_structured_multimodal(
+            verification_input=verification_input,
+            ocr_text=ocr_result.text,
+            settings=settings,
+            verifier=multimodal_adapter,
+        )
+
     try:
         candidate = await multimodal_adapter.extract_text(
-            OCRImageInput(
-                image_bytes=image_bytes,
-                mime_type=image_metadata.mime_type,
-                width=image_metadata.width,
-                height=image_metadata.height,
-                label_region=label_region,
-            )
+            verification_input
         )
     except (OCRError, OllamaClientError, OllamaConfigurationError, OllamaStructuredOutputError):
         return None, None
@@ -1223,6 +1247,63 @@ async def _verify_ocr_with_multimodal_if_allowed(
     if similarity < Decimal(str(settings.multimodal_verification_threshold)):
         return OCR_VERIFICATION_MISMATCH_CODE, OCR_VERIFICATION_MISMATCH_WARNING
     return None, None
+
+
+async def _verify_ocr_with_structured_multimodal(
+    *,
+    verification_input: OCRImageInput,
+    ocr_text: str,
+    settings: Settings,
+    verifier: _MultimodalTextVerifier,
+) -> tuple[str | None, str | None]:
+    """Verify OCR text with schema-aware local vision output.
+
+    Args:
+        verification_input: Image input used for local vision verification.
+        ocr_text: OCR text selected by the backend pipeline.
+        settings: Runtime settings containing verification threshold.
+        verifier: Local vision adapter implementing structured verification.
+
+    Returns:
+        Optional warning code and message.
+    """
+    try:
+        verification = await verifier.verify_text(verification_input, ocr_text)
+    except (
+        OCRError,
+        OllamaClientError,
+        OllamaConfigurationError,
+        OllamaStructuredOutputError,
+    ):
+        return None, None
+    if _verification_indicates_mismatch(verification, settings):
+        return OCR_VERIFICATION_MISMATCH_CODE, OCR_VERIFICATION_MISMATCH_WARNING
+    return None, None
+
+
+def _verification_indicates_mismatch(
+    verification: OllamaVisionTextVerificationResult,
+    settings: Settings,
+) -> bool:
+    """Return whether structured vision verification should warn the user.
+
+    Args:
+        verification: Schema-validated local vision verification result.
+        settings: Runtime settings containing confidence threshold.
+
+    Returns:
+        True when the local vision model reports unsupported OCR text or missing
+        critical supplement sections.
+    """
+    if verification.verification_status == "mismatch":
+        return True
+    if verification.missing_critical_sections:
+        return True
+    if verification.verification_status == "partial":
+        return Decimal(str(verification.confidence)) < Decimal(
+            str(settings.multimodal_verification_threshold)
+        )
+    return False
 
 
 def _should_run_multimodal_fallback(ocr_result: OCRResult | None, settings: Settings) -> bool:

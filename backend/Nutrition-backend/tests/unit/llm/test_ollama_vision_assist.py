@@ -200,6 +200,34 @@ def _response_content() -> str:
     )
 
 
+def _verification_response_content(
+    *,
+    status: str = "partial",
+    missing_critical_sections: list[str] | None = None,
+) -> str:
+    """Return a schema-valid vision verification response body.
+
+    Args:
+        status: Verification status emitted by the fake local model.
+        missing_critical_sections: Required sections reported as absent.
+
+    Returns:
+        JSON response content.
+    """
+    return json.dumps(
+        {
+            "verification_status": status,
+            "confidence": 0.77,
+            "source_region": "yolo_roi",
+            "matched_fragments": ["비타민 D 25 ug"],
+            "missing_fragments": ["주의사항"],
+            "missing_critical_sections": missing_critical_sections or ["precautions"],
+            "warnings": ["주의사항 영역을 확인하지 못했습니다."],
+        },
+        ensure_ascii=False,
+    )
+
+
 @pytest.mark.asyncio
 async def test_ollama_vision_assist_posts_base64_image_and_schema() -> None:
     """Verify the adapter sends a local structured vision request."""
@@ -224,6 +252,37 @@ async def test_ollama_vision_assist_posts_base64_image_and_schema() -> None:
     assert fake_client.request_json["format"]["type"] == "object"
     user_message = fake_client.request_json["messages"][1]
     assert "images" in user_message
+    decoded = base64.b64decode(user_message["images"][0])
+    with Image.open(BytesIO(decoded)) as image:
+        assert image.size == (4, 3)
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_assist_verifies_ocr_text_with_schema() -> None:
+    """Verify the adapter sends OCR text for local structured vision verification."""
+    fake_client = _FakeHTTPClient(
+        {"message": {"content": _verification_response_content()}}
+    )
+    chat_client = OllamaChatClient(_settings(), http_client=fake_client)
+    adapter = OllamaVisionAssistAdapter(_settings(), client=chat_client)
+
+    result = await adapter.verify_text(
+        _ocr_image_input(
+            BoundingBox(x=2, y=1, width=4, height=3, confidence=0.9, label="precautions")
+        ),
+        "비타민 D 25 ug\n주의사항",
+    )
+
+    assert result.verification_status == "partial"
+    assert result.missing_critical_sections == ["precautions"]
+    assert result.source_region == "yolo_roi"
+    assert fake_client.request_json is not None
+    assert fake_client.request_json["model"] == "gemma4:e4b"
+    assert fake_client.request_json["format"]["type"] == "object"
+    user_message = fake_client.request_json["messages"][1]
+    assert "OCR text to verify" in user_message["content"]
+    assert "비타민 D 25 ug" in user_message["content"]
+    assert "medical advice" not in user_message["content"].casefold()
     decoded = base64.b64decode(user_message["images"][0])
     with Image.open(BytesIO(decoded)) as image:
         assert image.size == (4, 3)
@@ -298,6 +357,19 @@ async def test_ollama_vision_assist_rejects_schema_invalid_content() -> None:
     with pytest.raises(OllamaStructuredOutputError):
         await OllamaVisionAssistAdapter(_settings(), client=chat_client).extract_text(
             _ocr_image_input()
+        )
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_verification_rejects_schema_invalid_content() -> None:
+    """Verify verification output must match the schema."""
+    fake_client = _FakeHTTPClient({"message": {"content": '{"medical_advice": "take more"}'}})
+    chat_client = OllamaChatClient(_settings(), http_client=fake_client)
+
+    with pytest.raises(OllamaStructuredOutputError):
+        await OllamaVisionAssistAdapter(_settings(), client=chat_client).verify_text(
+            _ocr_image_input(),
+            "비타민 D 25 ug",
         )
 
 

@@ -13,6 +13,7 @@ from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.llm.ollama_vision import OllamaVisionTextVerificationResult
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.base import (
@@ -263,6 +264,40 @@ class _FakeMultimodalOCRAdapter(OCRAdapter):
         return OCRResult(text=self.text, provider="ollama_vision_assist", confidence=None)
 
 
+class _FakeMultimodalVerifierAdapter(_FakeMultimodalOCRAdapter):
+    """Fake local vision LLM adapter with structured verification support."""
+
+    def __init__(
+        self,
+        verification: OllamaVisionTextVerificationResult,
+        text: str = "비타민 D 1000",
+    ) -> None:
+        super().__init__(text)
+        self.verification = verification
+        self.verify_call_count = 0
+        self.received_verification_text: str | None = None
+        self.received_verification_image: OCRImageInput | None = None
+
+    async def verify_text(
+        self,
+        image: OCRImageInput,
+        text: str,
+    ) -> OllamaVisionTextVerificationResult:
+        """Capture verification input and return the configured result.
+
+        Args:
+            image: OCR image input used for local vision verification.
+            text: OCR text selected by the pipeline.
+
+        Returns:
+            Configured verification result.
+        """
+        self.verify_call_count += 1
+        self.received_verification_text = text
+        self.received_verification_image = image
+        return self.verification
+
+
 class _FakeParser:
     """Fake structured parser for OCR text."""
 
@@ -367,6 +402,35 @@ def _parse_result() -> SupplementStructuredParseResult:
                 }
             ],
             "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+
+def _verification_result(
+    *,
+    status: str = "match",
+    confidence: float = 0.96,
+    missing_sections: list[str] | None = None,
+) -> OllamaVisionTextVerificationResult:
+    """Return a structured local vision verification fixture.
+
+    Args:
+        status: Verification status.
+        confidence: Verification confidence.
+        missing_sections: Required sections reported missing.
+
+    Returns:
+        Validated verification result.
+    """
+    return OllamaVisionTextVerificationResult.model_validate(
+        {
+            "verification_status": status,
+            "confidence": confidence,
+            "source_region": "full_image",
+            "matched_fragments": ["비타민 D 1000"],
+            "missing_fragments": [],
+            "missing_critical_sections": missing_sections or [],
             "warnings": [],
         }
     )
@@ -1005,6 +1069,78 @@ async def test_analyze_supplement_image_records_multimodal_verification_mismatch
     assert fake_parser.received_text == "비타민 D 1000"
     assert OCR_VERIFICATION_MISMATCH_CODE in result.ocr_warning_codes
     assert result.record.warnings
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_uses_structured_multimodal_verification() -> None:
+    """Verify local vision verification can use schema output instead of OCR similarity."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000\n주의사항", confidence=0.91)
+    fake_multimodal = _FakeMultimodalVerifierAdapter(
+        _verification_result(
+            status="partial",
+            confidence=0.82,
+            missing_sections=["precautions"],
+        )
+    )
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_multimodal_verification=True,
+            multimodal_verification_sample_rate=1.0,
+            multimodal_verification_threshold=0.95,
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            multimodal_ocr=fake_multimodal,
+        ),
+    )
+
+    assert fake_multimodal.verify_call_count == 1
+    assert fake_multimodal.call_count == 0
+    assert fake_multimodal.received_verification_text == "비타민 D 1000\n주의사항"
+    assert fake_multimodal.received_verification_image is not None
+    assert fake_parser.received_text == "비타민 D 1000\n주의사항"
+    assert OCR_VERIFICATION_MISMATCH_CODE in result.ocr_warning_codes
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_accepts_structured_multimodal_match() -> None:
+    """Verify schema-based vision verification does not warn on a supported match."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    fake_multimodal = _FakeMultimodalVerifierAdapter(_verification_result())
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_multimodal_verification=True,
+            multimodal_verification_sample_rate=1.0,
+            multimodal_verification_threshold=0.95,
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            multimodal_ocr=fake_multimodal,
+        ),
+    )
+
+    assert fake_multimodal.verify_call_count == 1
+    assert OCR_VERIFICATION_MISMATCH_CODE not in result.ocr_warning_codes
 
 
 @pytest.mark.asyncio

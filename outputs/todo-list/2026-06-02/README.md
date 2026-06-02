@@ -43,6 +43,10 @@
   - YOLO26 custom 영양제 섹션 detector와 Ollama/Gemma 검증/설명 파이프라인 설계
   - OCR layout `precautions` fallback 구현, 자체 설계 점검, 남은 blocker 정리
 
+- `2026-06-02-ollama-vision-verification-summary.md`
+  - local Ollama/Gemma vision model이 OCR 텍스트를 이미지와 직접 대조하는 structured verification 계약 구현 요약
+  - `match | partial | mismatch | uncertain`, 필수 섹션 누락, backend warning 연결 및 검증 결과 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -59,4 +63,5 @@
 - `1회 제공량(26g)`, `Serving Size`, `Amount Per Serving` 계열은 성분 후보에서 제외하고, 실제 성분명과 함량이 있는 문장은 유지하도록 테스트를 추가했다.
 - 실제 이미지 기반 YOLO runtime smoke는 custom supplement section `.pt` 모델과 backend vision runtime 설치가 필요해 다음 단계로 남겼다.
 - OCR layout에 `precautions` 섹션이 보이면 LLM parser가 놓쳐도 structured `precautions` 배열로 승격하도록 보완했다.
-- Gemma/Ollama 기반 멀티모달 검증과 개인 맞춤 설명은 custom section detector 및 local model availability 확인 뒤 연결해야 한다.
+- Gemma/Ollama 기반 멀티모달 검증은 기존 OCR 유사도 비교에서 OCR 텍스트와 이미지/ROI를 직접 대조하는 structured verification 계약으로 보완했다.
+- 개인 맞춤 설명은 custom section detector, local model availability, 사용자 정보 DB context end-to-end 확인 뒤 최종 연결해야 한다.
