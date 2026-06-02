@@ -91,6 +91,10 @@
   - 현재 브랜치, team remote, 이미 push된 commit, 이번 문서 커밋 대상과 제외 파일 기준 정리
   - GitHub push 전후 확인해야 할 명령과 privacy/Git 규칙 정리
 
+- `2026-06-02-supplement-section-layout-candidate-snapshot.md`
+  - OCR layout의 absolute section bbox를 YOLO normalized section label snapshot으로 변환하는 helper 추가 요약
+  - raw OCR text 없이 기존 supplement section YOLO export bridge에 연결되는지 검증한 내용 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -125,3 +129,5 @@
 - materializer는 생성 후 dataset validator의 file-level 검증을 수행하며, stdout에는 source ref/source path/raw label row를 노출하지 않는다.
 - 현재까지의 YOLO26 섹션 detector 작업은 training-ready data pipeline 계약까지이며, 실제 detector 학습 완료 상태는 아니다.
 - 다음 단계는 human-reviewed section bbox annotation과 operator-only source map을 준비한 뒤 실제 dataset materialize, `--require-files` 검증, YOLO26 custom 학습, crop OCR, Ollama/Gemma verification 순서로 진행한다.
+- OCR layout에서 나온 `LabelBox`는 이제 `build_supplement_section_yolo_label_snapshot`을 통해 raw OCR text 없이 normalized YOLO section bbox 후보로 변환할 수 있다.
+- 이 후보 snapshot은 privacy review/human review를 거치면 기존 `build_supplement_section_yolo_detection_export` 경로로 들어갈 수 있다.
