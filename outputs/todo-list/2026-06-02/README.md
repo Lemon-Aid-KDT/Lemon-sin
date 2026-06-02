@@ -59,6 +59,14 @@
   - 영양제 OCR 분석 미리보기 설명에 사용자 질환/복약 DB 요약 bucket을 opt-in으로 연결한 작업 요약
   - 원문 질환명/약명/용량을 LLM에 전달하지 않는 safe medical context, consent gate, audit flag 정리
 
+- `2026-06-02-current-section-git-publish-summary.md`
+  - 현재 섹션에서 완료한 OCR/YOLO/Ollama/사용자 context 작업과 GitHub 푸시 상태 정리
+  - 다음 섹션에서 이어갈 custom supplement YOLO26 detector blocker와 안전 규칙 정리
+
+- `2026-06-02-yolo26-model-readiness-check.md`
+  - 현재 repo에 존재하는 YOLO 관련 모델/데이터를 점검한 결과 정리
+  - 음식 YOLO 가중치와 영양제 섹션 detector를 혼동하지 않기 위한 다음 구현 기준 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -81,3 +89,5 @@
 - 분석 미리보기 설명은 `include_profile_context=true`일 때 민감 건강 동의 확인 후 최신 body profile snapshot의 sanitized bucket을 설명 context에 포함한다.
 - 분석 미리보기 설명은 `include_medical_context=true`일 때 민감 건강 동의 확인 후 사용자 의료정보 DB의 질환/복약 요약 bucket을 설명 context에 포함한다.
 - 개인 맞춤 설명의 다음 단계는 모바일 요청 연결, comprehensive nutrition engine 결합, 실제 local Ollama/Gemma live smoke다.
+- 현재 repo에서 확인된 `.pt` 가중치는 음식 YOLO 실험 `best.pt`뿐이며, 영양제 섹션 전용 custom YOLO26 detector는 아직 확인되지 않았다.
+- 다음 구현에서는 default COCO/food model을 영양제 섹션 detector로 오인하지 않도록 class-name/readiness guard와 데이터셋 계약을 먼저 추가해야 한다.
