@@ -107,6 +107,10 @@
   - OCR layout 기반 YOLO section 후보를 pending `AnnotationTask` 계약으로 만드는 helper와 검수 전 export 차단 guard 구현 요약
   - `MediaObject` source 연결이 없는 상태에서 service insert를 보류한 이유와 다음 schema/service 작업 정리
 
+- `2026-06-02-annotation-source-link-analysis.md`
+  - `MediaObjectStore`와 `LearningImageObjectStore`의 source 연결 차이를 확인한 분석 기록
+  - `AnnotationTask.learning_image_object_id` 추가 방향, privacy scrubber, service enqueue guard, 다음 검증 기준 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -146,3 +150,4 @@
 - 다음 구현은 후보 snapshot을 `AnnotationTask` operator review queue에 연결하고, review 승인 전 training export를 막는 guard를 추가하는 것이다.
 - OCR layout 후보 snapshot은 이제 `training_export_allowed=false`, `human_review_required=true`, `coordinate_space=ocr_page`로 생성되며, 검수 전 supplement section YOLO export에서 거부된다.
 - `AnnotationTask` 생성 helper는 추가됐지만, 실제 service insert는 원본 이미지 source가 `MediaObject` 또는 안전한 source map으로 연결된 뒤 진행해야 한다.
+- 현재 확인 결과 `MediaObjectStore`는 삭제 전용이고 `LearningImageObjectStore`가 이미 consent-gated `put_image/get_image/delete_image`를 제공하므로, 다음 구현은 `AnnotationTask.learning_image_object_id`를 추가해 기존 learning image source를 검수 queue에 연결하는 방향이 가장 작다.
