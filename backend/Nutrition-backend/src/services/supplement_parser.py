@@ -25,6 +25,7 @@ from src.models.schemas.supplement import (
     SupplementMissingRequiredSection,
     SupplementPreviewEvidenceSpan,
     SupplementPreviewLabelSection,
+    SupplementPreviewPrecaution,
 )
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.text_normalizer import normalize_ocr_text as normalize_provider_ocr_text
@@ -60,6 +61,9 @@ OCR_PROVIDER_MAX_LENGTH = 64
 OCR_LOW_CONFIDENCE_THRESHOLD = Decimal("0.80")
 LAYOUT_TEXT_BUNDLE_MAX_CHARS = 2_000
 LAYOUT_EVIDENCE_EXCERPT_MAX_CHARS = 240
+LAYOUT_PRECAUTION_TEXT_MAX_CHARS = 500
+LAYOUT_PRECAUTION_FALLBACK_MAX_ITEMS = 40
+LAYOUT_PRECAUTION_FALLBACK_WARNING = "layout_precaution_fallback_requires_review"
 LAYOUT_SECTION_TYPE_MAP = {
     "daily_intake": "intake_method",
     "nutrition_function_info": "supplement_facts",
@@ -260,6 +264,7 @@ async def parse_supplement_analysis_ocr_text(
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
     parse_result = _sanitize_parser_result(parse_result)
     parse_result = _merge_ocr_pattern_fallbacks(parse_result, normalized_text)
+    parse_result = _merge_layout_precaution_fallbacks(parse_result, ocr_layout)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
     record.ocr_provider = normalized_provider
@@ -603,6 +608,159 @@ def _merge_ocr_pattern_fallbacks(
             "ingredient_candidates",
         )
     return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _merge_layout_precaution_fallbacks(
+    parse_result: SupplementStructuredParseResult,
+    ocr_layout: LabelLayout | None,
+) -> SupplementStructuredParseResult:
+    """Promote visible OCR layout caution rows into structured precautions.
+
+    The LLM parser is still the primary structured extractor, but YOLO/ROI OCR can
+    surface a warning section that the parser misses. This fallback uses only the
+    bounded provider-neutral layout rows already kept for preview evidence; it does
+    not store raw OCR text or provider payloads.
+
+    Args:
+        parse_result: Sanitized parser output.
+        ocr_layout: Optional provider-neutral OCR layout.
+
+    Returns:
+        Parser result with missing visible precaution rows appended.
+    """
+    if ocr_layout is None:
+        return parse_result
+
+    existing_text_keys = {
+        _preview_text_key(precaution.text) for precaution in parse_result.precautions
+    }
+    derived: list[SupplementPreviewPrecaution] = []
+    for section_index, section in enumerate(ocr_layout.sections, start=1):
+        if section.section_type != "precautions":
+            continue
+        span_id = f"layout-span-{section_index}"
+        confidence = _section_confidence(section)
+        section_severity = _layout_precaution_severity(section.anchor_text)
+        for text in _layout_precaution_texts(section):
+            text_key = _preview_text_key(text)
+            if text_key in existing_text_keys:
+                continue
+            severity = _layout_precaution_severity(text)
+            if severity == "unknown":
+                severity = section_severity
+            try:
+                derived.append(
+                    SupplementPreviewPrecaution.model_validate(
+                        {
+                            "text": text,
+                            "category": _layout_precaution_category(text),
+                            "severity": severity,
+                            "confidence": confidence,
+                            "requires_review": True,
+                            "evidence_refs": [span_id],
+                        }
+                    )
+                )
+            except ValueError:
+                continue
+            existing_text_keys.add(text_key)
+            if (
+                len(parse_result.precautions) + len(derived)
+                >= LAYOUT_PRECAUTION_FALLBACK_MAX_ITEMS
+            ):
+                break
+
+    if not derived:
+        return parse_result
+
+    snapshot = parse_result.model_dump()
+    snapshot["precautions"] = [
+        *snapshot.get("precautions", []),
+        *[precaution.model_dump(exclude_none=True) for precaution in derived],
+    ]
+    snapshot["warnings"] = _append_unique_string(
+        snapshot.get("warnings"),
+        LAYOUT_PRECAUTION_FALLBACK_WARNING,
+    )
+    snapshot["low_confidence_fields"] = _append_unique_string(
+        snapshot.get("low_confidence_fields"),
+        "precautions",
+    )
+    return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _layout_precaution_texts(section: LabelSection) -> list[str]:
+    """Return sanitized visible precaution rows from a layout section.
+
+    Args:
+        section: OCR layout section classified as precautions.
+
+    Returns:
+        Bounded visible precaution row texts, excluding bare section headings.
+    """
+    texts: list[str] = []
+    for row in section.rows:
+        row_text = " ".join(cell.text for cell in sorted(row, key=lambda item: item.column_index))
+        row_text = row_text.strip()
+        if not row_text or _is_bare_precaution_heading(row_text):
+            continue
+        sanitized = sanitize_preview_text(
+            row_text[:LAYOUT_PRECAUTION_TEXT_MAX_CHARS],
+            "layout_precaution.text",
+        ).value
+        if sanitized:
+            texts.append(sanitized)
+    return texts
+
+
+def _is_bare_precaution_heading(value: str) -> bool:
+    """Return whether a row is only a warning-section heading.
+
+    Args:
+        value: Candidate row text.
+
+    Returns:
+        True when the row should remain section metadata, not a precaution item.
+    """
+    normalized = re.sub(r"[\s·ㆍ:\uff1a\-()\[\]/|]+", "", value.casefold())
+    return normalized in {
+        "warning",
+        "warnings",
+        "caution",
+        "cautions",
+        "주의",
+        "주의사항",
+        "섭취시주의사항",
+    }
+
+
+def _layout_precaution_category(value: str) -> str:
+    """Classify visible precaution text into a conservative UI category."""
+    normalized = value.casefold()
+    if any(token in normalized for token in ("pregnant", "pregnancy", "임산", "임신")):
+        return "pregnancy"
+    if any(token in normalized for token in ("allergy", "allergen", "알레르")):
+        return "allergy"
+    if any(token in normalized for token in ("medication", "blood clot", "medicine", "약물", "의약품")):
+        return "medication"
+    if any(token in normalized for token in ("children", "child", "어린이", "소아", "유아")):
+        return "children"
+    return "unknown"
+
+
+def _layout_precaution_severity(value: str) -> str:
+    """Return a conservative severity marker from visible label wording."""
+    normalized = value.casefold()
+    if any(token in normalized for token in ("warning", "경고", "fatal", "poison")):
+        return "warning"
+    if any(token in normalized for token in ("caution", "주의", "consult", "상담")):
+        return "caution"
+    return "unknown"
+
+
+def _preview_text_key(value: str) -> str:
+    """Normalize preview text for deduplication."""
+    return " ".join(unicodedata.normalize("NFC", value).casefold().split())
 
 
 def _enrich_missing_amounts_from_fallbacks(

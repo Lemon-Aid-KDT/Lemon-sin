@@ -71,6 +71,17 @@
 
 반대로 `비타민 C 26g`처럼 실제 성분명과 함량이 있는 문장은 계속 성분 후보로 유지한다.
 
+### 2.5 주의사항 layout fallback
+
+OCR layout parser가 `precautions` 섹션을 만들었지만 LLM structured parser가 `precautions` 배열을 비워두는 경우를 보완했다.
+
+`LabelLayout.sections[].section_type == "precautions"`인 섹션에서 bare heading(`Warning`, `주의사항`)을 제외한 실제 문장만 sanitized preview precaution으로 승격한다.
+
+- section anchor가 `Warning`이면 본문 문장에 `warning` 단어가 없어도 `severity=warning` fallback 적용
+- pregnancy/allergy/medication/children 키워드는 보수적인 UI category로만 태깅
+- fallback으로 채운 주의사항은 `requires_review=True`, `low_confidence_fields=["precautions"]` 유지
+- raw OCR text/provider payload는 parsed snapshot에 저장하지 않음
+
 ---
 
 ## 3. 테스트 보강
@@ -85,6 +96,8 @@
   - `1회 제공량(26g)` 계열이 성분 후보가 되지 않는지 확인
 - `test_ocr_pattern_keeps_real_amount_candidate`
   - 정상 성분명 + 함량 문장은 유지되는지 확인
+- `test_parse_supplement_analysis_ocr_text_promotes_layout_precautions`
+  - OCR layout의 visible warning rows가 structured `precautions`로 승격되는지 확인
 
 ---
 
@@ -101,3 +114,5 @@
 - 해당 모델 class names가 이번 taxonomy alias와 맞거나 alias로 정규화 가능
 
 현재 repo에서 확인한 `.pt`는 음식 YOLO 실험 weight뿐이며, 영양제 섹션 detector weight는 아직 확인되지 않았다.
+
+추가로, custom YOLO model이 아직 없어도 OCR layout에 주의사항 섹션이 이미 보이는 경우에는 모바일 결과 카드가 빈 값으로 남지 않도록 parser fallback을 보완했다.

@@ -380,6 +380,80 @@ def _label_layout() -> LabelLayout:
     )
 
 
+def _precaution_label_layout() -> LabelLayout:
+    """Return deterministic OCR layout with a visible warning section."""
+    return LabelLayout.model_validate(
+        {
+            "provider": "fake-ocr",
+            "page_count": 1,
+            "sections": [
+                {
+                    "section_type": "precautions",
+                    "anchor_text": "Warning",
+                    "anchor_box": {
+                        "page_index": 0,
+                        "left": 10,
+                        "top": 140,
+                        "right": 110,
+                        "bottom": 170,
+                    },
+                    "rows": [
+                        [
+                            {
+                                "row_index": 0,
+                                "column_index": 0,
+                                "text": "Warning",
+                                "bounding_box": {
+                                    "page_index": 0,
+                                    "left": 10,
+                                    "top": 140,
+                                    "right": 110,
+                                    "bottom": 170,
+                                },
+                                "confidence": 0.88,
+                                "word_count": 1,
+                            }
+                        ],
+                        [
+                            {
+                                "row_index": 1,
+                                "column_index": 0,
+                                "text": "Do not take if you are pregnant or taking medication.",
+                                "bounding_box": {
+                                    "page_index": 0,
+                                    "left": 10,
+                                    "top": 180,
+                                    "right": 420,
+                                    "bottom": 210,
+                                },
+                                "confidence": 0.84,
+                                "word_count": 9,
+                            }
+                        ],
+                        [
+                            {
+                                "row_index": 2,
+                                "column_index": 0,
+                                "text": "Contains soy allergen.",
+                                "bounding_box": {
+                                    "page_index": 0,
+                                    "left": 10,
+                                    "top": 220,
+                                    "right": 180,
+                                    "bottom": 250,
+                                },
+                                "confidence": 0.86,
+                                "word_count": 3,
+                            }
+                        ],
+                    ],
+                }
+            ],
+            "warnings": [],
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_text() -> None:
     """Verify parser output is stored as a sanitized preview snapshot."""
@@ -486,6 +560,45 @@ async def test_parse_supplement_analysis_ocr_text_merges_deterministic_layout() 
     assert record.parsed_snapshot["evidence_spans"][-1]["cell_ref"] == "layout-section-2"
     assert record.parsed_snapshot["missing_required_sections"] == ["precautions"]
     assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_promotes_layout_precautions() -> None:
+    """Verify visible warning layout rows fill the structured precautions field."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "Warning\nDo not take if you are pregnant or taking medication.\nContains soy allergen.",
+        "fake-ocr",
+        0.86,
+        _settings(),
+        ocr_layout=_precaution_label_layout(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    precautions = record.parsed_snapshot["precautions"]
+    assert [item["text"] for item in precautions] == [
+        "Do not take if you are pregnant or taking medication.",
+        "Contains soy allergen.",
+    ]
+    assert precautions[0]["category"] == "pregnancy"
+    assert precautions[0]["severity"] == "warning"
+    assert precautions[0]["requires_review"] is True
+    assert precautions[0]["evidence_refs"] == ["layout-span-1"]
+    assert record.parsed_snapshot["missing_required_sections"] == [
+        "product_name",
+        "supplement_facts",
+        "intake_method",
+    ]
+    assert "layout_precaution_fallback_requires_review" in record.warnings
+    assert "ocr_text" not in record.parsed_snapshot
+    preview = supplement_analysis_run_to_preview(record)
+    assert preview.precautions[1].category == "allergy"
+    assert preview.label_sections[0].section_type == "precautions"
 
 
 @pytest.mark.asyncio
