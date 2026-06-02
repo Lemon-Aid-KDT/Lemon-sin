@@ -49,6 +49,23 @@ cd backend
 label을 고정 class id로 변환한다. 숫자 class id만 있는 bbox나 `supplement_label`
 같은 전체 라벨 bbox는 섹션 detector 학습 입력으로 통과시키지 않는다.
 
+trusted worker에서 export artifact를 실제 YOLO image/label 디렉터리로 materialize할
+때는 operator-only source map을 별도로 전달한다. source map은 private
+`source_ref`를 로컬 이미지 파일로 해석하기 위한 실행 시점 입력이며 repo에 커밋하지
+않는다.
+
+```bash
+cd backend
+.venv/bin/python scripts/materialize_supplement_section_yolo_dataset.py \
+  --export ../outputs/generated/training/supplement-section-yolo-export.json \
+  --source-map ../outputs/generated/training/supplement-section-yolo-source-map.private.json \
+  --dataset-yaml ../data/supplement_images/section_yolo/dataset.yaml
+```
+
+materializer는 이미지 파일명을 `source_ref` 해시로 생성하고, stdout에는 source ref,
+로컬 source path, label row를 출력하지 않는다. 생성 후 `--require-files` 수준의
+dataset 검증을 자동으로 수행한다.
+
 ```text
 supplement_images/
 ├── raw/

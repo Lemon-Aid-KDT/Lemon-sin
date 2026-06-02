@@ -79,6 +79,10 @@
   - privacy-reviewed annotation manifest를 supplement section YOLO 학습 export로 변환하는 bridge 추가 요약
   - semantic bbox label을 고정 class id로 변환하고 numeric-only/whole-label bbox를 거부하는 기준 정리
 
+- `2026-06-02-supplement-section-yolo-materializer.md`
+  - supplement section YOLO export artifact와 operator-only source map을 실제 Ultralytics image/label 디렉터리로 변환하는 작업 요약
+  - source ref/path를 stdout에 노출하지 않고 생성 후 validator를 통과시키는 기준 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -109,3 +113,5 @@
 - dataset validator는 class 계약 검증을 통과했지만, 실제 annotation image/label 파일은 아직 없어 `--require-files` 검증은 다음 단계 blocker로 남아 있다.
 - `supplement_section_yolo_detection` export kind를 추가해 privacy-reviewed annotation이 semantic section label 기준으로만 YOLO 학습 export에 들어가도록 제한했다.
 - 숫자 class id만 있는 bbox나 `supplement_label` 전체 라벨 bbox는 section detector 학습 입력으로 거부된다.
+- `materialize_supplement_section_yolo_dataset.py`를 추가해 export artifact를 `processed/section_yolo/images|labels` 구조로 생성하는 trusted worker 단계를 붙였다.
+- materializer는 생성 후 dataset validator의 file-level 검증을 수행하며, stdout에는 source ref/source path/raw label row를 노출하지 않는다.
