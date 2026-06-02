@@ -290,6 +290,57 @@ def test_supplement_section_yolo_export_rejects_label_only_regions() -> None:
         build_supplement_section_yolo_detection_export(manifest)
 
 
+def test_supplement_section_yolo_export_rejects_unapproved_candidate_snapshot() -> None:
+    """Verify OCR-derived candidate snapshots cannot be exported before review approval."""
+    candidate = _candidate(
+        label_snapshot={
+            "schema_version": "supplement-section-yolo-label-candidates-v1",
+            "candidate_source": "ocr_layout",
+            "coordinate_space": "ocr_page",
+            "human_review_required": True,
+            "text_stored": False,
+            "training_export_allowed": False,
+            "boxes": [
+                {
+                    "label": "precautions",
+                    "x_center": 0.5,
+                    "y_center": 0.8,
+                    "width": 0.7,
+                    "height": 0.2,
+                }
+            ],
+        },
+    )
+    manifest = build_dataset_export_manifest(_dataset(), [candidate])
+
+    with pytest.raises(RetrainingSecurityError, match="training export approval"):
+        build_supplement_section_yolo_detection_export(manifest)
+
+
+def test_supplement_section_yolo_export_rejects_non_source_coordinates() -> None:
+    """Verify section detector labels must be reviewed into source-image coordinates."""
+    candidate = _candidate(
+        label_snapshot={
+            "coordinate_space": "ocr_page",
+            "human_review_required": False,
+            "training_export_allowed": True,
+            "boxes": [
+                {
+                    "label": "precautions",
+                    "x_center": 0.5,
+                    "y_center": 0.8,
+                    "width": 0.7,
+                    "height": 0.2,
+                }
+            ],
+        },
+    )
+    manifest = build_dataset_export_manifest(_dataset(), [candidate])
+
+    with pytest.raises(RetrainingSecurityError, match="source_image"):
+        build_supplement_section_yolo_detection_export(manifest)
+
+
 def test_paddleocr_exports_require_confirmed_text_and_detection_boxes() -> None:
     """Verify PaddleOCR exports require reviewed labels in task-specific shape."""
     rec_candidate = _candidate(

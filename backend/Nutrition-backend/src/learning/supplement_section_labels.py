@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
+from src.learning.retraining import validate_sanitized_label_snapshot
+from src.models.db.retraining import AnnotationTask
 from src.models.schemas.label_layout import LabelBox, LabelLayout, LabelSection, SectionType
 from src.ocr.base import OCRResult
 from src.vision.taxonomy import VisionLabel
@@ -18,6 +22,10 @@ LAYOUT_TO_SECTION_LABEL: dict[SectionType, str] = {
     "ingredients": VisionLabel.INGREDIENTS.value,
 }
 SNAPSHOT_SCHEMA_VERSION = "supplement-section-yolo-label-candidates-v1"
+SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE = "supplement_roi_box"
+SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE = "data_reviewer"
+SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE = "ocr_layout_section_candidate"
+SHA256_HEX_PATTERN = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
 
 
 class SupplementSectionLabelCandidateError(ValueError):
@@ -110,9 +118,57 @@ def build_supplement_section_yolo_label_snapshot(
         raise SupplementSectionLabelCandidateError("OCR layout has no trainable section boxes.")
     return {
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "candidate_source": "ocr_layout",
+        "coordinate_space": "ocr_page",
+        "human_review_required": True,
         "text_stored": False,
+        "training_export_allowed": False,
         "boxes": boxes,
     }
+
+
+def build_supplement_section_annotation_task(
+    *,
+    owner_subject_hash: str,
+    media_object_id: UUID,
+    layout: LabelLayout,
+    page_dimensions: Mapping[int, PageDimensions | tuple[int, int]],
+) -> AnnotationTask:
+    """Build a sanitized human-review task for OCR-derived section boxes.
+
+    Args:
+        owner_subject_hash: HMAC-SHA256 hash for the source owner. The raw owner
+            subject must not be passed into this function.
+        media_object_id: Source media object id stored as a model column, not in
+            the label snapshot.
+        layout: Parsed OCR layout with candidate section boxes.
+        page_dimensions: Page dimensions keyed by ``LabelBox.page_index``.
+
+    Returns:
+        Pending annotation task that requires data reviewer approval before any
+        training export can use its labels.
+
+    Raises:
+        SupplementSectionLabelCandidateError: If owner hash or layout candidates
+            are invalid.
+    """
+    _validate_owner_subject_hash(owner_subject_hash)
+    label_snapshot = build_supplement_section_yolo_label_snapshot(
+        layout,
+        page_dimensions=page_dimensions,
+    )
+    validate_sanitized_label_snapshot(label_snapshot)
+    return AnnotationTask(
+        owner_subject_hash=owner_subject_hash,
+        media_object_id=media_object_id,
+        task_type=SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE,
+        status="pending",
+        assignee_role=SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE,
+        label_snapshot=label_snapshot,
+        review_notes_code=SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE,
+        reviewer_hash=None,
+        completed_at=None,
+    )
 
 
 def _normalize_page_dimensions(
@@ -129,6 +185,12 @@ def _normalize_page_dimensions(
         page_dimensions_value.validate(page_index)
         normalized[page_index] = page_dimensions_value
     return normalized
+
+
+def _validate_owner_subject_hash(owner_subject_hash: str) -> None:
+    """Validate a privacy-preserving owner hash without accepting raw subjects."""
+    if not SHA256_HEX_PATTERN.fullmatch(owner_subject_hash):
+        raise SupplementSectionLabelCandidateError("Owner subject hash must be SHA-256 hex.")
 
 
 def _section_boxes_by_page(section: LabelSection) -> list[LabelBox]:
@@ -209,8 +271,12 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
 
 __all__ = [
     "SNAPSHOT_SCHEMA_VERSION",
+    "SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE",
+    "SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE",
+    "SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE",
     "PageDimensions",
     "SupplementSectionLabelCandidateError",
+    "build_supplement_section_annotation_task",
     "build_supplement_section_yolo_label_snapshot",
     "page_dimensions_from_ocr_result",
 ]

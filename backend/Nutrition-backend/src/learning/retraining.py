@@ -283,7 +283,9 @@ def build_supplement_section_yolo_detection_export(manifest: Mapping[str, Any]) 
             raise RetrainingSecurityError(
                 "Supplement section YOLO export only accepts supplement source rows."
             )
-        labels = _normalize_supplement_section_box_labels(row["label_snapshot"].get("boxes"))
+        label_snapshot = row["label_snapshot"]
+        _validate_supplement_section_training_approval(label_snapshot)
+        labels = _normalize_supplement_section_box_labels(label_snapshot.get("boxes"))
         rows.append(
             {
                 "source_ref": row["source_ref"],
@@ -606,6 +608,23 @@ def _normalize_supplement_section_box_labels(raw_boxes: object) -> list[dict[str
         normalized.update(_normalized_detection_coordinates(raw_box))
         boxes.append(normalized)
     return boxes
+
+
+def _validate_supplement_section_training_approval(
+    label_snapshot: Mapping[str, Any],
+) -> None:
+    """Reject OCR-derived section candidates before human training approval."""
+    if label_snapshot.get("training_export_allowed") is False:
+        raise RetrainingSecurityError(
+            "Supplement section label snapshot requires training export approval."
+        )
+    if label_snapshot.get("human_review_required") is True:
+        raise RetrainingSecurityError("Supplement section label snapshot still requires review.")
+    coordinate_space = label_snapshot.get("coordinate_space")
+    if coordinate_space is not None and coordinate_space != "source_image":
+        raise RetrainingSecurityError(
+            "Supplement section label snapshot must use source_image coordinates."
+        )
 
 
 def _canonical_supplement_section_label(raw_box: Mapping[str, Any]) -> str:

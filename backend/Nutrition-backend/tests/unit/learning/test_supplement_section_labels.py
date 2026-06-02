@@ -8,12 +8,17 @@ from uuid import uuid4
 import pytest
 from src.learning.retraining import (
     DatasetExportCandidate,
+    RetrainingSecurityError,
     build_dataset_export_manifest,
     build_supplement_section_yolo_detection_export,
     validate_sanitized_label_snapshot,
 )
 from src.learning.supplement_section_labels import (
+    SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE,
+    SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE,
+    SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE,
     SupplementSectionLabelCandidateError,
+    build_supplement_section_annotation_task,
     build_supplement_section_yolo_label_snapshot,
     page_dimensions_from_ocr_result,
 )
@@ -100,7 +105,11 @@ def test_build_supplement_section_snapshot_omits_ocr_text_and_normalizes_boxes()
     )
 
     assert snapshot["schema_version"] == "supplement-section-yolo-label-candidates-v1"
+    assert snapshot["candidate_source"] == "ocr_layout"
+    assert snapshot["coordinate_space"] == "ocr_page"
+    assert snapshot["human_review_required"] is True
     assert snapshot["text_stored"] is False
+    assert snapshot["training_export_allowed"] is False
     assert snapshot["boxes"] == [
         {
             "label": "supplement_facts",
@@ -123,8 +132,8 @@ def test_build_supplement_section_snapshot_omits_ocr_text_and_normalizes_boxes()
     validate_sanitized_label_snapshot(snapshot)
 
 
-def test_supplement_section_snapshot_feeds_existing_export_contract() -> None:
-    """Verify layout candidate snapshots connect to the section YOLO export bridge."""
+def test_supplement_section_snapshot_requires_review_before_export() -> None:
+    """Verify OCR-derived candidate snapshots cannot bypass human review."""
     dataset = _dataset()
     snapshot = build_supplement_section_yolo_label_snapshot(
         LabelLayout(
@@ -141,6 +150,51 @@ def test_supplement_section_snapshot_feeds_existing_export_contract() -> None:
         ),
         page_dimensions={0: (1000, 1000)},
     )
+
+    manifest = build_dataset_export_manifest(
+        dataset,
+        [
+            DatasetExportCandidate(
+                item_id=uuid4(),
+                split="train",
+                source_domain="supplement",
+                task_type="yolo_detection",
+                label_status="human_reviewed",
+                source_ref=f"media:{uuid4()}",
+                label_snapshot=snapshot,
+                label_hash="b" * 64,
+            )
+        ],
+    )
+
+    with pytest.raises(RetrainingSecurityError, match="training export approval"):
+        build_supplement_section_yolo_detection_export(manifest)
+
+
+def test_reviewed_supplement_section_snapshot_feeds_export_contract() -> None:
+    """Verify reviewer-approved snapshots connect to the section YOLO export bridge."""
+    dataset = _dataset()
+    snapshot = build_supplement_section_yolo_label_snapshot(
+        LabelLayout(
+            provider="unit-ocr",
+            page_count=1,
+            sections=[
+                LabelSection(
+                    section_type="intake_method",
+                    anchor_text="Suggested Use",
+                    anchor_box=_box(100, 800, 280, 840),
+                    rows=[[_cell("Take one capsule daily", 100, 850, 740, 900)]],
+                )
+            ],
+        ),
+        page_dimensions={0: (1000, 1000)},
+    )
+    reviewed_snapshot = {
+        **snapshot,
+        "coordinate_space": "source_image",
+        "human_review_required": False,
+        "training_export_allowed": True,
+    }
     candidate = DatasetExportCandidate(
         item_id=uuid4(),
         split="train",
@@ -148,7 +202,7 @@ def test_supplement_section_snapshot_feeds_existing_export_contract() -> None:
         task_type="yolo_detection",
         label_status="human_reviewed",
         source_ref=f"media:{uuid4()}",
-        label_snapshot=snapshot,
+        label_snapshot=reviewed_snapshot,
         label_hash="b" * 64,
     )
 
@@ -166,6 +220,67 @@ def test_supplement_section_snapshot_feeds_existing_export_contract() -> None:
             "height": 0.1,
         }
     ]
+
+
+def test_build_supplement_section_annotation_task_stores_pending_review_contract() -> None:
+    """Verify OCR layout candidates become sanitized pending annotation tasks."""
+    media_object_id = uuid4()
+    task = build_supplement_section_annotation_task(
+        owner_subject_hash="a" * 64,
+        media_object_id=media_object_id,
+        layout=LabelLayout(
+            provider="unit-ocr",
+            page_count=1,
+            sections=[
+                LabelSection(
+                    section_type="precautions",
+                    anchor_text="Warning",
+                    anchor_box=_box(100, 800, 280, 840),
+                    rows=[[_cell("Contains soy and milk", 100, 850, 740, 900)]],
+                )
+            ],
+        ),
+        page_dimensions={0: (1000, 1000)},
+    )
+
+    assert task.owner_subject_hash == "a" * 64
+    assert task.media_object_id == media_object_id
+    assert task.task_type == SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE
+    assert task.status == "pending"
+    assert task.assignee_role == SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE
+    assert task.review_notes_code == SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE
+    assert task.reviewer_hash is None
+    assert task.completed_at is None
+    assert task.label_snapshot["candidate_source"] == "ocr_layout"
+    assert task.label_snapshot["human_review_required"] is True
+    assert task.label_snapshot["training_export_allowed"] is False
+    assert task.label_snapshot["boxes"][0]["label"] == "precautions"
+    serialized = json.dumps(task.label_snapshot, ensure_ascii=False)
+    assert "Contains soy" not in serialized
+    assert str(media_object_id) not in serialized
+    assert "a" * 64 not in serialized
+
+
+def test_build_supplement_section_annotation_task_rejects_raw_owner_subject() -> None:
+    """Verify raw owner subjects cannot be passed as annotation task owner ids."""
+    with pytest.raises(SupplementSectionLabelCandidateError, match="SHA-256"):
+        build_supplement_section_annotation_task(
+            owner_subject_hash="issuer::user-123",
+            media_object_id=uuid4(),
+            layout=LabelLayout(
+                provider="unit-ocr",
+                page_count=1,
+                sections=[
+                    LabelSection(
+                        section_type="precautions",
+                        anchor_text="Warning",
+                        anchor_box=_box(100, 800, 280, 840),
+                        rows=[],
+                    )
+                ],
+            ),
+            page_dimensions={0: (1000, 1000)},
+        )
 
 
 def test_build_supplement_section_snapshot_requires_page_dimensions() -> None:

@@ -103,6 +103,10 @@
   - 다음 Codex 섹션에서 이어서 사용할 수 있는 repo/branch/remote/검증/규칙/다음 구현 순서 프롬프트
   - AnnotationTask review queue 연결과 training export guard 구현 방향 정리
 
+- `2026-06-02-supplement-section-annotation-review-guard.md`
+  - OCR layout 기반 YOLO section 후보를 pending `AnnotationTask` 계약으로 만드는 helper와 검수 전 export 차단 guard 구현 요약
+  - `MediaObject` source 연결이 없는 상태에서 service insert를 보류한 이유와 다음 schema/service 작업 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -140,3 +144,5 @@
 - OCR layout에서 나온 `LabelBox`는 이제 `build_supplement_section_yolo_label_snapshot`을 통해 raw OCR text 없이 normalized YOLO section bbox 후보로 변환할 수 있다.
 - 이 후보 snapshot은 privacy review/human review를 거치면 기존 `build_supplement_section_yolo_detection_export` 경로로 들어갈 수 있다.
 - 다음 구현은 후보 snapshot을 `AnnotationTask` operator review queue에 연결하고, review 승인 전 training export를 막는 guard를 추가하는 것이다.
+- OCR layout 후보 snapshot은 이제 `training_export_allowed=false`, `human_review_required=true`, `coordinate_space=ocr_page`로 생성되며, 검수 전 supplement section YOLO export에서 거부된다.
+- `AnnotationTask` 생성 helper는 추가됐지만, 실제 service insert는 원본 이미지 source가 `MediaObject` 또는 안전한 source map으로 연결된 뒤 진행해야 한다.
