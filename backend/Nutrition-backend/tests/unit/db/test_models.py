@@ -802,6 +802,7 @@ def test_retraining_tables_are_registered_without_raw_payload_columns() -> None:
     assert {
         "owner_subject_hash",
         "media_object_id",
+        "learning_image_object_id",
         "task_type",
         "status",
         "assignee_role",

@@ -760,6 +760,7 @@ async def revoke_retraining_records_for_owner(
     for task in annotation_tasks:
         task.status = "cancelled"
         task.media_object_id = None
+        task.learning_image_object_id = None
         task.label_snapshot = {}
         task.review_notes_code = None
         task.reviewer_hash = None

@@ -214,6 +214,7 @@ class AnnotationTask(TimestampMixin, Base):
         id: Stable annotation task identifier.
         owner_subject_hash: HMAC of the source data owner for revoke/delete-all.
         media_object_id: Optional source media object identifier.
+        learning_image_object_id: Optional consent-retained learning image identifier.
         task_type: Review task type.
         status: Annotation lifecycle status.
         assignee_role: Reviewer role category.
@@ -253,6 +254,7 @@ class AnnotationTask(TimestampMixin, Base):
         ),
         Index("ix_annotation_tasks_owner_status", "owner_subject_hash", "status"),
         Index("ix_annotation_tasks_media_object_id", "media_object_id"),
+        Index("ix_annotation_tasks_learning_image_object_id", "learning_image_object_id"),
         Index("ix_annotation_tasks_task_status", "task_type", "status"),
     )
 
@@ -261,6 +263,11 @@ class AnnotationTask(TimestampMixin, Base):
     media_object_id: Mapped[UUID | None] = mapped_column(
         postgresql.UUID(as_uuid=True),
         ForeignKey("media_objects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    learning_image_object_id: Mapped[UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("learning_image_objects.id", ondelete="SET NULL"),
         nullable=True,
     )
     task_type: Mapped[str] = mapped_column(String(40), nullable=False)

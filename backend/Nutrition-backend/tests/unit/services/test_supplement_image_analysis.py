@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import Self, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import UploadFile
@@ -13,8 +13,16 @@ from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.learning.object_storage import (
+    LearningImageObjectInput,
+    LearningImageObjectStore,
+    StoredLearningImage,
+)
 from src.llm.ollama_vision import OllamaVisionTextVerificationResult
+from src.models.db.learning import LearningImageObject
+from src.models.db.retraining import AnnotationTask
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.base import (
     OCRAdapter,
@@ -68,6 +76,9 @@ class _FakePipelineSession:
 
     def __init__(self) -> None:
         self.added_analysis: SupplementAnalysisRun | None = None
+        self.added_records: list[object] = []
+        self.existing_learning_object: LearningImageObject | None = None
+        self.existing_annotation_task: AnnotationTask | None = None
         self.committed = False
         self.refresh_count = 0
 
@@ -79,7 +90,7 @@ class _FakePipelineSession:
         """
         return _TransactionContext()
 
-    async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
+    async def scalar(self, _statement: object) -> object | None:
         """Return the stored analysis row for parser lookup.
 
         Args:
@@ -88,6 +99,11 @@ class _FakePipelineSession:
         Returns:
             Stored analysis row.
         """
+        entity = _selected_entity(_statement)
+        if entity is LearningImageObject:
+            return self.existing_learning_object
+        if entity is AnnotationTask:
+            return self.existing_annotation_task
         return self.added_analysis
 
     def add(self, record: object) -> None:
@@ -99,7 +115,9 @@ class _FakePipelineSession:
         Returns:
             None.
         """
-        self.added_analysis = cast(SupplementAnalysisRun, record)
+        self.added_records.append(record)
+        if isinstance(record, SupplementAnalysisRun):
+            self.added_analysis = record
 
     async def refresh(self, record: object) -> None:
         """Populate server-generated fields after fake persistence.
@@ -110,11 +128,14 @@ class _FakePipelineSession:
         Returns:
             None.
         """
-        supplement_run = cast(SupplementAnalysisRun, record)
-        if getattr(supplement_run, "id", None) is None:
-            supplement_run.id = uuid4()
-        supplement_run.created_at = datetime.now(UTC)
-        supplement_run.updated_at = datetime.now(UTC)
+        if (
+            isinstance(record, SupplementAnalysisRun | LearningImageObject | AnnotationTask)
+            and record.id is None
+        ):
+            record.id = uuid4()
+        if isinstance(record, SupplementAnalysisRun):
+            record.created_at = datetime.now(UTC)
+            record.updated_at = datetime.now(UTC)
         self.refresh_count += 1
 
     async def commit(self) -> None:
@@ -124,6 +145,49 @@ class _FakePipelineSession:
             None.
         """
         self.committed = True
+
+
+def _selected_entity(statement: object) -> type[object] | None:
+    """Return the ORM entity selected by a SQLAlchemy statement fixture."""
+    descriptions = getattr(statement, "column_descriptions", None)
+    if not descriptions:
+        return None
+    entity = descriptions[0].get("entity")
+    return cast(type[object] | None, entity)
+
+
+class _FakeLearningImageObjectStore(LearningImageObjectStore):
+    """Fake learning image store that records put requests without filesystem IO."""
+
+    def __init__(self) -> None:
+        self.put_payload: LearningImageObjectInput | None = None
+        self.deleted: list[tuple[str, str | None]] = []
+
+    async def put_image(self, payload: LearningImageObjectInput) -> StoredLearningImage:
+        """Capture one retained image payload.
+
+        Args:
+            payload: Validated learning image payload.
+
+        Returns:
+            Fake private object reference.
+        """
+        self.put_payload = payload
+        return StoredLearningImage(object_uri="local://unit/learning-image.png", provider="local")
+
+    async def get_image(self, object_uri: str, version_id: str | None = None) -> bytes:
+        """Return fake image bytes for interface completeness."""
+        _ = (object_uri, version_id)
+        return b"image"
+
+    async def delete_image(self, object_uri: str, version_id: str | None = None) -> None:
+        """Record deleted fake image references.
+
+        Args:
+            object_uri: Fake object URI.
+            version_id: Optional fake version id.
+        """
+        self.deleted.append((object_uri, version_id))
 
 
 class _FakeOCRAdapter(OCRAdapter):
@@ -405,6 +469,24 @@ def _parse_result() -> SupplementStructuredParseResult:
             "low_confidence_fields": [],
             "warnings": [],
         }
+    )
+
+
+def _learning_image_object(*, object_id: UUID | None = None) -> LearningImageObject:
+    """Return a consent-retained learning image fixture."""
+    now = datetime.now(UTC)
+    return LearningImageObject(
+        id=object_id or uuid4(),
+        owner_subject_hash="a" * 64,
+        analysis_id=uuid4(),
+        image_sha256="b" * 64,
+        object_uri="local://unit/learning-image.png",
+        object_storage_provider="local",
+        image_mime_type="image/png",
+        image_size_bytes=77,
+        retained_until=now,
+        status="awaiting_confirmation",
+        consent_snapshot={"consents": ["ocr_image_processing"]},
     )
 
 
@@ -728,6 +810,95 @@ async def test_analyze_supplement_image_promotes_ocr_layout_to_preview_sections(
     assert preview.evidence_spans[-1].source_type == "ocr_layout"
     assert preview.pipeline_metadata.section_count == 2
     assert preview.pipeline_metadata.missing_required_sections == []
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_queues_learning_source_annotation_task() -> None:
+    """Verify consent-retained images can queue sanitized section review tasks."""
+    fake_session = _FakePipelineSession()
+    fake_store = _FakeLearningImageObjectStore()
+    fake_ocr = _FakeOCRAdapter(
+        "Warning Allergy Information Contains soy. If pregnant, consult doctor.",
+        pages=(_ocr_warning_page(),),
+    )
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+        ),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+        learning_consents=(
+            ConsentType.OCR_IMAGE_PROCESSING,
+            ConsentType.DATA_RETENTION,
+            ConsentType.IMAGE_LEARNING_DATASET,
+        ),
+        learning_object_store=fake_store,
+    )
+
+    learning_objects = [
+        record for record in fake_session.added_records if isinstance(record, LearningImageObject)
+    ]
+    annotation_tasks = [
+        record for record in fake_session.added_records if isinstance(record, AnnotationTask)
+    ]
+
+    assert result.learning_image_object_created is True
+    assert result.annotation_task_created is True
+    assert fake_store.put_payload is not None
+    assert len(learning_objects) == 1
+    assert len(annotation_tasks) == 1
+    task = annotation_tasks[0]
+    assert task.media_object_id is None
+    assert task.learning_image_object_id == learning_objects[0].id
+    assert task.task_type == "supplement_roi_box"
+    assert task.status == "pending"
+    assert task.label_snapshot["candidate_source"] == "ocr_layout"
+    assert task.label_snapshot["training_export_allowed"] is False
+    assert task.label_snapshot["boxes"][0]["label"] == "precautions"
+    serialized = str(task.label_snapshot)
+    assert "Contains soy" not in serialized
+    assert str(learning_objects[0].id) not in serialized
+
+
+@pytest.mark.asyncio
+async def test_supplement_section_annotation_task_enqueue_skips_existing_task() -> None:
+    """Verify an existing active task prevents duplicate pending review work."""
+    fake_session = _FakePipelineSession()
+    learning_object = _learning_image_object()
+    fake_session.existing_annotation_task = AnnotationTask(
+        id=uuid4(),
+        owner_subject_hash="a" * 64,
+        learning_image_object_id=learning_object.id,
+        task_type="supplement_roi_box",
+        status="pending",
+        assignee_role="data_reviewer",
+        label_snapshot={"schema_version": "existing"},
+        review_notes_code="ocr_layout_section_candidate",
+    )
+
+    created = await supplement_image_analysis._enqueue_supplement_section_annotation_task_if_available(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        learning_object=learning_object,
+        ocr_result=OCRResult(
+            text="Warning Contains soy.",
+            provider="fake-ocr",
+            confidence=0.88,
+            pages=(_ocr_warning_page(),),
+        ),
+        settings=_settings(),
+    )
+
+    assert created is False
+    assert not [record for record in fake_session.added_records if isinstance(record, AnnotationTask)]
 
 
 @pytest.mark.asyncio

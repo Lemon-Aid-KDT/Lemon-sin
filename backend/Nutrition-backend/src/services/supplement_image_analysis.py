@@ -16,18 +16,28 @@ from random import random
 from typing import Protocol, runtime_checkable
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.learning.consent_gate import evaluate_image_learning_gate
 from src.learning.object_storage import LearningImageObjectStore
 from src.learning.pipeline import maybe_store_learning_image_object
+from src.learning.supplement_section_labels import (
+    SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE,
+    SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE,
+    SupplementSectionLabelCandidateError,
+    build_supplement_section_annotation_task,
+    page_dimensions_from_ocr_result,
+)
 from src.llm.ollama import (
     OllamaClientError,
     OllamaConfigurationError,
     OllamaStructuredOutputError,
 )
 from src.llm.ollama_vision import OllamaVisionTextVerificationResult
+from src.models.db.learning import LearningImageObject
+from src.models.db.retraining import AnnotationTask
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.privacy import ConsentType
@@ -42,6 +52,7 @@ from src.models.schemas.supplement_image import (
 from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRPage, OCRResult
 from src.parsing.layout_parser import parse_label_layout
 from src.security.auth import AuthenticatedUser
+from src.security.privacy import hash_actor_subject
 from src.services.supplement_intake import (
     SupplementImageValidationError,
     SupplementIntakeStoreResult,
@@ -153,6 +164,7 @@ class SupplementImageAnalysisResult:
         ocr_attempted: Whether a primary OCR adapter was configured and called.
         ocr_warning_codes: Recoverable OCR/parser warning codes added to the preview.
         learning_image_object_created: Whether a learning image object row was created or reused.
+        annotation_task_created: Whether OCR layout candidates were queued for human review.
     """
 
     record: SupplementAnalysisRun
@@ -166,6 +178,7 @@ class SupplementImageAnalysisResult:
     ocr_attempted: bool
     ocr_warning_codes: tuple[str, ...]
     learning_image_object_created: bool
+    annotation_task_created: bool
 
 
 @dataclass(frozen=True)
@@ -325,6 +338,13 @@ async def analyze_supplement_image(
             object_store=learning_object_store,
             granted_consents=learning_consents,
         )
+    annotation_task_created = await _enqueue_supplement_section_annotation_task_if_available(
+        session=session,
+        user=user,
+        learning_object=learning_object,
+        ocr_result=ocr_result,
+        settings=settings,
+    )
 
     pipeline_metadata = _build_pipeline_metadata(
         record=result_record,
@@ -360,6 +380,7 @@ async def analyze_supplement_image(
         ocr_attempted=ocr_attempted,
         ocr_warning_codes=warning_codes,
         learning_image_object_created=learning_object is not None,
+        annotation_task_created=annotation_task_created,
     )
 
 
@@ -719,6 +740,54 @@ async def _store_pipeline_metadata(
     await session.commit()
     await session.refresh(record)
     return record
+
+
+async def _enqueue_supplement_section_annotation_task_if_available(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    learning_object: LearningImageObject | None,
+    ocr_result: OCRResult | None,
+    settings: Settings,
+) -> bool:
+    """Queue sanitized OCR layout section candidates for human review.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner used only to derive the privacy-preserving hash.
+        learning_object: Consent-retained source image object.
+        ocr_result: OCR result containing page dimensions and layout text boxes.
+        settings: Runtime settings containing the privacy hash secret.
+
+    Returns:
+        True when a new pending annotation task was stored.
+    """
+    if learning_object is None or ocr_result is None:
+        return False
+    existing = await session.scalar(
+        select(AnnotationTask).where(
+            AnnotationTask.learning_image_object_id == learning_object.id,
+            AnnotationTask.task_type == SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE,
+            AnnotationTask.review_notes_code == SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE,
+            AnnotationTask.status.in_(("pending", "in_review", "accepted")),
+        )
+    )
+    if existing is not None:
+        return False
+    try:
+        task = build_supplement_section_annotation_task(
+            owner_subject_hash=hash_actor_subject(user, settings),
+            learning_image_object_id=learning_object.id,
+            layout=parse_label_layout(ocr_result),
+            page_dimensions=page_dimensions_from_ocr_result(ocr_result),
+        )
+    except (SupplementSectionLabelCandidateError, ValueError):
+        logger.debug("Skipping supplement section annotation task: no safe layout candidate.")
+        return False
+    session.add(task)
+    await session.commit()
+    await session.refresh(task)
+    return True
 
 
 def _select_vision_region(vision_regions: tuple[BoundingBox, ...]) -> BoundingBox | None:

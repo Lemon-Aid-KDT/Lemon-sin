@@ -685,6 +685,7 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows(
         id=uuid4(),
         owner_subject_hash="a" * 64,
         media_object_id=media_object.id,
+        learning_image_object_id=uuid4(),
         task_type="food_class",
         status="accepted",
         assignee_role="nutrition_reviewer",
@@ -770,6 +771,7 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows(
     assert dataset_item.consent_snapshot == {}
     assert annotation_task.status == "cancelled"
     assert annotation_task.media_object_id is None
+    assert annotation_task.learning_image_object_id is None
     assert annotation_task.label_snapshot == {}
     assert annotation_task.review_notes_code is None
     assert annotation_task.reviewer_hash is None

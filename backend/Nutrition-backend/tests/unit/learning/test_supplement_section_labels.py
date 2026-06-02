@@ -245,6 +245,7 @@ def test_build_supplement_section_annotation_task_stores_pending_review_contract
 
     assert task.owner_subject_hash == "a" * 64
     assert task.media_object_id == media_object_id
+    assert task.learning_image_object_id is None
     assert task.task_type == SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE
     assert task.status == "pending"
     assert task.assignee_role == SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE
@@ -259,6 +260,66 @@ def test_build_supplement_section_annotation_task_stores_pending_review_contract
     assert "Contains soy" not in serialized
     assert str(media_object_id) not in serialized
     assert "a" * 64 not in serialized
+
+
+def test_build_supplement_section_annotation_task_accepts_learning_image_source() -> None:
+    """Verify consent-retained learning images can be the source for review tasks."""
+    learning_image_object_id = uuid4()
+    task = build_supplement_section_annotation_task(
+        owner_subject_hash="b" * 64,
+        learning_image_object_id=learning_image_object_id,
+        layout=LabelLayout(
+            provider="unit-ocr",
+            page_count=1,
+            sections=[
+                LabelSection(
+                    section_type="intake_method",
+                    anchor_text="Suggested Use",
+                    anchor_box=_box(100, 700, 320, 740),
+                    rows=[[_cell("Take 1 softgel daily", 100, 750, 650, 790)]],
+                )
+            ],
+        ),
+        page_dimensions={0: (1000, 1000)},
+    )
+
+    assert task.media_object_id is None
+    assert task.learning_image_object_id == learning_image_object_id
+    serialized = json.dumps(task.label_snapshot, ensure_ascii=False)
+    assert "Take 1 softgel" not in serialized
+    assert str(learning_image_object_id) not in serialized
+
+
+def test_build_supplement_section_annotation_task_rejects_missing_or_ambiguous_source() -> None:
+    """Verify annotation tasks cannot be created without one clear image source."""
+    layout = LabelLayout(
+        provider="unit-ocr",
+        page_count=1,
+        sections=[
+            LabelSection(
+                section_type="precautions",
+                anchor_text="Warning",
+                anchor_box=_box(100, 800, 280, 840),
+                rows=[],
+            )
+        ],
+    )
+
+    with pytest.raises(SupplementSectionLabelCandidateError, match="Exactly one"):
+        build_supplement_section_annotation_task(
+            owner_subject_hash="c" * 64,
+            layout=layout,
+            page_dimensions={0: (1000, 1000)},
+        )
+
+    with pytest.raises(SupplementSectionLabelCandidateError, match="Exactly one"):
+        build_supplement_section_annotation_task(
+            owner_subject_hash="c" * 64,
+            media_object_id=uuid4(),
+            learning_image_object_id=uuid4(),
+            layout=layout,
+            page_dimensions={0: (1000, 1000)},
+        )
 
 
 def test_build_supplement_section_annotation_task_rejects_raw_owner_subject() -> None:

@@ -130,7 +130,8 @@ def build_supplement_section_yolo_label_snapshot(
 def build_supplement_section_annotation_task(
     *,
     owner_subject_hash: str,
-    media_object_id: UUID,
+    media_object_id: UUID | None = None,
+    learning_image_object_id: UUID | None = None,
     layout: LabelLayout,
     page_dimensions: Mapping[int, PageDimensions | tuple[int, int]],
 ) -> AnnotationTask:
@@ -139,8 +140,10 @@ def build_supplement_section_annotation_task(
     Args:
         owner_subject_hash: HMAC-SHA256 hash for the source owner. The raw owner
             subject must not be passed into this function.
-        media_object_id: Source media object id stored as a model column, not in
-            the label snapshot.
+        media_object_id: Optional source media object id stored as a model column,
+            not in the label snapshot.
+        learning_image_object_id: Optional source learning image object id stored as
+            a model column, not in the label snapshot.
         layout: Parsed OCR layout with candidate section boxes.
         page_dimensions: Page dimensions keyed by ``LabelBox.page_index``.
 
@@ -153,6 +156,7 @@ def build_supplement_section_annotation_task(
             are invalid.
     """
     _validate_owner_subject_hash(owner_subject_hash)
+    _validate_annotation_source(media_object_id, learning_image_object_id)
     label_snapshot = build_supplement_section_yolo_label_snapshot(
         layout,
         page_dimensions=page_dimensions,
@@ -161,6 +165,7 @@ def build_supplement_section_annotation_task(
     return AnnotationTask(
         owner_subject_hash=owner_subject_hash,
         media_object_id=media_object_id,
+        learning_image_object_id=learning_image_object_id,
         task_type=SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE,
         status="pending",
         assignee_role=SUPPLEMENT_SECTION_ANNOTATION_ASSIGNEE_ROLE,
@@ -191,6 +196,18 @@ def _validate_owner_subject_hash(owner_subject_hash: str) -> None:
     """Validate a privacy-preserving owner hash without accepting raw subjects."""
     if not SHA256_HEX_PATTERN.fullmatch(owner_subject_hash):
         raise SupplementSectionLabelCandidateError("Owner subject hash must be SHA-256 hex.")
+
+
+def _validate_annotation_source(
+    media_object_id: UUID | None,
+    learning_image_object_id: UUID | None,
+) -> None:
+    """Require one unambiguous retained image source for human review."""
+    source_count = int(media_object_id is not None) + int(learning_image_object_id is not None)
+    if source_count != 1:
+        raise SupplementSectionLabelCandidateError(
+            "Exactly one annotation source id is required."
+        )
 
 
 def _section_boxes_by_page(section: LabelSection) -> list[LabelBox]:
