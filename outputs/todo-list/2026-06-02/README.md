@@ -115,6 +115,14 @@
   - `AnnotationTask.learning_image_object_id` migration/ORM/service 연결 구현 요약
   - learning consent가 열린 경우에만 OCR layout 후보를 pending review task로 enqueue하고 중복 task를 막는 기준 정리
 
+- `2026-06-02-current-session-status-and-publish.md`
+  - 현재 섹션에서 완료한 OCR/YOLO/Ollama/AnnotationTask 작업과 GitHub 게시 상태 정리
+  - 이번 문서 커밋에서 제외해야 할 untracked 항목과 검증 기록 정리
+
+- `2026-06-02-next-work-todo.md`
+  - accepted `AnnotationTask`를 `LearningDatasetItem`으로 승격하는 다음 구현 TODO 정리
+  - human-reviewed bbox, YOLO26 학습, crop OCR, Gemma/Ollama verification, 모바일 UI 후속 작업 정리
+
 ---
 
 ## 현재 핵심 상태
