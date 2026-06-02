@@ -83,6 +83,14 @@
   - supplement section YOLO export artifact와 operator-only source map을 실제 Ultralytics image/label 디렉터리로 변환하는 작업 요약
   - source ref/path를 stdout에 노출하지 않고 생성 후 validator를 통과시키는 기준 정리
 
+- `2026-06-02-current-ocr-yolo-training-pipeline-handoff.md`
+  - OCR 주의사항 누락 보완부터 supplement section YOLO dataset/export/materializer까지 현재 섹션 전체 흐름 요약
+  - 다음 섹션에서 이어갈 human-reviewed bbox annotation, YOLO26 학습, crop OCR, Gemma verification blocker 정리
+
+- `2026-06-02-github-branch-publish-log.md`
+  - 현재 브랜치, team remote, 이미 push된 commit, 이번 문서 커밋 대상과 제외 파일 기준 정리
+  - GitHub push 전후 확인해야 할 명령과 privacy/Git 규칙 정리
+
 ---
 
 ## 현재 핵심 상태
@@ -115,3 +123,5 @@
 - 숫자 class id만 있는 bbox나 `supplement_label` 전체 라벨 bbox는 section detector 학습 입력으로 거부된다.
 - `materialize_supplement_section_yolo_dataset.py`를 추가해 export artifact를 `processed/section_yolo/images|labels` 구조로 생성하는 trusted worker 단계를 붙였다.
 - materializer는 생성 후 dataset validator의 file-level 검증을 수행하며, stdout에는 source ref/source path/raw label row를 노출하지 않는다.
+- 현재까지의 YOLO26 섹션 detector 작업은 training-ready data pipeline 계약까지이며, 실제 detector 학습 완료 상태는 아니다.
+- 다음 단계는 human-reviewed section bbox annotation과 operator-only source map을 준비한 뒤 실제 dataset materialize, `--require-files` 검증, YOLO26 custom 학습, crop OCR, Ollama/Gemma verification 순서로 진행한다.
