@@ -25,6 +25,11 @@ ocr-local = [
     "paddleocr>=3.6,<3.7",
 ]
 
+[tool.setuptools.packages.find]
+where = ["Nutrition-backend"]
+include = ["src*"]
+namespaces = false
+
 [tool.black]
 line-length = 100
 target-version = ["py313"]

@@ -29,9 +29,9 @@ class YoloRegionRunner(Protocol):
 class YoloLabelDetector(VisionAdapter):
     """YOLO detector entry point for gated ROI-only object detection.
 
-    The detector returns only bottle, label, or blister-pack bounding boxes for OCR
-    preprocessing. It must not return or infer product names, ingredients, amounts,
-    dosage, health effects, or risk judgments.
+    The detector returns only configured supplement object or label-section bounding
+    boxes for OCR preprocessing. It must not return or infer product names,
+    ingredients, amounts, dosage, health effects, or risk judgments.
     """
 
     def __init__(

@@ -92,6 +92,8 @@
 
 이번 구현으로 backend는 custom YOLO section detector가 `precautions`, `intake_method`, `supplement_facts` 같은 class를 반환할 때 해당 영역을 OCR로 넘길 준비가 됐다.
 
+추가로 `backend/pyproject.toml`의 setuptools package discovery를 `Nutrition-backend/src`의 `src*` 패키지로 고정해 `pip install '.[vision]'`가 flat-layout package 탐색에서 실패하지 않도록 정리했다. backend vision extra 설치 후 `torch`, `ultralytics`, `cv2` import와 공식 YOLO26n 모델 로드 smoke를 통과했다.
+
 다만 실제 이미지에서 주의사항을 자동 검출하려면 다음 조건이 필요하다.
 
 - backend venv에 `ultralytics`, `torch`, OpenCV 계열 runtime 설치

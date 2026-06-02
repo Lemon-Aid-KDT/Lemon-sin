@@ -129,6 +129,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.multimodal_verification_sample_rate == 0.0
     assert settings.multimodal_verification_threshold == 0.80
     assert settings.enable_vision_classifier is False
+    assert settings.vision_classifier_model == "yolo26n.pt"
     assert settings.enable_food_yolo_detector is False
     assert settings.meal_yolo_model_path is None
     assert settings.meal_yolo_model_label == "food_yolo_local"

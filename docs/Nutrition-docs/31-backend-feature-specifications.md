@@ -274,13 +274,13 @@ backend/src/  (98개 .py)
 
 ### 6.2 YOLO 검출기 (`yolo.py` + `ultralytics_runner.py`)
 
-**기능**: pretrained YOLOv8n 으로 영양제 병/라벨/블리스터팩 ROI 검출.
+**기능**: pretrained YOLO26n 으로 영양제 병/라벨/블리스터팩/섹션 ROI runner smoke를 확인하고, 운영 품질은 custom section model로 검증.
 
 **기술 스택**: Ultralytics YOLO (선택 의존성 `pip install ".[vision]"`), Pillow 디코딩.
 
 **구현 결정**:
-- 기본 모델 `vision_classifier_model="yolov8n.pt"` (~6MB, COCO pretrained) — MacBook M4 Pro 24GB 환경 메모리 부담 최소화.
-- 허용 클래스를 `VisionLabel` enum 으로 제한(`SUPPLEMENT_BOTTLE`, `SUPPLEMENT_LABEL`, `BLISTER_PACK`) — 의료 클래스 출력 금지.
+- 기본 모델 `vision_classifier_model="yolo26n.pt"` (COCO pretrained) — YOLO26 runtime smoke 기준. 단, 성분표/주의사항 섹션 검출은 custom section weight가 필요하다.
+- 허용 클래스를 `VisionLabel` enum 으로 제한(`SUPPLEMENT_FACTS`, `PRECAUTIONS`, `INTAKE_METHOD`, `INGREDIENTS`, `SUPPLEMENT_LABEL`, `SUPPLEMENT_BOTTLE`, `BLISTER_PACK`) — 의료 클래스 출력 금지.
 - `YoloRegionRunner` Protocol 로 추론 부분을 분리 → 테스트 시 mock runner 주입 가능.
 - 두 단계 게이트: (1) `enable_vision_classifier=true` (2) `.[vision]` extras 설치 — 둘 다 만족하지 않으면 즉시 실패.
 
@@ -290,7 +290,7 @@ backend/src/  (98개 .py)
 
 **기능**: 허용된 비의료 라벨 enum + alias 매핑 + 우선순위.
 
-**구현 결정**: `VISION_DETECTION_LABELS` frozenset 으로 화이트리스트 강제. 별칭(`"bottle"` → `SUPPLEMENT_BOTTLE`) 매핑으로 모델 출력 정규화. `VISION_ROI_LABEL_PRIORITY` 로 라벨>병>블리스터 순으로 ROI 선택.
+**구현 결정**: `VISION_DETECTION_LABELS` frozenset 으로 화이트리스트 강제. 별칭(`"bottle"` → `SUPPLEMENT_BOTTLE`, `"warning"` → `PRECAUTIONS`) 매핑으로 모델 출력 정규화. `VISION_ROI_LABEL_PRIORITY` 로 성분표>주의사항>섭취방법>원재료>라벨>병>블리스터 순으로 ROI 선택.
 
 ---
 

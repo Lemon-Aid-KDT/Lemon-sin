@@ -10,7 +10,7 @@
 
 - 주 경로는 계속 `OCR text -> structured supplement parse -> user confirmation`이다.
 - Ollama multimodal은 OCR이 실패하거나 confidence가 낮을 때만 **visible text 후보 추출**에 사용한다.
-- YOLO는 영양제 병, 라벨, 블리스터 같은 **영역 탐지(ROI)** 보조에만 사용한다.
+- YOLO는 영양제 병, 라벨, 성분표, 섭취방법, 주의사항 같은 **영역 탐지(ROI)** 보조에만 사용한다.
 - YOLO 결과를 제품명, 성분명, 함량, 복용법 추출의 주 근거로 사용하지 않는다.
 - 모든 결과는 사용자 확인 전 preview이며, 원본 이미지와 raw OCR/model response는 기본 저장하지 않는다.
 
@@ -27,7 +27,7 @@
 | LLM base | `backend/src/llm/base.py` | multimodal method는 계약만 있고 런타임 미연결 |
 | Vision contract | `backend/src/vision/base.py` | `BoundingBox`, `VisionAdapter.detect_label_region()` 계약 |
 | YOLO ROI helper | `backend/src/vision/yolo.py`, `backend/src/vision/ultralytics_runner.py` | gated ROI-only helper 구현. optional Ultralytics runtime은 lazy-load |
-| Config flags | `backend/src/config.py` | `enable_multimodal_llm=false`, `enable_vision_classifier=false`, `vision_classifier_model="yolov8n.pt"` |
+| Config flags | `backend/src/config.py` | `enable_multimodal_llm=false`, `enable_vision_classifier=false`, `vision_classifier_model="yolo26n.pt"` |
 
 중요한 현재 제약:
 
@@ -177,9 +177,9 @@ backend/src/vision/
 
 - `ultralytics` import는 `enable_vision_classifier=true`일 때 실제 runner 초기화 시점에만 한다.
 - production에서는 모델 자동 다운로드를 허용하지 않는다. 모델 파일 경로, checksum, license 검토 기록을 게이트 #2 산출물로 고정한다.
-- pretrained COCO `yolov8n.pt`는 bottle/label/blister custom class를 바로 제공하지 않는다. 1차 PoC에서는 import/runner 구조와 fake runner test를 먼저 만들고, custom dataset이 준비된 뒤 fine-tuned weight를 붙인다.
+- pretrained COCO `yolo26n.pt`는 supplement facts/precautions/intake method custom class를 바로 제공하지 않는다. 1차 PoC에서는 import/runner 구조와 fake runner test를 먼저 만들고, custom dataset이 준비된 뒤 fine-tuned weight를 붙인다.
 - bbox는 이미지 경계 안으로 clamp한다.
-- 여러 box가 나오면 우선순위는 `supplement_label` > `supplement_bottle` > `blister_pack`이다.
+- 여러 box가 나오면 우선순위는 `supplement_facts` > `precautions` > `intake_method` > `ingredients` > `supplement_label` > `supplement_bottle` > `blister_pack`이다.
 - ROI confidence가 기준 미만이면 OCR full image path로 fallback한다.
 
 ### 7.2 YOLO가 반환하면 안 되는 것
@@ -296,7 +296,7 @@ Ollama vision assist는 OCR이 실패했을 때 "보이는 텍스트 후보"를 
 | `enable_multimodal_llm` | `false` | 게이트 #1 통과 | OCR 실패/저신뢰 fallback만 허용 |
 | `ollama_vision_model` | `gemma4:e4b` | local model readiness 통과 | 공식 tag 가용성 단정 금지 |
 | `enable_vision_classifier` | `false` | 게이트 #2 통과 | YOLO ROI 보조만 허용 |
-| `vision_classifier_model` | `yolov8n.pt` | 검증된 local weight path 또는 tag | production 자동 다운로드 금지 |
+| `vision_classifier_model` | `yolo26n.pt` | 검증된 local weight path 또는 tag | production 자동 다운로드 금지 |
 | `image_retention_days` | `0` | 학습 동의 전 즉시 삭제 | 실험에서도 raw image 저장 금지 |
 
 추가 설정 후보:

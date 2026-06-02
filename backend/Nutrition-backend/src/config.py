@@ -471,7 +471,7 @@ class Settings(BaseSettings):
         default=False,
         description="라벨 영역 검출용 YOLO 어댑터 활성화. docs/17 §9 게이트 #2 필요.",
     )
-    vision_classifier_model: str = Field(default="yolov8n.pt")
+    vision_classifier_model: str = Field(default="yolo26n.pt")
     ocr_roi_preprocessing_policy: Literal[
         "disabled",
         "detect_only",

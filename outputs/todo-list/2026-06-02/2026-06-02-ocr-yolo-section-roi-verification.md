@@ -19,6 +19,7 @@
 이번 커밋 포함 대상:
 
 - `backend/Nutrition-backend/src/config.py`
+- `backend/pyproject.toml`
 - `backend/Nutrition-backend/src/services/supplement_image_analysis.py`
 - `backend/Nutrition-backend/src/services/supplement_parser.py`
 - `backend/Nutrition-backend/src/vision/taxonomy.py`
@@ -127,24 +128,41 @@ detect-secrets: results {}
 
 ## 4. 실제 YOLO runtime 검증 상태
 
-실제 Ultralytics runtime smoke는 아직 완료하지 못했다.
+실제 Ultralytics runtime smoke는 완료했다.
 
 확인한 현재 상태:
 
-- backend `.venv`에 `ultralytics`, `torch`, `cv2`가 설치되어 있지 않음
+- backend `.venv`에 `setuptools`, `wheel`, `torch`, `ultralytics`, `opencv-python` 설치 완료
+- import smoke 결과: `torch 2.12.0`, `ultralytics 8.4.60`, `cv2 4.13.0`
+- 공식 YOLO26 모델명 `yolo26n.pt` 로드 및 blank image inference 성공
+- 기존 food YOLO `.pt` weight 로딩 성공, class count 50 확인
 - repo 안에서 영양제 섹션 detector로 보이는 `.pt` weight를 찾지 못함
 - 확인된 `.pt` weight는 음식 YOLO 실험 weight뿐임
 
-`backend`에서 `.venv/bin/python -m pip install '.[vision]'`을 시도했지만, 의존성 설치 전 packaging 단계에서 실패했다.
+`backend`에서 `.venv/bin/python -m pip install '.[vision]'`은 최초에 의존성 설치 전 packaging 단계에서 실패했다.
 
 ```text
 Multiple top-level packages discovered in a flat-layout: ['alembic', 'ai_agent_chat'].
 ```
 
-따라서 다음 단계는 둘 중 하나로 분리해야 한다.
+원인은 `backend/pyproject.toml`에 setuptools package discovery 설정이 없어 `backend` 루트의 여러 top-level 폴더가 자동 탐색된 것이었다. `Nutrition-backend/src` 아래 `src*` 패키지만 찾도록 설정한 뒤 다음 검증을 통과했다.
 
-1. `backend/pyproject.toml`의 package discovery를 명시적으로 정리한 뒤 `.[vision]` 설치를 복구한다.
-2. runtime 검증용으로 `torch`, `ultralytics`를 직접 설치하고 custom supplement section `.pt` 모델 경로를 지정한다.
+```text
+.venv/bin/python -m pip install --dry-run --no-deps --no-build-isolation '.[vision]'
+Would install lemon-healthcare-backend-0.1.0
+```
+
+```text
+.venv/bin/python -m pip install '.[vision]'
+Successfully installed ... torch-2.12.0 ... ultralytics-8.4.60 ...
+```
+
+공식 문서 기준:
+
+- Ultralytics YOLO26 model usage: <https://docs.ultralytics.com/models/yolo26/>
+- Ultralytics Predict mode: <https://docs.ultralytics.com/modes/predict/>
+
+주의: `yolo26n.pt`는 COCO pretrained 모델이므로 영양제 `precautions`, `supplement_facts`, `intake_method` 섹션을 자동으로 검출한다고 볼 수 없다. 실제 주의사항 OCR 개선 완료 판정에는 custom supplement section `.pt` 모델이 필요하다.
 
 ---
 

@@ -126,7 +126,7 @@
 | --- | --- | --- | --- |
 | `enable_multimodal_llm` | `false` | 게이트 #1 통과 | 기능 B(Gemma 4 보조 채널) |
 | `enable_vision_classifier` | `false` | 게이트 #2 통과 | 기능 A(YOLO 라벨 검출) |
-| `vision_classifier_model` | `"yolov8n.pt"` | `enable_vision_classifier` 와 동시 운용 | 기능 A YOLO 모델 태그 |
+| `vision_classifier_model` | `"yolo26n.pt"` | `enable_vision_classifier` 와 동시 운용 | 기능 A YOLO 모델 태그 |
 | `enable_image_learning_pipeline` | `false` | 게이트 #3 통과 + 동의 UI 출시 | 기능 C(학습 적재) |
 | `enable_pgvector_storage` | `false` | 게이트 #3 통과 | 기능 C 부속 인프라 |
 | `embedding_model` | `"clip-ViT-B-32"` | `enable_image_learning_pipeline` 와 동시 운용 | 기능 C 임베딩 모델 태그 |
