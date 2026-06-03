@@ -33,5 +33,21 @@
 - `*.npy`만 매칭 → 이미지(.jpg/.png)·라벨(.txt)·모델(.pt) 영향 없음 ✅
 - exp12는 train 캐싱 비활성(디스크부족 자동감지) → 삭제와 무관 ✅
 
+## .npy 정체 실증 (삭제 안전성 근거)
+직접 열어 확인한 결과 — **모든 .npy는 `cache=disk` 이미지 캐시**:
+- 위치: 전부 `images/` 폴더 (`taxo59_bal500` 기준 32,770개 전부, 다른 폴더 0)
+- 내용: `shape=(640,640,3) uint8` = 640×640으로 디코딩·리사이즈된 이미지 배열
+- 대응: 모든 .npy에 짝 `.jpg` 존재 (샘플 500개 중 누락 0)
+- **결정적**: `np.load(.npy) == cv2.imread(.jpg)` (원본 BGR과 byte 단위 완전 일치)
+- → 고유 데이터 0. 원본 `.jpg`에서 다음 `cache=disk` 학습 시 **자동 재생성**. 삭제 시 손실 전무.
+
 ## 사용 명령 (사용자 직접 실행)
-(아래 본문 명령 참조 — dry-run 후 삭제)
+```powershell
+$base = "C:\Lemon-sin\data\food_images\processed"
+@("aihub_yolo_50","aihub_yolo_50_balanced_500","aihub_yolo_50_minority_aug_train500_val100",
+  "aihub_yolo_50_minority_dup_train500_val100","aihub_yolo_taxo63_bal500",
+  "aihub_yolo_taxo62_bal500","aihub_yolo_taxo59_bal500") |
+  ForEach-Object { cmd /c "del /f /q /s `"$base\$_\*.npy`"" }
+"여유: {0:N1}GB" -f ((Get-PSDrive C).Free/1GB)
+```
+dry-run 검증(2026-06-03): 삭제 .npy 318,140개(~364GB) / 비-npy(이미지·라벨) 전부 보존 / 보존데이터셋 5개 미포함 확인.
