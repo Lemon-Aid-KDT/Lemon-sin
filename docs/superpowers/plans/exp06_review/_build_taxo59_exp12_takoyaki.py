@@ -21,7 +21,9 @@ SRC = Path(r"C:\Lemon-sin\data\food_images\processed\aihub_yolo_taxo59_bal1500")
 DST = Path(r"C:\Lemon-sin\data\food_images\processed\aihub_yolo_taxo59_exp12_takoyaki")
 SS = Path(r"C:\Lemon-sin\data\food_images\raw\selectstar\takoyaki\png")
 WEIGHTS = r"C:\Lemon-sin\runs\food_yolo\exp11_yolo26s_taxo59bal1500_pc1_s42_b16_w8_cache_disk_det_true\weights\best.pt"
-ADD_MAX = 1090  # 410 + 1090 = 1500 (cap1500 유지)
+ADD_MAX = 900  # train에 추가(410+900=1310). 나머지 selectstar는 held-out test로 reserve.
+HELDOUT = 200  # selectstar[900:900+200] = 평가용 held-out (train 미사용)
+TEST_MANIFEST = Path(r"C:\Lemon-sin\docs\superpowers\plans\exp06_review\exp12_takoyaki_heldout_test.txt")
 
 
 def hardlink_split(split: str) -> int:
@@ -45,13 +47,19 @@ def main() -> None:
     names = names if isinstance(names, list) else [names[i] for i in sorted(names)]
     tidx = names.index("takoyaki")
 
+    if DST.exists():
+        shutil.rmtree(DST)  # clean 재빌드 (이전 1090 버전 제거)
     tr = hardlink_split("train")
     va = hardlink_split("val")
     print(f"하드링크: train {tr} / val {va}")
 
     # takoyaki selectstar 라벨 생성 + 추가
     m = YOLO(WEIGHTS)
-    imgs = [p for p in sorted(glob.glob(str(SS / "*.png"))) if "._" not in os.path.basename(p)][:ADD_MAX]
+    allimgs = [p for p in sorted(glob.glob(str(SS / "*.png"))) if "._" not in os.path.basename(p)]
+    imgs = allimgs[:ADD_MAX]
+    heldout = allimgs[ADD_MAX:ADD_MAX + HELDOUT]
+    TEST_MANIFEST.write_text("\n".join(heldout) + "\n", encoding="utf-8")
+    print(f"held-out test: {len(heldout)}장 → {TEST_MANIFEST.name} (train 미사용)")
     det = fb = 0
     for i, p in enumerate(imgs):
         im = cv2.imread(p)
