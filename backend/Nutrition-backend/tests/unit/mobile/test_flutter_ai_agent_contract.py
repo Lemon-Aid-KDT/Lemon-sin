@@ -350,9 +350,20 @@ def test_flutter_chat_mvp_uses_safe_contract_and_navigation() -> None:
     assert "class ChatTurn" in models
     assert "class ChatbotRequest" in models
     assert "class ChatbotResponse" in models
+    assert "class ChatbotSource" in models
     assert "requires_user_approval" in models
     assert "source_families" in models
     assert "sourceFamilies" in models
+    assert "answerability" in models
+    assert "final String answerability" in models
+    assert "final List<ChatbotSource> sources" in models
+    assert "source_id" in models
+    assert "version_label" in models
+    assert "expires_at" in models
+    assert "source_url" in models
+    assert "boundary_code" in models
+    assert "boundaryCode" in models
+    assert "hasReviewedSources" in models
     assert "usedAgentMemory" in models
     assert "/api/v1/ai-agent/chat" in repository
     assert "grantSensitiveHealthAnalysisConsent" in repository
@@ -360,14 +371,52 @@ def test_flutter_chat_mvp_uses_safe_contract_and_navigation() -> None:
     assert "IconButton" in screen
     assert "provider" in screen
     assert "memory" in screen
+    assert "answerability" in screen
+    assert "_answerabilityLabel" in screen
     assert "sourceFamilies" in screen
+    assert "hasReviewedSources" in screen
+    assert "_SourceBasisPanel" in screen
+    assert "검수 근거" in screen
+    assert "_sourceLabel" in screen
     assert "_sourceFamilyLabel" in screen
+    assert "boundaryCode" in screen
     assert "nutrition_reference" in screen
     assert "영양 기준" in screen
     assert "supplement_reference" in screen
     assert "영양제 참고" in screen
     assert "MedicalDisclaimer" in screen
     assert "error.toString()" not in screen
+
+
+def test_flutter_chat_cta_contract_is_wired_without_direct_checklist_save() -> None:
+    """Verify chatbot CTA values are parsed and checklist CTA opens edit UI first."""
+    models = (
+        APP_ROOT
+        / "lib"
+        / "features"
+        / "chat"
+        / "domain"
+        / "chat_models.dart"
+    ).read_text(encoding="utf-8")
+    screen = (
+        APP_ROOT / "lib" / "features" / "chat" / "presentation" / "chat_screen.dart"
+    ).read_text(encoding="utf-8")
+
+    assert "enum ChatbotCta" in models
+    assert "ctas" in models
+    assert "take(2)" in models
+    assert "hasCtas" in models
+    assert "complete_missing_record" in models
+    assert "run_or_refresh_analysis" in models
+    assert "add_checklist_item" in models
+    assert "ask_about_this_result" in models
+    assert "_ChatCtaPanel" in screen
+    assert "showModalBottomSheet" in screen
+    assert "addChecklistItem" in screen
+    assert "체크리스트 편집" in screen
+    assert "바로 저장하지 않고" in screen
+    assert "runOrRefreshAnalysis" in screen
+    assert "askAboutThisResult" in screen
 
 
 def test_flutter_food_capture_collects_confirmed_input_without_nutrient_guessing() -> None:

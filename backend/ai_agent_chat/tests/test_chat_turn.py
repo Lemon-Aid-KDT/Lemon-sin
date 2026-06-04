@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lemon_ai_agent.chat_session import ChatbotRequest
+from lemon_ai_agent.chat_session import ChatbotRequest, ChatTurn
 from lemon_ai_agent.chat_turn import ChatTurnModule
 
 
@@ -48,7 +48,7 @@ def test_chat_turn_marks_unknown_when_no_reviewed_answer_card_exists() -> None:
         ChatbotRequest(
             request_id="chat-turn-unknown",
             user_id="local-dev-user",
-            message="리튬 약을 먹는데 셀레늄 영양제 같이 먹어도 돼?",
+            message="리튬 약과 타우린 영양제 같이 먹어도 돼?",
         )
     )
 
@@ -56,3 +56,31 @@ def test_chat_turn_marks_unknown_when_no_reviewed_answer_card_exists() -> None:
     assert turn.answer_cards == ()
     assert turn.retrieval_status == "no_match"
     assert turn.requires_boundary_response is False
+
+
+def test_chat_turn_uses_recent_user_turn_for_brief_follow_up() -> None:
+    """Short follow-up questions should keep the prior user topic for planning."""
+    turn = ChatTurnModule().plan(
+        ChatbotRequest(
+            request_id="chat-turn-follow-up",
+            user_id="local-dev-user",
+            message="그럼 저녁은?",
+            conversation=[
+                ChatTurn(
+                    role="user",
+                    content="고혈압이 있는데 점심에 라면을 먹었어. 나트륨이 걱정돼.",
+                    created_at="2026-06-01T12:30:00+09:00",
+                ),
+                ChatTurn(
+                    role="assistant",
+                    content="다음 끼니에서 국물과 짠 반찬을 줄이는 쪽으로 보세요.",
+                    created_at="2026-06-01T12:31:00+09:00",
+                ),
+            ],
+        )
+    )
+
+    assert turn.policy.category in {"nutrition_analysis", "chronic_condition_context"}
+    assert turn.analysis.primary_intent == "meal"
+    assert turn.analysis.related_conditions == ("hypertension",)
+    assert any(card.topic == "sodium_dinner_adjustment" for card in turn.answer_cards)

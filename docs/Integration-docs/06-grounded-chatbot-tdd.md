@@ -1,4 +1,4 @@
-# 06. 근거 기반 동적 답변 카드 챗봇 TDD
+# 06. 근거 기반 동적 답변 프레임 챗봇 TDD
 
 > Status: technical design draft
 > 작성일: 2026-05-29
@@ -8,8 +8,13 @@
 
 ## 1. 목표 아키텍처
 
-목표는 수동 카드 몇 개를 늘리는 것이 아니라, 모든 사용자-facing 답변을 같은
-grounding pipeline으로 통과시키는 것이다.
+목표는 수동 질문 카드를 몇 개 늘리는 것이 아니라, 모든 사용자-facing 건강 답변을
+같은 grounding pipeline으로 통과시키는 것이다.
+
+이 문서에서 `AnswerCard`는 제품 관점의 수동 FAQ 카드가 아니다. 검색된 reviewed
+source/evidence를 LLM 입력과 deterministic fallback에 쓰기 위해 정리한 내부 답변
+프레임이다. 수동 seed는 초기 품질 기준과 golden test를 고정하기 위한 부트스트랩이며,
+장기 coverage mechanism은 reviewed evidence retrieval과 `AnswerCardNormalizer`다.
 
 ```text
 ChatbotRequest
@@ -37,7 +42,7 @@ ChatbotRequest
 현재 구현에 이미 있는 것:
 
 - `ChatTurnModule`이 policy, intent analysis, knowledge item을 묶는다.
-- `MedicalKnowledgeItem`이 카드형 필드를 일부 갖는다.
+- `MedicalKnowledgeItem`이 내부 답변 프레임용 필드를 일부 갖는다.
 - `policy_for_question()`과 `analyze_chat_intent()`가 질문을 분류한다.
 - `ChatbotAgent`가 LLM 응답을 SafetyEnvelope로 검증하고 fallback한다.
 - `SafetyGuard`가 금지 표현, unsupported fact, unsupported numeric claim을 차단한다.
@@ -47,10 +52,10 @@ ChatbotRequest
 
 - `select_medical_knowledge()`가 정적 `MEDICAL_KNOWLEDGE_ITEMS`를 순회한다.
 - reviewed source DB나 chunk retrieval이 chat answer path에 직접 연결되어 있지 않다.
-- 검색 결과를 답변 카드로 정규화하는 계층이 없다.
+- 검색 결과를 내부 답변 프레임으로 정규화하는 계층이 없다.
 - reviewed source가 없는 질문을 `unknown_no_reviewed_source`로 fail-closed하는 계약이
   약하다.
-- manual card가 seed인지 coverage mechanism인지 코드 경계가 명확하지 않다.
+- manual seed가 부트스트랩인지 coverage mechanism인지 코드 경계가 명확하지 않다.
 
 ## 3. 핵심 타입
 
@@ -93,8 +98,8 @@ class AnswerCard:
     grounding_snippet_ids: tuple[str, ...]
 ```
 
-`MedicalKnowledgeItem`은 v1 migration 동안 seed card alias로 유지할 수 있다. 최종
-runtime에서는 `AnswerCard`를 표준 입력으로 사용한다.
+`MedicalKnowledgeItem`은 v1 migration 동안 seed evidence alias로 유지할 수 있다. 최종
+runtime에서는 내부 답변 프레임인 `AnswerCard`를 표준 입력으로 사용한다.
 
 ### `KnowledgeRetrievalResult`
 
@@ -186,7 +191,7 @@ MVP에서는 BM25/vector 없이도 아래 순서로 시작할 수 있다.
 
 ## 6. AnswerCardNormalizer 설계
 
-Normalizer는 retrieval record를 사용자 답변용 카드로 바꾼다.
+Normalizer는 retrieval record를 사용자 답변용 내부 답변 프레임으로 바꾼다.
 
 입력 후보:
 
@@ -216,7 +221,7 @@ Normalizer는 retrieval record를 사용자 답변용 카드로 바꾼다.
 - topic이 질문과 낮은 관련도
 - 금지 표현이 allowed guidance에 섞임
 
-실패하면 카드를 버리고 retrieval warning을 남긴다.
+실패하면 해당 후보를 버리고 retrieval warning을 남긴다.
 
 ## 7. ChatbotAgent 변경
 
@@ -228,7 +233,7 @@ Normalizer는 retrieval record를 사용자 답변용 카드로 바꾼다.
 2. `urgent_escalation`과 `medical_decision_boundary`는 deterministic boundary renderer로
    즉시 종료한다.
 3. `unknown_no_reviewed_source`는 unknown renderer로 즉시 종료한다.
-4. answerable 계열은 LLM client가 있으면 card-only prompt를 만든다.
+4. answerable 계열은 LLM client가 있으면 `AnswerCard` only prompt를 만든다.
 5. LLM 출력이 shape/detail/safety 검증을 통과하지 못하면 card renderer fallback으로
    내려간다.
 6. fallback은 일반론이 아니라 카드의 examples/checklist/caution을 사용한다.
@@ -274,7 +279,7 @@ LLM 없이 응급/의료 결정 경계 답변을 만든다.
 - 금지: "혈압약과 함께 먹어도 됩니다."
 - 금지: "혈압약을 줄이세요."
 - 금지: "라면은 절대 먹지 마세요."
-- 금지: reviewed card에 없는 새 용량, 혈압, 검사수치 기준
+- 금지: reviewed `AnswerCard`에 없는 새 용량, 혈압, 검사수치 기준
 
 Grounding check:
 
@@ -324,10 +329,10 @@ Grounding check:
   - registry fallback은 local/dev에서만 허용
 
 - `test_chatbot_agent.py`
-  - card-present 질문은 구체 답변
-  - no-card 질문은 unknown
+  - reviewed `AnswerCard`가 있는 질문은 구체 답변
+  - reviewed `AnswerCard`가 없는 질문은 unknown
   - P0/응급은 LLM 미호출
-  - LLM이 카드 밖 사실을 만들면 fallback
+  - LLM이 `AnswerCard` 밖 사실을 만들면 fallback
 
 - `test_safety_guard.py`
   - 좋은 caution 문구는 허용
@@ -360,22 +365,22 @@ Grounding check:
 
 ## 12. Migration Plan
 
-1. 현 수동 `MedicalKnowledgeItem`을 `AnswerCard` seed adapter로 감싼다.
+1. 현 seed `MedicalKnowledgeItem`을 `AnswerCard` seed adapter로 감싼다.
 2. `Answerability`와 unknown response contract를 추가한다.
 3. `AnswerCardNormalizer`와 테스트를 만든다.
 4. registry-backed retriever를 먼저 만든다.
 5. `medical_source_readiness`와 DB-backed source governance를 chat path에 연결한다.
 6. production-like path에서 reviewed source 없으면 fail-closed한다.
-7. `ChatbotAgent` prompt/fallback을 card-only로 바꾼다.
+7. `ChatbotAgent` prompt/fallback을 `AnswerCard` only로 바꾼다.
 8. API response에 source detail과 answerability를 추가한다.
 9. golden/API/safety 테스트를 확장한다.
 10. 그 다음 `medical_rag_chunks`/vector retrieval을 별도 PR로 붙인다.
 
 ## 13. Completion Criteria
 
-- 모든 사용자-facing 건강 답변이 `AnswerCard` 또는 boundary renderer에서 생성된다.
+- 모든 사용자-facing 건강 답변이 `AnswerCard`, boundary renderer, unknown renderer 중 하나에서 생성된다.
 - reviewed source 없는 질문은 LLM 일반 지식으로 답하지 않는다.
 - route-level integration test가 answerability, source metadata, consent, safety boundary를
   함께 검증한다.
-- manual card는 seed/golden fixture로만 남고, 새 coverage는 retriever+normalizer+reviewed
+- manual seed는 seed/golden fixture로만 남고, 새 coverage는 retriever+normalizer+reviewed
   evidence update로 확장된다.

@@ -1,4 +1,4 @@
-# 08. 근거 기반 동적 답변 카드 챗봇 TRD
+# 08. 근거 기반 동적 답변 프레임 챗봇 TRD
 
 > Status: technical requirements draft
 > 작성일: 2026-05-29
@@ -16,7 +16,8 @@
 핵심 목표:
 
 - 모든 사용자-facing 건강 답변은 검수된 지식 또는 boundary renderer에서 생성한다.
-- 수동 카드 몇 개가 아니라, 검색된 검수 지식을 표준 `AnswerCard`로 정규화해 답한다.
+- 수동 질문 카드 몇 개가 아니라, 검색된 검수 지식을 표준 내부 답변 프레임인 `AnswerCard`로
+  정규화해 답한다.
 - 검수 지식이 없으면 LLM 일반 지식으로 채우지 않고 fail-closed unknown 응답을 낸다.
 - LLM은 문장 작성만 담당하고, 의료 사실 생성이나 개인 의료 판단을 하지 않는다.
 
@@ -25,13 +26,17 @@
 - `MUST`: 구현하지 않으면 PRD 목표 미달이다.
 - `SHOULD`: 기본 구현 기준이다. 예외가 있으면 PR 또는 설계 문서에 이유를 남긴다.
 - `MAY`: MVP 이후 확장 후보다.
+- `AnswerCard`: 질문별로 미리 만들어두는 수동 FAQ 카드가 아니다. 검색된 reviewed
+  evidence/source를 LLM 입력과 deterministic fallback에 쓰기 위해 정리한 내부 답변
+  프레임이다. 장기 목표는 manual seed를 늘리는 것이 아니라 reviewed knowledge를
+  검색하고 매번 `AnswerCard` shape로 동적 정규화하는 것이다.
 
 ## 3. 시스템 범위
 
 포함 범위:
 
 - `POST /api/v1/ai-agent/chat`
-- `backend/ai_agent_chat`의 질문 분류, retrieval, card normalization, rendering,
+- `backend/ai_agent_chat`의 질문 분류, retrieval, `AnswerCard` normalization, rendering,
   SafetyGuard, LLM prompt/fallback
 - `backend/Nutrition-backend`의 source readiness, DB-backed reviewed source 연결,
   API response contract
@@ -78,10 +83,10 @@
 - `test_medical_source_readiness.py`
 - `/api/v1/ai-agent/chat` unknown integration test
 
-### TRD-FR-003. AnswerCard 정규화
+### TRD-FR-003. 내부 답변 프레임 정규화
 
 - 검색 결과는 LLM prompt에 직접 들어가면 안 된다.
-- 모든 검색 결과는 `AnswerCard`로 정규화되어야 한다.
+- 모든 검색 결과는 내부 답변 프레임인 `AnswerCard`로 정규화되어야 한다.
 - `AnswerCard`는 최소한 아래 필드를 가져야 한다.
   - `card_id`
   - `answerability`
@@ -108,11 +113,11 @@
 - `test_answer_card_normalizer.py`
 - `test_medical_knowledge_registry.py`
 
-### TRD-FR-004. 카드 기반 답변 생성
+### TRD-FR-004. 내부 답변 프레임 기반 답변 생성
 
 - `answerable`과 `answerable_with_caution` 응답은 하나 이상의 `AnswerCard`에서
   생성되어야 한다.
-- deterministic fallback도 같은 `AnswerCard`를 사용해야 한다.
+- deterministic fallback도 같은 내부 답변 프레임인 `AnswerCard`를 사용해야 한다.
 - fallback은 "확인된 기록을 보세요" 수준의 일반 문구만 내면 안 된다.
 - 식사 질문은 카드의 `specific_examples`를 사용해 구체 음식/행동 후보를 포함해야 한다.
 - 약/영양제 caution 질문은 카드의 `checklist`와 `caution_conditions`를 사용해야 한다.
@@ -123,7 +128,7 @@
 
 ### TRD-FR-005. Unknown 응답
 
-- reviewed card가 없는 건강 질문은 LLM 일반 지식으로 답하면 안 된다.
+- reviewed `AnswerCard`가 없는 건강 질문은 LLM 일반 지식으로 답하면 안 된다.
 - unknown 응답은 사용자에게 "현재 검수된 지식 안에서 답할 수 없음"을 알려야 한다.
 - unknown 응답은 필요한 검수 지식, 사용자가 제공할 수 있는 정보, 낮은 위험도의 일반 행동만
   안내해야 한다.
@@ -154,7 +159,7 @@
 - LLM prompt에는 `AnswerCard` summary만 전달해야 한다.
 - LLM prompt에는 raw prompt, raw OCR, raw LLM output, internal trace, draft source,
   paper candidate, source registry 전체 dump를 넣으면 안 된다.
-- LLM system rule은 카드 밖 건강 사실 생성 금지, 개인 의료 결정 금지, unknown 시 답변
+- LLM system rule은 `AnswerCard` 밖 건강 사실 생성 금지, 개인 의료 결정 금지, unknown 시 답변
   생성 금지를 포함해야 한다.
 - LLM 출력이 required section, card specificity, safety 검증을 통과하지 못하면 fallback해야
   한다.
@@ -187,7 +192,7 @@
 
 - SafetyGuard는 진단, 치료, 처방, 복용량 변경, 안전성 단정, 절대 금지 표현을 차단해야
   한다.
-- 카드에 없는 수치 claim은 차단해야 한다.
+- `AnswerCard` 근거에 없는 수치 claim은 차단해야 한다.
 - `must_not_say`와 유사한 표현은 출력되면 안 된다.
 
 ### TRD-NFR-002. 추적성
@@ -198,7 +203,7 @@
 
 ### TRD-NFR-003. 최신성
 
-- stale source는 사용자-facing card로 만들면 안 된다.
+- stale source는 사용자-facing `AnswerCard`로 만들면 안 된다.
 - source expiry 기준은 DB-backed source governance 또는 registry metadata에서 판정해야
   한다.
 
@@ -247,7 +252,8 @@ evidence item은 최소한 아래 정보를 제공해야 한다.
 
 ### AnswerCard
 
-AnswerCard는 PRD 8장의 필드와 이 문서 TRD-FR-003을 따른다.
+AnswerCard는 PRD 8장의 필드와 이 문서 TRD-FR-003을 따른다. 이름은 card지만 제품
+관점에서는 수동 질문 카드가 아니라 동적으로 생성되는 grounded answer frame이다.
 
 ## 7. 모듈별 기술 요구사항
 
@@ -256,7 +262,7 @@ AnswerCard는 PRD 8장의 필드와 이 문서 TRD-FR-003을 따른다.
 | `ChatTurnModule` | 질문 분류, intent analysis, retrieval query 생성, answerability 결정 |
 | `MedicalKnowledgeRetriever` | reviewed/not stale/user-facing source만 검색 |
 | `AnswerCardNormalizer` | 검색 결과를 표준 AnswerCard로 변환, 부적격 후보 폐기 |
-| `ChatbotAgent` | card-only prompt, boundary/unknown/card renderer 선택 |
+| `ChatbotAgent` | `AnswerCard` only prompt, boundary/unknown/AnswerCard renderer 선택 |
 | `SafetyGuard` | 금지 표현, unsupported fact, unsupported numeric claim, card grounding 검증 |
 | `Nutrition-backend API route` | consent gate, response contract, raw/internal field 비노출 |
 | `medical_source_readiness` | DB-backed reviewed source readiness와 local/dev fallback 경계 |
@@ -270,13 +276,13 @@ urgent keyword/self-harm
 medical decision request or P0 interaction
   -> medical_decision_boundary
 
-answerable-looking question + reviewed cards found
+answerable-looking question + reviewed AnswerCards found
   -> answerable or answerable_with_caution
 
 answerable-looking question + missing required user info
   -> needs_more_info
 
-answerable-looking question + no reviewed cards
+answerable-looking question + no reviewed AnswerCards
   -> unknown_no_reviewed_source
 ```
 
@@ -306,7 +312,7 @@ answerable-looking question + no reviewed cards
 2. `AnswerCard` seed adapter와 normalizer를 만든다.
 3. registry-backed retriever를 붙이고 no reviewed source fail-closed를 구현한다.
 4. `ChatTurnModule`을 answerability/card 기반으로 재배선한다.
-5. `ChatbotAgent` prompt와 fallback을 card-only로 바꾼다.
+5. `ChatbotAgent` prompt와 fallback을 `AnswerCard` only로 바꾼다.
 6. SafetyGuard grounding을 `must_not_say`와 card numeric claim 기준으로 강화한다.
 7. API response에 additive source metadata를 추가한다.
 8. DB-backed reviewed source readiness와 production fail-closed를 연결한다.

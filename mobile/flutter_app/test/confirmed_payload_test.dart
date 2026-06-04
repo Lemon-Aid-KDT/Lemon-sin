@@ -155,7 +155,8 @@ void main() {
     );
     final Map<String, dynamic> payload =
         request.toJson()['payload'] as Map<String, dynamic>;
-    final List<dynamic> healthTrends = payload['health_trends'] as List<dynamic>;
+    final List<dynamic> healthTrends =
+        payload['health_trends'] as List<dynamic>;
 
     expect(healthTrends, hasLength(1));
     expect(healthTrends.first['metric'], 'activity_context');
@@ -172,7 +173,7 @@ void main() {
     expect(payload.toString().contains('blood_pressure'), isFalse);
   });
 
-  test('chatbot response parses source families', () {
+  test('chatbot response parses source families and ctas', () {
     final ChatbotResponse response = ChatbotResponse.fromJson(
       <String, dynamic>{
         'request_id': 'chat-response-1',
@@ -184,7 +185,24 @@ void main() {
           'supplement_reference',
           'nutrition_reference',
         ],
+        'sources': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'source_id': 'mfds-drug-safety',
+            'source_family': 'drug_safety_boundary',
+            'review_status': 'reviewed',
+            'version_label': '2026-05 MVP source registry',
+            'reviewed_at': '2026-05-29',
+            'expires_at': '2026-11-29',
+            'source_url': 'https://nedrug.mfds.go.kr',
+            'boundary_code': 'p0_grapefruit_statin',
+          },
+        ],
         'requires_user_approval': false,
+        'ctas': <String>[
+          'add_checklist_item',
+          'ask_about_this_result',
+          'unsupported_action',
+        ],
       },
     );
 
@@ -194,5 +212,11 @@ void main() {
       'supplement_reference',
       'nutrition_reference',
     ]);
+    expect(response.sources.single.boundaryCode, 'p0_grapefruit_statin');
+    expect(response.ctas, <ChatbotCta>[
+      ChatbotCta.addChecklistItem,
+      ChatbotCta.askAboutThisResult,
+    ]);
+    expect(response.hasCtas, isTrue);
   });
 }

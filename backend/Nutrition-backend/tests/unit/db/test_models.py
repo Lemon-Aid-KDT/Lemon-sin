@@ -16,18 +16,21 @@ from src.models.db import (
     ConsentPolicy,
     ConsentRecord,
     DeletionRequest,
+    FoodRecord,
     HealthDailySummary,
     HealthSyncBatch,
     ImageEmbeddingJob,
     ImageEmbeddingRecord,
     LabResultItem,
     LearningImageObject,
+    MedicalUnknownKnowledgeEvent,
     PrescriptionItem,
     RegulatedDocument,
     SupplementAnalysisRun,
     SupplementProduct,
     SupplementProductIngredient,
     User,
+    UserMedication,
     UserSupplement,
     UserSupplementIngredient,
 )
@@ -80,6 +83,109 @@ def test_user_constraints_are_named_for_alembic() -> None:
         "ck_users_height_cm_positive",
         "ck_users_base_weight_kg_positive",
     }.issubset(constraint_names)
+
+
+def test_user_medications_table_is_registered_with_privacy_safe_columns() -> None:
+    """Verify saved medication context stores structured current-user data only."""
+    table = cast(Table, UserMedication.__table__)
+
+    assert "user_medications" in Base.metadata.tables
+    assert table.name == "user_medications"
+    assert set(table.c.keys()) == {
+        "id",
+        "owner_subject_hash",
+        "display_name",
+        "normalized_name",
+        "medication_class",
+        "condition_tags",
+        "confirmation_status",
+        "is_active",
+        "last_confirmed_at",
+        "created_at",
+        "updated_at",
+    }
+    assert table.c.id.primary_key is True
+    assert table.c.owner_subject_hash.nullable is False
+    assert table.c.display_name.nullable is False
+    assert table.c.condition_tags.nullable is False
+    assert table.c.confirmation_status.nullable is False
+    assert table.c.is_active.nullable is False
+    assert "raw_question" not in table.c
+    assert "raw_prompt" not in table.c
+    assert "raw_ocr_text" not in table.c
+    assert "dose_text" not in table.c
+    assert "free_text_note" not in table.c
+
+
+def test_user_medications_constraints_and_indexes_are_defined() -> None:
+    """Verify saved medications are owner-scoped and avoid blank structured labels."""
+    table = cast(Table, UserMedication.__table__)
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert "ck_user_medications_display_name_nonempty" in constraint_names
+    assert "ck_user_medications_normalized_name_nonempty" in constraint_names
+    assert "ck_user_medications_confirmation_status_allowed" in constraint_names
+    assert "ix_user_medications_owner_active" in index_names
+    assert "ix_user_medications_owner_normalized" in index_names
+
+
+def test_food_records_table_is_registered_with_snapshot_v1_columns() -> None:
+    """Verify food records store structured confirmed food context only."""
+    table = cast(Table, FoodRecord.__table__)
+
+    assert "food_records" in Base.metadata.tables
+    assert table.name == "food_records"
+    assert set(table.c.keys()) == {
+        "id",
+        "owner_subject_hash",
+        "recorded_date",
+        "meal_type",
+        "display_items",
+        "amount_text",
+        "estimated_tags",
+        "rough_nutrient_axes",
+        "user_confirmed",
+        "source",
+        "food_db_match_id",
+        "match_confidence",
+        "nutrient_estimates",
+        "created_at",
+        "updated_at",
+    }
+    assert table.c.id.primary_key is True
+    assert table.c.owner_subject_hash.nullable is False
+    assert table.c.recorded_date.nullable is False
+    assert table.c.display_items.nullable is False
+    assert table.c.estimated_tags.nullable is False
+    assert table.c.rough_nutrient_axes.nullable is False
+    assert table.c.food_db_match_id.nullable is True
+    assert table.c.match_confidence.nullable is True
+    assert table.c.nutrient_estimates.nullable is True
+    assert "raw_ocr_text" not in table.c
+    assert "raw_prompt" not in table.c
+    assert "raw_chat_transcript" not in table.c
+
+
+def test_food_records_constraints_and_indexes_are_defined() -> None:
+    """Verify food records are owner/date scoped and future DB-match safe."""
+    table = cast(Table, FoodRecord.__table__)
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert "ck_food_records_meal_type_allowed" in constraint_names
+    assert "ck_food_records_source_allowed" in constraint_names
+    assert "ck_food_records_match_confidence_range" in constraint_names
+    assert "ix_food_records_owner_date" in index_names
+    assert "ix_food_records_owner_meal_date" in index_names
 
 
 def test_base_metadata_uses_naming_convention() -> None:
@@ -512,6 +618,7 @@ def test_medical_source_governance_tables_are_registered() -> None:
         "medical_evidence_items",
         "medical_policy_boundaries",
         "medical_rag_chunks",
+        "chatbot_unknown_knowledge_events",
     }.issubset(Base.metadata.tables)
 
 
@@ -602,6 +709,10 @@ def test_medical_evidence_items_table_contract() -> None:
         "allowed_user_wording",
         "blocked_wording",
         "applicability_note",
+        "specific_examples",
+        "checklist",
+        "caution_conditions",
+        "must_not_say",
         "caution_level",
         "review_status",
         "algorithm_version",
@@ -613,11 +724,61 @@ def test_medical_evidence_items_table_contract() -> None:
     assert isinstance(table.c.allowed_user_wording.type, Text)
     assert isinstance(table.c.blocked_wording.type, Text)
     assert isinstance(table.c.applicability_note.type, Text)
+    assert isinstance(table.c.specific_examples.type, postgresql.JSONB)
+    assert isinstance(table.c.checklist.type, postgresql.JSONB)
+    assert isinstance(table.c.caution_conditions.type, postgresql.JSONB)
+    assert isinstance(table.c.must_not_say.type, postgresql.JSONB)
     assert {
         "ck_medical_evidence_items_caution_level",
         "ck_medical_evidence_items_review_status",
     }.issubset(constraint_names)
     assert "ix_medical_evidence_items_topic_audience_status" in index_names
+
+
+def test_chatbot_unknown_knowledge_events_table_contract() -> None:
+    """Verify unknown backlog events store only structured non-raw topic metadata."""
+    table = cast(Table, MedicalUnknownKnowledgeEvent.__table__)
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    index_names = {index.name for index in table.indexes if isinstance(index, Index)}
+
+    assert table.name == "chatbot_unknown_knowledge_events"
+    assert {
+        "id",
+        "answerability",
+        "primary_intent",
+        "category",
+        "related_conditions",
+        "missing_topics",
+        "retrieval_status",
+        "retrieval_warnings",
+        "needed_evidence_type",
+        "status",
+        "created_at",
+        "updated_at",
+    } == set(table.c.keys())
+    assert isinstance(table.c.id.type, postgresql.UUID)
+    assert isinstance(table.c.related_conditions.type, postgresql.JSONB)
+    assert isinstance(table.c.missing_topics.type, postgresql.JSONB)
+    assert isinstance(table.c.retrieval_warnings.type, postgresql.JSONB)
+    assert {
+        "ck_chatbot_unknown_knowledge_events_answerability",
+        "ck_chatbot_unknown_knowledge_events_retrieval_status",
+        "ck_chatbot_unknown_knowledge_events_status",
+    }.issubset(constraint_names)
+    status_constraint = next(
+        constraint
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+        and constraint.name == "ck_chatbot_unknown_knowledge_events_status"
+    )
+    status_sql = str(status_constraint.sqltext)
+    for status in ("open", "reviewing", "promoted", "dismissed", "deprecated"):
+        assert status in status_sql
+    assert "ix_chatbot_unknown_knowledge_events_status_category_created" in index_names
 
 
 def test_medical_policy_boundaries_table_contract() -> None:
@@ -695,9 +856,11 @@ def test_medical_source_governance_tables_exclude_raw_payload_columns() -> None:
         "medical_evidence_items",
         "medical_policy_boundaries",
         "medical_rag_chunks",
+        "chatbot_unknown_knowledge_events",
     }
     forbidden_columns = {
         "raw_prompt",
+        "raw_question",
         "full_prompt",
         "prompt",
         "raw_llm_response",
@@ -711,9 +874,9 @@ def test_medical_source_governance_tables_exclude_raw_payload_columns() -> None:
         "original_file_name",
     }
     actual_columns = {
-        column_name
+        column.name
         for table_name in table_names
-        for column_name in Base.metadata.tables[table_name].c.keys()
+        for column in Base.metadata.tables[table_name].c
     }
 
     assert forbidden_columns.isdisjoint(actual_columns)

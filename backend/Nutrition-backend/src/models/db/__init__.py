@@ -3,6 +3,7 @@
 from src.db.base import Base
 from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
+from src.models.db.food_record import FoodRecord
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.db.learning import ImageEmbeddingJob, ImageEmbeddingRecord, LearningImageObject
 from src.models.db.medical_source import (
@@ -11,6 +12,7 @@ from src.models.db.medical_source import (
     MedicalRagChunk,
     MedicalSource,
     MedicalSourceVersion,
+    MedicalUnknownKnowledgeEvent,
 )
 from src.models.db.notification import ReminderPreference
 from src.models.db.privacy import AuditLog, ConsentPolicy, ConsentRecord, DeletionRequest
@@ -23,6 +25,7 @@ from src.models.db.supplement import (
     UserSupplementIngredient,
 )
 from src.models.db.user import User
+from src.models.db.user_medication import UserMedication
 
 __all__ = [
     "AgentMemory",
@@ -33,6 +36,7 @@ __all__ = [
     "ConsentPolicy",
     "ConsentRecord",
     "DeletionRequest",
+    "FoodRecord",
     "HealthDailySummary",
     "HealthSyncBatch",
     "ImageEmbeddingJob",
@@ -44,6 +48,7 @@ __all__ = [
     "MedicalRagChunk",
     "MedicalSource",
     "MedicalSourceVersion",
+    "MedicalUnknownKnowledgeEvent",
     "PrescriptionItem",
     "RegulatedDocument",
     "ReminderPreference",
@@ -51,6 +56,7 @@ __all__ = [
     "SupplementProduct",
     "SupplementProductIngredient",
     "User",
+    "UserMedication",
     "UserSupplement",
     "UserSupplementIngredient",
 ]

@@ -110,6 +110,18 @@ class MedicalEvidenceItem(TimestampMixin, Base):
     allowed_user_wording: Mapped[str] = mapped_column(Text, nullable=False)
     blocked_wording: Mapped[str] = mapped_column(Text, nullable=False)
     applicability_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    specific_examples: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=list,
+    )
+    checklist: Mapped[list[str]] = mapped_column(postgresql.JSONB, nullable=False, default=list)
+    caution_conditions: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=list,
+    )
+    must_not_say: Mapped[list[str]] = mapped_column(postgresql.JSONB, nullable=False, default=list)
     caution_level: Mapped[str] = mapped_column(String(32), nullable=False)
     review_status: Mapped[str] = mapped_column(String(32), nullable=False)
     algorithm_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -185,3 +197,52 @@ class MedicalRagChunk(TimestampMixin, Base):
     embedding_status: Mapped[str] = mapped_column(String(32), nullable=False)
     review_status: Mapped[str] = mapped_column(String(32), nullable=False)
     expires_at: Mapped[date] = mapped_column(Date, nullable=False)
+
+
+class MedicalUnknownKnowledgeEvent(TimestampMixin, Base):
+    """Persist privacy-minimized unknown chatbot topic events for source review."""
+
+    __tablename__ = "chatbot_unknown_knowledge_events"
+    __table_args__ = (
+        CheckConstraint(
+            "answerability = 'unknown_no_reviewed_source'",
+            name="answerability",
+        ),
+        CheckConstraint(
+            "retrieval_status IN ('no_match', 'stale_only', 'not_reviewed_only')",
+            name="retrieval_status",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'reviewing', 'promoted', 'dismissed', 'deprecated')",
+            name="status",
+        ),
+        Index(
+            "ix_chatbot_unknown_knowledge_events_status_category_created",
+            "status",
+            "category",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
+    answerability: Mapped[str] = mapped_column(String(48), nullable=False)
+    primary_intent: Mapped[str] = mapped_column(String(80), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    related_conditions: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=list,
+    )
+    missing_topics: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=list,
+    )
+    retrieval_status: Mapped[str] = mapped_column(String(48), nullable=False)
+    retrieval_warnings: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB,
+        nullable=False,
+        default=list,
+    )
+    needed_evidence_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")

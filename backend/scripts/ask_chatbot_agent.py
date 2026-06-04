@@ -50,6 +50,10 @@ PRESETS = {
             },
         },
     },
+    "hypertension-sodium-dinner": {
+        "message": "오늘 저녁 나트륨을 줄이려면 어떤 음식으로 바꾸면 좋아?",
+        "context": {"profile": {"chronic_conditions": ["hypertension"]}},
+    },
     "ldl-treatment": {
         "message": "LDL 검사 수치가 130인데 치료를 시작해야 해?",
         "context": {},
@@ -57,6 +61,30 @@ PRESETS = {
     "supplement-drug-boundary": {
         "message": "혈압약을 먹는데 마그네슘 영양제를 같이 먹어도 돼?",
         "context": {"profile": {"chronic_conditions": ["hypertension"]}},
+    },
+    "magnesium-blood-pressure-med": {
+        "message": "혈압약을 먹는데 마그네슘 영양제를 같이 먹어도 돼?",
+        "context": {"profile": {"chronic_conditions": ["hypertension"]}},
+    },
+    "p0-grapefruit-lipid-med": {
+        "message": "고지혈증 약 먹는데 자몽주스 마셔도 돼?",
+        "context": {},
+    },
+    "kidney-vegetable-fruit-potassium": {
+        "message": "신장질환이 있는데 채소랑 과일은 어떻게 골라야 해? 칼륨이 걱정돼",
+        "context": {"profile": {"chronic_conditions": ["kidney_disease"]}},
+    },
+    "diabetes-overeating-next-meal": {
+        "message": "당뇨가 있는데 점심에 밥 세 공기랑 초콜릿을 먹었어. 다음 끼니는 어떻게 조절해?",
+        "context": {"profile": {"chronic_conditions": ["diabetes"]}},
+    },
+    "unknown-lithium-selenium": {
+        "message": "리튬 약을 먹는데 셀레늄 영양제 같이 먹어도 돼?",
+        "context": {},
+    },
+    "urgent-chest-pain": {
+        "message": "가슴이 아프고 숨이 차",
+        "context": {},
     },
 }
 
@@ -197,6 +225,16 @@ def _print_answer(
     print(response.message)
     print()
     print(f"provider: {response.provider}")
+    print(f"answerability: {response.answerability}")
+    if response.source_families:
+        print(f"source_families: {', '.join(response.source_families)}")
+    if response.sources:
+        print("sources:")
+        for source in response.sources:
+            source_id = source.get("source_id", "unknown")
+            version = source.get("version_label", "unknown")
+            expires_at = source.get("expires_at", "unknown")
+            print(f"- {source_id} | version={version} | expires_at={expires_at}")
     if response.safety_warnings:
         print("safety_warnings:")
         for warning in response.safety_warnings:

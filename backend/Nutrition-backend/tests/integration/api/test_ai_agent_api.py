@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
+from lemon_ai_agent.chat_session import ChatbotResponse
 from lemon_ai_agent.llm import LLMRequest, LLMResponse
 from src.api.v1 import ai_agent
 from src.config import Settings, get_settings
@@ -33,6 +34,21 @@ class _UnavailableOllamaClient:
 def _disable_live_ollama_for_route_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep route tests isolated from whichever Ollama server is running locally."""
     monkeypatch.setattr(ai_agent, "OllamaClient", _UnavailableOllamaClient)
+    monkeypatch.setattr(
+        ai_agent,
+        "load_active_user_medication_context",
+        _empty_medication_context,
+    )
+    monkeypatch.setattr(
+        ai_agent,
+        "load_recent_user_food_record_context",
+        _empty_food_record_context,
+    )
+    monkeypatch.setattr(
+        ai_agent,
+        "load_active_supplement_context",
+        _empty_supplement_context,
+    )
 
 
 async def _fake_session_dependency() -> AsyncIterator[object]:
@@ -110,6 +126,21 @@ async def _memory_context(*_args: object, **_kwargs: object) -> dict[str, object
             }
         ],
     }
+
+
+async def _empty_medication_context(*_args: object, **_kwargs: object) -> dict[str, object]:
+    """Return no saved medications for route tests unless a test overrides it."""
+    return {"medications": [], "medication_details": []}
+
+
+async def _empty_food_record_context(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+    """Return no saved food records for route tests unless a test overrides it."""
+    return []
+
+
+async def _empty_supplement_context(*_args: object, **_kwargs: object) -> dict[str, object]:
+    """Return no saved supplements for route tests unless a test overrides it."""
+    return {"registered_supplements": [], "checked_today": []}
 
 
 def _client(settings: Settings | None = None) -> TestClient:
@@ -612,6 +643,428 @@ def test_chat_route_preview_context_does_not_persist_daily_coaching_run(
     assert persisted == {"memory": 0, "run": 0}
 
 
+def test_chat_route_injects_saved_user_medications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify DB-confirmed medication names are passed to the chatbot context."""
+    captured: dict[str, object] = {}
+
+    async def _medication_context(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "medications": ["amlodipine"],
+            "medication_details": [
+                {
+                    "display_name": "amlodipine",
+                    "normalized_name": "amlodipine",
+                    "medication_class": "calcium_channel_blocker",
+                    "condition_tags": ["hypertension"],
+                    "confirmation_status": "user_confirmed",
+                }
+            ],
+        }
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable_with_caution",
+            )
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_active_user_medication_context", _medication_context)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(
+            message="Can I take magnesium?",
+        ),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    profile = captured["context"]["profile"]
+    assert profile["medications"] == ["amlodipine"]
+    assert profile["medication_details"][0]["display_name"] == "amlodipine"
+    assert profile["medication_details"][0]["medication_class"] == "calcium_channel_blocker"
+    assert "raw_question" not in str(captured["context"])
+    assert "raw_ocr_text" not in str(captured["context"])
+
+
+def test_chat_route_loads_user_health_context_snapshot_before_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify every chatbot call receives a sanitized app health snapshot."""
+    captured: dict[str, object] = {}
+
+    async def _medication_context(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"medications": ["amlodipine"], "medication_details": []}
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+            )
+
+    payload = _chat_payload(message="오늘 저녁은 어떻게 먹을까?")
+    payload["context"] = {
+        **payload["context"],
+        "profile": {
+            "goals": ["meal_management"],
+            "chronic_conditions": ["hypertension"],
+        },
+        "latest_confirmed_entries": {
+            "foods": [{"display_items": ["라면"], "meal_type": "lunch"}],
+            "raw_ocr_text": "raw meal OCR",
+        },
+        "visible_analysis_context": {
+            "last_visible_summary": "오늘 분석 대기",
+            "messages": [{"role": "assistant", "content": "raw"}],
+        },
+    }
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_active_user_medication_context", _medication_context)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post("/api/v1/ai-agent/chat", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    context = captured["context"]
+    snapshot = context["user_health_context_snapshot"]
+    assert "user_health_context_snapshot" in body["used_tools"]
+    assert context["user_health_context_resolution"]["status"] == "sufficient"
+    assert snapshot["user_profile_summary"]["chronic_conditions"] == ["hypertension"]
+    assert snapshot["user_profile_summary"]["medications"] == ["amlodipine"]
+    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"] == [
+        {"display_items": ["라면"], "meal_type": "lunch"}
+    ]
+    assert "raw_ocr_text" not in str(snapshot)
+    assert "messages" not in str(snapshot)
+
+
+def test_chat_route_loads_recent_food_records_before_context_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify saved food records can satisfy specific recent meal questions."""
+    captured: dict[str, object] = {}
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": "record-1",
+                "recorded_date": "2026-05-31",
+                "meal_type": "lunch",
+                "display_items": ["ramen"],
+                "estimated_tags": ["sodium_high"],
+                "rough_nutrient_axes": ["sodium_high"],
+                "user_confirmed": True,
+                "source": "manual",
+            }
+        ]
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+            )
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="What food did I eat today?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    context = captured["context"]
+    snapshot = context["user_health_context_snapshot"]
+    assert context["user_health_context_resolution"]["status"] == "sufficient"
+    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][0][
+        "food_record_id"
+    ] == "record-1"
+    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][0][
+        "display_items"
+    ] == ["ramen"]
+
+
+def test_chat_route_marks_visible_analysis_context_stale_after_new_food_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify ask-about-this-result context is compared with latest DB records."""
+    captured: dict[str, object] = {}
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": "record-1",
+                "recorded_date": "2026-05-31",
+                "meal_type": "lunch",
+                "display_items": ["rice"],
+                "estimated_tags": [],
+                "rough_nutrient_axes": [],
+                "user_confirmed": True,
+                "source": "manual",
+            },
+            {
+                "food_record_id": "record-2",
+                "recorded_date": "2026-05-31",
+                "meal_type": "dinner",
+                "display_items": ["ramen"],
+                "estimated_tags": ["sodium_high"],
+                "rough_nutrient_axes": ["sodium_high"],
+                "user_confirmed": True,
+                "source": "manual",
+            },
+        ]
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+            )
+
+    payload = _chat_payload(message="이 결과로 계속 질문할게. 저녁까지 보면 어때?")
+    payload["context"] = {
+        **payload["context"],
+        "visible_analysis_context": {
+            "analysis_kind": "today_analysis",
+            "visible_result_id": "analysis-1",
+            "food_record_ids": ["record-1"],
+        },
+    }
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post("/api/v1/ai-agent/chat", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    snapshot = captured["context"]["user_health_context_snapshot"]
+    visible = snapshot["visible_analysis_context"]
+    assert visible["stale"] is True
+    assert visible["stale_reasons"] == ["food_record_changed_after_visible_analysis"]
+    assert visible["current_food_record_ids"] == ["record-1", "record-2"]
+    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][1][
+        "food_record_id"
+    ] == "record-2"
+
+
+def test_chat_route_loads_confirmed_supplement_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify saved supplements are loaded as active supplement context."""
+    captured: dict[str, object] = {}
+
+    async def _active_supplement_context(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "registered_supplements": [
+                {
+                    "supplement_id": "supplement-1",
+                    "display_name": "Vitamin D",
+                    "ingredients": [
+                        {
+                            "display_name": "Vitamin D",
+                            "nutrient_code": "vitamin_d_ug",
+                            "amount": 25,
+                            "unit": "ug",
+                            "analysis_use": "standard_nutrient",
+                        },
+                        {
+                            "display_name": "Herbal blend",
+                            "nutrient_code": None,
+                            "analysis_use": "label_only",
+                        },
+                    ],
+                    "user_confirmed": True,
+                }
+            ],
+            "checked_today": [],
+            "policy": {
+                "nutrient_code_required_for_standard_analysis": True,
+                "unconfirmed_preview_excluded": True,
+            },
+        }
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable_with_caution",
+            )
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_active_supplement_context", _active_supplement_context)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="Can I use my vitamin D supplement?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    snapshot = captured["context"]["user_health_context_snapshot"]
+    supplement_snapshot = snapshot["active_supplement_snapshot"]
+    assert supplement_snapshot["registered_supplements"][0]["supplement_id"] == "supplement-1"
+    assert supplement_snapshot["registered_supplements"][0]["ingredients"][0][
+        "analysis_use"
+    ] == "standard_nutrient"
+    assert supplement_snapshot["registered_supplements"][0]["ingredients"][1][
+        "analysis_use"
+    ] == "label_only"
+    assert "raw_ocr_text" not in str(supplement_snapshot)
+
+
+def test_chat_route_analysis_run_intent_requires_user_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify chatbot analysis execution intent returns CTA without persistence."""
+    persisted: dict[str, int] = {"count": 0}
+
+    async def _store_analysis(*_args: object, **_kwargs: object) -> object:
+        persisted["count"] += 1
+        return object()
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": "record-1",
+                "recorded_date": "2026-05-31",
+                "meal_type": "lunch",
+                "display_items": ["rice"],
+                "estimated_tags": [],
+                "rough_nutrient_axes": [],
+                "user_confirmed": True,
+                "source": "manual",
+            }
+        ]
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "store_app_health_analysis_result", _store_analysis)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="Run today's analysis"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["requires_user_approval"] is True
+    assert body["answerability"] == "needs_more_info"
+    assert body["ctas"] == ["run_or_refresh_analysis", "ask_about_this_result"]
+    assert "app_health_analysis_confirmation" in body["used_tools"]
+    assert persisted == {"count": 0}
+
+
+def test_chat_route_confirmed_analysis_run_persists_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify approved chatbot analysis runs persist through analysis_results."""
+    persisted: dict[str, object] = {}
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": "record-1",
+                "recorded_date": "2026-05-31",
+                "meal_type": "lunch",
+                "display_items": ["rice"],
+                "estimated_tags": [],
+                "rough_nutrient_axes": [],
+                "user_confirmed": True,
+                "source": "manual",
+            }
+        ]
+
+    async def _store_analysis(*args: object, **kwargs: object) -> object:
+        persisted["args"] = args
+        persisted["kwargs"] = kwargs
+        return object()
+
+    payload = _chat_payload(message="Run today's analysis")
+    payload["context"] = {
+        **payload["context"],
+        "analysis_run_approval": {"analysis_kind": "today_analysis", "approved": True},
+    }
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "store_app_health_analysis_result", _store_analysis)
+
+    response = _client().post("/api/v1/ai-agent/chat", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["requires_user_approval"] is False
+    assert body["answerability"] == "answerable"
+    assert body["ctas"] == ["ask_about_this_result"]
+    assert "app_health_analysis" in body["used_tools"]
+    assert persisted["kwargs"]["analysis_kind"] == "today_analysis"
+    assert persisted["kwargs"]["user_confirmed"] is True
+    assert persisted["kwargs"]["result_snapshot"]["score_name"] == "오늘 현재 분석 점수"
+
+
 def test_chat_route_magnesium_blood_pressure_med_uses_caution_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -692,7 +1145,7 @@ def test_chat_route_magnesium_blood_pressure_med_uses_caution_policy(
     assert "먹어도 됩니다" not in body["message"]
     assert "Drug interaction boundary applied" not in body["safety_warnings"]
     assert body["answerability"] == "answerable_with_caution"
-    assert any(source["source_id"] == "kdris-2025" for source in body["sources"])
+    assert any(source["source_id"] == "nih-ods-magnesium" for source in body["sources"])
     assert captured["generate_called"] is True
 
 
@@ -701,6 +1154,7 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
 ) -> None:
     """Verify uncovered medical knowledge does not fall through to generic LLM answers."""
     captured: dict[str, int] = {"generate_calls": 0}
+    backlog_events: list[object] = []
 
     class _FakeSGLangClient:
         """SGLang stand-in that must not generate for unknown-source questions."""
@@ -718,7 +1172,7 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
         def generate(self, _request: LLMRequest) -> LLMResponse:
             captured["generate_calls"] += 1
             return LLMResponse(
-                text="셀레늄은 리튬과 함께 먹어도 됩니다.",
+                text="타우린은 리튬과 함께 먹어도 됩니다.",
                 provider="sglang",
                 model="fake",
             )
@@ -733,11 +1187,15 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
     monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
     monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
     monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
-
-    response = _client(settings=settings).post(
-        "/api/v1/ai-agent/chat",
-        json=_chat_payload(message="리튬 약을 먹는데 셀레늄 영양제 같이 먹어도 돼?"),
+    monkeypatch.setattr(
+        ai_agent,
+        "record_unknown_knowledge_event",
+        lambda _session, event: backlog_events.append(event),
     )
+
+    payload = _chat_payload(message="리튬 약과 타우린 영양제 같이 먹어도 돼?")
+
+    response = _client(settings=settings).post("/api/v1/ai-agent/chat", json=payload)
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
@@ -745,8 +1203,15 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
     assert body["answerability"] == "unknown_no_reviewed_source"
     assert body["sources"] == []
     assert "현재 검수된 지식 안에서 답할 수 없습니다" in body["message"]
-    assert "셀레늄은 리튬과 함께 먹어도 됩니다" not in body["message"]
+    assert "타우린은 리튬과 함께 먹어도 됩니다" not in body["message"]
     assert captured["generate_calls"] == 0
+    assert len(backlog_events) == 1
+    event = backlog_events[0]
+    assert event.answerability == "unknown_no_reviewed_source"
+    assert event.missing_topics == ["supplement_drug_interaction"]
+    assert event.retrieval_status == "no_match"
+    assert "리튬" not in str(event.__dict__)
+    assert "타우린" not in str(event.__dict__)
 
 
 def test_chat_route_production_source_gate_fails_closed_before_llm(

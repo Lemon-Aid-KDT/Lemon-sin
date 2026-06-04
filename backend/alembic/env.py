@@ -7,8 +7,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from alembic.ddl import impl as alembic_impl
-from sqlalchemy import pool
-from sqlalchemy import Column, MetaData, PrimaryKeyConstraint, String, Table
+from sqlalchemy import Column, MetaData, PrimaryKeyConstraint, String, Table, pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from src.config import get_settings

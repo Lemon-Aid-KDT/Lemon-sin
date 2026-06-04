@@ -58,6 +58,7 @@ def _valid_production_kwargs() -> dict[str, Any]:
         Keyword arguments accepted by Settings.
     """
     return {
+        "_env_file": None,
         "environment": "production",
         "database_url": "postgresql+asyncpg://lemon_prod:secret@db.example.com:5432/lemon",
         "allowed_origins": ["https://app.example.com"],

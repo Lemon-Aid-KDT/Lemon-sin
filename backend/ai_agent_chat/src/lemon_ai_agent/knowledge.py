@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from lemon_ai_agent.entity_normalization import has_p0_entity_pair
+
 QuestionCategory = Literal[
     "general_info",
     "nutrition_analysis",
@@ -329,6 +331,70 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
         note="Primary reference family for nutrient intake comparison.",
     ),
     ReviewedMedicalSource(
+        source_id="cdc-public-health",
+        title="CDC Public Health Guidance",
+        publisher="Centers for Disease Control and Prevention",
+        url="https://www.cdc.gov/",
+        source_type="public_health",
+        source_families=("general_medical", "chronic_condition", "lifestyle_guideline"),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="US",
+        last_reviewed_at="2026-05-29",
+        review_expires_at="2026-11-29",
+        owner="AI Agent medical knowledge review",
+        topics=("diabetes", "physical_activity", "sleep", "heat_illness"),
+        note="Use for CDC consumer public-health pages already selected as seed cards.",
+    ),
+    ReviewedMedicalSource(
+        source_id="niddk-diabetes-living",
+        title="NIDDK Healthy Living with Diabetes",
+        publisher="National Institute of Diabetes and Digestive and Kidney Diseases",
+        url="https://www.niddk.nih.gov/health-information/diabetes/overview/diet-eating-physical-activity",
+        source_type="public_health",
+        source_families=("general_medical", "chronic_condition"),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="US",
+        last_reviewed_at="2026-05-29",
+        review_expires_at="2026-11-29",
+        owner="AI Agent medical knowledge review",
+        topics=("diabetes", "meal", "physical_activity"),
+        note="Use for diabetes healthy-living seed cards.",
+    ),
+    ReviewedMedicalSource(
+        source_id="niddk-kidney-disease",
+        title="NIDDK Kidney Disease",
+        publisher="National Institute of Diabetes and Digestive and Kidney Diseases",
+        url="https://www.niddk.nih.gov/health-information/kidney-disease",
+        source_type="public_health",
+        source_families=("general_medical", "chronic_condition"),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="US",
+        last_reviewed_at="2026-05-29",
+        review_expires_at="2026-11-29",
+        owner="AI Agent medical knowledge review",
+        topics=("kidney_disease", "meal", "sodium", "potassium"),
+        note="Use for kidney disease meal-caution seed cards.",
+    ),
+    ReviewedMedicalSource(
+        source_id="nih-ods-magnesium",
+        title="NIH ODS Magnesium Fact Sheet",
+        publisher="NIH Office of Dietary Supplements",
+        url="https://ods.od.nih.gov/factsheets/Magnesium-Consumer/",
+        source_type="public_health",
+        source_families=("supplement_reference", "nutrition_reference"),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="US",
+        last_reviewed_at="2026-05-29",
+        review_expires_at="2026-11-29",
+        owner="AI Agent medical knowledge review",
+        topics=("magnesium", "supplement", "label_check"),
+        note="Use for magnesium supplement caution seed cards.",
+    ),
+    ReviewedMedicalSource(
         source_id="mfds-drug-safety",
         title="MFDS Drug Safety Portal",
         publisher="Ministry of Food and Drug Safety",
@@ -344,6 +410,22 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
         env_key="MFDS_DATA_API_KEY",
         topics=("drug_safety", "supplement_interaction", "functional_food"),
         note="Use only for boundary and professional-consult routing until product review.",
+    ),
+    ReviewedMedicalSource(
+        source_id="medlineplus-lithium",
+        title="MedlinePlus Lithium Drug Information",
+        publisher="U.S. National Library of Medicine",
+        url="https://medlineplus.gov/druginfo/meds/a681039.html",
+        source_type="drug_safety",
+        source_families=("drug_safety_boundary",),
+        status="reviewed",
+        version_label="2026-05 MVP source registry",
+        jurisdiction="US",
+        last_reviewed_at="2026-05-31",
+        review_expires_at="2026-11-30",
+        owner="AI Agent medical knowledge review",
+        topics=("lithium", "drug_safety", "supplement_interaction"),
+        note="Use only for lithium co-use boundary routing; do not decide personal supplement co-use.",
     ),
     ReviewedMedicalSource(
         source_id="semantic-scholar",
@@ -368,7 +450,7 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
 MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     MedicalKnowledgeItem(
         source="CDC Diabetes Meal Planning",
-        source_id="kdca-healthinfo",
+        source_id="cdc-public-health",
         topic="diabetes_plate_method",
         intent="meal",
         condition="diabetes",
@@ -391,7 +473,7 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     ),
     MedicalKnowledgeItem(
         source="NIDDK Healthy Living with Diabetes",
-        source_id="kdca-healthinfo",
+        source_id="niddk-diabetes-living",
         topic="diabetes_healthy_living",
         intent="general_question",
         condition="diabetes",
@@ -416,7 +498,7 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     ),
     MedicalKnowledgeItem(
         source="CDC Adult Physical Activity Guidelines",
-        source_id="kdca-healthinfo",
+        source_id="cdc-public-health",
         topic="adult_activity",
         intent="exercise",
         condition=None,
@@ -436,7 +518,7 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     ),
     MedicalKnowledgeItem(
         source="CDC Sleep",
-        source_id="kdca-healthinfo",
+        source_id="cdc-public-health",
         topic="adult_sleep",
         intent="sleep",
         condition=None,
@@ -453,7 +535,7 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     ),
     MedicalKnowledgeItem(
         source="CDC Heat and Athletes",
-        source_id="kdca-healthinfo",
+        source_id="cdc-public-health",
         topic="exercise_dizziness",
         intent="symptom",
         condition=None,
@@ -533,7 +615,7 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     ),
     MedicalKnowledgeItem(
         source="NIDDK Kidney Disease",
-        source_id="kdca-healthinfo",
+        source_id="niddk-kidney-disease",
         topic="kidney_disease_meal_caution",
         intent="meal",
         condition="kidney_disease",
@@ -556,7 +638,7 @@ MEDICAL_KNOWLEDGE_ITEMS: tuple[MedicalKnowledgeItem, ...] = (
     ),
     MedicalKnowledgeItem(
         source="NIH ODS Magnesium Fact Sheet",
-        source_id="kdris-2025",
+        source_id="nih-ods-magnesium",
         topic="magnesium_supplement_caution",
         intent="supplement",
         condition=None,
@@ -882,6 +964,22 @@ _DRUG_KEYWORDS = (
     "메트포민",
     "아세트아미노펜",
     "타이레놀",
+    "항우울제",
+    "ssri",
+    "snri",
+    "스타틴",
+    "니트로글리세린",
+    "협심증",
+    "발기부전약",
+    "발기부전 약",
+    "발기부전 치료제",
+    "비아그라",
+    "시알리스",
+    "실데나필",
+    "타다라필",
+    "pde5",
+    "nitrate",
+    "nitroglycerin",
     "maoi",
     "warfarin",
     "anticoagulant",
@@ -891,6 +989,10 @@ _DRUG_KEYWORDS = (
     "levothyroxine",
     "thyroid",
     "statin",
+    "고지혈증 약",
+    "고지혈증약",
+    "콜레스테롤 약",
+    "콜레스테롤약",
     "medication",
     "drug",
     "interaction",
@@ -907,9 +1009,22 @@ _SUPPLEMENT_KEYWORDS = (
     "베타카로틴",
     "마그네슘",
     "칼슘",
+    "칼륨",
     "철분",
     "오메가",
     "은행잎",
+    "세인트존스워트",
+    "세인트 존스 워트",
+    "자몽",
+    "자몽주스",
+    "저염소금",
+    "5-htp",
+    "홍국",
+    "red yeast rice",
+    "st john",
+    "st. john",
+    "grapefruit",
+    "potassium",
     "supplement",
     "vitamin a",
     "vitamin b12",
@@ -932,6 +1047,35 @@ _P0_INTERACTION_BOUNDARY_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], 
     (("maoi", "모노아민산화효소"), ("티라민", "tyramine")),
     (("흡연", "흡연자", "smoker", "smoking"), ("베타카로틴", "beta carotene", "beta-carotene", "비타민 a", "vitamin a")),
     (("음주", "술", "alcohol", "drinking"), ("비타민 a", "vitamin a", "아세트아미노펜", "acetaminophen", "타이레놀", "tylenol")),
+    (("세인트존스워트", "세인트 존스 워트", "st john", "st. john"), ("항우울제", "ssri", "snri")),
+    (
+        ("자몽", "자몽주스", "grapefruit"),
+        ("스타틴", "statin", "고지혈증 약", "고지혈증약", "콜레스테롤 약", "콜레스테롤약"),
+    ),
+    (("칼륨", "potassium"), ("저염소금", "low sodium salt", "salt substitute")),
+    (
+        ("니트로글리세린", "협심증", "nitrate", "nitroglycerin"),
+        ("pde5", "발기부전약", "발기부전 약", "발기부전 치료제", "비아그라", "시알리스", "실데나필", "타다라필"),
+    ),
+    (
+        ("ssri", "snri", "항우울제"),
+        (
+            "5-htp",
+            "트립토판",
+            "tryptophan",
+            "l-tryptophan",
+            "세로토닌",
+            "serotonin",
+            "세인트존스워트",
+            "세인트 존스 워트",
+            "st john",
+            "st. john",
+        ),
+    ),
+    (
+        ("스타틴", "statin", "고지혈증 약", "고지혈증약", "콜레스테롤 약", "콜레스테롤약"),
+        ("홍국", "red yeast rice"),
+    ),
 )
 
 _CHRONIC_KEYWORDS = (
@@ -1044,6 +1188,162 @@ _FOOD_SAFETY_KEYWORDS = (
 )
 
 
+_ACTUAL_KOREAN_EMERGENCY_KEYWORDS = (
+    "\uac00\uc2b4",
+    "\ud749\ud1b5",
+    "\uc228\uc774 \ucc28",
+    "\ud638\ud761\uace4\ub780",
+    "\uc758\uc2dd",
+    "\ub9c8\ube44",
+    "\uc2e4\uc2e0",
+    "\uc751\uae09",
+)
+_ACTUAL_KOREAN_DRUG_KEYWORDS = (
+    "\ubcf5\uc6a9",
+    "\ucc98\ubc29",
+    "\uc57d",
+    "\ud608\uc555\uc57d",
+    "\ub2f9\ub1e8\uc57d",
+    "\uac11\uc0c1\uc120\uc57d",
+    "\uc640\ud30c\ub9b0",
+    "\ud56d\uc751\uace0\uc81c",
+    "\uba54\ud2b8\ud3ec\ub974\ubbfc",
+    "\uc544\uc138\ud2b8\uc544\ubbf8\ub178\ud39c",
+    "\ud0c0\uc774\ub808\ub180",
+    "\uc2a4\ud0c0\ud2f4",
+    "\uace0\uc9c0\ud608\uc99d \uc57d",
+    "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d",
+    "\ub2c8\ud2b8\ub85c\uae00\ub9ac\uc138\ub9b0",
+    "\ud611\uc2ec\uc99d",
+    "\ubc1c\uae30\ubd80\uc804\uc57d",
+    "\ube44\uc544\uadf8\ub77c",
+    "\uc2dc\uc54c\ub9ac\uc2a4",
+    "\uc6b0\uc6b8\uc99d\uc57d",
+    "\ub9ac\ud2ac",
+)
+_ACTUAL_KOREAN_SUPPLEMENT_KEYWORDS = (
+    "\uc601\uc591\uc81c",
+    "\ubcf4\ucda9\uc81c",
+    "\uac74\uac15\uae30\ub2a5\uc2dd\ud488",
+    "\ube44\ud0c0\ubbfc",
+    "\ub9c8\uadf8\ub124\uc298",
+    "\uce7c\uc298",
+    "\uce7c\ub968",
+    "\ucca0\ubd84",
+    "\uc624\uba54\uac003",
+    "\uc740\ud589\uc78e",
+    "\uc138\uc778\ud2b8\uc874\uc2a4\uc6cc\ud2b8",
+    "\uc790\ubabd",
+    "\uc790\ubabd\uc8fc\uc2a4",
+    "\uc800\uc5fc\uc18c\uae08",
+    "\ud64d\uad6d",
+    "\uc140\ub808\ub284",
+    "\ud2b8\ub9bd\ud1a0\ud310",
+)
+_ACTUAL_KOREAN_CHRONIC_KEYWORDS = (
+    "\uace0\ud608\uc555",
+    "\ud608\uc555",
+    "\ub2f9\ub1e8",
+    "\ud608\ub2f9",
+    "\ube44\ub9cc",
+    "\ucf69\ud325",
+    "\uc2e0\uc7a5",
+)
+_ACTUAL_KOREAN_NUTRITION_KEYWORDS = (
+    "\uc601\uc591",
+    "\ub2e8\ubc31\uc9c8",
+    "\ub098\ud2b8\ub968",
+    "\ud0c4\uc218\ud654\ubb3c",
+    "\uce7c\ub85c\ub9ac",
+    "\uc2dd\uc774\uc12c\uc720",
+)
+_ACTUAL_KOREAN_NUTRITION_STATUS_KEYWORDS = (
+    "\ubd80\uc871",
+    "\uacfc\uc789",
+    "\uacfc\ub2e4",
+    "\ub9ce\uc774 \uba39",
+)
+_ACTUAL_KOREAN_NUTRITION_CONTEXT_KEYWORDS = (
+    "\uc2dd\uc0ac",
+    "\uc2dd\ub2e8",
+    "\ubc18\ucc2c",
+    "\uc601\uc591",
+    "\ub2e8\ubc31\uc9c8",
+    "\ub098\ud2b8\ub968",
+    "\ud0c4\uc218\ud654\ubb3c",
+    "\uce7c\ub85c\ub9ac",
+)
+_ACTUAL_KOREAN_LIFESTYLE_KEYWORDS = (
+    "\uc6b4\ub3d9",
+    "\uccb4\uc911",
+    "\ud65c\ub3d9",
+    "\uac77\uae30",
+)
+_ACTUAL_KOREAN_MEAL_INTENT_KEYWORDS = (
+    "\uc2dd\uc0ac",
+    "\uc2dd\ub2e8",
+    "\uc544\uce68",
+    "\uc810\uc2ec",
+    "\uc800\ub141",
+    "\uac04\uc2dd",
+    "\ubc25",
+    "\ub77c\uba74",
+    "\ucc0c\uac1c",
+    "\ucd08\ucf5c\ub9bf",
+    "\uba39",
+)
+_ACTUAL_KOREAN_SLEEP_INTENT_KEYWORDS = ("\uc218\uba74", "\uc7a0")
+_ACTUAL_KOREAN_WEIGHT_INTENT_KEYWORDS = ("\uccb4\uc911", "\ube44\ub9cc")
+_ACTUAL_KOREAN_SYMPTOM_INTENT_KEYWORDS = (
+    "\uc5b4\uc9c0\ub7ec\uc6c0",
+    "\ud604\uae30\uc99d",
+    "\uc99d\uc0c1",
+    "\ud1b5\uc99d",
+    "\ubd88\ud3b8",
+)
+_ACTUAL_KOREAN_FOOD_SAFETY_KEYWORDS = (
+    "\uc54c\ub808\ub974\uae30",
+    "\uc54c\ub7ec\uc9c0",
+    "\ub77c\ubca8",
+    "\ud45c\uc2dc",
+    "\uc2dd\uc911\ub3c5",
+)
+
+_EMERGENCY_KEYWORDS = (*_EMERGENCY_KEYWORDS, *_ACTUAL_KOREAN_EMERGENCY_KEYWORDS)
+_DRUG_KEYWORDS = (*_DRUG_KEYWORDS, *_ACTUAL_KOREAN_DRUG_KEYWORDS)
+_SUPPLEMENT_KEYWORDS = (*_SUPPLEMENT_KEYWORDS, *_ACTUAL_KOREAN_SUPPLEMENT_KEYWORDS)
+_CHRONIC_KEYWORDS = (*_CHRONIC_KEYWORDS, *_ACTUAL_KOREAN_CHRONIC_KEYWORDS)
+_NUTRITION_KEYWORDS = (*_NUTRITION_KEYWORDS, *_ACTUAL_KOREAN_NUTRITION_KEYWORDS)
+_NUTRITION_STATUS_KEYWORDS = (
+    *_NUTRITION_STATUS_KEYWORDS,
+    *_ACTUAL_KOREAN_NUTRITION_STATUS_KEYWORDS,
+)
+_NUTRITION_CONTEXT_KEYWORDS = (
+    *_NUTRITION_CONTEXT_KEYWORDS,
+    *_ACTUAL_KOREAN_NUTRITION_CONTEXT_KEYWORDS,
+)
+_LIFESTYLE_KEYWORDS = (*_LIFESTYLE_KEYWORDS, *_ACTUAL_KOREAN_LIFESTYLE_KEYWORDS)
+_MEAL_INTENT_KEYWORDS = (*_MEAL_INTENT_KEYWORDS, *_ACTUAL_KOREAN_MEAL_INTENT_KEYWORDS)
+_SLEEP_INTENT_KEYWORDS = (*_SLEEP_INTENT_KEYWORDS, *_ACTUAL_KOREAN_SLEEP_INTENT_KEYWORDS)
+_WEIGHT_INTENT_KEYWORDS = (*_WEIGHT_INTENT_KEYWORDS, *_ACTUAL_KOREAN_WEIGHT_INTENT_KEYWORDS)
+_SYMPTOM_INTENT_KEYWORDS = (*_SYMPTOM_INTENT_KEYWORDS, *_ACTUAL_KOREAN_SYMPTOM_INTENT_KEYWORDS)
+_FOOD_SAFETY_KEYWORDS = (*_FOOD_SAFETY_KEYWORDS, *_ACTUAL_KOREAN_FOOD_SAFETY_KEYWORDS)
+_P0_INTERACTION_BOUNDARY_GROUPS = (
+    *_P0_INTERACTION_BOUNDARY_GROUPS,
+    (("\uc640\ud30c\ub9b0",), ("\ube44\ud0c0\ubbfc k", "\ube44\ud0c0\ubbfck")),
+    (("\uac11\uc0c1\uc120\uc57d",), ("\uce7c\uc298", "\ucca0\ubd84")),
+    (("\uba54\ud2b8\ud3ec\ub974\ubbfc",), ("\ube44\ud0c0\ubbfc b12", "\ube44\ud0c0\ubbfcb12", "b12")),
+    (("\ud56d\uc751\uace0\uc81c", "\uc640\ud30c\ub9b0"), ("\uc624\uba54\uac003", "\uc740\ud589\uc78e", "\ube44\ud0c0\ubbfc e")),
+    (("\uc138\uc778\ud2b8\uc874\uc2a4\uc6cc\ud2b8",), ("\uc6b0\uc6b8\uc99d\uc57d", "ssri", "snri")),
+    (("\uc790\ubabd", "\uc790\ubabd\uc8fc\uc2a4"), ("\uc2a4\ud0c0\ud2f4", "\uace0\uc9c0\ud608\uc99d \uc57d", "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d")),
+    (("\uce7c\ub968",), ("\uc800\uc5fc\uc18c\uae08",)),
+    (("\ub2c8\ud2b8\ub85c\uae00\ub9ac\uc138\ub9b0", "\ud611\uc2ec\uc99d"), ("\ubc1c\uae30\ubd80\uc804\uc57d", "\ube44\uc544\uadf8\ub77c", "\uc2dc\uc54c\ub9ac\uc2a4")),
+    (("ssri", "snri", "\uc6b0\uc6b8\uc99d\uc57d"), ("5-htp", "\ud2b8\ub9bd\ud1a0\ud310", "\uc138\uc778\ud2b8\uc874\uc2a4\uc6cc\ud2b8")),
+    (("\uc2a4\ud0c0\ud2f4", "\uace0\uc9c0\ud608\uc99d \uc57d", "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d"), ("\ud64d\uad6d",)),
+    (("\ub9ac\ud2ac", "lithium"), ("\uc140\ub808\ub284", "selenium")),
+)
+
+
 def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911, PLR0912
     normalized = " ".join(question.casefold().split())
     reasons: list[str] = []
@@ -1063,9 +1363,44 @@ def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
     has_drug_context = _contains_any(normalized, _DRUG_KEYWORDS)
     has_supplement_context = _contains_any(normalized, _SUPPLEMENT_KEYWORDS)
     has_chronic_context = _contains_any(normalized, _CHRONIC_KEYWORDS)
+    if (
+        has_drug_context
+        and "\uc694\uc57d" in normalized
+        and not _contains_any(
+            normalized,
+            (
+                "\ud608\uc555\uc57d",
+                "\ub2f9\ub1e8\uc57d",
+                "\uac11\uc0c1\uc120\uc57d",
+                "\uace0\uc9c0\ud608\uc99d \uc57d",
+                "\ucc98\ubc29",
+                "\ubcf5\uc6a9",
+                "\uc640\ud30c\ub9b0",
+                "\uc2a4\ud0c0\ud2f4",
+                "medication",
+                "drug",
+            ),
+        )
+    ):
+        has_drug_context = False
     asks_safety_permission = any(
         phrase in normalized
         for phrase in ("먹어도 돼", "같이 먹", "병용", "함께 먹", "safe to take")
+    )
+
+    asks_safety_permission = asks_safety_permission or any(
+        phrase in normalized
+        for phrase in (
+            "can i take",
+            "can i drink",
+            "\uba39\uc5b4\ub3c4 \ub3fc",
+            "\uac19\uc774 \uba39",
+            "\ud568\uaed8 \uba39",
+            "\ubcd1\uc6a9",
+            "\uc548\uc804",
+            "\ub9c8\uc154\ub3c4 \ub3fc",
+            "\ubcf5\uc6a9\ud574\ub3c4 \ub3fc",
+        )
     )
 
     if _has_p0_interaction_boundary(normalized):
@@ -1096,6 +1431,17 @@ def classify_question(question: str) -> QuestionClassification:  # noqa: PLR0911
         reasons.append("chronic condition keyword")
         return QuestionClassification("chronic_condition_context", tuple(reasons))
 
+    if _has_nutrition_analysis_intent(normalized) and _contains_any(
+        normalized,
+        ("\uc74c\uc2dd", "\uc2dd\ud488", "\ud6c4\ubcf4", "\ubd80\uc871"),
+    ):
+        reasons.append("nutrition keyword")
+        return QuestionClassification("nutrition_analysis", tuple(reasons))
+
+    if has_supplement_context:
+        reasons.append("supplement keyword")
+        return QuestionClassification("supplement_question", tuple(reasons))
+
     if _has_nutrition_analysis_intent(normalized):
         reasons.append("nutrition keyword")
         return QuestionClassification("nutrition_analysis", tuple(reasons))
@@ -1121,7 +1467,7 @@ def analyze_chat_intent(
     context: dict[str, object] | None = None,
 ) -> ChatIntentAnalysis:
     normalized = " ".join(question.casefold().split())
-    classification = classify_question(question)
+    classification = classify_question(_classification_text(question, context))
     primary_intent = _primary_intent(normalized)
     related_conditions = _related_conditions(normalized, context or {}, primary_intent)
     red_flags = _matched_keywords(normalized, _EMERGENCY_KEYWORDS)
@@ -1157,8 +1503,11 @@ def select_medical_knowledge(
     return tuple(selected)
 
 
-def policy_for_question(question: str) -> AnswerPolicy:
-    classification = classify_question(question)
+def policy_for_question(
+    question: str,
+    context: dict[str, object] | None = None,
+) -> AnswerPolicy:
+    classification = classify_question(_classification_text(question, context))
     return AnswerPolicy(
         category=classification.category,
         source_families=QUESTION_CATEGORY_SOURCE_FAMILIES[classification.category],
@@ -1186,6 +1535,59 @@ def source_family_summary(source_families: tuple[SourceFamily, ...]) -> str:
     return "\n".join(lines)
 
 
+def _classification_text(
+    question: str,
+    context: dict[str, object] | None,
+) -> str:
+    terms = _context_medication_terms(context or {})
+    if not terms:
+        return question
+    return " ".join((question, *terms))
+
+
+def _context_medication_terms(context: dict[str, object]) -> tuple[str, ...]:
+    profile = context.get("profile")
+    if not isinstance(profile, dict):
+        return ()
+    terms: list[str] = []
+    _extend_profile_medication_names(profile, terms)
+    _extend_profile_medication_details(profile, terms)
+    if terms:
+        terms.append("medication")
+    return tuple(dict.fromkeys(terms))
+
+
+def _extend_profile_medication_names(
+    profile: dict[object, object],
+    terms: list[str],
+) -> None:
+    medication_names = profile.get("medications")
+    if isinstance(medication_names, list):
+        for name in medication_names:
+            if isinstance(name, str) and name.strip():
+                terms.append(name.strip())
+
+
+def _extend_profile_medication_details(
+    profile: dict[object, object],
+    terms: list[str],
+) -> None:
+    medication_details = profile.get("medication_details")
+    if isinstance(medication_details, list):
+        for detail in medication_details:
+            if not isinstance(detail, dict):
+                continue
+            for key in ("display_name", "normalized_name", "medication_class"):
+                value = detail.get(key)
+                if isinstance(value, str) and value.strip():
+                    terms.append(value.strip())
+            condition_tags = detail.get("condition_tags")
+            if isinstance(condition_tags, list):
+                for tag in condition_tags:
+                    if isinstance(tag, str) and tag.strip():
+                        terms.append(tag.strip())
+
+
 def contract_summary(contract: ResponseContract) -> str:
     return (
         "Sections: "
@@ -1200,6 +1602,8 @@ def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
 
 
 def _has_p0_interaction_boundary(text: str) -> bool:
+    if has_p0_entity_pair(text):
+        return True
     return any(
         _contains_any(text, first_group) and _contains_any(text, second_group)
         for first_group, second_group in _P0_INTERACTION_BOUNDARY_GROUPS
@@ -1207,6 +1611,25 @@ def _has_p0_interaction_boundary(text: str) -> bool:
 
 
 def _has_high_risk_couse_context(text: str) -> bool:
+    if _contains_any(
+        text,
+        (
+            "\uc911\ub2e8",
+            "\uc99d\ub7c9",
+            "\uac10\ub7c9",
+            "\uc6a9\ub7c9",
+            "\ubcf5\uc6a9\ub7c9",
+            "\uac80\uc0ac",
+            "\uc218\uce58",
+            "\uc784\uc2e0",
+            "\uc2e0\uc7a5",
+            "\ucf69\ud325",
+            "\uc5b4\uc9c0\ub7ec\uc6c0",
+            "\uc228\uc774 \ucc28",
+            "\uac00\uc2b4",
+        ),
+    ):
+        return True
     return _contains_any(
         text,
         (
@@ -1263,6 +1686,12 @@ def _related_conditions(
     primary_intent: ChatIntent,
 ) -> tuple[Condition, ...]:
     conditions: list[Condition] = []
+    if _contains_any(text, ("\ub2f9\ub1e8", "\ud608\ub2f9", "diabetes", "glucose")):
+        conditions.append("diabetes")
+    if _contains_any(text, ("\uace0\ud608\uc555", "\ud608\uc555", "hypertension", "blood pressure")):
+        conditions.append("hypertension")
+    if _contains_any(text, ("\ucf69\ud325", "\uc2e0\uc7a5", "kidney", "renal")):
+        conditions.append("kidney_disease")
     if _contains_any(text, ("당뇨", "혈당", "diabetes", "glucose")):
         conditions.append("diabetes")
     if _contains_any(text, ("고혈압", "혈압", "hypertension", "blood pressure")):
@@ -1289,6 +1718,15 @@ def _profile_conditions(context: dict[str, object]) -> tuple[Condition, ...]:
     conditions: list[Condition] = []
     for raw_condition in raw_conditions:
         condition = str(raw_condition).casefold()
+        if condition in {"\ub2f9\ub1e8", "\ud608\ub2f9"}:
+            conditions.append("diabetes")
+            continue
+        if condition in {"\uace0\ud608\uc555", "\ud608\uc555"}:
+            conditions.append("hypertension")
+            continue
+        if condition in {"\uc2e0\uc7a5", "\ucf69\ud325"}:
+            conditions.append("kidney_disease")
+            continue
         if condition in {"diabetes", "당뇨"}:
             conditions.append("diabetes")
         elif condition in {"hypertension", "고혈압"}:
@@ -1306,14 +1744,41 @@ def _profile_condition_is_relevant(
     if condition == "diabetes":
         return primary_intent in {"meal", "exercise", "symptom", "weight"}
     if condition == "hypertension":
+        if primary_intent == "meal" and _contains_any(
+            text,
+            (
+                "\ub098\ud2b8\ub968",
+                "\uc18c\uae08",
+                "\uc9e0",
+                "\uad6d\ubb3c",
+                "\ub77c\uba74",
+                "\ucc0c\uac1c",
+                "\uac00\uacf5\uc2dd\ud488",
+            ),
+        ):
+            return True
         return (
             primary_intent == "meal"
             and _contains_any(text, ("나트륨", "소금", "짠", "국물", "라면", "찌개", "가공식품"))
         )
     if condition == "kidney_disease":
+        if primary_intent in {"meal", "supplement"} and _contains_any(
+            text,
+            (
+                "\ub098\ud2b8\ub968",
+                "\uc18c\uae08",
+                "\uc9e0",
+                "\ub2e8\ubc31\uc9c8",
+                "\uc601\uc591\uc81c",
+                "\ucc44\uc18c",
+                "\uacfc\uc77c",
+                "\uce7c\ub968",
+            ),
+        ):
+            return True
         return (
             primary_intent in {"meal", "supplement"}
-            and _contains_any(text, ("나트륨", "소금", "짠", "단백질", "영양제"))
+            and _contains_any(text, ("나트륨", "소금", "짠", "단백질", "영양제", "채소", "과일", "칼륨"))
         )
     return False
 
@@ -1338,15 +1803,49 @@ def _knowledge_item_matches_intent(
     item: MedicalKnowledgeItem,
     analysis: ChatIntentAnalysis,
 ) -> bool:
-    if analysis.category == "medication_supplement_caution" and item.intent == "supplement":
-        return True
-    if item.intent == analysis.primary_intent:
-        return True
-    if analysis.category == "chronic_condition_context" and item.condition in analysis.related_conditions:
-        return True
-    if analysis.primary_intent == "meal" and item.intent in {"exercise", "sleep"}:
-        return item.condition is None and "diabetes" in analysis.related_conditions
-    return False
+    if analysis.category == "nutrition_analysis":
+        return _nutrition_knowledge_item_matches_question(item, analysis.normalized_question)
+    if (
+        "kidney_disease" in analysis.related_conditions
+        and item.intent == "supplement"
+        and _contains_any(analysis.normalized_question, ("채소", "과일", "식사", "반찬"))
+        and not _contains_any(analysis.normalized_question, ("영양제", "보충제", "약", "복용"))
+    ):
+        return False
+    return (
+        analysis.category == "medication_supplement_caution"
+        and item.intent == "supplement"
+    ) or (
+        item.intent == analysis.primary_intent
+    ) or (
+        analysis.category == "chronic_condition_context"
+        and item.condition in analysis.related_conditions
+    ) or (
+        analysis.primary_intent == "meal"
+        and item.intent in {"exercise", "sleep"}
+        and item.condition is None
+        and "diabetes" in analysis.related_conditions
+    )
+
+
+def _nutrition_knowledge_item_matches_question(
+    item: MedicalKnowledgeItem,
+    normalized_question: str,
+) -> bool:
+    nutrient_topics: dict[str, tuple[str, ...]] = {
+        "sodium_dinner_adjustment": ("나트륨", "소금", "짠", "sodium", "salt"),
+        "protein_food_candidates": ("단백질", "protein"),
+        "fiber_food_candidates": ("식이섬유", "섬유질", "fiber"),
+        "vitamin_d_food_candidates": ("비타민 d", "비타민d", "vitamin d", "vitamin_d"),
+        "adult_activity": ("운동", "걷기", "활동", "exercise", "activity", "walking"),
+        "adult_sleep": ("수면", "잠", "sleep"),
+        "exercise_dizziness": ("어지러움", "어지러워", "현기증", "dizzy", "dizziness"),
+        "general_health_record_review": ("기록", "식사 기록", "활동 기록", "건강 기록"),
+    }
+    keywords = nutrient_topics.get(item.topic)
+    if not keywords:
+        return False
+    return _contains_any(normalized_question, keywords)
 
 
 def _build_eval_cases() -> tuple[QAEvalCase, ...]:

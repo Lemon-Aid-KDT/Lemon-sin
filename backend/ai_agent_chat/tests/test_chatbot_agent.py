@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from lemon_ai_agent.agents.chatbot import ChatbotAgent
+from lemon_ai_agent.answer_card import (
+    EvidenceRecordMedicalKnowledgeRetriever,
+    MedicalEvidenceAnswerCardRecord,
+)
 from lemon_ai_agent.chat_session import ChatbotRequest, ChatTurn
 from lemon_ai_agent.llm import LLMRequest, LLMResponse
 
@@ -45,6 +49,34 @@ def _request() -> ChatbotRequest:
             "internal_trace": "supplement totals: vitamin d=25.0mcg",
         },
     )
+
+
+def test_chatbot_context_resolution_needs_lookup_returns_needs_more_info_without_llm() -> None:
+    """Specific app-record queries should not be answered from broad model knowledge."""
+    client = _CapturingLLMClient("어제 점심은 라면입니다.")
+
+    response = ChatbotAgent(llm_client=client).answer(
+        ChatbotRequest(
+            request_id="chatbot-context-lookup",
+            user_id="local-dev-user",
+            message="어제 점심에 내가 뭐 먹었지?",
+            context={
+                "user_health_context_resolution": {
+                    "status": "needs_structured_lookup",
+                    "required_records": ["food_records"],
+                    "reason": "specific_food_record_not_in_snapshot",
+                }
+            },
+        )
+    )
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "needs_more_info"
+    assert "음식 기록" in response.message
+    assert "구조화된 기록 조회" in response.message
+    assert "어제 점심은 라면입니다" not in response.message
+    assert "user_health_context_snapshot" in response.used_tools
+    assert client.request is None
 
 
 def _hypertension_ramen_request() -> ChatbotRequest:
@@ -96,6 +128,15 @@ def _diabetes_improvement_request() -> ChatbotRequest:
     )
 
 
+def _diabetes_lunch_dinner_plan_request() -> ChatbotRequest:
+    return ChatbotRequest(
+        request_id="chatbot-diabetes-lunch-dinner-plan",
+        user_id="local-dev-user",
+        message="당뇨 수치가 요즘 계속 오르네. 오늘 점심, 저녁 식단을 짜줘.",
+        context={"profile": {"goals": ["meal_management"]}},
+    )
+
+
 def _sodium_dinner_request(
     *,
     kidney_context: bool = False,
@@ -118,6 +159,76 @@ def _magnesium_blood_pressure_med_request() -> ChatbotRequest:
     )
 
 
+def _stored_amlodipine_magnesium_request() -> ChatbotRequest:
+    return ChatbotRequest(
+        request_id="chatbot-stored-amlodipine-magnesium",
+        user_id="local-dev-user",
+        message="Can I take magnesium?",
+        context={
+            "profile": {
+                "medication_details": [
+                    {
+                        "display_name": "amlodipine",
+                        "normalized_name": "amlodipine",
+                        "medication_class": "calcium_channel_blocker",
+                        "condition_tags": ["hypertension"],
+                        "confirmation_status": "user_confirmed",
+                    }
+                ],
+                "medications": ["amlodipine"],
+            }
+        },
+    )
+
+
+def _stored_statin_grapefruit_request() -> ChatbotRequest:
+    return ChatbotRequest(
+        request_id="chatbot-stored-statin-grapefruit",
+        user_id="local-dev-user",
+        message="Can I drink grapefruit juice?",
+        context={
+            "profile": {
+                "medication_details": [
+                    {
+                        "display_name": "atorvastatin",
+                        "normalized_name": "atorvastatin",
+                        "medication_class": "statin",
+                        "condition_tags": ["dyslipidemia"],
+                        "confirmation_status": "user_confirmed",
+                    }
+                ],
+                "medications": ["atorvastatin"],
+            }
+        },
+    )
+
+
+def _db_magnesium_record() -> MedicalEvidenceAnswerCardRecord:
+    return MedicalEvidenceAnswerCardRecord(
+        evidence_id="evidence-magnesium-bp",
+        source_id="nih-ods-magnesium",
+        source_url="https://ods.od.nih.gov/factsheets/Magnesium-Consumer/",
+        source_family="supplement_reference",
+        source_version_id="source-version-1",
+        version_label="2026-05 DB reviewed source",
+        source_review_status="reviewed",
+        reviewed_at="2026-05-29",
+        expires_at="2026-11-29",
+        topic="magnesium_supplement_caution",
+        audience="adult",
+        claim_summary="Magnesium supplement use needs label and medication review.",
+        allowed_user_wording="제품 라벨, 마그네슘 함량, 혈압약 종류, 신장 기능을 확인한다.",
+        blocked_wording="먹어도 됩니다.",
+        applicability_note="혈압약 복용 중인 성인",
+        caution_level="professional_review",
+        evidence_review_status="reviewed",
+        specific_examples=("제품 라벨", "마그네슘 함량", "혈압약 종류", "신장 기능"),
+        checklist=("제품 라벨", "함량", "혈압약 종류", "신장 기능", "이상 증상"),
+        caution_conditions=("새 보충제 시작", "혈압약 복용 중", "신장 기능 저하"),
+        must_not_say=("먹어도 됩니다", "안전합니다", "먹으면 안 됩니다"),
+    )
+
+
 def test_chatbot_without_llm_returns_safe_korean_fallback() -> None:
     """Verify chatbot fallback is product Korean and hides raw internals."""
     response = ChatbotAgent().answer(_request())
@@ -135,6 +246,51 @@ def test_chatbot_without_llm_returns_safe_korean_fallback() -> None:
     assert "제품 라벨" in response.message
     assert "supplement totals" not in response.message
     assert "internal_trace" not in response.message
+
+
+def test_chatbot_uses_stored_medication_name_for_caution_fallback() -> None:
+    """Verify user-confirmed medication context is reflected without deciding co-use."""
+    response = ChatbotAgent().answer(_stored_amlodipine_magnesium_request())
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "answerable_with_caution"
+    assert "amlodipine" in response.message
+    assert "magnesium" in response.message.lower()
+    assert "product label" in response.message.lower()
+    assert "safe to take" not in response.message.lower()
+    assert "you can take" not in response.message.lower()
+
+
+def test_chatbot_uses_stored_p0_medication_context_before_llm() -> None:
+    """Verify stored statin context can trigger grapefruit boundary without LLM."""
+    client = _CapturingLLMClient()
+    response = ChatbotAgent(llm_client=client).answer(_stored_statin_grapefruit_request())
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "medical_decision_boundary"
+    assert "atorvastatin" in response.message
+    assert "grapefruit" in response.message.lower()
+    assert "safe to take" not in response.message.lower()
+    assert client.request is None
+
+
+def test_chatbot_broad_medication_potassium_question_needs_specific_name() -> None:
+    """Verify broad medication class terms ask for the exact medication before judging."""
+    client = _CapturingLLMClient(text="칼륨 영양제는 혈압약과 같이 먹어도 됩니다.")
+
+    response = ChatbotAgent(llm_client=client).answer(
+        ChatbotRequest(
+            request_id="chatbot-broad-med-potassium",
+            user_id="local-dev-user",
+            message="혈압약 먹는데 칼륨 영양제 같이 먹어도 돼?",
+        )
+    )
+
+    assert response.answerability == "needs_more_info"
+    assert response.provider == "deterministic"
+    assert client.request is None
+    assert "정확한 약 이름" in response.message
+    assert "먹어도 됩니다" not in response.message
 
 
 def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None:
@@ -281,6 +437,22 @@ def test_chatbot_diabetes_improvement_fallback_uses_official_lifestyle_guidance(
     assert "단백질 1/4" in response.message
     assert "탄수화물 1/4" in response.message
     assert "Semantic Scholar" not in response.message
+
+
+def test_chatbot_diabetes_lunch_dinner_plan_gives_concrete_meal_candidates() -> None:
+    """Verify diabetes meal-plan requests are not treated as missing food records."""
+    response = ChatbotAgent().answer(_diabetes_lunch_dinner_plan_request())
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "answerable"
+    assert "음식 기록 조회가 필요" not in response.message
+    assert "점심" in response.message
+    assert "저녁" in response.message
+    assert "현미밥" in response.message or "잡곡밥" in response.message
+    assert "두부" in response.message or "생선구이" in response.message
+    assert "채소" in response.message
+    assert "NIDDK" in response.message or "CDC" in response.message
+    assert response.safety_warnings == []
 
 
 def test_chatbot_ungrounded_numeric_range_falls_back() -> None:
@@ -442,18 +614,85 @@ def test_chatbot_magnesium_blood_pressure_med_question_gives_caution_checklist()
     assert "복용량을 바꾸세요" not in response.message
     assert "Drug interaction boundary applied" not in response.safety_warnings
     assert response.answerability == "answerable_with_caution"
-    assert any(source["source_id"] == "kdris-2025" for source in response.sources)
+    assert any(source["source_id"] == "nih-ods-magnesium" for source in response.sources)
+
+
+def test_chatbot_db_backed_fallback_uses_answer_card_source_basis() -> None:
+    """Verify DB evidence fallback cites the DB AnswerCard source, not registry defaults."""
+    retriever = EvidenceRecordMedicalKnowledgeRetriever((_db_magnesium_record(),))
+
+    response = ChatbotAgent(retriever=retriever).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "answerable_with_caution"
+    assert "NIH ODS Magnesium Fact Sheet" in response.message
+    assert "질병관리청 건강정보, KDRIs 영양 기준" not in response.message
+    assert response.sources == [
+        {
+            "source_id": "nih-ods-magnesium",
+            "source_family": "supplement_reference",
+            "review_status": "reviewed",
+            "version_label": "2026-05 DB reviewed source",
+            "reviewed_at": "2026-05-29",
+            "expires_at": "2026-11-29",
+            "source_url": "https://ods.od.nih.gov/factsheets/Magnesium-Consumer/",
+        }
+    ]
+
+
+def test_chatbot_structured_json_output_is_rendered_to_answer_sections() -> None:
+    """Verify SGLang/OpenAI-compatible JSON schema output becomes the user answer."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"마그네슘은 근육과 신경 기능에 관여하지만 혈압약 복용 중이면 확인이 필요합니다.",'
+            '"why_it_matters":"제품 라벨과 혈압약 종류, 신장 기능에 따라 확인할 내용이 달라질 수 있습니다.",'
+            '"today_actions":["제품 라벨에서 마그네슘 함량을 확인하세요","혈압약 종류를 정리하세요","어지러움, 설사, 복통 같은 이상 증상을 확인하세요"],'
+            '"specific_examples":["제품 라벨","마그네슘 함량","혈압약 종류","신장 기능","어지러움","설사","복통"],'
+            '"caution_conditions":["혈압약 복용 중","신장 기능 저하","여러 보충제 중복"],'
+            '"expert_check_points":["제품 라벨","혈압약 종류","신장 기능","의사 또는 약사 확인"],'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert client.request is not None
+    assert client.request.response_format is not None
+    assert client.request.response_format["type"] == "json_schema"
+    assert response.message.startswith("요약")
+    assert "주의 조건" in response.message
+    assert "오늘 할 일" in response.message
+    assert "관리 포인트" in response.message
+    assert "출처 기준" in response.message
+    assert "제품 라벨" in response.message
+    assert "마그네슘 함량" in response.message
+    assert "혈압약 종류" in response.message
+    assert "신장 기능" in response.message
+    assert "의사 또는 약사" in response.message
+
+
+def test_chatbot_invalid_structured_json_falls_back_without_raw_payload() -> None:
+    """Verify schema failure never leaks raw provider JSON to the user."""
+    client = _CapturingLLMClient(text='{"summary":"먹어도 됩니다"}')
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "deterministic"
+    assert "Chatbot response contract not followed" in response.safety_warnings
+    assert '{"summary"' not in response.message
+    assert "먹어도 됩니다" not in response.message
 
 
 def test_chatbot_unknown_question_does_not_call_llm_or_hallucinate() -> None:
     """No reviewed card means unknown response, not broad LLM medical knowledge."""
-    client = _CapturingLLMClient(text="셀레늄은 리튬과 함께 먹어도 됩니다.")
+    client = _CapturingLLMClient(text="타우린은 리튬과 함께 먹어도 됩니다.")
 
     response = ChatbotAgent(llm_client=client).answer(
         ChatbotRequest(
             request_id="chatbot-unknown-source",
             user_id="local-dev-user",
-            message="리튬 약을 먹는데 셀레늄 영양제 같이 먹어도 돼?",
+            message="리튬 약과 타우린 영양제 같이 먹어도 돼?",
         )
     )
 
@@ -461,12 +700,53 @@ def test_chatbot_unknown_question_does_not_call_llm_or_hallucinate() -> None:
     assert response.provider == "deterministic"
     assert response.answerability == "unknown_no_reviewed_source"
     assert "현재 검수된 지식 안에서 답할 수 없습니다" in response.message
-    assert "셀레늄은 리튬과 함께 먹어도 됩니다" not in response.message
+    assert "타우린은 리튬과 함께 먹어도 됩니다" not in response.message
+    assert response.sources == []
+
+
+def test_chatbot_vitamin_d_food_question_uses_matching_nutrition_card() -> None:
+    """Verify nutrient food-candidate questions do not reuse generic supplement cards."""
+    response = ChatbotAgent().answer(
+        ChatbotRequest(
+            request_id="chatbot-vitamin-d-food",
+            user_id="local-dev-user",
+            message="비타민 D가 부족할 때 음식으로 뭘 먼저 보면 좋아?",
+        )
+    )
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "answerable"
+    assert "생선" in response.message
+    assert "달걀" in response.message
+    assert "강화식품" in response.message
+    assert "검사수치 해석" in response.message
+    assert "KDRIs 영양 기준" in response.message
+    assert "NIH ODS Magnesium Fact Sheet" not in response.message
+    assert all(source["source_id"] != "nih-ods-magnesium" for source in response.sources)
+
+
+def test_chatbot_unreviewed_nutrient_food_question_returns_unknown() -> None:
+    """Verify unreviewed nutrient gaps fail closed instead of borrowing another card."""
+    client = _CapturingLLMClient(text="철분은 아무 음식이나 먹으면 됩니다.")
+
+    response = ChatbotAgent(llm_client=client).answer(
+        ChatbotRequest(
+            request_id="chatbot-iron-food",
+            user_id="local-dev-user",
+            message="철분이 부족할 때 음식으로 뭘 먼저 보면 좋아?",
+        )
+    )
+
+    assert client.request is None
+    assert response.provider == "deterministic"
+    assert response.answerability == "unknown_no_reviewed_source"
+    assert "현재 검수된 지식 안에서 답할 수 없습니다" in response.message
+    assert "철분은 아무 음식이나 먹으면 됩니다" not in response.message
     assert response.sources == []
 
 
 def test_chatbot_sodium_dinner_fallback_uses_specific_food_and_action_cards() -> None:
-    """Verify sodium dinner fallback is more specific than broad food categories."""
+    """Verify sodium dinner fallback chooses sodium-specific actions first."""
     response = ChatbotAgent().answer(_sodium_dinner_request())
 
     adjustment_terms = ["국물", "소스", "장류", "가공육", "김치"]
@@ -474,9 +754,52 @@ def test_chatbot_sodium_dinner_fallback_uses_specific_food_and_action_cards() ->
     protein_terms = ["두부", "달걀", "생선구이", "닭가슴살", "살코기", "콩류"]
 
     assert sum(term in response.message for term in adjustment_terms) >= 2
-    assert sum(term in response.message for term in vegetable_terms) >= 3
-    assert sum(term in response.message for term in protein_terms) >= 3
+    assert sum(term in response.message for term in vegetable_terms) < 3
+    assert sum(term in response.message for term in protein_terms) < 3
     assert "채소와 단백질을 드세요" not in response.message
+
+
+def test_chatbot_brief_follow_up_keeps_previous_sodium_context() -> None:
+    """Verify continuity: a short dinner follow-up keeps the previous sodium topic."""
+    response = ChatbotAgent().answer(
+        ChatbotRequest(
+            request_id="chatbot-follow-up-dinner",
+            user_id="local-dev-user",
+            message="그럼 저녁은?",
+            conversation=[
+                ChatTurn(
+                    role="user",
+                    content="고혈압이 있는데 점심에 라면 먹었어. 나트륨이 걱정돼.",
+                    created_at="2026-06-01T12:30:00+09:00",
+                ),
+                ChatTurn(
+                    role="assistant",
+                    content="다음 끼니에서 국물과 짠 반찬을 줄이는 쪽으로 보세요.",
+                    created_at="2026-06-01T12:31:00+09:00",
+                ),
+            ],
+        )
+    )
+
+    assert response.provider == "deterministic"
+    assert response.answerability == "answerable"
+    assert "저녁" in response.message or "다음 끼니" in response.message
+    assert "국물" in response.message
+    assert "소스" in response.message or "장류" in response.message or "가공육" in response.message
+    assert "질병관리청 건강정보, KDRIs 영양 기준" in response.message
+    assert "현재 검수된 지식 안에서 답할 수 없습니다" not in response.message
+
+
+def test_chatbot_sodium_dinner_adds_protein_candidates_only_when_context_needs_it() -> None:
+    """Verify concrete food candidates are selected from nutrient context, not fixed."""
+    request = _sodium_dinner_request()
+    request.context["daily_coaching_summary"] = "단백질 섭취가 부족하게 반복되었습니다."
+
+    response = ChatbotAgent().answer(request)
+
+    protein_terms = ["두부", "달걀", "생선구이", "닭가슴살", "살코기", "콩류"]
+    assert sum(term in response.message for term in protein_terms) >= 3
+    assert "단백질" in response.message
 
 
 def test_chatbot_sodium_dinner_with_kidney_context_warns_about_potassium() -> None:
@@ -496,6 +819,15 @@ def test_chatbot_p0_interaction_examples_return_boundary_without_llm() -> None:
         "메트포민 먹는데 비타민 B12를 추가해도 괜찮아?",
         "흡연자인데 베타카로틴이나 비타민 A 영양제를 먹어도 돼?",
         "음주가 잦은데 비타민 A 단일제나 아세트아미노펜을 같이 써도 돼?",
+        "세인트존스워트랑 항우울제를 같이 먹어도 돼?",
+        "자몽주스랑 스타틴을 같이 먹어도 돼?",
+        "고지혈증 약 먹는데 자몽주스 마셔도 돼?",
+        "칼륨 보충제랑 저염소금을 같이 써도 돼?",
+        "니트로글리세린 처방이 있는데 PDE5 억제제를 같이 먹어도 돼?",
+        "협심증약 먹는데 비아그라 같이 먹어도 돼?",
+        "SSRI 복용 중인데 5-HTP 영양제를 같이 먹어도 돼?",
+        "SNRI 복용 중인데 트립토판 보충제를 같이 먹어도 돼?",
+        "스타틴 먹는데 홍국 영양제를 같이 먹어도 돼?",
     ]
 
     for index, question in enumerate(questions):
@@ -512,8 +844,11 @@ def test_chatbot_p0_interaction_examples_return_boundary_without_llm() -> None:
         assert response.provider == "deterministic"
         assert "의사" in response.message
         assert "약사" in response.message
-        assert "임의로 시작, 중단, 증량, 감량하지 않는 것이 안전합니다" in response.message
+        assert "임의로 시작, 중단, 증량, 감량하지 않는 쪽으로 안내합니다" in response.message
         assert "먹어도 됩니다" not in response.message
+        assert "안전합니다" not in response.message
+        assert any(source["source_id"] == "mfds-drug-safety" for source in response.sources)
+        assert any("boundary_code:" in warning for warning in response.safety_warnings)
         assert "Drug interaction boundary applied" in response.safety_warnings
 
 

@@ -28,6 +28,7 @@ FORBIDDEN_REMINDER_TERMS = {
     "treat",
     "treatment",
 }
+MAX_HOUR_OF_DAY = 23
 
 
 class ReminderPreferenceCreate(BaseModel):
@@ -47,7 +48,7 @@ class ReminderPreferenceCreate(BaseModel):
     def validate_time_of_day(cls, value: str) -> str:
         """Reject impossible HH:MM values."""
         hour = int(value[:2])
-        if hour > 23:
+        if hour > MAX_HOUR_OF_DAY:
             raise ValueError("time_of_day hour must be 00-23.")
         return value
 
@@ -79,7 +80,7 @@ class ReminderPreferenceUpdate(BaseModel):
         if value is None:
             return None
         hour = int(value[:2])
-        if hour > 23:
+        if hour > MAX_HOUR_OF_DAY:
             raise ValueError("time_of_day hour must be 00-23.")
         return value
 

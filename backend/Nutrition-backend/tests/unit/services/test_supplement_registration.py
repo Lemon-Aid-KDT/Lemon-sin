@@ -22,9 +22,11 @@ from src.services.supplement_matching import normalize_supplement_text
 from src.services.supplement_registration import (
     SupplementPreviewExpiredError,
     SupplementRegistrationValidationError,
+    build_active_supplement_snapshot,
     create_user_supplement_from_confirmation,
     get_user_supplement_record,
     list_user_supplement_records,
+    load_active_supplement_context,
     soft_delete_user_supplement,
     user_supplement_to_response,
 )
@@ -316,6 +318,55 @@ def _stored_ingredient(supplement_id: object) -> UserSupplementIngredient:
         source="user_confirmed",
         sort_order=0,
     )
+
+
+def test_build_active_supplement_snapshot_keeps_label_only_policy() -> None:
+    """Verify nutrient_code controls standard nutrient-analysis eligibility."""
+    supplement = _stored_supplement()
+    mapped_ingredient = _stored_ingredient(supplement.id)
+    label_only_ingredient = _stored_ingredient(supplement.id)
+    label_only_ingredient.display_name = "Herbal blend"
+    label_only_ingredient.nutrient_code = None
+    label_only_ingredient.amount = None
+    label_only_ingredient.unit = None
+    label_only_ingredient.sort_order = 1
+    response = user_supplement_to_response(
+        supplement,
+        [mapped_ingredient, label_only_ingredient],
+    )
+
+    snapshot = build_active_supplement_snapshot([response])
+
+    registered = snapshot["registered_supplements"]
+    assert registered[0]["supplement_id"] == str(supplement.id)
+    assert registered[0]["user_confirmed"] is True
+    assert registered[0]["ingredients"][0]["nutrient_code"] == "vitamin_d_ug"
+    assert registered[0]["ingredients"][0]["analysis_use"] == "standard_nutrient"
+    assert registered[0]["ingredients"][1]["display_name"] == "Herbal blend"
+    assert registered[0]["ingredients"][1]["nutrient_code"] is None
+    assert registered[0]["ingredients"][1]["analysis_use"] == "label_only"
+    assert snapshot["checked_today"] == []
+    assert snapshot["policy"]["unconfirmed_preview_excluded"] is True
+
+
+@pytest.mark.asyncio
+async def test_load_active_supplement_context_reads_confirmed_user_records() -> None:
+    """Verify the chatbot adapter reads saved supplements without preview OCR fields."""
+    supplement = _stored_supplement()
+    ingredient = _stored_ingredient(supplement.id)
+    session = _FakeRegistrationSession(scalars_results=[[supplement], [ingredient]])
+
+    snapshot = await load_active_supplement_context(
+        cast(AsyncSession, session),
+        _user(),
+    )
+
+    assert snapshot["registered_supplements"][0]["display_name"] == "Vitamin D 1000 IU"
+    assert snapshot["registered_supplements"][0]["ingredients"][0]["nutrient_code"] == (
+        "vitamin_d_ug"
+    )
+    assert "raw_ocr_text" not in str(snapshot)
+    assert "parsed_snapshot" not in str(snapshot)
 
 
 @pytest.mark.asyncio

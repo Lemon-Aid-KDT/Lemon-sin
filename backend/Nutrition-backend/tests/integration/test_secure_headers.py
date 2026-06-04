@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-
 from src.config import Settings
 from src.main import create_app
 from src.middleware.secure_headers import (

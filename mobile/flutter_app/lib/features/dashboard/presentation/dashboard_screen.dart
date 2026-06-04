@@ -1,48 +1,79 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../shared/state/confirmed_entry_store.dart';
 import '../../../shared/theme/lemon_theme.dart';
-import '../../../shared/widgets/medical_disclaimer.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final int foodCount = ConfirmedEntryStore.instance.foods.length;
-    final int supplementCount = ConfirmedEntryStore.instance.supplements.length;
-
     return Scaffold(
+      backgroundColor: LemonColors.canvas,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+          padding: const EdgeInsets.fromLTRB(24, 20, 0, 32),
           children: <Widget>[
-            _Header(foodCount: foodCount, supplementCount: supplementCount),
-            const SizedBox(height: 16),
-            _PrimaryAction(
-              onFoodTap: () => context.go('/food-capture'),
-              onSupplementTap: () => context.go('/supplement-capture'),
+            Text(
+              '오늘의 Agent',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: LemonColors.warning,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '기록과 약속을 카드로 확인합니다',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '식단, 영양제, 분석을 나눠서 봅니다',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 14),
+            _AgentSummaryCard(
+              icon: Icons.restaurant_rounded,
+              iconColor: LemonColors.sky,
+              iconBackground: LemonColors.skySoft,
+              label: '식단',
+              value: '0 kcal',
+              description: '아침, 점심, 저녁 기록',
+              onTap: () => context.go('/food-capture'),
+            ),
+            const SizedBox(height: 12),
+            _AgentSummaryCard(
+              icon: Icons.medication_liquid_rounded,
+              iconColor: LemonColors.leaf,
+              iconBackground: LemonColors.leafSoft,
+              label: '영양제',
+              value: '0개',
+              description: '복용 기록 추가',
+              onTap: () => context.go('/supplement-capture'),
+            ),
+            const SizedBox(height: 12),
+            _AgentSummaryCard(
+              icon: Icons.speed_rounded,
+              iconColor: LemonColors.warning,
+              iconBackground: LemonColors.lemonSoft,
+              label: '분석',
+              value: '82점',
+              description: '오늘 점수와 누적 흐름',
+              onTap: () => context.go(
+                '/entry-result'
+                '?type=supplement'
+                '&title=${Uri.encodeComponent('식단 + 영양제 통합 분석')}'
+                '&subtitle=${Uri.encodeComponent('식단의 당과 탄수화물 조절을 먼저 잡고, 영양제는 식사 직후 복용 흐름으로 연결하면 오늘 루틴이 안정적입니다.')}'
+                '&detail1=${Uri.encodeComponent('식단 주의: 탄수화물 양 조절')}'
+                '&detail2=${Uri.encodeComponent('복용 연결: 식후 루틴 유지')}',
+              ),
             ),
             const SizedBox(height: 16),
-            _CoachingCard(
-              foodCount: foodCount,
-              supplementCount: supplementCount,
-              onTap: () => context.go('/coaching'),
-            ),
-            const SizedBox(height: 16),
-            _ChatCard(onTap: () => context.go('/chat')),
-            const SizedBox(height: 16),
-            _NotificationCard(onTap: () => context.go('/notifications')),
-            const SizedBox(height: 16),
-            _ActivityCard(onTap: () => context.go('/activity')),
-            const SizedBox(height: 16),
-            _EvidenceGrid(
-              foodCount: foodCount,
-              supplementCount: supplementCount,
-            ),
-            const SizedBox(height: 20),
-            const MedicalDisclaimer(),
+            const _PromiseCard(),
           ],
         ),
       ),
@@ -50,404 +81,211 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.foodCount, required this.supplementCount});
-
-  final int foodCount;
-  final int supplementCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final DateTime now = DateTime.now();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: LemonColors.lemonSoft,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: LemonColors.line),
-          ),
-          child: const SizedBox(
-            width: 56,
-            height: 56,
-            child: Icon(
-              Icons.local_drink_rounded,
-              color: LemonColors.leaf,
-              size: 32,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                '${now.month}월 ${now.day}일',
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Lemon Aid',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '확정 입력 음식 $foodCount개, 영양제 $supplementCount개',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PrimaryAction extends StatelessWidget {
-  const _PrimaryAction({
-    required this.onFoodTap,
-    required this.onSupplementTap,
-  });
-
-  final VoidCallback onFoodTap;
-  final VoidCallback onSupplementTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return LemonCard(
-      color: LemonColors.lemonSoft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Icon(Icons.add_a_photo_rounded, color: LemonColors.ink),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '오늘 기록',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onFoodTap,
-                  icon: const Icon(Icons.restaurant_menu_rounded),
-                  label: const Text('음식'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onSupplementTap,
-                  icon: const Icon(Icons.medication_rounded),
-                  label: const Text('영양제'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CoachingCard extends StatelessWidget {
-  const _CoachingCard({
-    required this.foodCount,
-    required this.supplementCount,
+class _AgentSummaryCard extends StatelessWidget {
+  const _AgentSummaryCard({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBackground,
+    required this.label,
+    required this.value,
+    required this.description,
     required this.onTap,
   });
 
-  final int foodCount;
-  final int supplementCount;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool hasConfirmedInput = foodCount + supplementCount > 0;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: LemonCard(
-        child: Row(
-          children: <Widget>[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: hasConfirmedInput
-                    ? LemonColors.leafSoft
-                    : LemonColors.skySoft,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(
-                  hasConfirmedInput
-                      ? Icons.psychology_alt_rounded
-                      : Icons.fact_check_outlined,
-                  color: hasConfirmedInput ? LemonColors.leaf : LemonColors.sky,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Daily coaching',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    hasConfirmedInput
-                        ? '확정 입력을 바탕으로 개인화 코칭을 요청할 수 있어요.'
-                        : '음식이나 영양제를 확정하면 코칭 근거로 사용할 수 있어요.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatCard extends StatelessWidget {
-  const _ChatCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: LemonCard(
-        child: Row(
-          children: <Widget>[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: LemonColors.skySoft,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  color: LemonColors.sky,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    '챗봇',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '확정한 기록과 최근 코칭 요약을 기준으로 질문할 수 있어요.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NotificationCard extends StatelessWidget {
-  const _NotificationCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: LemonCard(
-        child: Row(
-          children: <Widget>[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: LemonColors.warningSoft,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(
-                  Icons.notifications_active_rounded,
-                  color: LemonColors.warning,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    '알림 설정',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '영양제, 식사 확인, 코칭 알림 시간을 설정할 수 있어요.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityCard extends StatelessWidget {
-  const _ActivityCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: LemonCard(
-        child: Row(
-          children: <Widget>[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: LemonColors.leafSoft,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(
-                  Icons.directions_walk_rounded,
-                  color: LemonColors.leaf,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    '활동 기록',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '수동으로 확인한 걸음수와 활동 시간을 코칭 근거에 추가할 수 있어요.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EvidenceGrid extends StatelessWidget {
-  const _EvidenceGrid({required this.foodCount, required this.supplementCount});
-
-  final int foodCount;
-  final int supplementCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: _MetricTile(
-            icon: Icons.restaurant_rounded,
-            label: '음식',
-            value: '$foodCount',
-            color: LemonColors.leaf,
-            backgroundColor: LemonColors.leafSoft,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _MetricTile(
-            icon: Icons.medication_liquid_rounded,
-            label: '영양제',
-            value: '$supplementCount',
-            color: LemonColors.warning,
-            backgroundColor: LemonColors.warningSoft,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.backgroundColor,
-  });
-
   final IconData icon;
+  final Color iconColor;
+  final Color iconBackground;
   final String label;
   final String value;
-  final Color color;
-  final Color backgroundColor;
+  final String description;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return LemonCard(
-      child: Column(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: LemonColors.paper,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x12000000),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+            child: SizedBox(
+              height: 104,
+              child: Row(
+                children: <Widget>[
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: iconBackground,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: SizedBox(
+                      width: 58,
+                      height: 58,
+                      child: Icon(icon, color: iconColor, size: 30),
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          label,
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          value,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: LemonColors.inkMuted,
+                    size: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PromiseCard extends StatelessWidget {
+  const _PromiseCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: LemonColors.paper,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '오늘 하루 약속',
+              style: TextStyle(
+                color: LemonColors.ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            SizedBox(height: 16),
+            _PromiseRow(
+              title: '아침 약속',
+              description: '단 음식은 줄이고 오메가-3는 식사 직후 복용해요.',
+              active: true,
+            ),
+            _PromiseRow(
+              title: '점심 약속',
+              description: '탄수화물 양을 평소보다 한 숟갈 줄이고 물을 먼저 마셔요.',
+            ),
+            _PromiseRow(
+              title: '저녁 약속',
+              description: '마그네슘은 저녁 식후로 유지하고 늦은 간식은 피합니다.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PromiseRow extends StatelessWidget {
+  const _PromiseRow({
+    required this.title,
+    required this.description,
+    this.active = false,
+  });
+
+  final String title;
+  final String description;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          LemonPill(
-            label: label,
-            color: color,
-            backgroundColor: backgroundColor,
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: active ? LemonColors.lemon : LemonColors.paper,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: active ? LemonColors.warning : LemonColors.inkMuted,
+                width: 2,
+              ),
+            ),
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: active
+                  ? const Icon(Icons.check_rounded, size: 14)
+                  : const SizedBox.shrink(),
+            ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              Icon(icon, color: color),
-              const Spacer(),
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
-            ],
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontSize: 14,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

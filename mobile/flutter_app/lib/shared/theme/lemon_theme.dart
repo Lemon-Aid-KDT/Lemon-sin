@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 class LemonColors {
-  static const Color canvas = Color(0xFFFBF8EC);
-  static const Color paper = Color(0xFFFFFDF6);
+  static const Color canvas = Color(0xFFF3F4F6);
+  static const Color paper = Color(0xFFFFFFFF);
   static const Color lemon = Color(0xFFFFCE00);
   static const Color lemonSoft = Color(0xFFFFF8C7);
   static const Color leaf = Color(0xFF2EA354);

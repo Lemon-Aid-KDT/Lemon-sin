@@ -95,7 +95,7 @@ def test_reminder_preferences_crud_routes_use_current_user(
         _session: object,
         user: AuthenticatedUser,
         reminder_id_arg: UUID,
-        request: object,
+        _request: object,
     ) -> ReminderPreferenceResponse:
         captured["update_subject"] = user.subject
         captured["update_id"] = reminder_id_arg

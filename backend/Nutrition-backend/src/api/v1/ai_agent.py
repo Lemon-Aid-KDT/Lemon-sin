@@ -15,6 +15,7 @@ from lemon_ai_agent.chat_session import (
 )
 from lemon_ai_agent.llm import LocalLLMClient, OllamaClient, SGLangClient
 from lemon_ai_agent.schemas import ReferenceRange
+from lemon_ai_agent.user_health_context import ContextResolver
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,12 +37,28 @@ from src.services.agent_memory import (
     record_agent_run,
     upsert_daily_coaching_memory,
 )
+from src.services.app_health_analysis import (
+    build_analysis_run_confirmation,
+    build_health_analysis_snapshot,
+    build_today_analysis_snapshot,
+    detect_analysis_run_intent,
+    store_app_health_analysis_result,
+)
+from src.services.chatbot_evidence_retriever import build_chatbot_medical_knowledge_retriever
+from src.services.chatbot_unknown_backlog import (
+    build_unknown_knowledge_event,
+    record_unknown_knowledge_event,
+)
+from src.services.food_records import load_recent_user_food_record_context
 from src.services.medical_source_readiness import build_medical_source_readiness_from_db
 from src.services.privacy import (
     ConsentRequiredError,
     record_sensitive_audit_event,
     require_user_consent,
 )
+from src.services.supplement_registration import load_active_supplement_context
+from src.services.user_health_context_snapshot import build_user_health_context_snapshot
+from src.services.user_medications import load_active_user_medication_context
 
 router = APIRouter(prefix="/ai-agent", tags=["ai-agent"])
 
@@ -90,6 +107,7 @@ class ChatbotApiResponse(BaseModel):
     answerability: str = "answerable"
     sources: list[dict[str, str]] = Field(default_factory=list)
     requires_user_approval: bool = False
+    ctas: list[str] = Field(default_factory=list)
 
 
 def _build_llm_client(settings: Settings) -> LocalLLMClient:
@@ -343,12 +361,57 @@ async def run_chatbot(
         )
 
     memory_context = await load_agent_memory_context(session, current_user, settings)
+    medication_context = await load_active_user_medication_context(session, current_user, settings)
+    food_record_context = await load_recent_user_food_record_context(
+        session,
+        current_user,
+        settings,
+    )
+    active_supplement_context = await load_active_supplement_context(session, current_user)
     context = dict(request.context)
     context["agent_memory"] = memory_context
+    context = _merge_user_medication_context(context, medication_context)
     context.setdefault("daily_coaching_summary", _memory_summary_for_chat(memory_context))
+    user_health_snapshot = build_user_health_context_snapshot(
+        request_context=context,
+        memory_context=memory_context,
+        medication_context=medication_context,
+        food_record_context=food_record_context,
+        active_supplement_context=active_supplement_context,
+    )
+    context_resolution = ContextResolver().resolve(request.message, user_health_snapshot)
+    context["user_health_context_snapshot"] = user_health_snapshot.to_safe_context()
+    context["user_health_context_resolution"] = {
+        "status": context_resolution.status,
+        "required_records": list(context_resolution.required_records),
+        "lookup_filters": context_resolution.lookup_filters,
+        "reason": context_resolution.reason,
+    }
+    analysis_response = await _maybe_handle_chat_analysis_run(
+        session=session,
+        current_user=current_user,
+        request=request,
+        user_health_snapshot=context["user_health_context_snapshot"],
+    )
+    if analysis_response is not None:
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="ai_agent_chat_analysis_confirmation",
+            resource_type="ai_agent_chat",
+            resource_id=request.request_id,
+            outcome="success",
+            request=http_request,
+            settings=settings,
+            event_metadata={
+                "requires_user_approval": analysis_response.requires_user_approval,
+            },
+        )
+        return analysis_response
 
     llm_client = _build_llm_client(settings)
-    chatbot_response = ChatbotAgent(llm_client=llm_client).answer(
+    retriever = await build_chatbot_medical_knowledge_retriever(session, settings)
+    chatbot_response = ChatbotAgent(llm_client=llm_client, retriever=retriever).answer(
         AgentChatbotRequest(
             request_id=request.request_id,
             user_id=current_user.subject,
@@ -364,8 +427,25 @@ async def run_chatbot(
             context=context,
         )
     )
+    if chatbot_response.answerability == "unknown_no_reviewed_source":
+        record_unknown_knowledge_event(
+            session,
+            build_unknown_knowledge_event(
+                message=request.message,
+                answerability=chatbot_response.answerability,
+                retrieval_warnings=chatbot_response.safety_warnings,
+            ),
+        )
 
-    used_tools = list(dict.fromkeys([*chatbot_response.used_tools, "agent_memory"]))
+    used_tools = list(
+        dict.fromkeys(
+            [
+                *chatbot_response.used_tools,
+                "agent_memory",
+                "user_health_context_snapshot",
+            ]
+        )
+    )
     await record_sensitive_audit_event(
         session,
         current_user,
@@ -391,3 +471,99 @@ async def run_chatbot(
         sources=chatbot_response.sources,
         requires_user_approval=chatbot_response.requires_user_approval,
     )
+
+
+async def _maybe_handle_chat_analysis_run(
+    *,
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    request: ChatbotApiRequest,
+    user_health_snapshot: dict[str, Any],
+) -> ChatbotApiResponse | None:
+    analysis_kind = detect_analysis_run_intent(request.message)
+    if analysis_kind is None:
+        return None
+
+    result_snapshot = (
+        build_today_analysis_snapshot(user_health_snapshot)
+        if analysis_kind == "today_analysis"
+        else build_health_analysis_snapshot(user_health_snapshot)
+    )
+    approval = _analysis_run_approval(request.context)
+    approved_kind = approval.get("analysis_kind")
+    approved = approval.get("approved") is True and approved_kind == analysis_kind
+    if not approved:
+        confirmation = build_analysis_run_confirmation(analysis_kind, result_snapshot)
+        return ChatbotApiResponse(
+            request_id=request.request_id,
+            message=(
+                "요약\n"
+                "- 분석을 실행하려면 현재 기록으로 분석을 저장해도 되는지 먼저 확인이 필요합니다.\n"
+                "오늘 행동\n"
+                "- 분석 실행을 승인하거나, 부족한 기록을 먼저 보완해 주세요.\n"
+                "출처 기준\n"
+                "- 사용자 확인 기록과 현재 앱 컨텍스트"
+            ),
+            provider="deterministic",
+            used_tools=["app_health_analysis_confirmation"],
+            answerability="needs_more_info",
+            requires_user_approval=True,
+            ctas=list(confirmation["ctas"]),
+        )
+
+    await store_app_health_analysis_result(
+        session,
+        current_user,
+        analysis_kind=analysis_kind,
+        input_snapshot={
+            "context_sections": list(user_health_snapshot.keys()),
+            "request_id": request.request_id,
+        },
+        result_snapshot=result_snapshot,
+        user_confirmed=True,
+    )
+    return ChatbotApiResponse(
+        request_id=request.request_id,
+        message=(
+            "요약\n"
+            "- 승인된 현재 앱 기록을 기준으로 분석 snapshot을 저장했습니다.\n"
+            "오늘 행동\n"
+            "- 분석 탭에서 저장된 결과를 확인하고, 이 결과로 이어서 질문할 수 있습니다.\n"
+            "출처 기준\n"
+            "- 사용자 확인 기록과 현재 앱 컨텍스트"
+        ),
+        provider="deterministic",
+        used_tools=["app_health_analysis"],
+        answerability="answerable",
+        requires_user_approval=False,
+        ctas=["ask_about_this_result"],
+    )
+
+
+def _analysis_run_approval(context: dict[str, Any]) -> dict[str, Any]:
+    value = context.get("analysis_run_approval")
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _merge_user_medication_context(
+    context: dict[str, Any],
+    medication_context: dict[str, object],
+) -> dict[str, Any]:
+    """Merge DB-confirmed medication profile context without raw free text."""
+    profile = dict(context.get("profile") or {})
+    existing_names = [
+        str(name).strip()
+        for name in profile.get("medications", [])
+        if str(name).strip()
+    ]
+    medication_names = [
+        str(name).strip()
+        for name in medication_context.get("medications", [])
+        if str(name).strip()
+    ]
+    profile["medications"] = list(dict.fromkeys([*existing_names, *medication_names]))
+    medication_details = medication_context.get("medication_details", [])
+    if medication_details:
+        profile["medication_details"] = medication_details
+    context["profile"] = profile
+    return context
