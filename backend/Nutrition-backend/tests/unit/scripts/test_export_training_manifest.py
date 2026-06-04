@@ -191,7 +191,18 @@ async def test_export_training_manifest_returns_redacted_summary(
 ) -> None:
     """Verify task exports write labels only to artifacts, not stdout summaries."""
     dataset = _dataset()
-    item = _dataset_item(dataset_version_id=dataset.id)
+    item = _dataset_item(
+        dataset_version_id=dataset.id,
+        label_snapshot={
+            "text_label": "Confirmed OCR Label 100 mg",
+            "crop_box": {
+                "x_center": 0.5,
+                "y_center": 0.5,
+                "width": 0.4,
+                "height": 0.2,
+            },
+        },
+    )
     _patch_sessionmaker(monkeypatch, dataset_version=dataset, rows=[item])
 
     artifact, summary = await manifest_exporter.export_training_manifest(
@@ -201,6 +212,13 @@ async def test_export_training_manifest_returns_redacted_summary(
 
     assert artifact["schema_version"] == "learning-paddleocr-rec-export-v1"
     assert artifact["items"][0]["text_label"] == "Confirmed OCR Label 100 mg"
+    assert artifact["items"][0]["recognition_source"] == "source_image_crop"
+    assert artifact["items"][0]["crop_box"] == {
+        "x_center": 0.5,
+        "y_center": 0.5,
+        "width": 0.4,
+        "height": 0.2,
+    }
     assert summary["item_count"] == 1
     serialized_summary = json.dumps(summary, ensure_ascii=False)
     assert "Confirmed OCR Label" not in serialized_summary
@@ -246,10 +264,13 @@ async def test_export_training_manifest_supports_supplement_section_yolo(
 
     assert artifact["schema_version"] == "supplement-section-yolo-detect-export-v1"
     assert artifact["class_names"] == [
+        "product_identity",
         "supplement_facts",
+        "ingredient_amounts",
         "precautions",
         "intake_method",
-        "ingredients",
+        "other_ingredients",
+        "functional_claims",
     ]
     assert artifact["items"][0]["labels"][1]["label"] == "precautions"
     assert summary["export_kind"] == "supplement_section_yolo_detection"
@@ -290,6 +311,7 @@ def test_main_writes_manifest_and_summary_without_printing_private_values(
     assert "/private/" not in stdout
     written = json.loads(output_path.read_text(encoding="utf-8"))
     assert written["items"][0]["text_label"] == "Confirmed OCR Label 100 mg"
+    assert written["items"][0]["recognition_source"] == "pre_cropped_image"
 
 
 @pytest.mark.asyncio

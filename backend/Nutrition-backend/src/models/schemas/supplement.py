@@ -77,6 +77,8 @@ class SupplementIngredientCandidate(BaseModel):
 
     Attributes:
         display_name: Ingredient name shown to the user for confirmation.
+        original_name: Original visible ingredient name from OCR text, when different
+            from the user-facing display name.
         nutrient_code: Internal nutrient code when mapped.
         amount: Ingredient amount per serving.
         unit: Ingredient unit.
@@ -85,6 +87,7 @@ class SupplementIngredientCandidate(BaseModel):
     """
 
     display_name: str = Field(min_length=1, max_length=120)
+    original_name: str | None = Field(default=None, min_length=1, max_length=120)
     nutrient_code: str | None = Field(default=None, max_length=80)
     amount: float | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, max_length=40)
@@ -626,6 +629,8 @@ class UserSupplementIngredientInput(BaseModel):
 
     Attributes:
         display_name: User-confirmed ingredient name.
+        original_name: Original visible ingredient name from OCR text. This is a
+            short per-ingredient label value for review context, not raw OCR text.
         nutrient_code: Internal nutrient code when deterministically mapped.
         amount: User-confirmed ingredient amount per serving.
         unit: User-confirmed ingredient unit.
@@ -636,6 +641,7 @@ class UserSupplementIngredientInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     display_name: str = Field(min_length=1, max_length=120)
+    original_name: str | None = Field(default=None, min_length=1, max_length=120)
     nutrient_code: str | None = Field(default=None, max_length=80)
     amount: float | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, max_length=40)

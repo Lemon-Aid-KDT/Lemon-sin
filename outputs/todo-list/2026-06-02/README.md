@@ -123,6 +123,10 @@
   - accepted `AnnotationTask`를 `LearningDatasetItem`으로 승격하는 다음 구현 TODO 정리
   - human-reviewed bbox, YOLO26 학습, crop OCR, Gemma/Ollama verification, 모바일 UI 후속 작업 정리
 
+- `2026-06-02-annotation-task-dataset-promotion.md`
+  - accepted `supplement_roi_box` task를 `LearningDatasetItem`으로 승격하는 operator CLI 구현 요약
+  - reviewer-approved source image bbox만 YOLO training export로 넘어가도록 검증/중복/source guard를 추가한 내용 정리
+
 ---
 
 ## 현재 핵심 상태

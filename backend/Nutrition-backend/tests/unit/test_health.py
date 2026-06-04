@@ -52,17 +52,23 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
     assert body["vision"]["supplement_yolo_contract"] == "disabled"
     assert body["vision"]["supplement_yolo_allowed_labels"] == [
         "blister_pack",
-        "ingredients",
+        "functional_claims",
+        "ingredient_amounts",
         "intake_method",
+        "other_ingredients",
         "precautions",
+        "product_identity",
         "supplement_bottle",
         "supplement_facts",
         "supplement_label",
     ]
     assert body["vision"]["supplement_yolo_required_section_labels"] == [
-        "ingredients",
+        "functional_claims",
+        "ingredient_amounts",
         "intake_method",
+        "other_ingredients",
         "precautions",
+        "product_identity",
         "supplement_facts",
     ]
     assert body["vision"]["food_yolo_enabled"] is True

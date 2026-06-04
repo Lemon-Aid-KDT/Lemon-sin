@@ -1,0 +1,137 @@
+{
+  "absolute_paths_stored": false,
+  "batch_count": 18,
+  "blocked_outcomes": [
+    "product_catalog_db_import",
+    "ocr_teacher_benchmark",
+    "yolo_section_dataset"
+  ],
+  "complete_batch_count": 0,
+  "db_write_performed": false,
+  "external_provider_call_performed": false,
+  "generated_at": "2026-06-04T17:37:53.387670+00:00",
+  "input_names": {
+    "batch_progress": "operator-review-batch-progress.json",
+    "brand_db_import_gate": "brand-db-import-gate.json",
+    "ocr_benchmark_gate": "ocr-benchmark-gate.json",
+    "workpack_summary": "summary.json",
+    "yolo_section_dataset_gate": "yolo-section-dataset-gate.json"
+  },
+  "input_path_hashes": {
+    "batch_progress": "69fddb669b7be6e0482856a391823feadc512da1e9ce6dad560a50d99782dd5f",
+    "brand_db_import_gate": "8dbb667bba222f51786fae5bdca049aba1a3521e5c077d3b83771ffd0c945c79",
+    "ocr_benchmark_gate": "5309b886ff4a221ca3a182b3b05f1a2eb75c245e16a3a8d68be6cd4c27effae3",
+    "workpack_summary": "724fda1f52a0b18cd4b9347ff607255f0aad3af50e6c7a1edf8388ccdb47b96c",
+    "yolo_section_dataset_gate": "19fb427724617d41bc2ec1aef2bd97a80352106db80e1ffd8ac443c06079043d"
+  },
+  "invalid_batch_count": 0,
+  "llm_call_performed": false,
+  "local_path_literals_stored": false,
+  "outcomes": [
+    {
+      "allowed_now": false,
+      "blocking_queue_key": "brand_product_review",
+      "gate_next_steps": [
+        "complete_operator_brand_review",
+        "rerun_brand_decision_preflight_require_all_reviewed",
+        "rerun_brand_db_import_gate"
+      ],
+      "gate_status": "blocked_by_operator_review",
+      "next_batch": {
+        "batch_file_name": "brand_product_review-001.jsonl",
+        "batch_key": "brand_product_review:001",
+        "batch_status": "pending",
+        "blank_row_count": 50,
+        "expected_row_count": 50,
+        "invalid_row_count": 0,
+        "missing_row_count": 0,
+        "pending_row_count": 0,
+        "queue_key": "brand_product_review",
+        "row_index_end": 50,
+        "row_index_start": 1,
+        "source_editable_file_name": "decisions.todo.jsonl",
+        "valid_row_count": 0,
+        "workpack_file_name": "brand_product_review-001.md"
+      },
+      "outcome_key": "product_catalog_db_import"
+    },
+    {
+      "allowed_now": false,
+      "blocking_queue_key": "review_pii_screening",
+      "gate_next_steps": [
+        "complete_review_image_pii_screening",
+        "rerun_pii_screening_decision_preflight_require_all_reviewed",
+        "rerun_ocr_benchmark_gate"
+      ],
+      "gate_status": "blocked_by_pii_screening",
+      "next_batch": {
+        "batch_file_name": "review_pii_screening-001.jsonl",
+        "batch_key": "review_pii_screening:001",
+        "batch_status": "pending",
+        "blank_row_count": 50,
+        "expected_row_count": 50,
+        "invalid_row_count": 0,
+        "missing_row_count": 0,
+        "pending_row_count": 0,
+        "queue_key": "review_pii_screening",
+        "row_index_end": 50,
+        "row_index_start": 1,
+        "source_editable_file_name": "decisions.todo.jsonl",
+        "valid_row_count": 0,
+        "workpack_file_name": "review_pii_screening-001.md"
+      },
+      "outcome_key": "ocr_teacher_benchmark"
+    },
+    {
+      "allowed_now": false,
+      "blocking_queue_key": "yolo_section_annotation",
+      "gate_next_steps": [
+        "complete_supplement_section_bbox_review",
+        "rerun_yolo_annotation_preflight_require_all_reviewed",
+        "rerun_yolo_section_dataset_gate"
+      ],
+      "gate_status": "blocked_by_annotation_review",
+      "next_batch": {
+        "batch_file_name": "yolo_section_annotation-001.jsonl",
+        "batch_key": "yolo_section_annotation:001",
+        "batch_status": "pending",
+        "blank_row_count": 50,
+        "expected_row_count": 50,
+        "invalid_row_count": 0,
+        "missing_row_count": 0,
+        "pending_row_count": 0,
+        "queue_key": "yolo_section_annotation",
+        "row_index_end": 50,
+        "row_index_start": 1,
+        "source_editable_file_name": "annotation.todo.jsonl",
+        "valid_row_count": 0,
+        "workpack_file_name": "yolo_section_annotation-001.md"
+      },
+      "outcome_key": "yolo_section_dataset"
+    }
+  ],
+  "pending_batch_count": 18,
+  "product_dir_literals_stored": false,
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "recommended_operator_sequence": [
+    "brand_product_review:001",
+    "review_pii_screening:001",
+    "yolo_section_annotation:001"
+  ],
+  "schema_version": "supplement-learning-dependency-audit-v1",
+  "source_doc_urls": [
+    "https://docs.python.org/3/library/argparse.html",
+    "https://docs.python.org/3/library/json.html",
+    "https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html",
+    "https://cloud.google.com/vision/docs/ocr",
+    "https://api.ncloud-docs.com/docs/en/ai-application-service-ocr",
+    "https://docs.ultralytics.com/datasets/detect/",
+    "https://docs.ultralytics.com/tasks/detect/"
+  ],
+  "source_image_read_performed": false,
+  "source_rows_read": false,
+  "status": "blocked_by_operator_review",
+  "total_blank_row_count": 808,
+  "training_execution_performed_by_script": false
+}

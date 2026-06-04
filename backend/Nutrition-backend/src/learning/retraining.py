@@ -31,10 +31,13 @@ HUMAN_REVIEWED_STATUS = "human_reviewed"
 SHA256_HEX_LENGTH = 64
 MAX_RECOGNITION_TEXT_LABEL_LENGTH = 512
 SUPPLEMENT_SECTION_CLASS_NAMES = (
+    "product_identity",
     "supplement_facts",
+    "ingredient_amounts",
     "precautions",
     "intake_method",
-    "ingredients",
+    "other_ingredients",
+    "functional_claims",
 )
 SKIPPED_LABEL_STATUSES = frozenset({"rejected", "revoked"})
 PRIVATE_SOURCE_REF_PREFIXES = ("media:", "learning_image:")
@@ -346,14 +349,19 @@ def build_paddleocr_recognition_export(manifest: Mapping[str, Any]) -> dict[str,
     """
     rows = []
     for row in _manifest_items_for_task(manifest, "paddleocr_recognition"):
-        text_label = _confirmed_text_label(row["label_snapshot"].get("text_label"))
-        rows.append(
-            {
-                "source_ref": row["source_ref"],
-                "split": row["split"],
-                "text_label": text_label,
-            }
-        )
+        label_snapshot = row["label_snapshot"]
+        export_row = {
+            "source_ref": row["source_ref"],
+            "split": row["split"],
+            "text_label": _confirmed_text_label(label_snapshot.get("text_label")),
+        }
+        crop_box = _optional_crop_box(label_snapshot.get("crop_box"))
+        if crop_box is not None:
+            export_row["crop_box"] = crop_box
+            export_row["recognition_source"] = "source_image_crop"
+        else:
+            export_row["recognition_source"] = "pre_cropped_image"
+        rows.append(export_row)
     return {
         "schema_version": PADDLEOCR_RECOGNITION_EXPORT_SCHEMA_VERSION,
         "item_count": len(rows),
@@ -470,6 +478,24 @@ def validate_sanitized_label_snapshot(label_snapshot: Mapping[str, Any]) -> None
         RetrainingSecurityError: If the payload contains unsafe keys or values.
     """
     _validate_json_value(label_snapshot)
+
+
+def validate_supplement_section_training_label_snapshot(
+    label_snapshot: Mapping[str, Any],
+) -> None:
+    """Validate one reviewed supplement section YOLO training label snapshot.
+
+    Args:
+        label_snapshot: Human-reviewed supplement section label payload.
+
+    Raises:
+        RetrainingSecurityError: If the payload contains unsafe data, has not
+            passed human training approval, uses non-source-image coordinates,
+            or lacks valid supplement section boxes.
+    """
+    validate_sanitized_label_snapshot(label_snapshot)
+    _validate_supplement_section_training_approval(label_snapshot)
+    _normalize_supplement_section_box_labels(label_snapshot.get("boxes"))
 
 
 def _validate_json_value(value: Any, *, key_path: str = "") -> None:
@@ -686,6 +712,38 @@ def _confirmed_text_label(raw_label: object) -> str:
         raise RetrainingSecurityError("PaddleOCR recognition text label is too long.")
     _validate_safe_string(label)
     return label
+
+
+def _optional_crop_box(raw_box: object) -> dict[str, float] | None:
+    """Validate an optional normalized crop box for recognition training.
+
+    Args:
+        raw_box: Optional crop box mapping in source-image coordinates.
+
+    Returns:
+        Normalized crop box, or None when the recognition source is already a
+        cropped text image.
+
+    Raises:
+        RetrainingSecurityError: If the crop box shape is invalid.
+    """
+    if raw_box is None:
+        return None
+    if not isinstance(raw_box, Mapping):
+        raise RetrainingSecurityError("PaddleOCR recognition crop_box must be an object.")
+    normalized: dict[str, float] = {}
+    for key in ("x_center", "y_center", "width", "height"):
+        value = raw_box.get(key)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not 0 <= float(value) <= 1
+        ):
+            raise RetrainingSecurityError("PaddleOCR recognition crop_box must be normalized.")
+        normalized[key] = float(value)
+    if normalized["width"] <= 0 or normalized["height"] <= 0:
+        raise RetrainingSecurityError("PaddleOCR recognition crop_box dimensions must be positive.")
+    return normalized
 
 
 def _metric_values_by_name(eval_results: Sequence[ModelEvalResult]) -> dict[str, Decimal]:

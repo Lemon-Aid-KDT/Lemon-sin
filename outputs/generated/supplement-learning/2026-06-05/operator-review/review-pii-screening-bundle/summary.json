@@ -1,0 +1,31 @@
+{
+  "absolute_paths_stored": false,
+  "db_write_performed": false,
+  "decision_template_name": "decisions.todo.jsonl",
+  "decision_template_row_count": 215,
+  "external_transfer_allowed_rows": 0,
+  "generated_at": "2026-06-04T21:01:14.107058+00:00",
+  "html_index_name": "review-index.html",
+  "image_copied_count": 215,
+  "image_path_style": "relative_private_hashed_fixture_copy",
+  "limit": null,
+  "ocr_provider_call_performed": false,
+  "operator_decision_required_count": 215,
+  "paddleocr_training_performed": false,
+  "product_dir_literals_stored": false,
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "readme_name": "README.md",
+  "reviewable_row_count": 215,
+  "schema_version": "supplement-review-pii-screening-review-bundle-v1",
+  "skip_reason_counts": {},
+  "source_doc_urls": [
+    "https://cloud.google.com/vision/docs/ocr",
+    "https://api.ncloud-docs.com/docs/en/ai-application-service-ocr"
+  ],
+  "source_run_id": "2026-06-05-crawling-image-refresh",
+  "teacher_ocr_allowed_rows": 0,
+  "template_hash": "cf8b167fad920b626466638c0945a887de21f5d856ce5f442e1e990c9e3f15f0",
+  "template_name": "review-pii-screening-template.jsonl",
+  "template_row_count": 215
+}

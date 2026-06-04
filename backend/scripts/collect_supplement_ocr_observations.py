@@ -262,7 +262,7 @@ def main() -> None:
             "Opt-in: send each non-empty OCR text to the local OllamaSupplementParser "
             "and record redacted llm_parsed_ingredients on each completed observation. "
             "Raw OCR text and raw model responses are never written; only structured "
-            "ingredient display_name/amount/unit/confidence fields are stored. "
+            "ingredient display_name/original_name/amount/unit/confidence fields are stored. "
             "Review rows pending PII screening are skipped before LLM handoff."
         ),
     )
@@ -502,7 +502,7 @@ async def _attach_llm_parse(
 
     Notes:
         Raw OCR text and raw Ollama responses are never persisted. Only the
-        structured ingredient display_name/amount/unit/confidence and the
+        structured ingredient display_name/original_name/amount/unit/confidence and the
         ingredient_count are written to ``row``. Failure modes and retry counts
         are recorded as safe bounded tokens/integers only.
     """
@@ -554,6 +554,7 @@ async def _attach_llm_parse(
         ingredients.append(
             {
                 "display_name": ingredient.display_name,
+                "original_name": ingredient.original_name,
                 "nutrient_code": ingredient.nutrient_code,
                 "amount": ingredient.amount,
                 "unit": ingredient.unit,

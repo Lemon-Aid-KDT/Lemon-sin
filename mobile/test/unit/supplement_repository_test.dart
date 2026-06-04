@@ -414,6 +414,7 @@ void main() {
       );
       expect(body['use_local_llm'], isTrue);
       expect(response.llmUsed, isTrue);
+      expect(response.sourceCitations.single.sourcePath, 'vitamin-d.md');
     },
   );
 
@@ -501,6 +502,7 @@ void main() {
     expect(body['locale'], 'ko-KR');
     expect(body['use_local_llm'], isTrue);
     expect(response.llmUsed, isTrue);
+    expect(response.sourceCitations.single.title, '비타민 D');
   });
 }
 
@@ -734,6 +736,15 @@ final Map<String, Object?> _explainResponse = <String, Object?>{
   'clinical_disclaimer': 'Reference information only.',
   'blocked_terms_detected': <Object?>[],
   'llm_used': true,
+  'source_citations': <Object?>[
+    <String, Object?>{
+      'title': '비타민 D',
+      'source_path': 'vitamin-d.md',
+      'heading': '확인 필요',
+      'excerpt': '비타민 D는 개인 상태와 함께 확인합니다.',
+      'score': 9.0,
+    },
+  ],
   'warnings': <Object?>[],
 };
 

@@ -1253,11 +1253,15 @@ class SupplementIngredientCandidate {
     required this.unit,
     required this.confidence,
     required this.source,
+    this.originalName,
     this.dailyValuePercent,
   });
 
   /// Ingredient display name.
   final String displayName;
+
+  /// Original ingredient name visible on the label, when provided by analysis.
+  final String? originalName;
 
   /// Internal nutrient code when mapped.
   final String? nutrientCode;
@@ -1281,6 +1285,7 @@ class SupplementIngredientCandidate {
   factory SupplementIngredientCandidate.fromJson(Map<String, dynamic> json) {
     return SupplementIngredientCandidate(
       displayName: readString(json, 'display_name'),
+      originalName: readOptionalString(json, 'original_name'),
       nutrientCode: readOptionalString(json, 'nutrient_code'),
       amount: readOptionalDouble(json, 'amount'),
       unit: readOptionalString(json, 'unit'),
@@ -1669,6 +1674,7 @@ class UserSupplementIngredientInput {
   /// Creates a user-confirmed ingredient input.
   const UserSupplementIngredientInput({
     required this.displayName,
+    this.originalName,
     required this.nutrientCode,
     required this.amount,
     required this.unit,
@@ -1679,6 +1685,9 @@ class UserSupplementIngredientInput {
 
   /// User-confirmed ingredient name.
   final String displayName;
+
+  /// Original ingredient name visible on the label, when carried from analysis.
+  final String? originalName;
 
   /// Internal nutrient code when deterministically mapped.
   final String? nutrientCode;
@@ -1702,6 +1711,7 @@ class UserSupplementIngredientInput {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'display_name': displayName,
+      if (originalName != null) 'original_name': originalName,
       'nutrient_code': nutrientCode,
       'amount': amount,
       'unit': unit,
@@ -2061,6 +2071,46 @@ class SupplementImpactPreviewResponse {
   }
 }
 
+/// Source citation used to ground a local LLM explanation.
+class SupplementExplanationSourceCitation {
+  /// Creates a source citation.
+  const SupplementExplanationSourceCitation({
+    required this.title,
+    required this.sourcePath,
+    this.heading,
+    required this.excerpt,
+    required this.score,
+  });
+
+  /// Human-readable WIKI document title.
+  final String title;
+
+  /// Relative source path from the configured WIKI root.
+  final String sourcePath;
+
+  /// Matching heading, when available.
+  final String? heading;
+
+  /// Bounded WIKI excerpt used for grounding.
+  final String excerpt;
+
+  /// Deterministic lexical retrieval score.
+  final double score;
+
+  /// Parses a backend citation response.
+  factory SupplementExplanationSourceCitation.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return SupplementExplanationSourceCitation(
+      title: readString(json, 'title'),
+      sourcePath: readString(json, 'source_path'),
+      heading: readOptionalString(json, 'heading'),
+      excerpt: readString(json, 'excerpt'),
+      score: readOptionalDouble(json, 'score') ?? 0,
+    );
+  }
+}
+
 /// Safe explanation response for a deterministic supplement impact preview.
 class SupplementRecommendationExplainResponse {
   /// Creates an explanation response.
@@ -2070,6 +2120,7 @@ class SupplementRecommendationExplainResponse {
     required this.clinicalDisclaimer,
     required this.blockedTermsDetected,
     required this.llmUsed,
+    this.sourceCitations = const <SupplementExplanationSourceCitation>[],
     required this.warnings,
   });
 
@@ -2088,6 +2139,9 @@ class SupplementRecommendationExplainResponse {
   /// Whether local LLM wording was accepted.
   final bool llmUsed;
 
+  /// Local WIKI citations used to ground the explanation.
+  final List<SupplementExplanationSourceCitation> sourceCitations;
+
   /// Safe warning codes/messages.
   final List<String> warnings;
 
@@ -2104,6 +2158,10 @@ class SupplementRecommendationExplainResponse {
         'blocked_terms_detected',
       ),
       llmUsed: json['llm_used'] == true,
+      sourceCitations: readOptionalList(json, 'source_citations')
+          .whereType<Map<String, dynamic>>()
+          .map(SupplementExplanationSourceCitation.fromJson)
+          .toList(growable: false),
       warnings: readOptionalStringList(json, 'warnings'),
     );
   }

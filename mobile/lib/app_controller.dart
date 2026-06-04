@@ -1002,6 +1002,7 @@ class AppController extends ChangeNotifier {
         _supplementExplanation!.safeUserMessage,
         for (final String bullet in _supplementExplanation!.explanationBullets)
           '· $bullet',
+        ..._supplementChatSourceLines(_supplementExplanation!),
       ],
       for (final String line in contextLines) '· $line',
       '의료적 진단·처방이 아닌 건강관리 참고 정보예요. 복용 중인 약이나 질환이 있으면 의사·약사와 확인해주세요.',
@@ -1015,6 +1016,21 @@ class AppController extends ChangeNotifier {
       assistantMessage: answer.join('\n'),
       createdAt: DateTime.now(),
     );
+  }
+
+  List<String> _supplementChatSourceLines(
+    SupplementRecommendationExplainResponse explanation,
+  ) {
+    if (explanation.sourceCitations.isEmpty) {
+      return const <String>[];
+    }
+    return <String>[
+      '',
+      '출처',
+      for (final SupplementExplanationSourceCitation citation
+          in explanation.sourceCitations.take(4))
+        '· ${citation.title} (${citation.sourcePath})',
+    ];
   }
 
   List<String> _supplementChatContextLines({
@@ -1146,7 +1162,9 @@ class AppController extends ChangeNotifier {
   }
 
   String _formatConfirmedIngredient(UserSupplementIngredientInput ingredient) {
-    final List<String> parts = <String>[ingredient.displayName.trim()];
+    final List<String> parts = <String>[
+      _formatBilingualConfirmedIngredientName(ingredient),
+    ];
     if (ingredient.amount != null) {
       parts.add(_formatAmount(ingredient.amount!));
     }
@@ -1159,7 +1177,7 @@ class AppController extends ChangeNotifier {
   String _formatConfirmedIngredientForChat(
     UserSupplementIngredientInput ingredient,
   ) {
-    final String name = ingredient.displayName.trim();
+    final String name = _formatBilingualConfirmedIngredientName(ingredient);
     final List<String> amountParts = <String>[];
     if (ingredient.amount != null) {
       amountParts.add(_formatAmount(ingredient.amount!));
@@ -1174,7 +1192,7 @@ class AppController extends ChangeNotifier {
   String _formatPreviewIngredientForChat(
     SupplementIngredientCandidate ingredient,
   ) {
-    final String name = ingredient.displayName.trim();
+    final String name = _formatBilingualIngredientName(ingredient);
     final List<String> amountParts = <String>[];
     if (ingredient.amount != null) {
       amountParts.add(_formatAmount(ingredient.amount!));
@@ -1206,7 +1224,9 @@ class AppController extends ChangeNotifier {
   }
 
   String _formatPreviewIngredient(SupplementIngredientCandidate ingredient) {
-    final List<String> parts = <String>[ingredient.displayName.trim()];
+    final List<String> parts = <String>[
+      _formatBilingualIngredientName(ingredient),
+    ];
     if (ingredient.amount != null) {
       parts.add(_formatAmount(ingredient.amount!));
     }
@@ -1214,6 +1234,34 @@ class AppController extends ChangeNotifier {
       parts.add(ingredient.unit!.trim());
     }
     return parts.join(' ');
+  }
+
+  String _formatBilingualIngredientName(
+    SupplementIngredientCandidate ingredient,
+  ) {
+    final String displayName = ingredient.displayName.trim();
+    final String? originalName = _firstNonEmpty(<String?>[
+      ingredient.originalName,
+    ]);
+    if (originalName == null ||
+        originalName.toLowerCase() == displayName.toLowerCase()) {
+      return displayName;
+    }
+    return '$displayName($originalName)';
+  }
+
+  String _formatBilingualConfirmedIngredientName(
+    UserSupplementIngredientInput ingredient,
+  ) {
+    final String displayName = ingredient.displayName.trim();
+    final String? originalName = _firstNonEmpty(<String?>[
+      ingredient.originalName,
+    ]);
+    if (originalName == null ||
+        originalName.toLowerCase() == displayName.toLowerCase()) {
+      return displayName;
+    }
+    return '$displayName($originalName)';
   }
 
   String _formatServing(SupplementServing serving) {

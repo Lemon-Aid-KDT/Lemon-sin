@@ -575,6 +575,47 @@ async def list_user_meal_records(
     )
 
 
+async def get_user_meal_record(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    meal_id: UUID,
+) -> MealRecordResponse:
+    """Load one confirmed current-user meal record.
+
+    Args:
+        session: Request-scoped database session.
+        user: Authenticated owner.
+        meal_id: Meal record identifier.
+
+    Returns:
+        Confirmed meal record response without owner or raw media data.
+
+    Raises:
+        MealPreviewNotFoundError: If the meal is absent, soft-deleted, or not confirmed.
+    """
+    result = await session.scalars(
+        select(MealRecord).where(
+            MealRecord.id == meal_id,
+            MealRecord.owner_subject == build_owner_subject(user),
+            MealRecord.deleted_at.is_(None),
+            MealRecord.status == MealAnalysisStatus.CONFIRMED.value,
+        )
+    )
+    meal_record = result.one_or_none()
+    if meal_record is None:
+        raise MealPreviewNotFoundError("Confirmed meal record was not found.")
+
+    food_items_by_meal = await _load_food_items_for_meals(session, [meal_record.id])
+    food_items = food_items_by_meal.get(meal_record.id, [])
+    catalog_refs = await _load_catalog_refs_for_food_items(session, food_items)
+    return meal_record_to_response(
+        meal_record,
+        food_items,
+        catalog_item_refs=catalog_refs,
+    )
+
+
 def meal_confirmation_to_response(
     result: MealConfirmationStoreResult,
 ) -> MealRecordResponse:

@@ -630,6 +630,7 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
     assert candidates == [
         {
             "display_name": "비타민 D",
+            "original_name": "비타민 D",
             "amount": 25.0,
             "unit": "ug",
             "confidence": 0.55,
@@ -637,6 +638,7 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
         },
         {
             "display_name": "아연",
+            "original_name": "아연",
             "amount": 10.0,
             "unit": "mg",
             "daily_value_percent": 50.0,
@@ -747,6 +749,60 @@ async def test_parse_supplement_analysis_ocr_text_does_not_duplicate_parser_cand
     candidates = record.parsed_snapshot["ingredient_candidates"]
     assert len(candidates) == 1
     assert candidates[0]["source"] == "ollama_structured"
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_drops_llm_serving_size_candidates() -> None:
+    """Verify LLM-emitted serving-size fragments never survive as ingredients."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    parser_result = SupplementStructuredParseResult.model_validate(
+        {
+            "parsed_product": {"product_name": "테스트 영양제", "serving_size": "1회 제공량 26g"},
+            "ingredient_candidates": [
+                {
+                    "display_name": "1회제공량(",
+                    "amount": 26,
+                    "unit": "g",
+                    "confidence": 0.72,
+                    "source": "ollama_structured",
+                },
+                {
+                    "display_name": "회 제공량",
+                    "amount": 26,
+                    "unit": "g",
+                    "confidence": 0.71,
+                    "source": "ollama_structured",
+                },
+                {
+                    "display_name": "비타민 C",
+                    "amount": 100,
+                    "unit": "mg",
+                    "confidence": 0.89,
+                    "source": "ollama_structured",
+                },
+            ],
+            "missing_required_sections": [],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "1회 제공량(26g)\n비타민 C 100 mg",
+        "paddleocr_local",
+        0.91,
+        _settings(),
+        parser=_FakeParser(parser_result),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    assert [candidate["display_name"] for candidate in candidates] == ["비타민 C"]
+    assert candidates[0]["amount"] == 100
+    assert "ingredient.non_ingredient_heading_filtered" in record.warnings
 
 
 @pytest.mark.asyncio

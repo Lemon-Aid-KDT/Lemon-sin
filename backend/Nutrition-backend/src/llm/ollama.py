@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -33,11 +34,15 @@ Return one JSON object.
   candidates with that amount+unit; also take NAMES from the declaration
   list (원재료명/원료명/성분명) with amount=null, unit=null. Amounts come ONLY
   from the facts table; never invented.
+- For each ingredient, set original_name to the visible OCR label. If an English
+  label has an obvious Korean name, set display_name Korean. If unsure, keep
+  display_name equal to original_name and mark low_confidence_fields. Never
+  invent ingredients.
 - Ignore package counts ("30정", "180g") unless attached to a named row.
 - Required sections are product_name, supplement_facts, intake_method, precautions.
 - label_sections, intake_method, functional_claims: as seen
-- precautions: return each visible caution/warning sentence as a separate array
-  item; do not summarize, merge, or rewrite the wording beyond OCR cleanup.
+- precautions: each visible caution/warning sentence as an array item; do not
+  summarize or rewrite beyond OCR cleanup.
 - evidence_spans: short excerpts, never full OCR text
 - missing_required_sections, low_confidence_fields, warnings: brief
 No keys outside the schema in the format field.
@@ -98,14 +103,27 @@ PRODUCT_OUTPUT_KEYS = frozenset(
 )
 INGREDIENT_NAME_KEYS = (
     "display_name",
+    "display_name_ko",
+    "korean_name",
     "ingredient_name",
     "nutrient_name",
     "name",
     "ingredient",
 )
+INGREDIENT_ORIGINAL_NAME_KEYS = (
+    "original_name",
+    "display_name_en",
+    "english_name",
+    "source_name",
+    "ocr_name",
+    "label_name",
+)
 INGREDIENT_AMOUNT_KEYS = ("amount", "quantity", "dose")
 INGREDIENT_UNIT_KEYS = ("unit", "units")
 MAX_NORMALIZED_LIST_ITEMS = 80
+MAX_UNTRANSLATED_ACRONYM_LETTERS = 4
+LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
+HANGUL_PATTERN = re.compile(r"[가-힣]")
 
 
 class _HTTPResponse(Protocol):
@@ -568,12 +586,18 @@ def _normalize_structured_parse_payload(value: Any) -> Any:
             if candidate is not None:
                 candidates.append(candidate)
         normalized["ingredient_candidates"] = candidates
+        translation_review_fields = _ingredient_translation_review_fields(candidates)
+        if translation_review_fields:
+            normalized["low_confidence_fields"] = translation_review_fields
 
     _normalize_preview_payload_sections(value, normalized)
 
     low_confidence_fields = _string_list_value(value, "low_confidence_fields")
     if low_confidence_fields is not None:
-        normalized["low_confidence_fields"] = low_confidence_fields
+        normalized["low_confidence_fields"] = _append_unique_strings(
+            normalized.get("low_confidence_fields"),
+            low_confidence_fields,
+        )
     warnings = _string_list_value(value, "warnings")
     if warnings is not None:
         normalized["warnings"] = warnings[:20]
@@ -723,6 +747,11 @@ def _normalize_ingredient_candidate(value: Any) -> dict[str, Any] | None:
     display_name = _first_bounded_string(value, INGREDIENT_NAME_KEYS, max_length=120)
     if display_name is None:
         return None
+    original_name = _first_bounded_string(
+        value,
+        INGREDIENT_ORIGINAL_NAME_KEYS,
+        max_length=120,
+    )
 
     candidate: dict[str, Any] = {
         "display_name": display_name,
@@ -730,6 +759,7 @@ def _normalize_ingredient_candidate(value: Any) -> dict[str, Any] | None:
         "confidence": _confidence_value(value.get("confidence")),
         "source": SUPPLEMENT_PARSER_SOURCE,
     }
+    candidate["original_name"] = original_name or display_name
     amount = _first_present_value(value, INGREDIENT_AMOUNT_KEYS)
     amount = _bounded_number(amount, minimum=0.0, maximum=1_000_000.0)
     if amount is not None:
@@ -739,6 +769,87 @@ def _normalize_ingredient_candidate(value: Any) -> dict[str, Any] | None:
     if unit is not None:
         candidate["unit"] = unit
     return candidate
+
+
+def _ingredient_translation_review_fields(
+    candidates: list[dict[str, Any]],
+) -> list[str]:
+    """Return display-name fields that still need Korean translation review.
+
+    Args:
+        candidates: Normalized ingredient candidates from the model response.
+
+    Returns:
+        Low-confidence field paths for long English names that were preserved as
+        the user-facing display name. Short common acronyms such as EPA remain
+        acceptable as-is because translating them can reduce clarity.
+    """
+    fields: list[str] = []
+    for index, candidate in enumerate(candidates):
+        display_name = candidate.get("display_name")
+        original_name = candidate.get("original_name")
+        if not isinstance(display_name, str) or not isinstance(original_name, str):
+            continue
+        if not _ingredient_display_needs_translation_review(display_name, original_name):
+            continue
+        fields.append(f"ingredient_candidates[{index}].display_name")
+    return fields
+
+
+def _ingredient_display_needs_translation_review(
+    display_name: str,
+    original_name: str,
+) -> bool:
+    """Return whether an ingredient display name should be reviewed for Korean wording.
+
+    Args:
+        display_name: User-facing ingredient name returned by the model.
+        original_name: Original visible ingredient name from OCR text.
+
+    Returns:
+        True when the model left a long English original as the display name
+        without a Korean label.
+    """
+    display = display_name.strip()
+    original = original_name.strip()
+    if not display or not original:
+        return False
+    if display.casefold() != original.casefold():
+        return False
+    if HANGUL_PATTERN.search(display) is not None:
+        return False
+    if LATIN_LETTER_PATTERN.search(original) is None:
+        return False
+    letters = [char for char in original if char.isalpha()]
+    if len(letters) <= MAX_UNTRANSLATED_ACRONYM_LETTERS and original.upper() == original:
+        return False
+    return len(letters) > MAX_UNTRANSLATED_ACRONYM_LETTERS
+
+
+def _append_unique_strings(existing: Any, additions: list[str]) -> list[str]:
+    """Append strings without duplicates while preserving first-seen order.
+
+    Args:
+        existing: Existing low-confidence field values.
+        additions: New low-confidence field values.
+
+    Returns:
+        Deduplicated string list.
+    """
+    result: list[str] = []
+    seen: set[str] = set()
+    for values in (existing, additions):
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            stripped = value.strip()
+            if not stripped or stripped in seen:
+                continue
+            result.append(stripped)
+            seen.add(stripped)
+    return result
 
 
 def _normalize_label_section(value: Any, index: int) -> dict[str, Any] | None:

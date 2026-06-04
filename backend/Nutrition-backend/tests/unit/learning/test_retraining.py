@@ -228,10 +228,13 @@ def test_supplement_section_yolo_export_maps_semantic_labels_to_class_ids() -> N
 
     assert export["schema_version"] == "supplement-section-yolo-detect-export-v1"
     assert export["class_names"] == [
+        "product_identity",
         "supplement_facts",
+        "ingredient_amounts",
         "precautions",
         "intake_method",
-        "ingredients",
+        "other_ingredients",
+        "functional_claims",
     ]
     assert export["split_counts"]["train"] == 1
     assert export["items"] == [
@@ -240,7 +243,7 @@ def test_supplement_section_yolo_export_maps_semantic_labels_to_class_ids() -> N
             "split": "train",
             "labels": [
                 {
-                    "class_id": 0,
+                    "class_id": 1,
                     "label": "supplement_facts",
                     "x_center": 0.5,
                     "y_center": 0.4,
@@ -248,7 +251,7 @@ def test_supplement_section_yolo_export_maps_semantic_labels_to_class_ids() -> N
                     "height": 0.3,
                 },
                 {
-                    "class_id": 1,
+                    "class_id": 3,
                     "label": "precautions",
                     "x_center": 0.5,
                     "y_center": 0.8,
@@ -372,6 +375,7 @@ def test_paddleocr_exports_require_confirmed_text_and_detection_boxes() -> None:
             "source_ref": rec_candidate.source_ref,
             "split": "train",
             "text_label": "Magnesium 135 mg",
+            "recognition_source": "pre_cropped_image",
         }
     ]
     assert det_export["items"][0]["source_ref"] == det_candidate.source_ref

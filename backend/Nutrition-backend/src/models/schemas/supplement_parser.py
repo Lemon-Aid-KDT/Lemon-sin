@@ -41,6 +41,8 @@ class SupplementParserIngredientCandidate(BaseModel):
 
     Attributes:
         display_name: Ingredient name shown to the user for confirmation.
+        original_name: Original ingredient name visible in OCR text, usually the
+            English label wording. This is a bounded per-ingredient label, not raw OCR.
         nutrient_code: Always null at the LLM extraction stage; deterministic mapping happens later.
         amount: Ingredient amount per serving when visible.
         unit: Ingredient unit when visible.
@@ -54,6 +56,7 @@ class SupplementParserIngredientCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     display_name: str = Field(min_length=1, max_length=120)
+    original_name: str | None = Field(default=None, min_length=1, max_length=120)
     nutrient_code: Literal[None] = Field(default=None)
     amount: float | None = Field(default=None, ge=0, le=1_000_000)
     unit: str | None = Field(default=None, max_length=40)

@@ -86,7 +86,8 @@ SECTION_KEYWORDS: dict[SectionType, tuple[str, ...]] = {
     ),
 }
 PRECAUTION_ALLERGEN_ROW_PATTERN = re.compile(
-    r"\bcontains\b.*\b(?:soy|milk|egg|fish|shellfish|wheat|peanut|tree\s+nut|sesame|gluten)\b",
+    r"\bcontains\b.*\b(?:soy(?:bean)?|milk(?:-derived)?|dairy|lactose|egg|fish|shellfish|"
+    r"wheat|peanut|tree\s+nuts?|sesame|gluten)\b",
     re.IGNORECASE,
 )
 

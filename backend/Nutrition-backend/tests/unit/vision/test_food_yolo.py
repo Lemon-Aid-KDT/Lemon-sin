@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 from src.vision.base import BoundingBox, VisionError
 from src.vision.food_yolo import FoodDetection, FoodYoloDetector, food_model_label
+from src.vision.taxonomy import normalize_food_vision_label, normalize_food_vision_label_set
 
 
 class _Boxes:
@@ -166,3 +167,15 @@ def test_food_model_label_uses_basename_only() -> None:
         == "food_yolo_local:best.pt"
     )
     assert food_model_label(None, "food_yolo_local") is None
+
+
+def test_food_vision_taxonomy_normalizes_region_role_aliases() -> None:
+    """Verify meal-image YOLO role labels are stable and non-medical."""
+    assert normalize_food_vision_label("meal area") == "meal_region"
+    assert normalize_food_vision_label("Food Object") == "food_item"
+    assert normalize_food_vision_label("menu-text-region") == "menu_text"
+    assert normalize_food_vision_label("Nutrition Facts Panel") == "nutrition_label"
+    assert normalize_food_vision_label("diagnosis") is None
+    assert normalize_food_vision_label_set(
+        ["plate", "food_item", "menu", "nutrition_information", "unknown"]
+    ) == ["food_item", "meal_region", "menu_text", "nutrition_label"]

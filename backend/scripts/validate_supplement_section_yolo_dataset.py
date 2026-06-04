@@ -22,10 +22,13 @@ from typing import Any
 from src.vision.taxonomy import VISION_DETECTION_LABELS, normalize_vision_label
 
 REQUIRED_SECTION_LABELS = (
+    "product_identity",
     "supplement_facts",
+    "ingredient_amounts",
     "precautions",
     "intake_method",
-    "ingredients",
+    "other_ingredients",
+    "functional_claims",
 )
 REQUIRED_DATASET_KEYS = ("path", "train", "val", "names")
 OPTIONAL_SPLIT_KEY = "test"

@@ -26,6 +26,7 @@ class _SuccessfulParser:
                 "ingredient_candidates": [
                     {
                         "display_name": "비타민 D",
+                        "original_name": "Vitamin D",
                         "amount": 1000,
                         "unit": "IU",
                         "confidence": 0.91,
@@ -80,6 +81,7 @@ async def test_attach_llm_parse_records_schema_v2_candidates() -> None:
     assert row["llm_parsed_ingredients"] == [
         {
             "display_name": "비타민 D",
+            "original_name": "Vitamin D",
             "nutrient_code": None,
             "amount": 1000.0,
             "unit": "IU",

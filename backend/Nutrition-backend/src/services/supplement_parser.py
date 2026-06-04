@@ -51,6 +51,7 @@ INGREDIENT_DECLARATION_SOURCE = "ingredient_declaration"
 INGREDIENT_DECLARATION_WARNING = "ingredient_declaration_names_only_requires_review"
 INGREDIENT_DECLARATION_CONFIDENCE = 0.4
 EXCIPIENT_FILTERED_WARNING = "ingredient.excipient_filtered"
+NON_INGREDIENT_HEADING_FILTERED_WARNING = "ingredient.non_ingredient_heading_filtered"
 INGREDIENT_AMOUNT_MISSING_WARNING = "ingredient.amount_missing"
 SUPPLEMENT_IMAGE_ASSIST_WARNING = (
     "Image-assisted text extraction is a fallback preview. Review every field before saving."
@@ -404,14 +405,22 @@ def _sanitize_parser_result(
         if not name_res.value:
             warnings.extend(name_res.warnings)
             continue
+        if _looks_like_non_ingredient_heading(name_res.value) or _looks_like_packaging_quantity_token(
+            name_res.value
+        ):
+            warnings.append(NON_INGREDIENT_HEADING_FILTERED_WARNING)
+            continue
         # Drop inactive excipients (gelatin, glycerin, purified water, ...) the
         # LLM sometimes emits as ingredients; they are not nutrient content.
         if _is_excipient_name(name_res.value):
             warnings.append(EXCIPIENT_FILTERED_WARNING)
             continue
+        original_name_res = sanitize_ingredient_name(candidate.get("original_name"))
         unit_res = sanitize_unit(candidate.get("unit"))
         candidate["display_name"] = name_res.value
+        candidate["original_name"] = original_name_res.value or None
         candidate["unit"] = unit_res.value or None
+        warnings.extend(original_name_res.warnings)
         warnings.extend(unit_res.warnings)
         if candidate.get("amount") is None:
             amount_missing = True
@@ -566,17 +575,21 @@ def _merge_ocr_pattern_fallbacks(
     # 2) Add genuinely-new OCR amount-pattern candidates the LLM missed.
     existing_keys = {_ingredient_candidate_key(candidate) for candidate in existing_candidates}
     existing_name_keys = {
-        _ingredient_name_key(str(candidate.get("display_name") or ""))
+        name_key
         for candidate in existing_candidates
+        for name_key in _ingredient_candidate_name_keys(candidate)
     }
     added = False
     for candidate in fallback_candidates:
         key = _ingredient_candidate_key(candidate)
         if key in existing_keys:
             continue
+        candidate_name_keys = _ingredient_candidate_name_keys(candidate)
+        if any(name_key in existing_name_keys for name_key in candidate_name_keys):
+            continue
         existing_candidates.append(candidate)
         existing_keys.add(key)
-        existing_name_keys.add(_ingredient_name_key(str(candidate.get("display_name") or "")))
+        existing_name_keys.update(candidate_name_keys)
         added = True
         if len(existing_candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
             break
@@ -790,7 +803,11 @@ def _enrich_missing_amounts_from_fallbacks(
     for candidate in existing_candidates:
         if candidate.get("amount") is not None:
             continue
-        match = fallback_by_name.get(_ingredient_name_key(str(candidate.get("display_name") or "")))
+        match: dict[str, Any] | None = None
+        for name_key in _ingredient_candidate_name_keys(candidate):
+            match = fallback_by_name.get(name_key)
+            if match is not None:
+                break
         if match is None:
             continue
         candidate["amount"] = match.get("amount")
@@ -828,11 +845,11 @@ def _merge_declaration_candidates(
     for candidate in declaration_candidates:
         if len(existing_candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
             break
-        name_key = _ingredient_name_key(str(candidate.get("display_name") or ""))
-        if name_key in existing_name_keys:
+        name_keys = _ingredient_candidate_name_keys(candidate)
+        if any(name_key in existing_name_keys for name_key in name_keys):
             continue
         existing_candidates.append(candidate)
-        existing_name_keys.add(name_key)
+        existing_name_keys.update(name_keys)
         declaration_added = True
     return declaration_added
 
@@ -868,6 +885,7 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
             candidates.append(
                 {
                     "display_name": name,
+                    "original_name": name,
                     "nutrient_code": None,
                     "amount": amount,
                     "unit": unit,
@@ -913,6 +931,7 @@ def _sanitize_ocr_pattern_candidates(
             continue
         unit_res = sanitize_unit(candidate.get("unit"))
         candidate["display_name"] = name_res.value
+        candidate["original_name"] = name_res.value
         candidate["unit"] = unit_res.value or None
         warnings.extend(unit_res.warnings)
         surviving.append(candidate)
@@ -971,6 +990,7 @@ def _extract_ingredient_declaration_candidates(ocr_text: str) -> list[dict[str, 
             seen.add(name_key)
             candidate: dict[str, Any] = {
                 "display_name": cleaned,
+                "original_name": cleaned,
                 "nutrient_code": None,
                 "amount": None,
                 "unit": None,
@@ -1200,6 +1220,23 @@ def _ingredient_candidate_key(candidate: dict[str, Any]) -> tuple[str, float | N
         normalized_amount,
         str(unit).casefold() if unit is not None else None,
     )
+
+
+def _ingredient_candidate_name_keys(candidate: dict[str, Any]) -> set[str]:
+    """Return display/original name keys for candidate deduplication.
+
+    Args:
+        candidate: Ingredient candidate mapping.
+
+    Returns:
+        Non-empty normalized names from both user-facing and OCR-original fields.
+    """
+    keys: set[str] = set()
+    for field in ("display_name", "original_name"):
+        name_key = _ingredient_name_key(str(candidate.get(field) or ""))
+        if name_key:
+            keys.add(name_key)
+    return keys
 
 
 def _ingredient_name_key(value: str) -> str:

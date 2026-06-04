@@ -306,7 +306,8 @@ def test_vision_taxonomy_normalizes_section_roi_aliases() -> None:
     assert normalize_vision_label("Supplement Facts Panel") == "supplement_facts"
     assert normalize_vision_label("allergy-warning") == "precautions"
     assert normalize_vision_label("Suggested Use") == "intake_method"
-    assert normalize_vision_label("Other Ingredients") == "ingredients"
+    assert normalize_vision_label("ingredient rows") == "ingredient_amounts"
+    assert normalize_vision_label("Other Ingredients") == "other_ingredients"
 
 
 def test_ultralytics_runner_fails_closed_without_allowed_boxes() -> None:

@@ -12,6 +12,7 @@ from src.config import DEFAULT_DATABASE_URL, DEFAULT_PRIVACY_HASH_SECRET, Settin
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 READINESS_SETTINGS_PATH = PROJECT_ROOT / "config" / "implementation-readiness.settings.json"
+ENV_EXAMPLE_PATH = PROJECT_ROOT / "backend" / ".env.example"
 
 
 def _load_json_object(path: Path) -> dict[str, object]:
@@ -49,6 +50,25 @@ def _object_field(mapping: dict[str, object], key: str) -> dict[str, object]:
         assert isinstance(nested_key, str)
         parsed[nested_key] = nested_value
     return parsed
+
+
+def _env_example_value(name: str) -> str:
+    """Return one raw value from the backend example environment file.
+
+    Args:
+        name: Environment variable name.
+
+    Returns:
+        Raw value string from ``backend/.env.example``.
+
+    Raises:
+        AssertionError: If the key is absent from the example file.
+    """
+    prefix = f"{name}="
+    for line in ENV_EXAMPLE_PATH.read_text(encoding="utf-8").splitlines():
+        if line.startswith(prefix):
+            return line.removeprefix(prefix)
+    raise AssertionError(f"{name} missing from backend/.env.example")
 
 
 def _valid_production_kwargs() -> dict[str, Any]:
@@ -124,6 +144,13 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.google_vision_timeout_seconds == 15
     assert settings.google_vision_max_retries == 2
     assert settings.enable_multimodal_llm is False
+    assert settings.ollama_model == "gemma4:e4b"
+    assert settings.ollama_vision_model == "gemma4:e4b"
+    assert settings.allow_external_llm is False
+    assert settings.llm_wiki_retrieval_enabled is True
+    assert str(settings.llm_wiki_path) == "/Volumes/Corsair EX400U Media/LLM-WIKI"
+    assert settings.llm_wiki_max_sources == 4
+    assert settings.llm_wiki_excerpt_chars == 700
     assert settings.multimodal_ocr_assist_policy == "disabled"
     assert settings.enable_multimodal_verification is False
     assert settings.multimodal_verification_sample_rate == 0.0
@@ -146,10 +173,13 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.enable_clova_ocr is False
     assert settings.vision_roi_min_confidence == 0.50
     assert settings.vision_roi_allowed_classes == [
+        "product_identity",
         "supplement_facts",
+        "ingredient_amounts",
         "precautions",
         "intake_method",
-        "ingredients",
+        "other_ingredients",
+        "functional_claims",
         "supplement_label",
         "supplement_bottle",
         "blister_pack",
@@ -171,6 +201,22 @@ def test_google_cloud_api_key_can_be_loaded_as_secret() -> None:
 
     assert settings.google_cloud_api_key is not None
     assert settings.google_cloud_api_key.get_secret_value() == "test-google-cloud-api-key"
+
+
+def test_env_example_matches_supplement_section_yolo_defaults() -> None:
+    """Verify the example env enables the same section-ROI contract as Settings.
+
+    The supplement OCR pipeline depends on YOLO section boxes for facts,
+    precautions, intake method, and ingredients. Keeping ``.env.example`` aligned
+    with ``Settings`` prevents a copied local config from silently filtering out
+    warning/allergy regions.
+    """
+    settings = Settings(_env_file=None)
+
+    assert _env_example_value("VISION_CLASSIFIER_MODEL") == settings.vision_classifier_model
+    assert json.loads(_env_example_value("VISION_ROI_ALLOWED_CLASSES")) == (
+        settings.vision_roi_allowed_classes
+    )
 
 
 def test_google_cloud_api_key_can_be_loaded_from_dotenv(tmp_path: Path) -> None:

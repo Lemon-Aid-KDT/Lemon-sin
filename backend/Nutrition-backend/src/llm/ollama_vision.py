@@ -41,6 +41,23 @@ facts, intake method, or precautions are absent from the visible image. Return
 only JSON matching the supplied schema.
 """.strip()
 MAX_VERIFICATION_OCR_TEXT_CHARS = 4_000
+VISION_READINESS_PROBE_IMAGE_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
+
+
+class OllamaVisionReadinessProbeResult(BaseModel):
+    """Validated response for the local vision image-input smoke test.
+
+    Attributes:
+        vision_input_supported: Whether the model accepted the submitted image.
+        visible_text_present: Whether the probe image contains visible text.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    vision_input_supported: bool
+    visible_text_present: bool
 
 
 class OllamaVisionTextCandidateResult(BaseModel):
@@ -224,12 +241,16 @@ class OllamaVisionAssistAdapter(OCRAdapter):
 async def check_ollama_vision_readiness(
     settings: Settings,
     client: OllamaChatClient | None = None,
+    *,
+    probe_image_input: bool = False,
 ) -> OllamaReadiness:
     """Check whether the configured local Ollama vision model is available.
 
     Args:
         settings: Runtime settings.
         client: Optional Ollama transport, primarily for tests.
+        probe_image_input: Whether to send a tiny local image payload through
+            ``POST /api/chat`` to verify actual vision-input support.
 
     Returns:
         Sanitized readiness status for the configured vision model.
@@ -262,14 +283,84 @@ async def check_ollama_vision_readiness(
         )
 
     model_present = model in model_names
+    if not model_present:
+        return OllamaReadiness(
+            base_url=settings.ollama_base_url,
+            model=model,
+            ready=False,
+            model_present=False,
+            model_names=model_names,
+            error_code="model_missing",
+        )
+    if probe_image_input:
+        try:
+            await _probe_ollama_vision_image_input(settings, active_client)
+        except (OllamaClientError, OllamaStructuredOutputError):
+            return OllamaReadiness(
+                base_url=settings.ollama_base_url,
+                model=model,
+                ready=False,
+                model_present=True,
+                model_names=model_names,
+                error_code="vision_probe_failed",
+            )
     return OllamaReadiness(
         base_url=settings.ollama_base_url,
         model=model,
-        ready=model_present,
-        model_present=model_present,
+        ready=True,
+        model_present=True,
         model_names=model_names,
-        error_code=None if model_present else "model_missing",
+        error_code=None,
     )
+
+
+async def _probe_ollama_vision_image_input(
+    settings: Settings,
+    client: OllamaChatClient,
+) -> None:
+    """Verify that the configured local model accepts an image payload.
+
+    Args:
+        settings: Runtime settings with local Ollama model configuration.
+        client: Ollama transport used for the probe request.
+
+    Raises:
+        OllamaClientError: If the local ``POST /api/chat`` probe fails.
+        OllamaStructuredOutputError: If the model response cannot be validated.
+    """
+    schema = OllamaVisionReadinessProbeResult.model_json_schema()
+    payload = {
+        "model": settings.ollama_vision_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a local readiness smoke test. Return only JSON matching "
+                    "the supplied schema. Do not provide advice."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "This is a one-pixel test image with no visible text. "
+                    "Return vision_input_supported=true and visible_text_present=false "
+                    "only if the image payload was accepted.\n\n"
+                    "Return JSON that conforms to this JSON Schema:\n"
+                    f"{json.dumps(schema, ensure_ascii=False)}"
+                ),
+                "images": [VISION_READINESS_PROBE_IMAGE_BASE64],
+            },
+        ],
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "options": {"temperature": settings.ollama_vision_temperature},
+    }
+    response_data = await client.post_chat(payload)
+    content = extract_ollama_message_content(response_data)
+    result = _parse_vision_readiness_probe_result(content)
+    if not result.vision_input_supported or result.visible_text_present:
+        raise OllamaStructuredOutputError("Ollama vision probe returned an unsupported result.")
 
 
 def _validate_vision_settings(settings: Settings) -> None:
@@ -479,6 +570,32 @@ def _parse_vision_verification_result(content: str) -> OllamaVisionTextVerificat
             last_error = exc
     raise OllamaStructuredOutputError(
         "Ollama vision verification output failed schema validation."
+    ) from last_error
+
+
+def _parse_vision_readiness_probe_result(content: str) -> OllamaVisionReadinessProbeResult:
+    """Validate the readiness image-probe response.
+
+    Args:
+        content: Raw assistant message content.
+
+    Returns:
+        Schema-validated image-probe result.
+
+    Raises:
+        OllamaStructuredOutputError: If no candidate passes schema validation.
+    """
+    candidates = _vision_json_candidates(content)
+    if not candidates:
+        raise OllamaStructuredOutputError("Ollama vision probe returned empty content.")
+    last_error: ValidationError | None = None
+    for candidate in candidates:
+        try:
+            return OllamaVisionReadinessProbeResult.model_validate_json(candidate)
+        except ValidationError as exc:
+            last_error = exc
+    raise OllamaStructuredOutputError(
+        "Ollama vision probe output failed schema validation."
     ) from last_error
 
 

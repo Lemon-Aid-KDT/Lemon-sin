@@ -957,6 +957,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return _IngredientAmountTable(
       rows: rows,
       onSelectionChanged: _setIngredientDraftSelected,
+      onAllSelectionChanged: _setAllIngredientDraftsSelected,
     );
   }
 
@@ -1019,6 +1020,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   ) {
     return _IngredientAmountRowData(
       name: candidate.displayName,
+      originalName: _visibleOriginalName(
+        candidate.displayName,
+        candidate.originalName,
+      ),
       amount: _ingredientAmountText(candidate.amount, candidate.unit),
     );
   }
@@ -1031,11 +1036,22 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       draftIndex: index,
       selected: draft.selected,
       name: draft.displayName.isEmpty ? '성분명 확인 필요' : draft.displayName,
+      originalName: _visibleOriginalName(draft.displayName, draft.originalName),
       amount: _ingredientAmountText(
         _parseOptionalDouble(draft.amountText),
         draft.unit,
       ),
     );
+  }
+
+  static String? _visibleOriginalName(String displayName, String? originalName) {
+    final String display = displayName.trim();
+    final String? original = _nonEmpty(originalName);
+    if (original == null) return null;
+    if (display.isNotEmpty && original.toLowerCase() == display.toLowerCase()) {
+      return null;
+    }
+    return original;
   }
 
   String _ingredientAmountText(double? amount, String? unit) {
@@ -1077,6 +1093,17 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
             label: '대표 성분',
             hintText: '예: Vitamin D',
           ),
+          if (_ingredientDrafts.isNotEmpty &&
+              _visibleOriginalName(
+                    _ingredientDrafts.first.displayName,
+                    _ingredientDrafts.first.originalName,
+                  ) !=
+                  null) ...<Widget>[
+            const SizedBox(height: AppSpace.xs),
+            _OriginalIngredientNameText(
+              originalName: _ingredientDrafts.first.originalName!,
+            ),
+          ],
           const SizedBox(height: AppSpace.sm),
           Row(
             children: <Widget>[
@@ -1141,6 +1168,30 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                           height: 1.35,
                           letterSpacing: 0,
                         ),
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      _IngredientBulkSelectionBar(
+                        selectedCount: drafts
+                            .where(
+                              (_IngredientReviewDraft draft) => draft.selected,
+                            )
+                            .length,
+                        selectableCount: drafts.length,
+                        onPressed: drafts.isEmpty
+                            ? null
+                            : () {
+                                final bool shouldSelectAll = !drafts.every(
+                                  (_IngredientReviewDraft draft) =>
+                                      draft.selected,
+                                );
+                                setDialogState(() {
+                                  drafts = <_IngredientReviewDraft>[
+                                    for (final _IngredientReviewDraft draft
+                                        in drafts)
+                                      draft.copyWith(selected: shouldSelectAll),
+                                  ];
+                                });
+                              },
                       ),
                       const SizedBox(height: AppSpace.sm),
                       for (int index = 0; index < drafts.length; index++) ...[
@@ -1209,6 +1260,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
             label: '대표 성분',
             hintText: '예: Vitamin D',
           ),
+          if (_visibleOriginalName(draft.displayName, draft.originalName) !=
+              null) ...<Widget>[
+            const SizedBox(height: AppSpace.xs),
+            _OriginalIngredientNameText(originalName: draft.originalName!),
+          ],
           const SizedBox(height: AppSpace.sm),
           Row(
             children: <Widget>[
@@ -1575,6 +1631,17 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     });
   }
 
+  void _setAllIngredientDraftsSelected(bool selected) {
+    if (_ingredientDrafts.isEmpty) return;
+    setState(() {
+      _ingredientDrafts = <_IngredientReviewDraft>[
+        for (final _IngredientReviewDraft draft in _ingredientDrafts)
+          draft.copyWith(selected: selected),
+      ];
+      _syncPrimaryIngredientControllers();
+    });
+  }
+
   static String _sectionLabel(String sectionType) {
     return switch (sectionType) {
       'supplement_facts' || 'ingredients' || 'ingredient_candidates' => '성분표',
@@ -1704,6 +1771,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     if (name == null) return null;
     return UserSupplementIngredientInput(
       displayName: name,
+      originalName: _primaryIngredientOriginalName(name),
       nutrientCode: null,
       amount: _parseOptionalDouble(_ingredientAmountController.text),
       unit: _nonEmpty(_ingredientUnitController.text),
@@ -1727,6 +1795,20 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final UserSupplementIngredientInput? corrected = _correctedIngredient();
     if (corrected == null) return const <UserSupplementIngredientInput>[];
     return <UserSupplementIngredientInput>[corrected];
+  }
+
+  String? _primaryIngredientOriginalName(String displayName) {
+    final String displayKey = displayName.trim().toLowerCase();
+    for (final _IngredientReviewDraft draft in _ingredientDrafts) {
+      if (draft.displayName.trim().toLowerCase() == displayKey) {
+        return _nonEmpty(draft.originalName);
+      }
+    }
+    for (final _IngredientReviewDraft draft in _ingredientDrafts) {
+      final String? originalName = _nonEmpty(draft.originalName);
+      if (originalName != null) return originalName;
+    }
+    return null;
   }
 
   void _syncSingleIngredientDraftFromFields() {
@@ -1818,6 +1900,7 @@ class _MutableSupplementReviewGroup {
 class _IngredientReviewDraft {
   const _IngredientReviewDraft({
     required this.displayName,
+    required this.originalName,
     required this.amountText,
     required this.unit,
     required this.selected,
@@ -1838,6 +1921,7 @@ class _IngredientReviewDraft {
         _AnalysisResultScreenState._nonEmpty(candidate.unit) != null;
     return _IngredientReviewDraft(
       displayName: candidate.displayName,
+      originalName: candidate.originalName,
       amountText: amountText,
       unit: candidate.unit ?? '',
       selected: hasAmountAndUnit,
@@ -1853,6 +1937,7 @@ class _IngredientReviewDraft {
   ) {
     return _IngredientReviewDraft(
       displayName: input.displayName,
+      originalName: input.originalName,
       amountText: input.amount == null
           ? ''
           : _AnalysisResultScreenState._formatEditableAmount(input.amount!),
@@ -1866,6 +1951,7 @@ class _IngredientReviewDraft {
   }
 
   final String displayName;
+  final String? originalName;
   final String amountText;
   final String unit;
   final bool selected;
@@ -1881,6 +1967,7 @@ class _IngredientReviewDraft {
   UserSupplementIngredientInput toInput({required String source}) {
     return UserSupplementIngredientInput(
       displayName: displayName.trim(),
+      originalName: _AnalysisResultScreenState._nonEmpty(originalName),
       nutrientCode: nutrientCode,
       amount: _AnalysisResultScreenState._parseOptionalDouble(amountText),
       unit: _AnalysisResultScreenState._nonEmpty(unit),
@@ -1898,6 +1985,7 @@ class _IngredientReviewDraft {
   }) {
     return _IngredientReviewDraft(
       displayName: displayName ?? this.displayName,
+      originalName: originalName,
       amountText: amountText ?? this.amountText,
       unit: unit ?? this.unit,
       selected: selected ?? this.selected,
@@ -1905,6 +1993,29 @@ class _IngredientReviewDraft {
       confidence: confidence,
       source: source,
       dailyValuePercent: dailyValuePercent,
+    );
+  }
+}
+
+class _OriginalIngredientNameText extends StatelessWidget {
+  const _OriginalIngredientNameText({required this.originalName});
+
+  final String originalName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        '원문: $originalName',
+        style: const TextStyle(
+          color: AppColor.inkSecondary,
+          fontSize: 12,
+          height: 1.35,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        ),
+      ),
     );
   }
 }
@@ -1941,15 +2052,35 @@ class _IngredientReviewTile extends StatelessWidget {
                 letterSpacing: 0,
               ),
             ),
-            subtitle: Text(
-              draft.amountText.isEmpty && draft.unit.isEmpty
-                  ? '함량이 없어 기본 제외됨'
-                  : '${draft.amountText} ${draft.unit}'.trim(),
-              style: const TextStyle(
-                color: AppColor.inkSecondary,
-                fontSize: 12,
-                letterSpacing: 0,
-              ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (_AnalysisResultScreenState._visibleOriginalName(
+                      draft.displayName,
+                      draft.originalName,
+                    ) !=
+                    null)
+                  Text(
+                    '원문: ${draft.originalName}',
+                    style: const TextStyle(
+                      color: AppColor.inkSecondary,
+                      fontSize: 12,
+                      height: 1.3,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                Text(
+                  draft.amountText.isEmpty && draft.unit.isEmpty
+                      ? '함량이 없어 기본 제외됨'
+                      : '${draft.amountText} ${draft.unit}'.trim(),
+                  style: const TextStyle(
+                    color: AppColor.inkSecondary,
+                    fontSize: 12,
+                    height: 1.3,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
             ),
             onChanged: (bool? value) {
               onChanged(draft.copyWith(selected: value ?? false));
@@ -2011,12 +2142,14 @@ class _IngredientAmountRowData {
   const _IngredientAmountRowData({
     required this.name,
     required this.amount,
+    this.originalName,
     this.draftIndex,
     this.selected = false,
   });
 
   final String name;
   final String amount;
+  final String? originalName;
   final int? draftIndex;
   final bool selected;
 }
@@ -2025,13 +2158,24 @@ class _IngredientAmountTable extends StatelessWidget {
   const _IngredientAmountTable({
     required this.rows,
     required this.onSelectionChanged,
+    required this.onAllSelectionChanged,
   });
 
   final List<_IngredientAmountRowData> rows;
   final void Function(int index, bool selected) onSelectionChanged;
+  final ValueChanged<bool> onAllSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
+    final List<_IngredientAmountRowData> selectableRows = rows
+        .where((_IngredientAmountRowData row) => row.draftIndex != null)
+        .toList(growable: false);
+    final int selectedCount = selectableRows
+        .where((_IngredientAmountRowData row) => row.selected)
+        .length;
+    final int selectableCount = selectableRows.length;
+    final bool allSelected =
+        selectableCount > 0 && selectedCount == selectableCount;
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: DecoratedBox(
@@ -2040,40 +2184,125 @@ class _IngredientAmountTable extends StatelessWidget {
           border: Border.all(color: const Color(0xFFE7EAF0)),
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
-        child: Table(
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          columnWidths: const <int, TableColumnWidth>{
-            0: FixedColumnWidth(42),
-            1: FlexColumnWidth(1.35),
-            2: FlexColumnWidth(1),
-          },
-          border: const TableBorder(
-            horizontalInside: BorderSide(color: Color(0xFFE7EAF0)),
-          ),
-          children: <TableRow>[
-            const TableRow(
-              decoration: BoxDecoration(color: Color(0xFFFFF7D6)),
-              children: <Widget>[
-                _IngredientAmountCell(text: '선택', isHeader: true),
-                _IngredientAmountCell(text: '성분명', isHeader: true),
-                _IngredientAmountCell(text: '함량', isHeader: true),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _IngredientBulkSelectionBar(
+              selectedCount: selectedCount,
+              selectableCount: selectableCount,
+              onPressed: selectableCount == 0
+                  ? null
+                  : () => onAllSelectionChanged(!allSelected),
+            ),
+            const Divider(height: 1, thickness: 1, color: Color(0xFFE7EAF0)),
+            Table(
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              columnWidths: const <int, TableColumnWidth>{
+                0: FixedColumnWidth(42),
+                1: FlexColumnWidth(1.35),
+                2: FlexColumnWidth(1),
+              },
+              border: const TableBorder(
+                horizontalInside: BorderSide(color: Color(0xFFE7EAF0)),
+              ),
+              children: <TableRow>[
+                const TableRow(
+                  decoration: BoxDecoration(color: Color(0xFFFFF7D6)),
+                  children: <Widget>[
+                    _IngredientAmountCell(text: '선택', isHeader: true),
+                    _IngredientAmountCell(text: '성분명', isHeader: true),
+                    _IngredientAmountCell(text: '함량', isHeader: true),
+                  ],
+                ),
+                for (final MapEntry<int, _IngredientAmountRowData> entry
+                    in rows.asMap().entries)
+                  TableRow(
+                    children: <Widget>[
+                      _IngredientSelectionCell(
+                        row: entry.value,
+                        rowIndex: entry.key,
+                        onSelectionChanged: onSelectionChanged,
+                      ),
+                      _IngredientAmountCell(
+                        text: entry.value.name,
+                        secondaryText: entry.value.originalName == null
+                            ? null
+                            : '원문: ${entry.value.originalName}',
+                      ),
+                      _IngredientAmountCell(text: entry.value.amount),
+                    ],
+                  ),
               ],
             ),
-            for (final MapEntry<int, _IngredientAmountRowData> entry
-                in rows.asMap().entries)
-              TableRow(
-                children: <Widget>[
-                  _IngredientSelectionCell(
-                    row: entry.value,
-                    rowIndex: entry.key,
-                    onSelectionChanged: onSelectionChanged,
-                  ),
-                  _IngredientAmountCell(text: entry.value.name),
-                  _IngredientAmountCell(text: entry.value.amount),
-                ],
-              ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _IngredientBulkSelectionBar extends StatelessWidget {
+  const _IngredientBulkSelectionBar({
+    required this.selectedCount,
+    required this.selectableCount,
+    required this.onPressed,
+  });
+
+  final int selectedCount;
+  final int selectableCount;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool allSelected =
+        selectableCount > 0 && selectedCount == selectableCount;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.sm,
+        AppSpace.xs,
+        AppSpace.xs,
+        AppSpace.xs,
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              '선택 $selectedCount/$selectableCount',
+              style: const TextStyle(
+                color: AppColor.inkSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                height: 1.25,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            key: const ValueKey<String>('ingredient-select-all-button'),
+            onPressed: onPressed,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColor.ink,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.xs,
+                vertical: 2,
+              ),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: Icon(
+              allSelected ? Icons.remove_done_rounded : Icons.done_all_rounded,
+              size: 17,
+            ),
+            label: Text(
+              allSelected ? '전체 해제' : '전체 선택',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2175,9 +2404,14 @@ class _OcrTextTable extends StatelessWidget {
 }
 
 class _IngredientAmountCell extends StatelessWidget {
-  const _IngredientAmountCell({required this.text, this.isHeader = false});
+  const _IngredientAmountCell({
+    required this.text,
+    this.secondaryText,
+    this.isHeader = false,
+  });
 
   final String text;
+  final String? secondaryText;
   final bool isHeader;
 
   @override
@@ -2187,16 +2421,33 @@ class _IngredientAmountCell extends StatelessWidget {
         horizontal: AppSpace.sm,
         vertical: AppSpace.xs,
       ),
-      child: Text(
-        text,
-        softWrap: true,
-        style: TextStyle(
-          color: isHeader ? AppColor.inkSecondary : AppColor.ink,
-          fontSize: isHeader ? 12 : 16,
-          height: 1.35,
-          fontWeight: isHeader ? FontWeight.w900 : FontWeight.w900,
-          letterSpacing: 0,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            text,
+            softWrap: true,
+            style: TextStyle(
+              color: isHeader ? AppColor.inkSecondary : AppColor.ink,
+              fontSize: isHeader ? 12 : 16,
+              height: 1.35,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          if (secondaryText != null && secondaryText!.isNotEmpty)
+            Text(
+              secondaryText!,
+              softWrap: true,
+              style: const TextStyle(
+                color: AppColor.inkSecondary,
+                fontSize: 11,
+                height: 1.3,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2994,6 +3245,7 @@ class _ImpactPreviewCard extends StatelessWidget {
                   ),
                 ),
               ),
+            _ExplanationSourceList(citations: explanation!.sourceCitations),
           ],
         ],
       ),
@@ -3060,6 +3312,7 @@ class _AnalysisExplanationCard extends StatelessWidget {
                   ),
                 ),
               ),
+            _ExplanationSourceList(citations: current.sourceCitations),
           ],
           const SizedBox(height: AppSpace.md),
           SizedBox(
@@ -3077,6 +3330,48 @@ class _AnalysisExplanationCard extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExplanationSourceList extends StatelessWidget {
+  const _ExplanationSourceList({required this.citations});
+
+  final List<SupplementExplanationSourceCitation> citations;
+
+  @override
+  Widget build(BuildContext context) {
+    if (citations.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpace.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '출처',
+            style: TextStyle(
+              color: AppColor.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          for (final SupplementExplanationSourceCitation citation
+              in citations.take(4))
+            Text(
+              '· ${citation.title} (${citation.sourcePath})',
+              style: const TextStyle(
+                color: AppColor.inkSecondary,
+                fontSize: 12,
+                height: 1.35,
+                letterSpacing: 0,
+              ),
+            ),
         ],
       ),
     );

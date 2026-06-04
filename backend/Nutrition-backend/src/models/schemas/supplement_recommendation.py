@@ -247,6 +247,26 @@ class SupplementAnalysisExplainRequest(BaseModel):
     include_medical_context: bool = False
 
 
+class SupplementExplanationSourceCitation(BaseModel):
+    """Source citation used to ground a safe local LLM explanation.
+
+    Attributes:
+        title: WIKI document title shown to the user.
+        source_path: Relative path from the configured local WIKI root.
+        heading: Matching heading inside the WIKI document, when available.
+        excerpt: Bounded excerpt used as Gemma grounding context.
+        score: Deterministic retrieval relevance score.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=160)
+    source_path: str = Field(min_length=1, max_length=240)
+    heading: str | None = Field(default=None, max_length=160)
+    excerpt: str = Field(min_length=1, max_length=900)
+    score: float = Field(ge=0)
+
+
 class SupplementRecommendationExplainResponse(BaseModel):
     """Safe explanation response for supplement impact preview.
 
@@ -256,6 +276,7 @@ class SupplementRecommendationExplainResponse(BaseModel):
         clinical_disclaimer: Fixed safety disclaimer.
         blocked_terms_detected: Forbidden terms detected and blocked from LLM output.
         llm_used: Whether a local LLM output was accepted.
+        source_citations: Local WIKI source citations used for explanation grounding.
         warnings: Safe warning codes/messages.
     """
 
@@ -266,4 +287,8 @@ class SupplementRecommendationExplainResponse(BaseModel):
     clinical_disclaimer: str = Field(min_length=1, max_length=300)
     blocked_terms_detected: list[str] = Field(default_factory=list, max_length=20)
     llm_used: bool = False
+    source_citations: list[SupplementExplanationSourceCitation] = Field(
+        default_factory=list,
+        max_length=8,
+    )
     warnings: list[str] = Field(default_factory=list, max_length=20)

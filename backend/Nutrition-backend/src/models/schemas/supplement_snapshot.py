@@ -179,6 +179,7 @@ class SupplementSnapshotIngredientCandidate(BaseModel):
 
     Attributes:
         display_name: Ingredient name shown to the user.
+        original_name: Original visible ingredient name from OCR text.
         normalized_name: Normalized ingredient name for matching.
         nutrient_code_candidates: Deterministic nutrient-code candidates.
         amount: Ingredient amount per serving.
@@ -192,6 +193,7 @@ class SupplementSnapshotIngredientCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     display_name: str = Field(min_length=1, max_length=120)
+    original_name: str | None = Field(default=None, min_length=1, max_length=120)
     normalized_name: str | None = Field(default=None, max_length=120)
     nutrient_code_candidates: list[NutrientCodeCandidate] = Field(
         default_factory=list,
@@ -567,6 +569,7 @@ class SupplementSnapshotIngredientV3(BaseModel):
 
     Attributes:
         display_name: Ingredient name shown to the user.
+        original_name: Original visible ingredient name from OCR text.
         normalized_name: Normalized ingredient name for matching.
         amount: Ingredient amount per serving.
         unit: Ingredient unit.
@@ -582,6 +585,7 @@ class SupplementSnapshotIngredientV3(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     display_name: str = Field(min_length=1, max_length=120)
+    original_name: str | None = Field(default=None, min_length=1, max_length=120)
     normalized_name: str | None = Field(default=None, max_length=120)
     amount: float | None = Field(default=None, ge=0, le=1_000_000)
     unit: str | None = Field(default=None, max_length=40)
@@ -965,6 +969,7 @@ def upcast_legacy_parsed_snapshot(raw: Mapping[str, Any]) -> SupplementParsedSna
     ingredients = [
         SupplementSnapshotIngredientV3(
             display_name=str(item["display_name"]),
+            original_name=_string_or_none(item.get("original_name")),
             amount=_float_or_none(item.get("amount")),
             unit=_string_or_none(item.get("unit")),
             confidence=_float_or_none(item.get("confidence")) or 0.0,
@@ -999,6 +1004,7 @@ def _upcast_v2_snapshot(raw: Mapping[str, Any]) -> SupplementParsedSnapshotV3:
     ingredients = [
         SupplementSnapshotIngredientV3(
             display_name=item.display_name,
+            original_name=item.original_name,
             normalized_name=item.normalized_name,
             amount=item.amount,
             unit=item.unit,

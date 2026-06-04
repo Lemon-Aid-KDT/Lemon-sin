@@ -32,6 +32,13 @@ void main() {
       );
       expect(controller.supplementExplanation?.llmUsed, isTrue);
       expect(controller.apiError, isNull);
+
+      final bool queued = controller.queueSupplementExplanationForChat();
+      final ChatExplanationDraft draft =
+          controller.pendingChatExplanationDraft!;
+      expect(queued, isTrue);
+      expect(draft.assistantMessage, contains('출처'));
+      expect(draft.assistantMessage, contains('vitamin-d.md'));
     },
   );
 
@@ -92,6 +99,29 @@ void main() {
       expect(controller.pendingChatExplanationDraft, isNull);
     },
   );
+
+  test('queues bilingual ingredient names for chat explanations', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      failImpact: true,
+    );
+    final AppController controller = AppController(repository: repository);
+
+    await controller.registerSupplement(
+      _registrationRequest(
+        ingredientDisplayName: '비타민 D',
+        ingredientOriginalName: 'Vitamin D',
+      ),
+      refreshImpact: true,
+      explainWithLocalLlm: true,
+    );
+
+    final bool queued = controller.queueSupplementExplanationForChat();
+    final ChatExplanationDraft draft = controller.pendingChatExplanationDraft!;
+
+    expect(queued, isTrue);
+    expect(draft.assistantMessage, contains('성분: 비타민 D(Vitamin D) 25 mcg'));
+    expect(draft.assistantMessage, contains('· 비타민 D(Vitamin D): 25 mcg'));
+  });
 
   test('finalizeAnalysisSession stores merged preview for review', () async {
     final _AutoInsightRepository repository = _AutoInsightRepository();
@@ -275,14 +305,18 @@ void main() {
   });
 }
 
-UserSupplementCreate _registrationRequest() {
-  return const UserSupplementCreate(
+UserSupplementCreate _registrationRequest({
+  String ingredientDisplayName = 'Vitamin D',
+  String? ingredientOriginalName,
+}) {
+  return UserSupplementCreate(
     analysisId: 'analysis-1',
     displayName: 'Vitamin D',
     manufacturer: 'Lemon Lab',
     ingredients: <UserSupplementIngredientInput>[
       UserSupplementIngredientInput(
-        displayName: 'Vitamin D',
+        displayName: ingredientDisplayName,
+        originalName: ingredientOriginalName,
         nutrientCode: 'vitamin_d',
         amount: 25,
         unit: 'mcg',
@@ -290,8 +324,12 @@ UserSupplementCreate _registrationRequest() {
         source: 'ocr_llm_preview',
       ),
     ],
-    serving: SupplementServing(amount: 1, unit: 'capsule', dailyServings: 1),
-    intakeSchedule: SupplementIntakeSchedule(
+    serving: const SupplementServing(
+      amount: 1,
+      unit: 'capsule',
+      dailyServings: 1,
+    ),
+    intakeSchedule: const SupplementIntakeSchedule(
       frequency: 'daily',
       timeOfDay: <String>['morning'],
     ),
@@ -394,6 +432,15 @@ class _AutoInsightRepository implements LemonAidRepository {
       clinicalDisclaimer: 'Reference information only.',
       blockedTermsDetected: <String>[],
       llmUsed: true,
+      sourceCitations: <SupplementExplanationSourceCitation>[
+        SupplementExplanationSourceCitation(
+          title: '비타민 D',
+          sourcePath: 'vitamin-d.md',
+          heading: '확인 필요',
+          excerpt: '비타민 D는 개인 상태와 함께 확인합니다.',
+          score: 9,
+        ),
+      ],
       warnings: <String>[],
     );
   }
@@ -520,6 +567,15 @@ class _AutoInsightRepository implements LemonAidRepository {
       clinicalDisclaimer: 'Reference information only.',
       blockedTermsDetected: <String>[],
       llmUsed: true,
+      sourceCitations: <SupplementExplanationSourceCitation>[
+        SupplementExplanationSourceCitation(
+          title: '성분표 확인',
+          sourcePath: 'supplement-label.md',
+          heading: '라벨',
+          excerpt: '성분표는 사용자가 저장 전에 확인합니다.',
+          score: 5,
+        ),
+      ],
       warnings: <String>[],
     );
   }

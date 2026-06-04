@@ -477,6 +477,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
 
     return UserSupplementIngredientInput(
       displayName: displayName,
+      originalName: draft.originalName,
       nutrientCode: _emptyToNull(draft.nutrientCodeController.text),
       amount: _parseOptionalDouble(draft.amountController.text),
       unit: _emptyToNull(draft.unitController.text),
@@ -2415,6 +2416,25 @@ class _IngredientDraftTile extends StatelessWidget {
                         ),
                 ),
               ),
+              if (draft.originalName != null &&
+                  draft.originalName!.trim().isNotEmpty &&
+                  draft.originalName!.trim().toLowerCase() !=
+                      draft.displayNameController.text.trim().toLowerCase())
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '원문: ${draft.originalName}',
+                      style: const TextStyle(
+                        color: Color(0xFF777777),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
@@ -2923,6 +2943,7 @@ class _IngredientDraft {
   _IngredientDraft({
     required String displayName,
     required String? nutrientCode,
+    required this.originalName,
     required double? amount,
     required String? unit,
     required this.confidence,
@@ -2943,6 +2964,7 @@ class _IngredientDraft {
     return _IngredientDraft(
       displayName: candidate.displayName,
       nutrientCode: candidate.nutrientCode,
+      originalName: candidate.originalName,
       amount: candidate.amount,
       unit: candidate.unit,
       confidence: candidate.confidence,
@@ -2960,6 +2982,7 @@ class _IngredientDraft {
     return _IngredientDraft(
       displayName: '',
       nutrientCode: null,
+      originalName: null,
       amount: null,
       unit: null,
       confidence: 1,
@@ -2974,6 +2997,7 @@ class _IngredientDraft {
   final TextEditingController nutrientCodeController;
   final TextEditingController amountController;
   final TextEditingController unitController;
+  final String? originalName;
   final double confidence;
   final String source;
   final double? dailyValuePercent;

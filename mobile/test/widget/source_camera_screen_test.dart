@@ -199,12 +199,148 @@ void main() {
     });
     await tester.pumpAndSettle();
 
+    expect(picker.multiPickCount, 1);
+    expect(picker.lastMultiLimit, 6);
     expect(picker.lastMaxWidth, 2400);
     expect(picker.lastImageQuality, 95);
     expect(picker.lastRequestFullMetadata, isFalse);
     expect(find.text('갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.'), findsNothing);
     expect(find.text('미리보기'), findsOneWidget);
     expect(find.text('분석하기'), findsOneWidget);
+  });
+
+  testWidgets('supplement gallery can select several images at once', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File sourceA = _writeTinyPng();
+    final File sourceB = _writeTinyPng();
+    final File sourceC = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(
+      sourceA.path,
+      multiPaths: <String>[sourceA.path, sourceB.path, sourceC.path],
+    );
+    List<SupplementImageUpload>? uploadedImages;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          imagePicker: picker,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+          onAnalyzeSupplementImages:
+              (
+                List<SupplementImageUpload> images, {
+                required String ocrProvider,
+              }) async {
+                uploadedImages = images;
+              },
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.byIcon(Icons.photo_library_rounded));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pumpAndSettle();
+
+    expect(picker.multiPickCount, 1);
+    expect(picker.lastMultiLimit, 6);
+    expect(find.text('3장'), findsOneWidget);
+    expect(find.text('추가 사진 1'), findsOneWidget);
+    expect(find.text('추가 사진 2'), findsOneWidget);
+    expect(find.text('현재 사진'), findsOneWidget);
+    expect(find.text('3장 분석'), findsOneWidget);
+
+    final Finder analyzeButton = find.byKey(
+      const ValueKey('supplement-preview-analyze'),
+    );
+    await tester.ensureVisible(analyzeButton);
+    await tester.pump();
+    final TextButton textButton = tester.widget<TextButton>(
+      find.descendant(of: analyzeButton, matching: find.byType(TextButton)),
+    );
+    await tester.runAsync(() async {
+      textButton.onPressed!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+
+    expect(uploadedImages, isNotNull);
+    expect(uploadedImages, hasLength(3));
+  });
+
+  testWidgets('Android lost multi-image selection restores supplement batch', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final File sourceA = _writeTinyPng();
+      final File sourceB = _writeTinyPng();
+      final File sourceC = _writeTinyPng();
+      final _FakeImagePicker picker = _FakeImagePicker(
+        sourceA.path,
+        lostDataResponse: LostDataResponse(
+          files: <XFile>[
+            XFile(sourceA.path, name: 'lost-a.png', mimeType: 'image/png'),
+            XFile(sourceB.path, name: 'lost-b.png', mimeType: 'image/png'),
+            XFile(sourceC.path, name: 'lost-c.png', mimeType: 'image/png'),
+          ],
+        ),
+      );
+      List<SupplementImageUpload>? uploadedImages;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CameraScreen(
+            imagePicker: picker,
+            onAnalyzeSupplementImage:
+                (String imagePath, {required String ocrProvider}) async {},
+            onAnalyzeSupplementImages:
+                (
+                  List<SupplementImageUpload> images, {
+                  required String ocrProvider,
+                }) async {
+                  uploadedImages = images;
+                },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('3장'), findsOneWidget);
+      expect(find.text('추가 사진 1'), findsOneWidget);
+      expect(find.text('추가 사진 2'), findsOneWidget);
+      expect(find.text('현재 사진'), findsOneWidget);
+      expect(find.text('3장 분석'), findsOneWidget);
+
+      final Finder analyzeButton = find.byKey(
+        const ValueKey('supplement-preview-analyze'),
+      );
+      await tester.ensureVisible(analyzeButton);
+      await tester.pump();
+      final TextButton textButton = tester.widget<TextButton>(
+        find.descendant(of: analyzeButton, matching: find.byType(TextButton)),
+      );
+      await tester.runAsync(() async {
+        textButton.onPressed!();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+
+      expect(uploadedImages, isNotNull);
+      expect(uploadedImages, hasLength(3));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('emulator camera fallback opens picker camera source', (
@@ -456,13 +592,22 @@ const String _testFrameJpegBase64 =
     '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjExLjEwMAD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABLAAEBAAAAAAAAAAAAAAAAAAAACAEBAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAABEBAAAAAAAAAAAAAAAAAAAAAP/AABEIAAIAAgMBIgACEQADEQD/2gAMAwEAAhEDEQA/AJ/AB//Z';
 
 class _FakeImagePicker extends ImagePicker {
-  _FakeImagePicker(this.path);
+  _FakeImagePicker(
+    this.path, {
+    List<String>? multiPaths,
+    LostDataResponse? lostDataResponse,
+  }) : multiPaths = multiPaths ?? <String>[path],
+       _lostDataResponse = lostDataResponse ?? LostDataResponse.empty();
 
   final String path;
+  final List<String> multiPaths;
+  final LostDataResponse _lostDataResponse;
   ImageSource? lastSource;
   double? lastMaxWidth;
   int? lastImageQuality;
   bool? lastRequestFullMetadata;
+  int multiPickCount = 0;
+  int? lastMultiLimit;
 
   @override
   Future<XFile?> pickImage({
@@ -481,8 +626,29 @@ class _FakeImagePicker extends ImagePicker {
   }
 
   @override
+  Future<List<XFile>> pickMultiImage({
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    int? limit,
+    bool requestFullMetadata = true,
+  }) {
+    multiPickCount += 1;
+    lastMaxWidth = maxWidth;
+    lastImageQuality = imageQuality;
+    lastRequestFullMetadata = requestFullMetadata;
+    lastMultiLimit = limit;
+    final Iterable<String> selectedPaths = limit == null
+        ? multiPaths
+        : multiPaths.take(limit);
+    return Future<List<XFile>>.value(
+      selectedPaths.map(_xfileFromPath).toList(growable: false),
+    );
+  }
+
+  @override
   Future<LostDataResponse> retrieveLostData() {
-    return Future<LostDataResponse>.value(LostDataResponse.empty());
+    return Future<LostDataResponse>.value(_lostDataResponse);
   }
 
   XFile _xfileFromPath(String imagePath) {

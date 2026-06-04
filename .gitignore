@@ -119,6 +119,20 @@ coverage/
 # OCR evaluation artifacts may contain provider-derived observations.
 outputs/generated/ocr-eval/
 
+# Local supplement source image datasets and private review fixtures.
+data/nutrition_reference/crawling-image/
+data/nutrition_reference/sample-image/
+data/nutrition_reference/image-data/
+outputs/generated/supplement-learning/**/images/
+outputs/generated/supplement-learning/**/private-fixtures/
+outputs/generated/supplement-learning/**/review-pii-screening-materialized-images/
+outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.jpg
+outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.jpeg
+outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.png
+outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.webp
+.omc_probe_*.txt
+mobile/uiux/Lemon Aid Design System/
+
 # -----------------------------------------------------------------------------
 # iOS
 # -----------------------------------------------------------------------------

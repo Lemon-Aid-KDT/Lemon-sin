@@ -1,0 +1,25 @@
+{
+  "absolute_paths_stored": false,
+  "approved_for_db_write_rows": 0,
+  "db_write_performed": false,
+  "generated_at": "2026-06-04T17:15:17.272542+00:00",
+  "limit": null,
+  "operator_decision_required_count": 388,
+  "product_dir_literals_stored": false,
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "schema_version": "supplement-brand-review-template-v1",
+  "skip_reason_counts": {
+    "not_product_brand_candidate": 43
+  },
+  "source_doc_urls": [
+    "https://www.postgresql.org/docs/current/ddl-constraints.html",
+    "https://supabase.com/docs/guides/database/postgres/row-level-security",
+    "https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html"
+  ],
+  "source_run_id": "2026-06-05-crawling-image-refresh",
+  "staging_row_count": 431,
+  "taxonomy_staging_hash": "5fca5f8efdabb86488fc6801cbee74704c6455564c1db364335fb46ca8953a30",
+  "taxonomy_staging_name": "supplement-taxonomy-db-staging.jsonl",
+  "template_row_count": 388
+}

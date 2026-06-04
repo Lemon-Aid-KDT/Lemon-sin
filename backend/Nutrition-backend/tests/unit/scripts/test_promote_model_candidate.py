@@ -189,6 +189,20 @@ def _eval_result(
     )
 
 
+def _write_json(path: Path, payload: dict[str, object]) -> Path:
+    """Write a JSON fixture.
+
+    Args:
+        path: Destination path.
+        payload: JSON payload.
+
+    Returns:
+        Written path.
+    """
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 def _patch_sessionmaker(monkeypatch: pytest.MonkeyPatch, session: _FakeSession) -> None:
     """Patch the script DB session factory.
 
@@ -318,3 +332,189 @@ async def test_run_cli_returns_nonzero_without_leaking_artifact_ref(
     assert model.artifact_ref not in stdout
     assert "approved_by_hash" not in stdout
     assert "raw_eval_payload_stored" in stdout
+
+
+@pytest.mark.asyncio
+async def test_run_cli_accepts_baseline_gate_metric_rules_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify baseline gate promotion rules can drive the existing promotion CLI."""
+    training_run = _training_run()
+    model = _model(training_run_id=training_run.id)
+    eval_results = [
+        _eval_result(
+            model_id=model.id,
+            dataset_version_id=training_run.dataset_version_id,
+            metric_name="acc",
+            value=Decimal("0.93"),
+        ),
+        _eval_result(
+            model_id=model.id,
+            dataset_version_id=training_run.dataset_version_id,
+            metric_name="norm_edit_dis",
+            value=Decimal("0.91"),
+        ),
+    ]
+    session = _FakeSession(training_run=training_run, model=model, eval_results=eval_results)
+    _patch_sessionmaker(monkeypatch, session)
+    rules_path = _write_json(
+        tmp_path / "promotion-rules.json",
+        {
+            "schema_version": "paddleocr-promotion-metric-rules-v1",
+            "allowed_by_baseline_gate": True,
+            "metric_rules": [
+                {"metric_name": "acc", "comparator": ">=", "threshold": "0.92"},
+                {
+                    "metric_name": "norm_edit_dis",
+                    "comparator": ">=",
+                    "threshold": "0.90",
+                },
+            ],
+        },
+    )
+
+    exit_code = await promotion_cli.run_cli(
+        [
+            "--training-run-id",
+            str(training_run.id),
+            "--model-id",
+            str(model.id),
+            "--metric-rules-json",
+            str(rules_path),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 0
+    assert '"allowed": true' in stdout
+    assert '"rule_count": 2' in stdout
+    assert model.artifact_ref not in stdout
+    assert str(tmp_path) not in stdout
+
+
+@pytest.mark.asyncio
+async def test_run_cli_rejects_metric_rules_json_denied_by_baseline_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify denied baseline comparison artifacts cannot promote a model."""
+    training_run = _training_run()
+    model = _model(training_run_id=training_run.id)
+    session = _FakeSession(training_run=training_run, model=model, eval_results=[])
+    _patch_sessionmaker(monkeypatch, session)
+    rules_path = _write_json(
+        tmp_path / "promotion-rules.json",
+        {
+            "schema_version": "paddleocr-promotion-metric-rules-v1",
+            "allowed_by_baseline_gate": False,
+            "metric_rules": [
+                {"metric_name": "acc", "comparator": ">=", "threshold": "0.92"},
+            ],
+        },
+    )
+
+    exit_code = await promotion_cli.run_cli(
+        [
+            "--training-run-id",
+            str(training_run.id),
+            "--model-id",
+            str(model.id),
+            "--metric-rules-json",
+            str(rules_path),
+            "--apply",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 1
+    assert "ValueError" in stdout
+    assert "acc" not in stdout
+    assert str(tmp_path) not in stdout
+    assert session.commit_count == 0
+
+
+@pytest.mark.asyncio
+async def test_run_cli_rejects_mixed_manual_and_json_metric_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify operators cannot accidentally combine two gate rule sources."""
+    training_run = _training_run()
+    model = _model(training_run_id=training_run.id)
+    session = _FakeSession(training_run=training_run, model=model, eval_results=[])
+    _patch_sessionmaker(monkeypatch, session)
+    rules_path = _write_json(
+        tmp_path / "promotion-rules.json",
+        {
+            "schema_version": "paddleocr-promotion-metric-rules-v1",
+            "allowed_by_baseline_gate": True,
+            "metric_rules": [
+                {"metric_name": "acc", "comparator": ">=", "threshold": "0.92"},
+            ],
+        },
+    )
+
+    exit_code = await promotion_cli.run_cli(
+        [
+            "--training-run-id",
+            str(training_run.id),
+            "--model-id",
+            str(model.id),
+            "--metric-rule",
+            "cer",
+            "<=",
+            "0.10",
+            "--metric-rules-json",
+            str(rules_path),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 1
+    assert "ValueError" in stdout
+    assert "cer" not in stdout
+    assert str(tmp_path) not in stdout
+
+
+@pytest.mark.asyncio
+async def test_run_cli_rejects_unsafe_metric_names_from_rules_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify JSON metric rules cannot smuggle path-like metric keys."""
+    training_run = _training_run()
+    model = _model(training_run_id=training_run.id)
+    session = _FakeSession(training_run=training_run, model=model, eval_results=[])
+    _patch_sessionmaker(monkeypatch, session)
+    rules_path = _write_json(
+        tmp_path / "promotion-rules.json",
+        {
+            "schema_version": "paddleocr-promotion-metric-rules-v1",
+            "allowed_by_baseline_gate": True,
+            "metric_rules": [
+                {"metric_name": "../acc", "comparator": ">=", "threshold": "0.92"},
+            ],
+        },
+    )
+
+    exit_code = await promotion_cli.run_cli(
+        [
+            "--training-run-id",
+            str(training_run.id),
+            "--model-id",
+            str(model.id),
+            "--metric-rules-json",
+            str(rules_path),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 1
+    assert "ValueError" in stdout
+    assert "../acc" not in stdout
+    assert str(tmp_path) not in stdout

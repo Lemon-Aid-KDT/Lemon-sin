@@ -85,6 +85,7 @@ def _payload() -> dict[str, object]:
         "ingredients": [
             {
                 "display_name": "Vitamin D",
+                "original_name": "Vitamin D",
                 "nutrient_code": "vitamin_d_ug",
                 "amount": 25,
                 "unit": "ug",
@@ -170,6 +171,7 @@ def test_create_user_supplement_uses_current_user_confirmation(
         captured["subject"] = user.subject
         captured["analysis_id"] = request.analysis_id
         captured["evidence_refs"] = request.evidence_refs
+        captured["ingredient_original_name"] = request.ingredients[0].original_name
         return UserSupplementStoreResult(supplement=supplement, ingredients=[ingredient])
 
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
@@ -185,9 +187,11 @@ def test_create_user_supplement_uses_current_user_confirmation(
     assert captured["subject"] == "local-dev-user"
     assert str(captured["analysis_id"]) == "11111111-1111-4111-8111-111111111111"
     assert captured["evidence_refs"] == ["span-1"]
+    assert captured["ingredient_original_name"] == "Vitamin D"
     body = response.json()
     assert body["display_name"] == "Vitamin D 1000 IU"
     assert body["evidence_refs"] == ["span-1"]
+    assert body["ingredients"][0].get("original_name") is None
     assert "owner_subject" not in body
 
 

@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0025_create_supplement_food_taxonomy_tables"]
+    assert script.get_heads() == ["0026_add_annotation_task_learning_image_source"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0025_create_supplement_food_taxonomy_tables"]
+    assert script.get_heads() == ["0026_add_annotation_task_learning_image_source"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:

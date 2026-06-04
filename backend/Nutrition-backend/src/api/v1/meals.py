@@ -32,6 +32,8 @@ from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
 from src.models.schemas.meal import (
     MealConfirmationRequest,
+    MealExplainRequest,
+    MealExplainResponse,
     MealImageAnalysisPreview,
     MealRecordListResponse,
     MealRecordResponse,
@@ -41,6 +43,7 @@ from src.models.schemas.privacy import ConsentType
 from src.models.schemas.taxonomy import FoodCatalogItemListResponse, FoodCuisineListResponse
 from src.security.auth import AuthenticatedUser, require_meal_read, require_meal_write
 from src.security.scopes import ApiScope
+from src.services.meal_explanation import explain_meal_record
 from src.services.meal_image_analysis import (
     MealConfirmationValidationError,
     MealImageAnalysisConflictError,
@@ -49,6 +52,7 @@ from src.services.meal_image_analysis import (
     MealPreviewStateError,
     confirm_meal_record_from_preview,
     create_meal_image_analysis_preview,
+    get_user_meal_record,
     list_user_meal_records,
     meal_confirmation_to_response,
     meal_image_analysis_to_preview,
@@ -390,6 +394,73 @@ async def list_meal_records(
             "food_catalog_item_id_present": food_catalog_item_id is not None,
             "from_eaten_at_present": from_eaten_at is not None,
             "to_eaten_at_present": to_eaten_at is not None,
+        },
+    )
+    return response
+
+
+@router.post(
+    "/{meal_id}/explain",
+    response_model=MealExplainResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **MEAL_AUTH_RESPONSES,
+        404: {"description": "Confirmed meal was not found for the current user."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_READ,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def explain_confirmed_meal(
+    meal_id: UUID,
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    request: Annotated[
+        MealExplainRequest | None,
+        Body(description="Local RAG explanation options for one confirmed meal."),
+    ] = None,
+) -> MealExplainResponse:
+    """Explain a current-user confirmed meal using sanitized fields and local WIKI citations.
+
+    Args:
+        meal_id: Confirmed meal identifier.
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        request: Explanation options.
+
+    Returns:
+        Safe explanation without raw image, provider payload, or local file paths.
+
+    Raises:
+        HTTPException: If the meal is absent for the current user.
+    """
+    try:
+        meal = await get_user_meal_record(session=session, user=current_user, meal_id=meal_id)
+    except MealPreviewNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "meal_not_found", "message": str(exc)},
+        ) from exc
+    response = await explain_meal_record(meal, request or MealExplainRequest(), settings)
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="meal_explanation_requested",
+        resource_type="meal_record",
+        resource_id=str(meal_id),
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "llm_used": response.llm_used,
+            "source_count": len(response.source_citations),
+            "warning_count": len(response.warnings),
         },
     )
     return response

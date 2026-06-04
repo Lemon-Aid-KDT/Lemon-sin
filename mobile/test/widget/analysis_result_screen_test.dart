@@ -13,8 +13,14 @@ void main() {
   testWidgets('renders source-style analysis result with real pipeline data', (
     WidgetTester tester,
   ) async {
+    final _ReviewRepository repository = _ReviewRepository();
     final AppController controller = AppController(
-      repository: _ReviewRepository(),
+      repository: _ReviewRepository(
+        preview: repository._preview(
+          ingredientName: '비타민 D',
+          originalIngredientName: 'Vitamin D',
+        ),
+      ),
     );
     await controller.analyzeImage(
       '/tmp/supplement-label.jpg',
@@ -45,11 +51,12 @@ void main() {
     expect(find.byType(Table), findsOneWidget);
     expect(find.text('성분명'), findsOneWidget);
     expect(find.text('함량'), findsOneWidget);
-    expect(find.text('Vitamin D'), findsOneWidget);
+    expect(find.text('비타민 D'), findsOneWidget);
+    expect(find.text('원문: Vitamin D'), findsOneWidget);
     expect(find.text('25 mcg'), findsOneWidget);
     expect(
       tester
-          .widgetList<Text>(find.text('Vitamin D'))
+          .widgetList<Text>(find.text('비타민 D'))
           .any(
             (Text widget) =>
                 widget.style?.fontWeight == FontWeight.w900 &&
@@ -57,8 +64,6 @@ void main() {
           ),
       isTrue,
     );
-    expect(find.text('섭취 방법'), findsOneWidget);
-
     await tester.tap(
       find.byKey(const ValueKey<String>('supplement-candidate-summary')),
     );
@@ -66,13 +71,15 @@ void main() {
 
     expect(find.text('OCR 텍스트 전체'), findsOneWidget);
     expect(find.text('구역'), findsOneWidget);
-    expect(find.text('Vitamin D 25 mcg'), findsOneWidget);
+    expect(find.text('비타민 D 25 mcg'), findsOneWidget);
     await tester.tap(find.text('닫기'));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.text('섭취 방법'), 120);
+    expect(find.text('섭취 방법'), findsOneWidget);
+    expect(find.textContaining('하루 1회 1캡슐'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('섭취 시 주의사항'), 220);
     expect(find.text('섭취 시 주의사항'), findsOneWidget);
-    expect(find.textContaining('하루 1회 1캡슐'), findsOneWidget);
     expect(find.textContaining('전문가와 상담'), findsOneWidget);
     expect(find.text('OCR'), findsNothing);
     expect(find.text('YOLO ROI'), findsNothing);
@@ -80,6 +87,54 @@ void main() {
     expect(find.text('주의사항이 보이게 한 장 더 촬영해주세요'), findsNothing);
     expect(find.text('Analysis progress'), findsNothing);
     expect(find.textContaining('OCR Auto'), findsNothing);
+  });
+
+  testWidgets('preserves OCR original ingredient name after single edit', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository sourceRepository = _ReviewRepository();
+    final _ReviewRepository repository = _ReviewRepository(
+      preview: sourceRepository._preview(
+        ingredientName: '글루코사민 염산염',
+        originalIngredientName: 'Glucosamine Hydrochloride',
+        ingredientAmount: 1500,
+        ingredientUnit: 'mg',
+      ),
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('글루코사민 염산염'), findsOneWidget);
+    expect(find.text('원문: Glucosamine Hydrochloride'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('상세 성분 및 함량 수정'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), '글루코사민 HCl');
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('글루코사민 HCl'), findsOneWidget);
+    expect(find.text('원문: Glucosamine Hydrochloride'), findsOneWidget);
+
+    await tester.tap(find.text('확인 후 저장'));
+    await tester.pumpAndSettle();
+
+    expect(
+      repository.registeredRequest?.ingredients.single.displayName,
+      '글루코사민 HCl',
+    );
+    expect(
+      repository.registeredRequest?.ingredients.single.originalName,
+      'Glucosamine Hydrochloride',
+    );
   });
 
   testWidgets('renders analyzing page while background analysis runs', (
@@ -186,6 +241,14 @@ void main() {
         controller.pendingChatExplanationDraft?.assistantMessage,
         contains('Vitamin D3: 25 mcg'),
       );
+      expect(
+        controller.pendingChatExplanationDraft?.assistantMessage,
+        contains('출처'),
+      );
+      expect(
+        controller.pendingChatExplanationDraft?.assistantMessage,
+        contains('vitamin-d.md'),
+      );
     },
   );
 
@@ -195,6 +258,8 @@ void main() {
     final _ReviewRepository sourceRepository = _ReviewRepository();
     final _ReviewRepository repository = _ReviewRepository(
       preview: sourceRepository._preview(
+        ingredientName: '비타민 D',
+        originalIngredientName: 'Vitamin D',
         ingredientSource: 'clova_ocr',
         includeSecondIngredient: true,
       ),
@@ -220,7 +285,15 @@ void main() {
     expect(repository.registeredRequest?.ingredients, hasLength(1));
     expect(
       repository.registeredRequest?.ingredients.single.displayName,
+      '비타민 D',
+    );
+    expect(
+      repository.registeredRequest?.ingredients.single.originalName,
       'Vitamin D',
+    );
+    expect(
+      controller.pendingChatExplanationDraft?.assistantMessage,
+      contains('비타민 D(Vitamin D): 25 mcg'),
     );
     expect(repository.registeredRequest?.evidenceRefs, <String>[
       'span-1',
@@ -248,6 +321,8 @@ void main() {
     expect(find.text('Vitamin D'), findsOneWidget);
     expect(find.text('25 mcg'), findsOneWidget);
     expect(find.text('Sunflower oil'), findsOneWidget);
+    expect(find.text('선택 1/2'), findsOneWidget);
+    expect(find.text('전체 선택'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
       findsOneWidget,
@@ -274,11 +349,57 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
+      find.byKey(const ValueKey<String>('ingredient-select-all-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('선택 2/2'), findsOneWidget);
+    expect(find.text('전체 해제'), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
+          )
+          .value,
+      isTrue,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('ingredient-select-all-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('선택 0/2'), findsOneWidget);
+    expect(find.text('전체 선택'), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
+          )
+          .value,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
+          )
+          .value,
+      isFalse,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('ingredient-select-all-button')),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('ingredient-row-checkbox-1')),
+      find.byKey(const ValueKey<String>('ingredient-row-checkbox-0')),
     );
     await tester.pumpAndSettle();
     expect(
@@ -628,6 +749,15 @@ class _ReviewRepository implements LemonAidRepository {
         clinicalDisclaimer: 'Reference information only.',
         blockedTermsDetected: <String>[],
         llmUsed: true,
+        sourceCitations: <SupplementExplanationSourceCitation>[
+          SupplementExplanationSourceCitation(
+            title: '비타민 D',
+            sourcePath: 'vitamin-d.md',
+            heading: '확인 필요',
+            excerpt: '비타민 D는 개인 상태와 함께 확인합니다.',
+            score: 9,
+          ),
+        ],
         warnings: <String>[],
       ),
     );
@@ -645,6 +775,15 @@ class _ReviewRepository implements LemonAidRepository {
         clinicalDisclaimer: 'Reference information only.',
         blockedTermsDetected: <String>[],
         llmUsed: true,
+        sourceCitations: <SupplementExplanationSourceCitation>[
+          SupplementExplanationSourceCitation(
+            title: '성분표 확인',
+            sourcePath: 'supplement-label.md',
+            heading: '라벨',
+            excerpt: '성분표는 저장 전 확인합니다.',
+            score: 5,
+          ),
+        ],
         warnings: <String>[],
       ),
     );
@@ -655,6 +794,7 @@ class _ReviewRepository implements LemonAidRepository {
     String? productName = '비타민 D',
     String? manufacturer = 'Lemon Lab',
     String ingredientName = 'Vitamin D',
+    String? originalIngredientName,
     double? ingredientAmount = 25,
     String? ingredientUnit = 'mcg',
     String ingredientSource = 'ocr_llm_preview',
@@ -671,6 +811,7 @@ class _ReviewRepository implements LemonAidRepository {
         ? <SupplementIngredientCandidate>[
             SupplementIngredientCandidate(
               displayName: ingredientName,
+              originalName: originalIngredientName,
               nutrientCode: ingredientName.toLowerCase().replaceAll(' ', '_'),
               amount: ingredientAmount,
               unit: ingredientUnit,

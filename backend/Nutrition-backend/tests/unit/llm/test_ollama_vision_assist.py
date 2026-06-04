@@ -406,6 +406,55 @@ async def test_check_ollama_vision_readiness_reports_installed_model() -> None:
 
 
 @pytest.mark.asyncio
+async def test_check_ollama_vision_readiness_can_probe_image_payload() -> None:
+    """Verify readiness can fail closed on an actual local image-input smoke."""
+    settings = _settings()
+    fake_client = _FakeHTTPClient(
+        {"message": {"content": '{"vision_input_supported": true, "visible_text_present": false}'}},
+        get_payload={"models": [{"name": "gemma4:e4b"}]},
+    )
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    readiness = await check_ollama_vision_readiness(
+        settings,
+        chat_client,
+        probe_image_input=True,
+    )
+
+    assert readiness.ready is True
+    assert readiness.error_code is None
+    assert fake_client.post_url == "http://127.0.0.1:11434/api/chat"
+    assert fake_client.request_json is not None
+    messages = fake_client.request_json["messages"]
+    assert messages[1]["images"]
+    assert fake_client.request_json["format"]["required"] == [
+        "vision_input_supported",
+        "visible_text_present",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_check_ollama_vision_readiness_probe_fails_closed() -> None:
+    """Verify malformed image-probe output disables vision readiness."""
+    settings = _settings()
+    fake_client = _FakeHTTPClient(
+        {"message": {"content": '{"visible_text_present": true}'}},
+        get_payload={"models": [{"name": "gemma4:e4b"}]},
+    )
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    readiness = await check_ollama_vision_readiness(
+        settings,
+        chat_client,
+        probe_image_input=True,
+    )
+
+    assert readiness.ready is False
+    assert readiness.model_present is True
+    assert readiness.error_code == "vision_probe_failed"
+
+
+@pytest.mark.asyncio
 async def test_check_ollama_vision_readiness_reports_missing_model() -> None:
     """Verify readiness is explicit when the configured vision model is absent."""
     settings = _settings()

@@ -14,6 +14,15 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 materializer = importlib.import_module("scripts.materialize_supplement_section_yolo_dataset")
+SECTION_CLASS_NAMES = [
+    "product_identity",
+    "supplement_facts",
+    "ingredient_amounts",
+    "precautions",
+    "intake_method",
+    "other_ingredients",
+    "functional_claims",
+]
 
 
 def _write_dataset_yaml(root: Path) -> Path:
@@ -33,12 +42,12 @@ def _write_dataset_yaml(root: Path) -> Path:
                 "train: images/train",
                 "val: images/val",
                 "test: images/test",
-                "nc: 4",
+                f"nc: {len(SECTION_CLASS_NAMES)}",
                 "names:",
-                "  0: supplement_facts",
-                "  1: precautions",
-                "  2: intake_method",
-                "  3: ingredients",
+                *[
+                    f"  {index}: {name}"
+                    for index, name in enumerate(SECTION_CLASS_NAMES)
+                ],
                 "",
             ]
         ),
@@ -58,20 +67,15 @@ def _write_export(root: Path) -> Path:
     """
     export_path = root / "export.json"
     items = [
-        _export_item("media:11111111-1111-4111-8111-111111111111", "train", 0),
-        _export_item("media:22222222-2222-4222-8222-222222222222", "val", 1),
-        _export_item("media:33333333-3333-4333-8333-333333333333", "test", 2),
+        _export_item("media:11111111-1111-4111-8111-111111111111", "train", 1),
+        _export_item("media:22222222-2222-4222-8222-222222222222", "val", 3),
+        _export_item("media:33333333-3333-4333-8333-333333333333", "test", 4),
     ]
     export_path.write_text(
         json.dumps(
             {
                 "schema_version": "supplement-section-yolo-detect-export-v1",
-                "class_names": [
-                    "supplement_facts",
-                    "precautions",
-                    "intake_method",
-                    "ingredients",
-                ],
+                "class_names": SECTION_CLASS_NAMES,
                 "item_count": len(items),
                 "split_counts": {"train": 1, "val": 1, "test": 1, "holdout": 0},
                 "items": items,
@@ -159,7 +163,7 @@ def test_materialize_dataset_writes_yolo_files_and_validates(tmp_path: Path) -> 
     assert len(label_files) == 3
     train_label = next(path for path in label_files if path.parent.name == "train")
     assert train_label.read_text(encoding="utf-8").splitlines()[0].split() == [
-        "0",
+        "1",
         "0.500000",
         "0.400000",
         "0.600000",
@@ -218,12 +222,7 @@ def test_materialize_dataset_rejects_holdout_split(tmp_path: Path) -> None:
         json.dumps(
             {
                 "schema_version": "supplement-section-yolo-detect-export-v1",
-                "class_names": [
-                    "supplement_facts",
-                    "precautions",
-                    "intake_method",
-                    "ingredients",
-                ],
+                "class_names": SECTION_CLASS_NAMES,
                 "item_count": 1,
                 "split_counts": {"train": 0, "val": 0, "test": 0, "holdout": 1},
                 "items": [item],

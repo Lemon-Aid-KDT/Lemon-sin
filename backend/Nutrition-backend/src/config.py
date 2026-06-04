@@ -21,14 +21,18 @@ DEFAULT_JWT_ALGORITHMS = ["RS256"]
 DEFAULT_JWT_REQUIRED_CLAIMS = ["exp", "iss", "sub", "aud", "iat"]
 DEFAULT_JWT_SCOPE_CLAIMS = ["scope", "scp"]
 DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
+    "product_identity",
     "supplement_facts",
+    "ingredient_amounts",
     "precautions",
     "intake_method",
-    "ingredients",
+    "other_ingredients",
+    "functional_claims",
     "supplement_label",
     "supplement_bottle",
     "blister_pack",
 ]
+DEFAULT_LLM_WIKI_PATH = Path("/Volumes/Corsair EX400U Media/LLM-WIKI")
 # Deliberately insecure development sentinel; production validation rejects this exact value.
 DEFAULT_PRIVACY_HASH_SECRET = (
     "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
@@ -387,12 +391,16 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["ollama"] = "ollama"
     ollama_base_url: str = Field(default="http://127.0.0.1:11434")
-    ollama_model: str = Field(default="qwen3.5:9b")
+    ollama_model: str = Field(default="gemma4:e4b")
     ollama_vision_model: str | None = Field(default="gemma4:e4b")
     ollama_timeout_sec: int = Field(default=60, ge=1)
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     ollama_vision_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     allow_external_llm: bool = Field(default=False)
+    llm_wiki_retrieval_enabled: bool = Field(default=True)
+    llm_wiki_path: Path = Field(default=DEFAULT_LLM_WIKI_PATH)
+    llm_wiki_max_sources: int = Field(default=4, ge=0, le=8)
+    llm_wiki_excerpt_chars: int = Field(default=700, ge=120, le=1500)
 
     ocr_primary_provider: Literal["none", "google_vision", "paddleocr", "clova"] = Field(
         default="paddleocr"

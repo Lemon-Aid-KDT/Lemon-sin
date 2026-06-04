@@ -13,6 +13,15 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 validator = importlib.import_module("scripts.validate_supplement_section_yolo_dataset")
+SECTION_CLASS_NAMES = [
+    "product_identity",
+    "supplement_facts",
+    "ingredient_amounts",
+    "precautions",
+    "intake_method",
+    "other_ingredients",
+    "functional_claims",
+]
 
 
 def _write_dataset_yaml(root: Path, *, names: list[str] | None = None) -> Path:
@@ -25,12 +34,7 @@ def _write_dataset_yaml(root: Path, *, names: list[str] | None = None) -> Path:
     Returns:
         Dataset YAML path.
     """
-    class_names = names or [
-        "supplement_facts",
-        "precautions",
-        "intake_method",
-        "ingredients",
-    ]
+    class_names = names or SECTION_CLASS_NAMES
     yaml_path = root / "dataset.yaml"
     name_lines = "\n".join(f"  {index}: {name}" for index, name in enumerate(class_names))
     yaml_path.write_text(
@@ -78,17 +82,15 @@ def test_validate_dataset_accepts_section_contract_without_files(tmp_path: Path)
     summary = validator.validate_dataset(yaml_path)
 
     assert summary.required_sections == (
+        "product_identity",
         "supplement_facts",
+        "ingredient_amounts",
         "precautions",
         "intake_method",
-        "ingredients",
+        "other_ingredients",
+        "functional_claims",
     )
-    assert summary.names == (
-        "supplement_facts",
-        "precautions",
-        "intake_method",
-        "ingredients",
-    )
+    assert summary.names == tuple(SECTION_CLASS_NAMES)
     assert summary.require_files is False
     assert summary.image_count == 0
     assert summary.label_count == 0
@@ -106,7 +108,15 @@ def test_validate_dataset_rejects_missing_precautions_class(tmp_path: Path) -> N
     """Verify warning/allergy section class is mandatory."""
     yaml_path = _write_dataset_yaml(
         tmp_path,
-        names=["supplement_facts", "intake_method", "ingredients", "supplement_label"],
+        names=[
+            "product_identity",
+            "supplement_facts",
+            "ingredient_amounts",
+            "intake_method",
+            "other_ingredients",
+            "functional_claims",
+            "supplement_label",
+        ],
     )
 
     with pytest.raises(validator.DatasetContractError, match="precautions"):
@@ -124,10 +134,10 @@ def test_validate_dataset_rejects_non_contiguous_name_mapping(tmp_path: Path) ->
                 "val: images/val",
                 "nc: 4",
                 "names:",
-                "  0: supplement_facts",
-                "  1: precautions",
-                "  3: intake_method",
-                "  4: ingredients",
+                "  0: product_identity",
+                "  1: supplement_facts",
+                "  3: precautions",
+                "  4: intake_method",
                 "",
             ]
         ),
@@ -142,9 +152,9 @@ def test_validate_dataset_checks_image_label_pairs(tmp_path: Path) -> None:
     """Verify file checks validate split image-label pairs and bbox rows."""
     yaml_path = _write_dataset_yaml(tmp_path)
     dataset_root = tmp_path / "dataset"
-    _write_image_and_label(dataset_root, "train", "train-001", class_id=0)
-    _write_image_and_label(dataset_root, "val", "val-001", class_id=1)
-    _write_image_and_label(dataset_root, "test", "test-001", class_id=2)
+    _write_image_and_label(dataset_root, "train", "train-001", class_id=1)
+    _write_image_and_label(dataset_root, "val", "val-001", class_id=3)
+    _write_image_and_label(dataset_root, "test", "test-001", class_id=4)
 
     summary = validator.validate_dataset(yaml_path, require_files=True)
 
@@ -158,8 +168,8 @@ def test_validate_dataset_rejects_out_of_range_label_class(tmp_path: Path) -> No
     yaml_path = _write_dataset_yaml(tmp_path)
     dataset_root = tmp_path / "dataset"
     _write_image_and_label(dataset_root, "train", "train-001", class_id=9)
-    _write_image_and_label(dataset_root, "val", "val-001", class_id=1)
-    _write_image_and_label(dataset_root, "test", "test-001", class_id=2)
+    _write_image_and_label(dataset_root, "val", "val-001", class_id=3)
+    _write_image_and_label(dataset_root, "test", "test-001", class_id=4)
 
     with pytest.raises(validator.DatasetContractError, match="outside configured names"):
         validator.validate_dataset(yaml_path, require_files=True)

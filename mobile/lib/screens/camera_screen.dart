@@ -50,6 +50,7 @@ const String _macCameraBridgeUrlFromEnv = String.fromEnvironment(
   'LEMON_MAC_CAMERA_BRIDGE_URL',
 );
 const Duration _macCameraPreviewPollInterval = Duration(milliseconds: 180);
+const int _maxSupplementGalleryImages = 6;
 
 @visibleForTesting
 bool shouldUseCameraPickerFallback({
@@ -476,6 +477,10 @@ class _CameraScreenState extends State<CameraScreen>
       await _loadDebugSupplementImage();
       return;
     }
+    if (_mode == _CaptureMode.supplement) {
+      await _pickSupplementImagesFromGallery();
+      return;
+    }
     await _pickImageFromPicker(
       source: ImageSource.gallery,
       errorMessage: '갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.',
@@ -613,6 +618,62 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  Future<void> _pickSupplementImagesFromGallery() async {
+    if (_picking) return;
+    final int remainingSlots = _maxSupplementGalleryImages - _captures.length;
+    if (remainingSlots <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('영양제 라벨 사진은 최대 6장까지 선택할 수 있어요.'),
+          backgroundColor: AppColor.ink,
+        ),
+      );
+      return;
+    }
+    setState(() => _picking = true);
+    HapticFeedback.lightImpact();
+    bool truncatedSelection = false;
+    final String currentImageRole = _imageRole;
+    try {
+      final picker = widget.imagePicker ?? ImagePicker();
+      final List<XFile> files = await picker.pickMultiImage(
+        maxWidth: 2400,
+        imageQuality: 95,
+        limit: remainingSlots,
+        requestFullMetadata: false,
+      );
+      if (files.isEmpty || !mounted) return;
+      final List<XFile> selectedFiles = files.length > remainingSlots
+          ? files.take(remainingSlots).toList(growable: false)
+          : files;
+      truncatedSelection = files.length > selectedFiles.length;
+      final List<File> cachedFiles = await _copyPickedImagesToCache(
+        selectedFiles,
+      );
+      if (cachedFiles.isEmpty || !mounted) return;
+      _setSupplementGallerySelection(cachedFiles, currentImageRole);
+      if (truncatedSelection && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('한 번에 분석할 수 있는 사진은 최대 6장이라 나머지는 제외했어요.'),
+            backgroundColor: AppColor.ink,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.'),
+            backgroundColor: AppColor.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
   Future<void> _pickImageFromPicker({
     required ImageSource source,
     required String errorMessage,
@@ -659,11 +720,25 @@ class _CameraScreenState extends State<CameraScreen>
       final LostDataResponse response =
           await (widget.imagePicker ?? ImagePicker()).retrieveLostData();
       final List<XFile>? files = response.files;
-      final XFile? file = files != null && files.isNotEmpty
-          ? files.first
-          : response.file;
-      if (!mounted || response.isEmpty || file == null) return;
-      final File cached = await _copyPickedImageToCache(file);
+      final List<XFile> recoveredFiles = files != null && files.isNotEmpty
+          ? files
+          : response.file == null
+          ? const <XFile>[]
+          : <XFile>[response.file!];
+      if (!mounted || response.isEmpty || recoveredFiles.isEmpty) return;
+      if (_mode == _CaptureMode.supplement) {
+        final int remainingSlots =
+            _maxSupplementGalleryImages - _captures.length;
+        if (remainingSlots <= 0) return;
+        final List<File> cachedFiles = await _copyPickedImagesToCache(
+          recoveredFiles.take(remainingSlots),
+        );
+        if (mounted && _captured == null && cachedFiles.isNotEmpty) {
+          _setSupplementGallerySelection(cachedFiles, _imageRole);
+        }
+        return;
+      }
+      final File cached = await _copyPickedImageToCache(recoveredFiles.first);
       if (mounted && _captured == null) {
         setState(() => _captured = cached);
       }
@@ -677,6 +752,30 @@ class _CameraScreenState extends State<CameraScreen>
         );
       }
     }
+  }
+
+  Future<List<File>> _copyPickedImagesToCache(Iterable<XFile> files) async {
+    final List<File> cachedFiles = <File>[];
+    for (final XFile file in files) {
+      cachedFiles.add(await _copyPickedImageToCache(file));
+    }
+    return cachedFiles;
+  }
+
+  void _setSupplementGallerySelection(
+    List<File> cachedFiles,
+    String currentImageRole,
+  ) {
+    if (cachedFiles.isEmpty || !mounted) return;
+    setState(() {
+      for (final File file in cachedFiles.take(cachedFiles.length - 1)) {
+        _captures.add(
+          _CapturedSupplementImage(file: file, role: _nextImageRole()),
+        );
+      }
+      _captured = cachedFiles.last;
+      _imageRole = currentImageRole;
+    });
   }
 
   Future<File> _copyPickedImageToCache(XFile file) async {

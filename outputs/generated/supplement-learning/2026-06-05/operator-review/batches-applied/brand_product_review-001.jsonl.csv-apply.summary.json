@@ -1,0 +1,41 @@
+{
+  "absolute_paths_stored": false,
+  "approved_for_db_write_rows": 0,
+  "batch_file_name": "brand_product_review-001.jsonl",
+  "batch_review_csv_name": "brand_product_review-001.review.csv",
+  "changed_row_count": 0,
+  "db_write_performed": false,
+  "decision_counts": {
+    "blank": 50
+  },
+  "external_provider_call_performed": false,
+  "generated_at": "2026-06-04T20:05:00.662683+00:00",
+  "input_names": {
+    "batch_file": "brand_product_review-001.jsonl",
+    "batch_review_csv": "brand_product_review-001.review.csv"
+  },
+  "input_path_hashes": {
+    "batch_file": "007995b2ce0e447dd007ea9c6b798d3b63585d1a10c7f4c64bd5588217a76fed",
+    "batch_review_csv": "4e31df05dacf3b30c892515b89f08a8722537a944f244ec7c227fed5a07e60c0"
+  },
+  "llm_call_performed": false,
+  "local_path_literals_stored": false,
+  "ocr_provider_call_performed": false,
+  "original_batch_file_modified": false,
+  "output_batch_file_written": true,
+  "output_row_count": 50,
+  "product_dir_literals_stored": false,
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "ready_for_batch_file_preflight": true,
+  "schema_version": "supplement-brand-batch-review-csv-apply-v1",
+  "source_doc_urls": [
+    "https://docs.python.org/3/library/argparse.html",
+    "https://docs.python.org/3/library/csv.html",
+    "https://docs.python.org/3/library/json.html",
+    "https://www.postgresql.org/docs/current/ddl-constraints.html",
+    "https://supabase.com/docs/guides/database/postgres/row-level-security"
+  ],
+  "source_image_read_performed": false,
+  "unchanged_row_count": 50
+}

@@ -258,3 +258,75 @@ class MealImageAnalysisPreview(BaseModel):
     pipeline_metadata: FoodImagePipelineMetadata
     algorithm_version: str = Field(min_length=1, max_length=80)
     created_at: datetime | None = None
+
+
+class MealExplainRequest(BaseModel):
+    """Request local RAG-backed explanation for a confirmed meal.
+
+    Attributes:
+        use_local_llm: Whether to attempt local Ollama refinement. The service
+            falls back to deterministic wording when disabled or unavailable.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    use_local_llm: bool = True
+
+
+class MealExplanationSourceCitation(BaseModel):
+    """Local WIKI source citation used to ground a meal explanation.
+
+    Attributes:
+        title: Document title inferred from Markdown heading or filename.
+        source_path: Relative Markdown path under the configured WIKI root.
+        heading: Best matching heading in the Markdown file.
+        excerpt: Bounded excerpt used as retrieval context.
+        score: Lexical retrieval score for deterministic ordering.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=160)
+    source_path: str = Field(min_length=1, max_length=260)
+    heading: str | None = Field(default=None, max_length=160)
+    excerpt: str = Field(min_length=1, max_length=900)
+    score: float = Field(ge=0)
+
+
+class MealExplanationGuidance(BaseModel):
+    """User-facing meal explanation bucket with constrained safety labels.
+
+    Attributes:
+        label: Safety category shown in the UI.
+        message: Short non-diagnostic recommendation, caution, consultation, or
+            confirmation message.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    label: Literal["권장", "주의", "상담 권고", "확인 필요"]
+    message: str = Field(min_length=1, max_length=220)
+
+
+class MealExplainResponse(BaseModel):
+    """Safe explanation response for a confirmed meal record.
+
+    Attributes:
+        safe_user_message: Short summary suitable for the chat draft.
+        explanation_bullets: Bounded explanation bullets derived from confirmed food data.
+        guidance: Constrained recommendation/caution/consultation buckets.
+        clinical_disclaimer: Fixed non-diagnostic disclaimer.
+        llm_used: Whether local Ollama produced the final wording.
+        source_citations: Local WIKI citations used for grounding.
+        warnings: Stable warning codes for the UI/runtime.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    safe_user_message: str = Field(min_length=1, max_length=320)
+    explanation_bullets: list[str] = Field(default_factory=list, max_length=6)
+    guidance: list[MealExplanationGuidance] = Field(default_factory=list, max_length=8)
+    clinical_disclaimer: str = Field(min_length=1, max_length=240)
+    llm_used: bool = False
+    source_citations: list[MealExplanationSourceCitation] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list, max_length=12)

@@ -22,10 +22,12 @@ from src.models.db.health import BodyProfileSnapshot
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement_recommendation import (
     SupplementAnalysisExplainRequest,
+    SupplementExplanationSourceCitation,
     SupplementRecommendationExplainRequest,
     SupplementRecommendationExplainResponse,
 )
 from src.nutrition.deficiency_analysis import FORBIDDEN_TERMS, contains_forbidden_terms
+from src.services.llm_wiki_retrieval import LlmWikiCitation, retrieve_llm_wiki_context
 from src.services.medical_records import MedicalContextSummary
 from src.services.supplement_recommendation import SUPPLEMENT_IMPACT_DISCLAIMER
 
@@ -33,15 +35,18 @@ SUPPLEMENT_EXPLAIN_SYSTEM_PROMPT = """
 You rewrite deterministic supplement impact results for a healthcare app.
 Do not create new nutrition facts, risk labels, amounts, supplement names, or
 medical claims. Do not tell the user to change a dose, treat a disease, diagnose
-a condition, or change medication. Use only the provided deterministic preview.
-Return only JSON matching the supplied schema.
+a condition, or change medication. Use only the provided deterministic preview
+and provided WIKI excerpts. Cite only server-provided source_citations and never
+invent a source. Return only JSON matching the supplied schema.
 """.strip()
 
 SUPPLEMENT_ANALYSIS_EXPLAIN_SYSTEM_PROMPT = """
 You explain a supplement OCR analysis preview for a healthcare app.
 Use only the provided sanitized fields. Do not infer unseen ingredients, amounts,
 risks, diagnoses, treatments, or dosage changes. Do not ask the user to change
-medication. Return only JSON matching the supplied schema.
+medication. Use WIKI excerpts only as background for recommendation, caution,
+consultation, or confirmation language. Cite only server-provided source_citations
+and never invent a source. Return only JSON matching the supplied schema.
 """.strip()
 HIGH_CONFIDENCE_THRESHOLD = 0.85
 MEDIUM_CONFIDENCE_THRESHOLD = 0.6
@@ -67,14 +72,27 @@ async def explain_supplement_recommendation(
         Safe explanation response. If local LLM refinement is disabled or rejected,
         a deterministic fallback is returned.
     """
-    fallback = build_deterministic_explanation(request, warnings=())
+    source_citations = _wiki_citations_for_recommendation(request, settings)
+    fallback = build_deterministic_explanation(
+        request,
+        warnings=(),
+        source_citations=source_citations,
+    )
     if not request.use_local_llm:
         return fallback
 
     try:
-        response = await _explain_with_local_ollama(request, settings)
+        response = await _explain_with_local_ollama(
+            request,
+            settings,
+            source_citations=source_citations,
+        )
     except (OllamaClientError, OllamaConfigurationError, SupplementExplanationError):
-        return build_deterministic_explanation(request, warnings=("llm_explanation_unavailable",))
+        return build_deterministic_explanation(
+            request,
+            warnings=("llm_explanation_unavailable",),
+            source_citations=source_citations,
+        )
     return response
 
 
@@ -101,6 +119,14 @@ async def explain_supplement_analysis_preview(
         Safe explanation response. If local LLM refinement is disabled or rejected,
         a deterministic fallback is returned.
     """
+    context = _build_analysis_explanation_context(
+        record,
+        include_profile_context=request.include_profile_context,
+        profile_snapshot=profile_snapshot,
+        include_medical_context=request.include_medical_context,
+        medical_context_summary=medical_context_summary,
+    )
+    source_citations = _wiki_citations_for_analysis_context(context, settings)
     fallback = build_deterministic_analysis_explanation(
         record,
         warnings=(),
@@ -108,6 +134,8 @@ async def explain_supplement_analysis_preview(
         profile_snapshot=profile_snapshot,
         include_medical_context=request.include_medical_context,
         medical_context_summary=medical_context_summary,
+        context=context,
+        source_citations=source_citations,
     )
     if not request.use_local_llm:
         return fallback
@@ -120,6 +148,8 @@ async def explain_supplement_analysis_preview(
             profile_snapshot=profile_snapshot,
             include_medical_context=request.include_medical_context,
             medical_context_summary=medical_context_summary,
+            context=context,
+            source_citations=source_citations,
         )
     except (OllamaClientError, OllamaConfigurationError, SupplementExplanationError):
         return build_deterministic_analysis_explanation(
@@ -129,6 +159,8 @@ async def explain_supplement_analysis_preview(
             profile_snapshot=profile_snapshot,
             include_medical_context=request.include_medical_context,
             medical_context_summary=medical_context_summary,
+            context=context,
+            source_citations=source_citations,
         )
     return response
 
@@ -137,6 +169,7 @@ def build_deterministic_explanation(
     request: SupplementRecommendationExplainRequest,
     *,
     warnings: tuple[str, ...],
+    source_citations: tuple[SupplementExplanationSourceCitation, ...] = (),
 ) -> SupplementRecommendationExplainResponse:
     """Build an explanation without calling an LLM.
 
@@ -174,6 +207,7 @@ def build_deterministic_explanation(
         clinical_disclaimer=SUPPLEMENT_IMPACT_DISCLAIMER,
         blocked_terms_detected=[],
         llm_used=False,
+        source_citations=list(source_citations),
         warnings=list(warnings),
     )
     _reject_forbidden_response(response)
@@ -188,6 +222,8 @@ def build_deterministic_analysis_explanation(
     profile_snapshot: BodyProfileSnapshot | None = None,
     include_medical_context: bool = False,
     medical_context_summary: MedicalContextSummary | None = None,
+    context: Mapping[str, Any] | None = None,
+    source_citations: tuple[SupplementExplanationSourceCitation, ...] = (),
 ) -> SupplementRecommendationExplainResponse:
     """Build a pre-registration analysis explanation without calling an LLM.
 
@@ -202,12 +238,16 @@ def build_deterministic_analysis_explanation(
     Returns:
         Deterministic explanation response.
     """
-    context = _build_analysis_explanation_context(
-        record,
-        include_profile_context=include_profile_context,
-        profile_snapshot=profile_snapshot,
-        include_medical_context=include_medical_context,
-        medical_context_summary=medical_context_summary,
+    context = (
+        dict(context)
+        if context is not None
+        else _build_analysis_explanation_context(
+            record,
+            include_profile_context=include_profile_context,
+            profile_snapshot=profile_snapshot,
+            include_medical_context=include_medical_context,
+            medical_context_summary=medical_context_summary,
+        )
     )
     ingredient_count = int(context["ingredient_count"])
     missing_sections = list(context["missing_required_sections"])
@@ -258,6 +298,7 @@ def build_deterministic_analysis_explanation(
         clinical_disclaimer=SUPPLEMENT_IMPACT_DISCLAIMER,
         blocked_terms_detected=[],
         llm_used=False,
+        source_citations=list(source_citations),
         warnings=list(warnings),
     )
     _reject_forbidden_response(response)
@@ -267,6 +308,8 @@ def build_deterministic_analysis_explanation(
 async def _explain_with_local_ollama(
     request: SupplementRecommendationExplainRequest,
     settings: Settings,
+    *,
+    source_citations: tuple[SupplementExplanationSourceCitation, ...],
 ) -> SupplementRecommendationExplainResponse:
     """Call local Ollama for schema-constrained wording refinement.
 
@@ -281,7 +324,7 @@ async def _explain_with_local_ollama(
         OllamaClientError: If the local API call fails.
         SupplementExplanationError: If the output is unsafe or schema-invalid.
     """
-    payload = _build_explanation_payload(request, settings)
+    payload = _build_explanation_payload(request, settings, source_citations=source_citations)
     data = await OllamaChatClient(settings).post_chat(payload)
     content = extract_ollama_message_content(data)
     try:
@@ -290,6 +333,7 @@ async def _explain_with_local_ollama(
         raise SupplementExplanationError("Local explanation output failed validation.") from exc
     response.clinical_disclaimer = SUPPLEMENT_IMPACT_DISCLAIMER
     response.llm_used = True
+    response.source_citations = list(source_citations)
     _reject_forbidden_response(response)
     return response
 
@@ -302,6 +346,8 @@ async def _explain_analysis_with_local_ollama(
     profile_snapshot: BodyProfileSnapshot | None,
     include_medical_context: bool,
     medical_context_summary: MedicalContextSummary | None,
+    context: Mapping[str, Any],
+    source_citations: tuple[SupplementExplanationSourceCitation, ...],
 ) -> SupplementRecommendationExplainResponse:
     """Call local Ollama for a pre-registration analysis explanation.
 
@@ -327,6 +373,8 @@ async def _explain_analysis_with_local_ollama(
         profile_snapshot=profile_snapshot,
         include_medical_context=include_medical_context,
         medical_context_summary=medical_context_summary,
+        context=context,
+        source_citations=source_citations,
     )
     data = await OllamaChatClient(settings).post_chat(payload)
     content = extract_ollama_message_content(data)
@@ -338,6 +386,7 @@ async def _explain_analysis_with_local_ollama(
         ) from exc
     response.clinical_disclaimer = SUPPLEMENT_IMPACT_DISCLAIMER
     response.llm_used = True
+    response.source_citations = list(source_citations)
     _reject_forbidden_response(response)
     return response
 
@@ -345,6 +394,8 @@ async def _explain_analysis_with_local_ollama(
 def _build_explanation_payload(
     request: SupplementRecommendationExplainRequest,
     settings: Settings,
+    *,
+    source_citations: tuple[SupplementExplanationSourceCitation, ...],
 ) -> dict[str, Any]:
     """Build an Ollama Chat payload for safe explanation.
 
@@ -357,14 +408,20 @@ def _build_explanation_payload(
     """
     schema = SupplementRecommendationExplainResponse.model_json_schema()
     preview_json = request.preview.model_dump_json()
+    wiki_context_json = _wiki_context_json(source_citations)
     user_prompt = (
         "Rewrite the deterministic supplement impact preview in concise Korean. "
         "Do not change any action labels, reason codes, nutrient amounts, or counts. "
-        "Do not add new supplement or disease facts. Return JSON that conforms to "
-        "the schema.\n\n"
+        "Do not add new supplement or disease facts. Use the WIKI excerpts only "
+        "for source-backed recommendation, caution, consultation, or confirmation "
+        "language. If no source supports a claim, say it needs confirmation. Return "
+        "JSON that conforms to the schema.\n\n"
         "<deterministic_preview>\n"
         f"{preview_json}\n"
         "</deterministic_preview>\n\n"
+        "<server_wiki_context>\n"
+        f"{wiki_context_json}\n"
+        "</server_wiki_context>\n\n"
         "JSON Schema:\n"
         f"{json.dumps(schema, ensure_ascii=False)}"
     )
@@ -389,6 +446,8 @@ def _build_analysis_explanation_payload(
     profile_snapshot: BodyProfileSnapshot | None,
     include_medical_context: bool,
     medical_context_summary: MedicalContextSummary | None,
+    context: Mapping[str, Any] | None = None,
+    source_citations: tuple[SupplementExplanationSourceCitation, ...] = (),
 ) -> dict[str, Any]:
     """Build an Ollama Chat payload from sanitized analysis fields only.
 
@@ -404,30 +463,43 @@ def _build_analysis_explanation_payload(
         Ollama chat payload.
     """
     schema = SupplementRecommendationExplainResponse.model_json_schema()
-    context = _build_analysis_explanation_context(
-        record,
-        include_profile_context=include_profile_context,
-        profile_snapshot=profile_snapshot,
-        include_medical_context=include_medical_context,
-        medical_context_summary=medical_context_summary,
+    context = (
+        dict(context)
+        if context is not None
+        else _build_analysis_explanation_context(
+            record,
+            include_profile_context=include_profile_context,
+            profile_snapshot=profile_snapshot,
+            include_medical_context=include_medical_context,
+            medical_context_summary=medical_context_summary,
+        )
     )
     context_json = json.dumps(context, ensure_ascii=False)
+    wiki_context_json = _wiki_context_json(source_citations)
     user_prompt = (
         "Rewrite this supplement label analysis preview in concise Korean. "
         "Use only the sanitized OCR-derived fields and optional profile/medical "
         "bucket fields in the JSON context. "
         "Restate ingredient names and amounts only from the provided "
-        "ingredients[].amount_text values. Do not add new ingredients, amounts, "
+        "ingredients[].amount_text values. When ingredients[].original_name is "
+        "present and differs from display_name, write the ingredient as "
+        "display_name(original_name). Do not add new ingredients, amounts, "
         "product claims, medical risks, diagnoses, or dosage advice. "
         "If profile_context.available is true, explain only why the user should "
         "review label precautions against that profile bucket. "
         "If medical_context.available is true, use only condition counts, "
         "canonical condition codes, and medication review categories; never quote "
         "raw condition names, raw medication names, doses, or frequencies. "
+        "Use WIKI excerpts only for source-backed recommendation, caution, "
+        "consultation, or confirmation language. If no source supports a claim, "
+        "say it needs confirmation. "
         "Return JSON that conforms to the schema.\n\n"
         "<analysis_preview_context>\n"
         f"{context_json}\n"
         "</analysis_preview_context>\n\n"
+        "<server_wiki_context>\n"
+        f"{wiki_context_json}\n"
+        "</server_wiki_context>\n\n"
         "JSON Schema:\n"
         f"{json.dumps(schema, ensure_ascii=False)}"
     )
@@ -520,6 +592,201 @@ def _build_analysis_explanation_context(
             medical_context_summary if include_medical_context else None
         ),
     }
+
+
+def _wiki_citations_for_recommendation(
+    request: SupplementRecommendationExplainRequest,
+    settings: Settings,
+) -> tuple[SupplementExplanationSourceCitation, ...]:
+    """Retrieve source citations for deterministic supplement impact context.
+
+    Args:
+        request: Explanation request with deterministic preview fields.
+        settings: Runtime settings with local WIKI controls.
+
+    Returns:
+        Server-selected WIKI citations safe to expose to the client.
+    """
+    query = _recommendation_wiki_query(request)
+    result = retrieve_llm_wiki_context(query, settings)
+    return tuple(_source_citation(citation) for citation in result.citations)
+
+
+def _wiki_citations_for_analysis_context(
+    context: Mapping[str, Any],
+    settings: Settings,
+) -> tuple[SupplementExplanationSourceCitation, ...]:
+    """Retrieve source citations for sanitized analysis-preview context.
+
+    Args:
+        context: Sanitized analysis context sent to local Ollama.
+        settings: Runtime settings with local WIKI controls.
+
+    Returns:
+        Server-selected WIKI citations safe to expose to the client.
+    """
+    query = _analysis_wiki_query(context)
+    result = retrieve_llm_wiki_context(query, settings)
+    return tuple(_source_citation(citation) for citation in result.citations)
+
+
+def _source_citation(citation: LlmWikiCitation) -> SupplementExplanationSourceCitation:
+    """Convert a local WIKI retrieval hit into an API citation schema.
+
+    Args:
+        citation: Internal WIKI retrieval hit.
+
+    Returns:
+        API-safe citation with relative source path only.
+    """
+    return SupplementExplanationSourceCitation(
+        title=citation.title,
+        source_path=citation.source_path,
+        heading=citation.heading,
+        excerpt=citation.excerpt,
+        score=citation.score,
+    )
+
+
+def _wiki_context_json(
+    citations: tuple[SupplementExplanationSourceCitation, ...],
+) -> str:
+    """Serialize server-selected citations for local Ollama grounding.
+
+    Args:
+        citations: Server-selected local WIKI citations.
+
+    Returns:
+        JSON list string containing only safe citation fields.
+    """
+    return json.dumps([citation.model_dump() for citation in citations], ensure_ascii=False)
+
+
+def _recommendation_wiki_query(request: SupplementRecommendationExplainRequest) -> str:
+    """Build a bounded WIKI query from deterministic impact preview fields.
+
+    Args:
+        request: Explanation request.
+
+    Returns:
+        Query text that excludes raw OCR, provider payloads, and identifiers.
+    """
+    preview = request.preview
+    texts: list[str] = [preview.safe_user_message]
+    for contribution in preview.current_supplement_contributions[:8]:
+        texts.extend(
+            [
+                contribution.nutrient_code,
+                contribution.nutrient_name or "",
+                *contribution.warnings[:4],
+            ]
+        )
+        for item in contribution.items[:6]:
+            texts.extend([item.display_name, item.nutrient_code, item.supplement_name])
+    for insight in (
+        *preview.deficiency_support_candidates[:8],
+        *preview.excess_or_duplicate_risks[:8],
+    ):
+        texts.extend(
+            [
+                insight.nutrient_code,
+                insight.nutrient_name or "",
+                insight.reason_code,
+                insight.user_message,
+            ]
+        )
+    texts.extend(preview.missing_profile_fields[:8])
+    return _join_query_texts(texts)
+
+
+def _analysis_wiki_query(context: Mapping[str, Any]) -> str:
+    """Build a bounded WIKI query from sanitized label-analysis context.
+
+    Args:
+        context: Sanitized analysis context.
+
+    Returns:
+        Query text that excludes raw OCR, provider payloads, and exact medical text.
+    """
+    texts: list[str] = []
+    for key in ("product_name", "manufacturer", "ocr_provider"):
+        texts.append(_safe_text(context.get(key), limit=120) or "")
+    for ingredient in _list_of_mappings(context.get("ingredients")):
+        texts.extend(
+            [
+                _safe_text(ingredient.get("display_name"), limit=120) or "",
+                _safe_text(ingredient.get("original_name"), limit=120) or "",
+                _safe_text(ingredient.get("amount_text"), limit=80) or "",
+                _safe_text(ingredient.get("unit"), limit=40) or "",
+            ]
+        )
+    for section in _list_of_mappings(context.get("label_section_excerpts")):
+        texts.extend(
+            [
+                _safe_text(section.get("section_type"), limit=80) or "",
+                _safe_text(section.get("heading_text"), limit=120) or "",
+                _safe_text(section.get("text_excerpt"), limit=220) or "",
+            ]
+        )
+    intake_method = _mapping(context.get("intake_method"))
+    texts.extend(
+        [
+            _safe_text(intake_method.get("text"), limit=180) or "",
+            _safe_text(intake_method.get("frequency"), limit=40) or "",
+        ]
+    )
+    for precaution in _list_of_mappings(context.get("precautions")):
+        texts.extend(
+            [
+                _safe_text(precaution.get("category"), limit=80) or "",
+                _safe_text(precaution.get("text"), limit=220) or "",
+            ]
+        )
+    profile_context = _mapping(context.get("profile_context"))
+    texts.extend(
+        [
+            _safe_text(profile_context.get("sex"), limit=20) or "",
+            _safe_text(profile_context.get("age_band"), limit=20) or "",
+            _safe_text(profile_context.get("pregnancy_status"), limit=40) or "",
+            _safe_text(profile_context.get("lactation_status"), limit=40) or "",
+        ]
+    )
+    medical_context = _mapping(context.get("medical_context"))
+    texts.extend(
+        _safe_string_list(
+            medical_context.get("canonical_condition_codes"),
+            max_items=8,
+            limit=80,
+        )
+    )
+    texts.extend(
+        _safe_string_list(
+            medical_context.get("medication_review_categories"),
+            max_items=8,
+            limit=80,
+        )
+    )
+    return _join_query_texts(texts)
+
+
+def _join_query_texts(texts: list[str]) -> str:
+    """Join safe query fragments with duplicate removal.
+
+    Args:
+        texts: Candidate query fragments.
+
+    Returns:
+        Bounded query string.
+    """
+    joined: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        normalized = _safe_text(text, limit=220)
+        if not normalized or normalized in seen:
+            continue
+        joined.append(normalized)
+        seen.add(normalized)
+    return " ".join(joined)[:800]
 
 
 def _profile_context_summary(profile_snapshot: BodyProfileSnapshot | None) -> dict[str, Any]:
@@ -790,6 +1057,7 @@ def _ingredient_summary(candidate: Mapping[str, Any]) -> dict[str, Any]:
     """
     return {
         "display_name": _safe_text(candidate.get("display_name"), limit=120),
+        "original_name": _safe_text(candidate.get("original_name"), limit=120),
         "amount": _safe_number(candidate.get("amount")),
         "amount_text": _format_amount_text(candidate.get("amount"), candidate.get("unit")),
         "amount_present": candidate.get("amount") is not None,
@@ -867,11 +1135,15 @@ def _format_context_ingredients(value: Any) -> str:
         display_name = item.get("display_name")
         if not isinstance(display_name, str) or not display_name:
             continue
+        original_name = item.get("original_name")
+        name_text = display_name
+        if isinstance(original_name, str) and original_name and original_name != display_name:
+            name_text = f"{display_name}({original_name})"
         amount_text = item.get("amount_text")
         if isinstance(amount_text, str) and amount_text:
-            formatted.append(f"{display_name} {amount_text}")
+            formatted.append(f"{name_text} {amount_text}")
         else:
-            formatted.append(f"{display_name} 함량 확인 필요")
+            formatted.append(f"{name_text} 함량 확인 필요")
     return ", ".join(formatted)
 
 

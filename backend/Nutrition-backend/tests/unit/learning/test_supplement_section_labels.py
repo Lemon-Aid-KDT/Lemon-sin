@@ -212,7 +212,7 @@ def test_reviewed_supplement_section_snapshot_feeds_export_contract() -> None:
     assert export["schema_version"] == "supplement-section-yolo-detect-export-v1"
     assert export["items"][0]["labels"] == [
         {
-            "class_id": 2,
+            "class_id": 4,
             "label": "intake_method",
             "x_center": 0.42,
             "y_center": 0.85,

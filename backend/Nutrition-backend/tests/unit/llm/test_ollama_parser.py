@@ -149,6 +149,7 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
             "ingredient_candidates": [
                 {
                     "display_name": "비타민 D",
+                    "original_name": "Vitamin D",
                     "amount": 25,
                     "unit": "ug",
                     "confidence": 0.91,
@@ -212,7 +213,7 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     assert fake_client.post_url == "http://127.0.0.1:11434/api/chat"
     assert fake_client.post_timeout == 60
     assert fake_client.request_json is not None
-    assert fake_client.request_json["model"] == "qwen3.5:9b"
+    assert fake_client.request_json["model"] == "gemma4:e4b"
     assert fake_client.request_json["stream"] is False
     assert fake_client.request_json["think"] is False
     assert fake_client.request_json["format"]["type"] == "object"
@@ -220,9 +221,13 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
     user_prompt = fake_client.request_json["messages"][1]["content"]
     assert "비타민 D 25 μg" in user_prompt
     assert "ingredient_candidates" in user_prompt
+    assert "original_name" in user_prompt
+    assert "display_name equal to original_name" in user_prompt
     assert "package counts" in user_prompt
     assert result.parsed_product.product_name == "비타민 D 1000"
     assert result.ingredient_candidates[0].source == "ollama_structured"
+    assert result.ingredient_candidates[0].display_name == "비타민 D"
+    assert result.ingredient_candidates[0].original_name == "Vitamin D"
     assert result.label_sections[0].section_id == "section-001"
     assert result.intake_method.text == "1일 1정 섭취"
     assert result.precautions[0].category == "pregnancy"
@@ -300,6 +305,7 @@ async def test_ollama_parser_discards_non_null_nutrient_code() -> None:
     ).parse_supplement_ocr_text("비타민 D")
 
     assert result.ingredient_candidates[0].nutrient_code is None
+    assert result.ingredient_candidates[0].original_name == "비타민 D"
 
 
 @pytest.mark.asyncio
@@ -339,6 +345,7 @@ async def test_ollama_parser_normalizes_common_model_shape_aliases() -> None:
     assert result.parsed_product.product_name == "오메가3"
     assert result.parsed_product.serving_size == "1 capsule"
     assert ingredient.display_name == "EPA"
+    assert ingredient.original_name == "EPA"
     assert ingredient.amount == 180
     assert ingredient.unit == "mg"
     assert ingredient.nutrient_code is None
@@ -349,6 +356,40 @@ async def test_ollama_parser_normalizes_common_model_shape_aliases() -> None:
     serialized = result.model_dump_json()
     assert "raw_ocr_text" not in serialized
     assert "raw_model_response" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_ollama_parser_marks_untranslated_english_display_name_for_review() -> None:
+    """Verify long English labels kept as display names require translation review."""
+    response_content = json.dumps(
+        {
+            "ingredient_candidates": [
+                {
+                    "display_name": "Glucosamine Hydrochloride",
+                    "original_name": "Glucosamine Hydrochloride",
+                    "amount": 1500,
+                    "unit": "mg",
+                    "confidence": 0.86,
+                }
+            ],
+            "low_confidence_fields": ["ingredient_candidates[0].unit"],
+        },
+        ensure_ascii=False,
+    )
+    fake_client = _FakeHTTPClient({"message": {"content": response_content}})
+
+    result = await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text("Glucosamine Hydrochloride 1500 mg")
+
+    ingredient = result.ingredient_candidates[0]
+    assert ingredient.display_name == "Glucosamine Hydrochloride"
+    assert ingredient.original_name == "Glucosamine Hydrochloride"
+    assert result.low_confidence_fields == [
+        "ingredient_candidates[0].display_name",
+        "ingredient_candidates[0].unit",
+    ]
 
 
 @pytest.mark.asyncio
@@ -474,7 +515,7 @@ async def test_check_ollama_readiness_reports_ready_for_installed_model() -> Non
 async def test_check_ollama_readiness_reports_missing_model() -> None:
     """Verify readiness reports a missing configured model without raising."""
     settings = _settings()
-    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "gemma4:e4b"}]})
+    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "qwen3.5:9b"}]})
     chat_client = OllamaChatClient(settings, http_client=fake_client)
 
     readiness = await check_ollama_readiness(settings, chat_client)
@@ -482,14 +523,14 @@ async def test_check_ollama_readiness_reports_missing_model() -> None:
     assert readiness.ready is False
     assert readiness.model_present is False
     assert readiness.error_code == "model_missing"
-    assert readiness.model_names == ("gemma4:e4b",)
+    assert readiness.model_names == ("qwen3.5:9b",)
 
 
 @pytest.mark.asyncio
 async def test_check_ollama_readiness_blocks_remote_base_url() -> None:
     """Verify readiness does not call a remote URL when external LLM is disabled."""
     settings = _settings(ollama_base_url="https://ollama.example.com")
-    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "qwen3.5:9b"}]})
+    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "gemma4:e4b"}]})
     chat_client = OllamaChatClient(settings, http_client=fake_client)
 
     readiness = await check_ollama_readiness(settings, chat_client)
@@ -503,7 +544,7 @@ async def test_check_ollama_readiness_blocks_remote_base_url() -> None:
 async def test_check_ollama_readiness_allows_docker_desktop_host_in_development() -> None:
     """Verify Docker Desktop's host alias is treated as local only in development."""
     settings = _settings(ollama_base_url="http://host.docker.internal:11434")
-    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "qwen3.5:9b"}]})
+    fake_client = _FakeHTTPClient(get_payload={"models": [{"name": "gemma4:e4b"}]})
     chat_client = OllamaChatClient(settings, http_client=fake_client)
 
     readiness = await check_ollama_readiness(settings, chat_client)

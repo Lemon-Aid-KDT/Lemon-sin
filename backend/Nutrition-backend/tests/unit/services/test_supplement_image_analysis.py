@@ -622,6 +622,31 @@ def _ocr_contains_allergen_page() -> OCRPage:
     return OCRPage(width=320, height=120, confidence=0.89, blocks=(block,))
 
 
+def _ocr_contains_soybean_tree_nut_page() -> OCRPage:
+    """Return OCR words for allergen wording that lacks a warning heading."""
+    words = (
+        _ocr_word("Contains", 10, 10, 95, 40, 0, 0.9),
+        _ocr_word("soybean", 105, 10, 175, 40, 1, 0.9),
+        _ocr_word("and", 185, 10, 220, 40, 2, 0.89),
+        _ocr_word("tree", 230, 10, 270, 40, 3, 0.89),
+        _ocr_word("nuts.", 280, 10, 330, 40, 4, 0.89),
+    )
+    paragraph = OCRParagraph(
+        text=" ".join(word.text for word in words),
+        confidence=0.89,
+        bounding_box=None,
+        words=words,
+    )
+    block = OCRBlock(
+        text=paragraph.text,
+        confidence=0.89,
+        bounding_box=None,
+        block_type="TEXT",
+        paragraphs=(paragraph,),
+    )
+    return OCRPage(width=360, height=70, confidence=0.89, blocks=(block,))
+
+
 def _ocr_word(
     text: str,
     left: float,
@@ -664,6 +689,23 @@ def test_parse_label_layout_detects_allergen_contains_roi_without_heading() -> N
     assert layout.sections[0].section_type == "precautions"
     assert layout.sections[0].anchor_text == "Contains allergen"
     assert layout.sections[0].rows[0][0].text == "Contains soy and milk."
+
+
+def test_parse_label_layout_detects_soybean_tree_nut_allergen_row() -> None:
+    """Common allergen variants should not require an explicit Warning heading."""
+    layout = parse_label_layout(
+        OCRResult(
+            text="Contains soybean and tree nuts.",
+            provider="fake-ocr",
+            confidence=0.89,
+            pages=(_ocr_contains_soybean_tree_nut_page(),),
+        )
+    )
+
+    assert len(layout.sections) == 1
+    assert layout.sections[0].section_type == "precautions"
+    assert layout.sections[0].anchor_text == "Contains allergen"
+    assert layout.sections[0].rows[0][0].text == "Contains soybean and tree nuts."
 
 
 @pytest.mark.asyncio

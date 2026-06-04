@@ -15,7 +15,8 @@ void main() {
           },
           'ingredient_candidates': <Map<String, dynamic>>[
             <String, dynamic>{
-              'display_name': 'Vitamin D',
+              'display_name': '비타민 D',
+              'original_name': 'Vitamin D',
               'nutrient_code': 'vitamin_d',
               'amount': 25,
               'unit': 'ug',
@@ -163,6 +164,8 @@ void main() {
         });
 
     expect(preview.parsedProduct.productName, 'Vitamin D');
+    expect(preview.ingredientCandidates.single.displayName, '비타민 D');
+    expect(preview.ingredientCandidates.single.originalName, 'Vitamin D');
     expect(preview.ingredientCandidates.single.amount, 25);
     expect(preview.layoutAvailable, isTrue);
     expect(preview.labelSections.single.textBundle, 'Vitamin D 25 ug');
@@ -201,6 +204,7 @@ void main() {
       ingredients: const <UserSupplementIngredientInput>[
         UserSupplementIngredientInput(
           displayName: 'Vitamin D',
+          originalName: 'Vitamin D',
           nutrientCode: 'vitamin_d',
           amount: 25,
           unit: 'ug',
@@ -223,6 +227,9 @@ void main() {
 
     expect(request.toJson()['user_confirmed'], true);
     expect(request.toJson()['analysis_id'], preview.analysisId);
+    final List<dynamic> serializedIngredients =
+        request.toJson()['ingredients'] as List<dynamic>;
+    expect(serializedIngredients.single['original_name'], 'Vitamin D');
     expect(request.toJson()['precaution_snapshot'], <String>[
       '임신 중이면 전문가와 상담하세요.',
     ]);
