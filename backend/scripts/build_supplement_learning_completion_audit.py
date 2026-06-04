@@ -51,6 +51,11 @@ POST_COMPLETION_SCHEMA = post_completion.SCHEMA_VERSION
 TAXONOMY_AUDIT_SCHEMA = "supplement-crawling-image-taxonomy-audit-v1"
 TAXONOMY_STAGING_SCHEMA = "supplement-taxonomy-db-staging-v1"
 SOURCE_DOC_URLS = readiness_reporter.SOURCE_DOC_URLS
+REQUIREMENT_QUEUE_KEYS = {
+    "brand_product_db_import": "brand_product_review",
+    "review_image_ground_truth_privacy_gate": "review_pii_screening",
+    "detail_page_yolo_bbox_annotation": "yolo_section_annotation",
+}
 UNSAFE_TRUE_FLAGS = frozenset(
     {
         "absolute_paths_stored",
@@ -433,7 +438,6 @@ def _requirement_summary(
         requirement_key=requirement_key,
         stages=stages,
         progress=progress,
-        next_work_order=next_work_order,
         post_plan=post_plan,
         taxonomy_audit=taxonomy_audit,
         taxonomy_staging=taxonomy_staging,
@@ -463,7 +467,6 @@ def _requirement_evidence(
     requirement_key: str,
     stages: list[Mapping[str, Any]],
     progress: Mapping[str, Any],
-    next_work_order: Mapping[str, Any],
     post_plan: Mapping[str, Any],
     taxonomy_audit: Mapping[str, Any] | None,
     taxonomy_staging: Mapping[str, Any] | None,
@@ -474,7 +477,6 @@ def _requirement_evidence(
         requirement_key: Requirement key.
         stages: Matching readiness stages.
         progress: Operator batch progress payload.
-        next_work_order: Current next-batch work order.
         post_plan: Current post-completion command plan.
         taxonomy_audit: Optional taxonomy audit payload.
         taxonomy_staging: Optional taxonomy staging summary payload.
@@ -486,6 +488,19 @@ def _requirement_evidence(
         f"{_safe_string(stage.get('stage_key'))}:{_safe_string(stage.get('status'))}"
         for stage in stages
     ]
+    if requirement_key == "paddleocr_training_loop_ready":
+        status_counts: dict[str, int] = {}
+        for stage in stages:
+            status = _safe_string(stage.get("status"))
+            status_counts[status] = status_counts.get(status, 0) + 1
+        evidence = [
+            f"stage_count={len(stages)}",
+            *[
+                f"{status}_count={count}"
+                for status, count in sorted(status_counts.items())
+                if status
+            ],
+        ]
     if requirement_key == "source_structure_audited" and taxonomy_audit is not None:
         evidence.extend(_taxonomy_count_evidence(taxonomy_audit))
     if requirement_key == "taxonomy_staging_redesign_ready" and taxonomy_staging is not None:
@@ -495,13 +510,59 @@ def _requirement_evidence(
         "review_image_ground_truth_privacy_gate",
         "detail_page_yolo_bbox_annotation",
     }:
-        evidence.append(f"next_batch={_safe_string(next_work_order.get('batch_key'))}")
-        evidence.append(f"total_blank_rows={_non_negative_int(progress.get('total_blank_row_count'))}")
+        queue_key = REQUIREMENT_QUEUE_KEYS[requirement_key]
+        queue_summary = _queue_progress_summary(progress=progress, queue_key=queue_key)
+        evidence.append(f"queue={queue_key}")
+        evidence.append(f"queue_next_batch={_safe_string(queue_summary.get('next_batch_key'))}")
+        evidence.append(
+            f"queue_blank_rows={_non_negative_int(queue_summary.get('blank_row_count'))}"
+        )
+        evidence.append(
+            f"queue_pending_batches={_non_negative_int(queue_summary.get('pending_batch_count'))}"
+        )
         evidence.append(
             "post_completion_allowed="
             f"{str(post_plan.get('post_completion_execution_allowed') is True).lower()}"
         )
     return evidence
+
+
+def _queue_progress_summary(*, progress: Mapping[str, Any], queue_key: str) -> dict[str, Any]:
+    """Return aggregate progress for one operator queue.
+
+    Args:
+        progress: Operator batch-progress payload.
+        queue_key: Queue identifier to summarize.
+
+    Returns:
+        Safe aggregate counts for the queue.
+    """
+    batches = progress.get("batches")
+    if not isinstance(batches, list):
+        return {
+            "next_batch_key": "",
+            "blank_row_count": 0,
+            "pending_batch_count": 0,
+        }
+
+    blank_row_count = 0
+    pending_batch_count = 0
+    next_batch_key = ""
+    for batch in batches:
+        if not isinstance(batch, Mapping):
+            continue
+        if _safe_string(batch.get("queue_key")) != queue_key:
+            continue
+        blank_row_count += _non_negative_int(batch.get("blank_row_count"))
+        if _safe_string(batch.get("batch_status")) != "complete":
+            pending_batch_count += 1
+            if not next_batch_key:
+                next_batch_key = _safe_string(batch.get("batch_key"))
+    return {
+        "next_batch_key": next_batch_key,
+        "blank_row_count": blank_row_count,
+        "pending_batch_count": pending_batch_count,
+    }
 
 
 def _taxonomy_count_evidence(payload: Mapping[str, Any]) -> list[str]:

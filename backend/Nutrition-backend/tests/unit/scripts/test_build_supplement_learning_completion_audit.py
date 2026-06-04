@@ -99,6 +99,26 @@ def _progress_payload(*, total_blank_row_count: int = 808) -> dict[str, Any]:
     Returns:
         Batch-progress payload.
     """
+    blank_batches = [
+        {
+            "queue_key": "brand_product_review",
+            "batch_key": "brand_product_review:001",
+            "batch_status": "pending" if total_blank_row_count else "complete",
+            "blank_row_count": 388 if total_blank_row_count else 0,
+        },
+        {
+            "queue_key": "review_pii_screening",
+            "batch_key": "review_pii_screening:001",
+            "batch_status": "pending" if total_blank_row_count else "complete",
+            "blank_row_count": 215 if total_blank_row_count else 0,
+        },
+        {
+            "queue_key": "yolo_section_annotation",
+            "batch_key": "yolo_section_annotation:001",
+            "batch_status": "pending" if total_blank_row_count else "complete",
+            "blank_row_count": 205 if total_blank_row_count else 0,
+        },
+    ]
     return {
         "schema_version": audit.BATCH_PROGRESS_SCHEMA,
         "batch_count": 18,
@@ -115,6 +135,7 @@ def _progress_payload(*, total_blank_row_count: int = 808) -> dict[str, Any]:
         "total_pending_row_count": 0,
         "total_invalid_row_count": 0,
         "total_missing_row_count": 0,
+        "batches": blank_batches,
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -340,6 +361,33 @@ def test_completion_audit_reports_current_blockers_without_paths(tmp_path: Path)
     )
     assert requirements_by_key["category_seed_db_verified"]["status"] == "verified"
     assert requirements_by_key["brand_product_db_import"]["status"] == "pending_operator_review"
+    assert "queue=brand_product_review" in requirements_by_key["brand_product_db_import"][
+        "evidence"
+    ]
+    assert "queue_next_batch=brand_product_review:001" in requirements_by_key[
+        "brand_product_db_import"
+    ]["evidence"]
+    assert "queue_blank_rows=388" in requirements_by_key["brand_product_db_import"][
+        "evidence"
+    ]
+    assert "queue=review_pii_screening" in requirements_by_key[
+        "review_image_ground_truth_privacy_gate"
+    ]["evidence"]
+    assert "queue_next_batch=review_pii_screening:001" in requirements_by_key[
+        "review_image_ground_truth_privacy_gate"
+    ]["evidence"]
+    assert "queue_blank_rows=215" in requirements_by_key[
+        "review_image_ground_truth_privacy_gate"
+    ]["evidence"]
+    assert "queue=yolo_section_annotation" in requirements_by_key[
+        "detail_page_yolo_bbox_annotation"
+    ]["evidence"]
+    assert "queue_next_batch=yolo_section_annotation:001" in requirements_by_key[
+        "detail_page_yolo_bbox_annotation"
+    ]["evidence"]
+    assert "queue_blank_rows=205" in requirements_by_key[
+        "detail_page_yolo_bbox_annotation"
+    ]["evidence"]
     assert requirements_by_key["manual_ocr_ground_truth"]["status"] == "blocked_missing_artifact"
     assert (
         requirements_by_key["paddleocr_training_loop_ready"]["status"]

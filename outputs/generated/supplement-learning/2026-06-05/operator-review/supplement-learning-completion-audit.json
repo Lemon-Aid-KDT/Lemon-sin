@@ -6,7 +6,7 @@
   "current_blocker_queue_key": "brand_product_review",
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-04T18:24:02.572558+00:00",
+  "generated_at": "2026-06-04T23:50:34.600327+00:00",
   "incomplete_requirement_keys": [
     "brand_product_db_import",
     "taxonomy_db_import_verified",
@@ -85,8 +85,10 @@
       ],
       "evidence": [
         "brand_product_review:pending_operator_review",
-        "next_batch=brand_product_review:001",
-        "total_blank_rows=808",
+        "queue=brand_product_review",
+        "queue_next_batch=brand_product_review:001",
+        "queue_blank_rows=388",
+        "queue_pending_batches=8",
         "post_completion_allowed=false"
       ],
       "next_action": "complete_brand_product_human_review",
@@ -149,8 +151,10 @@
       ],
       "evidence": [
         "review_pii_screening:pending_operator_review",
-        "next_batch=brand_product_review:001",
-        "total_blank_rows=808",
+        "queue=review_pii_screening",
+        "queue_next_batch=review_pii_screening:001",
+        "queue_blank_rows=215",
+        "queue_pending_batches=5",
         "post_completion_allowed=false"
       ],
       "next_action": "apply_pii_screening_decisions",
@@ -200,8 +204,10 @@
       ],
       "evidence": [
         "yolo_section_annotation:pending_operator_review",
-        "next_batch=brand_product_review:001",
-        "total_blank_rows=808",
+        "queue=yolo_section_annotation",
+        "queue_next_batch=yolo_section_annotation:001",
+        "queue_blank_rows=205",
+        "queue_pending_batches=5",
         "post_completion_allowed=false"
       ],
       "next_action": "complete_supplement_section_bbox_review",
@@ -240,11 +246,8 @@
         "missing_required:paddleocr_promotion_runbook"
       ],
       "evidence": [
-        "paddleocr_improvement_triage:blocked_missing_artifact",
-        "paddleocr_annotation_tasks:blocked_missing_artifact",
-        "paddleocr_finetune_plan:blocked_missing_artifact",
-        "paddleocr_metric_gate:blocked_missing_artifact",
-        "paddleocr_promotion_runbook:blocked_missing_artifact"
+        "stage_count=5",
+        "blocked_missing_artifact_count=5"
       ],
       "next_action": "create_or_review_paddleocr_annotation_tasks",
       "objective_mapping": "Feed ground truth back into PaddleOCR and gate metrics.",
