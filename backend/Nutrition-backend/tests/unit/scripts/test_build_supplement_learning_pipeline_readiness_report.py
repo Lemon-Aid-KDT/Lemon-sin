@@ -897,6 +897,14 @@ def test_invalid_semantic_artifacts_block_relevant_stage(tmp_path: Path) -> None
             "taxonomy_db_verification": {
                 "schema_version": "supplement-taxonomy-db-import-verification-v1",
                 "db_import_verified": False,
+                "status": "blocked_missing_product_import_manifest",
+                "verification_scope": "category_and_reviewed_products",
+                "product_import_manifest_present": False,
+                "approved_product_rows_required": True,
+                "approved_product_rows_available": False,
+                "category_import_verified": True,
+                "product_import_verified": False,
+                "blocked_reason_codes": ["missing_required:approved_product_import"],
             },
             "paddleocr_baseline_gate": {
                 "schema_version": "paddleocr-baseline-comparison-gate-v1",
@@ -911,8 +919,17 @@ def test_invalid_semantic_artifacts_block_relevant_stage(tmp_path: Path) -> None
         "blocked_invalid_artifact"
     )
     assert _stage(report, "taxonomy_db_import_verification")["blocker_codes"] == [
-        "db_import_not_verified"
+        "taxonomy_db_verification:missing_required:approved_product_import"
     ]
+    verification = next(
+        artifact
+        for artifact in report["artifact_summaries"]
+        if artifact["role"] == "taxonomy_db_verification"
+    )
+    assert verification["status"] == "blocked_missing_product_import_manifest"
+    assert verification["verification_scope"] == "category_and_reviewed_products"
+    assert verification["product_import_manifest_present"] is False
+    assert verification["blocked_reason_codes"] == ["missing_required:approved_product_import"]
     assert _stage(report, "paddleocr_metric_gate")["status"] == "blocked_invalid_artifact"
     assert "paddleocr_baseline_gate:not_allowed" in _stage(
         report, "paddleocr_metric_gate"

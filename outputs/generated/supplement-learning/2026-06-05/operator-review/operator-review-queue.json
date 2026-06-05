@@ -2,18 +2,18 @@
   "absolute_paths_stored": false,
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-04T18:23:09.473373+00:00",
+  "generated_at": "2026-06-05T01:41:02.712624+00:00",
   "input_names": {
-    "brand_preflight": "brand-product-review-preflight.strict.json",
-    "pii_preflight": "review-pii-screening-preflight.strict.json",
+    "brand_preflight": "brand-product-review-preflight.json",
+    "pii_preflight": "review-pii-screening-preflight.json",
     "readiness": "supplement-learning-pipeline-readiness.json",
-    "yolo_preflight": "yolo-section-annotation-preflight.strict.json"
+    "yolo_preflight": "yolo-section-annotation-preflight.json"
   },
   "input_path_hashes": {
-    "brand_preflight": "2e4d70b7bfff6aa4f86b6b78db05205d6761de64c8e2f61b363727111825a33d",
-    "pii_preflight": "20d035275e715034e50a8b5140d0d9c122977b53fdaefbfd11ee1c0361491882",
+    "brand_preflight": "f360c2d926ca1f0797c02a333c602f400219a57fcf92eb5e657d567f1325581a",
+    "pii_preflight": "3c06168d2b1ea771e46b776e3ab39b5c327f2d954abcb4701ff1432fa4de78dd",
     "readiness": "4e6bd5af66b6827766c2d5e72b792abf8c81d1f447573a490fbd9c9fb73106c2",
-    "yolo_preflight": "a9c163ec0b1a40639d7ae3e4265074358b619f356e3c997b98b9e9217b395f90"
+    "yolo_preflight": "cc254fea333134b04c58385f12df4b61bd6ef67bf4b19635296efa8b8b265767"
   },
   "llm_call_performed": false,
   "local_path_literals_stored": false,

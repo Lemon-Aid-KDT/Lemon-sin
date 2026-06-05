@@ -187,6 +187,10 @@ async def test_verify_taxonomy_db_import_reports_all_rows_present(tmp_path: Path
     )
 
     assert summary["db_import_verified"] is True
+    assert summary["status"] == "verified"
+    assert summary["verification_scope"] == "category_and_reviewed_products"
+    assert summary["category_import_verified"] is True
+    assert summary["product_import_verified"] is True
     assert summary["expected_category_count"] == 2
     assert summary["matched_category_count"] == 2
     assert summary["expected_product_count"] == 1
@@ -217,7 +221,11 @@ async def test_verify_taxonomy_db_import_reports_missing_mapping(tmp_path: Path)
     )
 
     assert summary["db_import_verified"] is False
+    assert summary["status"] == "not_verified_missing_db_rows"
     assert summary["missing_product_category_count"] == 1
+    assert summary["blocked_reason_codes"] == [
+        "missing_db_rows:supplement_product_categories"
+    ]
     assert len(summary["missing_product_category_key_hashes"]) == 1
     dumped = json.dumps(summary, ensure_ascii=False)
     assert "source_product_id" not in dumped
@@ -240,15 +248,19 @@ async def test_verify_taxonomy_db_import_can_verify_category_only_state(tmp_path
     )
 
     assert summary["db_import_verified"] is True
+    assert summary["status"] == "verified"
+    assert summary["verification_scope"] == "category_seed_only"
+    assert summary["category_import_verified"] is True
+    assert summary["product_import_verified"] is False
     assert summary["expected_product_count"] == 0
     assert summary["expected_product_category_count"] == 0
 
 
 @pytest.mark.asyncio
-async def test_verify_taxonomy_db_import_requires_approved_products_when_requested(
+async def test_verify_taxonomy_db_import_blocks_when_required_manifest_is_missing(
     tmp_path: Path,
 ) -> None:
-    """Verify approved product rows can be required."""
+    """Verify required product verification records an explicit blocker."""
     staging_path, _product_path, _product_rows = _artifacts(tmp_path)
     repository = _FakeVerificationRepository(
         category_keys={"오메가3", "비타민c"},
@@ -256,12 +268,21 @@ async def test_verify_taxonomy_db_import_requires_approved_products_when_request
         product_category_keys=set(),
     )
 
-    with pytest.raises(ValueError, match="no importable rows"):
-        await verifier.verify_supplement_taxonomy_db_import(
-            taxonomy_staging=staging_path,
-            require_approved_products=True,
-            repository=repository,
-        )
+    summary = await verifier.verify_supplement_taxonomy_db_import(
+        taxonomy_staging=staging_path,
+        require_approved_products=True,
+        repository=repository,
+    )
+
+    assert summary["status"] == "blocked_missing_product_import_manifest"
+    assert summary["db_import_verified"] is False
+    assert summary["category_import_verified"] is False
+    assert summary["product_import_manifest_present"] is False
+    assert summary["approved_product_rows_required"] is True
+    assert summary["approved_product_rows_available"] is False
+    assert summary["blocked_reason_codes"] == ["missing_required:approved_product_import"]
+    dumped = json.dumps(summary, ensure_ascii=False)
+    assert str(tmp_path) not in dumped
 
 
 @pytest.mark.asyncio

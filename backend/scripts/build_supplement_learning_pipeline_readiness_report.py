@@ -774,6 +774,13 @@ def _db_verification_state_flags(*, role: str, payload: Mapping[str, Any]) -> di
     if payload.get("db_import_verified") is not True:
         flags["artifact_warning"] = "db_import_not_verified"
     for key in (
+        "status",
+        "verification_scope",
+        "product_import_manifest_present",
+        "approved_product_rows_required",
+        "approved_product_rows_available",
+        "category_import_verified",
+        "product_import_verified",
         "expected_category_count",
         "matched_category_count",
         "missing_category_count",
@@ -786,6 +793,11 @@ def _db_verification_state_flags(*, role: str, payload: Mapping[str, Any]) -> di
         value = payload.get(key)
         if isinstance(value, bool | int | str) or value is None:
             flags[key] = value
+    blocked_reason_codes = payload.get("blocked_reason_codes")
+    if isinstance(blocked_reason_codes, list):
+        flags["blocked_reason_codes"] = [
+            item for item in blocked_reason_codes if isinstance(item, str)
+        ]
     return flags
 
 
@@ -896,9 +908,7 @@ def _semantic_blockers(
         if verification is not None:
             blockers.extend(_category_seed_verification_blockers(verification))
     if stage.stage_key == "taxonomy_db_import_verification":
-        verification = artifacts.get("taxonomy_db_verification")
-        if verification is not None and verification.get("db_import_verified") is not True:
-            blockers.append("db_import_not_verified")
+        blockers.extend(_taxonomy_db_verification_blockers(artifacts))
     if stage.stage_key == "paddleocr_metric_gate":
         for role in ("paddleocr_finetune_eval", "paddleocr_baseline_eval"):
             artifact = artifacts.get(role)
@@ -915,6 +925,30 @@ def _semantic_blockers(
         _private_image_tracking_stage_blockers(stage=stage, artifacts=artifacts),
     )
     return blockers
+
+
+def _taxonomy_db_verification_blockers(
+    artifacts: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Return blockers for reviewed taxonomy DB verification.
+
+    Args:
+        artifacts: Loaded artifact summaries keyed by role.
+
+    Returns:
+        Stable blocker codes for invalid reviewed-product DB verification.
+    """
+    verification = artifacts.get("taxonomy_db_verification")
+    if verification is None or verification.get("db_import_verified") is True:
+        return []
+    blocker_codes = verification.get("blocked_reason_codes")
+    if not isinstance(blocker_codes, list):
+        return ["taxonomy_db_verification:db_import_not_verified"]
+    return [
+        f"taxonomy_db_verification:{code}"
+        for code in blocker_codes
+        if isinstance(code, str)
+    ]
 
 
 def _private_image_tracking_stage_blockers(

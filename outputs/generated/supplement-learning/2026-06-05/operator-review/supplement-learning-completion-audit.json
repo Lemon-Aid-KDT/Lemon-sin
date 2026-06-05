@@ -6,7 +6,7 @@
   "current_blocker_queue_key": "brand_product_review",
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T00:15:47.233077+00:00",
+  "generated_at": "2026-06-05T01:40:27.697558+00:00",
   "incomplete_requirement_keys": [
     "brand_product_db_import",
     "taxonomy_db_import_verified",
@@ -130,11 +130,10 @@
     },
     {
       "blocker_codes": [
-        "missing_required:approved_product_import",
-        "missing_required:taxonomy_db_verification"
+        "taxonomy_db_verification:missing_required:approved_product_import"
       ],
       "evidence": [
-        "taxonomy_db_import_verification:blocked_missing_artifact"
+        "taxonomy_db_import_verification:blocked_invalid_artifact"
       ],
       "next_action": "run_read_only_db_import_verification",
       "objective_mapping": "Verify categories and reviewed products in DB.",

@@ -1,0 +1,43 @@
+{
+  "approved_product_rows_available": false,
+  "approved_product_rows_required": true,
+  "blocked_reason_codes": [
+    "missing_required:approved_product_import"
+  ],
+  "category_import_verified": false,
+  "db_import_verified": false,
+  "db_write_performed": false,
+  "expected_category_count": 43,
+  "expected_product_category_count": 0,
+  "expected_product_count": 0,
+  "generated_at": "2026-06-05T01:31:26.003717+00:00",
+  "local_paths_printed": false,
+  "manufacturer_names_printed": false,
+  "matched_category_count": null,
+  "matched_product_category_count": null,
+  "matched_product_count": null,
+  "missing_category_count": null,
+  "missing_category_key_hashes": [],
+  "missing_product_category_count": null,
+  "missing_product_category_key_hashes": [],
+  "missing_product_count": null,
+  "missing_product_source_key_hashes": [],
+  "product_import_manifest_name": null,
+  "product_import_manifest_present": false,
+  "product_import_manifest_sha256": null,
+  "product_import_verified": false,
+  "product_names_printed": false,
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "require_approved_products": true,
+  "schema_version": "supplement-taxonomy-db-import-verification-v1",
+  "source_doc_urls": [
+    "https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html",
+    "https://docs.sqlalchemy.org/en/21/orm/extensions/asyncio.html",
+    "https://supabase.com/docs/guides/database/postgres/row-level-security"
+  ],
+  "status": "blocked_missing_product_import_manifest",
+  "taxonomy_staging_name": "supplement-taxonomy-db-staging.jsonl",
+  "taxonomy_staging_sha256": "27f76744aa2f59d4cbbbbccb36902c1bb35bed39258fd71831b56956acf3bf70",
+  "verification_scope": "category_and_reviewed_products"
+}

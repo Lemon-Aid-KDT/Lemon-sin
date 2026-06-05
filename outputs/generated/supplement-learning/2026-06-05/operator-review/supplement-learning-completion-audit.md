@@ -16,7 +16,7 @@
 | brand/product DB import is approved | `pending_operator_review` | brand_product_review:pending_operator_review; queue=brand_product_review; queue_next_batch=brand_product_review:001; queue_blank_rows=388; queue_pending_batches=8; post_completion_allowed=false | complete_brand_product_human_review |
 | category seed DB apply preflight is ready | `verified` | category_seed_db_apply_preflight:verified | complete_current_operator_batch_before_post_completion_steps |
 | category seed DB import is verified | `verified` | category_seed_db_verification:verified | complete_current_operator_batch_before_post_completion_steps |
-| reviewed brand/product DB import is verified | `blocked_missing_artifact` | taxonomy_db_import_verification:blocked_missing_artifact | run_read_only_db_import_verification |
+| reviewed brand/product DB import is verified | `blocked_missing_artifact` | taxonomy_db_import_verification:blocked_invalid_artifact | run_read_only_db_import_verification |
 | review images are cleared for ground truth | `pending_operator_review` | review_pii_screening:pending_operator_review; queue=review_pii_screening; queue_next_batch=review_pii_screening:001; queue_blank_rows=215; queue_pending_batches=5; post_completion_allowed=false | apply_pii_screening_decisions |
 | private source and review images are not tracked | `verified` | private_image_tracking_check:verified | complete_current_operator_batch_before_post_completion_steps |
 | manual OCR ground truth is ready | `blocked_missing_artifact` | manual_ocr_ground_truth:blocked_missing_artifact | complete_human_reviewed_ocr_ground_truth |

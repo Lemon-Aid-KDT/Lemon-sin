@@ -79,7 +79,10 @@
       "status": "ready_for_category_seed_db_apply"
     },
     {
-      "content_sha256": "48d81cb719766acfa5b4a1421de412d5ab5c3d19d996887d0821c33dd2a555f9",
+      "approved_product_rows_available": null,
+      "approved_product_rows_required": null,
+      "category_import_verified": null,
+      "content_sha256": "107a270b758cfb27eace8c9863d3025c8fe1db042bb2467aabc616d6b5ded992",
       "db_import_verified": true,
       "db_write_performed": false,
       "description": "read-only DB verification for category seed rows only",
@@ -90,12 +93,16 @@
       "matched_product_category_count": 0,
       "matched_product_count": 0,
       "missing_category_count": 0,
-      "path_hash": "685e059f48deb338f0771eee054bbcc8d596aa75e5d75a4590044376188aa597",
+      "path_hash": "febd7083939c5c8a9f5528de38c99baa33c915a77ecf6ea39756ec40e34d39a9",
+      "product_import_manifest_present": null,
+      "product_import_verified": null,
       "record_count": 1,
       "role": "category_seed_db_verification",
       "schema_versions": [
         "supplement-taxonomy-db-import-verification-v1"
-      ]
+      ],
+      "status": null,
+      "verification_scope": null
     },
     {
       "approved_for_db_write_row_count": null,
@@ -233,10 +240,40 @@
       ]
     },
     {
-      "content_sha256": "401b51b9649ae365604214e1b898446ca5f089eb8c28d21a35fe04cc45090bc4",
-      "description": "category seed and brand-candidate DB staging rows",
-      "path_hash": "dfd09cb1dae9d0373fb556df1186b61f0bacda481725937954b573ea611f26c5",
+      "approved_product_rows_available": false,
+      "approved_product_rows_required": true,
+      "artifact_warning": "db_import_not_verified",
+      "blocked_reason_codes": [
+        "missing_required:approved_product_import"
+      ],
+      "category_import_verified": false,
+      "content_sha256": "6c5b363a0f3d77cd8d434ad6a3a11996e134419afefdec0d622dfc4c01d253b0",
+      "db_import_verified": false,
+      "db_write_performed": false,
+      "description": "read-only DB import verification for reviewed product/category rows",
+      "expected_category_count": 43,
+      "expected_product_category_count": 0,
+      "expected_product_count": 0,
+      "matched_category_count": null,
+      "matched_product_category_count": null,
+      "matched_product_count": null,
+      "missing_category_count": null,
+      "path_hash": "4accf4169496882ecd47cb54738f8cb0c92cf96dc8a296eb5c5966e4f683b274",
+      "product_import_manifest_present": false,
+      "product_import_verified": false,
       "record_count": 1,
+      "role": "taxonomy_db_verification",
+      "schema_versions": [
+        "supplement-taxonomy-db-import-verification-v1"
+      ],
+      "status": "blocked_missing_product_import_manifest",
+      "verification_scope": "category_and_reviewed_products"
+    },
+    {
+      "content_sha256": "27f76744aa2f59d4cbbbbccb36902c1bb35bed39258fd71831b56956acf3bf70",
+      "description": "category seed and brand-candidate DB staging rows",
+      "path_hash": "a09fb05b0525d82c8575a5e066fbc402067f841374379879941f310a3bd6e19a",
+      "record_count": 431,
       "role": "taxonomy_staging",
       "schema_versions": [
         "supplement-taxonomy-db-staging-v1"
@@ -276,13 +313,13 @@
   "blocked_stage_count": 9,
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T00:15:26.898286+00:00",
+  "generated_at": "2026-06-05T01:39:18.677597+00:00",
   "llm_call_performed": false,
   "local_absolute_path_printed": false,
   "overall_status": "in_progress_blocked_by_missing_or_invalid_artifacts",
   "pending_operator_review_stage_count": 3,
   "product_literal_printed": false,
-  "provided_artifact_count": 20,
+  "provided_artifact_count": 21,
   "provided_artifact_roles": [
     "brand_review_bundle",
     "brand_review_decision_preflight",
@@ -300,6 +337,7 @@
     "pii_screening_template",
     "private_image_tracking_check",
     "taxonomy_audit",
+    "taxonomy_db_verification",
     "taxonomy_staging",
     "yolo_annotation_decision_preflight",
     "yolo_annotation_review_bundle",
@@ -431,12 +469,10 @@
     },
     {
       "blocker_codes": [
-        "missing_required:approved_product_import",
-        "missing_required:taxonomy_db_verification"
+        "taxonomy_db_verification:missing_required:approved_product_import"
       ],
       "missing_required_roles": [
-        "approved_product_import",
-        "taxonomy_db_verification"
+        "approved_product_import"
       ],
       "next_operator_action": "run_read_only_db_import_verification",
       "pending_roles": [
@@ -444,13 +480,15 @@
       ],
       "phase": "taxonomy_db",
       "present_pending_roles": [],
-      "present_required_roles": [],
+      "present_required_roles": [
+        "taxonomy_db_verification"
+      ],
       "required_roles": [
         "approved_product_import",
         "taxonomy_db_verification"
       ],
       "stage_key": "taxonomy_db_import_verification",
-      "status": "blocked_missing_artifact"
+      "status": "blocked_invalid_artifact"
     },
     {
       "blocker_codes": [],
@@ -717,7 +755,8 @@
     }
   ],
   "status_counts": {
-    "blocked_missing_artifact": 9,
+    "blocked_invalid_artifact": 1,
+    "blocked_missing_artifact": 8,
     "pending_operator_review": 3,
     "verified": 6
   },

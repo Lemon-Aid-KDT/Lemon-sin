@@ -116,7 +116,7 @@ async def run_cli(argv: list[str] | None = None) -> int:
             ),
             require_approved_products=bool(args.require_approved_products),
         )
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError, Exception) as exc:
         summary = _failure_summary(
             taxonomy_staging=args.taxonomy_staging,
             product_import_manifest=args.product_import_manifest,
@@ -164,12 +164,18 @@ async def verify_supplement_taxonomy_db_import(
         if product_import_manifest is not None
         else []
     )
-    if require_approved_products and not product_rows:
-        raise ValueError("Approved product import manifest contains no importable rows.")
     importer._validate_product_categories(
         product_rows=product_rows,
         category_rows=category_rows,
     )
+    if require_approved_products and not product_rows:
+        return _blocked_product_verification_summary(
+            taxonomy_staging=taxonomy_staging,
+            product_import_manifest=product_import_manifest,
+            category_rows=category_rows,
+            product_rows=product_rows,
+            require_approved_products=require_approved_products,
+        )
 
     repo = repository
     if repo is None:
@@ -249,11 +255,34 @@ async def _verify_with_repository(
         not missing_category_keys
         and not missing_product_source_keys
         and not missing_product_category_keys
+        and not _product_verification_blockers(
+            product_import_manifest=product_import_manifest,
+            product_rows=product_rows,
+            require_approved_products=require_approved_products,
+        )
+    )
+    category_import_verified = not missing_category_keys
+    product_import_verified = (
+        not missing_product_source_keys
+        and not missing_product_category_keys
+        and bool(product_rows)
+    )
+    blocked_reason_codes = _verification_blocker_codes(
+        product_import_manifest=product_import_manifest,
+        product_rows=product_rows,
+        require_approved_products=require_approved_products,
+        missing_category_keys=missing_category_keys,
+        missing_product_source_keys=missing_product_source_keys,
+        missing_product_category_keys=missing_product_category_keys,
     )
 
     summary = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
+        "status": _verification_status(
+            db_import_verified=db_import_verified,
+            blocked_reason_codes=blocked_reason_codes,
+        ),
         "taxonomy_staging_name": taxonomy_staging.name,
         "taxonomy_staging_sha256": _sha256_file(taxonomy_staging),
         "product_import_manifest_name": (
@@ -265,6 +294,14 @@ async def _verify_with_repository(
             else None
         ),
         "require_approved_products": require_approved_products,
+        "product_import_manifest_present": product_import_manifest is not None,
+        "approved_product_rows_required": require_approved_products,
+        "approved_product_rows_available": bool(product_rows),
+        "verification_scope": (
+            "category_and_reviewed_products"
+            if require_approved_products or product_import_manifest is not None
+            else "category_seed_only"
+        ),
         "expected_category_count": len(category_keys),
         "matched_category_count": len(present_category_keys),
         "missing_category_count": len(missing_category_keys),
@@ -282,7 +319,88 @@ async def _verify_with_repository(
             _hash_text("::".join(source_category_key))
             for source_category_key in missing_product_category_keys
         ],
+        "category_import_verified": category_import_verified,
+        "product_import_verified": product_import_verified,
+        "blocked_reason_codes": blocked_reason_codes,
         "db_import_verified": db_import_verified,
+        "db_write_performed": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "local_paths_printed": False,
+        "product_names_printed": False,
+        "manufacturer_names_printed": False,
+        "source_doc_urls": list(SOURCE_DOC_URLS),
+    }
+    importer._reject_unsafe_payload(summary)
+    return summary
+
+
+def _blocked_product_verification_summary(
+    *,
+    taxonomy_staging: Path,
+    product_import_manifest: Path | None,
+    category_rows: dict[str, dict[str, Any]],
+    product_rows: list[dict[str, Any]],
+    require_approved_products: bool,
+) -> dict[str, object]:
+    """Return a redacted blocked summary without opening a DB connection.
+
+    Args:
+        taxonomy_staging: Taxonomy staging path.
+        product_import_manifest: Optional product import manifest path.
+        category_rows: Validated category rows keyed by category key.
+        product_rows: Approved product rows parsed from the manifest.
+        require_approved_products: Whether reviewed product rows were required.
+
+    Returns:
+        Redacted summary that makes product-verification blockers explicit.
+    """
+    blocked_reason_codes = _verification_blocker_codes(
+        product_import_manifest=product_import_manifest,
+        product_rows=product_rows,
+        require_approved_products=require_approved_products,
+        missing_category_keys=[],
+        missing_product_source_keys=[],
+        missing_product_category_keys=[],
+    )
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "status": _verification_status(
+            db_import_verified=False,
+            blocked_reason_codes=blocked_reason_codes,
+        ),
+        "taxonomy_staging_name": taxonomy_staging.name,
+        "taxonomy_staging_sha256": _sha256_file(taxonomy_staging),
+        "product_import_manifest_name": (
+            product_import_manifest.name if product_import_manifest is not None else None
+        ),
+        "product_import_manifest_sha256": (
+            _sha256_file(product_import_manifest)
+            if product_import_manifest is not None
+            else None
+        ),
+        "require_approved_products": require_approved_products,
+        "product_import_manifest_present": product_import_manifest is not None,
+        "approved_product_rows_required": require_approved_products,
+        "approved_product_rows_available": bool(product_rows),
+        "verification_scope": "category_and_reviewed_products",
+        "expected_category_count": len(category_rows),
+        "matched_category_count": None,
+        "missing_category_count": None,
+        "missing_category_key_hashes": [],
+        "expected_product_count": len(product_rows),
+        "matched_product_count": None,
+        "missing_product_count": None,
+        "missing_product_source_key_hashes": [],
+        "expected_product_category_count": len(product_rows),
+        "matched_product_category_count": None,
+        "missing_product_category_count": None,
+        "missing_product_category_key_hashes": [],
+        "category_import_verified": False,
+        "product_import_verified": False,
+        "blocked_reason_codes": blocked_reason_codes,
+        "db_import_verified": False,
         "db_write_performed": False,
         "raw_ocr_text_stored": False,
         "raw_provider_payload_stored": False,
@@ -397,6 +515,85 @@ class _SqlAlchemyTaxonomyVerificationRepository:
         )
         present = {(str(row[0]), str(row[1]), str(row[2])) for row in result.all()}
         return present.intersection(set(keys))
+
+
+def _product_verification_blockers(
+    *,
+    product_import_manifest: Path | None,
+    product_rows: list[dict[str, Any]],
+    require_approved_products: bool,
+) -> list[str]:
+    """Return blocker codes that prevent reviewed-product verification.
+
+    Args:
+        product_import_manifest: Optional product import manifest path.
+        product_rows: Approved product rows parsed from the manifest.
+        require_approved_products: Whether reviewed product rows are required.
+
+    Returns:
+        Stable blocker codes for missing product verification inputs.
+    """
+    blockers: list[str] = []
+    if require_approved_products and product_import_manifest is None:
+        blockers.append("missing_required:approved_product_import")
+    if require_approved_products and product_import_manifest is not None and not product_rows:
+        blockers.append("approved_product_import:no_importable_rows")
+    return blockers
+
+
+def _verification_blocker_codes(
+    *,
+    product_import_manifest: Path | None,
+    product_rows: list[dict[str, Any]],
+    require_approved_products: bool,
+    missing_category_keys: list[str],
+    missing_product_source_keys: list[tuple[str, str]],
+    missing_product_category_keys: list[tuple[str, str, str]],
+) -> list[str]:
+    """Return redacted blocker codes for a DB import verification summary.
+
+    Args:
+        product_import_manifest: Optional product import manifest path.
+        product_rows: Approved product rows parsed from the manifest.
+        require_approved_products: Whether reviewed product rows are required.
+        missing_category_keys: Category keys missing from DB.
+        missing_product_source_keys: Product source keys missing from DB.
+        missing_product_category_keys: Product-category keys missing from DB.
+
+    Returns:
+        Stable blocker codes that omit product/category names and paths.
+    """
+    blockers = _product_verification_blockers(
+        product_import_manifest=product_import_manifest,
+        product_rows=product_rows,
+        require_approved_products=require_approved_products,
+    )
+    if missing_category_keys:
+        blockers.append("missing_db_rows:supplement_categories")
+    if missing_product_source_keys:
+        blockers.append("missing_db_rows:supplement_products")
+    if missing_product_category_keys:
+        blockers.append("missing_db_rows:supplement_product_categories")
+    return blockers
+
+
+def _verification_status(*, db_import_verified: bool, blocked_reason_codes: list[str]) -> str:
+    """Return a stable verification status.
+
+    Args:
+        db_import_verified: Whether all required rows are verified.
+        blocked_reason_codes: Redacted blocker codes.
+
+    Returns:
+        Status token for readiness consumers.
+    """
+    if db_import_verified:
+        return "verified"
+    if "missing_required:approved_product_import" in blocked_reason_codes:
+        return "blocked_missing_product_import_manifest"
+    if "approved_product_import:no_importable_rows" in blocked_reason_codes:
+        return "blocked_no_importable_product_rows"
+    return "not_verified_missing_db_rows"
 
 
 def _sha256_file(path: Path) -> str:
