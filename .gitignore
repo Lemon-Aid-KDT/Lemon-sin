@@ -136,3 +136,12 @@ wandb/
 # Large datasets (DO NOT COMMIT)
 data/food_images/
 
+# Local Obsidian vault (not project deliverable)
+docs/Obsidian/
+
+# selectstar 파이프라인 생성물·중간산물 (재생성 가능: _gen_*.py / 재분류)
+docs/superpowers/plans/exp06_review/*.wf.js
+docs/superpowers/plans/exp06_review/ss_classify_chunk*.json
+docs/superpowers/plans/exp06_review/ss_gapfill_*.json
+docs/superpowers/plans/exp06_review/_ssclassify_missing.txt
+
