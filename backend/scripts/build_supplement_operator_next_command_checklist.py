@@ -361,11 +361,18 @@ def _commands_for_queue(
             )
             + _brand_product_commands(paths=paths, start_order=6)
         )
-    common = _common_reconcile_commands(paths=paths, batch_key=batch_key)
     if queue_key == "review_pii_screening":
-        return common + _review_pii_commands(paths=paths)
+        return (
+            _operator_jsonl_triage_commands(queue_key=queue_key, paths=paths)
+            + _common_reconcile_commands(paths=paths, batch_key=batch_key, start_order=2)
+            + _review_pii_commands(paths=paths, start_order=5)
+        )
     if queue_key == "yolo_section_annotation":
-        return common + _yolo_section_commands(paths=paths)
+        return (
+            _operator_jsonl_triage_commands(queue_key=queue_key, paths=paths)
+            + _common_reconcile_commands(paths=paths, batch_key=batch_key, start_order=2)
+            + _yolo_section_commands(paths=paths, start_order=5)
+        )
     raise OperatorCommandChecklistError("Unsupported queue key.")
 
 
@@ -492,6 +499,32 @@ def _brand_review_csv_triage_commands(*, paths: Mapping[str, str]) -> list[dict[
     ]
 
 
+def _operator_jsonl_triage_commands(*, queue_key: str, paths: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Return the PII/YOLO JSONL batch triage command.
+
+    Args:
+        queue_key: Current operator queue key.
+        paths: Repo-relative command paths.
+
+    Returns:
+        Ordered command rows.
+    """
+    return [
+        _command(
+            order=1,
+            script_key="build_supplement_operator_review_batch_triage",
+            purpose="Summarize JSONL review priority without exposing row payloads.",
+            gate_policy="operator_review_helper_no_decision",
+            command=(
+                f"{paths['python']} backend/scripts/build_supplement_operator_review_batch_triage.py "
+                f"--queue-key {queue_key} --batch-file {paths['source_batch_file']} "
+                f"--output {paths['batch_triage_json']} "
+                f"--markdown-output {paths['batch_triage_md']}"
+            ),
+        )
+    ]
+
+
 def _brand_review_csv_apply_commands(
     *,
     paths: Mapping[str, str],
@@ -592,18 +625,19 @@ def _brand_product_commands(*, paths: Mapping[str, str], start_order: int = 4) -
     ]
 
 
-def _review_pii_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
+def _review_pii_commands(*, paths: Mapping[str, str], start_order: int = 4) -> list[dict[str, Any]]:
     """Return PII-screening review post-edit commands.
 
     Args:
         paths: Repo-relative command paths.
+        start_order: First PII command order.
 
     Returns:
         Ordered command rows.
     """
     return [
         _command(
-            order=4,
+            order=start_order,
             script_key="extract_supplement_pii_reviewed_decisions",
             purpose="Separate reviewed PII decisions from blank queue stubs for teacher OCR gating.",
             gate_policy="partial_teacher_ocr_preview_only",
@@ -615,7 +649,7 @@ def _review_pii_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=5,
+            order=start_order + 1,
             script_key="preflight_supplement_review_pii_screening_decisions",
             purpose="Run strict PII decision preflight before any teacher OCR benchmark can run.",
             gate_policy="strict_zero_blank_pending_invalid_required",
@@ -627,7 +661,7 @@ def _review_pii_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=6,
+            order=start_order + 2,
             script_key="apply_supplement_review_pii_screening_decisions",
             purpose="Write teacher-safe OCR candidate manifest after strict PII review passes.",
             gate_policy="no_teacher_ocr_call",
@@ -639,7 +673,7 @@ def _review_pii_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=7,
+            order=start_order + 3,
             script_key="gate_supplement_ocr_benchmark",
             purpose="Gate CLOVA and Google Vision teacher OCR comparison before PaddleOCR training data use.",
             gate_policy="must_pass_before_teacher_ocr_eval",
@@ -653,18 +687,19 @@ def _review_pii_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
     ]
 
 
-def _yolo_section_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
+def _yolo_section_commands(*, paths: Mapping[str, str], start_order: int = 4) -> list[dict[str, Any]]:
     """Return YOLO section-annotation post-edit commands.
 
     Args:
         paths: Repo-relative command paths.
+        start_order: First YOLO command order.
 
     Returns:
         Ordered command rows.
     """
     return [
         _command(
-            order=4,
+            order=start_order,
             script_key="extract_supplement_yolo_reviewed_annotations",
             purpose="Separate reviewed YOLO section annotations from blank queue stubs.",
             gate_policy="partial_dataset_preview_only",
@@ -676,7 +711,7 @@ def _yolo_section_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=5,
+            order=start_order + 1,
             script_key="preflight_supplement_yolo_annotation_decisions",
             purpose="Run strict YOLO annotation preflight before dataset materialization.",
             gate_policy="strict_zero_blank_pending_invalid_required",
@@ -687,7 +722,7 @@ def _yolo_section_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=6,
+            order=start_order + 2,
             script_key="promote_supplement_yolo_annotation_template",
             purpose="Promote reviewed supplement section boxes into an Ultralytics-compatible export.",
             gate_policy="only_after_strict_annotation_preflight",
@@ -698,7 +733,7 @@ def _yolo_section_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=7,
+            order=start_order + 3,
             script_key="materialize_supplement_section_yolo_dataset",
             purpose="Materialize reviewed section boxes into YOLO dataset files without training.",
             gate_policy="no_training_execution",
@@ -709,7 +744,7 @@ def _yolo_section_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=8,
+            order=start_order + 4,
             script_key="validate_supplement_section_yolo_dataset",
             purpose="Validate materialized YOLO dataset files before any training gate.",
             gate_policy="must_pass_before_training_gate",
@@ -719,7 +754,7 @@ def _yolo_section_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
             ),
         ),
         _command(
-            order=9,
+            order=start_order + 5,
             script_key="gate_supplement_yolo_section_dataset",
             purpose="Gate supplement YOLO section dataset readiness before YOLO26 training.",
             gate_policy="must_pass_before_training",

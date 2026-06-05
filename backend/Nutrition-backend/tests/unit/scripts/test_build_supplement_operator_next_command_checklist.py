@@ -208,10 +208,16 @@ def test_command_checklist_generates_repo_relative_pii_commands(tmp_path: Path) 
     commands = [row["command"] for row in payload["commands"]]
 
     assert payload["queue_key"] == "review_pii_screening"
-    assert payload["command_count"] == 7
-    assert "backend/scripts/extract_supplement_pii_reviewed_decisions.py" in commands[3]
+    assert payload["command_count"] == 8
+    assert commands[0].startswith(
+        "backend/.venv/bin/python backend/scripts/build_supplement_operator_review_batch_triage.py"
+    )
+    assert "--queue-key review_pii_screening" in commands[0]
+    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches/review_pii_screening-001.jsonl" in commands[0]
+    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/review_pii_screening-001.triage.json" in commands[0]
+    assert "backend/scripts/extract_supplement_pii_reviewed_decisions.py" in commands[4]
     assert "backend/scripts/gate_supplement_ocr_benchmark.py" in commands[-1]
-    assert "--require-all-reviewed" in commands[4]
+    assert "--require-all-reviewed" in commands[5]
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
     assert "/Users/" not in serialized
@@ -244,11 +250,17 @@ def test_command_checklist_generates_repo_relative_yolo_commands(tmp_path: Path)
     commands = [row["command"] for row in payload["commands"]]
 
     assert payload["queue_key"] == "yolo_section_annotation"
-    assert payload["command_count"] == 9
-    assert "backend/scripts/extract_supplement_yolo_reviewed_annotations.py" in commands[3]
-    assert "backend/scripts/materialize_supplement_section_yolo_dataset.py" in commands[6]
+    assert payload["command_count"] == 10
+    assert commands[0].startswith(
+        "backend/.venv/bin/python backend/scripts/build_supplement_operator_review_batch_triage.py"
+    )
+    assert "--queue-key yolo_section_annotation" in commands[0]
+    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches/yolo_section_annotation-001.jsonl" in commands[0]
+    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/yolo_section_annotation-001.triage.json" in commands[0]
+    assert "backend/scripts/extract_supplement_yolo_reviewed_annotations.py" in commands[4]
+    assert "backend/scripts/materialize_supplement_section_yolo_dataset.py" in commands[7]
     assert "backend/scripts/gate_supplement_yolo_section_dataset.py" in commands[-1]
-    assert "> outputs/generated/supplement-learning" in commands[6]
+    assert "> outputs/generated/supplement-learning" in commands[7]
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
     assert "/Users/" not in serialized

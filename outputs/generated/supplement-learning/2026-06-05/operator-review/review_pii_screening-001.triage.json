@@ -1,0 +1,183 @@
+{
+  "absolute_paths_stored": false,
+  "automatic_decision_performed": false,
+  "batch_file_name": "review_pii_screening-001.jsonl",
+  "blank_row_count": 50,
+  "db_write_performed": false,
+  "external_provider_call_performed": false,
+  "generated_at": "2026-06-05T00:58:10.738031+00:00",
+  "input_names": {
+    "batch_file": "review_pii_screening-001.jsonl"
+  },
+  "input_path_hashes": {
+    "batch_file": "64f027695b358d28713071a4a96814c1b70214d2a4de62d1cdf134511f799831"
+  },
+  "invalid_row_count": 0,
+  "llm_call_performed": false,
+  "local_path_literals_stored": false,
+  "missing_row_count": 0,
+  "ocr_provider_call_performed": false,
+  "operator_next_steps": [
+    "complete_blank_privacy_decisions",
+    "run_batch_file_preflight_before_reconcile",
+    "run_strict_pii_preflight_before_teacher_ocr"
+  ],
+  "pending_row_count": 0,
+  "priority_counts": {
+    "p2_privacy_screening_required": 50
+  },
+  "product_dir_literals_stored": false,
+  "queue_key": "review_pii_screening",
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "reason_counts": {
+    "blank_decision": 50
+  },
+  "row_count": 50,
+  "row_hints": [
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 1
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 2
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 3
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 4
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 5
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 6
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 7
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 8
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 9
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 10
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 11
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 12
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 13
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 14
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 15
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 16
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 17
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 18
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 19
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 20
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 21
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 22
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 23
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 24
+    },
+    {
+      "priority": "p2_privacy_screening_required",
+      "reason_code": "blank_decision",
+      "row_index": 25
+    }
+  ],
+  "row_hints_truncated": true,
+  "schema_version": "supplement-operator-review-batch-triage-v1",
+  "source_doc_urls": [
+    "https://docs.python.org/3/library/csv.html",
+    "https://docs.ultralytics.com/datasets/detect/",
+    "https://docs.ultralytics.com/tasks/detect/",
+    "https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html",
+    "https://cloud.google.com/vision/docs/ocr",
+    "https://api.ncloud-docs.com/docs/en/ai-application-service-ocr",
+    "https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html",
+    "https://www.postgresql.org/docs/current/ddl-constraints.html",
+    "https://supabase.com/docs/guides/database/postgres/row-level-security"
+  ],
+  "source_image_read_performed": false,
+  "status_counts": {
+    "blank": 50
+  },
+  "training_execution_performed_by_script": false,
+  "valid_row_count": 0
+}

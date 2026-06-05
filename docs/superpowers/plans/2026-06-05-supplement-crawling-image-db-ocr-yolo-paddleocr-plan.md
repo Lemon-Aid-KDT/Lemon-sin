@@ -161,6 +161,16 @@ Current operator unblock state:
   with `3` low-evidence rows, `37` duplicate-candidate review rows, and `10`
   standard review rows. This triage only changes the human review order; it
   does not approve rows or satisfy the DB import gate.
+- `review_pii_screening-001.triage.json` and
+  `review_pii_screening-001.triage.md` now summarize the first PII-screening
+  batch without fixture ids, source refs, image paths, OCR text, or provider
+  payloads: `50` blank privacy decisions remain and all `50` rows require
+  operator privacy screening before teacher OCR can be enabled.
+- `yolo_section_annotation-001.triage.json` and
+  `yolo_section_annotation-001.triage.md` now summarize the first YOLO section
+  annotation batch without fixture ids, source refs, image paths, bbox
+  coordinates, OCR text, or provider payloads: `50` blank bbox rows remain and
+  all `50` rows require operator section-box annotation or rejection.
 - All three downstream gates remain blocked and do not allow DB product import,
   teacher OCR benchmark, YOLO materialization/training, or PaddleOCR training.
 
@@ -192,6 +202,9 @@ Current implementation state:
   `cleared_required_attestations`.
 - `review-pii-screening-preflight.json` currently reports `215` candidate rows,
   `215` blank decisions, and `0` cleared rows.
+- `review_pii_screening-001.triage.json` reports `50` row-index-only hints for
+  the first batch, all prioritized as `p2_privacy_screening_required`. It does
+  not perform OCR transfer, OCR provider calls, LLM calls, or DB writes.
 - `ocr-benchmark-gate.json` remains `blocked_by_pii_screening`; teacher OCR,
   external OCR evaluation, and PaddleOCR training are not allowed.
 
@@ -228,6 +241,10 @@ Current implementation state:
 - `yolo-section-annotation-bundle/annotation.todo.jsonl` includes the editable
   `label_snapshot.boxes` stubs plus a normalized `xywh` example and section
   class guide.
+- `yolo_section_annotation-001.triage.json` reports `50` row-index-only hints
+  for the first batch, all prioritized as `p2_bbox_annotation_required`. It does
+  not expose bbox coordinates or source refs and does not materialize a YOLO
+  dataset.
 - `yolo-section-annotation-preflight.json` currently reports all rows as pending
   human bbox review, with no invalid rows.
 - `yolo-section-dataset-gate.json` remains blocked by annotation review and does
