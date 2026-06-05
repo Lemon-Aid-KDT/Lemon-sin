@@ -42,17 +42,28 @@ TODO:
 
 TODO:
 
-- [ ] `agent_memory_records` DB 모델 또는 repository 계약 정의
-- [ ] `profile_memory`, `behavior_memory`, `conversation_memory`, `safety_memory` enum 정의
-- [ ] `confidence`, `source_kind`, `source_ref`, `priority`, `review_after`, `expires_at` 필드 정의
-- [ ] raw chat archive와 agent memory를 분리한 설계 테스트 추가
-- [ ] raw prompt가 memory로 들어가지 않는 negative test 추가
+- [x] `agent_memory_records` DB 모델 또는 repository 계약 정의
+- [x] `profile_memory`, `behavior_memory`, `conversation_memory`, `safety_memory` enum 정의
+- [x] `confidence`, `source_kind`, `source_ref`, `priority`, `review_after`, `expires_at` 필드 정의
+- [x] raw chat archive와 agent memory를 분리한 설계 테스트 추가
+- [x] raw prompt가 memory로 들어가지 않는 negative test 추가
 
 검증:
 
-- [ ] memory model unit test
-- [ ] memory repository unit test
-- [ ] raw/internal field exclusion test
+- [x] memory model unit test
+- [x] memory repository unit test
+- [x] raw/internal field exclusion test
+
+구현 메모:
+
+- Day 2 범위에서는 새 migration을 만들지 않고 기존 `agent_memory` table의
+  `memory_type`, `summary_json`, `source_counters`를 사용한다.
+- `backend/Nutrition-backend/src/services/agent_memory.py`에 4종 memory type contract와
+  `upsert_agent_memory_record()`를 추가했다.
+- `load_agent_memory_context()`는 기존 v0 `summaries`를 유지하면서 4종 memory만
+  `memory_bundle`으로 그룹화한다.
+- raw transcript, raw prompt, raw OCR, raw LLM response, provider payload, messages key는
+  저장/조회 memory context에서 제거한다.
 
 ## 4. PR C. Conversation memory compaction
 

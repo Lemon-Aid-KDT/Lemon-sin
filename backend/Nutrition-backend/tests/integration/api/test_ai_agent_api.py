@@ -596,7 +596,10 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
     assert "출처 기준" in body["message"]
     assert "agent_memory" in body["used_tools"]
     assert "knowledge_policy" in body["used_tools"]
-    assert body["source_families"] == ["general_medical"]
+    assert body["source_families"] == [
+        "supplement_reference",
+        "nutrition_reference",
+    ]
     assert "supplement totals" not in body["message"]
     assert "internal_trace" not in body["message"]
     assert captured["sglang_client"]["model"] == "Qwen/Qwen2.5-0.5B-Instruct"

@@ -42,6 +42,11 @@ This directory keeps team-wide documentation separate from each member or featur
 - `Integration-docs/28-agent-llm-trd.md`: Agent/LLM PRD를 구현자가 테스트 가능한 기술 요구사항으로 옮긴 TRD.
 - `Integration-docs/29-agent-llm-tdd.md`: Agent/LLM memory, analysis, checklist, boundary, retrieval 흐름을 설계한 Technical Design Document.
 - `Integration-docs/30-agent-llm-todo.md`: Agent/LLM 새 기준을 PR 단위로 실행하기 위한 TODO와 검증 게이트.
+- `Integration-docs/31-agent-llm-runtime-decision-eval.md`: Agent/LLM runtime 방향을 SGLang 운영 후보와 Ollama fallback으로 고정하고 모델 채택 eval gate를 정리한 기준 문서.
+- `Integration-docs/32-agent-llm-model-smoke-eval-report.md`: Qwen baseline과 Gemma 후보를 비교하기 전 현재 deterministic eval 결과와 필수 live smoke gate를 정리한 리포트.
+- `Integration-docs/33-agent-llm-team-integration-contract.md`: 팀 파트 병합 후 Agent가 소비해야 하는 DB/backend/Flutter 최소 I/O 계약과 현재 gap을 정리한 문서.
+- `Integration-docs/34-agent-llm-readiness-audit.md`: 31~33번 기준을 현재 구현과 팀 브랜치 상태에 대입해 시작 가능한 slice와 no-go를 정리한 audit.
+- `Integration-docs/35-agent-llm-orchestration-plan.md`: Agent/LLM 10일 full vertical integration의 phase, gate, touchpoint map, future risk를 관리하는 실행 관제판.
 - `superpowers/plans/2026-05-22-mvp-runtime-and-medical-knowledge-todo.md`: current FastAPI + Flutter web + AI Agent smoke checklist and medical knowledge boundary TODO.
 - `Nutrition-docs/dev-guides/31-medical-knowledge-layer.md`: medical knowledge layer design for keeping chronic-condition facts outside model fine-tuning and behind reviewed source records.
 
@@ -51,6 +56,9 @@ This directory keeps team-wide documentation separate from each member or featur
 - Move into the closest folder README before opening individual documents.
 - For chatbot, LLM, RAG, reviewed-source, or runtime integration work, read
   `Integration-docs/README.md` first.
+- For Agent/LLM work specifically, use the "Agent/LLM 문서 참조 가이드" section in
+  `Integration-docs/README.md` to decide whether to read 26~30 product/design docs,
+  31~32 runtime/eval docs, or 33~34 team-integration/readiness docs first.
 - For nutrition, OCR, supplement, or medical-knowledge implementation details,
   start from `Nutrition-docs/` and its nearest README or dev guide index.
 

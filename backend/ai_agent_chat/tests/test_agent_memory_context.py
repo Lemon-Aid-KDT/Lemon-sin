@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from lemon_ai_agent.adapters import AgentInput, DailyHealthAgentAppAdapter
+from lemon_ai_agent.app_intake import AppIntakeModule
 
 
 def test_repeated_memory_pattern_prioritizes_matching_recommendation() -> None:
@@ -100,3 +101,52 @@ def test_memory_pattern_accepts_canonicalized_nutrient_key() -> None:
     )
     assert "appeared 2 times" in vitamin_d.rationale
     assert vitamin_d.priority == 9
+
+
+def test_app_intake_preserves_v2_memory_bundle_for_future_chat_context() -> None:
+    """Verify v2 memory bundle survives app intake without replacing v0 summaries."""
+    request = AgentInput(
+        request_id="memory-bundle-test",
+        user_id="local-dev-user",
+        context={
+            "agent_memory": {
+                "schema_version": "agent-memory-summary-v1",
+                "summaries": [
+                    {
+                        "memory_type": "daily_coaching",
+                        "summary_json": {"repeated_nutrient_patterns": {"sodium": 2}},
+                    }
+                ],
+                "memory_bundle": {
+                    "profile_memory": [
+                        {
+                            "summary_json": {
+                                "summary": "두부를 선호함.",
+                                "raw_prompt": "must not be present after backend load",
+                            }
+                        }
+                    ],
+                    "behavior_memory": [],
+                    "conversation_memory": [],
+                    "safety_memory": [
+                        {"summary_json": {"summary": "혈압약 복용을 언급함."}}
+                    ],
+                },
+            },
+        },
+        payload={
+            "date": "2026-06-05",
+            "foods": [],
+            "sources": [{"source_type": "manual", "user_confirmed": True}],
+        },
+    )
+
+    plan = AppIntakeModule().parse(request)
+
+    assert plan.agent_memory["summaries"][0]["memory_type"] == "daily_coaching"
+    assert plan.agent_memory["memory_bundle"]["profile_memory"][0]["summary_json"][
+        "summary"
+    ] == "두부를 선호함."
+    assert plan.agent_memory["memory_bundle"]["safety_memory"][0]["summary_json"][
+        "summary"
+    ] == "혈압약 복용을 언급함."

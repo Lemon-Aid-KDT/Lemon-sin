@@ -22,19 +22,35 @@ MEMORY_SUMMARY_SCHEMA_VERSION = "agent-memory-summary-v1"
 DAILY_COACHING_MEMORY_TYPE = "daily_coaching"
 SUPPLEMENT_MEMORY_TYPE = "confirmed_supplement"
 NUTRITION_ANALYSIS_MEMORY_TYPE = "nutrition_analysis"
+PROFILE_MEMORY_TYPE = "profile_memory"
+BEHAVIOR_MEMORY_TYPE = "behavior_memory"
+CONVERSATION_MEMORY_TYPE = "conversation_memory"
+SAFETY_MEMORY_TYPE = "safety_memory"
+AGENT_MEMORY_TYPES = (
+    PROFILE_MEMORY_TYPE,
+    BEHAVIOR_MEMORY_TYPE,
+    CONVERSATION_MEMORY_TYPE,
+    SAFETY_MEMORY_TYPE,
+)
 MAX_PATTERN_COUNT = 99
 RECENT_FINDING_LIMIT = 20
 SUMMARY_LIST_LIMIT = 20
 FORBIDDEN_MEMORY_KEYS = {
     "authorization",
+    "full_prompt",
     "image_base64",
     "image_bytes",
+    "messages",
+    "original_transcript",
     "prompt",
+    "provider_payload",
     "raw_image",
     "raw_image_bytes",
     "raw_llm_response",
     "raw_ocr_text",
-    "messages",
+    "raw_prompt",
+    "raw_provider_payload",
+    "raw_transcript",
 }
 NUTRIENT_ALIASES = {
     "vitamin-d": "vitamin d",
@@ -70,23 +86,11 @@ async def load_agent_memory_context(
     result = await session.scalars(
         select(AgentMemory).where(AgentMemory.owner_subject_hash == owner_subject_hash)
     )
-    summaries = [
-        {
-            "memory_type": record.memory_type,
-            "summary_json": record.summary_json,
-            "source_counters": record.source_counters,
-            "last_source_created_at": (
-                record.last_source_created_at.isoformat()
-                if record.last_source_created_at is not None
-                else None
-            ),
-            "algorithm_version": record.algorithm_version,
-        }
-        for record in result.all()
-    ]
+    summaries = [_memory_record_to_context(record) for record in result.all()]
     return {
         "schema_version": MEMORY_SUMMARY_SCHEMA_VERSION,
         "summaries": _sanitize_memory_value(summaries),
+        "memory_bundle": _memory_bundle_from_summaries(summaries),
     }
 
 
@@ -107,6 +111,56 @@ async def upsert_daily_coaching_memory(
     summary = _merge_daily_coaching_summary(memory.summary_json, agent_input, output)
     memory.summary_json = _sanitize_memory_value(summary)
     memory.source_counters = _increment_counter(memory.source_counters, "daily_coaching")
+    memory.last_source_created_at = _utc_now()
+    memory.algorithm_version = AGENT_MEMORY_ALGORITHM_VERSION
+    await _commit_if_possible(session)
+    return memory
+
+
+async def upsert_agent_memory_record(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    settings: Settings,
+    *,
+    memory_type: str,
+    summary: str,
+    structured_payload: dict[str, Any] | None = None,
+    confidence: str,
+    source_kind: str,
+    source_ref: str | None = None,
+    priority: int = 0,
+    review_after: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> AgentMemory | None:
+    """Upsert one sanitized v2 Agent memory record.
+
+    Day 2 keeps the existing `agent_memory` table and stores the new memory
+    taxonomy as a service-level contract in `summary_json`. Raw transcript,
+    prompt, OCR, and provider payload fields are stripped before persistence.
+    """
+    if memory_type not in AGENT_MEMORY_TYPES:
+        raise ValueError(f"Unsupported agent memory type: {memory_type}")
+    if not summary.strip():
+        raise ValueError("Agent memory summary must not be blank")
+    if not hasattr(session, "scalar") or not hasattr(session, "add"):
+        return None
+
+    memory = await _get_or_create_memory(session, user, settings, memory_type)
+    memory.summary_json = _sanitize_memory_value(
+        {
+            "schema_version": MEMORY_SUMMARY_SCHEMA_VERSION,
+            "memory_type": memory_type,
+            "summary": summary.strip(),
+            "structured_payload": structured_payload or {},
+            "confidence": confidence,
+            "source_kind": source_kind,
+            "source_ref": source_ref,
+            "priority": int(priority),
+            "review_after": review_after.isoformat() if review_after else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+        }
+    )
+    memory.source_counters = _increment_counter(memory.source_counters, source_kind)
     memory.last_source_created_at = _utc_now()
     memory.algorithm_version = AGENT_MEMORY_ALGORITHM_VERSION
     await _commit_if_possible(session)
@@ -291,6 +345,33 @@ async def _get_or_create_memory(
     )
     session.add(memory)
     return memory
+
+
+def _memory_record_to_context(record: AgentMemory) -> dict[str, Any]:
+    return {
+        "memory_type": record.memory_type,
+        "summary_json": record.summary_json,
+        "source_counters": record.source_counters,
+        "last_source_created_at": (
+            record.last_source_created_at.isoformat()
+            if record.last_source_created_at is not None
+            else None
+        ),
+        "algorithm_version": record.algorithm_version,
+    }
+
+
+def _memory_bundle_from_summaries(summaries: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    bundle: dict[str, list[dict[str, Any]]] = {
+        memory_type: [] for memory_type in AGENT_MEMORY_TYPES
+    }
+    for summary in _sanitize_memory_value(summaries):
+        if not isinstance(summary, dict):
+            continue
+        memory_type = summary.get("memory_type")
+        if isinstance(memory_type, str) and memory_type in bundle:
+            bundle[memory_type].append(summary)
+    return bundle
 
 
 def _collect_nutrition_priority_items(value: Any) -> list[dict[str, str]]:

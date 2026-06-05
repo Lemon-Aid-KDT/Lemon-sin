@@ -2,6 +2,74 @@
 
 Final integration, deployment, and demo documents belong here.
 
+## Agent/LLM 문서 참조 가이드
+
+이 섹션은 "어떤 문서를 수정할지"가 아니라 "작업 전에 어떤 기준 문서를 먼저
+참조할지"를 정하는 가이드입니다. 문서 번호가 곧 작업 순서는 아닙니다.
+
+Agent/LLM, chatbot, RAG, runtime, DB/mobile/backend 통합 작업을 시작할 때는
+문서를 단순히 번호순으로 모두 읽지 말고 아래 기준으로 필요한 문서를 먼저 확인합니다.
+
+기본 원칙:
+
+1. 새 Agent/LLM 방향, 모델, runtime, 팀 통합 판단은 26~34번을 기준으로 합니다.
+2. 그 판단을 실제 코드에 적용하다가 기존 grounded chatbot 코드나 계약을 건드리게 되면
+   05~10번, 17~22번을 함께 확인합니다.
+3. 새 문서는 꼭 필요할 때만 만들고, 기존 결정의 보강이면 26~34번 중 가장 가까운 문서를
+   갱신합니다.
+
+### Agent/LLM 방향을 판단할 때
+
+- Agent/LLM의 제품 방향이나 답변 철학을 판단할 때:
+  [26-agent-llm-product-direction-reset.md](./26-agent-llm-product-direction-reset.md)
+- 제품 요구사항을 구현 범위로 바꿀 때:
+  [27-agent-llm-prd.md](./27-agent-llm-prd.md)
+- backend, DB, mobile, runtime에 걸친 기술 요구사항을 확인할 때:
+  [28-agent-llm-trd.md](./28-agent-llm-trd.md)
+- memory, analysis, checklist, boundary, retrieval 설계를 구현할 때:
+  [29-agent-llm-tdd.md](./29-agent-llm-tdd.md)
+- 실제 PR 단위와 검증 순서를 잡을 때:
+  [30-agent-llm-todo.md](./30-agent-llm-todo.md)
+
+### Runtime 또는 모델 작업을 할 때
+
+- SGLang, Ollama fallback, Qwen baseline, Gemma 후보, 모델 채택 기준을 판단할 때:
+  [31-agent-llm-runtime-decision-eval.md](./31-agent-llm-runtime-decision-eval.md)
+- 모델 smoke/eval 결과를 남기거나 live smoke gate를 확인할 때:
+  [32-agent-llm-model-smoke-eval-report.md](./32-agent-llm-model-smoke-eval-report.md)
+
+이 두 문서를 확인하지 않고 기본 모델을 바꾸거나 SGLang runtime을 production-ready로
+판단하지 않습니다.
+
+### 팀 통합 또는 현재 구현 상태를 볼 때
+
+- 다른 팀의 DB/backend/mobile 결과물을 Agent가 어떤 I/O 계약으로 받아야 하는지 정할 때:
+  [33-agent-llm-team-integration-contract.md](./33-agent-llm-team-integration-contract.md)
+- 지금 바로 작업을 시작해도 되는지, 어떤 slice부터 해야 하는지 판단할 때:
+  [34-agent-llm-readiness-audit.md](./34-agent-llm-readiness-audit.md)
+
+팀 브랜치를 pull/merge하기 전에는 33번과 34번을 먼저 확인합니다. 현재 기준으로는
+팀 브랜치를 바로 병합하기보다 Agent가 믿을 수 있는 confirmed record adapter,
+memory schema, mobile response contract를 먼저 고정합니다.
+
+### 기존 grounded chatbot 코드나 계약을 건드릴 때
+
+이 문서들은 새 Agent/LLM 방향 문서가 아닙니다. 기존 chatbot 구현의 의도와 현재 동작을
+확인하기 위한 참조 문서입니다. 즉, 26~34번 기준을 코드에 적용하는 과정에서
+`AnswerCard`, reviewed evidence retrieval, unknown fallback, boundary renderer,
+structured output, source UI 같은 기존 영역을 수정해야 할 때 확인합니다.
+
+- 기존 chatbot의 PRD/TRD/TDD/TODO는 05~08번을 기준으로 봅니다.
+- 구현된 범위와 남은 gap은 09~10번을 봅니다.
+- source governance, entity normalization, boundary, retrieval, structured output,
+  source UI observability의 구현 로그는 17~22번을 봅니다.
+
+### 문서를 새로 만들 때
+
+- 새 방향/의사결정 문서는 기존 문서에 통합할 수 있는지 먼저 확인합니다.
+- runtime, model, eval, team contract, readiness 판단은 31~34번을 우선 갱신합니다.
+- 새 문서를 추가했다면 이 README와 상위 [docs/README.md](../README.md)의 색인을 갱신합니다.
+
 ## Documents
 
 - [01-ci-pr-integration-operations.md](./01-ci-pr-integration-operations.md): CI, PR, release, and cross-part integration operations.
@@ -34,6 +102,11 @@ Final integration, deployment, and demo documents belong here.
 - [28-agent-llm-trd.md](./28-agent-llm-trd.md): Agent/LLM PRD를 구현자가 테스트 가능한 기술 요구사항으로 옮긴 TRD.
 - [29-agent-llm-tdd.md](./29-agent-llm-tdd.md): Agent/LLM memory, analysis, checklist, boundary, retrieval 흐름을 설계한 Technical Design Document.
 - [30-agent-llm-todo.md](./30-agent-llm-todo.md): Agent/LLM 새 기준을 PR 단위로 실행하기 위한 TODO와 검증 게이트.
+- [31-agent-llm-runtime-decision-eval.md](./31-agent-llm-runtime-decision-eval.md): Agent/LLM runtime 방향을 SGLang 운영 후보와 Ollama fallback으로 고정하고 모델 채택 eval gate를 정리한 기준 문서.
+- [32-agent-llm-model-smoke-eval-report.md](./32-agent-llm-model-smoke-eval-report.md): Qwen baseline과 Gemma 후보를 비교하기 전 현재 deterministic eval 결과와 필수 live smoke gate를 정리한 리포트.
+- [33-agent-llm-team-integration-contract.md](./33-agent-llm-team-integration-contract.md): 팀 파트 병합 후 Agent가 소비해야 하는 DB/backend/Flutter 최소 I/O 계약과 현재 gap을 정리한 문서.
+- [34-agent-llm-readiness-audit.md](./34-agent-llm-readiness-audit.md): 31~33번 기준을 현재 구현과 팀 브랜치 상태에 대입해 시작 가능한 slice와 no-go를 정리한 audit.
+- [35-agent-llm-orchestration-plan.md](./35-agent-llm-orchestration-plan.md): Agent/LLM 10일 full vertical integration의 phase, gate, touchpoint map, future risk를 관리하는 실행 관제판.
 
 ## 문서 추가 기준
 
@@ -82,7 +155,11 @@ Final integration, deployment, and demo documents belong here.
 - [28-agent-llm-trd.md](./28-agent-llm-trd.md): 28. Agent/LLM TRD
 - [29-agent-llm-tdd.md](./29-agent-llm-tdd.md): 29. Agent/LLM TDD
 - [30-agent-llm-todo.md](./30-agent-llm-todo.md): 30. Agent/LLM TODO
+- [31-agent-llm-runtime-decision-eval.md](./31-agent-llm-runtime-decision-eval.md): 31. Agent/LLM Runtime Decision & Eval 기준
+- [32-agent-llm-model-smoke-eval-report.md](./32-agent-llm-model-smoke-eval-report.md): 32. Agent/LLM Model Smoke/Eval Report
+- [33-agent-llm-team-integration-contract.md](./33-agent-llm-team-integration-contract.md): 33. Agent/LLM Team Integration Contract
+- [34-agent-llm-readiness-audit.md](./34-agent-llm-readiness-audit.md): 34. Agent/LLM Readiness Audit
+- [35-agent-llm-orchestration-plan.md](./35-agent-llm-orchestration-plan.md): 35. Agent/LLM Orchestration Plan
 - [chatbot-unknown-backlog-report.md](./chatbot-unknown-backlog-report.md): Chatbot Unknown Knowledge Backlog
-- [thinking.md](./thinking.md): thinking
 
 <!-- docs-index:end -->

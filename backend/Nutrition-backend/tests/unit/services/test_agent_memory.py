@@ -8,14 +8,20 @@ from decimal import Decimal
 
 from lemon_ai_agent.adapters import AgentFinding, AgentInput, AgentOutput
 from src.config import Settings
+from src.models.db.agent_memory import AgentMemory
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.supplement import UserSupplement, UserSupplementIngredient
 from src.security.auth import AuthenticatedUser
 from src.services.agent_memory import (
+    AGENT_MEMORY_TYPES,
     DAILY_COACHING_MEMORY_TYPE,
     NUTRITION_ANALYSIS_MEMORY_TYPE,
+    PROFILE_MEMORY_TYPE,
+    SAFETY_MEMORY_TYPE,
     SUPPLEMENT_MEMORY_TYPE,
+    load_agent_memory_context,
     record_agent_run,
+    upsert_agent_memory_record,
     upsert_daily_coaching_memory,
     upsert_nutrition_analysis_memory,
     upsert_supplement_memory,
@@ -33,11 +39,22 @@ class _FakeSession:
     async def scalar(self, _statement: object) -> object | None:
         return self.scalar_results.pop(0) if self.scalar_results else None
 
+    async def scalars(self, _statement: object) -> _FakeScalarResult:
+        return _FakeScalarResult([item for item in self.scalar_results if item is not None])
+
     def add(self, record: object) -> None:
         self.added.append(record)
 
     async def commit(self) -> None:
         self.committed = True
+
+
+class _FakeScalarResult:
+    def __init__(self, records: list[object]) -> None:
+        self._records = records
+
+    def all(self) -> list[object]:
+        return self._records
 
 
 def _user() -> AuthenticatedUser:
@@ -87,6 +104,126 @@ def _preview_output() -> AgentOutput:
         recommendations=[],
         actions=[],
     )
+
+
+def _memory_record(memory_type: str, summary_json: dict[str, object]) -> AgentMemory:
+    return AgentMemory(
+        owner_subject_hash="owner-hash",
+        memory_type=memory_type,
+        summary_json=summary_json,
+        source_counters={"seed": 1},
+        algorithm_version="test",
+    )
+
+
+def test_agent_memory_type_contract_lists_four_v2_types() -> None:
+    """Verify Day 2 memory taxonomy is explicit and does not replace v0 memory."""
+    assert AGENT_MEMORY_TYPES == (
+        "profile_memory",
+        "behavior_memory",
+        "conversation_memory",
+        "safety_memory",
+    )
+    assert DAILY_COACHING_MEMORY_TYPE not in AGENT_MEMORY_TYPES
+
+
+def test_upsert_agent_memory_record_stores_sanitized_v2_summary() -> None:
+    """Verify v2 memory records store compact summaries without raw/internal payloads."""
+    session = _FakeSession()
+
+    memory = asyncio.run(
+        upsert_agent_memory_record(
+            session,
+            _user(),
+            _settings(),
+            memory_type=SAFETY_MEMORY_TYPE,
+            summary="사용자가 혈압약 복용을 언급함.",
+            structured_payload={
+                "medication_class": "blood_pressure_medication",
+                "raw_transcript": "혈압약 먹고 있어",
+                "raw_prompt": "internal prompt",
+                "provider_payload": {"messages": ["hidden"]},
+            },
+            confidence="user_reported",
+            source_kind="chat_summary",
+            source_ref="chat-session-1",
+            priority=8,
+        )
+    )
+
+    assert memory is not None
+    assert memory.memory_type == SAFETY_MEMORY_TYPE
+    assert memory.summary_json == {
+        "schema_version": "agent-memory-summary-v1",
+        "memory_type": SAFETY_MEMORY_TYPE,
+        "summary": "사용자가 혈압약 복용을 언급함.",
+        "structured_payload": {
+            "medication_class": "blood_pressure_medication",
+        },
+        "confidence": "user_reported",
+        "source_kind": "chat_summary",
+        "source_ref": "chat-session-1",
+        "priority": 8,
+        "review_after": None,
+        "expires_at": None,
+    }
+    assert "raw_transcript" not in str(memory.summary_json)
+    assert "raw_prompt" not in str(memory.summary_json)
+    assert "provider_payload" not in str(memory.summary_json)
+    assert "messages" not in str(memory.summary_json)
+    assert memory.source_counters == {"chat_summary": 1}
+    assert session.committed
+
+
+def test_load_agent_memory_context_groups_v2_types_and_keeps_v0_summary() -> None:
+    """Verify retrieval returns v2 memory bundle while preserving v0 summaries."""
+    session = _FakeSession(
+        [
+            _memory_record(
+                DAILY_COACHING_MEMORY_TYPE,
+                {"schema_version": "agent-memory-summary-v1", "recent_findings": []},
+            ),
+            _memory_record(
+                PROFILE_MEMORY_TYPE,
+                {
+                    "schema_version": "agent-memory-summary-v1",
+                    "summary": "두부를 선호함.",
+                    "raw_prompt": "must be removed",
+                },
+            ),
+            _memory_record(
+                SAFETY_MEMORY_TYPE,
+                {
+                    "schema_version": "agent-memory-summary-v1",
+                    "summary": "혈압약 복용을 언급함.",
+                    "provider_payload": {"messages": ["must be removed"]},
+                },
+            ),
+        ]
+    )
+
+    context = asyncio.run(load_agent_memory_context(session, _user(), _settings()))
+
+    assert context["schema_version"] == "agent-memory-summary-v1"
+    assert [item["memory_type"] for item in context["summaries"]] == [
+        DAILY_COACHING_MEMORY_TYPE,
+        PROFILE_MEMORY_TYPE,
+        SAFETY_MEMORY_TYPE,
+    ]
+    assert context["memory_bundle"]["profile_memory"][0]["summary_json"] == {
+        "schema_version": "agent-memory-summary-v1",
+        "summary": "두부를 선호함.",
+    }
+    assert context["memory_bundle"]["safety_memory"][0]["summary_json"] == {
+        "schema_version": "agent-memory-summary-v1",
+        "summary": "혈압약 복용을 언급함.",
+    }
+    assert context["memory_bundle"]["behavior_memory"] == []
+    assert context["memory_bundle"]["conversation_memory"] == []
+    assert "daily_coaching" not in context["memory_bundle"]
+    assert "raw_prompt" not in str(context)
+    assert "provider_payload" not in str(context)
+    assert "messages" not in str(context)
 
 
 def test_daily_coaching_memory_uses_canonical_nutrient_schema() -> None:

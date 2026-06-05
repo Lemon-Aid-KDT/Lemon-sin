@@ -34,6 +34,7 @@ from src.models.db import (
     UserSupplement,
     UserSupplementIngredient,
 )
+from src.services.agent_memory import AGENT_MEMORY_TYPES
 
 
 def test_user_table_is_registered_with_required_columns() -> None:
@@ -589,7 +590,20 @@ def test_agent_memory_tables_are_registered_without_raw_payload_columns() -> Non
         "used_tools",
     }.issubset(set(run.c.keys()))
 
-    forbidden_columns = {"raw_image", "raw_ocr_text", "raw_llm_response", "prompt"}
+    forbidden_columns = {
+        "full_prompt",
+        "messages",
+        "original_transcript",
+        "prompt",
+        "provider_payload",
+        "raw_chat_transcript",
+        "raw_image",
+        "raw_llm_response",
+        "raw_ocr_text",
+        "raw_prompt",
+        "raw_provider_payload",
+        "raw_transcript",
+    }
     assert forbidden_columns.isdisjoint(set(memory.c.keys()) | set(run.c.keys()))
 
 
@@ -608,6 +622,22 @@ def test_agent_memory_constraints_and_indexes_are_defined() -> None:
     assert "ck_agent_runs_agent_runs_approval_status_allowed" in run_constraint_names
     assert "ix_agent_memory_owner_type" in memory_index_names
     assert "ix_agent_runs_owner_created_at" in run_index_names
+
+
+def test_agent_memory_v2_types_are_service_level_contract_without_raw_columns() -> None:
+    """Verify the four Agent memory types fit the existing owner/type table contract."""
+    memory = cast(Table, AgentMemory.__table__)
+    memory_type_length = cast(String, memory.c.memory_type.type).length
+
+    assert AGENT_MEMORY_TYPES == (
+        "profile_memory",
+        "behavior_memory",
+        "conversation_memory",
+        "safety_memory",
+    )
+    assert all(len(memory_type) <= memory_type_length for memory_type in AGENT_MEMORY_TYPES)
+    assert "summary_json" in memory.c
+    assert "source_counters" in memory.c
 
 
 def test_medical_source_governance_tables_are_registered() -> None:
