@@ -30,13 +30,18 @@ _FORBIDDEN_CONTEXT_KEYS = {
     "image_bytes",
     "messages",
     "prompt",
+    "llm_output",
+    "model_output",
+    "provider_payload",
     "raw_chat_transcript",
     "raw_image",
     "raw_image_bytes",
     "raw_llm_output",
+    "raw_model_output",
     "raw_ocr",
     "raw_ocr_text",
     "raw_prompt",
+    "raw_provider_payload",
 }
 
 _FOOD_LOOKUP_TERMS = (

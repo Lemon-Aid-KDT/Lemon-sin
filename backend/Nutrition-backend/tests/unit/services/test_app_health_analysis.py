@@ -15,6 +15,7 @@ from src.security.auth import AuthenticatedUser
 from src.services.app_health_analysis import (
     APP_HEALTH_ANALYSIS_ALGORITHM_VERSION,
     build_analysis_run_confirmation,
+    build_analysis_response_contract,
     build_health_analysis_snapshot,
     build_today_analysis_snapshot,
     detect_analysis_run_intent,
@@ -213,6 +214,59 @@ def test_analysis_run_intent_requires_confirmation_and_limits_ctas() -> None:
     assert confirmation["requires_user_confirmation"] is True
     assert confirmation["will_persist"] is False
     assert confirmation["ctas"] == ["run_or_refresh_analysis", "ask_about_this_result"]
+
+
+def test_analysis_response_contract_includes_bounded_candidates_without_side_effects() -> None:
+    contract = build_analysis_response_contract(
+        _snapshot(
+            foods=[
+                {
+                    "display_items": ["ramen"],
+                    "rough_nutrient_axes": ["sodium_high", "carbohydrate_high"],
+                    "raw_ocr_text": "hidden OCR",
+                }
+            ],
+            supplements=[{"display_name": "Vitamin D", "provider_payload": {"raw": "hidden"}}],
+            checked_today=[{"supplement_id": "supplement-1"}],
+            checklist_items=[
+                "drink water",
+                "walk after dinner",
+                "check soup",
+                "late snack candidate",
+            ],
+            chat_signals=[
+                {"name": "late_snack", "stage": "confirmed_from_chat"},
+                {"name": "raw_internal", "stage": "raw_transcript"},
+            ],
+        )
+    )
+
+    assert contract["analysis_snapshot"] == {
+        "today_analysis": contract["today_analysis"],
+        "smart_analysis": contract["smart_analysis"],
+    }
+    assert contract["today_analysis"]["schema_version"] == "today-analysis-snapshot-v1"
+    assert contract["smart_analysis"]["schema_version"] == "health-analysis-snapshot-v1"
+    assert 1 <= len(contract["checklist_candidates"]) <= 3
+    assert contract["ctas"] == ["run_or_refresh_analysis", "ask_about_this_result"]
+    assert contract["approval_preview"]["required"] is True
+    assert contract["approval_preview"]["side_effects"] == []
+    assert contract["approval_preview"]["will_persist"] is False
+    assert contract["approval_preview"]["will_schedule_notification"] is False
+    assert contract["approval_preview"]["will_add_today_practice"] is False
+    assert all(
+        candidate["approval_state"] == "approval_required"
+        for candidate in contract["checklist_candidates"]
+    )
+    assert all(
+        candidate["side_effect"] == "none"
+        for candidate in contract["checklist_candidates"]
+    )
+    public_text = str(contract)
+    assert "raw_ocr_text" not in public_text
+    assert "provider_payload" not in public_text
+    assert "raw_transcript" not in public_text
+    assert "unconfirmed" not in public_text
 
 
 @pytest.mark.asyncio

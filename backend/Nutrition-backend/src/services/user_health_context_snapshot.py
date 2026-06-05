@@ -57,17 +57,22 @@ def _build_user_profile_summary(
     medication_context: Mapping[str, Any],
 ) -> dict[str, Any]:
     profile = _mapping_or_empty(request_context.get("profile"))
-    medications = _string_list(medication_context.get("medications"))
-    existing_medications = _string_list(profile.get("medications"))
+    medication_details = _confirmed_medication_details(medication_context)
+    medications = [
+        str(detail["display_name"])
+        for detail in medication_details
+        if isinstance(detail.get("display_name"), str) and detail["display_name"]
+    ]
+    if not medications and not medication_details:
+        medications = _string_list(medication_context.get("medications"))
     summary = {
         "goals": _string_list(profile.get("goals")),
         "chronic_conditions": _string_list(profile.get("chronic_conditions")),
         "health_axes": _string_list(profile.get("health_axes")),
         "risk_flags": _string_list(profile.get("risk_flags")),
-        "medications": list(dict.fromkeys([*existing_medications, *medications])),
+        "medications": list(dict.fromkeys(medications)),
     }
-    medication_details = medication_context.get("medication_details")
-    if isinstance(medication_details, list) and medication_details:
+    if medication_details:
         summary["medication_details"] = medication_details
     return _drop_empty_values(summary)
 
@@ -77,6 +82,8 @@ def _build_health_analysis_snapshot(
     memory_context: Mapping[str, Any],
 ) -> dict[str, Any]:
     snapshot = _mapping_or_empty(request_context.get("health_analysis_snapshot"))
+    if not _is_confirmed_context_record(snapshot):
+        snapshot = {}
     memory_types = _memory_types(memory_context)
     if memory_types:
         snapshot = {**snapshot, "memory_types": memory_types}
@@ -89,8 +96,10 @@ def _build_active_supplement_snapshot(
     active_supplement_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if active_supplement_context:
-        return dict(active_supplement_context)
-    return _mapping_or_empty(request_context.get("active_supplement_snapshot"))
+        return _sanitize_active_supplement_snapshot(active_supplement_context)
+    return _sanitize_active_supplement_snapshot(
+        _mapping_or_empty(request_context.get("active_supplement_snapshot"))
+    )
 
 
 def _build_recent_food_and_checklist_snapshot(
@@ -100,11 +109,11 @@ def _build_recent_food_and_checklist_snapshot(
 ) -> dict[str, Any]:
     existing = _mapping_or_empty(request_context.get("recent_food_and_checklist_snapshot"))
     latest_entries = _mapping_or_empty(request_context.get("latest_confirmed_entries"))
-    recent_food_records = list(food_record_context or [])
+    recent_food_records = _confirmed_food_records(food_record_context or [])
     if not recent_food_records:
-        recent_food_records = existing.get("recent_food_records")
-    if recent_food_records is None:
-        recent_food_records = latest_entries.get("foods", [])
+        recent_food_records = _confirmed_food_records(existing.get("recent_food_records"))
+    if not recent_food_records:
+        recent_food_records = _confirmed_food_records(latest_entries.get("foods"))
     checklist_items = existing.get("checklist_items", request_context.get("checklist_items", []))
     return _drop_empty_values(
         {
@@ -164,6 +173,129 @@ def _build_visible_analysis_context(
             **current_values,
         }
     return {**visible, "stale": False}
+
+
+def _confirmed_medication_details(medication_context: Mapping[str, Any]) -> list[dict[str, Any]]:
+    details = medication_context.get("medication_details")
+    if not isinstance(details, list):
+        return []
+    confirmed: list[dict[str, Any]] = []
+    for detail in details:
+        if not isinstance(detail, Mapping):
+            continue
+        if not _is_confirmed_medication(detail):
+            continue
+        confirmed.append(dict(detail))
+    return confirmed
+
+
+def _is_confirmed_medication(value: Mapping[str, Any]) -> bool:
+    if value.get("is_active") is False:
+        return False
+    status = value.get("confirmation_status")
+    return not isinstance(status, str) or status == "user_confirmed"
+
+
+def _sanitize_active_supplement_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
+    supplements = [
+        _sanitize_confirmed_supplement(supplement)
+        for supplement in _mapping_items(value.get("registered_supplements"))
+        if _is_confirmed_context_record(supplement)
+    ]
+    checked_supplement_ids = {
+        supplement.get("supplement_id")
+        for supplement in supplements
+        if isinstance(supplement.get("supplement_id"), str)
+    }
+    checked_today = [
+        checked
+        for checked in _mapping_items(value.get("checked_today"))
+        if _is_confirmed_context_record(checked)
+        and (
+            not checked_supplement_ids
+            or checked.get("supplement_id") in checked_supplement_ids
+        )
+    ]
+    policy = _mapping_or_empty(value.get("policy"))
+    return _drop_empty_values(
+        {
+            "registered_supplements": supplements,
+            "checked_today": checked_today,
+            "policy": {
+                **policy,
+                "nutrient_code_required_for_standard_analysis": True,
+                "unconfirmed_preview_excluded": True,
+                "label_only_ingredients_do_not_drive_nutrient_analysis": True,
+            },
+        }
+    )
+
+
+def _sanitize_confirmed_supplement(value: Mapping[str, Any]) -> dict[str, Any]:
+    supplement = dict(value)
+    ingredients = [
+        _sanitize_supplement_ingredient(ingredient)
+        for ingredient in _mapping_items(supplement.get("ingredients"))
+    ]
+    if ingredients:
+        supplement["ingredients"] = ingredients
+    else:
+        supplement.pop("ingredients", None)
+    return supplement
+
+
+def _sanitize_supplement_ingredient(value: Mapping[str, Any]) -> dict[str, Any]:
+    ingredient = dict(value)
+    ingredient["analysis_use"] = (
+        "standard_nutrient" if ingredient.get("nutrient_code") else "label_only"
+    )
+    return ingredient
+
+
+def _confirmed_food_records(value: Any) -> list[dict[str, Any]]:
+    return [
+        dict(record)
+        for record in _mapping_items(value)
+        if _is_confirmed_context_record(record)
+    ]
+
+
+def _mapping_items(value: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _is_confirmed_context_record(value: Mapping[str, Any]) -> bool:
+    if value.get("user_confirmed") is False:
+        return False
+    if value.get("is_active") is False:
+        return False
+    if value.get("needs_user_review") is True:
+        return False
+
+    status_values = (
+        value.get("status"),
+        value.get("approval_status"),
+        value.get("confirmation_status"),
+        value.get("stage"),
+    )
+    excluded_statuses = {
+        "candidate",
+        "draft",
+        "failed",
+        "learning",
+        "ocr_preview",
+        "parser_candidate",
+        "preview",
+        "requires_confirmation",
+        "unconfirmed",
+        "yolo_candidate",
+    }
+    for status in status_values:
+        if isinstance(status, str) and status.casefold() in excluded_statuses:
+            return False
+    return True
 
 
 def _food_record_ids(records: list[Mapping[str, Any]]) -> list[str]:

@@ -31,3 +31,9 @@ class ChatbotResponse:
     answerability: str = "answerable"
     sources: list[dict[str, str]] = field(default_factory=list)
     requires_user_approval: bool = False
+    ctas: list[str] = field(default_factory=list)
+    analysis_snapshot: dict[str, Any] = field(default_factory=dict)
+    today_analysis: dict[str, Any] = field(default_factory=dict)
+    smart_analysis: dict[str, Any] = field(default_factory=dict)
+    checklist_candidates: list[dict[str, Any]] = field(default_factory=list)
+    approval_preview: dict[str, Any] = field(default_factory=dict)

@@ -38,6 +38,7 @@ from src.services.agent_memory import (
     upsert_daily_coaching_memory,
 )
 from src.services.app_health_analysis import (
+    build_analysis_response_contract,
     build_analysis_run_confirmation,
     build_health_analysis_snapshot,
     build_today_analysis_snapshot,
@@ -108,6 +109,11 @@ class ChatbotApiResponse(BaseModel):
     sources: list[dict[str, str]] = Field(default_factory=list)
     requires_user_approval: bool = False
     ctas: list[str] = Field(default_factory=list)
+    analysis_snapshot: dict[str, Any] = Field(default_factory=dict)
+    today_analysis: dict[str, Any] = Field(default_factory=dict)
+    smart_analysis: dict[str, Any] = Field(default_factory=dict)
+    checklist_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    approval_preview: dict[str, Any] = Field(default_factory=dict)
 
 
 def _build_llm_client(settings: Settings) -> LocalLLMClient:
@@ -381,6 +387,9 @@ async def run_chatbot(
     )
     context_resolution = ContextResolver().resolve(request.message, user_health_snapshot)
     context["user_health_context_snapshot"] = user_health_snapshot.to_safe_context()
+    context["latest_confirmed_entries"] = _latest_confirmed_entries_from_snapshot(
+        context["user_health_context_snapshot"]
+    )
     context["user_health_context_resolution"] = {
         "status": context_resolution.status,
         "required_records": list(context_resolution.required_records),
@@ -460,6 +469,7 @@ async def run_chatbot(
             "requires_user_approval": chatbot_response.requires_user_approval,
         },
     )
+    analysis_contract = build_analysis_response_contract(context["user_health_context_snapshot"])
     return ChatbotApiResponse(
         request_id=chatbot_response.request_id,
         message=chatbot_response.message,
@@ -470,6 +480,12 @@ async def run_chatbot(
         answerability=chatbot_response.answerability,
         sources=chatbot_response.sources,
         requires_user_approval=chatbot_response.requires_user_approval,
+        ctas=_merge_ctas(getattr(chatbot_response, "ctas", []), analysis_contract["ctas"]),
+        analysis_snapshot=analysis_contract["analysis_snapshot"],
+        today_analysis=analysis_contract["today_analysis"],
+        smart_analysis=analysis_contract["smart_analysis"],
+        checklist_candidates=analysis_contract["checklist_candidates"],
+        approval_preview=analysis_contract["approval_preview"],
     )
 
 
@@ -489,11 +505,20 @@ async def _maybe_handle_chat_analysis_run(
         if analysis_kind == "today_analysis"
         else build_health_analysis_snapshot(user_health_snapshot)
     )
+    analysis_contract = build_analysis_response_contract(user_health_snapshot)
     approval = _analysis_run_approval(request.context)
     approved_kind = approval.get("analysis_kind")
     approved = approval.get("approved") is True and approved_kind == analysis_kind
     if not approved:
         confirmation = build_analysis_run_confirmation(analysis_kind, result_snapshot)
+        approval_preview = {
+            **analysis_contract["approval_preview"],
+            "required": True,
+            "approval_state": "approval_required",
+            "requested_action": "run_or_refresh_analysis",
+            "analysis_kind": analysis_kind,
+            "snapshot_preview": confirmation["snapshot_preview"],
+        }
         return ChatbotApiResponse(
             request_id=request.request_id,
             message=(
@@ -509,6 +534,11 @@ async def _maybe_handle_chat_analysis_run(
             answerability="needs_more_info",
             requires_user_approval=True,
             ctas=list(confirmation["ctas"]),
+            analysis_snapshot=analysis_contract["analysis_snapshot"],
+            today_analysis=analysis_contract["today_analysis"],
+            smart_analysis=analysis_contract["smart_analysis"],
+            checklist_candidates=analysis_contract["checklist_candidates"],
+            approval_preview=approval_preview,
         )
 
     await store_app_health_analysis_result(
@@ -537,12 +567,73 @@ async def _maybe_handle_chat_analysis_run(
         answerability="answerable",
         requires_user_approval=False,
         ctas=["ask_about_this_result"],
+        analysis_snapshot=analysis_contract["analysis_snapshot"],
+        today_analysis=analysis_contract["today_analysis"],
+        smart_analysis=analysis_contract["smart_analysis"],
+        checklist_candidates=analysis_contract["checklist_candidates"],
+        approval_preview={
+            **analysis_contract["approval_preview"],
+            "required": False,
+            "approval_state": "approved",
+            "side_effects": ["analysis_result_persisted"],
+        },
     )
 
 
 def _analysis_run_approval(context: dict[str, Any]) -> dict[str, Any]:
     value = context.get("analysis_run_approval")
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _merge_ctas(*values: object) -> list[str]:
+    ctas: list[str] = []
+    for value in values:
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                ctas.append(item.strip())
+    return list(dict.fromkeys(ctas))[:3]
+
+
+def _latest_confirmed_entries_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    recent = snapshot.get("recent_food_and_checklist_snapshot")
+    if not isinstance(recent, dict):
+        return {"foods": []}
+    records = recent.get("recent_food_records")
+    if not isinstance(records, list):
+        return {"foods": []}
+
+    foods: list[dict[str, str]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        name = _food_record_name(record)
+        if not name:
+            continue
+        food: dict[str, str] = {"name": name}
+        for source_key, target_key in (
+            ("meal_type", "meal_type"),
+            ("recorded_date", "recorded_date"),
+            ("food_record_id", "food_record_id"),
+        ):
+            value = record.get(source_key)
+            if isinstance(value, str) and value.strip():
+                food[target_key] = value.strip()
+        foods.append(food)
+    return {"foods": foods}
+
+
+def _food_record_name(record: dict[str, Any]) -> str:
+    name = record.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    display_items = record.get("display_items")
+    if isinstance(display_items, list):
+        return ", ".join(
+            item.strip() for item in display_items if isinstance(item, str) and item.strip()
+        )
+    return ""
 
 
 def _merge_user_medication_context(

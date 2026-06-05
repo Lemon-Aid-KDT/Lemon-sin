@@ -25,6 +25,19 @@ _ALLOWED_CHAT_SIGNAL_STAGES = {
 _ANALYSIS_RUN_CTAS = ("run_or_refresh_analysis", "ask_about_this_result")
 PERSONAL_BASELINE_MIN_DAYS = 14
 LONG_TERM_MIN_DAYS = 90
+CHECKLIST_CANDIDATE_LIMIT = 3
+_INTERNAL_PAYLOAD_TERMS = (
+    "candidate",
+    "internal",
+    "llm_output",
+    "model_output",
+    "ocr_preview",
+    "parser_candidate",
+    "provider_payload",
+    "raw_",
+    "unconfirmed",
+    "yolo",
+)
 
 
 def build_today_analysis_snapshot(user_health_snapshot: Mapping[str, Any]) -> dict[str, Any]:
@@ -97,6 +110,25 @@ def build_health_analysis_snapshot(user_health_snapshot: Mapping[str, Any]) -> d
     }
 
 
+def build_analysis_response_contract(user_health_snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the Day 05 preview-only analysis/checklist/CTA response contract."""
+    today_analysis = build_today_analysis_snapshot(user_health_snapshot)
+    smart_analysis = build_health_analysis_snapshot(user_health_snapshot)
+    checklist_candidates = _checklist_candidates(today_analysis, smart_analysis)
+    ctas = _response_ctas(today_analysis, smart_analysis)
+    return {
+        "analysis_snapshot": {
+            "today_analysis": today_analysis,
+            "smart_analysis": smart_analysis,
+        },
+        "today_analysis": today_analysis,
+        "smart_analysis": smart_analysis,
+        "checklist_candidates": checklist_candidates,
+        "ctas": ctas,
+        "approval_preview": _approval_preview(checklist_candidates, ctas),
+    }
+
+
 def detect_analysis_run_intent(message: str) -> AnalysisKind | None:
     """Detect explicit analysis execution intent without executing it."""
     normalized = message.casefold()
@@ -121,6 +153,89 @@ def build_analysis_run_confirmation(
         "snapshot_preview": dict(snapshot),
         "ctas": list(_limited_ctas(_ANALYSIS_RUN_CTAS)),
     }
+
+
+def _checklist_candidates(
+    today_analysis: Mapping[str, Any],
+    smart_analysis: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    actions: list[tuple[str, str]] = []
+    for action in _string_list(today_analysis.get("checklist_actions")):
+        actions.append(("today_analysis", action))
+    for action in _string_list(smart_analysis.get("checklist_actions")):
+        actions.append(("smart_analysis", action))
+
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for source, action in actions:
+        label = action.strip()
+        if not label or label in seen or _contains_internal_payload_term(label):
+            continue
+        seen.add(label)
+        candidates.append(
+            {
+                "candidate_id": f"checklist-candidate-v1-{len(candidates) + 1}",
+                "kind": "today_practice",
+                "title": label,
+                "source": source,
+                "approval_state": "approval_required",
+                "side_effect": "none",
+                "deferred_action": "add_today_practice",
+            }
+        )
+        if len(candidates) >= CHECKLIST_CANDIDATE_LIMIT:
+            break
+    return candidates
+
+
+def _response_ctas(
+    today_analysis: Mapping[str, Any],
+    smart_analysis: Mapping[str, Any],
+) -> list[str]:
+    ctas = [
+        *_string_list(today_analysis.get("ctas")),
+        *_string_list(smart_analysis.get("ctas")),
+    ]
+    return list(_limited_ctas(tuple(ctas)))
+
+
+def _approval_preview(
+    checklist_candidates: list[dict[str, Any]],
+    ctas: list[str],
+) -> dict[str, Any]:
+    approval_actions = [
+        {
+            "action": "add_today_practice",
+            "candidate_id": candidate["candidate_id"],
+            "status": "approval_required",
+            "side_effect": "none",
+        }
+        for candidate in checklist_candidates
+    ]
+    approval_actions.extend(
+        {
+            "action": cta,
+            "status": "approval_required",
+            "side_effect": "none",
+        }
+        for cta in ctas
+        if cta in {"run_or_refresh_analysis", "complete_missing_record"}
+    )
+    return {
+        "schema_version": "approval-preview-v1",
+        "required": bool(approval_actions),
+        "approval_state": "approval_required" if approval_actions else "not_required",
+        "will_persist": False,
+        "will_schedule_notification": False,
+        "will_add_today_practice": False,
+        "side_effects": [],
+        "actions": approval_actions,
+    }
+
+
+def _contains_internal_payload_term(value: str) -> bool:
+    normalized = value.casefold()
+    return any(term in normalized for term in _INTERNAL_PAYLOAD_TERMS)
 
 
 async def store_app_health_analysis_result(

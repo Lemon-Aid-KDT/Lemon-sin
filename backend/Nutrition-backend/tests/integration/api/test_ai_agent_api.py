@@ -813,6 +813,105 @@ def test_chat_route_loads_user_health_context_snapshot_before_agent(
     assert "messages" not in str(snapshot)
 
 
+def test_chat_route_replaces_client_preview_food_context_with_confirmed_db_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify client preview entries cannot reach the agent as confirmed food context."""
+    captured: dict[str, object] = {}
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": "record-confirmed",
+                "recorded_date": "2026-06-05",
+                "meal_type": "lunch",
+                "display_items": ["confirmed rice bowl"],
+                "estimated_tags": ["carbohydrate_high"],
+                "rough_nutrient_axes": ["carbohydrate_high"],
+                "user_confirmed": True,
+                "source": "manual",
+            },
+            {
+                "food_record_id": "record-preview",
+                "recorded_date": "2026-06-05",
+                "meal_type": "dinner",
+                "display_items": ["ocr preview noodles"],
+                "estimated_tags": ["sodium_high"],
+                "rough_nutrient_axes": ["sodium_high"],
+                "user_confirmed": False,
+                "source": "ocr_preview",
+                "raw_ocr_text": "hidden OCR",
+            },
+        ]
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+            )
+
+    payload = _chat_payload(message="What did I eat today?")
+    payload["context"] = {
+        **payload["context"],
+        "latest_confirmed_entries": {
+            "foods": [
+                {
+                    "name": "client preview ramen",
+                    "meal_type": "dinner",
+                    "status": "preview",
+                    "raw_ocr_text": "client OCR",
+                }
+            ],
+        },
+    }
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post("/api/v1/ai-agent/chat", json=payload)
+
+    assert response.status_code == status.HTTP_200_OK
+    context = captured["context"]
+    snapshot = context["user_health_context_snapshot"]
+    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"] == [
+        {
+            "food_record_id": "record-confirmed",
+            "recorded_date": "2026-06-05",
+            "meal_type": "lunch",
+            "display_items": ["confirmed rice bowl"],
+            "estimated_tags": ["carbohydrate_high"],
+            "rough_nutrient_axes": ["carbohydrate_high"],
+            "user_confirmed": True,
+            "source": "manual",
+        }
+    ]
+    assert context["latest_confirmed_entries"] == {
+        "foods": [
+            {
+                "name": "confirmed rice bowl",
+                "meal_type": "lunch",
+                "recorded_date": "2026-06-05",
+                "food_record_id": "record-confirmed",
+            }
+        ]
+    }
+    assert "client preview ramen" not in str(context)
+    assert "ocr preview noodles" not in str(context)
+    assert "raw_ocr_text" not in str(context)
+
+
 def test_chat_route_loads_recent_food_records_before_context_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1062,6 +1161,108 @@ def test_chat_route_analysis_run_intent_requires_user_confirmation(
     assert body["ctas"] == ["run_or_refresh_analysis", "ask_about_this_result"]
     assert "app_health_analysis_confirmation" in body["used_tools"]
     assert persisted == {"count": 0}
+
+
+def test_chat_route_returns_analysis_checklist_cta_preview_without_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify Day 05 response contract is additive and preview-only."""
+    persisted: dict[str, int] = {"analysis": 0}
+
+    async def _store_analysis(*_args: object, **_kwargs: object) -> object:
+        persisted["analysis"] += 1
+        return object()
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": "record-1",
+                "recorded_date": "2026-06-05",
+                "meal_type": "lunch",
+                "display_items": ["ramen"],
+                "estimated_tags": ["sodium_high"],
+                "rough_nutrient_axes": ["sodium_high", "carbohydrate_high"],
+                "user_confirmed": True,
+                "source": "manual",
+            },
+            {
+                "food_record_id": "record-preview",
+                "recorded_date": "2026-06-05",
+                "meal_type": "dinner",
+                "display_items": ["ocr preview noodles"],
+                "rough_nutrient_axes": ["sodium_high"],
+                "user_confirmed": False,
+                "source": "ocr_preview",
+                "raw_ocr_text": "hidden OCR",
+            },
+        ]
+
+    class _PreviewChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="요약\n- ok\n출처 기준\n- 사용자 확인 기록",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+                sources=[
+                    {
+                        "source_id": "kdris-2025",
+                        "source_family": "nutrition_reference",
+                        "review_status": "reviewed",
+                        "version_label": "2025",
+                        "reviewed_at": "2026-05-01",
+                        "expires_at": "2027-05-01",
+                        "source_url": "https://example.test/kdris",
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _PreviewChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "store_app_health_analysis_result", _store_analysis)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="오늘 분석에서 나온 내용이 궁금해"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["analysis_snapshot"] == {
+        "today_analysis": body["today_analysis"],
+        "smart_analysis": body["smart_analysis"],
+    }
+    assert body["today_analysis"]["schema_version"] == "today-analysis-snapshot-v1"
+    assert body["smart_analysis"]["schema_version"] == "health-analysis-snapshot-v1"
+    assert 1 <= len(body["checklist_candidates"]) <= 3
+    assert body["ctas"] == ["run_or_refresh_analysis", "ask_about_this_result"]
+    assert body["approval_preview"]["required"] is True
+    assert body["approval_preview"]["side_effects"] == []
+    assert body["approval_preview"]["will_persist"] is False
+    assert body["approval_preview"]["will_schedule_notification"] is False
+    assert body["approval_preview"]["will_add_today_practice"] is False
+    assert all(
+        candidate["approval_state"] == "approval_required"
+        for candidate in body["checklist_candidates"]
+    )
+    assert all(
+        candidate["side_effect"] == "none"
+        for candidate in body["checklist_candidates"]
+    )
+    public_text = str(body)
+    assert "ocr preview noodles" not in public_text
+    assert "raw_ocr_text" not in public_text
+    assert "provider_payload" not in public_text
+    assert "unconfirmed" not in public_text
+    assert persisted == {"analysis": 0}
 
 
 def test_chat_route_confirmed_analysis_run_persists_snapshot(

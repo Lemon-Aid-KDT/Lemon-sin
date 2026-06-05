@@ -59,6 +59,44 @@ def test_user_health_context_snapshot_keeps_only_safe_structured_fields() -> Non
     assert "messages" not in str(safe_context)
 
 
+def test_user_health_context_snapshot_removes_provider_and_model_payloads() -> None:
+    snapshot = UserHealthContextSnapshot.from_mapping(
+        {
+            "active_supplement_snapshot": {
+                "registered_supplements": [
+                    {
+                        "display_name": "Vitamin D",
+                        "provider_payload": {"completion": "hidden"},
+                        "raw_provider_payload": {"request": "hidden"},
+                        "raw_model_output": "hidden model output",
+                        "model_output": "hidden model output",
+                    }
+                ]
+            },
+            "recent_food_and_checklist_snapshot": {
+                "recent_food_records": [
+                    {
+                        "display_items": ["rice"],
+                        "llm_output": "hidden parser output",
+                    }
+                ]
+            },
+        }
+    )
+
+    safe_context = snapshot.to_safe_context()
+    safe_text = str(safe_context)
+
+    assert "Vitamin D" in safe_text
+    assert "rice" in safe_text
+    assert "provider_payload" not in safe_text
+    assert "raw_provider_payload" not in safe_text
+    assert "raw_model_output" not in safe_text
+    assert "model_output" not in safe_text
+    assert "llm_output" not in safe_text
+    assert "hidden" not in safe_text
+
+
 def test_context_resolver_uses_snapshot_for_general_health_question() -> None:
     snapshot = UserHealthContextSnapshot.from_mapping(
         {

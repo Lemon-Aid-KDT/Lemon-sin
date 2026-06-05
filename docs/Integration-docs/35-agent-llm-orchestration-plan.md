@@ -349,6 +349,76 @@ Blocked 조건:
   - 공식 음식/영양제/복약 DB는 chat 발화만으로 자동 수정되지 않는다.
   - memory context 관련 unit/integration smoke와 golden eval이 통과한다.
 
+### Touchpoint Map: Agent/LLM full vertical integration Day 4
+
+- 목표:
+  - Agent가 음식, 영양제, 복약 정보를 사용할 때 `confirmed` 또는 그에 준하는 사용자 확정 기록만 강한 app context로 반영한다.
+  - OCR/YOLO/LLM preview, parser candidate, unconfirmed candidate는 Agent confirmed context에서 제외하고 필요하면 warning 또는 lookup 대상 상태로만 남긴다.
+  - Day 5 analysis/checklist/CTA 연결 전에 confirmed context의 입력 경계를 테스트로 먼저 고정한다.
+- 기준 문서:
+  - Agent/LLM 방향과 요구사항: [26](./26-agent-llm-product-direction-reset.md), [28](./28-agent-llm-trd.md), [29](./29-agent-llm-tdd.md), [30](./30-agent-llm-todo.md)
+  - 팀 통합 I/O 계약과 readiness: [33](./33-agent-llm-team-integration-contract.md), [34](./34-agent-llm-readiness-audit.md)
+  - Day 1~3 실행 gate: [35](./35-agent-llm-orchestration-plan.md)
+  - 기존 grounded chatbot 기준: [05](./05-grounded-chatbot-prd.md), [06](./06-grounded-chatbot-tdd.md), [08](./08-grounded-chatbot-trd.md), [10](./10-grounded-chatbot-gap-review.md)
+- 건드릴 가능성이 있는 backend 영역:
+  - `backend/Nutrition-backend/src/services/user_health_context_snapshot.py`
+  - `backend/Nutrition-backend/tests/unit/services/test_user_health_context_snapshot.py`
+  - `backend/ai_agent_chat/src/lemon_ai_agent/user_health_context.py`
+  - `backend/ai_agent_chat/tests/test_user_health_context.py`
+  - 필요 시 `backend/ai_agent_chat/src/lemon_ai_agent/app_intake.py`, `backend/ai_agent_chat/tests/test_app_intake.py`
+- 건드릴 가능성이 있는 DB/migration 영역:
+  - Day 4 첫 slice에서는 migration을 기본값으로 두지 않는다.
+  - 현재 route/service가 받는 `food_record_context`, `active_supplement_context`, `medication_context` payload를 compatibility adapter로 정규화할 수 있는지 먼저 확인한다.
+  - 새 DB field가 필요하면 `confirmed`/`user_confirmed`/`active`/`provenance` 같은 상태 필드만 후보로 두고 raw OCR, raw LLM output, provider payload 컬럼은 추가하지 않는다.
+- 건드릴 가능성이 있는 mobile/API contract:
+  - response DTO는 Day 4에서 바꾸지 않는다.
+  - confirmed context가 부족할 때는 기존 `needs_more_info`, `needs_structured_lookup`, warning 성격의 상태로 닫고 Flutter 표시 계약은 Day 6에서 정리한다.
+- 기존 grounded chatbot 문서 확인 필요 여부:
+  - 필요하다. Day 4는 `AnswerCard`, reviewed evidence, boundary/unknown renderer의 source of truth를 재정의하지 않는다.
+  - confirmed context는 personalization/context 입력일 뿐, reviewed source 없는 의료/영양 사실을 새로 생성하는 근거가 아니다.
+- 팀 브랜치에서 확인할 후보:
+  - `origin/yeong-tech`: 영양제 `user_confirmed`, `requires_confirmation`, deterministic `nutrient_code`, OCR preview 보관 원칙을 확인 후보로만 본다.
+  - `origin/feat/backend-supplement-ocr-db-hardening`: 영양제 OCR/DB hardening, supplement snapshot/schema, ingredient evidence ref, parser hardening, RLS 후보를 확인한다. 단, OCR/parser 산출물을 확정 context로 승격하지 않는다.
+  - `origin/feat/ocr-quality-gates`, `origin/fix/ocr-*`, `origin/test/ocr-kpi-readiness-gate`: OCR 품질 게이트, raw OCR/UI 노출 차단, expected manifest/matching 보정, provider 진단을 preview/candidate exclusion test의 참고 근거로만 본다.
+  - `origin/jongpil-tech`: 식단 `needs_user_review=false`, `user_confirmed` equivalent, `food_code`, `estimated_grams` 후보를 확인 후보로만 본다.
+  - `origin/docs/data-yolo-*`, `origin/feat/data-yolo-exp*`, `origin/feat/backend-food-nutrition-demo`: 음식 인식/YOLO/영양소 매핑 실험과 manifest를 확인한다. 인식 결과는 확정 기록이 아니라 food candidate로 취급한다.
+  - `origin/sunghoon-food-notfood-classification`: food/not-food gate classifier를 음식 후보 필터로만 본다. confirmed food record 기준을 대체하지 않는다.
+  - `origin/sunghoon-database`: profile/medication active status, provenance, medication class 후보를 확인 후보로만 본다.
+  - `origin/feat/db-internal-learning-pipeline`: learning/analysis/food/supplement 흐름이 섞인 후보를 확인한다. learning 결과나 analysis 결과를 confirmed health context로 승격하지 않는다.
+  - `origin/taedong-design`, `origin/feat/taedong-agent-prototype-preview`, `origin/feat/mobile-dashboard-redesign`: Day 4에서는 참고만 한다. mobile source/CTA/boundary 표시 계약은 Day 6에서 다룬다.
+  - `origin/changmin-aiagent`, `origin/feat/ai-agent-local-llm`: Agent/LLM 소비 방식 참고용이다. Day 4 confirmed adapter의 source of truth는 현재 `feat/ai-agent-backend-integration`의 `/api/v1/ai-agent/chat`와 33번 계약이다.
+  - 위 브랜치들은 Day 4 첫 slice에서 merge 또는 cherry-pick 대상이 아니다.
+- migration 필요 여부:
+  - 시작 전 테스트로 확인한다.
+  - service-level filtering과 snapshot sanitization으로 preview/candidate exclusion을 고정할 수 있으면 migration 없이 진행한다.
+  - migration이 필요해지면 별도 PR slice로 분리하고 사용자에게 먼저 알린다.
+- 테스트/smoke 명령:
+  - Day 4 RED 후보:
+    - `python -m pytest -q --no-cov backend/Nutrition-backend/tests/unit/services/test_user_health_context_snapshot.py`
+    - `python -m pytest -q --no-cov backend/ai_agent_chat/tests/test_user_health_context.py`
+  - Day 4 GREEN 후 회귀 후보:
+    - `python -m pytest -q --no-cov backend/ai_agent_chat/tests/test_chatbot_agent.py backend/Nutrition-backend/tests/integration/api/test_ai_agent_api.py`
+    - `python backend/scripts/eval_chatbot_golden.py`
+    - `git diff --check`
+- 건드리면 안 되는 영역:
+  - 팀 브랜치 직접 merge 또는 cherry-pick
+  - `guide.html` 직접 수정
+  - raw chat 전문, raw prompt, raw OCR, raw LLM output, provider payload를 memory/API/prompt/context에 넣는 구조
+  - OCR/YOLO/LLM preview 또는 parser candidate를 confirmed food/supplement/medication context와 같은 priority로 승격하는 구조
+  - reviewed source governance, `AnswerCard`, boundary/unknown renderer의 source of truth 변경
+  - Gemma 기본 모델 전환, SGLang runtime 기본값 변경
+- 연결된 Future Risk 항목:
+  - Reviewed evidence 콘텐츠 운영
+  - Medical boundary drift
+  - Privacy/deletion
+  - Team merge risk
+  - Mobile contract completeness
+- 완료 조건:
+  - preview/candidate exclusion test가 먼저 작성된다.
+  - confirmed food/supplement/medication context만 Agent input의 강한 근거로 들어간다.
+  - raw OCR/LLM/model/provider payload가 safe context, prompt, API response에 들어가지 않는다.
+  - 팀 브랜치 후보 필드는 merge 없이 adapter 계약 참고로만 정리된다.
+
 ## 8. Future Risk Register
 
 분류:
@@ -485,29 +555,58 @@ Day 3 실행 기록:
 
 ### Day 4. Confirmed context adapter
 
-- [ ] 음식/영양제/복약 confirmed record 기준을 adapter로 고정한다.
-- [ ] OCR/YOLO/LLM preview와 후보 데이터는 확정 context에서 제외한다.
-- [ ] 팀 브랜치의 후보 필드는 33/34 기준으로 확인만 하고 바로 merge하지 않는다.
-- [ ] 부족한 필드는 fixture 또는 compatibility layer로 Day 10 demo path를 확보한다.
+- [x] 전체 `origin/*` 브랜치 영향 범위를 confirmed/preview/candidate 관점으로 다시 확인한다.
+- [x] 음식/영양제/복약 confirmed record 기준을 adapter로 고정한다.
+- [x] OCR/YOLO/LLM preview와 후보 데이터는 확정 context에서 제외한다.
+- [x] 팀 브랜치의 후보 필드는 33/34 기준으로 확인만 하고 바로 merge하지 않는다.
+- [x] 부족한 필드는 fixture 또는 compatibility layer로 Day 10 demo path를 확보한다.
 
 Day 4 완료 gate:
 
-- [ ] preview/candidate exclusion test가 있다.
-- [ ] confirmed food/supplement/medication context가 Agent input에 들어간다.
-- [ ] raw OCR/LLM/model output이 context에 들어가지 않는다.
+- [x] preview/candidate exclusion test가 있다.
+- [x] confirmed food/supplement/medication context가 Agent input에 들어간다.
+- [x] raw OCR/LLM/model output이 context에 들어가지 않는다.
+
+Day 4 실행 기록:
+
+| 항목 | Day 4 판정 |
+| --- | --- |
+| 구현 위치 | `build_user_health_context_snapshot()`가 food/supplement/medication context를 confirmed/active 기준으로 다시 정규화한다. |
+| food context | `food_record_context`, existing snapshot, `latest_confirmed_entries` 모두 `user_confirmed=false`, `needs_user_review=true`, `preview/candidate/requires_confirmation` 상태를 제외한다. |
+| supplement context | active supplement snapshot은 confirmed supplement만 남기고, `nutrient_code`가 있는 ingredient는 `standard_nutrient`, 없는 ingredient는 `label_only`로 표시한다. |
+| medication context | profile medication은 server-owned `medication_context`의 active/user-confirmed detail만 강한 context로 반영한다. |
+| legacy compatibility | `/api/v1/ai-agent/chat`가 legacy `latest_confirmed_entries`를 sanitized snapshot에서 다시 만들어 client preview 우회 경로를 닫는다. |
+| raw/internal exclusion | `provider_payload`, `raw_provider_payload`, `raw_model_output`, `model_output`, `llm_output` key를 safe context에서 제거한다. |
+| API/DB 영향 | response DTO와 migration 변경은 없다. |
+| 회귀 기준 | `test_user_health_context_snapshot.py`, `test_user_health_context.py`, `test_chatbot_agent.py`, `test_ai_agent_api.py`, deterministic golden eval을 회귀 검증 대상으로 확인한다. |
 
 ### Day 5. Analysis snapshot, checklist, CTA
 
-- [ ] today analysis snapshot v1을 response contract에 연결한다.
-- [ ] smart analysis snapshot v1을 response contract에 연결한다.
-- [ ] checklist 후보 1~3개와 확장 후보 구조를 만든다.
-- [ ] CTA와 approval preview를 side effect 없이 반환한다.
+- [x] today analysis snapshot v1을 response contract에 연결한다.
+- [x] smart analysis snapshot v1을 response contract에 연결한다.
+- [x] checklist 후보 1~3개와 확장 후보 구조를 만든다.
+- [x] CTA와 approval preview를 side effect 없이 반환한다.
 
 Day 5 완료 gate:
 
-- [ ] response payload에 analysis/checklist/CTA가 포함된다.
-- [ ] 저장/알림/분석 실행은 사용자 승인 전에는 실행되지 않는다.
-- [ ] 금지 문구와 medical boundary wording test가 통과한다.
+- [x] response payload에 analysis/checklist/CTA가 포함된다.
+- [x] 저장/알림/분석 실행은 사용자 승인 전에는 실행되지 않는다.
+- [x] 금지 문구와 medical boundary wording test가 통과한다.
+
+Day 5 실행 기록:
+
+| 항목 | Day 5 판정 |
+| --- | --- |
+| 구현 위치 | `build_analysis_response_contract()`가 `today_analysis`, `smart_analysis`, `analysis_snapshot`, `checklist_candidates`, `ctas`, `approval_preview`를 하나의 preview-only 계약으로 만든다. |
+| API contract | `/api/v1/ai-agent/chat` response DTO에 additive field로 `analysis_snapshot`, `today_analysis`, `smart_analysis`, `checklist_candidates`, `approval_preview`를 추가했다. |
+| today analysis | `build_today_analysis_snapshot()`의 `today-analysis-snapshot-v1`을 그대로 사용하고, 최소 기록/누락 기록/score 상태/CTA를 response에 포함한다. |
+| smart analysis | `build_health_analysis_snapshot()`의 `health-analysis-snapshot-v1`을 `smart_analysis`로 내려 분석 탭과 챗봇이 같은 장기/성숙도 snapshot을 읽을 수 있게 했다. |
+| checklist 후보 | `checklist_candidates`는 최대 3개, `kind=today_practice`, `approval_state=approval_required`, `side_effect=none`, `deferred_action=add_today_practice` 구조로 반환한다. 저장된 오늘 실천이 아니다. |
+| CTA/approval | `ctas`는 `run_or_refresh_analysis`, `ask_about_this_result`, `complete_missing_record` 계열만 bounded preview로 내려가며, `approval_preview`는 `will_persist=false`, `will_schedule_notification=false`, `will_add_today_practice=false`, `side_effects=[]`를 명시한다. |
+| side effect boundary | 승인 전 일반 chat response와 analysis run confirmation response는 분석 저장, 알림 등록, 오늘 실천 추가를 실행하지 않는다. 승인된 analysis run persistence는 기존 명시 승인 경로만 유지한다. |
+| raw/internal exclusion | preview/candidate food, raw OCR, raw/model/provider payload, internal prompt/context는 response contract test에서 비노출을 고정했다. |
+| Day 6 이후 항목 | Flutter 표시/버튼 동작, source detail sheet, 실제 오늘 실천 저장 API, endpoint mismatch 정리는 Day 6 이후 mobile response contract로 남긴다. |
+| 회귀 기준 | `test_app_health_analysis.py`, `test_ai_agent_api.py`, `test_user_health_context_snapshot.py`, `test_user_health_context.py`, `test_chatbot_agent.py`, deterministic golden eval을 회귀 검증 대상으로 확인한다. |
 
 ### Day 6. Mobile response contract
 
@@ -577,10 +676,11 @@ Day 10 완료 gate:
 
 ## 11. 다음 실행 기준
 
-현재 기준의 다음 실행 후보는 Day 4다.
+현재 기준의 다음 실행 후보는 Day 6이다.
 
-다음 구현은 음식/영양제/복약 confirmed record adapter를 연결하는 것이다. Day 4에서는
-팀 브랜치를 바로 merge하지 않고 33번 계약과 34번 readiness 기준으로 후보 필드만 확인한다.
-OCR/YOLO/LLM preview와 unconfirmed 후보는 Agent context에서 확정 기록으로 쓰이지 않도록
-preview/candidate exclusion test를 먼저 고정한다. mobile response contract와 runtime smoke는
-Day 5 이후 gate로 계속 병렬 추적한다.
+Day 5에서 today analysis snapshot, smart health analysis snapshot, checklist 후보,
+CTA/approval preview를 side effect 없이 `/api/v1/ai-agent/chat` response contract에
+연결했다. 다음 구현은 Flutter가 받을 `answerability`, `sources[]`, `ctas[]`,
+`approval_preview`, boundary/unknown 표시 계약과 `/api/v1/agents/chat` vs
+`/api/v1/ai-agent/chat` endpoint mismatch를 정리하는 것이다. 실제 오늘 실천 저장 API와
+버튼 동작은 Day 6 이후 명시 승인 UI 계약으로 분리한다.
