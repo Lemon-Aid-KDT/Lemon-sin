@@ -275,6 +275,8 @@ def _command_paths(
         "batch_plan": _rel(repo_root, operator_dir / "operator-review-batch-plan.json"),
         "source_batch_file": _rel(repo_root, operator_dir / "batches" / batch_file_name),
         "batch_review_csv": _rel(repo_root, operator_dir / "batches" / review_csv_name),
+        "batch_triage_json": _rel(repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.json"),
+        "batch_triage_md": _rel(repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.md"),
         "applied_batch_file": _rel(repo_root, applied_batch_dir / batch_file_name),
         "applied_batch_summary": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.summary.json"),
         "applied_batch_md": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.md"),
@@ -348,15 +350,16 @@ def _commands_for_queue(
         applied_paths["batch_preflight_json"] = paths["applied_batch_preflight_json"]
         applied_paths["batch_preflight_md"] = paths["applied_batch_preflight_md"]
         return (
-            _brand_review_csv_apply_commands(paths=paths)
+            _brand_review_csv_triage_commands(paths=paths)
+            + _brand_review_csv_apply_commands(paths=paths, start_order=2)
             + _common_reconcile_commands(
                 paths=applied_paths,
                 batch_key=batch_key,
-                start_order=2,
+                start_order=3,
                 batch_file_override_path=paths["applied_batch_file"],
                 batch_review_csv_path=paths["batch_review_csv"],
             )
-            + _brand_product_commands(paths=paths, start_order=5)
+            + _brand_product_commands(paths=paths, start_order=6)
         )
     common = _common_reconcile_commands(paths=paths, batch_key=batch_key)
     if queue_key == "review_pii_screening":
@@ -464,8 +467,8 @@ def _common_reconcile_commands(
     ]
 
 
-def _brand_review_csv_apply_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
-    """Return the brand review CSV to JSONL copy command.
+def _brand_review_csv_triage_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Return the brand review CSV triage command.
 
     Args:
         paths: Repo-relative command paths.
@@ -476,6 +479,36 @@ def _brand_review_csv_apply_commands(*, paths: Mapping[str, str]) -> list[dict[s
     return [
         _command(
             order=1,
+            script_key="build_supplement_brand_review_batch_triage",
+            purpose="Summarize CSV review priority and catch partial rows before apply.",
+            gate_policy="operator_review_helper_no_decision",
+            command=(
+                f"{paths['python']} backend/scripts/build_supplement_brand_review_batch_triage.py "
+                f"--batch-review-csv {paths['batch_review_csv']} "
+                f"--output {paths['batch_triage_json']} "
+                f"--markdown-output {paths['batch_triage_md']}"
+            ),
+        )
+    ]
+
+
+def _brand_review_csv_apply_commands(
+    *,
+    paths: Mapping[str, str],
+    start_order: int = 1,
+) -> list[dict[str, Any]]:
+    """Return the brand review CSV to JSONL copy command.
+
+    Args:
+        paths: Repo-relative command paths.
+        start_order: First command order.
+
+    Returns:
+        Ordered command rows.
+    """
+    return [
+        _command(
+            order=start_order,
             script_key="apply_supplement_brand_batch_review_csv_decisions",
             purpose=(
                 "Apply the operator CSV review into a separate batch JSONL copy "

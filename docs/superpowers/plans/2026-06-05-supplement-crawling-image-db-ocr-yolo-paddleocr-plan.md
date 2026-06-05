@@ -155,6 +155,12 @@ Current operator unblock state:
   `yolo-section-dataset-gate.json`.
 - Current blank review totals are: brand/product `388`, PII `215`, YOLO bbox `205`;
   total operator blank rows `808`.
+- `brand_product_review-001.triage.json` and
+  `brand_product_review-001.triage.md` now summarize the first brand/product
+  batch without product names or path literals: `50` blank decisions remain,
+  with `3` low-evidence rows, `37` duplicate-candidate review rows, and `10`
+  standard review rows. This triage only changes the human review order; it
+  does not approve rows or satisfy the DB import gate.
 - All three downstream gates remain blocked and do not allow DB product import,
   teacher OCR benchmark, YOLO materialization/training, or PaddleOCR training.
 
@@ -280,12 +286,17 @@ Main gaps after this review:
 
 ## Immediate Next Implementation Steps
 
-1. Generate or refresh the operator review workpack for brand/product rows.
-2. Preflight the first brand/product review batch.
-3. After operator decisions are filled, reconcile and apply only approved rows.
-4. Continue PII screening and YOLO annotation batches in parallel.
-5. Do not run external OCR or PaddleOCR training until the review gates above pass.
-6. Use `operator-unblock-runbook.md` as the single redacted queue/gate status
+1. Use `brand_product_review-001.triage.md` with the contact sheet to review the
+   first brand/product batch in this order: low-evidence rows first, duplicate
+   candidates together, then standard blank rows.
+2. Fill `brand_product_review-001.review.csv`; never copy OCR raw text, provider
+   payloads, image paths, or product folder literals into reviewed fields.
+3. Run `build_supplement_brand_review_batch_triage.py` again after edits to catch
+   partial rows before applying CSV decisions.
+4. After operator decisions are filled, reconcile and apply only approved rows.
+5. Continue PII screening and YOLO annotation batches in parallel.
+6. Do not run external OCR or PaddleOCR training until the review gates above pass.
+7. Use `operator-unblock-runbook.md` as the single redacted queue/gate status
    handoff for the next operator session.
 
 ## Official References

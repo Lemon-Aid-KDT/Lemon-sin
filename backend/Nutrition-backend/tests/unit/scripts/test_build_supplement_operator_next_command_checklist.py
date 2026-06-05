@@ -126,19 +126,25 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
     assert payload["queue_key"] == "brand_product_review"
     assert payload["batch_key"] == "brand_product_review:001"
     assert payload["batch_review_file_name"] == "brand_product_review-001.review.csv"
-    assert payload["command_count"] == 8
+    assert payload["command_count"] == 9
     assert commands[0].startswith(
-        "backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py"
+        "backend/.venv/bin/python backend/scripts/build_supplement_brand_review_batch_triage.py"
     )
     assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[0]
-    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[0]
+    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.triage.json" in commands[0]
+    assert "--markdown-output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.triage.md" in commands[0]
     assert commands[1].startswith(
+        "backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py"
+    )
+    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[1]
+    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[1]
+    assert commands[2].startswith(
         "backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_batch_file.py"
     )
-    assert "--batch-key brand_product_review:001" in commands[1]
-    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[1]
-    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[1]
-    assert "--batch-file-override brand_product_review:001 outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[2]
+    assert "--batch-key brand_product_review:001" in commands[2]
+    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[2]
+    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[2]
+    assert "--batch-file-override brand_product_review:001 outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[3]
     assert "backend/scripts/apply_supplement_brand_review_decisions.py" in commands[-1]
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
@@ -171,8 +177,9 @@ def test_command_checklist_uses_latest_existing_taxonomy_staging(
     )
     commands = [row["command"] for row in payload["commands"]]
 
-    assert "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl" in commands[4]
-    assert "outputs/todo-list/2026-06-05/2026-06-05-supplement-taxonomy-db-staging.jsonl" not in commands[4]
+    command_blob = "\n".join(commands)
+    assert "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl" in command_blob
+    assert "outputs/todo-list/2026-06-05/2026-06-05-supplement-taxonomy-db-staging.jsonl" not in command_blob
 
 
 def test_command_checklist_generates_repo_relative_pii_commands(tmp_path: Path) -> None:
@@ -317,6 +324,7 @@ def test_command_checklist_cli_writes_markdown_without_paths(
 
     assert payload["schema_version"] == checklist.SCHEMA_VERSION
     assert "# Supplement Operator Next Command Checklist" in markdown
+    assert "build_supplement_brand_review_batch_triage" in markdown
     assert "apply_supplement_brand_batch_review_csv_decisions" in markdown
     assert "preflight_supplement_operator_review_batch_file" in markdown
     for redacted_output in (stdout, json.dumps(payload, ensure_ascii=False), markdown):
