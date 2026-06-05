@@ -8,7 +8,17 @@
 
 ## Commands
 
-### 1. build_supplement_brand_review_batch_triage
+### 1. preflight_supplement_brand_review_contact_sheet
+
+Confirm the CSV and safe visual contact sheet still describe the same rows.
+
+```sh
+backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_contact_sheet.py --batch-review-csv outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.review.csv --contact-sheet-summary outputs/generated/supplement-learning/2026-06-05/operator-review/brand-detail-contact-sheet-001/brand-detail-contact-sheet.summary.json --output outputs/generated/supplement-learning/2026-06-05/operator-review/brand_product_review-001.contact-sheet-preflight.json --markdown-output outputs/generated/supplement-learning/2026-06-05/operator-review/brand_product_review-001.contact-sheet-preflight.md --require-all-rows-with-thumbnails
+```
+
+- Gate policy: `must_pass_before_csv_apply`
+
+### 2. build_supplement_brand_review_batch_triage
 
 Summarize CSV review priority and catch partial rows before apply.
 
@@ -18,7 +28,7 @@ backend/.venv/bin/python backend/scripts/build_supplement_brand_review_batch_tri
 
 - Gate policy: `operator_review_helper_no_decision`
 
-### 2. apply_supplement_brand_batch_review_csv_decisions
+### 3. apply_supplement_brand_batch_review_csv_decisions
 
 Apply the operator CSV review into a separate batch JSONL copy without overwriting the source batch.
 
@@ -28,7 +38,7 @@ backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv
 
 - Gate policy: `no_source_overwrite`
 
-### 3. preflight_supplement_operator_review_batch_file
+### 4. preflight_supplement_operator_review_batch_file
 
 Confirm the edited local batch is complete before reconcile.
 
@@ -38,7 +48,7 @@ backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_ba
 
 - Gate policy: `must_pass_before_reconcile`
 
-### 4. reconcile_supplement_operator_review_batch_files
+### 5. reconcile_supplement_operator_review_batch_files
 
 Merge completed batch files into reconciled queue copies without overwriting sources.
 
@@ -48,7 +58,7 @@ backend/.venv/bin/python backend/scripts/reconcile_supplement_operator_review_ba
 
 - Gate policy: `no_source_overwrite`
 
-### 5. preflight_supplement_operator_review_batch_progress
+### 6. preflight_supplement_operator_review_batch_progress
 
 Confirm queue-level progress after reconcile.
 
@@ -58,7 +68,7 @@ backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_ba
 
 - Gate policy: `must_pass_before_queue_preflight`
 
-### 6. extract_supplement_brand_reviewed_decisions
+### 7. extract_supplement_brand_reviewed_decisions
 
 Separate reviewed brand decisions from blank queue stubs for preview-only gating.
 
@@ -68,7 +78,7 @@ backend/.venv/bin/python backend/scripts/extract_supplement_brand_reviewed_decis
 
 - Gate policy: `partial_preview_only`
 
-### 7. preflight_supplement_brand_review_decisions
+### 8. preflight_supplement_brand_review_decisions
 
 Run strict brand review preflight; this must reach zero blank rows before DB import.
 
@@ -78,7 +88,7 @@ backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_decis
 
 - Gate policy: `strict_zero_blank_pending_invalid_required`
 
-### 8. gate_supplement_brand_db_import
+### 9. gate_supplement_brand_db_import
 
 Gate approved product import manifest creation after strict brand preflight.
 
@@ -88,7 +98,7 @@ backend/.venv/bin/python backend/scripts/gate_supplement_brand_db_import.py --br
 
 - Gate policy: `must_pass_before_product_manifest`
 
-### 9. apply_supplement_brand_review_decisions
+### 10. apply_supplement_brand_review_decisions
 
 Create the approved product import manifest after all brand rows are reviewed.
 

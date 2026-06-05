@@ -184,9 +184,8 @@ def build_command_checklist(
             post_plan.get("blocked_reason_codes")
         ),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
-        "input_path_hashes": {
-            key: progress_preflight._sha256_text(str(path.expanduser()))
-            for key, path in sorted(input_paths.items())
+        "input_path_fingerprints": {
+            key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
         },
         "db_write_performed": False,
         "external_provider_call_performed": False,
@@ -284,6 +283,8 @@ def _command_paths(
     reconciled_dir = operator_dir / "reconciled"
     applied_batch_dir = operator_dir / "batches-applied"
     review_csv_name = batch_review_file_name or f"{batch_file_name.removesuffix('.jsonl')}.review.csv"
+    batch_stem = batch_file_name.removesuffix(".jsonl")
+    batch_suffix = _batch_suffix(batch_file_name)
     taxonomy_staging_path = taxonomy_staging or _taxonomy_staging_path(todo_dir)
     taxonomy_staging_rel = _rel(repo_root, taxonomy_staging_path)
     if taxonomy_staging is not None and not taxonomy_staging_path.exists():
@@ -295,6 +296,20 @@ def _command_paths(
         "batch_review_csv": _rel(repo_root, operator_dir / "batches" / review_csv_name),
         "batch_triage_json": _rel(repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.json"),
         "batch_triage_md": _rel(repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.md"),
+        "brand_contact_sheet_summary": _rel(
+            repo_root,
+            operator_dir
+            / f"brand-detail-contact-sheet-{batch_suffix}"
+            / "brand-detail-contact-sheet.summary.json",
+        ),
+        "brand_contact_sheet_preflight_json": _rel(
+            repo_root,
+            operator_dir / f"{batch_stem}.contact-sheet-preflight.json",
+        ),
+        "brand_contact_sheet_preflight_md": _rel(
+            repo_root,
+            operator_dir / f"{batch_stem}.contact-sheet-preflight.md",
+        ),
         "applied_batch_file": _rel(repo_root, applied_batch_dir / batch_file_name),
         "applied_batch_summary": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.summary.json"),
         "applied_batch_md": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.md"),
@@ -368,16 +383,17 @@ def _commands_for_queue(
         applied_paths["batch_preflight_json"] = paths["applied_batch_preflight_json"]
         applied_paths["batch_preflight_md"] = paths["applied_batch_preflight_md"]
         return (
-            _brand_review_csv_triage_commands(paths=paths)
-            + _brand_review_csv_apply_commands(paths=paths, start_order=2)
+            _brand_review_contact_sheet_preflight_commands(paths=paths)
+            + _brand_review_csv_triage_commands(paths=paths, start_order=2)
+            + _brand_review_csv_apply_commands(paths=paths, start_order=3)
             + _common_reconcile_commands(
                 paths=applied_paths,
                 batch_key=batch_key,
-                start_order=3,
+                start_order=4,
                 batch_file_override_path=paths["applied_batch_file"],
                 batch_review_csv_path=paths["batch_review_csv"],
             )
-            + _brand_product_commands(paths=paths, start_order=6)
+            + _brand_product_commands(paths=paths, start_order=7)
         )
     if queue_key == "review_pii_screening":
         return (
@@ -392,6 +408,18 @@ def _commands_for_queue(
             + _yolo_section_commands(paths=paths, start_order=5)
         )
     raise OperatorCommandChecklistError("Unsupported queue key.")
+
+
+def _path_fingerprint(path: Path) -> str:
+    """Return a short non-secret path fingerprint for public artifacts.
+
+    Args:
+        path: Path to identify without exposing it.
+
+    Returns:
+        Short hexadecimal fingerprint.
+    """
+    return f"fp-{progress_preflight._sha256_text(str(path.expanduser()))[:8]}"
 
 
 def _blocked_until(queue_key: str) -> list[str]:
@@ -492,8 +520,11 @@ def _common_reconcile_commands(
     ]
 
 
-def _brand_review_csv_triage_commands(*, paths: Mapping[str, str]) -> list[dict[str, Any]]:
-    """Return the brand review CSV triage command.
+def _brand_review_contact_sheet_preflight_commands(
+    *,
+    paths: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Return the brand review contact sheet alignment preflight command.
 
     Args:
         paths: Repo-relative command paths.
@@ -504,6 +535,38 @@ def _brand_review_csv_triage_commands(*, paths: Mapping[str, str]) -> list[dict[
     return [
         _command(
             order=1,
+            script_key="preflight_supplement_brand_review_contact_sheet",
+            purpose="Confirm the CSV and safe visual contact sheet still describe the same rows.",
+            gate_policy="must_pass_before_csv_apply",
+            command=(
+                f"{paths['python']} backend/scripts/preflight_supplement_brand_review_contact_sheet.py "
+                f"--batch-review-csv {paths['batch_review_csv']} "
+                f"--contact-sheet-summary {paths['brand_contact_sheet_summary']} "
+                f"--output {paths['brand_contact_sheet_preflight_json']} "
+                f"--markdown-output {paths['brand_contact_sheet_preflight_md']} "
+                "--require-all-rows-with-thumbnails"
+            ),
+        )
+    ]
+
+
+def _brand_review_csv_triage_commands(
+    *,
+    paths: Mapping[str, str],
+    start_order: int = 1,
+) -> list[dict[str, Any]]:
+    """Return the brand review CSV triage command.
+
+    Args:
+        paths: Repo-relative command paths.
+        start_order: First command order.
+
+    Returns:
+        Ordered command rows.
+    """
+    return [
+        _command(
+            order=start_order,
             script_key="build_supplement_brand_review_batch_triage",
             purpose="Summarize CSV review priority and catch partial rows before apply.",
             gate_policy="operator_review_helper_no_decision",
@@ -1013,6 +1076,23 @@ def _taxonomy_staging_path(todo_dir: Path) -> Path:
         return expected
     candidates = sorted(todo_dir.parent.glob("*/*-supplement-taxonomy-db-staging.jsonl"))
     return candidates[-1] if candidates else expected
+
+
+def _batch_suffix(batch_file_name: str) -> str:
+    """Return the batch number suffix used by contact sheet directories.
+
+    Args:
+        batch_file_name: Safe batch file name.
+
+    Returns:
+        Safe suffix token.
+    """
+    stem = batch_file_name.removesuffix(".jsonl")
+    suffix = stem.rsplit("-", 1)[-1]
+    safe_suffix = _safe_token(suffix)
+    if not safe_suffix:
+        raise OperatorCommandChecklistError("Batch file name does not contain a safe suffix.")
+    return safe_suffix
 
 
 def _safe_batch_key(value: Any) -> str:

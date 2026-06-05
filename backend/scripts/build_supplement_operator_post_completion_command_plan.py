@@ -162,7 +162,7 @@ def build_post_completion_command_plan(*, input_paths: Mapping[str, Path]) -> di
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "input_name": path.name,
-        "input_path_hash": work_order.progress_preflight._sha256_text(str(path.expanduser())),
+        "input_path_fingerprint": _path_fingerprint(path),
         "batch_key": batch_key,
         "queue_key": queue_key,
         "batch_status": batch_status,
@@ -257,36 +257,37 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
     Returns:
         Ordered command plan steps.
     """
-    common = [
-        _step(
-            1,
-            "preflight_supplement_operator_review_batch_file",
-            "confirm operator local batch is complete",
-            ("batch_plan", "operator_batch_file"),
-            ("batch_file_preflight_summary",),
-            "must_pass_before_reconcile",
-        ),
-        _step(
-            2,
-            "reconcile_supplement_operator_review_batch_files",
-            "merge completed batch into reconciled queue copies",
-            ("batch_plan", "source_editable_queue_files", "operator_batch_dir"),
-            ("reconciled_queue_files", "reconcile_summary"),
-            "no_source_overwrite",
-        ),
-        _step(
-            3,
-            "preflight_supplement_operator_review_batch_progress",
-            "confirm queue level batch progress after reconcile",
-            ("batch_plan", "reconciled_queue_files"),
-            ("batch_progress_summary",),
-            "must_pass_before_queue_preflight",
-        ),
-    ]
     if queue_key == "brand_product_review":
+        pre_common = [
+            _step(
+                1,
+                "preflight_supplement_brand_review_contact_sheet",
+                "confirm csv and contact sheet row alignment",
+                ("batch_review_csv", "contact_sheet_summary"),
+                ("contact_sheet_preflight_summary",),
+                "must_pass_before_csv_apply",
+            ),
+            _step(
+                2,
+                "build_supplement_brand_review_batch_triage",
+                "summarize csv review priority without decisions",
+                ("batch_review_csv",),
+                ("brand_review_batch_triage_summary",),
+                "operator_review_helper_no_decision",
+            ),
+            _step(
+                3,
+                "apply_supplement_brand_batch_review_csv_decisions",
+                "copy reviewed csv fields into batch jsonl",
+                ("operator_batch_file", "batch_review_csv"),
+                ("operator_batch_jsonl_copy", "csv_apply_summary"),
+                "no_source_overwrite",
+            ),
+        ]
+        common = _common_steps(start_order=4)
         specific = [
             _step(
-                4,
+                7,
                 "extract_supplement_brand_reviewed_decisions",
                 "separate reviewed brand decisions from blank queue stubs",
                 ("reconciled_brand_decisions",),
@@ -294,7 +295,7 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "partial_preview_only",
             ),
             _step(
-                5,
+                8,
                 "preflight_supplement_brand_review_decisions",
                 "check strict brand decision readiness",
                 ("reconciled_brand_decisions",),
@@ -302,7 +303,7 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "strict_zero_blank_pending_invalid_required",
             ),
             _step(
-                6,
+                9,
                 "gate_supplement_brand_db_import",
                 "gate product import manifest preparation",
                 ("brand_decision_preflight_summary",),
@@ -310,7 +311,7 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "must_pass_before_product_manifest",
             ),
             _step(
-                7,
+                10,
                 "apply_supplement_brand_review_decisions",
                 "create approved product import manifest",
                 ("reviewed_brand_decisions",),
@@ -318,7 +319,7 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "dry_run_or_manifest_only_before_db_gate",
             ),
             _step(
-                8,
+                11,
                 "import_supplement_taxonomy_approved_manifest",
                 "dry run category product and mapping import",
                 ("taxonomy_staging", "approved_product_import_manifest"),
@@ -326,7 +327,7 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "dry_run_before_product_db_apply",
             ),
             _step(
-                9,
+                12,
                 "gate_supplement_product_db_apply",
                 "gate reviewed product db apply",
                 ("brand_db_import_gate_summary", "taxonomy_import_dry_run_summary"),
@@ -334,7 +335,7 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "must_pass_before_db_apply",
             ),
             _step(
-                10,
+                13,
                 "verify_supplement_taxonomy_db_import",
                 "verify imported categories products and mappings",
                 ("taxonomy_staging", "approved_product_import_manifest"),
@@ -342,7 +343,9 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "read_only_after_apply",
             ),
         ]
-    elif queue_key == "review_pii_screening":
+        return pre_common + common + specific
+    if queue_key == "review_pii_screening":
+        common = _common_steps(start_order=1)
         specific = [
             _step(
                 4,
@@ -377,7 +380,9 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "must_pass_before_teacher_ocr_eval",
             ),
         ]
-    elif queue_key == "yolo_section_annotation":
+        return common + specific
+    if queue_key == "yolo_section_annotation":
+        common = _common_steps(start_order=1)
         specific = [
             _step(
                 4,
@@ -433,9 +438,57 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
                 "must_pass_before_training",
             ),
         ]
-    else:
-        raise PostCompletionPlanError("Unsupported queue key.")
-    return common + specific
+        return common + specific
+    raise PostCompletionPlanError("Unsupported queue key.")
+
+
+def _common_steps(*, start_order: int) -> list[dict[str, Any]]:
+    """Return common post-edit queue reconcile steps.
+
+    Args:
+        start_order: First common step order.
+
+    Returns:
+        Common command plan steps.
+    """
+    return [
+        _step(
+            start_order,
+            "preflight_supplement_operator_review_batch_file",
+            "confirm operator local batch is complete",
+            ("batch_plan", "operator_batch_file"),
+            ("batch_file_preflight_summary",),
+            "must_pass_before_reconcile",
+        ),
+        _step(
+            start_order + 1,
+            "reconcile_supplement_operator_review_batch_files",
+            "merge completed batch into reconciled queue copies",
+            ("batch_plan", "source_editable_queue_files", "operator_batch_dir"),
+            ("reconciled_queue_files", "reconcile_summary"),
+            "no_source_overwrite",
+        ),
+        _step(
+            start_order + 2,
+            "preflight_supplement_operator_review_batch_progress",
+            "confirm queue level batch progress after reconcile",
+            ("batch_plan", "reconciled_queue_files"),
+            ("batch_progress_summary",),
+            "must_pass_before_queue_preflight",
+        ),
+    ]
+
+
+def _path_fingerprint(path: Path) -> str:
+    """Return a short non-secret path fingerprint for public artifacts.
+
+    Args:
+        path: Path to identify without exposing it.
+
+    Returns:
+        Short hexadecimal fingerprint.
+    """
+    return f"fp-{work_order.progress_preflight._sha256_text(str(path.expanduser()))[:8]}"
 
 
 def _step(

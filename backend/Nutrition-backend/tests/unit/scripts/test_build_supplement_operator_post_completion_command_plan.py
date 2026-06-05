@@ -81,10 +81,16 @@ def test_plan_blocks_pending_brand_batch_and_lists_brand_gates(tmp_path: Path) -
     ]
     script_keys = [step["script_key"] for step in plan["steps"]]
     assert script_keys[:3] == [
+        "preflight_supplement_brand_review_contact_sheet",
+        "build_supplement_brand_review_batch_triage",
+        "apply_supplement_brand_batch_review_csv_decisions",
+    ]
+    assert script_keys[3:6] == [
         "preflight_supplement_operator_review_batch_file",
         "reconcile_supplement_operator_review_batch_files",
         "preflight_supplement_operator_review_batch_progress",
     ]
+    assert plan["step_count"] == 13
     assert "apply_supplement_brand_review_decisions" in script_keys
     assert "gate_supplement_product_db_apply" in script_keys
     assert plan["db_write_performed"] is False

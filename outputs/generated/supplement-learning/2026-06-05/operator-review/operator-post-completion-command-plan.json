@@ -14,9 +14,9 @@
   ],
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-04T20:38:11.585734+00:00",
+  "generated_at": "2026-06-05T02:46:29.015493+00:00",
   "input_name": "operator-next-batch-work-order.json",
-  "input_path_hash": "7e3df98fc9bf454a7b6f057f77372a16d719d59852fc7f4498a49d8c3111dd6a",
+  "input_path_fingerprint": "fp-7e3df98f",
   "llm_call_performed": false,
   "local_path_literals_stored": false,
   "operator_required_before_execution": true,
@@ -34,15 +34,54 @@
   "schema_version": "supplement-operator-post-completion-command-plan-v1",
   "source_image_read_performed": false,
   "source_rows_read": false,
-  "step_count": 10,
+  "step_count": 13,
   "steps": [
+    {
+      "gate_policy": "must_pass_before_csv_apply",
+      "input_roles": [
+        "batch_review_csv",
+        "contact_sheet_summary"
+      ],
+      "order": 1,
+      "output_roles": [
+        "contact_sheet_preflight_summary"
+      ],
+      "purpose": "confirm csv and contact sheet row alignment",
+      "script_key": "preflight_supplement_brand_review_contact_sheet"
+    },
+    {
+      "gate_policy": "operator_review_helper_no_decision",
+      "input_roles": [
+        "batch_review_csv"
+      ],
+      "order": 2,
+      "output_roles": [
+        "brand_review_batch_triage_summary"
+      ],
+      "purpose": "summarize csv review priority without decisions",
+      "script_key": "build_supplement_brand_review_batch_triage"
+    },
+    {
+      "gate_policy": "no_source_overwrite",
+      "input_roles": [
+        "operator_batch_file",
+        "batch_review_csv"
+      ],
+      "order": 3,
+      "output_roles": [
+        "operator_batch_jsonl_copy",
+        "csv_apply_summary"
+      ],
+      "purpose": "copy reviewed csv fields into batch jsonl",
+      "script_key": "apply_supplement_brand_batch_review_csv_decisions"
+    },
     {
       "gate_policy": "must_pass_before_reconcile",
       "input_roles": [
         "batch_plan",
         "operator_batch_file"
       ],
-      "order": 1,
+      "order": 4,
       "output_roles": [
         "batch_file_preflight_summary"
       ],
@@ -56,7 +95,7 @@
         "source_editable_queue_files",
         "operator_batch_dir"
       ],
-      "order": 2,
+      "order": 5,
       "output_roles": [
         "reconciled_queue_files",
         "reconcile_summary"
@@ -70,7 +109,7 @@
         "batch_plan",
         "reconciled_queue_files"
       ],
-      "order": 3,
+      "order": 6,
       "output_roles": [
         "batch_progress_summary"
       ],
@@ -82,7 +121,7 @@
       "input_roles": [
         "reconciled_brand_decisions"
       ],
-      "order": 4,
+      "order": 7,
       "output_roles": [
         "reviewed_brand_decisions",
         "reviewed_brand_extract_summary"
@@ -95,7 +134,7 @@
       "input_roles": [
         "reconciled_brand_decisions"
       ],
-      "order": 5,
+      "order": 8,
       "output_roles": [
         "brand_decision_preflight_summary"
       ],
@@ -107,7 +146,7 @@
       "input_roles": [
         "brand_decision_preflight_summary"
       ],
-      "order": 6,
+      "order": 9,
       "output_roles": [
         "brand_db_import_gate_summary"
       ],
@@ -119,7 +158,7 @@
       "input_roles": [
         "reviewed_brand_decisions"
       ],
-      "order": 7,
+      "order": 10,
       "output_roles": [
         "approved_product_import_manifest",
         "brand_apply_summary"
@@ -133,7 +172,7 @@
         "taxonomy_staging",
         "approved_product_import_manifest"
       ],
-      "order": 8,
+      "order": 11,
       "output_roles": [
         "taxonomy_import_dry_run_summary"
       ],
@@ -146,7 +185,7 @@
         "brand_db_import_gate_summary",
         "taxonomy_import_dry_run_summary"
       ],
-      "order": 9,
+      "order": 12,
       "output_roles": [
         "product_db_apply_gate_summary"
       ],
@@ -159,7 +198,7 @@
         "taxonomy_staging",
         "approved_product_import_manifest"
       ],
-      "order": 10,
+      "order": 13,
       "output_roles": [
         "taxonomy_db_import_verification_summary"
       ],
