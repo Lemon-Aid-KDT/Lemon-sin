@@ -34,6 +34,7 @@ Generated on 2026-06-05 from the current local tree:
 | Taxonomy DB staging | `outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl` |
 | Candidate manifests | `outputs/generated/supplement-learning/2026-06-05/candidate-manifests.summary.json` |
 | Private image tracking check | `outputs/generated/supplement-learning/2026-06-05/operator-review/private-image-tracking-check.json` |
+| Completion audit | `outputs/generated/supplement-learning/2026-06-05/operator-review/supplement-learning-completion-audit.json` |
 
 Current audited counts:
 
@@ -55,6 +56,18 @@ Current structural issues are bounded and do not require moving source data:
 - `missing_detail_page_dir`: 1 product folder
 - non-image files exist in some category/product folders
 - dedicated brand-folder level is absent
+
+Current completion audit state:
+
+- Completion is not proven and must remain active: `objective_completion_allowed=false`.
+- Verified requirements: source structure audit, taxonomy staging redesign, category
+  seed preflight, category seed verification, private image tracking guard, and
+  privacy/security controls.
+- Pending operator review requirements: brand/product review, review-image PII
+  screening, and detail-page YOLO bbox annotation.
+- Blocked downstream requirements: reviewed brand/product DB verification, manual
+  OCR ground truth, CLOVA/Google Vision/PaddleOCR comparison, YOLO section dataset
+  materialization, and PaddleOCR training/evaluation/promotion loop.
 
 ## Brainstorming Decisions
 
@@ -107,11 +120,23 @@ Section classes:
 - `other_ingredients`
 - `functional_claims`
 
-The project uses the user-facing term `YOLO26`, but I cannot find official
-Ultralytics documentation for a distinct model family named `YOLO26`. The verifiable
-contract is the Ultralytics detection dataset/task format. The implementation should
-therefore store the model label as a project runtime label while keeping training
-data compatible with official Ultralytics detect format.
+Ultralytics official documentation now describes YOLO26 Detect models, including
+`yolo26n.pt`, and says YOLO26 Detect models are pretrained on COCO. That makes
+`YOLO26` a valid runtime family label for the project. It does not make a COCO
+pretrained model a reliable supplement-label section detector. Supplement sections
+such as `supplement_facts`, `intake_method`, and `precautions` still require a
+custom reviewed bbox dataset in the official Ultralytics detection dataset format
+before model training, validation, or promotion can be trusted.
+
+Implementation rule:
+
+- A YOLO26 pretrained checkpoint may initialize training or run smoke tests.
+- A YOLO26 pretrained checkpoint must not be used as ground truth for supplement
+  section labels.
+- Section predictions must remain `review_required` until a custom section model
+  has passed the dataset validation and metric gates.
+- Runtime outputs must expose only redacted section status and sanitized field
+  candidates, never local image paths, raw provider payloads, or unreviewed OCR text.
 
 ### 4. PaddleOCR improvement loop
 
@@ -304,6 +329,19 @@ Main gaps after this review:
 - YOLO bbox review has not been completed.
 - YOLO dataset materialization has not happened.
 - PaddleOCR fine-tune/eval/promotion gates are missing.
+
+Additional official-doc refresh gaps:
+
+- YOLO26 official Detect support is verified, but local acceptance still needs a
+  custom supplement-section model artifact and validation metrics. Do not infer
+  supplement label readiness from COCO pretrained model availability.
+- PaddleOCR configuration must be recorded per run because the official pipeline
+  exposes multiple switches such as language, OCR version, text detection model,
+  text recognition model, device, and orientation/unwarping controls. Benchmark
+  metrics are not comparable unless these parameters are fixed in the fixture run.
+- Google Vision and CLOVA OCR calls must remain opt-in teacher evaluations only
+  after PII clearance. Their outputs can prioritize PaddleOCR improvement tasks
+  but cannot replace human-authored ground truth.
 
 ## Immediate Next Implementation Steps
 
