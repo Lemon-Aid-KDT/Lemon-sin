@@ -67,6 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--operator-dir", type=Path, required=True)
     parser.add_argument("--todo-dir", type=Path, required=True)
+    parser.add_argument("--taxonomy-staging", type=Path, default=None)
     parser.add_argument("--next-work-order", type=Path, required=True)
     parser.add_argument("--post-completion-plan", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -90,12 +91,18 @@ def main(argv: list[str] | None = None) -> None:
     markdown_output = (
         args.markdown_output.expanduser().resolve() if args.markdown_output is not None else None
     )
+    taxonomy_staging = (
+        args.taxonomy_staging.expanduser().resolve()
+        if args.taxonomy_staging is not None
+        else None
+    )
     try:
         checklist = build_command_checklist(
             repo_root=repo_root,
             operator_dir=args.operator_dir.expanduser().resolve(),
             todo_dir=args.todo_dir.expanduser().resolve(),
             input_paths=input_paths,
+            taxonomy_staging=taxonomy_staging,
         )
         _write_json(output_path, checklist)
         if markdown_output is not None:
@@ -115,6 +122,7 @@ def build_command_checklist(
     operator_dir: Path,
     todo_dir: Path,
     input_paths: Mapping[str, Path],
+    taxonomy_staging: Path | None = None,
 ) -> dict[str, Any]:
     """Build repo-relative commands for the current next batch.
 
@@ -123,6 +131,9 @@ def build_command_checklist(
         operator_dir: Operator review artifact directory.
         todo_dir: Date-specific todo artifact directory.
         input_paths: Work-order and post-completion plan paths.
+        taxonomy_staging: Optional explicit taxonomy staging artifact. When
+            supplied, brand/product commands use this path instead of the
+            date-specific todo fallback.
 
     Returns:
         Redacted command checklist.
@@ -148,6 +159,7 @@ def build_command_checklist(
         todo_dir=todo_dir,
         batch_file_name=batch_file_name,
         batch_review_file_name=batch_review_file_name,
+        taxonomy_staging=taxonomy_staging,
     )
     commands = _commands_for_queue(queue_key=queue_key, paths=paths, batch_key=batch_key)
     checklist = {
@@ -254,6 +266,7 @@ def _command_paths(
     todo_dir: Path,
     batch_file_name: str,
     batch_review_file_name: str,
+    taxonomy_staging: Path | None = None,
 ) -> dict[str, str]:
     """Return repo-relative paths used by generated commands.
 
@@ -263,6 +276,7 @@ def _command_paths(
         todo_dir: Todo artifact directory.
         batch_file_name: Current batch file name.
         batch_review_file_name: Current brand batch CSV review file name.
+        taxonomy_staging: Optional explicit taxonomy staging artifact.
 
     Returns:
         Path role to repo-relative path.
@@ -270,6 +284,10 @@ def _command_paths(
     reconciled_dir = operator_dir / "reconciled"
     applied_batch_dir = operator_dir / "batches-applied"
     review_csv_name = batch_review_file_name or f"{batch_file_name.removesuffix('.jsonl')}.review.csv"
+    taxonomy_staging_path = taxonomy_staging or _taxonomy_staging_path(todo_dir)
+    taxonomy_staging_rel = _rel(repo_root, taxonomy_staging_path)
+    if taxonomy_staging is not None and not taxonomy_staging_path.exists():
+        raise OperatorCommandChecklistError("Taxonomy staging input does not exist.")
     return {
         "python": "backend/.venv/bin/python",
         "batch_plan": _rel(repo_root, operator_dir / "operator-review-batch-plan.json"),
@@ -297,7 +315,7 @@ def _command_paths(
         "reconciled_yolo": _rel(repo_root, reconciled_dir / "yolo_section_annotation.reconciled.jsonl"),
         "progress_json": _rel(repo_root, reconciled_dir / "operator-review-batch-progress.json"),
         "progress_md": _rel(repo_root, reconciled_dir / "operator-review-batch-progress.md"),
-        "taxonomy_staging": _rel(repo_root, _taxonomy_staging_path(todo_dir)),
+        "taxonomy_staging": taxonomy_staging_rel,
         "reviewed_brand": _rel(repo_root, reconciled_dir / "brand-product-reviewed.decisions.jsonl"),
         "reviewed_brand_summary": _rel(repo_root, reconciled_dir / "brand-product-reviewed.summary.json"),
         "brand_preflight_json": _rel(repo_root, reconciled_dir / "brand-product-review-preflight.json"),

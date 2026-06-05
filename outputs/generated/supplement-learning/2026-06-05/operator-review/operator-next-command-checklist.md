@@ -63,7 +63,7 @@ backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_ba
 Separate reviewed brand decisions from blank queue stubs for preview-only gating.
 
 ```sh
-backend/.venv/bin/python backend/scripts/extract_supplement_brand_reviewed_decisions.py --taxonomy-staging outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.decisions.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.summary.json
+backend/.venv/bin/python backend/scripts/extract_supplement_brand_reviewed_decisions.py --taxonomy-staging outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.decisions.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.summary.json
 ```
 
 - Gate policy: `partial_preview_only`
@@ -73,7 +73,7 @@ backend/.venv/bin/python backend/scripts/extract_supplement_brand_reviewed_decis
 Run strict brand review preflight; this must reach zero blank rows before DB import.
 
 ```sh
-backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_decisions.py --taxonomy-staging outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-review-preflight.json --require-all-reviewed
+backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_decisions.py --taxonomy-staging outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-review-preflight.json --require-all-reviewed
 ```
 
 - Gate policy: `strict_zero_blank_pending_invalid_required`
@@ -93,7 +93,7 @@ backend/.venv/bin/python backend/scripts/gate_supplement_brand_db_import.py --br
 Create the approved product import manifest after all brand rows are reviewed.
 
 ```sh
-backend/.venv/bin/python backend/scripts/apply_supplement_brand_review_decisions.py --taxonomy-staging outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.summary.json --require-all-reviewed
+backend/.venv/bin/python backend/scripts/apply_supplement_brand_review_decisions.py --taxonomy-staging outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.summary.json --require-all-reviewed
 ```
 
 - Gate policy: `manifest_only_no_db_write`

@@ -45,14 +45,14 @@
       "script_key": "preflight_supplement_operator_review_batch_progress"
     },
     {
-      "command": "backend/.venv/bin/python backend/scripts/extract_supplement_brand_reviewed_decisions.py --taxonomy-staging outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.decisions.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.summary.json",
+      "command": "backend/.venv/bin/python backend/scripts/extract_supplement_brand_reviewed_decisions.py --taxonomy-staging outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.decisions.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-reviewed.summary.json",
       "gate_policy": "partial_preview_only",
       "order": 6,
       "purpose": "Separate reviewed brand decisions from blank queue stubs for preview-only gating.",
       "script_key": "extract_supplement_brand_reviewed_decisions"
     },
     {
-      "command": "backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_decisions.py --taxonomy-staging outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-review-preflight.json --require-all-reviewed",
+      "command": "backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_decisions.py --taxonomy-staging outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand-product-review-preflight.json --require-all-reviewed",
       "gate_policy": "strict_zero_blank_pending_invalid_required",
       "order": 7,
       "purpose": "Run strict brand review preflight; this must reach zero blank rows before DB import.",
@@ -66,7 +66,7 @@
       "script_key": "gate_supplement_brand_db_import"
     },
     {
-      "command": "backend/.venv/bin/python backend/scripts/apply_supplement_brand_review_decisions.py --taxonomy-staging outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.summary.json --require-all-reviewed",
+      "command": "backend/.venv/bin/python backend/scripts/apply_supplement_brand_review_decisions.py --taxonomy-staging outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl --decisions outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/brand_product_review.reconciled.jsonl --output outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.jsonl --summary outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/approved-product-import-manifest.summary.json --require-all-reviewed",
       "gate_policy": "manifest_only_no_db_write",
       "order": 9,
       "purpose": "Create the approved product import manifest after all brand rows are reviewed.",
@@ -75,7 +75,7 @@
   ],
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T00:43:09.958817+00:00",
+  "generated_at": "2026-06-05T01:59:58.350772+00:00",
   "input_names": {
     "next_work_order": "operator-next-batch-work-order.json",
     "post_completion_plan": "operator-post-completion-command-plan.json"

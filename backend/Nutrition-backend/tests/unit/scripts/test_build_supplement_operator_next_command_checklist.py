@@ -156,7 +156,7 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
 def test_command_checklist_uses_latest_existing_taxonomy_staging(
     tmp_path: Path,
 ) -> None:
-    """Verify brand commands do not point to a missing current-date staging file."""
+    """Verify fallback brand commands do not point to a missing current-date staging."""
     paths = _prepare_repo(tmp_path)
     latest_todo_dir = paths["repo_root"] / "outputs/todo-list/2026-06-05"
     prior_staging = (
@@ -180,6 +180,44 @@ def test_command_checklist_uses_latest_existing_taxonomy_staging(
     command_blob = "\n".join(commands)
     assert "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl" in command_blob
     assert "outputs/todo-list/2026-06-05/2026-06-05-supplement-taxonomy-db-staging.jsonl" not in command_blob
+
+
+def test_command_checklist_explicit_taxonomy_staging_overrides_todo_fallback(
+    tmp_path: Path,
+) -> None:
+    """Verify explicit taxonomy staging keeps product import commands current."""
+    paths = _prepare_repo(tmp_path)
+    latest_todo_dir = paths["repo_root"] / "outputs/todo-list/2026-06-05"
+    stale_staging = (
+        paths["repo_root"]
+        / "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl"
+    )
+    current_staging = (
+        paths["repo_root"]
+        / "outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl"
+    )
+    stale_staging.parent.mkdir(parents=True, exist_ok=True)
+    current_staging.parent.mkdir(parents=True, exist_ok=True)
+    stale_staging.write_text("", encoding="utf-8")
+    current_staging.write_text("", encoding="utf-8")
+
+    payload = checklist.build_command_checklist(
+        repo_root=paths["repo_root"],
+        operator_dir=paths["operator_dir"],
+        todo_dir=latest_todo_dir,
+        input_paths={
+            "next_work_order": paths["next_work_order"],
+            "post_completion_plan": paths["post_completion_plan"],
+        },
+        taxonomy_staging=current_staging,
+    )
+    command_blob = "\n".join(row["command"] for row in payload["commands"])
+
+    assert (
+        "outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl"
+        in command_blob
+    )
+    assert "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl" not in command_blob
 
 
 def test_command_checklist_generates_repo_relative_pii_commands(tmp_path: Path) -> None:
@@ -283,6 +321,40 @@ def test_command_checklist_rejects_outside_repo_paths(tmp_path: Path) -> None:
         )
 
 
+def test_command_checklist_rejects_outside_repo_taxonomy_staging(tmp_path: Path) -> None:
+    """Verify explicit taxonomy staging must stay under repo root."""
+    paths = _prepare_repo(tmp_path)
+
+    with pytest.raises(checklist.OperatorCommandChecklistError, match="outside repo root"):
+        checklist.build_command_checklist(
+            repo_root=paths["repo_root"],
+            operator_dir=paths["operator_dir"],
+            todo_dir=paths["todo_dir"],
+            input_paths={
+                "next_work_order": paths["next_work_order"],
+                "post_completion_plan": paths["post_completion_plan"],
+            },
+            taxonomy_staging=tmp_path / "outside-staging.jsonl",
+        )
+
+
+def test_command_checklist_rejects_missing_explicit_taxonomy_staging(tmp_path: Path) -> None:
+    """Verify explicit taxonomy staging must exist before command emission."""
+    paths = _prepare_repo(tmp_path)
+
+    with pytest.raises(checklist.OperatorCommandChecklistError, match="does not exist"):
+        checklist.build_command_checklist(
+            repo_root=paths["repo_root"],
+            operator_dir=paths["operator_dir"],
+            todo_dir=paths["todo_dir"],
+            input_paths={
+                "next_work_order": paths["next_work_order"],
+                "post_completion_plan": paths["post_completion_plan"],
+            },
+            taxonomy_staging=paths["repo_root"] / "missing-taxonomy-staging.jsonl",
+        )
+
+
 def test_command_checklist_rejects_unsafe_payload(tmp_path: Path) -> None:
     """Verify unsafe local path markers in inputs are rejected."""
     paths = _prepare_repo(tmp_path)
@@ -310,6 +382,12 @@ def test_command_checklist_cli_writes_markdown_without_paths(
     paths = _prepare_repo(tmp_path)
     output_path = paths["repo_root"] / "outputs/checklist.json"
     markdown_path = paths["repo_root"] / "outputs/checklist.md"
+    taxonomy_staging = (
+        paths["repo_root"]
+        / "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl"
+    )
+    taxonomy_staging.parent.mkdir(parents=True, exist_ok=True)
+    taxonomy_staging.write_text("", encoding="utf-8")
 
     checklist.main(
         [
@@ -319,6 +397,8 @@ def test_command_checklist_cli_writes_markdown_without_paths(
             str(paths["operator_dir"]),
             "--todo-dir",
             str(paths["todo_dir"]),
+            "--taxonomy-staging",
+            str(taxonomy_staging),
             "--next-work-order",
             str(paths["next_work_order"]),
             "--post-completion-plan",
