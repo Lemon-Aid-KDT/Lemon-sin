@@ -33,6 +33,7 @@ Generated on 2026-06-05 from the current local tree:
 | Structure audit | `outputs/generated/supplement-learning/2026-06-05/crawling-image-taxonomy-audit.json` |
 | Taxonomy DB staging | `outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl` |
 | Candidate manifests | `outputs/generated/supplement-learning/2026-06-05/candidate-manifests.summary.json` |
+| Private image tracking check | `outputs/generated/supplement-learning/2026-06-05/operator-review/private-image-tracking-check.json` |
 
 Current audited counts:
 
@@ -260,6 +261,10 @@ Controls to preserve:
 - Do not send review images to CLOVA or Google Vision until PII screening is approved.
 - Do not use teacher OCR as ground truth without human review.
 - Do not commit source image datasets or materialized private image fixtures.
+- Enforce the image-commit rule with
+  `backend/scripts/check_private_image_artifacts_not_tracked.py`; the current
+  report checks `crawling-image` and local operator-review artifacts and reports
+  `tracked_private_image_count=0`.
 - Keep DB writes separate from read-only audits and dry runs.
 - Keep user/profile data out of training manifests unless an explicit learning policy
   and owner-level consent path exists.

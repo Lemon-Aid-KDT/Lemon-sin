@@ -312,6 +312,7 @@ def _current_blocked_stage_statuses() -> dict[str, str]:
         "category_seed_db_verification": "verified",
         "taxonomy_db_import_verification": "blocked_missing_artifact",
         "learning_candidate_split": "verified",
+        "private_image_tracking_check": "verified",
         "review_pii_screening": "pending_operator_review",
         "manual_ocr_ground_truth": "blocked_missing_artifact",
         "teacher_ocr_comparison": "blocked_missing_artifact",
@@ -352,7 +353,7 @@ def test_completion_audit_reports_current_blockers_without_paths(tmp_path: Path)
 
     assert payload["objective_completion_allowed"] is False
     assert payload["overall_status"] == "in_progress_blocked_by_missing_evidence"
-    assert payload["verified_requirement_count"] == 5
+    assert payload["verified_requirement_count"] == 6
     assert payload["pending_requirement_count"] == 3
     assert payload["blocked_requirement_count"] == 5
     assert requirements_by_key["source_structure_audited"]["status"] == "verified"
@@ -360,6 +361,7 @@ def test_completion_audit_reports_current_blockers_without_paths(tmp_path: Path)
         requirements_by_key["category_seed_db_apply_preflight_ready"]["status"] == "verified"
     )
     assert requirements_by_key["category_seed_db_verified"]["status"] == "verified"
+    assert requirements_by_key["private_image_tracking_guard"]["status"] == "verified"
     assert requirements_by_key["brand_product_db_import"]["status"] == "pending_operator_review"
     assert "queue=brand_product_review" in requirements_by_key["brand_product_db_import"][
         "evidence"

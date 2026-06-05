@@ -1,0 +1,38 @@
+{
+  "absolute_paths_stored": false,
+  "db_write_performed": false,
+  "external_provider_call_performed": false,
+  "git_ls_files_checked": true,
+  "image_extensions": [
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".webp"
+  ],
+  "llm_call_performed": false,
+  "local_path_literals_stored": false,
+  "passed": true,
+  "path_hashes": [
+    "f6e08c25a76085b566e8d1fe356439ebd03f86952886685d4fd2cfdfb0b9a078",
+    "4929b0a0d60cc27908a4ea79c794980635ba52bb02e144eef8d2b0600cd59526"
+  ],
+  "path_names": [
+    "crawling-image",
+    "operator-review"
+  ],
+  "protected_path_count": 2,
+  "raw_ocr_text_stored": false,
+  "raw_provider_payload_stored": false,
+  "repo_root_hash": "5378c686b67d74e6ee0dea5b0933d429f6ce780978e7b0ecedfc9c58ba166116",
+  "repo_root_name": "Lemon-Aid",
+  "schema_version": "private-image-tracking-check-v1",
+  "source_doc_urls": [
+    "https://git-scm.com/docs/git-ls-files",
+    "https://docs.python.org/3/library/subprocess.html"
+  ],
+  "source_image_read_performed": false,
+  "tracked_private_image_count": 0,
+  "tracked_private_image_extension_counts": {},
+  "tracked_private_image_hashes_truncated": false,
+  "tracked_private_image_path_hashes": []
+}

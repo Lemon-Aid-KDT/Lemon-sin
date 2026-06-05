@@ -11,9 +11,9 @@
       ]
     },
     {
-      "content_sha256": "74f42235aeef83e6ebd003d76e9104935efd37ec462900d4f78e3698ac70fa0a",
+      "content_sha256": "19baf6a8793f9266c6044ac3d87ba82541a08bb9017d87dd82138aeb5607e90d",
       "description": "redacted preflight summary for brand/product review decisions",
-      "path_hash": "2e4d70b7bfff6aa4f86b6b78db05205d6761de64c8e2f61b363727111825a33d",
+      "path_hash": "f360c2d926ca1f0797c02a333c602f400219a57fcf92eb5e657d567f1325581a",
       "record_count": 1,
       "role": "brand_review_decision_preflight",
       "schema_versions": [
@@ -133,7 +133,7 @@
       ]
     },
     {
-      "content_sha256": "3c5eb0135ae92d311682d25fc61f9383f272e887cb9de08e84f6e31c1ad6c0be",
+      "content_sha256": "2cf12b8c103a5bf6cb1fa7611ab017cc8e10064cd1c3a82e30bfe0bbdeecf862",
       "description": "redacted queue-specific gate order after an operator batch is completed",
       "path_hash": "2a9aa980e9f2cc689495d3a50b598b31c97dea54d66568d949f0613e6cff8490",
       "record_count": 1,
@@ -166,7 +166,7 @@
     },
     {
       "batch_count": 18,
-      "content_sha256": "1142a50f9a99e966e99703766668615ba587b7b7ce3ca0c1506ae15d19fee739",
+      "content_sha256": "659b836759122e3aff2a135fba54be77d36730118ccb726d81b041acbf54c431",
       "description": "redacted batch-by-batch operator workpack for pending human review",
       "next_batch_key": "brand_product_review:001",
       "path_hash": "724fda1f52a0b18cd4b9347ff607255f0aad3af50e6c7a1edf8388ccdb47b96c",
@@ -179,9 +179,9 @@
       "workpack_file_count": 19
     },
     {
-      "content_sha256": "70fe28ea9686a2b276778f21d7c02d9f7cd3ea72ffd01253b511d35bf7a77fc1",
+      "content_sha256": "940751061c403a78fd1ec74127af58e9b3e211ad2b7782bdd54974aae751db9f",
       "description": "redacted preflight summary for operator PII screening decisions",
-      "path_hash": "20d035275e715034e50a8b5140d0d9c122977b53fdaefbfd11ee1c0361491882",
+      "path_hash": "3c06168d2b1ea771e46b776e3ab39b5c327f2d954abcb4701ff1432fa4de78dd",
       "record_count": 1,
       "role": "pii_screening_decision_preflight",
       "schema_versions": [
@@ -189,7 +189,7 @@
       ]
     },
     {
-      "content_sha256": "cd1fcbf289cfdf5dc25ae32e46baacca50267a494061a0a71a2d3d0b13670fc8",
+      "content_sha256": "efb30b67759074dd0dee660b7bf3758701b4dd8829984e5b6ad30356f40b8163",
       "description": "local HTML and decision-template bundle for review-image PII screening",
       "path_hash": "702bf9b5985c86d34da338d03d9e18a7018e54c1481295a5886511ad618036c4",
       "record_count": 1,
@@ -209,6 +209,20 @@
       ]
     },
     {
+      "content_sha256": "5ddc9e935c93df91a1d68387b10eafc4cdeb814f56abdf7b69386701f3f380cd",
+      "description": "git tracking gate for source and materialized private images",
+      "git_ls_files_checked": true,
+      "passed": true,
+      "path_hash": "c6b760033c184c281cf58e66f668a116f3f8a1e684a445a6d0870b3e909c7df6",
+      "protected_path_count": 2,
+      "record_count": 1,
+      "role": "private_image_tracking_check",
+      "schema_versions": [
+        "private-image-tracking-check-v1"
+      ],
+      "tracked_private_image_count": 0
+    },
+    {
       "content_sha256": "7f2fee236b8ec888c5f2027b3c459b4d502c441b53b7361f5fb4491b83c0f969",
       "description": "read-only crawling-image structure audit",
       "path_hash": "7e838fbc3312a035ef4220d96ed6552722868b1e43d57153c8f16f6e43958821",
@@ -219,19 +233,19 @@
       ]
     },
     {
-      "content_sha256": "27f76744aa2f59d4cbbbbccb36902c1bb35bed39258fd71831b56956acf3bf70",
+      "content_sha256": "401b51b9649ae365604214e1b898446ca5f089eb8c28d21a35fe04cc45090bc4",
       "description": "category seed and brand-candidate DB staging rows",
-      "path_hash": "a09fb05b0525d82c8575a5e066fbc402067f841374379879941f310a3bd6e19a",
-      "record_count": 431,
+      "path_hash": "dfd09cb1dae9d0373fb556df1186b61f0bacda481725937954b573ea611f26c5",
+      "record_count": 1,
       "role": "taxonomy_staging",
       "schema_versions": [
         "supplement-taxonomy-db-staging-v1"
       ]
     },
     {
-      "content_sha256": "10739d62b5ca0a1af59687ed317233ebfba16b907dbb65b43a3b2061b6c6e14e",
+      "content_sha256": "15da58d9bcb33b4d3c1f19168f3a2b35d97f3d237f081d1efb8ab98eb9988114",
       "description": "redacted preflight summary for operator bbox annotation decisions",
-      "path_hash": "a9c163ec0b1a40639d7ae3e4265074358b619f356e3c997b98b9e9217b395f90",
+      "path_hash": "cc254fea333134b04c58385f12df4b61bd6ef67bf4b19635296efa8b8b265767",
       "record_count": 1,
       "role": "yolo_annotation_decision_preflight",
       "schema_versions": [
@@ -239,7 +253,7 @@
       ]
     },
     {
-      "content_sha256": "1a1648fb5c58cc731b9e0cc33d94e37efef1a2feefb5e0c4e16cb23e9f2854aa",
+      "content_sha256": "f220bc228b1d1cdf0c4b97a5adfdae006494397f93238fec833d96717c81bc0e",
       "description": "local HTML/task bundle for supplement-section bbox annotation",
       "path_hash": "cfdd2b75e6acc1e30881e752bbda80add73c25b3708888a4418878a79b22d880",
       "record_count": 1,
@@ -262,13 +276,13 @@
   "blocked_stage_count": 9,
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-04T18:22:24.549003+00:00",
+  "generated_at": "2026-06-05T00:15:26.898286+00:00",
   "llm_call_performed": false,
   "local_absolute_path_printed": false,
   "overall_status": "in_progress_blocked_by_missing_or_invalid_artifacts",
   "pending_operator_review_stage_count": 3,
   "product_literal_printed": false,
-  "provided_artifact_count": 19,
+  "provided_artifact_count": 20,
   "provided_artifact_roles": [
     "brand_review_bundle",
     "brand_review_decision_preflight",
@@ -284,6 +298,7 @@
     "pii_screening_decision_preflight",
     "pii_screening_review_bundle",
     "pii_screening_template",
+    "private_image_tracking_check",
     "taxonomy_audit",
     "taxonomy_staging",
     "yolo_annotation_decision_preflight",
@@ -302,7 +317,7 @@
     "https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html"
   ],
   "source_image_read_performed": false,
-  "stage_count": 17,
+  "stage_count": 18,
   "stages": [
     {
       "blocker_codes": [],
@@ -451,6 +466,22 @@
         "learning_candidate_summary"
       ],
       "stage_key": "learning_candidate_split",
+      "status": "verified"
+    },
+    {
+      "blocker_codes": [],
+      "missing_required_roles": [],
+      "next_operator_action": "remove_private_image_files_from_git_tracking_before_review",
+      "pending_roles": [],
+      "phase": "security_privacy",
+      "present_pending_roles": [],
+      "present_required_roles": [
+        "private_image_tracking_check"
+      ],
+      "required_roles": [
+        "private_image_tracking_check"
+      ],
+      "stage_key": "private_image_tracking_check",
       "status": "verified"
     },
     {
@@ -688,8 +719,8 @@
   "status_counts": {
     "blocked_missing_artifact": 9,
     "pending_operator_review": 3,
-    "verified": 5
+    "verified": 6
   },
   "training_execution_performed_by_script": false,
-  "verified_stage_count": 5
+  "verified_stage_count": 6
 }

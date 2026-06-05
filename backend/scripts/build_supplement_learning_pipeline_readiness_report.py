@@ -162,6 +162,11 @@ ARTIFACT_SPECS: dict[str, ArtifactSpec] = {
         expected_schema_versions=frozenset({"supplement-learning-candidate-manifests-v1"}),
         description="review OCR and detail-page YOLO candidate summary",
     ),
+    "private_image_tracking_check": ArtifactSpec(
+        role="private_image_tracking_check",
+        expected_schema_versions=frozenset({"private-image-tracking-check-v1"}),
+        description="git tracking gate for source and materialized private images",
+    ),
     "pii_screening_template": ArtifactSpec(
         role="pii_screening_template",
         expected_schema_versions=frozenset({"supplement-review-pii-screening-template-v1"}),
@@ -355,6 +360,13 @@ STAGE_SPECS: tuple[StageSpec, ...] = (
         required_roles=("learning_candidate_summary",),
         pending_roles=(),
         next_operator_action="screen_review_images_for_pii_and_prepare_yolo_templates",
+    ),
+    StageSpec(
+        stage_key="private_image_tracking_check",
+        phase="security_privacy",
+        required_roles=("private_image_tracking_check",),
+        pending_roles=(),
+        next_operator_action="remove_private_image_files_from_git_tracking_before_review",
     ),
     StageSpec(
         stage_key="review_pii_screening",
@@ -688,6 +700,7 @@ def _artifact_state_flags(*, role: str, payload: Any) -> dict[str, Any]:
             flags[key] = value
     flags.update(_category_seed_preflight_state_flags(role=role, payload=payload))
     flags.update(_db_verification_state_flags(role=role, payload=payload))
+    flags.update(_private_image_tracking_state_flags(role=role, payload=payload))
     if role == "paddleocr_baseline_gate" and payload.get("allowed") is not True:
         flags["artifact_warning"] = "baseline_gate_not_allowed"
     if role == "operator_review_workpack":
@@ -713,6 +726,35 @@ def _artifact_state_flags(*, role: str, payload: Any) -> dict[str, Any]:
             value = payload.get(key)
             if isinstance(value, bool | int | str) or value is None:
                 flags[key] = value
+    return flags
+
+
+def _private_image_tracking_state_flags(
+    *,
+    role: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Extract private-image tracking aggregate fields.
+
+    Args:
+        role: Artifact role.
+        payload: Parsed JSON payload.
+
+    Returns:
+        Safe aggregate fields for Git tracking evidence.
+    """
+    if role != "private_image_tracking_check":
+        return {}
+    flags: dict[str, Any] = {}
+    for key in (
+        "passed",
+        "tracked_private_image_count",
+        "protected_path_count",
+        "git_ls_files_checked",
+    ):
+        value = payload.get(key)
+        if isinstance(value, bool | int | str) or value is None:
+            flags[key] = value
     return flags
 
 
@@ -869,6 +911,54 @@ def _semantic_blockers(
         runbook = artifacts.get("paddleocr_promotion_runbook")
         if runbook is not None and runbook.get("ready_for_operator_review") is not True:
             blockers.append("promotion_runbook:not_ready_for_operator_review")
+    blockers.extend(
+        _private_image_tracking_stage_blockers(stage=stage, artifacts=artifacts),
+    )
+    return blockers
+
+
+def _private_image_tracking_stage_blockers(
+    *,
+    stage: StageSpec,
+    artifacts: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Return private image tracking blockers for the matching stage.
+
+    Args:
+        stage: Stage definition.
+        artifacts: Loaded artifact summaries keyed by role.
+
+    Returns:
+        Empty list for unrelated stages, or private tracking blocker codes.
+    """
+    if stage.stage_key != "private_image_tracking_check":
+        return []
+    tracking = artifacts.get("private_image_tracking_check")
+    if tracking is None:
+        return []
+    return _private_image_tracking_blockers(tracking)
+
+
+def _private_image_tracking_blockers(tracking: Mapping[str, Any]) -> list[str]:
+    """Return blockers for private image Git tracking evidence.
+
+    Args:
+        tracking: Redacted private-image tracking report summary.
+
+    Returns:
+        Stable blocker codes for unsafe tracked image evidence.
+    """
+    blockers: list[str] = []
+    if tracking.get("passed") is not True:
+        blockers.append("private_image_tracking:not_passed")
+    if tracking.get("git_ls_files_checked") is not True:
+        blockers.append("private_image_tracking:git_ls_files_not_checked")
+    tracked_count = _int_summary_field(tracking, "tracked_private_image_count")
+    if tracked_count is None or tracked_count != 0:
+        blockers.append("private_image_tracking:tracked_image_count_not_zero")
+    protected_count = _int_summary_field(tracking, "protected_path_count")
+    if protected_count is None or protected_count == 0:
+        blockers.append("private_image_tracking:protected_path_count_missing")
     return blockers
 
 

@@ -3,7 +3,7 @@
 - Schema: `supplement-learning-completion-audit-v1`
 - Overall status: `in_progress_blocked_by_missing_evidence`
 - Completion allowed: `false`
-- Requirements: `5` verified / `3` pending / `5` blocked
+- Requirements: `6` verified / `3` pending / `5` blocked
 - Current blocker batch: `brand_product_review:001`
 - Total blank rows: `808`
 
@@ -18,6 +18,7 @@
 | category seed DB import is verified | `verified` | category_seed_db_verification:verified | complete_current_operator_batch_before_post_completion_steps |
 | reviewed brand/product DB import is verified | `blocked_missing_artifact` | taxonomy_db_import_verification:blocked_missing_artifact | run_read_only_db_import_verification |
 | review images are cleared for ground truth | `pending_operator_review` | review_pii_screening:pending_operator_review; queue=review_pii_screening; queue_next_batch=review_pii_screening:001; queue_blank_rows=215; queue_pending_batches=5; post_completion_allowed=false | apply_pii_screening_decisions |
+| private source and review images are not tracked | `verified` | private_image_tracking_check:verified | complete_current_operator_batch_before_post_completion_steps |
 | manual OCR ground truth is ready | `blocked_missing_artifact` | manual_ocr_ground_truth:blocked_missing_artifact | complete_human_reviewed_ocr_ground_truth |
 | CLOVA/Google Vision/PaddleOCR comparison is complete | `blocked_missing_artifact` | teacher_ocr_comparison:blocked_missing_artifact | run_clova_google_vision_paddleocr_comparison |
 | detail-page section bboxes are reviewed | `pending_operator_review` | yolo_section_annotation:pending_operator_review; queue=yolo_section_annotation; queue_next_batch=yolo_section_annotation:001; queue_blank_rows=205; queue_pending_batches=5; post_completion_allowed=false | complete_supplement_section_bbox_review |

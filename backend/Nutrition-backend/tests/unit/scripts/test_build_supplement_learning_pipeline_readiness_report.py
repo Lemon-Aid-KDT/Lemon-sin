@@ -141,6 +141,13 @@ def _artifact_payloads() -> dict[str, dict[str, Any]]:
             "ocr_candidate_count": 215,
             "yolo_candidate_count": 205,
         },
+        "private_image_tracking_check": {
+            "schema_version": "private-image-tracking-check-v1",
+            "passed": True,
+            "tracked_private_image_count": 0,
+            "protected_path_count": 2,
+            "git_ls_files_checked": True,
+        },
         "pii_screening_template": {
             "schema_version": "supplement-review-pii-screening-template-v1",
             "pending_review_count": 215,
@@ -350,6 +357,49 @@ def test_report_marks_pii_review_bundle_as_operator_pending(tmp_path: Path) -> N
     assert stage["status"] == "pending_operator_review"
     assert stage["present_pending_roles"] == ["pii_screening_review_bundle"]
     assert stage["missing_required_roles"] == ["pii_screening_apply"]
+
+
+def test_report_verifies_private_image_tracking_check(tmp_path: Path) -> None:
+    """Verify the private image tracking gate is a first-class readiness stage."""
+    paths = _write_payloads(tmp_path, ["private_image_tracking_check"])
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "private_image_tracking_check")
+    artifact = next(
+        item
+        for item in report["artifact_summaries"]
+        if item["role"] == "private_image_tracking_check"
+    )
+
+    assert stage["status"] == "verified"
+    assert stage["missing_required_roles"] == []
+    assert artifact["passed"] is True
+    assert artifact["tracked_private_image_count"] == 0
+    assert artifact["protected_path_count"] == 2
+
+
+def test_report_blocks_tracked_private_images(tmp_path: Path) -> None:
+    """Verify readiness blocks when private images are tracked by Git."""
+    paths = _write_payloads(
+        tmp_path,
+        ["private_image_tracking_check"],
+        overrides={
+            "private_image_tracking_check": {
+                "schema_version": "private-image-tracking-check-v1",
+                "passed": False,
+                "tracked_private_image_count": 1,
+                "protected_path_count": 2,
+                "git_ls_files_checked": True,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "private_image_tracking_check")
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "private_image_tracking:not_passed" in stage["blocker_codes"]
+    assert "private_image_tracking:tracked_image_count_not_zero" in stage["blocker_codes"]
 
 
 def test_report_marks_pii_decision_preflight_as_operator_pending(tmp_path: Path) -> None:

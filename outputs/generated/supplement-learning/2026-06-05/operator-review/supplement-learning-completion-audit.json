@@ -6,7 +6,7 @@
   "current_blocker_queue_key": "brand_product_review",
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-04T23:50:34.600327+00:00",
+  "generated_at": "2026-06-05T00:15:47.233077+00:00",
   "incomplete_requirement_keys": [
     "brand_product_db_import",
     "taxonomy_db_import_verified",
@@ -47,7 +47,7 @@
   "product_dir_literals_stored": false,
   "raw_ocr_text_stored": false,
   "raw_provider_payload_stored": false,
-  "requirement_count": 13,
+  "requirement_count": 14,
   "requirements": [
     {
       "blocker_codes": [],
@@ -165,6 +165,20 @@
       ],
       "status": "pending_operator_review",
       "title": "review images are cleared for ground truth"
+    },
+    {
+      "blocker_codes": [],
+      "evidence": [
+        "private_image_tracking_check:verified"
+      ],
+      "next_action": "complete_current_operator_batch_before_post_completion_steps",
+      "objective_mapping": "Do not commit crawling-image source data or local review image artifacts.",
+      "requirement_key": "private_image_tracking_guard",
+      "stage_keys": [
+        "private_image_tracking_check"
+      ],
+      "status": "verified",
+      "title": "private source and review images are not tracked"
     },
     {
       "blocker_codes": [
@@ -289,5 +303,5 @@
   "source_rows_read": false,
   "total_blank_row_count": 808,
   "training_execution_performed_by_script": false,
-  "verified_requirement_count": 5
+  "verified_requirement_count": 6
 }

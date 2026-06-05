@@ -120,6 +120,12 @@ REQUIREMENT_SPECS: tuple[dict[str, Any], ...] = (
         "objective_mapping": "Use review images as OCR ground-truth only after screening.",
     },
     {
+        "requirement_key": "private_image_tracking_guard",
+        "title": "private source and review images are not tracked",
+        "stage_keys": ("private_image_tracking_check",),
+        "objective_mapping": "Do not commit crawling-image source data or local review image artifacts.",
+    },
+    {
         "requirement_key": "manual_ocr_ground_truth",
         "title": "manual OCR ground truth is ready",
         "stage_keys": ("manual_ocr_ground_truth",),
