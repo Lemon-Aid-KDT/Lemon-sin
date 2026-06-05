@@ -212,6 +212,28 @@ def test_apply_brand_batch_review_csv_decisions_preserves_all_blank_csv(
     assert [row["brand_review_decision"]["decision"] for row in rows] == ["", ""]
     assert summary["changed_row_count"] == 0
     assert summary["decision_counts"] == {"blank": 2}
+    assert summary["input_path_fingerprints"]["batch_file"].startswith("fp-")
+    assert "input_path_hashes" not in summary
+
+
+def test_apply_brand_batch_review_csv_decisions_requires_all_reviewed_gate(
+    tmp_path: Path,
+) -> None:
+    """Verify workflow mode refuses to apply blank CSV rows."""
+    paths = _input_paths(
+        tmp_path,
+        batch_rows=[_blank_brand_row("brand_review_1"), _blank_brand_row("brand_review_2")],
+        csv_rows=[_csv_row("brand_review_1"), _csv_row("brand_review_2")],
+    )
+
+    with pytest.raises(applier.BrandBatchCsvApplyError, match="blank decisions"):
+        applier.apply_brand_batch_review_csv_decisions(
+            input_paths=paths,
+            reviewer_id="operator_batch",
+            reviewed_at_safe_token="2026-06-04T00:00:00Z",
+            approval_attestations=_approval_attestations(),
+            require_all_reviewed=True,
+        )
 
 
 def test_apply_brand_batch_review_csv_decisions_rejects_fixture_order_mismatch(

@@ -641,7 +641,8 @@ def _brand_review_csv_apply_commands(
                 "--attest-not-using-product-folder-literal-as-manufacturer "
                 "--attest-product-name-reviewed-from-label-or-safe-catalog "
                 "--attest-no-raw-ocr-or-provider-payload-copied "
-                "--attest-db-import-allowed"
+                "--attest-db-import-allowed "
+                "--require-all-reviewed"
             ),
         )
     ]

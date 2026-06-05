@@ -146,6 +146,7 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
     )
     assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[2]
     assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[2]
+    assert "--require-all-reviewed" in commands[2]
     assert commands[3].startswith(
         "backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_batch_file.py"
     )

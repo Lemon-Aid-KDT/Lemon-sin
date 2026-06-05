@@ -127,6 +127,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--attest-no-raw-ocr-or-provider-payload-copied", action="store_true")
     parser.add_argument("--attest-db-import-allowed", action="store_true")
+    parser.add_argument(
+        "--require-all-reviewed",
+        action="store_true",
+        help="Fail if any CSV row still has a blank decision.",
+    )
     return parser.parse_args(argv)
 
 
@@ -156,6 +161,7 @@ def main(argv: list[str] | None = None) -> None:
             reviewer_id=args.reviewer_id,
             reviewed_at_safe_token=args.reviewed_at_safe_token,
             approval_attestations=_approval_attestations_from_args(args),
+            require_all_reviewed=args.require_all_reviewed,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
@@ -181,6 +187,7 @@ def apply_brand_batch_review_csv_decisions(
     reviewer_id: str,
     reviewed_at_safe_token: str,
     approval_attestations: Mapping[str, bool],
+    require_all_reviewed: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Apply reviewed CSV decisions to a brand batch JSONL copy.
 
@@ -189,6 +196,7 @@ def apply_brand_batch_review_csv_decisions(
         reviewer_id: Operator-scoped reviewer id.
         reviewed_at_safe_token: Safe reviewed-at token.
         approval_attestations: Explicit approval attestation flags.
+        require_all_reviewed: Fail closed when blank decisions remain.
 
     Returns:
         Updated batch rows and redacted summary.
@@ -223,12 +231,15 @@ def apply_brand_batch_review_csv_decisions(
         decision_counts[decision_value] += 1
         if changed:
             changed_count += 1
+    blank_count = decision_counts.get("blank", 0)
+    if require_all_reviewed and blank_count:
+        raise BrandBatchCsvApplyError("Batch review CSV still contains blank decisions.")
     summary = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
-        "input_path_hashes": {
-            key: _sha256_text(str(path.expanduser())) for key, path in sorted(input_paths.items())
+        "input_path_fingerprints": {
+            key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
         },
         "batch_file_name": batch_file.name,
         "batch_review_csv_name": review_csv.name,
@@ -236,6 +247,7 @@ def apply_brand_batch_review_csv_decisions(
         "changed_row_count": changed_count,
         "unchanged_row_count": len(updated_rows) - changed_count,
         "decision_counts": dict(sorted(decision_counts.items())),
+        "require_all_reviewed": require_all_reviewed,
         "ready_for_batch_file_preflight": True,
         "original_batch_file_modified": False,
         "output_batch_file_written": False,
@@ -642,6 +654,18 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _path_fingerprint(path: Path) -> str:
+    """Return a short non-secret path fingerprint for public artifacts.
+
+    Args:
+        path: Path to identify without exposing it.
+
+    Returns:
+        Short hexadecimal fingerprint with a non-hex prefix.
+    """
+    return f"fp-{_sha256_text(str(path.expanduser()))[:8]}"
+
+
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     """Write JSON object.
 
@@ -701,8 +725,8 @@ def _failure_summary(
         "status": "error",
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
-        "input_path_hashes": {
-            key: _sha256_text(str(path.expanduser())) for key, path in sorted(input_paths.items())
+        "input_path_fingerprints": {
+            key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
         },
         "output_name": output_path.name,
         "error_code": _safe_error_code(error),

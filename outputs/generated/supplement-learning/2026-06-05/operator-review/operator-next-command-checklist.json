@@ -24,7 +24,7 @@
       "script_key": "build_supplement_brand_review_batch_triage"
     },
     {
-      "command": "backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py --batch-file outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.jsonl --batch-review-csv outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.review.csv --output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl --summary-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.summary.json --markdown-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.md --reviewer-id operator_batch --reviewed-at-safe-token operator_csv_review --attest-brand-product-review-completed --attest-not-using-product-folder-literal-as-manufacturer --attest-product-name-reviewed-from-label-or-safe-catalog --attest-no-raw-ocr-or-provider-payload-copied --attest-db-import-allowed",
+      "command": "backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py --batch-file outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.jsonl --batch-review-csv outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.review.csv --output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl --summary-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.summary.json --markdown-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.md --reviewer-id operator_batch --reviewed-at-safe-token operator_csv_review --attest-brand-product-review-completed --attest-not-using-product-folder-literal-as-manufacturer --attest-product-name-reviewed-from-label-or-safe-catalog --attest-no-raw-ocr-or-provider-payload-copied --attest-db-import-allowed --require-all-reviewed",
       "gate_policy": "no_source_overwrite",
       "order": 3,
       "purpose": "Apply the operator CSV review into a separate batch JSONL copy without overwriting the source batch.",
@@ -82,7 +82,7 @@
   ],
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T02:57:15.554644+00:00",
+  "generated_at": "2026-06-05T03:07:37.471514+00:00",
   "input_names": {
     "next_work_order": "operator-next-batch-work-order.json",
     "post_completion_plan": "operator-post-completion-command-plan.json"
