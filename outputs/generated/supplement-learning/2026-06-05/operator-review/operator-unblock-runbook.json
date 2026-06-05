@@ -10,62 +10,80 @@
   "current_post_completion_execution_allowed": false,
   "current_post_completion_steps": [
     {
-      "gate_policy": "must_pass_before_reconcile",
+      "gate_policy": "must_pass_before_csv_apply",
       "order": 1,
+      "purpose": "confirm csv and contact sheet row alignment",
+      "script_key": "preflight_supplement_brand_review_contact_sheet"
+    },
+    {
+      "gate_policy": "operator_review_helper_no_decision",
+      "order": 2,
+      "purpose": "summarize csv review priority without decisions",
+      "script_key": "build_supplement_brand_review_batch_triage"
+    },
+    {
+      "gate_policy": "require_all_reviewed_no_source_overwrite",
+      "order": 3,
+      "purpose": "copy fully reviewed csv fields into a batch jsonl copy",
+      "script_key": "apply_supplement_brand_batch_review_csv_decisions"
+    },
+    {
+      "gate_policy": "must_pass_before_reconcile",
+      "order": 4,
       "purpose": "confirm operator local batch is complete",
       "script_key": "preflight_supplement_operator_review_batch_file"
     },
     {
       "gate_policy": "no_source_overwrite",
-      "order": 2,
+      "order": 5,
       "purpose": "merge completed batch into reconciled queue copies",
       "script_key": "reconcile_supplement_operator_review_batch_files"
     },
     {
       "gate_policy": "must_pass_before_queue_preflight",
-      "order": 3,
+      "order": 6,
       "purpose": "confirm queue level batch progress after reconcile",
       "script_key": "preflight_supplement_operator_review_batch_progress"
     },
     {
       "gate_policy": "partial_preview_only",
-      "order": 4,
+      "order": 7,
       "purpose": "separate reviewed brand decisions from blank queue stubs",
       "script_key": "extract_supplement_brand_reviewed_decisions"
     },
     {
       "gate_policy": "strict_zero_blank_pending_invalid_required",
-      "order": 5,
+      "order": 8,
       "purpose": "check strict brand decision readiness",
       "script_key": "preflight_supplement_brand_review_decisions"
     },
     {
       "gate_policy": "must_pass_before_product_manifest",
-      "order": 6,
+      "order": 9,
       "purpose": "gate product import manifest preparation",
       "script_key": "gate_supplement_brand_db_import"
     },
     {
       "gate_policy": "dry_run_or_manifest_only_before_db_gate",
-      "order": 7,
+      "order": 10,
       "purpose": "create approved product import manifest",
       "script_key": "apply_supplement_brand_review_decisions"
     },
     {
       "gate_policy": "dry_run_before_product_db_apply",
-      "order": 8,
+      "order": 11,
       "purpose": "dry run category product and mapping import",
       "script_key": "import_supplement_taxonomy_approved_manifest"
     },
     {
       "gate_policy": "must_pass_before_db_apply",
-      "order": 9,
+      "order": 12,
       "purpose": "gate reviewed product db apply",
       "script_key": "gate_supplement_product_db_apply"
     },
     {
       "gate_policy": "read_only_after_apply",
-      "order": 10,
+      "order": 13,
       "purpose": "verify imported categories products and mappings",
       "script_key": "verify_supplement_taxonomy_db_import"
     }
@@ -156,7 +174,7 @@
       "status": "blocked_by_annotation_review"
     }
   ],
-  "generated_at": "2026-06-05T01:08:29.272051+00:00",
+  "generated_at": "2026-06-05T03:35:31.903261+00:00",
   "input_names": {
     "batch_progress": "operator-review-batch-progress.json",
     "brand_db_import_gate": "brand-db-import-gate.json",
@@ -169,17 +187,17 @@
     "yolo_section_annotation_triage": "yolo_section_annotation-001.triage.json",
     "yolo_section_dataset_gate": "yolo-section-dataset-gate.json"
   },
-  "input_path_hashes": {
-    "batch_progress": "69fddb669b7be6e0482856a391823feadc512da1e9ce6dad560a50d99782dd5f",
-    "brand_db_import_gate": "8dbb667bba222f51786fae5bdca049aba1a3521e5c077d3b83771ffd0c945c79",
-    "brand_product_review_triage": "73c570a643d757642dbf924dfc0e0ecf0e6a59cf365ee67847e40c827c2ae3de",
-    "completion_audit": "c19841e7b091f73869e33b5c2c1e8b43473593f17b4db9cd00c039d8fede0f32",
-    "next_work_order": "7e3df98fc9bf454a7b6f057f77372a16d719d59852fc7f4498a49d8c3111dd6a",
-    "ocr_benchmark_gate": "5309b886ff4a221ca3a182b3b05f1a2eb75c245e16a3a8d68be6cd4c27effae3",
-    "post_completion_plan": "2a9aa980e9f2cc689495d3a50b598b31c97dea54d66568d949f0613e6cff8490",
-    "review_pii_screening_triage": "41488a9170dcbe235191c6200e91f901e20d58d1cb0785386ba8cd3feb6e1c9c",
-    "yolo_section_annotation_triage": "21a8632a4088753b52bd1da24076ae04c46fae47df077e55f4df8b0ce3413e9a",
-    "yolo_section_dataset_gate": "19fb427724617d41bc2ec1aef2bd97a80352106db80e1ffd8ac443c06079043d"
+  "input_path_fingerprints": {
+    "batch_progress": "fp-69fddb66",
+    "brand_db_import_gate": "fp-8dbb667b",
+    "brand_product_review_triage": "fp-73c570a6",
+    "completion_audit": "fp-c19841e7",
+    "next_work_order": "fp-7e3df98f",
+    "ocr_benchmark_gate": "fp-5309b886",
+    "post_completion_plan": "fp-2a9aa980",
+    "review_pii_screening_triage": "fp-41488a91",
+    "yolo_section_annotation_triage": "fp-21a8632a",
+    "yolo_section_dataset_gate": "fp-19fb4277"
   },
   "llm_call_performed": false,
   "local_path_literals_stored": false,

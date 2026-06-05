@@ -7,6 +7,7 @@
     "blank_rows_remaining"
   ],
   "common_safety_rules": [
+    "brand_csv_apply_requires_contact_sheet_preflight_and_all_rows_reviewed",
     "run_local_batch_preflight_first",
     "run_reconcile_before_queue_preflight",
     "never_apply_or_promote_until_strict_gate_passes",
@@ -14,7 +15,7 @@
   ],
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T02:56:56.532784+00:00",
+  "generated_at": "2026-06-05T03:25:56.152849+00:00",
   "input_name": "operator-next-batch-work-order.json",
   "input_path_fingerprint": "fp-7e3df98f",
   "llm_call_performed": false,
@@ -62,7 +63,7 @@
       "script_key": "build_supplement_brand_review_batch_triage"
     },
     {
-      "gate_policy": "no_source_overwrite",
+      "gate_policy": "require_all_reviewed_no_source_overwrite",
       "input_roles": [
         "operator_batch_file",
         "batch_review_csv"
@@ -72,7 +73,7 @@
         "operator_batch_jsonl_copy",
         "csv_apply_summary"
       ],
-      "purpose": "copy reviewed csv fields into batch jsonl",
+      "purpose": "copy fully reviewed csv fields into a batch jsonl copy",
       "script_key": "apply_supplement_brand_batch_review_csv_decisions"
     },
     {

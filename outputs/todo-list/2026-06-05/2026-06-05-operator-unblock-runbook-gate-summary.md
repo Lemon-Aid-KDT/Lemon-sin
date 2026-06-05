@@ -6,6 +6,11 @@
   downstream gates they block.
 - The regenerated runbook keeps the same next batch focus while adding explicit
   brand DB import, OCR benchmark, and YOLO dataset gate status.
+- The runbook now reflects the current 13-step brand post-completion sequence:
+  contact-sheet preflight, CSV triage, all-reviewed CSV apply, applied-batch
+  preflight, reconcile, and downstream DB gate checks.
+- Public runbook inputs are identified with short `fp-...` fingerprints instead
+  of full path hashes.
 - The pipeline remains intentionally blocked until human review rows are filled.
 
 ## Updated Artifacts
@@ -13,7 +18,7 @@
 | Artifact | Status |
 | --- | --- |
 | `outputs/generated/supplement-learning/2026-06-05/operator-review/operator-unblock-runbook.json` | Includes queue summaries and downstream gate summaries |
-| `outputs/generated/supplement-learning/2026-06-05/operator-review/operator-unblock-runbook.md` | Includes `Gate Summary` Markdown table |
+| `outputs/generated/supplement-learning/2026-06-05/operator-review/operator-unblock-runbook.md` | Includes `Gate Summary` and 13 current post-completion gate steps |
 
 ## Current Queue State
 
@@ -46,6 +51,11 @@ Start with the next operator batch recorded in the runbook:
 `brand_product_review:001`. After that queue is filled and reconciled, continue
 PII screening and YOLO bbox annotation. Do not run teacher OCR or PaddleOCR
 training until the corresponding gates are green.
+
+For the current brand batch, do not use the historical blank-review dry-run
+copy as a reconcile input. Follow the regenerated command checklist order:
+contact-sheet preflight, CSV triage, `--require-all-reviewed` CSV apply,
+applied-batch preflight, then reconcile.
 
 ## Official References
 

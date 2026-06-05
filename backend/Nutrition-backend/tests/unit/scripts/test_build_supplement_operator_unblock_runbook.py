@@ -182,12 +182,30 @@ def _post_plan_payload(*, allowed: bool = False) -> dict[str, Any]:
         "steps": [
             {
                 "order": 1,
+                "script_key": "preflight_supplement_brand_review_contact_sheet",
+                "gate_policy": "must_pass_before_csv_apply",
+                "purpose": "confirm csv and contact sheet row alignment",
+            },
+            {
+                "order": 2,
+                "script_key": "build_supplement_brand_review_batch_triage",
+                "gate_policy": "operator_review_helper_no_decision",
+                "purpose": "summarize csv review priority without decisions",
+            },
+            {
+                "order": 3,
+                "script_key": "apply_supplement_brand_batch_review_csv_decisions",
+                "gate_policy": "require_all_reviewed_no_source_overwrite",
+                "purpose": "copy fully reviewed csv fields into a batch jsonl copy",
+            },
+            {
+                "order": 4,
                 "script_key": "preflight_supplement_operator_review_batch_file",
                 "gate_policy": "must_pass_before_reconcile",
                 "purpose": "confirm operator local batch is complete",
             },
             {
-                "order": 2,
+                "order": 5,
                 "script_key": "reconcile_supplement_operator_review_batch_files",
                 "gate_policy": "no_source_overwrite",
                 "purpose": "merge completed batch into reconciled queue copies",
@@ -429,6 +447,11 @@ def test_unblock_runbook_summarizes_pending_queues_without_paths(tmp_path: Path)
 
     assert payload["status"] == "blocked_by_operator_review"
     assert payload["objective_completion_allowed"] is False
+    assert "input_path_hashes" not in payload
+    assert all(
+        value.startswith("fp-") and len(value) == 11
+        for value in payload["input_path_fingerprints"].values()
+    )
     assert payload["current_next_batch_key"] == "brand_product_review:001"
     assert payload["total_blank_row_count"] == 188
     assert queue_by_key["brand_product_review"]["blank_row_count"] == 88
@@ -457,6 +480,12 @@ def test_unblock_runbook_summarizes_pending_queues_without_paths(tmp_path: Path)
         }
     ]
     assert payload["operator_sequence"][0]["next_action"] == "complete_brand_product_human_review"
+    assert payload["current_post_completion_steps"][0]["script_key"] == (
+        "preflight_supplement_brand_review_contact_sheet"
+    )
+    assert payload["current_post_completion_steps"][2]["gate_policy"] == (
+        "require_all_reviewed_no_source_overwrite"
+    )
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
     assert "/Users/" not in serialized
@@ -534,6 +563,8 @@ def test_unblock_runbook_cli_writes_json_and_markdown(
     assert "Queue Summary" in markdown
     assert "Gate Summary" in markdown
     assert "Batch Triage Summary" in markdown
+    assert "preflight_supplement_brand_review_contact_sheet" in markdown
+    assert "require_all_reviewed_no_source_overwrite" in markdown
     assert "p2_bbox_annotation_required" in markdown
     assert "blocked_by_pii_screening" in markdown
     assert payload["raw_ocr_text_stored"] is False

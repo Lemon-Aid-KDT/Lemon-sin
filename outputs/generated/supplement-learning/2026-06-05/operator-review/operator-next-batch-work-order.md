@@ -77,6 +77,7 @@ Schema: `supplement-operator-review-next-work-order-v1`
 - Rows without thumbnails: `0`
 - Thumbnail count: `127`
 - Contact sheet는 브랜드/제품명 검수용 시각 근거입니다. 보이는 텍스트를 notes에 복사하지 않습니다.
+- CSV apply는 contact-sheet preflight와 전체 row review가 끝난 뒤 별도 batch copy에만 수행합니다.
 
 ## Checklist
 
@@ -87,6 +88,10 @@ Schema: `supplement-operator-review-next-work-order-v1`
 
 ## Post Completion Gates
 
+- `preflight_contact_sheet_before_csv_apply`
+- `triage_review_csv_before_apply`
+- `apply_review_csv_only_with_require_all_reviewed`
+- `preflight_applied_batch_before_reconcile`
 - `reconcile_operator_batch_files`
 - `rerun_operator_batch_progress_preflight`
 - `extract_reviewed_brand_decisions_for_partial_manifest_preview`

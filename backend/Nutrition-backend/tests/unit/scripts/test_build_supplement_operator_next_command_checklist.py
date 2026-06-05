@@ -127,6 +127,14 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
     assert payload["batch_key"] == "brand_product_review:001"
     assert payload["batch_review_file_name"] == "brand_product_review-001.review.csv"
     assert payload["command_count"] == 10
+    assert payload["blocked_until"] == [
+        "operator_edits_current_batch",
+        "contact_sheet_preflight_ready_for_csv_apply",
+        "all_brand_review_csv_rows_reviewed",
+        "applied_batch_file_preflight_ready_for_reconcile",
+        "batch_file_preflight_ready_for_reconcile",
+        "strict_brand_review_complete_before_product_import",
+    ]
     assert commands[0].startswith(
         "backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_contact_sheet.py"
     )
@@ -147,6 +155,7 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
     assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[2]
     assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[2]
     assert "--require-all-reviewed" in commands[2]
+    assert payload["commands"][2]["gate_policy"] == "require_all_reviewed_no_source_overwrite"
     assert commands[3].startswith(
         "backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_batch_file.py"
     )

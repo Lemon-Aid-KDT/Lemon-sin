@@ -85,6 +85,7 @@ def test_plan_blocks_pending_brand_batch_and_lists_brand_gates(tmp_path: Path) -
         "build_supplement_brand_review_batch_triage",
         "apply_supplement_brand_batch_review_csv_decisions",
     ]
+    assert plan["steps"][2]["gate_policy"] == "require_all_reviewed_no_source_overwrite"
     assert script_keys[3:6] == [
         "preflight_supplement_operator_review_batch_file",
         "reconcile_supplement_operator_review_batch_files",
@@ -93,6 +94,10 @@ def test_plan_blocks_pending_brand_batch_and_lists_brand_gates(tmp_path: Path) -
     assert plan["step_count"] == 13
     assert "apply_supplement_brand_review_decisions" in script_keys
     assert "gate_supplement_product_db_apply" in script_keys
+    assert (
+        "brand_csv_apply_requires_contact_sheet_preflight_and_all_rows_reviewed"
+        in plan["common_safety_rules"]
+    )
     assert plan["db_write_performed"] is False
     assert plan["external_provider_call_performed"] is False
     assert plan["source_rows_read"] is False
@@ -119,6 +124,11 @@ def test_plan_allows_complete_pii_batch_without_teacher_ocr_call(tmp_path: Path)
     script_keys = [step["script_key"] for step in plan["steps"]]
     assert "apply_supplement_review_pii_screening_decisions" in script_keys
     assert "gate_supplement_ocr_benchmark" in script_keys
+    assert (
+        "brand_csv_apply_requires_contact_sheet_preflight_and_all_rows_reviewed"
+        not in plan["common_safety_rules"]
+    )
+    assert "never_apply_or_promote_until_strict_gate_passes" in plan["common_safety_rules"]
     assert plan["external_provider_call_performed"] is False
     assert plan["training_execution_performed_by_script"] is False
 

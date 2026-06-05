@@ -20,7 +20,7 @@ This plan uses script keys and artifact roles only. It omits shell paths, row pa
 | ---: | --- | --- | --- |
 | 1 | preflight_supplement_brand_review_contact_sheet | confirm csv and contact sheet row alignment | must_pass_before_csv_apply |
 | 2 | build_supplement_brand_review_batch_triage | summarize csv review priority without decisions | operator_review_helper_no_decision |
-| 3 | apply_supplement_brand_batch_review_csv_decisions | copy reviewed csv fields into batch jsonl | no_source_overwrite |
+| 3 | apply_supplement_brand_batch_review_csv_decisions | copy fully reviewed csv fields into a batch jsonl copy | require_all_reviewed_no_source_overwrite |
 | 4 | preflight_supplement_operator_review_batch_file | confirm operator local batch is complete | must_pass_before_reconcile |
 | 5 | reconcile_supplement_operator_review_batch_files | merge completed batch into reconciled queue copies | no_source_overwrite |
 | 6 | preflight_supplement_operator_review_batch_progress | confirm queue level batch progress after reconcile | must_pass_before_queue_preflight |
@@ -34,6 +34,7 @@ This plan uses script keys and artifact roles only. It omits shell paths, row pa
 
 ## Safety Rules
 
+- `brand_csv_apply_requires_contact_sheet_preflight_and_all_rows_reviewed`
 - `run_local_batch_preflight_first`
 - `run_reconcile_before_queue_preflight`
 - `never_apply_or_promote_until_strict_gate_passes`

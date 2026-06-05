@@ -238,9 +238,8 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
         ),
         "current_post_completion_steps": _post_completion_steps(post_plan),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
-        "input_path_hashes": {
-            key: progress_preflight._sha256_text(str(path.expanduser()))
-            for key, path in sorted(input_paths.items())
+        "input_path_fingerprints": {
+            key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
         },
         "db_write_performed": False,
         "external_provider_call_performed": False,
@@ -390,7 +389,8 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
     for row in _mapping_rows(runbook.get("current_post_completion_steps")):
         lines.append(
             f"- `{_non_negative_int(row.get('order'))}` "
-            f"`{_safe_string(row.get('script_key'))}`: {_safe_string(row.get('purpose'))}"
+            f"`{_safe_string(row.get('script_key'))}` "
+            f"(`{_safe_string(row.get('gate_policy'))}`): {_safe_string(row.get('purpose'))}"
         )
     lines.extend(
         [
@@ -756,6 +756,18 @@ def _source_doc_urls(*payloads: Mapping[str, Any]) -> list[str]:
             if url.startswith("https://") and url not in urls:
                 urls.append(url)
     return urls
+
+
+def _path_fingerprint(path: Path) -> str:
+    """Return a short non-secret path fingerprint for public artifacts.
+
+    Args:
+        path: Input path.
+
+    Returns:
+        Short fingerprint token.
+    """
+    return f"fp-{progress_preflight._sha256_text(str(path.expanduser()))[:8]}"
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:

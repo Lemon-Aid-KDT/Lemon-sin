@@ -336,6 +336,12 @@ def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> No
         "extract_reviewed_brand_decisions_for_partial_manifest_preview"
         in summary["post_completion_gates"]
     )
+    assert summary["post_completion_gates"][:4] == [
+        "preflight_contact_sheet_before_csv_apply",
+        "triage_review_csv_before_apply",
+        "apply_review_csv_only_with_require_all_reviewed",
+        "preflight_applied_batch_before_reconcile",
+    ]
     assert "rerun_brand_decision_preflight" in summary["post_completion_gates"]
     assert "brand_product_review-001.jsonl" in markdown
     assert "brand_product_review-001.review.csv" in markdown
@@ -345,6 +351,8 @@ def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> No
     assert "Batch Triage" in markdown
     assert "p2_duplicate_candidate_review" in markdown
     assert "row `21`" in markdown
+    assert "apply_review_csv_only_with_require_all_reviewed" in markdown
+    assert "전체 row review" in markdown
     assert "extract_reviewed_brand_decisions_for_partial_manifest_preview" in markdown
     assert str(tmp_path) not in dumped
     assert "/Volumes/" not in dumped

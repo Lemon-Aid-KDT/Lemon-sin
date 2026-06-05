@@ -5,7 +5,11 @@
   "batch_review_file_name": "brand_product_review-001.review.csv",
   "blocked_until": [
     "operator_edits_current_batch",
-    "batch_file_preflight_ready_for_reconcile"
+    "contact_sheet_preflight_ready_for_csv_apply",
+    "all_brand_review_csv_rows_reviewed",
+    "applied_batch_file_preflight_ready_for_reconcile",
+    "batch_file_preflight_ready_for_reconcile",
+    "strict_brand_review_complete_before_product_import"
   ],
   "command_count": 10,
   "commands": [
@@ -25,9 +29,9 @@
     },
     {
       "command": "backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py --batch-file outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.jsonl --batch-review-csv outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.review.csv --output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl --summary-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.summary.json --markdown-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.md --reviewer-id operator_batch --reviewed-at-safe-token operator_csv_review --attest-brand-product-review-completed --attest-not-using-product-folder-literal-as-manufacturer --attest-product-name-reviewed-from-label-or-safe-catalog --attest-no-raw-ocr-or-provider-payload-copied --attest-db-import-allowed --require-all-reviewed",
-      "gate_policy": "no_source_overwrite",
+      "gate_policy": "require_all_reviewed_no_source_overwrite",
       "order": 3,
-      "purpose": "Apply the operator CSV review into a separate batch JSONL copy without overwriting the source batch.",
+      "purpose": "Apply only a fully reviewed operator CSV into a separate batch JSONL copy without overwriting the source batch.",
       "script_key": "apply_supplement_brand_batch_review_csv_decisions"
     },
     {
@@ -82,7 +86,7 @@
   ],
   "db_write_performed": false,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T03:07:37.471514+00:00",
+  "generated_at": "2026-06-05T03:26:14.429880+00:00",
   "input_names": {
     "next_work_order": "operator-next-batch-work-order.json",
     "post_completion_plan": "operator-post-completion-command-plan.json"

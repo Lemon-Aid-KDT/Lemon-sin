@@ -26,7 +26,7 @@
   "db_write_performed": false,
   "expected_row_count": 50,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T02:56:38.221472+00:00",
+  "generated_at": "2026-06-05T03:20:29.187980+00:00",
   "input_names": {
     "batch_progress": "operator-review-batch-progress.json",
     "batch_triage": "brand_product_review-001.triage.json",
@@ -51,6 +51,10 @@
   ],
   "pending_row_count": 0,
   "post_completion_gates": [
+    "preflight_contact_sheet_before_csv_apply",
+    "triage_review_csv_before_apply",
+    "apply_review_csv_only_with_require_all_reviewed",
+    "preflight_applied_batch_before_reconcile",
     "reconcile_operator_batch_files",
     "rerun_operator_batch_progress_preflight",
     "extract_reviewed_brand_decisions_for_partial_manifest_preview",

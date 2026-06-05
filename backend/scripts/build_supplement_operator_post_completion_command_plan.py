@@ -172,12 +172,7 @@ def build_post_completion_command_plan(*, input_paths: Mapping[str, Path]) -> di
         "row_counts": counts,
         "step_count": len(queue_steps),
         "steps": queue_steps,
-        "common_safety_rules": [
-            "run_local_batch_preflight_first",
-            "run_reconcile_before_queue_preflight",
-            "never_apply_or_promote_until_strict_gate_passes",
-            "keep_raw_ocr_provider_payload_and_local_paths_out_of_outputs",
-        ],
+        "common_safety_rules": _common_safety_rules(queue_key),
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -278,10 +273,10 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
             _step(
                 3,
                 "apply_supplement_brand_batch_review_csv_decisions",
-                "copy reviewed csv fields into batch jsonl",
+                "copy fully reviewed csv fields into a batch jsonl copy",
                 ("operator_batch_file", "batch_review_csv"),
                 ("operator_batch_jsonl_copy", "csv_apply_summary"),
-                "no_source_overwrite",
+                "require_all_reviewed_no_source_overwrite",
             ),
         ]
         common = _common_steps(start_order=4)
@@ -440,6 +435,29 @@ def _queue_steps(queue_key: str) -> list[dict[str, Any]]:
         ]
         return common + specific
     raise PostCompletionPlanError("Unsupported queue key.")
+
+
+def _common_safety_rules(queue_key: str) -> list[str]:
+    """Return safety rules that apply to one queue.
+
+    Args:
+        queue_key: Queue key.
+
+    Returns:
+        Ordered safe rule tokens.
+    """
+    rules = [
+        "run_local_batch_preflight_first",
+        "run_reconcile_before_queue_preflight",
+        "never_apply_or_promote_until_strict_gate_passes",
+        "keep_raw_ocr_provider_payload_and_local_paths_out_of_outputs",
+    ]
+    if queue_key == "brand_product_review":
+        return [
+            "brand_csv_apply_requires_contact_sheet_preflight_and_all_rows_reviewed",
+            *rules,
+        ]
+    return rules
 
 
 def _common_steps(*, start_order: int) -> list[dict[str, Any]]:

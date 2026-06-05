@@ -445,7 +445,11 @@ def _blocked_until(queue_key: str) -> list[str]:
         ]
     return [
         "operator_edits_current_batch",
+        "contact_sheet_preflight_ready_for_csv_apply",
+        "all_brand_review_csv_rows_reviewed",
+        "applied_batch_file_preflight_ready_for_reconcile",
         "batch_file_preflight_ready_for_reconcile",
+        "strict_brand_review_complete_before_product_import",
     ]
 
 
@@ -625,10 +629,10 @@ def _brand_review_csv_apply_commands(
             order=start_order,
             script_key="apply_supplement_brand_batch_review_csv_decisions",
             purpose=(
-                "Apply the operator CSV review into a separate batch JSONL copy "
+                "Apply only a fully reviewed operator CSV into a separate batch JSONL copy "
                 "without overwriting the source batch."
             ),
-            gate_policy="no_source_overwrite",
+            gate_policy="require_all_reviewed_no_source_overwrite",
             command=(
                 f"{paths['python']} backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py "
                 f"--batch-file {paths['source_batch_file']} "

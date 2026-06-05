@@ -30,13 +30,13 @@ backend/.venv/bin/python backend/scripts/build_supplement_brand_review_batch_tri
 
 ### 3. apply_supplement_brand_batch_review_csv_decisions
 
-Apply the operator CSV review into a separate batch JSONL copy without overwriting the source batch.
+Apply only a fully reviewed operator CSV into a separate batch JSONL copy without overwriting the source batch.
 
 ```sh
 backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py --batch-file outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.jsonl --batch-review-csv outputs/generated/supplement-learning/2026-06-05/operator-review/batches/brand_product_review-001.review.csv --output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl --summary-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.summary.json --markdown-output outputs/generated/supplement-learning/2026-06-05/operator-review/batches-applied/brand_product_review-001.jsonl.csv-apply.md --reviewer-id operator_batch --reviewed-at-safe-token operator_csv_review --attest-brand-product-review-completed --attest-not-using-product-folder-literal-as-manufacturer --attest-product-name-reviewed-from-label-or-safe-catalog --attest-no-raw-ocr-or-provider-payload-copied --attest-db-import-allowed --require-all-reviewed
 ```
 
-- Gate policy: `no_source_overwrite`
+- Gate policy: `require_all_reviewed_no_source_overwrite`
 
 ### 4. preflight_supplement_operator_review_batch_file
 

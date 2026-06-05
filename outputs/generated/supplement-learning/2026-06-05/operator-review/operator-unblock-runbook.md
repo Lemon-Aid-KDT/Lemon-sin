@@ -44,16 +44,19 @@
 
 ## Current Post-Completion Gates
 
-- `1` `preflight_supplement_operator_review_batch_file`: confirm operator local batch is complete
-- `2` `reconcile_supplement_operator_review_batch_files`: merge completed batch into reconciled queue copies
-- `3` `preflight_supplement_operator_review_batch_progress`: confirm queue level batch progress after reconcile
-- `4` `extract_supplement_brand_reviewed_decisions`: separate reviewed brand decisions from blank queue stubs
-- `5` `preflight_supplement_brand_review_decisions`: check strict brand decision readiness
-- `6` `gate_supplement_brand_db_import`: gate product import manifest preparation
-- `7` `apply_supplement_brand_review_decisions`: create approved product import manifest
-- `8` `import_supplement_taxonomy_approved_manifest`: dry run category product and mapping import
-- `9` `gate_supplement_product_db_apply`: gate reviewed product db apply
-- `10` `verify_supplement_taxonomy_db_import`: verify imported categories products and mappings
+- `1` `preflight_supplement_brand_review_contact_sheet` (`must_pass_before_csv_apply`): confirm csv and contact sheet row alignment
+- `2` `build_supplement_brand_review_batch_triage` (`operator_review_helper_no_decision`): summarize csv review priority without decisions
+- `3` `apply_supplement_brand_batch_review_csv_decisions` (`require_all_reviewed_no_source_overwrite`): copy fully reviewed csv fields into a batch jsonl copy
+- `4` `preflight_supplement_operator_review_batch_file` (`must_pass_before_reconcile`): confirm operator local batch is complete
+- `5` `reconcile_supplement_operator_review_batch_files` (`no_source_overwrite`): merge completed batch into reconciled queue copies
+- `6` `preflight_supplement_operator_review_batch_progress` (`must_pass_before_queue_preflight`): confirm queue level batch progress after reconcile
+- `7` `extract_supplement_brand_reviewed_decisions` (`partial_preview_only`): separate reviewed brand decisions from blank queue stubs
+- `8` `preflight_supplement_brand_review_decisions` (`strict_zero_blank_pending_invalid_required`): check strict brand decision readiness
+- `9` `gate_supplement_brand_db_import` (`must_pass_before_product_manifest`): gate product import manifest preparation
+- `10` `apply_supplement_brand_review_decisions` (`dry_run_or_manifest_only_before_db_gate`): create approved product import manifest
+- `11` `import_supplement_taxonomy_approved_manifest` (`dry_run_before_product_db_apply`): dry run category product and mapping import
+- `12` `gate_supplement_product_db_apply` (`must_pass_before_db_apply`): gate reviewed product db apply
+- `13` `verify_supplement_taxonomy_db_import` (`read_only_after_apply`): verify imported categories products and mappings
 
 ## Safety
 
