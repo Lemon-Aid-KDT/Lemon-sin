@@ -125,6 +125,36 @@ async def _memory_context(*_args: object, **_kwargs: object) -> dict[str, object
                 "algorithm_version": "agent-memory-summary-v1.0.0",
             }
         ],
+        "memory_bundle": {
+            "profile_memory": [
+                {
+                    "summary_json": {
+                        "summary": "두부와 닭가슴살을 선호한다고 말함.",
+                        "confidence": "user_reported",
+                        "source_kind": "chat_summary",
+                        "raw_prompt": "hidden prompt",
+                    }
+                }
+            ],
+            "behavior_memory": [],
+            "conversation_memory": [
+                {
+                    "summary_json": {
+                        "summary": "최근 대화에서 나트륨 조절을 우선순위로 둠.",
+                        "provider_payload": {"messages": ["hidden"]},
+                    }
+                }
+            ],
+            "safety_memory": [
+                {
+                    "summary_json": {
+                        "summary": "혈압약 복용을 사용자 보고로 언급함.",
+                        "confidence": "user_reported",
+                        "source_kind": "chat_summary",
+                    }
+                }
+            ],
+        },
     }
 
 
@@ -610,9 +640,25 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
     assert "Internal context for grounding only" in captured[
         "llm_request"
     ].messages[1].content
+    assert "User-reported memory context" in captured["llm_request"].messages[1].content
+    assert "프로필 메모리: 두부와 닭가슴살을 선호한다고 말함." in captured[
+        "llm_request"
+    ].messages[1].content
+    assert "대화 요약: 최근 대화에서 나트륨 조절을 우선순위로 둠." in captured[
+        "llm_request"
+    ].messages[1].content
+    assert "주의 메모리: 혈압약 복용을 사용자 보고로 언급함." in captured[
+        "llm_request"
+    ].messages[1].content
+    assert "confirmed app record가 아닌 낮은 강도 참고 정보" in captured[
+        "llm_request"
+    ].messages[1].content
     assert "internal_trace" not in captured["llm_request"].messages[1].content
     assert "supplement totals" not in captured["llm_request"].messages[1].content
     assert "summary_json" not in captured["llm_request"].messages[1].content
+    assert "raw_prompt" not in captured["llm_request"].messages[1].content
+    assert "provider_payload" not in captured["llm_request"].messages[1].content
+    assert "hidden prompt" not in captured["llm_request"].messages[1].content
 
 
 def test_chat_route_preview_context_does_not_persist_daily_coaching_run(

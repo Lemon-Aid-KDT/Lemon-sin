@@ -321,6 +321,73 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
     assert client.request.temperature == 0.1
 
 
+def test_chatbot_prompt_uses_v2_memory_bundle_as_low_confidence_grounding() -> None:
+    """Verify compact Agent memory is prompt grounding, not a confirmed app record."""
+    request = _request()
+    request.context["agent_memory"] = {
+        "schema_version": "agent-memory-summary-v1",
+        "summaries": [],
+        "memory_bundle": {
+            "profile_memory": [
+                {
+                    "summary_json": {
+                        "summary": "두부와 닭가슴살을 선호한다고 말함.",
+                        "confidence": "user_reported",
+                        "source_kind": "chat_summary",
+                        "raw_prompt": "hidden prompt",
+                    }
+                }
+            ],
+            "behavior_memory": [
+                {
+                    "summary_json": {
+                        "summary": "야식 후 다음 끼니 조절을 자주 물어봄.",
+                        "confidence": "inferred",
+                        "source_kind": "conversation_summary",
+                    }
+                }
+            ],
+            "conversation_memory": [
+                {
+                    "summary_json": {
+                        "summary": "최근 대화에서 나트륨 조절을 우선순위로 둠.",
+                        "provider_payload": {"messages": ["hidden"]},
+                    }
+                }
+            ],
+            "safety_memory": [
+                {
+                    "summary_json": {
+                        "summary": "혈압약 복용을 사용자 보고로 언급함.",
+                        "confidence": "user_reported",
+                        "source_kind": "chat_summary",
+                    }
+                }
+            ],
+        },
+    }
+    client = _CapturingLLMClient()
+
+    response = ChatbotAgent(llm_client=client).answer(request)
+
+    assert response.provider == "fake"
+    assert client.request is not None
+    user_prompt = client.request.messages[1].content
+    assert "User-reported memory context" in user_prompt
+    assert "프로필 메모리: 두부와 닭가슴살을 선호한다고 말함." in user_prompt
+    assert "행동 메모리: 야식 후 다음 끼니 조절을 자주 물어봄." in user_prompt
+    assert "대화 요약: 최근 대화에서 나트륨 조절을 우선순위로 둠." in user_prompt
+    assert "주의 메모리: 혈압약 복용을 사용자 보고로 언급함." in user_prompt
+    assert "confirmed app record가 아닌 낮은 강도 참고 정보" in user_prompt
+    assert "confidence=user_reported" in user_prompt
+    assert "source=chat_summary" in user_prompt
+    assert "summary_json" not in user_prompt
+    assert "raw_prompt" not in user_prompt
+    assert "provider_payload" not in user_prompt
+    assert "messages" not in user_prompt
+    assert "hidden prompt" not in user_prompt
+
+
 def test_chatbot_prompt_includes_confirmed_food_nutrient_grounding() -> None:
     """Verify confirmed meal nutrients are supplied to the LLM as grounding."""
     client = _CapturingLLMClient(

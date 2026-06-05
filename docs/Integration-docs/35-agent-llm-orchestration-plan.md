@@ -298,6 +298,57 @@ Blocked 조건:
   - 팀 의존 질문과 독립 구현 작업이 분리되어 있다.
   - 코드 수정 전에 건드리면 안 되는 영역과 테스트 명령이 명시되어 있다.
 
+### Touchpoint Map: Agent/LLM full vertical integration Day 3
+
+- 목표:
+  - Day 2에서 만든 `profile_memory`, `behavior_memory`, `conversation_memory`,
+    `safety_memory` bundle을 `/api/v1/ai-agent/chat`의 grounding context에 연결한다.
+  - chat-derived memory는 사용자 보고/요약 정보로 낮은 강도로만 반영하고, 공식 음식/영양제/복약
+    DB record처럼 확정 표현하지 않는다.
+- 기준 문서:
+  - Agent/LLM memory 설계: [29](./29-agent-llm-tdd.md), [30](./30-agent-llm-todo.md)
+  - 팀 통합 I/O 계약과 readiness: [33](./33-agent-llm-team-integration-contract.md), [34](./34-agent-llm-readiness-audit.md)
+  - Day 1/2 실행 gate: [35](./35-agent-llm-orchestration-plan.md)
+  - 기존 grounded chatbot 기준: [05](./05-grounded-chatbot-prd.md), [06](./06-grounded-chatbot-tdd.md), [08](./08-grounded-chatbot-trd.md), [10](./10-grounded-chatbot-gap-review.md)
+- 건드릴 가능성이 있는 backend 영역:
+  - `backend/ai_agent_chat/src/lemon_ai_agent/agents/chatbot.py`
+  - `backend/ai_agent_chat/tests/test_chatbot_agent.py`
+  - `backend/Nutrition-backend/tests/integration/api/test_ai_agent_api.py`
+- 건드릴 가능성이 있는 DB/migration 영역:
+  - 없다. Day 2의 service-level `memory_bundle` 계약을 소비한다.
+- 건드릴 가능성이 있는 mobile/API contract:
+  - response DTO는 바꾸지 않는다.
+  - `used_tools`의 `agent_memory` 유지와 internal prompt/context raw-free 보장을 확인한다.
+- 기존 grounded chatbot 문서 확인 필요 여부:
+  - 필요하다. `AnswerCard`, reviewed evidence, boundary/unknown renderer의 source of truth를 재정의하지 않는다.
+- 팀 브랜치에서 확인할 후보:
+  - 없다. Day 3는 팀 브랜치 merge/cherry-pick 없이 현 worktree의 memory retrieval 소비만 구현한다.
+- migration 필요 여부:
+  - 없다.
+- 테스트/smoke 명령:
+  - RED/GREEN:
+    - `python -m pytest -q --no-cov backend/ai_agent_chat/tests/test_chatbot_agent.py`
+    - `python -m pytest -q --no-cov backend/Nutrition-backend/tests/integration/api/test_ai_agent_api.py`
+  - 회귀:
+    - `python -m pytest -q --no-cov backend/Nutrition-backend/tests/unit/services/test_agent_memory.py backend/Nutrition-backend/tests/unit/db/test_models.py backend/ai_agent_chat/tests/test_agent_memory_context.py`
+    - `python backend/scripts/eval_chatbot_golden.py`
+- 건드리면 안 되는 영역:
+  - 공식 음식/영양제/복약 DB 자동 수정
+  - raw chat 전문, raw prompt, raw OCR, raw LLM output, provider payload의 prompt/API 노출
+  - chat-derived memory를 confirmed app record와 같은 priority로 승격
+  - reviewed evidence, `AnswerCard`, boundary/unknown renderer의 source of truth 변경
+  - 팀 브랜치 직접 merge 또는 cherry-pick
+- 연결된 Future Risk 항목:
+  - Conversation session 관리
+  - Privacy/deletion
+  - Multi-device/concurrency
+  - Medical boundary drift
+- 완료 조건:
+  - LLM prompt/grounding context에 4종 memory summary가 raw-free 형태로 들어간다.
+  - confidence/provenance가 사용자 보고 또는 요약 memory로 표시되어 확정 기록과 구분된다.
+  - 공식 음식/영양제/복약 DB는 chat 발화만으로 자동 수정되지 않는다.
+  - memory context 관련 unit/integration smoke와 golden eval이 통과한다.
+
 ## 8. Future Risk Register
 
 분류:
@@ -410,16 +461,27 @@ Day 2 실행 기록:
 
 ### Day 3. Memory retrieval과 chat context 연결
 
-- [ ] `profile`, `behavior`, `conversation`, `safety` memory retrieval을 chat context에 연결한다.
-- [ ] confidence/provenance가 답변 표현에 낮은 강도로 반영되는지 확인한다.
-- [ ] chat-derived memory와 confirmed app record가 섞이지 않게 한다.
-- [ ] 기존 grounded chatbot 흐름과 충돌하는지 05~10, 17~22 기준으로 확인한다.
+- [x] `profile`, `behavior`, `conversation`, `safety` memory retrieval을 chat context에 연결한다.
+- [x] confidence/provenance가 답변 표현에 낮은 강도로 반영되는지 확인한다.
+- [x] chat-derived memory와 confirmed app record가 섞이지 않게 한다.
+- [x] 기존 grounded chatbot 흐름과 충돌하는지 05~10, 17~22 기준으로 확인한다.
 
 Day 3 완료 gate:
 
-- [ ] Agent chat에서 memory context가 사용된다.
-- [ ] 공식 음식/영양제/복약 DB가 chat 발화만으로 자동 수정되지 않는다.
-- [ ] memory context 관련 smoke가 통과한다.
+- [x] Agent chat에서 memory context가 사용된다.
+- [x] 공식 음식/영양제/복약 DB가 chat 발화만으로 자동 수정되지 않는다.
+- [x] memory context 관련 smoke가 통과한다.
+
+Day 3 실행 기록:
+
+| 항목 | Day 3 판정 |
+| --- | --- |
+| 구현 위치 | `ChatbotAgent`가 `agent_memory.memory_bundle`을 `User-reported memory context` prompt section과 safety grounding context에 raw-free 요약으로 연결한다. |
+| memory 표현 강도 | `confidence`, `source_kind`를 함께 표시하고 `confirmed app record가 아닌 낮은 강도 참고 정보` 문구로 공식 DB record와 구분한다. |
+| raw/internal exclusion | `summary_json`, `raw_prompt`, `provider_payload`, `messages` 같은 internal key와 hidden payload는 prompt에 노출하지 않는다. |
+| API contract 영향 | `/api/v1/ai-agent/chat` response DTO는 변경하지 않고 `agent_memory` used tool과 internal prompt safety만 보강했다. |
+| DB/migration 영향 | 없다. Day 2의 기존 `agent_memory` service-level bundle 계약을 소비한다. |
+| 회귀 기준 | `test_chatbot_agent.py`, `test_ai_agent_api.py`, Day 2 memory unit tests, deterministic golden eval을 회귀 검증 대상으로 확인한다. |
 
 ### Day 4. Confirmed context adapter
 
@@ -515,10 +577,10 @@ Day 10 완료 gate:
 
 ## 11. 다음 실행 기준
 
-현재 기준의 다음 실행 후보는 Day 3다.
+현재 기준의 다음 실행 후보는 Day 4다.
 
-다음 구현은 `profile_memory`, `behavior_memory`, `conversation_memory`, `safety_memory`
-retrieval을 chat context 선택 규칙에 연결하는 것이다. Day 3에서는 chat-derived memory와
-confirmed app record가 섞이지 않게 하고, 공식 음식/영양제/복약 DB가 chat 발화만으로 자동
-수정되지 않는 test를 먼저 고정한다. confirmed context adapter, mobile response contract,
-runtime smoke 준비는 위 Day 2~3 track 경계에 따라 계속 병렬 추적한다.
+다음 구현은 음식/영양제/복약 confirmed record adapter를 연결하는 것이다. Day 4에서는
+팀 브랜치를 바로 merge하지 않고 33번 계약과 34번 readiness 기준으로 후보 필드만 확인한다.
+OCR/YOLO/LLM preview와 unconfirmed 후보는 Agent context에서 확정 기록으로 쓰이지 않도록
+preview/candidate exclusion test를 먼저 고정한다. mobile response contract와 runtime smoke는
+Day 5 이후 gate로 계속 병렬 추적한다.

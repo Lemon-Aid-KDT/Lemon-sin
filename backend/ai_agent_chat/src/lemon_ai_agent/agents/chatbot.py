@@ -100,6 +100,27 @@ STRUCTURED_RESPONSE_FORMAT: dict[str, Any] = {
 DIABETES_CONTEXT_TERMS = ("당뇨", "혈당", "diabetes", "glucose")
 HYPERTENSION_CONTEXT_TERMS = ("고혈압", "혈압", "hypertension", "blood pressure")
 KIDNEY_CONTEXT_TERMS = ("콩팥", "신장", "kidney", "renal")
+MEMORY_BUNDLE_LABELS = {
+    "profile_memory": "프로필 메모리",
+    "behavior_memory": "행동 메모리",
+    "conversation_memory": "대화 요약",
+    "safety_memory": "주의 메모리",
+}
+INTERNAL_MEMORY_TOKENS = (
+    "authorization",
+    "full_prompt",
+    "messages",
+    "original_transcript",
+    "prompt",
+    "provider_payload",
+    "raw_image",
+    "raw_llm_response",
+    "raw_ocr_text",
+    "raw_prompt",
+    "raw_provider_payload",
+    "raw_transcript",
+    "summary_json",
+)
 
 
 class ChatbotAgent:
@@ -347,6 +368,7 @@ class ChatbotAgent:
         )
         summary = self._safe_summary(request.context) or "none"
         confirmed_foods = self._confirmed_food_summary(request.context) or "none"
+        memory_summary = self._agent_memory_summary(request.context) or "none"
 
         return LLMRequest(
             messages=[
@@ -411,6 +433,9 @@ class ChatbotAgent:
                         f"Recent conversation:\n{history or 'none'}\n"
                         "Confirmed meal and nutrient context:\n"
                         f"{confirmed_foods}\n"
+                        "User-reported memory context "
+                        "(confirmed app record가 아닌 낮은 강도 참고 정보):\n"
+                        f"{memory_summary}\n"
                         "Internal context for grounding only; do not quote or mention "
                         f"internal keys: {summary}"
                     ),
@@ -430,6 +455,60 @@ class ChatbotAgent:
             return ""
         return raw_summary.strip()
 
+    def _agent_memory_summary(self, context: dict[str, object]) -> str:
+        memory = context.get("agent_memory")
+        if not isinstance(memory, dict):
+            return ""
+        bundle = memory.get("memory_bundle")
+        if not isinstance(bundle, dict):
+            return ""
+
+        lines: list[str] = []
+        for memory_type, label in MEMORY_BUNDLE_LABELS.items():
+            records = bundle.get(memory_type)
+            if not isinstance(records, list):
+                continue
+            for record in records[:2]:
+                line = self._agent_memory_record_summary(label, record)
+                if line:
+                    lines.append(line)
+                if len(lines) >= 6:
+                    return "\n".join(lines)
+        return "\n".join(lines)
+
+    def _agent_memory_record_summary(self, label: str, record: object) -> str:
+        if not isinstance(record, dict):
+            return ""
+        summary_json = record.get("summary_json")
+        if not isinstance(summary_json, dict):
+            return ""
+        summary = self._safe_memory_text(summary_json.get("summary"))
+        if not summary:
+            return ""
+
+        metadata = []
+        confidence = self._safe_memory_text(summary_json.get("confidence"))
+        source = self._safe_memory_text(summary_json.get("source_kind"))
+        if confidence:
+            metadata.append(f"confidence={confidence}")
+        if source:
+            metadata.append(f"source={source}")
+        metadata.append("confirmed app record가 아닌 낮은 강도 참고 정보")
+        return f"{label}: {summary} ({'; '.join(metadata)})"
+
+    def _safe_memory_text(self, value: object) -> str:
+        if not isinstance(value, str):
+            return ""
+        stripped = " ".join(value.strip().split())
+        if not stripped:
+            return ""
+        if any(token in stripped.casefold() for token in INTERNAL_MEMORY_TOKENS):
+            return ""
+        check = self._safety_guard.check_text(stripped)
+        if not check.allowed:
+            return ""
+        return stripped[:240]
+
     def _grounding_context(
         self,
         turn: ChatTurnPlan,
@@ -437,6 +516,7 @@ class ChatbotAgent:
         request = turn.request
         conversation = "\n".join(turn.content for turn in request.conversation[-6:])
         summary = self._safe_summary(request.context)
+        memory_summary = self._agent_memory_summary(request.context)
         confirmed_foods = self._confirmed_food_summary(request.context)
         knowledge = "\n".join(item.concrete_guidance for item in turn.knowledge_items)
         cards = "\n".join(self._answer_card_text(card) for card in turn.answer_cards)
@@ -445,6 +525,7 @@ class ChatbotAgent:
                 request.message,
                 conversation,
                 summary,
+                memory_summary,
                 confirmed_foods,
                 knowledge,
                 cards,
