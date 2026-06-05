@@ -303,11 +303,78 @@ def _gate_payload(gate_key: str) -> dict[str, Any]:
     }
 
 
+def _triage_payload(triage_key: str) -> dict[str, Any]:
+    """Build a current-batch triage fixture.
+
+    Args:
+        triage_key: Optional triage key from the runbook input mapping.
+
+    Returns:
+        Triage payload fixture.
+    """
+    base = {
+        "automatic_decision_performed": False,
+        "db_write_performed": False,
+        "external_provider_call_performed": False,
+        "ocr_provider_call_performed": False,
+        "llm_call_performed": False,
+        "source_image_read_performed": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "absolute_paths_stored": False,
+        "product_dir_literals_stored": False,
+        "local_path_literals_stored": False,
+        "source_doc_urls": ["https://docs.python.org/3/library/json.html"],
+    }
+    if triage_key == "brand_product_review_triage":
+        return {
+            **base,
+            "schema_version": runbook.OPTIONAL_TRIAGE_SCHEMAS[triage_key],
+            "batch_review_csv_name": "brand_product_review-001.review.csv",
+            "row_count": 50,
+            "blank_decision_row_count": 50,
+            "reviewed_row_count": 0,
+            "priority_counts": {"p1_evidence_check": 2, "p2_duplicate_candidate_review": 48},
+            "reason_counts": {"blank_decision": 50, "duplicate_candidate_in_batch": 48},
+            "row_hints": [
+                {
+                    "row_index": 2,
+                    "priority": "p1_evidence_check",
+                    "reason_codes": ["blank_decision"],
+                }
+            ],
+            "operator_next_steps": ["complete_blank_decisions_in_review_csv"],
+        }
+    queue_key = triage_key.removesuffix("_triage")
+    reason_key = "blank_boxes" if queue_key == "yolo_section_annotation" else "blank_decision"
+    priority_key = (
+        "p2_bbox_annotation_required"
+        if queue_key == "yolo_section_annotation"
+        else "p2_privacy_screening_required"
+    )
+    return {
+        **base,
+        "schema_version": runbook.OPTIONAL_TRIAGE_SCHEMAS[triage_key],
+        "queue_key": queue_key,
+        "batch_file_name": f"{queue_key}-001.jsonl",
+        "row_count": 50,
+        "blank_row_count": 50,
+        "valid_row_count": 0,
+        "pending_row_count": 0,
+        "invalid_row_count": 0,
+        "priority_counts": {priority_key: 50},
+        "reason_counts": {reason_key: 50},
+        "row_hints": [{"row_index": 1, "priority": priority_key, "reason_code": reason_key}],
+        "operator_next_steps": ["complete_operator_review"],
+    }
+
+
 def _write_inputs(
     tmp_path: Path,
     *,
     complete: bool = False,
     include_gates: bool = False,
+    include_triage: bool = False,
 ) -> dict[str, Path]:
     """Write all runbook input fixtures.
 
@@ -315,6 +382,7 @@ def _write_inputs(
         tmp_path: Temporary directory.
         complete: Whether fixtures represent complete state.
         include_gates: Whether optional downstream gate fixtures are included.
+        include_triage: Whether optional current-batch triage fixtures are included.
 
     Returns:
         Input path mapping.
@@ -340,17 +408,24 @@ def _write_inputs(
                 tmp_path / f"{gate_key}.json",
                 _gate_payload(gate_key),
             )
+    if include_triage:
+        for triage_key in runbook.OPTIONAL_TRIAGE_SCHEMAS:
+            inputs[triage_key] = _write_json(
+                tmp_path / f"{triage_key}.json",
+                _triage_payload(triage_key),
+            )
     return inputs
 
 
 def test_unblock_runbook_summarizes_pending_queues_without_paths(tmp_path: Path) -> None:
     """Verify pending queue summary and sequence are redacted."""
-    input_paths = _write_inputs(tmp_path, include_gates=True)
+    input_paths = _write_inputs(tmp_path, include_gates=True, include_triage=True)
 
     payload = runbook.build_operator_unblock_runbook(input_paths=input_paths)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     queue_by_key = {row["queue_key"]: row for row in payload["queue_summaries"]}
     gate_by_key = {row["gate_key"]: row for row in payload["gate_summaries"]}
+    triage_by_key = {row["queue_key"]: row for row in payload["triage_summaries"]}
 
     assert payload["status"] == "blocked_by_operator_review"
     assert payload["objective_completion_allowed"] is False
@@ -368,6 +443,19 @@ def test_unblock_runbook_summarizes_pending_queues_without_paths(tmp_path: Path)
         "db_import_apply_allowed_now": False,
         "product_import_manifest_allowed": False,
     }
+    assert triage_by_key["brand_product_review"]["priority_counts"] == {
+        "p1_evidence_check": 2,
+        "p2_duplicate_candidate_review": 48,
+    }
+    assert triage_by_key["review_pii_screening"]["blank_row_count"] == 50
+    assert triage_by_key["yolo_section_annotation"]["reason_counts"] == {"blank_boxes": 50}
+    assert triage_by_key["brand_product_review"]["row_hints"] == [
+        {
+            "row_index": 2,
+            "priority": "p1_evidence_check",
+            "reason_codes": ["blank_decision"],
+        }
+    ]
     assert payload["operator_sequence"][0]["next_action"] == "complete_brand_product_human_review"
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
@@ -404,7 +492,7 @@ def test_unblock_runbook_cli_writes_json_and_markdown(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Verify CLI writes redacted JSON and Markdown."""
-    input_paths = _write_inputs(tmp_path, include_gates=True)
+    input_paths = _write_inputs(tmp_path, include_gates=True, include_triage=True)
     output_path = tmp_path / "runbook.json"
     markdown_path = tmp_path / "runbook.md"
 
@@ -424,6 +512,12 @@ def test_unblock_runbook_cli_writes_json_and_markdown(
             str(input_paths["ocr_benchmark_gate"]),
             "--yolo-section-dataset-gate",
             str(input_paths["yolo_section_dataset_gate"]),
+            "--brand-product-review-triage",
+            str(input_paths["brand_product_review_triage"]),
+            "--review-pii-screening-triage",
+            str(input_paths["review_pii_screening_triage"]),
+            "--yolo-section-annotation-triage",
+            str(input_paths["yolo_section_annotation_triage"]),
             "--output",
             str(output_path),
             "--markdown-output",
@@ -439,6 +533,8 @@ def test_unblock_runbook_cli_writes_json_and_markdown(
     assert "# Supplement Operator Unblock Runbook" in markdown
     assert "Queue Summary" in markdown
     assert "Gate Summary" in markdown
+    assert "Batch Triage Summary" in markdown
+    assert "p2_bbox_annotation_required" in markdown
     assert "blocked_by_pii_screening" in markdown
     assert payload["raw_ocr_text_stored"] is False
     for redacted_output in (stdout, json.dumps(payload, ensure_ascii=False), markdown):

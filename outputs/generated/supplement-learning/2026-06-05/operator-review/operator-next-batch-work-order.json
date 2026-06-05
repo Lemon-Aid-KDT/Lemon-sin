@@ -26,14 +26,16 @@
   "db_write_performed": false,
   "expected_row_count": 50,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-04T20:37:51.878493+00:00",
+  "generated_at": "2026-06-05T01:12:52.023864+00:00",
   "input_names": {
     "batch_progress": "operator-review-batch-progress.json",
+    "batch_triage": "brand_product_review-001.triage.json",
     "readiness": "supplement-learning-pipeline-readiness.json",
     "workpack_summary": "summary.json"
   },
   "input_path_hashes": {
     "batch_progress": "69fddb669b7be6e0482856a391823feadc512da1e9ce6dad560a50d99782dd5f",
+    "batch_triage": "73c570a643d757642dbf924dfc0e0ecf0e6a59cf365ee67847e40c827c2ae3de",
     "readiness": "4e6bd5af66b6827766c2d5e72b792abf8c81d1f447573a490fbd9c9fb73106c2",
     "workpack_summary": "724fda1f52a0b18cd4b9347ff607255f0aad3af50e6c7a1edf8388ccdb47b96c"
   },
@@ -74,6 +76,114 @@
   "status": "pending_operator_review",
   "total_blank_row_count": 808,
   "training_execution_performed_by_script": false,
+  "triage_summary": {
+    "blank_row_count": 50,
+    "input_name": "brand_product_review-001.triage.json",
+    "operator_next_steps": [
+      "verify_low_evidence_rows_in_contact_sheet",
+      "review_duplicate_candidate_rows_together",
+      "complete_blank_decisions_in_review_csv",
+      "run_apply_brand_batch_review_csv_decisions",
+      "run_batch_file_preflight_before_reconcile"
+    ],
+    "priority_counts": {
+      "p1_evidence_check": 3,
+      "p2_duplicate_candidate_review": 37,
+      "p3_standard_review": 10
+    },
+    "queue_key": "brand_product_review",
+    "reason_counts": {
+      "blank_decision": 50,
+      "duplicate_candidate_in_batch": 38,
+      "no_review_images": 3
+    },
+    "reviewed_or_valid_row_count": 0,
+    "row_count": 50,
+    "row_hints": [
+      {
+        "priority": "p1_evidence_check",
+        "reason_codes": [
+          "blank_decision",
+          "no_review_images"
+        ],
+        "row_index": 21
+      },
+      {
+        "priority": "p1_evidence_check",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch",
+          "no_review_images"
+        ],
+        "row_index": 26
+      },
+      {
+        "priority": "p1_evidence_check",
+        "reason_codes": [
+          "blank_decision",
+          "no_review_images"
+        ],
+        "row_index": 32
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 4
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 5
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 6
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 7
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 8
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 9
+      },
+      {
+        "priority": "p2_duplicate_candidate_review",
+        "reason_codes": [
+          "blank_decision",
+          "duplicate_candidate_in_batch"
+        ],
+        "row_index": 10
+      }
+    ],
+    "schema_version": "supplement-brand-review-batch-triage-v1"
+  },
   "valid_row_count": 0,
   "workpack_file_name": "brand_product_review-001.md"
 }

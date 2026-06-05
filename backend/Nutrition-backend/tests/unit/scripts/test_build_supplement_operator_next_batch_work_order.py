@@ -220,25 +220,79 @@ def _workpack() -> dict[str, Any]:
     }
 
 
-def _input_paths(tmp_path: Path) -> dict[str, Path]:
+def _brand_triage() -> dict[str, Any]:
+    """Return a brand/product triage fixture.
+
+    Returns:
+        Triage payload.
+    """
+    return {
+        "schema_version": "supplement-brand-review-batch-triage-v1",
+        "batch_review_csv_name": "brand_product_review-001.review.csv",
+        "row_count": 50,
+        "blank_decision_row_count": 50,
+        "reviewed_row_count": 0,
+        "priority_counts": {
+            "p1_evidence_check": 3,
+            "p2_duplicate_candidate_review": 37,
+            "p3_standard_review": 10,
+        },
+        "reason_counts": {
+            "blank_decision": 50,
+            "duplicate_candidate_in_batch": 38,
+            "no_review_images": 3,
+        },
+        "row_hints": [
+            {
+                "row_index": 21,
+                "priority": "p1_evidence_check",
+                "reason_codes": ["blank_decision", "no_review_images"],
+            }
+        ],
+        "operator_next_steps": ["complete_blank_decisions_in_review_csv"],
+        "automatic_decision_performed": False,
+        "db_write_performed": False,
+        "external_provider_call_performed": False,
+        "ocr_provider_call_performed": False,
+        "llm_call_performed": False,
+        "source_image_read_performed": False,
+        "training_execution_performed_by_script": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "absolute_paths_stored": False,
+        "product_dir_literals_stored": False,
+        "local_path_literals_stored": False,
+    }
+
+
+def _input_paths(tmp_path: Path, *, include_triage: bool = False) -> dict[str, Path]:
     """Write default input fixtures.
 
     Args:
         tmp_path: Temporary directory.
+        include_triage: Whether to include the current-batch triage fixture.
 
     Returns:
         Input path mapping.
     """
-    return {
+    paths = {
         "readiness": _write_json(tmp_path / "readiness.json", _readiness()),
         "batch_progress": _write_json(tmp_path / "progress.json", _progress()),
         "workpack_summary": _write_json(tmp_path / "workpack.json", _workpack()),
     }
+    if include_triage:
+        paths["batch_triage"] = _write_json(
+            tmp_path / "brand_product_review-001.triage.json",
+            _brand_triage(),
+        )
+    return paths
 
 
 def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> None:
     """Verify the next incomplete batch is summarized without row payloads."""
-    summary = work_order.build_next_batch_work_order(input_paths=_input_paths(tmp_path))
+    summary = work_order.build_next_batch_work_order(
+        input_paths=_input_paths(tmp_path, include_triage=True)
+    )
     markdown = work_order.build_work_order_markdown(summary)
     dumped = json.dumps(summary, ensure_ascii=False) + markdown
 
@@ -255,6 +309,18 @@ def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> No
     assert summary["blank_row_count"] == 50
     assert summary["total_blank_row_count"] == 51
     assert summary["reason_counts"] == {"blank_decision": 50}
+    assert summary["triage_summary"]["priority_counts"] == {
+        "p1_evidence_check": 3,
+        "p2_duplicate_candidate_review": 37,
+        "p3_standard_review": 10,
+    }
+    assert summary["triage_summary"]["row_hints"] == [
+        {
+            "row_index": 21,
+            "priority": "p1_evidence_check",
+            "reason_codes": ["blank_decision", "no_review_images"],
+        }
+    ]
     assert (
         "extract_reviewed_brand_decisions_for_partial_manifest_preview"
         in summary["post_completion_gates"]
@@ -265,6 +331,9 @@ def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> No
     assert "brand-detail-contact-sheet-001" in markdown
     assert "brand-detail-contact-sheet.html" in markdown
     assert "Rows with thumbnails" in markdown
+    assert "Batch Triage" in markdown
+    assert "p2_duplicate_candidate_review" in markdown
+    assert "row `21`" in markdown
     assert "extract_reviewed_brand_decisions_for_partial_manifest_preview" in markdown
     assert str(tmp_path) not in dumped
     assert "/Volumes/" not in dumped
@@ -322,6 +391,30 @@ def test_build_next_batch_work_order_includes_pii_reviewed_extract_gate(
         in summary["post_completion_gates"]
     )
     assert "extract_reviewed_pii_decisions_for_partial_teacher_ocr_preview" in markdown
+
+
+def test_build_next_batch_work_order_rejects_mismatched_triage_queue(
+    tmp_path: Path,
+) -> None:
+    """Verify the optional triage input must match the selected next queue."""
+    paths = _input_paths(tmp_path)
+    paths["batch_triage"] = _write_json(
+        tmp_path / "review_pii_screening-001.triage.json",
+        {
+            **_brand_triage(),
+            "schema_version": "supplement-operator-review-batch-triage-v1",
+            "queue_key": "review_pii_screening",
+            "batch_file_name": "review_pii_screening-001.jsonl",
+            "blank_row_count": 50,
+        },
+    )
+
+    try:
+        work_order.build_next_batch_work_order(input_paths=paths)
+    except work_order.WorkOrderError as exc:
+        assert "does not match" in str(exc)
+    else:  # pragma: no cover - explicit assertion for readability
+        raise AssertionError("mismatched triage input was accepted")
 
 
 def test_build_next_batch_work_order_includes_yolo_reviewed_extract_gate(

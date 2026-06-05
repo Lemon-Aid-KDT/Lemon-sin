@@ -40,6 +40,12 @@ SCHEMA_VERSION = "supplement-operator-review-next-work-order-v1"
 READINESS_SCHEMA = "supplement-learning-pipeline-readiness-v1"
 WORKPACK_SCHEMA = "supplement-operator-review-workpack-v1"
 BATCH_PROGRESS_SCHEMA = "supplement-operator-review-batch-progress-preflight-v1"
+TRIAGE_SCHEMAS = frozenset(
+    {
+        "supplement-brand-review-batch-triage-v1",
+        "supplement-operator-review-batch-triage-v1",
+    }
+)
 QUEUE_STAGE_KEYS = {
     "brand_product_review": "brand_product_review",
     "review_pii_screening": "review_pii_screening",
@@ -87,6 +93,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--readiness", type=Path, required=True)
     parser.add_argument("--batch-progress", type=Path, required=True)
     parser.add_argument("--workpack-summary", type=Path, required=True)
+    parser.add_argument("--batch-triage", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path, default=None)
     return parser.parse_args(argv)
@@ -104,6 +111,8 @@ def main(argv: list[str] | None = None) -> None:
         "batch_progress": args.batch_progress.expanduser().resolve(),
         "workpack_summary": args.workpack_summary.expanduser().resolve(),
     }
+    if args.batch_triage is not None:
+        input_paths["batch_triage"] = args.batch_triage.expanduser().resolve()
     output_path = args.output.expanduser().resolve()
     markdown_output = (
         args.markdown_output.expanduser().resolve() if args.markdown_output is not None else None
@@ -156,6 +165,7 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
     batch_status = _safe_token(str(progress_row.get("batch_status") or "unknown"))
     status = "pending_operator_review" if batch_status != "complete" else "complete"
     reason_counts = _safe_mapping(progress_row.get("reason_counts"))
+    triage_summary = _optional_triage_summary(input_paths=input_paths, queue_key=queue_key)
 
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -213,6 +223,7 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
         "invalid_row_count": _non_negative_int(progress_row.get("invalid_row_count")),
         "missing_row_count": _non_negative_int(progress_row.get("missing_row_count")),
         "reason_counts": reason_counts,
+        "triage_summary": triage_summary,
         "all_batches_complete": progress.get("all_batches_complete") is True,
         "total_blank_row_count": _non_negative_int(progress.get("total_blank_row_count")),
         "source_rows_read": False,
@@ -246,6 +257,7 @@ def build_work_order_markdown(summary: Mapping[str, Any]) -> str:
     checklist = _markdown_bullets(summary.get("operator_checklist"))
     gates = _markdown_bullets(summary.get("post_completion_gates"))
     reason_counts = _markdown_mapping(summary.get("reason_counts"))
+    triage = _triage_markdown(summary.get("triage_summary"))
     batch_review_line = _optional_batch_review_markdown_line(
         summary.get("batch_review_file_name")
     )
@@ -283,6 +295,10 @@ def build_work_order_markdown(summary: Mapping[str, Any]) -> str:
             "## Reason Counts",
             "",
             reason_counts,
+            "",
+            "## Batch Triage",
+            "",
+            triage,
             "",
             "## Source Bundle Files",
             "",
@@ -323,6 +339,91 @@ def _optional_batch_review_markdown_line(value: Any) -> str:
     if safe is None:
         return "- Batch review CSV: `none`"
     return f"- Batch review CSV: `{safe}`"
+
+
+def _optional_triage_summary(*, input_paths: Mapping[str, Path], queue_key: str) -> dict[str, Any]:
+    """Return a safe triage summary for the selected next batch.
+
+    Args:
+        input_paths: Input path mapping.
+        queue_key: Selected next queue key.
+
+    Returns:
+        Triage summary, or an empty mapping when no triage input is present.
+    """
+    path = input_paths.get("batch_triage")
+    if path is None:
+        return {}
+    if not path.is_file():
+        raise WorkOrderError("Batch triage input artifact is missing.")
+    payload = _load_json_object(path)
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version not in TRIAGE_SCHEMAS:
+        raise WorkOrderError("Batch triage schema version does not match.")
+    _reject_unsafe_payload(payload)
+    triage_queue_key = _triage_queue_key(payload=payload, fallback_file_name=path.name)
+    if triage_queue_key != queue_key:
+        raise WorkOrderError("Batch triage queue does not match next batch.")
+    return {
+        "input_name": _safe_filename(path.name),
+        "schema_version": _safe_token(schema_version),
+        "queue_key": triage_queue_key,
+        "row_count": _non_negative_int(payload.get("row_count")),
+        "blank_row_count": _triage_blank_count(payload),
+        "reviewed_or_valid_row_count": _triage_reviewed_or_valid_count(payload),
+        "priority_counts": _safe_mapping(payload.get("priority_counts")),
+        "reason_counts": _safe_mapping(payload.get("reason_counts")),
+        "row_hints": _safe_row_hints(payload.get("row_hints"))[:10],
+        "operator_next_steps": _safe_string_list(payload.get("operator_next_steps"))[:10],
+    }
+
+
+def _triage_queue_key(*, payload: Mapping[str, Any], fallback_file_name: str) -> str:
+    """Return the queue key for a triage payload.
+
+    Args:
+        payload: Triage payload.
+        fallback_file_name: Triage file name for brand batch inference.
+
+    Returns:
+        Queue key.
+    """
+    raw_queue_key = payload.get("queue_key")
+    if isinstance(raw_queue_key, str) and raw_queue_key.strip():
+        return _safe_token(raw_queue_key)
+    if fallback_file_name.startswith("brand_product_review-"):
+        return "brand_product_review"
+    raise WorkOrderError("Batch triage is missing queue key.")
+
+
+def _triage_blank_count(payload: Mapping[str, Any]) -> int:
+    """Return blank row count across supported triage schemas.
+
+    Args:
+        payload: Triage payload.
+
+    Returns:
+        Blank row count.
+    """
+    return max(
+        _non_negative_int(payload.get("blank_row_count")),
+        _non_negative_int(payload.get("blank_decision_row_count")),
+    )
+
+
+def _triage_reviewed_or_valid_count(payload: Mapping[str, Any]) -> int:
+    """Return reviewed or valid row count across supported triage schemas.
+
+    Args:
+        payload: Triage payload.
+
+    Returns:
+        Reviewed or valid row count.
+    """
+    return max(
+        _non_negative_int(payload.get("reviewed_row_count")),
+        _non_negative_int(payload.get("valid_row_count")),
+    )
 
 
 def _next_batch_key(*, progress: Mapping[str, Any], workpack: Mapping[str, Any]) -> str:
@@ -604,6 +705,82 @@ def _markdown_mapping(value: Any) -> str:
     if not mapping:
         return "- none"
     return "\n".join(f"- `{key}`: `{count}`" for key, count in mapping.items())
+
+
+def _triage_markdown(value: Any) -> str:
+    """Return Markdown for the optional triage summary.
+
+    Args:
+        value: Candidate triage summary.
+
+    Returns:
+        Markdown text.
+    """
+    if not isinstance(value, Mapping) or not value:
+        return "- none"
+    lines = [
+        f"- Triage file: `{_safe_filename(str(value.get('input_name') or ''))}`",
+        f"- Rows: `{_non_negative_int(value.get('row_count'))}`",
+        f"- Blank rows: `{_non_negative_int(value.get('blank_row_count'))}`",
+        f"- Reviewed/valid rows: `{_non_negative_int(value.get('reviewed_or_valid_row_count'))}`",
+        "- Priorities:",
+        _markdown_mapping(value.get("priority_counts")),
+        "- Reasons:",
+        _markdown_mapping(value.get("reason_counts")),
+        "- Row hints:",
+        _row_hints_markdown(value.get("row_hints")),
+        "- Operator next steps:",
+        _markdown_bullets(value.get("operator_next_steps")),
+    ]
+    return "\n".join(lines)
+
+
+def _safe_row_hints(value: Any) -> list[dict[str, Any]]:
+    """Return redacted row-index hints.
+
+    Args:
+        value: Candidate row hint list.
+
+    Returns:
+        Safe row hint rows.
+    """
+    if value is None:
+        return []
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        raise WorkOrderError("Expected row hint list.")
+    hints = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise WorkOrderError("Expected row hint mapping.")
+        reason_codes = item.get("reason_codes")
+        reason_code = item.get("reason_code")
+        hints.append(
+            {
+                "row_index": _positive_int(item.get("row_index")),
+                "priority": _safe_token(str(item.get("priority") or "")),
+                "reason_codes": _safe_string_list(reason_codes)
+                if reason_codes is not None
+                else [_safe_token(str(reason_code or ""))],
+            }
+        )
+    return hints
+
+
+def _row_hints_markdown(value: Any) -> str:
+    """Return Markdown bullets for row hints.
+
+    Args:
+        value: Candidate row hint list.
+
+    Returns:
+        Markdown text.
+    """
+    hints = _safe_row_hints(value)
+    if not hints:
+        return "- none"
+    return "\n".join(
+        f"- row `{hint['row_index']}`: `{hint['priority']}`" for hint in hints[:5]
+    )
 
 
 def _safe_filename(value: str) -> str:

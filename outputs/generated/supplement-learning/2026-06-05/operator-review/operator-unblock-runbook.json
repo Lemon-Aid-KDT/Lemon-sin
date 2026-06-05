@@ -156,23 +156,29 @@
       "status": "blocked_by_annotation_review"
     }
   ],
-  "generated_at": "2026-06-04T21:13:52.765018+00:00",
+  "generated_at": "2026-06-05T01:08:29.272051+00:00",
   "input_names": {
     "batch_progress": "operator-review-batch-progress.json",
     "brand_db_import_gate": "brand-db-import-gate.json",
+    "brand_product_review_triage": "brand_product_review-001.triage.json",
     "completion_audit": "supplement-learning-completion-audit.json",
     "next_work_order": "operator-next-batch-work-order.json",
     "ocr_benchmark_gate": "ocr-benchmark-gate.json",
     "post_completion_plan": "operator-post-completion-command-plan.json",
+    "review_pii_screening_triage": "review_pii_screening-001.triage.json",
+    "yolo_section_annotation_triage": "yolo_section_annotation-001.triage.json",
     "yolo_section_dataset_gate": "yolo-section-dataset-gate.json"
   },
   "input_path_hashes": {
     "batch_progress": "69fddb669b7be6e0482856a391823feadc512da1e9ce6dad560a50d99782dd5f",
     "brand_db_import_gate": "8dbb667bba222f51786fae5bdca049aba1a3521e5c077d3b83771ffd0c945c79",
+    "brand_product_review_triage": "73c570a643d757642dbf924dfc0e0ecf0e6a59cf365ee67847e40c827c2ae3de",
     "completion_audit": "c19841e7b091f73869e33b5c2c1e8b43473593f17b4db9cd00c039d8fede0f32",
     "next_work_order": "7e3df98fc9bf454a7b6f057f77372a16d719d59852fc7f4498a49d8c3111dd6a",
     "ocr_benchmark_gate": "5309b886ff4a221ca3a182b3b05f1a2eb75c245e16a3a8d68be6cd4c27effae3",
     "post_completion_plan": "2a9aa980e9f2cc689495d3a50b598b31c97dea54d66568d949f0613e6cff8490",
+    "review_pii_screening_triage": "41488a9170dcbe235191c6200e91f901e20d58d1cb0785386ba8cd3feb6e1c9c",
+    "yolo_section_annotation_triage": "21a8632a4088753b52bd1da24076ae04c46fae47df077e55f4df8b0ce3413e9a",
     "yolo_section_dataset_gate": "19fb427724617d41bc2ec1aef2bd97a80352106db80e1ffd8ac443c06079043d"
   },
   "llm_call_performed": false,
@@ -277,7 +283,7 @@
       "paddleocr_training_loop_ready"
     ],
     "pending": 3,
-    "verified": 5
+    "verified": 6
   },
   "schema_version": "supplement-operator-unblock-runbook-v1",
   "source_doc_urls": [
@@ -298,5 +304,330 @@
   "source_rows_read": false,
   "status": "blocked_by_operator_review",
   "total_blank_row_count": 808,
-  "training_execution_performed_by_script": false
+  "training_execution_performed_by_script": false,
+  "triage_summaries": [
+    {
+      "blank_row_count": 50,
+      "input_name": "brand_product_review-001.triage.json",
+      "invalid_row_count": 0,
+      "operator_next_steps": [
+        "verify_low_evidence_rows_in_contact_sheet",
+        "review_duplicate_candidate_rows_together",
+        "complete_blank_decisions_in_review_csv",
+        "run_apply_brand_batch_review_csv_decisions",
+        "run_batch_file_preflight_before_reconcile"
+      ],
+      "priority_counts": {
+        "p1_evidence_check": 3,
+        "p2_duplicate_candidate_review": 37,
+        "p3_standard_review": 10
+      },
+      "queue_key": "brand_product_review",
+      "reason_counts": {
+        "blank_decision": 50,
+        "duplicate_candidate_in_batch": 38,
+        "no_review_images": 3
+      },
+      "reviewed_or_valid_row_count": 0,
+      "row_count": 50,
+      "row_hints": [
+        {
+          "priority": "p1_evidence_check",
+          "reason_codes": [
+            "blank_decision",
+            "no_review_images"
+          ],
+          "row_index": 21
+        },
+        {
+          "priority": "p1_evidence_check",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch",
+            "no_review_images"
+          ],
+          "row_index": 26
+        },
+        {
+          "priority": "p1_evidence_check",
+          "reason_codes": [
+            "blank_decision",
+            "no_review_images"
+          ],
+          "row_index": 32
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 4
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 5
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 6
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 7
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 8
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 9
+        },
+        {
+          "priority": "p2_duplicate_candidate_review",
+          "reason_codes": [
+            "blank_decision",
+            "duplicate_candidate_in_batch"
+          ],
+          "row_index": 10
+        }
+      ],
+      "schema_version": "supplement-brand-review-batch-triage-v1",
+      "source_doc_urls": [
+        "https://docs.python.org/3/library/argparse.html",
+        "https://docs.python.org/3/library/csv.html",
+        "https://docs.python.org/3/library/json.html"
+      ],
+      "triage_key": "brand_product_review_triage"
+    },
+    {
+      "blank_row_count": 50,
+      "input_name": "review_pii_screening-001.triage.json",
+      "invalid_row_count": 0,
+      "operator_next_steps": [
+        "complete_blank_privacy_decisions",
+        "run_batch_file_preflight_before_reconcile",
+        "run_strict_pii_preflight_before_teacher_ocr"
+      ],
+      "priority_counts": {
+        "p2_privacy_screening_required": 50
+      },
+      "queue_key": "review_pii_screening",
+      "reason_counts": {
+        "blank_decision": 50
+      },
+      "reviewed_or_valid_row_count": 0,
+      "row_count": 50,
+      "row_hints": [
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 1
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 2
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 3
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 4
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 5
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 6
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 7
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 8
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 9
+        },
+        {
+          "priority": "p2_privacy_screening_required",
+          "reason_codes": [
+            "blank_decision"
+          ],
+          "row_index": 10
+        }
+      ],
+      "schema_version": "supplement-operator-review-batch-triage-v1",
+      "source_doc_urls": [
+        "https://docs.python.org/3/library/csv.html",
+        "https://docs.ultralytics.com/datasets/detect/",
+        "https://docs.ultralytics.com/tasks/detect/",
+        "https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html",
+        "https://cloud.google.com/vision/docs/ocr",
+        "https://api.ncloud-docs.com/docs/en/ai-application-service-ocr",
+        "https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html",
+        "https://www.postgresql.org/docs/current/ddl-constraints.html",
+        "https://supabase.com/docs/guides/database/postgres/row-level-security"
+      ],
+      "triage_key": "review_pii_screening_triage"
+    },
+    {
+      "blank_row_count": 50,
+      "input_name": "yolo_section_annotation-001.triage.json",
+      "invalid_row_count": 0,
+      "operator_next_steps": [
+        "draw_section_bboxes_or_mark_rejected",
+        "run_batch_file_preflight_before_reconcile",
+        "run_strict_yolo_preflight_before_dataset_materialization"
+      ],
+      "priority_counts": {
+        "p2_bbox_annotation_required": 50
+      },
+      "queue_key": "yolo_section_annotation",
+      "reason_counts": {
+        "blank_boxes": 50
+      },
+      "reviewed_or_valid_row_count": 0,
+      "row_count": 50,
+      "row_hints": [
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 1
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 2
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 3
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 4
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 5
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 6
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 7
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 8
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 9
+        },
+        {
+          "priority": "p2_bbox_annotation_required",
+          "reason_codes": [
+            "blank_boxes"
+          ],
+          "row_index": 10
+        }
+      ],
+      "schema_version": "supplement-operator-review-batch-triage-v1",
+      "source_doc_urls": [
+        "https://docs.python.org/3/library/csv.html",
+        "https://docs.ultralytics.com/datasets/detect/",
+        "https://docs.ultralytics.com/tasks/detect/",
+        "https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html",
+        "https://cloud.google.com/vision/docs/ocr",
+        "https://api.ncloud-docs.com/docs/en/ai-application-service-ocr",
+        "https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html",
+        "https://www.postgresql.org/docs/current/ddl-constraints.html",
+        "https://supabase.com/docs/guides/database/postgres/row-level-security"
+      ],
+      "triage_key": "yolo_section_annotation_triage"
+    }
+  ]
 }

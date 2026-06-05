@@ -31,6 +31,33 @@ Schema: `supplement-operator-review-next-work-order-v1`
 
 - `blank_decision`: `50`
 
+## Batch Triage
+
+- Triage file: `brand_product_review-001.triage.json`
+- Rows: `50`
+- Blank rows: `50`
+- Reviewed/valid rows: `0`
+- Priorities:
+- `p1_evidence_check`: `3`
+- `p2_duplicate_candidate_review`: `37`
+- `p3_standard_review`: `10`
+- Reasons:
+- `blank_decision`: `50`
+- `duplicate_candidate_in_batch`: `38`
+- `no_review_images`: `3`
+- Row hints:
+- row `21`: `p1_evidence_check`
+- row `26`: `p1_evidence_check`
+- row `32`: `p1_evidence_check`
+- row `4`: `p2_duplicate_candidate_review`
+- row `5`: `p2_duplicate_candidate_review`
+- Operator next steps:
+- `verify_low_evidence_rows_in_contact_sheet`
+- `review_duplicate_candidate_rows_together`
+- `complete_blank_decisions_in_review_csv`
+- `run_apply_brand_batch_review_csv_decisions`
+- `run_batch_file_preflight_before_reconcile`
+
 ## Source Bundle Files
 
 - `decisions.todo.jsonl`

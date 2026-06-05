@@ -54,6 +54,11 @@ OPTIONAL_GATE_SCHEMAS = {
     "ocr_benchmark_gate": "supplement-ocr-benchmark-gate-v1",
     "yolo_section_dataset_gate": "supplement-yolo-section-dataset-gate-v1",
 }
+OPTIONAL_TRIAGE_SCHEMAS = {
+    "brand_product_review_triage": "supplement-brand-review-batch-triage-v1",
+    "review_pii_screening_triage": "supplement-operator-review-batch-triage-v1",
+    "yolo_section_annotation_triage": "supplement-operator-review-batch-triage-v1",
+}
 GATE_ALLOWED_FLAG_KEYS = (
     "db_import_apply_allowed_now",
     "product_import_manifest_allowed",
@@ -117,6 +122,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--brand-db-import-gate", type=Path, default=None)
     parser.add_argument("--ocr-benchmark-gate", type=Path, default=None)
     parser.add_argument("--yolo-section-dataset-gate", type=Path, default=None)
+    parser.add_argument("--brand-product-review-triage", type=Path, default=None)
+    parser.add_argument("--review-pii-screening-triage", type=Path, default=None)
+    parser.add_argument("--yolo-section-annotation-triage", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path, default=None)
     return parser.parse_args(argv)
@@ -139,6 +147,9 @@ def main(argv: list[str] | None = None) -> None:
         "brand_db_import_gate": args.brand_db_import_gate,
         "ocr_benchmark_gate": args.ocr_benchmark_gate,
         "yolo_section_dataset_gate": args.yolo_section_dataset_gate,
+        "brand_product_review_triage": args.brand_product_review_triage,
+        "review_pii_screening_triage": args.review_pii_screening_triage,
+        "yolo_section_annotation_triage": args.yolo_section_annotation_triage,
     }
     for key, path in optional_inputs.items():
         if path is not None:
@@ -192,6 +203,7 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
         _reject_unsafe_payload(payload)
         _reject_unsafe_true_flags(payload)
     gate_summaries = _optional_gate_summaries(input_paths)
+    triage_summaries = _optional_triage_summaries(input_paths)
 
     queue_summaries = _queue_summaries(progress)
     sequence = _operator_sequence(queue_summaries=queue_summaries, completion_audit=audit)
@@ -214,6 +226,7 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
             ),
         },
         "gate_summaries": gate_summaries,
+        "triage_summaries": triage_summaries,
         "queue_summaries": queue_summaries,
         "operator_sequence": sequence,
         "current_post_completion_execution_allowed": post_plan.get(
@@ -240,7 +253,7 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
         "absolute_paths_stored": False,
         "product_dir_literals_stored": False,
         "local_path_literals_stored": False,
-        "source_doc_urls": _source_doc_urls(progress, audit, *gate_summaries),
+        "source_doc_urls": _source_doc_urls(progress, audit, *gate_summaries, *triage_summaries),
     }
     _reject_unsafe_payload(runbook)
     _reject_unsafe_true_flags(runbook)
@@ -315,6 +328,32 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
                     _md_cell(_reason_counts_text(row.get("key_counts"))),
                     _md_cell(_bool_flags_text(row.get("allowed_flags"))),
                     _md_cell(", ".join(_safe_string_list(row.get("next_steps"))[:5])),
+                )
+            )
+            + " |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Batch Triage Summary",
+            "",
+            "| Queue | File | Rows | Blank | Reviewed/Valid | Priorities | Reasons | Hints |",
+            "| --- | --- | ---: | ---: | ---: | --- | --- | --- |",
+        ]
+    )
+    for row in _mapping_rows(runbook.get("triage_summaries")):
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    _md_cell(row.get("queue_key")),
+                    _md_cell(row.get("input_name")),
+                    str(_non_negative_int(row.get("row_count"))),
+                    str(_non_negative_int(row.get("blank_row_count"))),
+                    str(_non_negative_int(row.get("reviewed_or_valid_row_count"))),
+                    _md_cell(_reason_counts_text(row.get("priority_counts"))),
+                    _md_cell(_reason_counts_text(row.get("reason_counts"))),
+                    _md_cell(_row_hints_text(row.get("row_hints"))),
                 )
             )
             + " |"
@@ -455,6 +494,33 @@ def _optional_gate_summaries(input_paths: Mapping[str, Path]) -> list[dict[str, 
     return summaries
 
 
+def _optional_triage_summaries(input_paths: Mapping[str, Path]) -> list[dict[str, Any]]:
+    """Load optional current-batch triage summaries.
+
+    Args:
+        input_paths: Input path mapping with optional triage keys.
+
+    Returns:
+        Redacted triage summary rows.
+
+    Raises:
+        OperatorUnblockRunbookError: If a provided triage report is unsafe or unsupported.
+    """
+    summaries = []
+    for triage_key, expected_schema in OPTIONAL_TRIAGE_SCHEMAS.items():
+        path = input_paths.get(triage_key)
+        if path is None:
+            continue
+        if not path.exists():
+            raise OperatorUnblockRunbookError(f"Input does not exist: {triage_key}")
+        payload = _load_json_object(path)
+        _require_schema(payload, expected_schema)
+        _reject_unsafe_payload(payload)
+        _reject_unsafe_true_flags(payload)
+        summaries.append(_triage_summary(triage_key=triage_key, path=path, payload=payload))
+    return summaries
+
+
 def _gate_summary(*, gate_key: str, path: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
     """Return a redacted downstream gate row.
 
@@ -476,6 +542,87 @@ def _gate_summary(*, gate_key: str, path: Path, payload: Mapping[str, Any]) -> d
         "next_steps": _safe_string_list(payload.get("next_steps"))[:10],
         "source_doc_urls": _safe_string_list(payload.get("source_doc_urls")),
     }
+
+
+def _triage_summary(
+    *,
+    triage_key: str,
+    path: Path,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a redacted current-batch triage row.
+
+    Args:
+        triage_key: Stable triage input key.
+        path: Triage report path.
+        payload: Triage JSON payload.
+
+    Returns:
+        Redacted triage row.
+    """
+    return {
+        "triage_key": triage_key,
+        "queue_key": _triage_queue_key(triage_key=triage_key, payload=payload),
+        "input_name": path.name,
+        "schema_version": _safe_string(payload.get("schema_version")),
+        "row_count": _non_negative_int(payload.get("row_count")),
+        "blank_row_count": _triage_blank_count(payload),
+        "reviewed_or_valid_row_count": _triage_reviewed_or_valid_count(payload),
+        "invalid_row_count": _non_negative_int(payload.get("invalid_row_count")),
+        "priority_counts": _reason_counts(payload.get("priority_counts")),
+        "reason_counts": _reason_counts(payload.get("reason_counts")),
+        "row_hints": _safe_row_hints(payload.get("row_hints"))[:10],
+        "operator_next_steps": _safe_string_list(payload.get("operator_next_steps"))[:10],
+        "source_doc_urls": _safe_string_list(payload.get("source_doc_urls")),
+    }
+
+
+def _triage_queue_key(*, triage_key: str, payload: Mapping[str, Any]) -> str:
+    """Return the queue key for a triage report.
+
+    Args:
+        triage_key: Stable triage input key.
+        payload: Triage JSON payload.
+
+    Returns:
+        Queue key.
+    """
+    queue_key = _safe_string(payload.get("queue_key"))
+    if queue_key:
+        return queue_key
+    if triage_key == "brand_product_review_triage":
+        return "brand_product_review"
+    return triage_key.removesuffix("_triage")
+
+
+def _triage_blank_count(payload: Mapping[str, Any]) -> int:
+    """Return blank row count across supported triage schemas.
+
+    Args:
+        payload: Triage payload.
+
+    Returns:
+        Blank row count.
+    """
+    return max(
+        _non_negative_int(payload.get("blank_row_count")),
+        _non_negative_int(payload.get("blank_decision_row_count")),
+    )
+
+
+def _triage_reviewed_or_valid_count(payload: Mapping[str, Any]) -> int:
+    """Return reviewed or valid row count across supported triage schemas.
+
+    Args:
+        payload: Triage payload.
+
+    Returns:
+        Reviewed or valid row count.
+    """
+    return max(
+        _non_negative_int(payload.get("reviewed_row_count")),
+        _non_negative_int(payload.get("valid_row_count")),
+    )
 
 
 def _operator_sequence(
@@ -791,6 +938,48 @@ def _reason_counts_text(value: Any) -> str:
     """
     counts = _reason_counts(value)
     return ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
+
+
+def _safe_row_hints(value: Any) -> list[dict[str, Any]]:
+    """Return redacted row-index hints.
+
+    Args:
+        value: Candidate row hint list.
+
+    Returns:
+        Safe row hints.
+    """
+    if not isinstance(value, list):
+        return []
+    hints = []
+    for item in value[:40]:
+        if not isinstance(item, Mapping):
+            continue
+        reason_codes = _safe_string_list(item.get("reason_codes"))
+        reason_code = _safe_string(item.get("reason_code"))
+        hints.append(
+            {
+                "row_index": _non_negative_int(item.get("row_index")),
+                "priority": _safe_string(item.get("priority")),
+                "reason_codes": reason_codes or ([reason_code] if reason_code else []),
+            }
+        )
+    return hints
+
+
+def _row_hints_text(value: Any) -> str:
+    """Return compact row hint text for Markdown.
+
+    Args:
+        value: Candidate row hint list.
+
+    Returns:
+        Compact row hint text.
+    """
+    hints = _safe_row_hints(value)
+    return ", ".join(
+        f"row {hint['row_index']}:{hint['priority']}" for hint in hints[:5] if hint["row_index"]
+    )
 
 
 def _selected_counts(payload: Mapping[str, Any], keys: Sequence[str]) -> dict[str, int]:

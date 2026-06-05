@@ -7,7 +7,7 @@
 - Next batch file: `brand_product_review-001.jsonl`
 - Source editable file: `decisions.todo.jsonl`
 - Total blank rows: `808`
-- Requirements: `5` verified / `3` pending / `5` blocked
+- Requirements: `6` verified / `3` pending / `5` blocked
 
 ## Queue Summary
 
@@ -24,6 +24,14 @@
 | brand_db_import_gate | `blocked_by_operator_review` | approved_decision_count=0, blank_decision_count=388, pending_operator_action_count=388 | db_import_apply_allowed_now=false, product_import_manifest_allowed=false | complete_operator_brand_review, rerun_brand_decision_preflight_require_all_reviewed, rerun_brand_db_import_gate |
 | ocr_benchmark_gate | `blocked_by_pii_screening` | benchmark_fixture_count=0, cleared_no_personal_data_count=0, pii_blank_decision_count=215, pii_pending_operator_action_count=215 | external_teacher_ocr_eval_allowed=false, paddleocr_training_allowed_now=false, teacher_ocr_benchmark_allowed=false | complete_review_image_pii_screening, rerun_pii_screening_decision_preflight_require_all_reviewed, rerun_ocr_benchmark_gate |
 | yolo_section_dataset_gate | `blocked_by_annotation_review` | blank_box_row_count=205, pending_operator_action_count=205, promoted_item_count=0 | dataset_materialization_ready=false, model_promotion_allowed_now=false, section_yolo_training_allowed_now=false | complete_supplement_section_bbox_review, rerun_yolo_annotation_preflight_require_all_reviewed, rerun_yolo_section_dataset_gate |
+
+## Batch Triage Summary
+
+| Queue | File | Rows | Blank | Reviewed/Valid | Priorities | Reasons | Hints |
+| --- | --- | ---: | ---: | ---: | --- | --- | --- |
+| brand_product_review | brand_product_review-001.triage.json | 50 | 50 | 0 | p1_evidence_check=3, p2_duplicate_candidate_review=37, p3_standard_review=10 | blank_decision=50, duplicate_candidate_in_batch=38, no_review_images=3 | row 21:p1_evidence_check, row 26:p1_evidence_check, row 32:p1_evidence_check, row 4:p2_duplicate_candidate_review, row 5:p2_duplicate_candidate_review |
+| review_pii_screening | review_pii_screening-001.triage.json | 50 | 50 | 0 | p2_privacy_screening_required=50 | blank_decision=50 | row 1:p2_privacy_screening_required, row 2:p2_privacy_screening_required, row 3:p2_privacy_screening_required, row 4:p2_privacy_screening_required, row 5:p2_privacy_screening_required |
+| yolo_section_annotation | yolo_section_annotation-001.triage.json | 50 | 50 | 0 | p2_bbox_annotation_required=50 | blank_boxes=50 | row 1:p2_bbox_annotation_required, row 2:p2_bbox_annotation_required, row 3:p2_bbox_annotation_required, row 4:p2_bbox_annotation_required, row 5:p2_bbox_annotation_required |
 
 ## Unblock Sequence
 

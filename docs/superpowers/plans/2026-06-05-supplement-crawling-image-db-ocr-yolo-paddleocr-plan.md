@@ -148,11 +148,15 @@ Acceptance evidence:
 
 Current operator unblock state:
 
-- `operator-unblock-runbook.json` now includes queue summaries for brand/product,
-  PII screening, and YOLO section annotation.
+- `operator-unblock-runbook.json` and `operator-unblock-runbook.md` now include
+  queue summaries for brand/product, PII screening, and YOLO section annotation.
 - The same runbook includes downstream gate summaries for
   `brand-db-import-gate.json`, `ocr-benchmark-gate.json`, and
   `yolo-section-dataset-gate.json`.
+- The same runbook also embeds the first-batch triage summaries for
+  `brand_product_review-001`, `review_pii_screening-001`, and
+  `yolo_section_annotation-001`, so the next operator session can see row-index
+  priority hints without opening unsafe raw payloads.
 - Current blank review totals are: brand/product `388`, PII `215`, YOLO bbox `205`;
   total operator blank rows `808`.
 - `brand_product_review-001.triage.json` and
@@ -313,8 +317,8 @@ Main gaps after this review:
 4. After operator decisions are filled, reconcile and apply only approved rows.
 5. Continue PII screening and YOLO annotation batches in parallel.
 6. Do not run external OCR or PaddleOCR training until the review gates above pass.
-7. Use `operator-unblock-runbook.md` as the single redacted queue/gate status
-   handoff for the next operator session.
+7. Use `operator-unblock-runbook.md` as the single redacted queue/gate/triage
+   status handoff for the next operator session.
 
 ## Official References
 
