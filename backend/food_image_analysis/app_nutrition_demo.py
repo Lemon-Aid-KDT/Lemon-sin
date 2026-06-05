@@ -1,6 +1,6 @@
 """음식 분류 + 영양소 정보 데모 (Streamlit).
 
-업로드(또는 test_data 선택) 이미지에서 YOLO26s(taxo59, exp10) 모델로 음식을 탐지하고:
+업로드(또는 test_data 선택) 이미지에서 YOLO26s(taxo59, exp12) 모델로 음식을 탐지하고:
   - 탐지 박스 + 음식종류를 이미지에 오버레이
   - 모델 Top-5 후보(신뢰도순)
   - 탐지 음식의 영양소 정보(100g 기준) + 만성질환 관점 참고 정보
@@ -10,7 +10,7 @@ Run:
     streamlit run backend/food_image_analysis/app_nutrition_demo.py
 
 Reference:
-    모델: runs/food_yolo/exp10_yolo26s_taxo59bal500_*  (best.pt)
+    모델: runs/food_yolo/exp12_yolo26s_taxo59tako_*  (best.pt)
     영양소: data/food_images/manifests/class_nutrition_taxo59.csv
 """
 
@@ -29,7 +29,7 @@ from ultralytics import YOLO
 # --- 경로 상수 ---
 MODEL_PATH = Path(
     r"C:\Lemon-sin\runs\food_yolo"
-    r"\exp10_yolo26s_taxo59bal500_pc1_s42_b16_w8_cache_disk_det_true\weights\best.pt"
+    r"\exp12_yolo26s_taxo59tako_pc1_s42_b16_w8_cache_disk_det_true\weights\best.pt"
 )
 NUTRITION_CSV = Path(r"C:\Lemon-sin\data\food_images\manifests\class_nutrition_taxo59.csv")
 TEST_DIR = Path(r"C:\Lemon-sin\data\food_images\raw\test_data")
@@ -181,7 +181,7 @@ def macro_ratio(n: dict[str, float]) -> tuple[float, float, float]:
 st.set_page_config(page_title="음식 분류 + 영양소 데모", page_icon="🍱", layout="wide")
 st.title("🍱 음식 분류 + 영양소 정보 데모")
 st.caption(
-    f"모델: YOLO26s · taxo59(59클래스) · exp10  |  영양소: AIHub 100g 기준 클래스 평균"
+    f"모델: YOLO26s · taxo59(59클래스) · exp12  |  영양소: AIHub 100g 기준 클래스 평균"
 )
 
 model = load_model()
@@ -194,8 +194,8 @@ with st.sidebar:
 
     _mt = _dt.datetime.fromtimestamp(MODEL_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     st.caption(f"📦 모델: `{MODEL_PATH.parent.parent.name}`\n\nbest.pt 수정: {_mt}")
-    conf_th = st.slider("탐지 신뢰도 임계값", 0.02, 0.9, 0.08, 0.01)
-    st.caption("0.08 권장 — 최종 모델 기준 음식/비음식 분리 갭(0.015↔0.097)의 중앙. test_data 음식 16/16·not_food 3/3")
+    conf_th = st.slider("탐지 신뢰도 임계값", 0.02, 0.9, 0.10, 0.01)
+    st.caption("exp12 기준 0.10 권장 — test_data 음식 15/16·not_food 3/3. (0.08은 not_food 1건(salad) 오탐, 음식 1건은 maxconf 0.03이라 임계 무관 미검출)")
     nms_iou = st.slider("중복 박스 병합 IoU", 0.3, 0.95, 0.5, 0.05)
     st.caption("한 음식에 박스가 여러 개 겹치면 최고 신뢰도 1개로 합칩니다 (낮을수록 적극 병합)")
     st.divider()
