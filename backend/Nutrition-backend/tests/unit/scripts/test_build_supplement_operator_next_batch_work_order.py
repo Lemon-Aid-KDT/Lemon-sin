@@ -298,6 +298,17 @@ def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> No
 
     assert summary["schema_version"] == "supplement-operator-review-next-work-order-v1"
     assert summary["status"] == "pending_operator_review"
+    assert "input_path_hashes" not in summary
+    assert set(summary["input_path_fingerprints"]) == {
+        "batch_progress",
+        "batch_triage",
+        "readiness",
+        "workpack_summary",
+    }
+    assert all(
+        value.startswith("fp-") and len(value) == 11
+        for value in summary["input_path_fingerprints"].values()
+    )
     assert summary["batch_key"] == "brand_product_review:001"
     assert summary["queue_key"] == "brand_product_review"
     assert summary["workpack_file_name"] == "brand_product_review-001.md"

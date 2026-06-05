@@ -172,9 +172,8 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
         "status": status,
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
-        "input_path_hashes": {
-            key: progress_preflight._sha256_text(str(path.expanduser()))
-            for key, path in sorted(input_paths.items())
+        "input_path_fingerprints": {
+            key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
         },
         "batch_key": next_batch_key,
         "queue_key": queue_key,
@@ -324,6 +323,18 @@ def build_work_order_markdown(summary: Mapping[str, Any]) -> str:
     )
     _reject_unsafe_payload(markdown)
     return markdown
+
+
+def _path_fingerprint(path: Path) -> str:
+    """Return a short non-secret path fingerprint for public artifacts.
+
+    Args:
+        path: Path to identify without exposing it.
+
+    Returns:
+        Short hexadecimal fingerprint with a non-hex prefix.
+    """
+    return f"fp-{progress_preflight._sha256_text(str(path.expanduser()))[:8]}"
 
 
 def _optional_batch_review_markdown_line(value: Any) -> str:
@@ -917,12 +928,11 @@ def _failure_summary(
         "status": "error",
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
-        "input_path_hashes": {
-            key: progress_preflight._sha256_text(str(path.expanduser()))
-            for key, path in sorted(input_paths.items())
+        "input_path_fingerprints": {
+            key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
         },
         "output_name": output_path.name,
-        "output_path_hash": progress_preflight._sha256_text(str(output_path.expanduser())),
+        "output_path_fingerprint": _path_fingerprint(output_path),
         "source_rows_read": False,
         "source_image_read_performed": False,
         "db_write_performed": False,

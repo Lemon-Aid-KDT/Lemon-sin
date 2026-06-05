@@ -26,18 +26,18 @@
   "db_write_performed": false,
   "expected_row_count": 50,
   "external_provider_call_performed": false,
-  "generated_at": "2026-06-05T01:39:36.306869+00:00",
+  "generated_at": "2026-06-05T02:56:38.221472+00:00",
   "input_names": {
     "batch_progress": "operator-review-batch-progress.json",
     "batch_triage": "brand_product_review-001.triage.json",
     "readiness": "supplement-learning-pipeline-readiness.json",
     "workpack_summary": "summary.json"
   },
-  "input_path_hashes": {
-    "batch_progress": "69fddb669b7be6e0482856a391823feadc512da1e9ce6dad560a50d99782dd5f",
-    "batch_triage": "73c570a643d757642dbf924dfc0e0ecf0e6a59cf365ee67847e40c827c2ae3de",
-    "readiness": "4e6bd5af66b6827766c2d5e72b792abf8c81d1f447573a490fbd9c9fb73106c2",
-    "workpack_summary": "724fda1f52a0b18cd4b9347ff607255f0aad3af50e6c7a1edf8388ccdb47b96c"
+  "input_path_fingerprints": {
+    "batch_progress": "fp-69fddb66",
+    "batch_triage": "fp-73c570a6",
+    "readiness": "fp-4e6bd5af",
+    "workpack_summary": "fp-724fda1f"
   },
   "invalid_row_count": 0,
   "llm_call_performed": false,
