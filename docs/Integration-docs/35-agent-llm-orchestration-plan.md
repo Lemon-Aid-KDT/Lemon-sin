@@ -610,33 +610,44 @@ Day 5 실행 기록:
 
 ### Day 6. Mobile response contract
 
-- [ ] Flutter가 받을 `answerability`, `sources[]`, `ctas[]`, approval preview, boundary/unknown 상태를 맞춘다.
-- [ ] `/api/v1/agents/chat`와 `/api/v1/ai-agent/chat` endpoint mismatch를 정리한다.
-- [ ] source detail, boundary card, unknown card, loading/error UX 최소 계약을 맞춘다.
-- [ ] raw/internal field가 mobile response에 노출되지 않게 한다.
+- [x] Flutter가 받을 `answerability`, `sources[]`, `ctas[]`, approval preview, boundary/unknown 상태를 맞춘다.
+- [x] canonical endpoint를 `/api/v1/ai-agent/chat`로 유지하고 `/api/v1/agents/chat` alias를 만들지 않는다.
+- [x] source detail, boundary card, unknown card, loading/error UX 최소 계약을 맞춘다.
+- [x] raw/internal field가 mobile response에 노출되지 않게 한다.
 
 Day 6 완료 gate:
 
-- [ ] backend/mobile DTO compatibility smoke가 통과한다.
-- [ ] Flutter에서 answer, source, CTA, boundary/unknown 상태를 표시할 수 있다.
-- [ ] timeout/error/fallback 메시지가 최소 계약에 포함된다.
+- [x] backend/mobile DTO compatibility smoke가 통과한다.
+- [x] Flutter에서 answer, source, CTA, boundary/unknown 상태를 표시할 수 있다.
+- [x] timeout/error/fallback 메시지가 최소 계약에 포함된다.
 
 ### Day 7. Qwen baseline runtime smoke
 
-- [ ] SGLang Qwen 실행 조건을 확인한다.
-- [ ] SGLang이 막히면 Ollama fallback demo path를 확보한다.
-- [ ] Qwen baseline chatbot smoke를 실행하고 32번에 기록한다.
-- [ ] latency, answerability, source use, boundary 결과를 기록한다.
+- [x] SGLang Qwen 실행 조건을 확인한다.
+- [x] SGLang이 막히면 Ollama fallback demo path를 확보한다.
+- [x] SGLang Qwen baseline blocker와 Ollama fallback smoke를 32번에 기록한다.
+- [x] latency, answerability, source use, boundary 결과를 기록한다.
 
 Day 7 완료 gate:
 
-- [ ] Qwen 또는 fallback 경로로 end-to-end answer가 나온다.
-- [ ] 실패 원인과 fallback 조건이 32번 또는 35번에 남아 있다.
-- [ ] Gemma smoke 준비 조건이 명확하다.
+- [x] Qwen 또는 fallback 경로로 end-to-end answer가 나온다.
+- [x] 실패 원인과 fallback 조건이 32번 또는 35번에 남아 있다.
+- [x] Gemma smoke 준비 조건이 명확하다.
+
+Day 7 결과:
+
+- 2026-06-06 초기 확인에서는 Docker Desktop Linux engine, SGLang port `127.0.0.1:30000`, PostgreSQL smoke port `127.0.0.1:55432` 전제가 미충족되어 SGLang Qwen live smoke가 blocked였다.
+- Docker Desktop 시작, 기존 `lemon-sglang` 컨테이너 재시작, conda PostgreSQL `55432` 복구 후 SGLang Qwen baseline live smoke가 통과했다.
+- `/v1/models`는 `Qwen/Qwen2.5-0.5B-Instruct`를 반환했고, FastAPI + PostgreSQL + SGLang smoke는 `first_provider=sglang`, `second_provider=sglang`, `chat_provider=sglang`, unknown backlog delta `+1`로 통과했다.
+- 지속 FastAPI dev server도 `http://127.0.0.1:18080`에서 health OK이며, `--use-existing-server` smoke가 provider `sglang`로 통과했다.
+- Ollama `qwen3.5:9b`는 설치되어 있고 raw chat 및 parser smoke는 fallback 경로로 통과했다.
+- guarded Ollama chatbot path에서는 LLM 응답이 빈 응답으로 정규화되어 deterministic renderer로 안전 fallback됐다.
+- P0 자몽/고지혈증 약 boundary는 fallback 경로에서도 `medical_decision_boundary`와 source/warning 계약을 유지했다.
+- Day 8 Gemma 비교는 Qwen baseline 통과 상태에서 시작 가능하지만, 현재 로컬에는 Gemma 후보 모델이 설치되어 있지 않다.
 
 ### Day 8. Gemma 후보 smoke와 모델 비교
 
-- [ ] Gemma 후보 모델 실행 조건을 확인한다.
+- [x] Gemma 후보 모델 실행 조건을 확인한다.
 - [ ] Gemma chatbot smoke를 실행하고 32번에 기록한다.
 - [ ] Qwen baseline, Gemma 후보, Ollama fallback 결과를 비교한다.
 - [ ] 기본 모델 변경 여부는 live smoke 결과 없이 결정하지 않는다.
@@ -646,6 +657,12 @@ Day 8 완료 gate:
 - [ ] Qwen/Gemma/fallback 비교 결과가 있다.
 - [ ] 모델별 실패/timeout/JSON parse/source 사용 차이가 기록되어 있다.
 - [ ] Day 10 demo runtime path가 확정되어 있다.
+
+Day 8 시작 조건:
+
+- Qwen baseline: 통과. SGLang `/v1/models`, chatbot smoke, FastAPI 조합 smoke, SGLang pytest smoke가 모두 통과했다.
+- Gemma 후보: 미설치. SGLang container Hugging Face cache와 Ollama model list 모두 Qwen만 있다.
+- 다음 작업은 Gemma 실제 tag와 서빙 방식을 확정하는 것이다. 후보는 31/32번 기준 `google/gemma-3n-E2B`이지만, 같은 port에서 Qwen과 동시에 비교할 수 없으므로 별도 SGLang port 또는 순차 재기동 전략이 필요하다.
 
 ### Day 9. Golden scenarios와 failure UX
 
