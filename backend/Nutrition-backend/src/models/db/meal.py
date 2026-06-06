@@ -15,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     UniqueConstraint,
 )
@@ -158,6 +159,66 @@ class FoodCatalogItem(TimestampMixin, Base):
         nullable=False,
         default=dict,
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class FoodNutrition(TimestampMixin, Base):
+    """Persist taxo59 per-100g class-average nutrition keyed by detection class.
+
+    Attributes:
+        class_en: taxo59 model class name; the detection->nutrition join key.
+        food_catalog_item_id: Optional link to the curated catalog item (via aliases).
+        class_ko: Korean display name.
+        n_source_codes: Count of AIHub source food codes averaged into the class.
+        serving_g: Average single-serving weight in grams for 1-serving scaling.
+        kcal_100g: Energy per 100g (kcal).
+        carb_g: Carbohydrate per 100g (g).
+        sugar_g: Sugars per 100g (g).
+        fat_g: Fat per 100g (g).
+        protein_g: Protein per 100g (g).
+        sodium_mg: Sodium per 100g (mg).
+        chol_mg: Cholesterol per 100g (mg).
+        sat_fat_g: Saturated fat per 100g (g).
+        trans_fat_g: Trans fat per 100g (g).
+        source: Import source label such as aihub_taxo59_csv.
+        source_manifest_version: Source data manifest version.
+        is_active: Whether the nutrition row should be used.
+        created_at: Server-side record creation timestamp.
+        updated_at: Server-side record update timestamp.
+    """
+
+    __tablename__ = "food_nutrition"
+    __table_args__ = (
+        CheckConstraint("class_en <> ''", name="ck_food_nutrition_class_en_nonempty"),
+        CheckConstraint("class_ko <> ''", name="ck_food_nutrition_class_ko_nonempty"),
+        CheckConstraint("source <> ''", name="ck_food_nutrition_source_nonempty"),
+        CheckConstraint(
+            "serving_g IS NULL OR serving_g > 0",
+            name="ck_food_nutrition_serving_g_positive",
+        ),
+        Index("ix_food_nutrition_food_catalog_item_id", "food_catalog_item_id"),
+    )
+
+    class_en: Mapped[str] = mapped_column(String(40), primary_key=True)
+    food_catalog_item_id: Mapped[UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("food_catalog_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    class_ko: Mapped[str] = mapped_column(String(60), nullable=False)
+    n_source_codes: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    serving_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 1), nullable=True)
+    kcal_100g: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    carb_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    sugar_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    fat_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    protein_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    sodium_mg: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    chol_mg: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    sat_fat_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    trans_fat_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_manifest_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 

@@ -40,9 +40,12 @@ from src.models.schemas.meal import (
 from src.models.schemas.taxonomy import FoodCatalogItemReference
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.nutrition_scaling import compute_serving_nutrition
 from src.services.supplement_intake import derive_idempotency_key, detect_image_mime
 from src.services.taxonomy_catalog import (
+    food_nutrition_per_100g,
     load_food_catalog_item_references,
+    load_food_nutrition_by_class_ens,
     validate_food_catalog_filters,
 )
 from src.utils.image_safety import (
@@ -296,7 +299,8 @@ async def create_meal_image_analysis_preview(
         food_detector=food_detector,
     )
     detected_items_snapshot = _food_detections_to_snapshot(detection.detections)
-    nutrition_estimate_snapshot = _nutrition_estimate_snapshot(
+    nutrition_estimate_snapshot = await _nutrition_estimate_snapshot(
+        session,
         detection.detections,
         detector_used=detection.detector_used,
     )
@@ -766,34 +770,72 @@ def _food_detections_to_snapshot(
     }
 
 
-def _nutrition_estimate_snapshot(
+async def _nutrition_estimate_snapshot(
+    session: AsyncSession,
     detections: tuple[FoodDetection, ...],
     *,
     detector_used: bool,
 ) -> dict[str, object]:
-    """Build a bounded pre-confirmation nutrition summary.
+    """Build a bounded advisory pre-confirmation nutrition summary.
+
+    For each detection whose label matches an active ``food_nutrition`` class,
+    this attaches a class-average per-serving estimate and contributes to a
+    summed ``totals`` block. The estimate is advisory only and never overrides
+    user-confirmed values; unmatched detections keep ``source`` "vision".
 
     Args:
+        session: Request-scoped async database session for catalog lookups.
         detections: Detector candidates.
         detector_used: Whether detector inference ran.
 
     Returns:
-        Safe nutrition summary placeholder for user review.
+        Safe nutrition summary for user review with sanitized, bounded values.
     """
     status = "detected_review_required" if detections else "analysis_unavailable"
-    return {
+    if not detections:
+        return {
+            "status": status,
+            "items": [],
+            "totals": {},
+            "detector_used": detector_used,
+        }
+
+    nutrition_by_class = await load_food_nutrition_by_class_ens(
+        session,
+        [detection.label for detection in detections],
+    )
+    items: list[dict[str, object]] = []
+    totals: dict[str, float] = {}
+    matched = False
+    for detection in detections:
+        item: dict[str, object] = {
+            "display_name": detection.label,
+            "confidence": detection.confidence,
+            "source": "vision",
+        }
+        row = nutrition_by_class.get(detection.label)
+        if row is not None:
+            serving = compute_serving_nutrition(
+                food_nutrition_per_100g(row),
+                serving_g=row.serving_g,
+            )
+            if serving:
+                matched = True
+                item["nutrition"] = serving
+                for key, value in serving.items():
+                    totals[key] = round(totals.get(key, 0.0) + value, 2)
+        items.append(item)
+
+    snapshot: dict[str, object] = {
         "status": status,
-        "items": [
-            {
-                "display_name": detection.label,
-                "confidence": detection.confidence,
-                "source": "vision",
-            }
-            for detection in detections
-        ],
-        "totals": {},
+        "items": items,
+        "totals": totals,
         "detector_used": detector_used,
     }
+    if matched:
+        snapshot["basis"] = "class_average_per_serving"
+        snapshot["precision_note"] = "demo_class_average_not_medical_or_prescriptive"
+    return snapshot
 
 
 def _snapshot_to_food_candidates(value: Any) -> list[MealFoodCandidate]:

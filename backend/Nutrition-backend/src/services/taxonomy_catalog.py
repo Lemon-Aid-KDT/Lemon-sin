@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.db.meal import FoodCatalogItem, FoodCourse, FoodCuisine
+from src.models.db.meal import FoodCatalogItem, FoodCourse, FoodCuisine, FoodNutrition
 from src.models.db.supplement import SupplementCategory
 from src.models.schemas.taxonomy import (
     FoodCatalogItemListResponse,
@@ -21,6 +22,7 @@ from src.models.schemas.taxonomy import (
     SupplementCategoryListResponse,
     SupplementCategorySummary,
 )
+from src.services.nutrition_scaling import PER_100G_KEYS
 
 
 class TaxonomyFilterNotFoundError(ValueError):
@@ -291,6 +293,80 @@ async def load_food_catalog_item_references(
         )
         for item, cuisine_code, course_code in result.all()
     }
+
+
+async def load_food_nutrition_by_class_en(
+    session: AsyncSession,
+    class_en: str,
+) -> FoodNutrition | None:
+    """Load one active food nutrition row by detection class.
+
+    Args:
+        session: Request-scoped async database session.
+        class_en: taxo59 model class name used as the detection join key.
+
+    Returns:
+        Active food nutrition row, or None when missing/inactive/blank.
+    """
+    normalized = _normalized_query(class_en)
+    if normalized is None:
+        return None
+    rows = await load_food_nutrition_by_class_ens(session, [normalized])
+    return rows.get(normalized)
+
+
+async def load_food_nutrition_by_class_ens(
+    session: AsyncSession,
+    class_ens: Iterable[str],
+) -> dict[str, FoodNutrition]:
+    """Load active food nutrition rows keyed by detection class.
+
+    Args:
+        session: Request-scoped async database session.
+        class_ens: taxo59 model class names to resolve.
+
+    Returns:
+        Mapping from class_en to its active food nutrition row.
+    """
+    normalized_keys = (_normalized_query(class_en) for class_en in class_ens)
+    keys = list(dict.fromkeys(key for key in normalized_keys if key is not None))
+    if not keys:
+        return {}
+    rows = await session.scalars(
+        select(FoodNutrition).where(
+            FoodNutrition.class_en.in_(keys),
+            FoodNutrition.is_active.is_(True),
+        )
+    )
+    return {row.class_en: row for row in rows.all()}
+
+
+def food_nutrition_per_100g(row: FoodNutrition) -> dict[str, float | None]:
+    """Map a food nutrition row to the per-100g nutrient dictionary.
+
+    Args:
+        row: Active food nutrition row.
+
+    Returns:
+        Mapping keyed by PER_100G_KEYS with Decimal columns cast to float and
+        missing values preserved as None.
+    """
+    typed_values: dict[str, Decimal | None] = {
+        "kcal": row.kcal_100g,
+        "carb_g": row.carb_g,
+        "sugar_g": row.sugar_g,
+        "fat_g": row.fat_g,
+        "protein_g": row.protein_g,
+        "sodium_mg": row.sodium_mg,
+        "cholesterol_mg": row.chol_mg,
+        "saturated_fat_g": row.sat_fat_g,
+        "trans_fat_g": row.trans_fat_g,
+    }
+    per_100g: dict[str, float | None] = {}
+    for key in PER_100G_KEYS:
+        value = typed_values.get(key)
+        per_100g[key] = float(value) if value is not None else None
+    return per_100g
 
 
 def _active_food_catalog_select() -> Select[tuple[FoodCatalogItem, str, str]]:

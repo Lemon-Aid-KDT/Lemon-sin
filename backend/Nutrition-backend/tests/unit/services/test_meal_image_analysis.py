@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from decimal import Decimal
 from io import BytesIO
 from typing import Self, cast
 from uuid import uuid4
@@ -13,7 +14,12 @@ from fastapi import UploadFile
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
-from src.models.db.meal import FoodImageAnalysisRun, MealFoodItem, MealRecord
+from src.models.db.meal import (
+    FoodImageAnalysisRun,
+    FoodNutrition,
+    MealFoodItem,
+    MealRecord,
+)
 from src.models.schemas.meal import (
     MealAnalysisStatus,
     MealConfirmationRequest,
@@ -39,6 +45,26 @@ from src.services.meal_image_analysis import (
 from src.vision.base import BoundingBox, VisionError
 from src.vision.food_yolo import FoodDetection
 from starlette.datastructures import Headers
+
+
+class _ScalarResult:
+    """Fake SQLAlchemy scalar result returning configured rows."""
+
+    def __init__(self, rows: list[object]) -> None:
+        """Store configured rows.
+
+        Args:
+            rows: Rows returned by ``all``.
+        """
+        self.rows = rows
+
+    def all(self) -> list[object]:
+        """Return configured rows.
+
+        Returns:
+            Rows configured for the fake result.
+        """
+        return self.rows
 
 
 class _TransactionContext:
@@ -71,19 +97,37 @@ class _FakeStoreSession:
         *,
         existing_run: FoodImageAnalysisRun | None = None,
         existing_meal: MealRecord | None = None,
+        food_nutrition_rows: list[FoodNutrition] | None = None,
     ) -> None:
         """Initialize fake persisted records.
 
         Args:
             existing_run: Existing food image analysis run returned for idempotency lookup.
             existing_meal: Existing meal record returned for idempotency lookup.
+            food_nutrition_rows: Active food nutrition rows returned for class lookups.
         """
         self.existing_run = existing_run
         self.existing_meal = existing_meal
+        self.food_nutrition_rows = food_nutrition_rows or []
         self.added: list[object] = []
         self.refreshed: list[object] = []
         self.flush_count = 0
         self.committed = False
+
+    async def scalars(self, statement: object) -> _ScalarResult:
+        """Return fake nutrition rows for food nutrition class lookups.
+
+        Args:
+            statement: SQLAlchemy select statement.
+
+        Returns:
+            Fake scalar result with configured rows.
+        """
+        column_descriptions = getattr(statement, "column_descriptions", [])
+        model = column_descriptions[0].get("entity") if column_descriptions else None
+        if model is FoodNutrition:
+            return _ScalarResult(list(self.food_nutrition_rows))
+        return _ScalarResult([])
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -311,6 +355,31 @@ def _food_detection(label: str = "비빔밥", confidence: float = 0.88) -> FoodD
     )
 
 
+def _fried_chicken_nutrition() -> FoodNutrition:
+    """Return a seeded-style food nutrition row for the fried-chicken class.
+
+    Returns:
+        Active food nutrition row mirroring the migration 0027 seed values.
+    """
+    return FoodNutrition(
+        class_en="fried-chicken",
+        class_ko="후라이드치킨",
+        n_source_codes=43,
+        serving_g=Decimal("217.0"),
+        kcal_100g=Decimal("236.26"),
+        carb_g=Decimal("21.37"),
+        sugar_g=Decimal("4.98"),
+        fat_g=Decimal("11.69"),
+        protein_g=Decimal("11.37"),
+        sodium_mg=Decimal("355.92"),
+        chol_mg=Decimal("14.93"),
+        sat_fat_g=Decimal("0.4"),
+        trans_fat_g=Decimal("0.83"),
+        source="aihub_taxo59_csv",
+        is_active=True,
+    )
+
+
 def _existing_preview(image_sha256: str) -> tuple[MealRecord, FoodImageAnalysisRun]:
     """Return an existing meal preview and analysis run fixture.
 
@@ -448,6 +517,67 @@ async def test_create_meal_image_preview_uses_food_yolo_candidates() -> None:
     serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
     assert "provider_payload" not in serialized_records
     assert "image_bytes" not in serialized_records
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_attaches_class_average_nutrition() -> None:
+    """Verify a detection matching a seeded class yields advisory nutrition totals."""
+    fake_session = _FakeStoreSession(food_nutrition_rows=[_fried_chicken_nutrition()])
+    detector = _FakeFoodDetector([_food_detection(label="fried-chicken", confidence=0.91)])
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(enable_food_yolo_detector=True),
+        food_detector=detector,
+    )
+
+    snapshot = result.analysis_run.nutrition_estimate_snapshot
+    assert snapshot["status"] == "detected_review_required"
+    assert snapshot["basis"] == "class_average_per_serving"
+    assert snapshot["precision_note"] == "demo_class_average_not_medical_or_prescriptive"
+
+    item = snapshot["items"][0]
+    assert item["display_name"] == "fried-chicken"
+    assert item["source"] == "vision"
+    # 236.26 kcal/100g * 217.0g / 100 = 512.68 kcal for one class-average serving.
+    assert item["nutrition"]["kcal"] == 512.68
+    assert item["nutrition"]["protein_g"] == 24.67
+
+    totals = snapshot["totals"]
+    assert totals["kcal"] == 512.68
+    assert totals["sodium_mg"] == round(355.92 * 2.17, 2)
+    assert result.meal_record.nutrition_summary == snapshot
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_leaves_unmatched_detection_without_nutrition() -> None:
+    """Verify a detection without a seeded class stays vision-only with empty totals."""
+    fake_session = _FakeStoreSession(food_nutrition_rows=[])
+    detector = _FakeFoodDetector([_food_detection(label="unknown-food", confidence=0.7)])
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(enable_food_yolo_detector=True),
+        food_detector=detector,
+    )
+
+    snapshot = result.analysis_run.nutrition_estimate_snapshot
+    assert snapshot["totals"] == {}
+    assert "basis" not in snapshot
+    assert "precision_note" not in snapshot
+    item = snapshot["items"][0]
+    assert item["source"] == "vision"
+    assert "nutrition" not in item
 
 
 @pytest.mark.asyncio
