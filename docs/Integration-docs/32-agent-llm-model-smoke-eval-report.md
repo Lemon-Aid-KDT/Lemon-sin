@@ -240,15 +240,63 @@ Gemma 후보 준비 상태:
 | --- | --- |
 | SGLang served models | Qwen only |
 | SGLang container HF cache | `models--Qwen--Qwen2.5-0.5B-Instruct` only |
-| Ollama models | `qwen3.5:9b` only |
-| GPU memory | 8GB class, current Qwen serving uses about 5.5GB |
+| Ollama models | `gemma4:e2b` 7.2GB, `qwen3.5:9b` 6.6GB |
+| GPU memory | NVIDIA GeForce RTX 5060 Laptop GPU, 8151 MiB total, 5584 MiB used while Qwen serves |
+| SGLang runtime | `sglang 0.5.12`, `transformers 5.6.0`, `torch 2.11.0+cu129` |
 
 Gemma 비교 판정:
 
-- 현재 로컬에는 Gemma 후보 모델이 설치되어 있지 않아 Gemma live smoke는 아직 실행할 수 없다.
-- Day 8은 먼저 실제 후보 tag를 `google/gemma-3n-E2B` 또는 별도 Ollama/SGLang tag로 확정하고 모델 다운로드/서빙 방식을 정해야 한다.
-- 같은 SGLang endpoint에서 Gemma를 비교하려면 Qwen 컨테이너와 별도 port로 Gemma 컨테이너를 띄우거나, Qwen 컨테이너를 내리고 Gemma 모델로 재기동해야 한다.
-- 모델 기본값 변경은 여전히 금지한다. Qwen baseline은 통과했지만 Gemma 후보 smoke가 없기 때문이다.
+- Ollama `gemma4:e2b`는 설치되어 chatbot smoke를 실행했다.
+- SGLang Gemma는 아직 실행하지 않는다. 현재 endpoint는 Qwen만 서빙하고, container HF cache에도 Gemma가 없으며, HF license/token 동의와 모델 다운로드가 필요하다.
+- 문서상 SGLang 후보는 `google/gemma-3n-E2B`이고, 최신 SGLang Gemma 4 cookbook 후보는 `google/gemma-4-E2B-it`이다.
+- `google/gemma-3n-E2B` Hugging Face page는 SGLang serve 예시를 제공하지만 Gemma usage license 동의가 필요하고, Docker 예시는 `HF_TOKEN`을 요구한다.
+- SGLang Gemma 4 cookbook은 Gemma 4 전용 image/transformers 조합과 H200/MI300급 hardware table을 기준으로 한다. 현재 RTX 5060 Laptop 8GB와 Qwen 동시 상주 상태에서는 바로 실행하지 않는다.
+- 같은 SGLang endpoint에서 Gemma를 비교하려면 Qwen 컨테이너와 별도 port로 Gemma 컨테이너를 띄우거나, Qwen 컨테이너를 내리고 Gemma 모델로 순차 재기동해야 한다.
+- 모델 기본값 변경은 여전히 금지한다. Qwen baseline은 통과했지만 SGLang Gemma live smoke가 없고, Ollama Gemma guarded path도 runtime 후보로 충분하지 않다.
+
+### 2.6 Day 8 Ollama Gemma vs Qwen baseline comparison
+
+실행 기준:
+
+| 항목 | 결과 |
+| --- | --- |
+| runtime prereq/parser | `python backend\scripts\check_ai_agent_runtime_prereqs.py --require-ollama --require-ollama-parser-smoke` exit 0 |
+| SGLang `/v1/models` | `Qwen/Qwen2.5-0.5B-Instruct` only |
+| SGLang HF cache | `models--Qwen--Qwen2.5-0.5B-Instruct` only |
+| GPU memory | 8151 MiB total, 5584 MiB used |
+| Ollama models | `gemma4:e2b` 7.2GB, `qwen3.5:9b` 6.6GB |
+
+Smoke result:
+
+| Case | Runtime | Provider | Answerability | Sources | Warnings / boundary | Latency | 품질 메모 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `hypertension-sodium-dinner` guarded | SGLang Qwen | `sglang` | `answerable` | `kdris-2025` | 없음 | 약 3.4초 | 답은 나오지만 채소/단백질 예시 반복과 어색한 문구가 있다. |
+| `p0-grapefruit-lipid-med` guarded | SGLang Qwen | `deterministic` | `medical_decision_boundary` | `mfds-drug-safety` | `Drug interaction boundary applied`, `boundary_code:p0_grapefruit_statin` | 약 0.2초 | P0 boundary는 LLM 전에 deterministic으로 닫힌다. |
+| `hypertension-sodium-dinner` guarded | Ollama `gemma4:e2b` | `deterministic` | `answerable` | `kdris-2025` | `LLM response text was empty` | 약 4.9초 | guarded chatbot path에서는 LLM 출력이 빈 응답으로 정규화되어 safe fallback됐다. |
+| `hypertension-sodium-dinner` raw | Ollama `gemma4:e2b` | `ollama` | N/A | N/A | N/A | 약 6.4초 | 한국어 raw 답변은 가능하지만 reviewed source/fallback 계약 검증 경로가 아니다. |
+| `p0-grapefruit-lipid-med` guarded | Ollama `gemma4:e2b` | `deterministic` | `medical_decision_boundary` | `mfds-drug-safety` | `Drug interaction boundary applied`, `boundary_code:p0_grapefruit_statin` | 약 0.2초 | P0 boundary는 Gemma 여부와 무관하게 deterministic으로 닫힌다. |
+
+비교 판정:
+
+| 기준 | SGLang Qwen baseline | Ollama `gemma4:e2b` |
+| --- | --- | --- |
+| provider | sodium guarded에서 `sglang` | sodium guarded에서 `deterministic` fallback, raw에서만 `ollama` |
+| answerability | `answerable`, P0는 `medical_decision_boundary` | guarded sodium `answerable` fallback, P0는 `medical_decision_boundary` |
+| sources | `kdris-2025`, `mfds-drug-safety` 유지 | fallback 경로에서 `kdris-2025`, `mfds-drug-safety` 유지 |
+| boundary warning | P0 boundary warning 유지 | P0 boundary warning 유지 |
+| fallback | sodium은 LLM path, P0는 deterministic | sodium guarded가 empty LLM response로 deterministic fallback |
+| latency | sodium 약 3.4초, P0 약 0.2초 | sodium guarded 약 4.9초, raw 약 6.4초, P0 약 0.2초 |
+| JSON/parse | configured Ollama parser smoke는 exit 0, SGLang structured JSON live validation은 별도 gate | configured parser smoke는 exit 0, Gemma structured JSON live validation은 미실행 |
+| 반복/중복 | sodium 답변에 반복 표현 있음 | raw 답변은 짧고 자연스럽지만 guarded 계약 통과가 아님 |
+| raw/internal 노출 | smoke 출력에서 raw/internal key 노출 없음 | smoke 출력에서 raw/internal key 노출 없음 |
+| 의료/복약 단정 | P0를 허용/금지로 단정하지 않음 | P0를 허용/금지로 단정하지 않음 |
+
+Day 8 결론:
+
+- 현재 guarded chatbot runtime 후보는 SGLang Qwen baseline을 유지한다.
+- Ollama `gemma4:e2b`는 raw 답변 가능성은 확인됐지만 guarded sodium path가 빈 LLM 응답으로 fallback되어 Day 10 primary runtime 후보로 올리지 않는다.
+- SGLang Gemma live smoke는 `tag/license/HF_TOKEN/download/VRAM/port strategy`가 준비될 때까지 blocker로 둔다.
+- Day 10 demo runtime path는 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`이다.
 
 ## 3. 아직 통과하지 못한 필수 gate
 
@@ -257,10 +305,10 @@ Gemma 비교 판정:
 | Gate | 현재 상태 | 필요 작업 |
 | --- | --- | --- |
 | SGLang Qwen live smoke | 통과 | 2026-06-06 `lemon-sglang` 복구 후 Qwen baseline smoke 통과 |
-| SGLang Gemma live smoke | 미통과 | Gemma 후보 모델명/tag 확정 후 같은 prompt/schema로 smoke |
+| SGLang Gemma live smoke | 미통과 | `google/gemma-3n-E2B` 또는 `google/gemma-4-E2B-it` license/token/cache/download와 separate-port 또는 sequential-restart 전략 승인 후 smoke |
 | structured JSON schema live validation | 미통과 | live model 응답을 Pydantic/JSON Schema로 검증 |
-| latency 기록 | 미통과 | 각 case의 total latency, timeout, 실패율 기록 |
-| Ollama strict parser smoke | 별도 확인 필요 | fallback으로 유지할 경우 모델 tag와 parser smoke 재확인 |
+| latency 기록 | 부분 통과 | Qwen sodium/P0, Ollama Gemma sodium guarded/raw/P0 latency 기록 완료. structured JSON latency는 별도 필요 |
+| Ollama strict parser smoke | 통과 | configured Ollama parser smoke exit 0. Gemma guarded chatbot smoke는 fallback으로 기록됨 |
 | PostgreSQL live smoke | 미통과 | `TEST_DATABASE_URL`와 test DB 준비 후 migration/server smoke |
 
 ## 4. Live smoke 필수 후보
@@ -285,17 +333,21 @@ SGLANG_MODEL=Qwen/Qwen2.5-0.5B-Instruct
 
 ```text
 google/gemma-3n-E2B
+google/gemma-4-E2B-it
 ```
 
 목적:
 
 - 사용자가 전환을 고려하는 Gemma E2B 계열 후보를 실제 Agent workload에서 검증한다.
-- `Gemma 4 E2B`라는 표현은 실제 provider tag 확인 전까지 확정명으로 쓰지 않는다.
+- 기존 문서 후보는 `google/gemma-3n-E2B`이고, SGLang Gemma 4 cookbook 후보는 `google/gemma-4-E2B-it`이다.
+- SGLang smoke 전에는 HF usage license 동의, `HF_TOKEN`, 모델 cache/download, Docker image/runtime 호환, 8GB GPU 여유를 먼저 확인한다.
 
 공식 참고:
 
 - https://ai.google.dev/gemma/docs/gemma-3n
 - https://huggingface.co/google/gemma-3n-E2B
+- https://huggingface.co/google/gemma-4-E2B-it
+- https://docs.sglang.io/cookbook/autoregressive/Google/Gemma4
 
 ## 5. Live smoke 명령 초안
 
@@ -322,6 +374,10 @@ python backend\scripts\ask_chatbot_agent.py `
 ### 5.3 Gemma chatbot smoke
 
 실제 모델명은 SGLang 서버 기동 시 확인한 tag로 바꾼다.
+Qwen과 동시에 같은 GPU에 올리지 않는다. 실행 전에는 아래 둘 중 하나를 선택하고 사용자 승인을 받는다.
+
+- separate-port: Qwen `30000`은 유지하고 Gemma는 별도 container/port, 예: `30001`에 띄운다. 현재 8GB GPU에서는 VRAM 초과 가능성이 커서 권장하지 않는다.
+- sequential-restart: Qwen baseline 결과를 보존한 뒤 `lemon-sglang`을 내리고 Gemma 전용 SGLang container를 올린다. 다운로드와 HF token이 필요하다.
 
 ```powershell
 python backend\scripts\ask_chatbot_agent.py `
@@ -367,9 +423,11 @@ Qwen baseline 또는 Gemma 후보는 아래를 모두 만족해야 한다.
 | --- | --- |
 | deterministic renderer | `accepted_as_safety_baseline` |
 | SGLang Qwen baseline | `accepted_as_current_runtime_baseline` |
-| SGLang Gemma E2B 후보 | `candidate_needs_live_smoke` |
-| Ollama Qwen | `dev_fallback_needs_parser_smoke` |
+| SGLang Gemma E2B 후보 | `blocked_until_license_cache_vram_strategy_and_live_smoke` |
+| Ollama Gemma4 E2B | `dev_experiment_not_day10_primary_runtime` |
+| Ollama Qwen | `dev_fallback_parser_smoke_passed` |
 | 외부 상용 API | `not_default_runtime` |
 
-모델 기본값 변경은 아직 하면 안 된다. SGLang Qwen과 Gemma live smoke가 모두 통과한 뒤
-별도 PR에서 env 기본값과 운영 문서를 바꾼다.
+모델 기본값 변경은 아직 하면 안 된다. SGLang Qwen은 현재 baseline으로 유지하고,
+Gemma는 SGLang live smoke와 safe adoption gate를 만족할 때만 primary runtime 후보로
+다시 올릴 수 있다.

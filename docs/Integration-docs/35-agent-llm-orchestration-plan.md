@@ -197,7 +197,7 @@ Blocked 조건:
 
 Blocked 조건:
 
-- `/api/v1/agents/chat`와 `/api/v1/ai-agent/chat` endpoint 기준이 정리되지 않는다.
+- canonical endpoint `/api/v1/ai-agent/chat` 기준이 깨지거나 `/api/v1/agents/chat` alias를 새로 만들려 한다.
 - Flutter가 unknown/source/boundary 상태를 구분해 표시할 수 없다.
 
 ### Phase 5. Integration hardening
@@ -643,26 +643,30 @@ Day 7 결과:
 - Ollama `qwen3.5:9b`는 설치되어 있고 raw chat 및 parser smoke는 fallback 경로로 통과했다.
 - guarded Ollama chatbot path에서는 LLM 응답이 빈 응답으로 정규화되어 deterministic renderer로 안전 fallback됐다.
 - P0 자몽/고지혈증 약 boundary는 fallback 경로에서도 `medical_decision_boundary`와 source/warning 계약을 유지했다.
-- Day 8 Gemma 비교는 Qwen baseline 통과 상태에서 시작 가능하지만, 현재 로컬에는 Gemma 후보 모델이 설치되어 있지 않다.
+- Day 8 Gemma 비교는 Qwen baseline 통과 상태에서 시작했고, Ollama `gemma4:e2b` smoke까지 실행했다. SGLang Gemma는 cache/license/download/VRAM 전략이 아직 준비되지 않았다.
 
 ### Day 8. Gemma 후보 smoke와 모델 비교
 
 - [x] Gemma 후보 모델 실행 조건을 확인한다.
-- [ ] Gemma chatbot smoke를 실행하고 32번에 기록한다.
-- [ ] Qwen baseline, Gemma 후보, Ollama fallback 결과를 비교한다.
-- [ ] 기본 모델 변경 여부는 live smoke 결과 없이 결정하지 않는다.
+- [x] Ollama `gemma4:e2b` chatbot smoke를 실행하고 32번에 기록한다.
+- [x] Qwen baseline, Ollama Gemma, Ollama fallback 결과를 비교한다.
+- [x] 기본 모델 변경 여부는 live smoke 결과 없이 결정하지 않는다.
+- [x] SGLang Gemma live smoke blocker를 32번에 기록한다.
 
 Day 8 완료 gate:
 
-- [ ] Qwen/Gemma/fallback 비교 결과가 있다.
-- [ ] 모델별 실패/timeout/JSON parse/source 사용 차이가 기록되어 있다.
-- [ ] Day 10 demo runtime path가 확정되어 있다.
+- [x] Qwen/Ollama Gemma/fallback 비교 결과가 있다.
+- [x] 모델별 실패/timeout/JSON parse/source/fallback/반복 차이가 기록되어 있다.
+- [x] Day 10 demo runtime path가 확정되어 있다.
 
-Day 8 시작 조건:
+Day 8 실행 결과:
 
 - Qwen baseline: 통과. SGLang `/v1/models`, chatbot smoke, FastAPI 조합 smoke, SGLang pytest smoke가 모두 통과했다.
-- Gemma 후보: 미설치. SGLang container Hugging Face cache와 Ollama model list 모두 Qwen만 있다.
-- 다음 작업은 Gemma 실제 tag와 서빙 방식을 확정하는 것이다. 후보는 31/32번 기준 `google/gemma-3n-E2B`이지만, 같은 port에서 Qwen과 동시에 비교할 수 없으므로 별도 SGLang port 또는 순차 재기동 전략이 필요하다.
+- Ollama Gemma: `gemma4:e2b` 7.2GB 설치 후 sodium guarded/raw, P0 boundary smoke를 실행했다. raw 답변은 가능했지만 guarded sodium path는 `LLM response text was empty`로 deterministic fallback됐다.
+- SGLang Gemma: 현재 `/v1/models`는 Qwen만 반환하고, SGLang container HF cache도 Qwen뿐이다. 후보 tag는 기존 `google/gemma-3n-E2B`와 SGLang Gemma 4 cookbook의 `google/gemma-4-E2B-it`로 좁힌다.
+- SGLang Gemma blocker: HF usage license/token, 모델 다운로드/cache, 현재 8GB GPU에서 Qwen과 동시 상주 불가, Gemma 전용 SGLang image/runtime 호환 확인이 남아 있다.
+- JSON parse: configured Ollama parser smoke는 통과했지만, SGLang/Gemma structured JSON live validation은 32번의 별도 gate로 남긴다.
+- Day 10 runtime 후보: `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`으로 둔다. Ollama Gemma는 실험 후보이며 primary runtime으로 올리지 않는다.
 
 ### Day 9. Golden scenarios와 failure UX
 
@@ -681,7 +685,7 @@ Day 9 완료 gate:
 
 - [ ] Flutter -> backend -> Agent/LLM -> response display 전체 흐름을 확인한다.
 - [ ] memory, confirmed context, reviewed evidence, analysis, checklist, CTA, source, boundary가 함께 돈다.
-- [ ] Qwen/Gemma/fallback 중 Day 10 demo runtime path를 고정한다.
+- [x] Qwen/Gemma/fallback 중 Day 10 demo runtime path를 고정한다.
 - [ ] 남은 gap은 35번 Future Risk Register 또는 30번 TODO로 되돌린다.
 
 Day 10 완료 gate:
@@ -693,11 +697,10 @@ Day 10 완료 gate:
 
 ## 11. 다음 실행 기준
 
-현재 기준의 다음 실행 후보는 Day 6이다.
+현재 기준의 다음 실행 후보는 Day 9다.
 
-Day 5에서 today analysis snapshot, smart health analysis snapshot, checklist 후보,
-CTA/approval preview를 side effect 없이 `/api/v1/ai-agent/chat` response contract에
-연결했다. 다음 구현은 Flutter가 받을 `answerability`, `sources[]`, `ctas[]`,
-`approval_preview`, boundary/unknown 표시 계약과 `/api/v1/agents/chat` vs
-`/api/v1/ai-agent/chat` endpoint mismatch를 정리하는 것이다. 실제 오늘 실천 저장 API와
-버튼 동작은 Day 6 이후 명시 승인 UI 계약으로 분리한다.
+Day 8에서 Qwen SGLang baseline, Ollama `gemma4:e2b`, fallback 결과를 비교했다.
+Day 10 demo runtime은 `/api/v1/ai-agent/chat` canonical endpoint에서
+`SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`으로
+둔다. `/api/v1/agents/chat` alias는 만들지 않는다. 다음 구현은 대표 golden scenarios,
+error/timeout/fallback UX, observability를 고정하는 Day 9 검증이다.
