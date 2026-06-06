@@ -275,7 +275,24 @@ TODO:
 - [ ] deterministic no-LLM tests
 - [ ] focused Flutter contract tests
 
-## 15. 완료 정의
+## 15. Day10 follow-up gaps
+
+목표: Day10 화면 smoke에서 확인된 통합 gap을 다음 PR 후보로 분리한다.
+
+TODO:
+
+- [ ] backend CORS allowlist에 Flutter web dev origin을 명시하거나 same-origin dev proxy를 둔다.
+- [ ] source/analysis/approval preview 패널이 응답 직후 화면에서 확인 가능하도록 panel anchor, sticky summary, 또는 scroll placement를 조정한다.
+- [ ] `unknown_no_reviewed_source` demo 문구를 golden fixture와 Flutter smoke fixture에 안정적으로 고정한다.
+- [ ] Day10 smoke 스크립트를 임시 `output/day10` 산출물이 아니라 재사용 가능한 dev smoke 명령으로 정리할지 결정한다.
+
+검증:
+
+- [ ] 기본 Chrome 보안 설정에서 Flutter web -> backend consent/chat preflight가 통과한다.
+- [ ] 실제 화면에서 answer, sources, boundary/unknown, CTA, approval preview가 한 번의 demo flow로 확인된다.
+- [ ] pure unknown scenario가 `sources=[]`, `answerability=unknown_no_reviewed_source`로 고정된다.
+
+## 16. 완료 정의
 
 - Agent가 앱 컨텍스트와 memory를 함께 읽는다.
 - raw archive와 agent memory가 분리된다.

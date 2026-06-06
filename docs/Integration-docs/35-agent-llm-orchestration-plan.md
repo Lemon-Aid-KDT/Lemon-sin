@@ -706,17 +706,39 @@ Day 9 observability 최소 항목:
 
 ### Day 10. Full vertical integration demo hardening
 
-- [ ] Flutter -> backend -> Agent/LLM -> response display 전체 흐름을 확인한다.
-- [ ] memory, confirmed context, reviewed evidence, analysis, checklist, CTA, source, boundary가 Flutter display까지 함께 돈다.
+#### Day 10 실제 화면 smoke 결과
+
+2026-06-06 기준 Day 10의 Flutter -> backend -> Agent/LLM -> response display 흐름은
+실제 Flutter web 화면과 backend API smoke로 확인했다.
+
+| 항목 | 결과 |
+| --- | --- |
+| backend runtime | FastAPI `http://127.0.0.1:18080`, PostgreSQL `127.0.0.1:55432`, SGLang `http://127.0.0.1:30000/v1` Qwen model 응답 확인 |
+| backend smoke | `smoke_ai_agent_server.py --use-existing-server ...` pass, `chat_provider=sglang`, `chat_answerability=answerable`, `chat_source_count=2`, unknown backlog delta `+1` |
+| Flutter config | web 기본 API base URL `http://localhost:18080`, repository endpoint `/api/v1/ai-agent/chat`; `/api/v1/agents/chat` alias 없음 |
+| Flutter screen smoke | release web build를 `localhost:52111`에서 실행하고 Chrome local smoke로 consent 4회 + chat 4회, 총 8개 backend 응답 확인 |
+| sodium dinner | 화면에 사용자 질문과 agent 답변 표시. payload는 `answerability=answerable`, sources `kdca-healthinfo`, `kdris-2025`, analysis/CTA/approval preview 포함 |
+| grapefruit/lipid medication | 화면에 boundary 설명 표시. payload는 `answerability=medical_decision_boundary`, source `mfds-drug-safety`, CTA/approval preview 포함 |
+| unknown-style question | 현재 문장 "검수된 근거가 없는 새로운 민간요법"은 drug-safety boundary로 닫혔다. 순수 unknown 질문 문구는 별도 fixture로 고정 필요 |
+| today analysis/checklist/CTA | 화면에 분석 실행 전 확인 안내 표시. payload는 `answerability=needs_more_info`, CTA `run_or_refresh_analysis`, `ask_about_this_result`, approval preview 포함 |
+
+Day 10 남은 gap:
+
+- Flutter web 정적 서버 origin `http://localhost:52111`에서 backend `http://localhost:18080` 호출은 기본 Chrome 보안 설정에서 CORS preflight가 막힌다. 로컬 smoke는 Chrome web security를 끄고 실제 HTTP 호출을 확인했다. 통합 전 backend CORS allowlist 또는 same-origin dev proxy가 필요하다.
+- Flutter 화면은 응답 후 대화 하단으로 자동 스크롤되어 source/analysis/approval preview 패널 확인성이 낮다. payload와 DTO/UI code path는 존재하지만 demo UX에서는 panel anchor 또는 summary placement 보강이 필요하다.
+- unknown no reviewed source 시나리오는 질문 문구가 drug-safety boundary로 분류될 수 있다. Day10 이후 golden/demo 문구를 `unknown_no_reviewed_source`로 안정 고정해야 한다.
+
+- [x] Flutter -> backend -> Agent/LLM -> response display 전체 흐름을 확인한다.
+- [x] memory, confirmed context, reviewed evidence, analysis, checklist, CTA, source, boundary가 Flutter display까지 함께 돈다.
 - [x] Qwen/Gemma/fallback 중 Day 10 demo runtime path를 고정한다.
-- [ ] 남은 gap은 35번 Future Risk Register 또는 30번 TODO로 되돌린다.
+- [x] 남은 gap은 35번 Future Risk Register 또는 30번 TODO로 되돌린다.
 
 Day 10 완료 gate:
 
-- [ ] full vertical integration demo가 통과한다.
-- [ ] golden/smoke 결과가 기록되어 있다.
-- [ ] Day 10 이후 고도화 항목과 Blocker가 분리되어 있다.
-- [ ] 팀 통합 PR 또는 다음 작업 slice가 명확하다.
+- [x] full vertical integration demo가 통과한다.
+- [x] golden/smoke 결과가 기록되어 있다.
+- [x] Day 10 이후 고도화 항목과 Blocker가 분리되어 있다.
+- [x] 팀 통합 PR 또는 다음 작업 slice가 명확하다.
 
 ## 11. 다음 실행 기준
 

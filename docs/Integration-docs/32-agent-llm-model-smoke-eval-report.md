@@ -344,6 +344,37 @@ Observability minimum for Day 10 demo:
 - `sources`: reviewed source metadata preserved for answerable/boundary paths; unknown paths keep `sources=[]`.
 - `unknown topic`: server smoke proves unknown backlog persistence by delta `+1`; raw user text remains out of the summary payload.
 
+### 2.8 Day 10 Flutter screen smoke
+
+실행일: 2026-06-06
+
+실행 요약:
+
+```powershell
+python backend\scripts\smoke_ai_agent_server.py --use-existing-server --skip-db-upgrade --database-url postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev --sglang-base-url http://127.0.0.1:30000/v1 --sglang-model Qwen/Qwen2.5-0.5B-Instruct --timeout 120
+C:\src\flutter\bin\flutter.bat build web --dart-define=LEMON_API_BASE_URL=http://localhost:18080
+```
+
+화면 smoke는 Flutter release web build를 로컬 정적 서버에서 실행하고, Chrome local smoke로 실제 화면 입력을 보냈다.
+기본 Chrome 보안 설정에서는 `localhost:52111` -> `localhost:18080` CORS preflight가 막혀 실패 화면이 표시됐다.
+기능 흐름 확인용 smoke에서는 Chrome web security를 끄고 동일 Flutter build에서 실제 HTTP 호출을 통과시켰다.
+
+결과:
+
+| Scenario | 화면/API 결과 |
+| --- | --- |
+| hypertension sodium dinner | consent `201`, chat `200`; provider `deterministic` 또는 `sglang`, `answerability=answerable`, sources `kdca-healthinfo`, `kdris-2025`, analysis/CTA/approval preview 포함 |
+| p0 grapefruit lipid medication boundary | consent `201`, chat `200`; `answerability=medical_decision_boundary`, source `mfds-drug-safety`, CTA/approval preview 포함 |
+| unknown-style question | consent `201`, chat `200`; 현재 smoke 문구는 drug-safety boundary로 닫혔다. pure unknown demo 문구는 후속 fixture로 고정 필요 |
+| today analysis/checklist/CTA | consent `201`, chat `200`; `answerability=needs_more_info`, CTA `run_or_refresh_analysis`, `ask_about_this_result`, analysis/approval preview 포함 |
+
+Day 10 판정:
+
+- Flutter -> backend -> Agent/LLM -> response display 흐름은 실제 화면에서 확인했다.
+- canonical endpoint는 `/api/v1/ai-agent/chat`로 유지했고 `/api/v1/agents/chat` alias는 만들지 않았다.
+- Day 10 runtime path는 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`를 유지했다.
+- 남은 release gap은 CORS allowlist/same-origin dev proxy, source/analysis/approval panel visibility, pure unknown demo fixture다.
+
 ## 3. 아직 통과하지 못한 필수 gate
 
 아래 항목은 모델 채택 전 필수다.
