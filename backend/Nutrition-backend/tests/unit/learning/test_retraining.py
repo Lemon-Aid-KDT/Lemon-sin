@@ -232,6 +232,7 @@ def test_supplement_section_yolo_export_maps_semantic_labels_to_class_ids() -> N
         "supplement_facts",
         "ingredient_amounts",
         "precautions",
+        "allergen_warning",
         "intake_method",
         "other_ingredients",
         "functional_claims",
@@ -251,8 +252,8 @@ def test_supplement_section_yolo_export_maps_semantic_labels_to_class_ids() -> N
                     "height": 0.3,
                 },
                 {
-                    "class_id": 3,
-                    "label": "precautions",
+                    "class_id": 4,
+                    "label": "allergen_warning",
                     "x_center": 0.5,
                     "y_center": 0.8,
                     "width": 0.7,

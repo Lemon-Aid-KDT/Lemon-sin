@@ -48,9 +48,12 @@ READINESS_SCHEMA = readiness_reporter.SCHEMA_VERSION
 BATCH_PROGRESS_SCHEMA = progress_preflight.SCHEMA_VERSION
 WORK_ORDER_SCHEMA = work_order.SCHEMA_VERSION
 POST_COMPLETION_SCHEMA = post_completion.SCHEMA_VERSION
+COMMAND_CHECKLIST_SCHEMA = "supplement-operator-next-command-checklist-v1"
 TAXONOMY_AUDIT_SCHEMA = "supplement-crawling-image-taxonomy-audit-v1"
 TAXONOMY_STAGING_SCHEMA = "supplement-taxonomy-db-staging-v1"
 SOURCE_DOC_URLS = readiness_reporter.SOURCE_DOC_URLS
+MAX_INTERNAL_COMMAND_TEXT_LENGTH = 8_000
+MAX_MARKDOWN_CELL_TEXT_LENGTH = 1_200
 REQUIREMENT_QUEUE_KEYS = {
     "brand_product_db_import": "brand_product_review",
     "review_image_ground_truth_privacy_gate": "review_pii_screening",
@@ -153,6 +156,7 @@ REQUIREMENT_SPECS: tuple[dict[str, Any], ...] = (
         "requirement_key": "paddleocr_training_loop_ready",
         "title": "PaddleOCR training loop is gated and ready",
         "stage_keys": (
+            "paddleocr_text_target_chain_preflight",
             "paddleocr_improvement_triage",
             "paddleocr_annotation_tasks",
             "paddleocr_finetune_plan",
@@ -188,6 +192,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--batch-progress", type=Path, required=True)
     parser.add_argument("--next-work-order", type=Path, required=True)
     parser.add_argument("--post-completion-plan", type=Path, required=True)
+    parser.add_argument("--next-command-checklist", type=Path, default=None)
     parser.add_argument("--taxonomy-audit", type=Path, default=None)
     parser.add_argument("--taxonomy-staging", type=Path, default=None)
     parser.add_argument("--output", type=Path, required=True)
@@ -212,6 +217,8 @@ def main(argv: list[str] | None = None) -> None:
         input_paths["taxonomy_audit"] = args.taxonomy_audit.expanduser().resolve()
     if args.taxonomy_staging is not None:
         input_paths["taxonomy_staging"] = args.taxonomy_staging.expanduser().resolve()
+    if args.next_command_checklist is not None:
+        input_paths["next_command_checklist"] = args.next_command_checklist.expanduser().resolve()
     output_path = args.output.expanduser().resolve()
     markdown_output = (
         args.markdown_output.expanduser().resolve() if args.markdown_output is not None else None
@@ -246,6 +253,7 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
     progress = _load_json_object(_required_input(input_paths, "batch_progress"))
     next_work_order = _load_json_object(_required_input(input_paths, "next_work_order"))
     post_plan = _load_json_object(_required_input(input_paths, "post_completion_plan"))
+    command_checklist = _optional_json_object(input_paths, "next_command_checklist")
     taxonomy_audit = _optional_json_object(input_paths, "taxonomy_audit")
     taxonomy_staging = _optional_json_object(input_paths, "taxonomy_staging")
 
@@ -253,12 +261,16 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
     _require_schema(progress, BATCH_PROGRESS_SCHEMA)
     _require_schema(next_work_order, WORK_ORDER_SCHEMA)
     _require_schema(post_plan, POST_COMPLETION_SCHEMA)
+    if command_checklist is not None:
+        _require_schema(command_checklist, COMMAND_CHECKLIST_SCHEMA)
     if taxonomy_audit is not None:
         _require_schema(taxonomy_audit, TAXONOMY_AUDIT_SCHEMA)
     if taxonomy_staging is not None:
         _require_schema(taxonomy_staging, TAXONOMY_STAGING_SCHEMA)
 
     payloads = [readiness, progress, next_work_order, post_plan]
+    if command_checklist is not None:
+        payloads.append(command_checklist)
     if taxonomy_audit is not None:
         payloads.append(taxonomy_audit)
     if taxonomy_staging is not None:
@@ -268,13 +280,16 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
         _reject_unsafe_true_flags(payload)
 
     stage_by_key = _stage_by_key(readiness)
+    artifact_by_role = _artifact_summary_by_role(readiness)
     requirements = [
         _requirement_summary(
             spec=spec,
             stage_by_key=stage_by_key,
+            artifact_by_role=artifact_by_role,
             progress=progress,
             next_work_order=next_work_order,
             post_plan=post_plan,
+            command_checklist=command_checklist,
             taxonomy_audit=taxonomy_audit,
             taxonomy_staging=taxonomy_staging,
         )
@@ -284,19 +299,30 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
     pending = sum(1 for row in requirements if row["status"] == "pending_operator_review")
     blocked = sum(1 for row in requirements if row["status"].startswith("blocked"))
     incomplete = [row["requirement_key"] for row in requirements if row["status"] != "verified"]
-    objective_completion_allowed = not incomplete
+    operator_review_gate = _operator_review_completion_gate(
+        progress=progress,
+        post_plan=post_plan,
+    )
+    objective_completion_allowed = (
+        not incomplete and operator_review_gate["completion_allowed"] is True
+    )
     audit = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "overall_status": "complete_verified"
         if objective_completion_allowed
-        else _overall_status(pending_count=pending, blocked_count=blocked),
+        else _overall_status(
+            pending_count=pending,
+            blocked_count=blocked,
+            operator_review_gate=operator_review_gate,
+        ),
         "objective_completion_allowed": objective_completion_allowed,
         "requirement_count": len(requirements),
         "verified_requirement_count": verified,
         "pending_requirement_count": pending,
         "blocked_requirement_count": blocked,
         "incomplete_requirement_keys": incomplete,
+        "operator_review_completion_gate": operator_review_gate,
         "current_blocker_batch_key": _safe_string(next_work_order.get("batch_key")),
         "current_blocker_queue_key": _safe_string(next_work_order.get("queue_key")),
         "current_blocker_blank_row_count": _non_negative_int(
@@ -311,11 +337,12 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
             post_plan.get("blocked_reason_codes")
         ),
         "operator_next_action": _safe_string(
-            next_work_order.get("stage_next_operator_action")
+            next_work_order.get("operator_next_action")
+            or next_work_order.get("stage_next_operator_action")
         ),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: progress_preflight._sha256_text(str(path.expanduser()))
+            key: _fingerprint_text(str(path.expanduser()))
             for key, path in sorted(input_paths.items())
         },
         "requirements": requirements,
@@ -359,6 +386,7 @@ def build_markdown(audit: Mapping[str, Any]) -> str:
         f"`{_non_negative_int(audit.get('blocked_requirement_count'))}` blocked",
         f"- Current blocker batch: `{_safe_string(audit.get('current_blocker_batch_key'))}`",
         f"- Total blank rows: `{_non_negative_int(audit.get('total_blank_row_count'))}`",
+        f"- Operator review gate: `{_safe_string(_operator_gate(audit).get('status'))}`",
         "",
         "## Requirements",
         "",
@@ -388,6 +416,7 @@ def build_markdown(audit: Mapping[str, Any]) -> str:
             "- OCR provider call performed: `false`",
             "- LLM call performed: `false`",
             "- Raw OCR/provider payload stored: `false`",
+            f"- Completion gate blockers: `{', '.join(_safe_string_list(_operator_gate(audit).get('blocker_codes')))}`",
             "",
             "## Source Docs",
             "",
@@ -401,9 +430,11 @@ def _requirement_summary(
     *,
     spec: Mapping[str, Any],
     stage_by_key: Mapping[str, Mapping[str, Any]],
+    artifact_by_role: Mapping[str, Mapping[str, Any]],
     progress: Mapping[str, Any],
     next_work_order: Mapping[str, Any],
     post_plan: Mapping[str, Any],
+    command_checklist: Mapping[str, Any] | None,
     taxonomy_audit: Mapping[str, Any] | None,
     taxonomy_staging: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -412,9 +443,11 @@ def _requirement_summary(
     Args:
         spec: Requirement specification.
         stage_by_key: Readiness stages keyed by stage id.
+        artifact_by_role: Readiness artifact summaries keyed by role.
         progress: Operator batch progress payload.
         next_work_order: Current next-batch work order.
         post_plan: Current post-completion command plan.
+        command_checklist: Optional current next-command checklist.
         taxonomy_audit: Optional taxonomy audit payload.
         taxonomy_staging: Optional taxonomy staging summary payload.
 
@@ -424,19 +457,44 @@ def _requirement_summary(
     requirement_key = _safe_string(spec.get("requirement_key"))
     stage_keys = tuple(str(key) for key in spec.get("stage_keys", ()))
     if requirement_key == "privacy_security_controls":
+        teacher_gate = _teacher_ocr_fail_closed_gate_evidence(
+            post_plan=post_plan,
+            command_checklist=command_checklist,
+        )
         return {
             "requirement_key": requirement_key,
             "title": _safe_string(spec.get("title")),
             "objective_mapping": _safe_string(spec.get("objective_mapping")),
-            "status": "verified",
+            "status": "verified" if not teacher_gate["blocker_codes"] else "blocked_invalid_artifact",
             "stage_keys": [],
             "evidence": [
                 "unsafe input flags are false",
                 "redaction scan rejected raw OCR/provider/path payload fields",
+                *teacher_gate["evidence"],
             ],
-            "blocker_codes": [],
-            "next_action": "continue_using_redacted_summaries_only",
+            "blocker_codes": teacher_gate["blocker_codes"],
+            "next_action": "continue_using_redacted_summaries_only"
+            if not teacher_gate["blocker_codes"]
+            else "regenerate_fail_closed_teacher_ocr_command_plan",
         }
+    if requirement_key == "paddleocr_training_loop_ready":
+        early_stop = artifact_by_role.get("paddleocr_accuracy_stop_gate")
+        if _paddleocr_early_stop_verified(early_stop):
+            return {
+                "requirement_key": requirement_key,
+                "title": _safe_string(spec.get("title")),
+                "objective_mapping": _safe_string(spec.get("objective_mapping")),
+                "status": "verified",
+                "stage_keys": list(stage_keys),
+                "evidence": [
+                    "paddleocr_accuracy_stop_gate:verified",
+                    "human_ground_truth_compared=true",
+                    "text_extraction_accuracy_ge_95=true",
+                    "training_loop_stop_allowed=true",
+                ],
+                "blocker_codes": [],
+                "next_action": "stop_paddleocr_training_loop_after_operator_completion",
+            }
 
     stages = [_stage_or_blocked(stage_by_key, stage_key) for stage_key in stage_keys]
     status = _aggregate_stage_status(stages)
@@ -455,6 +513,12 @@ def _requirement_summary(
             for code in _safe_string_list(stage.get("blocker_codes"))
         }
     )
+    if requirement_key == "paddleocr_training_loop_ready":
+        early_stop = artifact_by_role.get("paddleocr_accuracy_stop_gate")
+        evidence.extend(_paddleocr_early_stop_evidence(early_stop))
+        if early_stop is not None and not _paddleocr_early_stop_verified(early_stop):
+            blockers.append("paddleocr_accuracy_stop_gate:not_allowed")
+            blockers = sorted(set(blockers))
     next_action = _next_action(stages, next_work_order=next_work_order, post_plan=post_plan)
     return {
         "requirement_key": requirement_key,
@@ -531,6 +595,326 @@ def _requirement_evidence(
             f"{str(post_plan.get('post_completion_execution_allowed') is True).lower()}"
         )
     return evidence
+
+
+def _artifact_summary_by_role(readiness: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    """Return readiness artifact summaries keyed by role.
+
+    Args:
+        readiness: Readiness report payload.
+
+    Returns:
+        Artifact summary mapping. Missing or malformed rows are ignored because
+        completion must still be driven by stage evidence.
+    """
+    summaries = readiness.get("artifact_summaries")
+    if not isinstance(summaries, list):
+        return {}
+    artifacts: dict[str, Mapping[str, Any]] = {}
+    for summary in summaries:
+        if not isinstance(summary, Mapping):
+            continue
+        role = _safe_string(summary.get("role"))
+        if role:
+            artifacts[role] = summary
+    return artifacts
+
+
+def _teacher_ocr_fail_closed_gate_evidence(
+    *,
+    post_plan: Mapping[str, Any],
+    command_checklist: Mapping[str, Any] | None,
+) -> dict[str, list[str]]:
+    """Verify teacher OCR commands are fail-closed behind benchmark readiness.
+
+    Args:
+        post_plan: Current post-completion command plan.
+        command_checklist: Optional generated next-command checklist.
+
+    Returns:
+        Redacted evidence and blocker codes. No shell command, file path, source
+        row, OCR text, or provider payload is returned.
+    """
+    evidence: list[str] = []
+    blockers: list[str] = []
+    plan_result = _teacher_ocr_plan_sequence_evidence(post_plan)
+    evidence.extend(plan_result["evidence"])
+    blockers.extend(plan_result["blocker_codes"])
+    checklist_result = _teacher_ocr_checklist_gate_evidence(command_checklist)
+    evidence.extend(checklist_result["evidence"])
+    blockers.extend(checklist_result["blocker_codes"])
+    return {
+        "evidence": evidence,
+        "blocker_codes": sorted(set(blockers)),
+    }
+
+
+def _teacher_ocr_plan_sequence_evidence(post_plan: Mapping[str, Any]) -> dict[str, list[str]]:
+    """Verify post-completion step order around teacher OCR.
+
+    Args:
+        post_plan: Current post-completion command plan.
+
+    Returns:
+        Redacted evidence and blocker codes.
+    """
+    required_order = (
+        "build_supplement_ocr_benchmark_manifest",
+        "assign_paddleocr_benchmark_splits",
+        "gate_supplement_ocr_benchmark",
+        "collect_supplement_ocr_observations",
+    )
+    steps = post_plan.get("steps")
+    if not isinstance(steps, list):
+        return {
+            "evidence": ["teacher_ocr_plan_sequence=missing_steps"],
+            "blocker_codes": ["teacher_ocr_plan_steps_missing"],
+        }
+    script_indices: dict[str, int] = {}
+    gate_policy_by_script: dict[str, str] = {}
+    input_roles_by_script: dict[str, set[str]] = {}
+    for index, step in enumerate(steps):
+        if not isinstance(step, Mapping):
+            continue
+        script_key = _safe_string(step.get("script_key"))
+        if not script_key or script_key in script_indices:
+            continue
+        script_indices[script_key] = index
+        gate_policy_by_script[script_key] = _safe_string(step.get("gate_policy"))
+        input_roles = step.get("input_roles")
+        if isinstance(input_roles, list):
+            input_roles_by_script[script_key] = {
+                _safe_string(role) for role in input_roles if _safe_string(role)
+            }
+    blockers = [
+        f"teacher_ocr_plan_missing_{script_key}"
+        for script_key in required_order
+        if script_key not in script_indices
+    ]
+    if not blockers:
+        indices = [script_indices[script_key] for script_key in required_order]
+        if indices != sorted(indices):
+            blockers.append("teacher_ocr_plan_sequence_out_of_order")
+    gate_inputs = input_roles_by_script.get("gate_supplement_ocr_benchmark", set())
+    required_gate_inputs = {
+        "pii_decision_preflight_summary",
+        "gt_bundle_summary",
+        "ground_truth_preflight_summary",
+        "benchmark_summary",
+        "benchmark_split_summary",
+    }
+    missing_gate_inputs = sorted(required_gate_inputs - gate_inputs)
+    blockers.extend(f"teacher_ocr_plan_gate_input_missing_{item}" for item in missing_gate_inputs)
+    if (
+        gate_policy_by_script.get("gate_supplement_ocr_benchmark")
+        != "must_pass_before_teacher_ocr_eval"
+    ):
+        blockers.append("teacher_ocr_plan_gate_policy_not_strict")
+    if (
+        gate_policy_by_script.get("collect_supplement_ocr_observations")
+        != "external_ocr_requires_explicit_env_opt_in"
+    ):
+        blockers.append("teacher_ocr_provider_opt_in_policy_missing")
+    evidence = [
+        "teacher_ocr_plan_sequence="
+        + ("verified" if not blockers else "blocked"),
+        "teacher_ocr_plan_gate_inputs="
+        + ("verified" if not missing_gate_inputs else "missing"),
+        "teacher_ocr_plan_provider_opt_in="
+        + str(
+            gate_policy_by_script.get("collect_supplement_ocr_observations")
+            == "external_ocr_requires_explicit_env_opt_in"
+        ).lower(),
+    ]
+    return {
+        "evidence": evidence,
+        "blocker_codes": blockers,
+    }
+
+
+def _teacher_ocr_checklist_gate_evidence(
+    command_checklist: Mapping[str, Any] | None,
+) -> dict[str, list[str]]:
+    """Verify generated shell commands fail closed before provider OCR.
+
+    Args:
+        command_checklist: Optional generated command checklist.
+
+    Returns:
+        Redacted evidence and blocker codes.
+    """
+    if command_checklist is None:
+        return {
+            "evidence": ["teacher_ocr_command_checklist=missing"],
+            "blocker_codes": ["teacher_ocr_command_checklist_missing"],
+        }
+    commands = command_checklist.get("commands")
+    if not isinstance(commands, list):
+        return {
+            "evidence": ["teacher_ocr_command_checklist=missing_commands"],
+            "blocker_codes": ["teacher_ocr_command_checklist_commands_missing"],
+        }
+    script_indices: dict[str, int] = {}
+    command_by_script: dict[str, str] = {}
+    gate_policy_by_script: dict[str, str] = {}
+    for index, row in enumerate(commands):
+        if not isinstance(row, Mapping):
+            continue
+        script_key = _safe_string(row.get("script_key"))
+        if not script_key or script_key in script_indices:
+            continue
+        script_indices[script_key] = index
+        command_by_script[script_key] = _command_text_for_internal_validation(
+            row.get("command")
+        )
+        gate_policy_by_script[script_key] = _safe_string(row.get("gate_policy"))
+    blockers: list[str] = []
+    required_order = (
+        "build_supplement_ocr_benchmark_manifest",
+        "assign_paddleocr_benchmark_splits",
+        "gate_supplement_ocr_benchmark",
+        "collect_supplement_ocr_observations",
+    )
+    blockers.extend(
+        f"teacher_ocr_command_missing_{script_key}"
+        for script_key in required_order
+        if script_key not in script_indices
+    )
+    if not blockers:
+        indices = [script_indices[script_key] for script_key in required_order]
+        if indices != sorted(indices):
+            blockers.append("teacher_ocr_command_sequence_out_of_order")
+    gate_command = command_by_script.get("gate_supplement_ocr_benchmark", "")
+    required_gate_flags = (
+        "--ground-truth-bundle-summary",
+        "--ground-truth-preflight",
+        "--benchmark-summary",
+        "--benchmark-split-summary",
+        "--require-ready-for-teacher-ocr-eval",
+    )
+    missing_flags = [flag for flag in required_gate_flags if flag not in gate_command]
+    blockers.extend(f"teacher_ocr_command_gate_flag_missing_{flag[2:]}" for flag in missing_flags)
+    if (
+        gate_policy_by_script.get("gate_supplement_ocr_benchmark")
+        != "must_pass_before_teacher_ocr_eval"
+    ):
+        blockers.append("teacher_ocr_command_gate_policy_not_strict")
+    if (
+        gate_policy_by_script.get("collect_supplement_ocr_observations")
+        != "external_ocr_requires_explicit_env_opt_in"
+    ):
+        blockers.append("teacher_ocr_command_provider_opt_in_policy_missing")
+    evidence = [
+        "teacher_ocr_command_sequence="
+        + ("verified" if not blockers else "blocked"),
+        "teacher_ocr_command_ready_required="
+        + str("--require-ready-for-teacher-ocr-eval" in gate_command).lower(),
+        "teacher_ocr_command_provider_opt_in="
+        + str(
+            gate_policy_by_script.get("collect_supplement_ocr_observations")
+            == "external_ocr_requires_explicit_env_opt_in"
+        ).lower(),
+    ]
+    return {
+        "evidence": evidence,
+        "blocker_codes": blockers,
+    }
+
+
+def _paddleocr_early_stop_verified(artifact: Mapping[str, Any] | None) -> bool:
+    """Return whether PaddleOCR can stop further training from a 95 percent gate.
+
+    Args:
+        artifact: Optional readiness artifact summary.
+
+    Returns:
+        True only when human-GT comparison, privacy clearance, threshold pass,
+        and explicit stop permission are all present.
+    """
+    if artifact is None:
+        return False
+    return (
+        artifact.get("human_ground_truth_compared") is True
+        and artifact.get("privacy_review_cleared") is True
+        and artifact.get("text_extraction_accuracy_meets_95_percent") is True
+        and artifact.get("training_loop_stop_allowed") is True
+    )
+
+
+def _paddleocr_early_stop_evidence(artifact: Mapping[str, Any] | None) -> list[str]:
+    """Return safe PaddleOCR early-stop evidence strings.
+
+    Args:
+        artifact: Optional readiness artifact summary.
+
+    Returns:
+        Redacted evidence strings.
+    """
+    if artifact is None:
+        return ["paddleocr_accuracy_stop_gate:missing"]
+    return [
+        "paddleocr_accuracy_stop_gate:provided",
+        "human_ground_truth_compared="
+        f"{str(artifact.get('human_ground_truth_compared') is True).lower()}",
+        "text_extraction_accuracy_ge_95="
+        f"{str(artifact.get('text_extraction_accuracy_meets_95_percent') is True).lower()}",
+        "training_loop_stop_allowed="
+        f"{str(artifact.get('training_loop_stop_allowed') is True).lower()}",
+    ]
+
+
+def _operator_review_completion_gate(
+    *,
+    progress: Mapping[str, Any],
+    post_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build a hard completion gate from operator-review aggregate progress.
+
+    Args:
+        progress: Operator batch-progress payload.
+        post_plan: Current post-completion command plan.
+
+    Returns:
+        Redacted gate summary. Completion is allowed only when every operator
+        batch is complete, no unresolved review rows remain, and the
+        post-completion plan says follow-up commands are safe to run.
+    """
+    total_blank_rows = _non_negative_int(progress.get("total_blank_row_count"))
+    total_pending_rows = _non_negative_int(progress.get("total_pending_row_count"))
+    total_invalid_rows = _non_negative_int(progress.get("total_invalid_row_count"))
+    total_missing_rows = _non_negative_int(progress.get("total_missing_row_count"))
+    all_batches_complete = progress.get("all_batches_complete") is True
+    post_completion_allowed = post_plan.get("post_completion_execution_allowed") is True
+    blocker_codes: list[str] = []
+    if not all_batches_complete:
+        blocker_codes.append("operator_batches_not_complete")
+    if total_blank_rows:
+        blocker_codes.append("operator_blank_rows_remaining")
+    if total_pending_rows:
+        blocker_codes.append("operator_pending_rows_remaining")
+    if total_invalid_rows:
+        blocker_codes.append("operator_invalid_rows_remaining")
+    if total_missing_rows:
+        blocker_codes.append("operator_missing_rows_remaining")
+    if not post_completion_allowed:
+        post_blockers = _safe_string_list(post_plan.get("blocked_reason_codes"))
+        blocker_codes.extend(post_blockers or ["post_completion_execution_not_allowed"])
+    blocker_codes = sorted(set(blocker_codes))
+    completion_allowed = not blocker_codes
+    return {
+        "status": "verified" if completion_allowed else "blocked_operator_review_incomplete",
+        "completion_allowed": completion_allowed,
+        "all_batches_complete": all_batches_complete,
+        "post_completion_execution_allowed": post_completion_allowed,
+        "total_blank_row_count": total_blank_rows,
+        "total_pending_row_count": total_pending_rows,
+        "total_invalid_row_count": total_invalid_rows,
+        "total_missing_row_count": total_missing_rows,
+        "blocker_codes": blocker_codes,
+        "next_action": "run_post_completion_commands"
+        if completion_allowed
+        else "complete_all_operator_review_batches_before_completion",
+    }
 
 
 def _queue_progress_summary(*, progress: Mapping[str, Any], queue_key: str) -> dict[str, Any]:
@@ -640,7 +1024,10 @@ def _next_action(
                 return action
     if post_plan.get("post_completion_execution_allowed") is not True:
         return "complete_current_operator_batch_before_post_completion_steps"
-    return _safe_string(next_work_order.get("stage_next_operator_action"))
+    return _safe_string(
+        next_work_order.get("operator_next_action")
+        or next_work_order.get("stage_next_operator_action")
+    )
 
 
 def _stage_by_key(readiness: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
@@ -690,12 +1077,18 @@ def _stage_or_blocked(
     }
 
 
-def _overall_status(*, pending_count: int, blocked_count: int) -> str:
+def _overall_status(
+    *,
+    pending_count: int,
+    blocked_count: int,
+    operator_review_gate: Mapping[str, Any],
+) -> str:
     """Return conservative overall completion status.
 
     Args:
         pending_count: Requirement count pending human review.
         blocked_count: Requirement count blocked by missing evidence.
+        operator_review_gate: Hard completion gate payload.
 
     Returns:
         Stable status string.
@@ -704,6 +1097,8 @@ def _overall_status(*, pending_count: int, blocked_count: int) -> str:
         return "in_progress_blocked_by_missing_evidence"
     if pending_count:
         return "in_progress_pending_operator_review"
+    if operator_review_gate.get("completion_allowed") is not True:
+        return "in_progress_blocked_by_operator_review_gate"
     return "in_progress_unverified"
 
 
@@ -798,6 +1193,27 @@ def _reject_unsafe_true_flags(payload: Any) -> None:
             _reject_unsafe_true_flags(item)
 
 
+def _command_text_for_internal_validation(value: Any) -> str:
+    """Return bounded command text for structural checks only.
+
+    Args:
+        value: Candidate command value.
+
+    Returns:
+        Command text used only for local substring checks.
+
+    Raises:
+        CompletionAuditError: If the command text is too large or unsafe.
+    """
+    if not isinstance(value, str):
+        return ""
+    command = value.strip()
+    if len(command) > MAX_INTERNAL_COMMAND_TEXT_LENGTH:
+        raise CompletionAuditError("Command checklist row is too long.")
+    _reject_unsafe_payload({"command_text_for_validation": command})
+    return command
+
+
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     """Write indented JSON.
 
@@ -863,6 +1279,7 @@ def _cli_summary(audit: Mapping[str, Any]) -> dict[str, Any]:
         "blocked_requirement_count": audit.get("blocked_requirement_count"),
         "current_blocker_batch_key": audit.get("current_blocker_batch_key"),
         "total_blank_row_count": audit.get("total_blank_row_count"),
+        "operator_review_gate_status": _operator_gate(audit).get("status"),
     }
 
 
@@ -879,6 +1296,21 @@ def _requirement_rows(audit: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if not isinstance(rows, list):
         return []
     return [row for row in rows if isinstance(row, Mapping)]
+
+
+def _operator_gate(audit: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the operator completion gate from an audit payload.
+
+    Args:
+        audit: Completion audit payload.
+
+    Returns:
+        Gate mapping or an empty mapping.
+    """
+    gate = audit.get("operator_review_completion_gate")
+    if isinstance(gate, Mapping):
+        return gate
+    return {}
 
 
 def _safe_string(value: Any) -> str:
@@ -934,7 +1366,16 @@ def _md_cell(value: Any) -> str:
     Returns:
         Escaped cell text.
     """
-    return _safe_string(value).replace("|", "/")
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()[:MAX_MARKDOWN_CELL_TEXT_LENGTH]
+    _reject_unsafe_payload(text)
+    return text.replace("|", "/")
+
+
+def _fingerprint_text(value: str) -> str:
+    """Return a short non-secret fingerprint for operator audit inputs."""
+    return f"fp-{progress_preflight._sha256_text(value)[:12]}"
 
 
 if __name__ == "__main__":

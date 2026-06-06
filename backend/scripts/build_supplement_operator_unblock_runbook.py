@@ -202,10 +202,16 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
     for payload in (progress, next_work_order, post_plan, audit):
         _reject_unsafe_payload(payload)
         _reject_unsafe_true_flags(payload)
-    gate_summaries = _optional_gate_summaries(input_paths)
-    triage_summaries = _optional_triage_summaries(input_paths)
-
     queue_summaries = _queue_summaries(progress)
+    gate_summaries = _optional_gate_summaries(
+        input_paths,
+        completion_audit=audit,
+        queue_summaries=queue_summaries,
+    )
+    triage_summaries = _optional_triage_summaries(
+        input_paths,
+        queue_summaries=queue_summaries,
+    )
     sequence = _operator_sequence(queue_summaries=queue_summaries, completion_audit=audit)
     runbook = {
         "schema_version": SCHEMA_VERSION,
@@ -215,6 +221,21 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
         "current_next_batch_key": _safe_string(next_work_order.get("batch_key")),
         "current_next_queue_key": _safe_string(next_work_order.get("queue_key")),
         "current_next_batch_file_name": _safe_string(next_work_order.get("batch_file_name")),
+        "current_blocker_batch_key": _safe_string(
+            audit.get("current_blocker_batch_key") or next_work_order.get("batch_key")
+        ),
+        "current_blocker_queue_key": _safe_string(
+            audit.get("current_blocker_queue_key") or next_work_order.get("queue_key")
+        ),
+        "current_blocker_blank_row_count": _non_negative_int(
+            audit.get("current_blocker_blank_row_count")
+            if "current_blocker_blank_row_count" in audit
+            else next_work_order.get("blank_row_count")
+        ),
+        "operator_next_action": _safe_string(
+            audit.get("operator_next_action")
+            or next_work_order.get("stage_next_operator_action")
+        ),
         "source_editable_file_name": _safe_string(next_work_order.get("source_editable_file_name")),
         "total_blank_row_count": _non_negative_int(progress.get("total_blank_row_count")),
         "requirement_summary": {
@@ -280,6 +301,8 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
         f"- Status: `{_safe_string(runbook.get('status'))}`",
         f"- Completion allowed: `{str(runbook.get('objective_completion_allowed') is True).lower()}`",
         f"- Next batch: `{_safe_string(runbook.get('current_next_batch_key'))}`",
+        f"- Current blocker: `{_safe_string(runbook.get('current_blocker_batch_key'))}`",
+        f"- Operator next action: `{_safe_string(runbook.get('operator_next_action'))}`",
         f"- Next batch file: `{_safe_string(runbook.get('current_next_batch_file_name'))}`",
         f"- Source editable file: `{_safe_string(runbook.get('source_editable_file_name'))}`",
         f"- Total blank rows: `{_non_negative_int(runbook.get('total_blank_row_count'))}`",
@@ -313,8 +336,8 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
             "",
             "## Gate Summary",
             "",
-            "| Gate | Status | Key counts | Allowed flags | Next steps |",
-            "| --- | --- | --- | --- | --- |",
+            "| Gate | Status | Consistency | Key counts | Allowed flags | Next steps |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
     )
     for row in _mapping_rows(runbook.get("gate_summaries")):
@@ -324,6 +347,10 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
                 (
                     _md_cell(row.get("gate_key")),
                     f"`{_safe_string(row.get('status'))}`",
+                    _md_cell(
+                        _safe_string(row.get("consistency_status"))
+                        + _warnings_suffix(row.get("consistency_warnings"))
+                    ),
                     _md_cell(_reason_counts_text(row.get("key_counts"))),
                     _md_cell(_bool_flags_text(row.get("allowed_flags"))),
                     _md_cell(", ".join(_safe_string_list(row.get("next_steps"))[:5])),
@@ -336,8 +363,8 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
             "",
             "## Batch Triage Summary",
             "",
-            "| Queue | File | Rows | Blank | Reviewed/Valid | Priorities | Reasons | Hints |",
-            "| --- | --- | ---: | ---: | ---: | --- | --- | --- |",
+            "| Queue | File | Consistency | Rows | Blank | Reviewed/Valid | Priorities | Reasons | Hints |",
+            "| --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |",
         ]
     )
     for row in _mapping_rows(runbook.get("triage_summaries")):
@@ -347,6 +374,10 @@ def build_markdown(runbook: Mapping[str, Any]) -> str:
                 (
                     _md_cell(row.get("queue_key")),
                     _md_cell(row.get("input_name")),
+                    _md_cell(
+                        _safe_string(row.get("consistency_status"))
+                        + _warnings_suffix(row.get("consistency_warnings"))
+                    ),
                     str(_non_negative_int(row.get("row_count"))),
                     str(_non_negative_int(row.get("blank_row_count"))),
                     str(_non_negative_int(row.get("reviewed_or_valid_row_count"))),
@@ -467,11 +498,18 @@ def _queue_summaries(progress: Mapping[str, Any]) -> list[dict[str, Any]]:
     return ordered
 
 
-def _optional_gate_summaries(input_paths: Mapping[str, Path]) -> list[dict[str, Any]]:
+def _optional_gate_summaries(
+    input_paths: Mapping[str, Path],
+    *,
+    completion_audit: Mapping[str, Any],
+    queue_summaries: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     """Load optional downstream gate summaries.
 
     Args:
         input_paths: Input path mapping with optional gate keys.
+        completion_audit: Completion audit payload used to detect stale gates.
+        queue_summaries: Queue summaries used to detect stale gates.
 
     Returns:
         Redacted gate summary rows.
@@ -490,15 +528,28 @@ def _optional_gate_summaries(input_paths: Mapping[str, Path]) -> list[dict[str, 
         _require_schema(payload, expected_schema)
         _reject_unsafe_payload(payload)
         _reject_unsafe_true_flags(payload)
-        summaries.append(_gate_summary(gate_key=gate_key, path=path, payload=payload))
+        summaries.append(
+            _gate_summary(
+                gate_key=gate_key,
+                path=path,
+                payload=payload,
+                completion_audit=completion_audit,
+                queue_summaries=queue_summaries,
+            )
+        )
     return summaries
 
 
-def _optional_triage_summaries(input_paths: Mapping[str, Path]) -> list[dict[str, Any]]:
+def _optional_triage_summaries(
+    input_paths: Mapping[str, Path],
+    *,
+    queue_summaries: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     """Load optional current-batch triage summaries.
 
     Args:
         input_paths: Input path mapping with optional triage keys.
+        queue_summaries: Queue summaries used to detect stale triage files.
 
     Returns:
         Redacted triage summary rows.
@@ -517,26 +568,50 @@ def _optional_triage_summaries(input_paths: Mapping[str, Path]) -> list[dict[str
         _require_schema(payload, expected_schema)
         _reject_unsafe_payload(payload)
         _reject_unsafe_true_flags(payload)
-        summaries.append(_triage_summary(triage_key=triage_key, path=path, payload=payload))
+        summaries.append(
+            _triage_summary(
+                triage_key=triage_key,
+                path=path,
+                payload=payload,
+                queue_summaries=queue_summaries,
+            )
+        )
     return summaries
 
 
-def _gate_summary(*, gate_key: str, path: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
+def _gate_summary(
+    *,
+    gate_key: str,
+    path: Path,
+    payload: Mapping[str, Any],
+    completion_audit: Mapping[str, Any],
+    queue_summaries: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
     """Return a redacted downstream gate row.
 
     Args:
         gate_key: Stable gate key.
         path: Gate file path.
         payload: Gate JSON payload.
+        completion_audit: Completion audit payload used to detect stale gates.
+        queue_summaries: Queue summaries used to detect stale gates.
 
     Returns:
         Redacted gate row.
     """
+    consistency = _gate_consistency(
+        gate_key=gate_key,
+        payload=payload,
+        completion_audit=completion_audit,
+        queue_summaries=queue_summaries,
+    )
     return {
         "gate_key": gate_key,
         "input_name": path.name,
         "schema_version": _safe_string(payload.get("schema_version")),
         "status": _safe_string(payload.get("status")),
+        "consistency_status": consistency["status"],
+        "consistency_warnings": consistency["warnings"],
         "key_counts": _selected_counts(payload, GATE_COUNT_KEYS),
         "allowed_flags": _selected_bool_flags(payload, GATE_ALLOWED_FLAG_KEYS),
         "next_steps": _safe_string_list(payload.get("next_steps"))[:10],
@@ -544,11 +619,99 @@ def _gate_summary(*, gate_key: str, path: Path, payload: Mapping[str, Any]) -> d
     }
 
 
+def _gate_consistency(
+    *,
+    gate_key: str,
+    payload: Mapping[str, Any],
+    completion_audit: Mapping[str, Any],
+    queue_summaries: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return whether an optional gate is consistent with current audit state.
+
+    Args:
+        gate_key: Stable gate key.
+        payload: Gate JSON payload.
+        completion_audit: Current completion audit payload.
+        queue_summaries: Queue summaries from current batch progress.
+
+    Returns:
+        Redacted consistency status and warning codes.
+    """
+    requirement_statuses = _requirement_statuses(completion_audit)
+    queue_by_key = {
+        _safe_string(row.get("queue_key")): row
+        for row in queue_summaries
+        if _safe_string(row.get("queue_key"))
+    }
+    warnings: list[str] = []
+    if gate_key == "brand_db_import_gate":
+        brand_queue = queue_by_key.get("brand_product_review", {})
+        if requirement_statuses.get("brand_product_db_import") == "verified" and _safe_string(
+            payload.get("status")
+        ) == "blocked_by_operator_review":
+            warnings.append("brand_gate_contradicts_verified_requirement")
+        if _non_negative_int(brand_queue.get("blank_row_count")) == 0 and max(
+            _non_negative_int(payload.get("blank_decision_count")),
+            _non_negative_int(payload.get("pending_operator_action_count")),
+        ):
+            warnings.append("brand_gate_contradicts_complete_queue")
+    elif gate_key == "ocr_benchmark_gate":
+        pii_queue = queue_by_key.get("review_pii_screening", {})
+        if requirement_statuses.get("review_image_ground_truth_privacy_gate") == "verified" and max(
+            _non_negative_int(payload.get("pii_blank_decision_count")),
+            _non_negative_int(payload.get("pii_pending_operator_action_count")),
+        ):
+            warnings.append("ocr_gate_contradicts_verified_privacy_requirement")
+        if _non_negative_int(pii_queue.get("blank_row_count")) == 0 and _non_negative_int(
+            payload.get("pii_blank_decision_count")
+        ):
+            warnings.append("ocr_gate_contradicts_complete_privacy_queue")
+    elif gate_key == "yolo_section_dataset_gate":
+        yolo_queue = queue_by_key.get("yolo_section_annotation", {})
+        if requirement_statuses.get("detail_page_yolo_bbox_annotation") == "verified" and max(
+            _non_negative_int(payload.get("blank_box_row_count")),
+            _non_negative_int(payload.get("pending_operator_action_count")),
+        ):
+            warnings.append("yolo_gate_contradicts_verified_bbox_requirement")
+        if _non_negative_int(yolo_queue.get("blank_row_count")) == 0 and _non_negative_int(
+            payload.get("blank_box_row_count")
+        ):
+            warnings.append("yolo_gate_contradicts_complete_annotation_queue")
+    return {
+        "status": "stale_optional_artifact" if warnings else "consistent",
+        "warnings": warnings,
+    }
+
+
+def _requirement_statuses(completion_audit: Mapping[str, Any]) -> dict[str, str]:
+    """Return completion requirement statuses keyed by requirement key.
+
+    Args:
+        completion_audit: Current completion audit payload.
+
+    Returns:
+        Requirement status mapping.
+    """
+    rows = completion_audit.get("requirements")
+    if not isinstance(rows, list):
+        return {}
+    result: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        requirement_key = _safe_string(row.get("requirement_key"))
+        status = _safe_string(row.get("status"))
+        if requirement_key and status:
+            result[requirement_key] = status
+    return result
+
+
 def _triage_summary(
     *,
     triage_key: str,
     path: Path,
     payload: Mapping[str, Any],
+    queue_summaries: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Return a redacted current-batch triage row.
 
@@ -556,15 +719,24 @@ def _triage_summary(
         triage_key: Stable triage input key.
         path: Triage report path.
         payload: Triage JSON payload.
+        queue_summaries: Queue summaries used to detect stale triage files.
 
     Returns:
         Redacted triage row.
     """
+    queue_key = _triage_queue_key(triage_key=triage_key, payload=payload)
+    consistency = _triage_consistency(
+        queue_key=queue_key,
+        payload=payload,
+        queue_summaries=queue_summaries,
+    )
     return {
         "triage_key": triage_key,
-        "queue_key": _triage_queue_key(triage_key=triage_key, payload=payload),
+        "queue_key": queue_key,
         "input_name": path.name,
         "schema_version": _safe_string(payload.get("schema_version")),
+        "consistency_status": consistency["status"],
+        "consistency_warnings": consistency["warnings"],
         "row_count": _non_negative_int(payload.get("row_count")),
         "blank_row_count": _triage_blank_count(payload),
         "reviewed_or_valid_row_count": _triage_reviewed_or_valid_count(payload),
@@ -593,6 +765,37 @@ def _triage_queue_key(*, triage_key: str, payload: Mapping[str, Any]) -> str:
     if triage_key == "brand_product_review_triage":
         return "brand_product_review"
     return triage_key.removesuffix("_triage")
+
+
+def _triage_consistency(
+    *,
+    queue_key: str,
+    payload: Mapping[str, Any],
+    queue_summaries: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return whether an optional triage file matches current queue progress.
+
+    Args:
+        queue_key: Queue key represented by the triage file.
+        payload: Triage payload.
+        queue_summaries: Current queue progress summaries.
+
+    Returns:
+        Redacted consistency status and warning codes.
+    """
+    queue_by_key = {
+        _safe_string(row.get("queue_key")): row
+        for row in queue_summaries
+        if _safe_string(row.get("queue_key"))
+    }
+    current = queue_by_key.get(queue_key, {})
+    warnings: list[str] = []
+    if _non_negative_int(current.get("blank_row_count")) == 0 and _triage_blank_count(payload) > 0:
+        warnings.append("triage_contradicts_complete_queue")
+    return {
+        "status": "stale_optional_artifact" if warnings else "consistent",
+        "warnings": warnings,
+    }
 
 
 def _triage_blank_count(payload: Mapping[str, Any]) -> int:
@@ -1041,6 +1244,21 @@ def _bool_flags_text(value: Any) -> str:
         if _safe_string(key)
     }
     return ", ".join(f"{key}={str(flags[key]).lower()}" for key in sorted(flags))
+
+
+def _warnings_suffix(value: Any) -> str:
+    """Return a compact warning suffix for Markdown cells.
+
+    Args:
+        value: Candidate warning code list.
+
+    Returns:
+        Empty string or a warning suffix.
+    """
+    warnings = _safe_string_list(value)
+    if not warnings:
+        return ""
+    return " (" + ", ".join(warnings[:4]) + ")"
 
 
 def _safe_string(value: Any) -> str:

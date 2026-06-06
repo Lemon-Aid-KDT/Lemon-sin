@@ -48,7 +48,8 @@ SECTION_LABEL_GUIDE = {
     "supplement_facts": "The full Supplement Facts or Nutrition Facts panel.",
     "ingredient_amounts": "Ingredient rows, amounts, units, and daily-value table cells.",
     "intake_method": "Suggested use, directions, dosage schedule, or serving instructions.",
-    "precautions": "Warnings, cautions, allergy notes, contraindications, or consult-doctor text.",
+    "precautions": "Warnings, cautions, contraindications, or consult-doctor text.",
+    "allergen_warning": "Allergy, allergen, intolerance, contains, or cross-contact warning text.",
     "other_ingredients": "Other ingredients, inactive ingredients, capsule shell, or additives.",
     "functional_claims": "Structure/function claims, benefits, marketing claim text, or certifications.",
 }
@@ -435,7 +436,7 @@ Open `annotation-index.html` locally to inspect materialized detail-page images.
 
 Annotate section boxes for supplement label regions only:
 `product_identity`, `supplement_facts`, `ingredient_amounts`, `intake_method`,
-`precautions`, `other_ingredients`, `functional_claims`.
+`precautions`, `allergen_warning`, `other_ingredients`, `functional_claims`.
 
 Use normalized `xywh` values in source-image coordinate space:
 
@@ -452,7 +453,8 @@ section is visually split across separated regions.
 - `supplement_facts`: The full Supplement Facts or Nutrition Facts panel.
 - `ingredient_amounts`: Ingredient rows, amounts, units, and daily-value table cells.
 - `intake_method`: Suggested use, directions, dosage schedule, or serving instructions.
-- `precautions`: Warnings, cautions, allergy notes, contraindications, or consult-doctor text.
+- `precautions`: Warnings, cautions, contraindications, or consult-doctor text.
+- `allergen_warning`: Allergy, allergen, intolerance, contains, or cross-contact warning text.
 - `other_ingredients`: Other ingredients, inactive ingredients, capsule shell, or additives.
 - `functional_claims`: Structure/function claims, benefits, marketing claim text, or certifications.
 

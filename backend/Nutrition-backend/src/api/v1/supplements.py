@@ -896,7 +896,10 @@ def _aggregate_missing_sections(
     )
     has_precautions = any(
         preview.precautions
-        or any(section.section_type == "precautions" for section in preview.label_sections)
+        or any(
+            section.section_type in {"precautions", "allergen_warning"}
+            for section in preview.label_sections
+        )
         for preview in previews
     )
     missing: list[str] = []

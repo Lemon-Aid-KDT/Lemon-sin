@@ -279,6 +279,14 @@ def test_reconcile_operator_review_batch_files_writes_redacted_summary_and_copie
     assert summary["expected_row_count"] == 7
     assert summary["changed_row_count"] == 2
     assert summary["human_review_changes_detected"] is True
+    assert summary["batch_dir_hash"].startswith("fp-")
+    assert len(summary["batch_dir_hash"]) == 15
+    assert summary["output_dir_hash"].startswith("fp-")
+    assert len(summary["output_dir_hash"]) == 15
+    assert all(
+        value.startswith("fp-") and len(value) == 15
+        for value in summary["input_path_hashes"].values()
+    )
     brand_rows = [
         json.loads(line)
         for line in (output_dir / "brand_product_review.reconciled.jsonl")
@@ -469,6 +477,10 @@ def test_reconcile_cli_writes_summary_markdown_and_copies(
     captured = capsys.readouterr().out
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["changed_row_count"] == 2
+    assert summary["batch_dir_hash"].startswith("fp-")
+    assert len(summary["batch_dir_hash"]) == 15
+    assert summary["output_dir_hash"].startswith("fp-")
+    assert len(summary["output_dir_hash"]) == 15
     assert markdown_path.is_file()
     assert (output_dir / "yolo_section_annotation.reconciled.jsonl").is_file()
     assert '"changed_row_count": 2' in captured

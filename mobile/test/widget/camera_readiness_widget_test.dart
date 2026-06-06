@@ -175,6 +175,58 @@ void main() {
     expect(picker.lastImageQuality, 95);
     expect(find.text('Preview'), findsOneWidget);
   });
+
+  testWidgets('gallery picker can upload several supplement images at once', (
+    WidgetTester tester,
+  ) async {
+    final File imageA = _writeTinyPng();
+    final File imageB = _writeTinyPng();
+    final File imageC = _writeTinyPng();
+    addTearDown(() {
+      for (final File image in <File>[imageA, imageB, imageC]) {
+        if (image.existsSync()) {
+          image.deleteSync();
+        }
+      }
+    });
+    final _CameraWidgetRepository repository = _CameraWidgetRepository();
+    final AppController controller = AppController(repository: repository);
+    final _FakeImagePicker picker = _FakeImagePicker(
+      imageA.path,
+      multiPaths: <String>[imageA.path, imageB.path, imageC.path],
+    );
+    addTearDown(controller.dispose);
+    await controller.bootstrap();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SupplementFlowScreen(
+          controller: controller,
+          imagePicker: picker,
+          cameraReadinessProbe: CameraReadinessProbe(
+            platform: TargetPlatform.iOS,
+            loader: () async => const <camera.CameraDescription>[],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('갤러리'));
+    await tester.pumpAndSettle();
+
+    expect(picker.multiPickCount, 1);
+    expect(picker.lastMultiLimit, 6);
+    expect(picker.lastRequestFullMetadata, isFalse);
+    expect(find.text('갤러리 사진 3장 선택됨'), findsOneWidget);
+    expect(find.text('3장 분석하기'), findsOneWidget);
+
+    await tester.tap(find.text('3장 분석하기'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastImageUploads, isNotNull);
+    expect(repository.lastImageUploads, hasLength(3));
+  });
 }
 
 IconButton _iconButtonByTooltip(WidgetTester tester, String tooltip) {
@@ -184,11 +236,16 @@ IconButton _iconButtonByTooltip(WidgetTester tester, String tooltip) {
 }
 
 class _FakeImagePicker extends ImagePicker {
-  _FakeImagePicker(this.path);
+  _FakeImagePicker(this.path, {List<String>? multiPaths})
+    : multiPaths = multiPaths ?? <String>[path];
 
   final String path;
+  final List<String> multiPaths;
   double? lastMaxWidth;
   int? lastImageQuality;
+  bool? lastRequestFullMetadata;
+  int? lastMultiLimit;
+  int multiPickCount = 0;
 
   @override
   Future<XFile?> pickImage({
@@ -201,7 +258,29 @@ class _FakeImagePicker extends ImagePicker {
   }) async {
     lastMaxWidth = maxWidth;
     lastImageQuality = imageQuality;
+    lastRequestFullMetadata = requestFullMetadata;
     return XFile(path);
+  }
+
+  @override
+  Future<List<XFile>> pickMultiImage({
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    int? limit,
+    bool requestFullMetadata = true,
+  }) async {
+    multiPickCount += 1;
+    lastMaxWidth = maxWidth;
+    lastImageQuality = imageQuality;
+    lastRequestFullMetadata = requestFullMetadata;
+    lastMultiLimit = limit;
+    final Iterable<String> selectedPaths = limit == null
+        ? multiPaths
+        : multiPaths.take(limit);
+    return selectedPaths
+        .map((String path) => XFile(path))
+        .toList(growable: false);
   }
 }
 
@@ -210,6 +289,7 @@ class _CameraWidgetRepository implements LemonAidRepository {
 
   final ApiError? analyzeError;
   String? lastImagePath;
+  List<SupplementImageUpload>? lastImageUploads;
   String? lastOcrProvider;
   final List<String> ocrProviders = <String>[];
 
@@ -248,8 +328,22 @@ class _CameraWidgetRepository implements LemonAidRepository {
   Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
     List<SupplementImageUpload> images, {
     String ocrProvider = 'configured',
-  }) {
-    throw UnimplementedError();
+  }) async {
+    lastImageUploads = images;
+    lastOcrProvider = ocrProvider;
+    ocrProviders.add(ocrProvider);
+    return SupplementMultiImageAnalysisPreview(
+      analysisGroupId: 'test-group',
+      imageCount: images.length,
+      previews: <SupplementAnalysisPreview>[
+        SupplementAnalysisPreview.fromJson(_previewResponse),
+      ],
+      mergedPreview: SupplementAnalysisPreview.fromJson(_previewResponse),
+      missingRequiredSections: const <String>[],
+      actionRequired: 'review_required',
+      pipelineMetadata: SupplementImagePipelineMetadata.intakeOnly,
+      expiresAt: null,
+    );
   }
 
   @override

@@ -87,6 +87,7 @@ def test_export_template_includes_only_pii_cleared_review_candidates(tmp_path: P
     assert row["teacher_ocr_allowed"] is True
     assert row["expected"]["verification_status"] == "pending_manual_review"
     assert row["expected"]["product_name"] == ""
+    assert row["expected"]["allergen_warnings"] == [{"text": ""}]
     assert row["expected"]["ingredients"] == [
         {
             "display_name": "",
@@ -96,6 +97,7 @@ def test_export_template_includes_only_pii_cleared_review_candidates(tmp_path: P
         }
     ]
     assert "supplement_facts" in row["allowed_label_sections"]
+    assert "allergen_warning" in row["allowed_label_sections"]
     assert row["ready_for_benchmark_after_review"] is False
     assert row["ocr_provider_call_performed"] is False
     assert row["paddleocr_training_performed"] is False

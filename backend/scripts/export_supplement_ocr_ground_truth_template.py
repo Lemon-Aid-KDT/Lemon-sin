@@ -39,6 +39,7 @@ ALLOWED_LABEL_SECTIONS = (
     "ingredient_amounts",
     "intake_method",
     "precautions",
+    "allergen_warning",
     "other_ingredients",
     "functional_claims",
 )
@@ -311,6 +312,7 @@ def _empty_expected_template() -> dict[str, Any]:
             },
         },
         "precautions": [{"text": ""}],
+        "allergen_warnings": [{"text": ""}],
         "functional_claims": [{"text": ""}],
         "label_sections": [{"section_type": ""}],
     }

@@ -19,6 +19,7 @@ LAYOUT_TO_SECTION_LABEL: dict[SectionType, str] = {
     "nutrition_function_info": VisionLabel.SUPPLEMENT_FACTS.value,
     "intake_method": VisionLabel.INTAKE_METHOD.value,
     "precautions": VisionLabel.PRECAUTIONS.value,
+    "allergen_warning": VisionLabel.ALLERGEN_WARNING.value,
     "ingredients": VisionLabel.INGREDIENT_AMOUNTS.value,
 }
 SNAPSHOT_SCHEMA_VERSION = "supplement-section-yolo-label-candidates-v1"

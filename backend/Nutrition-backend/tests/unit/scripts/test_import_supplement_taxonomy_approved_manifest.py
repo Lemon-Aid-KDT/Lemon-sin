@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -347,3 +348,68 @@ async def test_run_cli_writes_summary_and_keeps_stdout_redacted(
     assert "나우푸드 오메가3_123456" not in stdout
     assert str(tmp_path) not in stdout
     assert "/private/" not in stdout
+
+
+@pytest.mark.asyncio
+async def test_run_cli_loads_env_file_without_printing_database_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify CLI env-file loading keeps DB connection values out of output.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        monkeypatch: Pytest monkeypatch fixture.
+        capsys: Pytest stdout/stderr capture fixture.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "export DATABASE_URL='postgresql+asyncpg://example:secret@example.invalid/db'\n",
+        encoding="utf-8",
+    )
+    summary_path = tmp_path / "summary.json"
+    seen_database_url: list[str] = []
+
+    async def _fake_import_approved_taxonomy_manifest(**_kwargs: object) -> dict[str, object]:
+        """Return count-only summary after checking env loading.
+
+        Returns:
+            Redacted fake importer summary.
+        """
+        seen_database_url.append(os.environ["DATABASE_URL"])
+        return {
+            "schema_version": importer.SCHEMA_VERSION,
+            "db_write_performed": False,
+            "preflight_only": True,
+        }
+
+    monkeypatch.setattr(
+        importer,
+        "import_approved_taxonomy_manifest",
+        _fake_import_approved_taxonomy_manifest,
+    )
+
+    exit_code = await importer.run_cli(
+        [
+            "--taxonomy-staging",
+            str(tmp_path / "taxonomy.jsonl"),
+            "--env-file",
+            str(env_file),
+            "--summary",
+            str(summary_path),
+            "--apply",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    summary_text = summary_path.read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert seen_database_url == [
+        "postgresql+asyncpg://example:secret@example.invalid/db"
+    ]
+    assert "secret" not in stdout
+    assert "example.invalid" not in stdout
+    assert "secret" not in summary_text
+    assert "example.invalid" not in summary_text

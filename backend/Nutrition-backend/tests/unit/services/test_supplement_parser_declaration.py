@@ -167,6 +167,16 @@ class TestExtractIngredientDeclarationCandidates:
         assert candidates[0]["amount"] == 26
         assert candidates[0]["unit"] == "g"
 
+    def test_ocr_pattern_ignores_intake_instruction_rows(self) -> None:
+        """Serving instructions with grams are intake text, not ingredient rows."""
+        for text in (
+            "일 1 회,1 회 1 스푼( 26 g",
+            "섭취방법 1일 1회 1스푼 26g",
+            "복용 방법 1일 2회 1정 500 mg",
+            "Take 1 scoop daily 26 g",
+        ):
+            assert _extract_ocr_pattern_ingredient_candidates(text) == []
+
 
 class TestDeclarationCandidatesSanitizeInjection:
     """Declaration names must pass the injection / HTML / control-char filter.

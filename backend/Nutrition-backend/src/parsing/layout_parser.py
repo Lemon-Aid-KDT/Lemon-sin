@@ -64,6 +64,8 @@ SECTION_KEYWORDS: dict[SectionType, tuple[str, ...]] = {
         "Warning",
         "Warnings",
         "Caution",
+    ),
+    "allergen_warning": (
         "Allergy Information",
         "Allergen Information",
         "Allergy Warning",
@@ -593,10 +595,10 @@ def _detect_anchor(row: _LayoutRowCandidate) -> _AnchorMatch | None:
             if best_match is None or len(normalized_keyword) > len(best_match[2]):
                 best_match = (section_type, keyword, normalized_keyword)
     if best_match is None:
-        if _looks_like_precaution_row(row.text):
+        if _looks_like_allergen_warning_row(row.text):
             return _AnchorMatch(
                 row_order=row.row_order,
-                section_type="precautions",
+                section_type="allergen_warning",
                 anchor_text="Contains allergen",
                 anchor_box=row.bounding_box,
             )
@@ -612,14 +614,14 @@ def _detect_anchor(row: _LayoutRowCandidate) -> _AnchorMatch | None:
     )
 
 
-def _looks_like_precaution_row(value: str) -> bool:
+def _looks_like_allergen_warning_row(value: str) -> bool:
     """Return whether a row is a warning-like allergen statement.
 
     Args:
         value: Visual row text reconstructed from OCR words.
 
     Returns:
-        True for bounded allergen statements that should start a precaution section.
+        True for bounded allergen statements that should start an allergen section.
     """
     normalized = _normalize_anchor_text(value)
     if any(token in normalized for token in ("allergy", "allergen", "알레르", "알러지")):

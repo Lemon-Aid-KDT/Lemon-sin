@@ -170,6 +170,21 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
     status = "pending_operator_review" if batch_status != "complete" else "complete"
     reason_counts = _safe_mapping(progress_row.get("reason_counts"))
     triage_summary = _optional_triage_summary(input_paths=input_paths, queue_key=queue_key)
+    blank_row_count = _non_negative_int(progress_row.get("blank_row_count"))
+    pending_row_count = _non_negative_int(progress_row.get("pending_row_count"))
+    invalid_row_count = _non_negative_int(progress_row.get("invalid_row_count"))
+    missing_row_count = _non_negative_int(progress_row.get("missing_row_count"))
+    stage_next_operator_action = _safe_token(
+        str(stage.get("next_operator_action") or "unknown")
+    )
+    operator_next_action = _operator_next_action(
+        queue_key=queue_key,
+        blank_row_count=blank_row_count,
+        pending_row_count=pending_row_count,
+        invalid_row_count=invalid_row_count,
+        missing_row_count=missing_row_count,
+        fallback_action=stage_next_operator_action,
+    )
 
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -183,9 +198,8 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
         "queue_key": queue_key,
         "stage_key": QUEUE_STAGE_KEYS[queue_key],
         "stage_status": _safe_token(str(stage.get("status") or "unknown")),
-        "stage_next_operator_action": _safe_token(
-            str(stage.get("next_operator_action") or "unknown")
-        ),
+        "stage_next_operator_action": stage_next_operator_action,
+        "operator_next_action": operator_next_action,
         "batch_status": batch_status,
         "workpack_file_name": _safe_filename(str(workpack_row.get("workpack_file_name") or "")),
         "batch_file_name": _safe_filename(str(workpack_row.get("batch_file_name") or "")),
@@ -221,10 +235,10 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
         "row_index_end": _positive_int(progress_row.get("row_index_end")),
         "expected_row_count": _non_negative_int(progress_row.get("expected_row_count")),
         "valid_row_count": _non_negative_int(progress_row.get("valid_row_count")),
-        "blank_row_count": _non_negative_int(progress_row.get("blank_row_count")),
-        "pending_row_count": _non_negative_int(progress_row.get("pending_row_count")),
-        "invalid_row_count": _non_negative_int(progress_row.get("invalid_row_count")),
-        "missing_row_count": _non_negative_int(progress_row.get("missing_row_count")),
+        "blank_row_count": blank_row_count,
+        "pending_row_count": pending_row_count,
+        "invalid_row_count": invalid_row_count,
+        "missing_row_count": missing_row_count,
         "reason_counts": reason_counts,
         "triage_summary": triage_summary,
         "all_batches_complete": progress.get("all_batches_complete") is True,
@@ -278,6 +292,7 @@ def build_work_order_markdown(summary: Mapping[str, Any]) -> str:
             f"- Queue: `{_safe_token(str(summary.get('queue_key') or 'unknown'))}`",
             f"- Stage: `{_safe_token(str(summary.get('stage_key') or 'unknown'))}`",
             f"- Stage status: `{_safe_token(str(summary.get('stage_status') or 'unknown'))}`",
+            f"- Operator next action: `{_safe_token(str(summary.get('operator_next_action') or 'unknown'))}`",
             f"- Batch status: `{_safe_token(str(summary.get('batch_status') or 'unknown'))}`",
             f"- Workpack guide: `{_safe_filename(str(summary.get('workpack_file_name') or ''))}`",
             f"- Batch JSONL: `{_safe_filename(str(summary.get('batch_file_name') or ''))}`",
@@ -339,6 +354,44 @@ def _path_fingerprint(path: Path) -> str:
         Short hexadecimal fingerprint with a non-hex prefix.
     """
     return f"fp-{progress_preflight._sha256_text(str(path.expanduser()))[:8]}"
+
+
+def _operator_next_action(
+    *,
+    queue_key: str,
+    blank_row_count: int,
+    pending_row_count: int,
+    invalid_row_count: int,
+    missing_row_count: int,
+    fallback_action: str,
+) -> str:
+    """Choose the next human action from current batch progress.
+
+    Args:
+        queue_key: Current operator queue key.
+        blank_row_count: Rows still untouched in the selected batch.
+        pending_row_count: Rows that remain pending after parsing.
+        invalid_row_count: Rows with invalid decisions or annotations.
+        missing_row_count: Expected rows absent from the editable file.
+        fallback_action: Safe readiness-reported action for fully complete
+            batches.
+
+    Returns:
+        Safe next action token.
+    """
+    if invalid_row_count > 0:
+        return "fix_invalid_operator_review_rows"
+    if missing_row_count > 0:
+        return "restore_missing_operator_review_rows"
+    if blank_row_count > 0:
+        return {
+            "brand_product_review": "complete_brand_product_human_review",
+            "review_pii_screening": "complete_blank_privacy_decisions",
+            "yolo_section_annotation": "complete_blank_yolo_section_annotations",
+        }.get(queue_key, "complete_blank_operator_review_rows")
+    if pending_row_count > 0:
+        return "complete_pending_operator_review_rows"
+    return fallback_action or "run_queue_preflight"
 
 
 def _optional_batch_review_markdown_line(value: Any) -> str:
@@ -442,22 +495,22 @@ def _triage_reviewed_or_valid_count(payload: Mapping[str, Any]) -> int:
 
 
 def _next_batch_key(*, progress: Mapping[str, Any], workpack: Mapping[str, Any]) -> str:
-    """Return the next incomplete batch key and verify workpack alignment.
+    """Return the next incomplete batch key from the progress artifact.
 
     Args:
         progress: Batch progress summary.
-        workpack: Workpack summary.
+        workpack: Workpack summary. Its ``next_batch_key`` is a stale hint in
+            static workpacks, so only its row inventory is validated later.
 
     Returns:
         Batch key.
     """
     progress_key = progress.get("next_incomplete_batch_key")
-    workpack_key = workpack.get("next_batch_key")
     if not isinstance(progress_key, str) or not progress_key.strip():
         raise WorkOrderError("Batch progress has no next incomplete batch.")
-    if not isinstance(workpack_key, str) or not workpack_key.strip():
-        raise WorkOrderError("Workpack summary has no next batch.")
-    return _same_token("batch_key", progress_key, workpack_key)
+    if "batch_workpacks" not in workpack:
+        raise WorkOrderError("Workpack summary has no batch rows.")
+    return _safe_token(progress_key)
 
 
 def _progress_row(*, progress: Mapping[str, Any], batch_key: str) -> Mapping[str, Any]:
@@ -901,7 +954,7 @@ def _cli_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         "queue_key": summary["queue_key"],
         "batch_status": summary["batch_status"],
         "blank_row_count": summary["blank_row_count"],
-        "next_action": summary["stage_next_operator_action"],
+        "next_action": summary["operator_next_action"],
         "source_rows_read": False,
         "source_image_read_performed": False,
         "db_write_performed": False,

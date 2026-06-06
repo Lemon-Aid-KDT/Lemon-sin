@@ -264,6 +264,12 @@ class _CameraScreenState extends State<CameraScreen>
       _mode == _CaptureMode.supplement &&
       _debugSupplementImagePath.isNotEmpty;
 
+  int get _supplementBatchCount =>
+      _captures.length + (_captured == null ? 0 : 1);
+
+  int get _remainingSupplementSlots =>
+      _maxSupplementGalleryImages - _supplementBatchCount;
+
   String get _macCameraBridgeUrl {
     final String configured =
         (widget.macCameraBridgeUrl ?? _macCameraBridgeUrlFromEnv)
@@ -473,10 +479,6 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _pickFromGallery() async {
-    if (_canLoadDebugSupplementImage) {
-      await _loadDebugSupplementImage();
-      return;
-    }
     if (_mode == _CaptureMode.supplement) {
       await _pickSupplementImagesFromGallery();
       return;
@@ -952,12 +954,88 @@ class _CameraScreenState extends State<CameraScreen>
   void _addCurrentToBatch() {
     final File? captured = _captured;
     if (captured == null || _mode != _CaptureMode.supplement) return;
+    if (_captures.length >= _maxSupplementGalleryImages - 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('영양제 라벨 사진은 최대 6장까지 분석할 수 있어요.'),
+          backgroundColor: AppColor.ink,
+        ),
+      );
+      return;
+    }
     HapticFeedback.selectionClick();
     setState(() {
       _captures.add(_CapturedSupplementImage(file: captured, role: _imageRole));
       _captured = null;
       _imageRole = _nextImageRole();
     });
+    if (_canUseMacCameraBridge) {
+      _startMacCameraPreviewLoop();
+    }
+  }
+
+  Future<void> _addGalleryImagesToBatch() async {
+    final File? captured = _captured;
+    if (captured == null || _mode != _CaptureMode.supplement || _picking) {
+      return;
+    }
+    final int remainingSlots = _remainingSupplementSlots;
+    if (remainingSlots <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('영양제 라벨 사진은 최대 6장까지 분석할 수 있어요.'),
+          backgroundColor: AppColor.ink,
+        ),
+      );
+      return;
+    }
+    setState(() => _picking = true);
+    HapticFeedback.lightImpact();
+    bool truncatedSelection = false;
+    try {
+      final picker = widget.imagePicker ?? ImagePicker();
+      final List<XFile> files = await picker.pickMultiImage(
+        maxWidth: 2400,
+        imageQuality: 95,
+        limit: remainingSlots,
+        requestFullMetadata: false,
+      );
+      if (files.isEmpty || !mounted) return;
+      final List<XFile> selectedFiles = files.length > remainingSlots
+          ? files.take(remainingSlots).toList(growable: false)
+          : files;
+      truncatedSelection = files.length > selectedFiles.length;
+      final List<File> cachedFiles = await _copyPickedImagesToCache(
+        selectedFiles,
+      );
+      if (cachedFiles.isEmpty || !mounted) return;
+      setState(() {
+        for (final File file in cachedFiles) {
+          _captures.add(
+            _CapturedSupplementImage(file: file, role: _nextImageRole()),
+          );
+        }
+      });
+      if (truncatedSelection && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('한 번에 분석할 수 있는 사진은 최대 6장이라 나머지는 제외했어요.'),
+            backgroundColor: AppColor.ink,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('갤러리 이미지를 불러오지 못했어요. 다른 사진을 선택해주세요.'),
+            backgroundColor: AppColor.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
   }
 
   void _removeBatchImage(int index) {
@@ -1215,40 +1293,68 @@ class _CameraScreenState extends State<CameraScreen>
           const SizedBox(height: AppSpace.md),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _GhostButton(
-                    label: '다시 촬영',
-                    icon: Icons.refresh_rounded,
-                    onTap: _retake,
+            child: _mode == _CaptureMode.supplement
+                ? Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _GhostButton(
+                              label: '다시 촬영',
+                              icon: Icons.refresh_rounded,
+                              onTap: _retake,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: _GhostButton(
+                              label: '계속 촬영',
+                              icon: Icons.add_a_photo_rounded,
+                              onTap: _addCurrentToBatch,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: _GhostButton(
+                              label: '여러 장 추가',
+                              icon: Icons.add_photo_alternate_rounded,
+                              onTap: _addGalleryImagesToBatch,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      _PrimaryButton(
+                        key: const ValueKey('supplement-preview-analyze'),
+                        label: _picking
+                            ? '분석 중'
+                            : _captures.isEmpty
+                            ? '분석하기'
+                            : '${_captures.length + 1}장 분석',
+                        onTap: _analyze,
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: _GhostButton(
+                          label: '다시 촬영',
+                          icon: Icons.refresh_rounded,
+                          onTap: _retake,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpace.sm),
+                      Expanded(
+                        flex: 2,
+                        child: _PrimaryButton(
+                          key: const ValueKey('supplement-preview-analyze'),
+                          label: _picking ? '분석 중' : '분석하기',
+                          onTap: _analyze,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: AppSpace.sm),
-                if (_mode == _CaptureMode.supplement) ...[
-                  Expanded(
-                    child: _GhostButton(
-                      label: '사진 추가',
-                      icon: Icons.add_photo_alternate_rounded,
-                      onTap: _addCurrentToBatch,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.sm),
-                ],
-                Expanded(
-                  flex: 2,
-                  child: _PrimaryButton(
-                    key: const ValueKey('supplement-preview-analyze'),
-                    label: _picking
-                        ? '분석 중'
-                        : _captures.isEmpty
-                        ? '분석하기'
-                        : '${_captures.length + 1}장 분석',
-                    onTap: _analyze,
-                  ),
-                ),
-              ],
-            ),
           ),
           const SizedBox(height: AppSpace.md),
         ],
@@ -2382,7 +2488,7 @@ class _GalleryButtonState extends State<_GalleryButton> {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: '갤러리에서 선택',
+      label: '갤러리에서 여러 장 선택',
       child: GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();

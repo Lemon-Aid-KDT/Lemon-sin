@@ -35,6 +35,7 @@ SUPPLEMENT_SECTION_CLASS_NAMES = (
     "supplement_facts",
     "ingredient_amounts",
     "precautions",
+    "allergen_warning",
     "intake_method",
     "other_ingredients",
     "functional_claims",

@@ -130,6 +130,12 @@ outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.jpg
 outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.jpeg
 outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.png
 outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.webp
+# PaddleOCR rec training datasets: CLOVA per-box teacher TEXT labels + real-photo
+# crops (operator-approved for training only). Large (GBs) and not for shared repos.
+outputs/generated/supplement-learning/**/datasets/
+# Python 3.12 PaddleOCR/PaddleX training venv (multi-GB; companion to .venv/).
+.venv-paddle/
+backend/.venv-paddle/
 .omc_probe_*.txt
 mobile/uiux/Lemon Aid Design System/
 

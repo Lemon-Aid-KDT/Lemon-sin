@@ -404,6 +404,45 @@ void main() {
     expect(find.text('분석하기'), findsOneWidget);
   });
 
+  testWidgets(
+    'gallery button still opens multi-select when debug sample exists',
+    (WidgetTester tester) async {
+      await _usePhoneSurface(tester);
+      final File debugSource = _writeTinyPng();
+      final File galleryA = _writeTinyPng();
+      final File galleryB = _writeTinyPng();
+      final _FakeImagePicker picker = _FakeImagePicker(
+        galleryA.path,
+        multiPaths: <String>[galleryA.path, galleryB.path],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CameraScreen(
+            imagePicker: picker,
+            debugSupplementImagePath: debugSource.path,
+            onAnalyzeSupplementImage:
+                (String imagePath, {required String ocrProvider}) async {},
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 1));
+
+      await tester.tap(find.bySemanticsLabel('갤러리에서 여러 장 선택'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      });
+      await tester.pumpAndSettle();
+
+      expect(picker.multiPickCount, 1);
+      expect(picker.lastSource, isNull);
+      expect(picker.lastMultiLimit, 6);
+      expect(find.text('2장'), findsOneWidget);
+      expect(find.text('2장 분석'), findsOneWidget);
+    },
+  );
+
   testWidgets('supplement preview can add images into a batch', (
     WidgetTester tester,
   ) async {
@@ -437,7 +476,7 @@ void main() {
     await tester.tap(
       find
           .ancestor(
-            of: find.text('사진 추가'),
+            of: find.text('계속 촬영'),
             matching: find.byType(GestureDetector),
           )
           .last,
@@ -457,6 +496,78 @@ void main() {
     expect(find.text('현재 사진'), findsOneWidget);
     expect(find.text('자동 분석'), findsOneWidget);
     expect(find.text('2장 분석'), findsOneWidget);
+  });
+
+  testWidgets('supplement preview can add several gallery images at once', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File current = _writeTinyPng();
+    final File extraA = _writeTinyPng();
+    final File extraB = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(
+      current.path,
+      multiPaths: <String>[extraA.path, extraB.path],
+    );
+    List<SupplementImageUpload>? uploadedImages;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          imagePicker: picker,
+          useCameraPickerFallback: true,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+          onAnalyzeSupplementImages:
+              (
+                List<SupplementImageUpload> images, {
+                required String ocrProvider,
+              }) async {
+                uploadedImages = images;
+              },
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.bySemanticsLabel('사진 촬영'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('여러 장 추가'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pumpAndSettle();
+
+    expect(picker.multiPickCount, 1);
+    expect(picker.lastMultiLimit, 5);
+    expect(find.text('3장'), findsOneWidget);
+    expect(find.text('추가 사진 1'), findsOneWidget);
+    expect(find.text('추가 사진 2'), findsOneWidget);
+    expect(find.text('현재 사진'), findsOneWidget);
+    expect(find.text('3장 분석'), findsOneWidget);
+
+    final Finder analyzeButton = find.byKey(
+      const ValueKey('supplement-preview-analyze'),
+    );
+    await tester.ensureVisible(analyzeButton);
+    await tester.pump();
+    final TextButton textButton = tester.widget<TextButton>(
+      find.descendant(of: analyzeButton, matching: find.byType(TextButton)),
+    );
+    await tester.runAsync(() async {
+      textButton.onPressed!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+
+    expect(uploadedImages, isNotNull);
+    expect(uploadedImages, hasLength(3));
   });
 
   testWidgets('supplement facts retake uses role-aware upload for one image', (

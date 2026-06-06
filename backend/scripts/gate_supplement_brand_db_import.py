@@ -146,7 +146,7 @@ def build_brand_db_import_gate(*, brand_decision_preflight: Path) -> dict[str, A
         "status": status,
         "generated_at": datetime.now(UTC).isoformat(),
         "brand_decision_preflight_name": brand_decision_preflight.name,
-        "brand_decision_preflight_sha256": _sha256_file(brand_decision_preflight),
+        "brand_decision_preflight_hash": _fingerprint_file(brand_decision_preflight),
         "brand_candidate_count": counts["brand_candidate_count"],
         "decision_row_count": counts["decision_row_count"],
         "valid_decision_count": counts["valid_decision_count"],
@@ -325,6 +325,18 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _fingerprint_file(path: Path) -> str:
+    """Return a short public fingerprint for a local artifact.
+
+    Args:
+        path: File path.
+
+    Returns:
+        Short fingerprint safe for public reports.
+    """
+    return f"fp-{_sha256_file(path)[:12]}"
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:

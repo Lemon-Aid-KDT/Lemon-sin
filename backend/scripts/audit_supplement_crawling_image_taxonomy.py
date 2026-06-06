@@ -110,6 +110,7 @@ def audit_crawling_image_taxonomy(
     global_brand_counts: Counter[str] = Counter()
     global_source_kind_counts: Counter[str] = Counter()
     issue_counts: Counter[str] = Counter()
+    layout_counts: Counter[str] = Counter()
     total_products = 0
     total_images = 0
     total_non_image_files = 0
@@ -125,6 +126,7 @@ def audit_crawling_image_taxonomy(
         total_products += int(category_audit["product_count"])
         total_images += int(category_audit["image_count"])
         total_non_image_files += int(category_audit["non_image_file_count"])
+        _merge_counter(layout_counts, category_audit["product_layout_counts"])
         _merge_counter(global_brand_counts, category_audit["brand_candidate_counts"])
         _merge_counter(global_source_kind_counts, category_audit["source_kind_counts"])
         _merge_counter(issue_counts, category_audit["issue_counts"])
@@ -138,6 +140,7 @@ def audit_crawling_image_taxonomy(
         "product_count": total_products,
         "image_count": total_images,
         "non_image_file_count": total_non_image_files,
+        "product_layout_counts": dict(sorted(layout_counts.items())),
         "source_kind_counts": dict(sorted(global_source_kind_counts.items())),
         "brand_candidate_counts": _top_counter(global_brand_counts, limit=50),
         "issue_counts": dict(sorted(issue_counts.items())),
@@ -160,6 +163,7 @@ def audit_crawling_image_taxonomy(
                 "ingredient_amounts",
                 "intake_method",
                 "precautions",
+                "allergen_warning",
             ],
             "teacher_ocr_providers": ["clova", "google_vision"],
             "target_ocr_provider": "paddleocr",
@@ -195,6 +199,7 @@ def _audit_category(
     brand_counts: Counter[str] = Counter()
     source_kind_counts: Counter[str] = Counter()
     issue_counts: Counter[str] = Counter()
+    layout_counts: Counter[str] = Counter()
     image_count = 0
     non_image_file_count = 0
 
@@ -205,6 +210,7 @@ def _audit_category(
         non_image_file_count += int(product_row["non_image_file_count"])
         brand = str(product_row["brand_candidate"]["display_name"])
         brand_counts[brand] += 1
+        _merge_counter(layout_counts, product_row["layout_counts"])
         _merge_counter(source_kind_counts, product_row["source_kind_counts"])
         _merge_counter(issue_counts, product_row["issue_counts"])
 
@@ -230,6 +236,7 @@ def _audit_category(
         "product_count": len(product_rows),
         "image_count": image_count,
         "non_image_file_count": non_image_file_count,
+        "product_layout_counts": dict(sorted(layout_counts.items())),
         "source_kind_counts": dict(sorted(source_kind_counts.items())),
         "brand_candidate_counts": _top_counter(brand_counts, limit=25),
         "issue_counts": dict(sorted(issue_counts.items())),
@@ -282,6 +289,11 @@ def _audit_product(*, root: Path, product_dir: Path) -> dict[str, Any]:
     if not brand_candidate:
         issue_counts["missing_brand_candidate"] += 1
 
+    layout_counts = _product_layout_counts(
+        has_review_dir=has_review_dir,
+        has_detail_dir=has_detail_dir,
+    )
+
     return {
         "product_dir_hash": _sha256_text(relative_product_path.as_posix()),
         "source_product_id": product_id,
@@ -290,6 +302,9 @@ def _audit_product(*, root: Path, product_dir: Path) -> dict[str, Any]:
             "display_name": brand_candidate or "unknown",
             "verification_status": "requires_human_review",
         },
+        "has_review_dir": has_review_dir,
+        "has_detail_page_dir": has_detail_dir,
+        "layout_counts": layout_counts,
         "image_count": image_count,
         "non_image_file_count": non_image_file_count,
         "source_kind_counts": dict(sorted(source_kind_counts.items())),
@@ -310,6 +325,8 @@ def _redacted_product_sample(row: dict[str, Any]) -> dict[str, Any]:
         "product_dir_hash": row["product_dir_hash"],
         "source_product_id": row["source_product_id"],
         "brand_candidate": row["brand_candidate"],
+        "has_review_dir": row["has_review_dir"],
+        "has_detail_page_dir": row["has_detail_page_dir"],
         "image_count": row["image_count"],
         "source_kind_counts": row["source_kind_counts"],
         "issue_counts": row["issue_counts"],
@@ -334,6 +351,36 @@ def _build_observations(categories: list[dict[str, Any]]) -> list[str]:
     if any(category["issue_counts"] for category in categories):
         observations.append("structure_issues_present")
     return observations
+
+
+def _product_layout_counts(*, has_review_dir: bool, has_detail_dir: bool) -> dict[str, int]:
+    """Summarize source-subfolder coverage for one product candidate.
+
+    Args:
+        has_review_dir: Whether the product candidate contains a review folder.
+        has_detail_dir: Whether the product candidate contains a detail-page
+            folder.
+
+    Returns:
+        A small counter-compatible mapping that is safe to aggregate without
+        exposing product or folder literals.
+    """
+    counts: Counter[str] = Counter()
+    if has_review_dir:
+        counts["with_review_dir"] += 1
+    else:
+        counts["without_review_dir"] += 1
+    if has_detail_dir:
+        counts["with_detail_page_dir"] += 1
+    else:
+        counts["without_detail_page_dir"] += 1
+    if has_review_dir and has_detail_dir:
+        counts["with_review_and_detail_page_dirs"] += 1
+    elif has_review_dir or has_detail_dir:
+        counts["with_single_expected_source_dir"] += 1
+    else:
+        counts["with_no_expected_source_dirs"] += 1
+    return dict(sorted(counts.items()))
 
 
 def _source_kind(relative_path: Path) -> str:

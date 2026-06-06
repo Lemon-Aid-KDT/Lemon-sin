@@ -153,6 +153,9 @@ def _work_order_payload(*, complete: bool = False) -> dict[str, Any]:
         "batch_file_name": "" if complete else "brand_product_review-001.jsonl",
         "source_editable_file_name": "decisions.todo.jsonl",
         "blank_row_count": 0 if complete else 50,
+        "stage_next_operator_action": ""
+        if complete
+        else "complete_brand_product_human_review",
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -233,6 +236,20 @@ def _completion_audit_payload(*, complete: bool = False) -> dict[str, Any]:
     Returns:
         Completion audit payload.
     """
+    requirements = [
+        {
+            "requirement_key": "brand_product_db_import",
+            "status": "verified" if complete else "pending_operator_review",
+        },
+        {
+            "requirement_key": "review_image_ground_truth_privacy_gate",
+            "status": "verified" if complete else "pending_operator_review",
+        },
+        {
+            "requirement_key": "detail_page_yolo_bbox_annotation",
+            "status": "verified" if complete else "pending_operator_review",
+        },
+    ]
     return {
         "schema_version": runbook.COMPLETION_AUDIT_SCHEMA,
         "overall_status": "complete_verified"
@@ -259,6 +276,7 @@ def _completion_audit_payload(*, complete: bool = False) -> dict[str, Any]:
         "absolute_paths_stored": False,
         "product_dir_literals_stored": False,
         "local_path_literals_stored": False,
+        "requirements": requirements,
         "source_doc_urls": ["https://docs.sqlalchemy.org/en/21/orm/queryguide/select.html"],
     }
 
@@ -453,6 +471,10 @@ def test_unblock_runbook_summarizes_pending_queues_without_paths(tmp_path: Path)
         for value in payload["input_path_fingerprints"].values()
     )
     assert payload["current_next_batch_key"] == "brand_product_review:001"
+    assert payload["current_blocker_batch_key"] == "brand_product_review:001"
+    assert payload["current_blocker_queue_key"] == "brand_product_review"
+    assert payload["current_blocker_blank_row_count"] == 50
+    assert payload["operator_next_action"] == "complete_brand_product_human_review"
     assert payload["total_blank_row_count"] == 188
     assert queue_by_key["brand_product_review"]["blank_row_count"] == 88
     assert queue_by_key["review_pii_screening"]["next_batch_key"] == "review_pii_screening:001"
@@ -503,6 +525,42 @@ def test_unblock_runbook_all_complete_allows_completion(tmp_path: Path) -> None:
     assert payload["total_blank_row_count"] == 0
     assert all(row["status"] == "complete" for row in payload["queue_summaries"])
     assert payload["current_post_completion_execution_allowed"] is True
+
+
+def test_unblock_runbook_marks_stale_optional_brand_artifacts(
+    tmp_path: Path,
+) -> None:
+    """Verify stale optional brand artifacts are marked without blocking output."""
+    input_paths = _write_inputs(tmp_path, include_gates=True, include_triage=True)
+    progress = _progress_payload()
+    for batch in progress["batches"]:
+        if batch["queue_key"] == "brand_product_review":
+            batch["valid_row_count"] += batch["blank_row_count"]
+            batch["blank_row_count"] = 0
+            batch["reason_counts"] = {}
+            batch["batch_status"] = "complete"
+    progress["total_valid_row_count"] = sum(row["valid_row_count"] for row in progress["batches"])
+    progress["total_blank_row_count"] = sum(row["blank_row_count"] for row in progress["batches"])
+    _write_json(input_paths["batch_progress"], progress)
+    completion_audit = _completion_audit_payload()
+    completion_audit["requirements"][0]["status"] = "verified"
+    _write_json(input_paths["completion_audit"], completion_audit)
+
+    payload = runbook.build_operator_unblock_runbook(input_paths=input_paths)
+    brand_gate = {
+        row["gate_key"]: row for row in payload["gate_summaries"]
+    }["brand_db_import_gate"]
+    brand_triage = {
+        row["queue_key"]: row for row in payload["triage_summaries"]
+    }["brand_product_review"]
+
+    assert brand_gate["consistency_status"] == "stale_optional_artifact"
+    assert brand_gate["consistency_warnings"] == [
+        "brand_gate_contradicts_verified_requirement",
+        "brand_gate_contradicts_complete_queue",
+    ]
+    assert brand_triage["consistency_status"] == "stale_optional_artifact"
+    assert brand_triage["consistency_warnings"] == ["triage_contradicts_complete_queue"]
 
 
 def test_unblock_runbook_rejects_unsafe_payload(tmp_path: Path) -> None:
@@ -560,13 +618,20 @@ def test_unblock_runbook_cli_writes_json_and_markdown(
 
     assert payload["schema_version"] == runbook.SCHEMA_VERSION
     assert "# Supplement Operator Unblock Runbook" in markdown
+    assert "Current blocker" in markdown
+    assert "Operator next action" in markdown
     assert "Queue Summary" in markdown
     assert "Gate Summary" in markdown
+    assert "Consistency" in markdown
     assert "Batch Triage Summary" in markdown
     assert "preflight_supplement_brand_review_contact_sheet" in markdown
     assert "require_all_reviewed_no_source_overwrite" in markdown
     assert "p2_bbox_annotation_required" in markdown
     assert "blocked_by_pii_screening" in markdown
+    assert all(row["consistency_status"] == "consistent" for row in payload["gate_summaries"])
+    assert all(
+        row["consistency_status"] == "consistent" for row in payload["triage_summaries"]
+    )
     assert payload["raw_ocr_text_stored"] is False
     for redacted_output in (stdout, json.dumps(payload, ensure_ascii=False), markdown):
         assert str(tmp_path) not in redacted_output

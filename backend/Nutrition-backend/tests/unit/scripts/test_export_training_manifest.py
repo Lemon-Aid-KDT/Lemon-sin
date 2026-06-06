@@ -268,6 +268,7 @@ async def test_export_training_manifest_supports_supplement_section_yolo(
         "supplement_facts",
         "ingredient_amounts",
         "precautions",
+        "allergen_warning",
         "intake_method",
         "other_ingredients",
         "functional_claims",

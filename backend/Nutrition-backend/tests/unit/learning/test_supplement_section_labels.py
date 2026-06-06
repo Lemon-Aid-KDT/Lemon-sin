@@ -212,7 +212,7 @@ def test_reviewed_supplement_section_snapshot_feeds_export_contract() -> None:
     assert export["schema_version"] == "supplement-section-yolo-detect-export-v1"
     assert export["items"][0]["labels"] == [
         {
-            "class_id": 4,
+            "class_id": 5,
             "label": "intake_method",
             "x_center": 0.42,
             "y_center": 0.85,
@@ -260,6 +260,31 @@ def test_build_supplement_section_annotation_task_stores_pending_review_contract
     assert "Contains soy" not in serialized
     assert str(media_object_id) not in serialized
     assert "a" * 64 not in serialized
+
+
+def test_build_supplement_section_annotation_task_maps_allergen_warning() -> None:
+    """Verify allergen warnings remain separate section candidates for YOLO."""
+    task = build_supplement_section_annotation_task(
+        owner_subject_hash="a" * 64,
+        media_object_id=uuid4(),
+        layout=LabelLayout(
+            provider="unit-ocr",
+            page_count=1,
+            sections=[
+                LabelSection(
+                    section_type="allergen_warning",
+                    anchor_text="Allergen Warning",
+                    anchor_box=_box(100, 800, 300, 840),
+                    rows=[[_cell("Contains milk and soy", 100, 850, 740, 900)]],
+                )
+            ],
+        ),
+        page_dimensions={0: (1000, 1000)},
+    )
+
+    assert task.label_snapshot["boxes"][0]["label"] == "allergen_warning"
+    serialized = json.dumps(task.label_snapshot, ensure_ascii=False)
+    assert "Contains milk" not in serialized
 
 
 def test_build_supplement_section_annotation_task_accepts_learning_image_source() -> None:

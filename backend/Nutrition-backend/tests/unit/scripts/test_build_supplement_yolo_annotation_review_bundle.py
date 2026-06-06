@@ -135,8 +135,10 @@ def test_build_bundle_writes_html_annotation_template_and_label_studio_tasks(
     assert "supplement_facts" in tasks[0]["meta"]["allowed_labels"]
     assert tasks[0]["meta"]["box_schema_example"] == yolo_bundle.BOX_SCHEMA_EXAMPLE
     assert "precautions" in tasks[0]["meta"]["section_label_guide"]
+    assert "allergen_warning" in tasks[0]["meta"]["section_label_guide"]
     readme_text = (output_dir / yolo_bundle.README_NAME).read_text(encoding="utf-8")
     assert '"label":"supplement_facts"' in readme_text
+    assert "allergen_warning" in readme_text
     assert "All coordinate values must be between 0 and 1" in readme_text
 
 

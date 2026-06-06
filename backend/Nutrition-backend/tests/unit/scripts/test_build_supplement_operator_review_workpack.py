@@ -200,7 +200,9 @@ def _bundle_summary(schema: str, editable_field: str, editable_name: str) -> dic
         "html_index_name": "review-index.html",
         "readme_name": "README.md",
         "csv_name": "review.csv",
-        "label_studio_task_name": "label-studio-tasks.json",
+        "label_studio_tasks_name": "label-studio-tasks.json",
+        "reviewable_row_count": 2,
+        "image_copied_count": 2,
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -298,6 +300,34 @@ def _contact_sheet_path(tmp_path: Path) -> Path:
     )
 
 
+def _assert_visual_index_guidance(
+    summary: dict[str, Any],
+    pii_markdown: str,
+    yolo_markdown: str,
+) -> None:
+    """Assert visual-index guidance is available for PII and YOLO batches.
+
+    Args:
+        summary: Generated workpack summary.
+        pii_markdown: PII workpack Markdown.
+        yolo_markdown: YOLO workpack Markdown.
+    """
+    assert summary["batch_workpacks"][1]["visual_index_available"] is True
+    assert summary["batch_workpacks"][1]["visual_index_file_name"] == "review-index.html"
+    assert summary["batch_workpacks"][2]["bundle_file_names"] == [
+        "annotation.todo.jsonl",
+        "review-index.html",
+        "README.md",
+        "label-studio-tasks.json",
+    ]
+    assert "## Visual Review Index" in pii_markdown
+    assert "HTML index: `review-index.html`" in pii_markdown
+    assert "Copied review images: `2`" in pii_markdown
+    assert "use the Visual Review Index above" in pii_markdown
+    assert "label-studio-tasks.json" in yolo_markdown
+    assert "## Visual Review Index" in yolo_markdown
+
+
 def test_build_operator_review_workpack_writes_batch_guides_and_index(
     tmp_path: Path,
 ) -> None:
@@ -337,8 +367,10 @@ def test_build_operator_review_workpack_writes_batch_guides_and_index(
     ]
     assert summary["batch_workpacks"][0]["contact_sheet_rows_with_thumbnails"] == 2
     assert "## Visual Review Contact Sheet" in brand_markdown
+    assert "## Visual Review Index" in brand_markdown
     assert "brand-detail-contact-sheet-001" in brand_markdown
     assert "brand-detail-contact-sheet.html" in brand_markdown
+    assert "#row-001" in brand_markdown
     index_markdown = (output_dir / "index.md").read_text(encoding="utf-8")
     assert "Batch review CSV" in index_markdown
     assert "brand_product_review-001.review.csv" in index_markdown
@@ -355,6 +387,7 @@ def test_build_operator_review_workpack_writes_batch_guides_and_index(
     yolo_markdown = (output_dir / "yolo_section_annotation-001.md").read_text(
         encoding="utf-8"
     )
+    _assert_visual_index_guidance(summary, pii_markdown, yolo_markdown)
     assert "reviewed-only extract" in yolo_markdown
     assert "YOLO dataset preview" in yolo_markdown
     assert "dataset promotion" in yolo_markdown

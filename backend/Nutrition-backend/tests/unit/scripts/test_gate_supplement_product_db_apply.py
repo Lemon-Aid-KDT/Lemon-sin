@@ -227,9 +227,23 @@ def test_product_db_apply_gate_blocks_unverified_categories(tmp_path: Path) -> N
     )
 
     assert summary["status"] == "blocked_by_product_db_apply_preflight"
-    assert "category_db_import_verified" in summary["failed_conditions"]
+    assert "category_verify_required_categories_present" in summary["failed_conditions"]
     assert "category_verify_counts_match_dry_run" in summary["failed_conditions"]
     assert "category_verify_has_no_missing_categories" in summary["failed_conditions"]
+
+
+def test_product_db_apply_gate_allows_extra_active_categories(tmp_path: Path) -> None:
+    """Verify extra DB categories do not block product apply when required rows exist."""
+    verify = _category_verify(verified=False, missing=0)
+    verify["blocked_reason_codes"] = ["extra_db_rows:supplement_categories"]
+
+    summary = gate.build_product_db_apply_gate(
+        input_paths=_input_paths(tmp_path, verify=verify)
+    )
+
+    assert summary["status"] == "ready_for_reviewed_product_db_apply"
+    assert summary["product_db_apply_allowed"] is True
+    assert summary["failed_conditions"] == []
 
 
 def test_product_db_apply_gate_blocks_unsafe_target(tmp_path: Path) -> None:

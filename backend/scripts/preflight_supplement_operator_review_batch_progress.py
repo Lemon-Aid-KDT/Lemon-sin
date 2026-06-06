@@ -171,7 +171,8 @@ def preflight_operator_review_batch_progress(
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: _sha256_text(str(path.expanduser())) for key, path in sorted(input_paths.items())
+            key: _fingerprint_text(str(path.expanduser()))
+            for key, path in sorted(input_paths.items())
         },
         "batch_count": len(batches),
         "complete_batch_count": complete_count,
@@ -763,6 +764,18 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _fingerprint_text(value: str) -> str:
+    """Return a short non-secret fingerprint for operator audit inputs.
+
+    Args:
+        value: Text value to fingerprint.
+
+    Returns:
+        Stable short fingerprint.
+    """
+    return f"fp-{_sha256_text(value)[:12]}"
+
+
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     """Write one JSON object.
 
@@ -827,7 +840,8 @@ def _failure_summary(
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: _sha256_text(str(path.expanduser())) for key, path in sorted(input_paths.items())
+            key: _fingerprint_text(str(path.expanduser()))
+            for key, path in sorted(input_paths.items())
         },
         "output_name": output_path.name,
         "error_code": _safe_error_code(error),

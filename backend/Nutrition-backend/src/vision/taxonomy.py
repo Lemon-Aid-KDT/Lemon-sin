@@ -12,7 +12,8 @@ class VisionLabel(StrEnum):
         PRODUCT_IDENTITY: Product name / brand / manufacturer text region.
         SUPPLEMENT_FACTS: Supplement facts / nutrition facts table region.
         INGREDIENT_AMOUNTS: Ingredient names and amount rows inside or near a facts panel.
-        PRECAUTIONS: Warning, caution, allergy, or precaution text region.
+        PRECAUTIONS: Warning, caution, contraindication, or precaution text region.
+        ALLERGEN_WARNING: Allergy, allergen, intolerance, or contains statement text region.
         INTAKE_METHOD: Suggested use / directions / dosage text region.
         OTHER_INGREDIENTS: Excipients or other ingredient declaration region.
         FUNCTIONAL_CLAIMS: Functionality or benefit claim text region.
@@ -25,6 +26,7 @@ class VisionLabel(StrEnum):
     SUPPLEMENT_FACTS = "supplement_facts"
     INGREDIENT_AMOUNTS = "ingredient_amounts"
     PRECAUTIONS = "precautions"
+    ALLERGEN_WARNING = "allergen_warning"
     INTAKE_METHOD = "intake_method"
     OTHER_INGREDIENTS = "other_ingredients"
     FUNCTIONAL_CLAIMS = "functional_claims"
@@ -59,6 +61,7 @@ VISION_SECTION_LABELS = frozenset(
         VisionLabel.SUPPLEMENT_FACTS.value,
         VisionLabel.INGREDIENT_AMOUNTS.value,
         VisionLabel.PRECAUTIONS.value,
+        VisionLabel.ALLERGEN_WARNING.value,
         VisionLabel.INTAKE_METHOD.value,
         VisionLabel.OTHER_INGREDIENTS.value,
         VisionLabel.FUNCTIONAL_CLAIMS.value,
@@ -88,12 +91,12 @@ VISION_LABEL_ALIASES = {
     "caution": VisionLabel.PRECAUTIONS.value,
     "cautions": VisionLabel.PRECAUTIONS.value,
     "precaution": VisionLabel.PRECAUTIONS.value,
-    "allergy": VisionLabel.PRECAUTIONS.value,
-    "allergies": VisionLabel.PRECAUTIONS.value,
-    "allergen": VisionLabel.PRECAUTIONS.value,
-    "allergens": VisionLabel.PRECAUTIONS.value,
-    "allergy_warning": VisionLabel.PRECAUTIONS.value,
-    "allergen_warning": VisionLabel.PRECAUTIONS.value,
+    "allergy": VisionLabel.ALLERGEN_WARNING.value,
+    "allergies": VisionLabel.ALLERGEN_WARNING.value,
+    "allergen": VisionLabel.ALLERGEN_WARNING.value,
+    "allergens": VisionLabel.ALLERGEN_WARNING.value,
+    "allergy_warning": VisionLabel.ALLERGEN_WARNING.value,
+    "allergen_warning": VisionLabel.ALLERGEN_WARNING.value,
     "directions": VisionLabel.INTAKE_METHOD.value,
     "direction": VisionLabel.INTAKE_METHOD.value,
     "suggested_use": VisionLabel.INTAKE_METHOD.value,
@@ -121,12 +124,13 @@ VISION_ROI_LABEL_PRIORITY = {
     VisionLabel.SUPPLEMENT_FACTS.value: 1,
     VisionLabel.INGREDIENT_AMOUNTS.value: 2,
     VisionLabel.PRECAUTIONS.value: 3,
-    VisionLabel.INTAKE_METHOD.value: 4,
-    VisionLabel.OTHER_INGREDIENTS.value: 5,
-    VisionLabel.FUNCTIONAL_CLAIMS.value: 6,
-    VisionLabel.SUPPLEMENT_LABEL.value: 7,
-    VisionLabel.SUPPLEMENT_BOTTLE.value: 8,
-    VisionLabel.BLISTER_PACK.value: 9,
+    VisionLabel.ALLERGEN_WARNING.value: 4,
+    VisionLabel.INTAKE_METHOD.value: 5,
+    VisionLabel.OTHER_INGREDIENTS.value: 6,
+    VisionLabel.FUNCTIONAL_CLAIMS.value: 7,
+    VisionLabel.SUPPLEMENT_LABEL.value: 8,
+    VisionLabel.SUPPLEMENT_BOTTLE.value: 9,
+    VisionLabel.BLISTER_PACK.value: 10,
 }
 FOOD_VISION_DETECTION_LABELS = frozenset(label.value for label in FoodVisionLabel)
 FOOD_VISION_LABEL_ALIASES = {

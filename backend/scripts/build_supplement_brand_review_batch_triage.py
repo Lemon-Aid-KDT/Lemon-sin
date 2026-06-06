@@ -46,6 +46,22 @@ REQUIRED_CSV_COLUMNS = frozenset(
 )
 OPTIONAL_NUMERIC_COLUMNS = ("image_count", "detail_page_count", "review_count")
 OPTIONAL_CLUSTER_COLUMNS = ("category_key", "brand_candidate_key")
+DESCRIPTOR_LIKE_BRAND_TERMS = frozenset(
+    {
+        "100",
+        "고함량",
+        "기능성",
+        "마시는",
+        "분말",
+        "수용성",
+        "식물성",
+        "액상",
+        "저분자",
+        "초임계",
+        "캡슐",
+        "프리미엄",
+    }
+)
 SOURCE_DOC_URLS = (
     "https://docs.python.org/3/library/argparse.html",
     "https://docs.python.org/3/library/csv.html",
@@ -137,6 +153,7 @@ def build_brand_review_batch_triage(
     row_hints = [
         {
             "row_index": item["row_index"],
+            "contact_sheet_anchor": _row_anchor(item["row_index"]),
             "priority": item["priority"],
             "reason_codes": item["reason_codes"],
         }
@@ -148,7 +165,8 @@ def build_brand_review_batch_triage(
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: _sha256_text(str(path.expanduser())) for key, path in sorted(input_paths.items())
+            key: _fingerprint_text(str(path.expanduser()))
+            for key, path in sorted(input_paths.items())
         },
         "batch_review_csv_name": _safe_filename(review_csv.name),
         "row_count": len(rows),
@@ -278,6 +296,7 @@ def _row_triage(
     cluster_key = (_safe_optional_token(_cell(row, "category_key")), _safe_optional_token(_cell(row, "brand_candidate_key")))
     if all(cluster_key) and cluster_sizes.get(cluster_key, 0) > 1:
         reason_codes.append("duplicate_candidate_in_batch")
+    reason_codes.extend(_candidate_quality_reason_codes(row))
     priority = _priority(decision=decision, reason_codes=reason_codes)
     return {
         "row_index": row_index,
@@ -304,6 +323,8 @@ def _priority(*, decision: str, reason_codes: list[str]) -> str:
         return "p0_partial_review_fix"
     if {"no_review_images", "no_detail_page_images", "no_image_evidence"} & reasons:
         return "p1_evidence_check"
+    if "descriptor_like_brand_candidate" in reasons:
+        return "p1_candidate_quality_check"
     if "duplicate_candidate_in_batch" in reasons:
         return "p2_duplicate_candidate_review"
     return "p3_standard_review"
@@ -321,9 +342,10 @@ def _row_hint_sort_key(item: Mapping[str, Any]) -> tuple[int, int]:
     rank = {
         "p0_partial_review_fix": 0,
         "p1_evidence_check": 1,
-        "p2_duplicate_candidate_review": 2,
-        "p3_standard_review": 3,
-        "p4_reviewed": 4,
+        "p1_candidate_quality_check": 2,
+        "p2_duplicate_candidate_review": 3,
+        "p3_standard_review": 4,
+        "p4_reviewed": 5,
     }
     return (rank.get(str(item.get("priority")), 9), _non_negative_int(item.get("row_index")))
 
@@ -346,6 +368,35 @@ def _cluster_sizes(rows: list[Mapping[str, str]]) -> Mapping[tuple[str, str], in
     return dict(counts)
 
 
+def _candidate_quality_reason_codes(row: Mapping[str, str]) -> list[str]:
+    """Return safe quality reason codes for suspicious brand candidates.
+
+    Args:
+        row: CSV row.
+
+    Returns:
+        Redacted reason codes. The candidate literal is never returned.
+    """
+    candidate = _normalized_candidate_token(_cell(row, "brand_candidate_key"))
+    if not candidate:
+        return []
+    if candidate in DESCRIPTOR_LIKE_BRAND_TERMS:
+        return ["descriptor_like_brand_candidate"]
+    return []
+
+
+def _normalized_candidate_token(value: str) -> str:
+    """Normalize a brand candidate token for internal quality checks.
+
+    Args:
+        value: Raw CSV token.
+
+    Returns:
+        Normalized token used only for redacted reason classification.
+    """
+    return "".join(ch for ch in value.casefold().strip() if ch not in {" ", "_", "-"})
+
+
 def _operator_next_steps(*, reason_counts: Mapping[str, int]) -> list[str]:
     """Return aggregate operator next-step tokens.
 
@@ -360,6 +411,8 @@ def _operator_next_steps(*, reason_counts: Mapping[str, int]) -> list[str]:
         steps.append("fix_partial_review_rows_before_apply")
     if reason_counts.get("no_review_images", 0) or reason_counts.get("no_detail_page_images", 0):
         steps.append("verify_low_evidence_rows_in_contact_sheet")
+    if reason_counts.get("descriptor_like_brand_candidate", 0):
+        steps.append("review_descriptor_like_brand_candidates_as_not_a_brand_or_needs_review")
     if reason_counts.get("duplicate_candidate_in_batch", 0):
         steps.append("review_duplicate_candidate_rows_together")
     steps.extend(
@@ -568,9 +621,12 @@ def _markdown_row_hints(value: Any) -> str:
         if not isinstance(item, Mapping):
             raise BrandReviewBatchTriageError("Expected row hint mapping.")
         reasons = ", ".join(_safe_token(str(reason)) for reason in item.get("reason_codes", []))
+        anchor = _safe_token(str(item.get("contact_sheet_anchor") or ""))
+        anchor_note = f", anchor `#{anchor}`" if anchor else ""
         lines.append(
             f"- row `{_non_negative_int(item.get('row_index'))}`: "
-            f"`{_safe_token(str(item.get('priority') or 'unknown'))}` ({reasons})"
+            f"`{_safe_token(str(item.get('priority') or 'unknown'))}` "
+            f"({reasons}{anchor_note})"
         )
     return "\n".join(lines)
 
@@ -587,6 +643,24 @@ def _markdown_list(value: Any) -> str:
     if not isinstance(value, list) or not value:
         return "- none"
     return "\n".join(f"- `{_safe_token(str(item))}`" for item in value)
+
+
+def _row_anchor(value: Any) -> str:
+    """Return a deterministic redacted contact-sheet row anchor.
+
+    Args:
+        value: One-based CSV row index.
+
+    Returns:
+        Safe HTML fragment identifier for the matching contact-sheet card.
+
+    Raises:
+        BrandReviewBatchTriageError: If the row index is invalid.
+    """
+    row_index = _non_negative_int(value)
+    if row_index <= 0:
+        raise BrandReviewBatchTriageError("row index must be positive.")
+    return f"row-{row_index:03d}"
 
 
 def _required_input(input_paths: Mapping[str, Path], key: str) -> Path:
@@ -615,6 +689,18 @@ def _sha256_text(value: str) -> str:
         Hex digest.
     """
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _fingerprint_text(value: str) -> str:
+    """Return a short public fingerprint for local artifact identity.
+
+    Args:
+        value: Text value.
+
+    Returns:
+        Short fingerprint safe for public reports.
+    """
+    return f"fp-{_sha256_text(value)[:12]}"
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -675,10 +761,11 @@ def _failure_summary(
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: _sha256_text(str(path.expanduser())) for key, path in sorted(input_paths.items())
+            key: _fingerprint_text(str(path.expanduser()))
+            for key, path in sorted(input_paths.items())
         },
         "output_name": output_path.name,
-        "output_hash": _sha256_text(str(output_path.expanduser())),
+        "output_hash": _fingerprint_text(str(output_path.expanduser())),
         "error_code": _safe_error_code(error),
         "db_write_performed": False,
         "external_provider_call_performed": False,

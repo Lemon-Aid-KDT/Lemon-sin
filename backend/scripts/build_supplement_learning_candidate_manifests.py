@@ -76,6 +76,7 @@ OCR_REQUIRED_FIELDS = (
     "ingredient_amounts",
     "intake_method",
     "precautions",
+    "allergen_warning",
 )
 SOURCE_DOC_URLS = (
     "https://docs.ultralytics.com/datasets/detect/",

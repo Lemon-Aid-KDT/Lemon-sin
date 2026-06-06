@@ -310,6 +310,10 @@ def test_preflight_operator_review_batch_progress_counts_by_batch(tmp_path: Path
     assert summary["total_blank_row_count"] == 3
     assert summary["batches"][0]["batch_status"] == "complete"
     assert summary["batches"][1]["blank_row_count"] == 1
+    assert all(
+        value.startswith("fp-") and len(value) == 15
+        for value in summary["input_path_hashes"].values()
+    )
     dumped = json.dumps(summary, ensure_ascii=False)
     assert "Safe Product" not in dumped
     assert "brand-a" not in dumped
@@ -413,6 +417,10 @@ def test_batch_progress_cli_writes_json_and_markdown(tmp_path: Path, capsys: Any
     captured = capsys.readouterr().out
     summary = json.loads(output_path.read_text(encoding="utf-8"))
     assert summary["schema_version"] == "supplement-operator-review-batch-progress-preflight-v1"
+    assert all(
+        value.startswith("fp-") and len(value) == 15
+        for value in summary["input_path_hashes"].values()
+    )
     assert markdown_path.is_file()
     assert '"complete_batch_count": 1' in captured
     assert "Safe Product" not in captured

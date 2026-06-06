@@ -311,6 +311,7 @@ def test_build_next_batch_work_order_selects_pending_batch(tmp_path: Path) -> No
     )
     assert summary["batch_key"] == "brand_product_review:001"
     assert summary["queue_key"] == "brand_product_review"
+    assert summary["operator_next_action"] == "complete_brand_product_human_review"
     assert summary["workpack_file_name"] == "brand_product_review-001.md"
     assert summary["batch_file_name"] == "brand_product_review-001.jsonl"
     assert summary["batch_review_file_name"] == "brand_product_review-001.review.csv"
@@ -405,6 +406,9 @@ def test_build_next_batch_work_order_includes_pii_reviewed_extract_gate(
 
     assert summary["batch_key"] == "review_pii_screening:001"
     assert summary["queue_key"] == "review_pii_screening"
+    assert summary["stage_next_operator_action"] == "apply_pii_screening_decisions"
+    assert summary["operator_next_action"] == "complete_blank_privacy_decisions"
+    assert "Operator next action: `complete_blank_privacy_decisions`" in markdown
     assert (
         "extract_reviewed_pii_decisions_for_partial_teacher_ocr_preview"
         in summary["post_completion_gates"]
@@ -526,19 +530,51 @@ def test_build_next_batch_work_order_includes_yolo_reviewed_extract_gate(
     assert "extract_reviewed_yolo_annotations_for_partial_dataset_preview" in markdown
 
 
-def test_build_next_batch_work_order_rejects_batch_key_mismatch(tmp_path: Path) -> None:
-    """Verify mismatched progress/workpack next batch keys fail closed."""
+def test_build_next_batch_work_order_uses_progress_when_workpack_next_is_stale(
+    tmp_path: Path,
+) -> None:
+    """Verify progress selects the next batch when static workpack hints are stale."""
     paths = _input_paths(tmp_path)
-    payload = _workpack()
-    payload["next_batch_key"] = "review_pii_screening:001"
-    _write_json(paths["workpack_summary"], payload)
+    progress = _progress()
+    progress["next_incomplete_batch_key"] = "review_pii_screening:001"
+    progress["batches"][0]["batch_status"] = "complete"
+    progress["batches"][0]["valid_row_count"] = 50
+    progress["batches"][0]["blank_row_count"] = 0
+    _write_json(paths["batch_progress"], progress)
 
-    try:
-        work_order.build_next_batch_work_order(input_paths=paths)
-    except work_order.WorkOrderError as exc:
-        assert "batch_key mismatch" in str(exc)
-    else:
-        raise AssertionError("mismatched next batch should fail closed")
+    workpack = _workpack()
+    workpack["next_batch_key"] = "brand_product_review:001"
+    workpack["batch_workpacks"].append(
+        {
+            "batch_key": "review_pii_screening:001",
+            "queue_key": "review_pii_screening",
+            "workpack_file_name": "review_pii_screening-001.md",
+            "batch_file_name": "review_pii_screening-001.jsonl",
+            "source_editable_file_name": "decisions.todo.jsonl",
+            "row_index_start": 1,
+            "row_index_end": 1,
+            "pending_row_count": 1,
+            "bundle_file_names": ["decisions.todo.jsonl", "review-index.html", "README.md"],
+            "operator_checklist": ["screen_review_image", "set_pii_decision"],
+            "source_rows_read": False,
+            "source_image_read_performed": False,
+            "db_write_performed": False,
+            "external_provider_call_performed": False,
+            "llm_call_performed": False,
+            "training_execution_performed_by_script": False,
+            "raw_ocr_text_stored": False,
+            "raw_provider_payload_stored": False,
+            "absolute_paths_stored": False,
+            "product_dir_literals_stored": False,
+            "local_path_literals_stored": False,
+        }
+    )
+    _write_json(paths["workpack_summary"], workpack)
+
+    summary = work_order.build_next_batch_work_order(input_paths=paths)
+
+    assert summary["batch_key"] == "review_pii_screening:001"
+    assert summary["queue_key"] == "review_pii_screening"
 
 
 def test_build_next_batch_work_order_rejects_unsafe_artifact(tmp_path: Path) -> None:

@@ -69,6 +69,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--taxonomy-staging", type=Path, required=True)
     parser.add_argument("--product-import-manifest", type=Path, default=None)
     parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help="Optional dotenv file. Values are loaded without echoing secrets.",
+    )
+    parser.add_argument(
         "--summary",
         type=Path,
         default=None,
@@ -106,6 +112,8 @@ async def run_cli(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = parse_args(argv)
+    if args.env_file is not None:
+        importer._load_env_file(args.env_file.expanduser().resolve())
     try:
         summary = await verify_supplement_taxonomy_db_import(
             taxonomy_staging=args.taxonomy_staging.expanduser().resolve(),
@@ -241,18 +249,21 @@ async def _verify_with_repository(
     )
 
     present_category_keys = await repository.present_category_keys(category_keys)
+    active_category_keys = await repository.active_category_keys()
     present_product_source_keys = await repository.present_product_source_keys(product_source_keys)
     present_product_category_keys = await repository.present_product_category_keys(
         product_category_keys
     )
 
     missing_category_keys = sorted(set(category_keys) - set(present_category_keys))
+    extra_active_category_keys = sorted(set(active_category_keys) - set(category_keys))
     missing_product_source_keys = sorted(set(product_source_keys) - set(present_product_source_keys))
     missing_product_category_keys = sorted(
         set(product_category_keys) - set(present_product_category_keys)
     )
     db_import_verified = (
         not missing_category_keys
+        and not extra_active_category_keys
         and not missing_product_source_keys
         and not missing_product_category_keys
         and not _product_verification_blockers(
@@ -261,7 +272,7 @@ async def _verify_with_repository(
             require_approved_products=require_approved_products,
         )
     )
-    category_import_verified = not missing_category_keys
+    category_import_verified = not missing_category_keys and not extra_active_category_keys
     product_import_verified = (
         not missing_product_source_keys
         and not missing_product_category_keys
@@ -272,6 +283,7 @@ async def _verify_with_repository(
         product_rows=product_rows,
         require_approved_products=require_approved_products,
         missing_category_keys=missing_category_keys,
+        extra_active_category_keys=extra_active_category_keys,
         missing_product_source_keys=missing_product_source_keys,
         missing_product_category_keys=missing_product_category_keys,
     )
@@ -303,9 +315,14 @@ async def _verify_with_repository(
             else "category_seed_only"
         ),
         "expected_category_count": len(category_keys),
+        "active_db_category_count": len(active_category_keys),
         "matched_category_count": len(present_category_keys),
         "missing_category_count": len(missing_category_keys),
         "missing_category_key_hashes": [_hash_text(key) for key in missing_category_keys],
+        "extra_active_category_count": len(extra_active_category_keys),
+        "extra_active_category_key_hashes": [
+            _hash_text(key) for key in extra_active_category_keys
+        ],
         "expected_product_count": len(product_source_keys),
         "matched_product_count": len(present_product_source_keys),
         "missing_product_count": len(missing_product_source_keys),
@@ -360,6 +377,7 @@ def _blocked_product_verification_summary(
         product_rows=product_rows,
         require_approved_products=require_approved_products,
         missing_category_keys=[],
+        extra_active_category_keys=[],
         missing_product_source_keys=[],
         missing_product_category_keys=[],
     )
@@ -386,9 +404,12 @@ def _blocked_product_verification_summary(
         "approved_product_rows_available": bool(product_rows),
         "verification_scope": "category_and_reviewed_products",
         "expected_category_count": len(category_rows),
+        "active_db_category_count": None,
         "matched_category_count": None,
         "missing_category_count": None,
         "missing_category_key_hashes": [],
+        "extra_active_category_count": None,
+        "extra_active_category_key_hashes": [],
         "expected_product_count": len(product_rows),
         "matched_product_count": None,
         "missing_product_count": None,
@@ -443,6 +464,19 @@ class _SqlAlchemyTaxonomyVerificationRepository:
         result = await self._session.execute(
             select(SupplementCategory.category_key).where(
                 SupplementCategory.category_key.in_(keys),
+                SupplementCategory.is_active.is_(True),
+            )
+        )
+        return {str(row[0]) for row in result.all()}
+
+    async def active_category_keys(self) -> set[str]:
+        """Return all active category keys found in the DB.
+
+        Returns:
+            Active category keys.
+        """
+        result = await self._session.execute(
+            select(SupplementCategory.category_key).where(
                 SupplementCategory.is_active.is_(True),
             )
         )
@@ -547,6 +581,7 @@ def _verification_blocker_codes(
     product_rows: list[dict[str, Any]],
     require_approved_products: bool,
     missing_category_keys: list[str],
+    extra_active_category_keys: list[str],
     missing_product_source_keys: list[tuple[str, str]],
     missing_product_category_keys: list[tuple[str, str, str]],
 ) -> list[str]:
@@ -557,6 +592,7 @@ def _verification_blocker_codes(
         product_rows: Approved product rows parsed from the manifest.
         require_approved_products: Whether reviewed product rows are required.
         missing_category_keys: Category keys missing from DB.
+        extra_active_category_keys: Active DB category keys outside the staging set.
         missing_product_source_keys: Product source keys missing from DB.
         missing_product_category_keys: Product-category keys missing from DB.
 
@@ -570,6 +606,8 @@ def _verification_blocker_codes(
     )
     if missing_category_keys:
         blockers.append("missing_db_rows:supplement_categories")
+    if extra_active_category_keys:
+        blockers.append("extra_db_rows:supplement_categories")
     if missing_product_source_keys:
         blockers.append("missing_db_rows:supplement_products")
     if missing_product_category_keys:

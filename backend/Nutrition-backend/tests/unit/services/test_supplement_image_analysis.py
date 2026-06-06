@@ -675,7 +675,7 @@ def _ocr_word(
 
 
 def test_parse_label_layout_detects_allergen_contains_roi_without_heading() -> None:
-    """Allergen-only ROI crops should still become precaution sections."""
+    """Allergen-only ROI crops should become allergen-warning sections."""
     layout = parse_label_layout(
         OCRResult(
             text="Contains soy and milk.\nConsult doctor before use.",
@@ -686,7 +686,7 @@ def test_parse_label_layout_detects_allergen_contains_roi_without_heading() -> N
     )
 
     assert len(layout.sections) == 1
-    assert layout.sections[0].section_type == "precautions"
+    assert layout.sections[0].section_type == "allergen_warning"
     assert layout.sections[0].anchor_text == "Contains allergen"
     assert layout.sections[0].rows[0][0].text == "Contains soy and milk."
 
@@ -703,7 +703,7 @@ def test_parse_label_layout_detects_soybean_tree_nut_allergen_row() -> None:
     )
 
     assert len(layout.sections) == 1
-    assert layout.sections[0].section_type == "precautions"
+    assert layout.sections[0].section_type == "allergen_warning"
     assert layout.sections[0].anchor_text == "Contains allergen"
     assert layout.sections[0].rows[0][0].text == "Contains soybean and tree nuts."
 
@@ -1142,6 +1142,7 @@ async def test_analyze_supplement_image_preserves_multi_roi_precaution_layout() 
     section_types = {section.section_type for section in preview.label_sections}
     assert "supplement_facts" in section_types
     assert "precautions" in section_types
+    assert "allergen_warning" in section_types
     assert preview.pipeline_metadata.section_count >= 2
 
 

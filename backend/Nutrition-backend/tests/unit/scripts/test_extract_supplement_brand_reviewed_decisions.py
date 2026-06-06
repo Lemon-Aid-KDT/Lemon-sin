@@ -169,6 +169,10 @@ def test_extract_reviewed_brand_decisions_ignores_blank_stubs(tmp_path: Path) ->
     assert summary["decision_counts"] == {"approve": 1, "blank": 1}
     assert summary["ready_for_partial_apply"] is True
     assert summary["ready_for_strict_apply"] is False
+    assert summary["taxonomy_staging_hash"].startswith("fp-")
+    assert len(summary["taxonomy_staging_hash"]) == 15
+    assert summary["decisions_hash"].startswith("fp-")
+    assert len(summary["decisions_hash"]) == 15
     assert summary["db_write_performed"] is False
 
 

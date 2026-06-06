@@ -37,6 +37,13 @@ def test_audit_summarizes_category_product_and_source_kind_counts(tmp_path: Path
     assert summary["category_count"] == 2
     assert summary["product_count"] == 2
     assert summary["image_count"] == 3
+    assert summary["product_layout_counts"] == {
+        "with_detail_page_dir": 2,
+        "with_review_and_detail_page_dirs": 1,
+        "with_review_dir": 1,
+        "with_single_expected_source_dir": 1,
+        "without_review_dir": 1,
+    }
     assert summary["source_kind_counts"] == {
         "detail_page": 2,
         "review": 1,
@@ -86,9 +93,16 @@ def test_audit_reports_structure_issues_for_unreviewable_product_folders(
         "missing_trailing_product_id": 1,
         "unknown_source_kind_images": 1,
     }
+    assert summary["product_layout_counts"] == {
+        "with_no_expected_source_dirs": 1,
+        "without_detail_page_dir": 1,
+        "without_review_dir": 1,
+    }
     assert "structure_issues_present" in summary["observations"]
     product_sample = summary["categories"][0]["product_samples"][0]
     assert product_sample["source_product_id"] is None
+    assert product_sample["has_review_dir"] is False
+    assert product_sample["has_detail_page_dir"] is False
     assert product_sample["brand_candidate"]["verification_status"] == "requires_human_review"
 
 

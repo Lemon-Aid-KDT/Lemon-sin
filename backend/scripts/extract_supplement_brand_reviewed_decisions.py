@@ -166,11 +166,9 @@ def extract_reviewed_brand_decisions(
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "taxonomy_staging_name": taxonomy_staging.name,
-        "taxonomy_staging_hash": applier.staging.audit._sha256_text(
-            str(taxonomy_staging.expanduser())
-        ),
+        "taxonomy_staging_hash": _fingerprint_text(str(taxonomy_staging.expanduser())),
         "decisions_name": decisions_path.name,
-        "decisions_hash": applier.staging.audit._sha256_text(str(decisions_path.expanduser())),
+        "decisions_hash": _fingerprint_text(str(decisions_path.expanduser())),
         "brand_candidate_count": len(candidates),
         "input_decision_row_count": len(seen_fixture_ids),
         "reviewed_decision_count": len(rows),
@@ -236,6 +234,18 @@ def _failure_summary(
     }
     applier._reject_unsafe_payload(summary)
     return summary
+
+
+def _fingerprint_text(value: str) -> str:
+    """Return a short non-secret fingerprint for public summaries.
+
+    Args:
+        value: Text value to fingerprint.
+
+    Returns:
+        Stable short fingerprint.
+    """
+    return f"fp-{applier.staging.audit._sha256_text(value)[:12]}"
 
 
 def _safe_error_code(error: Exception) -> str:

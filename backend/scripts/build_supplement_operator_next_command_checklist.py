@@ -40,6 +40,8 @@ from scripts import (  # noqa: E402
 SCHEMA_VERSION = "supplement-operator-next-command-checklist-v1"
 WORK_ORDER_SCHEMA = work_order.SCHEMA_VERSION
 POST_COMPLETION_SCHEMA = post_completion.SCHEMA_VERSION
+BATCH_NUMBER_DIGIT_COUNT = 3
+COMMAND_MAX_LENGTH = 8000
 LOCAL_PATH_MARKERS = (
     "/private/",
     "/Users/",
@@ -48,6 +50,179 @@ LOCAL_PATH_MARKERS = (
     "\\Users\\",
     "\\Volumes\\",
 )
+COMMAND_EXECUTION_RULES: dict[str, tuple[str, tuple[str, ...], bool, bool]] = {
+    "build_supplement_brand_review_batch_triage": ("runnable_now", (), False, False),
+    "preflight_supplement_brand_review_contact_sheet": ("runnable_now", (), False, False),
+    "build_supplement_operator_review_batch_triage": ("runnable_now", (), False, False),
+    "apply_supplement_brand_batch_review_csv_decisions": (
+        "blocked_until_operator_edits",
+        ("all_brand_review_csv_rows_reviewed",),
+        True,
+        False,
+    ),
+    "preflight_supplement_operator_review_batch_file": (
+        "blocked_until_operator_edits",
+        ("operator_edits_current_batch",),
+        True,
+        False,
+    ),
+    "reconcile_supplement_operator_review_batch_files": (
+        "blocked_until_batch_preflight",
+        ("batch_file_preflight_ready_for_reconcile",),
+        False,
+        False,
+    ),
+    "preflight_supplement_operator_review_batch_progress": (
+        "blocked_until_reconcile",
+        ("reconciled_queue_copies_ready",),
+        False,
+        False,
+    ),
+    "extract_supplement_brand_reviewed_decisions": (
+        "blocked_until_reconcile",
+        ("reconciled_brand_queue_ready",),
+        False,
+        False,
+    ),
+    "preflight_supplement_brand_review_decisions": (
+        "blocked_until_all_brand_rows_reviewed",
+        ("all_brand_review_rows_reviewed",),
+        True,
+        False,
+    ),
+    "gate_supplement_brand_db_import": (
+        "blocked_until_strict_brand_preflight",
+        ("brand_review_preflight_passed",),
+        False,
+        False,
+    ),
+    "apply_supplement_brand_review_decisions": (
+        "blocked_until_brand_import_gate",
+        ("brand_db_import_gate_passed",),
+        False,
+        False,
+    ),
+    "extract_supplement_pii_reviewed_decisions": (
+        "blocked_until_reconcile",
+        ("reconciled_pii_queue_ready",),
+        False,
+        False,
+    ),
+    "preflight_supplement_review_pii_screening_decisions": (
+        "blocked_until_all_pii_rows_reviewed",
+        ("strict_pii_review_complete_before_teacher_ocr_eval",),
+        True,
+        False,
+    ),
+    "apply_supplement_review_pii_screening_decisions": (
+        "blocked_until_strict_pii_preflight",
+        ("pii_review_preflight_passed",),
+        False,
+        False,
+    ),
+    "export_supplement_ocr_ground_truth_template": (
+        "blocked_until_pii_apply",
+        ("teacher_safe_ocr_candidates_ready",),
+        False,
+        False,
+    ),
+    "build_supplement_ocr_ground_truth_review_bundle": (
+        "blocked_until_gt_template",
+        ("ocr_ground_truth_template_ready",),
+        False,
+        False,
+    ),
+    "preflight_supplement_ocr_ground_truth_manifest": (
+        "blocked_until_manual_gt_edits",
+        ("operator_completed_manual_ocr_ground_truth",),
+        True,
+        False,
+    ),
+    "build_supplement_ocr_benchmark_manifest": (
+        "blocked_until_gt_preflight",
+        ("ocr_ground_truth_preflight_passed",),
+        False,
+        False,
+    ),
+    "assign_paddleocr_benchmark_splits": (
+        "blocked_until_benchmark_manifest",
+        ("ocr_benchmark_manifest_ready",),
+        False,
+        False,
+    ),
+    "gate_supplement_ocr_benchmark": (
+        "blocked_until_benchmark_splits",
+        ("ocr_benchmark_manifest_and_splits_ready",),
+        False,
+        False,
+    ),
+    "collect_supplement_ocr_observations": (
+        "blocked_until_teacher_ocr_gate",
+        ("ocr_benchmark_gate_passed", "explicit_external_ocr_opt_in"),
+        False,
+        True,
+    ),
+    "merge_paddleocr_text_observations_into_benchmark": (
+        "blocked_until_provider_observations",
+        ("ocr_provider_observations_ready",),
+        False,
+        False,
+    ),
+    "preflight_paddleocr_text_target_chain": (
+        "blocked_until_metric_benchmark",
+        ("ocr_provider_metric_benchmark_ready",),
+        False,
+        False,
+    ),
+    "build_paddleocr_text_extraction_eval_summary": (
+        "blocked_until_target_chain_preflight",
+        ("paddleocr_text_target_chain_preflight_passed", "privacy_review_cleared"),
+        False,
+        False,
+    ),
+    "gate_paddleocr_text_extraction_target": (
+        "blocked_until_holdout_eval_summary",
+        ("paddleocr_holdout_eval_summary_ready",),
+        False,
+        False,
+    ),
+    "extract_supplement_yolo_reviewed_annotations": (
+        "blocked_until_reconcile",
+        ("reconciled_yolo_queue_ready",),
+        False,
+        False,
+    ),
+    "preflight_supplement_yolo_annotation_decisions": (
+        "blocked_until_all_yolo_rows_reviewed",
+        ("strict_yolo_annotation_complete_before_dataset_materialization",),
+        True,
+        False,
+    ),
+    "promote_supplement_yolo_annotation_template": (
+        "blocked_until_strict_yolo_preflight",
+        ("yolo_annotation_preflight_passed",),
+        False,
+        False,
+    ),
+    "materialize_supplement_section_yolo_dataset": (
+        "blocked_until_yolo_promotion",
+        ("yolo_template_promotion_ready",),
+        False,
+        False,
+    ),
+    "validate_supplement_section_yolo_dataset": (
+        "blocked_until_yolo_materialize",
+        ("yolo_dataset_materialized",),
+        False,
+        False,
+    ),
+    "gate_supplement_yolo_section_dataset": (
+        "blocked_until_yolo_validation",
+        ("yolo_dataset_validation_passed",),
+        False,
+        False,
+    ),
+}
 
 
 class OperatorCommandChecklistError(ValueError):
@@ -68,6 +243,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--operator-dir", type=Path, required=True)
     parser.add_argument("--todo-dir", type=Path, required=True)
     parser.add_argument("--taxonomy-staging", type=Path, default=None)
+    parser.add_argument(
+        "--batch-override-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Optional directory of already-applied batch JSONL files to preserve "
+            "when generating reconcile commands for the next batch."
+        ),
+    )
     parser.add_argument("--next-work-order", type=Path, required=True)
     parser.add_argument("--post-completion-plan", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -96,6 +280,11 @@ def main(argv: list[str] | None = None) -> None:
         if args.taxonomy_staging is not None
         else None
     )
+    batch_override_dir = (
+        args.batch_override_dir.expanduser().resolve()
+        if args.batch_override_dir is not None
+        else None
+    )
     try:
         checklist = build_command_checklist(
             repo_root=repo_root,
@@ -103,6 +292,7 @@ def main(argv: list[str] | None = None) -> None:
             todo_dir=args.todo_dir.expanduser().resolve(),
             input_paths=input_paths,
             taxonomy_staging=taxonomy_staging,
+            batch_override_dir=batch_override_dir,
         )
         _write_json(output_path, checklist)
         if markdown_output is not None:
@@ -123,6 +313,7 @@ def build_command_checklist(
     todo_dir: Path,
     input_paths: Mapping[str, Path],
     taxonomy_staging: Path | None = None,
+    batch_override_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Build repo-relative commands for the current next batch.
 
@@ -134,6 +325,10 @@ def build_command_checklist(
         taxonomy_staging: Optional explicit taxonomy staging artifact. When
             supplied, brand/product commands use this path instead of the
             date-specific todo fallback.
+        batch_override_dir: Optional directory containing already-applied batch
+            JSONL files. These are preserved in generated reconcile commands so
+            later queue work does not accidentally drop earlier completed
+            batch decisions.
 
     Returns:
         Redacted command checklist.
@@ -149,6 +344,11 @@ def build_command_checklist(
     batch_key = _safe_batch_key(next_work_order.get("batch_key"))
     batch_file_name = _safe_file_name(next_work_order.get("batch_file_name"))
     batch_review_file_name = _safe_file_name(next_work_order.get("batch_review_file_name"))
+    blank_row_count = _non_negative_int(next_work_order.get("blank_row_count"))
+    operator_next_action = _safe_token(
+        next_work_order.get("operator_next_action")
+        or next_work_order.get("stage_next_operator_action")
+    )
     if not queue_key or not batch_key or not batch_file_name:
         raise OperatorCommandChecklistError("Next work order does not contain an editable batch.")
     if queue_key == "brand_product_review" and not batch_review_file_name:
@@ -161,13 +361,26 @@ def build_command_checklist(
         batch_review_file_name=batch_review_file_name,
         taxonomy_staging=taxonomy_staging,
     )
-    commands = _commands_for_queue(queue_key=queue_key, paths=paths, batch_key=batch_key)
+    preserved_batch_overrides = _batch_file_overrides_from_dir(
+        repo_root=repo_root,
+        batch_override_dir=batch_override_dir,
+    )
+    commands = _commands_for_queue(
+        queue_key=queue_key,
+        paths=paths,
+        batch_key=batch_key,
+        preserved_batch_overrides=preserved_batch_overrides,
+    )
     checklist = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "status": "ready_after_operator_edits",
         "queue_key": queue_key,
         "batch_key": batch_key,
+        "current_blocker_queue_key": queue_key,
+        "current_blocker_batch_key": batch_key,
+        "current_blocker_blank_row_count": blank_row_count,
+        "operator_next_action": operator_next_action or _blocked_until(queue_key)[0],
         "batch_file_name": batch_file_name,
         "batch_review_file_name": batch_review_file_name,
         "source_editable_file_name": _safe_file_name(
@@ -175,6 +388,8 @@ def build_command_checklist(
         ),
         "command_count": len(commands),
         "commands": commands,
+        "preserved_batch_override_count": len(preserved_batch_overrides),
+        "preserved_batch_override_names": dict(sorted(preserved_batch_overrides.items())),
         "blocked_until": _blocked_until(queue_key),
         "post_completion_execution_allowed_now": post_plan.get(
             "post_completion_execution_allowed"
@@ -220,6 +435,9 @@ def build_markdown(checklist: Mapping[str, Any]) -> str:
         f"- Schema: `{SCHEMA_VERSION}`",
         f"- Queue: `{_safe_token(checklist.get('queue_key'))}`",
         f"- Batch: `{_safe_batch_key(checklist.get('batch_key'))}`",
+        f"- Current blocker: `{_safe_batch_key(checklist.get('current_blocker_batch_key'))}`",
+        f"- Blank rows in current blocker: `{_non_negative_int(checklist.get('current_blocker_blank_row_count'))}`",
+        f"- Operator next action: `{_safe_token(checklist.get('operator_next_action'))}`",
         f"- Batch file: `{_safe_file_name(checklist.get('batch_file_name'))}`",
         f"- Status: `{_safe_token(checklist.get('status'))}`",
         "",
@@ -238,6 +456,10 @@ def build_markdown(checklist: Mapping[str, Any]) -> str:
                 "```",
                 "",
                 f"- Gate policy: `{_safe_token(row.get('gate_policy'))}`",
+                f"- Execution state: `{_safe_token(row.get('execution_state'))}`",
+                f"- Blocked by: `{', '.join(_safe_string_list(row.get('blocked_by'))) or 'none'}`",
+                f"- Requires operator input: `{_safe_bool(row.get('requires_operator_input'))}`",
+                f"- Requires external opt-in: `{_safe_bool(row.get('requires_external_opt_in'))}`",
                 "",
             ]
         )
@@ -338,7 +560,43 @@ def _command_paths(
         "brand_gate_md": _rel(repo_root, reconciled_dir / "brand-db-import-gate.md"),
         "approved_manifest": _rel(repo_root, reconciled_dir / "approved-product-import-manifest.jsonl"),
         "approved_manifest_summary": _rel(repo_root, reconciled_dir / "approved-product-import-manifest.summary.json"),
-        "ocr_candidate_manifest": _rel(repo_root, operator_dir / "ocr-ground-truth-candidates.jsonl"),
+        "ocr_candidate_manifest": _rel(
+            repo_root,
+            operator_dir / "supplement-review-ocr-ground-truth-candidates.jsonl",
+        ),
+        "ocr_ground_truth_template": _rel(
+            repo_root,
+            operator_dir / "ocr-ground-truth-template.jsonl",
+        ),
+        "ocr_ground_truth_template_summary": _rel(
+            repo_root,
+            operator_dir / "ocr-ground-truth-template.summary.json",
+        ),
+        "ocr_ground_truth_materialized_image_dir": _rel(
+            repo_root,
+            operator_dir / "ocr-ground-truth-materialized-images",
+        ),
+        "ocr_ground_truth_review_bundle_dir": _rel(
+            repo_root,
+            operator_dir / "ocr-ground-truth-review-bundle",
+        ),
+        "ocr_ground_truth_bundle_summary": _rel(
+            repo_root,
+            operator_dir / "ocr-ground-truth-review-bundle" / "summary.json",
+        ),
+        "crawling_image_root": "data/nutrition_reference/crawling-image",
+        "ocr_ground_truth": _rel(
+            repo_root,
+            operator_dir / "ocr-ground-truth-review-bundle" / "ground-truth.todo.jsonl",
+        ),
+        "ocr_ground_truth_preflight_json": _rel(
+            repo_root,
+            reconciled_dir / "ocr-ground-truth-preflight.json",
+        ),
+        "ocr_ground_truth_preflight_md": _rel(
+            repo_root,
+            reconciled_dir / "ocr-ground-truth-preflight.md",
+        ),
         "reviewed_pii": _rel(repo_root, reconciled_dir / "pii-reviewed.decisions.jsonl"),
         "reviewed_pii_summary": _rel(repo_root, reconciled_dir / "pii-reviewed.summary.json"),
         "pii_preflight_json": _rel(repo_root, reconciled_dir / "pii-review-preflight.json"),
@@ -346,6 +604,56 @@ def _command_paths(
         "pii_apply_summary": _rel(repo_root, reconciled_dir / "teacher-safe-ocr-candidates.summary.json"),
         "ocr_benchmark_gate_json": _rel(repo_root, reconciled_dir / "ocr-benchmark-gate.json"),
         "ocr_benchmark_gate_md": _rel(repo_root, reconciled_dir / "ocr-benchmark-gate.md"),
+        "ocr_benchmark_manifest": _rel(repo_root, reconciled_dir / "ocr-benchmark-manifest.jsonl"),
+        "ocr_benchmark_manifest_summary": _rel(
+            repo_root,
+            reconciled_dir / "ocr-benchmark-manifest.summary.json",
+        ),
+        "ocr_benchmark_materialized_image_dir": _rel(
+            repo_root,
+            reconciled_dir / "ocr-benchmark-materialized-images",
+        ),
+        "ocr_benchmark_split_manifest": _rel(
+            repo_root,
+            reconciled_dir / "ocr-benchmark-manifest.split.jsonl",
+        ),
+        "ocr_benchmark_split_summary": _rel(
+            repo_root,
+            reconciled_dir / "ocr-benchmark-manifest.split.summary.json",
+        ),
+        "ocr_observation_dir": _rel(repo_root, reconciled_dir / "ocr-provider-observations"),
+        "ocr_observations": _rel(
+            repo_root,
+            reconciled_dir / "ocr-provider-observations" / "supplement-ocr-observations.jsonl",
+        ),
+        "ocr_metric_benchmark_manifest": _rel(
+            repo_root,
+            reconciled_dir / "ocr-provider-metric-benchmark.jsonl",
+        ),
+        "ocr_metric_benchmark_summary": _rel(
+            repo_root,
+            reconciled_dir / "ocr-provider-metric-benchmark.summary.json",
+        ),
+        "paddleocr_text_target_preflight_json": _rel(
+            repo_root,
+            reconciled_dir / "paddleocr-text-target-chain-preflight.json",
+        ),
+        "paddleocr_text_target_preflight_md": _rel(
+            repo_root,
+            reconciled_dir / "paddleocr-text-target-chain-preflight.md",
+        ),
+        "paddleocr_text_eval_summary": _rel(
+            repo_root,
+            reconciled_dir / "paddleocr-text-extraction-eval-summary.json",
+        ),
+        "paddleocr_text_target_gate_json": _rel(
+            repo_root,
+            reconciled_dir / "paddleocr-text-extraction-target-gate.json",
+        ),
+        "paddleocr_text_target_gate_md": _rel(
+            repo_root,
+            reconciled_dir / "paddleocr-text-extraction-target-gate.md",
+        ),
         "yolo_template": _rel(repo_root, operator_dir / "yolo-section-annotation-template.jsonl"),
         "reviewed_yolo": _rel(repo_root, reconciled_dir / "yolo-reviewed.annotations.jsonl"),
         "yolo_source_map": _rel(repo_root, reconciled_dir / "yolo-reviewed.source-map.json"),
@@ -366,6 +674,7 @@ def _commands_for_queue(
     queue_key: str,
     paths: Mapping[str, str],
     batch_key: str,
+    preserved_batch_overrides: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return queue-specific post-edit commands.
 
@@ -373,15 +682,20 @@ def _commands_for_queue(
         queue_key: Current operator queue key.
         paths: Repo-relative command paths.
         batch_key: Current batch key.
+        preserved_batch_overrides: Already-applied batch files to preserve when
+            reconciling queue copies.
 
     Returns:
         Ordered command rows for the current queue.
     """
+    preserved_overrides = dict(preserved_batch_overrides or {})
     if queue_key == "brand_product_review":
         applied_paths = dict(paths)
         applied_paths["batch_file"] = paths["applied_batch_file"]
         applied_paths["batch_preflight_json"] = paths["applied_batch_preflight_json"]
         applied_paths["batch_preflight_md"] = paths["applied_batch_preflight_md"]
+        override_paths = dict(preserved_overrides)
+        override_paths[batch_key] = paths["applied_batch_file"]
         return (
             _brand_review_contact_sheet_preflight_commands(paths=paths)
             + _brand_review_csv_triage_commands(paths=paths, start_order=2)
@@ -390,7 +704,7 @@ def _commands_for_queue(
                 paths=applied_paths,
                 batch_key=batch_key,
                 start_order=4,
-                batch_file_override_path=paths["applied_batch_file"],
+                batch_file_override_paths=override_paths,
                 batch_review_csv_path=paths["batch_review_csv"],
             )
             + _brand_product_commands(paths=paths, start_order=7)
@@ -398,13 +712,23 @@ def _commands_for_queue(
     if queue_key == "review_pii_screening":
         return (
             _operator_jsonl_triage_commands(queue_key=queue_key, paths=paths)
-            + _common_reconcile_commands(paths=paths, batch_key=batch_key, start_order=2)
+            + _common_reconcile_commands(
+                paths=paths,
+                batch_key=batch_key,
+                start_order=2,
+                batch_file_override_paths=preserved_overrides,
+            )
             + _review_pii_commands(paths=paths, start_order=5)
         )
     if queue_key == "yolo_section_annotation":
         return (
             _operator_jsonl_triage_commands(queue_key=queue_key, paths=paths)
-            + _common_reconcile_commands(paths=paths, batch_key=batch_key, start_order=2)
+            + _common_reconcile_commands(
+                paths=paths,
+                batch_key=batch_key,
+                start_order=2,
+                batch_file_override_paths=preserved_overrides,
+            )
             + _yolo_section_commands(paths=paths, start_order=5)
         )
     raise OperatorCommandChecklistError("Unsupported queue key.")
@@ -436,6 +760,10 @@ def _blocked_until(queue_key: str) -> list[str]:
             "operator_edits_current_batch",
             "batch_file_preflight_ready_for_reconcile",
             "strict_pii_review_complete_before_teacher_ocr_eval",
+            "ocr_ground_truth_review_bundle_ready_before_manual_gt",
+            "manual_ocr_ground_truth_preflight_ready_before_benchmark",
+            "ocr_benchmark_manifest_ready_before_provider_observations",
+            "paddleocr_text_target_gate_requires_privacy_cleared_holdout_metrics",
         ]
     if queue_key == "yolo_section_annotation":
         return [
@@ -458,7 +786,7 @@ def _common_reconcile_commands(
     paths: Mapping[str, str],
     batch_key: str,
     start_order: int = 1,
-    batch_file_override_path: str | None = None,
+    batch_file_override_paths: Mapping[str, str] | None = None,
     batch_review_csv_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return common post-edit reconcile commands.
@@ -467,18 +795,17 @@ def _common_reconcile_commands(
         paths: Repo-relative command paths.
         batch_key: Current batch key.
         start_order: First command order.
-        batch_file_override_path: Optional current batch JSONL copy to pass into
-            reconcile without overwriting the original editable batch file.
+        batch_file_override_paths: Optional batch JSONL copies to pass into
+            reconcile without overwriting original editable batch files.
         batch_review_csv_path: Optional brand review CSV path to validate against
             the current batch JSONL.
 
     Returns:
         Ordered common command rows.
     """
-    override_arg = (
-        f" --batch-file-override {batch_key} {batch_file_override_path}"
-        if batch_file_override_path
-        else ""
+    override_arg = "".join(
+        f" --batch-file-override {override_batch_key} {override_path}"
+        for override_batch_key, override_path in sorted((batch_file_override_paths or {}).items())
     )
     review_csv_arg = f" --batch-review-csv {batch_review_csv_path}" if batch_review_csv_path else ""
     return [
@@ -522,6 +849,65 @@ def _common_reconcile_commands(
             ),
         ),
     ]
+
+
+def _batch_file_overrides_from_dir(
+    *,
+    repo_root: Path,
+    batch_override_dir: Path | None,
+) -> dict[str, str]:
+    """Return repo-relative batch override files from an optional directory.
+
+    Args:
+        repo_root: Repository root used to enforce repo-relative paths.
+        batch_override_dir: Directory containing already-applied batch JSONL
+            files, or ``None`` when no previous batch override should be
+            preserved.
+
+    Returns:
+        Mapping from safe batch key to repo-relative JSONL path.
+
+    Raises:
+        OperatorCommandChecklistError: If the directory or file names are
+            outside the repo or do not map to supported batch keys.
+    """
+    if batch_override_dir is None:
+        return {}
+    if not batch_override_dir.exists() or not batch_override_dir.is_dir():
+        raise OperatorCommandChecklistError("Batch override directory does not exist.")
+    overrides: dict[str, str] = {}
+    for path in sorted(batch_override_dir.glob("*.jsonl")):
+        batch_key = _batch_key_from_file_name(path.name)
+        if batch_key in overrides:
+            raise OperatorCommandChecklistError("Duplicate batch override key.")
+        overrides[batch_key] = _rel(repo_root, path)
+    return overrides
+
+
+def _batch_key_from_file_name(file_name: str) -> str:
+    """Convert an applied batch JSONL file name into a safe batch key.
+
+    Args:
+        file_name: File name such as ``brand_product_review-001.jsonl``.
+
+    Returns:
+        Batch key such as ``brand_product_review:001``.
+
+    Raises:
+        OperatorCommandChecklistError: If the file name is unsupported.
+    """
+    safe_name = _safe_file_name(file_name)
+    if not safe_name.endswith(".jsonl"):
+        raise OperatorCommandChecklistError("Batch override file must be JSONL.")
+    stem = safe_name.removesuffix(".jsonl")
+    if "-" not in stem:
+        raise OperatorCommandChecklistError("Batch override file name is unsupported.")
+    queue_key, batch_number = stem.rsplit("-", 1)
+    if queue_key not in {"brand_product_review", "review_pii_screening", "yolo_section_annotation"}:
+        raise OperatorCommandChecklistError("Batch override queue key is unsupported.")
+    if not batch_number.isdigit() or len(batch_number) != BATCH_NUMBER_DIGIT_COUNT:
+        raise OperatorCommandChecklistError("Batch override number is unsupported.")
+    return f"{queue_key}:{batch_number}"
 
 
 def _brand_review_contact_sheet_preflight_commands(
@@ -760,14 +1146,155 @@ def _review_pii_commands(*, paths: Mapping[str, str], start_order: int = 4) -> l
         ),
         _command(
             order=start_order + 3,
+            script_key="export_supplement_ocr_ground_truth_template",
+            purpose="Create a local manual OCR ground-truth template from PII-cleared rows.",
+            gate_policy="manual_gt_template_only_no_provider_call",
+            command=(
+                f"{paths['python']} backend/scripts/export_supplement_ocr_ground_truth_template.py "
+                f"--candidate-manifest {paths['pii_apply_output']} "
+                f"--output {paths['ocr_ground_truth_template']} "
+                f"--summary {paths['ocr_ground_truth_template_summary']} "
+                f"--source-root {paths['crawling_image_root']} "
+                f"--materialized-image-dir {paths['ocr_ground_truth_materialized_image_dir']}"
+            ),
+        ),
+        _command(
+            order=start_order + 4,
+            script_key="build_supplement_ocr_ground_truth_review_bundle",
+            purpose="Build the editable OCR ground-truth review bundle used by the manual preflight.",
+            gate_policy="operator_edits_required_before_preflight",
+            command=(
+                f"{paths['python']} backend/scripts/build_supplement_ocr_ground_truth_review_bundle.py "
+                f"--template {paths['ocr_ground_truth_template']} "
+                f"--output-dir {paths['ocr_ground_truth_review_bundle_dir']}"
+            ),
+        ),
+        _command(
+            order=start_order + 5,
+            script_key="preflight_supplement_ocr_ground_truth_manifest",
+            purpose="Check operator-edited OCR ground truth before benchmark materialization.",
+            gate_policy="must_pass_before_ocr_benchmark_manifest",
+            command=(
+                f"{paths['python']} backend/scripts/preflight_supplement_ocr_ground_truth_manifest.py "
+                f"--ground-truth {paths['ocr_ground_truth']} "
+                f"--output {paths['ocr_ground_truth_preflight_json']} "
+                f"--markdown-output {paths['ocr_ground_truth_preflight_md']} "
+                "--required-expected-section ingredient_amounts "
+                "--required-expected-section intake_method "
+                "--required-expected-section precautions "
+                "--required-expected-section allergen_warnings"
+            ),
+        ),
+        _command(
+            order=start_order + 6,
+            script_key="build_supplement_ocr_benchmark_manifest",
+            purpose="Materialize human-reviewed OCR benchmark fixtures after PII and manual GT gates pass.",
+            gate_policy="pii_cleared_human_gt_only",
+            command=(
+                f"{paths['python']} backend/scripts/build_supplement_ocr_benchmark_manifest.py "
+                f"--candidate-manifest {paths['pii_apply_output']} "
+                f"--ground-truth {paths['ocr_ground_truth']} "
+                f"--output {paths['ocr_benchmark_manifest']} "
+                f"--summary {paths['ocr_benchmark_manifest_summary']} "
+                f"--source-root {paths['crawling_image_root']} "
+                f"--materialized-image-dir {paths['ocr_benchmark_materialized_image_dir']} "
+                "--required-expected-section ingredient_amounts "
+                "--required-expected-section intake_method "
+                "--required-expected-section precautions "
+                "--required-expected-section allergen_warnings"
+            ),
+        ),
+        _command(
+            order=start_order + 7,
+            script_key="assign_paddleocr_benchmark_splits",
+            purpose="Assign leakage-safe train holdout test splits grouped by product hash.",
+            gate_policy="must_pass_before_provider_observations",
+            command=(
+                f"{paths['python']} backend/scripts/assign_paddleocr_benchmark_splits.py "
+                f"--benchmark-manifest {paths['ocr_benchmark_manifest']} "
+                f"--output {paths['ocr_benchmark_split_manifest']} "
+                f"--summary {paths['ocr_benchmark_split_summary']}"
+            ),
+        ),
+        _command(
+            order=start_order + 8,
             script_key="gate_supplement_ocr_benchmark",
-            purpose="Gate CLOVA and Google Vision teacher OCR comparison before PaddleOCR training data use.",
+            purpose="Assert PII, manual GT, benchmark manifest, and split gates before teacher OCR.",
             gate_policy="must_pass_before_teacher_ocr_eval",
             command=(
                 f"{paths['python']} backend/scripts/gate_supplement_ocr_benchmark.py "
                 f"--pii-preflight {paths['pii_preflight_json']} "
+                f"--ground-truth-bundle-summary {paths['ocr_ground_truth_bundle_summary']} "
+                f"--ground-truth-preflight {paths['ocr_ground_truth_preflight_json']} "
+                f"--benchmark-summary {paths['ocr_benchmark_manifest_summary']} "
+                f"--benchmark-split-summary {paths['ocr_benchmark_split_summary']} "
                 f"--output {paths['ocr_benchmark_gate_json']} "
-                f"--markdown-output {paths['ocr_benchmark_gate_md']}"
+                f"--markdown-output {paths['ocr_benchmark_gate_md']} "
+                "--require-ready-for-teacher-ocr-eval"
+            ),
+        ),
+        _command(
+            order=start_order + 9,
+            script_key="collect_supplement_ocr_observations",
+            purpose="Collect redacted CLOVA Google Vision and PaddleOCR observations for the benchmark split.",
+            gate_policy="external_ocr_requires_explicit_env_opt_in",
+            command=(
+                f"{paths['python']} backend/scripts/collect_supplement_ocr_observations.py "
+                f"--manifest {paths['ocr_benchmark_split_manifest']} "
+                f"--output-dir {paths['ocr_observation_dir']} "
+                "--providers clova_ocr,google_vision_document,paddleocr_local"
+            ),
+        ),
+        _command(
+            order=start_order + 10,
+            script_key="merge_paddleocr_text_observations_into_benchmark",
+            purpose="Join redacted provider observations back into benchmark fixtures for text target evaluation.",
+            gate_policy="no_raw_ocr_merge",
+            command=(
+                f"{paths['python']} backend/scripts/merge_paddleocr_text_observations_into_benchmark.py "
+                f"--benchmark-manifest {paths['ocr_benchmark_split_manifest']} "
+                f"--observations {paths['ocr_observations']} "
+                f"--output {paths['ocr_metric_benchmark_manifest']} "
+                f"--summary {paths['ocr_metric_benchmark_summary']}"
+            ),
+        ),
+        _command(
+            order=start_order + 11,
+            script_key="preflight_paddleocr_text_target_chain",
+            purpose="Verify held-out PaddleOCR text metrics are ready for the 95 percent target gate.",
+            gate_policy="must_pass_before_text_eval_summary",
+            command=(
+                f"{paths['python']} backend/scripts/preflight_paddleocr_text_target_chain.py "
+                f"--benchmark-manifest {paths['ocr_metric_benchmark_manifest']} "
+                f"--output {paths['paddleocr_text_target_preflight_json']} "
+                f"--markdown-output {paths['paddleocr_text_target_preflight_md']} "
+                "--eval-split holdout --min-fixtures 30"
+            ),
+        ),
+        _command(
+            order=start_order + 12,
+            script_key="build_paddleocr_text_extraction_eval_summary",
+            purpose="Build the redacted PaddleOCR held-out text extraction eval summary with privacy review assertion.",
+            gate_policy="privacy_cleared_human_gt_required",
+            command=(
+                f"{paths['python']} backend/scripts/build_paddleocr_text_extraction_eval_summary.py "
+                f"--benchmark-manifest {paths['ocr_metric_benchmark_manifest']} "
+                f"--output {paths['paddleocr_text_eval_summary']} "
+                "--provider paddleocr_local --eval-split holdout "
+                "--leakage-check-passed --privacy-review-cleared"
+            ),
+        ),
+        _command(
+            order=start_order + 13,
+            script_key="gate_paddleocr_text_extraction_target",
+            purpose="Stop PaddleOCR training only when held-out human GT text extraction reaches the 95 percent target.",
+            gate_policy="stop_training_only_if_95_percent_target_reached",
+            command=(
+                f"{paths['python']} backend/scripts/gate_paddleocr_text_extraction_target.py "
+                f"--eval-summary {paths['paddleocr_text_eval_summary']} "
+                f"--output {paths['paddleocr_text_target_gate_json']} "
+                f"--markdown-output {paths['paddleocr_text_target_gate_md']} "
+                "--min-fixtures 30"
             ),
         ),
     ]
@@ -877,15 +1404,45 @@ def _command(
     Returns:
         Command row.
     """
+    (
+        execution_state,
+        blocked_by,
+        requires_operator_input,
+        requires_external_opt_in,
+    ) = _execution_rule(script_key)
     safe_row = {
         "order": order,
         "script_key": _safe_token(script_key),
         "purpose": _safe_sentence(purpose),
         "gate_policy": _safe_token(gate_policy),
+        "execution_state": _safe_token(execution_state),
+        "blocked_by": [_safe_token(blocker) for blocker in blocked_by],
+        "requires_operator_input": requires_operator_input,
+        "requires_external_opt_in": requires_external_opt_in,
         "command": _safe_command(command),
     }
     _reject_unsafe_payload(safe_row)
     return safe_row
+
+
+def _execution_rule(script_key: str) -> tuple[str, tuple[str, ...], bool, bool]:
+    """Return command-level execution readiness metadata.
+
+    Args:
+        script_key: Script identifier.
+
+    Returns:
+        Tuple of execution state, blocking codes, operator-input flag, and
+        external opt-in flag.
+
+    Raises:
+        OperatorCommandChecklistError: If a command is not explicitly modeled.
+    """
+    safe_script_key = _safe_token(script_key)
+    rule = COMMAND_EXECUTION_RULES.get(safe_script_key)
+    if rule is None:
+        raise OperatorCommandChecklistError("Command execution rule is missing.")
+    return rule
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -1179,9 +1736,21 @@ def _safe_command(value: Any) -> str:
     """
     if not isinstance(value, str):
         return ""
-    text = value.strip()[:2000]
+    text = value.strip()[:COMMAND_MAX_LENGTH]
     _reject_unsafe_payload(text)
     return text
+
+
+def _safe_bool(value: Any) -> bool:
+    """Return strict boolean values for Markdown display.
+
+    Args:
+        value: Candidate value.
+
+    Returns:
+        Boolean value only when the candidate is already a bool.
+    """
+    return value if isinstance(value, bool) else False
 
 
 def _safe_string_list(value: Any) -> list[str]:

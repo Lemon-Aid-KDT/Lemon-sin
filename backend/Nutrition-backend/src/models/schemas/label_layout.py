@@ -11,6 +11,7 @@ SectionType = Literal[
     "nutrition_function_info",
     "intake_method",
     "precautions",
+    "allergen_warning",
     "ingredients",
     "functionality",
     "storage_method",

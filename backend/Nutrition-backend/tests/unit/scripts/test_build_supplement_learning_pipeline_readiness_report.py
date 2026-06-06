@@ -116,24 +116,90 @@ def _artifact_payloads() -> dict[str, dict[str, Any]]:
             "schema_version": "supplement-taxonomy-db-import-verification-v1",
             "db_import_verified": True,
             "expected_category_count": 43,
+            "active_db_category_count": 43,
             "matched_category_count": 43,
             "missing_category_count": 0,
+            "extra_active_category_count": 0,
             "expected_product_count": 0,
             "matched_product_count": 0,
             "expected_product_category_count": 0,
             "matched_product_category_count": 0,
             "db_write_performed": False,
         },
+        "category_seed_cleanup_preflight": {
+            "schema_version": "supplement-category-seed-cleanup-preflight-v1",
+            "status": "manual_cleanup_required",
+            "expected_category_count": 43,
+            "active_db_category_count": 53,
+            "matched_category_count": 43,
+            "missing_category_count": 0,
+            "extra_active_category_count": 10,
+            "category_seed_exact_match": False,
+            "cleanup_required": True,
+            "cleanup_requires_manual_approval": True,
+            "db_write_performed": False,
+            "db_delete_performed": False,
+            "db_update_performed": False,
+        },
+        "category_seed_cleanup_apply": {
+            "schema_version": "supplement-category-seed-cleanup-apply-v1",
+            "status": "ready_for_manual_category_seed_cleanup",
+            "expected_category_count": 43,
+            "active_db_category_count": 53,
+            "matched_category_count": 43,
+            "missing_category_count": 0,
+            "extra_active_category_count": 10,
+            "planned_category_deactivation_count": 10,
+            "apply_requested": False,
+            "manual_cleanup_confirmation_provided": False,
+            "preflight_only": True,
+            "db_write_performed": False,
+            "db_delete_performed": False,
+            "db_update_performed": False,
+            "deactivated_category_count": 0,
+        },
         "taxonomy_db_verification": {
             "schema_version": "supplement-taxonomy-db-import-verification-v1",
             "db_import_verified": True,
             "expected_category_count": 43,
+            "active_db_category_count": 43,
             "matched_category_count": 43,
             "missing_category_count": 0,
+            "extra_active_category_count": 0,
             "expected_product_count": 1,
             "matched_product_count": 1,
             "expected_product_category_count": 1,
             "matched_product_category_count": 1,
+            "db_write_performed": False,
+        },
+        "auto_brand_product_import_dry_run": {
+            "schema_version": "supplement-brand-products-auto-import-v1",
+            "product_row_count": 387,
+            "with_manufacturer": 373,
+            "manufacturer_null_needs_review": 14,
+            "distinct_categories": 43,
+            "distinct_brands": 36,
+            "product_category_mapping_planned_count": 387,
+            "product_category_mapping_write_enabled": False,
+            "apply_requested": False,
+            "db_write_performed": False,
+        },
+        "auto_brand_product_db_verification": {
+            "schema_version": "supplement-brand-products-auto-db-verification-v1",
+            "status": "verified",
+            "db_import_verified": True,
+            "expected_category_count": 43,
+            "matched_category_count": 43,
+            "missing_category_count": 0,
+            "expected_product_count": 387,
+            "matched_product_count": 387,
+            "missing_product_count": 0,
+            "expected_product_category_count": 387,
+            "matched_product_category_count": 387,
+            "missing_product_category_count": 0,
+            "product_row_count": 387,
+            "with_manufacturer": 373,
+            "manufacturer_null_needs_review": 14,
             "db_write_performed": False,
         },
         "learning_candidate_summary": {
@@ -175,9 +241,47 @@ def _artifact_payloads() -> dict[str, dict[str, Any]]:
             "reviewable_row_count": 100,
             "ground_truth_template_row_count": 100,
         },
+        "ocr_ground_truth_preflight": {
+            "schema_version": "supplement-ocr-ground-truth-preflight-v1",
+            "status": "ready_for_benchmark_build",
+            "ready_for_benchmark_build": True,
+            "row_count": 100,
+            "human_reviewed_row_count": 88,
+            "explicit_ready_flag_count": 88,
+            "benchmark_ready_row_count": 88,
+            "min_ready_rows": 1,
+        },
         "ocr_benchmark_manifest": {
             "schema_version": "supplement-ocr-provider-benchmark-manifest-v1",
             "fixture_count": 88,
+        },
+        "ocr_benchmark_gate": {
+            "schema_version": "supplement-ocr-benchmark-gate-v1",
+            "status": "ready_for_teacher_ocr_eval",
+            "candidate_row_count": 100,
+            "cleared_no_personal_data_count": 100,
+            "pii_blank_decision_count": 0,
+            "pii_pending_operator_action_count": 0,
+            "ground_truth_template_allowed": True,
+            "ready_for_benchmark_rows": 88,
+            "benchmark_fixture_count": 88,
+            "scoreable_fixture_count": 88,
+            "benchmark_split_row_count": 88,
+            "benchmark_split_leakage_check_passed": True,
+            "teacher_ocr_benchmark_allowed": True,
+            "external_teacher_ocr_eval_allowed": True,
+            "paddleocr_training_allowed_now": False,
+        },
+        "benchmark_split_summary": {
+            "schema_version": "paddleocr-benchmark-split-assignment-v1",
+            "row_count": 88,
+            "product_group_count": 20,
+            "split_counts": {"train": 58, "holdout": 30, "test": 0},
+            "ready_for_holdout_eval": True,
+            "leakage_check_passed": True,
+            "split_assignment_method": "deterministic_product_dir_hash_group_split",
+            "min_holdout_fixtures": 30,
+            "min_test_fixtures": 0,
         },
         "ocr_three_tier_eval": {
             "schema_version": "ocr-kpi-gate-v1",
@@ -209,6 +313,18 @@ def _artifact_payloads() -> dict[str, dict[str, Any]]:
             "schema_version": "supplement-paddleocr-improvement-manifest-v1",
             "candidate_count": 12,
         },
+        "paddleocr_text_target_chain_preflight": {
+            "schema_version": "paddleocr-text-target-chain-preflight-v1",
+            "status": "ready_for_target_gate",
+            "ready_for_target_gate": True,
+            "continue_training_loop": True,
+            "row_count": 88,
+            "scoreable_fixture_count": 30,
+            "candidate_schema_count": 0,
+            "eval_split": "holdout",
+            "min_fixture_count": 30,
+            "benchmark_manifest_role": "ocr_benchmark_manifest",
+        },
         "paddleocr_annotation_tasks": {
             "schema_version": "paddleocr-improvement-annotation-task-create-summary-v1",
             "status": "ok",
@@ -236,6 +352,14 @@ def _artifact_payloads() -> dict[str, dict[str, Any]]:
         "paddleocr_promotion_runbook": {
             "schema_version": "paddleocr-promotion-operator-runbook-v1",
             "ready_for_operator_review": True,
+        },
+        "paddleocr_accuracy_stop_gate": {
+            "schema_version": "paddleocr-human-gt-accuracy-stop-gate-v1",
+            "human_ground_truth_compared": True,
+            "privacy_review_cleared": True,
+            "text_extraction_accuracy": 0.971,
+            "accuracy_threshold_met": True,
+            "training_loop_stop_allowed": True,
         },
         "operator_review_workpack": {
             "schema_version": "supplement-operator-review-workpack-v1",
@@ -339,6 +463,50 @@ def test_report_marks_human_review_stages_pending_without_decision_artifacts(
     assert "sensitive OCR" not in dumped
 
 
+def test_report_tracks_ocr_ground_truth_preflight_as_pending_evidence(
+    tmp_path: Path,
+) -> None:
+    """Verify manual OCR GT preflight is surfaced before benchmark creation."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "taxonomy_audit",
+            "taxonomy_staging",
+            "learning_candidate_summary",
+            "pii_screening_apply",
+            "ocr_ground_truth_preflight",
+        ],
+    )
+    paths["ocr_ground_truth_preflight"] = _write_json(
+        tmp_path / "ocr-ground-truth-preflight.pending.json",
+        {
+            "schema_version": "supplement-ocr-ground-truth-preflight-v1",
+            "status": "blocked_by_manual_review",
+            "ready_for_benchmark_build": False,
+            "row_count": 100,
+            "human_reviewed_row_count": 0,
+            "explicit_ready_flag_count": 0,
+            "benchmark_ready_row_count": 0,
+            "min_ready_rows": 1,
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "manual_ocr_ground_truth")
+    artifact = next(
+        item
+        for item in report["artifact_summaries"]
+        if item["role"] == "ocr_ground_truth_preflight"
+    )
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert stage["present_pending_roles"] == ["ocr_ground_truth_preflight"]
+    assert artifact["artifact_warning"] == "ocr_ground_truth_preflight_not_ready"
+    assert "ocr_ground_truth_preflight:not_ready_for_benchmark_build" in stage[
+        "blocker_codes"
+    ]
+
+
 def test_report_marks_pii_review_bundle_as_operator_pending(tmp_path: Path) -> None:
     """Verify a generated local review bundle is recognized as pending evidence."""
     paths = _write_payloads(
@@ -373,9 +541,16 @@ def test_report_verifies_private_image_tracking_check(tmp_path: Path) -> None:
 
     assert stage["status"] == "verified"
     assert stage["missing_required_roles"] == []
+    assert stage["next_steps"] == []
     assert artifact["passed"] is True
     assert artifact["tracked_private_image_count"] == 0
     assert artifact["protected_path_count"] == 2
+    assert "content_sha256" not in artifact
+    assert "path_hash" not in artifact
+    assert artifact["content_fingerprint"].startswith("fp-")
+    assert len(artifact["content_fingerprint"]) == 11
+    assert artifact["path_fingerprint"].startswith("fp-")
+    assert len(artifact["path_fingerprint"]) == 11
 
 
 def test_report_blocks_tracked_private_images(tmp_path: Path) -> None:
@@ -458,6 +633,35 @@ def test_report_marks_brand_decision_preflight_as_operator_pending(tmp_path: Pat
     assert stage["status"] == "pending_operator_review"
     assert stage["present_pending_roles"] == ["brand_review_decision_preflight"]
     assert stage["missing_required_roles"] == ["approved_product_import"]
+
+
+def test_report_tracks_auto_brand_product_artifacts_without_bypassing_review(
+    tmp_path: Path,
+) -> None:
+    """Verify provisional auto import evidence does not replace human review."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "taxonomy_audit",
+            "taxonomy_staging",
+            "auto_brand_product_import_dry_run",
+            "auto_brand_product_db_verification",
+        ],
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "brand_product_review")
+    artifacts = {item["role"]: item for item in report["artifact_summaries"]}
+
+    assert stage["status"] == "blocked_missing_artifact"
+    assert stage["missing_required_roles"] == ["approved_product_import"]
+    dry_run = artifacts["auto_brand_product_import_dry_run"]
+    verification = artifacts["auto_brand_product_db_verification"]
+    assert dry_run["product_row_count"] == 387
+    assert dry_run["product_category_mapping_planned_count"] == 387
+    assert dry_run["product_category_mapping_write_enabled"] is False
+    assert verification["db_import_verified"] is True
+    assert verification["matched_product_category_count"] == 387
 
 
 def test_report_verifies_category_seed_db_without_brand_product_import(
@@ -571,8 +775,10 @@ def test_report_rejects_product_verification_as_category_seed_proof(
                 "schema_version": "supplement-taxonomy-db-import-verification-v1",
                 "db_import_verified": True,
                 "expected_category_count": 43,
+                "active_db_category_count": 43,
                 "matched_category_count": 43,
                 "missing_category_count": 0,
+                "extra_active_category_count": 0,
                 "expected_product_count": 1,
                 "expected_product_category_count": 1,
                 "db_write_performed": False,
@@ -586,6 +792,136 @@ def test_report_rejects_product_verification_as_category_seed_proof(
     assert stage["status"] == "blocked_invalid_artifact"
     assert "category_seed:expected_product_count_not_zero" in stage["blocker_codes"]
     assert "category_seed:expected_product_category_count_not_zero" in stage["blocker_codes"]
+
+
+def test_report_blocks_category_seed_proof_when_db_has_extra_active_categories(
+    tmp_path: Path,
+) -> None:
+    """Verify category seed proof requires no active DB categories outside staging."""
+    paths = _write_payloads(
+        tmp_path,
+        ["category_seed_db_verification"],
+        overrides={
+            "category_seed_db_verification": {
+                "schema_version": "supplement-taxonomy-db-import-verification-v1",
+                "db_import_verified": False,
+                "expected_category_count": 43,
+                "active_db_category_count": 53,
+                "matched_category_count": 43,
+                "missing_category_count": 0,
+                "extra_active_category_count": 10,
+                "expected_product_count": 0,
+                "expected_product_category_count": 0,
+                "db_write_performed": False,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "category_seed_db_verification")
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "db_import_not_verified" in stage["blocker_codes"]
+    assert "category_seed:extra_active_category_count_not_zero" in stage["blocker_codes"]
+    assert (
+        "category_seed_cleanup_preflight:missing_for_extra_active_categories"
+        in stage["blocker_codes"]
+    )
+
+
+def test_report_accepts_category_seed_cleanup_preflight_for_extra_active_categories(
+    tmp_path: Path,
+) -> None:
+    """Verify cleanup preflight is valid but still requires a cleanup dry-run."""
+    paths = _write_payloads(
+        tmp_path,
+        ["category_seed_db_verification", "category_seed_cleanup_preflight"],
+        overrides={
+            "category_seed_db_verification": {
+                "schema_version": "supplement-taxonomy-db-import-verification-v1",
+                "db_import_verified": False,
+                "expected_category_count": 43,
+                "active_db_category_count": 53,
+                "matched_category_count": 43,
+                "missing_category_count": 0,
+                "extra_active_category_count": 10,
+                "expected_product_count": 0,
+                "expected_product_category_count": 0,
+                "db_write_performed": False,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "category_seed_db_verification")
+    cleanup = next(
+        artifact
+        for artifact in report["artifact_summaries"]
+        if artifact["role"] == "category_seed_cleanup_preflight"
+    )
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "category_seed:extra_active_category_count_not_zero" in stage["blocker_codes"]
+    assert not any(
+        blocker.startswith("category_seed_cleanup_preflight:")
+        for blocker in stage["blocker_codes"]
+    )
+    assert (
+        "category_seed_cleanup_apply:missing_manual_cleanup_dry_run"
+        in stage["blocker_codes"]
+    )
+    assert cleanup["cleanup_required"] is True
+    assert cleanup["cleanup_requires_manual_approval"] is True
+    assert cleanup["db_write_performed"] is False
+
+
+def test_report_accepts_category_seed_cleanup_dry_run_for_extra_active_categories(
+    tmp_path: Path,
+) -> None:
+    """Verify cleanup dry-run removes cleanup-specific blockers without DB writes."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "category_seed_db_verification",
+            "category_seed_cleanup_preflight",
+            "category_seed_cleanup_apply",
+        ],
+        overrides={
+            "category_seed_db_verification": {
+                "schema_version": "supplement-taxonomy-db-import-verification-v1",
+                "db_import_verified": False,
+                "expected_category_count": 43,
+                "active_db_category_count": 53,
+                "matched_category_count": 43,
+                "missing_category_count": 0,
+                "extra_active_category_count": 10,
+                "expected_product_count": 0,
+                "expected_product_category_count": 0,
+                "db_write_performed": False,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "category_seed_db_verification")
+    cleanup_apply = next(
+        artifact
+        for artifact in report["artifact_summaries"]
+        if artifact["role"] == "category_seed_cleanup_apply"
+    )
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "category_seed:extra_active_category_count_not_zero" in stage["blocker_codes"]
+    assert not any(
+        blocker.startswith("category_seed_cleanup_preflight:")
+        for blocker in stage["blocker_codes"]
+    )
+    assert not any(
+        blocker.startswith("category_seed_cleanup_apply:")
+        for blocker in stage["blocker_codes"]
+    )
+    assert cleanup_apply["planned_category_deactivation_count"] == 10
+    assert cleanup_apply["db_write_performed"] is False
 
 
 def test_report_marks_yolo_review_bundle_as_operator_pending(tmp_path: Path) -> None:
@@ -766,6 +1102,179 @@ def test_report_marks_ocr_ground_truth_bundle_as_operator_pending(tmp_path: Path
     assert stage["missing_required_roles"] == ["ocr_benchmark_manifest"]
 
 
+def test_report_explains_manual_ocr_blocked_by_pii_gate(tmp_path: Path) -> None:
+    """Verify OCR benchmark gate exposes why manual GT cannot become benchmark rows."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "learning_candidate_summary",
+            "ocr_benchmark_gate",
+            "ocr_ground_truth_review_bundle",
+        ],
+        overrides={
+            "ocr_benchmark_gate": {
+                "schema_version": "supplement-ocr-benchmark-gate-v1",
+                "status": "blocked_by_pii_screening",
+                "candidate_row_count": 215,
+                "cleared_no_personal_data_count": 0,
+                "pii_blank_decision_count": 215,
+                "pii_pending_operator_action_count": 215,
+                "ground_truth_template_allowed": False,
+                "ready_for_benchmark_rows": 0,
+                "benchmark_fixture_count": 0,
+                "scoreable_fixture_count": 0,
+                "benchmark_required_sections_ready": False,
+                "benchmark_required_expected_sections": [],
+                "benchmark_required_expected_section_policy": [
+                    "ingredient_amounts",
+                    "intake_method",
+                    "precautions",
+                ],
+                "benchmark_missing_required_expected_sections": [
+                    "ingredient_amounts",
+                    "intake_method",
+                    "precautions",
+                ],
+                "benchmark_split_row_count": 0,
+                "benchmark_split_leakage_check_passed": False,
+                "teacher_ocr_benchmark_allowed": False,
+                "external_teacher_ocr_eval_allowed": False,
+                "paddleocr_training_allowed_now": False,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "manual_ocr_ground_truth")
+    gate = next(
+        artifact
+        for artifact in report["artifact_summaries"]
+        if artifact["role"] == "ocr_benchmark_gate"
+    )
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "ocr_benchmark_gate:blocked_by_pii_screening" in stage["blocker_codes"]
+    assert "ocr_benchmark_gate:ground_truth_template_not_allowed" in stage["blocker_codes"]
+    assert "ocr_benchmark_gate:no_human_reviewed_ground_truth_rows" in stage["blocker_codes"]
+    assert gate["artifact_warning"] == "ocr_benchmark_gate_not_ready"
+    assert gate["pii_blank_decision_count"] == 215
+    assert gate["benchmark_required_sections_ready"] is False
+    assert gate["benchmark_missing_required_expected_sections"] == [
+        "ingredient_amounts",
+        "intake_method",
+        "precautions",
+    ]
+
+
+def test_report_blocks_teacher_ocr_eval_until_benchmark_split_exists(
+    tmp_path: Path,
+) -> None:
+    """Verify provider eval cannot bypass product-group-safe benchmark splits."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "ocr_benchmark_manifest",
+            "ocr_three_tier_eval",
+        ],
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "teacher_ocr_comparison")
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert stage["missing_required_roles"] == ["benchmark_split_summary"]
+    assert "benchmark_split_summary:missing_before_teacher_ocr_eval" in stage[
+        "blocker_codes"
+    ]
+
+
+def test_report_explains_teacher_ocr_blocked_by_ocr_benchmark_gate(
+    tmp_path: Path,
+) -> None:
+    """Verify teacher OCR comparison cannot bypass the OCR benchmark gate."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "ocr_benchmark_gate",
+            "ocr_benchmark_manifest",
+            "benchmark_split_summary",
+            "ocr_three_tier_eval",
+        ],
+        overrides={
+            "ocr_benchmark_gate": {
+                "schema_version": "supplement-ocr-benchmark-gate-v1",
+                "status": "blocked_by_pii_screening",
+                "candidate_row_count": 215,
+                "cleared_no_personal_data_count": 0,
+                "pii_blank_decision_count": 215,
+                "pii_pending_operator_action_count": 215,
+                "ground_truth_template_allowed": False,
+                "ready_for_benchmark_rows": 0,
+                "benchmark_fixture_count": 0,
+                "scoreable_fixture_count": 0,
+                "benchmark_split_row_count": 0,
+                "benchmark_split_leakage_check_passed": False,
+                "teacher_ocr_benchmark_allowed": False,
+                "external_teacher_ocr_eval_allowed": False,
+                "paddleocr_training_allowed_now": False,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "teacher_ocr_comparison")
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "ocr_benchmark_gate:not_ready_for_teacher_ocr_eval" in stage["blocker_codes"]
+    assert "ocr_benchmark_gate:teacher_ocr_benchmark_not_allowed" in stage["blocker_codes"]
+    assert "ocr_benchmark_gate:external_teacher_ocr_eval_not_allowed" in stage["blocker_codes"]
+
+
+def test_report_blocks_teacher_ocr_eval_when_benchmark_split_leaks_products(
+    tmp_path: Path,
+) -> None:
+    """Verify split summaries must prove no product leakage across splits."""
+    paths = _write_payloads(
+        tmp_path,
+        [
+            "ocr_benchmark_manifest",
+            "benchmark_split_summary",
+            "ocr_three_tier_eval",
+        ],
+        overrides={
+            "benchmark_split_summary": {
+                "schema_version": "paddleocr-benchmark-split-assignment-v1",
+                "row_count": 88,
+                "product_group_count": 20,
+                "split_counts": {"train": 88, "holdout": 0, "test": 0},
+                "ready_for_holdout_eval": False,
+                "leakage_check_passed": False,
+                "split_assignment_method": "deterministic_product_dir_hash_group_split",
+                "min_holdout_fixtures": 30,
+                "min_test_fixtures": 0,
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "teacher_ocr_comparison")
+    split = next(
+        artifact
+        for artifact in report["artifact_summaries"]
+        if artifact["role"] == "benchmark_split_summary"
+    )
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert "benchmark_split_summary:leakage_check_not_passed" in stage[
+        "blocker_codes"
+    ]
+    assert "benchmark_split_summary:not_ready_for_holdout_eval" in stage[
+        "blocker_codes"
+    ]
+    assert "benchmark_split_summary:holdout_split_missing" in stage["blocker_codes"]
+    assert split["artifact_warning"] == "benchmark_split_leakage_check_not_passed"
+
+
 def test_report_accepts_verified_chain_and_keeps_execution_flags_false(tmp_path: Path) -> None:
     """Verify a complete artifact chain produces a promotion-review checkpoint."""
     roles = list(_artifact_payloads())
@@ -792,6 +1301,146 @@ def test_report_accepts_verified_chain_and_keeps_execution_flags_false(tmp_path:
     assert report["llm_call_performed"] is False
     assert report["training_execution_performed_by_script"] is False
     assert report["source_image_read_performed"] is False
+
+
+def test_report_summarizes_paddleocr_95_stop_gate_without_metric_value(
+    tmp_path: Path,
+) -> None:
+    """Verify PaddleOCR early-stop evidence exposes only derived policy flags."""
+    paths = _write_payloads(tmp_path, ["paddleocr_accuracy_stop_gate"])
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    serialized = json.dumps(report, ensure_ascii=False, sort_keys=True)
+    artifact = next(
+        item
+        for item in report["artifact_summaries"]
+        if item["role"] == "paddleocr_accuracy_stop_gate"
+    )
+
+    assert artifact["human_ground_truth_compared"] is True
+    assert artifact["privacy_review_cleared"] is True
+    assert artifact["text_extraction_accuracy_meets_95_percent"] is True
+    assert artifact["minimum_required_accuracy"] == "0.95"
+    assert artifact["training_loop_stop_allowed"] is True
+    assert artifact["metric_values_printed"] is False
+    assert "text_extraction_accuracy" not in artifact
+    assert "0.971" not in serialized
+
+
+def test_report_accepts_paddleocr_text_target_gate_without_metric_value(
+    tmp_path: Path,
+) -> None:
+    """Verify the current text target gate schema feeds readiness flags."""
+    paths = _write_payloads(
+        tmp_path,
+        ["paddleocr_accuracy_stop_gate"],
+        overrides={
+            "paddleocr_accuracy_stop_gate": {
+                "schema_version": "paddleocr-text-extraction-target-gate-v1",
+                "status": "target_reached",
+                "human_ground_truth_compared": True,
+                "privacy_review_cleared": True,
+                "text_extraction_accuracy_meets_95_percent": True,
+                "training_loop_stop_allowed": True,
+                "paddleocr_target_reached": True,
+                "metric_checks": {
+                    "normalized_text_precision": True,
+                    "normalized_text_recall": True,
+                    "normalized_text_f1": True,
+                },
+                "metric_values_printed": False,
+            }
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    serialized = json.dumps(report, ensure_ascii=False, sort_keys=True)
+    artifact = next(
+        item
+        for item in report["artifact_summaries"]
+        if item["role"] == "paddleocr_accuracy_stop_gate"
+    )
+
+    assert artifact["human_ground_truth_compared"] is True
+    assert artifact["privacy_review_cleared"] is True
+    assert artifact["text_extraction_accuracy_meets_95_percent"] is True
+    assert artifact["minimum_required_accuracy"] == "0.95"
+    assert artifact["training_loop_stop_allowed"] is True
+    assert artifact["metric_values_printed"] is False
+    assert "normalized_text_precision" not in artifact
+    assert "0.97" not in serialized
+
+
+def test_report_verifies_paddleocr_text_target_preflight_when_ready(
+    tmp_path: Path,
+) -> None:
+    """Verify the PaddleOCR text target preflight is a first-class stage."""
+    paths = _write_payloads(tmp_path, ["paddleocr_text_target_chain_preflight"])
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "paddleocr_text_target_chain_preflight")
+    artifact = next(
+        item
+        for item in report["artifact_summaries"]
+        if item["role"] == "paddleocr_text_target_chain_preflight"
+    )
+
+    assert stage["status"] == "verified"
+    assert stage["missing_required_roles"] == []
+    assert stage["next_steps"] == []
+    assert artifact["ready_for_target_gate"] is True
+    assert artifact["scoreable_fixture_count"] == 30
+    assert artifact["candidate_schema_count"] == 0
+    assert artifact["eval_split"] == "holdout"
+    assert "checks" not in artifact
+
+
+def test_report_blocks_paddleocr_text_target_preflight_for_candidate_manifest(
+    tmp_path: Path,
+) -> None:
+    """Verify candidate manifests must become reviewed benchmark fixtures first."""
+    paths = _write_payloads(
+        tmp_path,
+        ["paddleocr_text_target_chain_preflight"],
+        overrides={
+            "paddleocr_text_target_chain_preflight": {
+                "schema_version": "paddleocr-text-target-chain-preflight-v1",
+                "status": "blocked_by_candidate_manifest",
+                "ready_for_target_gate": False,
+                "continue_training_loop": False,
+                "row_count": 215,
+                "scoreable_fixture_count": 0,
+                "candidate_schema_count": 215,
+                "eval_split": "holdout",
+                "min_fixture_count": 30,
+                "benchmark_manifest_role": "ocr_benchmark_manifest",
+            },
+        },
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "paddleocr_text_target_chain_preflight")
+    artifact = next(
+        item
+        for item in report["artifact_summaries"]
+        if item["role"] == "paddleocr_text_target_chain_preflight"
+    )
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert stage["blocker_codes"] == [
+        "paddleocr_text_target_chain_preflight:not_ready",
+        "paddleocr_text_target_chain_preflight:candidate_manifest_needs_benchmark_build",
+        "paddleocr_text_target_chain_preflight:no_scoreable_fixtures",
+    ]
+    assert stage["next_steps"] == [
+        "prepare_paddleocr_text_target_gate",
+        "resolve_blocker:paddleocr_text_target_chain_preflight:not_ready",
+        "resolve_blocker:paddleocr_text_target_chain_preflight:candidate_manifest_needs_benchmark_build",
+        "resolve_blocker:paddleocr_text_target_chain_preflight:no_scoreable_fixtures",
+    ]
+    assert artifact["artifact_warning"] == "paddleocr_text_target_chain_preflight_not_ready"
+    assert artifact["candidate_schema_count"] == 215
+    assert artifact["scoreable_fixture_count"] == 0
 
 
 def test_report_accepts_jsonl_import_manifest_rows(tmp_path: Path) -> None:
@@ -876,6 +1525,11 @@ def test_missing_artifacts_emit_blocker_codes_without_path_leaks(tmp_path: Path)
     assert _stage(report, "taxonomy_db_staging")["blocker_codes"] == [
         "missing_required:taxonomy_staging"
     ]
+    assert _stage(report, "taxonomy_db_staging")["next_steps"] == [
+        "export_brand_review_template",
+        "provide_required_artifact:taxonomy_staging",
+        "resolve_blocker:missing_required:taxonomy_staging",
+    ]
     assert _stage(report, "review_pii_screening")["status"] == "blocked_missing_artifact"
     assert _stage(report, "yolo_section_annotation")["status"] == "blocked_missing_artifact"
     assert _stage(report, "paddleocr_promotion_runbook")["status"] == "blocked_missing_artifact"
@@ -916,10 +1570,15 @@ def test_invalid_semantic_artifacts_block_relevant_stage(tmp_path: Path) -> None
     report = reporter.build_readiness_report(artifact_paths=paths)
 
     assert _stage(report, "taxonomy_db_import_verification")["status"] == (
-        "blocked_invalid_artifact"
+        "blocked_missing_artifact"
     )
     assert _stage(report, "taxonomy_db_import_verification")["blocker_codes"] == [
-        "taxonomy_db_verification:missing_required:approved_product_import"
+        "missing_required:approved_product_import"
+    ]
+    assert _stage(report, "taxonomy_db_import_verification")["next_steps"] == [
+        "run_read_only_db_import_verification",
+        "provide_required_artifact:approved_product_import",
+        "resolve_blocker:missing_required:approved_product_import",
     ]
     verification = next(
         artifact
@@ -934,6 +1593,48 @@ def test_invalid_semantic_artifacts_block_relevant_stage(tmp_path: Path) -> None
     assert "paddleocr_baseline_gate:not_allowed" in _stage(
         report, "paddleocr_metric_gate"
     )["blocker_codes"]
+
+
+def test_product_verification_blocks_when_reviewed_manifest_does_not_match_db(
+    tmp_path: Path,
+) -> None:
+    """Verify DB mismatch remains an invalid taxonomy verification artifact."""
+    paths = _write_payloads(
+        tmp_path,
+        ["taxonomy_db_verification"],
+        overrides={
+            "taxonomy_db_verification": {
+                "schema_version": "supplement-taxonomy-db-import-verification-v1",
+                "db_import_verified": False,
+                "status": "blocked_db_rows_missing",
+                "verification_scope": "category_and_reviewed_products",
+                "product_import_manifest_present": True,
+                "approved_product_rows_required": True,
+                "approved_product_rows_available": True,
+                "category_import_verified": True,
+                "product_import_verified": False,
+                "blocked_reason_codes": ["missing_product_category_mapping"],
+            },
+        },
+    )
+    paths["approved_product_import"] = _write_jsonl(
+        tmp_path / "approved.jsonl",
+        [
+            {
+                "schema_version": "supplement-product-import-manifest-row-v1",
+                "source_provider": "reviewed_crawling_image",
+                "source_product_id": "safe-hash-only",
+            }
+        ],
+    )
+
+    report = reporter.build_readiness_report(artifact_paths=paths)
+    stage = _stage(report, "taxonomy_db_import_verification")
+
+    assert stage["status"] == "blocked_invalid_artifact"
+    assert stage["blocker_codes"] == [
+        "taxonomy_db_verification:missing_product_category_mapping"
+    ]
 
 
 def test_cli_rejects_unsafe_payload_and_writes_redacted_error(

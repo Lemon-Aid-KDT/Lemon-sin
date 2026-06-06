@@ -462,6 +462,7 @@ def _contact_row(
     """
     return {
         "row_index": row.row_index,
+        "contact_sheet_anchor": _row_anchor(row.row_index),
         "fixture_id": row.fixture_id,
         "category_key": row.category_key,
         "category_display_name": row.category_display_name,
@@ -556,6 +557,7 @@ def _html_index(contact_rows: list[dict[str, Any]]) -> str:
     """
     cards: list[str] = []
     for row in contact_rows:
+        row_anchor = _row_anchor(row["row_index"])
         thumbnails = [
             f'<img src="{html.escape(filename)}" alt="detail thumbnail" loading="lazy">'
             for filename in row["thumbnail_filenames"]
@@ -565,10 +567,11 @@ def _html_index(contact_rows: list[dict[str, Any]]) -> str:
         cards.append(
             "\n".join(
                 [
-                    '<article class="card">',
+                    f'<article class="card" id="{html.escape(row_anchor)}">',
                     f"<h2>{html.escape(str(row['row_index']))}. "
                     f"{html.escape(str(row['brand_candidate_display_name']))}</h2>",
                     "<dl>",
+                    f"<dt>contact_sheet_anchor</dt><dd>{html.escape(row_anchor)}</dd>",
                     f"<dt>fixture_id</dt><dd>{html.escape(str(row['fixture_id']))}</dd>",
                     f"<dt>category</dt><dd>{html.escape(str(row['category_display_name']))}</dd>",
                     f"<dt>source_product_id</dt><dd>{html.escape(str(row['source_product_id']))}</dd>",
@@ -620,6 +623,7 @@ def _readme_text() -> str:
             "",
             "Use `brand-detail-contact-sheet.html` to inspect redacted thumbnails",
             "while filling the existing brand/product review CSV or decision JSONL.",
+            "Triage row hints use anchors such as `brand-detail-contact-sheet.html#row-001`.",
             "",
             "Rules:",
             "- Do not treat source folder names as confirmed manufacturer/product data.",
@@ -643,6 +647,27 @@ def _thumbnail_filename(*, row: ReviewCsvRow, image_index: int) -> str:
     """
     base = SAFE_FILENAME_PATTERN.sub("_", row.fixture_id).strip("._-") or "fixture"
     return f"{base}-detail-{image_index:02d}.jpg"
+
+
+def _row_anchor(value: Any) -> str:
+    """Return a deterministic contact-sheet row anchor.
+
+    Args:
+        value: One-based CSV row index.
+
+    Returns:
+        Safe HTML fragment identifier.
+
+    Raises:
+        ValueError: If the row index is invalid.
+    """
+    try:
+        row_index = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("row index must be an integer.") from exc
+    if row_index <= 0:
+        raise ValueError("row index must be positive.")
+    return f"row-{row_index:03d}"
 
 
 def _required_safe_text(value: Any, *, field_name: str) -> str:

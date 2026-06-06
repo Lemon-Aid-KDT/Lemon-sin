@@ -39,6 +39,7 @@ class SupplementFlowScreen extends StatefulWidget {
 
 class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   static const double _lowConfidenceThreshold = 0.75;
+  static const int _maxSelectedGalleryImages = 6;
 
   late final ImagePicker _imagePicker;
   late final CameraReadinessProbe _cameraReadinessProbe;
@@ -57,6 +58,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   final List<_IngredientDraft> _ingredientDrafts = <_IngredientDraft>[];
   String? _seededAnalysisId;
   _SelectedLabelImage? _selectedImage;
+  List<_SelectedLabelImage> _selectedImages = const <_SelectedLabelImage>[];
   _SupplementFlowStage _stage = _SupplementFlowStage.idle;
   CameraReadinessSnapshot _cameraReadiness = CameraReadinessSnapshot.probing(
     platform: defaultTargetPlatform,
@@ -112,6 +114,9 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
       return _BlackCaptureSurface(
         busy: widget.controller.busy,
         selectedImage: _selectedImage,
+        selectedImageCount: _selectedImages.isEmpty
+            ? (_selectedImage == null ? 0 : 1)
+            : _selectedImages.length,
         stage: _stage,
         cameraReadiness: _cameraReadiness,
         onRefreshCameraReadiness: _refreshCameraReadiness,
@@ -204,17 +209,26 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     try {
       final LostDataResponse response = await _imagePicker.retrieveLostData();
       final List<XFile>? files = response.files;
-      if (!mounted || files == null || files.isEmpty) {
+      final List<XFile> recoveredFiles = files != null && files.isNotEmpty
+          ? files
+          : response.file == null
+          ? const <XFile>[]
+          : <XFile>[response.file!];
+      if (!mounted || recoveredFiles.isEmpty) {
         return;
       }
-      setState(() {
-        _selectedImage = _SelectedLabelImage(
-          path: files.first.path,
-          source: 'android_lost_data',
-          recoveredFromLostData: true,
-        );
-        _stage = _SupplementFlowStage.imageSelected;
-      });
+      _setSelectedImages(
+        recoveredFiles
+            .take(_maxSelectedGalleryImages)
+            .map(
+              (XFile file) => _SelectedLabelImage(
+                path: file.path,
+                source: 'android_lost_data',
+                recoveredFromLostData: true,
+              ),
+            )
+            .toList(growable: false),
+      );
     } catch (_) {
       // The plugin may be unavailable in widget tests; recovery is best-effort.
     }
@@ -237,6 +251,10 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    if (source == ImageSource.gallery) {
+      await _pickGalleryImages();
+      return;
+    }
     XFile? image;
     try {
       image = await _imagePicker.pickImage(
@@ -260,6 +278,36 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     _setSelectedImage(
       path: selectedImage.path,
       source: source == ImageSource.camera ? 'camera' : 'gallery',
+    );
+  }
+
+  Future<void> _pickGalleryImages() async {
+    List<XFile> images;
+    try {
+      images = await _imagePicker.pickMultiImage(
+        maxWidth: 2400,
+        imageQuality: 95,
+        limit: _maxSelectedGalleryImages,
+        requestFullMetadata: false,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showSnackBar('사진을 불러오지 못했어요. 다른 이미지로 다시 시도해주세요.');
+      }
+      return;
+    }
+    if (images.isEmpty) return;
+    _setSelectedImages(
+      images
+          .take(_maxSelectedGalleryImages)
+          .map(
+            (XFile image) => _SelectedLabelImage(
+              path: image.path,
+              source: 'gallery',
+              recoveredFromLostData: false,
+            ),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -295,12 +343,20 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
   }
 
   void _setSelectedImage({required String path, required String source}) {
-    setState(() {
-      _selectedImage = _SelectedLabelImage(
+    _setSelectedImages(<_SelectedLabelImage>[
+      _SelectedLabelImage(
         path: path,
         source: source,
         recoveredFromLostData: false,
-      );
+      ),
+    ]);
+  }
+
+  void _setSelectedImages(List<_SelectedLabelImage> images) {
+    if (images.isEmpty) return;
+    setState(() {
+      _selectedImages = images;
+      _selectedImage = images.first;
       _stage = _SupplementFlowStage.imageSelected;
       _seededAnalysisId = null;
     });
@@ -322,6 +378,7 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     widget.controller.clearSupplementFlow();
     setState(() {
       _selectedImage = null;
+      _selectedImages = const <_SelectedLabelImage>[];
       _stage = _SupplementFlowStage.idle;
       _seededAnalysisId = null;
     });
@@ -329,7 +386,12 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
 
   Future<void> _analyzeSelectedImage() async {
     final _SelectedLabelImage? image = _selectedImage;
-    if (image == null) {
+    final List<_SelectedLabelImage> images = _selectedImages.isEmpty
+        ? (image == null
+              ? const <_SelectedLabelImage>[]
+              : <_SelectedLabelImage>[image])
+        : _selectedImages;
+    if (images.isEmpty) {
       _showSnackBar('Select a label image before analysis.');
       return;
     }
@@ -344,7 +406,15 @@ class _SupplementFlowScreenState extends State<SupplementFlowScreen> {
     setState(() {
       _stage = _SupplementFlowStage.ocrProcessing;
     });
-    await widget.controller.analyzeImage(image.path);
+    if (images.length > 1) {
+      await widget.controller.analyzeImages(
+        images
+            .map((item) => SupplementImageUpload(path: item.path))
+            .toList(growable: false),
+      );
+    } else {
+      await widget.controller.analyzeImage(images.first.path);
+    }
     if (!mounted) {
       return;
     }
@@ -725,6 +795,7 @@ class _BlackCaptureSurface extends StatelessWidget {
   const _BlackCaptureSurface({
     required this.busy,
     required this.selectedImage,
+    required this.selectedImageCount,
     required this.stage,
     required this.cameraReadiness,
     required this.onRefreshCameraReadiness,
@@ -739,6 +810,7 @@ class _BlackCaptureSurface extends StatelessWidget {
 
   final bool busy;
   final _SelectedLabelImage? selectedImage;
+  final int selectedImageCount;
   final _SupplementFlowStage stage;
   final CameraReadinessSnapshot cameraReadiness;
   final VoidCallback onRefreshCameraReadiness;
@@ -805,6 +877,7 @@ class _BlackCaptureSurface extends StatelessWidget {
               _PreviewControls(
                 busy: busy,
                 source: image.source,
+                imageCount: selectedImageCount,
                 recoveredFromLostData: image.recoveredFromLostData,
                 onRetake: onRetake,
                 onAnalyze: onAnalyze,
@@ -1533,6 +1606,7 @@ class _PreviewControls extends StatelessWidget {
   const _PreviewControls({
     required this.busy,
     required this.source,
+    required this.imageCount,
     required this.recoveredFromLostData,
     required this.onRetake,
     required this.onAnalyze,
@@ -1540,6 +1614,7 @@ class _PreviewControls extends StatelessWidget {
 
   final bool busy;
   final String source;
+  final int imageCount;
   final bool recoveredFromLostData;
   final VoidCallback onRetake;
   final VoidCallback onAnalyze;
@@ -1550,6 +1625,8 @@ class _PreviewControls extends StatelessWidget {
         ? '복구된 사진'
         : source == 'camera'
         ? '카메라 사진'
+        : imageCount > 1
+        ? '갤러리 사진 $imageCount장'
         : '갤러리 사진';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1573,7 +1650,7 @@ class _PreviewControls extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: _YellowActionButton(
-                  label: '분석하기',
+                  label: imageCount > 1 ? '$imageCount장 분석하기' : '분석하기',
                   onPressed: busy ? null : onAnalyze,
                 ),
               ),

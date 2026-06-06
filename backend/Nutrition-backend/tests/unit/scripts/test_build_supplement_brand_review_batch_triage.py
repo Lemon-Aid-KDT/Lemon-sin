@@ -121,7 +121,11 @@ def test_build_brand_review_batch_triage_reports_priorities_without_text_leak(
     assert summary["priority_counts"]["p2_duplicate_candidate_review"] == 1
     assert summary["priority_counts"]["p4_reviewed"] == 1
     assert summary["row_hints"][0]["row_index"] == 1
+    assert summary["row_hints"][0]["contact_sheet_anchor"] == "row-001"
     assert summary["row_hints"][0]["priority"] == "p0_partial_review_fix"
+    assert "#row-001" in markdown
+    assert summary["input_path_hashes"]["batch_review_csv"].startswith("fp-")
+    assert len(summary["input_path_hashes"]["batch_review_csv"]) == 15
     assert summary["db_write_performed"] is False
     assert summary["automatic_decision_performed"] is False
     assert product_text not in public_dump
@@ -144,6 +148,41 @@ def test_build_brand_review_batch_triage_rejects_unsafe_raw_column(tmp_path: Pat
 
     with pytest.raises(triage.BrandReviewBatchTriageError, match="Unsafe raw/provider"):
         triage.build_brand_review_batch_triage(input_paths={"batch_review_csv": csv_path})
+
+
+def test_build_brand_review_batch_triage_flags_descriptor_like_candidates(
+    tmp_path: Path,
+) -> None:
+    """Verify descriptor-like brand candidates are prioritized without leaking text."""
+    descriptor_candidate = "수용성"
+    csv_path = _write_csv(
+        tmp_path / "descriptor.review.csv",
+        [
+            _csv_row(
+                "brand_review_1",
+                brand_candidate_key=descriptor_candidate,
+                brand_candidate_display_name=descriptor_candidate,
+            ),
+            _csv_row("brand_review_2", brand_candidate_key="candidate_b"),
+        ],
+    )
+
+    summary = triage.build_brand_review_batch_triage(
+        input_paths={"batch_review_csv": csv_path},
+        max_row_hints=10,
+    )
+    markdown = triage.build_markdown(summary)
+    public_dump = json.dumps({"summary": summary, "markdown": markdown}, ensure_ascii=False)
+
+    assert summary["priority_counts"]["p1_candidate_quality_check"] == 1
+    assert summary["reason_counts"]["descriptor_like_brand_candidate"] == 1
+    assert summary["row_hints"][0]["priority"] == "p1_candidate_quality_check"
+    assert "descriptor_like_brand_candidate" in summary["row_hints"][0]["reason_codes"]
+    assert (
+        "review_descriptor_like_brand_candidates_as_not_a_brand_or_needs_review"
+        in summary["operator_next_steps"]
+    )
+    assert descriptor_candidate not in public_dump
 
 
 def test_build_brand_review_batch_triage_rejects_local_path_values(tmp_path: Path) -> None:

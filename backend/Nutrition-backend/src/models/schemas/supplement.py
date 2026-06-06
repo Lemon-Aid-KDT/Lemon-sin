@@ -37,6 +37,7 @@ SupplementImageRole = Literal[
     "intake_method",
     "ingredients",
     "precautions",
+    "allergen_warning",
     "barcode",
     "mixed",
 ]
@@ -323,6 +324,7 @@ SupplementPreviewSectionType = Literal[
     "functional_info",
     "intake_method",
     "precautions",
+    "allergen_warning",
     "ingredients",
     "storage_method",
     "unknown",

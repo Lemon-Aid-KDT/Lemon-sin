@@ -123,6 +123,7 @@ def test_build_contact_sheet_materializes_redacted_thumbnails(tmp_path: Path) ->
     assert summary["full_size_source_images_copied"] is False
     assert summary["contact_rows"][0]["source_detail_page_image_count"] == 2
     assert summary["contact_rows"][0]["matched_product_count"] == 1
+    assert summary["contact_rows"][0]["contact_sheet_anchor"] == "row-001"
     assert summary["contact_rows"][0]["operator_decision_required"] is True
     assert summary["contact_rows"][0]["db_write_allowed"] is False
 
@@ -134,6 +135,10 @@ def test_build_contact_sheet_materializes_redacted_thumbnails(tmp_path: Path) ->
     for thumbnail_name in thumbnail_names:
         assert (output_dir / thumbnail_name).is_file()
         assert f'src="{thumbnail_name}"' in html_text
+    assert 'id="row-001"' in html_text
+    assert "brand-detail-contact-sheet.html#row-001" in (
+        output_dir / contact_sheet.README_NAME
+    ).read_text(encoding="utf-8")
     assert saved_summary["source_run_id"] == "detail-contact-test"
     assert str(tmp_path) not in html_text
     assert str(tmp_path) not in json.dumps(saved_summary, ensure_ascii=False)

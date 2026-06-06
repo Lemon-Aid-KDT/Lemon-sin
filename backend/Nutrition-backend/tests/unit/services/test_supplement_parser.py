@@ -653,6 +653,108 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
 
 
 @pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_promotes_intake_instruction_text() -> None:
+    """Verify dosage rows are shown as intake method, not ingredient candidates."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "제품명 삼대오백 퓨어카보린 체리레몬향",
+                "일 1 회,1 회 1 스푼( 26 g",
+                "원재료명: 팔라티노스, 알룰로스",
+            ]
+        ),
+        "paddleocr_local",
+        0.87,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    candidate_names = {
+        candidate["display_name"] for candidate in record.parsed_snapshot["ingredient_candidates"]
+    }
+    assert "일 1 회,1 회 1 스푼(" not in candidate_names
+    assert {"팔라티노스", "알룰로스"} <= candidate_names
+    assert record.parsed_snapshot["intake_method"]["text"] == "일 1 회,1 회 1 스푼( 26 g"
+    assert record.parsed_snapshot["intake_method"]["requires_review"] is True
+    assert "intake_method" not in record.parsed_snapshot["missing_required_sections"]
+    assert "ocr_intake_method_fallback_requires_review" in record.warnings
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_promotes_precaution_and_allergy_text() -> None:
+    """Verify warning/allergen OCR lines fill the precautions section."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "제품명 테스트 영양제",
+                "주의사항 임산부는 전문가와 상담 후 섭취하세요.",
+                "알레르기 유발물질: 우유, 대두 함유",
+            ]
+        ),
+        "paddleocr_local",
+        0.88,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    precautions = record.parsed_snapshot["precautions"]
+    assert [item["text"] for item in precautions] == [
+        "주의사항 임산부는 전문가와 상담 후 섭취하세요.",
+        "알레르기 유발물질: 우유, 대두 함유",
+    ]
+    assert precautions[0]["category"] == "pregnancy"
+    assert precautions[0]["severity"] == "caution"
+    assert precautions[1]["category"] == "allergy"
+    assert "precautions" not in record.parsed_snapshot["missing_required_sections"]
+    assert "ocr_precaution_fallback_requires_review" in record.warnings
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_ignores_serving_and_contact_rows() -> None:
+    """Verify serving/package and customer-service rows are not section facts."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "Serving Size 1 Tablet",
+                "Servings Per Container 60",
+                "60 capsules",
+                "고객상담실 080-000-0000",
+            ]
+        ),
+        "paddleocr_local",
+        0.88,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    assert "text" not in record.parsed_snapshot["intake_method"]
+    assert record.parsed_snapshot["precautions"] == []
+    assert "intake_method" in record.parsed_snapshot["missing_required_sections"]
+    assert "precautions" in record.parsed_snapshot["missing_required_sections"]
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_mines_ingredient_declaration_names() -> None:
     """Verify a 원재료명-only label yields name-only candidates without amounts.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -128,6 +129,10 @@ class _FakeVerificationRepository:
         """Return present category keys."""
         return self.category_keys.intersection(set(category_keys))
 
+    async def active_category_keys(self) -> set[str]:
+        """Return all active category keys."""
+        return set(self.category_keys)
+
     async def present_product_source_keys(
         self,
         source_keys: list[tuple[str, str]],
@@ -192,7 +197,9 @@ async def test_verify_taxonomy_db_import_reports_all_rows_present(tmp_path: Path
     assert summary["category_import_verified"] is True
     assert summary["product_import_verified"] is True
     assert summary["expected_category_count"] == 2
+    assert summary["active_db_category_count"] == 2
     assert summary["matched_category_count"] == 2
+    assert summary["extra_active_category_count"] == 0
     assert summary["expected_product_count"] == 1
     assert summary["matched_product_count"] == 1
     assert summary["expected_product_category_count"] == 1
@@ -257,6 +264,37 @@ async def test_verify_taxonomy_db_import_can_verify_category_only_state(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_verify_taxonomy_db_import_blocks_extra_active_categories(
+    tmp_path: Path,
+) -> None:
+    """Verify active DB categories outside staging block category-only proof."""
+    staging_path, _product_path, _product_rows = _artifacts(tmp_path)
+    repository = _FakeVerificationRepository(
+        category_keys={"오메가3", "비타민c", "legacy_duplicate"},
+        product_source_keys=set(),
+        product_category_keys=set(),
+    )
+
+    summary = await verifier.verify_supplement_taxonomy_db_import(
+        taxonomy_staging=staging_path,
+        repository=repository,
+    )
+
+    assert summary["db_import_verified"] is False
+    assert summary["status"] == "not_verified_missing_db_rows"
+    assert summary["category_import_verified"] is False
+    assert summary["expected_category_count"] == 2
+    assert summary["active_db_category_count"] == 3
+    assert summary["matched_category_count"] == 2
+    assert summary["missing_category_count"] == 0
+    assert summary["extra_active_category_count"] == 1
+    assert summary["blocked_reason_codes"] == ["extra_db_rows:supplement_categories"]
+    assert len(summary["extra_active_category_key_hashes"]) == 1
+    dumped = json.dumps(summary, ensure_ascii=False)
+    assert "legacy_duplicate" not in dumped
+
+
+@pytest.mark.asyncio
 async def test_verify_taxonomy_db_import_blocks_when_required_manifest_is_missing(
     tmp_path: Path,
 ) -> None:
@@ -280,6 +318,8 @@ async def test_verify_taxonomy_db_import_blocks_when_required_manifest_is_missin
     assert summary["product_import_manifest_present"] is False
     assert summary["approved_product_rows_required"] is True
     assert summary["approved_product_rows_available"] is False
+    assert summary["active_db_category_count"] is None
+    assert summary["extra_active_category_count"] is None
     assert summary["blocked_reason_codes"] == ["missing_required:approved_product_import"]
     dumped = json.dumps(summary, ensure_ascii=False)
     assert str(tmp_path) not in dumped
@@ -344,3 +384,69 @@ async def test_verify_taxonomy_db_import_error_summary_is_redacted(
     assert summary["status"] == "error"
     assert str(tmp_path) not in stdout
     assert str(tmp_path) not in json.dumps(summary, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_verify_taxonomy_db_import_cli_loads_env_file_without_printing_database_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify verifier CLI can use env-file while keeping DB values redacted.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        monkeypatch: Pytest monkeypatch fixture.
+        capsys: Pytest stdout/stderr capture fixture.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "DATABASE_URL='postgresql+asyncpg://example:secret@example.invalid/db'\n",
+        encoding="utf-8",
+    )
+    summary_path = tmp_path / "summary.json"
+    seen_database_url: list[str] = []
+
+    async def _fake_verify_supplement_taxonomy_db_import(
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        """Return count-only summary after checking env loading.
+
+        Returns:
+            Redacted fake verifier summary.
+        """
+        seen_database_url.append(os.environ["DATABASE_URL"])
+        return {
+            "schema_version": verifier.SCHEMA_VERSION,
+            "db_import_verified": True,
+            "db_write_performed": False,
+        }
+
+    monkeypatch.setattr(
+        verifier,
+        "verify_supplement_taxonomy_db_import",
+        _fake_verify_supplement_taxonomy_db_import,
+    )
+
+    exit_code = await verifier.run_cli(
+        [
+            "--taxonomy-staging",
+            str(tmp_path / "taxonomy.jsonl"),
+            "--env-file",
+            str(env_file),
+            "--summary",
+            str(summary_path),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    summary_text = summary_path.read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert seen_database_url == [
+        "postgresql+asyncpg://example:secret@example.invalid/db"
+    ]
+    assert "secret" not in stdout
+    assert "example.invalid" not in stdout
+    assert "secret" not in summary_text
+    assert "example.invalid" not in summary_text

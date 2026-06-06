@@ -16,9 +16,11 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
@@ -166,6 +168,7 @@ PII_CANDIDATE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 LLM_PARSE_RETRY_DELAYS_SECONDS = (0.25, 1.0)
+MAX_TEXT_EXTRACTION_METRIC_CHARS = 12000
 
 
 @dataclass(frozen=True)
@@ -444,6 +447,7 @@ async def _observe_provider(
             row["llm_parse_status"] = "skipped_pii_screening_required"
             return ProviderObservationResult(row=row, ocr_result=result)
         await _attach_llm_parse(row=row, ocr_result=result, llm_parser=llm_parser)
+    _attach_text_extraction_metrics(row=row, ocr_result=result, expected=fixture.expected)
     _attach_language_metrics(row=row, ocr_result=result, expected=fixture.expected)
     return ProviderObservationResult(row=row, ocr_result=result)
 
@@ -646,6 +650,227 @@ def _attach_language_metrics(
     row["cer_en"] = round(rates["cer_en"], 4)
     row["wer_ko"] = round(rates["wer_ko"], 4)
     row["wer_en"] = round(rates["wer_en"], 4)
+
+
+def _attach_text_extraction_metrics(
+    *,
+    row: dict[str, object],
+    ocr_result: OCRResult,
+    expected: dict[str, object],
+) -> None:
+    """Attach normalized text precision/recall/F1 without storing OCR text.
+
+    Args:
+        row: Observation row to mutate in place.
+        ocr_result: Provider OCR result whose text is held only in memory.
+        expected: Human-reviewed expected fields from the fixture manifest.
+    """
+    reference_text, reference_source = _expected_text_metric_reference(expected)
+    if not reference_text:
+        return
+    metrics = _normalized_text_extraction_metrics(
+        reference=reference_text,
+        hypothesis=(ocr_result.text or "").strip(),
+    )
+    if metrics is None:
+        row.setdefault("warning_codes", [])
+        warning_codes = row["warning_codes"]
+        if isinstance(warning_codes, list):
+            warning_codes.append("text_metric_reference_too_large")
+        return
+    row["metric_source"] = "in_memory_provider_result"
+    row["text_metric_reference_source"] = reference_source
+    row["matched_char_count"] = metrics["matched_char_count"]
+    row["reference_char_count"] = metrics["reference_char_count"]
+    row["hypothesis_char_count"] = metrics["hypothesis_char_count"]
+    row["normalized_text_precision"] = metrics["normalized_text_precision"]
+    row["normalized_text_recall"] = metrics["normalized_text_recall"]
+    row["normalized_text_f1"] = metrics["normalized_text_f1"]
+
+
+def _expected_text_metric_reference(expected: dict[str, object]) -> tuple[str | None, str]:
+    """Return text reference for extraction metrics.
+
+    Args:
+        expected: Expected fixture object.
+
+    Returns:
+        Reference text and source label.
+    """
+    for key in ("text", "full_text", "normalized_text", "ground_truth_text"):
+        value = expected.get(key)
+        if isinstance(value, str) and value.strip():
+            return value, f"expected.{key}"
+    structured_text = _expected_structured_metric_text(expected)
+    if structured_text:
+        return structured_text, "expected.structured_sections"
+    return None, "missing"
+
+
+def _expected_structured_metric_text(expected: dict[str, object]) -> str | None:
+    """Return structured expected fields as a text reference.
+
+    Args:
+        expected: Expected fixture object.
+
+    Returns:
+        Space-joined structured text or None.
+    """
+    parts: list[str] = []
+    _append_metric_text(parts, expected.get("product_name"))
+    _append_metric_text(parts, expected.get("manufacturer"))
+    for ingredient in _expected_ingredients(expected):
+        for name in _expected_ingredient_names(ingredient):
+            _append_metric_text(parts, name)
+        _append_metric_text(parts, ingredient.get("amount"))
+        _append_metric_text(parts, ingredient.get("unit"))
+    intake_method = expected.get("intake_method")
+    if isinstance(intake_method, dict):
+        _append_metric_text(parts, intake_method.get("text"))
+    else:
+        _append_metric_text(parts, intake_method)
+    for key in ("precautions", "allergen_warnings", "functional_claims", "label_sections"):
+        value = expected.get(key)
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if isinstance(item, dict):
+                _append_metric_text(parts, item.get("text"))
+                _append_metric_text(parts, item.get("section_type"))
+            else:
+                _append_metric_text(parts, item)
+    return " ".join(parts) if parts else None
+
+
+def _append_metric_text(parts: list[str], value: object) -> None:
+    """Append one scalar expected value to the metric reference.
+
+    Args:
+        parts: Mutable text part list.
+        value: Candidate scalar value.
+    """
+    if isinstance(value, str) and value.strip():
+        parts.append(value.strip())
+    elif isinstance(value, int | float) and not isinstance(value, bool):
+        parts.append(str(value))
+
+
+def _normalized_text_extraction_metrics(
+    *,
+    reference: str,
+    hypothesis: str,
+) -> dict[str, object] | None:
+    """Return normalized character precision, recall, and F1.
+
+    Args:
+        reference: Human-reviewed reference text.
+        hypothesis: Provider OCR text.
+
+    Returns:
+        Numeric metrics, or None when exact scoring is intentionally skipped.
+    """
+    reference_chars = _normalize_text_for_metric(reference)
+    hypothesis_chars = _normalize_text_for_metric(hypothesis)
+    if not reference_chars:
+        return None
+    if (
+        len(reference_chars) > MAX_TEXT_EXTRACTION_METRIC_CHARS
+        or len(hypothesis_chars) > MAX_TEXT_EXTRACTION_METRIC_CHARS
+    ):
+        return None
+    matched = _lcs_length(reference_chars, hypothesis_chars)
+    precision = _metric_rate(matched, len(hypothesis_chars))
+    recall = _metric_rate(matched, len(reference_chars))
+    f1 = _metric_f1(precision=precision, recall=recall)
+    return {
+        "matched_char_count": matched,
+        "reference_char_count": len(reference_chars),
+        "hypothesis_char_count": len(hypothesis_chars),
+        "normalized_text_precision": _metric_float(precision),
+        "normalized_text_recall": _metric_float(recall),
+        "normalized_text_f1": _metric_float(f1),
+    }
+
+
+def _normalize_text_for_metric(value: str) -> str:
+    """Normalize OCR text for character-level extraction scoring.
+
+    Args:
+        value: Raw text kept only in memory.
+
+    Returns:
+        Lowercase NFKC letters and numbers.
+    """
+    normalized = unicodedata.normalize("NFKC", value).lower()
+    return "".join(char for char in normalized if char.isalnum())
+
+
+def _lcs_length(reference: str, hypothesis: str) -> int:
+    """Return exact longest common subsequence length.
+
+    Args:
+        reference: Normalized reference string.
+        hypothesis: Normalized OCR hypothesis string.
+
+    Returns:
+        LCS character count.
+    """
+    if not reference or not hypothesis:
+        return 0
+    previous = [0] * (len(hypothesis) + 1)
+    for reference_char in reference:
+        current = [0]
+        diagonal = 0
+        for index, hypothesis_char in enumerate(hypothesis, 1):
+            above = previous[index]
+            left = current[index - 1]
+            value = diagonal + 1 if reference_char == hypothesis_char else max(above, left)
+            current.append(value)
+            diagonal = above
+        previous = current
+    return previous[-1]
+
+
+def _metric_rate(numerator: int, denominator: int) -> Decimal:
+    """Return a bounded metric rate.
+
+    Args:
+        numerator: Matched count.
+        denominator: Denominator count.
+
+    Returns:
+        Decimal rate.
+    """
+    if denominator <= 0:
+        return Decimal("0")
+    return Decimal(numerator) / Decimal(denominator)
+
+
+def _metric_f1(*, precision: Decimal, recall: Decimal) -> Decimal:
+    """Return harmonic mean of precision and recall.
+
+    Args:
+        precision: Precision rate.
+        recall: Recall rate.
+
+    Returns:
+        F1 rate.
+    """
+    if precision + recall == 0:
+        return Decimal("0")
+    return (Decimal("2") * precision * recall) / (precision + recall)
+
+
+def _metric_float(value: Decimal) -> float:
+    """Return a stable four-decimal metric value.
+
+    Args:
+        value: Decimal metric.
+
+    Returns:
+        Rounded float.
+    """
+    return float(value.quantize(Decimal("0.0001")))
 
 
 def _completed_observation(

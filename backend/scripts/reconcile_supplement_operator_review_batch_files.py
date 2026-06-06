@@ -188,17 +188,17 @@ def reconcile_operator_review_batch_files(
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: batch_exporter._sha256_text(str(path.expanduser()))
+            key: _fingerprint_text(str(path.expanduser()))
             for key, path in sorted(input_paths.items())
         },
         "batch_dir_name": batch_dir.name,
-        "batch_dir_hash": batch_exporter._sha256_text(str(batch_dir.expanduser())),
+        "batch_dir_hash": _fingerprint_text(str(batch_dir.expanduser())),
         "batch_file_override_count": len(safe_batch_file_overrides),
         "batch_file_override_names": {
             batch_key: path.name for batch_key, path in sorted(safe_batch_file_overrides.items())
         },
         "output_dir_name": output_dir.name,
-        "output_dir_hash": batch_exporter._sha256_text(str(output_dir.expanduser())),
+        "output_dir_hash": _fingerprint_text(str(output_dir.expanduser())),
         "batch_count": len(batch_summaries),
         "expected_row_count": sum(int(row["expected_row_count"]) for row in batch_summaries),
         "changed_row_count": sum(int(row["changed_row_count"]) for row in batch_summaries),
@@ -664,13 +664,13 @@ def _failure_summary(
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_hashes": {
-            key: batch_exporter._sha256_text(str(path.expanduser()))
+            key: _fingerprint_text(str(path.expanduser()))
             for key, path in sorted(input_paths.items())
         },
         "batch_dir_name": batch_dir.name,
-        "batch_dir_hash": batch_exporter._sha256_text(str(batch_dir.expanduser())),
+        "batch_dir_hash": _fingerprint_text(str(batch_dir.expanduser())),
         "output_dir_name": output_dir.name,
-        "output_dir_hash": batch_exporter._sha256_text(str(output_dir.expanduser())),
+        "output_dir_hash": _fingerprint_text(str(output_dir.expanduser())),
         "error_code": _safe_error_code(error),
         "original_editable_files_modified": False,
         "reconciled_copies_written": False,
@@ -713,6 +713,18 @@ def _safe_error_code(error: Exception) -> str:
         if marker in text:
             return code
     return "validation_error"
+
+
+def _fingerprint_text(value: str) -> str:
+    """Return a short non-secret fingerprint for operator artifact inputs.
+
+    Args:
+        value: Text value to fingerprint.
+
+    Returns:
+        Stable short fingerprint.
+    """
+    return f"fp-{batch_exporter._sha256_text(value)[:12]}"
 
 
 if __name__ == "__main__":

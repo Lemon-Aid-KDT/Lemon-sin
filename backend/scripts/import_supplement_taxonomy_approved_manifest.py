@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import sys
 from collections import Counter
 from datetime import UTC, datetime
@@ -40,6 +41,7 @@ if str(BACKEND_ROOT) not in sys.path:
 if str(NUTRITION_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(NUTRITION_BACKEND_ROOT))
 
+from src.config import get_settings  # noqa: E402
 from src.db.session import get_sessionmaker  # noqa: E402
 from src.models.db.supplement import (  # noqa: E402
     SupplementCategory,
@@ -80,6 +82,7 @@ LITERAL_FORBIDDEN_KEYS = frozenset(
 WRITE_ACTION_INSERTED = "inserted"
 WRITE_ACTION_UPDATED = "updated"
 MAPPING_CONFIDENCE_SCALE = 4
+MIN_QUOTED_ENV_VALUE_LENGTH = 2
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -94,6 +97,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--taxonomy-staging", type=Path, required=True)
     parser.add_argument("--product-import-manifest", type=Path, default=None)
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help="Optional dotenv file. Values are loaded without echoing secrets.",
+    )
     parser.add_argument(
         "--summary",
         type=Path,
@@ -132,6 +141,8 @@ async def run_cli(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = parse_args(argv)
+    if args.env_file is not None:
+        _load_env_file(args.env_file.expanduser().resolve())
     try:
         summary = await import_approved_taxonomy_manifest(
             taxonomy_staging=args.taxonomy_staging.expanduser().resolve(),
@@ -159,6 +170,46 @@ async def run_cli(argv: list[str] | None = None) -> int:
         _write_summary(args.summary.expanduser().resolve(), summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
+
+
+def _load_env_file(path: Path) -> None:
+    """Load simple dotenv assignments without printing secret values.
+
+    Existing process environment values take precedence so operators can
+    override a file value deliberately from the shell.
+
+    Args:
+        path: Dotenv file path.
+    """
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        if stripped.startswith("export "):
+            stripped = stripped[len("export ") :].strip()
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        if key:
+            os.environ.setdefault(key, _strip_env_value(value.strip()))
+    get_settings.cache_clear()
+
+
+def _strip_env_value(value: str) -> str:
+    """Strip matching dotenv quotes from a value.
+
+    Args:
+        value: Raw dotenv value.
+
+    Returns:
+        Unquoted value when wrapped in matching quotes.
+    """
+    if (
+        len(value) >= MIN_QUOTED_ENV_VALUE_LENGTH
+        and value[0] == value[-1]
+        and value[0] in {"'", '"'}
+    ):
+        return value[1:-1]
+    return value
 
 
 async def import_approved_taxonomy_manifest(

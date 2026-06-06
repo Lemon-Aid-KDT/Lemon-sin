@@ -153,6 +153,7 @@ def _validation(*, image_count: int = 2, label_count: int = 2) -> dict[str, Any]
             "supplement_facts",
             "ingredient_amounts",
             "precautions",
+            "allergen_warning",
             "intake_method",
             "other_ingredients",
             "functional_claims",
@@ -162,6 +163,7 @@ def _validation(*, image_count: int = 2, label_count: int = 2) -> dict[str, Any]
             "supplement_facts",
             "ingredient_amounts",
             "precautions",
+            "allergen_warning",
             "intake_method",
             "other_ingredients",
             "functional_claims",
@@ -185,6 +187,15 @@ def test_yolo_section_dataset_gate_blocks_pending_annotation_review(tmp_path: Pa
     assert summary["strict_annotation_ready"] is False
     assert summary["section_yolo_training_allowed_now"] is False
     assert summary["model_promotion_allowed_now"] is False
+    assert summary["official_yolo26_detect_reference_verified"] is True
+    assert summary["yolo26_pretrained_checkpoint_allowed_for_initialization"] is True
+    assert summary["coco_pretrained_allowed_for_final_section_labels"] is False
+    assert summary["custom_supplement_section_dataset_required"] is True
+    assert summary["section_predictions_review_required_until_metric_gate"] is True
+    assert summary["model_promotion_requires_separate_metric_gate"] is True
+    assert summary["input_path_hashes"]["annotation_preflight"].startswith("fp-")
+    assert len(summary["input_path_hashes"]["annotation_preflight"]) == 15
+    assert "COCO pretrained allowed for final section labels: `false`" in markdown
     assert str(tmp_path) not in dumped
     assert "/Volumes/" not in dumped
 
@@ -234,6 +245,28 @@ def test_yolo_section_dataset_gate_blocks_dataset_without_val_split(tmp_path: Pa
     assert summary["promotion_val_split_count"] == 0
 
 
+def test_yolo_section_dataset_gate_requires_dataset_validation_summary(
+    tmp_path: Path,
+) -> None:
+    """Verify materialized datasets still need require-files validation."""
+    annotation_path = _write_json(tmp_path / "annotation.json", _annotation(ready=True))
+    promotion_path = _write_json(tmp_path / "promotion.json", _promotion())
+    materialized_path = _write_json(tmp_path / "materialized.json", _materialized())
+
+    summary = gate.build_yolo_section_dataset_gate(
+        annotation_preflight_path=annotation_path,
+        template_promotion_summary_path=promotion_path,
+        dataset_materialize_summary_path=materialized_path,
+    )
+
+    assert summary["status"] == "blocked_by_dataset_validation"
+    assert summary["dataset_materialization_ready"] is True
+    assert summary["dataset_validation_ready"] is False
+    assert summary["validation_summary_provided"] is False
+    assert summary["section_yolo_training_allowed_now"] is False
+    assert summary["missing_required_section_labels"] == list(gate.REQUIRED_SECTION_LABELS)
+
+
 def test_yolo_section_dataset_gate_blocks_mismatched_validation_summary(tmp_path: Path) -> None:
     """Verify require-files validation must match materialized counts."""
     annotation_path = _write_json(tmp_path / "annotation.json", _annotation(ready=True))
@@ -251,6 +284,38 @@ def test_yolo_section_dataset_gate_blocks_mismatched_validation_summary(tmp_path
     assert summary["status"] == "blocked_by_dataset_validation"
     assert summary["dataset_materialization_ready"] is True
     assert summary["dataset_validation_ready"] is False
+
+
+def test_yolo_section_dataset_gate_blocks_validation_missing_allergen_class(
+    tmp_path: Path,
+) -> None:
+    """Verify allergen-warning bbox class is required before YOLO training."""
+    annotation_path = _write_json(tmp_path / "annotation.json", _annotation(ready=True))
+    promotion_path = _write_json(tmp_path / "promotion.json", _promotion())
+    materialized_path = _write_json(tmp_path / "materialized.json", _materialized())
+    validation = _validation()
+    validation["required_sections"] = [
+        "product_identity",
+        "supplement_facts",
+        "ingredient_amounts",
+        "precautions",
+        "intake_method",
+        "other_ingredients",
+        "functional_claims",
+    ]
+    validation["names"] = list(validation["required_sections"])
+    validation_path = _write_json(tmp_path / "validation.json", validation)
+
+    summary = gate.build_yolo_section_dataset_gate(
+        annotation_preflight_path=annotation_path,
+        template_promotion_summary_path=promotion_path,
+        dataset_materialize_summary_path=materialized_path,
+        dataset_validation_summary_path=validation_path,
+    )
+
+    assert summary["status"] == "blocked_by_dataset_validation"
+    assert summary["dataset_validation_ready"] is False
+    assert summary["missing_required_section_labels"] == ["allergen_warning"]
 
 
 def test_yolo_section_dataset_gate_allows_training_dataset_after_all_checks(
@@ -276,6 +341,14 @@ def test_yolo_section_dataset_gate_allows_training_dataset_after_all_checks(
     assert summary["dataset_validation_ready"] is True
     assert summary["section_yolo_training_allowed_now"] is True
     assert summary["model_promotion_allowed_now"] is False
+    assert summary["missing_required_section_labels"] == []
+    assert "allergen_warning" in summary["required_section_labels"]
+    assert summary["official_yolo26_detect_reference_verified"] is True
+    assert summary["yolo26_pretrained_checkpoint_allowed_for_initialization"] is True
+    assert summary["coco_pretrained_allowed_for_final_section_labels"] is False
+    assert summary["custom_supplement_section_dataset_required"] is True
+    assert summary["section_predictions_review_required_until_metric_gate"] is True
+    assert summary["model_promotion_requires_separate_metric_gate"] is True
 
 
 def test_yolo_section_dataset_gate_rejects_unsafe_payload(tmp_path: Path) -> None:
@@ -322,5 +395,9 @@ def test_yolo_section_dataset_gate_cli_writes_redacted_outputs(
     markdown = markdown_path.read_text(encoding="utf-8")
     assert summary["status"] == "ready_for_section_yolo_training_dataset"
     assert "Supplement YOLO Section Dataset Gate" in markdown
+    assert "## YOLO26 Policy" in markdown
+    assert "COCO pretrained allowed for final section labels: `false`" in markdown
+    assert '"coco_pretrained_allowed_for_final_section_labels": false' in stdout
+    assert '"custom_supplement_section_dataset_required": true' in stdout
     assert '"image_count": 2' in stdout
     assert str(tmp_path) not in stdout + markdown + json.dumps(summary, ensure_ascii=False)

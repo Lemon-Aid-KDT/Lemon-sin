@@ -193,7 +193,7 @@ def infer_missing_required_sections(
     precautions = parsed_snapshot.get("precautions")
     has_precautions = (
         isinstance(precautions, list) and bool(precautions)
-    ) or "precautions" in section_types
+    ) or bool({"precautions", "allergen_warning"} & section_types)
     if not has_precautions:
         _append_missing_section(missing, "precautions")
     return missing[:10]

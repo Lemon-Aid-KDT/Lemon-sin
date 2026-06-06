@@ -177,8 +177,9 @@ def build_product_db_apply_gate(*, input_paths: Mapping[str, Path]) -> dict[str,
         "dry_run_plans_product_rows": planned_product_count == approved_product_count,
         "dry_run_plans_product_category_rows": planned_product_category_count
         == approved_product_count,
-        "category_db_import_verified": verify_payload.get("db_import_verified") is True,
         "category_verify_performed_no_db_write": verify_payload.get("db_write_performed") is False,
+        "category_verify_required_categories_present": matched_category_count == category_count
+        and verify_payload.get("missing_category_count") == 0,
         "category_verify_counts_match_dry_run": expected_category_count == category_count
         and matched_category_count == category_count,
         "category_verify_has_no_missing_categories": verify_payload.get("missing_category_count")

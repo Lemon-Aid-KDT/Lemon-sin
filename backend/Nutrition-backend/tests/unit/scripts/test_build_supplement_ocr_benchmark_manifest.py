@@ -95,10 +95,12 @@ def _approved_ground_truth_row(candidate: dict[str, Any]) -> dict[str, Any]:
             ],
             "intake_method": {"text": "Take 1 softgel daily with food."},
             "precautions": [{"text": "Consult a physician if pregnant or nursing."}],
+            "allergen_warnings": [{"text": "Contains fish and soy."}],
             "functional_claims": [{"text": "Supports heart health."}],
             "label_sections": [
                 {"section_type": "supplement_facts"},
                 {"section_type": "precautions"},
+                {"section_type": "allergen_warning"},
             ],
         },
     }
@@ -124,10 +126,13 @@ def test_build_benchmark_manifest_promotes_only_pii_cleared_human_gt(
     assert summary["benchmark_fixture_count"] == 1
     assert summary["scoreable_fixture_count"] == 1
     assert summary["skip_reason_counts"] == {}
+    assert summary["required_expected_sections"] == ["ingredient_amounts"]
+    assert summary["missing_required_section_counts"] == {}
 
     row = rows[0]
     assert row["source_run_id"] == "benchmark-test"
     assert row["fixture_id"] == candidates[0]["fixture_id"]
+    assert row["product_dir_hash"] == candidates[0]["product_dir_hash"]
     assert row["teacher_providers"] == ["clova_ocr", "google_vision_document"]
     assert row["target_provider"] == "paddleocr_local"
     assert row["external_transfer_allowed"] is True
@@ -135,6 +140,7 @@ def test_build_benchmark_manifest_promotes_only_pii_cleared_human_gt(
     assert row["ocr_provider_call_performed"] is False
     assert row["paddleocr_training_performed"] is False
     assert row["expected"]["verification_status"] == "human_reviewed"
+    assert row["required_expected_sections"] == ["ingredient_amounts"]
     assert row["expected"]["ingredients"][0] == {
         "display_name": "EPA",
         "amount": 180.0,
@@ -145,9 +151,11 @@ def test_build_benchmark_manifest_promotes_only_pii_cleared_human_gt(
     assert row["expected"]["precautions"] == [
         {"text": "Consult a physician if pregnant or nursing."}
     ]
+    assert row["expected"]["allergen_warnings"] == [{"text": "Contains fish and soy."}]
     assert row["expected"]["label_sections"] == [
         {"section_type": "supplement_facts"},
         {"section_type": "precautions"},
+        {"section_type": "allergen_warning"},
     ]
 
 
@@ -192,6 +200,125 @@ def test_benchmark_manifest_skips_unreviewed_ground_truth(tmp_path: Path) -> Non
     }
 
 
+def test_benchmark_manifest_skips_gt_not_marked_ready_for_benchmark(
+    tmp_path: Path,
+) -> None:
+    """Verify reviewed template rows need an explicit benchmark-ready flag."""
+    candidates = _candidate_rows(tmp_path, pii_cleared=True)
+    candidate_manifest = tmp_path / "candidates.jsonl"
+    ground_truth_manifest = tmp_path / "gt.jsonl"
+    gt = _approved_ground_truth_row(candidates[0])
+    gt["ready_for_benchmark_after_review"] = False
+    _write_jsonl(candidate_manifest, candidates)
+    _write_jsonl(ground_truth_manifest, [gt])
+
+    rows, summary = benchmark.build_ocr_benchmark_manifest(
+        candidate_manifest=candidate_manifest,
+        ground_truth_manifest=ground_truth_manifest,
+    )
+
+    assert rows == []
+    assert summary["skip_reason_counts"] == {
+        "manual_ground_truth_not_marked_ready_for_benchmark": 1,
+    }
+
+
+def test_benchmark_manifest_can_require_intake_and_precaution_sections(
+    tmp_path: Path,
+) -> None:
+    """Verify operation runs can require all user-facing OCR sections."""
+    candidates = _candidate_rows(tmp_path, pii_cleared=True)
+    candidate_manifest = tmp_path / "candidates.jsonl"
+    ground_truth_manifest = tmp_path / "gt.jsonl"
+    gt = _approved_ground_truth_row(candidates[0])
+    gt["expected"]["intake_method"] = {}
+    gt["expected"]["precautions"] = []
+    _write_jsonl(candidate_manifest, candidates)
+    _write_jsonl(ground_truth_manifest, [gt])
+
+    rows, summary = benchmark.build_ocr_benchmark_manifest(
+        candidate_manifest=candidate_manifest,
+        ground_truth_manifest=ground_truth_manifest,
+        required_expected_sections=(
+            "ingredient_amounts",
+            "intake_method",
+            "precautions",
+        ),
+    )
+
+    assert rows == []
+    assert summary["required_expected_sections"] == [
+        "ingredient_amounts",
+        "intake_method",
+        "precautions",
+    ]
+    assert summary["skip_reason_counts"] == {
+        "manual_ground_truth_missing_required_sections": 1,
+    }
+    assert summary["missing_required_section_counts"] == {
+        "intake_method": 1,
+        "precautions": 1,
+    }
+
+
+def test_benchmark_manifest_can_require_allergen_warning_section(
+    tmp_path: Path,
+) -> None:
+    """Verify allergen warning text can be required separately from precautions."""
+    candidates = _candidate_rows(tmp_path, pii_cleared=True)
+    candidate_manifest = tmp_path / "candidates.jsonl"
+    ground_truth_manifest = tmp_path / "gt.jsonl"
+    gt = _approved_ground_truth_row(candidates[0])
+    gt["expected"]["allergen_warnings"] = []
+    _write_jsonl(candidate_manifest, candidates)
+    _write_jsonl(ground_truth_manifest, [gt])
+
+    rows, summary = benchmark.build_ocr_benchmark_manifest(
+        candidate_manifest=candidate_manifest,
+        ground_truth_manifest=ground_truth_manifest,
+        required_expected_sections=("ingredient_amounts", "allergen_warnings"),
+    )
+
+    assert rows == []
+    assert summary["required_expected_sections"] == [
+        "ingredient_amounts",
+        "allergen_warnings",
+    ]
+    assert summary["missing_required_section_counts"] == {"allergen_warnings": 1}
+
+
+def test_benchmark_manifest_promotes_when_required_sections_are_present(
+    tmp_path: Path,
+) -> None:
+    """Verify stricter section requirements still promote complete GT rows."""
+    candidates = _candidate_rows(tmp_path, pii_cleared=True)
+    candidate_manifest = tmp_path / "candidates.jsonl"
+    ground_truth_manifest = tmp_path / "gt.jsonl"
+    _write_jsonl(candidate_manifest, candidates)
+    _write_jsonl(ground_truth_manifest, [_approved_ground_truth_row(candidates[0])])
+
+    rows, summary = benchmark.build_ocr_benchmark_manifest(
+        candidate_manifest=candidate_manifest,
+        ground_truth_manifest=ground_truth_manifest,
+        required_expected_sections=(
+            "product_identity",
+            "ingredient_amounts",
+            "intake_method",
+            "precautions",
+        ),
+    )
+
+    assert len(rows) == 1
+    assert summary["benchmark_fixture_count"] == 1
+    assert summary["missing_required_section_counts"] == {}
+    assert rows[0]["required_expected_sections"] == [
+        "product_identity",
+        "ingredient_amounts",
+        "intake_method",
+        "precautions",
+    ]
+
+
 def test_benchmark_manifest_omits_paths_product_literals_and_raw_payloads(
     tmp_path: Path,
 ) -> None:
@@ -215,6 +342,7 @@ def test_benchmark_manifest_omits_paths_product_literals_and_raw_payloads(
     assert "/Volumes/" not in dumped
     assert '"raw_ocr_text":' not in dumped
     assert '"provider_payload":' not in dumped
+    assert rows[0]["product_dir_hash"] == candidates[0]["product_dir_hash"]
     assert rows[0]["absolute_paths_stored"] is False
     assert rows[0]["product_dir_literals_stored"] is False
     assert summary["raw_ocr_text_stored"] is False
@@ -298,6 +426,10 @@ def test_main_writes_benchmark_manifest_and_summary(
             str(output_path),
             "--source-run-id",
             "cli-test",
+            "--required-expected-section",
+            "ingredient_amounts",
+            "--required-expected-section",
+            "intake_method",
         ]
     )
 
@@ -305,6 +437,7 @@ def test_main_writes_benchmark_manifest_and_summary(
     summary = json.loads(stdout)
     assert summary["source_run_id"] == "cli-test"
     assert summary["benchmark_fixture_count"] == 1
+    assert summary["required_expected_sections"] == ["ingredient_amounts", "intake_method"]
     assert output_path.exists()
     assert output_path.with_suffix(".jsonl.summary.json").exists()
     assert str(tmp_path) not in stdout

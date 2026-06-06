@@ -24,6 +24,7 @@ from src.models.schemas.supplement import (
     SupplementAnalysisStatus,
     SupplementMissingRequiredSection,
     SupplementPreviewEvidenceSpan,
+    SupplementPreviewIntakeMethod,
     SupplementPreviewLabelSection,
     SupplementPreviewPrecaution,
 )
@@ -52,6 +53,7 @@ INGREDIENT_DECLARATION_WARNING = "ingredient_declaration_names_only_requires_rev
 INGREDIENT_DECLARATION_CONFIDENCE = 0.4
 EXCIPIENT_FILTERED_WARNING = "ingredient.excipient_filtered"
 NON_INGREDIENT_HEADING_FILTERED_WARNING = "ingredient.non_ingredient_heading_filtered"
+INTAKE_INSTRUCTION_FILTERED_WARNING = "ingredient.intake_instruction_filtered"
 INGREDIENT_AMOUNT_MISSING_WARNING = "ingredient.amount_missing"
 SUPPLEMENT_IMAGE_ASSIST_WARNING = (
     "Image-assisted text extraction is a fallback preview. Review every field before saving."
@@ -65,11 +67,17 @@ LAYOUT_EVIDENCE_EXCERPT_MAX_CHARS = 240
 LAYOUT_PRECAUTION_TEXT_MAX_CHARS = 500
 LAYOUT_PRECAUTION_FALLBACK_MAX_ITEMS = 40
 LAYOUT_PRECAUTION_FALLBACK_WARNING = "layout_precaution_fallback_requires_review"
+OCR_TEXT_SECTION_FALLBACK_CONFIDENCE = 0.55
+OCR_TEXT_SECTION_FALLBACK_WARNING_INTAKE = "ocr_intake_method_fallback_requires_review"
+OCR_TEXT_SECTION_FALLBACK_WARNING_PRECAUTION = "ocr_precaution_fallback_requires_review"
+OCR_TEXT_SECTION_FALLBACK_MAX_PRECAUTIONS = 12
+OCR_TEXT_SECTION_FALLBACK_TEXT_MAX_CHARS = 500
 LAYOUT_SECTION_TYPE_MAP = {
     "daily_intake": "intake_method",
     "nutrition_function_info": "supplement_facts",
     "intake_method": "intake_method",
     "precautions": "precautions",
+    "allergen_warning": "allergen_warning",
     "ingredients": "ingredients",
     "functionality": "functional_info",
     "storage_method": "storage_method",
@@ -92,6 +100,43 @@ PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
     re.compile(r"^정\s*(?:x\s*)?\d*\s*(?:개입)?\s*\(?$", re.IGNORECASE),
     re.compile(r"^\d+\s*(?:정|포|캡슐|개입)\s*\(?$", re.IGNORECASE),
+)
+INTAKE_INSTRUCTION_PATTERN = re.compile(
+    r"(?:"
+    r"섭취\s*방법|복용\s*방법|1\s*일|일\s*\d+\s*회|\d+\s*회|"
+    r"스푼|스쿱|숟가락|정씩|포씩|캡슐씩|"
+    r"suggested\s+use|directions?|recommendation|take\b|daily|"
+    r"scoops?|tablets?|capsules?|softgels?"
+    r")",
+    re.IGNORECASE,
+)
+SERVING_OR_PACKAGE_CONTEXT_PATTERN = re.compile(
+    r"(?:"
+    r"1\s*회\s*제공량|회\s*제공량|제공량|총\s*내용량|내용량|"
+    r"serving\s+size|servings?\s+per\s+container|amount\s+per\s+serving"
+    r")",
+    re.IGNORECASE,
+)
+BARE_PACKAGE_QUANTITY_PATTERN = re.compile(
+    r"^\s*\d+\s*(?:capsules?|tablets?|softgels?|caps?|tabs?|servings?|count|ct)\.?\s*$",
+    re.IGNORECASE,
+)
+PRECAUTION_TEXT_PATTERN = re.compile(
+    r"(?:"
+    r"섭취\s*시\s*주의|주의\s*사항|주의|경고|알레르기|알러지|유발\s*물질|"
+    r"임산|임신|수유|어린이|소아|의약품|약물|전문가|상담|"
+    r"warning|caution|allerg(?:y|en)|pregnan|nursing|children|medication|consult"
+    r")",
+    re.IGNORECASE,
+)
+NON_PRECAUTION_CONTACT_PATTERN = re.compile(
+    r"(?:고객\s*상담|소비자\s*상담|상담\s*실|customer\s+service|questions?)",
+    re.IGNORECASE,
+)
+BARE_INTAKE_HEADING_PATTERN = re.compile(
+    r"^[\s:：\-·•]*(?:섭취\s*방법|복용\s*방법|suggested\s+use|directions?)"  # noqa: RUF001
+    r"[\s:：\-·•]*$",  # noqa: RUF001
+    re.IGNORECASE,
 )
 # Recognizes a line as a Korean ingredient-declaration header (원재료명 / 원료명 /
 # 성분명). Only such lines are mined for name-only candidates, so marketing copy
@@ -266,6 +311,7 @@ async def parse_supplement_analysis_ocr_text(
     parse_result = _sanitize_parser_result(parse_result)
     parse_result = _merge_ocr_pattern_fallbacks(parse_result, normalized_text)
     parse_result = _merge_layout_precaution_fallbacks(parse_result, ocr_layout)
+    parse_result = _merge_ocr_text_section_fallbacks(parse_result, normalized_text)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
     record.ocr_provider = normalized_provider
@@ -409,6 +455,9 @@ def _sanitize_parser_result(
             name_res.value
         ):
             warnings.append(NON_INGREDIENT_HEADING_FILTERED_WARNING)
+            continue
+        if _looks_like_intake_instruction_text(name_res.value):
+            warnings.append(INTAKE_INSTRUCTION_FILTERED_WARNING)
             continue
         # Drop inactive excipients (gelatin, glycerin, purified water, ...) the
         # LLM sometimes emits as ingredients; they are not nutrient content.
@@ -623,6 +672,138 @@ def _merge_ocr_pattern_fallbacks(
     return SupplementStructuredParseResult.model_validate(snapshot)
 
 
+def _merge_ocr_text_section_fallbacks(
+    parse_result: SupplementStructuredParseResult,
+    ocr_text: str,
+) -> SupplementStructuredParseResult:
+    """Fill missing intake/precaution fields from bounded OCR text lines.
+
+    The structured LLM parser is still preferred. This fallback only promotes
+    short visible lines that clearly look like serving instructions or warning /
+    allergen statements. It prevents those lines from being stranded in the
+    ingredient table while keeping raw full OCR text out of persisted snapshots.
+
+    Args:
+        parse_result: Parser result after sanitization and ingredient fallback.
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Parser result with review-required intake/precaution text added when
+        those sections were otherwise empty or incomplete.
+    """
+    snapshot = parse_result.model_dump()
+    warnings = snapshot.get("warnings")
+    low_confidence_fields = snapshot.get("low_confidence_fields")
+    updated = False
+
+    intake_method = snapshot.get("intake_method")
+    intake_text = intake_method.get("text") if isinstance(intake_method, dict) else None
+    if not isinstance(intake_text, str) or not intake_text.strip():
+        derived_intake = _extract_ocr_intake_method(ocr_text)
+        if derived_intake is not None:
+            snapshot["intake_method"] = derived_intake.model_dump(exclude_none=True)
+            warnings = _append_unique_string(warnings, OCR_TEXT_SECTION_FALLBACK_WARNING_INTAKE)
+            low_confidence_fields = _append_unique_string(low_confidence_fields, "intake_method")
+            updated = True
+
+    existing_precaution_keys = {
+        _preview_text_key(str(item.get("text") or ""))
+        for item in _list_of_mappings(snapshot.get("precautions"))
+    }
+    derived_precautions = _extract_ocr_precautions(ocr_text, existing_precaution_keys)
+    if derived_precautions:
+        snapshot["precautions"] = [
+            *_list_of_mappings(snapshot.get("precautions")),
+            *[item.model_dump(exclude_none=True) for item in derived_precautions],
+        ]
+        warnings = _append_unique_string(warnings, OCR_TEXT_SECTION_FALLBACK_WARNING_PRECAUTION)
+        low_confidence_fields = _append_unique_string(low_confidence_fields, "precautions")
+        updated = True
+
+    if not updated:
+        return parse_result
+    snapshot["warnings"] = warnings
+    snapshot["low_confidence_fields"] = low_confidence_fields
+    return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _extract_ocr_intake_method(ocr_text: str) -> SupplementPreviewIntakeMethod | None:
+    """Return a bounded serving instruction candidate from OCR text.
+
+    Args:
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Review-required intake method preview, or None when no clear instruction
+        line is visible.
+    """
+    for line in _ocr_lines(ocr_text):
+        if not _looks_like_intake_instruction_text(line):
+            continue
+        if _looks_like_precaution_text(line):
+            continue
+        if BARE_INTAKE_HEADING_PATTERN.fullmatch(line.strip()):
+            continue
+        text = _sanitize_ocr_section_line(line, "ocr_intake_method.text")
+        if not text:
+            continue
+        return SupplementPreviewIntakeMethod.model_validate(
+            {
+                "text": text,
+                "confidence": OCR_TEXT_SECTION_FALLBACK_CONFIDENCE,
+                "requires_review": True,
+                "evidence_refs": ["ocr-text-intake-fallback"],
+            }
+        )
+    return None
+
+
+def _extract_ocr_precautions(
+    ocr_text: str,
+    existing_text_keys: set[str],
+) -> list[SupplementPreviewPrecaution]:
+    """Return bounded warning/allergen lines from OCR text.
+
+    Args:
+        ocr_text: Normalized OCR text held only in request memory.
+        existing_text_keys: Already emitted precaution text keys.
+
+    Returns:
+        Review-required precaution preview rows.
+    """
+    precautions: list[SupplementPreviewPrecaution] = []
+    for index, line in enumerate(_ocr_lines(ocr_text), start=1):
+        if len(precautions) >= OCR_TEXT_SECTION_FALLBACK_MAX_PRECAUTIONS:
+            break
+        if not _looks_like_precaution_text(line):
+            continue
+        if _is_bare_precaution_heading(line):
+            continue
+        text = _sanitize_ocr_section_line(line, "ocr_precaution.text")
+        if not text:
+            continue
+        text_key = _preview_text_key(text)
+        if text_key in existing_text_keys:
+            continue
+        try:
+            precautions.append(
+                SupplementPreviewPrecaution.model_validate(
+                    {
+                        "text": text,
+                        "category": _layout_precaution_category(text),
+                        "severity": _layout_precaution_severity(text),
+                        "confidence": OCR_TEXT_SECTION_FALLBACK_CONFIDENCE,
+                        "requires_review": True,
+                        "evidence_refs": [f"ocr-text-precaution-fallback-{index:03d}"],
+                    }
+                )
+            )
+        except ValueError:
+            continue
+        existing_text_keys.add(text_key)
+    return precautions
+
+
 def _merge_layout_precaution_fallbacks(
     parse_result: SupplementStructuredParseResult,
     ocr_layout: LabelLayout | None,
@@ -649,7 +830,7 @@ def _merge_layout_precaution_fallbacks(
     }
     derived: list[SupplementPreviewPrecaution] = []
     for section_index, section in enumerate(ocr_layout.sections, start=1):
-        if section.section_type != "precautions":
+        if section.section_type not in {"precautions", "allergen_warning"}:
             continue
         span_id = f"layout-span-{section_index}"
         confidence = _section_confidence(section)
@@ -724,6 +905,77 @@ def _layout_precaution_texts(section: LabelSection) -> list[str]:
         if sanitized:
             texts.append(sanitized)
     return texts
+
+
+def _sanitize_ocr_section_line(value: str, warning_field: str) -> str | None:
+    """Return a bounded sanitized OCR line suitable for a review section.
+
+    Args:
+        value: Candidate OCR line.
+        warning_field: Sanitizer field label for audit warning codes.
+
+    Returns:
+        Sanitized line text, or None when the line is unsafe or empty.
+    """
+    return sanitize_preview_text(
+        value[:OCR_TEXT_SECTION_FALLBACK_TEXT_MAX_CHARS],
+        warning_field,
+    ).value
+
+
+def _looks_like_intake_instruction_text(value: str) -> bool:
+    """Return whether text appears to describe how to take the supplement.
+
+    Args:
+        value: Candidate OCR or parser text.
+
+    Returns:
+        True for serving-instruction fragments such as "1일 1회 1스푼" or
+        "Take 1 capsule daily".
+    """
+    normalized = _ingredient_name_key(value)
+    if not normalized:
+        return False
+    if SERVING_OR_PACKAGE_CONTEXT_PATTERN.search(normalized):
+        return False
+    if BARE_PACKAGE_QUANTITY_PATTERN.fullmatch(normalized):
+        return False
+    compact = re.sub(r"[\s,，.·ㆍ:：;；(){}\[\]/|+\-]+", "", normalized)  # noqa: RUF001
+    if any(
+        token in compact
+        for token in (
+            "섭취방법",
+            "복용방법",
+            "1일",
+            "일1회",
+            "1회",
+            "스푼",
+            "스쿱",
+            "숟가락",
+            "정씩",
+            "포씩",
+            "캡슐씩",
+        )
+    ):
+        return True
+    return bool(INTAKE_INSTRUCTION_PATTERN.search(normalized))
+
+
+def _looks_like_precaution_text(value: str) -> bool:
+    """Return whether text appears to be a warning, caution, or allergen line.
+
+    Args:
+        value: Candidate OCR line.
+
+    Returns:
+        True when the line contains visible precaution/allergen wording.
+    """
+    normalized = _ingredient_name_key(value)
+    if not normalized:
+        return False
+    if NON_PRECAUTION_CONTACT_PATTERN.search(normalized):
+        return False
+    return bool(PRECAUTION_TEXT_PATTERN.search(normalized))
 
 
 def _is_bare_precaution_heading(value: str) -> bool:
@@ -929,6 +1181,9 @@ def _sanitize_ocr_pattern_candidates(
         if not name_res.value:
             warnings.extend(name_res.warnings)
             continue
+        if _looks_like_intake_instruction_text(name_res.value):
+            warnings.append(INTAKE_INSTRUCTION_FILTERED_WARNING)
+            continue
         unit_res = sanitize_unit(candidate.get("unit"))
         candidate["display_name"] = name_res.value
         candidate["original_name"] = name_res.value
@@ -1057,6 +1312,8 @@ def _clean_declaration_ingredient_name(value: str) -> str:
         return ""
     if _looks_like_packaging_quantity_token(cleaned):
         return ""
+    if _looks_like_intake_instruction_text(cleaned):
+        return ""
     if not re.search(r"[A-Za-z가-힣]", cleaned):
         return ""
     return cleaned
@@ -1092,6 +1349,8 @@ def _clean_ingredient_name(value: str) -> str:
     if _looks_like_non_ingredient_heading(cleaned):
         return ""
     if _looks_like_packaging_quantity_token(cleaned):
+        return ""
+    if _looks_like_intake_instruction_text(cleaned):
         return ""
     if not re.search(r"[A-Za-z가-힣]", cleaned):
         return ""
@@ -1361,6 +1620,7 @@ def _build_parsed_snapshot(
         parse_result.missing_required_sections,
         label_sections,
         intake_text=parse_result.intake_method.text,
+        has_precautions=bool(parse_result.precautions),
     )
     snapshot: dict[str, Any] = {
         "parsed_product": parse_result.parsed_product.model_dump(exclude_none=True),
@@ -1547,11 +1807,16 @@ def _merge_missing_required_sections(
     label_sections: list[SupplementPreviewLabelSection],
     *,
     intake_text: str | None,
+    has_precautions: bool,
 ) -> list[SupplementMissingRequiredSection]:
     """Remove missing-section markers proven present by parser or layout evidence."""
     present_types = {section.section_type for section in label_sections}
     if intake_text and intake_text.strip():
         present_types.add("intake_method")
+    if has_precautions:
+        present_types.add("precautions")
+    if "allergen_warning" in present_types:
+        present_types.add("precautions")
 
     normalized: list[SupplementMissingRequiredSection] = []
     seen: set[str] = set()

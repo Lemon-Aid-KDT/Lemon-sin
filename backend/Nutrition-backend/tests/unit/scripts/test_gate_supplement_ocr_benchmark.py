@@ -117,28 +117,125 @@ def _gt_payload(*, row_count: int, ready_count: int) -> dict[str, Any]:
     }
 
 
-def _benchmark_payload(*, fixture_count: int, scoreable_count: int) -> dict[str, Any]:
+def _gt_preflight_payload(*, row_count: int, ready_count: int) -> dict[str, Any]:
+    """Return a manual ground-truth benchmark preflight fixture.
+
+    Args:
+        row_count: Ground-truth row count.
+        ready_count: Rows ready for benchmark build.
+
+    Returns:
+        Ground-truth preflight payload.
+    """
+    return {
+        "schema_version": "supplement-ocr-ground-truth-preflight-v1",
+        "status": "ready_for_benchmark_build" if ready_count else "blocked_by_no_ready_rows",
+        "ready_for_benchmark_build": ready_count > 0,
+        "row_count": row_count,
+        "human_reviewed_row_count": ready_count,
+        "explicit_ready_flag_count": ready_count,
+        "benchmark_ready_row_count": ready_count,
+        "min_ready_rows": 1,
+        "required_expected_sections": [
+            "ingredient_amounts",
+            "intake_method",
+            "precautions",
+            "allergen_warnings",
+        ],
+        "issue_counts": {},
+        "missing_required_section_counts": {},
+        "db_write_performed": False,
+        "ocr_provider_call_performed": False,
+        "paddleocr_training_performed": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "absolute_paths_stored": False,
+        "product_dir_literals_stored": False,
+    }
+
+
+def _benchmark_payload(
+    *,
+    fixture_count: int,
+    scoreable_count: int,
+    required_expected_sections: list[str] | None = None,
+) -> dict[str, Any]:
     """Return an OCR benchmark manifest summary fixture.
 
     Args:
         fixture_count: Benchmark fixture count.
         scoreable_count: Fixtures with human-reviewed expected ingredients.
+        required_expected_sections: Section requirements declared by benchmark build.
 
     Returns:
         Benchmark summary payload.
     """
+    sections = required_expected_sections or [
+        "ingredient_amounts",
+        "intake_method",
+        "precautions",
+        "allergen_warnings",
+    ]
     return {
         "schema_version": "supplement-ocr-provider-benchmark-manifest-v1",
         "candidate_count": fixture_count,
         "ground_truth_decision_count": fixture_count,
         "benchmark_fixture_count": fixture_count,
         "skip_reason_counts": {},
+        "required_expected_sections": sections,
+        "missing_required_section_counts": {},
         "scoreable_fixture_count": scoreable_count,
         "image_materialization_requested": False,
         "image_materialized_count": 0,
         "db_write_performed": False,
         "ocr_provider_call_performed": False,
         "paddleocr_training_performed": False,
+        "raw_ocr_text_stored": False,
+        "raw_provider_payload_stored": False,
+        "absolute_paths_stored": False,
+        "product_dir_literals_stored": False,
+    }
+
+
+def _split_payload(
+    *,
+    row_count: int,
+    holdout_count: int,
+    test_count: int = 0,
+    leakage_check_passed: bool = True,
+) -> dict[str, Any]:
+    """Return a product-group-safe split assignment summary fixture.
+
+    Args:
+        row_count: Split-assigned row count.
+        holdout_count: Holdout fixture count.
+        test_count: Test fixture count.
+        leakage_check_passed: Whether product-group leakage checks passed.
+
+    Returns:
+        Split assignment summary payload.
+    """
+    train_count = max(row_count - holdout_count - test_count, 0)
+    return {
+        "schema_version": "paddleocr-benchmark-split-assignment-v1",
+        "row_count": row_count,
+        "product_group_count": row_count,
+        "split_counts": {
+            "train": train_count,
+            "holdout": holdout_count,
+            "test": test_count,
+        },
+        "product_group_split_counts": {
+            "train": train_count,
+            "holdout": holdout_count,
+            "test": test_count,
+        },
+        "ready_for_holdout_eval": leakage_check_passed and holdout_count > 0,
+        "leakage_check_passed": leakage_check_passed,
+        "db_write_performed": False,
+        "ocr_provider_call_performed": False,
+        "paddleocr_training_performed": False,
+        "source_image_read_performed": False,
         "raw_ocr_text_stored": False,
         "raw_provider_payload_stored": False,
         "absolute_paths_stored": False,
@@ -222,10 +319,15 @@ def test_ocr_benchmark_gate_blocks_until_benchmark_manifest_exists(tmp_path: Pat
         _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
     )
     gt_path = _write_json(tmp_path / "gt-summary.json", _gt_payload(row_count=3, ready_count=3))
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=3),
+    )
 
     summary = gate.build_ocr_benchmark_gate(
         pii_preflight_path=pii_path,
         ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
     )
 
     assert summary["status"] == "blocked_by_benchmark_manifest"
@@ -234,8 +336,8 @@ def test_ocr_benchmark_gate_blocks_until_benchmark_manifest_exists(tmp_path: Pat
     assert summary["benchmark_fixture_count"] == 0
 
 
-def test_ocr_benchmark_gate_allows_teacher_eval_after_all_gates(tmp_path: Path) -> None:
-    """Verify full gate readiness allows teacher OCR eval but not PaddleOCR training."""
+def test_ocr_benchmark_gate_blocks_until_ground_truth_preflight_exists(tmp_path: Path) -> None:
+    """Verify reviewed GT needs a dedicated preflight before benchmark use."""
     pii_path = _write_json(
         tmp_path / "pii.json",
         _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
@@ -252,8 +354,191 @@ def test_ocr_benchmark_gate_allows_teacher_eval_after_all_gates(tmp_path: Path) 
         benchmark_summary_path=benchmark_path,
     )
 
+    assert summary["status"] == "blocked_by_ground_truth_review"
+    assert summary["ground_truth_review_ready"] is True
+    assert summary["ground_truth_preflight_ready"] is False
+    assert summary["ground_truth_preflight_benchmark_ready_row_count"] == 0
+    assert "run_ocr_ground_truth_preflight_require_all_sections" in summary["next_steps"]
+    assert summary["teacher_ocr_benchmark_allowed"] is False
+
+
+def test_ocr_benchmark_gate_blocks_failed_ground_truth_preflight(tmp_path: Path) -> None:
+    """Verify a non-ready GT preflight cannot unlock teacher OCR comparison."""
+    pii_path = _write_json(
+        tmp_path / "pii.json",
+        _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
+    )
+    gt_path = _write_json(tmp_path / "gt-summary.json", _gt_payload(row_count=3, ready_count=3))
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=0),
+    )
+    benchmark_path = _write_json(
+        tmp_path / "benchmark-summary.json",
+        _benchmark_payload(fixture_count=3, scoreable_count=3),
+    )
+
+    summary = gate.build_ocr_benchmark_gate(
+        pii_preflight_path=pii_path,
+        ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
+        benchmark_summary_path=benchmark_path,
+    )
+
+    assert summary["status"] == "blocked_by_ground_truth_review"
+    assert summary["ground_truth_review_ready"] is True
+    assert summary["ground_truth_preflight_ready"] is False
+    assert summary["ground_truth_preflight_row_count"] == 3
+    assert summary["ground_truth_preflight_benchmark_ready_row_count"] == 0
+    assert summary["teacher_ocr_benchmark_allowed"] is False
+
+
+def test_ocr_benchmark_gate_blocks_until_split_assignment_exists(tmp_path: Path) -> None:
+    """Verify benchmark fixtures still require leakage-safe split assignment."""
+    pii_path = _write_json(
+        tmp_path / "pii.json",
+        _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
+    )
+    gt_path = _write_json(tmp_path / "gt-summary.json", _gt_payload(row_count=3, ready_count=3))
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=3),
+    )
+    benchmark_path = _write_json(
+        tmp_path / "benchmark-summary.json",
+        _benchmark_payload(fixture_count=3, scoreable_count=3),
+    )
+
+    summary = gate.build_ocr_benchmark_gate(
+        pii_preflight_path=pii_path,
+        ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
+        benchmark_summary_path=benchmark_path,
+    )
+
+    assert summary["status"] == "blocked_by_benchmark_split_assignment"
+    assert summary["benchmark_manifest_ready"] is True
+    assert summary["benchmark_required_sections_ready"] is True
+    assert summary["benchmark_split_ready"] is False
+    assert summary["teacher_ocr_benchmark_allowed"] is False
+
+
+def test_ocr_benchmark_gate_blocks_benchmark_missing_full_card_sections(tmp_path: Path) -> None:
+    """Verify ingredient-only benchmarks cannot unlock full supplement OCR eval."""
+    pii_path = _write_json(
+        tmp_path / "pii.json",
+        _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
+    )
+    gt_path = _write_json(tmp_path / "gt-summary.json", _gt_payload(row_count=3, ready_count=3))
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=3),
+    )
+    benchmark_path = _write_json(
+        tmp_path / "benchmark-summary.json",
+        _benchmark_payload(
+            fixture_count=3,
+            scoreable_count=3,
+            required_expected_sections=["ingredient_amounts"],
+        ),
+    )
+    split_path = _write_json(
+        tmp_path / "split-summary.json",
+        _split_payload(row_count=3, holdout_count=1),
+    )
+
+    summary = gate.build_ocr_benchmark_gate(
+        pii_preflight_path=pii_path,
+        ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
+        benchmark_summary_path=benchmark_path,
+        benchmark_split_summary_path=split_path,
+    )
+
+    assert summary["status"] == "blocked_by_benchmark_manifest"
+    assert summary["benchmark_manifest_ready"] is False
+    assert summary["benchmark_required_sections_ready"] is False
+    assert summary["benchmark_required_expected_sections"] == ["ingredient_amounts"]
+    assert summary["benchmark_missing_required_expected_sections"] == [
+        "intake_method",
+        "precautions",
+        "allergen_warnings",
+    ]
+    assert summary["teacher_ocr_benchmark_allowed"] is False
+
+
+def test_ocr_benchmark_gate_blocks_failed_split_leakage_check(tmp_path: Path) -> None:
+    """Verify split leakage failure blocks teacher OCR eval."""
+    pii_path = _write_json(
+        tmp_path / "pii.json",
+        _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
+    )
+    gt_path = _write_json(tmp_path / "gt-summary.json", _gt_payload(row_count=3, ready_count=3))
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=3),
+    )
+    benchmark_path = _write_json(
+        tmp_path / "benchmark-summary.json",
+        _benchmark_payload(fixture_count=3, scoreable_count=3),
+    )
+    split_path = _write_json(
+        tmp_path / "split-summary.json",
+        _split_payload(row_count=3, holdout_count=1, leakage_check_passed=False),
+    )
+
+    summary = gate.build_ocr_benchmark_gate(
+        pii_preflight_path=pii_path,
+        ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
+        benchmark_summary_path=benchmark_path,
+        benchmark_split_summary_path=split_path,
+    )
+
+    assert summary["status"] == "blocked_by_benchmark_split_assignment"
+    assert summary["benchmark_split_leakage_check_passed"] is False
+    assert summary["external_teacher_ocr_eval_allowed"] is False
+
+
+def test_ocr_benchmark_gate_allows_teacher_eval_after_all_gates(tmp_path: Path) -> None:
+    """Verify full gate readiness allows teacher OCR eval but not PaddleOCR training."""
+    pii_path = _write_json(
+        tmp_path / "pii.json",
+        _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
+    )
+    gt_path = _write_json(tmp_path / "gt-summary.json", _gt_payload(row_count=3, ready_count=3))
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=3),
+    )
+    benchmark_path = _write_json(
+        tmp_path / "benchmark-summary.json",
+        _benchmark_payload(fixture_count=3, scoreable_count=3),
+    )
+    split_path = _write_json(
+        tmp_path / "split-summary.json",
+        _split_payload(row_count=3, holdout_count=1),
+    )
+
+    summary = gate.build_ocr_benchmark_gate(
+        pii_preflight_path=pii_path,
+        ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
+        benchmark_summary_path=benchmark_path,
+        benchmark_split_summary_path=split_path,
+    )
+
     assert summary["status"] == "ready_for_teacher_ocr_eval"
     assert summary["ground_truth_template_allowed"] is True
+    assert summary["benchmark_required_expected_sections"] == [
+        "ingredient_amounts",
+        "intake_method",
+        "precautions",
+        "allergen_warnings",
+    ]
+    assert summary["benchmark_required_sections_ready"] is True
+    assert summary["benchmark_split_ready"] is True
+    assert summary["benchmark_holdout_fixture_count"] == 1
     assert summary["teacher_ocr_benchmark_allowed"] is True
     assert summary["external_teacher_ocr_allowed_now"] is True
     assert summary["external_teacher_ocr_eval_allowed"] is True
@@ -302,4 +587,31 @@ def test_ocr_benchmark_gate_cli_writes_json_and_markdown(
     assert summary["status"] == "blocked_by_pii_screening"
     assert "Teacher OCR benchmark allowed" in markdown
     assert '"teacher_ocr_benchmark_allowed": false' in stdout
+    assert str(tmp_path) not in stdout
+
+
+def test_ocr_benchmark_gate_cli_require_ready_exits_nonzero_when_blocked(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify the CLI can fail closed before provider OCR commands run."""
+    pii_path = _write_json(tmp_path / "pii.json", _pii_payload())
+    output_path = tmp_path / "gate.json"
+
+    with pytest.raises(SystemExit) as exc:
+        gate.main(
+            [
+                "--pii-decision-preflight",
+                str(pii_path),
+                "--output",
+                str(output_path),
+                "--require-ready-for-teacher-ocr-eval",
+            ]
+        )
+
+    stdout = capsys.readouterr().out
+    summary = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exc.value.code == 1
+    assert summary["status"] == "blocked_by_pii_screening"
+    assert '"external_teacher_ocr_eval_allowed": false' in stdout
     assert str(tmp_path) not in stdout

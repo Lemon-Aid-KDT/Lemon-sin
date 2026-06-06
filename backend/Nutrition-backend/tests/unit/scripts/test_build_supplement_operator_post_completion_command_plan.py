@@ -122,8 +122,58 @@ def test_plan_allows_complete_pii_batch_without_teacher_ocr_call(tmp_path: Path)
     assert plan["operator_required_before_execution"] is False
     assert plan["blocked_reason_codes"] == []
     script_keys = [step["script_key"] for step in plan["steps"]]
+    assert plan["step_count"] == 17
     assert "apply_supplement_review_pii_screening_decisions" in script_keys
+    assert "export_supplement_ocr_ground_truth_template" in script_keys
+    assert "build_supplement_ocr_ground_truth_review_bundle" in script_keys
+    assert "preflight_supplement_ocr_ground_truth_manifest" in script_keys
     assert "gate_supplement_ocr_benchmark" in script_keys
+    assert "build_supplement_ocr_benchmark_manifest" in script_keys
+    assert "assign_paddleocr_benchmark_splits" in script_keys
+    assert "collect_supplement_ocr_observations" in script_keys
+    assert "merge_paddleocr_text_observations_into_benchmark" in script_keys
+    assert "preflight_paddleocr_text_target_chain" in script_keys
+    assert "build_paddleocr_text_extraction_eval_summary" in script_keys
+    assert "gate_paddleocr_text_extraction_target" in script_keys
+    assert script_keys.index("export_supplement_ocr_ground_truth_template") < script_keys.index(
+        "build_supplement_ocr_ground_truth_review_bundle"
+    )
+    assert script_keys.index("build_supplement_ocr_ground_truth_review_bundle") < script_keys.index(
+        "preflight_supplement_ocr_ground_truth_manifest"
+    )
+    assert script_keys.index("preflight_supplement_ocr_ground_truth_manifest") < script_keys.index(
+        "build_supplement_ocr_benchmark_manifest"
+    )
+    assert script_keys.index("build_supplement_ocr_benchmark_manifest") < script_keys.index(
+        "assign_paddleocr_benchmark_splits"
+    )
+    assert script_keys.index("assign_paddleocr_benchmark_splits") < script_keys.index(
+        "gate_supplement_ocr_benchmark"
+    )
+    assert script_keys.index("gate_supplement_ocr_benchmark") < script_keys.index(
+        "collect_supplement_ocr_observations"
+    )
+    assert script_keys.index("collect_supplement_ocr_observations") < script_keys.index(
+        "merge_paddleocr_text_observations_into_benchmark"
+    )
+    assert script_keys.index("merge_paddleocr_text_observations_into_benchmark") < script_keys.index(
+        "preflight_paddleocr_text_target_chain"
+    )
+    assert script_keys.index("preflight_paddleocr_text_target_chain") < script_keys.index(
+        "build_paddleocr_text_extraction_eval_summary"
+    )
+    assert script_keys.index("build_paddleocr_text_extraction_eval_summary") < script_keys.index(
+        "gate_paddleocr_text_extraction_target"
+    )
+    template_step = next(step for step in plan["steps"] if step["script_key"] == "export_supplement_ocr_ground_truth_template")
+    bundle_step = next(step for step in plan["steps"] if step["script_key"] == "build_supplement_ocr_ground_truth_review_bundle")
+    gate_step = next(step for step in plan["steps"] if step["script_key"] == "gate_supplement_ocr_benchmark")
+    target_gate_step = next(step for step in plan["steps"] if step["script_key"] == "gate_paddleocr_text_extraction_target")
+    assert "teacher_safe_ocr_candidates" in template_step["input_roles"]
+    assert "private_ground_truth_image_fixtures" in template_step["output_roles"]
+    assert "human_reviewed_ground_truth" in bundle_step["output_roles"]
+    assert "ground_truth_preflight_summary" in gate_step["input_roles"]
+    assert target_gate_step["gate_policy"] == "stop_training_only_if_95_percent_target_reached"
     assert (
         "brand_csv_apply_requires_contact_sheet_preflight_and_all_rows_reviewed"
         not in plan["common_safety_rules"]

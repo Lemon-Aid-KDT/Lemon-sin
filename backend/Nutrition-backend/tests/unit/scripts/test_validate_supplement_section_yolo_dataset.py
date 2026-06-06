@@ -18,6 +18,7 @@ SECTION_CLASS_NAMES = [
     "supplement_facts",
     "ingredient_amounts",
     "precautions",
+    "allergen_warning",
     "intake_method",
     "other_ingredients",
     "functional_claims",
@@ -86,6 +87,7 @@ def test_validate_dataset_accepts_section_contract_without_files(tmp_path: Path)
         "supplement_facts",
         "ingredient_amounts",
         "precautions",
+        "allergen_warning",
         "intake_method",
         "other_ingredients",
         "functional_claims",
@@ -120,6 +122,15 @@ def test_validate_dataset_rejects_missing_precautions_class(tmp_path: Path) -> N
     )
 
     with pytest.raises(validator.DatasetContractError, match="precautions"):
+        validator.validate_dataset(yaml_path)
+
+
+def test_validate_dataset_rejects_missing_allergen_warning_class(tmp_path: Path) -> None:
+    """Verify dedicated allergen warning section class is mandatory."""
+    names = [name for name in SECTION_CLASS_NAMES if name != "allergen_warning"]
+    yaml_path = _write_dataset_yaml(tmp_path, names=names)
+
+    with pytest.raises(validator.DatasetContractError, match="allergen_warning"):
         validator.validate_dataset(yaml_path)
 
 

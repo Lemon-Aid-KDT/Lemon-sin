@@ -660,6 +660,18 @@ class Settings(BaseSettings):
         le=50,
         description="식단 YOLO가 review UI에 반환할 최대 후보 수.",
     )
+    label_studio_url: str = Field(
+        default="http://localhost:8080",
+        description="Label Studio 기본 URL. YOLO section annotation API 연동에 사용.",
+    )
+    label_studio_api_token: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Label Studio Personal Access Token. YOLO section bbox annotation을 "
+            "API로 가져올 때 사용한다(.env 의 LABEL_STUDIO_API_TOKEN). 미설정 시 "
+            "파일 export 경로만 사용한다."
+        ),
+    )
     enable_image_learning_pipeline: bool = Field(
         default=False,
         description="가명화 영양제 이미지의 학습 데이터셋 적재 활성화. docs/17 §9 게이트 #3 필요.",

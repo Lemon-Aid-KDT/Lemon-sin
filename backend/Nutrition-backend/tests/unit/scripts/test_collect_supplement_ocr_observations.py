@@ -358,6 +358,74 @@ def test_build_reference_text_reads_v3_name_fields() -> None:
     assert reference == "비타민 C 1000 mg zinc"
 
 
+def test_attach_text_extraction_metrics_uses_full_text_without_raw_storage() -> None:
+    """Verify target-gate metrics are attached without persisting OCR text."""
+    row: dict[str, object] = {"warning_codes": []}
+
+    collector._attach_text_extraction_metrics(
+        row=row,
+        ocr_result=collector.OCRResult(text="Vitamin C 500 mg", provider="paddleocr_local"),
+        expected={
+            "verification_status": "human_reviewed",
+            "text": "Vitamin C 500 mg",
+        },
+    )
+
+    assert row["metric_source"] == "in_memory_provider_result"
+    assert row["text_metric_reference_source"] == "expected.text"
+    assert row["normalized_text_precision"] == 1.0
+    assert row["normalized_text_recall"] == 1.0
+    assert row["normalized_text_f1"] == 1.0
+    serialized = json.dumps(row, ensure_ascii=False).lower()
+    assert "vitamin" not in serialized
+    assert "raw_ocr_text" not in serialized
+    assert "provider_payload" not in serialized
+
+
+def test_attach_text_extraction_metrics_scores_precision_and_recall() -> None:
+    """Verify extra and missing OCR characters affect target-gate metrics."""
+    row: dict[str, object] = {}
+
+    collector._attach_text_extraction_metrics(
+        row=row,
+        ocr_result=collector.OCRResult(text="abcxyz", provider="paddleocr_local"),
+        expected={
+            "verification_status": "human_reviewed",
+            "text": "abc",
+        },
+    )
+
+    assert row["matched_char_count"] == 3
+    assert row["reference_char_count"] == 3
+    assert row["hypothesis_char_count"] == 6
+    assert row["normalized_text_precision"] == 0.5
+    assert row["normalized_text_recall"] == 1.0
+    assert row["normalized_text_f1"] == 0.6667
+
+
+def test_attach_text_extraction_metrics_uses_structured_expected_fallback() -> None:
+    """Verify structured expected sections can be scored for gate metrics."""
+    row: dict[str, object] = {}
+
+    collector._attach_text_extraction_metrics(
+        row=row,
+        ocr_result=collector.OCRResult(
+            text="ZMA Magnesium 100 mg Take daily Consult pharmacist",
+            provider="paddleocr_local",
+        ),
+        expected={
+            "verification_status": "human_reviewed",
+            "product_name": "ZMA",
+            "ingredients": [{"display_name": "Magnesium", "amount": 100, "unit": "mg"}],
+            "intake_method": {"text": "Take daily"},
+            "precautions": [{"text": "Consult pharmacist"}],
+        },
+    )
+
+    assert row["text_metric_reference_source"] == "expected.structured_sections"
+    assert row["normalized_text_f1"] == 1.0
+
+
 def test_matched_expected_ingredients_splits_compound_v3_names() -> None:
     """Verify comma-joined V3 expected names are matched individually."""
     normalized_text = collector._normalize_text("비타민K 비타민D 엽산")

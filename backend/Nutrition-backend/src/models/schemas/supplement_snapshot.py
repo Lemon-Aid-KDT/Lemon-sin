@@ -54,6 +54,7 @@ SnapshotSectionType = Literal[
     "functional_info",
     "intake_method",
     "precautions",
+    "allergen_warning",
     "ingredients",
     "storage_method",
     "unknown",
@@ -1144,16 +1145,17 @@ def _section_type_from_legacy_ref(ref: str) -> SnapshotSectionType:
     Returns:
         Phase 1 section type.
     """
-    if "nutrition_function_info" in ref:
-        return "nutrition_info"
-    if "functionality" in ref:
-        return "functional_info"
-    if "intake_method" in ref:
-        return "intake_method"
-    if "precautions" in ref:
-        return "precautions"
-    if "ingredients" in ref:
-        return "ingredients"
+    section_markers: tuple[tuple[tuple[str, ...], SnapshotSectionType], ...] = (
+        (("nutrition_function_info",), "nutrition_info"),
+        (("functionality",), "functional_info"),
+        (("intake_method",), "intake_method"),
+        (("allergen", "allergy"), "allergen_warning"),
+        (("precautions",), "precautions"),
+        (("ingredients",), "ingredients"),
+    )
+    for markers, section_type in section_markers:
+        if any(marker in ref for marker in markers):
+            return section_type
     return "unknown"
 
 
@@ -1172,7 +1174,7 @@ def _map_v2_section_type(section_type: str) -> SnapshotSectionType:
         return "functional_info"
     if section_type == "daily_intake":
         return "intake_method"
-    if section_type in {"intake_method", "precautions", "ingredients"}:
+    if section_type in {"intake_method", "precautions", "allergen_warning", "ingredients"}:
         return section_type  # type: ignore[return-value]
     return "unknown"
 

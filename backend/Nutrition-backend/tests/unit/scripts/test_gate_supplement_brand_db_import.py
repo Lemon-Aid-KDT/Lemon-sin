@@ -97,6 +97,8 @@ def test_brand_db_import_gate_blocks_blank_review(tmp_path: Path) -> None:
     assert summary["product_import_manifest_allowed"] is False
     assert summary["db_import_apply_allowed_now"] is False
     assert summary["db_import_apply_allowed_after_dry_run"] is False
+    assert summary["brand_decision_preflight_hash"].startswith("fp-")
+    assert len(summary["brand_decision_preflight_hash"]) == 15
     assert summary["blank_decision_count"] == 388
     assert "complete_operator_brand_review" in summary["next_steps"]
     assert "blocked_by_operator_review" in markdown

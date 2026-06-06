@@ -35,6 +35,7 @@ TEACHER_PROVIDERS = ("clova_ocr", "google_vision_document")
 TARGET_PROVIDER = "paddleocr_local"
 MAX_INGREDIENTS = 80
 MAX_PRECAUTIONS = 40
+MAX_ALLERGEN_WARNINGS = 40
 MAX_FUNCTIONAL_CLAIMS = 30
 MAX_TEXT_LENGTH = 512
 MAX_SHORT_TEXT_LENGTH = 160
@@ -46,10 +47,22 @@ ALLOWED_LABEL_SECTIONS = frozenset(
         "ingredient_amounts",
         "intake_method",
         "precautions",
+        "allergen_warning",
         "other_ingredients",
         "functional_claims",
     }
 )
+ALLOWED_REQUIRED_EXPECTED_SECTIONS = frozenset(
+    {
+        "product_identity",
+        "ingredient_amounts",
+        "intake_method",
+        "precautions",
+        "allergen_warnings",
+        "functional_claims",
+    }
+)
+DEFAULT_REQUIRED_EXPECTED_SECTIONS = ("ingredient_amounts",)
 RAW_FORBIDDEN_KEYS = frozenset(
     {
         "api_key",
@@ -102,6 +115,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--source-run-id", default=None)
     parser.add_argument(
+        "--required-expected-section",
+        action="append",
+        choices=sorted(ALLOWED_REQUIRED_EXPECTED_SECTIONS),
+        default=None,
+        help=(
+            "Expected section that must be present before a fixture is scoreable. "
+            "Can be passed multiple times. Defaults to ingredient_amounts."
+        ),
+    )
+    parser.add_argument(
         "--source-root",
         type=Path,
         default=None,
@@ -137,6 +160,7 @@ def main(argv: list[str] | None = None) -> None:
             source_root=args.source_root,
             materialized_image_dir=args.materialized_image_dir,
             output_manifest_path=output_path,
+            required_expected_sections=args.required_expected_section,
         )
         _reject_unsafe_payload({"rows": rows, "summary": summary})
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,6 +201,7 @@ def build_ocr_benchmark_manifest(
     source_root: Path | None = None,
     materialized_image_dir: Path | None = None,
     output_manifest_path: Path | None = None,
+    required_expected_sections: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Build benchmark fixture rows from candidates and manual ground truth.
 
@@ -191,6 +216,8 @@ def build_ocr_benchmark_manifest(
             image fixture copies.
         output_manifest_path: Optional benchmark manifest path used to write
             relative ``image_path`` references.
+        required_expected_sections: Expected sections that must be present
+            before a human-reviewed row can become a benchmark fixture.
 
     Returns:
         Benchmark fixture rows and a redacted summary.
@@ -201,8 +228,10 @@ def build_ocr_benchmark_manifest(
     candidates = _read_jsonl(candidate_manifest)
     decisions = _manual_ground_truth_by_key(_read_jsonl(ground_truth_manifest))
     source_paths = _source_paths_by_image_ref_hash(source_root) if materialized_image_dir else {}
+    required_sections = _required_expected_sections(required_expected_sections)
     rows: list[dict[str, Any]] = []
     skip_reasons: Counter[str] = Counter()
+    missing_required_section_counts: Counter[str] = Counter()
 
     for candidate in candidates:
         _reject_unsafe_payload(candidate)
@@ -215,12 +244,18 @@ def build_ocr_benchmark_manifest(
             skip_reasons["missing_manual_ground_truth"] += 1
             continue
         _reject_unsafe_payload(decision)
-        if not _ground_truth_is_approved(decision):
-            skip_reasons["manual_ground_truth_not_human_reviewed"] += 1
+        block_reason = _manual_ground_truth_block_reason(decision)
+        if block_reason is not None:
+            skip_reasons[block_reason] += 1
             continue
         expected = _expected_from_decision(decision)
         if not expected["ingredients"]:
             skip_reasons["manual_ground_truth_missing_ingredients"] += 1
+            continue
+        missing_sections = _missing_required_expected_sections(expected, required_sections)
+        if missing_sections:
+            skip_reasons["manual_ground_truth_missing_required_sections"] += 1
+            missing_required_section_counts.update(missing_sections)
             continue
         image_path = None
         if materialized_image_dir is not None:
@@ -239,6 +274,7 @@ def build_ocr_benchmark_manifest(
                 expected=expected,
                 source_run_id=source_run_id,
                 image_path=image_path,
+                required_expected_sections=required_sections,
             )
         )
 
@@ -250,7 +286,9 @@ def build_ocr_benchmark_manifest(
         decision_count=len(decisions),
         rows=rows,
         skip_reasons=skip_reasons,
+        missing_required_section_counts=missing_required_section_counts,
         image_materialization_requested=materialized_image_dir is not None,
+        required_expected_sections=required_sections,
     )
     _reject_unsafe_payload({"rows": rows, "summary": summary})
     return rows, summary
@@ -262,6 +300,7 @@ def _benchmark_row(
     expected: dict[str, Any],
     source_run_id: str | None,
     image_path: str | None,
+    required_expected_sections: tuple[str, ...],
 ) -> dict[str, Any]:
     """Return one redacted provider benchmark fixture row.
 
@@ -270,6 +309,7 @@ def _benchmark_row(
         expected: Sanitized human-reviewed expected fields.
         source_run_id: Optional operator run id.
         image_path: Optional relative hashed fixture image path.
+        required_expected_sections: Expected sections required for this run.
 
     Returns:
         JSON-safe benchmark row.
@@ -281,11 +321,13 @@ def _benchmark_row(
         "source_ref": _safe_required_token(candidate.get("source_ref"), field_name="source_ref"),
         "image_ref_hash": _safe_required_sha256(candidate.get("image_ref_hash")),
         "image_sha256": _safe_required_sha256(candidate.get("image_sha256")),
+        "product_dir_hash": _safe_required_sha256(candidate.get("product_dir_hash")),
         "image_size_bytes": _safe_nonnegative_int(candidate.get("image_size_bytes")),
         "image_mime_type": _safe_optional_text(candidate.get("image_mime_type"), max_length=80),
         "category_key": _safe_required_token(candidate.get("category_key"), field_name="category_key"),
         "source_kind": "review",
         "expected": expected,
+        "required_expected_sections": list(required_expected_sections),
         "benchmark_providers": list(DEFAULT_PROVIDERS),
         "teacher_providers": list(TEACHER_PROVIDERS),
         "target_provider": TARGET_PROVIDER,
@@ -376,16 +418,33 @@ def _ground_truth_is_approved(row: dict[str, Any]) -> bool:
     Returns:
         True when the row can be used as a benchmark fixture.
     """
+    return _manual_ground_truth_block_reason(row) is None
+
+
+def _manual_ground_truth_block_reason(row: dict[str, Any]) -> str | None:
+    """Return the benchmark blocker for one manual ground-truth row.
+
+    Args:
+        row: Manual ground-truth row.
+
+    Returns:
+        Stable skip reason when the row cannot be promoted, otherwise None.
+    """
     decision = row.get("decision")
     status = row.get("ground_truth_status") or row.get("verification_status")
     expected = row.get("expected") if isinstance(row.get("expected"), dict) else {}
     expected_status = expected.get("verification_status") if isinstance(expected, dict) else None
-    return (
-        decision in {None, "approve", "approved"}
-        and status in {"human_reviewed", "verified", "approved"}
-        and expected_status in {None, "human_reviewed", "verified", "approved"}
-        and row.get("contains_personal_data") is False
-    )
+    if row.get("contains_personal_data") is not False:
+        return "manual_ground_truth_personal_data_not_cleared"
+    if row.get("ready_for_benchmark_after_review") is False:
+        return "manual_ground_truth_not_marked_ready_for_benchmark"
+    if decision not in {None, "approve", "approved"}:
+        return "manual_ground_truth_not_human_reviewed"
+    if status not in {"human_reviewed", "verified", "approved"}:
+        return "manual_ground_truth_not_human_reviewed"
+    if expected_status not in {None, "human_reviewed", "verified", "approved"}:
+        return "manual_ground_truth_not_human_reviewed"
+    return None
 
 
 def _expected_from_decision(row: dict[str, Any]) -> dict[str, Any]:
@@ -407,6 +466,10 @@ def _expected_from_decision(row: dict[str, Any]) -> dict[str, Any]:
         "ingredients": _ingredient_rows(expected.get("ingredients")),
         "intake_method": _intake_method(expected.get("intake_method")),
         "precautions": _text_rows(expected.get("precautions"), limit=MAX_PRECAUTIONS),
+        "allergen_warnings": _text_rows(
+            expected.get("allergen_warnings") or expected.get("allergen_warning"),
+            limit=MAX_ALLERGEN_WARNINGS,
+        ),
         "functional_claims": _text_rows(
             expected.get("functional_claims"),
             limit=MAX_FUNCTIONAL_CLAIMS,
@@ -417,6 +480,68 @@ def _expected_from_decision(row: dict[str, Any]) -> dict[str, Any]:
     if not sanitized["warnings"]:
         sanitized.pop("warnings")
     return sanitized
+
+
+def _required_expected_sections(
+    value: list[str] | tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    """Return a validated required expected-section tuple.
+
+    Args:
+        value: Optional section list from CLI or caller.
+
+    Returns:
+        Deduplicated expected-section tuple.
+
+    Raises:
+        ValueError: If a section is unsupported.
+    """
+    raw_sections = value or DEFAULT_REQUIRED_EXPECTED_SECTIONS
+    sections: list[str] = []
+    for section in raw_sections:
+        if section not in ALLOWED_REQUIRED_EXPECTED_SECTIONS:
+            raise ValueError(f"Unsupported required expected section: {section}")
+        if section not in sections:
+            sections.append(section)
+    if not sections:
+        return DEFAULT_REQUIRED_EXPECTED_SECTIONS
+    return tuple(sections)
+
+
+def _missing_required_expected_sections(
+    expected: dict[str, Any],
+    required_sections: tuple[str, ...],
+) -> list[str]:
+    """Return required expected sections that are not present.
+
+    Args:
+        expected: Sanitized human-reviewed expected fields.
+        required_sections: Expected section keys required by this run.
+
+    Returns:
+        Missing section keys.
+    """
+    missing: list[str] = []
+    for section in required_sections:
+        if section == "product_identity":
+            if not (expected.get("product_name") or expected.get("manufacturer")):
+                missing.append(section)
+        elif section == "ingredient_amounts":
+            if not expected.get("ingredients"):
+                missing.append(section)
+        elif section == "intake_method":
+            intake = expected.get("intake_method")
+            if not isinstance(intake, dict) or not intake:
+                missing.append(section)
+        elif section == "precautions":
+            if not expected.get("precautions"):
+                missing.append(section)
+        elif section == "allergen_warnings":
+            if not expected.get("allergen_warnings"):
+                missing.append(section)
+        elif section == "functional_claims" and not expected.get("functional_claims"):
+            missing.append(section)
+    return missing
 
 
 def _ingredient_rows(value: Any) -> list[dict[str, Any]]:
@@ -537,7 +662,9 @@ def _summary(
     decision_count: int,
     rows: list[dict[str, Any]],
     skip_reasons: Counter[str],
+    missing_required_section_counts: Counter[str],
     image_materialization_requested: bool,
+    required_expected_sections: tuple[str, ...],
 ) -> dict[str, Any]:
     """Return a redacted benchmark build summary.
 
@@ -549,8 +676,10 @@ def _summary(
         decision_count: Manual decision input row count.
         rows: Benchmark output rows.
         skip_reasons: Skip reason counts.
+        missing_required_section_counts: Missing required expected-section counts.
         image_materialization_requested: Whether private hashed image copies
             were requested.
+        required_expected_sections: Expected sections required for this run.
 
     Returns:
         JSON-safe summary.
@@ -567,6 +696,8 @@ def _summary(
         "ground_truth_decision_count": decision_count,
         "benchmark_fixture_count": len(rows),
         "skip_reason_counts": dict(sorted(skip_reasons.items())),
+        "required_expected_sections": list(required_expected_sections),
+        "missing_required_section_counts": dict(sorted(missing_required_section_counts.items())),
         "provider_plan": {
             "teacher_providers": list(TEACHER_PROVIDERS),
             "target_provider": TARGET_PROVIDER,

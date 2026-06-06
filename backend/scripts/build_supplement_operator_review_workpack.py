@@ -65,7 +65,7 @@ BUNDLE_INPUTS = {
     "yolo_section_annotation": {
         "input_key": "yolo_bundle_summary",
         "schema": YOLO_BUNDLE_SCHEMA,
-        "optional_files": ("html_index_name", "readme_name", "label_studio_task_name"),
+        "optional_files": ("html_index_name", "readme_name", "label_studio_tasks_name"),
         "primary_editable_field": "annotation_template_name",
     },
 }
@@ -179,6 +179,7 @@ QUEUE_DECISION_GUIDES = {
             "ingredient_amounts",
             "intake_method",
             "precautions",
+            "allergen_warning",
             "other_ingredients",
             "product_identity",
         ),
@@ -424,6 +425,16 @@ def _write_batch_workpack(
         "row_index_end": batch_exporter._positive_int(batch.get("row_index_end")),
         "pending_row_count": batch_exporter._non_negative_int(batch.get("pending_row_count")),
         "bundle_file_names": bundle_files,
+        "visual_index_available": _visual_index_available(bundle_summary),
+        "visual_index_file_name": _visual_index_file_name(bundle_summary),
+        "visual_index_reviewable_row_count": _bundle_non_negative_int(
+            bundle_summary,
+            "reviewable_row_count",
+        ),
+        "visual_index_image_count": _bundle_non_negative_int(
+            bundle_summary,
+            "image_copied_count",
+        ),
         "operator_checklist": _safe_string_list(batch.get("operator_checklist")),
         "contact_sheet_available": contact_sheet is not None,
         "contact_sheet_dir_name": _contact_sheet_dir_name(contact_sheet),
@@ -474,6 +485,7 @@ def _build_batch_markdown(row: Mapping[str, Any]) -> str:
     queue_key = batch_exporter._safe_token(str(row["queue_key"]))
     checklist = _markdown_bullets(row.get("operator_checklist"))
     bundle_files = _markdown_bullets(row.get("bundle_file_names"))
+    visual_index = _visual_index_markdown(row)
     contact_sheet = _contact_sheet_markdown(row)
     guide_lines = _markdown_bullets(QUEUE_GUIDES.get(queue_key, ()))
     decision_guide = _build_decision_guide_markdown(queue_key)
@@ -499,6 +511,10 @@ def _build_batch_markdown(row: Mapping[str, Any]) -> str:
             "## Source Bundle Files",
             "",
             bundle_files,
+            "",
+            "## Visual Review Index",
+            "",
+            visual_index,
             "",
             "## Visual Review Contact Sheet",
             "",
@@ -804,6 +820,8 @@ def _contact_sheet_markdown(row: Mapping[str, Any]) -> str:
         Markdown text with safe filenames and coverage counts only.
     """
     if row.get("contact_sheet_available") is not True:
+        if row.get("visual_index_available") is True:
+            return "- none; use the Visual Review Index above for this queue."
         return "- none"
     file_names = _markdown_bullets(row.get("contact_sheet_file_names"))
     return "\n".join(
@@ -815,6 +833,7 @@ def _contact_sheet_markdown(row: Mapping[str, Any]) -> str:
             f"- Rows with thumbnails: `{batch_exporter._non_negative_int(row.get('contact_sheet_rows_with_thumbnails'))}`",
             f"- Rows without thumbnails: `{batch_exporter._non_negative_int(row.get('contact_sheet_rows_without_thumbnails'))}`",
             f"- Thumbnail count: `{batch_exporter._non_negative_int(row.get('contact_sheet_thumbnail_count'))}`",
+            "- Row anchors: append `#row-001`, `#row-002`, ... to the HTML file for triage row hints.",
             "- Use this only as visual context for brand/product review; do not copy visible text into notes.",
         ]
     )
@@ -846,6 +865,72 @@ def _bundle_file_names(
             if safe not in names:
                 names.append(safe)
     return names
+
+
+def _visual_index_available(bundle_summary: Mapping[str, Any]) -> bool:
+    """Return whether a bundle has a safe visual review index.
+
+    Args:
+        bundle_summary: Source bundle summary.
+
+    Returns:
+        True when a safe HTML index filename is available.
+    """
+    return _visual_index_file_name(bundle_summary) is not None
+
+
+def _visual_index_file_name(bundle_summary: Mapping[str, Any]) -> str | None:
+    """Return the safe visual review index filename from a bundle summary.
+
+    Args:
+        bundle_summary: Source bundle summary.
+
+    Returns:
+        Safe HTML index filename, if present.
+    """
+    value = bundle_summary.get("html_index_name")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return batch_exporter._safe_filename(value)
+
+
+def _bundle_non_negative_int(
+    bundle_summary: Mapping[str, Any],
+    key: str,
+) -> int | None:
+    """Return a safe optional count from a bundle summary.
+
+    Args:
+        bundle_summary: Source bundle summary.
+        key: Count field name.
+
+    Returns:
+        Non-negative integer, or None when absent.
+    """
+    if key not in bundle_summary:
+        return None
+    return batch_exporter._non_negative_int(bundle_summary.get(key))
+
+
+def _visual_index_markdown(row: Mapping[str, Any]) -> str:
+    """Build safe visual-index guidance for a batch.
+
+    Args:
+        row: Redacted workpack row.
+
+    Returns:
+        Markdown text with safe filenames and counts only.
+    """
+    if row.get("visual_index_available") is not True:
+        return "- none"
+    file_name = batch_exporter._safe_filename(str(row.get("visual_index_file_name") or ""))
+    lines = [
+        f"- HTML index: `{file_name}`",
+        f"- Reviewable rows: `{batch_exporter._non_negative_int(row.get('visual_index_reviewable_row_count'))}`",
+        f"- Copied review images: `{batch_exporter._non_negative_int(row.get('visual_index_image_count'))}`",
+        "- Use the HTML index for visual-only review; do not copy visible text, source refs, or image paths into decisions.",
+    ]
+    return "\n".join(lines)
 
 
 def _export_rows_by_batch(rows: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
