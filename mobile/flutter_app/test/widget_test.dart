@@ -61,10 +61,24 @@ void main() {
 
     expect(repository.grantedConsent, isTrue);
     expect(repository.sentRequests, hasLength(1));
+    await tester.drag(find.byType(ListView), const Offset(0, -800));
+    await tester.pumpAndSettle();
     expect(repository.sentRequests.single.message, contains('셀레늄'));
     expect(find.textContaining('리튬은 혈중 농도'), findsOneWidget);
     expect(find.text('sglang'), findsOneWidget);
-    expect(find.textContaining('medlineplus-lithium'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, 800));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('medlineplus-lithium'), findsWidgets);
+    await tester.drag(find.byType(ListView), const Offset(0, -320));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Analysis preview'), findsOneWidget);
+    expect(find.textContaining('analysis_pending'), findsOneWidget);
+    expect(find.textContaining('level_2_recent_pattern'), findsOneWidget);
+    expect(find.textContaining('check soup and sauce intake'), findsOneWidget);
+    expect(find.text('Approval required'), findsOneWidget);
+    expect(find.textContaining('No side effects'), findsOneWidget);
   });
 
   testWidgets('supplement flow uses routine record and analysis UI',
@@ -139,6 +153,53 @@ class _FakeChatRepository implements ChatRepository {
         ],
         'requires_user_approval': false,
         'ctas': <String>['ask_about_this_result'],
+        'analysis_snapshot': <String, dynamic>{
+          'today_analysis': <String, dynamic>{
+            'schema_version': 'today-analysis-snapshot-v1',
+            'status': 'analysis_pending',
+          },
+          'smart_analysis': <String, dynamic>{
+            'schema_version': 'health-analysis-snapshot-v1',
+            'readiness_level': 'level_2_recent_pattern',
+          },
+        },
+        'today_analysis': <String, dynamic>{
+          'schema_version': 'today-analysis-snapshot-v1',
+          'status': 'analysis_pending',
+          'missing_records': <String>['food_records'],
+        },
+        'smart_analysis': <String, dynamic>{
+          'schema_version': 'health-analysis-snapshot-v1',
+          'readiness_level': 'level_2_recent_pattern',
+        },
+        'checklist_candidates': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'candidate_id': 'checklist-candidate-v1-1',
+            'kind': 'today_practice',
+            'title': 'check soup and sauce intake',
+            'source': 'today_analysis',
+            'approval_state': 'approval_required',
+            'side_effect': 'none',
+            'deferred_action': 'add_today_practice',
+          },
+        ],
+        'approval_preview': <String, dynamic>{
+          'schema_version': 'approval-preview-v1',
+          'required': true,
+          'approval_state': 'approval_required',
+          'will_persist': false,
+          'will_schedule_notification': false,
+          'will_add_today_practice': false,
+          'side_effects': <String>[],
+          'actions': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'action': 'add_today_practice',
+              'candidate_id': 'checklist-candidate-v1-1',
+              'status': 'approval_required',
+              'side_effect': 'none',
+            },
+          ],
+        },
       },
     );
   }

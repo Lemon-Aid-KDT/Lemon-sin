@@ -219,4 +219,106 @@ void main() {
     ]);
     expect(response.hasCtas, isTrue);
   });
+
+  test('chatbot response preserves day05 analysis and approval contract', () {
+    final ChatbotResponse response = ChatbotResponse.fromJson(
+      <String, dynamic>{
+        'request_id': 'chat-response-2',
+        'message': 'Analysis preview is ready.',
+        'provider': 'sglang',
+        'used_tools': <String>['chatbot_agent', 'agent_memory'],
+        'safety_warnings': <String>[],
+        'source_families': <String>[],
+        'answerability': 'needs_more_info',
+        'sources': <Map<String, dynamic>>[],
+        'requires_user_approval': true,
+        'ctas': <String>[
+          'run_or_refresh_analysis',
+          'ask_about_this_result',
+          'complete_missing_record',
+        ],
+        'analysis_snapshot': <String, dynamic>{
+          'today_analysis': <String, dynamic>{
+            'schema_version': 'today-analysis-snapshot-v1',
+            'status': 'analysis_pending',
+            'missing_records': <String>['food_records'],
+          },
+          'smart_analysis': <String, dynamic>{
+            'schema_version': 'health-analysis-snapshot-v1',
+            'readiness_level': 'level_2_recent_pattern',
+          },
+        },
+        'today_analysis': <String, dynamic>{
+          'schema_version': 'today-analysis-snapshot-v1',
+          'status': 'analysis_pending',
+          'missing_records': <String>['food_records'],
+        },
+        'smart_analysis': <String, dynamic>{
+          'schema_version': 'health-analysis-snapshot-v1',
+          'readiness_level': 'level_2_recent_pattern',
+          'coverage': <String, dynamic>{'food': true},
+        },
+        'checklist_candidates': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'candidate_id': 'checklist-candidate-v1-1',
+            'kind': 'today_practice',
+            'title': 'check soup and sauce intake',
+            'source': 'today_analysis',
+            'approval_state': 'approval_required',
+            'side_effect': 'none',
+            'deferred_action': 'add_today_practice',
+          },
+        ],
+        'approval_preview': <String, dynamic>{
+          'schema_version': 'approval-preview-v1',
+          'required': true,
+          'approval_state': 'approval_required',
+          'will_persist': false,
+          'will_schedule_notification': false,
+          'will_add_today_practice': false,
+          'side_effects': <String>[],
+          'actions': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'action': 'add_today_practice',
+              'candidate_id': 'checklist-candidate-v1-1',
+              'status': 'approval_required',
+              'side_effect': 'none',
+            },
+          ],
+        },
+      },
+    );
+
+    expect(response.rawCtas, <String>[
+      'run_or_refresh_analysis',
+      'ask_about_this_result',
+      'complete_missing_record',
+    ]);
+    expect(response.ctas, <ChatbotCta>[
+      ChatbotCta.runOrRefreshAnalysis,
+      ChatbotCta.askAboutThisResult,
+      ChatbotCta.completeMissingRecord,
+    ]);
+    expect(
+      response.analysisSnapshot['today_analysis'],
+      response.todayAnalysis,
+    );
+    expect(response.todayAnalysis['missing_records'], <String>['food_records']);
+    expect(response.smartAnalysis['coverage'], <String, dynamic>{'food': true});
+    expect(
+      response.checklistCandidates.single.rawJson['source'],
+      'today_analysis',
+    );
+    expect(
+      response.checklistCandidates.single.title,
+      'check soup and sauce intake',
+    );
+    expect(response.approvalPreview.requiredApproval, isTrue);
+    expect(response.approvalPreview.willPersist, isFalse);
+    expect(
+      response.approvalPreview.actions.single.action,
+      'add_today_practice',
+    );
+    expect(response.hasAnalysisPreview, isTrue);
+  });
 }

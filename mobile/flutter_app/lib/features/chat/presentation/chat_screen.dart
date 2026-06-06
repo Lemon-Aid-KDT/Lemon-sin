@@ -130,8 +130,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
               children: <Widget>[
-                const _IntroCard(),
-                const SizedBox(height: 14),
+                if (_conversation.isEmpty) ...<Widget>[
+                  const _IntroCard(),
+                  const SizedBox(height: 14),
+                ],
                 if (_conversation.isEmpty)
                   _SuggestionGrid(
                     suggestions: _suggestions,
@@ -143,6 +145,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   if (_lastResponse!.hasReviewedSources) ...<Widget>[
                     const SizedBox(height: 10),
                     _SourceBasisPanel(sources: _lastResponse!.sources),
+                  ],
+                  if (_lastResponse!.needsAnswerabilityNotice) ...<Widget>[
+                    const SizedBox(height: 10),
+                    _AnswerabilityNoticePanel(response: _lastResponse!),
+                  ],
+                  if (_lastResponse!.hasAnalysisPreview) ...<Widget>[
+                    const SizedBox(height: 10),
+                    _AnalysisPreviewPanel(response: _lastResponse!),
                   ],
                   if (_lastResponse!.hasCtas) ...<Widget>[
                     const SizedBox(height: 10),
@@ -420,6 +430,13 @@ class _AgentStatusPanel extends StatelessWidget {
             color: LemonColors.leaf,
             backgroundColor: LemonColors.leafSoft,
           ),
+        if (response.sources.isNotEmpty &&
+            response.sources.first.sourceId.isNotEmpty)
+          LemonPill(
+            label: response.sources.first.sourceId,
+            color: LemonColors.leaf,
+            backgroundColor: LemonColors.leafSoft,
+          ),
         if (response.requiresUserApproval)
           const LemonPill(
             label: '승인 필요',
@@ -560,6 +577,161 @@ class _SourceBasisPanel extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnswerabilityNoticePanel extends StatelessWidget {
+  const _AnswerabilityNoticePanel({required this.response});
+
+  final ChatbotResponse response;
+
+  @override
+  Widget build(BuildContext context) {
+    return LemonCard(
+      color: LemonColors.warningSoft,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.report_problem_outlined, color: LemonColors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  _answerabilityLabel(response.answerability),
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                if (response.safetyWarnings.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 6),
+                  for (final String warning in response.safetyWarnings.take(2))
+                    Text(
+                      warning,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalysisPreviewPanel extends StatelessWidget {
+  const _AnalysisPreviewPanel({required this.response});
+
+  final ChatbotResponse response;
+
+  @override
+  Widget build(BuildContext context) {
+    final String todayStatus =
+        _stringValue(response.todayAnalysis['status'], 'unknown');
+    final String readiness = _stringValue(
+      response.smartAnalysis['readiness_level'],
+      'unknown',
+    );
+    final ChatbotApprovalPreview approval = response.approvalPreview;
+
+    return LemonCard(
+      color: LemonColors.skySoft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(Icons.analytics_outlined, color: LemonColors.sky),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Analysis preview',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _PreviewLine(label: 'Today', value: todayStatus),
+          _PreviewLine(label: 'Smart', value: readiness),
+          if (response.sources.isNotEmpty &&
+              response.sources.first.sourceId.isNotEmpty)
+            _PreviewLine(
+              label: 'Source',
+              value: response.sources.first.sourceId,
+            ),
+          if (response.checklistCandidates.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              'Checklist candidates',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 4),
+            for (final ChatbotChecklistCandidate candidate
+                in response.checklistCandidates.take(3))
+              Text(
+                _candidateLabel(candidate),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+          ],
+          if (approval.hasPreview) ...<Widget>[
+            const SizedBox(height: 8),
+            _PreviewLine(
+              label:
+                  approval.requiredApproval ? 'Approval required' : 'Approval',
+              value: approval.approvalState.isEmpty
+                  ? 'not_required'
+                  : approval.approvalState,
+            ),
+            Text(
+              approval.sideEffects.isEmpty
+                  ? 'No side effects'
+                  : 'Side effects: ${approval.sideEffects.join(', ')}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            Text(
+              'Persist: ${approval.willPersist ? 'yes' : 'no'}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewLine extends StatelessWidget {
+  const _PreviewLine({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 112,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
         ],
       ),
     );
@@ -751,4 +923,29 @@ String _sourceLabel(ChatbotSource source) {
     if (source.expiresAt.isNotEmpty) 'expires ${source.expiresAt}',
   ];
   return parts.join(' | ');
+}
+
+extension on ChatbotResponse {
+  bool get needsAnswerabilityNotice {
+    return answerability == 'unknown_no_reviewed_source' ||
+        answerability == 'medical_decision_boundary' ||
+        answerability == 'urgent_escalation' ||
+        answerability == 'needs_more_info';
+  }
+}
+
+String _candidateLabel(ChatbotChecklistCandidate candidate) {
+  final List<String> parts = <String>[
+    if (candidate.title.isNotEmpty) candidate.title,
+    if (candidate.approvalState.isNotEmpty) candidate.approvalState,
+    if (candidate.sideEffect.isNotEmpty) 'side_effect=${candidate.sideEffect}',
+  ];
+  return parts.join(' | ');
+}
+
+String _stringValue(Object? value, String fallback) {
+  if (value is String && value.isNotEmpty) {
+    return value;
+  }
+  return fallback;
 }
