@@ -1,0 +1,396 @@
+﻿file,folder,keep,category,matched_class,folder_match,foods,note
+cold-ramen/1.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(반숙란·오리/차슈·김·쪽파·간무),"뜨거운 쇼유 라멘, 얼음/차가운 요소 없음 → japanese-ramen 폴더 노이즈"
+cold-ramen/10.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(차슈·반숙란·파·채소),"김 나는 뜨거운 쇼유 라멘 → japanese-ramen, 폴더 노이즈"
+cold-ramen/11.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(닭가슴살 차슈·반숙란·새싹),"맑은 뜨거운 라멘 → japanese-ramen, 폴더 노이즈"
+cold-ramen/12.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,냉라멘(오이·소고기·죽순·김),오이 고명·차가운 스타일 라멘 → cold-ramen 일치
+cold-ramen/13.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,냉라멘(레몬·차조기·만두·맑은육수),레몬슬라이스 띄운 차가운 맑은 육수 라멘 → cold-ramen 일치
+cold-ramen/14.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,냉라멘(오이·방울토마토·나루토·고기·김),오이·토마토 고명 히야시 스타일 차가운 라멘 → cold-ramen 일치
+cold-ramen/15.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"일본 라멘 (차슈, 멘마, 김, 어묵, 파)","뜨거운 쇼유 라멘, 냉라멘 아님 - 폴더 노이즈"
+cold-ramen/16.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"일본 라멘 (차슈, 멘마, 김, 파)","뜨거운 라멘, 얼음/차가운 요소 없음 - 폴더 노이즈"
+cold-ramen/17.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"라멘 (멘마, 채썬파, 무순, 김)","국물 적은 라멘이나 따뜻한 일본 라멘으로 판단, 냉라멘 단서 약함"
+cold-ramen/18.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"라멘 (멘마, 채썬파, 무순, 김)","17과 유사 구성, 따뜻한 일본 라멘으로 판단"
+cold-ramen/19.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"오리(돼지)고기 슬라이스 라멘 (멘마, 파)","맑은 쇼유 라멘, 뜨거운 일본 라멘 - 폴더 노이즈"
+cold-ramen/2.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"라멘 (연근, 차슈, 채썬파, 방울토마토)","토마토 고명 있으나 뜨거운 국물 라멘, 냉라멘 단서 없음"
+cold-ramen/20.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(오이·죽순·어묵·차슈 토핑),오이 토핑 있으나 국물 가득한 따뜻한 쇼유 라멘이라 일반 일본라멘으로 판정
+cold-ramen/21.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,시오 라멘(차슈·반숙란·죽순·파),"맑은 따뜻한 국물의 일반 일본라멘, 냉라멘 아님"
+cold-ramen/22.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(차슈·꽈리고추·어묵·파),"따뜻한 쇼유 라멘, 얼음/차가운 요소 없음"
+cold-ramen/23.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,냉라멘/히야시츄카(오이채·붉은 절임·김·햄·파),"차가운 토핑을 색색으로 올린 전형적 히야시츄카, 진짜 냉라멘"
+cold-ramen/24.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,시오 라멘(차슈·반숙란·파·김),"맑은 따뜻한 국물 일본라멘, 냉라멘 아님"
+cold-ramen/25.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(차슈·파·면),"따뜻한 국물의 일반 일본라멘, 얼음 없음"
+cold-ramen/26.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"냉라멘(차가운 라멘, 옥수수·햄·미역·파)","맑은 차가운 국물+냉라멘 토핑, 일본어로 冷やしラーメン 명시"
+cold-ramen/27.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,맑은 국물 라멘(옥수수·김),"매우 연한 투명 국물+옥수수 토핑, 냉라멘 스타일"
+cold-ramen/28.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,맑은 간장국물 라멘(햄·죽순·양파),투명 간장국물+슬라이스햄·다진양파 냉라멘 토핑
+cold-ramen/29.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(차슈·반숙란·파),"얼음·냉기 단서 없는 뜨거운 라멘, 차슈+반숙란"
+cold-ramen/3.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,맑은 국물 라멘(삶은계란·파),연한 맑은 국물이나 얼음 없이 따뜻하게 제공된 라멘
+cold-ramen/30.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,라멘(완탕·반숙란·파·깨),"완탕+반숙란 얹은 뜨거운 라멘, 냉기 단서 없음"
+cold-ramen/31.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"완탕면(라멘) - 완탕, 반숙란, 무순, 맑은 간장 육수","맑은 간장 완탕 라멘, 얼음 없이 따뜻해 보임 → japanese-ramen"
+cold-ramen/32.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"냉라멘 - 맑은 육수, 토마토, 닭고기/햄, 무순",토마토·시원한 맑은 육수의 히야시(냉) 라멘 단일 → cold-ramen
+cold-ramen/33.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"냉라멘 - 차슈, 반숙란, 파채, 채소, 얼음 슬러시 육수",육수에 잘게 부순 얼음(슬러시) 보임 → 차가운 냉라멘 cold-ramen
+cold-ramen/34.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"라멘 - 차슈, 반숙란, 파, 맑은 시오/쇼유 육수",얼음 없는 따뜻한 맑은 라멘 단일 → japanese-ramen
+cold-ramen/35.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"라멘 - 차슈, 파채, 깻잎/차조기, 맑은 육수",얼음 없는 맑은 따뜻한 라멘으로 보임 → japanese-ramen
+cold-ramen/36.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"냉라멘 - 차슈, 토마토, 반숙란, 무순, 유리볼; 옆에 라멘스프 가루 박스","유리볼·토마토의 차가운 냉라멘 단일 메인, 옆 스프박스는 곁요소 → cold-ramen"
+cold-ramen/37.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(8번라멘 냉라멘) - 차슈, 죽순, 새싹, 어묵","8ban 하이시 냉라멘, 맑은 차가운 육수에 차가운 토핑, 메인 1개 단일"
+cold-ramen/39.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,차가운 라멘(8번 냉라멘) 메인 + 뒤쪽 군만두/단무지 곁들이,"중앙 메인은 냉라멘 1그릇, 뒤 군만두는 배경 곁들이로 무시"
+cold-ramen/4.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(히야시츄카) - 햄, 삶은달걀, 오크라, 맑은 냉육수","투명 냉육수+차가운 토핑 전형적 냉라멘, 단일 메인"
+cold-ramen/40.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(히야시츄카) - 오이채, 토마토, 지단채, 차가운 면","차가운 토핑·냉소스 냉라멘, 단일 메인"
+cold-ramen/41.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘 - 오이채, 숙주, 나루토, 소고기, 고추실","차가운 면+생오이·숙주 토핑 냉라멘, 단일 메인"
+cold-ramen/42.jpg,cold-ramen,DROP,ood,japanese-ramen,False,"뜨거운 일본라멘 - 차슈, 반숙달걀, 미역, 죽순, 가쓰오부시","얼음/차가움 없는 뜨거운 일반 라멘이라 cold-ramen 아님, 폴더 노이즈"
+cold-ramen/43.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(냉라멘) - 맑은 육수에 얼음, 햄, 삶은계란 반쪽, 깨, 무순","육수에 얼음이 보이는 전형적 냉라멘, 메인 1개"
+cold-ramen/44.jpg,cold-ramen,DROP,ood,none,False,"맑은 육수 면요리 - 닭가슴살, 파, 면, 깨",우측 하단 YUUKISAKABA 워터마크 박힘 → OOD
+cold-ramen/45.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"뜨거운 간장라멘 - 미역, 멘마, 차슈, 파","얼음 없는 따뜻한 쇼유라멘이라 japanese-ramen, 폴더 노이즈"
+cold-ramen/46.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"뜨거운 간장라멘 - 차슈, 파, 계란","저해상도지만 따뜻한 쇼유라멘, cold 아님"
+cold-ramen/47.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"맑은 육수 라멘 - 반숙계란, 햄, 팽이버섯, 시금치, 깨","얼음 없는 따뜻한 맑은 라멘, 메인 1개"
+cold-ramen/48.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"뜨거운 간장라멘 - 반숙계란, 차슈, 멘마, 흰파채","따뜻한 쇼유라멘, cold 아님, 폴더 노이즈"
+cold-ramen/49.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(냉라멘) - 면, 오이, 차슈, 어묵(나루토), 김, 죽순, 콩나물, 파","오이·차가운 국물의 히야시 라멘, 메인 1개 단일"
+cold-ramen/5.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(냉라멘) - 면, 차슈, 오이채, 미역, 나루토, 생강절임","오이·생강 올린 전형적 히야시추카, 단일 메인"
+cold-ramen/50.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 면요리 - 소면/라멘면, 돼지고기 차슈, 죽순, 미나리, 미역","차가운 국물 면, 얼음없으나 냉면류로 판단 단일"
+cold-ramen/6.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"뜨거운 라멘 - 면, 돼지고기, 청경채, 파, 붉은 국물","오이·얼음 없는 뜨거운 라멘, 크롤 노이즈(japanese-ramen)"
+cold-ramen/7.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(냉라멘) - 면, 반숙계란, 닭가슴살, 파, 유리볼","유리볼·차가운 국물 츠케멘/히야시 라멘, 단일 메인"
+cold-ramen/8.jpg,cold-ramen,KEEP,single_in,cold-ramen,True,"차가운 라멘(냉라멘) - 면, 오이, 차슈, 어묵, 죽순, 파","오이 올린 차가운 라멘, 메인 1개 단일"
+cold-ramen/9.jpg,cold-ramen,KEEP,single_in,japanese-ramen,False,"간장 라멘(차슈, 파)","얼음 없는 뜨거운 간장 라멘이라 cold-ramen 아님, japanese-ramen으로 매칭 KEEP"
+nagasaki-champon/1.jpg,nagasaki-champon,DROP,ood,nagasaki-champon,True,나가사끼짬뽕(크림국물 야채면),음식은 나가사끼짬뽕 맞으나 상단 NHK World 방송 워터마크 배너로 ood
+nagasaki-champon/10.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(크림국물, 양배추·당근·옥수수·어묵)",하얀 크림국물 야채면 전형적 나가사끼짬뽕 단일 메인 KEEP
+nagasaki-champon/11.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(숙주·양배추·당근·어묵),크림빛 국물 야채 듬뿍 나가사끼짬뽕 단일 메인 KEEP
+nagasaki-champon/12.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(양배추·당근·어묵),하얀 국물 야채면 나가사끼짬뽕 단일 메인 KEEP
+nagasaki-champon/13.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(양배추·어묵·야채),크림국물 야채면 나가사끼짬뽕 단일 메인 KEEP
+nagasaki-champon/14.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사키 짬뽕(걸쭉한 흰 국물에 양배추·면), 작은 국 한 그릇","흰 국물 채소면, 메인 1개 명확. 곁들이 국그릇은 무시"
+nagasaki-champon/15.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사키 짬뽕(흰 국물에 채소·게맛살), 곁들이 양념 종지","전형적 짬뽕, 작은 반찬 종지는 무시 메인 1개"
+nagasaki-champon/16.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사키 짬뽕(흰 국물·숙주·어묵·파),흰 국물 짬뽕 단일 그릇 명확
+nagasaki-champon/17.jpg,nagasaki-champon,DROP,multi,none,False,나가사키 짬뽕 + 군만두 한 접시 + 소스,"짬뽕과 군만두 두 메인 접시 동시, 곁들이 아님"
+nagasaki-champon/18.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사키 짬뽕(흰 국물·채소·어묵),"워터마크 텍스트 약간 있으나 음식 단일 명확, 흰 국물 짬뽕"
+nagasaki-champon/19.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사키 짬뽕(흰 국물·채소·버섯),흰 국물 채소 짬뽕 단일 그릇
+nagasaki-champon/2.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼 짬뽕 (흰 국물, 양배추·당근·어묵·채소 토핑)","흰 크림빛 국물에 채소·어묵 토핑, 전형적 나가사끼짬뽕 단일"
+nagasaki-champon/20.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼 짬뽕 + 공깃밥,"공깃밥은 곁들이, 메인은 흰국물 짬뽕 1개"
+nagasaki-champon/21.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼 짬뽕 (흰 국물, 어묵·채소)",중화풍 그릇에 흰국물 짬뽕 단일
+nagasaki-champon/22.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼 짬뽕 (흰 국물, 새우·채소·어묵)","흰국물에 새우·채소 풍성, 메인 1개"
+nagasaki-champon/23.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼 짬뽕 (흰 국물, 양배추 위주)",흰국물 채소 짬뽕 단일
+nagasaki-champon/24.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼 짬뽕 (흰/연한 국물, 그릇 2개)","앞 그릇이 명확한 메인 짬뽕, 뒤는 같은 메뉴 보조-단일 처리"
+nagasaki-champon/25.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(흰 국물 채소 면, 분홍 어묵)","흰 국물에 양배추·분홍어묵, 전형적 나가사끼짬뽕"
+nagasaki-champon/26.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(맑은 흰 국물, 분홍 어묵, 채소)","흰 국물 면요리 단일, 나가사끼짬뽕"
+nagasaki-champon/27.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(흰 국물, 양배추·채소)","전통 무늬 그릇의 흰 국물 짬뽕, 메인 1개"
+nagasaki-champon/28.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(흰 국물, 양배추·콩나물·채소)","흰 국물 채소 면요리 단일, 나가사끼짬뽕"
+nagasaki-champon/29.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(흰 국물, 버섯·당근·분홍어묵)","흰 국물에 버섯·어묵 토핑, 나가사끼짬뽕"
+nagasaki-champon/3.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"나가사끼짬뽕(흰 국물, 콩나물·양배추·분홍어묵)","전통 무늬 그릇의 흰 국물 짬뽕, 메인 1개"
+nagasaki-champon/30.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"흰 국물 짬뽕(나가사끼짬뽕), 양배추·당근·어묵·고기 토핑",뽀얀 흰 국물에 채소·어묵 가득한 전형적 나가사끼짬뽕 단일 메인
+nagasaki-champon/31.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"흰 국물 면요리(나가사끼짬뽕), 양배추·당근·조개",맑은 흰 국물에 채소·조개 올라간 나가사끼짬뽕 한 그릇
+nagasaki-champon/32.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"흰 국물 짬뽕(나가사끼짬뽕), 숙주·양배추·당근·어묵",뽀얀 국물·채소 토핑 풍부한 나가사끼짬뽕 단일 메인
+nagasaki-champon/33.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"흰 국물 짬뽕(나가사끼짬뽕), 숙주·양배추·당근",흰 국물에 채소 듬뿍 올린 나가사끼짬뽕 한 그릇
+nagasaki-champon/34.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"흰 국물 면요리(나가사끼짬뽕), 면·숙주·당근·고기",면과 채소가 보이는 흰 국물 나가사끼짬뽕 탑뷰 단일 메인
+nagasaki-champon/35.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"흰 국물 짬뽕(나가사끼짬뽕), 차슈 고기·채소",고기·채소 토핑의 흰 국물 나가사끼짬뽕 클로즈업 단일 메인
+nagasaki-champon/36.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(흰 국물 차슈·양배추·당근·숙주 짬뽕),흰 국물 채소·차슈 나가사끼짬뽕 단일
+nagasaki-champon/37.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(흰 국물·양배추·어묵·핑크어묵),"가장자리 단무지 곁들이 무시, 메인 짬뽕 1개"
+nagasaki-champon/38.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(흰 국물·양배추·버섯·어묵),흰 국물 채소 짬뽕 단일
+nagasaki-champon/39.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(흰 국물·채소·돼지고기·핑크어묵),흰 국물 나가사끼짬뽕 단일
+nagasaki-champon/4.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(돌솥 걸쭉한 흰국물·양배추·햄·해물),돌솥 채소 듬뿍 흰국물 짬뽕 단일
+nagasaki-champon/40.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(흰 국물·양배추·어묵),흰 국물 나가사끼짬뽕 단일
+nagasaki-champon/41.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼 짬뽕(흰 국물에 양배추·돼지고기·채소),"흰 국물 짬뽕, 메인 단일"
+nagasaki-champon/42.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,"채소 볶음면(양배추·당근·어묵, 국물 거의 없음)",국물 적은 볶음 스타일이나 짬뽕 계열 단일 접시
+nagasaki-champon/43.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼 짬뽕(흰 국물·양배추·돼지고기·어묵),"흰 국물 짬뽕, 메인 단일"
+nagasaki-champon/44.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼 짬뽕(흰 국물·양배추·어묵·메추리알),"흰 국물 짬뽕, 메인 단일"
+nagasaki-champon/45.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼 짬뽕(흰 국물·양배추·달걀·채소),"흰 국물 짬뽕, 메인 단일"
+nagasaki-champon/46.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼 짬뽕(걸쭉한 흰 국물·채소·어묵·메추리알),"걸쭉한 흰 국물 짬뽕, 메인 단일"
+nagasaki-champon/47.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(채소·새우·어묵 올린 흰 국물 면),뽀얀 국물에 채소·새우·분홍어묵 전형적 나가사끼짬뽕 단일
+nagasaki-champon/48.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(채소·분홍어묵·메추리알 흰 국물 면),"뽀얀 국물 채소면, 메추리알·어묵 단일 메인"
+nagasaki-champon/49.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(양배추·숙주·분홍어묵 흰 국물 면),흰 그릇 뽀얀 국물 채소면 단일
+nagasaki-champon/5.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(양배추·숙주·분홍어묵 크림빛 국물 면),파란 테 그릇 뽀얀 국물 채소면 단일 메인
+nagasaki-champon/50.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(양배추·숙주·채소·분홍어묵 흰 국물 면),뽀얀 국물 채소면 단일 메인
+nagasaki-champon/6.jpg,nagasaki-champon,DROP,borderline_dropped,none,False,맑은 국물 해물 칼국수풍 전골(가리비·버섯·채소) + 단무지·반찬,"뽀얀 국물 아닌 맑은 해물 국물 면, 나가사끼짬뽕 아님·특정 클래스 불일치"
+nagasaki-champon/7.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(우윳빛 국물·어묵·채소),"우윳빛 국물에 핑크 어묵·숙주·양배추, 전형적 나가사끼짬뽕 단일"
+nagasaki-champon/8.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(우윳빛 국물·채소·어묵),"하얀 국물에 채소 듬뿍·핑크 어묵, 나가사끼짬뽕 단일 그릇"
+nagasaki-champon/9.jpg,nagasaki-champon,KEEP,single_in,nagasaki-champon,True,나가사끼짬뽕(우윳빛 국물·채소),"메인은 우윳빛 짬뽕 한 그릇, 옆 작은 곁들이 접시는 사이드로 무시"
+rice-noodle-soup/1.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(맑은 국물·닭고기·숙주·파),"맑은 국물에 쌀국수·찢은 고기·숙주, 쌀국수 단일"
+rice-noodle-soup/10.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(맑은 국물·소고기·파),"메인은 소고기 쌀국수 한 그릇, 가장자리 튀김·단무지는 곁들이"
+rice-noodle-soup/11.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(맑은 국물·파),"가는 면+맑은 국물 클로즈업, 쌀국수 단일 그릇"
+rice-noodle-soup/12.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기 쌀국수), 곁들임 생강·소스 종지","소고기 쌀국수 한 그릇 메인 단일, 곁들임 종지는 무시"
+rice-noodle-soup/13.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소고기 쌀국수(쌀면+숙주+고기),전형적 베트남 소고기 쌀국수 단일 메인
+rice-noodle-soup/14.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소고기 쌀국수(차슈/양지+쌀면),고기 가득한 쌀국수 한 그릇 단일 메인
+rice-noodle-soup/15.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(숙주 올린 맑은 국물 쌀면),숙주 얹은 쌀국수 한 그릇 단일 메인
+rice-noodle-soup/16.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수, 곁들임 고추·고수·차 종지들","쌀국수 그릇이 메인, 작은 곁들임 종지는 무시"
+rice-noodle-soup/17.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"소고기 쌀국수, 곁들임 고수접시·음료·소스","쌀국수 그릇이 메인, 음료·고수·소스는 곁들임"
+rice-noodle-soup/18.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(숙주·면이 든 베트남 쌀국수, PhoMein 그릇)",맑은 육수에 숙주 올린 단일 베트남 쌀국수 한 그릇
+rice-noodle-soup/19.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(찢은 고기·파·고추 올린 국수),"고기 고명 올린 쌀국수 단일 그릇, 메인 명확"
+rice-noodle-soup/2.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기 슬라이스·국수),"소고기 쌀국수 단일 그릇, 젓가락으로 면 들어올림"
+rice-noodle-soup/20.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(넓은 면·소고기, 베트남 포)",넓은 쌀면+소고기 든 베트남 쌀국수 단일 그릇
+rice-noodle-soup/21.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기·가는 면),"소고기 올린 쌀국수 단일 그릇, 청화백자 그릇"
+rice-noodle-soup/22.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(찢은 고기 다량·국수),고기 고명 듬뿍 올린 쌀국수 단일 그릇
+rice-noodle-soup/23.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(고기 고명, 면, 맑은 국물)","쌀국수 단일 그릇, 면+고기 고명 명확. 텍스트 일부 배경이나 메인은 쌀국수."
+rice-noodle-soup/24.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(맑은 국물, 고기, 파)",맑은 쌀국수 한 그릇. 우측 곁들이 접시 일부 보이나 메인 단일.
+rice-noodle-soup/25.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(숙주 고명, 맑은 국물, 고추)","숙주 듬뿍 올린 쌀국수 단일 그릇, 클로즈업."
+rice-noodle-soup/26.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기, 고수, 맑은 국물)",전형적 소고기 쌀국수(pho) 단일 그릇.
+rice-noodle-soup/27.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(고기, 고수, 면)","쌀국수 단일 그릇, 우측 생강 곁들이는 무시. 메인 단일."
+rice-noodle-soup/28.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기, 고수, 파)","소고기 쌀국수 단일 그릇, 우측 생강 곁들이 무시."
+rice-noodle-soup/29.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기 쌀국수), 곁들이 숙주","소고기 쌀국수 1그릇 메인, 숙주는 곁들이 반찬."
+rice-noodle-soup/3.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소고기 쌀국수,"단일 소고기 쌀국수 그릇, 명확한 메인."
+rice-noodle-soup/30.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"해물 쌀국수(새우·홍합), 매운 국물","매운 해물 쌀국수 1그릇, 새우는 토핑."
+rice-noodle-soup/31.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"매운 소고기 쌀국수, 곁들이 튀김/샐러드","매운 소고기 쌀국수 그릇 메인, 뒤 튀김접시는 곁들이."
+rice-noodle-soup/32.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"소고기 쌀국수, 곁들이 월남쌈","쌀국수 그릇이 메인, 찜기 월남쌈은 곁들이."
+rice-noodle-soup/33.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"소고기 쌀국수, 뒤편 오믈렛 곁들이","쌀국수 그릇이 압도적 메인, 뒤 오믈렛은 곁들이."
+rice-noodle-soup/34.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기 쌀국수, 숙주·고수·고기 고명)","맑은 육수에 흰 쌀국수면+소고기+숙주, 전형적 쌀국수 단일 메인"
+rice-noodle-soup/35.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(양지 고명, 양파·숙주, 곁들이 반찬)","맑은 국물 쌀국수 메인1개, 곁들이 반찬은 무시"
+rice-noodle-soup/36.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기·숙주·파 고명),"넓은 쌀면+소고기 슬라이스 쌀국수, 단일 메인"
+rice-noodle-soup/37.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(차돌·소고기 고명, 숙주·파)","맑은 육수 쌀국수 클로즈업, 메인1개"
+rice-noodle-soup/38.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소뼈·양지 고명, 숙주, 곁들이 피클)","소뼈 올린 쌀국수, 메인1개+곁들이 무시"
+rice-noodle-soup/39.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기·숙주·파 고명, 곁들이 단무지)","맑은 쌀국수 단일 메인, 곁들이 반찬 무시"
+rice-noodle-soup/4.jpg,rice-noodle-soup,DROP,ood,cold-noodles,False,"메밀/막국수 스타일 면에 채썬 고기·채소·고추 고명, 국물 거의 없음","국물 적은 차가운 메밀국수류로 쌀국수 아님; 폴더 노이즈, 메인은 냉면계열에 가까워 single_in 부적합으로 드롭"
+rice-noodle-soup/40.jpg,rice-noodle-soup,DROP,ood,korean-clear-soup,False,"큰 소갈비·소고기 덩어리가 든 맑은 고깃국(갈비탕류), 쌀국수 안 보임",쌀국수 면 없이 고기 위주 맑은 탕; 폴더 의도와 불일치(쌀국수 아님)로 드롭
+rice-noodle-soup/41.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,맑은 육수에 쌀국수·숙주·소고기 편육·실파 (쌀국수/쌀국수),"전형적 쌀국수(맑은 육수+쌀면+숙주+소고기) 단일 메인, 곁들이 반찬만 옆에 있어 KEEP"
+rice-noodle-soup/42.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"불그스름 육수에 소갈비·소고기 편육·숙주·면, 매운 쌀국수/갈비국수류",쌀국수 면과 숙주 보이는 소고기 쌀국수(약간 매운 육수) 단일 메인으로 KEEP
+rice-noodle-soup/43.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"맑은 육수 쌀국수에 소고기 편육·숙주·실파, 옆에 코코넛주스 캔",메인 그릇은 전형적 쌀국수; 옆 음료캔은 곁들이 무시하고 단일 메인 KEEP
+rice-noodle-soup/44.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,맑은 육수에 쌀국수·소고기 편육·실파 (쌀국수),흰 쌀면과 맑은 육수+소고기 보이는 쌀국수 단일 메인으로 KEEP
+rice-noodle-soup/45.jpg,rice-noodle-soup,DROP,multi,rice-noodle-soup,True,쌀국수(소고기 쌀국수)와 별도 그릇의 미트볼·면,메인 쌀국수 외 별도 그릇(미트볼+면)·반찬 접시 다수로 multi
+rice-noodle-soup/46.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소고기 쌀국수(쌀국수),"소고기 올린 쌀국수 한 그릇 단독, 폴더 일치"
+rice-noodle-soup/47.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소고기 쌀국수(쌀국수),"메인 쌀국수 1그릇, 곁들임 소스컵은 무시"
+rice-noodle-soup/48.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소갈비 쌀국수(쌀국수),"갈비 들어간 쌀국수 메인 1그릇, 새우 작은접시는 곁들임"
+rice-noodle-soup/49.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,소고기 쌀국수 클로즈업(쌀국수),"소고기 쌀국수 한 그릇 클로즈업, 폴더 일치"
+rice-noodle-soup/5.jpg,rice-noodle-soup,DROP,multi,rice-noodle-soup,True,쌀국수 두 그릇과 고추·라임 접시,쌀국수 그릇 2개+반찬 접시들로 여러 접시 multi
+rice-noodle-soup/50.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기 쌀국수),"맑은 육수에 소고기·쌀국수 면, 베트남식 쌀국수 1그릇 메인 명확"
+rice-noodle-soup/6.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기 쌀국수),"흰 쌀국수 면을 들어올린 소고기 쌀국수, 워터마크 약간 있으나 메인 단일 명확"
+rice-noodle-soup/7.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기 쌀국수),"고수 올린 맑은 소고기 쌀국수 1그릇, 메인 단일"
+rice-noodle-soup/8.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,쌀국수(소고기 쌀국수),"쌀국수가 메인, 뒤편 볶음밥은 곁들이로 작게 보여 무시 가능"
+rice-noodle-soup/9.jpg,rice-noodle-soup,KEEP,single_in,rice-noodle-soup,True,"쌀국수(소고기 쌀국수), 김치·채소 곁들이","맑은 소고기 쌀국수 메인, 김치·채소는 곁들이 반찬으로 무시"
+rice-porridge/1.jpg,rice-porridge,DROP,ood,none,False,"불명확(노란 액체/걸쭉한 내용물, 워터마크)","용기 클로즈업으로 죽인지 식별 불가, 워터마크 박힘 - 비식별 OOD"
+rice-porridge/10.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,팥죽(또는 흑미죽),"붉은팥죽 용기 한 그릇이 메인, 가장자리 다른 용기 일부만 살짝 보임"
+rice-porridge/11.jpg,rice-porridge,DROP,multi,rice-porridge,True,여러 종류 죽(팥죽·호박죽·채소죽 등),여러 용기의 서로 다른 죽이 나란히 진열된 멀티 구성
+rice-porridge/12.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,팥죽,"숟가락으로 뜬 팥죽 클로즈업, 단일 메인"
+rice-porridge/13.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,죽(들깨죽/버섯죽류),"용기 한 그릇의 걸쭉한 죽, 단일 메인"
+rice-porridge/14.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,호박죽,"노란 호박죽 숟가락 클로즈업, 단일 그릇"
+rice-porridge/15.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,채소죽,"당근 조각 보이는 채소죽 클로즈업, 단일 메인"
+rice-porridge/16.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,팥죽(단팥죽),"팥죽 클로즈업, 새알심 보임, 단일 메인 죽"
+rice-porridge/17.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,호박죽(좁쌀),"용기 담긴 노란 단호박/좁쌀죽, 단일 메인"
+rice-porridge/19.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽,"용기에 담긴 야채죽, 단일 메인 죽"
+rice-porridge/2.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"호박죽, 곁들이 무말랭이/깍두기 무침(분홍)","메인은 호박죽, 작은 곁들이 반찬은 무시→단일"
+rice-porridge/20.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,팥죽,"팥죽 클로즈업, 숟가락 꽂힘, 단일 메인"
+rice-porridge/21.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,팥죽,"용기 담긴 팥죽, 단일 메인 죽"
+rice-porridge/23.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,죽 (김·파·깨 고명),"김과 파를 올린 흰죽, 메인 단일"
+rice-porridge/24.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,죽 (계란·당근),"계란 푼 야채죽 한 그릇, 메인 단일"
+rice-porridge/25.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,죽 (참치·당근·옥수수),"참치야채죽, 숟가락으로 떠올린 모습, 메인 단일"
+rice-porridge/26.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,녹색채소죽 (계란노른자·깨),"시금치/녹색채소죽에 노른자, 곁들이 반찬은 무시, 메인 단일"
+rice-porridge/27.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽 (당근·버섯),"야채버섯죽 한 그릇, 곁들이 반찬 무시, 메인 단일"
+rice-porridge/28.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽 (당근·고구마·버섯·송편고명),"여러 야채 넣은 영양죽 한 그릇, 메인 단일"
+rice-porridge/29.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽(당근·채소 든 흰죽),"용기에 담긴 야채죽 단일 메인, 죽 명확."
+rice-porridge/3.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,전복죽 추정(갈색 걸쭉한 죽),"걸쭉한 갈색 죽 단일, 곁 무·반찬은 무시."
+rice-porridge/30.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽(파·당근 고명),"흰 그릇 야채죽 메인1개, 곁반찬 무시."
+rice-porridge/31.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,흰죽(김가루·깨 고명),"용기 속 흰죽 단일 메인, 죽 명확."
+rice-porridge/32.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,녹색 야채죽(시래기·매생이류),"녹색 죽 단일 메인, 곁 반찬·물김치 무시."
+rice-porridge/33.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,가쓰오부시 올린 죽(계란죽 추정),"노란 죽에 가쓰오부시 고명, 죽 단일 메인."
+rice-porridge/34.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"죽(흰죽, 깨/들깨 토핑), 곁들이 김치·반찬","용기 죽이 메인, 반찬은 곁들이 무시 KEEP"
+rice-porridge/35.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,죽(깨·들깨가루 토핑),프레임 가득 단일 죽 명확
+rice-porridge/36.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"새우죽, 곁들이 김치","새우 들어간 죽이 메인, 반찬 무시 KEEP"
+rice-porridge/37.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"죽(고기/생선 결 토핑), 음료·반찬","용기 죽 메인, 곁들이 무시 KEEP"
+rice-porridge/38.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"죽(깨·들깨 토핑), 반찬컵·음료","탑다운이나 메인은 죽 단일, 컵류는 곁들이 KEEP"
+rice-porridge/39.jpg,rice-porridge,DROP,ood,none,False,뚝배기 빨간 매운 국물(알탕/매운국 류),죽 아님; 뚝배기 빨간 매운 국물=폴더 불일치 딴음식
+rice-porridge/4.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,흰죽(야채 섞인 죽),"용기에 담긴 야채죽, 메인 단일 죽"
+rice-porridge/40.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,버섯죽(전복죽류),"용기에 담긴 죽 한 그릇, 메인 단일"
+rice-porridge/41.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,팥죽,"팥죽이 메인, 뒤 고기접시는 배경 곁들이로 메인은 죽 1개"
+rice-porridge/42.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,계란죽,"용기 계란죽이 메인, 옆 반찬은 무시"
+rice-porridge/43.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,녹색채소죽(매생이/시금치죽),"녹색 죽 한 그릇 메인, 하단 반찬은 곁들이"
+rice-porridge/44.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,낙지죽/김치죽(빨간 죽),"빨간 죽 한 그릇 메인, 주변 반찬은 곁들이"
+rice-porridge/45.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,크림/치즈 죽(튀긴 양파 토핑),"용기에 담긴 죽 단일 메인, 폴더 일치"
+rice-porridge/46.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,매생이(파래) 죽,"그릇에 담긴 죽 단일 메인, 폴더 일치"
+rice-porridge/47.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"호박죽, 김치, 밑반찬, 식혜","메인은 호박죽 1개, 곁들이 반찬 무시"
+rice-porridge/48.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"빨간 죽(치즈 토핑), 김치, 밑반찬, 식혜","메인은 죽 1개, 곁들이 반찬 무시"
+rice-porridge/49.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,"흰죽, 식혜, 빈그릇","메인은 흰죽 1개, 곁들이 무시"
+rice-porridge/5.jpg,rice-porridge,DROP,multi,rice-porridge,True,죽 2종(갈색 죽 + 초록 야채 죽),"죽 용기 2개 나란히 = 메인 복수, multi"
+rice-porridge/50.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽(흰죽),"본죽 그릇에 담긴 야채죽, 메인 죽 1개로 명확"
+rice-porridge/6.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,호박죽(노란죽),"플라스틱 용기에 담긴 호박죽, 죽 메인 1개"
+rice-porridge/7.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,야채죽,"용기에 담긴 야채죽, 메인 죽 1개"
+rice-porridge/8.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,호박죽(새알 들어간),"숟가락으로 뜬 새알 호박죽, 죽 메인 1개"
+rice-porridge/9.jpg,rice-porridge,KEEP,single_in,rice-porridge,True,호박죽(새알),"그릇에 담긴 새알 호박죽, 죽 메인 1개"
+takoyaki/1.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(굽는 중),"타코야키 팬에 구워지는 타코야키, 메인 1개 명확"
+takoyaki/10.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가쓰오부시·소스·마요),"가쓰오부시 듬뿍 올린 타코야키 한 접시, 메인 1개"
+takoyaki/11.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키,"두 접시지만 동일 타코야키 클로즈업, 메인 단일"
+takoyaki/12.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가쓰오부시·소스·마요),"가쓰오부시 산처럼 올린 타코야키, 메인 1개"
+takoyaki/13.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(굽는 중),"타코야키 팬에 구운 둥근 타코야키, 메인 단일"
+takoyaki/14.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(치즈·마요·가쓰오부시),"소스·마요 올린 타코야키 클로즈업, 메인 1개"
+takoyaki/15.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(굽는 중),"타코야키 팬에서 굽는 장면, 메인 단일"
+takoyaki/16.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(가쓰오부시·마요·소스), 곁들이 튀김부스러기","가쓰오부시·마요 얹은 타코야키 단일 메인, 폴더와 일치"
+takoyaki/17.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(타코야키팬에서 굽는 중), 곁들이 재료","팬에서 굽는 타코야키가 지배적 메인, 곁들이 무시"
+takoyaki/18.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(마요·소스·가쓰오부시),"검은 접시 타코야키 단일 메인, 깔끔"
+takoyaki/19.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가쓰오부시 가득),가쓰오부시로 덮인 타코야키 단일 메인
+takoyaki/2.jpg,takoyaki,DROP,multi,none,False,"컵라면(빨간 비빔/스파이시), 타코야키 트레이",컵라면과 타코야키 두 메인 공존 -> multi
+takoyaki/20.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(팬에서 뒤집는 중),타코야키팬에서 굽는 타코야키 단일 메인
+takoyaki/21.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(틀에서 굽는 중, 배경에 다진 파)","타코야키 틀에서 갓 구운 타코야키, 메인 단일"
+takoyaki/22.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(가쓰오부시·마요·소스 토핑, 두 접시)","같은 타코야키 두 접시지만 동일 메뉴 단일, KEEP"
+takoyaki/23.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(검은 접시에 담긴 구운 볼),"접시에 담긴 타코야키, 메인 단일"
+takoyaki/24.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(검은 접시, 23번과 유사 장면)","접시 담긴 타코야키, 메인 단일"
+takoyaki/25.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(소스·마요·가쓰오부시 듬뿍),"토핑 올린 타코야키, 메인 단일"
+takoyaki/26.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(가쓰오부시·소스·마요), 한글 텍스트 오버레이","타코야키 메인 단일, 상단 작은 자막은 SNS 캡션 수준(콜라주·레시피카드 아님)"
+takoyaki/27.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가다랑어포·마요·소스),"소스·마요·가쓰오부시 올린 타코야키 한 접시, 메인 단일"
+takoyaki/28.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(타코야키 팬에서 굽는 중),"타코야키 팬에서 굽는 타코야키, 주변 소량 재료는 곁들이로 메인 단일"
+takoyaki/29.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키(여러 박스),타코야키 박스 여러 개가 나란히 놓여 멀티
+takoyaki/3.jpg,takoyaki,DROP,multi,none,False,불닭볶음면(컵라면)과 타코야키,삼양 불닭 컵라면과 타코야키 두 가지 메인이 함께 있어 멀티
+takoyaki/30.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가다랑어포 듬뿍),"가쓰오부시·마요 올린 타코야키, 아래 공 형태 보임 메인 단일"
+takoyaki/31.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(박스, 가다랑어포)","박스에 담긴 타코야키 공들이 보이고 가쓰오부시 토핑, 메인 단일"
+takoyaki/32.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키(가다랑어포 토핑), 젓가락으로 집은 타코야키","길거리에서 타코야키 한 알을 집어든 사진, 메인 단일"
+takoyaki/33.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가다랑어포 듬뿍),"가다랑어포로 덮인 타코야키 한 박스, 단일 메인"
+takoyaki/34.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(파·마요 토핑),"파와 마요 올린 타코야키 한 박스, 단일 메인"
+takoyaki/35.jpg,takoyaki,DROP,multi,none,False,"타코야키 박스 3개, 음료","타코야키 3박스가 나란히 놓인 다접시 구성, 단일 아님"
+takoyaki/36.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(가다랑어포 토핑),"가다랑어포 올린 타코야키 한 박스, 단일 메인"
+takoyaki/37.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키(파·마요 토핑),"파와 마요 올린 타코야키 한 박스, 단일 메인"
+takoyaki/38.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키 (가쓰오부시 듬뿍, 포장용기)","가쓰오부시로 덮인 타코야키 한 용기, 단일 메인"
+takoyaki/39.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키 3박스 + 음료캔 2개,타코야키 박스 여러 개와 음료가 함께 놓인 멀티 구도
+takoyaki/4.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키 (틀에 굽는 중) + 옆에 컵라면,타코야키 굽는 틀과 옆에 컵라면이 함께 보여 멀티
+takoyaki/40.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키 (가쓰오부시로 덮인 포장용기),"가쓰오부시 덮인 타코야키 한 용기, 단일 메인"
+takoyaki/41.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키 (가쓰오부시·소스) + 콜라제로 캔,타코야키와 콜라 캔이 함께 보여 멀티
+takoyaki/42.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키 2박스 + 음료캔·음료,타코야키 박스 두 개와 음료들이 함께 놓인 멀티 구도
+takoyaki/43.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키 (가쓰오부시 듬뿍, 마요·소스)","박스 안 타코야키 한 종류, 마네키네코 배경은 소품(곁들이 무시) → KEEP"
+takoyaki/44.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키 (가쓰오부시·마요·소스, 꼬치)","직사각 박스에 타코야키 단일 메인, 가쓰오부시 덮임 → KEEP"
+takoyaki/45.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키 (가쓰오부시 듬뿍),"가쓰오부시로 거의 덮였으나 아래 타코야키·꼬치 보임, 단일 메인 → KEEP"
+takoyaki/46.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키 (가쓰오부시 듬뿍),"박스 안 타코야키 단일, 가쓰오부시 덮임 → KEEP"
+takoyaki/47.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키 (가쓰오부시·마요, 배경 지브리 엽서)","박스 안 타코야키 단일 메인, 벽 엽서는 비음식 배경 소품일뿐 → KEEP"
+takoyaki/48.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키 두 박스 (소스·마요·가쓰오부시, '타코야끼' 라벨)",박스 2개지만 둘 다 동일한 타코야키 단일 메뉴 → 메인1개로 KEEP
+takoyaki/49.jpg,takoyaki,KEEP,single_in,takoyaki,True,"타코야키 (가쓰오부시·마요 토핑, 젓가락으로 집은 것)","타코야키 한 접시 클로즈업, 단일 메인 명확"
+takoyaki/5.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키 (소스·마요·가쓰오부시),"한 트레이 타코야키, 단일 메인"
+takoyaki/50.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키 (소스·마요·가쓰오부시),"테이블 위 타코야키 한 접시, 배경 무관 메인1개"
+takoyaki/6.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키 두 접시 + 아이스 아메리카노 + 문어 인형,"타코야키 두 접시와 음료 함께, 접시 다수라 multi"
+takoyaki/7.jpg,takoyaki,DROP,multi,takoyaki,True,타코야키 두 접시 (나란히),"타코야키 두 트레이 나란히, 메인 접시 2개라 multi"
+takoyaki/8.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키 (소스·마요·가쓰오부시),상단 텍스트 워터마크(타코하이/Frydek) 있으나 음식은 타코야키 단일 한 접시
+takoyaki/9.jpg,takoyaki,KEEP,single_in,takoyaki,True,타코야키,"타코야키 팬에서 굽는 타코야키, 메인 단일"
+tteokbokki-cream-rose/1.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(치즈),"주황 로제소스+소시지+치즈, 로제떡볶이 단일"
+tteokbokki-cream-rose/10.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이,"크림 주황소스 떡볶이, 로제 단일"
+tteokbokki-cream-rose/11.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(치즈),"치즈 올린 로제떡볶이, 배경 반찬은 무시 메인 단일"
+tteokbokki-cream-rose/12.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(소시지),"크림 주황소스+소시지, 로제떡볶이 단일"
+tteokbokki-cream-rose/13.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이,"주황 크림소스 떡볶이, 로제 단일"
+tteokbokki-cream-rose/14.jpg,tteokbokki-cream-rose,DROP,borderline_dropped,none,False,콩이 들어간 붉은 크림 스튜(부대찌개풍),"강낭콩·국물 위주 붉은 스튜로 로제떡볶이로 보기 어려움, 떡 식별 불명확"
+tteokbokki-cream-rose/15.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(떡·어묵),로제소스에 가래떡·어묵이 명확한 단일 로제떡볶이
+tteokbokki-cream-rose/16.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(팬),"팬에 끓는 주황 로제소스+떡, 단일 로제떡볶이"
+tteokbokki-cream-rose/18.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(치즈 토핑),"냄비 로제소스+떡 위 가루치즈, 워터마크 있으나 메인 명확"
+tteokbokki-cream-rose/19.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,주황 크림 소스 음식(파 고명),"로제소스에 떡 추정 덩어리+파 고명, 단일 로제떡볶이로 판단"
+tteokbokki-cream-rose/2.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제떡볶이(치즈), 단무지, 주먹밥","메인 큰그릇 치즈 로제떡볶이, 곁들이 반찬은 무시"
+tteokbokki-cream-rose/20.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(치즈 뿌린 크림 떡볶이),"팬에 끓는 로제 국물에 가래떡과 치즈, 단일 메인."
+tteokbokki-cream-rose/21.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(소시지 포함 크림 떡볶이),"주황 크림 국물의 떡·소시지, 로제떡볶이 단일 메인."
+tteokbokki-cream-rose/22.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제 크림 소스(떡볶이 조리 중),"조리 중 로제 소스에 떡 일부 보임, 단일 메인."
+tteokbokki-cream-rose/23.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(크림 국물 떡),"크림 로제 국물에 가래떡, 단일 메인."
+tteokbokki-cream-rose/24.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(소시지·떡 크림),"팬의 로제 떡볶이, 워터마크 텍스트 작게 있으나 메인 명확 단일."
+tteokbokki-cream-rose/25.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(냄비 가득 크림 국물),"냄비 가득한 로제 국물 떡볶이, 단일 메인."
+tteokbokki-cream-rose/26.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(치즈+소시지),"로제 소스에 떡·소시지·체다치즈 한 팬, 단일 메인"
+tteokbokki-cream-rose/27.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이,"크리미한 로제 소스에 떡, 단일 로제떡볶이"
+tteokbokki-cream-rose/28.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(가래떡),"로제 소스에 통가래떡 조리 중, 단일 메인"
+tteokbokki-cream-rose/29.jpg,tteokbokki-cream-rose,DROP,ood,none,False,"빨간 국물요리(무·파, 양념 첨가 중)","크림 없는 빨간 국물에 떡 안보임, 로제떡볶이 아닌 딴 국물요리"
+tteokbokki-cream-rose/3.jpg,tteokbokki-cream-rose,DROP,multi,none,False,로제떡볶이+튀김봉투+김말이박스+소스,"배달 한상 차림, 여러 접시 합성 구도"
+tteokbokki-cream-rose/30.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제떡볶이(치즈),"로제 소스에 떡·채소·녹은 치즈 한 냄비, 단일 메인"
+tteokbokki-cream-rose/31.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제(크림) 소스 떡볶이, 떡과 파","주황빛 크림 로제소스에 떡 가득, 메인 1개 로제떡볶이"
+tteokbokki-cream-rose/32.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제 떡볶이(떡·어묵·메추리알·버섯), 크림 국물","주황빛 로제 국물에 떡·메추리알, 단일 로제떡볶이"
+tteokbokki-cream-rose/33.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"크림/로제 소스 떡볶이, 떡","진한 크림 로제소스에 가래떡, 메인 1개"
+tteokbokki-cream-rose/34.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,냄비 속 떡과 크림빛 국물(로제 조리 중),"크림빛 국물에 떡, 로제떡볶이 조리 장면이나 단일 메인"
+tteokbokki-cream-rose/35.jpg,tteokbokki-cream-rose,DROP,multi,tteokbokki-cream-rose,False,"로제 떡볶이 전골(떡·어묵·유부·메추리알), 옆에 치즈튀김",로제떡볶이 냄비 + 별도 치즈튀김 바구니 동시에 보임 = 멀티
+tteokbokki-cream-rose/36.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제 떡볶이 전골(떡·소고기·파·유부),"주황 로제 국물에 떡·소고기·파, 단일 로제떡볶이 전골"
+tteokbokki-cream-rose/37.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-red,False,떡볶이(빨간 양념),"크림/로제 아닌 빨간 양념 떡볶이 단일, 폴더 노이즈"
+tteokbokki-cream-rose/38.jpg,tteokbokki-cream-rose,KEEP,single_in,hot-pot,False,불고기 전골(빨간 국물·소고기·떡·야채),"전골 한 냄비, 로제떡볶이 아님"
+tteokbokki-cream-rose/39.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제 떡볶이(크림 양념),"포장용기 로제 떡볶이 단일, 폴더 일치"
+tteokbokki-cream-rose/4.jpg,tteokbokki-cream-rose,DROP,multi,none,False,로제 떡볶이 + 튀김(별도),떡볶이 그릇과 튀김 봉지 두 접시 동시 = multi
+tteokbokki-cream-rose/40.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,크림 떡볶이(노란 크림 양념),"크림 베이스 떡볶이 단일, 폴더 일치"
+tteokbokki-cream-rose/41.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제 떡볶이(떡·소시지·어묵),"로제 소스 떡볶이 단일 접시, 폴더 일치"
+tteokbokki-cream-rose/42.jpg,tteokbokki-cream-rose,DROP,ood,none,False,크림/로제 소스 면요리 (어묵 토핑),"떡볶이가 아니라 우동/면 형태의 로제 파스타류로 보임, 로제떡볶이 아님"
+tteokbokki-cream-rose/43.jpg,tteokbokki-cream-rose,DROP,ood,none,False,소시지·채소가 든 빨간 전골/부대찌개류,"로제떡볶이 아님, 소시지·국물 많은 부대찌개/전골 형태로 딴음식"
+tteokbokki-cream-rose/44.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-red,False,빨간 양념 떡볶이 (튀김·반찬 곁들임),"로제 아닌 빨간 양념 일반 떡볶이, 메인 단일이라 tteokbokki-red로 KEEP"
+tteokbokki-cream-rose/45.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제 크림 소스 떡볶이,"주황빛 크림소스 가득한 로제떡볶이, 메인 단일 명확하게 일치"
+tteokbokki-cream-rose/46.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제/크림 소스 떡볶이,"주황 크림소스에 버무린 떡, 로제떡볶이 단일 메인으로 일치"
+tteokbokki-cream-rose/47.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,로제 떡볶이 (치즈가루 토핑),"주황 크림소스+치즈가루 떡볶이, 로제떡볶이 단일 메인 일치"
+tteokbokki-cream-rose/48.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제 떡볶이(떡, 소시지, 크림소스)","주황빛 크림 로제소스에 떡·소시지, 전형적 로제떡볶이"
+tteokbokki-cream-rose/49.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제 떡볶이(떡, 소시지, 면, 치즈)","테이크아웃 용기 로제 크림 떡볶이, 메인 단일"
+tteokbokki-cream-rose/5.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제 떡볶이(소시지, 치즈, 크림소스 클로즈업)","크림 로제소스에 소시지·치즈 근접샷, 로제떡볶이"
+tteokbokki-cream-rose/50.jpg,tteokbokki-cream-rose,DROP,ood,udon,False,"컵 우동(굵은 우동면, 분말스프 봉지)","분말스프 봉지 있는 컵 우동면, 로제떡볶이 아님(크롤 노이즈)"
+tteokbokki-cream-rose/6.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제 떡볶이(떡·면, 크림소스 클로즈업)",젓가락으로 든 로제 크림소스 떡·면 근접샷
+tteokbokki-cream-rose/7.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제 떡볶이(치즈, 떡, 크림소스)","치즈 올린 크림 로제 떡볶이 한 접시, 메인 단일"
+tteokbokki-cream-rose/8.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제(크림)떡볶이, 치즈, 어묵, 소시지","주황빛 로제 국물에 치즈 듬뿍, 로제떡볶이 단일 메인."
+tteokbokki-cream-rose/9.jpg,tteokbokki-cream-rose,KEEP,single_in,tteokbokki-cream-rose,True,"로제(크림)떡볶이, 치즈, 계란","붉은빛+크림에 치즈 토핑, 로제떡볶이 단일 메인."
+tteokbokki-jajang/1.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이, 완두콩, 깨","검은 짜장소스 떡볶이 단일 메인, 깔끔한 접시컷."
+tteokbokki-jajang/11.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이(국물형), 어묵","검은 짜장국물 떡볶이 단일 메인, 옆 접시는 곁들이로 무시."
+tteokbokki-jajang/12.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이, 어묵","진한 갈색 짜장소스 떡볶이 단일 메인, 팬 클로즈업."
+tteokbokki-jajang/13.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이, 김밥(말이)","갈색 짜장소스 떡볶이 클로즈업이 메인, 김밥은 곁들이로 무시."
+tteokbokki-jajang/14.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장(검붉은 소스)떡볶이 클로즈업,"떡과 진한 검붉은 짜장 소스, 메인 단일 짜장떡볶이"
+tteokbokki-jajang/15.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,포장 용기 짜장떡볶이,"용기에 담긴 검은 짜장 소스 떡볶이, 메인 단일"
+tteokbokki-jajang/16.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,냄비 짜장떡볶이(곁들이 가래떡·순대 약간),"냄비 가득 짜장떡볶이 메인, 가장자리 곁들이는 무시"
+tteokbokki-jajang/17.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,검붉은 소스 떡볶이(짜장),"어두운 짜장 소스의 떡볶이 한 팬, 메인 단일"
+tteokbokki-jajang/18.jpg,tteokbokki-jajang,DROP,ood,none,False,짜장떡볶이(텍스트 자막 박힘),"하단 '고추장 맛 안나는 떡볶이?' 텍스트 박힌 영상 캡처, ood"
+tteokbokki-jajang/19.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이 떡 클로즈업,"젓가락 떡 클로즈업+팬 짜장떡볶이, 메인 단일"
+tteokbokki-jajang/2.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(소시지·삶은계란),"검은 짜장소스 떡볶이 단일, 곁들이 계란/소시지는 무시"
+tteokbokki-jajang/20.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,팬에 담긴 검은 짜장소스 떡볶이 단일
+tteokbokki-jajang/21.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(노점 대형 통),길거리 큰 통의 짜장 떡볶이 단일
+tteokbokki-jajang/22.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,"진한 짜장소스 떡볶이 메인1개, 좌측 끝 곁들이 소량 무시"
+tteokbokki-jajang/23.jpg,tteokbokki-jajang,DROP,multi,tteokbokki-jajang,True,짜장떡볶이+튀김모둠+국물,짜장떡볶이 옆에 별도 튀김 접시·국물 함께 → 다중접시
+tteokbokki-jajang/24.jpg,tteokbokki-jajang,DROP,multi,tteokbokki-jajang,True,짜장떡볶이+김밥,짜장떡볶이 그릇 양옆에 김밥 두 줄이 함께 프레임 → 다중요리
+tteokbokki-jajang/25.jpg,tteokbokki-jajang,DROP,multi,none,False,"짜장떡볶이, 김밥, 맑은국",짜장떡볶이 팬과 김밥 한 줄이 동등하게 큰 두 메인 → multi
+tteokbokki-jajang/26.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이(어묵), 튀김(곁들이)","검은 짜장소스 떡볶이 냄비가 메인, 튀김은 곁들이"
+tteokbokki-jajang/27.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이, 튀김(곁들이), 국물(곁들이)","짜장떡볶이 냄비가 메인, 튀김·국물은 곁들이"
+tteokbokki-jajang/28.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡·어묵),검은 짜장소스 떡볶이 팬 단일 메인
+tteokbokki-jajang/29.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡),짙은 짜장소스 떡볶이 오버헤드 클로즈업 단일 메인
+tteokbokki-jajang/3.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡),짜장소스 떡볶이 냄비 단일 메인
+tteokbokki-jajang/30.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이, 순대/간(별도 봉지)",검은 짜장소스 떡볶이가 메인; 순대는 별도 봉지 곁들이
+tteokbokki-jajang/31.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"떡볶이, 튀김, 어묵",진한 갈색 소스 떡볶이 한 그릇; 튀김은 토핑/곁들이
+tteokbokki-jajang/32.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이, 전·순대(뒤편)",검은 소스 떡볶이가 메인 1개; 배경 반찬 무시
+tteokbokki-jajang/33.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,검은 짜장소스 떡볶이 단일 팬; 육수 곁들이
+tteokbokki-jajang/34.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,검은 소스 떡볶이 단일 팬 메인
+tteokbokki-jajang/35.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,진한 검은 짜장소스 떡볶이 단일 팬 메인
+tteokbokki-jajang/36.jpg,tteokbokki-jajang,DROP,multi,tteokbokki-jajang,True,"짜장떡볶이, 튀김, 어묵국물, 김밥, 순대",짜장떡볶이가 중앙이나 김밥·순대·튀김 등 여러 접시 동시 → multi
+tteokbokki-jajang/37.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(젓가락으로 집는 중),"검은 짜장소스 떡볶이 단일 메인, 배경 곁들이는 무시"
+tteokbokki-jajang/38.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장소스 떡볶이(떡 3개 남은 팬),검은 짜장소스에 떡 클로즈업 단일 메인
+tteokbokki-jajang/39.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,"검은 짜장소스 떡볶이 한 팬 단일 메인, 배경 튀김 무시"
+tteokbokki-jajang/4.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(당면 포함),"짜장소스 떡볶이+당면 단일 접시, 메인 1개"
+tteokbokki-jajang/40.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이,검은 짜장소스 떡볶이 팬 단일 메인 클로즈업
+tteokbokki-jajang/41.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-red,False,"빨간 양념 떡볶이(떡, 어묵, 소시지, 만두)","주황빛 빨간 양념, 짜장 아님 → 빨간 떡볶이"
+tteokbokki-jajang/42.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이(떡, 어묵, 튀김)","진한 검은 짜장 소스 떡볶이, 메인 단일"
+tteokbokki-jajang/43.jpg,tteokbokki-jajang,DROP,borderline_dropped,none,False,팬에 끓는 검은 짜장 소스와 양파/면,"떡 안 보이고 짜장 소스/면만, 조리중 모호 → 드롭"
+tteokbokki-jajang/44.jpg,tteokbokki-jajang,DROP,multi,none,False,짜장 라볶이(떡+라면사리),"떡+라면 사리 혼합(라볶이), 메인 2종 → multi"
+tteokbokki-jajang/45.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이(떡, 계란)","검은 짜장 소스 떡볶이, 계란은 곁들이"
+tteokbokki-jajang/46.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡),"흰 접시 위 검은 짜장 소스 떡, 메인 단일"
+tteokbokki-jajang/47.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장떡볶이(검은 짜장소스 떡볶이, 떡·어묵·소시지)","냄비 가득 검은 짜장소스 떡볶이 단일 메인, 폴더명 일치"
+tteokbokki-jajang/48.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡·당면·삶은달걀·어묵),"검은 짜장소스 떡볶이 단일 메인, 달걀·당면은 토핑"
+tteokbokki-jajang/49.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(가래떡·짜장소스·참깨),"접시에 담긴 짜장소스 떡볶이 단일 메인, 폴더명 일치"
+tteokbokki-jajang/5.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡·튀김·어묵·검은소스),"검은 짜장소스 떡볶이 단일 메인, 폴더명 일치"
+tteokbokki-jajang/50.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,짜장떡볶이(떡·라면사리·삶은달걀·검은소스),"프라이팬 짜장소스 떡볶이 단일 메인, 워터마크 텍스트 약간 있으나 음식 식별 명확"
+tteokbokki-jajang/6.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장소스 볶음(떡 식별 불명확, 검은소스 볶음요리)","냄비 가득 검은 짜장소스 볶음, 떡볶이로 판단 단일 메인"
+tteokbokki-jajang/7.jpg,tteokbokki-jajang,DROP,ood,none,False,"비엔나 소시지 볶음 (미니 소시지 단짠 글레이즈, 깨)","떡이 아니라 미니 소시지 볶음, 짜장도 아님 - 딴음식"
+tteokbokki-jajang/8.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-red,False,"빨간 떡볶이 (어묵, 대파, 계란)",폴더는 짜장이나 실제는 빨간 떡볶이 단일 메인
+tteokbokki-jajang/9.jpg,tteokbokki-jajang,KEEP,single_in,tteokbokki-jajang,True,"짜장 떡볶이 (진갈색 소스, 깨, 대파)","진한 갈색 짜장 소스 떡볶이 단일 메인, 폴더 일치"
+tteokbokki-red/1.jpg,tteokbokki-red,DROP,multi,tteokbokki-red,True,라볶이 전골 + 튀김 곁들이 접시들,라볶이 전골 외 주변에 튀김 등 여러 접시 함께 - multi
+tteokbokki-red/10.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이 (어묵, 배추, 만두 토핑)","빨간 소스 떡볶이 단일 메인, 폴더 일치"
+tteokbokki-red/11.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이 (떡, 양배추, 대파, 어묵)","빨간 매운 소스 떡볶이 단일 메인, 폴더 일치"
+tteokbokki-red/12.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 어묵, 닭고기 추정 건더기 한 스푼 클로즈업)","빨간 양념 떡볶이 클로즈업, 떡과 어묵 보임 메인 단일"
+tteokbokki-red/13.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 어묵 한 점 젓가락 클로즈업)",빨간 떡볶이 떡·어묵 클로즈업 단일 메인
+tteokbokki-red/14.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 닭/고기, 만두피 추정 건더기)","은박 그릇 빨간 떡볶이, 떡 보이는 단일 메인"
+tteokbokki-red/15.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(가래떡, 닭고기, 라이스페이퍼/만두 건더기)",두꺼운 떡 빨간 떡볶이 한 그릇 단일 메인
+tteokbokki-red/16.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"떡볶이(떡, 소시지, 어묵, 고추 - 다소 갈색빛 양념)","떡·소시지 들어간 떡볶이, 빨간 양념 단일 메인"
+tteokbokki-red/17.jpg,tteokbokki-red,DROP,ood,none,False,"빨간 떡볶이(떡, 소시지) + 텍스트 오버레이(배달앱 광고문구)",음식 위 배달앱 광고 텍스트 박힌 프로모션 이미지 ood
+tteokbokki-red/18.jpg,tteokbokki-red,DROP,ood,tteokbokki-red,True,"닭떡볶이(빨간 떡볶이+닭고기, 한국어 홍보 텍스트 박힘)",메인은 빨간 떡볶이 맞으나 '스텔라떡볶이 신메뉴' 홍보 텍스트가 이미지에 박혀 ood
+tteokbokki-red/19.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,라볶이(빨간 국물 떡볶이+라면+계란+어묵+대파),"즉석 라볶이 한 냄비 단일 메인, 빨간 떡볶이 클래스 부합"
+tteokbokki-red/2.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,치즈 떡볶이(빨간 소스 떡볶이+녹인 치즈),"빨간 소스 베이스 떡볶이에 치즈 토핑, 단일 메인"
+tteokbokki-red/20.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡말이/가래떡+배추, 워터마크)","빨간 떡볶이 단일 접시, 흐릿한 워터마크 있으나 음식 판별 가능"
+tteokbokki-red/21.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-jajang,False,간장/짜장계열 갈색 소스 떡(튀김말이),빨간색이 아닌 진갈색 간장/짜장 소스 떡볶이로 보여 클래스 불일치(크롤 노이즈)
+tteokbokki-red/22.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,빨간 떡볶이(가래떡+어묵),"전형적 빨간 떡볶이 단일 접시, 클래스 부합"
+tteokbokki-red/23.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,빨간 떡볶이(어묵 포함),"빨간 양념 떡볶이 단일 접시, 곁들이 어묵만 있어 메인1개로 keep"
+tteokbokki-red/24.jpg,tteokbokki-red,DROP,multi,none,False,"튀김, 순대, 만두+국물, 떡볶이",튀김·순대·만두·떡볶이 여러 접시가 한 트레이에 = multi
+tteokbokki-red/25.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,빨간 떡볶이(파 고명),"초록 접시 위 빨간 떡볶이 단일 메인, keep"
+tteokbokki-red/26.jpg,tteokbokki-red,DROP,ood,tteokbokki-red,True,빨간 떡볶이,한글 자막 '와우!!!' 박힌 영상 캡처/텍스트카드 = ood
+tteokbokki-red/27.jpg,tteokbokki-red,DROP,ood,tteokbokki-red,True,빨간 떡볶이,'VOGUE' 워터마크 박힘 = ood
+tteokbokki-red/28.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,빨간 떡볶이(고추·파 고명),"빨간 양념 떡볶이 단일 메인, keep"
+tteokbokki-red/29.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이 (떡, 어묵)",용기에 담긴 전형적인 빨간 떡볶이 단일 메인
+tteokbokki-red/3.jpg,tteokbokki-red,DROP,multi,none,False,"치즈 떡볶이, 김치죽/주먹밥, 음료수",떡볶이+죽/밥+음료 여러 접시 동시 등장으로 멀티
+tteokbokki-red/30.jpg,tteokbokki-red,DROP,multi,none,False,"빨간 떡볶이, 순대/모둠전",떡볶이와 순대모둠 두 접시 나란히로 멀티
+tteokbokki-red/31.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이 (떡, 어묵, 팬 조리)",팬에 끓는 빨간 떡볶이 단일 메인
+tteokbokki-red/32.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이 (떡, 어묵, 당면)",흰 접시에 담긴 빨간 떡볶이 단일 메인
+tteokbokki-red/33.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이 (떡, 어묵)",회색 접시 빨간 떡볶이 단일 메인
+tteokbokki-red/34.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(가래떡, 어묵, 파)",전형적인 빨간 국물 떡볶이 단일 요리
+tteokbokki-red/35.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 어묵)",워터마크 있으나 메인은 빨간 떡볶이 단일
+tteokbokki-red/36.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 어묵)",포장용기 빨간 떡볶이 단일 요리
+tteokbokki-red/37.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 튀김/만두)",빨간 국물 떡볶이 메인 단일
+tteokbokki-red/38.jpg,tteokbokki-red,DROP,ood,none,False,간장/매콤 양념 닭볶음 또는 양념 볶음(파·깨),"떡볶이 아님, 떡 안보이는 양념 볶음요리(딴음식)"
+tteokbokki-red/39.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 어묵, 메추리알)",곁들이 국물 있으나 메인은 빨간 떡볶이 단일
+tteokbokki-red/4.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"빨간 떡볶이(떡, 어묵)","빨간 국물 떡볶이 단일 메인, 일회용 그릇"
+tteokbokki-red/40.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"떡볶이(떡, 어묵)","검은 그릇 빨간 떡볶이 단일, 워터마크 작아 무시"
+tteokbokki-red/41.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"떡볶이(떡, 어묵, 만두)","빨간 떡볶이 단일 메인, 만두는 토핑"
+tteokbokki-red/42.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,떡볶이(가래떡),빨간 양념 가래떡 떡볶이 단일 메인
+tteokbokki-red/43.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"떡볶이(떡, 소시지, 어묵)","빨간 떡볶이 단일 메인, 소시지 토핑"
+tteokbokki-red/44.jpg,tteokbokki-red,DROP,multi,none,False,떡볶이 + 튀김모둠 + 김밥,떡볶이·튀김·김밥 여러 접시 함께라 멀티
+tteokbokki-red/45.jpg,tteokbokki-red,DROP,ood,none,False,"떡볶이(어묵·튀김)와 별도 접시의 고기/순대, 하단 텍스트 오버레이",떡볶이 보울 + 별도 고기접시 2그릇 + 텍스트 박힘 → 합성/텍스트카드
+tteokbokki-red/46.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,빨간 떡볶이(떡),종이트레이 빨간 떡볶이 단일 메인
+tteokbokki-red/47.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,간장/양념 떡볶이(가래떡),붉은 양념 떡볶이 단일 메인(궁중풍 글레이즈)
+tteokbokki-red/48.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,국물 떡볶이(떡·어묵·계란),빨간 국물 떡볶이 단일 메인
+tteokbokki-red/49.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,빨간 떡볶이(떡·둥근어묵/소시지),빨간 양념 떡볶이 단일 메인
+tteokbokki-red/5.jpg,tteokbokki-red,DROP,ood,none,False,"치즈 올린 빨간 국물/찌개, 뒤에 김(곁)",치즈 얹은 빨간 국물요리로 떡볶이 단정 불가 + 뒤 김 별도용기 → 모호/딴음식
+tteokbokki-red/50.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,떡볶이(빨간 소스),"플라스틱 용기에 담긴 빨간 떡볶이 단일, 폴더 일치"
+tteokbokki-red/6.jpg,tteokbokki-red,DROP,multi,none,False,"치즈떡볶이, 튀김(종이포장)",치즈떡볶이 외에 상단에 튀김이 함께 있어 여러 음식
+tteokbokki-red/7.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"떡볶이(빨간 소스, 떡·어묵)","빨간 떡볶이 단일 클로즈업, 폴더 일치"
+tteokbokki-red/8.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,치즈 떡볶이(빨간 베이스),"빨간 베이스에 치즈 올린 떡볶이 단일, tteokbokki-red"
+tteokbokki-red/9.jpg,tteokbokki-red,KEEP,single_in,tteokbokki-red,True,"치즈 떡볶이(빨간 소스, 떡·어묵)","빨간 떡볶이에 치즈 올린 단일 메인, 폴더 일치"
