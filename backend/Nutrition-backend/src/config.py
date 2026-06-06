@@ -25,6 +25,7 @@ DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
     "supplement_facts",
     "ingredient_amounts",
     "precautions",
+    "allergen_warning",
     "intake_method",
     "other_ingredients",
     "functional_claims",
@@ -401,6 +402,36 @@ class Settings(BaseSettings):
     llm_wiki_path: Path = Field(default=DEFAULT_LLM_WIKI_PATH)
     llm_wiki_max_sources: int = Field(default=4, ge=0, le=8)
     llm_wiki_excerpt_chars: int = Field(default=700, ge=120, le=1500)
+    llm_wiki_retrieval_mode: Literal["lexical", "vector", "hybrid"] = Field(
+        default="hybrid",
+        description=(
+            "WIKI 검색 모드. lexical=기존 어휘 스캔만. vector/hybrid 는 "
+            "enable_wiki_vector_rag=true + pgvector 임베딩 적재가 있어야 동작하며, "
+            "조건 미충족 시 자동으로 lexical 로 fallback 한다."
+        ),
+    )
+    enable_wiki_vector_rag: bool = Field(
+        default=False,
+        description=(
+            "pgvector 기반 WIKI 시맨틱 RAG 활성화. 이미지-학습 게이트"
+            "(ENABLE_PGVECTOR_STORAGE)와 분리된 레퍼런스-지식 검색이다. "
+            "false 면 vector/hybrid 모드여도 lexical 만 사용한다."
+        ),
+    )
+    wiki_embedding_provider: Literal["ollama"] = Field(
+        default="ollama",
+        description="WIKI 임베딩 제공자. ollama_base_url 의 embeddings API 를 사용한다.",
+    )
+    wiki_embedding_model: str = Field(
+        default="bge-m3",
+        description="WIKI 임베딩 모델명(Ollama). 변경 시 재인제스천 필요.",
+    )
+    wiki_embedding_dimensions: int = Field(
+        default=1024,
+        ge=1,
+        le=16000,
+        description="WIKI 임베딩 차원. wiki_chunk_embeddings.embedding 컬럼과 일치해야 한다.",
+    )
 
     ocr_primary_provider: Literal["none", "google_vision", "paddleocr", "clova"] = Field(
         default="paddleocr"
@@ -599,7 +630,7 @@ class Settings(BaseSettings):
     vision_roi_allowed_classes: list[str] = Field(
         default_factory=_default_vision_roi_allowed_classes,
         min_length=1,
-        max_length=10,
+        max_length=16,
         description="YOLO ROI 보조에서 허용하는 object-detection 또는 label-section class labels.",
     )
     enable_food_yolo_detector: bool = Field(

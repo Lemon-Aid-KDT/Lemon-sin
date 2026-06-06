@@ -27,8 +27,12 @@ from src.models.schemas.supplement_recommendation import (
     SupplementRecommendationExplainResponse,
 )
 from src.nutrition.deficiency_analysis import FORBIDDEN_TERMS, contains_forbidden_terms
-from src.services.llm_wiki_retrieval import LlmWikiCitation, retrieve_llm_wiki_context
+from src.services.llm_wiki_retrieval import LlmWikiCitation, retrieve_llm_wiki_context_db
 from src.services.medical_records import MedicalContextSummary
+from src.services.nutrient_category_map import (
+    category_keys_for_ingredient_texts,
+    category_keys_for_nutrient_codes,
+)
 from src.services.supplement_recommendation import SUPPLEMENT_IMPACT_DISCLAIMER
 
 SUPPLEMENT_EXPLAIN_SYSTEM_PROMPT = """
@@ -72,7 +76,7 @@ async def explain_supplement_recommendation(
         Safe explanation response. If local LLM refinement is disabled or rejected,
         a deterministic fallback is returned.
     """
-    source_citations = _wiki_citations_for_recommendation(request, settings)
+    source_citations = await _wiki_citations_for_recommendation(request, settings)
     fallback = build_deterministic_explanation(
         request,
         warnings=(),
@@ -126,7 +130,7 @@ async def explain_supplement_analysis_preview(
         include_medical_context=request.include_medical_context,
         medical_context_summary=medical_context_summary,
     )
-    source_citations = _wiki_citations_for_analysis_context(context, settings)
+    source_citations = await _wiki_citations_for_analysis_context(context, settings)
     fallback = build_deterministic_analysis_explanation(
         record,
         warnings=(),
@@ -594,11 +598,61 @@ def _build_analysis_explanation_context(
     }
 
 
-def _wiki_citations_for_recommendation(
+def _recommendation_entity_keys(
+    request: SupplementRecommendationExplainRequest,
+) -> tuple[str, ...]:
+    """Return supplement category keys for a recommendation request's nutrients.
+
+    Maps the deterministic preview's nutrient codes to ``category_key`` values
+    (via ``nutrient_category_map``) so the retriever can boost each category's
+    canonical wiki page.
+
+    Args:
+        request: Explanation request with deterministic preview fields.
+
+    Returns:
+        Deduplicated supplement category keys (possibly empty).
+    """
+    preview = request.preview
+    codes: list[str] = []
+    for contribution in preview.current_supplement_contributions:
+        codes.append(contribution.nutrient_code)
+        codes.extend(item.nutrient_code for item in contribution.items)
+    for insight in (
+        *preview.deficiency_support_candidates,
+        *preview.excess_or_duplicate_risks,
+    ):
+        codes.append(insight.nutrient_code)
+    return category_keys_for_nutrient_codes(codes)
+
+
+def _analysis_entity_keys(context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return supplement category keys inferred from analysis ingredient text.
+
+    Args:
+        context: Sanitized analysis context with ingredient candidates.
+
+    Returns:
+        Deduplicated supplement category keys (possibly empty).
+    """
+    texts: list[str] = []
+    for ingredient in _list_of_mappings(context.get("ingredients")):
+        texts.append(_safe_text(ingredient.get("display_name"), limit=120) or "")
+        texts.append(_safe_text(ingredient.get("original_name"), limit=120) or "")
+    return category_keys_for_ingredient_texts(texts)
+
+
+async def _wiki_citations_for_recommendation(
     request: SupplementRecommendationExplainRequest,
     settings: Settings,
 ) -> tuple[SupplementExplanationSourceCitation, ...]:
     """Retrieve source citations for deterministic supplement impact context.
+
+    Uses the database-backed retriever so vector/hybrid semantic search is used
+    when enabled, transparently falling back to the lexical scanner otherwise.
+    The preview's nutrient codes are mapped to supplement ``category_key`` values
+    and passed as ``entity_keys`` so the retriever boosts each category's
+    canonical wiki page.
 
     Args:
         request: Explanation request with deterministic preview fields.
@@ -608,15 +662,21 @@ def _wiki_citations_for_recommendation(
         Server-selected WIKI citations safe to expose to the client.
     """
     query = _recommendation_wiki_query(request)
-    result = retrieve_llm_wiki_context(query, settings)
+    entity_keys = _recommendation_entity_keys(request)
+    result = await retrieve_llm_wiki_context_db(query, settings, entity_keys=entity_keys)
     return tuple(_source_citation(citation) for citation in result.citations)
 
 
-def _wiki_citations_for_analysis_context(
+async def _wiki_citations_for_analysis_context(
     context: Mapping[str, Any],
     settings: Settings,
 ) -> tuple[SupplementExplanationSourceCitation, ...]:
     """Retrieve source citations for sanitized analysis-preview context.
+
+    Uses the database-backed retriever (vector/hybrid when enabled, lexical
+    otherwise). Ingredient display/original names are keyword-mapped to supplement
+    ``category_key`` values (via ``nutrient_category_map``) and passed as
+    ``entity_keys`` for entity-link boosting.
 
     Args:
         context: Sanitized analysis context sent to local Ollama.
@@ -626,7 +686,8 @@ def _wiki_citations_for_analysis_context(
         Server-selected WIKI citations safe to expose to the client.
     """
     query = _analysis_wiki_query(context)
-    result = retrieve_llm_wiki_context(query, settings)
+    entity_keys = _analysis_entity_keys(context)
+    result = await retrieve_llm_wiki_context_db(query, settings, entity_keys=entity_keys)
     return tuple(_source_citation(citation) for citation in result.citations)
 
 

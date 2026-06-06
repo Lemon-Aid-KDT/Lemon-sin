@@ -22,7 +22,7 @@ from src.models.schemas.meal import (
     MealRecordResponse,
 )
 from src.nutrition.deficiency_analysis import FORBIDDEN_TERMS, contains_forbidden_terms
-from src.services.llm_wiki_retrieval import LlmWikiCitation, retrieve_llm_wiki_context
+from src.services.llm_wiki_retrieval import LlmWikiCitation, retrieve_llm_wiki_context_db
 
 MEAL_EXPLAIN_SYSTEM_PROMPT = """
 You explain a confirmed meal record for a healthcare app.
@@ -59,7 +59,7 @@ async def explain_meal_record(
     Returns:
         Safe explanation response with local WIKI citations when available.
     """
-    source_citations = _wiki_citations_for_meal(meal, settings)
+    source_citations = await _wiki_citations_for_meal(meal, settings)
     fallback = build_deterministic_meal_explanation(
         meal,
         warnings=(),
@@ -211,14 +211,51 @@ def _bounded_nutrition_summary(summary: Mapping[str, object]) -> dict[str, objec
     return bounded
 
 
-def _wiki_citations_for_meal(
+async def _wiki_citations_for_meal(
     meal: MealRecordResponse,
     settings: Settings,
 ) -> tuple[MealExplanationSourceCitation, ...]:
-    """Retrieve local WIKI citations for a confirmed meal."""
+    """Retrieve WIKI citations for a confirmed meal.
+
+    Uses the database-backed retriever so vector/hybrid semantic search applies
+    when enabled, with automatic lexical fallback otherwise. Confirmed food items
+    expose ``catalog_item.cuisine_code``, which maps directly to ``food_cuisine``
+    entity links, so those codes are passed as ``entity_keys`` to boost the
+    matching cuisine wiki pages.
+
+    Args:
+        meal: Confirmed meal response built with current-user owner filtering.
+        settings: Runtime settings with local WIKI controls.
+
+    Returns:
+        Server-selected WIKI citations safe to expose to the client.
+    """
     query = _meal_wiki_query(meal)
-    result = retrieve_llm_wiki_context(query, settings)
+    cuisine_codes = _meal_cuisine_codes(meal)
+    result = await retrieve_llm_wiki_context_db(query, settings, entity_keys=cuisine_codes)
     return tuple(_source_citation(citation) for citation in result.citations)
+
+
+def _meal_cuisine_codes(meal: MealRecordResponse) -> tuple[str, ...]:
+    """Return distinct cuisine codes from confirmed catalog items.
+
+    Args:
+        meal: Confirmed meal response.
+
+    Returns:
+        First-seen-ordered, deduplicated non-empty cuisine codes used as
+        ``food_cuisine`` entity-link keys.
+    """
+    codes: list[str] = []
+    seen: set[str] = set()
+    for item in meal.food_items[:20]:
+        if item.catalog_item is None:
+            continue
+        code = item.catalog_item.cuisine_code
+        if code and code not in seen:
+            codes.append(code)
+            seen.add(code)
+    return tuple(codes)
 
 
 def _meal_wiki_query(meal: MealRecordResponse) -> str:
