@@ -670,21 +670,44 @@ Day 8 실행 결과:
 
 ### Day 9. Golden scenarios와 failure UX
 
-- [ ] 대표 golden scenarios를 deterministic + LLM smoke로 실행한다.
-- [ ] 응급, unknown, 병용, 음식 조정, memory 반영, checklist/CTA 흐름을 확인한다.
-- [ ] error/timeout/fallback UX를 Flutter/backend 계약에 맞춘다.
-- [ ] observability 최소 항목을 기록한다.
+- [x] 대표 golden scenarios를 deterministic + LLM smoke로 실행한다.
+- [x] 응급, unknown, 병용, 음식 조정, memory 반영, checklist/CTA 흐름을 확인한다.
+- [x] error/timeout/fallback UX를 Flutter/backend 계약에 맞춘다.
+- [x] observability 최소 항목을 기록한다.
 
 Day 9 완료 gate:
 
-- [ ] representative scenarios가 통과한다.
-- [ ] 실패 케이스가 unknown/boundary/fallback으로 안전하게 닫힌다.
-- [ ] demo script가 고정되어 있다.
+- [x] representative scenarios가 통과한다.
+- [x] 실패 케이스가 unknown/boundary/fallback으로 안전하게 닫힌다.
+- [x] demo script가 고정되어 있다.
+
+Day 9 실행 결과:
+
+- deterministic golden eval: `python backend\scripts\eval_chatbot_golden.py`가 20개 case pass를 반환했다. 포함 범위는 sodium dinner, magnesium caution, urgent escalation, kidney/diabetes/vitamin D, unknown iron, P0 grapefruit, lithium/selenium boundary, label-only supplement unknown, structured lookup, today/health analysis snapshot, stale visible analysis context다.
+- SGLang Qwen live smoke: sodium dinner는 `provider=sglang`, `answerability=answerable`, source `kdris-2025`로 응답했다. magnesium caution도 `provider=sglang`, `answerability=answerable_with_caution`, source `nih-ods-magnesium`으로 응답했다.
+- no-LLM boundary: grapefruit/statin, lithium/selenium, urgent chest pain은 `provider=deterministic`으로 닫혔고 각각 `mfds-drug-safety`, `medlineplus-lithium`, `cdc-public-health` source와 boundary warning을 유지했다.
+- unknown: 철분 음식 질문은 `unknown_no_reviewed_source`, `sources=[]`, `no_reviewed_answer_card` warning으로 닫혔다.
+- analysis/checklist/CTA: app health analysis unit tests와 chat route integration tests가 analysis snapshot, checklist candidates, CTA, approval preview side-effect boundary를 통과했다.
+- error/fallback: SGLang down endpoint `127.0.0.1:39999`와 timeout `0.001` smoke 모두 deterministic fallback으로 닫혔고 `LLM generation failed: RuntimeError` warning을 남겼다.
+- existing-server smoke: `smoke_ai_agent_server.py --use-existing-server`가 `chat_provider=sglang`, `chat_answerability=answerable`, `chat_source_count=2`, `unknown_backlog_delta=1`로 통과했다.
+
+Day 9 observability 최소 항목:
+
+| 항목 | Day 10 demo에서 볼 값 |
+| --- | --- |
+| provider | `sglang` 또는 `deterministic` |
+| model | SGLang primary는 `Qwen/Qwen2.5-0.5B-Instruct` |
+| latency | CLI/runner wall time 기준으로 기록. first-token latency는 Day 10 이후 structured runtime telemetry로 분리 |
+| answerability | `answerable`, `answerable_with_caution`, `unknown_no_reviewed_source`, `medical_decision_boundary`, `urgent_escalation`, `needs_more_info` |
+| fallback 여부 | `provider=deterministic` plus `safety_warnings` 또는 boundary code |
+| sources | reviewed source metadata. unknown은 `sources=[]` |
+| safety_warnings | LLM failure, empty response, no reviewed card, emergency/P0 boundary code |
+| unknown topic | server smoke에서 unknown backlog delta로 확인. raw user text는 summary payload에 넣지 않는다 |
 
 ### Day 10. Full vertical integration demo hardening
 
 - [ ] Flutter -> backend -> Agent/LLM -> response display 전체 흐름을 확인한다.
-- [ ] memory, confirmed context, reviewed evidence, analysis, checklist, CTA, source, boundary가 함께 돈다.
+- [ ] memory, confirmed context, reviewed evidence, analysis, checklist, CTA, source, boundary가 Flutter display까지 함께 돈다.
 - [x] Qwen/Gemma/fallback 중 Day 10 demo runtime path를 고정한다.
 - [ ] 남은 gap은 35번 Future Risk Register 또는 30번 TODO로 되돌린다.
 
@@ -697,10 +720,10 @@ Day 10 완료 gate:
 
 ## 11. 다음 실행 기준
 
-현재 기준의 다음 실행 후보는 Day 9다.
+현재 기준의 다음 실행 후보는 Day 10이다.
 
-Day 8에서 Qwen SGLang baseline, Ollama `gemma4:e2b`, fallback 결과를 비교했다.
-Day 10 demo runtime은 `/api/v1/ai-agent/chat` canonical endpoint에서
-`SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`으로
-둔다. `/api/v1/agents/chat` alias는 만들지 않는다. 다음 구현은 대표 golden scenarios,
-error/timeout/fallback UX, observability를 고정하는 Day 9 검증이다.
+Day 9에서 representative golden scenarios, SGLang Qwen live smoke, unknown/boundary/fallback,
+analysis/checklist/CTA, observability 최소 항목을 고정했다. Day 10 demo runtime은
+`/api/v1/ai-agent/chat` canonical endpoint에서 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`으로
+둔다. `/api/v1/agents/chat` alias는 만들지 않는다. 다음 구현은 Flutter -> backend -> Agent/LLM -> response display
+전체 흐름을 실제 화면과 API smoke로 확인하고, 남은 gap을 30/35번에 되돌리는 것이다.

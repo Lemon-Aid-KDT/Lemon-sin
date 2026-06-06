@@ -298,6 +298,52 @@ Day 8 결론:
 - SGLang Gemma live smoke는 `tag/license/HF_TOKEN/download/VRAM/port strategy`가 준비될 때까지 blocker로 둔다.
 - Day 10 demo runtime path는 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`이다.
 
+### 2.7 Day 9 golden scenarios and failure UX smoke
+
+실행일: 2026-06-06
+
+대표 scenario 고정:
+
+| Scenario | 검증 명령 | 결과 |
+| --- | --- | --- |
+| hypertension sodium dinner | `python backend\scripts\eval_chatbot_golden.py`, `python backend\scripts\ask_chatbot_agent.py --preset hypertension-sodium-dinner --llm sglang --model Qwen/Qwen2.5-0.5B-Instruct --endpoint http://127.0.0.1:30000/v1 --timeout 120` | deterministic golden pass, live provider `sglang`, answerability `answerable`, source `kdris-2025` |
+| p0 grapefruit + lipid medication | `python backend\scripts\eval_chatbot_golden.py`, `python backend\scripts\ask_chatbot_agent.py --preset p0-grapefruit-lipid-med --llm sglang --model Qwen/Qwen2.5-0.5B-Instruct --endpoint http://127.0.0.1:30000/v1 --timeout 120` | deterministic boundary, answerability `medical_decision_boundary`, source `mfds-drug-safety`, warning `boundary_code:p0_grapefruit_statin` |
+| unknown no reviewed source | `python backend\scripts\eval_chatbot_golden.py`, `python backend\scripts\ask_chatbot_agent.py "철분이 부족할 때 음식으로 뭘 먼저 보면 좋아?" --llm sglang --model Qwen/Qwen2.5-0.5B-Instruct --endpoint http://127.0.0.1:30000/v1 --timeout 120` | answerability `unknown_no_reviewed_source`, sources `[]`, warning `no_reviewed_answer_card` |
+| drug/supplement interaction boundary | `python backend\scripts\ask_chatbot_agent.py --preset supplement-drug-boundary --llm sglang ...`, `python backend\scripts\ask_chatbot_agent.py --preset unknown-lithium-selenium --llm sglang ...` | magnesium caution live provider `sglang`, lithium/selenium deterministic boundary with source `medlineplus-lithium` |
+| urgent escalation | `python backend\scripts\ask_chatbot_agent.py --preset urgent-chest-pain --llm sglang ...` | answerability `urgent_escalation`, source `cdc-public-health`, warning `Emergency escalation boundary applied` |
+| today analysis/checklist/CTA | `python backend\scripts\eval_chatbot_golden.py`, `python -m pytest -q --no-cov backend/Nutrition-backend/tests/unit/services/test_app_health_analysis.py::test_analysis_response_contract_includes_bounded_candidates_without_side_effects ...` | analysis snapshot, checklist candidates, CTA, approval preview side-effect boundary pass |
+
+Failure UX 고정:
+
+| Failure case | 검증 명령 | 결과 |
+| --- | --- | --- |
+| SGLang down | `python backend\scripts\ask_chatbot_agent.py --preset hypertension-sodium-dinner --llm sglang --endpoint http://127.0.0.1:39999/v1 --timeout 2` | provider `deterministic`, answerability `answerable`, source `kdris-2025`, warning `LLM generation failed: RuntimeError` |
+| LLM timeout | `python backend\scripts\ask_chatbot_agent.py --preset hypertension-sodium-dinner --llm sglang --endpoint http://127.0.0.1:30000/v1 --timeout 0.001` | provider `deterministic`, answerability `answerable`, source `kdris-2025`, warning `LLM generation failed: RuntimeError` |
+| DB evidence 부족 | `python backend\scripts\eval_chatbot_golden.py`의 `unknown_iron_food_candidates`, `label_only_supplement_unknown`; API test `test_chat_route_production_source_gate_fails_closed_before_llm` | unknown/fail-closed path pass, source 없음 |
+| unknown backlog | `python backend\scripts\smoke_ai_agent_server.py --use-existing-server --skip-db-upgrade --database-url postgresql+asyncpg://postgres@127.0.0.1:55432/lemon_agent_dev --sglang-base-url http://127.0.0.1:30000/v1 --sglang-model Qwen/Qwen2.5-0.5B-Instruct --timeout 120` | `unknown_answerability=unknown_no_reviewed_source`, `unknown_source_count=0`, `unknown_backlog_delta=1` |
+| medical boundary | deterministic golden + P0 live smoke | P0/urgent cases do not call LLM for final judgment and close with boundary source/warning |
+
+Day 9 verification summary:
+
+| Command | Result |
+| --- | --- |
+| `python backend\scripts\eval_chatbot_golden.py` | pass, 20 cases |
+| `python -m pytest -q --no-cov backend/ai_agent_chat/tests/test_llm_completion.py ...` | pass, 10 tests |
+| `python -m pytest -q --no-cov backend/Nutrition-backend/tests/unit/services/test_app_health_analysis.py::test_analysis_response_contract_includes_bounded_candidates_without_side_effects ...` | pass, 3 tests |
+| `python -m pytest -q --no-cov backend/Nutrition-backend/tests/integration/api/test_ai_agent_api.py::test_chat_route_returns_analysis_checklist_cta_preview_without_side_effects ...` | pass, 5 tests, 1 `RequestsDependencyWarning` |
+| `python backend\scripts\check_ai_agent_runtime_prereqs.py --require-sglang-smoke` with `RUN_SGLANG_SMOKE=1`, `SGLANG_MODEL=Qwen/Qwen2.5-0.5B-Instruct`, `SGLANG_BASE_URL=http://127.0.0.1:30000/v1` | exit 0; SGLang/Ollama/PostgreSQL ports ok, host `sglang`/`torch` package still missing, PostgreSQL migration env still not configured |
+| `python backend\scripts\smoke_ai_agent_server.py --use-existing-server ...` | pass, `chat_provider=sglang`, `chat_answerability=answerable`, `chat_source_count=2`, unknown backlog delta `+1` |
+
+Observability minimum for Day 10 demo:
+
+- `provider`: `sglang` for primary live answer, `deterministic` for boundary/unknown/fallback.
+- `model`: `Qwen/Qwen2.5-0.5B-Instruct` for SGLang primary.
+- `latency`: CLI wall time is tracked externally; response payload/scripts currently expose provider/model/answerability/source/warning first, not first-token latency.
+- `answerability`: `answerable`, `answerable_with_caution`, `unknown_no_reviewed_source`, `medical_decision_boundary`, `urgent_escalation`, `needs_more_info`.
+- `fallback`: `safety_warnings` carries `LLM generation failed: RuntimeError`, `LLM response text was empty`, boundary codes, or `no_reviewed_answer_card`.
+- `sources`: reviewed source metadata preserved for answerable/boundary paths; unknown paths keep `sources=[]`.
+- `unknown topic`: server smoke proves unknown backlog persistence by delta `+1`; raw user text remains out of the summary payload.
+
 ## 3. 아직 통과하지 못한 필수 gate
 
 아래 항목은 모델 채택 전 필수다.
@@ -307,9 +353,9 @@ Day 8 결론:
 | SGLang Qwen live smoke | 통과 | 2026-06-06 `lemon-sglang` 복구 후 Qwen baseline smoke 통과 |
 | SGLang Gemma live smoke | 미통과 | `google/gemma-3n-E2B` 또는 `google/gemma-4-E2B-it` license/token/cache/download와 separate-port 또는 sequential-restart 전략 승인 후 smoke |
 | structured JSON schema live validation | 미통과 | live model 응답을 Pydantic/JSON Schema로 검증 |
-| latency 기록 | 부분 통과 | Qwen sodium/P0, Ollama Gemma sodium guarded/raw/P0 latency 기록 완료. structured JSON latency는 별도 필요 |
+| latency 기록 | 부분 통과 | Qwen/Gemma CLI smoke and Day9 fallback paths recorded at command level. first-token/structured JSON latency는 별도 필요 |
 | Ollama strict parser smoke | 통과 | configured Ollama parser smoke exit 0. Gemma guarded chatbot smoke는 fallback으로 기록됨 |
-| PostgreSQL live smoke | 미통과 | `TEST_DATABASE_URL`와 test DB 준비 후 migration/server smoke |
+| PostgreSQL live smoke | 부분 통과 | existing server smoke는 local DB URL로 통과. migration smoke는 `TEST_DATABASE_URL`와 test DB 준비 후 별도 실행 |
 
 ## 4. Live smoke 필수 후보
 

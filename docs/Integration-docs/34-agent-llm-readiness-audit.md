@@ -18,7 +18,7 @@ Agent가 다른 팀 결과물을 믿고 사용할 수 있게 만드는 **계약 
 추천 순서:
 
 1. 현재 31~34번 문서를 먼저 보호한다.
-2. SGLang Qwen/Gemma live smoke는 별도 runtime gate로 진행한다.
+2. SGLang Qwen live smoke와 Day9 golden/fallback gate는 통과 상태로 유지하고, Gemma는 별도 runtime gate로 남긴다.
 3. Agent memory 4종 schema와 current `agent_memory` 호환 adapter를 첫 구현 slice로 잡는다.
 4. 영양제/식단/모바일/DB 팀 결과물은 바로 merge하지 말고, 확정 기록 adapter 계약에 맞춰 가져온다.
 
@@ -39,15 +39,15 @@ Agent가 다른 팀 결과물을 믿고 사용할 수 있게 만드는 **계약 
 상태: **부분 준비**
 
 - 방향성: `SGLang + Ollama fallback`은 유지 가능하다.
-- baseline/candidate: Qwen baseline, Gemma candidate 정책은 문서화됐다.
-- 현재 로컬 확인: Ollama 포트는 응답 가능하지만 SGLang 포트와 SGLang Python package는 준비되지 않았다.
-- 판단: 기본 모델을 Gemma로 바꾸는 결정은 아직 이르다. Qwen baseline과 Gemma 후보를 같은 live smoke/eval 조건으로 비교한 뒤 바꿔야 한다.
+- baseline/candidate: Qwen baseline, Gemma candidate 정책은 문서화됐다. Day10 runtime path는 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`이다.
+- 현재 로컬 확인: SGLang port `127.0.0.1:30000`, Ollama port `127.0.0.1:11434`, PostgreSQL port `127.0.0.1:55432`, existing FastAPI server `127.0.0.1:18080`는 응답한다. host Python의 `sglang`/`torch` package는 여전히 없지만 SGLang은 Docker container에서 서빙된다.
+- 판단: 기본 모델을 Gemma로 바꾸는 결정은 아직 이르다. Qwen baseline과 Day9 golden/fallback gate를 유지하고, Gemma는 license/cache/VRAM/live smoke가 준비된 뒤 별도 후보로만 본다.
 
 필요한 다음 작업:
 
-- SGLang server에서 Qwen 모델 live smoke.
-- SGLang server에서 Gemma 모델 live smoke.
-- 같은 질문 세트로 deterministic fallback, structured output, safety boundary, latency 비교.
+- Day10 Flutter -> backend -> Agent/LLM -> response display demo.
+- SGLang Gemma 모델 live smoke는 Day10 이후 별도 runtime gate.
+- first-token/structured JSON telemetry는 Day10 이후 runtime observability 고도화로 분리.
 
 ### 32 Eval + Live Smoke Gate
 
@@ -55,12 +55,12 @@ Agent가 다른 팀 결과물을 믿고 사용할 수 있게 만드는 **계약 
 
 - deterministic golden eval은 통과했다.
 - deterministic chatbot smoke도 fallback 경로가 의미 있게 동작한다.
-- PostgreSQL smoke와 SGLang live smoke는 아직 통과하지 않았다.
-- 따라서 "문서/로컬 deterministic core는 안정"이지만 "runtime 모델 교체 준비 완료"는 아니다.
+- existing-server PostgreSQL + SGLang smoke는 통과했다. 다만 `TEST_DATABASE_URL` 기반 migration smoke는 아직 별도 env 준비가 필요하다.
+- 따라서 "문서/로컬 deterministic core와 Qwen runtime baseline은 안정"이지만 "runtime 모델 교체 준비 완료"는 아니다.
 
 필요한 다음 작업:
 
-- `check_ai_agent_runtime_prereqs.py`에서 PostgreSQL, SGLang, env gate를 통과시킨다.
+- `check_ai_agent_runtime_prereqs.py`에서 PostgreSQL migration smoke env gate를 별도로 통과시킨다.
 - `eval_chatbot_golden.py`는 모델 후보별 live mode 결과를 별도 산출물로 남긴다.
 - live smoke 실패 시 Ollama fallback이 어떤 조건에서만 허용되는지 문서와 설정에 고정한다.
 
@@ -149,8 +149,8 @@ Agent가 다른 팀 결과물을 믿고 사용할 수 있게 만드는 **계약 
 - `sources[]` detail rendering contract.
 - `CTA`와 `requires_user_approval` interaction contract.
 - `BoundaryPlan` card severity mapping.
-- streaming 도입 전 fallback UX와 timeout/error message.
-- endpoint mismatch 정리: `/api/v1/agents/chat` vs `/api/v1/ai-agent/chat`.
+- streaming 도입 전 fallback UX와 timeout/error message는 Day9에서 최소 고정했다. Flutter display에서 실제 문구/상태 표시를 확인해야 한다.
+- endpoint 기준은 `/api/v1/ai-agent/chat` canonical로 고정한다. `/api/v1/agents/chat` alias는 만들지 않는다.
 
 ## Go / No-Go
 
@@ -160,7 +160,7 @@ Go:
 - Agent memory schema/adapter 작업.
 - confirmed record adapter audit.
 - mobile response DTO 계약 정리.
-- SGLang Qwen/Gemma live smoke 준비.
+- SGLang Qwen live smoke와 Day9 golden/fallback gate 유지. SGLang Gemma는 Day10 이후 별도 실험.
 
 No-Go:
 
@@ -177,5 +177,5 @@ No-Go:
 그 다음 PR에서 confirmed record adapter audit을 붙이면, 음식/영양제/복약 팀 결과물을 가져올 때
 "어떤 데이터는 Agent context에 넣고 어떤 데이터는 제외할지"가 명확해진다.
 
-SGLang Qwen/Gemma live smoke는 병렬로 준비하되, 그 결과가 나오기 전까지 모델 기본값 변경은
-보류한다.
+SGLang Qwen live smoke와 Day9 golden/fallback gate는 Day10 demo 기준으로 유지한다. Gemma live smoke와 모델
+기본값 변경은 Day10 이후 별도 실험으로 보류한다.
