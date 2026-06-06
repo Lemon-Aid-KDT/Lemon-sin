@@ -21,6 +21,7 @@ from sqlalchemy import text
 
 from src.config import Settings
 from src.db.session import get_sessionmaker
+from src.services.wiki_embedding_targets import EMBEDDING_TABLES, get_target
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -262,8 +263,34 @@ async def _semantic_citations(
     return citations
 
 
+def _apply_query_prompt(query: str, model: str) -> str:
+    """Prepend the model's documented query prompt prefix, when one is defined.
+
+    Instruction-tuned embedders (e.g. ``embeddinggemma``) expect a query-side
+    prefix that must match the document-side prefix used at ingestion. Unknown
+    models embed raw text; the table lookup in the vector query is what gates an
+    unregistered model to the lexical fallback.
+
+    Args:
+        query: Bounded, sanitized query text.
+        model: Configured WIKI embedding model name.
+
+    Returns:
+        The query text with the model's query prefix applied, or unchanged when
+        the model has no registered prefix.
+    """
+    try:
+        return get_target(model).format_query(query)
+    except KeyError:
+        return query
+
+
 async def _embed_query(query: str, settings: Settings) -> tuple[float, ...]:
     """Embed a bounded query through the local Ollama embeddings API.
+
+    The configured ``wiki_embedding_model`` selects both the model and its
+    documented query prompt prefix, so queries are embedded the same way the
+    matching documents were at ingestion.
 
     Args:
         query: Bounded, sanitized query text.
@@ -277,7 +304,8 @@ async def _embed_query(query: str, settings: Settings) -> tuple[float, ...]:
         ValueError: If the response body is not a usable JSON object.
     """
     endpoint = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
-    payload = {"model": settings.wiki_embedding_model, "prompt": query}
+    prompt = _apply_query_prompt(query, settings.wiki_embedding_model)
+    payload = {"model": settings.wiki_embedding_model, "prompt": prompt}
     async with httpx.AsyncClient() as client:
         response = await client.post(
             endpoint,
@@ -329,7 +357,12 @@ async def _vector_citations(
     Returns:
         Candidate citations ranked by vector similarity, including any boosted or
         injected entity-linked documents. Empty when no chunks match.
+
+    Raises:
+        KeyError: If ``wiki_embedding_model`` is not a registered model. The caller
+            treats this as a fail-open to the lexical result.
     """
+    table = get_target(settings.wiki_embedding_model).table
     candidate_pool = max(
         settings.llm_wiki_max_sources * VECTOR_CANDIDATE_MULTIPLIER,
         MIN_VECTOR_CANDIDATE_POOL,
@@ -341,6 +374,7 @@ async def _vector_citations(
             session,
             embedding_literal=embedding_literal,
             limit=candidate_pool,
+            table=table,
         )
         citations = [
             _citation_from_row(row, excerpt_chars=settings.llm_wiki_excerpt_chars) for row in rows
@@ -352,8 +386,30 @@ async def _vector_citations(
                 entity_keys=entity_keys,
                 embedding_literal=embedding_literal,
                 excerpt_chars=settings.llm_wiki_excerpt_chars,
+                table=table,
             )
     return citations
+
+
+def _require_embedding_table(table: str) -> str:
+    """Return the table name only if it is a registry-owned embedding table.
+
+    The model-selected table is interpolated into SQL — pgvector columns are
+    dimension-typed, so the table cannot be a bound parameter — so it must be
+    validated against the registry allowlist before it reaches a query string.
+
+    Args:
+        table: Candidate embedding table name.
+
+    Returns:
+        The validated table name.
+
+    Raises:
+        ValueError: If the table is not in the registry allowlist.
+    """
+    if table not in EMBEDDING_TABLES:
+        raise ValueError(f"refusing to query non-allowlisted embedding table {table!r}")
+    return table
 
 
 async def _fetch_vector_rows(
@@ -361,6 +417,7 @@ async def _fetch_vector_rows(
     *,
     embedding_literal: str,
     limit: int,
+    table: str,
 ) -> Sequence[Any]:
     """Fetch the nearest wiki chunks for a query embedding.
 
@@ -368,18 +425,20 @@ async def _fetch_vector_rows(
         session: Open async read session.
         embedding_literal: pgvector text literal for the query embedding.
         limit: Maximum candidate rows to fetch.
+        table: Model-selected embedding table (registry-allowlisted).
 
     Returns:
         Result rows joining chunk, document, and cosine distance.
     """
-    statement = text("""
+    safe_table = _require_embedding_table(table)
+    statement = text(f"""
         SELECT
             d.title AS title,
             d.rel_path AS rel_path,
             c.heading AS heading,
             c.content AS content,
             (e.embedding OPERATOR(extensions.<=>) CAST(:embedding AS extensions.vector)) AS distance
-        FROM wiki_chunk_embeddings AS e
+        FROM {safe_table} AS e
         JOIN wiki_chunks AS c ON c.id = e.chunk_id
         JOIN wiki_documents AS d ON d.id = c.document_id
         ORDER BY e.embedding OPERATOR(extensions.<=>) CAST(:embedding AS extensions.vector) ASC
@@ -399,6 +458,7 @@ async def _apply_entity_boost(
     entity_keys: tuple[str, ...],
     embedding_literal: str,
     excerpt_chars: int,
+    table: str,
 ) -> list[LlmWikiCitation]:
     """Boost and, when needed, inject documents linked to requested entities.
 
@@ -408,6 +468,7 @@ async def _apply_entity_boost(
         entity_keys: Deduplicated, non-empty entity keys.
         embedding_literal: Query embedding literal used to rank injected chunks.
         excerpt_chars: Maximum excerpt length for injected citations.
+        table: Model-selected embedding table to rank injected chunks against.
 
     Returns:
         Citations with linked-document bonuses applied and any missing linked
@@ -436,6 +497,7 @@ async def _apply_entity_boost(
             slugs=tuple(missing_slugs),
             embedding_literal=embedding_literal,
             excerpt_chars=excerpt_chars,
+            table=table,
         )
         boosted.extend(injected)
     return boosted
@@ -464,6 +526,7 @@ async def _fetch_linked_chunks(
     slugs: tuple[str, ...],
     embedding_literal: str,
     excerpt_chars: int,
+    table: str,
 ) -> list[LlmWikiCitation]:
     """Fetch the best chunk for each linked document missing from the candidates.
 
@@ -472,12 +535,14 @@ async def _fetch_linked_chunks(
         slugs: Linked wiki slugs absent from the vector candidate pool.
         embedding_literal: Query embedding literal used to pick each top chunk.
         excerpt_chars: Maximum excerpt length for injected citations.
+        table: Model-selected embedding table (registry-allowlisted).
 
     Returns:
         One boosted citation per linked document that has at least one embedded
         chunk.
     """
-    statement = text("""
+    safe_table = _require_embedding_table(table)
+    statement = text(f"""
         SELECT DISTINCT ON (d.slug)
             d.title AS title,
             d.rel_path AS rel_path,
@@ -486,7 +551,7 @@ async def _fetch_linked_chunks(
             (e.embedding OPERATOR(extensions.<=>) CAST(:embedding AS extensions.vector)) AS distance
         FROM wiki_documents AS d
         JOIN wiki_chunks AS c ON c.document_id = d.id
-        JOIN wiki_chunk_embeddings AS e ON e.chunk_id = c.id
+        JOIN {safe_table} AS e ON e.chunk_id = c.id
         WHERE d.slug = ANY(:slugs)
         ORDER BY d.slug, e.embedding OPERATOR(extensions.<=>) CAST(:embedding AS extensions.vector) ASC
         """)

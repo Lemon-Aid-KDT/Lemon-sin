@@ -522,3 +522,77 @@ async def test_db_retrieval_fails_open_on_db_error(
 
     assert len(result.citations) == 1
     assert result.citations[0].source_path == "omega-3.md"
+
+
+async def test_db_retrieval_routes_to_model_specific_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify a second-model config sends the vector query to that model's table."""
+    _install_embedding(monkeypatch)
+    session = _StubSession(
+        vector_rows=[
+            _vector_row(
+                title="마그네슘",
+                rel_path="entities/magnesium.md",
+                heading=None,
+                content="마그네슘 권장량 관련 본문입니다.",
+                distance=0.2,
+            ),
+        ],
+        link_rows=[],
+        linked_chunk_rows=[],
+    )
+    _install_session(monkeypatch, session)
+
+    result = await retrieve_llm_wiki_context_db(
+        "마그네슘 권장량",
+        _settings(
+            tmp_path,
+            wiki_embedding_model="embeddinggemma",
+            wiki_embedding_dimensions=768,
+        ),
+    )
+
+    assert result.citations[0].source_path == "entities/magnesium.md"
+    vector_sql = next(
+        sql for sql in session.executed if "DISTINCT ON" not in sql and "entity_wiki_links" not in sql
+    )
+    # The base bge-m3 table must not be queried when embeddinggemma is configured.
+    assert "wiki_chunk_embeddings_gemma" in vector_sql
+    assert "FROM wiki_chunk_embeddings AS e" not in vector_sql
+
+
+async def test_db_retrieval_unknown_model_falls_open_to_lexical(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify an unregistered embedding model degrades to the lexical result."""
+    (tmp_path / "omega-3.md").write_text(
+        "# 오메가3\n\n## 효능\n오메가3는 혈중 지질 확인이 필요한 보충제 정보입니다.",
+        encoding="utf-8",
+    )
+    _install_embedding(monkeypatch)
+
+    def _boom() -> object:
+        raise AssertionError("get_sessionmaker must not run for an unknown model.")
+
+    monkeypatch.setattr(llm_wiki_retrieval, "get_sessionmaker", _boom)
+
+    result = await retrieve_llm_wiki_context_db(
+        "오메가3 효능",
+        _settings(tmp_path, wiki_embedding_model="model-not-in-registry"),
+    )
+
+    assert len(result.citations) == 1
+    assert result.citations[0].source_path == "omega-3.md"
+
+
+def test_apply_query_prompt_is_model_specific() -> None:
+    """Verify the query prompt prefix is applied per model (raw for unknown)."""
+    assert llm_wiki_retrieval._apply_query_prompt("마그네슘", "bge-m3") == "마그네슘"
+    assert (
+        llm_wiki_retrieval._apply_query_prompt("마그네슘", "embeddinggemma")
+        == "task: search result | query: 마그네슘"
+    )
+    assert llm_wiki_retrieval._apply_query_prompt("마그네슘", "unknown-model") == "마그네슘"
