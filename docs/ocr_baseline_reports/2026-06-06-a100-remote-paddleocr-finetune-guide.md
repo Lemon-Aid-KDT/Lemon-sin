@@ -154,6 +154,7 @@ scp -r "$DS" 155.230.153.222:'G:/lemon-aid/paddleocr_rec_work/rec_dataset/v2'
 scp backend/scripts/validate_paddleocr_rec_dataset_counts.py \
   backend/scripts/run_a100_paddleocr_windows_training.ps1 \
   backend/scripts/start_a100_paddleocr_windows_background.ps1 \
+  backend/scripts/watch_a100_paddleocr_windows_early_stop.ps1 \
   155.230.153.222:'G:/lemon-aid/paddleocr_rec_work/Lemon-Aid/backend/scripts/'
 ```
 
@@ -221,12 +222,14 @@ powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_wind
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode dataset -DatasetVersion v2 -RunSuffix v2_clean
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode smoke -DatasetVersion v2 -RunSuffix v2_clean
 powershell -ExecutionPolicy Bypass -File backend\scripts\start_a100_paddleocr_windows_background.ps1 -Mode full -DatasetVersion v2 -RunSuffix v2_clean
+powershell -ExecutionPolicy Bypass -File backend\scripts\start_a100_paddleocr_windows_background.ps1 -Mode early-stop -RunSuffix v2_clean -EarlyStopPatienceEpochs 5 -EarlyStopPollSeconds 60
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode export -DatasetVersion v2 -RunSuffix v2_clean
 ```
 
 `preflight`는 dataset이 없어도 `nvidia-smi`와 `paddle.utils.run_check()`만 확인한다. `dataset`, `smoke`, `full`은 train/val/dict line count가 각각 70,778 / 6,828 / 1,066이 아니면 즉시 중단한다.
 A100 운영 스크립트도 기본적으로 `backend/scripts/validate_paddleocr_rec_dataset_counts.py`를 호출해 Mac과 같은 count-only gate JSON을 남긴다.
 `full`은 SSH 세션보다 오래 실행되므로 `start_a100_paddleocr_windows_background.ps1`가 `Win32_Process.Create`로 detached process를 만들고, `G:\lemon-aid\paddleocr_rec_work\full.v2_clean.combined.log`에 stdout/stderr를 함께 남긴다.
+`early-stop`은 공식 PaddleOCR 학습 loop를 직접 수정하지 않고 `train.log`의 eval metric만 감시한다. 최신 평가 epoch와 `best_epoch` 차이가 `EarlyStopPatienceEpochs` 이상이면 `RunSuffix`와 clean venv 경로가 모두 일치하는 `tools\train.py` 프로세스만 종료한다. 보수 기본값은 5 epoch이며, 더 공격적으로 멈추려면 3으로 낮춘다.
 
 ---
 
@@ -310,6 +313,8 @@ CUDA_VISIBLE_DEVICES=0 python3 -m paddle.distributed.launch --gpus 0 tools/train
 ## 8. Export and Mac 회수
 
 PaddleOCR inference export가 필요한 경우:
+
+주의: PaddleOCR training checkpoint는 `best_accuracy/` 디렉터리가 아니라 `best_accuracy.pdparams`, `best_accuracy.pdopt`, `best_accuracy.states` 파일 prefix로 저장된다. Export의 `Global.pretrained_model`에는 공식 문서처럼 suffix 없는 `...\best_accuracy` prefix를 넣고, precheck도 `best_accuracy.pdparams` 존재 여부를 확인한다.
 
 ```powershell
 python tools\export_model.py `

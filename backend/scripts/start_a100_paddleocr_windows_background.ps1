@@ -10,25 +10,41 @@ does not print private labels, crop paths, or provider payloads.
 #>
 
 param(
-    [ValidateSet("dataset", "smoke", "full", "export")]
+    [ValidateSet("dataset", "smoke", "full", "export", "early-stop")]
     [string]$Mode = "full",
 
     [string]$WorkspaceRoot = "G:\lemon-aid\paddleocr_rec_work",
     [string]$DatasetVersion = "v2",
-    [string]$RunSuffix = "v2_clean"
+    [string]$RunSuffix = "v2_clean",
+    [ValidateRange(1, 100)]
+    [int]$EarlyStopPatienceEpochs = 5,
+    [ValidateRange(10, 3600)]
+    [int]$EarlyStopPollSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
 
-$scriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\run_a100_paddleocr_windows_training.ps1"
+$runScriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\run_a100_paddleocr_windows_training.ps1"
+$watchScriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\watch_a100_paddleocr_windows_early_stop.ps1"
 $workdir = Join-Path $WorkspaceRoot "Lemon-Aid"
-$logPath = Join-Path $WorkspaceRoot "$Mode.$RunSuffix.combined.log"
 
-if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
-    throw "A100 run script is missing: $scriptPath"
+if ($Mode -eq "early-stop") {
+    $scriptPath = $watchScriptPath
+    $logPath = Join-Path $WorkspaceRoot "early_stop.$RunSuffix.combined.log"
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+        throw "A100 early-stop watcher is missing: $scriptPath"
+    }
+    $command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -RunSuffix {1} -PatienceEpochs {2} -PollSeconds {3} > "{4}" 2>&1' -f $scriptPath, $RunSuffix, $EarlyStopPatienceEpochs, $EarlyStopPollSeconds, $logPath
+}
+else {
+    $scriptPath = $runScriptPath
+    $logPath = Join-Path $WorkspaceRoot "$Mode.$RunSuffix.combined.log"
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+        throw "A100 run script is missing: $scriptPath"
+    }
+    $command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -DatasetVersion {2} -RunSuffix {3} > "{4}" 2>&1' -f $scriptPath, $Mode, $DatasetVersion, $RunSuffix, $logPath
 }
 
-$command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -DatasetVersion {2} -RunSuffix {3} > "{4}" 2>&1' -f $scriptPath, $Mode, $DatasetVersion, $RunSuffix, $logPath
 $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
     CommandLine = $command
     CurrentDirectory = $workdir

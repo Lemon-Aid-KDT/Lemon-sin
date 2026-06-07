@@ -102,10 +102,11 @@ function Assert-ExportInputs {
     Write-Host "Checking export inputs..."
     Assert-FileLineCount -Path $DictFile -Expected 1066 -Name "dict"
     $bestCheckpoint = Join-Path $PaddleOCRRoot "$FullOutput\best_accuracy"
-    if (-not (Test-Path -LiteralPath $bestCheckpoint -PathType Container)) {
-        throw "best_accuracy checkpoint directory is missing."
+    $bestParams = "$bestCheckpoint.pdparams"
+    if (-not (Test-Path -LiteralPath $bestParams -PathType Leaf)) {
+        throw "best_accuracy checkpoint parameters are missing: $bestParams"
     }
-    Write-Host "Export inputs passed."
+    Write-Host "Export inputs passed. checkpoint_prefix=$bestCheckpoint"
 }
 
 function Resolve-PaddleOCRConfig {
