@@ -427,9 +427,10 @@ def test_daily_coaching_uses_sglang_provider_when_configured(
     }
     assert captured["llm_request"].messages[0].role == "system"
     assert "Answer only in Korean" in captured["llm_request"].messages[0].content
-    assert "Do not mention or quote internal calculation logs" in captured[
-        "llm_request"
-    ].messages[0].content
+    assert (
+        "Do not mention or quote internal calculation logs"
+        in captured["llm_request"].messages[0].content
+    )
     assert "Trace summary" not in captured["llm_request"].messages[1].content
     assert captured["run_output"].provider == "sglang"
     assert captured["run_model"] == "Qwen/Qwen2.5-0.5B-Instruct"
@@ -584,16 +585,10 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
             captured["llm_request"] = request
             return LLMResponse(
                 text=(
-                    "요약\n"
-                    "- 현재 입력 기준으로 확인된 기록을 함께 살펴봤습니다.\n"
-                    "주의 조건\n"
-                    "- 의학적 판단이 필요한 경우 전문가와 상담해 주세요.\n"
-                    "오늘 할 일\n"
-                    "- 오늘 확정한 식사와 영양제 기록부터 점검해 주세요.\n"
-                    "관리 포인트\n"
-                    "- 반복 패턴을 확인하세요.\n"
-                    "출처 기준\n"
-                    "- 질병관리청 건강정보, KDRIs 영양 기준"
+                    "현재 입력 기준으로 확인된 기록을 함께 살펴봤습니다. "
+                    "의학적 판단이 필요한 경우에는 전문가와 상담해 주세요. "
+                    "오늘은 확정한 식사와 영양제 기록부터 점검하고 반복 패턴을 확인하세요.\n\n"
+                    "출처 기준: 질병관리청 건강정보, KDRIs 영양 기준"
                 ),
                 provider="sglang",
                 model=self.model,
@@ -619,11 +614,9 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
     body = response.json()
     assert body["request_id"] == "chat-route-test"
     assert body["provider"] == "sglang"
-    assert "요약" in body["message"]
-    assert "주의 조건" in body["message"]
-    assert "오늘 할 일" in body["message"]
-    assert "관리 포인트" in body["message"]
-    assert "출처 기준" in body["message"]
+    assert "현재 입력 기준" in body["message"]
+    assert "오늘" in body["message"]
+    assert "출처 기준:" in body["message"]
     assert "agent_memory" in body["used_tools"]
     assert "knowledge_policy" in body["used_tools"]
     assert body["source_families"] == [
@@ -637,22 +630,24 @@ def test_chat_route_uses_sglang_provider_and_agent_memory(
     assert "Question category:" in captured["llm_request"].messages[1].content
     assert "Allowed source families:" in captured["llm_request"].messages[1].content
     assert "Response contract:" in captured["llm_request"].messages[1].content
-    assert "Internal context for grounding only" in captured[
-        "llm_request"
-    ].messages[1].content
+    assert "Internal context for grounding only" in captured["llm_request"].messages[1].content
     assert "User-reported memory context" in captured["llm_request"].messages[1].content
-    assert "프로필 메모리: 두부와 닭가슴살을 선호한다고 말함." in captured[
-        "llm_request"
-    ].messages[1].content
-    assert "대화 요약: 최근 대화에서 나트륨 조절을 우선순위로 둠." in captured[
-        "llm_request"
-    ].messages[1].content
-    assert "주의 메모리: 혈압약 복용을 사용자 보고로 언급함." in captured[
-        "llm_request"
-    ].messages[1].content
-    assert "confirmed app record가 아닌 낮은 강도 참고 정보" in captured[
-        "llm_request"
-    ].messages[1].content
+    assert (
+        "프로필 메모리: 두부와 닭가슴살을 선호한다고 말함."
+        in captured["llm_request"].messages[1].content
+    )
+    assert (
+        "대화 요약: 최근 대화에서 나트륨 조절을 우선순위로 둠."
+        in captured["llm_request"].messages[1].content
+    )
+    assert (
+        "주의 메모리: 혈압약 복용을 사용자 보고로 언급함."
+        in captured["llm_request"].messages[1].content
+    )
+    assert (
+        "confirmed app record가 아닌 낮은 강도 참고 정보"
+        in captured["llm_request"].messages[1].content
+    )
     assert "internal_trace" not in captured["llm_request"].messages[1].content
     assert "supplement totals" not in captured["llm_request"].messages[1].content
     assert "summary_json" not in captured["llm_request"].messages[1].content
@@ -962,9 +957,10 @@ def test_chat_route_loads_recent_food_records_before_context_resolution(
     context = captured["context"]
     snapshot = context["user_health_context_snapshot"]
     assert context["user_health_context_resolution"]["status"] == "sufficient"
-    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][0][
-        "food_record_id"
-    ] == "record-1"
+    assert (
+        snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][0]["food_record_id"]
+        == "record-1"
+    )
     assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][0][
         "display_items"
     ] == ["ramen"]
@@ -1039,9 +1035,10 @@ def test_chat_route_marks_visible_analysis_context_stale_after_new_food_record(
     assert visible["stale"] is True
     assert visible["stale_reasons"] == ["food_record_changed_after_visible_analysis"]
     assert visible["current_food_record_ids"] == ["record-1", "record-2"]
-    assert snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][1][
-        "food_record_id"
-    ] == "record-2"
+    assert (
+        snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"][1]["food_record_id"]
+        == "record-2"
+    )
 
 
 def test_chat_route_loads_confirmed_supplement_snapshot(
@@ -1110,12 +1107,14 @@ def test_chat_route_loads_confirmed_supplement_snapshot(
     snapshot = captured["context"]["user_health_context_snapshot"]
     supplement_snapshot = snapshot["active_supplement_snapshot"]
     assert supplement_snapshot["registered_supplements"][0]["supplement_id"] == "supplement-1"
-    assert supplement_snapshot["registered_supplements"][0]["ingredients"][0][
-        "analysis_use"
-    ] == "standard_nutrient"
-    assert supplement_snapshot["registered_supplements"][0]["ingredients"][1][
-        "analysis_use"
-    ] == "label_only"
+    assert (
+        supplement_snapshot["registered_supplements"][0]["ingredients"][0]["analysis_use"]
+        == "standard_nutrient"
+    )
+    assert (
+        supplement_snapshot["registered_supplements"][0]["ingredients"][1]["analysis_use"]
+        == "label_only"
+    )
     assert "raw_ocr_text" not in str(supplement_snapshot)
 
 
@@ -1204,7 +1203,7 @@ def test_chat_route_returns_analysis_checklist_cta_preview_without_side_effects(
         def answer(self, request: object) -> ChatbotResponse:
             return ChatbotResponse(
                 request_id=request.request_id,
-                message="요약\n- ok\n출처 기준\n- 사용자 확인 기록",
+                message="현재 입력 기준으로 확인했습니다. 오늘은 기록을 먼저 확인하세요.\n\n출처 기준: 사용자 확인 기록",
                 provider="deterministic",
                 used_tools=["knowledge_policy"],
                 answerability="answerable",
@@ -1253,10 +1252,7 @@ def test_chat_route_returns_analysis_checklist_cta_preview_without_side_effects(
         candidate["approval_state"] == "approval_required"
         for candidate in body["checklist_candidates"]
     )
-    assert all(
-        candidate["side_effect"] == "none"
-        for candidate in body["checklist_candidates"]
-    )
+    assert all(candidate["side_effect"] == "none" for candidate in body["checklist_candidates"])
     public_text = str(body)
     assert "ocr preview noodles" not in public_text
     assert "raw_ocr_text" not in public_text
@@ -1341,16 +1337,11 @@ def test_chat_route_magnesium_blood_pressure_med_uses_caution_policy(
             captured["llm_request"] = request
             return LLMResponse(
                 text=(
-                    "요약\n"
-                    "- 마그네슘은 근육·신경 기능과 관련된 영양소입니다.\n"
-                    "주의 조건\n"
-                    "- 혈압약을 복용 중이면 혈압약 종류와 신장 기능, 다른 영양제 중복 여부를 함께 봐야 합니다.\n"
-                    "오늘 할 일\n"
-                    "- 제품 라벨의 마그네슘 함량과 최근 어지러움, 설사, 복통 같은 이상 증상을 확인하세요.\n"
-                    "관리 포인트\n"
-                    "- 새 보충제 시작이나 복용량 결정은 약 이름과 제품 라벨을 가지고 약사 또는 의사에게 확인하세요.\n"
-                    "출처 기준\n"
-                    "- KDRIs 영양 기준, MFDS 의약품 안전 정보"
+                    "마그네슘은 근육·신경 기능과 관련된 영양소입니다. "
+                    "혈압약을 복용 중이면 혈압약 종류와 신장 기능, 다른 영양제 중복 여부를 함께 봐야 합니다. "
+                    "오늘은 제품 라벨의 마그네슘 함량과 최근 어지러움, 설사, 복통 같은 이상 증상을 확인하세요. "
+                    "새 보충제 시작이나 복용량 결정은 약 이름과 제품 라벨을 가지고 약사 또는 의사에게 확인하세요.\n\n"
+                    "출처 기준: KDRIs 영양 기준, MFDS 의약품 안전 정보"
                 ),
                 provider="sglang",
                 model=self.model,

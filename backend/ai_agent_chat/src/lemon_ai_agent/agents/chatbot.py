@@ -46,7 +46,15 @@ NUTRIENT_LABELS = {
     "sugars": "당류",
 }
 
-REQUIRED_CHATBOT_SECTIONS = ("요약", "주의 조건", "오늘 할 일", "관리 포인트", "출처 기준")
+REQUIRED_CHATBOT_SOURCE_MARKER = "출처 기준"
+REQUIRED_CHATBOT_ACTION_TERMS = (
+    "오늘",
+    "다음 끼니",
+    "제품 라벨",
+    "확인",
+    "조절",
+    "기록",
+)
 STRUCTURED_RESPONSE_FORMAT: dict[str, Any] = {
     "type": "json_schema",
     "json_schema": {
@@ -106,6 +114,7 @@ MEMORY_BUNDLE_LABELS = {
     "conversation_memory": "대화 요약",
     "safety_memory": "주의 메모리",
 }
+MEMORY_SUMMARY_MAX_LINES = 6
 INTERNAL_MEMORY_TOKENS = (
     "authorization",
     "full_prompt",
@@ -163,9 +172,7 @@ class ChatbotAgent:
         if not self._has_llm_client:
             return self._fallback_response(turn, warnings)
 
-        completion = self._completion.complete(
-            self._build_llm_request(turn)
-        )
+        completion = self._completion.complete(self._build_llm_request(turn))
         if not completion.ok:
             warnings.extend(completion.warnings)
             return self._fallback_response(turn, warnings)
@@ -222,7 +229,9 @@ class ChatbotAgent:
                 confirmed_foods=self._confirmed_food_summary(turn.request.context),
                 source_basis=self._source_basis_for_turn(turn),
             )
-        if turn.policy.category == "nutrition_analysis" and self._has_nutrition_candidate_card(turn):
+        if turn.policy.category == "nutrition_analysis" and self._has_nutrition_candidate_card(
+            turn
+        ):
             return self._card_renderer.render_answer_card(
                 turn,
                 warnings,
@@ -363,9 +372,7 @@ class ChatbotAgent:
         turn: ChatTurnPlan,
     ) -> LLMRequest:
         request = turn.request
-        history = "\n".join(
-            f"{turn.role}: {turn.content}" for turn in request.conversation[-6:]
-        )
+        history = "\n".join(f"{turn.role}: {turn.content}" for turn in request.conversation[-6:])
         summary = self._safe_summary(request.context) or "none"
         confirmed_foods = self._confirmed_food_summary(request.context) or "none"
         memory_summary = self._agent_memory_summary(request.context) or "none"
@@ -376,9 +383,10 @@ class ChatbotAgent:
                     role="system",
                     content=(
                         "You are the Lemon Aid chatbot for health-management coaching. "
-                        "Answer only in Korean. Use exactly these section labels: "
-                        "요약, 주의 조건, 오늘 할 일, 관리 포인트, 출처 기준. "
-                        "Use 3 to 6 short mobile-readable bullet lines total where possible. "
+                        "Answer only in Korean. Do not lock the user-facing answer into "
+                        "fixed card section labels. Write a natural mobile-readable answer "
+                        "that still includes a short summary, the main caution, today's "
+                        "action, and source basis. "
                         "Do not diagnose, treat, prescribe, guarantee effects, "
                         "or promote buying a specific product. "
                         "Use cautious but practical phrasing such as '현재 입력 기준', "
@@ -408,7 +416,7 @@ class ChatbotAgent:
                         "it must not replace the useful checklist. "
                         "For emergency questions, do not provide long differential diagnosis; "
                         "prioritize risk reason and immediate action. "
-                        "For source basis, write briefly like: "
+                        "End with a brief source basis sentence like: "
                         "'출처 기준: 질병관리청 건강정보, KDRIs 영양 기준'."
                     ),
                 ),
@@ -472,7 +480,7 @@ class ChatbotAgent:
                 line = self._agent_memory_record_summary(label, record)
                 if line:
                     lines.append(line)
-                if len(lines) >= 6:
+                if len(lines) >= MEMORY_SUMMARY_MAX_LINES:
                     return "\n".join(lines)
         return "\n".join(lines)
 
@@ -565,18 +573,11 @@ class ChatbotAgent:
             return None
 
         return (
-            f"{REQUIRED_CHATBOT_SECTIONS[0]}\n"
-            f"- {summary}\n"
-            f"{REQUIRED_CHATBOT_SECTIONS[1]}\n"
-            f"- {why_it_matters}\n"
-            f"- {'; '.join(caution_conditions[:3])}\n"
-            f"{REQUIRED_CHATBOT_SECTIONS[2]}\n"
-            f"{self._bullet_lines(today_actions[:4])}\n"
-            f"{REQUIRED_CHATBOT_SECTIONS[3]}\n"
-            f"- 구체 예시: {', '.join(specific_examples[:6])}\n"
-            f"- 확인 포인트: {'; '.join(expert_check_points[:4])}\n"
-            f"{REQUIRED_CHATBOT_SECTIONS[4]}\n"
-            f"- {source_basis}"
+            f"{summary} {why_it_matters} {'; '.join(caution_conditions[:3])}\n"
+            f"오늘은 {'; '.join(today_actions[:4])} "
+            f"구체적으로는 {', '.join(specific_examples[:6])}부터 확인하세요. "
+            f"확인 포인트는 {'; '.join(expert_check_points[:4])}입니다.\n\n"
+            f"출처 기준: {source_basis}"
         )
 
     def _has_structured_response_schema(self, data: dict[str, object]) -> bool:
@@ -600,7 +601,9 @@ class ChatbotAgent:
         return "\n".join(f"- {value}" for value in values)
 
     def _has_required_response_shape(self, text: str) -> bool:
-        return all(section in text for section in REQUIRED_CHATBOT_SECTIONS)
+        return REQUIRED_CHATBOT_SOURCE_MARKER in text and any(
+            term in text for term in REQUIRED_CHATBOT_ACTION_TERMS
+        )
 
     def _has_required_card_specificity(self, text: str, turn: ChatTurnPlan) -> bool:
         if turn.policy.category == "medication_supplement_caution":
@@ -659,7 +662,9 @@ class ChatbotAgent:
         points: list[str] = []
         if "비전분 채소 1/2" in guidance:
             points.append("식사는 비전분 채소 1/2, 단백질 1/4, 탄수화물 1/4로 잡아 보세요")
-            points.append("채소 후보는 비전분 채소, 단백질 후보는 두부, 달걀, 생선구이, 콩류부터 고르세요")
+            points.append(
+                "채소 후보는 비전분 채소, 단백질 후보는 두부, 달걀, 생선구이, 콩류부터 고르세요"
+            )
         if "주 150분" in guidance:
             points.append("운동은 주 150분 중강도 유산소와 주 2일 근력운동을 목표로 하세요")
         if "7시간" in guidance:
@@ -809,7 +814,9 @@ class ChatbotAgent:
                 "but do not decide personal co-use safety."
             )
         if analysis.primary_intent == "symptom":
-            return "Start with red-flag screening, then rest, hydration, cool place, and observation."
+            return (
+                "Start with red-flag screening, then rest, hydration, cool place, and observation."
+            )
         if turn.answer_cards:
             return "Use the reviewed answer cards as concrete coaching points without exposing raw retrieval."
         if turn.knowledge_items:

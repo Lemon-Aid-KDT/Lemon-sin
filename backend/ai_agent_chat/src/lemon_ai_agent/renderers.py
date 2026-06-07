@@ -203,17 +203,12 @@ class CardAnswerRenderer:
         card = turn.answer_cards[0]
         return _deterministic_response(
             turn,
-            (
-                "요약\n"
-                f"- {_card_summary_sentence(card)}\n"
-                "주의 조건\n"
-                f"- {_card_caution_sentence(card)}\n"
-                "오늘 할 일\n"
-                f"- {_card_examples_sentence(card)}\n"
-                "관리 포인트\n"
-                f"- {_card_checklist_sentence(card)}\n"
-                "출처 기준\n"
-                f"- {source_basis}"
+            _natural_reviewed_answer(
+                summary_sentence=_card_summary_sentence(card),
+                caution=_card_caution_sentence(card),
+                next_action=_card_examples_sentence(card),
+                management_points=_card_checklist_sentence(card),
+                source_basis=source_basis,
             ),
             warnings,
         )
@@ -231,17 +226,12 @@ class CardAnswerRenderer:
     ) -> ChatbotResponse:
         return _deterministic_response(
             turn,
-            (
-                "요약\n"
-                f"- {summary_sentence}\n"
-                "주의 조건\n"
-                f"- {caution}\n"
-                "오늘 할 일\n"
-                f"- {next_action}\n"
-                "관리 포인트\n"
-                f"- {management_points}\n"
-                "출처 기준\n"
-                f"- {source_basis}"
+            _natural_reviewed_answer(
+                summary_sentence=summary_sentence,
+                caution=caution,
+                next_action=next_action,
+                management_points=management_points,
+                source_basis=source_basis,
             ),
             warnings,
         )
@@ -261,21 +251,16 @@ class CardAnswerRenderer:
         return _deterministic_response(
             turn,
             (
-                "요약\n"
-                "- 마그네슘은 근육·신경 기능과 관련된 영양소라 관심을 가질 수 있습니다.\n"
-                "주의 조건\n"
-                "- 혈압약을 복용 중이면 제품 라벨의 마그네슘 함량, 혈압약 종류, "
+                "마그네슘은 근육·신경 기능과 관련된 영양소라 관심을 가질 수 있지만, "
+                "혈압약을 복용 중이면 제품 라벨의 마그네슘 함량, 혈압약 종류, "
                 "신장 기능, 다른 영양제 중복 여부를 함께 봐야 합니다.\n"
-                "오늘 할 일\n"
-                "- 제품 라벨과 복용 중인 혈압약 이름을 확인하고, 최근 어지러움, "
+                "오늘은 제품 라벨과 복용 중인 혈압약 이름을 확인하고, 최근 어지러움, "
                 "설사, 복통 같은 이상 증상이 있었는지 정리하세요.\n"
-                "관리 포인트\n"
-                "- 식품으로는 견과류, 콩류, 통곡물, 녹색 잎채소처럼 마그네슘을 "
+                "식품으로는 견과류, 콩류, 통곡물, 녹색 잎채소처럼 마그네슘을 "
                 "포함한 후보를 우선 고려할 수 있습니다. 보충제를 새로 시작하거나 "
                 "복용량을 정하는 지점은 약 이름과 제품 라벨을 가지고 약사 또는 "
-                "의사에게 확인하세요.\n"
-                "출처 기준\n"
-                f"- {source_basis}"
+                "의사에게 확인하세요.\n\n"
+                f"출처 기준: {source_basis}"
             ),
             warnings,
         )
@@ -333,19 +318,14 @@ def _render_contextual_sodium_meal(
     return _deterministic_response(
         turn,
         (
-            "요약\n"
-            f"- {summary_sentence}\n"
-            "주의 조건\n"
-            "- 찌개나 라면은 국물을 남기고, 간장·쌈장·고추장·드레싱 같은 소스와 장류는 "
+            f"{summary_sentence} 찌개나 라면은 국물을 남기고, "
+            "간장·쌈장·고추장·드레싱 같은 소스와 장류는 "
             f"부어 먹기보다 찍어 먹는 쪽이 좋습니다.{kidney_caution}\n"
-            "오늘 할 일\n"
-            "- 김치류, 장아찌, 젓갈은 한 가지 이하로 줄이고 햄·소시지·베이컨 같은 "
+            "오늘은 김치류, 장아찌, 젓갈은 한 가지 이하로 줄이고 햄·소시지·베이컨 같은 "
             f"가공육은 다음 끼니에서 빼거나 양을 줄이세요.{protein_action}\n"
-            "관리 포인트\n"
-            "- 직접 확인 가능한 기록에서 짠 국물, 양념, 소스, 절임 반찬이 "
-            "반복되는지 먼저 확인하세요.\n"
-            "출처 기준\n"
-            f"- {source_basis}"
+            "직접 확인 가능한 기록에서 짠 국물, 양념, 소스, 절임 반찬이 "
+            "반복되는지 먼저 확인하세요.\n\n"
+            f"출처 기준: {source_basis}"
         ),
         warnings,
     )
@@ -359,9 +339,11 @@ def _card_summary_sentence(card: AnswerCard) -> str:
 
 def _card_caution_sentence(card: AnswerCard) -> str:
     if card.caution_conditions:
-        return "개인 검사수치 해석, 치료 판단, 보충제 고용량 결정은 여기서 단정하지 않고 " + (
-            ", ".join(card.caution_conditions[:3])
-        ) + "을 함께 확인하세요."
+        return (
+            "개인 검사수치 해석, 치료 판단, 보충제 고용량 결정은 여기서 단정하지 않고 "
+            + (", ".join(card.caution_conditions[:3]))
+            + "을 함께 확인하세요."
+        )
     return "검수된 근거와 현재 질문 범위 안에서 다음 행동을 좁혀 보세요."
 
 
@@ -375,6 +357,21 @@ def _card_checklist_sentence(card: AnswerCard) -> str:
     if card.checklist:
         return "확인할 항목은 " + ", ".join(card.checklist[:5]) + "입니다."
     return "한 번의 식사보다 반복 패턴을 보고 다음 기록에서 조절하세요."
+
+
+def _natural_reviewed_answer(
+    *,
+    summary_sentence: str,
+    caution: str,
+    next_action: str,
+    management_points: str,
+    source_basis: str,
+) -> str:
+    return (
+        f"{summary_sentence} {caution}\n"
+        f"오늘은 {next_action} {management_points}\n\n"
+        f"출처 기준: {source_basis}"
+    )
 
 
 def _needs_protein_candidates(safe_summary: str, confirmed_foods: str) -> bool:
@@ -410,11 +407,7 @@ def _join_or_default(values: tuple[str, ...], default: str) -> str:
 
 
 def _source_basis(plan: AnswerPlan) -> str:
-    source_ids = [
-        source["source_id"]
-        for source in plan.source_basis
-        if source.get("source_id")
-    ]
+    source_ids = [source["source_id"] for source in plan.source_basis if source.get("source_id")]
     return ", ".join(dict.fromkeys(source_ids)) if source_ids else "reviewed source required"
 
 
@@ -493,7 +486,16 @@ def _p0_interaction_detail(message: str) -> str:
         ),
         (
             ("니트로글리세린", "협심증", "nitrate", "nitroglycerin"),
-            ("pde5", "발기부전약", "발기부전 약", "발기부전 치료제", "비아그라", "시알리스", "실데나필", "타다라필"),
+            (
+                "pde5",
+                "발기부전약",
+                "발기부전 약",
+                "발기부전 치료제",
+                "비아그라",
+                "시알리스",
+                "실데나필",
+                "타다라필",
+            ),
             "협심증 약이나 nitrate 계열 약과 PDE5 억제제 조합은 혈압이 크게 떨어질 수 있어 처방명과 성분명 확인이 필요합니다.",
         ),
         (

@@ -17,11 +17,10 @@ class _CapturingLLMClient:
     def __init__(
         self,
         text: str = (
-            "요약\n- 현재 입력 기준으로 답변드릴 수 있습니다.\n"
-            "주의 조건\n- 공식자료 기준으로 반복되는 고나트륨 식사는 줄이는 것이 좋습니다.\n"
-            "오늘 할 일\n- 확인된 기록을 먼저 살펴보세요.\n"
-            "관리 포인트\n- 반복 패턴을 확인하세요.\n"
-            "출처 기준\n- 질병관리청 건강정보, KDRIs 영양 기준"
+            "현재 입력 기준으로 반복되는 고나트륨 식사는 줄이는 것이 좋습니다. "
+            "오늘은 확인된 기록을 먼저 살펴보고 다음 끼니에서 조절하세요. "
+            "반복 패턴은 기록으로 확인하세요.\n\n"
+            "출처 기준: 질병관리청 건강정보, KDRIs 영양 기준"
         ),
     ) -> None:
         self.request: LLMRequest | None = None
@@ -237,11 +236,11 @@ def test_chatbot_without_llm_returns_safe_korean_fallback() -> None:
     assert response.provider == "deterministic"
     assert "knowledge_policy" in response.used_tools
     assert response.source_families == ["supplement_reference", "nutrition_reference"]
-    assert "요약" in response.message
-    assert "주의 조건" in response.message
-    assert "오늘 할 일" in response.message
-    assert "관리 포인트" in response.message
-    assert "출처 기준" in response.message
+    assert "출처 기준:" in response.message
+    assert "오늘" in response.message
+    assert "주의 조건\n" not in response.message
+    assert "오늘 할 일\n" not in response.message
+    assert "관리 포인트\n" not in response.message
     assert "전문가" not in response.message
     assert "제품 라벨" in response.message
     assert "supplement totals" not in response.message
@@ -300,12 +299,12 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
 
     assert response.provider == "fake"
     assert response.source_families == ["supplement_reference", "nutrition_reference"]
-    assert response.message.startswith("요약")
+    assert "출처 기준:" in response.message
     assert client.request is not None
     system_prompt = client.request.messages[0].content
     user_prompt = client.request.messages[1].content
     assert "Answer only in Korean" in system_prompt
-    assert "Use exactly these section labels" in system_prompt
+    assert "Do not lock the user-facing answer into fixed card section labels" in system_prompt
     assert "Do not mention or quote internal calculation logs" in system_prompt
     assert "Do not create new health facts without a listed source family" in system_prompt
     assert "Do not create new health judgments beyond the supplied context" in system_prompt
@@ -392,11 +391,10 @@ def test_chatbot_prompt_includes_confirmed_food_nutrient_grounding() -> None:
     """Verify confirmed meal nutrients are supplied to the LLM as grounding."""
     client = _CapturingLLMClient(
         text=(
-            "요약\n- 점심 라면 기록에서 나트륨 2600mg이 확인됩니다.\n"
-            "주의 조건\n- 고혈압 맥락에서는 짠 국물과 반복 섭취를 줄이는 것이 좋습니다.\n"
-            "오늘 할 일\n- 다음 끼니는 국물과 짠 반찬을 줄이세요.\n"
-            "관리 포인트\n- 한 번보다 반복 패턴을 확인하세요.\n"
-            "출처 기준\n- 질병관리청 건강정보, KDRIs 영양 기준"
+            "점심 라면 기록에서 나트륨 2600mg이 확인됩니다. "
+            "고혈압 맥락에서는 짠 국물과 반복 섭취를 줄이는 것이 좋습니다. "
+            "오늘은 다음 끼니에서 국물과 짠 반찬을 줄이세요.\n\n"
+            "출처 기준: 질병관리청 건강정보, KDRIs 영양 기준"
         )
     )
 
@@ -406,11 +404,8 @@ def test_chatbot_prompt_includes_confirmed_food_nutrient_grounding() -> None:
     assert client.request is not None
     system_prompt = client.request.messages[0].content
     user_prompt = client.request.messages[1].content
-    assert "요약" in system_prompt
-    assert "주의 조건" in system_prompt
-    assert "오늘 할 일" in system_prompt
-    assert "관리 포인트" in system_prompt
     assert "출처 기준" in system_prompt
+    assert "fixed card section labels" in system_prompt
     assert "sodium 같은 영문 영양소명은 나트륨처럼 한국어 표시명" in system_prompt
     assert "Confirmed meal and nutrient context" in user_prompt
     assert "점심: 라면, 나트륨 2600mg" in user_prompt
@@ -421,11 +416,11 @@ def test_chatbot_prompt_tracks_intent_analysis_and_reviewed_knowledge_only() -> 
     """Verify retrieval context is internal, reviewed, and source-traceable."""
     client = _CapturingLLMClient(
         text=(
-            "요약\n- 당뇨 관리에는 식사, 활동, 수면, 체중 패턴 확인이 중요합니다.\n"
-            "주의 조건\n- 복용 중인 약 조정은 별도 확인이 필요합니다.\n"
-            "오늘 할 일\n- 식사는 접시 구성을 단순하게 잡고 걷기부터 시작하세요.\n"
-            "관리 포인트\n- 주 150분 활동과 성인 7시간 이상 수면을 목표로 기록하세요.\n"
-            "출처 기준\n- CDC, NIDDK, 질병관리청 건강정보"
+            "당뇨 관리에는 식사, 활동, 수면, 체중 패턴 확인이 중요합니다. "
+            "복용 중인 약 조정은 별도 확인이 필요합니다. 오늘은 식사는 접시 구성을 "
+            "단순하게 잡고 걷기부터 시작하세요. 주 150분 활동과 성인 7시간 이상 "
+            "수면을 목표로 기록하세요.\n\n"
+            "출처 기준: CDC, NIDDK, 질병관리청 건강정보"
         )
     )
 
@@ -548,8 +543,7 @@ def test_chatbot_missing_required_sections_falls_back() -> None:
     response = ChatbotAgent(llm_client=client).answer(_hypertension_ramen_request())
 
     assert response.provider == "deterministic"
-    assert "요약" in response.message
-    assert "출처 기준" in response.message
+    assert "출처 기준:" in response.message
     assert "Chatbot response contract not followed" in response.safety_warnings
 
 
@@ -560,8 +554,7 @@ def test_chatbot_empty_llm_output_falls_back() -> None:
     response = ChatbotAgent(llm_client=client).answer(_hypertension_ramen_request())
 
     assert response.provider == "deterministic"
-    assert "요약" in response.message
-    assert "출처 기준" in response.message
+    assert "출처 기준:" in response.message
     assert "LLM response text was empty" in response.safety_warnings
 
 
@@ -569,11 +562,9 @@ def test_chatbot_blocks_ban_diagnosis_and_treatment_phrasing() -> None:
     """Verify chronic-condition certainty and absolute-ban wording are blocked."""
     client = _CapturingLLMClient(
         text=(
-            "요약\n- 고혈압입니다.\n"
-            "주의 조건\n- 라면은 완전히 금지하세요.\n"
-            "오늘 할 일\n- 치료 계획을 바꾸세요.\n"
-            "관리 포인트\n- 매번 확인하세요.\n"
-            "출처 기준\n- 질병관리청 건강정보, KDRIs 영양 기준"
+            "고혈압입니다. 라면은 완전히 금지하세요. "
+            "오늘은 치료 계획을 바꾸세요.\n\n"
+            "출처 기준: 질병관리청 건강정보, KDRIs 영양 기준"
         )
     )
 
@@ -594,7 +585,7 @@ def test_chatbot_unsafe_llm_output_falls_back_to_safe_message() -> None:
     response = agent.answer(_request())
 
     assert response.provider == "deterministic"
-    assert "요약" in response.message
+    assert "출처 기준:" in response.message
     assert "당뇨입니다" not in response.message
     assert "구매하세요" not in response.message
     assert "Forbidden medical expression detected" in response.safety_warnings
@@ -727,11 +718,8 @@ def test_chatbot_structured_json_output_is_rendered_to_answer_sections() -> None
     assert client.request is not None
     assert client.request.response_format is not None
     assert client.request.response_format["type"] == "json_schema"
-    assert response.message.startswith("요약")
-    assert "주의 조건" in response.message
-    assert "오늘 할 일" in response.message
-    assert "관리 포인트" in response.message
-    assert "출처 기준" in response.message
+    assert "출처 기준:" in response.message
+    assert "오늘" in response.message
     assert "제품 라벨" in response.message
     assert "마그네슘 함량" in response.message
     assert "혈압약 종류" in response.message
