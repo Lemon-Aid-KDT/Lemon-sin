@@ -153,6 +153,7 @@ DS="outputs/generated/supplement-learning/2026-06-05/operator-review/datasets/su
 scp -r "$DS" 155.230.153.222:'G:/lemon-aid/paddleocr_rec_work/rec_dataset/v2'
 scp backend/scripts/validate_paddleocr_rec_dataset_counts.py \
   backend/scripts/run_a100_paddleocr_windows_training.ps1 \
+  backend/scripts/start_a100_paddleocr_windows_background.ps1 \
   155.230.153.222:'G:/lemon-aid/paddleocr_rec_work/Lemon-Aid/backend/scripts/'
 ```
 
@@ -219,12 +220,13 @@ cd G:\lemon-aid\paddleocr_rec_work\Lemon-Aid
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode preflight -DatasetVersion v2 -RunSuffix v2_clean
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode dataset -DatasetVersion v2 -RunSuffix v2_clean
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode smoke -DatasetVersion v2 -RunSuffix v2_clean
-powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode full -DatasetVersion v2 -RunSuffix v2_clean
+powershell -ExecutionPolicy Bypass -File backend\scripts\start_a100_paddleocr_windows_background.ps1 -Mode full -DatasetVersion v2 -RunSuffix v2_clean
 powershell -ExecutionPolicy Bypass -File backend\scripts\run_a100_paddleocr_windows_training.ps1 -Mode export -DatasetVersion v2 -RunSuffix v2_clean
 ```
 
 `preflight`는 dataset이 없어도 `nvidia-smi`와 `paddle.utils.run_check()`만 확인한다. `dataset`, `smoke`, `full`은 train/val/dict line count가 각각 70,778 / 6,828 / 1,066이 아니면 즉시 중단한다.
 A100 운영 스크립트도 기본적으로 `backend/scripts/validate_paddleocr_rec_dataset_counts.py`를 호출해 Mac과 같은 count-only gate JSON을 남긴다.
+`full`은 SSH 세션보다 오래 실행되므로 `start_a100_paddleocr_windows_background.ps1`가 `Win32_Process.Create`로 detached process를 만들고, `G:\lemon-aid\paddleocr_rec_work\full.v2_clean.combined.log`에 stdout/stderr를 함께 남긴다.
 
 ---
 

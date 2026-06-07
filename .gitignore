@@ -133,6 +133,31 @@ outputs/generated/supplement-learning/**/brand-detail-contact-sheet-*/*.webp
 # PaddleOCR rec training datasets: CLOVA per-box teacher TEXT labels + real-photo
 # crops (operator-approved for training only). Large (GBs) and not for shared repos.
 outputs/generated/supplement-learning/**/datasets/
+# Private operator-generated OCR review data, provider-derived payloads, and
+# teacher-labeled artifacts. Some legacy sanitized summaries may already be
+# tracked; do not stage local modifications unless they have been reviewed.
+backend/outputs/
+outputs/generated/supplement-learning/**/operator-review/ocr-ground-truth-materialized-images/
+outputs/generated/supplement-learning/**/operator-review/ocr-ground-truth-review-bundle/
+outputs/generated/supplement-learning/**/operator-review/batches-autofill/
+outputs/generated/supplement-learning/**/operator-review/batches-autofill-applied/
+outputs/generated/supplement-learning/**/operator-review/reconciled/
+outputs/generated/supplement-learning/**/operator-review/reconciled-autofill/
+outputs/generated/supplement-learning/**/operator-review/**/*.jsonl
+outputs/generated/supplement-learning/**/operator-review/**/*.preflight.json
+outputs/generated/supplement-learning/**/operator-review/**/*.preflight.md
+outputs/generated/supplement-learning/**/operator-review/**/*clova*
+outputs/generated/supplement-learning/**/operator-review/**/*ground-truth*
+outputs/generated/supplement-learning/**/operator-review/**/*payload*
+outputs/generated/supplement-learning/**/operator-review/**/*provider*
+outputs/generated/supplement-learning/**/operator-review/**/*teacher*
+outputs/generated/supplement-learning/**/operator-review/
+outputs/generated/supplement-learning/**/models/
+outputs/generated/supplement-learning/**/*.pdiparams
+outputs/generated/supplement-learning/**/*.pdmodel
+outputs/generated/supplement-learning/**/*.pdopt
+outputs/generated/supplement-learning/**/*.pdparams
+outputs/generated/supplement-learning/**/*.states
 # Python 3.12 PaddleOCR/PaddleX training venv (multi-GB; companion to .venv/).
 .venv-paddle/
 backend/.venv-paddle/
