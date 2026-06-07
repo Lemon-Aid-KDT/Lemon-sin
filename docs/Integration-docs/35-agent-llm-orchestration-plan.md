@@ -740,12 +740,41 @@ Day 10 완료 gate:
 - [x] Day 10 이후 고도화 항목과 Blocker가 분리되어 있다.
 - [x] 팀 통합 PR 또는 다음 작업 slice가 명확하다.
 
+#### PR #4 팀 중간 검토 gate
+
+PR #4는 최종 Agent/LLM 품질 PR이 아니라 팀 통합 전 중간 검토용 vertical slice다.
+리뷰어는 답변 말투의 완성도보다 아래 계약이 실제 앱/백엔드 경로에서 유지되는지 먼저 본다.
+
+| 검토 항목 | 확인 기준 |
+| --- | --- |
+| endpoint | Flutter chat repository가 `POST /api/v1/ai-agent/chat`를 호출하고 `/api/v1/agents/chat` alias가 필요하지 않다. |
+| response DTO | `sources[]`, `answerability`, `ctas[]`, `approval_preview`, `today_analysis`, `smart_analysis`, `checklist_candidates`를 Flutter가 손실 없이 파싱한다. |
+| 화면 흐름 | 질문 입력 후 backend consent/chat 호출이 발생하고 assistant answer가 화면에 표시된다. |
+| safety boundary | P0 복약/영양제 상호작용은 LLM 판단으로 허용/금지하지 않고 deterministic boundary로 닫힌다. |
+| unknown | reviewed source가 없는 질문은 `unknown_no_reviewed_source`, `sources=[]` 경로로 닫힐 수 있어야 한다. |
+| runtime | Day 10 demo는 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`를 유지한다. |
+| team data contract | 팀원 DB/식단/영양제/복약 작업은 confirmed record와 preview/candidate record를 구분해야 한다. Agent는 confirmed record만 강한 context로 소비한다. |
+| dev environment | Flutter web과 backend를 함께 볼 때 CORS allowlist 또는 same-origin dev proxy가 필요하다. |
+
+팀원이 최소로 끝냈는지 볼 계약:
+
+- food: 사용자 확인이 끝난 음식 기록만 Agent context에 들어간다. OCR/YOLO/LLM preview는 confirmed food처럼 쓰지 않는다.
+- supplement: active/confirmed supplement와 `nutrient_code`가 있는 성분은 강한 context로 쓰고, label-only 성분은 reviewed evidence 없이는 unknown/boundary로 닫는다.
+- medication: active medication name/class/provenance가 분리되어 있어야 하며, 복약/영양제 병용 판단은 boundary renderer가 처리한다.
+- mobile: source, CTA, approval preview, analysis snapshot, boundary/unknown 상태를 같은 응답에서 표시할 수 있어야 한다.
+- privacy: raw prompt, raw transcript, raw OCR, raw provider payload는 memory/API/user-facing response에 노출하지 않는다.
+
 ## 11. 다음 실행 기준
 
-현재 기준의 다음 실행 후보는 Day 10이다.
+현재 기준의 다음 실행 후보는 PR #4 팀 중간 검토 안정화 이후의 Day10 follow-up PR이다.
 
-Day 9에서 representative golden scenarios, SGLang Qwen live smoke, unknown/boundary/fallback,
-analysis/checklist/CTA, observability 최소 항목을 고정했다. Day 10 demo runtime은
-`/api/v1/ai-agent/chat` canonical endpoint에서 `SGLang Qwen primary + deterministic safety fallback + Ollama dev fallback`으로
-둔다. `/api/v1/agents/chat` alias는 만들지 않는다. 다음 구현은 Flutter -> backend -> Agent/LLM -> response display
-전체 흐름을 실제 화면과 API smoke로 확인하고, 남은 gap을 30/35번에 되돌리는 것이다.
+Day 10에서 실제 Flutter 화면과 API smoke로 vertical slice는 확인했다. 다음 구현은 모델 프롬프트/답변 품질을
+바로 키우기보다, 팀원이 앱에서 같은 흐름을 안정적으로 볼 수 있게 하는 통합 gap을 먼저 닫는다.
+
+권장 순서:
+
+1. CORS allowlist 또는 same-origin dev proxy를 정리해 기본 Chrome 보안 설정에서도 Flutter web -> backend consent/chat이 통과하게 한다.
+2. source/analysis/approval preview 패널이 응답 직후 화면에서 확인 가능하도록 panel anchor, sticky summary, 또는 scroll placement를 조정한다.
+3. pure `unknown_no_reviewed_source` demo 문구를 golden fixture와 Flutter smoke fixture에 고정한다.
+4. 팀원 DB/식단/영양제/복약 작업이 confirmed record 계약을 만족하는지 확인한다.
+5. 그 다음 답변 품질 작업을 `renderer/golden 개선` PR로 분리한다. 이 단계에서 BoundaryPlan, UnknownRenderer, CardAnswerRenderer, Lemon Aid 톤 golden examples를 다룬다.

@@ -279,18 +279,29 @@ TODO:
 
 목표: Day10 화면 smoke에서 확인된 통합 gap을 다음 PR 후보로 분리한다.
 
+권장 우선순위:
+
+1. `CORS/dev-proxy`: 팀원이 기본 Chrome 보안 설정으로 Flutter web 화면을 열어도 backend consent/chat이 통과하게 한다.
+2. `display-visibility`: source, analysis, approval preview가 응답 직후 화면에서 확인 가능하게 한다.
+3. `pure-unknown-fixture`: demo/golden/smoke에서 `unknown_no_reviewed_source`를 안정적으로 재현한다.
+4. `team-contract-audit`: 팀원 DB/식단/영양제/복약 작업이 confirmed record와 preview/candidate를 분리하는지 확인한다.
+5. `renderer-golden-quality`: 답변 품질은 위 통합 gap 이후 BoundaryPlan, UnknownRenderer, CardAnswerRenderer, Lemon Aid 톤 golden examples로 분리해 진행한다.
+
 TODO:
 
 - [ ] backend CORS allowlist에 Flutter web dev origin을 명시하거나 same-origin dev proxy를 둔다.
 - [ ] source/analysis/approval preview 패널이 응답 직후 화면에서 확인 가능하도록 panel anchor, sticky summary, 또는 scroll placement를 조정한다.
 - [ ] `unknown_no_reviewed_source` demo 문구를 golden fixture와 Flutter smoke fixture에 안정적으로 고정한다.
 - [ ] Day10 smoke 스크립트를 임시 `output/day10` 산출물이 아니라 재사용 가능한 dev smoke 명령으로 정리할지 결정한다.
+- [ ] 팀원 DB/식단/영양제/복약 작업이 Agent confirmed context 계약을 만족하는지 audit한다.
+- [ ] 답변 품질/프롬프트 대수정은 `renderer-golden-quality` 후속 PR로 분리한다.
 
 검증:
 
 - [ ] 기본 Chrome 보안 설정에서 Flutter web -> backend consent/chat preflight가 통과한다.
 - [ ] 실제 화면에서 answer, sources, boundary/unknown, CTA, approval preview가 한 번의 demo flow로 확인된다.
 - [ ] pure unknown scenario가 `sources=[]`, `answerability=unknown_no_reviewed_source`로 고정된다.
+- [ ] team contract audit 결과 confirmed record와 preview/candidate record가 구분된다.
 
 ## 16. 완료 정의
 
