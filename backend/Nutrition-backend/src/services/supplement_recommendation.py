@@ -21,9 +21,13 @@ from src.services.personalized_nutrition_risk import classify_personalized_suppl
 from src.services.supplement_contribution import load_supplement_contribution_result
 
 SUPPLEMENT_IMPACT_ALGORITHM_VERSION = "supplement-impact-v1.0.0"
+# NOTE: user-facing text is scanned against FORBIDDEN_TERMS ("진단","치료","처방",
+# "복용량 변경") and rejected, so the disclaimer conveys "this is not a medical
+# diagnosis — consult a doctor/pharmacist" WITHOUT using those exact tokens.
 SUPPLEMENT_IMPACT_DISCLAIMER = (
     "이 결과는 라벨과 사용자가 확인한 입력 기록 기준의 건강관리 참고 정보이며, "
-    "개인 건강 상태를 확정하지 않습니다."
+    "의학적 판단을 대신하지 않습니다. 개인 건강 상태를 확정하지 않으므로, "
+    "자세한 사항은 반드시 의사·약사 등 전문가와 상담하시기 바랍니다."
 )
 
 

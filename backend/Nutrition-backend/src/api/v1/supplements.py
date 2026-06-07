@@ -79,6 +79,7 @@ from src.models.schemas.supplement_image import SupplementImagePipelineMetadata
 from src.models.schemas.supplement_parser import SupplementOCRTextParseRequest
 from src.models.schemas.supplement_recommendation import (
     SupplementAnalysisExplainRequest,
+    SupplementAnalysisPreviewWithRecommendation,
     SupplementImpactPreviewRequest,
     SupplementImpactPreviewResponse,
     SupplementRecommendationExplainRequest,
@@ -1045,7 +1046,7 @@ async def _require_sensitive_health_consent(
 
 @router.post(
     "/analyze",
-    response_model=SupplementAnalysisPreview,
+    response_model=SupplementAnalysisPreviewWithRecommendation,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         **SUPPLEMENT_AUTH_RESPONSES,
@@ -1082,7 +1083,21 @@ async def analyze_supplement_label(
     ocr_provider: Annotated[SupplementOCRProviderSelector, Form()] = "configured",
     barcode_text: Annotated[str | None, Form(max_length=256)] = None,
     barcode_format: Annotated[str | None, Form(max_length=40)] = None,
-) -> SupplementAnalysisPreview:
+    with_recommendation: Annotated[
+        bool,
+        Query(
+            description=(
+                "Opt-in: also return a safe recommendation for the scanned label in the "
+                "same request (single-flow). Uses only OCR-consent context (no profile/medical). "
+                "Default false preserves the analyze-then-explain two-step flow."
+            )
+        ),
+    ] = False,
+    recommendation_use_local_llm: Annotated[
+        bool,
+        Query(description="When with_recommendation, attempt local Ollama wording refinement."),
+    ] = False,
+) -> SupplementAnalysisPreviewWithRecommendation:
     """Create a supplement label preview that must be confirmed by the user.
 
     Args:
@@ -1273,7 +1288,22 @@ async def analyze_supplement_label(
             ),
         },
     )
-    return supplement_analysis_run_to_preview(result_record)
+    combined = SupplementAnalysisPreviewWithRecommendation.model_validate(
+        supplement_analysis_run_to_preview(result_record).model_dump()
+    )
+    if with_recommendation:
+        # Single-flow opt-in: explain the just-scanned label using only OCR-consent
+        # context (no profile/medical -> no extra consent). Degrade gracefully to a
+        # preview-only response if recommendation generation is unavailable/unsafe.
+        try:
+            combined.recommendation = await explain_supplement_analysis_preview(
+                result_record,
+                SupplementAnalysisExplainRequest(use_local_llm=recommendation_use_local_llm),
+                settings,
+            )
+        except (SupplementExplanationError, ValueError, OSError):
+            combined.recommendation = None
+    return combined
 
 
 @router.post(

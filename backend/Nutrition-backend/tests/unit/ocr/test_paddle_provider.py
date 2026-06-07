@@ -400,6 +400,23 @@ def test_predictor_server_detection_profile_keeps_korean_mobile_recognition(
     assert predictor.kwargs["text_recognition_model_name"] == "korean_PP-OCRv5_mobile_rec"  # type: ignore[attr-defined]
 
 
+def test_predictor_forwards_custom_text_recognition_model_dir(
+    _fake_paddleocr_module: None,
+    tmp_path: Path,
+) -> None:
+    """Verify a fine-tuned recognizer inference directory is passed to PaddleOCR."""
+    model_dir = tmp_path / "supplement-rec-inference"
+
+    predictor = _get_paddle_predictor(
+        language="korean",
+        device=None,
+        text_recognition_model_dir=model_dir,
+    )
+
+    assert predictor.kwargs["text_recognition_model_name"] == "korean_PP-OCRv5_mobile_rec"  # type: ignore[attr-defined]
+    assert predictor.kwargs["text_recognition_model_dir"] == str(model_dir)  # type: ignore[attr-defined]
+
+
 def test_predictor_server_profile_uses_server_detection_and_recognition(
     _fake_paddleocr_module: None,
 ) -> None:
@@ -476,5 +493,38 @@ async def test_paddle_adapter_propagates_textline_orientation_setting(
             use_textline_orientation=True,
         )
         assert predictor.kwargs["use_textline_orientation"] is True  # type: ignore[attr-defined]
+    finally:
+        _get_paddle_predictor.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_propagates_custom_recognition_model_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify adapter settings can select a fine-tuned recognizer directory."""
+    fake_module = types.ModuleType("paddleocr")
+    fake_module.PaddleOCR = _RecordingFakePaddleOCR  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "paddleocr", fake_module)
+    _get_paddle_predictor.cache_clear()
+    model_dir = tmp_path / "supplement-rec-inference"
+    try:
+        adapter = PaddleOCRAdapter(
+            Settings(
+                _env_file=None,
+                enable_local_ocr=True,
+                local_ocr_preprocess_mode="none",
+                local_ocr_text_recognition_model_dir=model_dir,
+            )
+        )
+        with pytest.raises(OCRError, match="readable text"):
+            await adapter.extract_text(_image_input())
+
+        predictor = _get_paddle_predictor(
+            language="korean",
+            device=None,
+            text_recognition_model_dir=model_dir,
+        )
+        assert predictor.kwargs["text_recognition_model_dir"] == str(model_dir)  # type: ignore[attr-defined]
     finally:
         _get_paddle_predictor.cache_clear()

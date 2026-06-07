@@ -272,3 +272,40 @@ def test_analyze_supplement_label_runs_paddleocr_default_path(
     assert body["pipeline_metadata"]["ocr_provider"] == PADDLE_OCR_PROVIDER
     assert body["pipeline_metadata"]["vision_roi_used"] is False
     assert body["pipeline_metadata"]["llm_parser_used"] is True
+    # Backward compatible: recommendation is absent (None) unless opted in.
+    assert body.get("recommendation") is None
+
+
+def test_analyze_supplement_label_with_recommendation_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """with_recommendation=true bundles a safe recommendation in one response (single-flow)."""
+    fake_session = _FakeSupplementSession()
+    fake_ocr = _FakePaddleOCRAdapter()
+    fake_parser = _FakeParser()
+
+    async def allow_consent(*_args: object, **_kwargs: object) -> None:
+        """Allow all consent checks."""
+
+    monkeypatch.setattr(supplements, "require_user_consent", allow_consent)
+    settings = _paddleocr_default_settings()
+
+    client = _client(
+        fake_session=fake_session,
+        settings=settings,
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    response = client.post(
+        "/api/v1/supplements/analyze",
+        params={"with_recommendation": "true"},
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    # Preview fields stay at the top level (backward-compatible superset model).
+    assert body["parsed_product"]["product_name"] == "비타민 D 1000"
+    # Bundled recommendation is present with the mandatory consult-a-doctor disclaimer.
+    assert body["recommendation"] is not None
+    assert "상담" in body["recommendation"]["clinical_disclaimer"]

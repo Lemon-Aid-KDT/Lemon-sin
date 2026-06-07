@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from src.models.schemas.supplement import SupplementAnalysisPreview
 from src.models.schemas.user import UserProfile
 
 
@@ -292,3 +293,19 @@ class SupplementRecommendationExplainResponse(BaseModel):
         max_length=8,
     )
     warnings: list[str] = Field(default_factory=list, max_length=20)
+
+
+class SupplementAnalysisPreviewWithRecommendation(SupplementAnalysisPreview):
+    """OCR analysis preview optionally bundled with a same-request safe recommendation.
+
+    Backward-compatible superset of :class:`SupplementAnalysisPreview`: all preview
+    fields stay at the top level and ``recommendation`` is an added optional field
+    (``None`` unless the caller opts in via ``with_recommendation``), so existing
+    clients are unaffected.
+
+    Attributes:
+        recommendation: Safe recommendation/caution explanation for the scanned
+            label, or ``None`` when not requested or when generation was skipped.
+    """
+
+    recommendation: SupplementRecommendationExplainResponse | None = None

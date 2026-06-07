@@ -38,6 +38,7 @@ import asyncio
 import hashlib
 import json
 import random
+import unicodedata
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -88,17 +89,57 @@ def _iter_products(crawl_root: Path) -> list[Path]:
     products: list[Path] = []
     for category_dir in sorted(p for p in crawl_root.iterdir() if p.is_dir()):
         for product_dir in sorted(p for p in category_dir.iterdir() if p.is_dir()):
-            if (product_dir / DETAIL_DIR_NAME).is_dir():
+            if _detail_dir(product_dir) is not None:
                 products.append(product_dir)
     return products
 
 
+def _detail_dir(product_dir: Path) -> Path | None:
+    """Return the detail-page directory, tolerating Unicode normalization variants.
+
+    Args:
+        product_dir: Product directory that may contain a Korean detail-page folder.
+
+    Returns:
+        Matching detail-page directory, or None when absent.
+    """
+    expected = unicodedata.normalize("NFC", DETAIL_DIR_NAME)
+    for child in product_dir.iterdir():
+        if child.is_dir() and unicodedata.normalize("NFC", child.name) == expected:
+            return child
+    return None
+
+
 def _detail_images(product_dir: Path) -> list[Path]:
     """Return sorted detail-page image paths for one product."""
-    detail = product_dir / DETAIL_DIR_NAME
-    return sorted(
-        p for p in detail.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
-    )
+    detail = _detail_dir(product_dir)
+    if detail is None:
+        return []
+    return sorted(p for p in detail.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+
+
+def _dry_run_source_counts(products: list[Path], max_images_per_product: int) -> dict[str, int]:
+    """Return count-only source stats for a dry run without reading labels.
+
+    Args:
+        products: Eligible product directories after leakage exclusion.
+        max_images_per_product: Per-product detail-page image cap.
+
+    Returns:
+        Count-only source stats used to verify the intended crawl scale.
+    """
+    products_with_detail_images = 0
+    detail_images_at_cap = 0
+    for product in products:
+        capped_images = _detail_images(product)[:max_images_per_product]
+        if not capped_images:
+            continue
+        products_with_detail_images += 1
+        detail_images_at_cap += len(capped_images)
+    return {
+        "products_with_detail_images": products_with_detail_images,
+        "detail_images_at_cap": detail_images_at_cap,
+    }
 
 
 def _tiles(image: Image.Image, tile_height: int, overlap: int) -> list[tuple[Image.Image, int]]:
@@ -275,7 +316,9 @@ async def build(
                         crop = _crop(rgb, box)
                         if crop is None:
                             continue
-                        rel = f"rec/images/{product_hash[:16]}_{stats['images']:05d}_{index:03d}.png"
+                        rel = (
+                            f"rec/images/{product_hash[:16]}_{stats['images']:05d}_{index:03d}.png"
+                        )
                         crop.save(output_dir / rel)
                         (val_rows if is_val else train_rows).append((rel, text))
                         chars.update(text)
@@ -309,7 +352,9 @@ async def build(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--crawl-root", type=Path, required=True, help="crawling-image root.")
-    parser.add_argument("--splits", type=Path, required=True, help="Benchmark split assignment JSONL.")
+    parser.add_argument(
+        "--splits", type=Path, required=True, help="Benchmark split assignment JSONL."
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--max-images-per-product", type=int, default=6)
     parser.add_argument("--max-products", type=int, default=None)
@@ -334,7 +379,12 @@ def main(argv: list[str] | None = None) -> int:
         )
     if not args.apply:
         excluded = _excluded_product_hashes(args.splits)
-        eligible = [p for p in _iter_products(args.crawl_root) if _product_hash(p, args.crawl_root) not in excluded]
+        eligible = [
+            p
+            for p in _iter_products(args.crawl_root)
+            if _product_hash(p, args.crawl_root) not in excluded
+        ]
+        source_counts = _dry_run_source_counts(eligible, args.max_images_per_product)
         print(
             json.dumps(
                 {
@@ -342,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
                     "eligible_product_count": len(eligible),
                     "excluded_holdout_test_product_count": len(excluded),
                     "max_images_per_product": args.max_images_per_product,
+                    **source_counts,
                 },
                 ensure_ascii=False,
             )

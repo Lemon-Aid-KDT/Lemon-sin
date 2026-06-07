@@ -35,9 +35,7 @@ DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
 ]
 DEFAULT_LLM_WIKI_PATH = Path("/Volumes/Corsair EX400U Media/LLM-WIKI")
 # Deliberately insecure development sentinel; production validation rejects this exact value.
-DEFAULT_PRIVACY_HASH_SECRET = (
-    "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
-)
+DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
 # Minimum production length for the privacy HMAC secret (~192 bits of entropy at
 # base64). Enforced only in production; dev keeps the short sentinel above.
 DEFAULT_PRIVACY_HASH_SECRET_MIN_LENGTH = 32
@@ -310,6 +308,8 @@ class Settings(BaseSettings):
         local_ocr_confidence_threshold: Legacy calibration value for local OCR diagnostics.
             Low-confidence OCR text is still returned for parser and user review.
         local_ocr_model_profile: Local PaddleOCR model profile used for diagnostic comparisons.
+        local_ocr_text_recognition_model_dir: Optional custom PaddleOCR recognizer inference
+            directory for a fine-tuned local model.
         local_ocr_preprocess_mode: Optional local OCR-only image preprocessing mode.
         enable_clova_ocr: Whether NAVER Cloud CLOVA OCR fallback may run.
         vision_roi_min_confidence: Minimum detection confidence accepted for a YOLO ROI.
@@ -557,6 +557,14 @@ class Settings(BaseSettings):
         description=(
             "PaddleOCR model profile for controlled diagnostic reruns. The default "
             "keeps PP-OCRv5 mobile detection and language-specific mobile recognition."
+        ),
+    )
+    local_ocr_text_recognition_model_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Optional PaddleOCR inference model directory for a fine-tuned local "
+            "recognizer. When set, the Paddle adapter forwards it as "
+            "text_recognition_model_dir while keeping the selected detector/profile."
         ),
     )
     local_ocr_preprocess_mode: Literal[
@@ -1065,7 +1073,7 @@ class Settings(BaseSettings):
         """
         if self.media_object_storage_provider == "s3" and not self.media_object_storage_bucket:
             raise ValueError(
-                "MEDIA_OBJECT_STORAGE_BUCKET is required when " "MEDIA_OBJECT_STORAGE_PROVIDER=s3."
+                "MEDIA_OBJECT_STORAGE_BUCKET is required when MEDIA_OBJECT_STORAGE_PROVIDER=s3."
             )
         if self.media_object_storage_provider != "supabase_s3":
             return

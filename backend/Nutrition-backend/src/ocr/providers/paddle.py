@@ -94,6 +94,7 @@ class PaddleOCRAdapter(OCRAdapter):
             language=self._settings.local_ocr_language,
             device=self._settings.local_ocr_device,
             model_profile=self._settings.local_ocr_model_profile,
+            text_recognition_model_dir=self._settings.local_ocr_text_recognition_model_dir,
             use_textline_orientation=self._settings.local_ocr_use_textline_orientation,
         )
         try:
@@ -131,6 +132,7 @@ def _get_paddle_predictor(
     language: str,
     device: str | None,
     model_profile: str = "mobile",
+    text_recognition_model_dir: Path | None = None,
     use_textline_orientation: bool = False,
 ) -> PaddlePredictor:
     """Load and cache the PaddleOCR predictor.
@@ -140,6 +142,9 @@ def _get_paddle_predictor(
         device: Optional runtime device such as ``cpu`` or ``gpu:0``.
         model_profile: OCR model profile. ``server_detection`` upgrades only
             detection while keeping the language-specific mobile recognizer.
+        text_recognition_model_dir: Optional fine-tuned PaddleOCR inference
+            recognizer directory. Cached separately so baseline and tuned models
+            do not share a predictor.
         use_textline_orientation: Whether to enable PaddleOCR's textline
             orientation classifier. Cached separately per toggle so isolation
             measurements can flip the flag without polluting the prior cache.
@@ -170,6 +175,8 @@ def _get_paddle_predictor(
     }
     if device:
         kwargs["device"] = device
+    if text_recognition_model_dir is not None:
+        kwargs["text_recognition_model_dir"] = str(text_recognition_model_dir)
     try:
         return cast(PaddlePredictor, paddle_ocr_class(**kwargs))
     except Exception as exc:
