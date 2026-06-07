@@ -50,6 +50,23 @@ def test_cors_preflight_allows_configured_origin() -> None:
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
 
 
+def test_cors_preflight_allows_local_flutter_web_smoke_origin() -> None:
+    """Verify local Flutter web smoke can reach the API in development."""
+    app = create_app(settings=Settings(allowed_hosts=["testserver"]))
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/v1/ai-agent/chat",
+        headers={
+            "Origin": "http://localhost:52111",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.headers["access-control-allow-origin"] == "http://localhost:52111"
+
+
 def test_cors_preflight_rejects_unconfigured_origin() -> None:
     """Verify CORS preflight rejects an unconfigured origin."""
     app = create_app(

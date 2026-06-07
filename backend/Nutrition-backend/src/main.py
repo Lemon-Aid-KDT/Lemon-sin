@@ -17,6 +17,16 @@ from src.middleware.secure_headers import SecureHeadersMiddleware
 from src.utils.logger import setup_logging
 
 
+LOCAL_DEV_CORS_ORIGINS = [
+    "http://localhost:52100",
+    "http://127.0.0.1:52100",
+    "http://localhost:52110",
+    "http://127.0.0.1:52110",
+    "http://localhost:52111",
+    "http://127.0.0.1:52111",
+]
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """애플리케이션 시작과 종료 라이프사이클을 관리한다.
@@ -36,6 +46,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await dispose_engine()
 
 
+def _allowed_cors_origins(settings: Settings) -> list[str]:
+    if settings.allowed_origins:
+        return settings.allowed_origins
+    if settings.environment != "production":
+        return LOCAL_DEV_CORS_ORIGINS
+    return []
+
+
 def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
     """Register HTTP security middleware.
 
@@ -48,10 +66,11 @@ def configure_security_middleware(app: FastAPI, settings: Settings) -> None:
     """
     if settings.allowed_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
-    if settings.allowed_origins:
+    allowed_origins = _allowed_cors_origins(settings)
+    if allowed_origins:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.allowed_origins,
+            allow_origins=allowed_origins,
             allow_credentials=False,
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Authorization"],

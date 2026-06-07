@@ -61,14 +61,13 @@ void main() {
 
     expect(repository.grantedConsent, isTrue);
     expect(repository.sentRequests, hasLength(1));
-    await tester.drag(find.byType(ListView), const Offset(0, -800));
-    await tester.pumpAndSettle();
     expect(repository.sentRequests.single.message, contains('셀레늄'));
-    expect(find.textContaining('리튬은 혈중 농도'), findsOneWidget);
-    expect(find.text('sglang'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, 800));
     await tester.pumpAndSettle();
-
+    expect(find.textContaining('리튬은 혈중 농도'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -800));
+    await tester.pumpAndSettle();
+    expect(find.text('sglang'), findsOneWidget);
     expect(find.textContaining('medlineplus-lithium'), findsWidgets);
     await tester.drag(find.byType(ListView), const Offset(0, -320));
     await tester.pumpAndSettle();
@@ -79,6 +78,39 @@ void main() {
     expect(find.textContaining('check soup and sauce intake'), findsOneWidget);
     expect(find.text('Approval required'), findsOneWidget);
     expect(find.textContaining('No side effects'), findsOneWidget);
+  });
+
+  testWidgets('chat screen renders pure unknown answerability fixture',
+      (WidgetTester tester) async {
+    final _UnknownChatRepository repository = _UnknownChatRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          chatRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const LemonAidApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    if (find.byType(EditableText).evaluate().isEmpty) {
+      await tester.tap(find.text('챗봇').last);
+      await tester.pumpAndSettle();
+    }
+    await tester.enterText(
+      find.byType(EditableText),
+      'iron food support question without reviewed source',
+    );
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+
+    expect(repository.grantedConsent, isTrue);
+    expect(repository.sentRequests.single.message, contains('iron food'));
+    expect(find.textContaining('reviewed source is not available'),
+        findsOneWidget);
+    expect(find.text('검수 지식 없음'), findsWidgets);
+    expect(find.text('stub'), findsOneWidget);
   });
 
   testWidgets('supplement flow uses routine record and analysis UI',
@@ -116,6 +148,36 @@ void main() {
     expect(find.text('식단 + 영양제 통합 분석'), findsOneWidget);
     expect(find.text('이 결과로 질문하기'), findsWidgets);
   });
+}
+
+class _UnknownChatRepository implements ChatRepository {
+  bool grantedConsent = false;
+  final List<ChatbotRequest> sentRequests = <ChatbotRequest>[];
+
+  @override
+  Future<void> grantSensitiveHealthAnalysisConsent() async {
+    grantedConsent = true;
+  }
+
+  @override
+  Future<ChatbotResponse> sendMessage(ChatbotRequest request) async {
+    sentRequests.add(request);
+    return ChatbotResponse.fromJson(
+      <String, dynamic>{
+        'request_id': request.requestId,
+        'message':
+            'A reviewed source is not available yet, so the agent should say it does not know.',
+        'provider': 'stub',
+        'used_tools': <String>['chatbot_agent'],
+        'safety_warnings': <String>[],
+        'source_families': <String>[],
+        'answerability': 'unknown_no_reviewed_source',
+        'sources': <Map<String, dynamic>>[],
+        'requires_user_approval': false,
+        'ctas': <String>['ask_about_this_result'],
+      },
+    );
+  }
 }
 
 class _FakeChatRepository implements ChatRepository {

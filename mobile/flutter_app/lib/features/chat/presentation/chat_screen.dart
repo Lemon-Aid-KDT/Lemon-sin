@@ -139,8 +139,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     suggestions: _suggestions,
                     onSelected: _sendText,
                   ),
+                const SizedBox(height: 12),
+                if (_conversation.isEmpty) const _EmptyChatState(),
+                for (final ChatTurn turn in _conversation) ...<Widget>[
+                  _ChatBubble(turn: turn),
+                  const SizedBox(height: 10),
+                ],
+                if (_isSending) const _TypingBubble(),
+                if (_hasError) const _ChatErrorPanel(),
                 if (_lastResponse != null) ...<Widget>[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 4),
                   _AgentStatusPanel(response: _lastResponse!),
                   if (_lastResponse!.hasReviewedSources) ...<Widget>[
                     const SizedBox(height: 10),
@@ -162,14 +170,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ],
                 ],
-                const SizedBox(height: 12),
-                if (_conversation.isEmpty) const _EmptyChatState(),
-                for (final ChatTurn turn in _conversation) ...<Widget>[
-                  _ChatBubble(turn: turn),
-                  const SizedBox(height: 10),
-                ],
-                if (_isSending) const _TypingBubble(),
-                if (_hasError) const _ChatErrorPanel(),
                 const SizedBox(height: 12),
                 const MedicalDisclaimer(),
               ],
