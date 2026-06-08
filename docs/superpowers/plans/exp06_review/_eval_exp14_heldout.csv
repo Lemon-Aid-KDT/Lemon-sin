@@ -1,0 +1,12 @@
+﻿class,n,exp11_strict,exp13_strict,exp14_strict
+takoyaki,100,0.040,0.940,1.000
+black-bean-noodles,100,0.000,1.000,1.000
+udon,100,0.050,0.890,0.960
+bulgogi,100,0.310,0.910,0.930
+dim-sum,100,0.350,0.930,0.770
+japanese-ramen,100,0.280,0.980,0.070
+savory-pancake,100,0.070,0.990,0.980
+jjigae-red,100,0.090,1.000,0.920
+raw-fish,100,0.520,0.970,0.030
+rice-noodle-soup,100,0.350,1.000,0.000
+mixed-rice-bowl,100,0.150,0.950,0.880
