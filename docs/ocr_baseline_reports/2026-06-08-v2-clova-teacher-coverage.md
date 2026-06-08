@@ -22,4 +22,14 @@
 2. ingredient_amounts ROI는 그대로 Stage 3(사람 bbox 리뷰)로 진행 가능.
 3. empty 26개는 리뷰 큐에서 별도 처리(주석 또는 제외).
 
+## intake 보강 패스 결과 (업데이트)
+- 무료 로컬 discovery(`select_supplement_v2_intake_panels.py`): 비선택+proxy-intake-flag 이미지 152개 재스캔(엄격 intake 키워드) → **intake 패널 12개**(12제품, train 8/test 4) 발견. 나머지 ~140은 "1일"-only facts 오탐(엄격 스캔이 정상 기각).
+- 12 패널 CLOVA → `_classify_section` 기준 intake로 분류된 건 **1개**뿐(나머지는 ingredient/facts/claims로 분류).
+- **핵심 결론(재확인)**: 키워드 기반 `_classify_section`은 **ingredient_amounts(금액 정규식)만 신뢰성 있게 자동 검출**, intake_method 등 키워드 섹션은 CLOVA per-box 단편에서 거의 안 잡힘(앞선 약지도 93% 미분류와 동일 한계). 또한 크롤링 상세페이지는 섭취방법을 **그래픽/인포그래픽**으로 렌더해 OCR 텍스트로 안 잡히는 경우가 많아 **intake 패널 자체가 희소**(전체 ≈14장).
+
+## 시사점 / 권고 (intake)
+1. **자동 부트스트랩의 한계**: ingredient_amounts bbox는 자동(90%)으로 충분하나, intake_method + 기타 섹션은 **Stage 3 사람 주석 필수**(자동 pre-fill 불가). 후보 이미지 선택은 되어 있으니 사람이 박스를 그림.
+2. **intake 희소성**: 크롤링 코퍼스에서 intake 패널이 적음 → intake_method 평가/학습은 (a) **frozen 203의 intake GT 활용**(이미 일부 보유), (b) 필요 시 전체 비선택 이미지 풀 재스캔(추가 비용, 소폭 기대), (c) intake는 v2에서 제한적으로 수용.
+3. **주 병목은 ingredient_recall** — 이건 ingredient_amounts ROI(90%)로 직접 해소되므로 v2의 1차 목표는 유효.
+
 > redaction: 본 문서는 카운트만. 원문/박스 좌표는 gitignored datasets/teacher에만.
