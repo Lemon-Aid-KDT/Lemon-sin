@@ -1,6 +1,6 @@
 while ($true) {
     Clear-Host
-    $csv = Get-ChildItem "C:\Lemon-sin\runs\food_yolo\exp1[56]*\results.csv" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $csv = Get-ChildItem "C:\Lemon-sin\runs\food_yolo\exp1[567]*\results.csv" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($csv) {
         $l = (Import-Csv $csv.FullName)[-1]
         $name = Split-Path (Split-Path $csv.FullName -Parent) -Leaf

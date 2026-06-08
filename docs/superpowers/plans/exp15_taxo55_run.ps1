@@ -7,7 +7,8 @@ param(
     [string]$RunName = "exp15a_taxo55_aihub_pc1",
     [int]$Batch = 16,
     [int]$Epochs = 50,
-    [int]$Seed = 42
+    [int]$Seed = 42,
+    [int]$Patience = 15
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -65,7 +66,7 @@ $trainArgs = @(
     "device=0",
     "seed=$Seed",
     "deterministic=true",
-    "patience=15",
+    "patience=$Patience",
     "plots=false",
     "project=$project",
     "name=$fullName"
