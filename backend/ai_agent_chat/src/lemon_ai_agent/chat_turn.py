@@ -74,7 +74,11 @@ class ChatTurnPlan:
 
     @property
     def requires_boundary_response(self) -> bool:
-        return self.answerability in {"urgent_escalation", "medical_decision_boundary"}
+        return self.answerability in {
+            "urgent_escalation",
+            "medical_decision_boundary",
+            "safety_boundary",
+        }
 
 
 class ChatTurnModule:
@@ -89,10 +93,7 @@ class ChatTurnModule:
         policy = policy_for_question(planning_question, request.context)
         analysis = analyze_chat_intent(planning_question, request.context)
         retrieval = self._retriever.retrieve(analysis)
-        answerability = answerability_for_analysis(
-            analysis,
-            has_cards=bool(retrieval.cards),
-        )
+        answerability = _answerability_for_retrieval(analysis, retrieval.cards)
         answer_plan = self._plan_builder.build_answer_plan(
             request,
             analysis,
@@ -141,3 +142,20 @@ def _is_follow_up_message(message: str) -> bool:
     return len(normalized) <= _BRIEF_FOLLOW_UP_MAX_CHARS or any(
         term in normalized for term in _FOLLOW_UP_TERMS
     )
+
+
+def _answerability_for_retrieval(
+    analysis: ChatIntentAnalysis,
+    cards: tuple[AnswerCard, ...],
+) -> Answerability:
+    if cards:
+        top_card_answerability = cards[0].answerability
+        if top_card_answerability in {
+            "urgent_escalation",
+            "medical_decision_boundary",
+            "safety_boundary",
+            "answerable_with_caution",
+            "answerable",
+        }:
+            return top_card_answerability
+    return answerability_for_analysis(analysis, has_cards=bool(cards))

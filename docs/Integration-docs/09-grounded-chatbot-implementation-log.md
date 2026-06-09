@@ -1413,3 +1413,132 @@ local Alembic upgrade: upgraded through 0016_seed_lithium_supplement_boundary
 FastAPI health: {"status":"ok","version":"0.1.0"}
 UTF-8 Korean chatbot smoke: medical_decision_boundary, source medlineplus-lithium
 ```
+
+## 2026-06-08 MEDICAL-WIKI reviewed claim adapter 연결
+
+대상:
+
+- `C:\MyWorkspace\lemon_aid\MEDICAL-WIKI\manifest\reviewed_claims.jsonl`의 21개 reviewed claim
+- `C:\MyWorkspace\lemon_aid\MEDICAL-WIKI\manifest\chatbot_answer_eval_inputs.jsonl`의 42개 golden boundary 질문
+
+구현:
+
+- `lemon_ai_agent.medical_wiki_claims.MedicalWikiReviewedClaimRetriever`를 추가했다.
+  - `review_status=reviewed`
+  - `rag_eligible=true`
+  - `service_rag_eligible=true`
+  - not expired
+  - `allowed_user_wording`, `blocked_wording`, `sources`, `answer_card` 필수
+- MEDICAL-WIKI claim을 backend `AnswerCard`로 변환한다.
+- `AnswerCard`에 `severity`, `primary_action`, `blocked_wording`, `linked_claim_id` optional field를 추가했다.
+- `ChatTurnModule`은 reviewed claim card의 `urgent_escalation`, `medical_decision_boundary`, `safety_boundary` answerability를 우선 보존한다.
+- `BoundaryRenderer`는 `linked_claim_id`가 있는 reviewed claim boundary card를 기존 registry boundary source보다 먼저 deterministic 응답으로 렌더링한다.
+- `eval_medical_wiki_chatbot.py`를 추가해 MEDICAL-WIKI 42개 eval input을 backend deterministic `ChatbotAgent` 경로로 검증한다.
+
+검증:
+
+```powershell
+python -m pytest -q --no-cov backend/ai_agent_chat/tests/test_medical_wiki_claim_adapter.py backend/Nutrition-backend/tests/unit/scripts/test_eval_medical_wiki_chatbot.py
+python -X utf8 backend\scripts\eval_medical_wiki_chatbot.py --as-of 2026-06-08
+```
+
+결과:
+
+```text
+medical wiki adapter/script tests: 7 passed
+MEDICAL-WIKI backend deterministic eval: 42/42 pass
+retrieved top-1: 42/42
+retrieved top-k: 42/42
+```
+
+남은 점:
+
+- SGLang/OpenAI-compatible structured output을 같은 42개 입력으로 비교하는 작업은 후속 단계다.
+- LangChain, vector DB, embedding, reranker는 아직 붙이지 않았다.
+
+## 2026-06-08 MEDICAL-WIKI LLM guardrail eval
+
+대상:
+
+- `MEDICAL-WIKI/manifest/chatbot_answer_eval_inputs.jsonl` 42개
+- 모두 `urgent_escalation`, `medical_decision_boundary`, `safety_boundary` 계열 boundary/safety anchor다.
+
+구현:
+
+- `backend/scripts/eval_medical_wiki_chatbot.py`에 `--llm none|ollama|sglang` 옵션을 추가했다.
+- `--llm sglang` 모드는 SGLang client를 `ChatbotAgent`에 주입하되, reviewed claim boundary가 LLM보다 먼저 닫히는지 확인한다.
+- 결과 파일은 `MEDICAL-WIKI/manifest/backend_llm_guardrail_eval_results.jsonl`에 쓴다.
+- fake LLM client를 넣어도 boundary에서 호출되지 않는 단위 테스트를 추가했다.
+
+검증:
+
+```powershell
+python -m ruff check backend/scripts/eval_medical_wiki_chatbot.py backend/Nutrition-backend/tests/unit/scripts/test_eval_medical_wiki_chatbot.py
+python -m pytest -q --no-cov backend/Nutrition-backend/tests/unit/scripts/test_eval_medical_wiki_chatbot.py
+python -X utf8 backend\scripts\eval_medical_wiki_chatbot.py --as-of 2026-06-08 --llm sglang
+python -X utf8 backend\scripts\ask_chatbot_agent.py --llm sglang --mode raw --timeout 30 "Return the word ok."
+```
+
+결과:
+
+```text
+ruff: All checks passed
+script tests: 3 passed
+MEDICAL-WIKI LLM guardrail eval: 42/42 pass
+retrieved top-1: 42/42
+LLM bypassed by boundary: 42/42
+raw SGLang smoke: provider=sglang, model=Qwen/Qwen2.5-0.5B-Instruct
+```
+
+해석:
+
+- 이 42개 eval에서 LLM이 답변을 생성하지 않는 것이 성공 조건이다.
+- 실제 structured output 품질 평가는 answerable reviewed card 또는 reviewed section 입력이 생긴 뒤 별도 eval로 만든다.
+
+## 2026-06-09 MEDICAL-WIKI 최신 25 claim / 50 eval adapter 갱신
+
+대상:
+
+- `MEDICAL-WIKI/manifest/reviewed_claims.jsonl`의 25개 reviewed/service-rag-eligible claim
+- `MEDICAL-WIKI/manifest/chatbot_answer_eval_inputs.jsonl`의 50개 backend eval 입력
+- 새로 승격된 4개 claim:
+  - anxiety/panic red flag
+  - drug-nutrient interaction clearance 금지
+  - food combination / interaction generalization 금지
+  - exercise prescription red flag
+
+반영:
+
+- `MedicalWikiReviewedClaimRetriever`의 lightweight query boost를 최신 4개 claim까지 확장했다.
+- 기존 21개 claim 기준 adapter 테스트를 25개 claim 기준으로 갱신했다.
+- MEDICAL-WIKI manifest 원문을 raw RAG로 넣지 않고, reviewed claim -> `AnswerCard` -> deterministic boundary renderer 경로만 사용했다.
+
+검증:
+
+```powershell
+python -X utf8 backend\scripts\eval_medical_wiki_chatbot.py --as-of 2026-06-09
+python -X utf8 -m pytest -q --no-cov backend\ai_agent_chat\tests\test_medical_wiki_claim_adapter.py backend\Nutrition-backend\tests\unit\scripts\test_eval_medical_wiki_chatbot.py
+python -X utf8 -m pytest -q --no-cov backend\ai_agent_chat\tests
+python -m ruff check backend\ai_agent_chat\src\lemon_ai_agent\medical_wiki_claims.py backend\ai_agent_chat\src\lemon_ai_agent\answer_card.py backend\ai_agent_chat\src\lemon_ai_agent\chat_turn.py backend\ai_agent_chat\src\lemon_ai_agent\renderers.py backend\scripts\eval_medical_wiki_chatbot.py backend\ai_agent_chat\tests\test_medical_wiki_claim_adapter.py backend\Nutrition-backend\tests\unit\scripts\test_eval_medical_wiki_chatbot.py
+python -m compileall backend\ai_agent_chat\src\lemon_ai_agent\medical_wiki_claims.py backend\ai_agent_chat\src\lemon_ai_agent\answer_card.py backend\ai_agent_chat\src\lemon_ai_agent\chat_turn.py backend\ai_agent_chat\src\lemon_ai_agent\renderers.py backend\scripts\eval_medical_wiki_chatbot.py
+```
+
+결과:
+
+```text
+MEDICAL-WIKI backend deterministic eval: 50/50 pass
+retrieved top-1: 50/50
+retrieved top-k: 50/50
+medical wiki adapter/script tests: 8 passed
+ai_agent_chat tests: 134 passed, 1 skipped
+ruff: All checks passed
+compileall: passed
+forbidden marker scan: no hits
+```
+
+해석:
+
+- backend adapter는 최신 25개 reviewed claim과 50개 eval 입력을 실제로 소비한다.
+- boundary 질문은 deterministic renderer에서 닫히며, 복약 변경, 진단 단정, 응급 red flag 완화,
+  운동/식단 해결 지시를 내지 않는다.
+- `sources[]`에는 eval 입력이 요구한 reviewed `source_id`가 유지된다.

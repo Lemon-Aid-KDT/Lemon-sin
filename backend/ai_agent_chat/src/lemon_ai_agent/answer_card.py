@@ -22,6 +22,7 @@ Answerability = Literal[
     "unknown_no_reviewed_source",
     "medical_decision_boundary",
     "urgent_escalation",
+    "safety_boundary",
 ]
 
 RetrievalStatus = Literal["found", "no_match", "stale_only", "not_reviewed_only"]
@@ -50,6 +51,10 @@ class AnswerCard:
     grounding_snippet_ids: tuple[str, ...]
     source_name: str
     concrete_guidance: str
+    severity: str = ""
+    primary_action: str = ""
+    blocked_wording: tuple[str, ...] = ()
+    linked_claim_id: str = ""
 
     def source_metadata(self) -> dict[str, str]:
         return {

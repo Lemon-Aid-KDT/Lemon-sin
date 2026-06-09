@@ -76,6 +76,15 @@ class BoundaryRenderer:
         warnings: list[str],
     ) -> ChatbotResponse | None:
         policy = turn.policy
+        if _has_reviewed_claim_boundary_card(turn):
+            warnings.append("Reviewed claim boundary applied")
+            card = turn.answer_cards[0]
+            return _deterministic_response(
+                turn,
+                _reviewed_claim_boundary_message(card),
+                warnings,
+            )
+
         if policy.category == "symptom_or_emergency":
             warnings.append("Emergency escalation boundary applied")
             return _deterministic_response(
@@ -359,6 +368,73 @@ def _card_checklist_sentence(card: AnswerCard) -> str:
     return "한 번의 식사보다 반복 패턴을 보고 다음 기록에서 조절하세요."
 
 
+def _reviewed_claim_boundary_message(card: AnswerCard) -> str:
+    summary = card.allowed_guidance[0] if card.allowed_guidance else card.concrete_guidance
+    action = _reviewed_claim_action_sentence(card)
+    checklist = ", ".join(card.checklist[:5]) if card.checklist else "현재 증상과 복용 정보를 정리"
+    source_basis = _reviewed_claim_source_basis(card)
+    if card.answerability == "urgent_escalation":
+        return (
+            f"즉시 안내: {summary} "
+            f"다음 행동: {action} "
+            "주의: Lemon Aid는 이 상황에서 진단, 처방 변경, 복용량 조절, "
+            "응급 가능성 배제를 하지 않습니다. "
+            f"확인할 정보: {checklist}.\n\n"
+            f"출처 기준: {source_basis}"
+        )
+    return (
+        f"요약: {summary} "
+        f"다음 행동: {action} "
+        "주의: Lemon Aid는 개인의 복용 가능 여부, 시작·중단·증량·감량, "
+        "검사수치 해석, 치료 필요 여부를 결정하지 않습니다. "
+        f"확인할 정보: {checklist}.\n\n"
+        f"출처 기준: {source_basis}"
+    )
+
+
+def _has_reviewed_claim_boundary_card(turn: ChatTurnPlan) -> bool:
+    return (
+        turn.requires_boundary_response
+        and bool(turn.answer_cards)
+        and bool(turn.answer_cards[0].linked_claim_id)
+    )
+
+
+def _reviewed_claim_action_sentence(card: AnswerCard) -> str:
+    action_labels = {
+        "seek_medical_care_or_emergency_help": "의료기관 또는 응급 도움으로 연결하세요.",
+        "call_119_or_seek_emergency_care": "119 또는 응급실 도움을 우선하세요.",
+        "call_119_or_seek_emergency_care_for_severe_symptoms": "심한 증상이 있으면 119 또는 응급실 도움을 우선하세요.",
+        "call_119_or_seek_emergency_care_for_anaphylaxis_symptoms": "아나필락시스 의심 증상이 있으면 119 또는 응급실 도움을 우선하세요.",
+        "call_119_or_seek_emergency_care_for_severe_allergic_reaction": "심한 알레르기 반응 가능성이 있으면 119 또는 응급실 도움을 우선하세요.",
+        "follow_existing_diabetes_plan_or_seek_help_for_red_flags": "기존 당뇨 관리 계획을 확인하고 중증 신호가 있으면 즉시 도움을 받으세요.",
+        "check_label_and_consult_prescriber_or_pharmacist": "제품 라벨과 복용 중인 약 목록을 가지고 처방자 또는 약사에게 확인하세요.",
+        "follow_diabetes_plan_and_consult_clinician_for_alcohol_questions": "당뇨 관리 계획을 우선하고 음주 관련 결정은 의료진에게 확인하세요.",
+        "prepare_questions_for_prescriber_or_pharmacist": "복용 중인 약, 용량, 증상, 질문을 정리해 처방자 또는 약사에게 확인하세요.",
+        "organize_questions_for_clinician_review": "검사수치와 증상, 병력, 복용 중인 약을 정리해 의료진에게 확인하세요.",
+        "consult_obstetrician_prescriber_or_pharmacist": "임신·수유 여부와 복용 제품 정보를 가지고 산부인과, 처방자, 약사에게 확인하세요.",
+        "consult_pediatrician_or_pharmacist_and_follow_label": "아이의 나이, 체중, 제품 라벨을 가지고 소아청소년과 또는 약사에게 확인하세요.",
+        "organize_medication_list_and_consult_clinician_or_pharmacist": "복용 약 목록과 낙상·탈수·혼돈 증상을 정리해 의료진 또는 약사에게 확인하세요.",
+        "consult_nephrology_or_renal_dietitian_for_individualized_limits": "신장 기능과 검사 결과를 바탕으로 담당 의료진 또는 신장 영양상담과 확인하세요.",
+        "consult_prescriber_anticoagulation_team_or_pharmacist": "항응고제 관리팀, 처방자, 약사에게 약 이름과 비타민 K 섭취 변화를 확인하세요.",
+        "consult_prescriber_or_seek_care_for_toxicity_or_dehydration_symptoms": "처방자에게 확인하고 독성 또는 탈수 의심 증상이 있으면 진료를 받으세요.",
+        "check_drug_label_and_consult_prescriber_or_pharmacist": "약 이름과 제품 라벨을 확인해 처방자 또는 약사에게 상담하세요.",
+        "consult_prescriber_or_pharmacist_before_use": "새로 시작하기 전에 처방자 또는 약사에게 확인하세요.",
+        "seek_medical_care_for_high_risk_or_severe_symptoms": "고위험군이거나 증상이 심하면 의료기관 진료로 연결하세요.",
+        "refuse_unsafe_weight_loss_methods_and_connect_to_clinical_support": "위험한 감량 방법은 안내하지 않고 임상적 도움으로 연결하세요.",
+    }
+    return action_labels.get(
+        card.primary_action,
+        "이 질문은 앱에서 단정하지 않고 의료진 또는 약사 확인으로 연결하세요.",
+    )
+
+
+def _reviewed_claim_source_basis(card: AnswerCard) -> str:
+    if card.source_name and card.source_name != card.source_id:
+        return card.source_name
+    return card.source_id
+
+
 def _natural_reviewed_answer(
     *,
     summary_sentence: str,
@@ -384,6 +460,7 @@ def _deterministic_response(
     message: str,
     warnings: list[str],
 ) -> ChatbotResponse:
+    sources = turn.sources if _has_medical_wiki_sources(turn) else _boundary_sources(turn) or turn.sources
     return ChatbotResponse(
         request_id=turn.request.request_id,
         message=message,
@@ -392,9 +469,13 @@ def _deterministic_response(
         safety_warnings=warnings,
         source_families=list(turn.policy.source_families),
         answerability=turn.answerability,
-        sources=_boundary_sources(turn) or turn.sources,
+        sources=sources,
         requires_user_approval=False,
     )
+
+
+def _has_medical_wiki_sources(turn: ChatTurnPlan) -> bool:
+    return bool(turn.answer_cards and turn.answer_cards[0].linked_claim_id)
 
 
 def _inline_text(value: str) -> str:
