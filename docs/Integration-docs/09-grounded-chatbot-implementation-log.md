@@ -1608,3 +1608,74 @@ LangChain/vector DB/reranker/SGLang 해석:
   도구이며, `/api/v1/ai-agent/chat` runtime이나 production dependency로 연결하지 않았다.
 - SGLang은 answerable deterministic draft의 polish 보존 smoke로만 확인했다.
   boundary 50개는 `--llm sglang`에서도 계속 deterministic bypass가 성공 조건이다.
+
+## 2026-06-09 MEDICAL-WIKI RAG 실행 계획 상태 고정
+
+후속 작업 기준은 [36-medical-wiki-rag-execution-plan.md](./36-medical-wiki-rag-execution-plan.md)에 분리했다.
+이 구현 로그는 실제 실행 결과와 검증 결과를 누적하는 문서로 유지한다.
+
+현재 상태:
+
+- Phase 0 reviewed claim adapter: 완료. `97c39a3 feat(ai): connect medical wiki reviewed claims`
+- Phase 1 EvidenceBundle backend adapter: 완료. `d949368 feat(ai): consume medical wiki evidence bundles`
+- Phase 2 backend API source detail contract: 다음 구현 대상. `/api/v1/ai-agent/chat` route-level source detail test가 필요하다.
+- Phase 3 claim + section retrieval baseline: smoke 완료. 60/60 pass, answerable section top-1 10/10, boundary claim top-k 50/50.
+- Phase 4 reranker 실험: 부분 완료. boundary-claim-first smoke는 확인했지만 contextual expansion, lightweight reranker A/B, 실패 분류는 남아 있다.
+- Phase 5 LangChain/vector DB 실험: 대기. corpus threshold 충족 전 production/runtime dependency로 연결하지 않는다.
+- Phase 6 SGLang polish 실험: smoke 완료. boundary는 LLM bypass, answerable은 deterministic draft polish only 정책을 유지한다.
+
+계속 유지할 원칙:
+
+- MEDICAL-WIKI는 workspace root sibling으로 두고 backend repo 내부로 복사하지 않는다.
+- LangChain, vector DB, reranker, SGLang은 의료 판단 계층이 아니다.
+- runtime 답변은 계속 `reviewed claim -> EvidenceBundle/AnswerCard -> renderer/LLM polish -> SafetyGuard` 흐름을 통과해야 한다.
+- raw prompt, raw LLM response, raw OCR, provider payload, debug trace, user health data는 indexable/runtime artifact에 넣지 않는다.
+
+## 2026-06-09 MEDICAL-WIKI API source detail contract 및 reranker A/B 보강
+
+대상:
+
+- [36-medical-wiki-rag-execution-plan.md](./36-medical-wiki-rag-execution-plan.md)의 Phase 2, Phase 4 잔여 항목
+
+반영:
+
+- `/api/v1/ai-agent/chat` route-level source detail contract 테스트 3개를 추가했다.
+  - boundary 응답은 expected claim source를 먼저 유지하고 section source가 boundary claim을 덮지 않는다.
+  - answerable 응답은 safety anchor claim source와 reviewed section source를 모두 유지하되 같은 `source_id`는 중복 제거한다.
+  - unknown 응답은 `sources=[]`를 유지하고 raw question을 응답이나 unknown backlog event에 남기지 않는다.
+- `ChatbotApiResponse.sources`를 route 응답 직전에 public source detail로 정규화한다.
+  - 공개 필드: `source_id`, `source_family`, `review_status`, `version_label`, `reviewed_at`, `expires_at`, `source_url`, `boundary_code`
+  - raw text, debug trace, retrieval rank, provider payload는 공개하지 않는다.
+- `MEDICAL-WIKI/tools/run_claim_section_retrieval_smoke.py`에 reranker A/B 결과와 실패 분류를 추가했다.
+  - baseline score 정렬 결과와 `claim_section_boundary_claim_first` 결과를 함께 기록한다.
+  - answerable section retrieval은 contextual query expansion 전후 rank를 기록한다.
+  - 실패 분류는 `synonym_or_context_gap`, `claim_section_overlap`, `boundary_red_flag_missed`, `boundary_priority_regression`, `unclassified_failure`로 고정했다.
+  - runtime route에는 reranker를 연결하지 않았다.
+
+검증:
+
+```powershell
+python -X utf8 -m pytest -q --no-cov backend\Nutrition-backend\tests\integration\api\test_ai_agent_api.py::test_chat_route_medical_wiki_boundary_sources_are_public_and_claim_first backend\Nutrition-backend\tests\integration\api\test_ai_agent_api.py::test_chat_route_medical_wiki_answerable_sources_are_deduped_and_public backend\Nutrition-backend\tests\integration\api\test_ai_agent_api.py::test_chat_route_medical_wiki_unknown_sources_stay_empty_and_raw_free
+python -X utf8 -m unittest MEDICAL-WIKI\tools\test_claim_section_retrieval_smoke.py
+python -X utf8 MEDICAL-WIKI\tools\run_claim_section_retrieval_smoke.py --as-of 2026-06-09 --dry-run
+python -X utf8 MEDICAL-WIKI\tools\run_claim_section_retrieval_smoke.py --as-of 2026-06-09
+```
+
+결과:
+
+```text
+route source detail tests: 3 passed, 1 warning
+claim-section reranker unit tests: 7 passed
+claim + section retrieval smoke: 60/60 pass
+answerable section top-1: 10/10
+boundary claim top-k: 50/50
+reranker preserved boundary claim: 50/50
+reranker improved boundary priority: 1
+failure category counts: {}
+```
+
+해석:
+
+- Phase 2는 완료했다.
+- Phase 4는 실험 산출물과 실패 분류 기준까지 완료했다.
+- Phase 5 LangChain/vector DB는 현재 25 claim / 5 section으로 도입 조건을 충족하지 않아 계속 대기 상태다. production/runtime dependency로 승격하지 않는다.

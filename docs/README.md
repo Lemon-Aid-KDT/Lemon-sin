@@ -47,6 +47,7 @@ This directory keeps team-wide documentation separate from each member or featur
 - `Integration-docs/33-agent-llm-team-integration-contract.md`: 팀 파트 병합 후 Agent가 소비해야 하는 DB/backend/Flutter 최소 I/O 계약과 현재 gap을 정리한 문서.
 - `Integration-docs/34-agent-llm-readiness-audit.md`: 31~33번 기준을 현재 구현과 팀 브랜치 상태에 대입해 시작 가능한 slice와 no-go를 정리한 audit.
 - `Integration-docs/35-agent-llm-orchestration-plan.md`: Agent/LLM 10일 full vertical integration의 phase, gate, touchpoint map, future risk를 관리하는 실행 관제판.
+- `Integration-docs/36-medical-wiki-rag-execution-plan.md`: MEDICAL-WIKI reviewed claim/EvidenceBundle 이후 API source contract, retrieval, reranker, vector DB, SGLang polish 후속 실행 계획.
 - `superpowers/plans/2026-05-22-mvp-runtime-and-medical-knowledge-todo.md`: current FastAPI + Flutter web + AI Agent smoke checklist and medical knowledge boundary TODO.
 - `Nutrition-docs/dev-guides/31-medical-knowledge-layer.md`: medical knowledge layer design for keeping chronic-condition facts outside model fine-tuning and behind reviewed source records.
 

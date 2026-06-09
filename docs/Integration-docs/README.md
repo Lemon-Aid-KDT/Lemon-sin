@@ -107,6 +107,7 @@ structured output, source UI 같은 기존 영역을 수정해야 할 때 확인
 - [33-agent-llm-team-integration-contract.md](./33-agent-llm-team-integration-contract.md): 팀 파트 병합 후 Agent가 소비해야 하는 DB/backend/Flutter 최소 I/O 계약과 현재 gap을 정리한 문서.
 - [34-agent-llm-readiness-audit.md](./34-agent-llm-readiness-audit.md): 31~33번 기준을 현재 구현과 팀 브랜치 상태에 대입해 시작 가능한 slice와 no-go를 정리한 audit.
 - [35-agent-llm-orchestration-plan.md](./35-agent-llm-orchestration-plan.md): Agent/LLM 10일 full vertical integration의 phase, gate, touchpoint map, future risk를 관리하는 실행 관제판.
+- [36-medical-wiki-rag-execution-plan.md](./36-medical-wiki-rag-execution-plan.md): MEDICAL-WIKI reviewed claim/EvidenceBundle 이후 API source contract, retrieval, reranker, vector DB, SGLang polish 후속 실행 계획.
 
 ## 문서 추가 기준
 
@@ -160,6 +161,7 @@ structured output, source UI 같은 기존 영역을 수정해야 할 때 확인
 - [33-agent-llm-team-integration-contract.md](./33-agent-llm-team-integration-contract.md): 33. Agent/LLM Team Integration Contract
 - [34-agent-llm-readiness-audit.md](./34-agent-llm-readiness-audit.md): 34. Agent/LLM Readiness Audit
 - [35-agent-llm-orchestration-plan.md](./35-agent-llm-orchestration-plan.md): 35. Agent/LLM Orchestration Plan
+- [36-medical-wiki-rag-execution-plan.md](./36-medical-wiki-rag-execution-plan.md): 36. MEDICAL-WIKI RAG 실행 계획
 - [chatbot-unknown-backlog-report.md](./chatbot-unknown-backlog-report.md): Chatbot Unknown Knowledge Backlog
 
 <!-- docs-index:end -->
