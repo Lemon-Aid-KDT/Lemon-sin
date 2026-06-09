@@ -1542,3 +1542,69 @@ forbidden marker scan: no hits
 - boundary 질문은 deterministic renderer에서 닫히며, 복약 변경, 진단 단정, 응급 red flag 완화,
   운동/식단 해결 지시를 내지 않는다.
 - `sources[]`에는 eval 입력이 요구한 reviewed `source_id`가 유지된다.
+
+## 2026-06-09 MEDICAL-WIKI EvidenceBundle backend adapter 연결
+
+대상:
+
+- `MEDICAL-WIKI/manifest/evidence_bundle_adapter_fixtures.jsonl`의 60개 EvidenceBundle adapter fixture
+  - boundary fixture 50개
+  - answerable-with-section fixture 10개
+
+반영:
+
+- `lemon_ai_agent.medical_wiki_evidence_bundles.MedicalWikiEvidenceBundleRetriever`를 추가했다.
+- EvidenceBundle fixture를 backend `AnswerCard` tuple로 변환한다.
+  - boundary fixture는 `urgent_escalation`, `medical_decision_boundary`, `safety_boundary` 중 하나로 유지한다.
+  - answerable fixture는 `answerable_with_caution` card로 유지하고 linked boundary claim을 `linked_claim_id`로 보존한다.
+  - section explanation은 `reviewed_section:<section_id>` grounding id와 card checklist/examples로만 반영한다.
+  - boundary fixture는 section grounding을 버린다.
+- `blocked_actions`, safety anchor `blocked_wording`, section `blocked_scope`/`must_not_do`를
+  `AnswerCard.must_not_say`로 전달한다.
+- `sources[]`에는 claim source와 section source의 `source_id`, `source_family`,
+  `review_status`, `version_label`, `reviewed_at`, `expires_at`, `source_url`을 additive field로 보존한다.
+- `eval_medical_wiki_evidence_bundles.py`를 추가해 backend deterministic `ChatbotAgent` 경로에서
+  route/source/safety 계약을 검증한다.
+- raw retrieval rank, matched terms, debug trace, raw prompt, raw LLM response는 adapter 입력이나
+  사용자-facing 응답에 넣지 않았다.
+
+검증:
+
+```powershell
+python -X utf8 -m pytest -q --no-cov backend\ai_agent_chat\tests\test_medical_wiki_evidence_bundle_adapter.py backend\Nutrition-backend\tests\unit\scripts\test_eval_medical_wiki_evidence_bundles.py
+python -X utf8 backend\scripts\eval_medical_wiki_evidence_bundles.py --as-of 2026-06-09 --dry-run
+python -X utf8 MEDICAL-WIKI\tools\run_claim_section_retrieval_smoke.py --as-of 2026-06-09 --dry-run
+python -X utf8 MEDICAL-WIKI\tools\run_evidence_bundle_normalizer_smoke.py --as-of 2026-06-09 --dry-run
+python -X utf8 MEDICAL-WIKI\tools\run_answerable_normalizer_polish_smoke.py --mode draft --dry-run
+python -X utf8 MEDICAL-WIKI\tools\run_answerable_normalizer_polish_smoke.py --mode polish --llm sglang --dry-run --timeout 60
+python -X utf8 backend\scripts\eval_medical_wiki_chatbot.py --as-of 2026-06-09 --llm sglang --dry-run
+```
+
+결과:
+
+```text
+EvidenceBundle adapter tests: 5 passed
+backend EvidenceBundle deterministic eval: 60/60 pass
+boundary renderer fixtures: 50
+answer renderer with boundary anchor fixtures: 10
+forbidden marker hits: 0
+unsafe pattern hits: 0
+claim + section retrieval smoke: 60/60 pass
+answerable section top-1: 10/10
+boundary claim top-k: 50/50
+EvidenceBundle normalizer smoke: 60/60 pass
+answerable section included: 10/10
+boundary sections discarded: 50/50
+answerable deterministic draft smoke: 30/30 pass
+answerable SGLang polish smoke: 30/30 pass
+backend SGLang guardrail eval: 50/50 pass, LLM bypassed by boundary 50/50
+```
+
+LangChain/vector DB/reranker/SGLang 해석:
+
+- `run_claim_section_retrieval_smoke.py`의 `claim_section_boundary_claim_first` 경로로
+  boundary claim-first rerank 기준을 확인했다.
+- `build_langchain_review_pipeline.py`는 candidate review index manifest를 생성하는 helper-only
+  도구이며, `/api/v1/ai-agent/chat` runtime이나 production dependency로 연결하지 않았다.
+- SGLang은 answerable deterministic draft의 polish 보존 smoke로만 확인했다.
+  boundary 50개는 `--llm sglang`에서도 계속 deterministic bypass가 성공 조건이다.
