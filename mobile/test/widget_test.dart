@@ -22,7 +22,7 @@ void main() {
     expect(find.text('오늘의 분석'), findsOneWidget);
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('챗'), findsOneWidget);
-    expect(find.text('점수'), findsOneWidget);
+    expect(find.text('분석'), findsOneWidget);
     expect(find.text('설정'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.add_rounded).last);

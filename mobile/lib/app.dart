@@ -203,7 +203,17 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
               GoRoute(
                 path: '/shell/score',
                 builder: (BuildContext context, GoRouterState state) {
-                  return const source_score.ScoreScreen();
+                  return Consumer(
+                    builder:
+                        (BuildContext context, WidgetRef ref, Widget? child) {
+                          return source_score.ScoreScreen(
+                            controller: ref.watch(appControllerProvider),
+                            coachingRepository: ref.watch(
+                              aiCoachingRepositoryProvider,
+                            ),
+                          );
+                        },
+                  );
                 },
               ),
             ],

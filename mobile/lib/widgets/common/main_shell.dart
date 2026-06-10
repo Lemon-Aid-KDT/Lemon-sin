@@ -46,9 +46,9 @@ class _MainShellState extends State<MainShell> {
   static const List<_TabSpec> _rightTabs = <_TabSpec>[
     _TabSpec(
       branchIndex: 3,
-      iconOutline: Icons.workspace_premium_rounded,
-      iconFilled: Icons.workspace_premium_rounded,
-      label: '점수',
+      iconOutline: Icons.insert_chart_rounded,
+      iconFilled: Icons.insert_chart_rounded,
+      label: '분석',
     ),
     _TabSpec(
       branchIndex: 4,

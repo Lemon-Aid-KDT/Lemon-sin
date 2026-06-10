@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_controller.dart';
 import 'core/api/api_client.dart';
 import 'core/config/app_config.dart';
+import 'features/ai_coaching/ai_coaching_repository.dart';
 import 'features/auth/token_session.dart';
 import 'features/chat/chat_repository.dart';
 import 'features/supplements/supplement_repository.dart';
@@ -50,6 +51,12 @@ final Provider<LemonAidRepository> lemonAidRepositoryProvider =
 final Provider<ChatRepository> chatRepositoryProvider =
     Provider<ChatRepository>((Ref ref) {
       return ChatRepository(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// Daily-coaching repository provider for the analysis tab.
+final Provider<AiCoachingRepository> aiCoachingRepositoryProvider =
+    Provider<AiCoachingRepository>((Ref ref) {
+      return AiCoachingRepository(apiClient: ref.watch(apiClientProvider));
     });
 
 /// App controller provider that preserves the existing endpoint/data flow.
