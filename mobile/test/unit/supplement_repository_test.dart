@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:lemon_aid_mobile/core/api/api_client.dart';
+import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 
@@ -504,6 +505,52 @@ void main() {
     expect(response.llmUsed, isTrue);
     expect(response.sourceCitations.single.title, '비타민 D');
   });
+
+  test('posts comprehensive diet analysis with persona and ingredients', () async {
+    late http.Request capturedRequest;
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'http://localhost:8000/api/v1',
+      httpClient: _CaptureJsonClient(
+        responseBody: _comprehensiveResponse,
+        onRequest: (http.Request request) {
+          capturedRequest = request;
+        },
+      ),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    final ComprehensiveDietAnalysis analysis = await repository
+        .analyzeComprehensive(
+          ingredients: <Map<String, Object?>>[
+            <String, Object?>{
+              'display_name': '탄수화물',
+              'nutrient_code': 'carbohydrate_g',
+              'amount': 78,
+              'unit': 'g',
+            },
+          ],
+        );
+
+    final Map<String, dynamic> body =
+        jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+    expect(
+      capturedRequest.url.path,
+      '/api/v1/supplements/analyze/comprehensive',
+    );
+    expect(body['persona'], 'B');
+    expect(body.containsKey('user_profile'), isFalse);
+    expect((body['ingredients'] as List<Object?>).single, <String, Object?>{
+      'display_name': '탄수화물',
+      'nutrient_code': 'carbohydrate_g',
+      'amount': 78,
+      'unit': 'g',
+    });
+    expect(analysis.dietScore, 78);
+    expect(analysis.cautionaryComponents.single.component, '카페인');
+  });
 }
 
 class _CaptureMultipartClient extends http.BaseClient {
@@ -745,6 +792,27 @@ final Map<String, Object?> _explainResponse = <String, Object?>{
       'score': 9.0,
     },
   ],
+  'warnings': <Object?>[],
+};
+
+final Map<String, Object?> _comprehensiveResponse = <String, Object?>{
+  'diet_score': 78,
+  'diet_score_label': '균형이 잘 잡혔어요',
+  'diet_score_message': '나트륨만 조금 줄이면 좋아요.',
+  'diet_score_confidence': 0.9,
+  'deficient_nutrients': <Object?>[],
+  'excessive_nutrients': <Object?>[],
+  'cautionary_components': <Object?>[
+    <String, Object?>{
+      'component': '카페인',
+      'reason': '늦은 시간 섭취',
+      'severity': 'high',
+      'message': '저녁 섭취는 피하는 게 좋아요.',
+      'source_citation': 'caffeine.md',
+    },
+  ],
+  'purpose_targets': <Object?>[],
+  'chronic_disease_indications': <Object?>[],
   'warnings': <Object?>[],
 };
 

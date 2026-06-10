@@ -13,6 +13,7 @@ import 'package:lemon_aid_mobile/features/supplements/camera_readiness.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_flow_screen.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
+import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
@@ -368,6 +369,15 @@ class _CameraWidgetRepository implements LemonAidRepository {
     String analysisGroupId,
   ) {
     throw UnimplementedError();
+  }
+
+  @override
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) async {
+    return ComprehensiveDietAnalysis.empty;
   }
 
   @override

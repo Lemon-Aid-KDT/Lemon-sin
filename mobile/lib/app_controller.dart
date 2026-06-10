@@ -6,6 +6,7 @@ import 'core/api/api_error.dart';
 import 'features/consent/consent_models.dart';
 import 'features/dashboard/dashboard_models.dart';
 import 'features/dashboard/home_models.dart';
+import 'features/supplements/comprehensive_analysis_models.dart';
 import 'features/supplements/supplement_models.dart';
 import 'features/supplements/supplement_repository.dart';
 
@@ -224,6 +225,7 @@ class AppController extends ChangeNotifier {
   SupplementAnalysisPreview? _analysisPreview;
   SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
   MealImageAnalysisPreview? _mealAnalysisPreview;
+  ComprehensiveDietAnalysis? _comprehensiveDietAnalysis;
   MealRecordResponse? _lastRegisteredMeal;
   UserSupplementResponse? _lastRegisteredSupplement;
   UserSupplementCreate? _lastRegisteredSupplementRequest;
@@ -309,6 +311,13 @@ class AppController extends ChangeNotifier {
 
   /// Current meal image analysis preview.
   MealImageAnalysisPreview? get mealAnalysisPreview => _mealAnalysisPreview;
+
+  /// Latest comprehensive diet analysis (C-hybrid result surface), if loaded.
+  ///
+  /// Null when not requested or when the request failed; the result screen
+  /// hides the score/insight area in that case and keeps showing base info.
+  ComprehensiveDietAnalysis? get comprehensiveDietAnalysis =>
+      _comprehensiveDietAnalysis;
 
   /// Most recently confirmed meal record.
   MealRecordResponse? get lastRegisteredMeal => _lastRegisteredMeal;
@@ -458,6 +467,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _notice = 'Supplement preview is ready for review.';
     });
@@ -480,6 +490,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _notice = 'Supplement image batch is ready for review.';
     });
@@ -548,6 +559,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _notice = 'Supplement image batch was finalized for review.';
     });
@@ -570,9 +582,69 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _notice = 'Meal image preview is ready for review.';
     });
+    await _refreshComprehensiveDietAnalysis();
+  }
+
+  /// Best-effort comprehensive diet analysis for the current meal preview.
+  ///
+  /// Converts the meal nutrition totals into nutrient rows and asks the backend
+  /// for the C-hybrid result. Failures are swallowed so the result screen keeps
+  /// working with the base meal preview when the endpoint is unavailable.
+  Future<void> _refreshComprehensiveDietAnalysis() async {
+    final MealImageAnalysisPreview? preview = _mealAnalysisPreview;
+    if (preview == null) return;
+    final List<Map<String, Object?>> ingredients =
+        _comprehensiveIngredientsFromMeal(preview);
+    if (ingredients.isEmpty) return;
+    try {
+      final ComprehensiveDietAnalysis analysis = await _repository
+          .analyzeComprehensive(ingredients: ingredients);
+      _comprehensiveDietAnalysis = analysis;
+      notifyListeners();
+    } on ApiError {
+      // Score area stays hidden; base meal info still renders.
+    } on FormatException {
+      // Score area stays hidden; base meal info still renders.
+    } on UnimplementedError {
+      // Repository without the endpoint (e.g. tests) keeps the base layout.
+    }
+  }
+
+  /// Maps a meal preview's nutrition totals to comprehensive nutrient rows.
+  List<Map<String, Object?>> _comprehensiveIngredientsFromMeal(
+    MealImageAnalysisPreview preview,
+  ) {
+    final Object? totals = preview.nutritionEstimateSummary['totals'];
+    final Map<String, Object?> totalsMap = totals is Map<String, Object?>
+        ? totals
+        : totals is Map<Object?, Object?>
+        ? Map<String, Object?>.from(totals)
+        : const <String, Object?>{};
+    const List<List<String>> nutrientFields = <List<String>>[
+      <String>['carb_g', 'carbohydrate_g', '탄수화물', 'g'],
+      <String>['protein_g', 'protein_g', '단백질', 'g'],
+      <String>['fat_g', 'fat_g', '지방', 'g'],
+      <String>['sodium_mg', 'sodium_mg', '나트륨', 'mg'],
+    ];
+    final List<Map<String, Object?>> rows = <Map<String, Object?>>[];
+    for (final List<String> field in nutrientFields) {
+      final Object? raw = totalsMap[field[0]];
+      final double? amount = raw is num ? raw.toDouble() : null;
+      if (amount == null) continue;
+      rows.add(
+        ComprehensiveIngredientInput(
+          displayName: field[2],
+          nutrientCode: field[1],
+          amount: amount,
+          unit: field[3],
+        ).toJson(),
+      );
+    }
+    return rows;
   }
 
   /// Confirms the current meal image preview after user review.
@@ -599,6 +671,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredSupplementRequest = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
       _notice = 'Meal record saved and dashboard refreshed.';
@@ -659,6 +732,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
       _notice = 'Supplement registered and dashboard refreshed.';
@@ -861,6 +935,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _apiError = null;
       _notice = '분석이 완료 되었어요.';
@@ -892,6 +967,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _apiError = null;
       _notice = '분석이 완료 되었어요.';
@@ -917,6 +993,7 @@ class AppController extends ChangeNotifier {
       _lastRegisteredMeal = null;
       _supplementImpactPreview = null;
       _supplementExplanation = null;
+      _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _apiError = null;
       _notice = '분석이 완료 되었어요.';

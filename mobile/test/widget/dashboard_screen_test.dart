@@ -6,6 +6,7 @@ import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
+import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/screens/dashboard_screen.dart';
 
 void main() {
@@ -235,6 +236,15 @@ class _HomeRepository implements LemonAidRepository {
   Future<SupplementImpactPreviewResponse>
   fetchLatestSupplementRecommendation() async {
     return impact;
+  }
+
+  @override
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) async {
+    return ComprehensiveDietAnalysis.empty;
   }
 
   @override

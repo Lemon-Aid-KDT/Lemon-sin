@@ -7,6 +7,7 @@ import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
+import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 
 void main() {
   testWidgets('renders source dashboard shell with backend session wiring', (
@@ -164,6 +165,15 @@ class _FakeRepository implements LemonAidRepository {
     String analysisGroupId,
   ) {
     throw UnimplementedError();
+  }
+
+  @override
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) async {
+    return ComprehensiveDietAnalysis.empty;
   }
 
   @override

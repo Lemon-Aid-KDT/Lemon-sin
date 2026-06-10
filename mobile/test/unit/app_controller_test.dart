@@ -6,6 +6,7 @@ import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
+import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 
 void main() {
   test(
@@ -530,6 +531,15 @@ class _AutoInsightRepository implements LemonAidRepository {
     finalizeCalls += 1;
     lastFinalizeGroupId = analysisGroupId;
     return SupplementMultiImageAnalysisPreview.fromJson(_multiPreviewJson);
+  }
+
+  @override
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) async {
+    return ComprehensiveDietAnalysis.empty;
   }
 
   @override

@@ -2,6 +2,7 @@ import '../../core/api/api_client.dart';
 import '../consent/consent_models.dart';
 import '../dashboard/dashboard_models.dart';
 import '../dashboard/home_models.dart';
+import 'comprehensive_analysis_models.dart';
 import 'supplement_models.dart';
 
 /// Canonical UUID format used by backend path identifiers (e.g. meal id).
@@ -55,6 +56,20 @@ abstract class LemonAidRepository {
     String mealId,
     MealConfirmationRequest request,
   );
+
+  /// Requests a comprehensive diet analysis (C-hybrid result surface).
+  ///
+  /// Args:
+  ///   ingredients: Nutrient rows derived from a meal's nutrition totals.
+  ///   userProfile: Optional profile for personalization; null omits the card.
+  ///   persona: Backend persona variant (defaults to `B`).
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) {
+    throw UnimplementedError();
+  }
 
   /// Creates a backend multi-image supplement analysis session.
   Future<SupplementAnalysisSession> createSupplementAnalysisSession();
@@ -254,6 +269,24 @@ class BackendLemonAidRepository implements LemonAidRepository {
       expectedStatusCodes: const <int>{200},
     );
     return MealRecordResponse.fromJson(json);
+  }
+
+  @override
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) async {
+    final Map<String, dynamic> json = await _apiClient.postJson(
+      '/supplements/analyze/comprehensive',
+      body: <String, dynamic>{
+        'ingredients': ingredients,
+        'user_profile': ?userProfile,
+        'persona': persona,
+      },
+      expectedStatusCodes: const <int>{200},
+    );
+    return ComprehensiveDietAnalysis.fromJson(json);
   }
 
   @override

@@ -6,9 +6,14 @@ import 'package:go_router/go_router.dart';
 
 import '../app_controller.dart';
 import '../core/api/api_error.dart';
+import '../features/supplements/comprehensive_analysis_models.dart';
 import '../features/supplements/supplement_models.dart';
+import '../shared/widgets/low_confidence_banner.dart';
 import '../utils/design_tokens_v2.dart';
 import '../utils/mascot_poses.dart';
+import '../widgets/common/app_modals.dart';
+import '../widgets/common/confidence_grade_chip.dart';
+import '../widgets/common/diet_result_cards.dart';
 
 /// Source-style analysis result screen backed by the real Lemon-Aid endpoints.
 class AnalysisResultScreen extends StatefulWidget {
@@ -197,9 +202,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                         : null,
                   ),
                   const SizedBox(height: AppSpace.md),
-                  if (_isMeal)
-                    ..._mealCards(mealPreview, registeredMeal)
-                  else
+                  if (_isMeal) ...<Widget>[
+                    ..._dietComprehensiveCards(
+                      controller?.comprehensiveDietAnalysis,
+                      registeredMeal != null,
+                    ),
+                    ..._mealCards(mealPreview, registeredMeal),
+                  ] else
                     ..._supplementCards(preview),
                   if (!_isMeal && preview != null) ...<Widget>[
                     const SizedBox(height: AppSpace.md),
@@ -243,6 +252,56 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         ),
       ),
     );
+  }
+
+  /// Builds the figma C-hybrid diet result cards above the base meal cards.
+  ///
+  /// Returns an empty list when no comprehensive analysis is available so the
+  /// screen falls back to the existing meal preview layout (never blank).
+  List<Widget> _dietComprehensiveCards(
+    ComprehensiveDietAnalysis? analysis,
+    bool registered,
+  ) {
+    if (analysis == null || (!analysis.hasScore && !analysis.hasContent)) {
+      return const <Widget>[];
+    }
+    final bool lowScoreConfidence =
+        analysis.hasScore &&
+        ConfidenceGrade.fromConfidence(
+          analysis.dietScoreConfidence,
+        ).isLowConfidence;
+    return <Widget>[
+      if (analysis.hasScore) ...<Widget>[
+        DietScoreHeaderCard(
+          score: analysis.dietScore!,
+          headline: analysis.dietScoreLabel,
+          message: analysis.dietScoreMessage,
+          confidence: analysis.dietScoreConfidence,
+        ),
+        if (lowScoreConfidence) ...<Widget>[
+          const SizedBox(height: AppSpace.sm),
+          const LowConfidenceBanner(),
+        ],
+        const SizedBox(height: AppSpace.md),
+      ],
+      // 주의 성분 카드 최우선 배치 (figma C).
+      if (analysis.cautionaryComponents.isNotEmpty) ...<Widget>[
+        CautionaryComponentCard(components: analysis.cautionaryComponents),
+        const SizedBox(height: AppSpace.md),
+      ],
+      if (analysis.deficientNutrients.isNotEmpty ||
+          analysis.excessiveNutrients.isNotEmpty) ...<Widget>[
+        NutrientInsightGrid(
+          deficient: analysis.deficientNutrients,
+          excessive: analysis.excessiveNutrients,
+        ),
+        const SizedBox(height: AppSpace.md),
+      ],
+      if (analysis.purposeTargets.isNotEmpty) ...<Widget>[
+        PurposeTargetCard(targets: analysis.purposeTargets),
+        const SizedBox(height: AppSpace.md),
+      ],
+    ];
   }
 
   List<Widget> _mealCards(
@@ -1536,6 +1595,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       );
       return;
     }
+    final SupplementImpactPreviewResponse? impact =
+        appController.supplementImpactPreview;
+    if (impact != null && _hasHighSeverityRisk(impact)) {
+      final bool proceed = await _confirmInteractionSoftBlock(context, impact);
+      if (!proceed || !context.mounted) {
+        return;
+      }
+    }
     await appController.registerSupplement(
       _registrationRequest(preview),
       refreshImpact: true,
@@ -1764,6 +1831,32 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   Future<void> _handleAnalysisExplanation(AppController controller) async {
     HapticFeedback.selectionClick();
     await controller.explainSupplementAnalysis(useLocalLlm: true);
+  }
+
+  /// Whether the impact preview carries a high-severity interaction risk that
+  /// warrants a soft block before registration.
+  bool _hasHighSeverityRisk(SupplementImpactPreviewResponse impact) {
+    return impact.excessOrDuplicateRisks.isNotEmpty;
+  }
+
+  /// Shows the soft-block interaction warning and resolves to the user choice.
+  ///
+  /// Returns true when the user chooses to save anyway, false otherwise.
+  Future<bool> _confirmInteractionSoftBlock(
+    BuildContext context,
+    SupplementImpactPreviewResponse impact,
+  ) async {
+    final String body = _nonEmpty(impact.safeUserMessage) ?? '함께 드시는 영양제와 겹치는 성분이 있어요.';
+    bool saveAnyway = false;
+    await showInteractionWarningDialog(
+      context,
+      body: body,
+      onViewDetail: () {},
+      onSaveAnyway: () {
+        saveAnyway = true;
+      },
+    );
+    return saveAnyway;
   }
 
   UserSupplementIngredientInput? _correctedIngredient() {

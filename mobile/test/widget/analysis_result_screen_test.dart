@@ -6,9 +6,11 @@ import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
+import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/analysis_result_screen.dart';
+import 'package:lemon_aid_mobile/shared/widgets/low_confidence_banner.dart';
 
 void main() {
   testWidgets('renders source-style analysis result with real pipeline data', (
@@ -600,6 +602,125 @@ void main() {
       '수정 비빔밥',
     );
   });
+
+  testWidgets(
+    'renders figma C-hybrid diet result with score and prioritized caution',
+    (WidgetTester tester) async {
+      final _ComprehensiveMealRepository repository =
+          _ComprehensiveMealRepository(
+            comprehensive: _comprehensiveAnalysis(),
+          );
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisResultScreen(mode: 'meal', controller: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Score ring header + grade chip (no raw % exposure).
+      expect(
+        find.byKey(const ValueKey<String>('diet-score-header')),
+        findsOneWidget,
+      );
+      expect(find.text('균형이 잘 잡혔어요'), findsOneWidget);
+      expect(find.text('신뢰도 높음'), findsOneWidget);
+
+      // Cautionary component card is the top-priority insight card.
+      expect(
+        find.byKey(const ValueKey<String>('cautionary-component-card')),
+        findsOneWidget,
+      );
+      expect(find.text('카페인'), findsOneWidget);
+      expect(find.text('출처 · caffeine.md'), findsOneWidget);
+
+      // Nutrient grid renders below the priority caution card.
+      expect(find.text('단백질'), findsOneWidget);
+
+      // The caution card sits above the nutrient grid (priority placement).
+      final double cautionTop = tester
+          .getTopLeft(
+            find.byKey(const ValueKey<String>('cautionary-component-card')),
+          )
+          .dy;
+      final double proteinTop = tester.getTopLeft(find.text('단백질')).dy;
+      expect(cautionTop, lessThan(proteinTop));
+
+      // The save CTA lives in the persistent bottom bar (always visible).
+      expect(find.text('확인 후 식단 저장'), findsOneWidget);
+
+      // The comprehensive request carried the meal nutrient totals.
+      expect(repository.comprehensiveIngredients, isNotNull);
+      expect(
+        repository.comprehensiveIngredients!
+            .map((Map<String, Object?> row) => row['nutrient_code'])
+            .toList(),
+        containsAll(<String>['carbohydrate_g', 'protein_g', 'fat_g']),
+      );
+
+      // Purpose card renders after scrolling it into view.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('purpose-target-card')),
+        160,
+      );
+      expect(find.text('당뇨'), findsOneWidget);
+
+      // Base meal cards remain intact below the C-hybrid cards.
+      await tester.scrollUntilVisible(find.text('음식 후보'), 160);
+      expect(find.text('음식 후보'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'shows low-confidence banner when diet score confidence is low',
+    (WidgetTester tester) async {
+      final _ComprehensiveMealRepository repository =
+          _ComprehensiveMealRepository(
+            comprehensive: _comprehensiveAnalysis(scoreConfidence: 0.4),
+          );
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisResultScreen(mode: 'meal', controller: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('신뢰도 직접 확인 필요'), findsWidgets);
+      expect(find.byType(LowConfidenceBanner), findsOneWidget);
+    },
+  );
+
+  testWidgets('keeps base meal layout when comprehensive analysis is empty', (
+    WidgetTester tester,
+  ) async {
+    final _ComprehensiveMealRepository repository =
+        _ComprehensiveMealRepository();
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisResultScreen(mode: 'meal', controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('diet-score-header')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('cautionary-component-card')),
+      findsNothing,
+    );
+    expect(find.text('음식 후보'), findsOneWidget);
+    expect(find.text('확인 후 식단 저장'), findsOneWidget);
+  });
 }
 
 Future<void> _scrollResultDetails(WidgetTester tester) async {
@@ -611,15 +732,29 @@ class _ReviewRepository implements LemonAidRepository {
   _ReviewRepository({
     SupplementAnalysisPreview? preview,
     SupplementMultiImageAnalysisPreview? multiPreview,
+    ComprehensiveDietAnalysis? comprehensive,
   }) : _previewOverride = preview,
-       _multiPreviewOverride = multiPreview;
+       _multiPreviewOverride = multiPreview,
+       _comprehensiveOverride = comprehensive;
 
   final SupplementAnalysisPreview? _previewOverride;
   final SupplementMultiImageAnalysisPreview? _multiPreviewOverride;
+  final ComprehensiveDietAnalysis? _comprehensiveOverride;
   UserSupplementCreate? registeredRequest;
   String? confirmedMealId;
   MealConfirmationRequest? confirmedMealRequest;
+  List<Map<String, Object?>>? comprehensiveIngredients;
   bool explainUsedLocalLlm = false;
+
+  @override
+  Future<ComprehensiveDietAnalysis> analyzeComprehensive({
+    required List<Map<String, Object?>> ingredients,
+    Map<String, dynamic>? userProfile,
+    String persona = 'B',
+  }) async {
+    comprehensiveIngredients = ingredients;
+    return _comprehensiveOverride ?? ComprehensiveDietAnalysis.empty;
+  }
 
   @override
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
@@ -1025,6 +1160,83 @@ class _ReviewRepository implements LemonAidRepository {
     );
   }
 }
+
+/// Meal-flow repository whose meal preview carries nutrition totals so the
+/// comprehensive diet analysis call fires with real nutrient rows.
+class _ComprehensiveMealRepository extends _ReviewRepository {
+  _ComprehensiveMealRepository({super.comprehensive});
+
+  @override
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) async {
+    return MealImageAnalysisPreview.fromJson(_mealPreviewWithTotalsJson);
+  }
+}
+
+ComprehensiveDietAnalysis _comprehensiveAnalysis({double scoreConfidence = 0.9}) {
+  return ComprehensiveDietAnalysis.fromJson(<String, dynamic>{
+    'diet_score': 78,
+    'diet_score_label': '균형이 잘 잡혔어요',
+    'diet_score_message': '나트륨만 조금 줄이면 좋아요.',
+    'diet_score_confidence': scoreConfidence,
+    'deficient_nutrients': <Object?>[
+      <String, dynamic>{
+        'nutrient_code': 'protein_g',
+        'nutrient_name': '단백질',
+        'deficit_ratio': 0.5,
+        'unit': 'g',
+        'confidence': 0.7,
+        'message': '단백질이 더 필요해요.',
+      },
+    ],
+    'excessive_nutrients': <Object?>[
+      <String, dynamic>{
+        'nutrient_code': 'sodium_mg',
+        'nutrient_name': '나트륨',
+        'excess_ratio': 1.1,
+        'unit': 'mg',
+        'confidence': 0.4,
+        'message': '나트륨을 조금 줄여보세요.',
+      },
+    ],
+    'cautionary_components': <Object?>[
+      <String, dynamic>{
+        'component': '카페인',
+        'reason': '늦은 시간 섭취',
+        'severity': 'high',
+        'message': '저녁 섭취는 피하는 게 좋아요.',
+        'source_citation': 'caffeine.md',
+      },
+    ],
+    'purpose_targets': <Object?>[
+      <String, dynamic>{
+        'condition': '당뇨',
+        'relevance_score': 0.8,
+        'evidence_level': 'moderate',
+        'message': 'GI 지수를 함께 확인해보세요.',
+      },
+    ],
+    'chronic_disease_indications': <String>[],
+    'warnings': <String>[],
+  });
+}
+
+final Map<String, Object?> _mealPreviewWithTotalsJson = <String, Object?>{
+  ..._mealPreviewJson,
+  'nutrition_estimate_summary': <String, Object?>{
+    'status': 'detected_review_required',
+    'items': <Object?>[],
+    'totals': <String, Object?>{
+      'carb_g': 78,
+      'protein_g': 18,
+      'fat_g': 12,
+      'sodium_mg': 820,
+    },
+    'detector_used': true,
+  },
+};
 
 SupplementMultiImageAnalysisPreview _threeSupplementMultiPreview() {
   final _ReviewRepository source = _ReviewRepository();
