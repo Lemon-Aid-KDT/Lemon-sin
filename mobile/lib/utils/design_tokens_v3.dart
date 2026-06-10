@@ -1,5 +1,13 @@
 // utils/design_tokens_v3.dart — Lemon Aid Design System v3.0 (LADS)
 //
+// ⚠️  DEPRECATED — 이 파일은 폐기 예정입니다.
+//
+// 단일 출처(SoT v1.1 §9.4): mobile/lib/utils/design_tokens_v2.dart 를 사용하세요.
+// 이 파일의 AppColor / AppText / AppRadius / AppSpacing / AppShadow 클래스는
+// design_tokens_v3 전용 네이밍(예: AppColor.lemon400, AppSpacing.s24)을 사용하며
+// design_tokens_v2 와 상충됩니다.
+// 삭제 시기: 모든 import 가 제거된 것을 확인한 뒤 별도 PR에서 삭제 예정.
+//
 // §13 매니페스토: colors_and_type.css 단일 진실의 미러
 // 원본: mobile/assets/design_system/colors_and_type.css
 //

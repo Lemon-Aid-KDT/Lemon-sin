@@ -17,7 +17,9 @@ import 'screens/dashboard_screen.dart' as source_dashboard;
 import 'screens/score_screen.dart' as source_score;
 import 'screens/settings_screen.dart' as source_settings;
 import 'screens/splash_screen.dart' as source_splash;
+import 'shared/theme/brand_theme_controller.dart';
 import 'shared/theme/lemon_design_tokens.dart';
+import 'utils/brand_palette.dart';
 import 'shared/widgets/error_panel.dart';
 import 'widgets/common/main_shell.dart';
 
@@ -220,10 +222,11 @@ class _LemonAidRouterApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final BrandTheme brandTheme = ref.watch(brandThemeProvider);
     return MaterialApp.router(
       title: 'Lemon Aid',
       debugShowCheckedModeBanner: false,
-      theme: buildLemonAidTheme(),
+      theme: buildLemonAidTheme(brandTheme.color),
       routerConfig: ref.watch(_routerProvider),
     );
   }

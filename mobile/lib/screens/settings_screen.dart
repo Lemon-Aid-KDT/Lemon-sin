@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app_controller.dart';
 import '../features/auth/token_session.dart';
 import '../features/consent/consent_models.dart';
+import '../shared/theme/brand_theme_controller.dart';
+import '../utils/brand_palette.dart';
 import '../utils/design_tokens_v2.dart';
 
 /// Source-style settings screen wired to the current auth and consent state.
@@ -211,6 +214,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           subtitle: '민감정보 export는 별도 승인 후 연결',
                         ),
                       ],
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    const _SectionLabel('테마 색상'),
+                    Consumer(
+                      builder: (
+                        BuildContext context,
+                        WidgetRef ref,
+                        Widget? child,
+                      ) {
+                        final BrandTheme current =
+                            ref.watch(brandThemeProvider);
+                        return _SettingsCard(
+                          children: [
+                            _ThemeSwatchRow(
+                              current: current,
+                              onSelect: (BrandTheme t) =>
+                                  ref
+                                      .read(brandThemeProvider.notifier)
+                                      .select(t),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: AppSpace.lg),
                     Center(
@@ -548,6 +574,88 @@ class _SettingsDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Divider(height: 1, color: AppColor.border);
+  }
+}
+
+/// 4색 브랜드 테마 스와치 행 (Figma S-13).
+///
+/// 옐로/퍼플/그린/블루 스와치 4개를 가로로 나열한다.
+/// 선택된 항목은 검정 외곽선 + 체크 아이콘으로 표시.
+class _ThemeSwatchRow extends StatelessWidget {
+  const _ThemeSwatchRow({
+    required this.current,
+    required this.onSelect,
+  });
+
+  final BrandTheme current;
+  final ValueChanged<BrandTheme> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '앱 색상 테마',
+                  style: AppText.subtitle.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  current.label,
+                  style: AppText.caption.copyWith(
+                    color: AppColor.inkTertiary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            children: BrandTheme.values.map((BrandTheme t) {
+              final bool selected = t == current;
+              return Padding(
+                padding: const EdgeInsets.only(left: AppSpace.sm),
+                child: GestureDetector(
+                  onTap: () => onSelect(t),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: t.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected
+                            ? AppColor.ink
+                            : Colors.transparent,
+                        width: 2.5,
+                      ),
+                    ),
+                    child: selected
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: Colors.black,
+                            size: 18,
+                          )
+                        : null,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
   }
 }
 

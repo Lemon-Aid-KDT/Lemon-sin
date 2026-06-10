@@ -1,5 +1,12 @@
 // utils/tokens.dart — Lemon Aid 디자인 토큰
 //
+// ⚠️  DEPRECATED — 이 파일은 폐기 예정입니다.
+//
+// 단일 출처(SoT v1.1 §9.4): mobile/lib/utils/design_tokens_v2.dart 를 사용하세요.
+// 이 파일의 LemonColors.brand 는 블루(#4267EC) 기반으로 현재 브랜드(#FFC700)와 불일치합니다.
+// 마이그레이션: import 를 design_tokens_v2.dart 로 교체하고 AppColor.* 로 대응 상수를 매핑.
+// 삭제 시기: 모든 import 가 제거된 것을 확인한 뒤 별도 PR에서 삭제 예정.
+//
 // 담당: B UI/UX (디자인 토큰 D2)
 // 참조: PROJECT_GUIDE.md §4.2 UX 원칙 (만성질환자 50대+ 친화)
 //        §15.1 B 담당
