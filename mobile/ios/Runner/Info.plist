@@ -27,9 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Lemon Aid uses camera photos to create supplement label OCR previews for your review.</string>
+	<string>영양제·식품 사진을 분석하기 위해 카메라가 필요해요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Lemon Aid uses selected supplement label images to create OCR previews for your review.</string>
+	<string>저장된 사진을 불러와 분석하기 위해 권한이 필요해요.</string>
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
