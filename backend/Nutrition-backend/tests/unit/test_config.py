@@ -177,6 +177,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
         "supplement_facts",
         "ingredient_amounts",
         "precautions",
+        "allergen_warning",
         "intake_method",
         "other_ingredients",
         "functional_claims",

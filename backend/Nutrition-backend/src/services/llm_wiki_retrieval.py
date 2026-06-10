@@ -21,6 +21,7 @@ from sqlalchemy import text
 
 from src.config import Settings
 from src.db.session import get_sessionmaker
+from src.llm.ollama import validate_local_ollama_settings
 from src.services.wiki_embedding_targets import EMBEDDING_TABLES, get_target
 
 if TYPE_CHECKING:
@@ -300,9 +301,12 @@ async def _embed_query(query: str, settings: Settings) -> tuple[float, ...]:
         The embedding vector, or an empty tuple when the response has no vector.
 
     Raises:
+        OllamaConfigurationError: If the configured runtime is not an allowed
+            local Ollama endpoint.
         httpx.HTTPError: If the local embeddings request fails.
         ValueError: If the response body is not a usable JSON object.
     """
+    validate_local_ollama_settings(settings)
     endpoint = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
     prompt = _apply_query_prompt(query, settings.wiki_embedding_model)
     payload = {"model": settings.wiki_embedding_model, "prompt": prompt}
