@@ -9,7 +9,7 @@ ARG PRELOAD_PADDLEOCR_LANGUAGE=korean
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/Nutrition-backend \
+    PYTHONPATH=/app/Nutrition-backend:/app/ai_agent_chat/src \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true \
     YOLO_CONFIG_DIR=/home/lemon/.config/Ultralytics
@@ -43,6 +43,7 @@ RUN pip install --upgrade pip \
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY Nutrition-backend ./Nutrition-backend
+COPY ai_agent_chat ./ai_agent_chat
 COPY scripts ./scripts
 
 RUN if [ "${PRELOAD_PADDLEOCR}" = "true" ]; then \

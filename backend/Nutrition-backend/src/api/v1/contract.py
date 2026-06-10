@@ -15,6 +15,7 @@ P1_4_SUPPLEMENT_REGISTRATION_READY_STATUS = "p1_4_registration_ready"
 P1_5_DEFICIENCY_DASHBOARD_READY_STATUS = "p1_5_deficiency_dashboard_ready"
 P1_6_HEALTH_SYNC_READY_STATUS = "p1_6_health_sync_ready"
 P1_7_SUPPLEMENT_RECOMMENDATION_READY_STATUS = "p1_7_supplement_recommendation_ready"
+P1_7_AI_AGENT_DAILY_COACHING_READY_STATUS = "p1_7_ai_agent_daily_coaching_ready"
 
 
 def route_contract(

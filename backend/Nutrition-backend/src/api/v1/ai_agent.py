@@ -29,6 +29,7 @@ from src.api.v1.examples import (
 )
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
+from src.llm.ollama import validate_local_ollama_settings
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser, require_analysis_write
 from src.security.scopes import ApiScope
@@ -130,6 +131,7 @@ def _build_llm_client(settings: Settings) -> LocalLLMClient:
             api_key=api_key,
             timeout=settings.ollama_timeout_sec,
         )
+    validate_local_ollama_settings(settings)
     return OllamaClient(
         model=settings.ollama_model,
         endpoint=settings.ollama_base_url,

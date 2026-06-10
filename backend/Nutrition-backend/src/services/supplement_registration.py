@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from functools import lru_cache
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import desc, or_, select
@@ -646,3 +647,60 @@ def _decimal_or_none(value: float | None) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+async def load_active_supplement_context(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Load confirmed supplement records as chatbot-safe snapshot context."""
+    response = await list_user_supplement_records(session, user, limit, offset)
+    return build_active_supplement_snapshot(response.results)
+
+
+def build_active_supplement_snapshot(
+    supplements: Iterable[UserSupplementResponse],
+) -> dict[str, Any]:
+    """Build the active supplement snapshot from confirmed user records only."""
+    return {
+        "registered_supplements": [
+            {
+                "supplement_id": str(supplement.id),
+                "display_name": supplement.display_name,
+                "manufacturer": supplement.manufacturer,
+                "ingredients": [
+                    {
+                        "display_name": ingredient.display_name,
+                        "nutrient_code": ingredient.nutrient_code,
+                        "amount": ingredient.amount,
+                        "unit": ingredient.unit,
+                        "analysis_use": (
+                            "standard_nutrient"
+                            if ingredient.nutrient_code
+                            else "label_only"
+                        ),
+                        "source": ingredient.source,
+                    }
+                    for ingredient in supplement.ingredients
+                ],
+                "serving": supplement.serving.model_dump(mode="json", exclude_none=True),
+                "intake_schedule": (
+                    supplement.intake_schedule.model_dump(mode="json", exclude_none=True)
+                    if supplement.intake_schedule is not None
+                    else None
+                ),
+                "user_confirmed_at": supplement.user_confirmed_at.isoformat(),
+                "user_confirmed": True,
+            }
+            for supplement in supplements
+        ],
+        "checked_today": [],
+        "policy": {
+            "nutrient_code_required_for_standard_analysis": True,
+            "unconfirmed_preview_excluded": True,
+            "label_only_ingredients_do_not_drive_nutrient_analysis": True,
+        },
+    }

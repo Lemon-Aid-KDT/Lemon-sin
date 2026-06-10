@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -180,6 +181,23 @@ def _missing_required_field_errors(fields: tuple[tuple[str, str | None], ...]) -
     ]
 
 
+def _is_local_http_url(value: str) -> bool:
+    """Return whether a URL points at a loopback HTTP endpoint.
+
+    Args:
+        value: URL string to inspect.
+
+    Returns:
+        True if the URL scheme is http(s) and the host is loopback.
+    """
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and parsed.hostname in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
+
+
 def _is_non_https_url(value: str | None) -> bool:
     """Check whether a configured URL is present but not HTTPS.
 
@@ -265,7 +283,7 @@ class Settings(BaseSettings):
         jwt_jwks_timeout_seconds: JWKS retrieval timeout.
         oidc_discovery_url: Optional OIDC discovery document URL for operational preflight.
         privacy_hash_secret: HMAC secret used for privacy-preserving audit identifiers.
-        llm_provider: 기본 LLM provider. 민감정보 보호를 위해 Ollama만 허용한다.
+        llm_provider: 기본 LLM provider. Ollama 또는 로컬/자가호스팅 SGLang을 허용한다.
         ollama_base_url: Ollama Local API 기본 주소.
         ollama_model: 텍스트 구조화 출력 기본 모델.
         ollama_vision_model: 이미지 입력 실험용 모델.
@@ -390,13 +408,20 @@ class Settings(BaseSettings):
     )
     privacy_hash_secret_audit_pepper: SecretStr | None = Field(default=None)
 
-    llm_provider: Literal["ollama"] = "ollama"
+    llm_provider: Literal["ollama", "sglang"] = "ollama"
     ollama_base_url: str = Field(default="http://127.0.0.1:11434")
     ollama_model: str = Field(default="gemma4:e4b")
     ollama_vision_model: str | None = Field(default="gemma4:e4b")
     ollama_timeout_sec: int = Field(default=60, ge=1)
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     ollama_vision_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    sglang_base_url: str = Field(default="http://127.0.0.1:30000/v1")
+    sglang_model: str = Field(default="Qwen/Qwen2.5-0.5B-Instruct")
+    sglang_api_key: SecretStr | None = Field(default=None)
+    kdca_healthinfo_url_template: str | None = Field(default=None)
+    kdca_healthinfo_topic_ids_file: Path | None = Field(default=None)
+    kdca_healthinfo_topic_ids: dict[str, str] = Field(default_factory=dict)
+    kdca_healthinfo_api_key: SecretStr | None = Field(default=None)
     allow_external_llm: bool = Field(default=False)
     llm_wiki_retrieval_enabled: bool = Field(default=True)
     llm_wiki_path: Path = Field(default=DEFAULT_LLM_WIKI_PATH)
@@ -458,6 +483,16 @@ class Settings(BaseSettings):
     clova_ocr_api_url: str | None = Field(default=None)
     clova_ocr_secret: SecretStr | None = Field(default=None)
     mfds_api_key: SecretStr | None = Field(default=None)
+    data_go_kr_service_key: SecretStr | None = Field(default=None)
+    mfds_data_api_key: SecretStr | None = Field(default=None)
+    ncbi_api_key: SecretStr | None = Field(default=None)
+    ncbi_tool_name: str = Field(default="lemon-aid")
+    ncbi_email: str | None = Field(default=None)
+    semantic_scholar_api_key: SecretStr | None = Field(default=None)
+    openfda_api_key: SecretStr | None = Field(default=None)
+    crossref_mailto: str | None = Field(default=None)
+    google_cse_api_key: SecretStr | None = Field(default=None)
+    google_cse_id: str | None = Field(default=None)
 
     supplement_image_max_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     supplement_image_max_pixels: int = Field(default=12_000_000, ge=1, le=25_000_000)
@@ -795,6 +830,15 @@ class Settings(BaseSettings):
             raise ValueError("ALLOWED_HOSTS must be explicit in staging.")
         if self.environment == "staging" and _contains_wildcard(self.allowed_hosts):
             raise ValueError("ALLOWED_HOSTS must not contain wildcards in staging.")
+        if (
+            self.llm_provider == "sglang"
+            and not self.allow_external_llm
+            and not _is_local_http_url(self.sglang_base_url)
+        ):
+            raise ValueError(
+                "SGLANG_BASE_URL must be a local loopback endpoint when "
+                "ALLOW_EXTERNAL_LLM=false."
+            )
 
         if self.environment != "production":
             return self

@@ -1,7 +1,9 @@
 """Database model registry."""
 
 from src.db.base import Base
+from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
+from src.models.db.food_record import FoodRecord
 from src.models.db.health import (
     BodyProfileSnapshot,
     HealthDailySummary,
@@ -24,6 +26,15 @@ from src.models.db.medical import (
     PatientMedication,
     PatientStatusSnapshot,
 )
+from src.models.db.medical_source import (
+    MedicalEvidenceItem,
+    MedicalPolicyBoundary,
+    MedicalRagChunk,
+    MedicalSource,
+    MedicalSourceVersion,
+    MedicalUnknownKnowledgeEvent,
+)
+from src.models.db.notification import ReminderPreference
 from src.models.db.privacy import AuditLog, ConsentPolicy, ConsentRecord, DeletionRequest
 from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDocument
 from src.models.db.retraining import (
@@ -44,8 +55,11 @@ from src.models.db.supplement import (
     UserSupplementIngredient,
 )
 from src.models.db.user import User
+from src.models.db.user_medication import UserMedication
 
 __all__ = [
+    "AgentMemory",
+    "AgentRun",
     "AnalysisResult",
     "AnnotationTask",
     "AuditLog",
@@ -58,6 +72,7 @@ __all__ = [
     "FoodCourse",
     "FoodCuisine",
     "FoodImageAnalysisRun",
+    "FoodRecord",
     "HealthDailySummary",
     "HealthMetricSample",
     "HealthSyncBatch",
@@ -71,7 +86,13 @@ __all__ = [
     "MealRecord",
     "MediaObject",
     "MediaProcessingRun",
+    "MedicalEvidenceItem",
+    "MedicalPolicyBoundary",
+    "MedicalRagChunk",
     "MedicalRecordCollection",
+    "MedicalSource",
+    "MedicalSourceVersion",
+    "MedicalUnknownKnowledgeEvent",
     "ModelEvalResult",
     "ModelRegistryEntry",
     "ModelTrainingRun",
@@ -80,6 +101,7 @@ __all__ = [
     "PatientStatusSnapshot",
     "PrescriptionItem",
     "RegulatedDocument",
+    "ReminderPreference",
     "SupplementAnalysisRun",
     "SupplementCategory",
     "SupplementImageEvidence",
@@ -87,6 +109,7 @@ __all__ = [
     "SupplementProductCategory",
     "SupplementProductIngredient",
     "User",
+    "UserMedication",
     "UserSupplement",
     "UserSupplementIngredient",
 ]
