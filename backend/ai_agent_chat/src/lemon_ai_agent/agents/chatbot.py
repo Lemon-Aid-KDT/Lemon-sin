@@ -6,7 +6,10 @@ from typing import Any
 from lemon_ai_agent.answer_card import AnswerCard, MedicalKnowledgeRetriever
 from lemon_ai_agent.chat_session import ChatbotRequest, ChatbotResponse
 from lemon_ai_agent.chat_turn import ChatTurnModule, ChatTurnPlan
-from lemon_ai_agent.entity_normalization import normalize_health_entities
+from lemon_ai_agent.entity_normalization import (
+    EntityNormalizationResult,
+    normalize_health_entities,
+)
 from lemon_ai_agent.guards.safety import SafetyEnvelope, SafetyGuard
 from lemon_ai_agent.knowledge import (
     AnswerPolicy,
@@ -22,6 +25,7 @@ from lemon_ai_agent.renderers import (
     CardAnswerRenderer,
     UnknownRenderer,
 )
+from lemon_ai_agent.tracing import AgentTraceRecorder, AgentTraceSpan, NoopAgentTraceRecorder
 
 MEAL_LABELS = {
     "breakfast": "아침",
@@ -140,6 +144,7 @@ class ChatbotAgent:
         llm_client: LocalLLMClient | None = None,
         *,
         retriever: MedicalKnowledgeRetriever | None = None,
+        trace_recorder: AgentTraceRecorder | None = None,
     ) -> None:
         self._completion = LLMCompletion(llm_client)
         self._has_llm_client = llm_client is not None
@@ -149,35 +154,63 @@ class ChatbotAgent:
         self._boundary_renderer = BoundaryRenderer()
         self._unknown_renderer = UnknownRenderer()
         self._card_renderer = CardAnswerRenderer()
+        self._trace_recorder = trace_recorder or NoopAgentTraceRecorder()
 
     def answer(self, request: ChatbotRequest) -> ChatbotResponse:  # noqa: PLR0911
         warnings: list[str] = []
         turn = self._chat_turn.plan(request)
+        self._record_trace_span(turn, "chat_turn_plan", "planned", warnings=turn.retrieval_warnings)
+        self._record_trace_span(turn, "retrieval", "retrieved", warnings=turn.retrieval_warnings)
         boundary_response = self._boundary_renderer.render(turn, warnings)
         if boundary_response is not None:
+            self._record_response_trace(turn, boundary_response, "boundary", warnings)
             return boundary_response
         context_resolution_response = self._context_resolution_response(request)
         if context_resolution_response is not None:
+            self._record_response_trace(turn, context_resolution_response, "needs_more_info", warnings)
             return context_resolution_response
-        entity_resolution_response = self._entity_resolution_response(request)
+        entity_resolution_response = self._entity_resolution_response_for_turn(turn, request)
         if entity_resolution_response is not None:
+            self._record_response_trace(turn, entity_resolution_response, "needs_more_info", warnings)
             return entity_resolution_response
         label_only_response = self._label_only_supplement_response(request, warnings)
         if label_only_response is not None:
+            self._record_response_trace(turn, label_only_response, "unknown", warnings)
             return label_only_response
         if turn.answerability == "unknown_no_reviewed_source":
             warnings.extend(turn.retrieval_warnings)
-            return self._unknown_renderer.render(turn, warnings)
+            response = self._unknown_renderer.render(turn, warnings)
+            self._record_response_trace(turn, response, "unknown", warnings)
+            return response
 
         if not self._has_llm_client:
-            return self._fallback_response(turn, warnings)
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
 
         completion = self._completion.complete(self._build_llm_request(turn))
         if not completion.ok:
             warnings.extend(completion.warnings)
-            return self._fallback_response(turn, warnings)
+            self._record_trace_span(
+                turn,
+                "llm_polish",
+                "completion_failed",
+                warnings=completion.warnings,
+                provider=completion.provider,
+                passed=False,
+            )
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
 
         completion_text = self._render_structured_completion(completion.text) or completion.text
+        self._record_trace_span(
+            turn,
+            "llm_polish",
+            "completed",
+            warnings=completion.warnings,
+            provider=completion.provider,
+        )
 
         safety = self._safety_envelope.screen_llm_output(
             completion_text,
@@ -192,13 +225,26 @@ class ChatbotAgent:
         has_required_shape = self._has_required_response_shape(completion_text)
         if not has_required_shape:
             warnings.append("Chatbot response contract not followed")
-        if not safety.allowed or not card_phrase_check.allowed or not has_required_shape:
-            return self._fallback_response(turn, warnings)
+        safety_passed = safety.allowed and card_phrase_check.allowed and has_required_shape
+        self._record_trace_span(
+            turn,
+            "safety_guard",
+            "checked",
+            warnings=warnings,
+            provider=completion.provider,
+            passed=safety_passed,
+        )
+        if not safety_passed:
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
         if not self._has_required_card_specificity(completion_text, turn):
             warnings.append("Chatbot response card detail not followed")
-            return self._fallback_response(turn, warnings)
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
 
-        return ChatbotResponse(
+        response = ChatbotResponse(
             request_id=request.request_id,
             message=safety.text,
             provider=completion.provider,
@@ -208,6 +254,102 @@ class ChatbotAgent:
             answerability=turn.answerability,
             sources=turn.sources,
             requires_user_approval=False,
+        )
+        self._record_response_trace(turn, response, "llm_polish", warnings)
+        return response
+
+    def _record_response_trace(
+        self,
+        turn: ChatTurnPlan,
+        response: ChatbotResponse,
+        renderer_route: str,
+        warnings: list[str],
+    ) -> None:
+        self._record_trace_span(turn, "route_decision", renderer_route, warnings=warnings)
+        self._trace_recorder.record(
+            AgentTraceSpan(
+                request_id=turn.request.request_id,
+                span_name="render",
+                answerability=response.answerability,
+                retrieval_status=turn.retrieval_status,
+                renderer_route=renderer_route,
+                claim_ids=self._claim_ids_for_turn(turn),
+                source_ids=tuple(
+                    str(source.get("source_id", ""))
+                    for source in response.sources
+                    if source.get("source_id")
+                ),
+                boundary_code=self._boundary_code_for_turn(turn),
+                provider=response.provider,
+                warning_codes=tuple(dict.fromkeys(warnings)),
+                passed=True,
+            )
+        )
+
+    def _record_trace_span(
+        self,
+        turn: ChatTurnPlan,
+        span_name: str,
+        renderer_route: str,
+        *,
+        warnings: tuple[str, ...] | list[str],
+        provider: str = "",
+        passed: bool = True,
+    ) -> None:
+        self._trace_recorder.record(
+            AgentTraceSpan(
+                request_id=turn.request.request_id,
+                span_name=span_name,
+                answerability=turn.answerability,
+                retrieval_status=turn.retrieval_status,
+                renderer_route=renderer_route,
+                claim_ids=self._claim_ids_for_turn(turn),
+                source_ids=self._source_ids_for_turn(turn),
+                boundary_code=self._boundary_code_for_turn(turn),
+                provider=provider,
+                warning_codes=tuple(dict.fromkeys(warnings)),
+                passed=passed,
+            )
+        )
+
+    def _claim_ids_for_turn(self, turn: ChatTurnPlan) -> tuple[str, ...]:
+        claim_ids = [
+            card.linked_claim_id
+            for card in turn.answer_cards
+            if card.linked_claim_id
+        ]
+        return tuple(dict.fromkeys(claim_ids))
+
+    def _source_ids_for_turn(self, turn: ChatTurnPlan) -> tuple[str, ...]:
+        source_ids = [card.source_id for card in turn.answer_cards if card.source_id]
+        return tuple(dict.fromkeys(source_ids))
+
+    def _boundary_code_for_turn(self, turn: ChatTurnPlan) -> str:
+        if turn.answerability in {
+            "urgent_escalation",
+            "medical_decision_boundary",
+            "safety_boundary",
+        }:
+            return turn.answerability
+        return ""
+
+    def _record_normalization_trace(
+        self,
+        turn: ChatTurnPlan,
+        normalization: EntityNormalizationResult,
+    ) -> None:
+        warning_codes = []
+        if normalization.needs_specific_medication_name:
+            warning_codes.append("needs_specific_medication_name")
+        if normalization.missing_topics:
+            warning_codes.append("missing_topics_present")
+        warning_codes.append(f"normalized_entity_count_{len(normalization.entities)}")
+        self._record_trace_span(
+            turn,
+            "normalization",
+            "entity_resolution",
+            warnings=warning_codes,
+            passed=not normalization.needs_specific_medication_name,
         )
 
     def _fallback_response(
@@ -309,8 +451,21 @@ class ChatbotAgent:
             requires_user_approval=False,
         )
 
-    def _entity_resolution_response(self, request: ChatbotRequest) -> ChatbotResponse | None:
-        result = normalize_health_entities(request.message, request.context)
+    def _entity_resolution_response_for_turn(
+        self,
+        turn: ChatTurnPlan,
+        request: ChatbotRequest,
+    ) -> ChatbotResponse | None:
+        normalization = normalize_health_entities(request.message, request.context)
+        if normalization.needs_specific_medication_name:
+            self._record_normalization_trace(turn, normalization)
+        return self._entity_resolution_response(request, normalization)
+
+    def _entity_resolution_response(
+        self,
+        request: ChatbotRequest,
+        result: EntityNormalizationResult,
+    ) -> ChatbotResponse | None:
         if not result.needs_specific_medication_name:
             return None
         return ChatbotResponse(

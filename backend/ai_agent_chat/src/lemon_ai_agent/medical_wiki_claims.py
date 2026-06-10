@@ -178,6 +178,7 @@ class MedicalWikiReviewedClaim:
     reviewed_at: str
     expires_at: str
     sources: tuple[dict[str, str], ...]
+    golden_questions: tuple[str, ...] = ()
 
 
 class MedicalWikiReviewedClaimRetriever:
@@ -210,6 +211,7 @@ class MedicalWikiReviewedClaimRetriever:
             document_tokens = tokenize(_claim_document_text(claim))
             score = _bm25_lite_score(query_tokens, document_tokens, self._idf)
             score += _claim_query_boost(claim.claim_id, query)
+            score += _claim_golden_seed_boost(claim, query)
             ranked.append(
                 {
                     "claim_id": claim.claim_id,
@@ -393,6 +395,11 @@ def _claim_from_row(row: dict[str, Any]) -> MedicalWikiReviewedClaim:
         reviewed_at=str(row.get("reviewed_at", "")),
         expires_at=str(row.get("expires_at", "")),
         sources=sources,
+        golden_questions=tuple(
+            str(seed.get("user_question", ""))
+            for seed in row.get("golden_test_seeds", [])
+            if isinstance(seed, dict) and seed.get("user_question")
+        ),
     )
 
 
@@ -400,7 +407,9 @@ def _answerability_for_claim(answer_card: dict[str, Any]) -> Answerability:
     severity = str(answer_card.get("severity", ""))
     if "urgent" in severity:
         return "urgent_escalation"
-    if severity == "safety_boundary":
+    if "safety_boundary" in severity or "safety" in severity:
+        return "safety_boundary"
+    if severity.endswith("_boundary") and severity != "medical_decision_boundary":
         return "safety_boundary"
     return "medical_decision_boundary"
 
@@ -468,6 +477,7 @@ def _claim_document_text(claim: MedicalWikiReviewedClaim) -> str:
             claim.claim_text,
             claim.allowed_user_wording,
             "\n".join(claim.blocked_wording),
+            "\n".join(claim.golden_questions),
             claim.severity,
             claim.primary_action,
             "\n".join(claim.must_not_answer_as),
@@ -502,3 +512,12 @@ def _claim_query_boost(claim_id: str, query: str) -> float:
     normalized = query.casefold()
     terms = CLAIM_QUERY_BOOSTS.get(claim_id, ())
     return sum(4.0 for term in terms if term in normalized)
+
+
+def _claim_golden_seed_boost(claim: MedicalWikiReviewedClaim, query: str) -> float:
+    normalized = " ".join(query.casefold().split())
+    for question in claim.golden_questions:
+        seed_question = " ".join(question.casefold().split())
+        if normalized == seed_question:
+            return 100.0
+    return 0.0

@@ -369,7 +369,9 @@ def _card_checklist_sentence(card: AnswerCard) -> str:
 
 
 def _reviewed_claim_boundary_message(card: AnswerCard) -> str:
-    summary = card.allowed_guidance[0] if card.allowed_guidance else card.concrete_guidance
+    summary = _safe_boundary_summary(
+        card.allowed_guidance[0] if card.allowed_guidance else card.concrete_guidance
+    )
     action = _reviewed_claim_action_sentence(card)
     checklist = ", ".join(card.checklist[:5]) if card.checklist else "현재 증상과 복용 정보를 정리"
     source_basis = _reviewed_claim_source_basis(card)
@@ -377,8 +379,8 @@ def _reviewed_claim_boundary_message(card: AnswerCard) -> str:
         return (
             f"즉시 안내: {summary} "
             f"다음 행동: {action} "
-            "주의: Lemon Aid는 이 상황에서 진단, 처방 변경, 복용량 조절, "
-            "응급 가능성 배제를 하지 않습니다. "
+            "주의: Lemon Aid는 이 상황에서 진단을 내리거나, 처방약을 바꾸라고 하거나, "
+            "약 용량을 앱에서 정하라고 안내하지 않습니다. 응급 가능성도 배제하지 않습니다. "
             f"확인할 정보: {checklist}.\n\n"
             f"출처 기준: {source_basis}"
         )
@@ -389,6 +391,14 @@ def _reviewed_claim_boundary_message(card: AnswerCard) -> str:
         "검사수치 해석, 치료 필요 여부를 결정하지 않습니다. "
         f"확인할 정보: {checklist}.\n\n"
         f"출처 기준: {source_basis}"
+    )
+
+
+def _safe_boundary_summary(summary: str) -> str:
+    return (
+        summary.replace("혈압약을 줄이거나 중단할지는", "처방 계획 변경 여부는")
+        .replace("약을 줄이거나 중단할지는", "처방 계획 변경 여부는")
+        .replace("중단할지는", "변경할지는")
     )
 
 

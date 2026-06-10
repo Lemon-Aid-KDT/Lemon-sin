@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from lemon_ai_agent.answer_card import (
     Answerability,
     AnswerCard,
+    KnowledgeRetrievalResult,
     MedicalKnowledgeRetriever,
     RetrievalStatus,
     answerability_for_analysis,
@@ -49,6 +50,12 @@ _FOLLOW_UP_TERMS = (
     "this",
 )
 _BRIEF_FOLLOW_UP_MAX_CHARS = 40
+_UNNORMALIZED_RETRIEVAL_MARKERS = (
+    "langchain",
+    "langgraph",
+    "vector",
+    "document",
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,7 @@ class ChatTurnModule:
         policy = policy_for_question(planning_question, request.context)
         analysis = analyze_chat_intent(planning_question, request.context)
         retrieval = self._retriever.retrieve(analysis)
+        knowledge_items, retrieval_warnings = _normalized_retrieval_items(retrieval)
         answerability = _answerability_for_retrieval(analysis, retrieval.cards)
         answer_plan = self._plan_builder.build_answer_plan(
             request,
@@ -104,13 +112,13 @@ class ChatTurnModule:
             request=request,
             policy=policy,
             analysis=analysis,
-            knowledge_items=retrieval.knowledge_items,
+            knowledge_items=knowledge_items,
             answer_cards=retrieval.cards,
             answerability=answerability,
             retrieval_status=retrieval.retrieval_status,
             answer_plan=answer_plan,
             analysis_plan=analysis_plan,
-            retrieval_warnings=retrieval.warnings,
+            retrieval_warnings=retrieval_warnings,
         )
 
 
@@ -159,3 +167,30 @@ def _answerability_for_retrieval(
         }:
             return top_card_answerability
     return answerability_for_analysis(analysis, has_cards=bool(cards))
+
+
+def _normalized_retrieval_items(
+    retrieval: KnowledgeRetrievalResult,
+) -> tuple[tuple[MedicalKnowledgeItem, ...], tuple[str, ...]]:
+    safe_items = tuple(
+        item for item in retrieval.knowledge_items if not _looks_like_raw_vector_result(item)
+    )
+    if len(safe_items) == len(retrieval.knowledge_items):
+        return safe_items, retrieval.warnings
+    warnings = (
+        *retrieval.warnings,
+        "retrieval_result_requires_answer_card_normalization",
+    )
+    return safe_items, tuple(dict.fromkeys(warnings))
+
+
+def _looks_like_raw_vector_result(item: MedicalKnowledgeItem) -> bool:
+    text = " ".join(
+        (
+            item.source,
+            item.source_id,
+            item.topic,
+            item.concrete_guidance,
+        )
+    ).casefold()
+    return any(marker in text for marker in _UNNORMALIZED_RETRIEVAL_MARKERS)
