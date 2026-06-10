@@ -652,6 +652,545 @@ class _AppCelebrate extends StatelessWidget {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// 4) showInteractionWarningDialog — 소프트 블록 경고 (상호작용 주의)
+//    dangerSoft 원 + ⚠ 아이콘, 크림 인포 배너, primary + 회색 텍스트 링크
+// ════════════════════════════════════════════════════════════════
+
+Future<void> showInteractionWarningDialog(
+  BuildContext context, {
+  required String body,
+  required VoidCallback onViewDetail,
+  required VoidCallback onSaveAnyway,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'interaction_warning',
+    barrierColor: const Color(0x59141A2C),
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionBuilder: (_, anim, _, child) {
+      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+      return Opacity(
+        opacity: curved.value,
+        child: Transform.scale(scale: 0.96 + 0.04 * curved.value, child: child),
+      );
+    },
+    pageBuilder: (_, _, _) => _InteractionWarningDialog(
+      body: body,
+      onViewDetail: onViewDetail,
+      onSaveAnyway: onSaveAnyway,
+    ),
+  );
+}
+
+class _InteractionWarningDialog extends StatelessWidget {
+  final String body;
+  final VoidCallback onViewDetail;
+  final VoidCallback onSaveAnyway;
+
+  const _InteractionWarningDialog({
+    required this.body,
+    required this.onViewDetail,
+    required this.onSaveAnyway,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 320,
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+            decoration: BoxDecoration(
+              color: AppColor.surface,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF141A2C).withValues(alpha: 0.30),
+                  blurRadius: 60,
+                  spreadRadius: -10,
+                  offset: const Offset(0, 30),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // dangerSoft 원형 배경 + ⚠ 아이콘
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: AppColor.dangerSoft,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.warning_rounded,
+                    color: AppColor.danger,
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '잠깐, 확인해 주세요',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColor.ink,
+                    letterSpacing: 0,
+                    height: 1.3,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w500,
+                    color: AppColor.inkSecondary,
+                    height: 1.55,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 14),
+                // 크림(brandSoft) 인포 배너
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.brandSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: const Text(
+                    '드시기 전 의사·약사와 상담을 권해요',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColor.brandDeep,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Primary — 안전 정보 자세히 보기
+                _NeuPrimaryButton(
+                  label: '안전 정보 자세히 보기',
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onViewDetail();
+                  },
+                ),
+                const SizedBox(height: 14),
+                // 회색 텍스트 링크
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onSaveAnyway();
+                  },
+                  child: const Text(
+                    '그래도 저장할게요',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColor.inkTertiary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 5) showDeleteConfirmDialog — 삭제 확인 (dangerSoft 원 + 휴지통)
+// ════════════════════════════════════════════════════════════════
+
+/// 삭제 확인 다이얼로그.
+///
+/// Returns:
+///   true  — 사용자가 '삭제' 선택
+///   false — 사용자가 '취소' 선택 또는 다이얼로그 외부 탭
+Future<bool> showDeleteConfirmDialog(
+  BuildContext context, {
+  required String targetLabel,
+  String? subLabel,
+}) async {
+  final result = await showGeneralDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'delete_confirm',
+    barrierColor: const Color(0x59141A2C),
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionBuilder: (_, anim, _, child) {
+      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+      return Opacity(
+        opacity: curved.value,
+        child: Transform.scale(scale: 0.96 + 0.04 * curved.value, child: child),
+      );
+    },
+    pageBuilder: (_, _, _) => _DeleteConfirmDialog(
+      targetLabel: targetLabel,
+      subLabel: subLabel,
+    ),
+  );
+  return result ?? false;
+}
+
+class _DeleteConfirmDialog extends StatelessWidget {
+  final String targetLabel;
+  final String? subLabel;
+
+  const _DeleteConfirmDialog({
+    required this.targetLabel,
+    this.subLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 320,
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+            decoration: BoxDecoration(
+              color: AppColor.surface,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF141A2C).withValues(alpha: 0.30),
+                  blurRadius: 60,
+                  spreadRadius: -10,
+                  offset: const Offset(0, 30),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // dangerSoft 원형 배경 + 휴지통 아이콘
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: AppColor.dangerSoft,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppColor.danger,
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '이 기록을 삭제할까요?',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColor.ink,
+                    letterSpacing: 0,
+                    height: 1.3,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  subLabel != null
+                      ? '$targetLabel\n삭제하면 되돌릴 수 없어요.'
+                      : '$targetLabel\n삭제하면 되돌릴 수 없어요.',
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w500,
+                    color: AppColor.inkSecondary,
+                    height: 1.55,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    // 취소 버튼 (연회색)
+                    Expanded(
+                      flex: 4,
+                      child: _NeuInsetButton(
+                        label: '취소',
+                        color: AppColor.inkTertiary,
+                        onPressed: () => Navigator.of(context).pop(false),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // 삭제 버튼 (danger 채움)
+                    Expanded(
+                      flex: 6,
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).pop(true),
+                        child: Container(
+                          height: 50,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppColor.danger,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColor.danger.withValues(alpha: 0.40),
+                                blurRadius: 14,
+                                spreadRadius: -4,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            '삭제',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 6) showCelebrationDialog — 축하 (brandSoft 원 + 환호 마스코트)
+// ════════════════════════════════════════════════════════════════
+
+Future<void> showCelebrationDialog(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'celebration',
+    barrierColor: const Color(0x80141A2C),
+    transitionDuration: const Duration(milliseconds: 280),
+    transitionBuilder: (_, anim, _, child) {
+      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+      return Opacity(
+        opacity: anim.value,
+        child: Transform.scale(scale: 0.85 + 0.15 * curved.value, child: child),
+      );
+    },
+    pageBuilder: (_, _, _) => _CelebrationDialog(title: title, body: body),
+  );
+}
+
+class _CelebrationDialog extends StatelessWidget {
+  final String title;
+  final String body;
+
+  const _CelebrationDialog({required this.title, required this.body});
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 320,
+            padding: const EdgeInsets.fromLTRB(24, 36, 24, 20),
+            decoration: BoxDecoration(
+              color: AppColor.surface,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x47141A2C),
+                  blurRadius: 60,
+                  spreadRadius: -12,
+                  offset: Offset(0, 24),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // brandSoft 원형 배경 + 환호 마스코트 아이콘
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: const BoxDecoration(
+                    color: AppColor.brandSoft,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.celebration_rounded,
+                    color: AppColor.brand,
+                    size: 44,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: AppColor.ink,
+                    letterSpacing: 0,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  body,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w500,
+                    color: AppColor.inkSecondary,
+                    height: 1.55,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // 풀폭 primary '확인' 버튼
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: double.infinity,
+                    height: 54,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColor.brand,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColor.brand.withValues(alpha: 0.55),
+                          blurRadius: 14,
+                          spreadRadius: -4,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: const Text(
+                      '확인',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 7) showUndoToast — 실행취소 토스트 (SnackBar 기반)
+//    하단 다크(ink) 라운드 스낵바: success ✓ 원 + 메시지 + 노랑 '실행취소' 액션
+//    4초 자동 소멸
+// ════════════════════════════════════════════════════════════════
+
+void showUndoToast(
+  BuildContext context, {
+  required String message,
+  required VoidCallback onUndo,
+}) {
+  // SnackBarAction 을 사용해야 테스트 환경(IgnorePointer 레이어)에서도
+  // hit-test 가 올바르게 동작한다. content 는 시각 스타일만 담당.
+  ScaffoldMessenger.of(context).clearSnackBars();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      duration: const Duration(seconds: 4),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColor.ink,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      // content: 성공 원 + 메시지 (스타일 전용)
+      content: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: const BoxDecoration(
+              color: AppColor.success,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.check_rounded,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+                height: 1.4,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      // SnackBarAction 은 Flutter 가 직접 hit-test 처리 → 테스트에서 안정적
+      action: SnackBarAction(
+        label: '실행취소',
+        textColor: AppColor.brand,
+        onPressed: onUndo,
+      ),
+    ),
+  );
+}
+
 class _ConfettiPainter extends CustomPainter {
   static final _dots = <List<dynamic>>[
     [0.22, 28.0, AppColor.yellow, 6.0],
