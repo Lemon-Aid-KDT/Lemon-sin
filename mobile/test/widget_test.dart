@@ -4,6 +4,7 @@ import 'package:lemon_aid_mobile/app.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
+import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 
@@ -15,7 +16,8 @@ void main() {
 
     expect(find.text('레몬'), findsOneWidget);
     expect(find.text('에이드'), findsOneWidget);
-    expect(find.text('오늘의 건강 점수'), findsOneWidget);
+    // 점수 ready → label_text 칩('좋아요')과 점수 코멘트가 보인다.
+    expect(find.text('좋아요'), findsOneWidget);
     expect(find.text('오늘의 분석'), findsOneWidget);
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('챗'), findsOneWidget);
@@ -31,7 +33,8 @@ void main() {
 
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
     await tester.pumpAndSettle();
-    expect(find.text('최근 분석'), findsOneWidget);
+    // 정적 '최근 분석' 섹션을 실데이터 '식단 관리' 섹션으로 교체.
+    expect(find.text('식단 관리'), findsOneWidget);
   });
 
   testWidgets('quick action supplement label opens supplement camera mode', (
@@ -177,6 +180,24 @@ class _FakeRepository implements LemonAidRepository {
   }
 
   @override
+  Future<HomeMealsResult> fetchMeals({
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return HomeMealsResult.empty;
+  }
+
+  @override
+  Future<HomeSupplementsResult> fetchSupplements({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return HomeSupplementsResult.empty;
+  }
+
+  @override
   Future<DashboardSummary> fetchDashboardSummary({int days = 30}) async {
     return DashboardSummary(
       asOf: DateTime.utc(2026, 5, 15),
@@ -202,6 +223,12 @@ class _FakeRepository implements LemonAidRepository {
       ),
       disclaimers: const <String>['Review OCR output before saving.'],
       algorithmVersion: 'test',
+      healthScore: const DashboardHealthScore(
+        status: HealthScoreStatus.ready,
+        score: 78,
+        labelText: '좋아요',
+        message: '오늘 활동량이 좋아요.',
+      ),
     );
   }
 

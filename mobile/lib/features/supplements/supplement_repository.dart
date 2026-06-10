@@ -1,6 +1,7 @@
 import '../../core/api/api_client.dart';
 import '../consent/consent_models.dart';
 import '../dashboard/dashboard_models.dart';
+import '../dashboard/home_models.dart';
 import 'supplement_models.dart';
 
 /// Canonical UUID format used by backend path identifiers (e.g. meal id).
@@ -18,6 +19,24 @@ abstract class LemonAidRepository {
 
   /// Fetches the dashboard summary.
   Future<DashboardSummary> fetchDashboardSummary({int days = 30});
+
+  /// Fetches meal records, optionally bounded by an eaten-at window.
+  Future<HomeMealsResult> fetchMeals({
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) {
+    throw UnimplementedError();
+  }
+
+  /// Fetches current-user registered supplements.
+  Future<HomeSupplementsResult> fetchSupplements({
+    int limit = 50,
+    int offset = 0,
+  }) {
+    throw UnimplementedError();
+  }
 
   /// Uploads a selected supplement label image for preview analysis.
   Future<SupplementAnalysisPreview> analyzeSupplementImage(
@@ -133,6 +152,45 @@ class BackendLemonAidRepository implements LemonAidRepository {
       queryParameters: <String, String>{'days': days.toString()},
     );
     return DashboardSummary.fromJson(json);
+  }
+
+  @override
+  Future<HomeMealsResult> fetchMeals({
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final Map<String, String> query = <String, String>{
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+    };
+    if (from != null) {
+      query['from_eaten_at'] = from.toUtc().toIso8601String();
+    }
+    if (to != null) {
+      query['to_eaten_at'] = to.toUtc().toIso8601String();
+    }
+    final Map<String, dynamic> json = await _apiClient.getJson(
+      '/meals',
+      queryParameters: query,
+    );
+    return HomeMealsResult.fromJson(json);
+  }
+
+  @override
+  Future<HomeSupplementsResult> fetchSupplements({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final Map<String, dynamic> json = await _apiClient.getJson(
+      '/supplements',
+      queryParameters: <String, String>{
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+    );
+    return HomeSupplementsResult.fromJson(json);
   }
 
   @override

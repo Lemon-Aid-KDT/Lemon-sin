@@ -1,0 +1,251 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
+import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
+
+void main() {
+  group('DashboardHealthScore', () {
+    test('parses a ready health_score block', () {
+      final DashboardHealthScore score = DashboardHealthScore.fromSummaryJson(
+        <String, dynamic>{
+          'health_score': <String, dynamic>{
+            'data_status': 'ready',
+            'score': 78,
+            'label': 'excellent',
+            'label_text': '좋아요',
+            'message': '오늘 활동량이 좋아요.',
+            'algorithm_version': 'daily-health-score-v1.0.0',
+            'measured_date': '2026-06-10',
+            'disclaimers': <String>['참고용 정보예요.'],
+          },
+        },
+      );
+
+      expect(score.isReady, isTrue);
+      expect(score.status, HealthScoreStatus.ready);
+      expect(score.score, 78);
+      expect(score.labelText, '좋아요');
+      expect(score.message, '오늘 활동량이 좋아요.');
+      expect(score.measuredDate, '2026-06-10');
+      expect(score.disclaimers, <String>['참고용 정보예요.']);
+    });
+
+    test('treats not_ready status as not ready', () {
+      final DashboardHealthScore score = DashboardHealthScore.fromSummaryJson(
+        <String, dynamic>{
+          'health_score': <String, dynamic>{
+            'data_status': 'not_ready',
+            'score': null,
+            'message': '기록을 추가해주세요.',
+          },
+        },
+      );
+
+      expect(score.isReady, isFalse);
+      expect(score.status, HealthScoreStatus.notReady);
+      expect(score.score, isNull);
+      // not_ready 라도 안내 메시지는 살린다.
+      expect(score.message, '기록을 추가해주세요.');
+    });
+
+    test('treats a missing block as not ready', () {
+      final DashboardHealthScore score = DashboardHealthScore.fromSummaryJson(
+        <String, dynamic>{'nutrition': <String, dynamic>{}},
+      );
+
+      expect(score.isReady, isFalse);
+      expect(score.status, HealthScoreStatus.notReady);
+      expect(score.score, isNull);
+    });
+
+    test('treats a ready status without a score as not ready', () {
+      final DashboardHealthScore score = DashboardHealthScore.fromJson(
+        <String, dynamic>{'data_status': 'ready'},
+      );
+
+      expect(score.isReady, isFalse);
+      expect(score.status, HealthScoreStatus.notReady);
+    });
+
+    test('tolerates unknown and string-typed fields', () {
+      final DashboardHealthScore score = DashboardHealthScore.fromJson(
+        <String, dynamic>{
+          'data_status': 'ready',
+          'score': '64',
+          'unknown_future_field': <String, dynamic>{'a': 1},
+        },
+      );
+
+      expect(score.isReady, isTrue);
+      expect(score.score, 64);
+    });
+  });
+
+  group('DashboardSummary.healthScore', () {
+    test('exposes a not_ready score when summary omits the block', () {
+      final DashboardSummary summary = DashboardSummary.fromJson(
+        <String, dynamic>{
+          'as_of': '2026-06-10T00:00:00Z',
+          'nutrition': <String, dynamic>{
+            'data_status': 'ready',
+            'low_count': 0,
+            'high_count': 0,
+          },
+          'activity': <String, dynamic>{'data_status': 'not_ready'},
+          'weight': <String, dynamic>{'data_status': 'not_ready'},
+          'supplements': <String, dynamic>{
+            'registered_count': 0,
+            'requires_review_count': 0,
+          },
+          'disclaimers': <String>[],
+          'algorithm_version': 'v1',
+        },
+      );
+
+      expect(summary.healthScore.isReady, isFalse);
+    });
+
+    test('parses a present health_score block', () {
+      final DashboardSummary summary = DashboardSummary.fromJson(
+        <String, dynamic>{
+          'as_of': '2026-06-10T00:00:00Z',
+          'nutrition': <String, dynamic>{
+            'data_status': 'ready',
+            'low_count': 0,
+            'high_count': 0,
+          },
+          'activity': <String, dynamic>{'data_status': 'ready'},
+          'weight': <String, dynamic>{'data_status': 'not_ready'},
+          'supplements': <String, dynamic>{
+            'registered_count': 1,
+            'requires_review_count': 0,
+          },
+          'disclaimers': <String>[],
+          'algorithm_version': 'v1',
+          'health_score': <String, dynamic>{
+            'data_status': 'ready',
+            'score': 82,
+            'label_text': '좋아요',
+          },
+        },
+      );
+
+      expect(summary.healthScore.isReady, isTrue);
+      expect(summary.healthScore.score, 82);
+    });
+  });
+
+  group('HomeMealsResult', () {
+    test('parses meals with nutrition summaries and food items', () {
+      final HomeMealsResult result = HomeMealsResult.fromJson(<String, dynamic>{
+        'results': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'meal-1',
+            'status': 'confirmed',
+            'meal_type': 'lunch',
+            'eaten_at': '2026-06-10T03:30:00Z',
+            'food_items': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'display_name': '비빔밥',
+                'kcal': 520,
+                'carb_g': 80,
+                'protein_g': 18,
+                'fat_g': 12,
+              },
+            ],
+            'nutrition_summary': <String, dynamic>{
+              'kcal': 520,
+              'carb_g': 80,
+              'protein_g': 18,
+              'fat_g': 12,
+            },
+          },
+        ],
+        'limit': 50,
+        'offset': 0,
+      });
+
+      expect(result.results, hasLength(1));
+      final HomeMeal meal = result.results.first;
+      expect(meal.mealType, 'lunch');
+      expect(meal.primaryName, '비빔밥');
+      expect(meal.nutrition.kcal, 520);
+      expect(meal.nutrition.carbG, 80);
+      expect(meal.eatenAt, isNotNull);
+    });
+
+    test('falls back to summing food items when summary is absent', () {
+      final HomeMealsResult result = HomeMealsResult.fromJson(<String, dynamic>{
+        'results': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'meal-2',
+            'meal_type': 'breakfast',
+            'food_items': <Map<String, dynamic>>[
+              <String, dynamic>{'display_name': '계란', 'kcal': 80, 'protein_g': 6},
+              <String, dynamic>{'display_name': '토스트', 'kcal': 120, 'carb_g': 20},
+            ],
+          },
+        ],
+      });
+
+      final HomeMeal meal = result.results.first;
+      expect(meal.nutrition.kcal, 200);
+      expect(meal.nutrition.carbG, 20);
+      expect(meal.nutrition.proteinG, 6);
+    });
+
+    test('tolerates malformed payloads', () {
+      final HomeMealsResult result = HomeMealsResult.fromJson(<String, dynamic>{
+        'results': <Object?>['not-a-map', 42],
+      });
+
+      expect(result.results, isEmpty);
+      expect(result.limit, 0);
+    });
+  });
+
+  group('HomeSupplementsResult', () {
+    test('parses supplements with intake schedule summary', () {
+      final HomeSupplementsResult result = HomeSupplementsResult.fromJson(
+        <String, dynamic>{
+          'results': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'sup-1',
+              'display_name': '비타민 D',
+              'manufacturer': '레몬랩스',
+              'intake_schedule': <String, dynamic>{
+                'frequency': 'daily',
+                'time_of_day': <String>['morning'],
+                'times_per_day': 1,
+              },
+            },
+          ],
+          'limit': 50,
+          'offset': 0,
+        },
+      );
+
+      expect(result.results, hasLength(1));
+      final HomeSupplement supplement = result.results.first;
+      expect(supplement.displayName, '비타민 D');
+      expect(supplement.manufacturer, '레몬랩스');
+      expect(supplement.schedule?.summary, '매일 · 아침');
+    });
+
+    test('keeps a null schedule when intake_schedule is missing', () {
+      final HomeSupplementsResult result = HomeSupplementsResult.fromJson(
+        <String, dynamic>{
+          'results': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'sup-2',
+              'display_name': '오메가-3',
+              'intake_schedule': null,
+            },
+          ],
+        },
+      );
+
+      final HomeSupplement supplement = result.results.first;
+      expect(supplement.schedule, isNull);
+    });
+  });
+}

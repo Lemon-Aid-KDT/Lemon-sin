@@ -29,8 +29,13 @@ class HealthHeroCard extends StatefulWidget {
   /// Optional live backend summary kept for the existing dashboard contract.
   final DashboardSummary? summary;
   final int healthScore;
+  // not_ready (점수 없음) 일 때 점수 카운트업/숫자 숨김.
+  final bool scoreReady;
+  // 점수 라벨(예: '좋아요') — 칩 표시. null 이면 미표시.
+  final String? scoreLabelText;
   final int consumedKcal;
-  final int targetKcal;
+  // 목표 kcal — 백엔드 미제공 시 null. null 이면 '/ 목표' 숨기고 '기록 합계' 표시.
+  final int? targetKcal;
   final int burnedKcal;
   final int carbPct;
   final int proteinPct;
@@ -38,6 +43,8 @@ class HealthHeroCard extends StatefulWidget {
   final int carbG, carbTargetG;
   final int proteinG, proteinTargetG;
   final int fatG, fatTargetG;
+  // 매크로 막대를 '기록 합계' 모드로 표시 (목표 대비 X). 목표 하드코딩 금지.
+  final bool macrosTotalsOnly;
   final VoidCallback? onTapScore;
   final VoidCallback? onTapDetail;
   // 날짜 네비게이션 — 카드 맨 위 캡슐
@@ -56,6 +63,8 @@ class HealthHeroCard extends StatefulWidget {
     this.onNextDay,
     this.onTapDate,
     this.healthScore = 78,
+    this.scoreReady = true,
+    this.scoreLabelText,
     this.consumedKcal = 600,
     this.targetKcal = 1500,
     this.burnedKcal = 200,
@@ -68,6 +77,7 @@ class HealthHeroCard extends StatefulWidget {
     this.proteinTargetG = 86,
     this.fatG = 17,
     this.fatTargetG = 40,
+    this.macrosTotalsOnly = false,
     this.onTapScore,
     this.onTapDetail,
   }) : date = date ?? DateTime.now();
@@ -87,11 +97,22 @@ class _HealthHeroCardState extends State<HealthHeroCard>
   late DateTime _poseClock;
   Timer? _poseTimer;
 
-  int get _remainKcal =>
-      (widget.targetKcal - widget.consumedKcal).clamp(0, widget.targetKcal);
+  bool get _hasTarget => widget.targetKcal != null && widget.targetKcal! > 0;
 
-  double get _kcalRatio =>
-      (widget.consumedKcal / widget.targetKcal).clamp(0.0, 1.0);
+  int get _remainKcal {
+    final int? target = widget.targetKcal;
+    if (target == null || target <= 0) return 0;
+    return (target - widget.consumedKcal).clamp(0, target);
+  }
+
+  double get _kcalRatio {
+    final int? target = widget.targetKcal;
+    if (target == null || target <= 0) {
+      // 목표 미제공 — 게이지는 은은하게 채워 시각만 유지 (수치 의미 없음).
+      return 0.35;
+    }
+    return (widget.consumedKcal / target).clamp(0.0, 1.0);
+  }
 
   @override
   void initState() {
@@ -195,58 +216,77 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             // ─── 건강 점수 (포인트 — brand) ───
             Pressable(
               onTap: widget.onTapScore,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  // 점수 카운트업 — 0 → healthScore (게이지와 동기)
-                  AnimatedBuilder(
-                    animation: _gauge,
-                    builder: (context, child) => Text(
-                      '${(_gauge.value * widget.healthScore).round()}',
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        color: AppColor.brandDeep,
-                        fontSize: 44,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                        height: 1.0,
-                      ),
+              child: widget.scoreReady
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        // 점수 카운트업 — 0 → healthScore (게이지와 동기)
+                        AnimatedBuilder(
+                          animation: _gauge,
+                          builder: (context, child) => Text(
+                            '${(_gauge.value * widget.healthScore).round()}',
+                            style: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              color: AppColor.brandDeep,
+                              fontSize: 44,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '점',
+                          style: TextStyle(
+                            color: AppColor.brandDeep,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpace.sm),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 5),
+                          child: Text(
+                            widget.scoreLabelText ?? '오늘의 건강 점수',
+                            style: AppText.caption.copyWith(
+                              color: AppColor.inkSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColor.inkTertiary,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '기록을 추가하면 점수를 보여드려요',
+                            style: AppText.body.copyWith(
+                              color: AppColor.inkSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColor.inkTertiary,
+                          size: 20,
+                        ),
+                      ],
                     ),
-                  ),
-                  Text(
-                    '점',
-                    style: TextStyle(
-                      color: AppColor.brandDeep,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.sm),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 5),
-                    child: Text(
-                      '오늘의 건강 점수',
-                      style: AppText.caption.copyWith(
-                        color: AppColor.inkSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColor.inkTertiary,
-                      size: 20,
-                    ),
-                  ),
-                ],
-              ),
             ),
             const SizedBox(height: 2),
-            // 칼로리
+            // 칼로리 — 목표 있으면 '소비/목표', 없으면 '기록 합계'
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -261,7 +301,9 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                   ),
                 ),
                 Text(
-                  ' / ${widget.targetKcal} kcal',
+                  _hasTarget
+                      ? ' / ${widget.targetKcal} kcal'
+                      : ' kcal · 오늘 기록 합계',
                   style: AppText.caption.copyWith(
                     color: AppColor.inkTertiary,
                     fontWeight: FontWeight.w600,
@@ -297,32 +339,40 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             ),
             const SizedBox(height: AppSpace.sm),
 
-            // ─── 소모/잔여 칼로리 한 줄 ───
+            // ─── 소모/잔여 칼로리 한 줄 (목표 있을 때만 잔여 표시) ───
             Center(
-              child: RichText(
-                text: TextSpan(
-                  style: AppText.caption.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppColor.inkSecondary,
-                  ),
-                  children: [
-                    const TextSpan(text: '🔥 '),
-                    TextSpan(text: '${widget.burnedKcal} kcal 소모'),
-                    TextSpan(
-                      text: '  ·  ',
-                      style: TextStyle(color: AppColor.border),
-                    ),
-                    TextSpan(
-                      text: '$_remainKcal kcal',
-                      style: const TextStyle(
-                        color: AppColor.brandDeep,
-                        fontWeight: FontWeight.w800,
+              child: _hasTarget
+                  ? RichText(
+                      text: TextSpan(
+                        style: AppText.caption.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppColor.inkSecondary,
+                        ),
+                        children: [
+                          const TextSpan(text: '🔥 '),
+                          TextSpan(text: '${widget.burnedKcal} kcal 소모'),
+                          TextSpan(
+                            text: '  ·  ',
+                            style: TextStyle(color: AppColor.border),
+                          ),
+                          TextSpan(
+                            text: '$_remainKcal kcal',
+                            style: const TextStyle(
+                              color: AppColor.brandDeep,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const TextSpan(text: ' 더 먹을 수 있어요'),
+                        ],
+                      ),
+                    )
+                  : Text(
+                      '오늘 먹은 음식 합계예요',
+                      style: AppText.caption.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColor.inkSecondary,
                       ),
                     ),
-                    const TextSpan(text: ' 더 먹을 수 있어요'),
-                  ],
-                ),
-              ),
             ),
             const SizedBox(height: AppSpace.lg),
 
@@ -342,6 +392,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                       target: widget.carbTargetG,
                       color: _kCarb,
                       progress: _gauge,
+                      totalsOnly: widget.macrosTotalsOnly,
                     ),
                   ),
                   const SizedBox(width: AppSpace.md),
@@ -352,6 +403,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                       target: widget.proteinTargetG,
                       color: _kProtein,
                       progress: _gauge,
+                      totalsOnly: widget.macrosTotalsOnly,
                     ),
                   ),
                   const SizedBox(width: AppSpace.md),
@@ -362,6 +414,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                       target: widget.fatTargetG,
                       color: _kFat,
                       progress: _gauge,
+                      totalsOnly: widget.macrosTotalsOnly,
                     ),
                   ),
                 ],
@@ -727,17 +780,23 @@ class _MacroBar extends StatelessWidget {
   final Color color;
   // 0→1 진행 애니메이션 — 막대가 차오르고 숫자 카운트업
   final Animation<double> progress;
+  // 목표 미제공 — '/ target' 숨기고 'g' 단위만, 막대는 은은하게 표시.
+  final bool totalsOnly;
   const _MacroBar({
     required this.label,
     required this.value,
     required this.target,
     required this.color,
     required this.progress,
+    this.totalsOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final r = (value / target).clamp(0.0, 1.0);
+    // 목표 모드 = value/target, 합계 모드 = 은은한 고정 채움(수치 의미 X).
+    final r = totalsOnly
+        ? (value > 0 ? 0.5 : 0.0)
+        : (target > 0 ? (value / target).clamp(0.0, 1.0) : 0.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -767,7 +826,7 @@ class _MacroBar extends StatelessWidget {
               ),
             ),
             Text(
-              ' / $target g',
+              totalsOnly ? ' g' : ' / $target g',
               style: AppText.micro.copyWith(
                 color: AppColor.inkTertiary,
                 fontSize: 11,

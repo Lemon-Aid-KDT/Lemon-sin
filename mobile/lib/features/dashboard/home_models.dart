@@ -1,0 +1,518 @@
+// features/dashboard/home_models.dart — 홈 탭 실데이터 모델 (P0 배치 A)
+//
+// 백엔드 계약(확정)에 대한 null-safe fromJson 파서.
+//   - DashboardHealthScore : GET /dashboard/summary 의 옵셔널 health_score 블록.
+//       블록 부재·미지 필드 → not_ready 로 견고하게 파싱.
+//   - HomeMealsResult / HomeMeal / HomeFoodItem / HomeMealNutrition
+//       : GET /meals 응답.
+//   - HomeSupplementsResult / HomeSupplement / HomeSupplementSchedule
+//       : GET /supplements 응답.
+//
+// 연산은 모두 백엔드. 모바일은 표시·합산만 (kcal/매크로 클라이언트 합산은
+// 단순 더하기 — 알고리즘 아님).
+
+/// 건강 점수 데이터 준비 상태.
+enum HealthScoreStatus {
+  /// 점수를 표시할 수 있는 상태.
+  ready,
+
+  /// 데이터가 부족해 점수를 보여줄 수 없는 상태.
+  notReady,
+}
+
+/// 홈 건강 점수 카드를 채우는 옵셔널 health_score 블록.
+///
+/// 백엔드가 병렬 구현 중이므로 블록 자체가 없을 수 있고, 일부 필드만 올 수도 있다.
+/// 어느 경우든 [HealthScoreStatus.notReady] 로 안전하게 수렴한다.
+class DashboardHealthScore {
+  /// 홈 건강 점수를 생성한다.
+  const DashboardHealthScore({
+    required this.status,
+    this.score,
+    this.label,
+    this.labelText,
+    this.message,
+    this.measuredDate,
+    this.algorithmVersion,
+    this.disclaimers = const <String>[],
+  });
+
+  /// 데이터 준비 상태.
+  final HealthScoreStatus status;
+
+  /// 0~100 정수 점수 (ready 일 때만 의미 있음).
+  final int? score;
+
+  /// 등급 코드 (excellent/good/moderate/warning/needs_attention 등).
+  final String? label;
+
+  /// 등급 한국어 표기 (예: '좋아요').
+  final String? labelText;
+
+  /// 사용자에게 보여줄 코멘트.
+  final String? message;
+
+  /// 측정 기준일 (YYYY-MM-DD).
+  final String? measuredDate;
+
+  /// 알고리즘 버전.
+  final String? algorithmVersion;
+
+  /// 사용자용 면책 문구.
+  final List<String> disclaimers;
+
+  /// 점수를 표시할 수 있는지 여부.
+  bool get isReady => status == HealthScoreStatus.ready && score != null;
+
+  /// dashboard summary 본문에서 옵셔널 health_score 블록을 안전하게 파싱한다.
+  ///
+  /// 블록이 없으면 [DashboardHealthScore.notReady] 를 반환한다.
+  factory DashboardHealthScore.fromSummaryJson(Map<String, dynamic> summary) {
+    final Map<String, dynamic>? block = _optionalMap(summary['health_score']);
+    if (block == null) {
+      return const DashboardHealthScore(status: HealthScoreStatus.notReady);
+    }
+    return DashboardHealthScore.fromJson(block);
+  }
+
+  /// health_score 블록 객체를 null-safe 하게 파싱한다.
+  factory DashboardHealthScore.fromJson(Map<String, dynamic> json) {
+    final int? score = _optionalIntLenient(json['score']);
+    final String rawStatus = (json['data_status'] as Object?)?.toString() ?? '';
+    final bool ready = rawStatus == 'ready' && score != null;
+    return DashboardHealthScore(
+      status: ready ? HealthScoreStatus.ready : HealthScoreStatus.notReady,
+      score: score,
+      label: _optionalText(json['label']),
+      labelText: _optionalText(json['label_text']),
+      message: _optionalText(json['message']),
+      measuredDate: _optionalText(json['measured_date']),
+      algorithmVersion: _optionalText(json['algorithm_version']),
+      disclaimers: _stringList(json['disclaimers']),
+    );
+  }
+}
+
+/// GET /meals 응답 컨테이너.
+class HomeMealsResult {
+  /// 식단 목록 결과를 생성한다.
+  const HomeMealsResult({
+    required this.results,
+    required this.limit,
+    required this.offset,
+  });
+
+  /// 식단 레코드 목록.
+  final List<HomeMeal> results;
+
+  /// 페이지 크기.
+  final int limit;
+
+  /// 페이지 오프셋.
+  final int offset;
+
+  /// 빈 결과.
+  static const HomeMealsResult empty = HomeMealsResult(
+    results: <HomeMeal>[],
+    limit: 0,
+    offset: 0,
+  );
+
+  /// GET /meals 응답을 파싱한다.
+  factory HomeMealsResult.fromJson(Map<String, dynamic> json) {
+    return HomeMealsResult(
+      results: _objectList(json['results'])
+          .map(HomeMeal.fromJson)
+          .toList(growable: false),
+      limit: _optionalIntLenient(json['limit']) ?? 0,
+      offset: _optionalIntLenient(json['offset']) ?? 0,
+    );
+  }
+}
+
+/// 단일 식단 레코드.
+class HomeMeal {
+  /// 식단 레코드를 생성한다.
+  const HomeMeal({
+    required this.id,
+    required this.status,
+    required this.mealType,
+    required this.eatenAt,
+    required this.foodItems,
+    required this.nutrition,
+  });
+
+  /// 식단 식별자.
+  final String id;
+
+  /// 상태 코드 (방어적으로 문자열 그대로 보관).
+  final String status;
+
+  /// 끼니 유형 (breakfast/lunch/dinner/snack/unknown — 응답 값 그대로).
+  final String mealType;
+
+  /// 섭취 시각.
+  final DateTime? eatenAt;
+
+  /// 음식 항목 목록.
+  final List<HomeFoodItem> foodItems;
+
+  /// 끼니 영양 합계.
+  final HomeMealNutrition nutrition;
+
+  /// 대표 메뉴명 (첫 음식 항목 표시명). 없으면 null.
+  String? get primaryName {
+    for (final HomeFoodItem item in foodItems) {
+      final String name = item.displayName.trim();
+      if (name.isNotEmpty) return name;
+    }
+    return null;
+  }
+
+  /// /meals 응답의 단일 항목을 파싱한다.
+  factory HomeMeal.fromJson(Map<String, dynamic> json) {
+    final List<HomeFoodItem> items = _objectList(json['food_items'])
+        .map(HomeFoodItem.fromJson)
+        .toList(growable: false);
+    final Map<String, dynamic>? summary = _optionalMap(
+      json['nutrition_summary'],
+    );
+    return HomeMeal(
+      id: (json['id'] as Object?)?.toString() ?? '',
+      status: (json['status'] as Object?)?.toString() ?? 'unknown',
+      mealType: (json['meal_type'] as Object?)?.toString() ?? 'unknown',
+      eatenAt: _optionalDateTime(json['eaten_at']),
+      foodItems: items,
+      nutrition: summary != null
+          ? HomeMealNutrition.fromJson(summary)
+          : HomeMealNutrition.fromFoodItems(items),
+    );
+  }
+}
+
+/// 식단 내 단일 음식 항목.
+class HomeFoodItem {
+  /// 음식 항목을 생성한다.
+  const HomeFoodItem({
+    required this.displayName,
+    required this.kcal,
+    required this.carbG,
+    required this.proteinG,
+    required this.fatG,
+  });
+
+  /// 표시명.
+  final String displayName;
+
+  /// 칼로리.
+  final double kcal;
+
+  /// 탄수화물(g).
+  final double carbG;
+
+  /// 단백질(g).
+  final double proteinG;
+
+  /// 지방(g).
+  final double fatG;
+
+  /// 음식 항목을 파싱한다.
+  factory HomeFoodItem.fromJson(Map<String, dynamic> json) {
+    return HomeFoodItem(
+      displayName: _optionalText(json['display_name']) ?? '',
+      kcal: _optionalDoubleLenient(json['kcal']) ?? 0,
+      carbG: _optionalDoubleLenient(json['carb_g']) ?? 0,
+      proteinG: _optionalDoubleLenient(json['protein_g']) ?? 0,
+      fatG: _optionalDoubleLenient(json['fat_g']) ?? 0,
+    );
+  }
+}
+
+/// 끼니 영양 합계.
+class HomeMealNutrition {
+  /// 끼니 영양 합계를 생성한다.
+  const HomeMealNutrition({
+    required this.kcal,
+    required this.carbG,
+    required this.proteinG,
+    required this.fatG,
+  });
+
+  /// 칼로리 합계.
+  final double kcal;
+
+  /// 탄수화물(g) 합계.
+  final double carbG;
+
+  /// 단백질(g) 합계.
+  final double proteinG;
+
+  /// 지방(g) 합계.
+  final double fatG;
+
+  /// 0 합계.
+  static const HomeMealNutrition zero = HomeMealNutrition(
+    kcal: 0,
+    carbG: 0,
+    proteinG: 0,
+    fatG: 0,
+  );
+
+  /// nutrition_summary 객체를 파싱한다 (필드명은 흔한 변형을 모두 시도).
+  factory HomeMealNutrition.fromJson(Map<String, dynamic> json) {
+    return HomeMealNutrition(
+      kcal:
+          _firstNumber(json, const <String>['kcal', 'total_kcal', 'energy_kcal']) ??
+          0,
+      carbG:
+          _firstNumber(json, const <String>[
+            'carb_g',
+            'total_carb_g',
+            'carbohydrate_g',
+          ]) ??
+          0,
+      proteinG:
+          _firstNumber(json, const <String>['protein_g', 'total_protein_g']) ??
+          0,
+      fatG: _firstNumber(json, const <String>['fat_g', 'total_fat_g']) ?? 0,
+    );
+  }
+
+  /// nutrition_summary 가 없을 때 음식 항목에서 합산한다.
+  factory HomeMealNutrition.fromFoodItems(List<HomeFoodItem> items) {
+    double kcal = 0;
+    double carb = 0;
+    double protein = 0;
+    double fat = 0;
+    for (final HomeFoodItem item in items) {
+      kcal += item.kcal;
+      carb += item.carbG;
+      protein += item.proteinG;
+      fat += item.fatG;
+    }
+    return HomeMealNutrition(
+      kcal: kcal,
+      carbG: carb,
+      proteinG: protein,
+      fatG: fat,
+    );
+  }
+
+  /// 다른 합계를 더한 새 합계를 반환한다.
+  HomeMealNutrition operator +(HomeMealNutrition other) {
+    return HomeMealNutrition(
+      kcal: kcal + other.kcal,
+      carbG: carbG + other.carbG,
+      proteinG: proteinG + other.proteinG,
+      fatG: fatG + other.fatG,
+    );
+  }
+}
+
+/// GET /supplements 응답 컨테이너.
+class HomeSupplementsResult {
+  /// 영양제 목록 결과를 생성한다.
+  const HomeSupplementsResult({
+    required this.results,
+    required this.limit,
+    required this.offset,
+  });
+
+  /// 영양제 레코드 목록.
+  final List<HomeSupplement> results;
+
+  /// 페이지 크기.
+  final int limit;
+
+  /// 페이지 오프셋.
+  final int offset;
+
+  /// 빈 결과.
+  static const HomeSupplementsResult empty = HomeSupplementsResult(
+    results: <HomeSupplement>[],
+    limit: 0,
+    offset: 0,
+  );
+
+  /// GET /supplements 응답을 파싱한다.
+  factory HomeSupplementsResult.fromJson(Map<String, dynamic> json) {
+    return HomeSupplementsResult(
+      results: _objectList(json['results'])
+          .map(HomeSupplement.fromJson)
+          .toList(growable: false),
+      limit: _optionalIntLenient(json['limit']) ?? 0,
+      offset: _optionalIntLenient(json['offset']) ?? 0,
+    );
+  }
+}
+
+/// 단일 영양제 레코드.
+class HomeSupplement {
+  /// 영양제 레코드를 생성한다.
+  const HomeSupplement({
+    required this.id,
+    required this.displayName,
+    required this.manufacturer,
+    required this.schedule,
+  });
+
+  /// 영양제 식별자.
+  final String id;
+
+  /// 표시명.
+  final String displayName;
+
+  /// 제조사 (있을 때).
+  final String? manufacturer;
+
+  /// 섭취 일정 요약 (intake_schedule 가 없으면 null).
+  final HomeSupplementSchedule? schedule;
+
+  /// /supplements 응답의 단일 항목을 파싱한다.
+  factory HomeSupplement.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic>? scheduleJson = _optionalMap(
+      json['intake_schedule'],
+    );
+    return HomeSupplement(
+      id: (json['id'] as Object?)?.toString() ?? '',
+      displayName: _optionalText(json['display_name']) ?? '',
+      manufacturer: _optionalText(json['manufacturer']),
+      schedule: scheduleJson != null
+          ? HomeSupplementSchedule.fromJson(scheduleJson)
+          : null,
+    );
+  }
+}
+
+/// 영양제 섭취 일정 요약.
+class HomeSupplementSchedule {
+  /// 섭취 일정을 생성한다.
+  const HomeSupplementSchedule({
+    required this.frequency,
+    required this.timeOfDay,
+    required this.timesPerDay,
+  });
+
+  /// 빈도 (예: daily).
+  final String? frequency;
+
+  /// 섭취 시간대 목록 (예: morning, evening).
+  final List<String> timeOfDay;
+
+  /// 하루 섭취 횟수.
+  final int? timesPerDay;
+
+  /// intake_schedule 객체를 파싱한다.
+  factory HomeSupplementSchedule.fromJson(Map<String, dynamic> json) {
+    return HomeSupplementSchedule(
+      frequency: _optionalText(json['frequency']),
+      timeOfDay: _stringList(json['time_of_day']),
+      timesPerDay: _optionalIntLenient(json['times_per_day']),
+    );
+  }
+
+  /// 한 줄 한국어 요약 (예: '매일 · 아침, 저녁'). 비어 있으면 null.
+  String? get summary {
+    final List<String> parts = <String>[];
+    final String? freq = frequency?.trim();
+    if (freq != null && freq.isNotEmpty) {
+      parts.add(_frequencyLabel(freq));
+    }
+    if (timeOfDay.isNotEmpty) {
+      parts.add(timeOfDay.map(_timeOfDayLabel).join(', '));
+    } else if (timesPerDay != null && timesPerDay! > 0) {
+      parts.add('하루 $timesPerDay회');
+    }
+    if (parts.isEmpty) return null;
+    return parts.join(' · ');
+  }
+
+  static String _frequencyLabel(String value) {
+    switch (value.toLowerCase()) {
+      case 'daily':
+        return '매일';
+      case 'weekly':
+        return '매주';
+      default:
+        return value;
+    }
+  }
+
+  static String _timeOfDayLabel(String value) {
+    switch (value.toLowerCase()) {
+      case 'morning':
+        return '아침';
+      case 'noon':
+      case 'lunch':
+        return '점심';
+      case 'evening':
+        return '저녁';
+      case 'night':
+        return '밤';
+      default:
+        return value;
+    }
+  }
+}
+
+// ─── 공통 null-safe 헬퍼 ───────────────────────────
+
+Map<String, dynamic>? _optionalMap(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map<Object?, Object?>) return Map<String, dynamic>.from(value);
+  return null;
+}
+
+List<Map<String, dynamic>> _objectList(Object? value) {
+  if (value is! List) return const <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> out = <Map<String, dynamic>>[];
+  for (final Object? item in value) {
+    final Map<String, dynamic>? map = _optionalMap(item);
+    if (map != null) out.add(map);
+  }
+  return out;
+}
+
+List<String> _stringList(Object? value) {
+  if (value is! List) return const <String>[];
+  return value
+      .whereType<Object?>()
+      .map((Object? item) => item?.toString())
+      .whereType<String>()
+      .where((String item) => item.trim().isNotEmpty)
+      .toList(growable: false);
+}
+
+String? _optionalText(Object? value) {
+  if (value is String) {
+    final String trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+  return null;
+}
+
+int? _optionalIntLenient(Object? value) {
+  if (value is int) return value;
+  if (value is double) return value.round();
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+double? _optionalDoubleLenient(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
+
+DateTime? _optionalDateTime(Object? value) {
+  if (value is String) return DateTime.tryParse(value.trim());
+  return null;
+}
+
+double? _firstNumber(Map<String, dynamic> json, List<String> keys) {
+  for (final String key in keys) {
+    final double? parsed = _optionalDoubleLenient(json[key]);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}

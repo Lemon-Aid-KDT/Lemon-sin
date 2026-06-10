@@ -112,7 +112,14 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
               GoRoute(
                 path: '/shell/home',
                 builder: (BuildContext context, GoRouterState state) {
-                  return const source_dashboard.DashboardScreen();
+                  return Consumer(
+                    builder:
+                        (BuildContext context, WidgetRef ref, Widget? child) {
+                          return source_dashboard.DashboardScreen(
+                            controller: ref.watch(appControllerProvider),
+                          );
+                        },
+                  );
                 },
                 routes: <RouteBase>[
                   GoRoute(

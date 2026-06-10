@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'core/api/api_error.dart';
 import 'features/consent/consent_models.dart';
 import 'features/dashboard/dashboard_models.dart';
+import 'features/dashboard/home_models.dart';
 import 'features/supplements/supplement_models.dart';
 import 'features/supplements/supplement_repository.dart';
 
@@ -211,6 +212,15 @@ class AppController extends ChangeNotifier {
   String? _notice;
   ConsentState? _consentState;
   DashboardSummary? _dashboardSummary;
+  DashboardHealthScore _healthScore = const DashboardHealthScore(
+    status: HealthScoreStatus.notReady,
+  );
+  HomeMealsResult _recentMeals = HomeMealsResult.empty;
+  HomeSupplementsResult _homeSupplements = HomeSupplementsResult.empty;
+  bool _homeDataLoading = false;
+  bool _homeMealsFailed = false;
+  bool _homeSupplementsFailed = false;
+  bool _homeImpactFailed = false;
   SupplementAnalysisPreview? _analysisPreview;
   SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
   MealImageAnalysisPreview? _mealAnalysisPreview;
@@ -253,6 +263,42 @@ class AppController extends ChangeNotifier {
 
   /// Current dashboard summary.
   DashboardSummary? get dashboardSummary => _dashboardSummary;
+
+  /// Latest parsed daily health score block (not_ready when unavailable).
+  DashboardHealthScore get healthScore => _healthScore;
+
+  /// Recently loaded meals (last 7 days window for the home tab).
+  HomeMealsResult get recentMeals => _recentMeals;
+
+  /// Current-user registered supplements for the home tab.
+  HomeSupplementsResult get homeSupplements => _homeSupplements;
+
+  /// Whether the home blocks (meals/supplements/impact) are loading.
+  bool get homeDataLoading => _homeDataLoading;
+
+  /// Whether the meals block failed to load on the last attempt.
+  bool get homeMealsFailed => _homeMealsFailed;
+
+  /// Whether the supplements block failed to load on the last attempt.
+  bool get homeSupplementsFailed => _homeSupplementsFailed;
+
+  /// Whether the supplement interaction block failed to load on the last attempt.
+  bool get homeImpactFailed => _homeImpactFailed;
+
+  /// Meals eaten on [day] (client-side filter over the loaded window).
+  List<HomeMeal> mealsForDay(DateTime day) {
+    return _recentMeals.results.where((HomeMeal meal) {
+      final DateTime? eatenAt = meal.eatenAt;
+      if (eatenAt == null) return false;
+      final DateTime local = eatenAt.toLocal();
+      return local.year == day.year &&
+          local.month == day.month &&
+          local.day == day.day;
+    }).toList(growable: false);
+  }
+
+  /// Whether any meal record exists for [day].
+  bool hasMealRecord(DateTime day) => mealsForDay(day).isNotEmpty;
 
   /// Current supplement analysis preview.
   SupplementAnalysisPreview? get analysisPreview => _analysisPreview;
@@ -315,6 +361,8 @@ class AppController extends ChangeNotifier {
       _consentState = await _repository.fetchConsents();
       if (hasMinimumConsents) {
         _dashboardSummary = await _repository.fetchDashboardSummary();
+        _healthScore = _dashboardSummary!.healthScore;
+        await _loadHomeData();
       }
     });
   }
@@ -330,12 +378,67 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  /// Refreshes the dashboard summary.
+  /// Refreshes the dashboard summary and home data blocks.
   Future<void> refreshDashboard() async {
     await _run(() async {
       _dashboardSummary = await _repository.fetchDashboardSummary();
+      _healthScore = _dashboardSummary!.healthScore;
+      await _loadHomeData();
       _notice = 'Dashboard refreshed.';
     });
+  }
+
+  /// Loads today's meals, supplements, and the interaction impact preview.
+  ///
+  /// Each block is independent: a single block failing does not fail the whole
+  /// home load. Per-block failure flags drive empty/error states in the UI.
+  Future<void> _loadHomeData() async {
+    _homeDataLoading = true;
+    _homeMealsFailed = false;
+    _homeSupplementsFailed = false;
+    _homeImpactFailed = false;
+    notifyListeners();
+
+    final DateTime now = DateTime.now();
+    final DateTime weekStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 6));
+
+    await Future.wait<void>(<Future<void>>[
+      _loadMealsBlock(weekStart),
+      _loadSupplementsBlock(),
+      _loadImpactBlock(),
+    ]);
+
+    _homeDataLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> _loadMealsBlock(DateTime from) async {
+    try {
+      _recentMeals = await _repository.fetchMeals(from: from, limit: 100);
+    } catch (_) {
+      _homeMealsFailed = true;
+    }
+  }
+
+  Future<void> _loadSupplementsBlock() async {
+    try {
+      _homeSupplements = await _repository.fetchSupplements(limit: 100);
+    } catch (_) {
+      _homeSupplementsFailed = true;
+    }
+  }
+
+  Future<void> _loadImpactBlock() async {
+    try {
+      _supplementImpactPreview = await _repository
+          .fetchLatestSupplementRecommendation();
+    } catch (_) {
+      _homeImpactFailed = true;
+    }
   }
 
   /// Uploads a supplement label image and stores the preview.

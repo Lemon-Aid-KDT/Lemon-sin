@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
+import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/analysis_result_screen.dart';
@@ -692,6 +693,24 @@ class _ReviewRepository implements LemonAidRepository {
   @override
   Future<DashboardSummary> fetchDashboardSummary({int days = 30}) {
     return Future<DashboardSummary>.value(_dashboardSummary());
+  }
+
+  @override
+  Future<HomeMealsResult> fetchMeals({
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) {
+    return Future<HomeMealsResult>.value(HomeMealsResult.empty);
+  }
+
+  @override
+  Future<HomeSupplementsResult> fetchSupplements({
+    int limit = 50,
+    int offset = 0,
+  }) {
+    return Future<HomeSupplementsResult>.value(HomeSupplementsResult.empty);
   }
 
   @override

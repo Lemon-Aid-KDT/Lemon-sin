@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
+import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/chat_screen.dart';
@@ -75,6 +76,24 @@ class _ChatDraftRepository implements LemonAidRepository {
       displayName: request.displayName,
       manufacturer: request.manufacturer,
     );
+  }
+
+  @override
+  Future<HomeMealsResult> fetchMeals({
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return HomeMealsResult.empty;
+  }
+
+  @override
+  Future<HomeSupplementsResult> fetchSupplements({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return HomeSupplementsResult.empty;
   }
 
   @override

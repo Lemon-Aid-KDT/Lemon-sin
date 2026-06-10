@@ -8,6 +8,7 @@ import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/core/api/api_error.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
+import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/camera_readiness.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_flow_screen.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
@@ -390,6 +391,24 @@ class _CameraWidgetRepository implements LemonAidRepository {
       granted: true,
       occurredAt: DateTime.utc(2026, 5, 25),
     );
+  }
+
+  @override
+  Future<HomeMealsResult> fetchMeals({
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return HomeMealsResult.empty;
+  }
+
+  @override
+  Future<HomeSupplementsResult> fetchSupplements({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return HomeSupplementsResult.empty;
   }
 
   @override

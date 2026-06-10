@@ -1,4 +1,5 @@
 import '../../shared/models/json_readers.dart';
+import 'home_models.dart';
 
 /// Dashboard summary response displayed on the mobile home tab.
 class DashboardSummary {
@@ -11,6 +12,9 @@ class DashboardSummary {
     required this.supplements,
     required this.disclaimers,
     required this.algorithmVersion,
+    this.healthScore = const DashboardHealthScore(
+      status: HealthScoreStatus.notReady,
+    ),
   });
 
   /// Server-side summary timestamp.
@@ -34,6 +38,9 @@ class DashboardSummary {
   /// Dashboard aggregation contract version.
   final String algorithmVersion;
 
+  /// Optional daily health score block (not_ready when the backend omits it).
+  final DashboardHealthScore healthScore;
+
   /// Parses a backend dashboard summary response.
   factory DashboardSummary.fromJson(Map<String, dynamic> json) {
     return DashboardSummary(
@@ -48,6 +55,7 @@ class DashboardSummary {
       ),
       disclaimers: readStringList(json, 'disclaimers'),
       algorithmVersion: readString(json, 'algorithm_version'),
+      healthScore: DashboardHealthScore.fromSummaryJson(json),
     );
   }
 }
