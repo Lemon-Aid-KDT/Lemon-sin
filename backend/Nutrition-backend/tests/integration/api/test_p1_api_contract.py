@@ -16,7 +16,10 @@ from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.models.schemas.dashboard import (
     DashboardActivitySummary,
+    DashboardHealthScoreSummary,
     DashboardNutrientSummary,
+    DashboardScoreComponent,
+    DashboardScoreComponents,
     DashboardSummaryResponse,
     DashboardSupplementSummary,
     DashboardWeightSummary,
@@ -124,6 +127,15 @@ def _dashboard_response() -> DashboardSummaryResponse:
         activity=DashboardActivitySummary(),
         weight=DashboardWeightSummary(),
         supplements=DashboardSupplementSummary(registered_count=0, requires_review_count=0),
+        health_score=DashboardHealthScoreSummary(
+            data_status="not_ready",
+            components=DashboardScoreComponents(
+                activity=DashboardScoreComponent(available=False, subscore=None, weight=0.0),
+                nutrition=DashboardScoreComponent(available=False, subscore=None, weight=0.0),
+            ),
+            disclaimers=["이 점수는 건강 관리 참고용이며 의학적 진단이 아닙니다."],
+            algorithm_version="daily-health-score-v1.0.0",
+        ),
         disclaimers=["결과는 건강관리 참고 정보이며 개인 건강 상태를 확정하지 않습니다."],
         algorithm_version="dashboard-v1.0.0",
     )

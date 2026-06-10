@@ -138,7 +138,7 @@ async def get_dashboard_summary(
     """
     await _require_sensitive_health_consent(session, current_user, http_request, settings)
     try:
-        response = await build_dashboard_summary(session, current_user, as_of, days)
+        response = await build_dashboard_summary(session, current_user, as_of, days, settings)
     except ValueError as exc:
         raise _unprocessable(exc) from exc
     await record_sensitive_audit_event(

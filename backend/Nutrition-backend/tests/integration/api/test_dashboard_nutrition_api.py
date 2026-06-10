@@ -14,7 +14,10 @@ from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.models.schemas.dashboard import (
     DashboardActivitySummary,
+    DashboardHealthScoreSummary,
     DashboardNutrientSummary,
+    DashboardScoreComponent,
+    DashboardScoreComponents,
     DashboardSummaryResponse,
     DashboardSupplementSummary,
     DashboardWeightSummary,
@@ -122,6 +125,19 @@ def _dashboard_response() -> DashboardSummaryResponse:
         activity=DashboardActivitySummary(data_status="not_ready"),
         weight=DashboardWeightSummary(data_status="not_ready"),
         supplements=DashboardSupplementSummary(registered_count=2, requires_review_count=1),
+        health_score=DashboardHealthScoreSummary(
+            data_status="ready",
+            score=78,
+            label="good",
+            label_text="양호",
+            message="전반적으로 좋아요. 한두 가지만 더 신경 써보세요.",
+            components=DashboardScoreComponents(
+                activity=DashboardScoreComponent(available=True, subscore=82.0, weight=0.6),
+                nutrition=DashboardScoreComponent(available=True, subscore=72.0, weight=0.4),
+            ),
+            disclaimers=["이 점수는 건강 관리 참고용이며 의학적 진단이 아닙니다."],
+            algorithm_version="daily-health-score-v1.0.0",
+        ),
         disclaimers=["결과는 건강관리 참고 정보이며 개인 건강 상태를 확정하지 않습니다."],
         algorithm_version="dashboard-v1.0.0",
     )
@@ -206,6 +222,11 @@ def test_dashboard_summary_returns_owner_safe_payload(
     body = response.json()
     assert body["nutrition"]["low_count"] == 1
     assert body["supplements"]["registered_count"] == 2
+    assert body["health_score"]["data_status"] == "ready"
+    assert body["health_score"]["score"] == 78
+    assert body["health_score"]["label"] == "good"
+    assert body["health_score"]["components"]["activity"]["weight"] == 0.6
+    assert body["health_score"]["algorithm_version"] == "daily-health-score-v1.0.0"
     assert "owner_subject" not in body
     assert "input_snapshot" not in body
 

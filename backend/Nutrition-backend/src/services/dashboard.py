@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import Settings
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import HealthDailySummary
 from src.models.db.supplement import SupplementAnalysisRun, UserSupplement
@@ -23,6 +24,7 @@ from src.models.schemas.dashboard import (
 )
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.daily_health_score import build_daily_health_score
 from src.services.nutrition_diagnosis import (
     NUTRITION_DIAGNOSIS_DISCLAIMER,
     build_nutrition_diagnosis_response,
@@ -39,6 +41,7 @@ async def build_dashboard_summary(
     user: AuthenticatedUser,
     as_of: date | None,
     days: int,
+    settings: Settings,
 ) -> DashboardSummaryResponse:
     """Build a current-user dashboard summary from persisted read models.
 
@@ -47,6 +50,7 @@ async def build_dashboard_summary(
         user: Authenticated owner.
         as_of: Optional local summary date.
         days: Health summary lookback window.
+        settings: Application settings for daily-score WIKI retrieval.
 
     Returns:
         Dashboard summary response without owner identifiers or raw input snapshots.
@@ -78,6 +82,13 @@ async def build_dashboard_summary(
     )
     registered_count = await _active_supplement_count(session, owner_subject)
     requires_review_count = await _requires_review_supplement_count(session, owner_subject, now)
+    health_score = await build_daily_health_score(
+        session,
+        user,
+        summary_date,
+        settings,
+        health_summaries=health_summaries,
+    )
 
     return DashboardSummaryResponse(
         as_of=now,
@@ -88,6 +99,7 @@ async def build_dashboard_summary(
             registered_count=registered_count,
             requires_review_count=requires_review_count,
         ),
+        health_score=health_score,
         disclaimers=[NUTRITION_DIAGNOSIS_DISCLAIMER],
         algorithm_version=DASHBOARD_ALGORITHM_VERSION,
     )
