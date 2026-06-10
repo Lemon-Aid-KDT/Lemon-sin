@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
@@ -27,7 +28,9 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: ChatScreen(controller: controller)),
+      ProviderScope(
+        child: MaterialApp(home: ChatScreen(controller: controller)),
+      ),
     );
     await tester.pumpAndSettle();
 

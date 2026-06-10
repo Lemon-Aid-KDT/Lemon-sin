@@ -4,6 +4,7 @@ import 'app_controller.dart';
 import 'core/api/api_client.dart';
 import 'core/config/app_config.dart';
 import 'features/auth/token_session.dart';
+import 'features/chat/chat_repository.dart';
 import 'features/supplements/supplement_repository.dart';
 
 /// Runtime configuration provider.
@@ -43,6 +44,12 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((Ref ref) {
 final Provider<LemonAidRepository> lemonAidRepositoryProvider =
     Provider<LemonAidRepository>((Ref ref) {
       return BackendLemonAidRepository(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// Chatbot repository provider for the chat tab.
+final Provider<ChatRepository> chatRepositoryProvider =
+    Provider<ChatRepository>((Ref ref) {
+      return ChatRepository(apiClient: ref.watch(apiClientProvider));
     });
 
 /// App controller provider that preserves the existing endpoint/data flow.
