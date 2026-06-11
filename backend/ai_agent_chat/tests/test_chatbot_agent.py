@@ -777,6 +777,59 @@ def test_chatbot_structured_json_output_coerces_string_slots() -> None:
     assert "신장 기능" in response.message
 
 
+def test_chatbot_structured_json_reattaches_deterministic_slots() -> None:
+    """Verify SGLang polish cannot replace source, caution, or example slots."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"마그네슘 질문은 제품 라벨과 혈압약 종류를 같이 보면 좋습니다.",'
+            '"why_it_matters":"마그네슘 함량과 신장 기능에 따라 확인 지점이 달라질 수 있습니다.",'
+            '"today_actions":["제품 라벨에서 마그네슘 함량을 확인하세요","혈압약 종류를 정리하세요"],'
+            '"specific_examples":["자몽주스","스타틴","인터넷 블로그"],'
+            '"caution_conditions":["별문제 없으면 계속 드세요"],'
+            '"expert_check_points":["fake_boundary_claim_id"],'
+            '"source_basis":"인터넷 블로그"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert "NIH ODS Magnesium Fact Sheet" in response.message
+    assert "견과류" in response.message
+    assert "콩류" in response.message
+    assert "신장 기능" in response.message
+    assert "인터넷 블로그" not in response.message
+    assert "자몽주스" not in response.message
+    assert "스타틴" not in response.message
+    assert "fake_boundary_claim_id" not in response.message
+    assert "별문제 없으면 계속 드세요" not in response.message
+    assert response.sources[0]["source_id"] == "nih-ods-magnesium"
+    assert response.sources[0]["source_url"] == "https://ods.od.nih.gov/factsheets/Magnesium-Consumer/"
+
+
+def test_chatbot_unsafe_structured_polish_falls_back_to_deterministic_draft() -> None:
+    """Verify unsafe polish wording is discarded instead of partially reused."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"혈압약을 줄이세요.",'
+            '"why_it_matters":"검사 없이도 안전합니다.",'
+            '"today_actions":["복용량을 줄이세요"],'
+            '"specific_examples":["제품 라벨","마그네슘 함량"],'
+            '"caution_conditions":["혈압약 복용 중"],'
+            '"expert_check_points":["제품 라벨"],'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "deterministic"
+    assert "unsafe_polish_fallback" in response.safety_warnings
+    assert "혈압약을 줄이세요" not in response.message
+    assert "복용량을 줄이세요" not in response.message
+    assert "NIH ODS Magnesium Fact Sheet" in response.message
+
+
 def test_chatbot_invalid_structured_json_falls_back_without_raw_payload() -> None:
     """Verify schema failure never leaks raw provider JSON to the user."""
     client = _CapturingLLMClient(text='{"summary":"먹어도 됩니다"}')

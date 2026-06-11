@@ -189,7 +189,16 @@ class ChatbotAgent:
             self._record_response_trace(turn, response, "card_answer", warnings)
             return response
 
-        completion = self._completion.complete(self._build_llm_request(turn))
+        return self._answer_with_llm_polish(request, turn, warnings)
+
+    def _answer_with_llm_polish(
+        self,
+        request: ChatbotRequest,
+        turn: ChatTurnPlan,
+        warnings: list[str],
+    ) -> ChatbotResponse:
+        draft_response = self._fallback_response(turn, [*warnings])
+        completion = self._completion.complete(self._build_llm_request(turn, draft_response))
         if not completion.ok:
             warnings.extend(completion.warnings)
             self._record_trace_span(
@@ -204,7 +213,9 @@ class ChatbotAgent:
             self._record_response_trace(turn, response, "card_answer", warnings)
             return response
 
-        completion_text = self._render_structured_completion(completion.text) or completion.text
+        structured_text, slot_warnings = self._render_structured_completion(completion.text, turn)
+        completion_text = structured_text or completion.text
+        warnings.extend(slot_warnings)
         self._record_trace_span(
             turn,
             "llm_polish",
@@ -236,6 +247,8 @@ class ChatbotAgent:
             passed=safety_passed,
         )
         if not safety_passed:
+            if structured_text is not None:
+                warnings.append("unsafe_polish_fallback")
             response = self._fallback_response(turn, warnings)
             self._record_response_trace(turn, response, "card_answer", warnings)
             return response
@@ -526,6 +539,7 @@ class ChatbotAgent:
     def _build_llm_request(
         self,
         turn: ChatTurnPlan,
+        draft_response: ChatbotResponse,
     ) -> LLMRequest:
         request = turn.request
         history = "\n".join(f"{turn.role}: {turn.content}" for turn in request.conversation[-6:])
@@ -543,6 +557,8 @@ class ChatbotAgent:
                         "fixed card section labels. Write a natural mobile-readable answer "
                         "that still includes a short summary, the main caution, today's "
                         "action, and source basis. "
+                        "You are polishing a deterministic draft, not making medical "
+                        "decisions or choosing sources. "
                         "Do not diagnose, treat, prescribe, guarantee effects, "
                         "or promote buying a specific product. "
                         "Use cautious but practical phrasing such as '현재 입력 기준', "
@@ -562,6 +578,9 @@ class ChatbotAgent:
                         "Do not create new health judgments beyond the supplied context. "
                         "Do not use Semantic Scholar as a user-facing source. "
                         "Use only the provided reviewed answer cards as factual grounding. "
+                        "Do not change source_basis, caution_conditions, specific_examples, "
+                        "or expert_check_points; the backend will reattach those slots "
+                        "from reviewed cards after your polish. "
                         "If no reviewed answer card is provided, do not answer with model knowledge. "
                         "Do not answer with only broad categories such as vegetables or protein; "
                         "use concrete examples from the provided knowledge cards. "
@@ -594,6 +613,8 @@ class ChatbotAgent:
                         f"{turn.answer_plan.to_prompt_summary()}\n"
                         "Answer strategy:\n"
                         f"{self._answer_strategy(turn)}\n"
+                        "Deterministic answer draft to polish without changing safety slots:\n"
+                        f"{draft_response.message}\n"
                         f"Recent conversation:\n{history or 'none'}\n"
                         "Confirmed meal and nutrient context:\n"
                         f"{confirmed_foods}\n"
@@ -697,24 +718,28 @@ class ChatbotAgent:
             )
         )
 
-    def _render_structured_completion(self, text: str) -> str | None:
+    def _render_structured_completion(
+        self,
+        text: str,
+        turn: ChatTurnPlan,
+    ) -> tuple[str | None, list[str]]:
         stripped = self._extract_structured_json_object(text)
         if stripped is None:
-            return None
+            return None, []
         try:
             data = json.loads(stripped)
         except json.JSONDecodeError:
-            return None
+            return None, []
         if not isinstance(data, dict) or not self._has_structured_response_schema(data):
-            return None
+            return None, []
 
         summary = str(data["summary"]).strip()
         why_it_matters = str(data["why_it_matters"]).strip()
-        source_basis = str(data["source_basis"]).strip()
         today_actions = self._structured_string_list(data["today_actions"])
         specific_examples = self._structured_string_list(data["specific_examples"])
         caution_conditions = self._structured_string_list(data["caution_conditions"])
         expert_check_points = self._structured_string_list(data["expert_check_points"])
+        source_basis = str(data["source_basis"]).strip()
         if not all(
             (
                 summary,
@@ -726,15 +751,121 @@ class ChatbotAgent:
                 expert_check_points,
             )
         ):
-            return None
+            return None, []
 
-        return (
-            f"{summary} {why_it_matters} {'; '.join(caution_conditions[:3])}\n"
-            f"오늘은 {'; '.join(today_actions[:4])} "
-            f"구체적으로는 {', '.join(specific_examples[:6])}부터 확인하세요. "
-            f"확인 포인트는 {'; '.join(expert_check_points[:4])}입니다.\n\n"
-            f"출처 기준: {source_basis}"
+        warnings = self._structured_slot_mutation_warnings(
+            turn,
+            source_basis=source_basis,
+            specific_examples=specific_examples,
+            caution_conditions=caution_conditions,
+            expert_check_points=expert_check_points,
         )
+        deterministic_actions = self._deterministic_today_actions(turn)
+        deterministic_examples = self._deterministic_specific_examples(turn)
+        deterministic_cautions = self._deterministic_caution_conditions(turn)
+        deterministic_checks = self._deterministic_expert_check_points(turn)
+        deterministic_source_basis = self._source_basis_for_turn(turn)
+
+        message = (
+            f"{summary} {why_it_matters} {'; '.join(deterministic_cautions[:3])}\n"
+            f"오늘은 {'; '.join(deterministic_actions[:4])} "
+            f"구체적으로는 {', '.join(deterministic_examples[:6])}부터 확인하세요. "
+            f"확인 포인트는 {'; '.join(deterministic_checks[:5])}입니다.\n\n"
+            f"출처 기준: {deterministic_source_basis}"
+        )
+        return message, warnings
+
+    def _structured_slot_mutation_warnings(
+        self,
+        turn: ChatTurnPlan,
+        *,
+        source_basis: str,
+        specific_examples: list[str],
+        caution_conditions: list[str],
+        expert_check_points: list[str],
+    ) -> list[str]:
+        warnings: list[str] = []
+        if source_basis != self._source_basis_for_turn(turn):
+            warnings.append("llm_source_slot_ignored")
+        if not self._slot_values_are_deterministic(
+            specific_examples,
+            self._deterministic_specific_examples(turn),
+        ):
+            warnings.append("llm_specific_examples_slot_ignored")
+        if not self._slot_values_are_deterministic(
+            caution_conditions,
+            self._deterministic_caution_conditions(turn),
+        ):
+            warnings.append("llm_caution_slot_ignored")
+        if not self._slot_values_are_deterministic(
+            expert_check_points,
+            self._deterministic_expert_check_points(turn),
+        ):
+            warnings.append("llm_expert_check_slot_ignored")
+        return warnings
+
+    def _slot_values_are_deterministic(
+        self,
+        candidate_values: list[str],
+        deterministic_values: list[str],
+    ) -> bool:
+        deterministic_text = " ".join(deterministic_values).casefold()
+        return all(value.casefold() in deterministic_text for value in candidate_values)
+
+    def _deterministic_today_actions(self, turn: ChatTurnPlan) -> list[str]:
+        checklist = self._deterministic_checklist_values(turn)
+        if checklist:
+            return [f"{item} 확인" for item in checklist[:4]]
+        guidance = self._unique_card_values(turn.answer_cards, "allowed_guidance")
+        if guidance:
+            return guidance[:4]
+        return ["검수된 카드 범위에서 확인할 항목을 먼저 정리하세요"]
+
+    def _deterministic_specific_examples(self, turn: ChatTurnPlan) -> list[str]:
+        examples = self._unique_card_values(turn.answer_cards, "specific_examples")
+        if examples:
+            return examples
+        checklist = self._unique_card_values(turn.answer_cards, "checklist")
+        if checklist:
+            return checklist
+        return ["검수된 answer card"]
+
+    def _deterministic_caution_conditions(self, turn: ChatTurnPlan) -> list[str]:
+        cautions = self._unique_card_values(turn.answer_cards, "caution_conditions")
+        if cautions:
+            return cautions
+        return ["개인 의료 결정은 앱에서 단정하지 않고 전문가 확인이 필요할 수 있습니다"]
+
+    def _deterministic_expert_check_points(self, turn: ChatTurnPlan) -> list[str]:
+        check_points = self._deterministic_checklist_values(turn)
+        if turn.policy.category == "medication_supplement_caution":
+            return list(dict.fromkeys([*check_points[:4], "의사 또는 약사 확인"]))
+        if check_points:
+            return list(dict.fromkeys(check_points))
+        return self._deterministic_caution_conditions(turn)
+
+    def _deterministic_checklist_values(self, turn: ChatTurnPlan) -> list[str]:
+        values: list[str] = []
+        for card in turn.answer_cards:
+            for value in card.checklist:
+                values.append(self._display_checklist_value(card, value))
+        return list(dict.fromkeys(values))
+
+    def _display_checklist_value(self, card: AnswerCard, value: str) -> str:
+        if value == "함량" and "마그네슘" in card.concrete_guidance:
+            return "마그네슘 함량"
+        return value
+
+    def _unique_card_values(
+        self,
+        answer_cards: tuple[AnswerCard, ...],
+        field_name: str,
+    ) -> list[str]:
+        values: list[str] = []
+        for card in answer_cards:
+            raw_values = getattr(card, field_name)
+            values.extend(str(value) for value in raw_values if str(value).strip())
+        return list(dict.fromkeys(values))
 
     def _has_structured_response_schema(self, data: dict[str, object]) -> bool:
         required = {
