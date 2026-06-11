@@ -727,6 +727,56 @@ def test_chatbot_structured_json_output_is_rendered_to_answer_sections() -> None
     assert "의사 또는 약사" in response.message
 
 
+def test_chatbot_structured_json_output_accepts_markdown_code_fence() -> None:
+    """Verify small SGLang-style code fenced JSON is normalized before rendering."""
+    client = _CapturingLLMClient(
+        text=(
+            "```json\n"
+            '{"summary":"마그네슘은 혈압약 복용 중이면 확인이 필요합니다.",'
+            '"why_it_matters":"제품 라벨과 혈압약 종류, 신장 기능에 따라 확인할 내용이 달라질 수 있습니다.",'
+            '"today_actions":["제품 라벨에서 마그네슘 함량을 확인하세요","혈압약 종류를 정리하세요"],'
+            '"specific_examples":["제품 라벨","마그네슘 함량","혈압약 종류","신장 기능"],'
+            '"caution_conditions":["혈압약 복용 중","신장 기능 저하"],'
+            '"expert_check_points":["제품 라벨","혈압약 종류","신장 기능","의사 또는 약사 확인"],'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+            "\n```"
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert "Chatbot response contract not followed" not in response.safety_warnings
+    assert "출처 기준:" in response.message
+    assert "제품 라벨" in response.message
+    assert "마그네슘 함량" in response.message
+    assert "혈압약 종류" in response.message
+
+
+def test_chatbot_structured_json_output_coerces_string_slots() -> None:
+    """Verify one-line string slots from small models are treated as single-item lists."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"마그네슘은 혈압약 복용 중이면 확인이 필요합니다.",'
+            '"why_it_matters":"제품 라벨과 혈압약 종류, 신장 기능에 따라 확인할 내용이 달라질 수 있습니다.",'
+            '"today_actions":"제품 라벨에서 마그네슘 함량을 확인하세요",'
+            '"specific_examples":"제품 라벨, 마그네슘 함량, 혈압약 종류, 신장 기능",'
+            '"caution_conditions":"혈압약 복용 중",'
+            '"expert_check_points":"혈압약 종류와 신장 기능을 의사 또는 약사에게 확인",'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert "Chatbot response contract not followed" not in response.safety_warnings
+    assert "오늘" in response.message
+    assert "마그네슘 함량" in response.message
+    assert "혈압약 종류" in response.message
+    assert "신장 기능" in response.message
+
+
 def test_chatbot_invalid_structured_json_falls_back_without_raw_payload() -> None:
     """Verify schema failure never leaks raw provider JSON to the user."""
     client = _CapturingLLMClient(text='{"summary":"먹어도 됩니다"}')

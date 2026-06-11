@@ -59,6 +59,7 @@ REQUIRED_CHATBOT_ACTION_TERMS = (
     "조절",
     "기록",
 )
+MIN_MARKDOWN_CODE_FENCE_LINES = 3
 STRUCTURED_RESPONSE_FORMAT: dict[str, Any] = {
     "type": "json_schema",
     "json_schema": {
@@ -697,8 +698,8 @@ class ChatbotAgent:
         )
 
     def _render_structured_completion(self, text: str) -> str | None:
-        stripped = text.strip()
-        if not stripped.startswith("{"):
+        stripped = self._extract_structured_json_object(text)
+        if stripped is None:
             return None
         try:
             data = json.loads(stripped)
@@ -748,9 +749,31 @@ class ChatbotAgent:
         return required.issubset(data)
 
     def _structured_string_list(self, value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value.strip()] if value.strip() else []
         if not isinstance(value, list):
             return []
         return [str(item).strip() for item in value if str(item).strip()]
+
+    def _extract_structured_json_object(self, text: str) -> str | None:
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            if (
+                len(lines) >= MIN_MARKDOWN_CODE_FENCE_LINES
+                and lines[0].strip().casefold() in {"```", "```json"}
+            ):
+                stripped = "\n".join(lines[1:-1]).strip()
+        if stripped.startswith("{"):
+            return stripped
+
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        return stripped[start : end + 1]
 
     def _bullet_lines(self, values: list[str]) -> str:
         return "\n".join(f"- {value}" for value in values)
