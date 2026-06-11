@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
-from lemon_ai_agent import AnswerPlan, ContextResolver, UserHealthContextSnapshot
+from lemon_ai_agent import (
+    AnswerPlan,
+    ContextResolver,
+    StructuredLogRuntimeMetricsReporter,
+    UserHealthContextSnapshot,
+    build_runtime_metrics_report,
+    evaluate_runtime_metric_alerts,
+)
 from lemon_ai_agent.adapters import AgentInput, DailyHealthAgentAppAdapter
+from lemon_ai_agent.tracing import AgentTraceSpan
 
 
 def test_ai_agent_chat_package_exports_app_adapter() -> None:
@@ -37,3 +45,24 @@ def test_ai_agent_chat_package_exports_answer_plan_contract() -> None:
     plan = AnswerPlan(intent="meal")
 
     assert plan.intent == "meal"
+
+
+def test_ai_agent_chat_package_exports_runtime_metrics_contract() -> None:
+    """Verify observability metrics are available from the package surface."""
+    report = build_runtime_metrics_report(
+        (
+            AgentTraceSpan(
+                request_id="import-trace",
+                span_name="render",
+                answerability="unknown_no_reviewed_source",
+            ),
+        )
+    )
+
+    assert report["answerability_unknown_rate"] == 1.0
+    assert evaluate_runtime_metric_alerts(report) == (
+        "answerability_unknown_rate_high",
+    )
+    assert StructuredLogRuntimeMetricsReporter().__class__.__name__ == (
+        "StructuredLogRuntimeMetricsReporter"
+    )

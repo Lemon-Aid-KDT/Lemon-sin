@@ -11,7 +11,7 @@
 | Phase 2. API source detail contract | 완료 | `/api/v1/ai-agent/chat` route-level source contract test 추가, public source detail 필터/중복 제거 |
 | Phase 3. claim + section retrieval baseline | smoke 완료, baseline 유지 대상 | claim + section retrieval smoke 94/94 |
 | Phase 4. reranker 실험 | 완료 | baseline vs boundary-claim-first A/B, contextual expansion rank, 실패 분류 taxonomy 기록 |
-| Phase 5. Sanitized trace / LangSmith export | 1차 계약 구현 | 자체 span schema, optional LangSmith exporter, raw-free eval export. Cloud/self-hosted 업로드는 승인 전 금지 |
+| Phase 5. Sanitized trace / runtime metrics / LangSmith export | 1차 계약 구현 | 자체 span schema, runtime metric report, structured warning log, optional LangSmith exporter, raw-free eval export. Cloud/self-hosted 업로드는 승인 전 금지 |
 | Phase 6. LangChain / vector DB 실험 | 대기 | 현재 42 claim / 5 section으로 production/runtime 도입 조건 미충족. LangChain core 도입 금지 |
 | Phase 7. SGLang polish 실험 | smoke 완료, 정책 유지 대상 | boundary는 LLM bypass, answerable은 deterministic draft polish only |
 
@@ -221,12 +221,13 @@ python -X utf8 MEDICAL-WIKI\tools\run_claim_section_retrieval_smoke.py --as-of 2
 python -X utf8 MEDICAL-WIKI\tools\run_claim_section_retrieval_smoke.py --as-of 2026-06-09
 ```
 
-## Phase 5. Sanitized Trace / LangSmith Export
+## Phase 5. Sanitized Trace / Runtime Metrics / LangSmith Export
 
 목표:
 
 - LangSmith를 관측/평가 후보로 포함하되 Cloud 전송부터 시작하지 않는다.
 - 먼저 자체 sanitized trace span 계약과 raw-free eval export를 고정한다.
+- sanitized span에서 운영 지표를 집계하고, alert code를 structured log로 남긴다.
 - LangSmith SDK는 optional exporter에서만 import하고 agent core flow를 decorator 기반으로 재작성하지 않는다.
 
 공식 기준:
@@ -242,6 +243,29 @@ python -X utf8 MEDICAL-WIKI\tools\run_claim_section_retrieval_smoke.py --as-of 2
 - 허용 필드: `request_id`, `span_name`, `answerability`, `retrieval_status`, `renderer_route`, `claim_ids`, `source_ids`, `boundary_code`, `provider`, `latency_ms`, `warning_codes`, `passed`, `raw_fields_stored=false`
 - 금지 필드/마커: raw user question, raw prompt, raw OCR, raw LLM response, provider payload, debug trace, user health snapshot
 - 기본 recorder는 `NoopAgentTraceRecorder`이며, 테스트/로컬 실행에서만 `InMemoryAgentTraceRecorder` 또는 structured log recorder를 주입한다.
+
+runtime metrics 계약:
+
+- `build_runtime_metrics_report()`는 `AgentTraceSpan`만 입력으로 받는다.
+- report에는 `request_id`, `claim_ids`, `source_ids`, raw question, raw prompt, raw OCR,
+  raw LLM response, provider payload, user health snapshot을 넣지 않는다.
+- 집계 지표:
+  - `answerability_unknown_rate`
+  - `boundary_rate_by_code`
+  - `llm_polish_fallback_rate`
+  - `unsafe_polish_fallback_count`
+  - `retrieval_no_match_rate`
+  - `source_stale_count`
+  - `p95_chat_latency_ms`
+- `StructuredLogRuntimeMetricsReporter`는 `agent_runtime_metrics {json}` 형태의 structured log를 남긴다.
+- alert code가 있으면 `WARNING`, 없으면 `INFO`로 기록한다.
+- 현재 alert code:
+  - `answerability_unknown_rate_high`
+  - `llm_polish_fallback_rate_high`
+  - `retrieval_no_match_rate_high`
+  - `unsafe_polish_fallback_present`
+  - `source_stale_present`
+  - `p95_chat_latency_high`
 
 LangSmith exporter 게이트:
 
@@ -275,6 +299,8 @@ python -X utf8 backend\scripts\export_medical_wiki_langsmith_eval.py --kind evid
 
 - sanitized span schema negative test 통과
 - tracing disabled-by-default test 통과
+- runtime metric report가 raw-free이고 request/source/claim id를 log에 남기지 않음
+- runtime metric alert code와 structured warning log test 통과
 - optional LangSmith exporter가 SDK/API key 부재로 chat을 깨지 않음
 - production export block test 통과
 - upload allowed gate false block test 통과
@@ -286,6 +312,26 @@ python -X utf8 backend\scripts\export_medical_wiki_langsmith_eval.py --kind evid
 - LangSmith-compatible eval export는 dry-run만 확인했다. Cloud/self-hosted upload는 실행하지 않았다.
 - `claims` export: 84 rows, `status=pass`, `forbidden_marker_hits=0`, `raw_fields_stored=false`, `upload_allowed_count=0`.
 - `evidence-bundles` export: 94 rows, `status=pass`, `forbidden_marker_hits=0`, `raw_fields_stored=false`, `upload_allowed_count=0`.
+
+2026-06-12 observability hardening:
+
+- `build_runtime_metrics_report()`로 sanitized span을 request 단위로 집계한다.
+- `evaluate_runtime_metric_alerts()`와 `StructuredLogRuntimeMetricsReporter`를 추가해 runtime
+  metric report를 `agent_runtime_metrics` structured log로 남긴다.
+- alert가 있으면 `WARNING`, 없으면 `INFO`로 기록한다.
+- report/log에는 request id, claim id, source id를 남기지 않는다.
+- 패키지 루트에서 `build_runtime_metrics_report`, `evaluate_runtime_metric_alerts`,
+  `StructuredLogRuntimeMetricsReporter`를 export한다.
+- 검증:
+
+```powershell
+python -X utf8 -m pytest -q --no-cov backend\ai_agent_chat\tests
+python -m ruff check backend\ai_agent_chat\src backend\ai_agent_chat\tests
+python -X utf8 -m compileall -q backend\ai_agent_chat\src
+git diff --check
+```
+
+결과: `178 passed, 1 skipped`, ruff pass, compileall pass, diff check pass.
 
 ## Phase 6. LangChain / Vector DB 실험
 
@@ -390,6 +436,35 @@ python -X utf8 backend\scripts\eval_medical_wiki_chatbot.py --as-of 2026-06-10 -
 - `ask_chatbot_agent.py --preset hypertension-sodium-dinner --llm sglang --timeout 90`은 `answerability=answerable`, `provider=sglang`을 반환했다.
 - `ask_chatbot_agent.py --preset p0-grapefruit-lipid-med --llm sglang --timeout 90`은 `answerability=medical_decision_boundary`, `provider=deterministic`, `boundary_code:p0_grapefruit_statin`을 반환했다.
 - 해석: answerable polish는 SGLang을 사용할 수 있고, P0 safety boundary 질문은 의도대로 LLM을 우회한다.
+
+2026-06-11 backend runtime 이식:
+
+- commit `bea3582 fix(ai): seal sglang polish slots`로 MEDICAL-WIKI에서 검증한
+  `deterministic AnswerDraft -> optional SGLang polish -> deterministic slot reattach`
+  구조를 `ChatbotAgent` answerable runtime에 연결했다.
+- `ChatTurnModule.plan()` 구조는 유지했다. Boundary/unknown early-return 경로도 바꾸지 않았다.
+- LLM 호출 전 deterministic card renderer로 draft를 먼저 만들고, SGLang prompt에는 이 draft를
+  polish 대상으로 전달한다.
+- SGLang structured output의 `source_basis`, `specific_examples`, `caution_conditions`,
+  `expert_check_points`는 사용자 응답 슬롯으로 신뢰하지 않는다. 최종 응답은 `AnswerCard`의
+  source, checklist, examples, caution slot을 다시 붙인다.
+- LLM이 source/caution/example/check slot을 바꾸면 `llm_*_slot_ignored` warning으로 기록하고,
+  final output은 deterministic slot을 사용한다.
+- structured polish가 forbidden wording, `must_not_say`, required shape, card specificity 검증을
+  통과하지 못하면 `unsafe_polish_fallback` warning과 함께 deterministic draft로 fallback한다.
+- Live SGLang smoke에서 answerable preset은 `provider=sglang`을 유지했고, P0 grapefruit/statin
+  preset은 `provider=deterministic`, `answerability=medical_decision_boundary`,
+  `boundary_code:p0_grapefruit_statin`으로 LLM bypass를 유지했다.
+- 검증:
+
+```powershell
+python -X utf8 -m pytest -q --no-cov backend\ai_agent_chat\tests
+python -m ruff check backend\ai_agent_chat\src backend\ai_agent_chat\tests backend\scripts
+python -m compileall backend\ai_agent_chat\src backend\scripts
+git diff --check
+```
+
+결과: `168 passed, 1 skipped`, ruff pass, compileall pass, diff check pass.
 
 ## 항상 실행할 gate
 

@@ -862,6 +862,26 @@ def test_chatbot_unknown_question_does_not_call_llm_or_hallucinate() -> None:
     assert response.sources == []
 
 
+def test_chatbot_unreviewed_supplement_effect_question_returns_unknown() -> None:
+    """Supplement effect claims need reviewed evidence instead of generic lifestyle cards."""
+    client = _CapturingLLMClient(text="크레아틴은 수면 질을 개선합니다.")
+
+    response = ChatbotAgent(llm_client=client).answer(
+        ChatbotRequest(
+            request_id="chatbot-creatine-sleep",
+            user_id="local-dev-user",
+            message="크레아틴을 먹으면 수면 질이 좋아져?",
+        )
+    )
+
+    assert client.request is None
+    assert response.provider == "deterministic"
+    assert response.answerability == "unknown_no_reviewed_source"
+    assert "현재 검수된 지식 안에서 답할 수 없습니다" in response.message
+    assert "크레아틴은 수면 질을 개선합니다" not in response.message
+    assert response.sources == []
+
+
 def test_chatbot_vitamin_d_food_question_uses_matching_nutrition_card() -> None:
     """Verify nutrient food-candidate questions do not reuse generic supplement cards."""
     response = ChatbotAgent().answer(

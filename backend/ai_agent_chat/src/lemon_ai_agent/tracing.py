@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from math import ceil
 from typing import Protocol
 
 ALLOWED_TRACE_SPANS = {
@@ -125,6 +128,156 @@ class StructuredLogAgentTraceRecorder:
         )
 
 
+@dataclass(frozen=True)
+class RuntimeMetricThresholds:
+    answerability_unknown_rate: float = 0.3
+    llm_polish_fallback_rate: float = 0.1
+    retrieval_no_match_rate: float = 0.3
+    unsafe_polish_fallback_count: int = 1
+    source_stale_count: int = 1
+    p95_chat_latency_ms: float | None = None
+
+
+DEFAULT_RUNTIME_METRIC_THRESHOLDS = RuntimeMetricThresholds()
+
+
+@dataclass
+class StructuredLogRuntimeMetricsReporter:
+    logger: logging.Logger = field(
+        default_factory=lambda: logging.getLogger("lemon_ai_agent.runtime_metrics")
+    )
+    thresholds: RuntimeMetricThresholds = DEFAULT_RUNTIME_METRIC_THRESHOLDS
+
+    def emit(self, spans: Sequence[AgentTraceSpan]) -> dict[str, object]:
+        report = build_runtime_metrics_report(spans)
+        alert_codes = evaluate_runtime_metric_alerts(report, self.thresholds)
+        log_level = logging.WARNING if alert_codes else logging.INFO
+        self.logger.log(
+            log_level,
+            "agent_runtime_metrics %s",
+            json.dumps(
+                {"alert_codes": list(alert_codes), "report": report},
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+        return report
+
+
+def build_runtime_metrics_report(
+    spans: Sequence[AgentTraceSpan],
+) -> dict[str, object]:
+    validated_spans = tuple(_validated_span(span) for span in spans)
+    spans_by_request: dict[str, list[AgentTraceSpan]] = defaultdict(list)
+    latency_values: list[float] = []
+    for span in validated_spans:
+        spans_by_request[span.request_id].append(span)
+        if span.latency_ms is not None:
+            latency_values.append(span.latency_ms)
+
+    request_count = len(spans_by_request)
+    if request_count == 0:
+        return {
+            "request_count": 0,
+            "answerability_unknown_rate": 0.0,
+            "boundary_rate_by_code": {},
+            "llm_polish_fallback_rate": 0.0,
+            "unsafe_polish_fallback_count": 0,
+            "retrieval_no_match_rate": 0.0,
+            "source_stale_count": 0,
+            "p95_chat_latency_ms": None,
+        }
+
+    unknown_count = 0
+    retrieval_no_match_count = 0
+    boundary_counts: dict[str, int] = defaultdict(int)
+    llm_polish_fallback_request_ids: set[str] = set()
+    unsafe_polish_fallback_request_ids: set[str] = set()
+    source_stale_request_ids: set[str] = set()
+
+    for request_id, request_spans in spans_by_request.items():
+        answer_span = _selected_answer_span(request_spans)
+        if answer_span.answerability == "unknown_no_reviewed_source":
+            unknown_count += 1
+        if any(span.retrieval_status == "no_match" for span in request_spans):
+            retrieval_no_match_count += 1
+
+        boundary_code = answer_span.boundary_code or _first_boundary_code(request_spans)
+        if boundary_code:
+            boundary_counts[boundary_code] += 1
+
+        warning_codes = {
+            warning_code
+            for span in request_spans
+            for warning_code in span.warning_codes
+        }
+        if any(_is_llm_polish_fallback_warning(code) for code in warning_codes) or any(
+            span.span_name == "llm_polish" and not span.passed
+            for span in request_spans
+        ):
+            llm_polish_fallback_request_ids.add(request_id)
+
+        if "unsafe_polish_fallback" in warning_codes:
+            unsafe_polish_fallback_request_ids.add(request_id)
+        if any(_is_source_stale_warning(code) for code in warning_codes):
+            source_stale_request_ids.add(request_id)
+
+    return {
+        "request_count": request_count,
+        "answerability_unknown_rate": _rate(unknown_count, request_count),
+        "boundary_rate_by_code": {
+            code: _rate(count, request_count)
+            for code, count in sorted(boundary_counts.items())
+        },
+        "llm_polish_fallback_rate": _rate(
+            len(llm_polish_fallback_request_ids),
+            request_count,
+        ),
+        "unsafe_polish_fallback_count": len(unsafe_polish_fallback_request_ids),
+        "retrieval_no_match_rate": _rate(
+            retrieval_no_match_count,
+            request_count,
+        ),
+        "source_stale_count": len(source_stale_request_ids),
+        "p95_chat_latency_ms": _nearest_rank_percentile(latency_values, 95),
+    }
+
+
+def evaluate_runtime_metric_alerts(
+    report: dict[str, object],
+    thresholds: RuntimeMetricThresholds = DEFAULT_RUNTIME_METRIC_THRESHOLDS,
+) -> tuple[str, ...]:
+    alert_codes: list[str] = []
+    if _metric_float(report, "answerability_unknown_rate") > (
+        thresholds.answerability_unknown_rate
+    ):
+        alert_codes.append("answerability_unknown_rate_high")
+    if _metric_float(report, "llm_polish_fallback_rate") > (
+        thresholds.llm_polish_fallback_rate
+    ):
+        alert_codes.append("llm_polish_fallback_rate_high")
+    if _metric_float(report, "retrieval_no_match_rate") > (
+        thresholds.retrieval_no_match_rate
+    ):
+        alert_codes.append("retrieval_no_match_rate_high")
+    if _metric_int(report, "unsafe_polish_fallback_count") >= (
+        thresholds.unsafe_polish_fallback_count
+    ):
+        alert_codes.append("unsafe_polish_fallback_present")
+    if _metric_int(report, "source_stale_count") >= thresholds.source_stale_count:
+        alert_codes.append("source_stale_present")
+
+    latency_threshold = thresholds.p95_chat_latency_ms
+    latency_value = report.get("p95_chat_latency_ms")
+    if (
+        latency_threshold is not None
+        and isinstance(latency_value, int | float)
+        and latency_value > latency_threshold
+    ):
+        alert_codes.append("p95_chat_latency_high")
+    return tuple(alert_codes)
+
+
 def _iter_string_values(span: AgentTraceSpan) -> tuple[str, ...]:
     values: list[str] = [
         span.request_id,
@@ -139,3 +292,69 @@ def _iter_string_values(span: AgentTraceSpan) -> tuple[str, ...]:
     values.extend(span.source_ids)
     values.extend(span.warning_codes)
     return tuple(values)
+
+
+def _validated_span(span: AgentTraceSpan) -> AgentTraceSpan:
+    if not isinstance(span, AgentTraceSpan):
+        raise TypeError("runtime metrics can only aggregate AgentTraceSpan")
+    return span
+
+
+def _selected_answer_span(spans: list[AgentTraceSpan]) -> AgentTraceSpan:
+    for span in reversed(spans):
+        if span.span_name == "render":
+            return span
+    for span in reversed(spans):
+        if span.answerability:
+            return span
+    return spans[-1]
+
+
+def _first_boundary_code(spans: list[AgentTraceSpan]) -> str:
+    return next((span.boundary_code for span in spans if span.boundary_code), "")
+
+
+def _is_llm_polish_fallback_warning(warning_code: str) -> bool:
+    return warning_code in {
+        "llm_client_unavailable",
+        "llm_empty_response",
+        "llm_generation_failed",
+        "llm_polish_fallback",
+        "unsafe_polish_fallback",
+    }
+
+
+def _is_source_stale_warning(warning_code: str) -> bool:
+    return warning_code in {"source_stale", "stale_source"} or (
+        "source_stale" in warning_code or "stale_source" in warning_code
+    )
+
+
+def _rate(count: int, total: int) -> float:
+    if total <= 0:
+        return 0.0
+    return round(count / total, 4)
+
+
+def _nearest_rank_percentile(values: Sequence[float], percentile: int) -> float | None:
+    if not values:
+        return None
+    sorted_values = sorted(values)
+    rank = max(1, ceil((percentile / 100) * len(sorted_values)))
+    return sorted_values[rank - 1]
+
+
+def _metric_float(report: dict[str, object], name: str) -> float:
+    value = report.get(name)
+    if isinstance(value, int | float):
+        return float(value)
+    return 0.0
+
+
+def _metric_int(report: dict[str, object], name: str) -> int:
+    value = report.get(name)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return 0

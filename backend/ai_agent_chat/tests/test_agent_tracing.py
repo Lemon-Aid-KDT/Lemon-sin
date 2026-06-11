@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import logging
+
 import pytest
 from lemon_ai_agent.agents.chatbot import ChatbotAgent
 from lemon_ai_agent.chat_session import ChatbotRequest
@@ -8,6 +11,9 @@ from lemon_ai_agent.tracing import (
     AgentTraceSpan,
     InMemoryAgentTraceRecorder,
     NoopAgentTraceRecorder,
+    StructuredLogRuntimeMetricsReporter,
+    build_runtime_metrics_report,
+    evaluate_runtime_metric_alerts,
 )
 
 
@@ -98,6 +104,134 @@ def test_trace_recorder_is_disabled_by_default_noop() -> None:
     )
 
     assert recorder.spans == ()
+
+
+def test_runtime_metrics_report_aggregates_safe_operational_signals() -> None:
+    spans = (
+        AgentTraceSpan(
+            request_id="req-1",
+            span_name="retrieval",
+            retrieval_status="found",
+            latency_ms=10.0,
+        ),
+        AgentTraceSpan(
+            request_id="req-1",
+            span_name="render",
+            answerability="answerable_with_caution",
+            renderer_route="card_answer",
+            provider="deterministic",
+            latency_ms=30.0,
+        ),
+        AgentTraceSpan(
+            request_id="req-2",
+            span_name="retrieval",
+            retrieval_status="no_match",
+            latency_ms=20.0,
+        ),
+        AgentTraceSpan(
+            request_id="req-2",
+            span_name="render",
+            answerability="unknown_no_reviewed_source",
+            renderer_route="unknown",
+            warning_codes=("source_stale",),
+            latency_ms=40.0,
+        ),
+        AgentTraceSpan(
+            request_id="req-3",
+            span_name="llm_polish",
+            answerability="answerable_with_caution",
+            provider="sglang",
+            warning_codes=("unsafe_polish_fallback",),
+            passed=False,
+            latency_ms=100.0,
+        ),
+        AgentTraceSpan(
+            request_id="req-3",
+            span_name="render",
+            answerability="answerable_with_caution",
+            renderer_route="card_answer",
+            provider="deterministic",
+            warning_codes=("unsafe_polish_fallback",),
+            latency_ms=120.0,
+        ),
+        AgentTraceSpan(
+            request_id="req-4",
+            span_name="render",
+            answerability="medical_decision_boundary",
+            boundary_code="medical_decision_boundary",
+            latency_ms=80.0,
+        ),
+    )
+
+    report = build_runtime_metrics_report(spans)
+
+    assert report == {
+        "request_count": 4,
+        "answerability_unknown_rate": 0.25,
+        "boundary_rate_by_code": {"medical_decision_boundary": 0.25},
+        "llm_polish_fallback_rate": 0.25,
+        "unsafe_polish_fallback_count": 1,
+        "retrieval_no_match_rate": 0.25,
+        "source_stale_count": 1,
+        "p95_chat_latency_ms": 120.0,
+    }
+    report_text = str(report).casefold()
+    assert "req-" not in report_text
+    assert "claim-" not in report_text
+    assert "source-" not in report_text
+
+
+def test_runtime_metrics_alerts_and_structured_log_stay_sanitized(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    spans = (
+        AgentTraceSpan(
+            request_id="req-alert-1",
+            span_name="render",
+            answerability="unknown_no_reviewed_source",
+            retrieval_status="no_match",
+            claim_ids=("claim-sensitive-1",),
+            source_ids=("source-sensitive-1",),
+        ),
+        AgentTraceSpan(
+            request_id="req-alert-2",
+            span_name="llm_polish",
+            answerability="answerable_with_caution",
+            warning_codes=("unsafe_polish_fallback",),
+            passed=False,
+            latency_ms=2500.0,
+        ),
+    )
+    logger = logging.getLogger("test.agent.runtime.metrics")
+    reporter = StructuredLogRuntimeMetricsReporter(logger=logger)
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        report = reporter.emit(spans)
+
+    assert evaluate_runtime_metric_alerts(report) == (
+        "answerability_unknown_rate_high",
+        "llm_polish_fallback_rate_high",
+        "retrieval_no_match_rate_high",
+        "unsafe_polish_fallback_present",
+    )
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.WARNING
+    payload = json.loads(
+        caplog.records[0].getMessage().removeprefix("agent_runtime_metrics ")
+    )
+    assert payload == {
+        "alert_codes": [
+            "answerability_unknown_rate_high",
+            "llm_polish_fallback_rate_high",
+            "retrieval_no_match_rate_high",
+            "unsafe_polish_fallback_present",
+        ],
+        "report": report,
+    }
+    logged_text = caplog.records[0].getMessage().casefold()
+    assert "req-alert" not in logged_text
+    assert "claim-sensitive" not in logged_text
+    assert "source-sensitive" not in logged_text
 
 
 def test_chatbot_records_sanitized_spans_when_recorder_is_injected() -> None:

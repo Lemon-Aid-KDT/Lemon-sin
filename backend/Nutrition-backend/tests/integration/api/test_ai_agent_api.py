@@ -907,6 +907,81 @@ def test_chat_route_replaces_client_preview_food_context_with_confirmed_db_conte
     assert "raw_ocr_text" not in str(context)
 
 
+def test_chat_route_limits_confirmed_db_food_context_newest_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the route never forwards an unbounded food history to the agent."""
+    captured: dict[str, object] = {}
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": f"record-{index:02d}",
+                "recorded_date": f"2026-06-{index:02d}",
+                "meal_type": "lunch",
+                "display_items": [f"meal {index:02d}"],
+                "user_confirmed": True,
+                "source": "manual",
+            }
+            for index in range(1, 13)
+        ]
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+            )
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="What did I eat recently?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    context = captured["context"]
+    snapshot = context["user_health_context_snapshot"]
+    records = snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"]
+    assert [record["food_record_id"] for record in records] == [
+        "record-12",
+        "record-11",
+        "record-10",
+        "record-09",
+        "record-08",
+        "record-07",
+        "record-06",
+        "record-05",
+        "record-04",
+        "record-03",
+    ]
+    assert [food["food_record_id"] for food in context["latest_confirmed_entries"]["foods"]] == [
+        "record-12",
+        "record-11",
+        "record-10",
+        "record-09",
+        "record-08",
+        "record-07",
+        "record-06",
+        "record-05",
+        "record-04",
+        "record-03",
+    ]
+
+
 def test_chat_route_loads_recent_food_records_before_context_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -48,6 +48,8 @@ This directory keeps team-wide documentation separate from each member or featur
 - `Integration-docs/34-agent-llm-readiness-audit.md`: 31~33번 기준을 현재 구현과 팀 브랜치 상태에 대입해 시작 가능한 slice와 no-go를 정리한 audit.
 - `Integration-docs/35-agent-llm-orchestration-plan.md`: Agent/LLM 10일 full vertical integration의 phase, gate, touchpoint map, future risk를 관리하는 실행 관제판.
 - `Integration-docs/36-medical-wiki-rag-execution-plan.md`: MEDICAL-WIKI 42 claim/94 EvidenceBundle 이후 source contract, sanitized trace/LangSmith, retrieval, reranker, vector DB, SGLang polish 후속 실행 계획.
+- `Integration-docs/37-agent-implementation-executive-audit.md`: PM/개발 총괄 관점에서 Agent 구현 단계, 인터페이스/모듈화, 기술 부채, 테스트 자동화, 성능, 보안, 운영 모니터링 상태를 한눈에 정리한 총괄 감사 문서.
+- `Integration-docs/38-agent-llm-merge-response-check-report.md`: 팀원 병합 전 SGLang 응답 스모크 기준, 실제 응답 결과, boundary/unknown/fallback 해석 기준을 정리한 리포트.
 - `superpowers/plans/2026-05-22-mvp-runtime-and-medical-knowledge-todo.md`: current FastAPI + Flutter web + AI Agent smoke checklist and medical knowledge boundary TODO.
 - `Nutrition-docs/dev-guides/31-medical-knowledge-layer.md`: medical knowledge layer design for keeping chronic-condition facts outside model fine-tuning and behind reviewed source records.
 

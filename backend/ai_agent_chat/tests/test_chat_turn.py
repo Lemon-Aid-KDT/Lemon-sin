@@ -92,6 +92,23 @@ def test_chat_turn_marks_unknown_when_no_reviewed_answer_card_exists() -> None:
     assert turn.requires_boundary_response is False
 
 
+def test_chat_turn_marks_unreviewed_supplement_effect_question_unknown() -> None:
+    """Unreviewed supplement effect questions must not borrow broad lifestyle cards."""
+    turn = ChatTurnModule().plan(
+        ChatbotRequest(
+            request_id="chat-turn-creatine-sleep",
+            user_id="local-dev-user",
+            message="크레아틴을 먹으면 수면 질이 좋아져?",
+        )
+    )
+
+    assert turn.policy.category == "supplement_question"
+    assert turn.analysis.primary_intent == "supplement"
+    assert turn.answerability == "unknown_no_reviewed_source"
+    assert turn.answer_cards == ()
+    assert turn.retrieval_status == "no_match"
+
+
 def test_chat_turn_uses_recent_user_turn_for_brief_follow_up() -> None:
     """Short follow-up questions should keep the prior user topic for planning."""
     turn = ChatTurnModule().plan(

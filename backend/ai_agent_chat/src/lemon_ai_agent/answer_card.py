@@ -449,9 +449,11 @@ def _supplement_item_matches_question(
 ) -> bool:
     if item.intent != "supplement":
         return True
+    if _is_supplement_effect_claim_question(normalized_question) and item.topic == "supplement_label_check":
+        return False
     if item.topic == "magnesium_supplement_caution":
         return "마그네슘" in normalized_question or "magnesium" in normalized_question
-    return True
+    return _topic_keyword_matches(item.topic, normalized_question)
 
 
 def _nutrition_item_matches_question(
@@ -578,6 +580,26 @@ def _meal_record_matches_question(
 
 
 def _supplement_record_matches_question(topic: str, normalized_question: str) -> bool:
+    if _is_supplement_effect_claim_question(normalized_question) and topic == "supplement_label_check":
+        return False
     if topic == "magnesium_supplement_caution":
         return "마그네슘" in normalized_question or "magnesium" in normalized_question
-    return "supplement" in topic
+    return _topic_keyword_matches(topic, normalized_question)
+
+
+def _is_supplement_effect_claim_question(normalized_question: str) -> bool:
+    return _has_any_term(
+        normalized_question,
+        (
+            "효과",
+            "도움",
+            "좋아져",
+            "좋아지",
+            "개선",
+            "수면",
+            "sleep",
+            "피로",
+            "집중",
+            "근육",
+        ),
+    )
