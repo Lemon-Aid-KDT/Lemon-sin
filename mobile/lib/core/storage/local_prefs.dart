@@ -13,6 +13,8 @@
 //   home.medication.checked.<yyyy-MM-dd>  → 체크된 medication id 리스트
 //   brand.theme                           → 선택 브랜드 테마 코드
 
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 일별 체크 상태와 테마 선택을 영속하는 얇은 래퍼.
@@ -27,6 +29,9 @@ class LocalPrefs {
   static const String _supplementCheckedPrefix = 'home.supplement.checked.';
   static const String _medicationCheckedPrefix = 'home.medication.checked.';
   static const String _brandThemeKey = 'brand.theme';
+  static const String _profileDisplayNameKey = 'profile_display_name';
+  static const String _medicationRemindersKey = 'medication_reminders';
+  static const String _notificationSettingsKey = 'notification_settings';
 
   /// `SharedPreferences.getInstance()` 를 기다린 뒤 래퍼를 만든다.
   ///
@@ -80,6 +85,66 @@ class LocalPrefs {
   /// 브랜드 테마 코드를 저장한다.
   Future<void> setBrandThemeCode(String code) {
     return _prefs.setString(_brandThemeKey, code);
+  }
+
+  // ── 프로필 이름(닉네임) ─────────────────────────
+  // 백엔드 공백: BodyProfileSnapshotCreate 에 이름 필드가 없어 로컬에만 저장한다.
+
+  /// 저장된 프로필 표시 이름 (없으면 null).
+  String? profileDisplayName() {
+    final String? value = _prefs.getString(_profileDisplayNameKey);
+    if (value == null || value.trim().isEmpty) return null;
+    return value.trim();
+  }
+
+  /// 프로필 표시 이름을 저장한다. 빈 값이면 키를 제거한다.
+  Future<void> setProfileDisplayName(String? name) {
+    final String trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return _prefs.remove(_profileDisplayNameKey);
+    }
+    return _prefs.setString(_profileDisplayNameKey, trimmed);
+  }
+
+  // ── 복약 알림 (로컬 스케줄 1차 소스) ─────────────
+
+  /// 저장된 복약 알림 JSON 객체 목록 (없으면 빈 목록).
+  List<Map<String, dynamic>> medicationReminders() {
+    final String? raw = _prefs.getString(_medicationRemindersKey);
+    if (raw == null || raw.trim().isEmpty) return <Map<String, dynamic>>[];
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is! List<Object?>) return <Map<String, dynamic>>[];
+    return decoded
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  /// 복약 알림 JSON 객체 목록을 저장한다.
+  Future<void> setMedicationReminders(List<Map<String, dynamic>> reminders) {
+    if (reminders.isEmpty) {
+      return _prefs.remove(_medicationRemindersKey);
+    }
+    return _prefs.setString(_medicationRemindersKey, jsonEncode(reminders));
+  }
+
+  // ── 알림 설정 토글 ───────────────────────────────
+
+  /// 저장된 알림 설정 토글 맵 (없으면 빈 맵).
+  Map<String, bool> notificationSettings() {
+    final String? raw = _prefs.getString(_notificationSettingsKey);
+    if (raw == null || raw.trim().isEmpty) return <String, bool>{};
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) return <String, bool>{};
+    final Map<String, bool> result = <String, bool>{};
+    decoded.forEach((String key, Object? value) {
+      if (value is bool) result[key] = value;
+    });
+    return result;
+  }
+
+  /// 알림 설정 토글 맵을 저장한다.
+  Future<void> setNotificationSettings(Map<String, bool> settings) {
+    return _prefs.setString(_notificationSettingsKey, jsonEncode(settings));
   }
 
   // ── 내부 헬퍼 ─────────────────────────────────

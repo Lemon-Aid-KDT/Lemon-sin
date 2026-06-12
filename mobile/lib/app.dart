@@ -19,6 +19,12 @@ import 'screens/chat_screen.dart' as source_chat;
 import 'screens/dashboard_screen.dart' as source_dashboard;
 import 'screens/score_screen.dart' as source_score;
 import 'screens/settings_screen.dart' as source_settings;
+import 'screens/settings/health_profile_screen.dart';
+import 'screens/settings/medication_reminder_screen.dart';
+import 'screens/settings/notification_settings_screen.dart';
+import 'screens/settings/policies_screen.dart';
+import 'screens/settings/profile_edit_screen.dart';
+import 'screens/settings/withdraw_screen.dart';
 import 'screens/splash_screen.dart' as source_splash;
 import 'shared/theme/brand_theme_controller.dart';
 import 'shared/theme/lemon_design_tokens.dart';
@@ -263,6 +269,38 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                 builder: (BuildContext context, GoRouterState state) {
                   return const _SettingsBranch();
                 },
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: 'profile-edit',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const ProfileEditScreen(),
+                  ),
+                  GoRoute(
+                    path: 'health-profile',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const HealthProfileScreen(),
+                  ),
+                  GoRoute(
+                    path: 'medication-reminders',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const MedicationReminderScreen(),
+                  ),
+                  GoRoute(
+                    path: 'notification-settings',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const NotificationSettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'policies',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const PoliciesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'withdraw',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const WithdrawScreen(),
+                  ),
+                ],
               ),
             ],
           ),

@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../app_controller.dart';
+import '../app_providers.dart';
+import '../core/api/api_error.dart';
+import '../core/storage/local_prefs.dart';
 import '../features/auth/token_session.dart';
 import '../features/consent/consent_models.dart';
+import '../features/profile/profile_models.dart';
 import '../shared/theme/brand_theme_controller.dart';
 import '../utils/brand_palette.dart';
 import '../utils/design_tokens_v2.dart';
+import '../widgets/settings/settings_widgets.dart';
 
 /// Source-style settings screen wired to the current auth and consent state.
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   /// Creates the settings screen.
   ///
   /// Args:
@@ -28,12 +34,39 @@ class SettingsScreen extends StatefulWidget {
   final TokenSessionController session;
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final TextEditingController _tokenController = TextEditingController();
   String? _tokenError;
+
+  String? _displayName;
+  String? _profileSummary;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadProfileHeader());
+  }
+
+  Future<void> _loadProfileHeader() async {
+    final LocalPrefs? prefs = await ref.read(localPrefsProvider.future);
+    final String? name = prefs?.profileDisplayName();
+    try {
+      final BodyProfileSnapshot? snapshot = await ref
+          .read(profileRepositoryProvider)
+          .fetchLatest();
+      if (!mounted) return;
+      setState(() {
+        _displayName = name;
+        _profileSummary = snapshot?.summaryLine();
+      });
+    } on ApiError {
+      if (!mounted) return;
+      setState(() => _displayName = name);
+    }
+  }
 
   @override
   void dispose() {
@@ -56,7 +89,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: AppColor.section,
       body: Column(
         children: [
-          const _ProfileHeader(),
+          _ProfileHeader(
+            displayName: _displayName,
+            summary: _profileSummary,
+            onEdit: () => context.go('/shell/settings/profile-edit'),
+          ),
           Expanded(
             child: Transform.translate(
               offset: const Offset(0, -36),
@@ -76,52 +113,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     AppSpace.xl + 80,
                   ),
                   children: [
-                    const _SectionLabel('내 건강'),
-                    const _SettingsCard(
+                    const SectionLabel('내 건강'),
+                    SettingsCard(
                       children: [
-                        _SettingsRow(
+                        SettingsRow(
                           icon: Icons.medical_services_rounded,
                           iconBg: AppColor.successSoft,
                           iconColor: AppColor.success,
                           title: '만성질환·복약 정보',
                           subtitle: '복약 교차 점검에 쓰여요',
+                          onTap: () =>
+                              context.go('/shell/settings/health-profile'),
                         ),
-                        _SettingsDivider(),
-                        _SettingsRow(
+                        const SettingsDivider(),
+                        const SettingsRow(
                           icon: Icons.flag_rounded,
                           iconBg: Color(0xFFE8EDFF),
                           iconColor: Color(0xFF4D7BFF),
                           title: '관심 목적',
                           subtitle: '당뇨 · 혈압 · 체중 관리',
                         ),
-                        _SettingsDivider(),
-                        _SettingsRow(
+                        const SettingsDivider(),
+                        SettingsRow(
                           icon: Icons.straighten_rounded,
                           iconBg: AppColor.warningSoft,
                           iconColor: AppColor.warning,
                           title: '신체 정보',
                           subtitle: '키·몸무게·성별·나이',
+                          onTap: () =>
+                              context.go('/shell/settings/profile-edit'),
                         ),
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const _SectionLabel('알림'),
-                    const _SettingsCard(
+                    const SectionLabel('알림'),
+                    SettingsCard(
                       children: [
-                        _SettingsRow(
+                        SettingsRow(
+                          icon: Icons.medication_rounded,
+                          iconBg: AppColor.brandSoft,
+                          iconColor: AppColor.brandDeep,
+                          title: '복약 알림',
+                          subtitle: '시간·요일을 맞춰 알려드려요',
+                          onTap: () => context.go(
+                            '/shell/settings/medication-reminders',
+                          ),
+                        ),
+                        const SettingsDivider(),
+                        SettingsRow(
                           icon: Icons.notifications_rounded,
                           iconBg: AppColor.brandSoft,
                           iconColor: AppColor.brandDeep,
                           title: '알림 설정',
                           subtitle: '복약 시간 · 평가 리포트',
+                          onTap: () => context.go(
+                            '/shell/settings/notification-settings',
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const _SectionLabel('계정'),
-                    _SettingsCard(
+                    const SectionLabel('계정'),
+                    SettingsCard(
                       children: [
-                        _SettingsRow(
+                        SettingsRow(
                           icon: Icons.person_rounded,
                           iconBg: const Color(0xFFEDEFF3),
                           iconColor: AppColor.inkSecondary,
@@ -132,8 +187,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ? '외부 JWT 토큰 미설정'
                               : '외부 JWT 토큰 저장됨',
                         ),
-                        const _SettingsDivider(),
-                        _SettingsRow(
+                        const SettingsDivider(),
+                        SettingsRow(
                           icon: Icons.shield_rounded,
                           iconBg: ocrConsentGranted && healthConsentGranted
                               ? AppColor.successSoft
@@ -145,6 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           subtitle: ocrConsentGranted && healthConsentGranted
                               ? 'OCR 이미지 · 민감 건강 분석 동의 완료'
                               : 'OCR 이미지 · 민감 건강 분석 동의 필요',
+                          onTap: () => context.go('/shell/settings/policies'),
                         ),
                         const SizedBox(height: AppSpace.md),
                         _ConsentStatusCard(
@@ -166,26 +222,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const _SectionLabel('OCR 테스트'),
-                    const _SettingsCard(
+                    const SectionLabel('OCR 테스트'),
+                    const SettingsCard(
                       children: [
-                        _SettingsRow(
+                        SettingsRow(
                           icon: Icons.camera_alt_rounded,
                           iconBg: AppColor.brandSoft,
                           iconColor: AppColor.brandDeep,
                           title: '촬영 환경',
                           subtitle: 'Android Studio AVD와 live flag 사용',
                         ),
-                        _SettingsDivider(),
-                        _SettingsRow(
+                        SettingsDivider(),
+                        SettingsRow(
                           icon: Icons.photo_library_rounded,
                           iconBg: AppColor.successSoft,
                           iconColor: AppColor.success,
                           title: '갤러리 입력',
                           subtitle: '선택 이미지는 앱 캐시에 복사 후 OCR 업로드',
                         ),
-                        _SettingsDivider(),
-                        _SettingsRow(
+                        SettingsDivider(),
+                        SettingsRow(
                           icon: Icons.psychology_rounded,
                           iconBg: AppColor.warningSoft,
                           iconColor: AppColor.warning,
@@ -195,28 +251,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const _SectionLabel('안내'),
-                    const _SettingsCard(
+                    const SectionLabel('안내'),
+                    SettingsCard(
                       children: [
-                        _SettingsRow(
+                        const SettingsRow(
                           icon: Icons.info_outline_rounded,
                           iconBg: Color(0xFFEDEFF3),
                           iconColor: AppColor.inkSecondary,
                           title: '서비스 정보',
                           subtitle: '의료 판단 전 전문 의료진 상담 필요',
                         ),
-                        _SettingsDivider(),
-                        _SettingsRow(
-                          icon: Icons.download_rounded,
-                          iconBg: Color(0xFFEDEFF3),
+                        const SettingsDivider(),
+                        SettingsRow(
+                          icon: Icons.gavel_rounded,
+                          iconBg: const Color(0xFFEDEFF3),
                           iconColor: AppColor.inkSecondary,
-                          title: '데이터 내보내기',
-                          subtitle: '민감정보 export는 별도 승인 후 연결',
+                          title: '약관 · 개인정보',
+                          subtitle: '약관·정책과 동의 관리',
+                          onTap: () => context.go('/shell/settings/policies'),
+                        ),
+                        const SettingsDivider(),
+                        SettingsRow(
+                          icon: Icons.person_off_rounded,
+                          iconBg: AppColor.dangerSoft,
+                          iconColor: AppColor.danger,
+                          title: '회원 탈퇴',
+                          subtitle: '계정과 데이터를 삭제해요',
+                          onTap: () => context.go('/shell/settings/withdraw'),
                         ),
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const _SectionLabel('테마 색상'),
+                    const SectionLabel('테마 색상'),
                     Consumer(
                       builder: (
                         BuildContext context,
@@ -225,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ) {
                         final BrandTheme current =
                             ref.watch(brandThemeProvider);
-                        return _SettingsCard(
+                        return SettingsCard(
                           children: [
                             _ThemeSwatchRow(
                               current: current,
@@ -383,10 +449,22 @@ class _ConsentPill extends StatelessWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  const _ProfileHeader({
+    required this.displayName,
+    required this.summary,
+    required this.onEdit,
+  });
+
+  final String? displayName;
+  final String? summary;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
+    final String name = (displayName == null || displayName!.isEmpty)
+        ? '레몬 회원님'
+        : '$displayName님';
+    final String subtitle = summary ?? '신체 정보를 입력하면 분석이 더 정확해져요';
     return Container(
       width: double.infinity,
       color: AppColor.brand,
@@ -411,23 +489,23 @@ class _ProfileHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpace.lg),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '태동님',
-                      style: TextStyle(
+                      name,
+                      style: const TextStyle(
                         color: AppColor.ink,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0,
                       ),
                     ),
-                    SizedBox(height: 6),
+                    const SizedBox(height: 6),
                     Text(
-                      '레몬에이드와 함께한 지 12일',
-                      style: TextStyle(
+                      subtitle,
+                      style: const TextStyle(
                         color: AppColor.ink,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -443,7 +521,7 @@ class _ProfileHeader extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  onPressed: () {},
+                  onPressed: onEdit,
                   icon: const Icon(Icons.edit_rounded),
                   color: AppColor.ink,
                 ),
@@ -453,127 +531,6 @@ class _ProfileHeader extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 6, bottom: AppSpace.sm),
-      child: Text(
-        label,
-        style: AppText.caption.copyWith(
-          color: AppColor.inkTertiary,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0,
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsCard extends StatelessWidget {
-  const _SettingsCard({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.cardInside,
-        vertical: AppSpace.md,
-      ),
-      decoration: BoxDecoration(
-        color: AppColor.surface,
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(140, 155, 175, 0.14),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(children: children),
-    );
-  }
-}
-
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.icon,
-    required this.iconBg,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: iconBg,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
-          const SizedBox(width: AppSpace.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppText.subtitle.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: AppText.caption.copyWith(
-                    color: AppColor.inkTertiary,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded, color: AppColor.inkTertiary),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsDivider extends StatelessWidget {
-  const _SettingsDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Divider(height: 1, color: AppColor.border);
   }
 }
 

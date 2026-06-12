@@ -7,7 +7,13 @@ import 'core/storage/local_prefs.dart';
 import 'features/ai_coaching/ai_coaching_repository.dart';
 import 'features/auth/token_session.dart';
 import 'features/chat/chat_repository.dart';
+import 'features/medical/medical_records_repository.dart';
+import 'features/privacy/privacy_repository.dart';
+import 'features/profile/profile_repository.dart';
+import 'features/reminders/medication_reminder_store.dart';
+import 'features/reminders/medication_reminder_sync.dart';
 import 'features/supplements/supplement_repository.dart';
+import 'shared/services/local_notification_service.dart';
 
 /// Runtime configuration provider.
 final Provider<AppConfig> appConfigProvider = Provider<AppConfig>((Ref ref) {
@@ -77,4 +83,42 @@ final ChangeNotifierProvider<AppController> appControllerProvider =
       );
       controller.bootstrap();
       return controller;
+    });
+
+/// 신체 정보 스냅샷 저장소 (가이드 08 (a)).
+final Provider<ProfileRepository> profileRepositoryProvider =
+    Provider<ProfileRepository>((Ref ref) {
+      return ProfileRepository(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// 만성질환(의료) 레코드 저장소 (가이드 08 (b)).
+final Provider<MedicalRecordsRepository> medicalRecordsRepositoryProvider =
+    Provider<MedicalRecordsRepository>((Ref ref) {
+      return MedicalRecordsRepository(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// 동의 관리·탈퇴 저장소 (가이드 08 (f)).
+final Provider<PrivacyRepository> privacyRepositoryProvider =
+    Provider<PrivacyRepository>((Ref ref) {
+      return PrivacyRepository(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// 복약 알림 로컬 스토어 (가이드 08 (d) — 로컬 1차 소스).
+final Provider<MedicationReminderStore> medicationReminderStoreProvider =
+    Provider<MedicationReminderStore>((Ref ref) {
+      return MedicationReminderStore(
+        prefs: ref.watch(localPrefsProvider).value,
+      );
+    });
+
+/// 복약 알림 서버 동기화 저장소 (가이드 08 (d) — 서버는 동기화 사본).
+final Provider<MedicationReminderSync> medicationReminderSyncProvider =
+    Provider<MedicationReminderSync>((Ref ref) {
+      return MedicationReminderSync(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// 로컬 알림 스케줄러 (실발송 — 테스트에서 override 로 교체 가능).
+final Provider<ReminderScheduler> reminderSchedulerProvider =
+    Provider<ReminderScheduler>((Ref ref) {
+      return LocalNotificationService();
     });

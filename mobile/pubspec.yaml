@@ -45,6 +45,9 @@ dependencies:
   image_picker: ^1.2.2
   device_info_plus: ^12.1.0
   shared_preferences: ^2.5.5
+  # 복약 알림 로컬 스케줄 — 가이드 08 (d). Health Connect(health 패키지)는 제외 결정.
+  flutter_local_notifications: ^22.0.0
+  timezone: ^0.11.0
 
 dev_dependencies:
   flutter_test:

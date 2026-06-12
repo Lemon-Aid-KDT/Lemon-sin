@@ -6,6 +6,16 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- 복약 알림 (가이드 08 (d)) — flutter_local_notifications 로컬 스케줄.
+         POST_NOTIFICATIONS: Android 13+ 런타임 알림 권한.
+         RECEIVE_BOOT_COMPLETED: 재부팅 후 예약 알림 재등록.
+         정확 알람은 SCHEDULE_EXACT_ALARM 를 선언하되, Android 14+ 기본 거부
+         가능성에 대비해 서비스는 inexactAllowWhileIdle 폴백을 쓴다(±수분 허용).
+         참조: https://pub.dev/packages/flutter_local_notifications#-android-setup -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
@@ -46,6 +56,22 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- flutter_local_notifications 예약 알림 수신기 + 재부팅 후 재등록 수신기.
+             참조: https://pub.dev/packages/flutter_local_notifications#-android-setup -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
