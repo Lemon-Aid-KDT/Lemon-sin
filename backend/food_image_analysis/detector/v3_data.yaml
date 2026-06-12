@@ -1,0 +1,9 @@
+# v3 학습/검증 데이터 yaml — 인계 원본 그대로 (데이터 실체 미수령: D:/yolo_food_v3은 인계자 PC)
+# 296 정제 학습셋·v3 val을 받기 전까지는 참조용. final_train.py의 fastv5_a100.yaml도 미수령.
+path: D:/yolo_food_v3
+train: images/train
+val: images/val
+test: images/test
+nc: 1
+names:
+  0: "food"

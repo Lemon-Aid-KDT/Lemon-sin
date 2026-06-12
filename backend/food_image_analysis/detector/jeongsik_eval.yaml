@@ -1,0 +1,8 @@
+# 한상(정식) 8장 평가셋 — 팀원 정밀 라벨 기준 (handoff_eval.zip, 2026-06-12)
+# 데이터 실체는 git 밖: data/food_images/raw/detector_eval/ (README_LOCAL_SETUP 참조)
+# ultralytics는 상대 path를 datasets_dir 기준으로 풀기 때문에 절대경로 사용 — 타 PC는 이 줄만 수정
+path: C:/Lemon-sin/data/food_images/raw/detector_eval/realapp_jeongsik
+train: images
+val: images
+nc: 1
+names: ['food']

@@ -24,11 +24,30 @@ C:\Lemon-sin\backend\.venv\Scripts\python.exe -m streamlit run backend\food_imag
 C:\Lemon-sin\backend\.venv\Scripts\python.exe -m streamlit run backend\food_image_analysis\detector\detector_demo.py
 ```
 
+## 평가셋 (handoff_eval.zip, 2026-06-12 수령)
+
+이미지·라벨 실체는 git 밖 — `C:\Lemon-sin\data\food_images\raw\detector_eval\`:
+
+```
+realapp_jeongsik/   한상(정식) 8장 + 정밀 라벨        ← "한상 mAP50 0.833"의 근거 평가셋
+real_app_test/      실전 39장 + 라벨 (강아지·빈그릇 등 네거티브 = 빈 라벨 포함)
+```
+
+yaml(`jeongsik_eval.yaml`·`realapp_eval.yaml`)은 이 폴더에 커밋돼 있고, 타 PC는 `path:` 한 줄만 수정.
+(인계자 zip의 labels.cache는 타 PC 캐시라 제거함 — ultralytics가 자동 재생성)
+
+평가 실행 예:
+
+```powershell
+C:\Lemon-sin\backend\.venv\Scripts\python.exe -c "from ultralytics import YOLO; print(YOLO(r'backend/food_image_analysis/detector/fastv5_mos10.pt').val(data='backend/food_image_analysis/detector/jeongsik_eval.yaml', verbose=False).box.map50)"
+```
+
+**아직 미수령**: `fastv5_a100.yaml` + "296+정제" 학습셋(final_train.py 재학습용), v3 val/296 test 셋.
+
 ## 주의
 
 - ⚠️ **이 브랜치(develop 기반)의 루트 .gitignore에는 `*.pt`/`runs/` 규칙이 없다** —
   `git add -A`/`git add .` 금지, 항상 파일을 명시해서 add 할 것. (이 폴더 안의 .pt는 폴더 .gitignore가 방어)
-- 인계 문서가 언급하는 평가셋(`jeongsik_eval.yaml`, `realapp_eval.yaml`, 한상 8장 정밀라벨)은
-  zip에 미포함 — 성능 재현·재평가하려면 인계자에게 별도 요청.
+- CLIP 필터(`food_filter.py`)는 `transformers` 필요(설치됨, 5.11.0). 첫 사용 시 CLIP 모델 ~600MB 자동 다운로드(1회, HF 캐시).
 - 분류기(exp16b, 지원 40클래스)와는 **별개 모델**: 디텍터 = 음식 "위치"만(1-class),
   분류기 = 음식 "종류". 통합 시 디텍터 박스 → 분류기 crop 파이프라인 검토.
