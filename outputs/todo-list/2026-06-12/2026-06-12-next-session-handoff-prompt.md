@@ -27,7 +27,7 @@ Lemon-Aid 프로젝트 작업을 이어서 진행해줘. 아래는 직전 세션
 3. **실기기 UI 워크스루**: API 레벨은 전부 그린이나 UI 레벨 풀 사이클(촬영→후보 선택→저장→홈→캘린더→설정→챗 승인 루프) 미수행 — 양 플랫폼에서 `flutter run --dart-define=LEMON_API_BASE_URL=...`(iOS는 기본 127.0.0.1, Android는 기본 10.0.2.2)로 수행
 4. **가이드 06 추이 차트**: `PERSIST_DAILY_HEALTH_SCORE=true` 운영 채택 결정 후 S-09 4주 추이 잠금 해제 (보류 결정 #7 — `outputs/todo-list/2026-06-11/2026-06-11-daily-health-score-decisions.md`)
 5. **P2 트랙**: 가이드 01 인증(백엔드 `/auth/*` 공백 — Supabase Auth 우선 검토 결정 필요), Health Connect(별도 결정), 알림 센터
-6. (별도 트랙) **A100 PaddleOCR**: 조기종료 감시자 2개(patience 10) 가동 중 — b16 조기종료 시 lr1e4 자동 기동. 상태 확인: `ssh -i ~/.ssh/lemon_a100_ed25519 -p 8875 lemon-aid@155.230.153.222 'powershell -File G:\lemon-aid\paddleocr_rec_work\a100_compact_status_check.ps1'`. 종료 후 작업: best 회수(b16/b32 비교)→structured eval(full/section/ROI)→승격 게이트(field_match≥0.85, ned≥0.90)
+6. (별도 트랙) **A100 PaddleOCR**: 조기종료 감시자 2개(patience 10) 가동 중 — b16 조기종료 시 lr1e4 자동 기동. 상태 확인: `ssh -i ~/.ssh/lemon_a100_ed25519 -p 8875 lemon-aid@155.230.153.222 'powershell -NoProfile -ExecutionPolicy Bypass -File G:\lemon-aid\paddleocr_rec_work\a100_compact_status_check.ps1'` (Bypass 플래그 없으면 원격 실행 정책이 스크립트 차단). 종료 후 작업: best 회수(b16/b32 비교)→structured eval(full/section/ROI)→승격 게이트(field_match≥0.85, ned≥0.90)
 
 ## 적용 중인 규칙 (위반 금지)
 **협업/품질**: 수치·결과 추정 금지(로그/출력 확인값만 보고) · framework 파라미터 변경 시 공식 문서 확인+URL 주석 · private image/raw OCR/provider payload/secret/owner hash 결과물·커밋 금지 · 원격(155.230.153.222) 업로드/실행은 사용자 승인 후 · 원본 dataset(`rec_dataset\v2`) 불가침(sanitized 사본만) · Conventional Commits + 본문에 "왜" · **사용자 요청 없이 commit/push 금지** · remote/branch 혼동 금지 · 주요 함수 Google/NumPy docstring · 복잡 로직 주석은 "왜" 중심
