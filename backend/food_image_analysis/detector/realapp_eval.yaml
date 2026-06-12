@@ -1,8 +1,0 @@
-# Real App mini 평가셋(39장+네거티브) — 학습/검증 사용 금지, 평가 전용 (handoff_eval.zip, 2026-06-12)
-# 데이터 실체는 git 밖: data/food_images/raw/detector_eval/ (README_LOCAL_SETUP 참조)
-# 타 PC는 path 한 줄만 수정
-path: C:/Lemon-sin/data/food_images/raw/detector_eval/real_app_test
-train: images
-val: images
-nc: 1
-names: ['food']
