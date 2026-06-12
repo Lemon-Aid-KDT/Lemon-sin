@@ -46,6 +46,16 @@ def slot_values_are_preserved(
     )
 
 
+def slot_value_sets_match(
+    candidate_values: list[str],
+    deterministic_values: list[str],
+) -> bool:
+    """Return true when LLM-proposed slot values preserve the full deterministic set."""
+    candidate_set = set(_normalized_candidate_slot_values(candidate_values))
+    deterministic_set = set(_normalized_candidate_slot_values(deterministic_values))
+    return bool(candidate_set) and candidate_set == deterministic_set
+
+
 def _normalized_candidate_slot_values(values: list[str]) -> list[str]:
     normalized: list[str] = []
     for value in values:

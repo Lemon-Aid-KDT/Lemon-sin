@@ -80,7 +80,17 @@ MERGE_SMOKE_CASES: tuple[SmokeCase, ...] = (
 def main() -> int:
     args = _parse_args()
     llm_client = _build_llm_client(args)
-    results = [_run_case(case, llm_client=llm_client) for case in MERGE_SMOKE_CASES]
+    strict_answerable_provider = (
+        args.llm if args.require_answerable_llm and args.llm != "none" else None
+    )
+    results = [
+        _run_case(
+            case,
+            llm_client=llm_client,
+            strict_answerable_provider=strict_answerable_provider,
+        )
+        for case in MERGE_SMOKE_CASES
+    ]
     payload = {
         "status": "pass" if all(result["passed"] for result in results) else "fail",
         "llm": args.llm,
@@ -105,6 +115,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--api-key")
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--require-answerable-llm",
+        action="store_true",
+        help=(
+            "Fail answerable cases unless they use the selected LLM provider. "
+            "Use this for live SGLang merge checks; leave it off for no-LLM CI."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -112,6 +130,7 @@ def _run_case(
     case: SmokeCase,
     *,
     llm_client: OllamaClient | SGLangClient | None,
+    strict_answerable_provider: str | None = None,
 ) -> dict[str, Any]:
     response = ChatbotAgent(llm_client=llm_client).answer(
         ChatbotRequest(
@@ -127,6 +146,7 @@ def _run_case(
         answerability=response.answerability,
         source_ids=tuple(source.get("source_id", "") for source in response.sources),
         safety_warnings=tuple(response.safety_warnings),
+        strict_answerable_provider=strict_answerable_provider,
     )
 
 
@@ -137,16 +157,24 @@ def _evaluate_case_result(
     answerability: str,
     source_ids: tuple[str, ...] | list[str],
     safety_warnings: tuple[str, ...] | list[str],
+    strict_answerable_provider: str | None = None,
 ) -> dict[str, Any]:
     failures: list[str] = []
     source_id_list = [source_id for source_id in source_ids if source_id]
     warning_list = list(safety_warnings)
+    expected_provider = case.expected_provider
+    if (
+        expected_provider is None
+        and strict_answerable_provider is not None
+        and case.expected_answerability in {"answerable", "answerable_with_caution"}
+    ):
+        expected_provider = strict_answerable_provider
     if answerability != case.expected_answerability:
         failures.append(
             f"answerability:expected={case.expected_answerability}:actual={answerability}"
         )
-    if case.expected_provider is not None and provider != case.expected_provider:
-        failures.append(f"provider:expected={case.expected_provider}:actual={provider}")
+    if expected_provider is not None and provider != expected_provider:
+        failures.append(f"provider:expected={expected_provider}:actual={provider}")
     if case.expect_sources is True and not source_id_list:
         failures.append("sources:expected=present:actual=empty")
     if case.expect_sources is False and source_id_list:

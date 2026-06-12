@@ -58,3 +58,24 @@ def test_merge_smoke_fails_when_boundary_uses_llm_provider() -> None:
 
     assert result["passed"] is False
     assert "provider:expected=deterministic:actual=sglang" in result["failures"]
+
+
+def test_merge_smoke_strict_answerable_provider_catches_live_fallback() -> None:
+    """Live SGLang checks should fail if answerable polish falls back silently."""
+    result = smoke._evaluate_case_result(
+        case=smoke.SmokeCase(
+            case_id="answerable-sodium",
+            message="오늘 나트륨을 줄이려면 어떻게 해?",
+            expected_answerability="answerable",
+            expect_sources=True,
+            required_source_ids=("kdris-2025",),
+        ),
+        provider="deterministic",
+        answerability="answerable",
+        source_ids=["kdris-2025"],
+        safety_warnings=[],
+        strict_answerable_provider="sglang",
+    )
+
+    assert result["passed"] is False
+    assert "provider:expected=sglang:actual=deterministic" in result["failures"]

@@ -21,6 +21,7 @@ from lemon_ai_agent.knowledge import (
 from lemon_ai_agent.llm import LLMCompletion, LLMMessage, LLMRequest, LocalLLMClient
 from lemon_ai_agent.polish_slots import (
     build_deterministic_slot_contract,
+    slot_value_sets_match,
     slot_values_are_preserved,
 )
 from lemon_ai_agent.renderers import (
@@ -791,7 +792,10 @@ class ChatbotAgent:
         expert_check_points: list[str],
     ) -> list[str]:
         warnings: list[str] = []
-        if source_basis != self._source_basis_for_turn(turn):
+        if not slot_value_sets_match(
+            [source_basis],
+            [self._source_basis_for_turn(turn)],
+        ):
             warnings.append("llm_source_slot_ignored")
         if not self._slot_values_are_deterministic(
             specific_examples,

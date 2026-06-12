@@ -1,6 +1,23 @@
 name: Agent Backend CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      run_sglang_smoke:
+        description: "Run opt-in live SGLang merge smoke against the configured endpoint."
+        required: false
+        default: false
+        type: boolean
+      sglang_endpoint:
+        description: "OpenAI-compatible SGLang endpoint reachable from the runner."
+        required: false
+        default: "http://127.0.0.1:30000/v1"
+        type: string
+      sglang_model:
+        description: "SGLang model name served by the endpoint."
+        required: false
+        default: "Qwen/Qwen2.5-0.5B-Instruct"
+        type: string
   pull_request:
     branches: [develop, main]
     paths:
@@ -56,6 +73,16 @@ jobs:
       - name: Run chatbot route contract tests
         run: python -X utf8 -m pytest -q --no-cov Nutrition-backend/tests/integration/api/test_ai_agent_api.py
 
+      - name: Run merge smoke and unknown backlog unit tests
+        run: |
+          python -X utf8 -m pytest -q --no-cov \
+            Nutrition-backend/tests/unit/scripts/test_run_agent_llm_merge_smoke.py \
+            Nutrition-backend/tests/unit/scripts/test_report_chatbot_unknown_backlog.py \
+            Nutrition-backend/tests/unit/services/test_chatbot_unknown_backlog_report.py
+
+      - name: Run no-LLM merge response smoke
+        run: python -X utf8 scripts/run_agent_llm_merge_smoke.py --llm none
+
       - name: Run medical wiki chatbot dry-run eval
         run: python -X utf8 scripts/eval_medical_wiki_chatbot.py --as-of 2026-06-10 --dry-run
 
@@ -68,7 +95,11 @@ jobs:
             ai_agent_chat/src \
             ai_agent_chat/tests \
             scripts \
+            Nutrition-backend/src/services/chatbot_unknown_backlog_report.py \
             Nutrition-backend/src/services/user_health_context_snapshot.py \
+            Nutrition-backend/tests/unit/scripts/test_run_agent_llm_merge_smoke.py \
+            Nutrition-backend/tests/unit/scripts/test_report_chatbot_unknown_backlog.py \
+            Nutrition-backend/tests/unit/services/test_chatbot_unknown_backlog_report.py \
             Nutrition-backend/tests/integration/api/test_ai_agent_api.py
 
       - name: Compile agent backend modules
@@ -76,5 +107,21 @@ jobs:
           python -m compileall \
             ai_agent_chat/src \
             scripts \
+            Nutrition-backend/src/services/chatbot_unknown_backlog_report.py \
             Nutrition-backend/src/services/user_health_context_snapshot.py \
             Nutrition-backend/src/api/v1/ai_agent.py
+
+      - name: Run opt-in live SGLang merge smoke
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_sglang_smoke }}
+        env:
+          RUN_SGLANG_SMOKE: "1"
+          SGLANG_BASE_URL: ${{ inputs.sglang_endpoint }}
+          SGLANG_MODEL: ${{ inputs.sglang_model }}
+        run: |
+          python -X utf8 scripts/check_ai_agent_runtime_prereqs.py --ignore-env-file --require-sglang-smoke
+          python -X utf8 scripts/run_agent_llm_merge_smoke.py \
+            --llm sglang \
+            --endpoint "${{ inputs.sglang_endpoint }}" \
+            --model "${{ inputs.sglang_model }}" \
+            --timeout 90 \
+            --require-answerable-llm
