@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:lemon_aid_mobile/app_controller.dart';
 import 'package:lemon_aid_mobile/core/api/api_client.dart';
 import 'package:lemon_aid_mobile/features/ai_coaching/ai_coaching_repository.dart';
+import 'package:lemon_aid_mobile/features/analysis_trend/analysis_trend_repository.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
@@ -70,6 +71,40 @@ AiCoachingRepository _coachingRepository({
   );
 }
 
+Map<String, dynamic> _trendResponse(int days) {
+  return <String, dynamic>{
+    'results': List<Map<String, dynamic>>.generate(days, (int i) {
+      final DateTime day = DateTime(2026, 6, 28).subtract(Duration(days: i));
+      final String month = day.month.toString().padLeft(2, '0');
+      final String date = day.day.toString().padLeft(2, '0');
+      return <String, dynamic>{
+        'id': '00000000-0000-0000-0000-${i.toString().padLeft(12, '0')}',
+        'analysis_type': 'daily_health_score',
+        'algorithm_version': 'daily-health-score-v1.0.0',
+        'kdris_source_manifest_version': null,
+        'created_at': '2026-06-28T00:00:00Z',
+        'score': 60 + (i % 30),
+        'measured_date': '${day.year}-$month-$date',
+        'label': const <String>['good', 'moderate', 'warning'][i % 3],
+      };
+    }),
+    'limit': 28,
+    'offset': 0,
+  };
+}
+
+AnalysisTrendRepository _trendRepository({int days = 28}) {
+  return AnalysisTrendRepository(
+    apiClient: ApiClient(
+      baseUrl: 'https://api.example.com/api/v1',
+      httpClient: _FakeClient(
+        (http.Request request) async =>
+            _jsonResponse(_trendResponse(days), 200),
+      ),
+    ),
+  );
+}
+
 Future<AppController> _readyController() async {
   final AppController controller = AppController(
     repository: _ScoreRepository(scoreReady: true),
@@ -90,10 +125,15 @@ Future<void> _pump(
   WidgetTester tester, {
   required AppController controller,
   required AiCoachingRepository coaching,
+  AnalysisTrendRepository? trend,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
-      home: ScoreScreen(controller: controller, coachingRepository: coaching),
+      home: ScoreScreen(
+        controller: controller,
+        coachingRepository: coaching,
+        trendRepository: trend,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -167,6 +207,74 @@ void main() {
     // 화면 전체는 점수 카드를 유지한다.
     expect(find.text('오늘의 종합 분석'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
+  });
+
+  testWidgets('trend card renders the 28-day chart when history is enough', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+      trend: _trendRepository(),
+    );
+
+    expect(find.text('지난 4주 추이'), findsOneWidget);
+    expect(find.text('기록이 쌓이면 추이를 보여드려요'), findsNothing);
+    expect(find.text('점수는 기록 당시 기준이에요'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_TrendChartPainter',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('trend card stays locked with fewer than 7 days of history', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+      trend: _trendRepository(days: 3),
+    );
+
+    expect(find.text('기록이 쌓이면 추이를 보여드려요'), findsOneWidget);
+    expect(find.text('점수는 기록 당시 기준이에요'), findsNothing);
+  });
+
+  testWidgets('trend card copy avoids forbidden medical terms and percent', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+      trend: _trendRepository(),
+    );
+
+    final Finder trendCard = find
+        .ancestor(of: find.text('지난 4주 추이'), matching: find.byType(Container))
+        .first;
+    final Iterable<Text> texts = tester.widgetList<Text>(
+      find.descendant(of: trendCard, matching: find.byType(Text)),
+    );
+    expect(texts, isNotEmpty);
+    for (final Text text in texts) {
+      final String data = text.data ?? '';
+      // 의료법 금칙어 가드 (가이드 06 ④).
+      for (final String term in const <String>['진단', '처방', '치료', '효능']) {
+        expect(data.contains(term), isFalse, reason: '금칙어 "$term" in "$data"');
+      }
+      // 신뢰도 % 미노출 가드 — 점수 숫자는 허용, % 기호는 어떤 형태로도 금지.
+      expect(data.contains('%'), isFalse, reason: '% in "$data"');
+    }
   });
 }
 

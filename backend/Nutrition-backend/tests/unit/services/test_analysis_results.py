@@ -16,6 +16,7 @@ from src.models.schemas.user import UserProfile
 from src.security.auth import AuthenticatedUser
 from src.services.analysis_results import (
     analysis_result_to_response,
+    analysis_result_to_summary,
     build_owner_subject,
     get_analysis_result,
     store_activity_score_result,
@@ -169,6 +170,67 @@ def test_analysis_result_response_omits_owner_and_input_snapshot() -> None:
     assert "owner_subject" not in body
     assert "input_snapshot" not in body
     assert body["result_snapshot"] == {"v4_score": 90.0}
+
+
+def test_summary_extracts_daily_health_score_trend_fields() -> None:
+    """Verify daily health score list items expose score/measured_date/label (guide 06 §4.1)."""
+    record = AnalysisResult(
+        id=uuid4(),
+        owner_subject="https://auth.example.com/::user_123",
+        analysis_type=AnalysisType.DAILY_HEALTH_SCORE.value,
+        algorithm_version="daily-health-score-v1.0.0",
+        input_snapshot={"summary_date": "2026-06-12"},
+        result_snapshot={
+            "data_status": "ready",
+            "score": 78,
+            "label": "good",
+            "label_text": "양호",
+            "measured_date": "2026-06-12",
+        },
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    summary = analysis_result_to_summary(record)
+
+    assert summary.score == 78
+    assert summary.measured_date == "2026-06-12"
+    assert summary.label == "good"
+
+
+def test_summary_trend_fields_stay_null_for_other_types_and_malformed_snapshots() -> None:
+    """Verify trend summary fields stay None for non-score rows and malformed snapshots."""
+    activity = AnalysisResult(
+        id=uuid4(),
+        owner_subject="https://auth.example.com/::user_123",
+        analysis_type=AnalysisType.ACTIVITY_SCORE.value,
+        algorithm_version="activity-v1.0.0",
+        input_snapshot={"daily_steps": 7000},
+        # 동명 키가 있어도 daily_health_score 타입이 아니면 추출하지 않는다.
+        result_snapshot={"v4_score": 90.0, "score": 90, "measured_date": "2026-06-12"},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    malformed = AnalysisResult(
+        id=uuid4(),
+        owner_subject="https://auth.example.com/::user_123",
+        analysis_type=AnalysisType.DAILY_HEALTH_SCORE.value,
+        algorithm_version="daily-health-score-v1.0.0",
+        input_snapshot={"summary_date": "2026-06-12"},
+        result_snapshot={"score": "78", "measured_date": 20260612, "label": 3},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    activity_summary = analysis_result_to_summary(activity)
+    malformed_summary = analysis_result_to_summary(malformed)
+
+    assert activity_summary.score is None
+    assert activity_summary.measured_date is None
+    assert activity_summary.label is None
+    assert malformed_summary.score is None
+    assert malformed_summary.measured_date is None
+    assert malformed_summary.label is None
 
 
 @pytest.mark.asyncio

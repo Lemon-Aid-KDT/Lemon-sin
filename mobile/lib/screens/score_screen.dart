@@ -21,6 +21,8 @@ import 'package:go_router/go_router.dart';
 import '../app_controller.dart';
 import '../features/ai_coaching/ai_coaching_models.dart';
 import '../features/ai_coaching/ai_coaching_repository.dart';
+import '../features/analysis_trend/analysis_trend_models.dart';
+import '../features/analysis_trend/analysis_trend_repository.dart';
 import '../features/dashboard/home_models.dart';
 import '../utils/design_tokens_v2.dart';
 import '../widgets/common/pressable.dart';
@@ -32,9 +34,11 @@ class ScoreScreen extends StatefulWidget {
   /// Args:
   ///   controller: 점수·당일 식사·등록 영양제를 제공하는 앱 컨트롤러.
   ///   coachingRepository: 실천 리스트(daily-coaching) 호출 저장소.
+  ///   trendRepository: 4주 추이 조회 저장소 (미주입 시 추이 카드는 잠금 유지).
   const ScoreScreen({
     required this.controller,
     required this.coachingRepository,
+    this.trendRepository,
     super.key,
   });
 
@@ -43,6 +47,9 @@ class ScoreScreen extends StatefulWidget {
 
   /// 실천 리스트 호출 저장소.
   final AiCoachingRepository coachingRepository;
+
+  /// 4주 추이 조회 저장소 — 미주입 시 추이 카드는 잠금 placeholder 유지.
+  final AnalysisTrendRepository? trendRepository;
 
   @override
   State<ScoreScreen> createState() => _ScoreScreenState();
@@ -59,6 +66,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
   String? _cachedDateKey;
   // 실천 항목 체크 토글 — 세션 메모리. // TODO(persist): SharedPreferences 연동.
   final Set<int> _checkedItemIndexes = <int>{};
+  // 4주 추이 점들 — 7일치 미만이면 잠금 카드 유지 (가이드 06 §4.1).
+  List<ScoreTrendPoint> _trendPoints = const <ScoreTrendPoint>[];
 
   AppController get _controller => widget.controller;
 
@@ -76,7 +85,27 @@ class _ScoreScreenState extends State<ScoreScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCoaching());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCoaching();
+      _loadTrend();
+    });
+  }
+
+  /// 영속된 일일 점수 이력을 불러온다. 미가용 시 잠금 카드를 유지한다.
+  Future<void> _loadTrend() async {
+    final AnalysisTrendRepository? repository = widget.trendRepository;
+    if (repository == null) {
+      return;
+    }
+    try {
+      final List<ScoreTrendPoint> points = await repository
+          .fetchDailyScoreTrend();
+      if (!mounted) return;
+      setState(() => _trendPoints = points);
+    } on Exception {
+      // 추이 미가용(이력 부족·일시 오류)은 화면 오류로 승격하지 않는다 —
+      // 폴백 표(가이드 06 §5): 잠금 카드 "기록이 쌓이면 추이를 보여드려요" 유지.
+    }
   }
 
   /// 실천 리스트를 불러온다. 같은 날짜로 이미 받았으면 재호출하지 않는다.
@@ -166,7 +195,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   onRetry: () => _loadCoaching(force: true),
                 ),
                 const SizedBox(height: AppSpace.md),
-                const _TrendLockedCard(),
+                _TrendCard(points: _trendPoints),
                 const SizedBox(height: AppSpace.lg),
                 const _Disclaimer(),
               ],
@@ -681,8 +710,188 @@ class _ChecklistError extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════
+// 카드 3 — 스마트 분석 '지난 4주 추이'
+//   영속 이력 7일치 이상이면 28일 라인 차트, 미만이면 잠금 placeholder 유지.
+//   차트는 CustomPainter 자체 구현 (점 최대 28개 — 외부 차트 의존성 불필요,
+//   가이드 06 §4.1 권고).
+// ═══════════════════════════════════════════
+class _TrendCard extends StatelessWidget {
+  final List<ScoreTrendPoint> points;
+  const _TrendCard({required this.points});
+
+  /// 추이 차트를 그리는 최소 데이터 일수 (가이드 06 §4.1).
+  static const int _minPoints = 7;
+
+  @override
+  Widget build(BuildContext context) {
+    if (points.length < _minPoints) {
+      return const _TrendLockedCard();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+      decoration: _cardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text('스마트 분석', style: AppText.subtitle),
+              const SizedBox(width: AppSpace.sm),
+              Text(
+                '지난 4주 추이',
+                style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.lg),
+          SizedBox(
+            height: 168,
+            width: double.infinity,
+            child: CustomPaint(painter: _TrendChartPainter(points: points)),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Padding(
+            padding: const EdgeInsets.only(left: _TrendChartPainter.padLeft),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                Text(_axisDate(points.first.date), style: AppText.micro),
+                Text(_axisDate(points.last.date), style: AppText.micro),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Text(
+            '점수는 기록 당시 기준이에요',
+            style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// `YYYY-MM-DD`를 축 라벨 `M월 D일`로 줄인다. 형식이 다르면 원문 유지.
+  static String _axisDate(String date) {
+    final List<String> parts = date.split('-');
+    if (parts.length != 3) {
+      return date;
+    }
+    final int? month = int.tryParse(parts[1]);
+    final int? day = int.tryParse(parts[2]);
+    if (month == null || day == null) {
+      return date;
+    }
+    return '$month월 $day일';
+  }
+}
+
+/// 서버 등급 라벨 → 시맨틱 색 (가이드 06 §2.4 매핑).
+///
+/// 모바일은 label 문자열만 소비한다 — 점수→색 재계산 금지. null·미지 값은
+/// 현행 브랜드 색으로 폴백.
+Color _trendPointColor(String? label) {
+  switch (label) {
+    case 'excellent':
+    case 'good':
+      return AppColor.success;
+    case 'moderate':
+      return AppColor.warning;
+    case 'warning':
+    case 'needs_attention':
+      return AppColor.danger;
+    default:
+      return AppColor.brand;
+  }
+}
+
+class _TrendChartPainter extends CustomPainter {
+  _TrendChartPainter({required this.points});
+
+  final List<ScoreTrendPoint> points;
+
+  /// y축 숫자 라벨 폭 확보용 좌측 여백 (축 라벨과 차트 본문 정렬에 공유).
+  static const double padLeft = 34;
+  static const double _padRight = 8;
+  static const double _padTop = 8;
+  static const double _padBottom = 8;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double plotWidth = size.width - padLeft - _padRight;
+    final double plotHeight = size.height - _padTop - _padBottom;
+    if (plotWidth <= 0 || plotHeight <= 0 || points.length < 2) {
+      return;
+    }
+
+    double yFor(int score) {
+      final double ratio = score.clamp(0, 100).toDouble() / 100;
+      return _padTop + (1 - ratio) * plotHeight;
+    }
+
+    double xFor(int index) {
+      return padLeft + plotWidth * index / (points.length - 1);
+    }
+
+    // y축 기준선 0/50/100 + 숫자 라벨 — 점수 숫자는 허용, 신뢰도 %는 금지.
+    final Paint gridPaint = Paint()
+      ..color = AppColor.border
+      ..strokeWidth = 1;
+    for (final int gridScore in const <int>[0, 50, 100]) {
+      final double y = yFor(gridScore);
+      canvas.drawLine(
+        Offset(padLeft, y),
+        Offset(size.width - _padRight, y),
+        gridPaint,
+      );
+      final TextPainter labelPainter = TextPainter(
+        text: TextSpan(text: '$gridScore', style: AppText.micro),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(
+        canvas,
+        Offset(padLeft - labelPainter.width - 6, y - labelPainter.height / 2),
+      );
+    }
+
+    // 점수 라인 — 브랜드 색 (가이드 06 §4.1 색 규칙).
+    final Paint linePaint = Paint()
+      ..color = AppColor.brand
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final Path linePath = Path();
+    for (int i = 0; i < points.length; i++) {
+      final Offset point = Offset(xFor(i), yFor(points[i].score));
+      if (i == 0) {
+        linePath.moveTo(point.dx, point.dy);
+      } else {
+        linePath.lineTo(point.dx, point.dy);
+      }
+    }
+    canvas.drawPath(linePath, linePaint);
+
+    // 포인트 — 서버 등급 라벨 매핑 색.
+    for (int i = 0; i < points.length; i++) {
+      final Offset center = Offset(xFor(i), yFor(points[i].score));
+      canvas.drawCircle(
+        center,
+        3.2,
+        Paint()..color = _trendPointColor(points[i].label),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TrendChartPainter oldDelegate) {
+    return !identical(oldDelegate.points, points);
+  }
+}
+
+// ═══════════════════════════════════════════
 // 카드 3 — 스마트 분석 '지난 4주 추이' (잠금 placeholder)
-//   점수 이력 영속이 P0 범위 밖이라 빈 상태로 안내.
+//   영속 이력이 7일치 미만일 때의 빈 상태 안내.
 // ═══════════════════════════════════════════
 class _TrendLockedCard extends StatelessWidget {
   const _TrendLockedCard();

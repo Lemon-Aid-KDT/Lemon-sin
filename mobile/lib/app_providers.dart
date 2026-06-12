@@ -5,6 +5,7 @@ import 'core/api/api_client.dart';
 import 'core/config/app_config.dart';
 import 'core/storage/local_prefs.dart';
 import 'features/ai_coaching/ai_coaching_repository.dart';
+import 'features/analysis_trend/analysis_trend_repository.dart';
 import 'features/auth/token_session.dart';
 import 'features/chat/chat_repository.dart';
 import 'features/medical/medical_records_repository.dart';
@@ -73,6 +74,12 @@ final Provider<ChatRepository> chatRepositoryProvider =
 final Provider<AiCoachingRepository> aiCoachingRepositoryProvider =
     Provider<AiCoachingRepository>((Ref ref) {
       return AiCoachingRepository(apiClient: ref.watch(apiClientProvider));
+    });
+
+/// 일일 건강 점수 4주 추이 저장소 (가이드 06 (a)).
+final Provider<AnalysisTrendRepository> analysisTrendRepositoryProvider =
+    Provider<AnalysisTrendRepository>((Ref ref) {
+      return AnalysisTrendRepository(apiClient: ref.watch(apiClientProvider));
     });
 
 /// App controller provider that preserves the existing endpoint/data flow.

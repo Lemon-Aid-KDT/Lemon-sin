@@ -57,6 +57,12 @@ class AnalysisResultSummary(BaseModel):
         algorithm_version: Version of the server algorithm used for the result.
         kdris_source_manifest_version: KDRIs source manifest schema version for nutrition results.
         created_at: Server-side record creation timestamp.
+        score: Daily health score value for ``daily_health_score`` rows, else None.
+            4주 추이 차트가 28회 상세 조회 없이 목록만으로 그릴 수 있게 하는
+            요약 필드 (가이드 06 §4.1, 하위호환 옵셔널).
+        measured_date: Local date the score was computed for, else None.
+        label: Five-tier score label for ``daily_health_score`` rows, else None.
+            모바일은 점수→색 재계산이 금지되어 label 문자열만 소비한다 (가이드 06 §2.4).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -66,6 +72,9 @@ class AnalysisResultSummary(BaseModel):
     algorithm_version: str
     kdris_source_manifest_version: str | None
     created_at: datetime
+    score: int | None = None
+    measured_date: str | None = None
+    label: str | None = None
 
 
 class AnalysisResultListResponse(BaseModel):

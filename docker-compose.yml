@@ -60,6 +60,8 @@ services:
       ALLOWED_HOSTS: '["localhost","127.0.0.1","testserver","0.0.0.0","10.0.2.2"]'
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-[]}
       PRIVACY_HASH_SECRET: ${PRIVACY_HASH_SECRET:-development-insecure-privacy-hash-secret}
+      # 2026-06-12 결정 #7 채택: 일일 건강 점수 1일 1행 영속 → S-09 4주 추이 데이터 소스
+      PERSIST_DAILY_HEALTH_SCORE: ${PERSIST_DAILY_HEALTH_SCORE:-true}
       LLM_PROVIDER: ollama
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}

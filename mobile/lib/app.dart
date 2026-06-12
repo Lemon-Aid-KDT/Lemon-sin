@@ -255,6 +255,9 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                             coachingRepository: ref.watch(
                               aiCoachingRepositoryProvider,
                             ),
+                            trendRepository: ref.watch(
+                              analysisTrendRepositoryProvider,
+                            ),
                           );
                         },
                   );

@@ -74,8 +74,23 @@ def analysis_result_to_summary(record: AnalysisResult) -> AnalysisResultSummary:
 
     Returns:
         Public summary response without owner identifiers or snapshots.
+        daily_health_score 행은 4주 추이 조회용 요약 필드(score/measured_date/label)를
+        스냅샷에서 추출해 함께 내려준다 — 타 타입은 None (가이드 06 §4.1).
     """
-    return AnalysisResultSummary.model_validate(record)
+    summary = AnalysisResultSummary.model_validate(record)
+    if record.analysis_type != AnalysisType.DAILY_HEALTH_SCORE.value:
+        return summary
+    snapshot = record.result_snapshot or {}
+    score = snapshot.get("score")
+    measured_date = snapshot.get("measured_date")
+    label = snapshot.get("label")
+    return summary.model_copy(
+        update={
+            "score": score if isinstance(score, int) else None,
+            "measured_date": measured_date if isinstance(measured_date, str) else None,
+            "label": label if isinstance(label, str) else None,
+        }
+    )
 
 
 async def _persist_result(
