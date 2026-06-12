@@ -127,6 +127,11 @@ Future<void> _pump(
   required AiCoachingRepository coaching,
   AnalysisTrendRepository? trend,
 }) async {
+  // 화면이 길어 기본 뷰포트(800×600)에서는 ListView가 하단 카드(추이/CTA)를
+  // 지연 빌드로 생략한다 — 전체가 빌드되도록 세로를 충분히 키운다.
+  tester.view.physicalSize = const Size(800, 2600);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
       home: ScoreScreen(
@@ -207,6 +212,30 @@ void main() {
     // 화면 전체는 점수 카드를 유지한다.
     expect(find.text('오늘의 종합 분석'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
+  });
+
+  testWidgets('add-practice CTA appends a custom checklist item', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+    );
+
+    // figma 800:23 — 실천 리스트 카드 하단 풀폭 CTA.
+    expect(find.text('오늘 실천 추가하기'), findsOneWidget);
+    await tester.tap(find.text('오늘 실천 추가하기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '물 한 잔 더 마시기');
+    await tester.tap(find.text('추가'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('물 한 잔 더 마시기'), findsOneWidget);
+    expect(find.text('내가 추가한 실천'), findsOneWidget);
+    // 기존 코칭 1건 + 직접 추가 1건.
+    expect(find.text('오늘 챙기면 좋은 2가지'), findsOneWidget);
   });
 
   testWidgets('trend card renders the 28-day chart when history is enough', (

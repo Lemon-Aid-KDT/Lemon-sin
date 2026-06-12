@@ -250,12 +250,38 @@ void main() {
       expect(find.text('80'), findsNothing);
     },
   );
+
+  testWidgets('standing compliance disclaimer is always visible above input', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ChatScreen(
+            repository: _FakeChatRepository(<ChatbotResponse>[]),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // figma S-11 773:23 — 입력창 위 상시 면책 (컴플라이언스 §14).
+    expect(find.text(_allowedStandingDisclaimer), findsOneWidget);
+  });
 }
+
+// 컴플라이언스 표준 면책은 금칙어를 부정형으로 포함하므로(상시 면책 라인),
+// 정확히 이 문장일 때만 스캔에서 제외한다 — 부분 일치 허용 금지.
+const String _allowedStandingDisclaimer =
+    '레몬봇 안내는 일반 참고용이에요. 진단을 대신하지 않아요.';
 
 void _expectNoBannedTermsOrPercent(WidgetTester tester) {
   final Iterable<Text> texts = tester.widgetList<Text>(find.byType(Text));
   for (final Text widget in texts) {
     final String value = widget.data ?? '';
+    if (value == _allowedStandingDisclaimer) {
+      continue;
+    }
     for (final String banned in _bannedTerms) {
       expect(
         value.contains(banned),

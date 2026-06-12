@@ -244,6 +244,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ],
             ),
           ),
+          const _ChatDisclaimerLine(),
           _InputBar(
             controller: _controller,
             onSend: _send,
@@ -1026,6 +1027,41 @@ class _TypingBubbleState extends State<_TypingBubble>
 // ═══════════════════════════════════════════
 // 입력바
 // ═══════════════════════════════════════════
+// 입력창 위 상시 면책 라인 (figma S-11 `773:23` — 컴플라이언스 §14).
+// 응답별 근거 부족 라벨과 별개로, 챗 화면에 항상 노출한다.
+class _ChatDisclaimerLine extends StatelessWidget {
+  const _ChatDisclaimerLine();
+
+  /// 컴플라이언스 표준 문구 — 변경 시 금칙어 가드 테스트 확인.
+  static const String text = '레몬봇 안내는 일반 참고용이에요. 진단을 대신하지 않아요.';
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColor.section,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.page,
+        AppSpace.sm,
+        AppSpace.page,
+        0,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          const Icon(
+            Icons.info_outline,
+            size: 13,
+            color: AppColor.inkTertiary,
+          ),
+          const SizedBox(width: 4),
+          Flexible(child: Text(text, style: AppText.micro)),
+        ],
+      ),
+    );
+  }
+}
+
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onSend;

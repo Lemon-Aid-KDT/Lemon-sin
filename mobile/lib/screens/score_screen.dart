@@ -68,6 +68,10 @@ class _ScoreScreenState extends State<ScoreScreen> {
   final Set<int> _checkedItemIndexes = <int>{};
   // 4주 추이 점들 — 7일치 미만이면 잠금 카드 유지 (가이드 06 §4.1).
   List<ScoreTrendPoint> _trendPoints = const <ScoreTrendPoint>[];
+  // 사용자가 직접 추가한 실천 항목 — 세션 메모리 (figma 800:23 CTA, 로컬 전용.
+  // 영속은 가이드 06 4.2 coaching_check_store 도입과 함께).
+  final List<String> _customPractices = <String>[];
+  final Set<int> _checkedCustomIndexes = <int>{};
 
   AppController get _controller => widget.controller;
 
@@ -152,6 +156,31 @@ class _ScoreScreenState extends State<ScoreScreen> {
     });
   }
 
+  void _toggleCustomItem(int index) {
+    setState(() {
+      if (_checkedCustomIndexes.contains(index)) {
+        _checkedCustomIndexes.remove(index);
+      } else {
+        _checkedCustomIndexes.add(index);
+      }
+    });
+  }
+
+  /// 직접 입력으로 오늘 실천 항목을 추가한다 (figma 800:23 CTA).
+  ///
+  /// 사용자 입력 텍스트는 서버 권고가 아니라 본인 메모이므로 그대로 표시한다.
+  Future<void> _addPractice() async {
+    final String? entered = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => const _AddPracticeDialog(),
+    );
+    final String title = (entered ?? '').trim();
+    if (title.isEmpty || !mounted) {
+      return;
+    }
+    setState(() => _customPractices.add(title));
+  }
+
   void _openCamera() {
     context.go('/shell/camera?mode=meal');
   }
@@ -193,6 +222,10 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   checkedIndexes: _checkedItemIndexes,
                   onToggle: _toggleItem,
                   onRetry: () => _loadCoaching(force: true),
+                  customItems: _customPractices,
+                  checkedCustomIndexes: _checkedCustomIndexes,
+                  onToggleCustom: _toggleCustomItem,
+                  onAddPractice: _addPractice,
                 ),
                 const SizedBox(height: AppSpace.md),
                 _TrendCard(points: _trendPoints),
@@ -484,6 +517,68 @@ class _LemonBotCta extends StatelessWidget {
 //   requires_user_approval=true → '기록을 확정하면 맞춤 제안을 드려요' 안내
 //   호출 실패 → 가벼운 오류 상태 + 재시도 버튼
 // ═══════════════════════════════════════════
+// 직접 실천 추가 다이얼로그 — 컨트롤러를 자체 수명주기로 관리한다.
+// (pop 직후 외부에서 dispose하면 닫힘 애니메이션 중인 TextField가 깨진다.)
+class _AddPracticeDialog extends StatefulWidget {
+  const _AddPracticeDialog();
+
+  @override
+  State<_AddPracticeDialog> createState() => _AddPracticeDialogState();
+}
+
+class _AddPracticeDialogState extends State<_AddPracticeDialog> {
+  final TextEditingController _input = TextEditingController();
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColor.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      title: Text('오늘 실천 추가하기', style: AppText.subtitle),
+      content: TextField(
+        controller: _input,
+        autofocus: true,
+        style: AppText.body,
+        decoration: InputDecoration(
+          hintText: '예: 물 한 잔 더 마시기',
+          hintStyle: AppText.body.copyWith(color: AppColor.inkTertiary),
+        ),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (String value) => Navigator.of(context).pop(value),
+      ),
+      actions: <Widget>[
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            '취소',
+            style: AppText.body.copyWith(color: AppColor.inkSecondary),
+          ),
+        ),
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+          onPressed: () => Navigator.of(context).pop(_input.text),
+          child: Text(
+            '추가',
+            style: AppText.body.copyWith(
+              color: AppColor.brandDeep,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ChecklistCard extends StatelessWidget {
   final bool loading;
   final bool failed;
@@ -491,6 +586,10 @@ class _ChecklistCard extends StatelessWidget {
   final Set<int> checkedIndexes;
   final ValueChanged<int> onToggle;
   final VoidCallback onRetry;
+  final List<String> customItems;
+  final Set<int> checkedCustomIndexes;
+  final ValueChanged<int> onToggleCustom;
+  final VoidCallback onAddPractice;
   const _ChecklistCard({
     required this.loading,
     required this.failed,
@@ -498,12 +597,16 @@ class _ChecklistCard extends StatelessWidget {
     required this.checkedIndexes,
     required this.onToggle,
     required this.onRetry,
+    required this.customItems,
+    required this.checkedCustomIndexes,
+    required this.onToggleCustom,
+    required this.onAddPractice,
   });
 
   @override
   Widget build(BuildContext context) {
     final DailyCoachingResult? result = coaching;
-    final int count = result?.items.length ?? 0;
+    final int count = (result?.items.length ?? 0) + customItems.length;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpace.cardInside + 2),
@@ -517,6 +620,34 @@ class _ChecklistCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpace.md),
           _buildBody(result),
+          if (customItems.isNotEmpty) ...<Widget>[
+            if (result != null && result.items.isNotEmpty)
+              Divider(color: AppColor.border, height: AppSpace.lg),
+            for (int i = 0; i < customItems.length; i++) ...<Widget>[
+              _ChecklistRow(
+                title: customItems[i],
+                subtitle: '내가 추가한 실천',
+                checked: checkedCustomIndexes.contains(i),
+                onToggle: () => onToggleCustom(i),
+              ),
+              if (i != customItems.length - 1)
+                Divider(color: AppColor.border, height: AppSpace.lg),
+            ],
+          ],
+          if (!loading) ...<Widget>[
+            const SizedBox(height: AppSpace.lg),
+            // figma 800:23 — 카드 하단 풀폭 CTA. 시니어 최소 높이 52.
+            AppPrimaryButton(
+              label: '오늘 실천 추가하기',
+              height: 52,
+              leading: const Icon(
+                Icons.add_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              onPressed: onAddPractice,
+            ),
+          ],
         ],
       ),
     );
@@ -555,7 +686,8 @@ class _ChecklistCard extends StatelessWidget {
       children: <Widget>[
         for (int i = 0; i < result.items.length; i++) ...<Widget>[
           _ChecklistRow(
-            item: result.items[i],
+            title: result.items[i].title,
+            subtitle: result.items[i].subtitle,
             checked: checkedIndexes.contains(i),
             onToggle: () => onToggle(i),
           ),
@@ -568,18 +700,20 @@ class _ChecklistCard extends StatelessWidget {
 }
 
 class _ChecklistRow extends StatelessWidget {
-  final DailyCoachingItem item;
+  final String title;
+  final String subtitle;
   final bool checked;
   final VoidCallback onToggle;
   const _ChecklistRow({
-    required this.item,
+    required this.title,
+    required this.subtitle,
     required this.checked,
     required this.onToggle,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool hasSubtitle = item.subtitle.trim().isNotEmpty;
+    final bool hasSubtitle = subtitle.trim().isNotEmpty;
     return Pressable(
       onTap: onToggle,
       child: Row(
@@ -607,7 +741,7 @@ class _ChecklistRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  item.title.isNotEmpty ? item.title : '실천 항목',
+                  title.isNotEmpty ? title : '실천 항목',
                   style: AppText.body.copyWith(
                     color: checked ? AppColor.inkTertiary : AppColor.ink,
                     fontWeight: FontWeight.w700,
@@ -617,7 +751,7 @@ class _ChecklistRow extends StatelessWidget {
                 if (hasSubtitle) ...<Widget>[
                   const SizedBox(height: 2),
                   Text(
-                    item.subtitle.trim(),
+                    subtitle.trim(),
                     style: AppText.caption.copyWith(
                       color: AppColor.inkSecondary,
                     ),
