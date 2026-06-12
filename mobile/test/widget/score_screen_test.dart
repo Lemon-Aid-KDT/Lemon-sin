@@ -16,6 +16,7 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/records/food_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/score_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeClient extends http.BaseClient {
   _FakeClient(this.handler);
@@ -126,6 +127,7 @@ Future<void> _pump(
   required AppController controller,
   required AiCoachingRepository coaching,
   AnalysisTrendRepository? trend,
+  DateTime Function()? now,
 }) async {
   // 화면이 길어 기본 뷰포트(800×600)에서는 ListView가 하단 카드(추이/CTA)를
   // 지연 빌드로 생략한다 — 전체가 빌드되도록 세로를 충분히 키운다.
@@ -138,13 +140,47 @@ Future<void> _pump(
         controller: controller,
         coachingRepository: coaching,
         trendRepository: trend,
+        now: now,
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
+// 날짜 칩 → 데이트 피커에서 일자를 고른다 (기본 MaterialLocalizations = 영문 OK).
+Future<void> _pickPastDay(WidgetTester tester, String chipLabel, String day) async {
+  await tester.tap(find.text(chipLabel));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(day));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
+}
+
+// 화면 전체 금칙어·신뢰도 % 가드 (가이드 06 ⑦). 표준 면책 문장은 '진단'을
+// 부정 맥락으로 포함하므로 정확 일치 화이트리스트로 제외한다
+// (챗 면책 가드와 동일 규칙).
+void _expectNoForbiddenCopy(WidgetTester tester) {
+  const String standardDisclaimer =
+      '이 분석은 건강 관리를 돕는 참고 정보예요.\n의사·약사·영양사의 진단을 대신하진 않아요.';
+  final Iterable<Text> texts = tester.widgetList<Text>(find.byType(Text));
+  expect(texts, isNotEmpty);
+  for (final Text text in texts) {
+    final String data = text.data ?? '';
+    if (data == standardDisclaimer) {
+      continue;
+    }
+    for (final String term in const <String>['진단', '처방', '치료', '효능']) {
+      expect(data.contains(term), isFalse, reason: '금칙어 "$term" in "$data"');
+    }
+    expect(data.contains('%'), isFalse, reason: '% in "$data"');
+  }
+}
+
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
   testWidgets('ready score renders ring, grade chip and lemon bot CTA', (
     WidgetTester tester,
   ) async {
@@ -275,6 +311,124 @@ void main() {
 
     expect(find.text('기록이 쌓이면 추이를 보여드려요'), findsOneWidget);
     expect(find.text('점수는 기록 당시 기준이에요'), findsNothing);
+  });
+
+  testWidgets('safety warnings from the server render verbatim', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(
+        handler: (http.Request request) async => _jsonResponse(
+          <String, dynamic>{
+            ..._coachingResponse(),
+            'safety_warnings': <String>[
+              '영양제와 약을 함께 드시는 경우 전문가와 상담해 주세요.',
+            ],
+          },
+          200,
+        ),
+      ),
+    );
+
+    // 서버 문구 그대로 — 프론트 가공 금지 (가이드 06 §4.2-4).
+    expect(
+      find.text('영양제와 약을 함께 드시는 경우 전문가와 상담해 주세요.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('checked practice restores from storage and persists on toggle', (
+    WidgetTester tester,
+  ) async {
+    // 제목 기반 키 — 항목 순서가 바뀌어도 체크가 유지된다 (가이드 06 §4.2).
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'coaching_checked:2026-06-28': <String>['coach:저녁에 단백질 반찬 추가하기'],
+    });
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+      now: () => DateTime(2026, 6, 28, 10),
+    );
+
+    final Text restored = tester.widget<Text>(
+      find.text('저녁에 단백질 반찬 추가하기'),
+    );
+    expect(restored.style?.decoration, TextDecoration.lineThrough);
+
+    // 토글 해제가 저장소에 반영된다.
+    await tester.tap(find.text('저녁에 단백질 반찬 추가하기'));
+    await tester.pumpAndSettle();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('coaching_checked:2026-06-28'), isEmpty);
+  });
+
+  testWidgets('past day shows history snapshot with read-only checks', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+      trend: _trendRepository(),
+      now: () => DateTime(2026, 6, 28, 10),
+    );
+
+    await _pickPastDay(tester, '6월 28일 (일)', '27');
+
+    // 이력 스냅샷 — fixture 의 2026-06-27 점수(61) + measured_date 기준 캡션.
+    expect(find.text('61'), findsOneWidget);
+    expect(find.text('기록 당시 기준이에요'), findsWidgets);
+    // 이력 캡션이 노출된 화면도 금칙어·% 가드를 통과한다 (가이드 ⑦-5).
+    _expectNoForbiddenCopy(tester);
+    // 과거 보기 상태에서만 '오늘' 복귀 칩, 추가 CTA 는 숨김 (가이드 06 §4.3).
+    expect(find.text('오늘'), findsOneWidget);
+    expect(find.text('오늘 실천 추가하기'), findsNothing);
+
+    // 읽기 전용 — 탭해도 체크되지 않고 저장소에도 쓰지 않는다.
+    await tester.tap(find.text('저녁에 단백질 반찬 추가하기'));
+    await tester.pumpAndSettle();
+    final Text row = tester.widget<Text>(find.text('저녁에 단백질 반찬 추가하기'));
+    expect(row.style?.decoration, isNot(TextDecoration.lineThrough));
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    expect(
+      prefs.getStringList('coaching_checked:2026-06-27') ?? const <String>[],
+      isEmpty,
+    );
+
+    // '오늘' 칩으로 복귀하면 오늘 화면(추가 CTA 포함)으로 돌아온다.
+    await tester.tap(find.text('오늘'));
+    await tester.pumpAndSettle();
+    expect(find.text('6월 28일 (일)'), findsOneWidget);
+    expect(find.text('오늘 실천 추가하기'), findsOneWidget);
+  });
+
+  testWidgets('past day without history shows safe preparation hint', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = await _readyController();
+    await _pump(
+      tester,
+      controller: controller,
+      coaching: _coachingRepository(),
+      trend: _trendRepository(days: 3),
+      now: () => DateTime(2026, 6, 28, 10),
+    );
+
+    await _pickPastDay(tester, '6월 28일 (일)', '25');
+
+    expect(
+      find.text('지난 날짜의 점수는 준비 중이에요. 실천 기록만 보여드려요.'),
+      findsOneWidget,
+    );
+
+    // 과거 보기 화면 전체 — 금칙어·신뢰도 % 가드 (가이드 06 ⑦ 신규 문구 2종 포함).
+    _expectNoForbiddenCopy(tester);
   });
 
   testWidgets('trend card copy avoids forbidden medical terms and percent', (

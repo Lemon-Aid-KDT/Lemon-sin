@@ -307,6 +307,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               scoreReady: score.isReady,
               healthScore: score.score ?? 0,
               scoreLabelText: score.labelText,
+              scoreLabel: score.label,
               consumedKcal: totals.kcal.round(),
               targetKcal: null,
               macrosTotalsOnly: true,

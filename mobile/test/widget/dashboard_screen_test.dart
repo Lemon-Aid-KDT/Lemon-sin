@@ -10,6 +10,7 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/screens/dashboard_screen.dart';
+import 'package:lemon_aid_mobile/shared/score_label_colors.dart';
 import 'package:lemon_aid_mobile/utils/design_tokens_v2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,6 +23,7 @@ void main() {
         healthScore: const DashboardHealthScore(
           status: HealthScoreStatus.ready,
           score: 78,
+          label: 'good',
           labelText: '좋아요',
           message: '오늘 활동량이 좋아요.',
         ),
@@ -51,6 +53,10 @@ void main() {
     expect(find.text('78'), findsOneWidget);
     expect(find.text('오늘의 분석'), findsOneWidget);
     expect(find.textContaining('오늘 활동량이 좋아요.'), findsOneWidget);
+    // 홈 라벨 캡션이 오늘의 분석과 같은 등급 매핑 색을 쓴다
+    // (가이드 06 §4.4-4 두 화면 정합 회귀 가드).
+    final Text labelCaption = tester.widget<Text>(find.text('좋아요'));
+    expect(labelCaption.style?.color, scoreLabelColor('good'));
     expect(find.text('안심하고 드셔도 돼요'), findsOneWidget);
     expect(find.text('영양제 관리'), findsOneWidget);
     expect(find.text('비타민 D'), findsOneWidget);

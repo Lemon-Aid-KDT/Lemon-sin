@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -323,6 +324,15 @@ class _LemonAidRouterApp extends ConsumerWidget {
       title: 'Lemon Aid',
       debugShowCheckedModeBanner: false,
       theme: buildLemonAidTheme(brandTheme.color),
+      // 한국어 단일 서비스 — 데이트 피커 등 Material 위젯 문구를 ko 로 고정
+      // (가이드 06 (c) 날짜 칩 데이트 피커 ko 로케일).
+      locale: const Locale('ko'),
+      supportedLocales: const <Locale>[Locale('ko'), Locale('en')],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       routerConfig: ref.watch(_routerProvider),
     );
   }

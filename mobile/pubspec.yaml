@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # 데이트 피커 ko 로케일 — 가이드 06 (c) 날짜 칩 과거 조회.
+  flutter_localizations:
+    sdk: flutter
   flutter_web_plugins:
     sdk: flutter
 

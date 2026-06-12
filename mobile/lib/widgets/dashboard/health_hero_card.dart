@@ -16,6 +16,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../features/dashboard/dashboard_models.dart';
+import '../../shared/score_label_colors.dart';
 import '../../utils/design_tokens_v2.dart';
 import '../../utils/mascot_poses.dart';
 import '../common/pressable.dart';
@@ -33,6 +34,8 @@ class HealthHeroCard extends StatefulWidget {
   final bool scoreReady;
   // 점수 라벨(예: '좋아요') — 칩 표시. null 이면 미표시.
   final String? scoreLabelText;
+  // 점수 등급 코드 — 라벨 색 매핑 전용 (오늘의 분석 링과 동일 매핑, 가이드 06 §2.4).
+  final String? scoreLabel;
   final int consumedKcal;
   // 목표 kcal — 백엔드 미제공 시 null. null 이면 '/ 목표' 숨기고 '기록 합계' 표시.
   final int? targetKcal;
@@ -65,6 +68,7 @@ class HealthHeroCard extends StatefulWidget {
     this.healthScore = 78,
     this.scoreReady = true,
     this.scoreLabelText,
+    this.scoreLabel,
     this.consumedKcal = 600,
     this.targetKcal = 1500,
     this.burnedKcal = 200,
@@ -250,7 +254,11 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                           child: Text(
                             widget.scoreLabelText ?? '오늘의 건강 점수',
                             style: AppText.caption.copyWith(
-                              color: AppColor.inkSecondary,
+                              // 등급 코드가 오면 오늘의 분석 링/칩과 같은
+                              // 시맨틱 색을 쓴다 — 두 화면 등급 색 정합.
+                              color: widget.scoreLabel != null
+                                  ? scoreLabelColor(widget.scoreLabel)
+                                  : AppColor.inkSecondary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

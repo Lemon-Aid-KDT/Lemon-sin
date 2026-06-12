@@ -1,19 +1,26 @@
 // screens/score_screen.dart — '오늘의 분석' 탭 (figma S-09)
 //
 // 디자인:
-//   - 헤더 '오늘의 분석' + 날짜 칩
-//   - 카드 1 '오늘의 종합 분석' + 등급 칩: 도넛 링(점수/100) + 종합 코멘트
+//   - 헤더 '오늘의 분석' + 날짜 칩(탭 → 데이트 피커, 오늘−27일 ~ 오늘)
+//       + 과거 보기 상태에서만 '오늘' 복귀 칩 (가이드 06 §4.3)
+//   - 카드 1 '오늘의 종합 분석' + 등급 칩: 도넛 링(점수/100, 등급 색) + 종합 코멘트
 //       + 연노랑 CTA '🍋 레몬봇에게 물어보기 ›'
-//   - 카드 2 '실천 리스트'('오늘 챙기면 좋은 N가지'): 체크 원형 + 항목들 (세션 메모리)
-//   - 카드 3 '스마트 분석' '지난 4주 추이': 점수 이력 영속이 없어 잠금 placeholder
+//       과거일은 추이 이력 스냅샷(점수·등급 색)으로 표시, 이력 없으면 안내 문구
+//   - 카드 2 '실천 리스트'('오늘 챙기면 좋은 N가지'): 체크 원형 + 항목들
+//       + safety_warnings 안내 행. 체크·직접 추가는 coaching_check_store 로
+//       일자별 영속, 과거일은 읽기 전용 (가이드 06 §4.2~4.3)
+//   - 카드 3 '스마트 분석' '지난 4주 추이': 이력 7일치 미만이면 잠금 placeholder
 //   - 하단 면책
 //
 // 데이터:
 //   - 종합 점수·등급·코멘트: AppController dashboard summary health_score (배치 A 모델)
 //   - 실천 리스트: POST /ai-agent/daily-coaching (AiCoachingRepository)
-//   - 하루 1회 캐시 (날짜 키) — 같은 날 재진입 시 재호출하지 않음
+//   - 선택일 1회 캐시 (날짜 키) — 같은 날짜 재진입 시 재호출하지 않음
+//   - 등급 색: shared/score_label_colors (홈 점수 카드와 동일 매핑 — §2.4)
 //
 // 연산은 모두 백엔드. 모바일은 표시만.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -21,9 +28,11 @@ import 'package:go_router/go_router.dart';
 import '../app_controller.dart';
 import '../features/ai_coaching/ai_coaching_models.dart';
 import '../features/ai_coaching/ai_coaching_repository.dart';
+import '../features/ai_coaching/coaching_check_store.dart';
 import '../features/analysis_trend/analysis_trend_models.dart';
 import '../features/analysis_trend/analysis_trend_repository.dart';
 import '../features/dashboard/home_models.dart';
+import '../shared/score_label_colors.dart';
 import '../utils/design_tokens_v2.dart';
 import '../widgets/common/pressable.dart';
 
@@ -35,10 +44,14 @@ class ScoreScreen extends StatefulWidget {
   ///   controller: 점수·당일 식사·등록 영양제를 제공하는 앱 컨트롤러.
   ///   coachingRepository: 실천 리스트(daily-coaching) 호출 저장소.
   ///   trendRepository: 4주 추이 조회 저장소 (미주입 시 추이 카드는 잠금 유지).
+  ///   checkStore: 실천 체크·직접 추가 일자별 영속 저장소 (미주입 시 기본 생성).
+  ///   now: 현재 시각 공급자 — 테스트에서 기준일 고정용. 미주입 시 DateTime.now.
   const ScoreScreen({
     required this.controller,
     required this.coachingRepository,
     this.trendRepository,
+    this.checkStore,
+    this.now,
     super.key,
   });
 
@@ -51,6 +64,12 @@ class ScoreScreen extends StatefulWidget {
   /// 4주 추이 조회 저장소 — 미주입 시 추이 카드는 잠금 placeholder 유지.
   final AnalysisTrendRepository? trendRepository;
 
+  /// 실천 체크·직접 추가 영속 저장소 — 미주입 시 기본 SharedPreferences 저장소.
+  final CoachingCheckStore? checkStore;
+
+  /// 현재 시각 공급자 — 테스트에서 기준일을 고정할 때 주입한다.
+  final DateTime Function()? now;
+
   @override
   State<ScoreScreen> createState() => _ScoreScreenState();
 }
@@ -62,23 +81,31 @@ class _ScoreScreenState extends State<ScoreScreen> {
   bool _coachingFailed = false;
   // 마지막으로 받은 실천 리스트 결과.
   DailyCoachingResult? _coaching;
-  // 하루 1회 캐시 키 (YYYY-MM-DD). 같은 날 재진입 시 재호출 방지.
-  String? _cachedDateKey;
-  // 실천 항목 체크 토글 — 세션 메모리. // TODO(persist): SharedPreferences 연동.
-  final Set<int> _checkedItemIndexes = <int>{};
+  // 선택일별 결과 캐시 (키: YYYY-MM-DD). 같은 날짜 재진입 시 재호출하지 않아
+  // 생성형 코칭 재실행으로 제목이 바뀌어 체크 표시가 탈락하는 것을 막는다.
+  final Map<String, DailyCoachingResult> _coachingCache =
+      <String, DailyCoachingResult>{};
+  // 체크된 실천 항목 키 — 제목 기반(coach:/custom:), 일자별 영속 (가이드 06 §4.2).
+  Set<String> _checkedKeys = <String>{};
   // 4주 추이 점들 — 7일치 미만이면 잠금 카드 유지 (가이드 06 §4.1).
   List<ScoreTrendPoint> _trendPoints = const <ScoreTrendPoint>[];
-  // 사용자가 직접 추가한 실천 항목 — 세션 메모리 (figma 800:23 CTA, 로컬 전용.
-  // 영속은 가이드 06 4.2 coaching_check_store 도입과 함께).
-  final List<String> _customPractices = <String>[];
-  final Set<int> _checkedCustomIndexes = <int>{};
+  // 사용자가 직접 추가한 실천 항목 — coaching_check_store 로 일자별 영속.
+  List<String> _customPractices = <String>[];
+  // 조회 중인 날짜 — 기본 오늘, 날짜 칩으로 과거(−27일) 조회 가능 (가이드 06 §4.3).
+  late DateTime _selectedDay;
 
   AppController get _controller => widget.controller;
 
+  late final CoachingCheckStore _checkStore =
+      widget.checkStore ?? const CoachingCheckStore();
+
   DateTime get _today {
-    final DateTime now = DateTime.now();
+    final DateTime now = (widget.now ?? DateTime.now)();
     return DateTime(now.year, now.month, now.day);
   }
+
+  /// 오늘을 보고 있는지 여부 — 과거일은 체크 읽기 전용 + 추가 CTA 숨김.
+  bool get _viewingToday => _selectedDay == _today;
 
   static String _dateKey(DateTime day) {
     final String month = day.month.toString().padLeft(2, '0');
@@ -89,9 +116,27 @@ class _ScoreScreenState extends State<ScoreScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedDay = _today;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDayState();
       _loadCoaching();
       _loadTrend();
+    });
+  }
+
+  /// 선택일의 체크·직접 추가 상태를 영속 저장소에서 복원한다.
+  ///
+  /// 저장소가 보관 기한(7일)이 지난 키를 로드 시 정리하므로, 날짜가 바뀌면
+  /// 체크는 자연히 초기화된다 (가이드 06 §4.2 DoD).
+  Future<void> _loadDayState() async {
+    final DateTime day = _selectedDay;
+    final CoachingDayState state = await _checkStore.load(day);
+    if (!mounted || day != _selectedDay) {
+      return;
+    }
+    setState(() {
+      _checkedKeys = <String>{...state.checkedKeys};
+      _customPractices = <String>[...state.customTitles];
     });
   }
 
@@ -112,11 +157,18 @@ class _ScoreScreenState extends State<ScoreScreen> {
     }
   }
 
-  /// 실천 리스트를 불러온다. 같은 날짜로 이미 받았으면 재호출하지 않는다.
+  /// 선택일의 실천 리스트를 불러온다. 같은 날짜로 이미 받았으면 재호출하지 않는다.
   Future<void> _loadCoaching({bool force = false}) async {
-    final String key = _dateKey(_today);
-    if (!force && _cachedDateKey == key && _coaching != null) {
-      return;
+    final DateTime day = _selectedDay;
+    final String key = _dateKey(day);
+    if (!force) {
+      final DailyCoachingResult? cached = _coachingCache[key];
+      if (cached != null) {
+        if (!identical(_coaching, cached)) {
+          setState(() => _coaching = cached);
+        }
+        return;
+      }
     }
     if (_loadingCoaching) return;
     setState(() {
@@ -126,19 +178,29 @@ class _ScoreScreenState extends State<ScoreScreen> {
     try {
       final DailyCoachingResult result = await widget.coachingRepository
           .runDailyCoaching(
-            day: _today,
-            meals: _controller.mealsForDay(_today),
+            day: day,
+            meals: _controller.mealsForDay(day),
             supplements: _controller.homeSupplements.results,
           );
       if (!mounted) return;
+      if (day != _selectedDay) {
+        // 응답 대기 중 조회 날짜가 바뀜 — 결과를 버리고 현재 선택일로 재요청.
+        _loadingCoaching = false;
+        unawaited(_loadCoaching());
+        return;
+      }
       setState(() {
         _coaching = result;
-        _cachedDateKey = key;
-        _checkedItemIndexes.clear();
+        _coachingCache[key] = result;
         _loadingCoaching = false;
       });
     } catch (_) {
       if (!mounted) return;
+      if (day != _selectedDay) {
+        _loadingCoaching = false;
+        unawaited(_loadCoaching());
+        return;
+      }
       setState(() {
         _coachingFailed = true;
         _loadingCoaching = false;
@@ -146,24 +208,19 @@ class _ScoreScreenState extends State<ScoreScreen> {
     }
   }
 
-  void _toggleItem(int index) {
+  /// 실천 항목 체크를 토글하고 선택일 키로 영속한다.
+  ///
+  /// 과거 일자 보기는 읽기 전용이라 무시한다 (가이드 06 §4.3).
+  void _toggleItem(String itemKey) {
+    if (!_viewingToday) {
+      return;
+    }
     setState(() {
-      if (_checkedItemIndexes.contains(index)) {
-        _checkedItemIndexes.remove(index);
-      } else {
-        _checkedItemIndexes.add(index);
+      if (!_checkedKeys.add(itemKey)) {
+        _checkedKeys.remove(itemKey);
       }
     });
-  }
-
-  void _toggleCustomItem(int index) {
-    setState(() {
-      if (_checkedCustomIndexes.contains(index)) {
-        _checkedCustomIndexes.remove(index);
-      } else {
-        _checkedCustomIndexes.add(index);
-      }
-    });
+    unawaited(_checkStore.saveChecked(_selectedDay, _checkedKeys));
   }
 
   /// 직접 입력으로 오늘 실천 항목을 추가한다 (figma 800:23 CTA).
@@ -178,7 +235,67 @@ class _ScoreScreenState extends State<ScoreScreen> {
     if (title.isEmpty || !mounted) {
       return;
     }
+    // 체크 키가 제목 기반이라 같은 제목 두 행은 함께 토글된다 — 중복 추가 차단.
+    if (_customPractices.contains(title)) {
+      return;
+    }
     setState(() => _customPractices.add(title));
+    unawaited(_checkStore.saveCustom(_selectedDay, _customPractices));
+  }
+
+  /// 날짜 칩 탭 — 오늘−27일 ~ 오늘 범위의 데이트 피커를 연다 (가이드 06 §4.3).
+  Future<void> _pickDay() async {
+    final DateTime today = _today;
+    final DateTime firstDate = today.subtract(const Duration(days: 27));
+    // 화면이 자정을 넘겨 살아 있으면 _selectedDay 가 새 범위 밖일 수 있다 —
+    // 범위 밖 initialDate 는 showDatePicker assert 로 죽으므로 클램프.
+    DateTime initial = _selectedDay;
+    if (initial.isBefore(firstDate)) {
+      initial = firstDate;
+    } else if (initial.isAfter(today)) {
+      initial = today;
+    }
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: firstDate,
+      lastDate: today,
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    _selectDay(DateTime(picked.year, picked.month, picked.day));
+  }
+
+  /// 조회 날짜를 바꾸고 해당 일자의 체크 상태·실천 리스트를 다시 불러온다.
+  void _selectDay(DateTime day) {
+    if (day == _selectedDay) {
+      return;
+    }
+    setState(() {
+      _selectedDay = day;
+      // 캐시에 있으면 즉시 표시하고 재호출하지 않는다 (선택일 1회 캐시).
+      _coaching = _coachingCache[_dateKey(day)];
+      _coachingFailed = false;
+      _checkedKeys = <String>{};
+      _customPractices = <String>[];
+    });
+    unawaited(_loadDayState());
+    unawaited(_loadCoaching());
+  }
+
+  /// 선택일의 점수 이력 스냅샷을 추이 점에서 찾는다. 없으면 null.
+  ///
+  /// 과거 점수는 GET /dashboard/summary 가 재계산하지 않으므로(당일 전용)
+  /// analysis-results 이력(추이 조회 결과)에서만 가져온다 (가이드 06 §4.3).
+  ScoreTrendPoint? _historyPointFor(DateTime day) {
+    final String key = _dateKey(day);
+    for (final ScoreTrendPoint point in _trendPoints) {
+      if (point.date == key) {
+        return point;
+      }
+    }
+    return null;
   }
 
   void _openCamera() {
@@ -207,25 +324,32 @@ class _ScoreScreenState extends State<ScoreScreen> {
                 AppSpace.xl + 80,
               ),
               children: <Widget>[
-                _Header(today: _today),
-                const SizedBox(height: AppSpace.lg),
-                _SummaryCard(
-                  score: score,
-                  onLemonBot: _openLemonBot,
-                  onRecord: _openCamera,
+                _Header(
+                  day: _selectedDay,
+                  isToday: _viewingToday,
+                  onTapDate: _pickDay,
+                  onBackToToday: () => _selectDay(_today),
                 ),
+                const SizedBox(height: AppSpace.lg),
+                if (_viewingToday)
+                  _SummaryCard(
+                    score: score,
+                    onLemonBot: _openLemonBot,
+                    onRecord: _openCamera,
+                  )
+                else
+                  _PastSummaryCard(point: _historyPointFor(_selectedDay)),
                 const SizedBox(height: AppSpace.md),
                 _ChecklistCard(
                   loading: _loadingCoaching,
                   failed: _coachingFailed,
                   coaching: _coaching,
-                  checkedIndexes: _checkedItemIndexes,
+                  checkedKeys: _checkedKeys,
                   onToggle: _toggleItem,
                   onRetry: () => _loadCoaching(force: true),
                   customItems: _customPractices,
-                  checkedCustomIndexes: _checkedCustomIndexes,
-                  onToggleCustom: _toggleCustomItem,
                   onAddPractice: _addPractice,
+                  readOnly: !_viewingToday,
                 ),
                 const SizedBox(height: AppSpace.md),
                 _TrendCard(points: _trendPoints),
@@ -241,39 +365,103 @@ class _ScoreScreenState extends State<ScoreScreen> {
 }
 
 // ═══════════════════════════════════════════
-// 헤더 — '오늘의 분석' + 날짜 칩
+// 헤더 — '오늘의 분석' + 날짜 칩(탭 → 데이트 피커) + '오늘' 복귀 칩
+//   과거 보기 상태에서만 '오늘' 칩 노출 (가이드 06 §4.3)
 // ═══════════════════════════════════════════
 class _Header extends StatelessWidget {
-  final DateTime today;
-  const _Header({required this.today});
+  final DateTime day;
+  final bool isToday;
+  final VoidCallback onTapDate;
+  final VoidCallback onBackToToday;
+  const _Header({
+    required this.day,
+    required this.isToday,
+    required this.onTapDate,
+    required this.onBackToToday,
+  });
 
   static const List<String> _weekdays = <String>['월', '화', '수', '목', '금', '토', '일'];
 
   @override
   Widget build(BuildContext context) {
     final String label =
-        '${today.month}월 ${today.day}일 (${_weekdays[today.weekday - 1]})';
+        '${day.month}월 ${day.day}일 (${_weekdays[day.weekday - 1]})';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         Text('오늘의 분석', style: AppText.title),
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpace.md,
-            vertical: 6,
-          ),
-          decoration: BoxDecoration(
-            color: AppColor.brandSoft,
-            borderRadius: BorderRadius.circular(AppRadius.full),
-          ),
-          child: Text(
-            label,
-            style: AppText.caption.copyWith(
-              color: AppColor.brandDeep,
-              fontWeight: FontWeight.w700,
+        Row(
+          children: <Widget>[
+            if (!isToday) ...<Widget>[
+              Pressable(
+                onTap: onBackToToday,
+                // 칩 시각 크기는 유지하되 히트 영역은 시니어 최소 48 확보
+                // (Pressable 은 자식 크기 그대로가 터치 영역).
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 48,
+                    minWidth: 48,
+                  ),
+                  alignment: Alignment.center,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.md,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColor.brand,
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                    ),
+                    child: Text(
+                      '오늘',
+                      style: AppText.caption.copyWith(
+                        color: AppColor.ink,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+            ],
+            Pressable(
+              onTap: onTapDate,
+              // 칩 시각 크기는 유지하되 히트 영역은 시니어 최소 48 확보.
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+                alignment: Alignment.center,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.md,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.brandSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        label,
+                        style: AppText.caption.copyWith(
+                          color: AppColor.brandDeep,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.expand_more_rounded,
+                        color: AppColor.brandDeep,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -324,7 +512,7 @@ class _SummaryCard extends StatelessWidget {
             children: <Widget>[
               Text('오늘의 종합 분석', style: AppText.subtitle),
               if (score.isReady && score.labelText != null)
-                _GradeChip(label: score.labelText!),
+                _GradeChip(label: score.labelText!, labelCode: score.label),
             ],
           ),
           const SizedBox(height: AppSpace.lg),
@@ -350,7 +538,12 @@ class _ReadyBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Center(child: _ScoreRing(score: score.score ?? 0)),
+        Center(
+          child: _ScoreRing(
+            score: score.score ?? 0,
+            color: scoreLabelColor(score.label),
+          ),
+        ),
         const SizedBox(height: AppSpace.lg),
         Text(
           hasMessage ? message.trim() : '오늘 기록을 바탕으로 한 종합 코멘트예요.',
@@ -392,23 +585,73 @@ class _NotReadyBody extends StatelessWidget {
   }
 }
 
-/// 등급 칩 (예: '좋아요').
+// 과거 일자 점수 카드 — 이력 스냅샷 표시 또는 준비 안내 (가이드 06 §4.3).
+class _PastSummaryCard extends StatelessWidget {
+  final ScoreTrendPoint? point;
+  const _PastSummaryCard({required this.point});
+
+  @override
+  Widget build(BuildContext context) {
+    final ScoreTrendPoint? history = point;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+      decoration: _cardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('종합 분석', style: AppText.subtitle),
+          const SizedBox(height: AppSpace.lg),
+          if (history == null)
+            Text(
+              '지난 날짜의 점수는 준비 중이에요. 실천 기록만 보여드려요.',
+              style: AppText.body.copyWith(
+                color: AppColor.inkSecondary,
+                height: 1.55,
+              ),
+            )
+          else ...<Widget>[
+            Center(
+              child: _ScoreRing(
+                score: history.score,
+                color: scoreLabelColor(history.label),
+              ),
+            ),
+            const SizedBox(height: AppSpace.md),
+            // 당일 점수는 재조회 시점 기록 상태로 재계산되므로, 과거에 본
+            // 점수와 이력 저장값이 다를 수 있다 — measured_date 기준 캡션.
+            Center(
+              child: Text(
+                '기록 당시 기준이에요',
+                style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 등급 칩 (예: '좋아요') — 색은 서버 label 코드 매핑 (가이드 06 §2.4).
 class _GradeChip extends StatelessWidget {
   final String label;
-  const _GradeChip({required this.label});
+  // 서버 등급 코드 — 색 매핑 전용. null·미지 값은 브랜드 색 폴백.
+  final String? labelCode;
+  const _GradeChip({required this.label, this.labelCode});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: 5),
       decoration: BoxDecoration(
-        color: AppColor.successSoft,
+        color: scoreLabelSoftColor(labelCode),
         borderRadius: BorderRadius.circular(AppRadius.full),
       ),
       child: Text(
         label,
         style: AppText.caption.copyWith(
-          color: AppColor.success,
+          color: scoreLabelColor(labelCode),
           fontWeight: FontWeight.w800,
         ),
       ),
@@ -416,10 +659,11 @@ class _GradeChip extends StatelessWidget {
   }
 }
 
-/// 도넛 링 점수 (점수/100).
+/// 도넛 링 점수 (점수/100) — 진행 색은 등급 매핑, 중앙 숫자는 ink 유지.
 class _ScoreRing extends StatelessWidget {
   final int score;
-  const _ScoreRing({required this.score});
+  final Color color;
+  const _ScoreRing({required this.score, this.color = AppColor.brand});
 
   @override
   Widget build(BuildContext context) {
@@ -437,7 +681,7 @@ class _ScoreRing extends StatelessWidget {
               value: ratio,
               strokeWidth: 12,
               backgroundColor: const Color(0xFFF1F3F6),
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColor.brand),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
           ),
           Column(
@@ -583,30 +827,36 @@ class _ChecklistCard extends StatelessWidget {
   final bool loading;
   final bool failed;
   final DailyCoachingResult? coaching;
-  final Set<int> checkedIndexes;
-  final ValueChanged<int> onToggle;
+  final Set<String> checkedKeys;
+  final ValueChanged<String> onToggle;
   final VoidCallback onRetry;
   final List<String> customItems;
-  final Set<int> checkedCustomIndexes;
-  final ValueChanged<int> onToggleCustom;
   final VoidCallback onAddPractice;
+  // 과거 일자 보기 — 체크 토글 잠금 + 추가 CTA 숨김 (가이드 06 §4.3).
+  final bool readOnly;
   const _ChecklistCard({
     required this.loading,
     required this.failed,
     required this.coaching,
-    required this.checkedIndexes,
+    required this.checkedKeys,
     required this.onToggle,
     required this.onRetry,
     required this.customItems,
-    required this.checkedCustomIndexes,
-    required this.onToggleCustom,
     required this.onAddPractice,
+    required this.readOnly,
   });
+
+  /// 코칭 항목의 영속 체크 키 — 제목 기반이라 재호출로 순서가 바뀌어도 유지.
+  static String coachKey(String title) => 'coach:$title';
+
+  /// 직접 추가 항목의 영속 체크 키.
+  static String customKey(String title) => 'custom:$title';
 
   @override
   Widget build(BuildContext context) {
     final DailyCoachingResult? result = coaching;
     final int count = (result?.items.length ?? 0) + customItems.length;
+    final List<String> warnings = result?.safetyWarnings ?? const <String>[];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpace.cardInside + 2),
@@ -627,14 +877,24 @@ class _ChecklistCard extends StatelessWidget {
               _ChecklistRow(
                 title: customItems[i],
                 subtitle: '내가 추가한 실천',
-                checked: checkedCustomIndexes.contains(i),
-                onToggle: () => onToggleCustom(i),
+                checked: checkedKeys.contains(customKey(customItems[i])),
+                onToggle: readOnly
+                    ? null
+                    : () => onToggle(customKey(customItems[i])),
               ),
               if (i != customItems.length - 1)
                 Divider(color: AppColor.border, height: AppSpace.lg),
             ],
           ],
-          if (!loading) ...<Widget>[
+          if (warnings.isNotEmpty) ...<Widget>[
+            const SizedBox(height: AppSpace.lg),
+            for (int i = 0; i < warnings.length; i++) ...<Widget>[
+              _SafetyWarningRow(text: warnings[i]),
+              if (i != warnings.length - 1)
+                const SizedBox(height: AppSpace.sm),
+            ],
+          ],
+          if (!loading && !readOnly) ...<Widget>[
             const SizedBox(height: AppSpace.lg),
             // figma 800:23 — 카드 하단 풀폭 CTA. 시니어 최소 높이 52.
             AppPrimaryButton(
@@ -688,8 +948,10 @@ class _ChecklistCard extends StatelessWidget {
           _ChecklistRow(
             title: result.items[i].title,
             subtitle: result.items[i].subtitle,
-            checked: checkedIndexes.contains(i),
-            onToggle: () => onToggle(i),
+            checked: checkedKeys.contains(coachKey(result.items[i].title)),
+            onToggle: readOnly
+                ? null
+                : () => onToggle(coachKey(result.items[i].title)),
           ),
           if (i != result.items.length - 1)
             Divider(color: AppColor.border, height: AppSpace.lg),
@@ -699,11 +961,47 @@ class _ChecklistCard extends StatelessWidget {
   }
 }
 
+/// 안전 경고 안내 행 — 서버 safety_warnings 문구를 그대로 보여준다
+/// (프론트 가공 금지, 가이드 06 §4.2-4).
+class _SafetyWarningRow extends StatelessWidget {
+  final String text;
+  const _SafetyWarningRow({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm + 2,
+      ),
+      decoration: BoxDecoration(
+        color: AppColor.warningSoft,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.info_outline, color: AppColor.warning, size: 18),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: AppText.body.copyWith(color: AppColor.ink, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChecklistRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool checked;
-  final VoidCallback onToggle;
+  // null 이면 읽기 전용 (과거 일자 보기).
+  final VoidCallback? onToggle;
   const _ChecklistRow({
     required this.title,
     required this.subtitle,
@@ -920,25 +1218,6 @@ class _TrendCard extends StatelessWidget {
   }
 }
 
-/// 서버 등급 라벨 → 시맨틱 색 (가이드 06 §2.4 매핑).
-///
-/// 모바일은 label 문자열만 소비한다 — 점수→색 재계산 금지. null·미지 값은
-/// 현행 브랜드 색으로 폴백.
-Color _trendPointColor(String? label) {
-  switch (label) {
-    case 'excellent':
-    case 'good':
-      return AppColor.success;
-    case 'moderate':
-      return AppColor.warning;
-    case 'warning':
-    case 'needs_attention':
-      return AppColor.danger;
-    default:
-      return AppColor.brand;
-  }
-}
-
 class _TrendChartPainter extends CustomPainter {
   _TrendChartPainter({required this.points});
 
@@ -1006,13 +1285,13 @@ class _TrendChartPainter extends CustomPainter {
     }
     canvas.drawPath(linePath, linePaint);
 
-    // 포인트 — 서버 등급 라벨 매핑 색.
+    // 포인트 — 서버 등급 라벨 매핑 색 (shared/score_label_colors, §2.4).
     for (int i = 0; i < points.length; i++) {
       final Offset center = Offset(xFor(i), yFor(points[i].score));
       canvas.drawCircle(
         center,
         3.2,
-        Paint()..color = _trendPointColor(points[i].label),
+        Paint()..color = scoreLabelColor(points[i].label),
       );
     }
   }
