@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.db.medical_source import MedicalUnknownKnowledgeEvent
 
+REPEATED_UNKNOWN_GAP_THRESHOLD = 3
+
 
 @dataclass(frozen=True)
 class UnknownKnowledgeBacklogGroup:
@@ -91,6 +93,8 @@ def summarize_unknown_knowledge_events(
     sorted_groups = sorted(
         groups,
         key=lambda group: (
+            _triage_priority_rank(group),
+            _next_action_rank(group),
             -group.count,
             group.needed_evidence_type,
             group.missing_topic,
@@ -120,6 +124,9 @@ def unknown_backlog_report_payload(
                 "count": group.count,
                 "related_conditions": list(group.related_conditions),
                 "retrieval_warnings": list(group.retrieval_warnings),
+                "triage_priority": _triage_priority(group),
+                "next_action": _next_action(group),
+                "promotion_checklist": _promotion_checklist(),
             }
             for group in groups
         ],
@@ -174,6 +181,54 @@ def _fallback_reason(warning: str) -> str:
     if "forbidden" in warning.casefold():
         return "unsupported_fact_fallback"
     return "other"
+
+
+def _triage_priority(group: UnknownKnowledgeBacklogGroup) -> str:
+    if (
+        group.needed_evidence_type == "supplement_drug_interaction"
+        or "interaction" in group.missing_topic
+        or group.retrieval_status == "stale_only"
+    ):
+        return "P0"
+    if (
+        group.count >= REPEATED_UNKNOWN_GAP_THRESHOLD
+        or group.category in {"medication_supplement_caution", "drug_or_interaction"}
+    ):
+        return "P1"
+    return "P2"
+
+
+def _triage_priority_rank(group: UnknownKnowledgeBacklogGroup) -> int:
+    return {"P0": 0, "P1": 1, "P2": 2}[_triage_priority(group)]
+
+
+def _next_action(group: UnknownKnowledgeBacklogGroup) -> str:
+    if group.retrieval_status == "stale_only" or "source_stale" in group.retrieval_warnings:
+        return "refresh_or_add_reviewed_source"
+    if _triage_priority(group) == "P0":
+        return "add_reviewed_boundary_or_caution_card"
+    if group.needed_evidence_type == "nutrition_reference":
+        return "add_reviewed_nutrition_answer_card"
+    return "triage_reviewed_source_candidate"
+
+
+def _next_action_rank(group: UnknownKnowledgeBacklogGroup) -> int:
+    action = _next_action(group)
+    return {
+        "refresh_or_add_reviewed_source": 0,
+        "add_reviewed_boundary_or_caution_card": 1,
+        "add_reviewed_nutrition_answer_card": 2,
+        "triage_reviewed_source_candidate": 3,
+    }[action]
+
+
+def _promotion_checklist() -> list[str]:
+    return [
+        "identify_official_or_reviewed_source",
+        "record_source_version_and_expiry",
+        "draft_allowed_and_blocked_wording",
+        "add_answer_card_or_boundary_test",
+    ]
 
 
 def _source_expiry_status(value: object) -> str:

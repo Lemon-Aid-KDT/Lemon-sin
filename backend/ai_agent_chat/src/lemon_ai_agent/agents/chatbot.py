@@ -19,6 +19,10 @@ from lemon_ai_agent.knowledge import (
     source_family_summary,
 )
 from lemon_ai_agent.llm import LLMCompletion, LLMMessage, LLMRequest, LocalLLMClient
+from lemon_ai_agent.polish_slots import (
+    build_deterministic_slot_contract,
+    slot_values_are_preserved,
+)
 from lemon_ai_agent.renderers import (
     CHATBOT_TOOLS,
     BoundaryRenderer,
@@ -613,6 +617,8 @@ class ChatbotAgent:
                         f"{turn.answer_plan.to_prompt_summary()}\n"
                         "Answer strategy:\n"
                         f"{self._answer_strategy(turn)}\n"
+                        "Deterministic safety slots to preserve exactly:\n"
+                        f"{self._deterministic_slot_contract(turn)}\n"
                         "Deterministic answer draft to polish without changing safety slots:\n"
                         f"{draft_response.message}\n"
                         f"Recent conversation:\n{history or 'none'}\n"
@@ -804,13 +810,20 @@ class ChatbotAgent:
             warnings.append("llm_expert_check_slot_ignored")
         return warnings
 
+    def _deterministic_slot_contract(self, turn: ChatTurnPlan) -> str:
+        return build_deterministic_slot_contract(
+            source_basis=self._source_basis_for_turn(turn),
+            specific_examples=self._deterministic_specific_examples(turn),
+            caution_conditions=self._deterministic_caution_conditions(turn),
+            expert_check_points=self._deterministic_expert_check_points(turn),
+        )
+
     def _slot_values_are_deterministic(
         self,
         candidate_values: list[str],
         deterministic_values: list[str],
     ) -> bool:
-        deterministic_text = " ".join(deterministic_values).casefold()
-        return all(value.casefold() in deterministic_text for value in candidate_values)
+        return slot_values_are_preserved(candidate_values, deterministic_values)
 
     def _deterministic_today_actions(self, turn: ChatTurnPlan) -> list[str]:
         checklist = self._deterministic_checklist_values(turn)

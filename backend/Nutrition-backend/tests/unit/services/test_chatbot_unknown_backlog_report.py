@@ -44,14 +44,22 @@ def test_unknown_backlog_report_aggregates_only_structured_metadata() -> None:
     assert payload["total_events"] == 3
     assert payload["groups"][0] == {
         "status": "open",
-        "category": "nutrition_analysis",
-        "primary_intent": "meal",
-        "missing_topic": "meal",
-        "needed_evidence_type": "nutrition_reference",
-        "retrieval_status": "no_match",
+        "category": "medication_supplement_caution",
+        "primary_intent": "medication",
+        "missing_topic": "supplement_drug_interaction",
+        "needed_evidence_type": "supplement_drug_interaction",
+        "retrieval_status": "stale_only",
         "count": 1,
-        "related_conditions": ["hypertension"],
-        "retrieval_warnings": ["no_reviewed_answer_card"],
+        "related_conditions": [],
+        "retrieval_warnings": ["no_reviewed_answer_card", "source_stale"],
+        "triage_priority": "P0",
+        "next_action": "refresh_or_add_reviewed_source",
+        "promotion_checklist": [
+            "identify_official_or_reviewed_source",
+            "record_source_version_and_expiry",
+            "draft_allowed_and_blocked_wording",
+            "add_answer_card_or_boundary_test",
+        ],
     }
 
     raw_text = str(payload)
@@ -74,6 +82,40 @@ def test_unknown_backlog_report_sorts_repeated_gaps_first() -> None:
 
     assert payload["groups"][0]["missing_topic"] == "supplement_drug_interaction"
     assert payload["groups"][0]["count"] == 2
+
+
+def test_unknown_backlog_report_adds_triage_priority_and_next_action() -> None:
+    """Verify operators can promote unknown gaps without reading raw questions."""
+    events = [
+        _event(
+            missing_topics=["supplement_drug_interaction"],
+            needed_evidence_type="supplement_drug_interaction",
+            retrieval_warnings=["no_reviewed_answer_card"],
+        ),
+        _event(
+            missing_topics=["supplement_drug_interaction"],
+            needed_evidence_type="supplement_drug_interaction",
+            retrieval_warnings=["source_stale"],
+            retrieval_status="stale_only",
+        ),
+        _event(
+            missing_topics=["meal"],
+            needed_evidence_type="nutrition_reference",
+        ),
+    ]
+
+    payload = unknown_backlog_report_payload(summarize_unknown_knowledge_events(events))
+
+    priority_group = payload["groups"][0]
+    assert priority_group["missing_topic"] == "supplement_drug_interaction"
+    assert priority_group["triage_priority"] == "P0"
+    assert priority_group["next_action"] == "refresh_or_add_reviewed_source"
+    assert priority_group["promotion_checklist"] == [
+        "identify_official_or_reviewed_source",
+        "record_source_version_and_expiry",
+        "draft_allowed_and_blocked_wording",
+        "add_answer_card_or_boundary_test",
+    ]
 
 
 def test_unknown_backlog_report_includes_all_groups_by_default() -> None:

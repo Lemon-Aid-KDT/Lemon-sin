@@ -314,6 +314,10 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
     assert "nutrition_reference" in user_prompt
     assert "data/nutrition_reference/kdris" in user_prompt
     assert "기능성 표시 범위" in user_prompt
+    assert "Deterministic safety slots to preserve exactly:" in user_prompt
+    assert "source_basis=" in user_prompt
+    assert "specific_examples=" in user_prompt
+    assert "expert_check_points=" in user_prompt
     assert "Internal context for grounding only" in user_prompt
     assert "internal_trace" not in user_prompt
     assert "supplement totals" not in user_prompt
