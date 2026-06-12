@@ -8,6 +8,7 @@ import 'package:lemon_aid_mobile/app_providers.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
+import 'package:lemon_aid_mobile/features/nutrition/kdri_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/records/food_models.dart';
@@ -93,6 +94,44 @@ void main() {
     expect(find.text('주의사항이 보이게 한 장 더 촬영해주세요'), findsNothing);
     expect(find.text('Analysis progress'), findsNothing);
     expect(find.textContaining('OCR Auto'), findsNothing);
+  });
+
+  testWidgets('opens ingredient detail when an ingredient row is tapped', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository sourceRepository = _ReviewRepository();
+    final _ReviewRepository repository = _ReviewRepository(
+      preview: sourceRepository._preview(
+        ingredientName: '비타민 D',
+        originalIngredientName: 'Vitamin D',
+      ),
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    // 성분 행(figma 12-④ 진입) — 행 탭 → 성분 상세 화면 push.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('ingredient-row-detail-0')).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('성분 상세'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('ingredient-detail-identity-card')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('ingredient-detail-medical-note')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('preserves OCR original ingredient name after single edit', (
@@ -899,6 +938,19 @@ class _ReviewRepository implements LemonAidRepository {
   }) async {
     comprehensiveIngredients = ingredients;
     return _comprehensiveOverride ?? ComprehensiveDietAnalysis.empty;
+  }
+
+  @override
+  Future<KdriLookupResult> lookupKdris({
+    required int age,
+    required String sex,
+    String pregnancyStatus = 'none',
+  }) async {
+    return const KdriLookupResult(
+      references: <KdriReference>[],
+      datasetStatus: 'sample',
+      datasetVersion: 'kdris-2020-sample',
+    );
   }
 
   @override

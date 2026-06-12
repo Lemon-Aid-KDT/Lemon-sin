@@ -14,6 +14,7 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_flow_screen.dar
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/records/food_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
+import 'package:lemon_aid_mobile/features/nutrition/kdri_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -379,6 +380,15 @@ class _CameraWidgetRepository implements LemonAidRepository {
     String persona = 'B',
   }) async {
     return ComprehensiveDietAnalysis.empty;
+  }
+
+  @override
+  Future<KdriLookupResult> lookupKdris({
+    required int age,
+    required String sex,
+    String pregnancyStatus = 'none',
+  }) async {
+    return KdriLookupResult.empty;
   }
 
   @override

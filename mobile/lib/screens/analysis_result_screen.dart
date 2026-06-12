@@ -25,6 +25,7 @@ import '../widgets/common/diet_result_cards.dart';
 import '../widgets/common/food_candidate_list.dart';
 import '../widgets/common/portion_sheet.dart';
 import 'food_search_screen.dart';
+import 'ingredient_detail_screen.dart';
 
 /// Source-style analysis result screen backed by the real Lemon-Aid endpoints.
 class AnalysisResultScreen extends StatefulWidget {
@@ -1066,6 +1067,29 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       rows: rows,
       onSelectionChanged: _setIngredientDraftSelected,
       onAllSelectionChanged: _setAllIngredientDraftsSelected,
+      onRowTap: _openIngredientDetail,
+    );
+  }
+
+  /// 성분 상세 화면(figma 12-④)으로 진입한다(가이드 ④-4 — Navigator.push).
+  ///
+  /// 화면이 이미 보유한 comprehensive/explain 데이터를 파라미터로 넘긴다
+  /// (상세 화면에서 재호출 최소화 — KDRIs 만 신규 호출).
+  Future<void> _openIngredientDetail(
+    SupplementIngredientCandidate candidate,
+  ) async {
+    final AppController? controller = widget.controller;
+    if (controller == null) return;
+    HapticFeedback.selectionClick();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => IngredientDetailScreen(
+          ingredient: candidate,
+          repository: controller.repository,
+          comprehensive: controller.comprehensiveDietAnalysis,
+          explanation: controller.supplementExplanation,
+        ),
+      ),
     );
   }
 
@@ -1133,6 +1157,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         candidate.originalName,
       ),
       amount: _ingredientAmountText(candidate.amount, candidate.unit),
+      candidate: candidate,
     );
   }
 
@@ -1140,15 +1165,30 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     _IngredientReviewDraft draft,
     int index,
   ) {
+    final String displayName = draft.displayName.isEmpty
+        ? '성분명 확인 필요'
+        : draft.displayName;
     return _IngredientAmountRowData(
       draftIndex: index,
       selected: draft.selected,
-      name: draft.displayName.isEmpty ? '성분명 확인 필요' : draft.displayName,
+      name: displayName,
       originalName: _visibleOriginalName(draft.displayName, draft.originalName),
       amount: _ingredientAmountText(
         _parseOptionalDouble(draft.amountText),
         draft.unit,
       ),
+      candidate: draft.displayName.isEmpty
+          ? null
+          : SupplementIngredientCandidate(
+              displayName: draft.displayName,
+              originalName: draft.originalName,
+              nutrientCode: draft.nutrientCode,
+              amount: _parseOptionalDouble(draft.amountText),
+              unit: _nonEmpty(draft.unit),
+              confidence: draft.confidence,
+              source: draft.source,
+              dailyValuePercent: draft.dailyValuePercent,
+            ),
     );
   }
 
@@ -1695,7 +1735,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final SupplementImpactPreviewResponse? impact =
         appController.supplementImpactPreview;
     if (impact != null && _hasHighSeverityRisk(impact)) {
-      final bool proceed = await _confirmInteractionSoftBlock(context, impact);
+      final bool proceed = await _confirmInteractionSoftBlock(
+        context,
+        impact,
+        preview,
+      );
       if (!proceed || !context.mounted) {
         return;
       }
@@ -1983,23 +2027,55 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   /// Shows the soft-block interaction warning and resolves to the user choice.
   ///
-  /// Returns true when the user chooses to save anyway, false otherwise.
+  /// Returns true when the user chooses to save anyway, false otherwise. When
+  /// the user taps '안전 정보 자세히 보기' the relevant ingredient detail is opened
+  /// (가이드 ④-4) and the save is aborted (false).
   Future<bool> _confirmInteractionSoftBlock(
     BuildContext context,
     SupplementImpactPreviewResponse impact,
+    SupplementAnalysisPreview preview,
   ) async {
     final String body =
         _nonEmpty(impact.safeUserMessage) ?? '함께 드시는 영양제와 겹치는 성분이 있어요.';
+    final SupplementIngredientCandidate? detailCandidate =
+        _softBlockDetailCandidate(impact, preview);
     bool saveAnyway = false;
+    bool viewDetail = false;
     await showInteractionWarningDialog(
       context,
       body: body,
-      onViewDetail: () {},
+      onViewDetail: () {
+        viewDetail = true;
+      },
       onSaveAnyway: () {
         saveAnyway = true;
       },
     );
+    if (viewDetail && detailCandidate != null && mounted) {
+      await _openIngredientDetail(detailCandidate);
+    }
     return saveAnyway;
+  }
+
+  /// Picks the ingredient to open from the soft-block detail action: the first
+  /// preview candidate whose name matches an excess/duplicate risk nutrient,
+  /// else the first reviewable candidate.
+  SupplementIngredientCandidate? _softBlockDetailCandidate(
+    SupplementImpactPreviewResponse impact,
+    SupplementAnalysisPreview preview,
+  ) {
+    final List<SupplementIngredientCandidate> candidates =
+        preview.ingredientCandidates;
+    if (candidates.isEmpty) return null;
+    final Set<String> riskCodes = <String>{
+      for (final SupplementNutritionInsight risk in impact.excessOrDuplicateRisks)
+        risk.nutrientCode,
+    };
+    for (final SupplementIngredientCandidate candidate in candidates) {
+      final String? code = candidate.nutrientCode;
+      if (code != null && riskCodes.contains(code)) return candidate;
+    }
+    return candidates.first;
   }
 
   UserSupplementIngredientInput? _correctedIngredient() {
@@ -2381,6 +2457,7 @@ class _IngredientAmountRowData {
     this.originalName,
     this.draftIndex,
     this.selected = false,
+    this.candidate,
   });
 
   final String name;
@@ -2388,6 +2465,9 @@ class _IngredientAmountRowData {
   final String? originalName;
   final int? draftIndex;
   final bool selected;
+
+  /// 성분 상세 진입에 넘길 성분 행(없으면 행 탭 비활성).
+  final SupplementIngredientCandidate? candidate;
 }
 
 class _IngredientAmountTable extends StatelessWidget {
@@ -2395,11 +2475,15 @@ class _IngredientAmountTable extends StatelessWidget {
     required this.rows,
     required this.onSelectionChanged,
     required this.onAllSelectionChanged,
+    this.onRowTap,
   });
 
   final List<_IngredientAmountRowData> rows;
   final void Function(int index, bool selected) onSelectionChanged;
   final ValueChanged<bool> onAllSelectionChanged;
+
+  /// 성분 행(성분명/함량 셀) 탭 시 성분 상세 진입(가이드 ④-5). null 이면 비활성.
+  final void Function(SupplementIngredientCandidate candidate)? onRowTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2459,13 +2543,27 @@ class _IngredientAmountTable extends StatelessWidget {
                         rowIndex: entry.key,
                         onSelectionChanged: onSelectionChanged,
                       ),
-                      _IngredientAmountCell(
-                        text: entry.value.name,
-                        secondaryText: entry.value.originalName == null
+                      _IngredientRowTapTarget(
+                        rowIndex: entry.key,
+                        candidate: onRowTap == null
                             ? null
-                            : '원문: ${entry.value.originalName}',
+                            : entry.value.candidate,
+                        onRowTap: onRowTap,
+                        child: _IngredientAmountCell(
+                          text: entry.value.name,
+                          secondaryText: entry.value.originalName == null
+                              ? null
+                              : '원문: ${entry.value.originalName}',
+                        ),
                       ),
-                      _IngredientAmountCell(text: entry.value.amount),
+                      _IngredientRowTapTarget(
+                        rowIndex: entry.key,
+                        candidate: onRowTap == null
+                            ? null
+                            : entry.value.candidate,
+                        onRowTap: onRowTap,
+                        child: _IngredientAmountCell(text: entry.value.amount),
+                      ),
                     ],
                   ),
               ],
@@ -2569,6 +2667,38 @@ class _IngredientSelectionCell extends StatelessWidget {
                 onSelectionChanged(draftIndex, selected ?? false);
               },
       ),
+    );
+  }
+}
+
+/// 성분 행 셀을 감싸 성분 상세 진입 탭을 받는다(레이아웃 변경 없음, 가이드 ④-5).
+///
+/// 후보가 없는 행(성분명 미확인)이나 onRowTap 미지정 시 셀을 그대로 통과시킨다.
+class _IngredientRowTapTarget extends StatelessWidget {
+  const _IngredientRowTapTarget({
+    required this.rowIndex,
+    required this.candidate,
+    required this.onRowTap,
+    required this.child,
+  });
+
+  final int rowIndex;
+  final SupplementIngredientCandidate? candidate;
+  final void Function(SupplementIngredientCandidate candidate)? onRowTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final SupplementIngredientCandidate? rowCandidate = candidate;
+    final void Function(SupplementIngredientCandidate)? handler = onRowTap;
+    if (rowCandidate == null || handler == null) {
+      return child;
+    }
+    return GestureDetector(
+      key: ValueKey<String>('ingredient-row-detail-$rowIndex'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => handler(rowCandidate),
+      child: child,
     );
   }
 }

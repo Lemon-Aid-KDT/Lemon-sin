@@ -208,6 +208,11 @@ class AppController extends ChangeNotifier {
   static const String healthConsent = 'sensitive_health_analysis';
 
   final LemonAidRepository _repository;
+
+  /// Backend repository for read-only secondary lookups (e.g. KDRIs from the
+  /// ingredient detail screen). Screens reuse this instead of re-resolving the
+  /// provider so widget tests can drive the same fake repository.
+  LemonAidRepository get repository => _repository;
   // 영양제 삭제용 지연 실행 큐(4초)+실행취소 — 백엔드 공백 3(restore 라우트 없음)
   // 대체. 미취소 시 commit 으로 DELETE /supplements/{id} 호출.
   final DeferredDeleteQueue _supplementDeleteQueue = DeferredDeleteQueue();

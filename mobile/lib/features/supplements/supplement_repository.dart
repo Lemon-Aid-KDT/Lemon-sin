@@ -3,6 +3,7 @@ import '../../core/api/api_error.dart';
 import '../consent/consent_models.dart';
 import '../dashboard/dashboard_models.dart';
 import '../dashboard/home_models.dart';
+import '../nutrition/kdri_models.dart';
 import '../records/food_models.dart';
 import 'comprehensive_analysis_models.dart';
 import 'supplement_models.dart';
@@ -161,6 +162,20 @@ abstract class LemonAidRepository {
     required List<Map<String, Object?>> ingredients,
     Map<String, dynamic>? userProfile,
     String persona = 'B',
+  }) {
+    throw UnimplementedError();
+  }
+
+  /// Looks up KDRIs reference values for a profile (public route, no consent).
+  ///
+  /// Args:
+  ///   age: Profile age (1..120).
+  ///   sex: Profile sex (`male` or `female`).
+  ///   pregnancyStatus: `none`, `pregnant`, or `lactating` (defaults `none`).
+  Future<KdriLookupResult> lookupKdris({
+    required int age,
+    required String sex,
+    String pregnancyStatus = 'none',
   }) {
     throw UnimplementedError();
   }
@@ -544,6 +559,30 @@ class BackendLemonAidRepository implements LemonAidRepository {
   }
 
   @override
+  Future<KdriLookupResult> lookupKdris({
+    required int age,
+    required String sex,
+    String pregnancyStatus = 'none',
+  }) async {
+    if (age < 1 || age > 120) {
+      throw ArgumentError.value(age, 'age', 'Age must be between 1 and 120');
+    }
+    final String normalizedSex = _normalizeSex(sex);
+    final String normalizedPregnancyStatus = _normalizePregnancyStatus(
+      pregnancyStatus,
+    );
+    final Map<String, dynamic> json = await _apiClient.getJson(
+      '/nutrition/kdris',
+      queryParameters: <String, String>{
+        'age': age.toString(),
+        'sex': normalizedSex,
+        'pregnancy_status': normalizedPregnancyStatus,
+      },
+    );
+    return KdriLookupResult.fromJson(json);
+  }
+
+  @override
   Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
     List<SupplementImageUpload> images, {
     String ocrProvider = 'configured',
@@ -750,6 +789,34 @@ class BackendLemonAidRepository implements LemonAidRepository {
     };
     if (!allowedRoles.contains(normalized)) {
       throw ArgumentError.value(value, 'imageRole', 'Unsupported image role');
+    }
+    return normalized;
+  }
+
+  static String _normalizeSex(String value) {
+    final String normalized = value.trim().toLowerCase();
+    const Set<String> allowedSexes = <String>{'male', 'female'};
+    if (!allowedSexes.contains(normalized)) {
+      throw ArgumentError.value(value, 'sex', 'Unsupported sex');
+    }
+    return normalized;
+  }
+
+  static String _normalizePregnancyStatus(String value) {
+    final String normalized = value.trim().isEmpty
+        ? 'none'
+        : value.trim().toLowerCase();
+    const Set<String> allowedStatuses = <String>{
+      'none',
+      'pregnant',
+      'lactating',
+    };
+    if (!allowedStatuses.contains(normalized)) {
+      throw ArgumentError.value(
+        value,
+        'pregnancyStatus',
+        'Unsupported pregnancy status',
+      );
     }
     return normalized;
   }

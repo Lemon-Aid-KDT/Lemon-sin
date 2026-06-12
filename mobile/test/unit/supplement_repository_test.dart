@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:lemon_aid_mobile/core/api/api_client.dart';
+import 'package:lemon_aid_mobile/features/nutrition/kdri_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
@@ -551,7 +552,92 @@ void main() {
     expect(analysis.dietScore, 78);
     expect(analysis.cautionaryComponents.single.component, '카페인');
   });
+
+  test('looks up KDRIs with profile query params (public route)', () async {
+    late http.Request capturedRequest;
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'http://localhost:8000/api/v1',
+      httpClient: _CaptureJsonClient(
+        responseBody: _kdrisResponse,
+        onRequest: (http.Request request) {
+          capturedRequest = request;
+        },
+      ),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    final KdriLookupResult result = await repository.lookupKdris(
+      age: 30,
+      sex: 'female',
+    );
+
+    expect(capturedRequest.method, 'GET');
+    expect(capturedRequest.url.path, '/api/v1/nutrition/kdris');
+    expect(capturedRequest.url.queryParameters['age'], '30');
+    expect(capturedRequest.url.queryParameters['sex'], 'female');
+    expect(
+      capturedRequest.url.queryParameters['pregnancy_status'],
+      'none',
+    );
+    expect(result.references, hasLength(1));
+    expect(result.references.single.nutrientCode, 'vitamin_c_mg');
+    expect(result.references.single.ulAmount, 2000);
+    expect(result.datasetStatus, 'sample');
+  });
+
+  test('rejects unsupported sex and out-of-range age before KDRIs call', () {
+    final ApiClient apiClient = ApiClient(
+      baseUrl: 'http://localhost:8000/api/v1',
+      httpClient: _CaptureJsonClient(onRequest: (_) {}),
+    );
+    addTearDown(apiClient.close);
+    final BackendLemonAidRepository repository = BackendLemonAidRepository(
+      apiClient: apiClient,
+    );
+
+    expect(
+      () => repository.lookupKdris(age: 30, sex: 'other'),
+      throwsArgumentError,
+    );
+    expect(
+      () => repository.lookupKdris(age: 0, sex: 'male'),
+      throwsArgumentError,
+    );
+  });
 }
+
+final Map<String, Object?> _kdrisResponse = <String, Object?>{
+  'query': <String, Object?>{
+    'age': 30,
+    'sex': 'female',
+    'pregnancy_status': 'none',
+  },
+  'references': <Object?>[
+    <String, Object?>{
+      'nutrient_code': 'vitamin_c_mg',
+      'nutrient_name': 'Vitamin C',
+      'nutrient_name_ko': '비타민 C',
+      'sex': 'female',
+      'age_min': 19,
+      'age_max': 64,
+      'pregnancy_status': 'none',
+      'reference_type': 'RDA',
+      'reference_amount': 100,
+      'reference_unit': 'mg',
+      'ul_amount': 2000,
+      'ul_unit': 'mg',
+      'source_note': 'sample',
+      'review_status': 'reviewed',
+    },
+  ],
+  'dataset_status': 'sample',
+  'dataset_version': 'kdris-2020-sample',
+  'source_manifest_version': 'v1',
+  'note': '참고용 기준값이에요.',
+};
 
 class _CaptureMultipartClient extends http.BaseClient {
   _CaptureMultipartClient({

@@ -9,6 +9,7 @@ import 'package:lemon_aid_mobile/features/ai_coaching/ai_coaching_repository.dar
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
+import 'package:lemon_aid_mobile/features/nutrition/kdri_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/records/food_models.dart';
@@ -363,6 +364,15 @@ class _ScoreRepository implements LemonAidRepository {
     String persona = 'B',
   }) async {
     return ComprehensiveDietAnalysis.empty;
+  }
+
+  @override
+  Future<KdriLookupResult> lookupKdris({
+    required int age,
+    required String sex,
+    String pregnancyStatus = 'none',
+  }) async {
+    return KdriLookupResult.empty;
   }
 
   @override
