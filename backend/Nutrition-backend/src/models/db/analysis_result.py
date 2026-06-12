@@ -31,7 +31,8 @@ class AnalysisResult(TimestampMixin, Base):
     __tablename__ = "analysis_results"
     __table_args__ = (
         CheckConstraint(
-            "analysis_type IN ('activity_score', 'weight_prediction', 'nutrition_analysis')",
+            "analysis_type IN ('activity_score', 'weight_prediction', "
+            "'nutrition_analysis', 'daily_health_score')",
             name="analysis_type_allowed",
         ),
         Index("ix_analysis_results_owner_created_at", "owner_subject", "created_at"),

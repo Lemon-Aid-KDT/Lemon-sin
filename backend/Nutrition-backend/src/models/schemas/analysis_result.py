@@ -17,11 +17,13 @@ class AnalysisType(StrEnum):
         ACTIVITY_SCORE: Activity score analysis.
         WEIGHT_PREDICTION: Weight prediction analysis.
         NUTRITION_ANALYSIS: Nutrition intake analysis.
+        DAILY_HEALTH_SCORE: Composite daily health score snapshot.
     """
 
     ACTIVITY_SCORE = "activity_score"
     WEIGHT_PREDICTION = "weight_prediction"
     NUTRITION_ANALYSIS = "nutrition_analysis"
+    DAILY_HEALTH_SCORE = "daily_health_score"
 
 
 class AnalysisResultResponse(BaseModel):

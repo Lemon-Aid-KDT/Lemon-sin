@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +18,7 @@ from src.models.schemas.analysis_result import (
     AnalysisResultSummary,
     AnalysisType,
 )
+from src.models.schemas.dashboard import DashboardHealthScoreSummary
 from src.models.schemas.nutrition import NutritionAnalysisRequest
 from src.nutrition.deficiency_analysis import (
     NUTRITION_ANALYSIS_ALGORITHM_VERSION,
@@ -34,6 +36,7 @@ __all__ = [
     "get_analysis_result",
     "list_analysis_results",
     "store_activity_score_result",
+    "store_daily_health_score_result",
     "store_nutrition_analysis_result",
     "store_weight_prediction_result",
 ]
@@ -113,6 +116,66 @@ async def _persist_result(
     async with session.begin():
         session.add(record)
     await session.refresh(record)
+    return record
+
+
+async def store_daily_health_score_result(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    summary_date: date,
+    health_score: DashboardHealthScoreSummary,
+) -> AnalysisResult | None:
+    """Persist at most one ready daily health score per owner per summary date.
+
+    Unlike the request-driven store functions above, this persists a result the
+    dashboard already computed, so there is no recalculation here. The dashboard
+    read path has an implicit transaction open by the time this runs, which is
+    why this commits directly instead of reusing ``_persist_result`` (whose
+    ``session.begin()`` would raise on an already-begun session).
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        summary_date: Dashboard summary date the score was computed for.
+        health_score: Server-computed daily health score block.
+
+    Returns:
+        The persisted row, or None when the score is not ready or a row for
+        the same owner and summary date already exists (dedup guard — the
+        dashboard is polled frequently).
+    """
+    if health_score.data_status != "ready" or health_score.score is None:
+        return None
+
+    owner_subject = build_owner_subject(user)
+    existing_id = await session.scalar(
+        select(AnalysisResult.id)
+        .where(
+            AnalysisResult.owner_subject == owner_subject,
+            AnalysisResult.analysis_type == AnalysisType.DAILY_HEALTH_SCORE.value,
+            AnalysisResult.input_snapshot["summary_date"].astext == summary_date.isoformat(),
+        )
+        .limit(1)
+    )
+    if existing_id is not None:
+        return None
+
+    record = AnalysisResult(
+        owner_subject=owner_subject,
+        analysis_type=AnalysisType.DAILY_HEALTH_SCORE.value,
+        algorithm_version=health_score.algorithm_version,
+        kdris_source_manifest_version=None,
+        input_snapshot={
+            "summary_date": summary_date.isoformat(),
+            "weights": {
+                "activity": health_score.components.activity.weight,
+                "nutrition": health_score.components.nutrition.weight,
+            },
+        },
+        result_snapshot=health_score.model_dump(mode="json"),
+    )
+    session.add(record)
+    await session.commit()
     return record
 
 

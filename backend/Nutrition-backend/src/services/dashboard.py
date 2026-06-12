@@ -24,6 +24,7 @@ from src.models.schemas.dashboard import (
 )
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.analysis_results import store_daily_health_score_result
 from src.services.daily_health_score import build_daily_health_score
 from src.services.nutrition_diagnosis import (
     NUTRITION_DIAGNOSIS_DISCLAIMER,
@@ -89,6 +90,10 @@ async def build_dashboard_summary(
         settings,
         health_summaries=health_summaries,
     )
+    if settings.persist_daily_health_score and health_score.data_status == "ready":
+        # Opt-in (decision #7): unlocks the S-09 4-week trend chart. The store
+        # function itself dedups to one row per owner per summary date.
+        await store_daily_health_score_result(session, user, summary_date, health_score)
 
     return DashboardSummaryResponse(
         as_of=now,

@@ -340,6 +340,7 @@ class Settings(BaseSettings):
         allow_sample_kdris: Whether the 2020 sample KDRIs fixture may be used.
         feature_prescription_ocr_intake: 처방전 OCR intake 기능 플래그.
         feature_lab_result_ocr_intake: 검사표 OCR intake 기능 플래그.
+        persist_daily_health_score: 대시보드 일일 건강 점수의 1일 1회 영속화 여부.
         feature_dosage_change_recommendation: 복용량 변경 추천 기능 플래그.
         feature_medication_safety_alert: 복약 안전 알림 기능 플래그.
     """
@@ -532,6 +533,7 @@ class Settings(BaseSettings):
 
     feature_prescription_ocr_intake: bool = Field(default=False)
     feature_lab_result_ocr_intake: bool = Field(default=False)
+    persist_daily_health_score: bool = Field(default=False)
     feature_dosage_change_recommendation: bool = Field(default=False)
     feature_medication_safety_alert: bool = Field(default=False)
 

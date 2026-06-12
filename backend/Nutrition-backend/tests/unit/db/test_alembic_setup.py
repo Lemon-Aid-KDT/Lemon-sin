@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0041_harden_ai_agent_chat_table_security"]
+    assert script.get_heads() == ["0042_allow_daily_health_score_analysis_type"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0041_harden_ai_agent_chat_table_security"]
+    assert script.get_heads() == ["0042_allow_daily_health_score_analysis_type"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
