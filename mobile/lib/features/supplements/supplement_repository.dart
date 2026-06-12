@@ -3,6 +3,7 @@ import '../../core/api/api_error.dart';
 import '../consent/consent_models.dart';
 import '../dashboard/dashboard_models.dart';
 import '../dashboard/home_models.dart';
+import '../records/food_models.dart';
 import 'comprehensive_analysis_models.dart';
 import 'supplement_models.dart';
 
@@ -81,6 +82,31 @@ abstract class LemonAidRepository {
     int limit = 50,
     int offset = 0,
   }) {
+    throw UnimplementedError();
+  }
+
+  /// Searches the public food catalog for the direct-input screen.
+  Future<FoodCatalogList> searchFoods({
+    String? q,
+    String? cuisineCode,
+    int limit = 50,
+    int offset = 0,
+  }) {
+    throw UnimplementedError();
+  }
+
+  /// Fetches the food cuisine catalog (filter chips).
+  Future<FoodCuisineList> fetchCuisines() {
+    throw UnimplementedError();
+  }
+
+  /// Soft-deletes a registered supplement (DELETE /supplements/{id} → 204).
+  Future<void> deleteSupplement(String supplementId) {
+    throw UnimplementedError();
+  }
+
+  /// Deletes a saved analysis result (DELETE /analysis-results/{id} → 204).
+  Future<void> deleteAnalysisResult(String resultId) {
     throw UnimplementedError();
   }
 
@@ -274,6 +300,68 @@ class BackendLemonAidRepository implements LemonAidRepository {
       },
     );
     return HomeSupplementsResult.fromJson(json);
+  }
+
+  @override
+  Future<FoodCatalogList> searchFoods({
+    String? q,
+    String? cuisineCode,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final Map<String, String> query = <String, String>{
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+    };
+    final String? normalizedQuery = q?.trim();
+    if (normalizedQuery != null && normalizedQuery.isNotEmpty) {
+      query['q'] = normalizedQuery;
+    }
+    final String? normalizedCuisine = cuisineCode?.trim();
+    if (normalizedCuisine != null && normalizedCuisine.isNotEmpty) {
+      query['cuisine_code'] = normalizedCuisine;
+    }
+    final Map<String, dynamic> json = await _apiClient.getJson(
+      '/meals/foods',
+      queryParameters: query,
+    );
+    return FoodCatalogList.fromJson(json);
+  }
+
+  @override
+  Future<FoodCuisineList> fetchCuisines() async {
+    final Map<String, dynamic> json = await _apiClient.getJson(
+      '/meals/cuisines',
+    );
+    return FoodCuisineList.fromJson(json);
+  }
+
+  @override
+  Future<void> deleteSupplement(String supplementId) async {
+    final String normalized = supplementId.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        supplementId,
+        'supplementId',
+        'Supplement id is required',
+      );
+    }
+    await _apiClient.delete('/supplements/${Uri.encodeComponent(normalized)}');
+  }
+
+  @override
+  Future<void> deleteAnalysisResult(String resultId) async {
+    final String normalized = resultId.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        resultId,
+        'resultId',
+        'Analysis result id is required',
+      );
+    }
+    await _apiClient.delete(
+      '/analysis-results/${Uri.encodeComponent(normalized)}',
+    );
   }
 
   @override

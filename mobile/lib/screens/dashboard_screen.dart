@@ -183,8 +183,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // '+ 약 추가' → 바텀시트 폼 → POST. 성공 시 컨트롤러가 목록을 새로고침.
   Future<void> _openAddMedication() async {
-    final MedicationCreateRequest? request =
-        await showMedicationAddSheet(context);
+    final MedicationCreateRequest? request = await showMedicationAddSheet(
+      context,
+    );
     if (request == null || !mounted) return;
     final bool created = await _controller.addMedication(request);
     if (!mounted) return;
@@ -217,6 +218,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context,
       message: '${medication.displayName}을(를) 목록에서 뺐어요.',
       onUndo: () => _controller.reactivateMedication(medication.id),
+    );
+  }
+
+  // 길게 누름 → 삭제 확인 → 낙관적 제거 → 실행취소 토스트(4초 지연 commit).
+  // 미취소 시 컨트롤러 큐가 DELETE /supplements/{id} 를 보낸다(soft-delete).
+  Future<void> _confirmDeleteSupplement(HomeSupplement supplement) async {
+    final String name = supplement.displayName.isNotEmpty
+        ? supplement.displayName
+        : '영양제';
+    final bool confirmed = await showDeleteConfirmDialog(
+      context,
+      targetLabel: name,
+    );
+    if (!confirmed || !mounted) return;
+    final HomeSupplement? removed = _controller.removeSupplementOptimistically(
+      supplement.id,
+    );
+    if (removed == null || !mounted) return;
+    _checkedSupplementIds.remove(supplement.id);
+    _prefs?.setSupplementCheckedIds(_selectedDate, _checkedSupplementIds);
+    showUndoToast(
+      context,
+      message: '영양제를 삭제했어요',
+      onUndo: () => _controller.undoSupplementRemoval(removed),
     );
   }
 
@@ -307,8 +332,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             _InteractionCard(
               preview: _controller.supplementImpactPreview,
-              hasSupplements:
-                  _controller.homeSupplements.results.isNotEmpty,
+              hasSupplements: _controller.homeSupplements.results.isNotEmpty,
               medicationCount: _controller.homeMedications.activeItems.length,
               failed: _controller.homeImpactFailed,
             ),
@@ -323,6 +347,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               failed: _controller.homeSupplementsFailed,
               onToggle: _toggleSupplement,
               onAdd: () => _openCamera('supplement'),
+              onDelete: _confirmDeleteSupplement,
             ),
             _MedicationCard(
               medications: _controller.homeMedications.activeItems,
@@ -912,9 +937,7 @@ class _TodayAnalysisCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpace.md),
             Text(
-              hasMessage
-                  ? message.trim()
-                  : '오늘 끼니와 영양제를 기록하면 맞춤 코멘트를 보여드려요.',
+              hasMessage ? message.trim() : '오늘 끼니와 영양제를 기록하면 맞춤 코멘트를 보여드려요.',
               style: AppText.body.copyWith(
                 color: AppColor.inkSecondary,
                 height: 1.5,
@@ -1147,12 +1170,13 @@ class _MealManagementCard extends StatelessWidget {
     required this.onRecord,
   });
 
-  static const List<MapEntry<String, String>> _slots = <MapEntry<String, String>>[
-    MapEntry('breakfast', '아침'),
-    MapEntry('lunch', '점심'),
-    MapEntry('dinner', '저녁'),
-    MapEntry('snack', '간식'),
-  ];
+  static const List<MapEntry<String, String>> _slots =
+      <MapEntry<String, String>>[
+        MapEntry('breakfast', '아침'),
+        MapEntry('lunch', '점심'),
+        MapEntry('dinner', '저녁'),
+        MapEntry('snack', '간식'),
+      ];
 
   HomeMeal? _firstFor(String mealType) {
     for (final HomeMeal meal in meals) {
@@ -1280,12 +1304,14 @@ class _SupplementChecklistCard extends StatelessWidget {
   final bool failed;
   final ValueChanged<String> onToggle;
   final VoidCallback onAdd;
+  final ValueChanged<HomeSupplement> onDelete;
   const _SupplementChecklistCard({
     required this.supplements,
     required this.checkedIds,
     required this.failed,
     required this.onToggle,
     required this.onAdd,
+    required this.onDelete,
   });
 
   @override
@@ -1314,6 +1340,7 @@ class _SupplementChecklistCard extends StatelessWidget {
               supplement: supplements[i],
               checked: checkedIds.contains(supplements[i].id),
               onToggle: () => onToggle(supplements[i].id),
+              onDelete: () => onDelete(supplements[i]),
             ),
             if (i != supplements.length - 1)
               Divider(color: AppColor.border, height: AppSpace.lg),
@@ -1355,60 +1382,67 @@ class _SupplementRow extends StatelessWidget {
   final HomeSupplement supplement;
   final bool checked;
   final VoidCallback onToggle;
+  final VoidCallback onDelete;
   const _SupplementRow({
     required this.supplement,
     required this.checked,
     required this.onToggle,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     final String? scheduleText = supplement.schedule?.summary;
-    return Pressable(
-      onTap: onToggle,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  supplement.displayName.isNotEmpty
-                      ? supplement.displayName
-                      : '이름 미상 영양제',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.body.copyWith(
-                    color: checked ? AppColor.inkTertiary : AppColor.ink,
-                    fontWeight: FontWeight.w600,
-                    decoration: checked ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                if (scheduleText != null) ...[
-                  const SizedBox(height: 2),
+    // 길게 누르면 삭제(영양제 관리 행) — 끼니 삭제는 백엔드 공백 2로 비노출.
+    return GestureDetector(
+      onLongPress: onDelete,
+      behavior: HitTestBehavior.opaque,
+      child: Pressable(
+        onTap: onToggle,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    scheduleText,
-                    style: AppText.caption.copyWith(
-                      color: AppColor.inkTertiary,
+                    supplement.displayName.isNotEmpty
+                        ? supplement.displayName
+                        : '이름 미상 영양제',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body.copyWith(
+                      color: checked ? AppColor.inkTertiary : AppColor.ink,
+                      fontWeight: FontWeight.w600,
+                      decoration: checked ? TextDecoration.lineThrough : null,
                     ),
                   ),
+                  if (scheduleText != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      scheduleText,
+                      style: AppText.caption.copyWith(
+                        color: AppColor.inkTertiary,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(width: AppSpace.sm),
-          // 체크 박스
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
-              shape: BoxShape.circle,
+            const SizedBox(width: AppSpace.sm),
+            // 체크 박스
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
             ),
-            alignment: Alignment.center,
-            child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1598,7 +1632,9 @@ class _MedicationRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppText.body.copyWith(
-                            color: checked ? AppColor.inkTertiary : AppColor.ink,
+                            color: checked
+                                ? AppColor.inkTertiary
+                                : AppColor.ink,
                             fontWeight: FontWeight.w600,
                             decoration: checked
                                 ? TextDecoration.lineThrough

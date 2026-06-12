@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
+import 'package:lemon_aid_mobile/app_providers.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
+import 'package:lemon_aid_mobile/features/records/food_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/analysis_result_screen.dart';
 import 'package:lemon_aid_mobile/shared/widgets/low_confidence_banner.dart';
@@ -604,12 +607,72 @@ void main() {
   });
 
   testWidgets(
+    'meal manual-entry fallback merges database_match items into confirm',
+    (WidgetTester tester) async {
+      final _ReviewRepository repository = _ReviewRepository(
+        mealPreviewJson: _manualEntryMealPreviewJson,
+        foodCatalog: const <FoodCatalogItem>[
+          FoodCatalogItem(
+            id: 'cat-1',
+            cuisineCode: 'korean',
+            courseCode: 'rice',
+            canonicalNameKo: '김치볶음밥',
+            source: 'seed',
+          ),
+        ],
+      );
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            lemonAidRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp(
+            home: AnalysisResultScreen(mode: 'meal', controller: controller),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 저장 버튼 라벨(하단 고정)은 즉시 보인다.
+      expect(find.text('음식 직접 입력'), findsOneWidget);
+
+      // 후보 0건 + 수동입력 → 직접 입력 폴백 카드. 하단으로 스크롤해 노출.
+      await _scrollResultDetails(tester);
+      expect(find.text('음식을 직접 검색해 담기'), findsOneWidget);
+
+      // 폴백 카드의 '직접 입력으로 찾기' → 음식 검색 화면 진입.
+      await tester.tap(find.text('직접 입력으로 찾기'));
+      await tester.pumpAndSettle();
+      expect(find.text('직접 입력'), findsOneWidget);
+
+      // 검색 결과를 ⊕ 로 담고 '기록에 추가하기' 로 합류.
+      await tester.tap(find.byIcon(Icons.add_rounded).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('기록에 추가하기'));
+      await tester.pumpAndSettle();
+
+      // 분석 결과 화면으로 복귀 + 저장 버튼이 활성 라벨로 바뀜.
+      expect(find.text('확인 후 식단 저장'), findsOneWidget);
+      await tester.tap(find.text('확인 후 식단 저장'));
+      await tester.pumpAndSettle();
+
+      // confirm payload 에 database_match 항목이 합류됐는지.
+      final MealFoodItemInput merged =
+          repository.confirmedMealRequest!.foodItems.single;
+      expect(merged.displayName, '김치볶음밥');
+      expect(merged.foodCatalogItemId, 'cat-1');
+      expect(merged.source, 'database_match');
+    },
+  );
+
+  testWidgets(
     'renders figma C-hybrid diet result with score and prioritized caution',
     (WidgetTester tester) async {
       final _ComprehensiveMealRepository repository =
-          _ComprehensiveMealRepository(
-            comprehensive: _comprehensiveAnalysis(),
-          );
+          _ComprehensiveMealRepository(comprehensive: _comprehensiveAnalysis());
       final AppController controller = AppController(repository: repository);
       await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
 
@@ -673,27 +736,26 @@ void main() {
     },
   );
 
-  testWidgets(
-    'shows low-confidence banner when diet score confidence is low',
-    (WidgetTester tester) async {
-      final _ComprehensiveMealRepository repository =
-          _ComprehensiveMealRepository(
-            comprehensive: _comprehensiveAnalysis(scoreConfidence: 0.4),
-          );
-      final AppController controller = AppController(repository: repository);
-      await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+  testWidgets('shows low-confidence banner when diet score confidence is low', (
+    WidgetTester tester,
+  ) async {
+    final _ComprehensiveMealRepository repository =
+        _ComprehensiveMealRepository(
+          comprehensive: _comprehensiveAnalysis(scoreConfidence: 0.4),
+        );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: AnalysisResultScreen(mode: 'meal', controller: controller),
-        ),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisResultScreen(mode: 'meal', controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('신뢰도 직접 확인 필요'), findsWidgets);
-      expect(find.byType(LowConfidenceBanner), findsOneWidget);
-    },
-  );
+    expect(find.text('신뢰도 직접 확인 필요'), findsWidgets);
+    expect(find.byType(LowConfidenceBanner), findsOneWidget);
+  });
 
   testWidgets('keeps base meal layout when comprehensive analysis is empty', (
     WidgetTester tester,
@@ -733,13 +795,20 @@ class _ReviewRepository implements LemonAidRepository {
     SupplementAnalysisPreview? preview,
     SupplementMultiImageAnalysisPreview? multiPreview,
     ComprehensiveDietAnalysis? comprehensive,
+    Map<String, Object?>? mealPreviewJson,
+    this.foodCatalog = const <FoodCatalogItem>[],
   }) : _previewOverride = preview,
        _multiPreviewOverride = multiPreview,
-       _comprehensiveOverride = comprehensive;
+       _comprehensiveOverride = comprehensive,
+       _mealPreviewJsonOverride = mealPreviewJson;
 
   final SupplementAnalysisPreview? _previewOverride;
   final SupplementMultiImageAnalysisPreview? _multiPreviewOverride;
   final ComprehensiveDietAnalysis? _comprehensiveOverride;
+  final Map<String, Object?>? _mealPreviewJsonOverride;
+
+  /// Catalog rows returned by the direct-input food search fallback.
+  List<FoodCatalogItem> foodCatalog;
   UserSupplementCreate? registeredRequest;
   String? confirmedMealId;
   MealConfirmationRequest? confirmedMealRequest;
@@ -769,7 +838,9 @@ class _ReviewRepository implements LemonAidRepository {
     String imagePath, {
     String mealType = 'unknown',
   }) async {
-    return MealImageAnalysisPreview.fromJson(_mealPreviewJson);
+    return MealImageAnalysisPreview.fromJson(
+      _mealPreviewJsonOverride ?? _mealPreviewJson,
+    );
   }
 
   @override
@@ -814,6 +885,29 @@ class _ReviewRepository implements LemonAidRepository {
   Future<SupplementMultiImageAnalysisPreview> finalizeSupplementAnalysisSession(
     String analysisGroupId,
   ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<FoodCatalogList> searchFoods({
+    String? q,
+    String? cuisineCode,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return FoodCatalogList(results: foodCatalog, limit: limit, offset: offset);
+  }
+
+  @override
+  Future<FoodCuisineList> fetchCuisines() async => FoodCuisineList.empty;
+
+  @override
+  Future<void> deleteSupplement(String supplementId) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteAnalysisResult(String resultId) async {
     throw UnimplementedError();
   }
 
@@ -1195,7 +1289,9 @@ class _ComprehensiveMealRepository extends _ReviewRepository {
   }
 }
 
-ComprehensiveDietAnalysis _comprehensiveAnalysis({double scoreConfidence = 0.9}) {
+ComprehensiveDietAnalysis _comprehensiveAnalysis({
+  double scoreConfidence = 0.9,
+}) {
   return ComprehensiveDietAnalysis.fromJson(<String, dynamic>{
     'diet_score': 78,
     'diet_score_label': '균형이 잘 잡혔어요',
@@ -1459,6 +1555,35 @@ final Map<String, Object?> _mealPreviewJson = <String, Object?>{
     'raw_image_stored': false,
     'raw_provider_payload_stored': false,
     'requires_manual_entry': false,
+  },
+  'algorithm_version': 'food-image-preview-v1.0.0',
+  'created_at': '2026-05-28T03:00:01Z',
+};
+
+// 후보 0건 + requires_manual_entry: 카메라 분석 폴백(직접 입력) 진입 케이스.
+final Map<String, Object?> _manualEntryMealPreviewJson = <String, Object?>{
+  'analysis_id': '00000000-0000-0000-0000-000000000101',
+  'meal_id': '00000000-0000-0000-0000-000000000201',
+  'status': 'requires_confirmation',
+  'meal_type': 'lunch',
+  'eaten_at': '2026-05-28T03:00:00Z',
+  'food_candidates': <Object?>[],
+  'nutrition_estimate_summary': <String, Object?>{
+    'status': 'manual_entry_required',
+    'items': <Object?>[],
+    'totals': <String, Object?>{},
+    'detector_used': false,
+  },
+  'warning_codes': <String>['food_detection_manual_entry_required'],
+  'pipeline_metadata': <String, Object?>{
+    'intake_completed': true,
+    'detector_model': null,
+    'classifier_model': null,
+    'detector_used': false,
+    'classifier_used': false,
+    'raw_image_stored': false,
+    'raw_provider_payload_stored': false,
+    'requires_manual_entry': true,
   },
   'algorithm_version': 'food-image-preview-v1.0.0',
   'created_at': '2026-05-28T03:00:01Z',

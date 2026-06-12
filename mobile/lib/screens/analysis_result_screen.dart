@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../app_controller.dart';
 import '../core/api/api_error.dart';
+import '../features/records/records_providers.dart';
+import '../features/records/records_repository.dart';
 import '../features/supplements/comprehensive_analysis_models.dart';
 import '../features/supplements/supplement_models.dart';
 import '../shared/widgets/low_confidence_banner.dart';
@@ -14,6 +18,7 @@ import '../utils/mascot_poses.dart';
 import '../widgets/common/app_modals.dart';
 import '../widgets/common/confidence_grade_chip.dart';
 import '../widgets/common/diet_result_cards.dart';
+import 'food_search_screen.dart';
 
 /// Source-style analysis result screen backed by the real Lemon-Aid endpoints.
 class AnalysisResultScreen extends StatefulWidget {
@@ -64,6 +69,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   final TextEditingController _mealSodiumController = TextEditingController();
   String? _seededAnalysisId;
   String? _seededMealAnalysisId;
+  // 직접 입력(음식 검색) 폴백으로 담은 카탈로그 항목 (source: 'database_match').
+  // 카메라 분석 폴백에서만 채워지며 confirm payload food_items[] 로 합류한다.
+  List<MealFoodItemInput> _databaseMatchedFoods = const <MealFoodItemInput>[];
   int _selectedSupplementPreviewIndex = 0;
   List<_IngredientReviewDraft> _ingredientDrafts =
       const <_IngredientReviewDraft>[];
@@ -371,6 +379,18 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           fatController: _mealFatController,
           sodiumController: _mealSodiumController,
           requiresManualEntry: pipeline?.requiresManualEntry == true,
+        ),
+        const SizedBox(height: AppSpace.md),
+        _DatabaseMatchFallbackCard(
+          pickedFoods: _databaseMatchedFoods,
+          onOpenSearch: () => _openFoodSearchFallback(context),
+          onRemove: (MealFoodItemInput item) {
+            setState(() {
+              _databaseMatchedFoods = _databaseMatchedFoods
+                  .where((MealFoodItemInput input) => input != item)
+                  .toList(growable: false);
+            });
+          },
         ),
       ],
     ];
@@ -1103,7 +1123,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     );
   }
 
-  static String? _visibleOriginalName(String displayName, String? originalName) {
+  static String? _visibleOriginalName(
+    String displayName,
+    String? originalName,
+  ) {
     final String display = displayName.trim();
     final String? original = _nonEmpty(originalName);
     if (original == null) return null;
@@ -1526,9 +1549,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     if (_isMeal) {
       if (registeredMeal != null) return '홈으로 돌아가기';
       if (widget.controller?.mealAnalysisPreview == null) return '다시 촬영하기';
-      return _nonEmpty(_mealNameController.text) == null
-          ? '음식 직접 입력'
-          : '확인 후 식단 저장';
+      final bool hasMealContent =
+          _nonEmpty(_mealNameController.text) != null ||
+          _databaseMatchedFoods.isNotEmpty;
+      return hasMealContent ? '확인 후 식단 저장' : '음식 직접 입력';
     }
     if (registered != null) return '챗으로 설명 보내기';
     if (preview == null) return '다시 촬영하기';
@@ -1557,10 +1581,12 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         }
         return;
       }
-      if (_nonEmpty(_mealNameController.text) == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('음식명을 입력한 뒤 식단 기록으로 저장해주세요.')),
-        );
+      final bool hasMealContent =
+          _nonEmpty(_mealNameController.text) != null ||
+          _databaseMatchedFoods.isNotEmpty;
+      if (!hasMealContent) {
+        // 후보 0건·저신뢰·수동입력 폴백: 직접 입력 검색으로 음식을 담는다.
+        await _openFoodSearchFallback(context);
         return;
       }
       await appController.confirmMealImagePreview(
@@ -1730,13 +1756,12 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
         ? null
         : preview.foodCandidates.first;
-    return MealConfirmationRequest(
-      analysisId: preview.analysisId,
-      mealType: preview.mealType,
-      eatenAt: preview.eatenAt,
-      foodItems: <MealFoodItemInput>[
+    final List<MealFoodItemInput> foodItems = <MealFoodItemInput>[
+      // 손으로 채운 대표 항목은 이름이 있을 때만 포함한다. 검색 폴백만으로
+      // 끼니를 만들 수 있도록(이름 미입력 + database_match 만) 비어 있으면 생략.
+      if (_nonEmpty(_mealNameController.text) != null)
         MealFoodItemInput(
-          displayName: _nonEmpty(_mealNameController.text) ?? '식단',
+          displayName: _mealNameController.text.trim(),
           portionAmount: _parseOptionalDouble(
             _mealPortionAmountController.text,
           ),
@@ -1749,8 +1774,48 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           confidence: firstCandidate?.confidence,
           source: firstCandidate?.source ?? 'manual',
         ),
-      ],
+      // 직접 입력 검색에서 담은 카탈로그 항목 (source: 'database_match').
+      ..._databaseMatchedFoods,
+    ];
+    // 모두 비어 있으면(예외적 호출) 빈 식단 행 하나로 폴백한다.
+    return MealConfirmationRequest(
+      analysisId: preview.analysisId,
+      mealType: preview.mealType,
+      eatenAt: preview.eatenAt,
+      foodItems: foodItems.isEmpty
+          ? <MealFoodItemInput>[const MealFoodItemInput(displayName: '식단')]
+          : foodItems,
     );
+  }
+
+  /// Opens the direct-input food search fallback and merges picked catalog
+  /// items into the meal confirm payload (guide 07 ⑦ — camera fallback only).
+  Future<void> _openFoodSearchFallback(BuildContext context) async {
+    final RecordsRepository repository = ProviderScope.containerOf(
+      context,
+    ).read(recordsRepositoryProvider);
+    final List<MealFoodItemInput>? picked = await Navigator.of(context)
+        .push<List<MealFoodItemInput>>(
+          MaterialPageRoute<List<MealFoodItemInput>>(
+            builder: (BuildContext context) =>
+                FoodSearchScreen(repository: repository),
+          ),
+        );
+    if (picked == null || picked.isEmpty || !mounted) return;
+    setState(() {
+      // 중복 카탈로그 id 는 한 번만 합류시킨다.
+      final Set<String> seen = <String>{
+        for (final MealFoodItemInput item in _databaseMatchedFoods)
+          if (item.foodCatalogItemId != null) item.foodCatalogItemId!,
+      };
+      _databaseMatchedFoods = <MealFoodItemInput>[
+        ..._databaseMatchedFoods,
+        for (final MealFoodItemInput item in picked)
+          if (item.foodCatalogItemId == null ||
+              seen.add(item.foodCatalogItemId!))
+            item,
+      ];
+    });
   }
 
   UserSupplementCreate _registrationRequest(SupplementAnalysisPreview preview) {
@@ -1846,7 +1911,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     BuildContext context,
     SupplementImpactPreviewResponse impact,
   ) async {
-    final String body = _nonEmpty(impact.safeUserMessage) ?? '함께 드시는 영양제와 겹치는 성분이 있어요.';
+    final String body =
+        _nonEmpty(impact.safeUserMessage) ?? '함께 드시는 영양제와 겹치는 성분이 있어요.';
     bool saveAnyway = false;
     await showInteractionWarningDialog(
       context,
@@ -2941,6 +3007,127 @@ class _ResultCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 직접 입력(음식 검색) 폴백 카드 — 카탈로그에서 음식을 찾아 담는다.
+///
+/// 카메라 분석 폴백(후보 0건·저신뢰·수동입력)에서 음식을 직접 검색해 끼니에
+/// 합류시키는 진입점. 담은 항목은 confirm payload food_items[] 로 들어간다.
+class _DatabaseMatchFallbackCard extends StatelessWidget {
+  const _DatabaseMatchFallbackCard({
+    required this.pickedFoods,
+    required this.onOpenSearch,
+    required this.onRemove,
+  });
+
+  final List<MealFoodItemInput> pickedFoods;
+  final VoidCallback onOpenSearch;
+  final ValueChanged<MealFoodItemInput> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColor.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: AppColor.brandDeep,
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: Text(
+                  '음식을 직접 검색해 담기',
+                  style: AppText.body.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '사진으로 알아보기 어려우면 음식 이름을 검색해 담아 보세요.',
+            style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+          ),
+          if (pickedFoods.isNotEmpty) ...<Widget>[
+            const SizedBox(height: AppSpace.md),
+            Wrap(
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.sm,
+              children: <Widget>[
+                for (final MealFoodItemInput item in pickedFoods)
+                  _FallbackPickedChip(
+                    label: item.displayName,
+                    onRemove: () => onRemove(item),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: AppSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: AppSecondaryButton(
+              label: pickedFoods.isEmpty ? '직접 입력으로 찾기' : '더 담기',
+              leading: const Icon(
+                Icons.add_rounded,
+                size: 18,
+                color: AppColor.ink,
+              ),
+              onPressed: onOpenSearch,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FallbackPickedChip extends StatelessWidget {
+  const _FallbackPickedChip({required this.label, required this.onRemove});
+
+  final String label;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
+      decoration: BoxDecoration(
+        color: AppColor.brandSoft,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            label,
+            style: AppText.caption.copyWith(
+              color: AppColor.brandDeep,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(
+              Icons.close_rounded,
+              size: 16,
+              color: AppColor.brandDeep,
             ),
           ),
         ],

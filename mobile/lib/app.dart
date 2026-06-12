@@ -14,6 +14,7 @@ import 'features/supplements/supplement_repository.dart';
 import 'screens/analysis_result_screen.dart' as source_analysis;
 import 'screens/calendar_screen.dart' as source_calendar;
 import 'screens/camera_screen.dart' as source_camera;
+import 'screens/daily_records_screen.dart' as source_records;
 import 'screens/chat_screen.dart' as source_chat;
 import 'screens/dashboard_screen.dart' as source_dashboard;
 import 'screens/score_screen.dart' as source_score;
@@ -119,9 +120,7 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                         (BuildContext context, WidgetRef ref, Widget? child) {
                           return source_dashboard.DashboardScreen(
                             controller: ref.watch(appControllerProvider),
-                            localPrefs: ref
-                                .watch(localPrefsProvider)
-                                .value,
+                            localPrefs: ref.watch(localPrefsProvider).value,
                           );
                         },
                   );
@@ -142,9 +141,30 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                                   recordsRepositoryProvider,
                                 ),
                                 controller: ref.watch(appControllerProvider),
-                                localPrefs: ref
-                                    .watch(localPrefsProvider)
-                                    .value,
+                                localPrefs: ref.watch(localPrefsProvider).value,
+                              );
+                            },
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'records',
+                    builder: (BuildContext context, GoRouterState state) {
+                      final DateTime? date = _parseRecordDate(
+                        state.uri.queryParameters['date'],
+                      );
+                      return Consumer(
+                        builder:
+                            (
+                              BuildContext context,
+                              WidgetRef ref,
+                              Widget? child,
+                            ) {
+                              return source_records.DailyRecordsScreen(
+                                repository: ref.watch(
+                                  recordsRepositoryProvider,
+                                ),
+                                initialDate: date,
                               );
                             },
                       );
@@ -498,6 +518,14 @@ class _BearerTokenLoginScreenState
       });
     }
   }
+}
+
+/// Parses a `?date=YYYY-MM-DD` query into a local date, ignoring invalid input.
+DateTime? _parseRecordDate(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final DateTime? parsed = DateTime.tryParse(raw.trim());
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
 }
 
 class _NeutralBranch extends StatelessWidget {

@@ -124,16 +124,112 @@ void main() {
     });
   });
 
+  group('DayRecords.timeline merge sort', () {
+    test('orders entries by local time ascending', () {
+      final DayRecords day = DayRecords(
+        meals: <HomeMeal>[
+          _meal(id: 'm1', eatenAt: DateTime(2026, 6, 12, 8, 10), name: '아침밥'),
+          _meal(id: 'm2', eatenAt: DateTime(2026, 6, 12, 19), name: '저녁밥'),
+        ],
+        supplements: <HomeSupplement>[
+          _supplement(id: 's1', registeredAt: DateTime(2026, 6, 12, 12)),
+        ],
+      );
+
+      final List<RecordTimelineEntry> timeline = day.timeline;
+      expect(timeline.length, 3);
+      expect(timeline[0].timeLabel, '08:10');
+      expect(timeline[1].timeLabel, '12:00');
+      expect(timeline[2].timeLabel, '19:00');
+    });
+
+    test('puts a meal before a supplement at the same time', () {
+      final DateTime at = DateTime(2026, 6, 12, 9);
+      final DayRecords day = DayRecords(
+        meals: <HomeMeal>[_meal(id: 'm1', eatenAt: at)],
+        supplements: <HomeSupplement>[_supplement(id: 's1', registeredAt: at)],
+      );
+
+      final List<RecordTimelineEntry> timeline = day.timeline;
+      expect(timeline.length, 2);
+      expect(timeline[0].kind, RecordTimelineKind.meal);
+      expect(timeline[1].kind, RecordTimelineKind.supplement);
+    });
+
+    test('uses intake_schedule time_of_day for the supplement slot', () {
+      // 등록일은 자정(00:00)이지만 아침 슬롯이면 08:00 로 정렬한다.
+      final DayRecords day = DayRecords(
+        meals: const <HomeMeal>[],
+        supplements: <HomeSupplement>[
+          HomeSupplement(
+            id: 's1',
+            displayName: '오메가3',
+            manufacturer: null,
+            schedule: const HomeSupplementSchedule(
+              frequency: 'daily',
+              timeOfDay: <String>['morning'],
+              timesPerDay: 1,
+            ),
+            registeredAt: DateTime(2026, 6, 12),
+          ),
+        ],
+      );
+
+      final List<RecordTimelineEntry> timeline = day.timeline;
+      expect(timeline.single.timeLabel, '08:00');
+    });
+
+    test('meal title summarizes extra food items', () {
+      final HomeMeal meal = HomeMeal(
+        id: 'm1',
+        status: 'confirmed',
+        mealType: 'lunch',
+        eatenAt: DateTime(2026, 6, 12, 12),
+        foodItems: const <HomeFoodItem>[
+          HomeFoodItem(
+            displayName: '현미밥',
+            kcal: 300,
+            carbG: 0,
+            proteinG: 0,
+            fatG: 0,
+          ),
+          HomeFoodItem(
+            displayName: '김치',
+            kcal: 30,
+            carbG: 0,
+            proteinG: 0,
+            fatG: 0,
+          ),
+          HomeFoodItem(
+            displayName: '계란',
+            kcal: 90,
+            carbG: 0,
+            proteinG: 0,
+            fatG: 0,
+          ),
+        ],
+        nutrition: const HomeMealNutrition(
+          kcal: 420,
+          carbG: 0,
+          proteinG: 0,
+          fatG: 0,
+        ),
+      );
+      final RecordTimelineEntry entry = RecordTimelineEntry.meal(meal);
+      expect(entry.title, '현미밥 외 2개');
+      expect(entry.trailing, '420 kcal');
+    });
+  });
+
   group('HomeSupplement.registeredAt parsing', () {
     test('prefers user_confirmed_at over created_at', () {
-      final HomeSupplement supplement = HomeSupplement.fromJson(
-        <String, dynamic>{
-          'id': 's1',
-          'display_name': '오메가3',
-          'user_confirmed_at': '2026-06-12T09:00:00Z',
-          'created_at': '2026-06-01T00:00:00Z',
-        },
-      );
+      final HomeSupplement supplement =
+          HomeSupplement.fromJson(<String, dynamic>{
+            'id': 's1',
+            'display_name': '오메가3',
+            'user_confirmed_at': '2026-06-12T09:00:00Z',
+            'created_at': '2026-06-01T00:00:00Z',
+          });
       expect(supplement.registeredAt, DateTime.utc(2026, 6, 12, 9));
     });
 

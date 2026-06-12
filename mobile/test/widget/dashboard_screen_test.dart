@@ -287,10 +287,7 @@ void main() {
     await _pumpScreen(tester, controller);
 
     // 목표 kcal 미연동 — 잠금 캡션 노출, 소모/잔여 추정치 미노출.
-    expect(
-      find.text('워치를 연동하면 소모·잔여 칼로리도 보여드려요'),
-      findsOneWidget,
-    );
+    expect(find.text('워치를 연동하면 소모·잔여 칼로리도 보여드려요'), findsOneWidget);
     expect(find.text('오늘 먹은 음식 합계예요'), findsOneWidget);
     // '소모'/'더 먹을 수 있어요' 같은 추정 문구는 어디에도 없다.
     expect(find.textContaining('kcal 소모'), findsNothing);
@@ -411,10 +408,7 @@ void main() {
 
     // 토글이 prefs(오늘 날짜 키)에 영속됐는지 직접 확인.
     final DateTime today = DateTime.now();
-    expect(
-      prefs.supplementCheckedIds(today),
-      contains('sup-1'),
-    );
+    expect(prefs.supplementCheckedIds(today), contains('sup-1'));
 
     // 같은 prefs 를 가진 새 화면을 다시 띄우면 체크가 복원된다.
     await tester.pumpWidget(
@@ -428,6 +422,55 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('1/1 완료'), findsOneWidget);
+  });
+
+  testWidgets('long-pressing a supplement deletes it with an undo toast', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: const HomeSupplementsResult(
+          results: <HomeSupplement>[
+            HomeSupplement(
+              id: 'sup-1',
+              displayName: '비타민 D',
+              manufacturer: null,
+              schedule: null,
+            ),
+          ],
+          limit: 50,
+          offset: 0,
+        ),
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+    await _pumpScreen(tester, controller);
+
+    expect(find.text('비타민 D'), findsOneWidget);
+    await tester.ensureVisible(find.text('비타민 D'));
+    await tester.pump();
+    await tester.longPress(find.text('비타민 D'));
+    await tester.pumpAndSettle();
+
+    // 삭제 확인 모달 → 삭제.
+    expect(find.text('이 기록을 삭제할까요?'), findsOneWidget);
+    await tester.tap(find.text('삭제'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 낙관적 제거 + 실행취소 토스트.
+    expect(find.text('영양제를 삭제했어요'), findsOneWidget);
+    expect(find.text('실행취소'), findsOneWidget);
+    expect(controller.homeSupplements.results, isEmpty);
+
+    // 실행취소 시 복원된다.
+    await tester.tap(find.text('실행취소'));
+    await tester.pump();
+    expect(controller.homeSupplements.results.length, 1);
   });
 }
 
@@ -450,8 +493,7 @@ SupplementImpactPreviewResponse _impact({
     referenceVersion: 'kdri-2020',
     sourceManifestVersion: null,
     dataStatus: 'ready',
-    currentSupplementContributions:
-        const <SupplementContributionAggregate>[],
+    currentSupplementContributions: const <SupplementContributionAggregate>[],
     deficiencySupportCandidates: const <SupplementNutritionInsight>[],
     excessOrDuplicateRisks: risks,
     missingProfileFields: const <String>[],

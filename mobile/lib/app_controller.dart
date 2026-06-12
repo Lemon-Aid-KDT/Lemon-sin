@@ -6,6 +6,7 @@ import 'core/api/api_error.dart';
 import 'features/consent/consent_models.dart';
 import 'features/dashboard/dashboard_models.dart';
 import 'features/dashboard/home_models.dart';
+import 'features/records/deferred_delete_queue.dart';
 import 'features/supplements/comprehensive_analysis_models.dart';
 import 'features/supplements/supplement_models.dart';
 import 'features/supplements/supplement_repository.dart';
@@ -207,6 +208,9 @@ class AppController extends ChangeNotifier {
   static const String healthConsent = 'sensitive_health_analysis';
 
   final LemonAidRepository _repository;
+  // 영양제 삭제용 지연 실행 큐(4초)+실행취소 — 백엔드 공백 3(restore 라우트 없음)
+  // 대체. 미취소 시 commit 으로 DELETE /supplements/{id} 호출.
+  final DeferredDeleteQueue _supplementDeleteQueue = DeferredDeleteQueue();
 
   bool _busy = false;
   ApiError? _apiError;
@@ -297,14 +301,16 @@ class AppController extends ChangeNotifier {
 
   /// Meals eaten on [day] (client-side filter over the loaded window).
   List<HomeMeal> mealsForDay(DateTime day) {
-    return _recentMeals.results.where((HomeMeal meal) {
-      final DateTime? eatenAt = meal.eatenAt;
-      if (eatenAt == null) return false;
-      final DateTime local = eatenAt.toLocal();
-      return local.year == day.year &&
-          local.month == day.month &&
-          local.day == day.day;
-    }).toList(growable: false);
+    return _recentMeals.results
+        .where((HomeMeal meal) {
+          final DateTime? eatenAt = meal.eatenAt;
+          if (eatenAt == null) return false;
+          final DateTime local = eatenAt.toLocal();
+          return local.year == day.year &&
+              local.month == day.month &&
+              local.day == day.day;
+        })
+        .toList(growable: false);
   }
 
   /// Whether any meal record exists for [day].
@@ -521,6 +527,51 @@ class AppController extends ChangeNotifier {
       _notice = '약을 다시 활성화했어요.';
     });
     return done;
+  }
+
+  /// Optimistically removes a registered supplement from the home list and
+  /// schedules the backend delete after a short undo window.
+  ///
+  /// The row is removed from [homeSupplements] immediately so the UI reflects
+  /// the deletion at once. The actual `DELETE /supplements/{id}` is deferred by
+  /// the undo window; [undoSupplementRemoval] cancels it and restores the row.
+  /// Returns the removed [HomeSupplement] so the caller can offer undo, or null
+  /// when the id is unknown.
+  HomeSupplement? removeSupplementOptimistically(String supplementId) {
+    final int index = _homeSupplements.results.indexWhere(
+      (HomeSupplement item) => item.id == supplementId,
+    );
+    if (index < 0) return null;
+    final HomeSupplement removed = _homeSupplements.results[index];
+    final List<HomeSupplement> next = List<HomeSupplement>.of(
+      _homeSupplements.results,
+    )..removeAt(index);
+    _homeSupplements = HomeSupplementsResult(
+      results: next,
+      limit: _homeSupplements.limit,
+      offset: _homeSupplements.offset,
+    );
+    notifyListeners();
+    _supplementDeleteQueue.schedule(supplementId, () async {
+      await _repository.deleteSupplement(supplementId);
+    });
+    return removed;
+  }
+
+  /// Cancels a pending supplement deletion and restores the row (undo).
+  void undoSupplementRemoval(HomeSupplement supplement) {
+    final bool cancelled = _supplementDeleteQueue.undo(supplement.id);
+    if (!cancelled) return;
+    final bool present = _homeSupplements.results.any(
+      (HomeSupplement item) => item.id == supplement.id,
+    );
+    if (present) return;
+    _homeSupplements = HomeSupplementsResult(
+      results: <HomeSupplement>[..._homeSupplements.results, supplement],
+      limit: _homeSupplements.limit,
+      offset: _homeSupplements.offset,
+    );
+    notifyListeners();
   }
 
   /// Uploads a supplement label image and stores the preview.
@@ -1606,6 +1657,8 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    // 보류 중인 영양제 삭제는 즉시 commit 해 유실을 막는다(백엔드 공백 3 대체).
+    _supplementDeleteQueue.flush();
     _repository.close();
     super.dispose();
   }

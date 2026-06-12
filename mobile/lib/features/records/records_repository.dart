@@ -9,6 +9,7 @@
 
 import '../dashboard/home_models.dart';
 import '../supplements/supplement_repository.dart';
+import 'food_models.dart';
 import 'records_models.dart';
 
 /// 한 페이지 최대 조회 수 (백엔드 limit 상한).
@@ -61,6 +62,35 @@ class RecordsRepository {
   /// 전체 캐시를 비운다 (confirm·저장·삭제 등 어떤 기록 변경 후 호출 가능).
   void invalidateAll() {
     _cache.clear();
+  }
+
+  /// 음식 카탈로그를 검색한다 (직접 입력 화면).
+  Future<FoodCatalogList> searchFoods({
+    String? q,
+    String? cuisineCode,
+    int offset = 0,
+  }) {
+    return _repository.searchFoods(
+      q: q,
+      cuisineCode: cuisineCode,
+      limit: _kPageLimit,
+      offset: offset,
+    );
+  }
+
+  /// 음식 분류 칩 목록을 가져온다.
+  Future<FoodCuisineList> fetchCuisines() => _repository.fetchCuisines();
+
+  /// 영양제를 삭제한다 (soft-delete). 성공 시 전체 캐시 무효화.
+  Future<void> deleteSupplement(String supplementId) async {
+    await _repository.deleteSupplement(supplementId);
+    invalidateAll();
+  }
+
+  /// 분석 결과를 삭제한다. 성공 시 전체 캐시 무효화.
+  Future<void> deleteAnalysisResult(String resultId) async {
+    await _repository.deleteAnalysisResult(resultId);
+    invalidateAll();
   }
 
   Future<List<HomeMeal>> _fetchAllMeals(DateTime from, DateTime to) async {

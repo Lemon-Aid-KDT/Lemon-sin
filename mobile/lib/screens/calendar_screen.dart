@@ -17,6 +17,7 @@
 // 금칙어(진단/처방/치료/효능) 미사용.
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../app_controller.dart';
 import '../core/storage/local_prefs.dart';
@@ -26,7 +27,6 @@ import '../features/records/records_repository.dart';
 import '../shared/widgets/status_state_view.dart';
 import '../utils/design_tokens_v2.dart';
 import '../widgets/common/pressable.dart';
-import 'dashboard_screen.dart';
 
 /// 월 그리드 + 일자 상세 캘린더 화면.
 class CalendarScreen extends StatefulWidget {
@@ -141,18 +141,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
-  // 일자 상세 행 탭 → 기존 '지난 기록' 모드 재사용 (신규 상세 화면 만들지 않음,
-  // 가이드 02 ④(b) 10번). 선택일을 recordDate 로 넘겨 풀스크린 기록 페이지 push.
+  // 일자 상세 행 탭 → 오늘의 기록(일일 타임라인) 화면으로 이동 (가이드 ⑧).
+  // 선택일을 ?date=YYYY-MM-DD 로 넘긴다. GoRouter 가 없는 환경(일부 테스트)에서는
+  // no-op 으로 안전하게 무시한다.
   void _openRecordMode() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => DashboardScreen(
-          controller: widget.controller,
-          recordDate: _selectedDate,
-          localPrefs: widget.localPrefs,
-        ),
-      ),
-    );
+    final String key = MonthRecords.keyForDay(_selectedDate);
+    GoRouter.maybeOf(context)?.go('/shell/home/records?date=$key');
   }
 
   @override
@@ -334,8 +328,7 @@ class _MonthGrid extends StatelessWidget {
     // 일요일=0 시작. DateTime.weekday 는 월=1..일=7 이므로 일=0 으로 변환.
     final int leadingBlanks = firstOfMonth.weekday % 7;
     final int daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    final int totalCells =
-        ((leadingBlanks + daysInMonth) / 7).ceil() * 7;
+    final int totalCells = ((leadingBlanks + daysInMonth) / 7).ceil() * 7;
     final DateTime now = DateTime.now();
 
     return GridView.builder(
@@ -352,7 +345,8 @@ class _MonthGrid extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final DateTime day = DateTime(month.year, month.month, dayNumber);
-        final bool isToday = MonthRecords.keyForDay(day) ==
+        final bool isToday =
+            MonthRecords.keyForDay(day) ==
             MonthRecords.keyForDay(DateTime(now.year, now.month, now.day));
         final bool isSelected = _sameDay(day, selectedDate);
         final bool isFuture = day.isAfter(

@@ -11,6 +11,7 @@ import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
+import 'package:lemon_aid_mobile/features/records/food_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/score_screen.dart';
 
@@ -362,6 +363,31 @@ class _ScoreRepository implements LemonAidRepository {
     String persona = 'B',
   }) async {
     return ComprehensiveDietAnalysis.empty;
+  }
+
+  @override
+  Future<FoodCatalogList> searchFoods({
+    String? q,
+    String? cuisineCode,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<FoodCuisineList> fetchCuisines() async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteSupplement(String supplementId) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteAnalysisResult(String resultId) async {
+    throw UnimplementedError();
   }
 
   @override

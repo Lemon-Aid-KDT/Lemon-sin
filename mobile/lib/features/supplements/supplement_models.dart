@@ -283,6 +283,7 @@ class MealFoodItemInput {
     this.fatG,
     this.sodiumMg,
     this.confidence,
+    this.foodCatalogItemId,
     this.source = 'manual',
   });
 
@@ -312,6 +313,9 @@ class MealFoodItemInput {
 
   /// Optional detector confidence retained for traceability.
   final double? confidence;
+
+  /// Curated food catalog item id when picked from the direct-input search.
+  final String? foodCatalogItemId;
 
   /// Confirmed row source.
   final String source;
@@ -344,6 +348,7 @@ class MealFoodItemInput {
       if (fatG != null) 'fat_g': fatG,
       if (sodiumMg != null) 'sodium_mg': sodiumMg,
       if (confidence != null) 'confidence': confidence,
+      if (foodCatalogItemId != null) 'food_catalog_item_id': foodCatalogItemId,
       'source': source,
     };
   }

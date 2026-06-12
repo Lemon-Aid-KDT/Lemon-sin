@@ -205,6 +205,30 @@ class ApiClient {
     return _decodeBodyAsObject(responseBody);
   }
 
+  /// Sends a DELETE request and verifies the status code.
+  ///
+  /// Args:
+  ///   path: API path below `/api/v1`.
+  ///   expectedStatusCodes: Status codes considered successful (default 204).
+  ///
+  /// Raises:
+  ///   ApiError: If the backend returns an unexpected status code (e.g. 404).
+  Future<void> delete(
+    String path, {
+    Set<int> expectedStatusCodes = const <int>{204},
+  }) async {
+    final http.Response response = await _withTimeout(
+      _httpClient.delete(_uri(path), headers: _headers()),
+      _requestTimeout,
+    );
+    if (!expectedStatusCodes.contains(response.statusCode)) {
+      throw ApiError.fromBody(
+        statusCode: response.statusCode,
+        body: response.body,
+      );
+    }
+  }
+
   /// Releases the underlying HTTP client.
   void close() {
     _httpClient.close();

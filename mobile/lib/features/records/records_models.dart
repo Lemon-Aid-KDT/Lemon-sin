@@ -82,8 +82,9 @@ class MonthRecords {
       if (registeredAt == null) continue;
       final DateTime local = registeredAt.toLocal();
       if (local.year != month.year || local.month != month.month) continue;
-      (supplementBuckets[keyForDay(local)] ??= <HomeSupplement>[])
-          .add(supplement);
+      (supplementBuckets[keyForDay(local)] ??= <HomeSupplement>[]).add(
+        supplement,
+      );
     }
 
     final Set<String> allKeys = <String>{
@@ -128,5 +129,172 @@ class DayRecords {
       sum += meal.nutrition.kcal;
     }
     return sum.round();
+  }
+
+  /// 시간 오름차순으로 병합한 타임라인 (끼니 + 영양제).
+  ///
+  /// 정렬 규칙(가이드 ⑦): 시각 오름차순. **동시각이면 끼니를 영양제보다 먼저**
+  /// 표시한다(같은 분에 식사·영양제가 함께 기록된 경우 식사를 먼저 보여줘 자연
+  /// 스럽게 읽히게 한다). 시각은 모두 로컬 타임존으로 변환해 비교한다.
+  List<RecordTimelineEntry> get timeline {
+    final List<RecordTimelineEntry> entries = <RecordTimelineEntry>[
+      for (final HomeMeal meal in meals)
+        if (meal.eatenAt != null) RecordTimelineEntry.meal(meal),
+      for (final HomeSupplement supplement in supplements)
+        RecordTimelineEntry.supplement(supplement),
+    ];
+    entries.sort((RecordTimelineEntry a, RecordTimelineEntry b) {
+      final int byTime = a.sortTime.compareTo(b.sortTime);
+      if (byTime != 0) return byTime;
+      // 동시각 — 끼니 우선(meal=0, supplement=1).
+      return a.kind.sortRank.compareTo(b.kind.sortRank);
+    });
+    return entries;
+  }
+}
+
+/// 타임라인 항목 종류.
+enum RecordTimelineKind {
+  /// 끼니 기록.
+  meal,
+
+  /// 영양제 등록.
+  supplement;
+
+  /// 동시각 정렬 우선순위 (끼니가 영양제보다 먼저).
+  int get sortRank => this == RecordTimelineKind.meal ? 0 : 1;
+}
+
+/// 오늘의 기록 타임라인의 한 행 (끼니 또는 영양제).
+///
+/// 시각은 로컬 타임존 기준:
+///   - 끼니: `eaten_at` 로컬 변환.
+///   - 영양제: `intake_schedule` 의 시각 단서가 있으면 그 시각, 없으면 등록일
+///     (`user_confirmed_at`→`created_at`) 의 시각.
+class RecordTimelineEntry {
+  /// 타임라인 항목을 생성한다.
+  const RecordTimelineEntry({
+    required this.kind,
+    required this.sortTime,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.meal,
+    this.supplement,
+  });
+
+  /// 항목 종류.
+  final RecordTimelineKind kind;
+
+  /// 정렬·표기에 쓰는 로컬 시각.
+  final DateTime sortTime;
+
+  /// 행 제목 (대표 메뉴명 / 영양제명).
+  final String title;
+
+  /// 행 보조 설명 (끼니 항목 요약 / 영양제 안내).
+  final String? subtitle;
+
+  /// 행 우측 보조 텍스트 (끼니 kcal 등).
+  final String? trailing;
+
+  /// 끼니 항목일 때 원본 끼니.
+  final HomeMeal? meal;
+
+  /// 영양제 항목일 때 원본 영양제.
+  final HomeSupplement? supplement;
+
+  /// `HH:mm` 로컬 시각 라벨.
+  String get timeLabel {
+    final String h = sortTime.hour.toString().padLeft(2, '0');
+    final String m = sortTime.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  /// 끼니 한 행을 만든다.
+  factory RecordTimelineEntry.meal(HomeMeal meal) {
+    final DateTime local = (meal.eatenAt ?? DateTime.now()).toLocal();
+    final String primary = meal.primaryName ?? '식단 기록';
+    final int extra = meal.foodItems.length - 1;
+    final String title = extra > 0 ? '$primary 외 $extra개' : primary;
+    return RecordTimelineEntry(
+      kind: RecordTimelineKind.meal,
+      sortTime: local,
+      title: title,
+      subtitle: _mealTypeLabel(meal.mealType),
+      trailing: '${meal.nutrition.kcal.round()} kcal',
+      meal: meal,
+    );
+  }
+
+  /// 영양제 한 행을 만든다.
+  factory RecordTimelineEntry.supplement(HomeSupplement supplement) {
+    final DateTime base = (supplement.registeredAt ?? DateTime.now()).toLocal();
+    final DateTime sortTime = _scheduleTime(base, supplement.schedule);
+    final String name = supplement.displayName.isNotEmpty
+        ? supplement.displayName
+        : '영양제';
+    return RecordTimelineEntry(
+      kind: RecordTimelineKind.supplement,
+      sortTime: sortTime,
+      title: name,
+      subtitle: supplement.schedule?.summary ?? '등록된 영양제',
+      supplement: supplement,
+    );
+  }
+
+  /// 영양제 시각 — intake_schedule 의 time_of_day 단서가 있으면 대표 시각으로,
+  /// 없으면 등록일 시각을 그대로 쓴다 (가이드 ②/④).
+  static DateTime _scheduleTime(
+    DateTime registeredAt,
+    HomeSupplementSchedule? schedule,
+  ) {
+    final List<String> times = schedule?.timeOfDay ?? const <String>[];
+    if (times.isEmpty) return registeredAt;
+    int? hour;
+    for (final String slot in times) {
+      final int? mapped = _timeOfDayHour(slot);
+      if (mapped != null) {
+        hour = hour == null ? mapped : (mapped < hour ? mapped : hour);
+      }
+    }
+    if (hour == null) return registeredAt;
+    return DateTime(
+      registeredAt.year,
+      registeredAt.month,
+      registeredAt.day,
+      hour,
+    );
+  }
+
+  static int? _timeOfDayHour(String slot) {
+    switch (slot.toLowerCase()) {
+      case 'morning':
+        return 8;
+      case 'noon':
+      case 'lunch':
+        return 12;
+      case 'evening':
+        return 18;
+      case 'night':
+        return 21;
+      default:
+        return null;
+    }
+  }
+
+  static String _mealTypeLabel(String mealType) {
+    switch (mealType.toLowerCase()) {
+      case 'breakfast':
+        return '아침';
+      case 'lunch':
+        return '점심';
+      case 'dinner':
+        return '저녁';
+      case 'snack':
+        return '간식';
+      default:
+        return '끼니';
+    }
   }
 }
