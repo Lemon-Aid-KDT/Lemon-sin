@@ -305,6 +305,126 @@ void main() {
     expect(repository.registerCalls, 1);
     expect(controller.lastRegisteredSupplement?.displayName, 'Vitamin D');
   });
+
+  test('bootstrap loads medications into the home medications block', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      medications: const HomeMedicationsResult(
+        items: <HomeMedication>[
+          HomeMedication(id: 'med-1', displayName: '아모디핀'),
+        ],
+      ),
+    )..consents = <String, bool>{
+      AppController.ocrConsent: true,
+      AppController.healthConsent: true,
+    };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+
+    expect(repository.fetchMedicationsCalls, 1);
+    expect(controller.homeMedicationsFailed, isFalse);
+    expect(controller.homeMedications.activeItems.single.displayName, '아모디핀');
+  });
+
+  test('a failing medications block does not pollute other home blocks', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      failMedications: true,
+    )..consents = <String, bool>{
+      AppController.ocrConsent: true,
+      AppController.healthConsent: true,
+    };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+
+    // meals/supplements 블록은 이 fake 에서 정상 — medications 실패가
+    // 그들을 오염시키지 않음을 확인 (impact 는 이 fake 에서 미구현).
+    expect(controller.homeMedicationsFailed, isTrue);
+    expect(controller.homeMealsFailed, isFalse);
+    expect(controller.homeSupplementsFailed, isFalse);
+    expect(controller.homeMedications.items, isEmpty);
+  });
+
+  test('addMedication creates the row and reloads the medications block', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      medications: const HomeMedicationsResult(
+        items: <HomeMedication>[
+          HomeMedication(id: 'med-1', displayName: '아모디핀'),
+        ],
+      ),
+    )..consents = <String, bool>{
+      AppController.ocrConsent: true,
+      AppController.healthConsent: true,
+    };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+    final int loadsAfterBootstrap = repository.fetchMedicationsCalls;
+
+    final bool created = await controller.addMedication(
+      const MedicationCreateRequest(
+        displayName: '아모디핀',
+        medicationClass: 'calcium_channel_blocker',
+        conditionTags: <String>['hypertension'],
+      ),
+    );
+
+    expect(created, isTrue);
+    expect(repository.createMedicationCalls, 1);
+    expect(repository.lastCreateRequest?.displayName, '아모디핀');
+    // 추가 후 medications 블록만 다시 로드 (전체 대시보드 새로고침 아님).
+    expect(repository.fetchMedicationsCalls, loadsAfterBootstrap + 1);
+    expect(controller.notice, '약을 추가했어요.');
+    expect(controller.apiError, isNull);
+  });
+
+  test('addMedication surfaces an api error and keeps the list when it fails', () async {
+    final _FailingCreateRepository repository = _FailingCreateRepository()
+      ..consents = <String, bool>{
+        AppController.ocrConsent: true,
+        AppController.healthConsent: true,
+      };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+
+    final bool created = await controller.addMedication(
+      const MedicationCreateRequest(displayName: '아모디핀'),
+    );
+
+    expect(created, isFalse);
+    expect(controller.apiError?.statusCode, 422);
+  });
+
+  test('deactivateMedication then reactivateMedication supports undo', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      medications: const HomeMedicationsResult(
+        items: <HomeMedication>[
+          HomeMedication(id: 'med-1', displayName: '아모디핀'),
+        ],
+      ),
+    )..consents = <String, bool>{
+      AppController.ocrConsent: true,
+      AppController.healthConsent: true,
+    };
+    final AppController controller = AppController(repository: repository);
+    await controller.bootstrap();
+
+    final bool deactivated = await controller.deactivateMedication('med-1');
+    final bool reactivated = await controller.reactivateMedication('med-1');
+
+    expect(deactivated, isTrue);
+    expect(reactivated, isTrue);
+    expect(repository.deactivateMedicationCalls, 1);
+    expect(repository.lastDeactivatedId, 'med-1');
+    expect(repository.reactivateMedicationCalls, 1);
+    expect(repository.lastReactivatedId, 'med-1');
+  });
+}
+
+class _FailingCreateRepository extends _AutoInsightRepository {
+  @override
+  Future<HomeMedication> createMedication(
+    MedicationCreateRequest request,
+  ) async {
+    throw const ApiError(statusCode: 422, message: '입력을 확인해주세요.');
+  }
 }
 
 UserSupplementCreate _registrationRequest({
@@ -342,12 +462,16 @@ class _AutoInsightRepository implements LemonAidRepository {
   _AutoInsightRepository({
     this.failExplanation = false,
     this.failImpact = false,
+    this.failMedications = false,
     this.analysisDelay = Duration.zero,
+    this.medications = HomeMedicationsResult.empty,
   });
 
   final bool failExplanation;
   final bool failImpact;
+  final bool failMedications;
   final Duration analysisDelay;
+  final HomeMedicationsResult medications;
   Map<String, bool> consents = const <String, bool>{};
   int registerCalls = 0;
   int impactCalls = 0;
@@ -355,6 +479,13 @@ class _AutoInsightRepository implements LemonAidRepository {
   int analysisExplainCalls = 0;
   int finalizeCalls = 0;
   int confirmMealCalls = 0;
+  int fetchMedicationsCalls = 0;
+  int createMedicationCalls = 0;
+  int deactivateMedicationCalls = 0;
+  int reactivateMedicationCalls = 0;
+  MedicationCreateRequest? lastCreateRequest;
+  String? lastDeactivatedId;
+  String? lastReactivatedId;
   bool? lastExplainUsedLocalLlm;
   bool? lastAnalysisExplainUsedLocalLlm;
   String? lastAnalysisExplainId;
@@ -393,6 +524,42 @@ class _AutoInsightRepository implements LemonAidRepository {
     int offset = 0,
   }) async {
     return HomeSupplementsResult.empty;
+  }
+
+  @override
+  Future<HomeMedicationsResult> fetchMedications() async {
+    fetchMedicationsCalls += 1;
+    if (failMedications) {
+      throw const ApiError(statusCode: 503, message: 'medications unavailable');
+    }
+    return medications;
+  }
+
+  @override
+  Future<HomeMedication> createMedication(
+    MedicationCreateRequest request,
+  ) async {
+    createMedicationCalls += 1;
+    lastCreateRequest = request;
+    return HomeMedication(id: 'med-new', displayName: request.displayName);
+  }
+
+  @override
+  Future<HomeMedication> deactivateMedication(String medicationId) async {
+    deactivateMedicationCalls += 1;
+    lastDeactivatedId = medicationId;
+    return HomeMedication(
+      id: medicationId,
+      displayName: '아모디핀',
+      isActive: false,
+    );
+  }
+
+  @override
+  Future<HomeMedication> reactivateMedication(String medicationId) async {
+    reactivateMedicationCalls += 1;
+    lastReactivatedId = medicationId;
+    return HomeMedication(id: medicationId, displayName: '아모디핀');
   }
 
   @override

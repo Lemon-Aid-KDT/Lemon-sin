@@ -218,10 +218,12 @@ class AppController extends ChangeNotifier {
   );
   HomeMealsResult _recentMeals = HomeMealsResult.empty;
   HomeSupplementsResult _homeSupplements = HomeSupplementsResult.empty;
+  HomeMedicationsResult _homeMedications = HomeMedicationsResult.empty;
   bool _homeDataLoading = false;
   bool _homeMealsFailed = false;
   bool _homeSupplementsFailed = false;
   bool _homeImpactFailed = false;
+  bool _homeMedicationsFailed = false;
   SupplementAnalysisPreview? _analysisPreview;
   SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
   MealImageAnalysisPreview? _mealAnalysisPreview;
@@ -275,6 +277,9 @@ class AppController extends ChangeNotifier {
   /// Current-user registered supplements for the home tab.
   HomeSupplementsResult get homeSupplements => _homeSupplements;
 
+  /// Current-user saved medications for the home tab (active and inactive).
+  HomeMedicationsResult get homeMedications => _homeMedications;
+
   /// Whether the home blocks (meals/supplements/impact) are loading.
   bool get homeDataLoading => _homeDataLoading;
 
@@ -286,6 +291,9 @@ class AppController extends ChangeNotifier {
 
   /// Whether the supplement interaction block failed to load on the last attempt.
   bool get homeImpactFailed => _homeImpactFailed;
+
+  /// Whether the medications block failed to load on the last attempt.
+  bool get homeMedicationsFailed => _homeMedicationsFailed;
 
   /// Meals eaten on [day] (client-side filter over the loaded window).
   List<HomeMeal> mealsForDay(DateTime day) {
@@ -406,6 +414,7 @@ class AppController extends ChangeNotifier {
     _homeMealsFailed = false;
     _homeSupplementsFailed = false;
     _homeImpactFailed = false;
+    _homeMedicationsFailed = false;
     notifyListeners();
 
     final DateTime now = DateTime.now();
@@ -419,6 +428,7 @@ class AppController extends ChangeNotifier {
       _loadMealsBlock(weekStart),
       _loadSupplementsBlock(),
       _loadImpactBlock(),
+      _loadMedicationsBlock(),
     ]);
 
     _homeDataLoading = false;
@@ -448,6 +458,69 @@ class AppController extends ChangeNotifier {
     } catch (_) {
       _homeImpactFailed = true;
     }
+  }
+
+  Future<void> _loadMedicationsBlock() async {
+    try {
+      _homeMedications = await _repository.fetchMedications();
+    } catch (_) {
+      _homeMedicationsFailed = true;
+    }
+  }
+
+  /// Reloads only the medications block (after add/deactivate/undo).
+  ///
+  /// Keeps the rest of the home untouched so a medication action does not
+  /// trigger a full dashboard refresh.
+  Future<void> _reloadMedicationsBlock() async {
+    _homeMedicationsFailed = false;
+    try {
+      _homeMedications = await _repository.fetchMedications();
+    } catch (_) {
+      _homeMedicationsFailed = true;
+    }
+    notifyListeners();
+  }
+
+  /// Saves a user-confirmed medication and refreshes the home medication list.
+  ///
+  /// Returns true on success. On failure, [apiError] holds a user-safe message
+  /// (422 validation, network, etc.) and the list is left unchanged.
+  Future<bool> addMedication(MedicationCreateRequest request) async {
+    bool created = false;
+    await _run(() async {
+      await _repository.createMedication(request);
+      created = true;
+      await _reloadMedicationsBlock();
+      _notice = '약을 추가했어요.';
+    });
+    return created;
+  }
+
+  /// Deactivates a saved medication and refreshes the home medication list.
+  ///
+  /// Returns true on success so the caller can offer an undo action.
+  Future<bool> deactivateMedication(String medicationId) async {
+    bool done = false;
+    await _run(() async {
+      await _repository.deactivateMedication(medicationId);
+      done = true;
+      await _reloadMedicationsBlock();
+      _notice = '약을 목록에서 비활성화했어요.';
+    });
+    return done;
+  }
+
+  /// Reactivates a saved medication (undo of a deactivation).
+  Future<bool> reactivateMedication(String medicationId) async {
+    bool done = false;
+    await _run(() async {
+      await _repository.reactivateMedication(medicationId);
+      done = true;
+      await _reloadMedicationsBlock();
+      _notice = '약을 다시 활성화했어요.';
+    });
+    return done;
   }
 
   /// Uploads a supplement label image and stores the preview.

@@ -455,6 +455,127 @@ class HomeSupplementSchedule {
   }
 }
 
+/// GET /me/medications 응답 컨테이너.
+///
+/// meals/supplements 의 `results` 와 달리 래퍼 키가 `items` 다
+/// (백엔드 `UserMedicationListResponse`).
+class HomeMedicationsResult {
+  /// 복약 목록 결과를 생성한다.
+  const HomeMedicationsResult({required this.items});
+
+  /// 복약 레코드 목록 (활성·비활성 모두 — 서버가 활성 우선 정렬).
+  final List<HomeMedication> items;
+
+  /// 빈 결과.
+  static const HomeMedicationsResult empty = HomeMedicationsResult(
+    items: <HomeMedication>[],
+  );
+
+  /// 활성 약만 추린 목록.
+  List<HomeMedication> get activeItems => items
+      .where((HomeMedication item) => item.isActive)
+      .toList(growable: false);
+
+  /// GET /me/medications 응답을 파싱한다.
+  factory HomeMedicationsResult.fromJson(Map<String, dynamic> json) {
+    return HomeMedicationsResult(
+      items: _objectList(json['items'])
+          .map(HomeMedication.fromJson)
+          .toList(growable: false),
+    );
+  }
+}
+
+/// 단일 복약 레코드.
+class HomeMedication {
+  /// 복약 레코드를 생성한다.
+  const HomeMedication({
+    required this.id,
+    required this.displayName,
+    this.medicationClass,
+    this.conditionTags = const <String>[],
+    this.confirmationStatus,
+    this.isActive = true,
+  });
+
+  /// 복약 식별자.
+  final String id;
+
+  /// 표시명.
+  final String displayName;
+
+  /// 약 분류 코드 (허용 16종 중 하나 또는 null).
+  final String? medicationClass;
+
+  /// 질환 태그 코드 목록 (허용 8종).
+  final List<String> conditionTags;
+
+  /// 확인 상태 코드 (예: user_confirmed).
+  final String? confirmationStatus;
+
+  /// 활성 여부.
+  final bool isActive;
+
+  /// medication_class 코드의 한국어 표시명. 미지정/미지 코드는 null.
+  String? get medicationClassLabel =>
+      kMedicationClassLabels[medicationClass];
+
+  /// condition_tags 코드를 한국어 표시명으로 매핑 (미지 코드는 코드 원문 유지).
+  List<String> get conditionTagLabels => conditionTags
+      .map((String code) => kConditionTagLabels[code] ?? code)
+      .toList(growable: false);
+
+  /// /me/medications 응답의 단일 항목을 파싱한다.
+  factory HomeMedication.fromJson(Map<String, dynamic> json) {
+    final Object? active = json['is_active'];
+    return HomeMedication(
+      id: (json['id'] as Object?)?.toString() ?? '',
+      displayName: _optionalText(json['display_name']) ?? '',
+      medicationClass: _optionalText(json['medication_class']),
+      conditionTags: _stringList(json['condition_tags']),
+      confirmationStatus: _optionalText(json['confirmation_status']),
+      isActive: active is bool ? active : true,
+    );
+  }
+}
+
+/// 허용 약 분류 코드 → 한국어 표시명.
+///
+/// 출처(미러링): backend/Nutrition-backend/src/models/schemas/user_medication.py
+/// 의 `ALLOWED_MEDICATION_CLASSES` (16종). 코드/순서를 그대로 따른다.
+const Map<String, String> kMedicationClassLabels = <String, String>{
+  'ace_inhibitor': 'ACE 억제제',
+  'arb': 'ARB(안지오텐신 차단제)',
+  'beta_blocker': '베타 차단제',
+  'calcium_channel_blocker': '칼슘 채널 차단제',
+  'diuretic': '이뇨제',
+  'maoi': 'MAO 억제제',
+  'nitrate': '질산염제',
+  'pde5_inhibitor': 'PDE5 억제제',
+  'ssri': 'SSRI',
+  'snri': 'SNRI',
+  'statin': '스타틴',
+  'thyroid_hormone': '갑상선 호르몬제',
+  'warfarin': '와파린',
+  'anticoagulant': '항응고제',
+  'diabetes_medication': '당뇨약',
+  'other': '기타',
+};
+
+/// 허용 질환 태그 코드 → 한국어 표시명.
+///
+/// 출처(미러링): 위 파일의 `ALLOWED_CONDITION_TAGS` (8종).
+const Map<String, String> kConditionTagLabels = <String, String>{
+  'hypertension': '고혈압',
+  'diabetes': '당뇨',
+  'kidney_disease': '신장질환',
+  'dyslipidemia': '이상지질혈증',
+  'thyroid_disease': '갑상선질환',
+  'heart_disease': '심장질환',
+  'mental_health': '정신건강',
+  'other': '기타',
+};
+
 // ─── 공통 null-safe 헬퍼 ───────────────────────────
 
 Map<String, dynamic>? _optionalMap(Object? value) {

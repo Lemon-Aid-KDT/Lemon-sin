@@ -8,6 +8,7 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/screens/dashboard_screen.dart';
+import 'package:lemon_aid_mobile/utils/design_tokens_v2.dart';
 
 void main() {
   testWidgets('shows the ready health score and a calm interaction state', (
@@ -50,6 +51,9 @@ void main() {
     expect(find.text('안심하고 드셔도 돼요'), findsOneWidget);
     expect(find.text('영양제 관리'), findsOneWidget);
     expect(find.text('비타민 D'), findsOneWidget);
+    // 복약 카드 빈 상태 (약 0개).
+    expect(find.text('복약 관리'), findsOneWidget);
+    expect(find.text('약 등록하기'), findsOneWidget);
   });
 
   testWidgets('shows the not_ready prompt when the score is unavailable', (
@@ -69,8 +73,8 @@ void main() {
     await _pumpScreen(tester, controller);
 
     expect(find.text('기록을 추가하면 점수를 보여드려요'), findsOneWidget);
-    // 영양제가 없으면 상호작용 카드는 미등록 안내 상태.
-    expect(find.text('등록된 영양제가 없어요'), findsOneWidget);
+    // 영양제·약이 모두 없으면 상호작용 카드는 ③ 미등록 안내 상태.
+    expect(find.text('등록된 영양제·약이 없어요'), findsOneWidget);
   });
 
   testWidgets('lists interaction risks when the preview reports them', (
@@ -116,6 +120,151 @@ void main() {
     expect(find.text('확인이 필요해요 · 1건'), findsOneWidget);
     expect(find.textContaining('비타민 D 섭취가 겹칠 수 있어요.'), findsOneWidget);
   });
+
+  testWidgets('renders the medication card list with class and tag labels', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+        medications: const HomeMedicationsResult(
+          items: <HomeMedication>[
+            HomeMedication(
+              id: 'med-1',
+              displayName: '아모디핀',
+              medicationClass: 'calcium_channel_blocker',
+              conditionTags: <String>['hypertension', 'diabetes', 'other'],
+            ),
+          ],
+        ),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    expect(find.text('복약 관리'), findsOneWidget);
+    expect(find.text('아모디핀'), findsOneWidget);
+    expect(find.text('칼슘 채널 차단제'), findsOneWidget);
+    // condition_tags 칩 최대 2 + n.
+    expect(find.text('고혈압'), findsOneWidget);
+    expect(find.text('당뇨'), findsOneWidget);
+    expect(find.text('+1'), findsOneWidget);
+    // 약 ≥1 이면 상호작용 카드에 약 기준 각주가 붙는다.
+    expect(find.textContaining('등록한 약 1개 기준으로 함께 살펴봐요'), findsOneWidget);
+  });
+
+  testWidgets('toggles the medication intake check', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+        medications: const HomeMedicationsResult(
+          items: <HomeMedication>[
+            HomeMedication(id: 'med-1', displayName: '아모디핀'),
+          ],
+        ),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    expect(find.text('0/1 완료'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('아모디핀'));
+    await tester.pump();
+    await tester.tap(find.text('아모디핀'));
+    await tester.pump();
+
+    expect(find.text('1/1 완료'), findsOneWidget);
+  });
+
+  testWidgets('add medication sheet keeps the submit disabled until a name is '
+      'entered', (WidgetTester tester) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    await tester.ensureVisible(find.text('약 등록하기'));
+    await tester.pump();
+    await tester.tap(find.text('약 등록하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('약 추가'), findsOneWidget);
+    // 이름이 비어 있으면 '추가하기' 버튼은 비활성 (onPressed null).
+    final AppPrimaryButton disabled = tester.widget<AppPrimaryButton>(
+      find.widgetWithText(AppPrimaryButton, '추가하기'),
+    );
+    expect(disabled.enabled, isFalse);
+
+    await tester.enterText(find.byType(TextField).first, '아모디핀');
+    await tester.pump();
+
+    final AppPrimaryButton enabled = tester.widget<AppPrimaryButton>(
+      find.widgetWithText(AppPrimaryButton, '추가하기'),
+    );
+    expect(enabled.enabled, isTrue);
+  });
+
+  testWidgets('new medication card copy avoids prohibited medical terms', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+        medications: const HomeMedicationsResult(
+          items: <HomeMedication>[
+            HomeMedication(id: 'med-1', displayName: '아모디핀'),
+          ],
+        ),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    // 복약 카드/각주 신규 문구.
+    const List<String> newCopy = <String>[
+      '복약 관리',
+      '약 변경은 의사·약사와 상담해주세요.',
+      '복용 중인 약을 등록하면 음식·영양제 궁합을 확인해드려요.',
+      '등록한 약 1개 기준으로 함께 살펴봐요 · 방금 확인',
+      '복용 시점·용량 안내는 의사·약사와 상담해주세요.',
+    ];
+    const List<String> bannedTerms = <String>['진단', '처방', '치료', '효능'];
+    for (final String copy in newCopy) {
+      for (final String banned in bannedTerms) {
+        expect(
+          copy.contains(banned),
+          isFalse,
+          reason: '"$copy" 에 금칙어 "$banned" 가 포함됨',
+        );
+      }
+    }
+  });
 }
 
 Future<void> _pumpScreen(WidgetTester tester, AppController controller) async {
@@ -156,11 +305,13 @@ class _HomeRepository implements LemonAidRepository {
     required this.healthScore,
     required this.supplements,
     required this.impact,
+    this.medications = HomeMedicationsResult.empty,
   });
 
   final DashboardHealthScore healthScore;
   final HomeSupplementsResult supplements;
   final SupplementImpactPreviewResponse impact;
+  final HomeMedicationsResult medications;
 
   @override
   Future<ConsentState> fetchConsents() async {
@@ -230,6 +381,11 @@ class _HomeRepository implements LemonAidRepository {
     int offset = 0,
   }) async {
     return supplements;
+  }
+
+  @override
+  Future<HomeMedicationsResult> fetchMedications() async {
+    return medications;
   }
 
   @override

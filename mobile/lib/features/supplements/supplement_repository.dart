@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../consent/consent_models.dart';
 import '../dashboard/dashboard_models.dart';
 import '../dashboard/home_models.dart';
@@ -9,6 +10,50 @@ import 'supplement_models.dart';
 final RegExp _kUuidPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
 );
+
+/// User-confirmed payload for creating a saved medication.
+///
+/// The backend schema uses `extra="forbid"` (no dosage/OCR fields allowed), so
+/// this request mirrors exactly the accepted fields. Class and condition codes
+/// are validated against the mirrored whitelists before sending to fail fast
+/// with a clear error instead of a raw 422.
+class MedicationCreateRequest {
+  /// Creates a medication-create request.
+  ///
+  /// Args:
+  ///   displayName: Medication name (1..160 chars after trim, required).
+  ///   medicationClass: Optional class code from [kMedicationClassLabels].
+  ///   conditionTags: Up to 8 condition codes from [kConditionTagLabels].
+  ///   isActive: Whether the medication starts active.
+  const MedicationCreateRequest({
+    required this.displayName,
+    this.medicationClass,
+    this.conditionTags = const <String>[],
+    this.isActive = true,
+  });
+
+  /// Medication display name (required, 1..160 chars).
+  final String displayName;
+
+  /// Optional medication class code.
+  final String? medicationClass;
+
+  /// Condition tag codes (max 8).
+  final List<String> conditionTags;
+
+  /// Whether the medication starts active.
+  final bool isActive;
+
+  /// Serializes to the backend create body (forbids extra fields).
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'display_name': displayName.trim(),
+      if (medicationClass != null) 'medication_class': medicationClass,
+      'condition_tags': conditionTags,
+      'is_active': isActive,
+    };
+  }
+}
 
 /// Repository contract used by the mobile app controller.
 abstract class LemonAidRepository {
@@ -36,6 +81,29 @@ abstract class LemonAidRepository {
     int limit = 50,
     int offset = 0,
   }) {
+    throw UnimplementedError();
+  }
+
+  /// Fetches current-user saved medications (active and inactive).
+  ///
+  /// The backend list route takes no query parameters and returns every saved
+  /// row (active first); the home card filters to active client-side.
+  Future<HomeMedicationsResult> fetchMedications() {
+    throw UnimplementedError();
+  }
+
+  /// Saves a user-confirmed medication name.
+  Future<HomeMedication> createMedication(MedicationCreateRequest request) {
+    throw UnimplementedError();
+  }
+
+  /// Deactivates a saved medication row.
+  Future<HomeMedication> deactivateMedication(String medicationId) {
+    throw UnimplementedError();
+  }
+
+  /// Reactivates a saved medication row (undo of deactivate).
+  Future<HomeMedication> reactivateMedication(String medicationId) {
     throw UnimplementedError();
   }
 
@@ -206,6 +274,104 @@ class BackendLemonAidRepository implements LemonAidRepository {
       },
     );
     return HomeSupplementsResult.fromJson(json);
+  }
+
+  @override
+  Future<HomeMedicationsResult> fetchMedications() async {
+    final Map<String, dynamic> json = await _withHealthConsentRetry(
+      () => _apiClient.getJson('/me/medications'),
+    );
+    return HomeMedicationsResult.fromJson(json);
+  }
+
+  @override
+  Future<HomeMedication> createMedication(
+    MedicationCreateRequest request,
+  ) async {
+    final String normalizedName = request.displayName.trim();
+    if (normalizedName.isEmpty) {
+      throw ArgumentError.value(
+        request.displayName,
+        'displayName',
+        'Medication name is required',
+      );
+    }
+    final String? medicationClass = request.medicationClass;
+    if (medicationClass != null &&
+        !kMedicationClassLabels.containsKey(medicationClass)) {
+      throw ArgumentError.value(
+        medicationClass,
+        'medicationClass',
+        'Unsupported medication class',
+      );
+    }
+    for (final String tag in request.conditionTags) {
+      if (!kConditionTagLabels.containsKey(tag)) {
+        throw ArgumentError.value(tag, 'conditionTags', 'Unsupported tag');
+      }
+    }
+    final Map<String, dynamic> json = await _withHealthConsentRetry(
+      () => _apiClient.postJson(
+        '/me/medications',
+        body: request.toJson(),
+        expectedStatusCodes: const <int>{201},
+      ),
+    );
+    return HomeMedication.fromJson(json);
+  }
+
+  @override
+  Future<HomeMedication> deactivateMedication(String medicationId) async {
+    final String encodedId = _encodeMedicationId(medicationId);
+    final Map<String, dynamic> json = await _withHealthConsentRetry(
+      () => _apiClient.postJson(
+        '/me/medications/$encodedId/deactivate',
+        expectedStatusCodes: const <int>{200},
+      ),
+    );
+    return HomeMedication.fromJson(json);
+  }
+
+  @override
+  Future<HomeMedication> reactivateMedication(String medicationId) async {
+    final String encodedId = _encodeMedicationId(medicationId);
+    final Map<String, dynamic> json = await _withHealthConsentRetry(
+      () => _apiClient.postJson(
+        '/me/medications/$encodedId',
+        body: <String, dynamic>{'is_active': true},
+        expectedStatusCodes: const <int>{200},
+      ),
+    );
+    return HomeMedication.fromJson(json);
+  }
+
+  /// Runs [request] and, on a `403 consent_required`, grants the sensitive
+  /// health analysis consent once and retries exactly once
+  /// (pattern: `features/chat/chat_repository.dart`).
+  Future<Map<String, dynamic>> _withHealthConsentRetry(
+    Future<Map<String, dynamic>> Function() request,
+  ) async {
+    try {
+      return await request();
+    } on ApiError catch (error) {
+      if (error.statusCode != 403 || error.code != 'consent_required') {
+        rethrow;
+      }
+      await grantConsent('sensitive_health_analysis');
+      return request();
+    }
+  }
+
+  String _encodeMedicationId(String medicationId) {
+    final String normalized = medicationId.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        medicationId,
+        'medicationId',
+        'Medication id is required',
+      );
+    }
+    return Uri.encodeComponent(normalized);
   }
 
   @override

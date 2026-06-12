@@ -248,4 +248,95 @@ void main() {
       expect(supplement.schedule, isNull);
     });
   });
+
+  group('HomeMedicationsResult', () {
+    test('parses the items wrapper with class and condition labels', () {
+      final HomeMedicationsResult result = HomeMedicationsResult.fromJson(
+        <String, dynamic>{
+          'items': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'med-1',
+              'display_name': '아모디핀',
+              'normalized_name': 'amlodipine',
+              'medication_class': 'calcium_channel_blocker',
+              'condition_tags': <String>['hypertension', 'diabetes'],
+              'confirmation_status': 'user_confirmed',
+              'is_active': true,
+            },
+          ],
+        },
+      );
+
+      expect(result.items, hasLength(1));
+      final HomeMedication medication = result.items.first;
+      expect(medication.id, 'med-1');
+      expect(medication.displayName, '아모디핀');
+      expect(medication.medicationClass, 'calcium_channel_blocker');
+      expect(medication.medicationClassLabel, '칼슘 채널 차단제');
+      expect(medication.conditionTags, <String>['hypertension', 'diabetes']);
+      expect(medication.conditionTagLabels, <String>['고혈압', '당뇨']);
+      expect(medication.isActive, isTrue);
+    });
+
+    test('defaults missing fields safely', () {
+      final HomeMedicationsResult result = HomeMedicationsResult.fromJson(
+        <String, dynamic>{
+          'items': <Map<String, dynamic>>[
+            <String, dynamic>{'id': 'med-2', 'display_name': '메트포르민'},
+          ],
+        },
+      );
+
+      final HomeMedication medication = result.items.first;
+      expect(medication.medicationClass, isNull);
+      expect(medication.medicationClassLabel, isNull);
+      expect(medication.conditionTags, isEmpty);
+      // is_active 누락 시 활성으로 견고하게 수렴.
+      expect(medication.isActive, isTrue);
+    });
+
+    test('keeps unknown condition codes as raw labels', () {
+      final HomeMedication medication = HomeMedication.fromJson(
+        <String, dynamic>{
+          'id': 'med-3',
+          'display_name': '미지의 약',
+          'condition_tags': <String>['future_tag'],
+        },
+      );
+
+      expect(medication.conditionTagLabels, <String>['future_tag']);
+    });
+
+    test('treats a missing items wrapper as empty', () {
+      final HomeMedicationsResult result = HomeMedicationsResult.fromJson(
+        <String, dynamic>{'unexpected': 1},
+      );
+
+      expect(result.items, isEmpty);
+      expect(result.activeItems, isEmpty);
+    });
+
+    test('activeItems filters out deactivated rows', () {
+      final HomeMedicationsResult result = HomeMedicationsResult.fromJson(
+        <String, dynamic>{
+          'items': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'med-1',
+              'display_name': '활성약',
+              'is_active': true,
+            },
+            <String, dynamic>{
+              'id': 'med-2',
+              'display_name': '비활성약',
+              'is_active': false,
+            },
+          ],
+        },
+      );
+
+      expect(result.items, hasLength(2));
+      expect(result.activeItems, hasLength(1));
+      expect(result.activeItems.single.displayName, '활성약');
+    });
+  });
 }

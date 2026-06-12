@@ -20,11 +20,14 @@ import 'package:go_router/go_router.dart';
 import '../app_controller.dart';
 import '../features/dashboard/home_models.dart';
 import '../features/supplements/supplement_models.dart';
+import '../features/supplements/supplement_repository.dart';
 import '../shared/widgets/status_state_view.dart';
 import '../utils/design_tokens_v2.dart';
+import '../widgets/common/app_modals.dart';
 import '../widgets/common/pressable.dart';
 import '../widgets/common/staggered_entrance.dart';
 import '../widgets/dashboard/health_hero_card.dart';
+import '../widgets/dashboard/medication_add_sheet.dart';
 
 class DashboardScreen extends StatefulWidget {
   // recordDate 가 null 이면 메인(오늘 고정).
@@ -49,6 +52,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late DateTime _focusedMonday;
   // 영양제 체크 토글 — 세션 메모리. // TODO(persist): SharedPreferences 연동.
   final Set<String> _checkedSupplementIds = <String>{};
+  // 복약 복용 체크 토글 — 세션 메모리. // TODO(persist: P1-5): SharedPreferences 연동.
+  final Set<String> _checkedMedicationIds = <String>{};
 
   bool get _isRecordMode => widget.isRecordMode;
 
@@ -129,6 +134,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _toggleMedication(String id) {
+    setState(() {
+      if (_checkedMedicationIds.contains(id)) {
+        _checkedMedicationIds.remove(id);
+      } else {
+        _checkedMedicationIds.add(id);
+      }
+    });
+  }
+
+  // '+ 약 추가' → 바텀시트 폼 → POST. 성공 시 컨트롤러가 목록을 새로고침.
+  Future<void> _openAddMedication() async {
+    final MedicationCreateRequest? request =
+        await showMedicationAddSheet(context);
+    if (request == null || !mounted) return;
+    final bool created = await _controller.addMedication(request);
+    if (!mounted) return;
+    if (!created) {
+      _showErrorSnack(
+        _controller.apiError?.message ?? '약을 추가하지 못했어요. 잠시 후 다시 시도해주세요.',
+      );
+    }
+  }
+
+  // 길게 누름 → 삭제(비활성화) 확인 → deactivate → 실행취소 토스트(reactivate).
+  Future<void> _confirmDeactivateMedication(HomeMedication medication) async {
+    final bool confirmed = await showDeleteConfirmDialog(
+      context,
+      targetLabel: medication.displayName,
+      subLabel: '목록에서 빼면 상호작용 확인 대상에서 제외돼요.',
+    );
+    if (!confirmed || !mounted) return;
+    final bool done = await _controller.deactivateMedication(medication.id);
+    if (!mounted) return;
+    if (!done) {
+      _showErrorSnack(
+        _controller.apiError?.message ?? '약을 비활성화하지 못했어요. 잠시 후 다시 시도해주세요.',
+      );
+      return;
+    }
+    _checkedMedicationIds.remove(medication.id);
+    showUndoToast(
+      context,
+      message: '${medication.displayName}을(를) 목록에서 뺐어요.',
+      onUndo: () => _controller.reactivateMedication(medication.id),
+    );
+  }
+
+  void _showErrorSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColor.ink,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          content: Text(
+            message,
+            style: AppText.body.copyWith(color: Colors.white),
+          ),
+        ),
+      );
+  }
+
   // 당일 meals nutrition_summary 합산
   HomeMealNutrition _dayTotals(List<HomeMeal> meals) {
     HomeMealNutrition total = HomeMealNutrition.zero;
@@ -198,6 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               preview: _controller.supplementImpactPreview,
               hasSupplements:
                   _controller.homeSupplements.results.isNotEmpty,
+              medicationCount: _controller.homeMedications.activeItems.length,
               failed: _controller.homeImpactFailed,
             ),
             _MealManagementCard(
@@ -211,6 +282,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               failed: _controller.homeSupplementsFailed,
               onToggle: _toggleSupplement,
               onAdd: () => _openCamera('supplement'),
+            ),
+            _MedicationCard(
+              medications: _controller.homeMedications.activeItems,
+              checkedIds: _checkedMedicationIds,
+              failed: _controller.homeMedicationsFailed,
+              onToggle: _toggleMedication,
+              onAdd: _openAddMedication,
+              onDeactivate: _confirmDeactivateMedication,
             ),
             const _MedicalDisclaimer(),
           ],
@@ -789,16 +868,20 @@ class _TodayAnalysisCard extends StatelessWidget {
 // 상호작용 카드 (3상태)
 //   ① 위험 N건 → '주의 N건' + user_message 행들
 //   ② 안심 → 영양제 있고 위험 없음
-//   ③ 약 미등록 → 영양제 없음 (복약 라우트는 P1)
-// 의사·약사 상담 각주 유지.
+//   ③ 미등록 → 영양제·약 모두 미등록일 때만
+// 약이 등록되면 '등록한 약 N개 기준으로 함께 살펴봐요' 각주 추가 (시안 580:29 ②상태).
+// ⚠️ 약-음식/약-영양제 상호작용 판정은 백엔드 공백 — 클라이언트 임의 판정 금지,
+//    각주 표기까지만. 의사·약사 상담 각주 유지.
 // ═══════════════════════════════════════════
 class _InteractionCard extends StatelessWidget {
   final SupplementImpactPreviewResponse? preview;
   final bool hasSupplements;
+  final int medicationCount;
   final bool failed;
   const _InteractionCard({
     required this.preview,
     required this.hasSupplements,
+    required this.medicationCount,
     required this.failed,
   });
 
@@ -806,6 +889,7 @@ class _InteractionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<SupplementNutritionInsight> risks =
         preview?.excessOrDuplicateRisks ?? const <SupplementNutritionInsight>[];
+    final bool hasMedications = medicationCount > 0;
 
     final Widget body;
     if (failed && preview == null) {
@@ -815,8 +899,16 @@ class _InteractionCard extends StatelessWidget {
         title: '상호작용 정보를 불러오지 못했어요',
         subtitle: '잠시 후 당겨서 새로고침 해주세요.',
       );
+    } else if (!hasSupplements && !hasMedications) {
+      // ③ 영양제·약 모두 미등록.
+      body = _statusLine(
+        icon: Icons.medication_outlined,
+        color: AppColor.inkTertiary,
+        title: '등록된 영양제·약이 없어요',
+        subtitle: '영양제나 약을 등록하면 중복·상한 확인을 도와드려요.',
+      );
     } else if (!hasSupplements) {
-      // ③ 약/영양제 미등록 — 복약 라우트는 P1 이라 안내만.
+      // 약만 등록 — 영양제 중복·상한 계산 대상은 아직 없음 (약 기준 각주만).
       body = _statusLine(
         icon: Icons.medication_outlined,
         color: AppColor.inkTertiary,
@@ -862,6 +954,13 @@ class _InteractionCard extends StatelessWidget {
           const _CardHeader(title: '영양제 상호작용'),
           const SizedBox(height: AppSpace.md),
           body,
+          if (hasMedications) ...[
+            const SizedBox(height: AppSpace.sm),
+            Text(
+              '등록한 약 $medicationCount개 기준으로 함께 살펴봐요 · 방금 확인',
+              style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+            ),
+          ],
           const SizedBox(height: AppSpace.md),
           Text(
             '확인이 필요하면 의사·약사와 상담해주세요.',
@@ -1247,6 +1346,291 @@ class _SupplementRow extends StatelessWidget {
             child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 복약 관리 — 등록 약 목록 (가이드 02 ④(a))
+//   행 = 이름 + medication_class 한국어 라벨 + condition_tags 칩(최대 2 + n)
+//        + 복용 체크 토글(세션 메모리) + 길게 누르면 비활성화.
+//   빈 상태 = 가벼운 안내 + [약 등록하기].
+//   ⚠️ 용량/복용 시점 입력 금지 — 전문가 영역 문구로 대체.
+// ═══════════════════════════════════════════
+class _MedicationCard extends StatelessWidget {
+  final List<HomeMedication> medications;
+  final Set<String> checkedIds;
+  final bool failed;
+  final ValueChanged<String> onToggle;
+  final VoidCallback onAdd;
+  final ValueChanged<HomeMedication> onDeactivate;
+  const _MedicationCard({
+    required this.medications,
+    required this.checkedIds,
+    required this.failed,
+    required this.onToggle,
+    required this.onAdd,
+    required this.onDeactivate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final int total = medications.length;
+    final int done = medications
+        .where((HomeMedication item) => checkedIds.contains(item.id))
+        .length;
+
+    Widget body;
+    if (failed && medications.isEmpty) {
+      body = StatusStateView(
+        variant: StatusStateVariant.syncFailed,
+        onPrimary: onAdd,
+      );
+    } else if (medications.isEmpty) {
+      // 빈 상태 — figma 상호작용 카드 ③상태 톤.
+      body = _MedicationEmpty(onAdd: onAdd);
+    } else {
+      body = Column(
+        children: [
+          for (int i = 0; i < medications.length; i++) ...[
+            _MedicationRow(
+              medication: medications[i],
+              checked: checkedIds.contains(medications[i].id),
+              onToggle: () => onToggle(medications[i].id),
+              onLongPress: () => onDeactivate(medications[i]),
+            ),
+            if (i != medications.length - 1)
+              Divider(color: AppColor.border, height: AppSpace.lg),
+          ],
+          const SizedBox(height: AppSpace.md),
+          _AddMedicationButton(onTap: onAdd),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+      decoration: _mainCardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('복약 관리', style: AppText.subtitle),
+              if (total > 0)
+                Text(
+                  '$done/$total 완료',
+                  style: AppText.caption.copyWith(
+                    color: AppColor.brandDeep,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          body,
+          const SizedBox(height: AppSpace.md),
+          Text(
+            '약 변경은 의사·약사와 상담해주세요.',
+            style: AppText.micro.copyWith(color: AppColor.inkTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 빈 상태 — 가벼운 안내 + [약 등록하기]
+class _MedicationEmpty extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _MedicationEmpty({required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '복용 중인 약을 등록하면 음식·영양제 궁합을 확인해드려요.',
+          style: AppText.body.copyWith(
+            color: AppColor.inkSecondary,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: AppSpace.md),
+        _AddMedicationButton(onTap: onAdd, label: '약 등록하기'),
+      ],
+    );
+  }
+}
+
+// '+ 약 추가' / '약 등록하기' 버튼 — 시니어 최소 높이(52px+) 준수.
+class _AddMedicationButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final String label;
+  const _AddMedicationButton({required this.onTap, this.label = '+ 약 추가'});
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColor.brandSoft,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        child: Text(
+          label,
+          style: AppText.body.copyWith(
+            color: AppColor.brandDeep,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MedicationRow extends StatelessWidget {
+  final HomeMedication medication;
+  final bool checked;
+  final VoidCallback onToggle;
+  final VoidCallback onLongPress;
+  const _MedicationRow({
+    required this.medication,
+    required this.checked,
+    required this.onToggle,
+    required this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final String? classLabel = medication.medicationClassLabel;
+    final List<String> tagLabels = medication.conditionTagLabels;
+    return GestureDetector(
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: Pressable(
+        onTap: onToggle,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          medication.displayName.isNotEmpty
+                              ? medication.displayName
+                              : '이름 미상 약',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.body.copyWith(
+                            color: checked ? AppColor.inkTertiary : AppColor.ink,
+                            fontWeight: FontWeight.w600,
+                            decoration: checked
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                      ),
+                      if (classLabel != null) ...[
+                        const SizedBox(width: AppSpace.sm),
+                        _ClassLabelChip(label: classLabel),
+                      ],
+                    ],
+                  ),
+                  if (tagLabels.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _ConditionTagChips(labels: tagLabels),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            // 복용 체크 박스
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// medication_class 한국어 라벨 칩 (옅은 sunken 배경)
+class _ClassLabelChip extends StatelessWidget {
+  final String label;
+  const _ClassLabelChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColor.sunken,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        label,
+        style: AppText.micro.copyWith(color: AppColor.inkSecondary),
+      ),
+    );
+  }
+}
+
+// condition_tags 칩 — 최대 2개 + 'N개 더'
+class _ConditionTagChips extends StatelessWidget {
+  final List<String> labels;
+  const _ConditionTagChips({required this.labels});
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> shown = labels.take(2).toList(growable: false);
+    final int extra = labels.length - shown.length;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: <Widget>[
+        for (final String tag in shown) _TagPill(label: tag),
+        if (extra > 0) _TagPill(label: '+$extra'),
+      ],
+    );
+  }
+}
+
+class _TagPill extends StatelessWidget {
+  final String label;
+  const _TagPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColor.brandSoft,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        label,
+        style: AppText.micro.copyWith(color: AppColor.brandDeep),
       ),
     );
   }

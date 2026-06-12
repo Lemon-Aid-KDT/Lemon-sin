@@ -821,6 +821,26 @@ class _ReviewRepository implements LemonAidRepository {
   void close() {}
 
   @override
+  Future<HomeMedicationsResult> fetchMedications() async {
+    return HomeMedicationsResult.empty;
+  }
+
+  @override
+  Future<HomeMedication> createMedication(MedicationCreateRequest request) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<HomeMedication> deactivateMedication(String medicationId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<HomeMedication> reactivateMedication(String medicationId) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<ConsentState> fetchConsents() {
     throw UnimplementedError();
   }
