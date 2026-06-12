@@ -116,7 +116,7 @@
 ### (c) 소모 kcal · 잔여 kcal — Health Connect 전 잠금 표기
 
 12. [ ] `health_hero_card.dart` — `_hasTarget == false` 폴백 행을 잠금 안내로 강화: 현재 "오늘 먹은 음식 합계예요" 유지 + 자물쇠/워치 아이콘과 "워치 연동 후 소모·잔여 칼로리를 보여드려요" 캡션(시안 `951:58` 워치 미연결 톤, 색+아이콘+텍스트 병행). **추정치 표시 금지**(점수 날조 금지 원칙과 동일)
-13. [ ] 목표 kcal(P1, Health Connect와 독립): `GET /health/profile-snapshots/latest` + `GET /nutrition/kdris` 기반 목표를 백엔드 값으로 주입 — 클라이언트 계산 금지(연산은 백엔드 원칙). 값 확보 시 `targetKcal` 전달 → 히어로가 자동으로 '소비/목표' 모드 전환
+13. [x] 목표 kcal(P1, Health Connect와 독립): `GET /health/profile-snapshots/latest` + `GET /nutrition/kdris` 기반 목표를 백엔드 값으로 주입 — 클라이언트 계산 금지(연산은 백엔드 원칙). 값 확보 시 `targetKcal` 전달 → 히어로가 자동으로 '소비/목표' 모드 전환 ✅ 2026-06-13 구현: `dashboard_screen._loadTargetKcal()` — 스냅샷 sex/birth_year 보유 시에만 `energy_kcal`(EER) 값을 그대로 사용, 미확보·실패 시 합계 모드 유지(추정치 날조 금지). 같은 작업에서 위젯 기본 소모 200kcal 추정치 노출을 제거(`burnedKcal` nullable — 소모는 14번 HC 주입 시에만). 라이브 확인: dev 백엔드 2020-sample 데이터셋(19~64세) 기준 0/2000 kcal 모드 캡처. **dev 컨테이너가 승인된 2025 데이터셋 대신 2020-sample을 쓰는 설정(KDRIS_DATA_VERSION)은 팀 결정 필요**
 14. [ ] 소모 kcal(P1-6, 문서 08): Health Connect `POST /health/sync` → `GET /health/daily-summary`의 소모 kcal을 `burnedKcal`로 주입. 연동 전에는 12번 잠금 상태 고정
 
 ### (d) '오늘의 분석' 카드 ↔ 분석 탭 딥링크
