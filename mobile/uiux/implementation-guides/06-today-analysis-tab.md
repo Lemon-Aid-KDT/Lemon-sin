@@ -114,28 +114,28 @@
 7. [ ] `screens/score_screen.dart` — `_TrendLockedCard` → `_TrendChartCard` 교체: 데이터 7일치 미만이면 현행 잠금 유지("기록이 쌓이면 추이를 보여드려요"), 이상이면 28일 라인 차트. **차트는 `CustomPainter` 자체 구현 권고**(점 최대 28개 — 외부 차트 의존성 추가 불필요; `fl_chart` 도입은 팀 합의 시 대안)
 8. [ ] 차트 색: 라인 `AppColor.brand`, 포인트는 2.4 등급 매핑 색, 축 라벨 `AppText.micro`+`AppColor.inkTertiary`. **y축에 점수 숫자 표기는 가능(건강 점수), 신뢰도 %는 어떤 형태로도 금지**
 
-### 4.2 (b) 실천 리스트 체크 영속화
+### 4.2 (b) 실천 리스트 체크 영속화 — ✅ 구현 완료 (2026-06-12)
 
-1. [ ] `pubspec.yaml` — `shared_preferences` 추가 (P1-5 배치와 묶어 테마 스와치 영속 TODO도 일괄 해소)
-2. [ ] `features/ai_coaching/coaching_check_store.dart` 신설 — key `coaching_checked:{YYYY-MM-DD}`, value = **체크된 항목의 제목 기반 키 목록** (인덱스가 아닌 `item.title` 해시 — 재호출로 항목 순서가 바뀌어도 체크 유지). 어제 이전 키는 로드 시 정리(7일 보관)
-3. [ ] `score_screen.dart` — `_checkedItemIndexes`(Set\<int\>) → `Set<String>` 전환, `initState` 복원 / `_toggleItem` 저장, `// TODO(persist)` 주석 제거
-4. [ ] 같은 단계에서 `safety_warnings` 노출 추가: 실천 리스트 카드 하단에 `warningSoft` 배경 안내 행 (문구는 서버 그대로 — 프론트 가공 금지)
+1. [x] `pubspec.yaml` — `shared_preferences` (P1 배치에서 선반영돼 있었음)
+2. [x] `features/ai_coaching/coaching_check_store.dart` 신설 — key `coaching_checked:{YYYY-MM-DD}`, value = **체크된 항목의 제목 기반 키 목록**(`coach:{title}` / `custom:{title}` — 재호출로 항목 순서가 바뀌어도 체크 유지). 초안의 `item.title` 해시는 Dart `String.hashCode`가 런타임 버전 간 안정성이 보장되지 않아 **제목 원문 키로 확정**(의도적 편차). 보관 기한(7일) 지난 키는 로드 시 정리. as-built 확장: 직접 추가 실천(figma 800:23 CTA — P1 as-built)의 제목 목록도 `coaching_custom:{YYYY-MM-DD}` 키로 함께 영속(화면 TODO 주석이 약속한 범위). 같은 제목 중복 추가는 키 충돌(동시 토글)을 막기 위해 추가 시 차단
+3. [x] `score_screen.dart` — `_checkedItemIndexes`(Set\<int\>) → `Set<String>` 전환, `initState` 복원 / `_toggleItem` 저장, `// TODO(persist)` 주석 제거
+4. [x] 같은 단계에서 `safety_warnings` 노출 추가: 실천 리스트 카드 하단에 `warningSoft` 배경 안내 행 (문구는 서버 그대로 — 프론트 가공 금지)
 
-### 4.3 (c) 날짜 칩 — 과거 일자 조회
+### 4.3 (c) 날짜 칩 — 과거 일자 조회 — ✅ 구현 완료 (2026-06-12)
 
-1. [ ] `score_screen.dart` `_Header` — 날짜 칩을 `Pressable`로 감싸 탭 시 데이트 피커(범위: 오늘−27일 ~ 오늘, ko 로케일) 표시. 선택일 `_selectedDay` 상태 추가
-2. [ ] 과거 일자 선택 시:
-   - **실천 리스트**: `runDailyCoaching(day: _selectedDay, meals: _controller.mealsForDay(_selectedDay), ...)` — payload `date`에 과거일이 들어가며 일자 캐시 키(`_cachedDateKey`)도 선택일 기준으로 동작 (기존 구조 재사용). 과거일은 체크 토글 **읽기 전용** 처리
-   - **종합 점수**: `health_score`는 `GET /dashboard/summary`가 **호출 시점의 '당일'만 재계산**한다 — 과거 일자의 점수는 서버에 없으므로, (a) 영속 적용 **전**에는 점수 카드 대신 안내를 표시한다: "지난 날짜의 점수는 준비 중이에요. 실천 기록만 보여드려요." (a) 적용 **후**에는 `analysis-results` 이력에서 해당 일자 스냅샷을 찾아 표시
-3. [ ] **한계 문서화(코드 주석 + 화면)**: 당일 점수도 재조회 시점의 기록 상태로 재계산되므로, 과거에 본 점수와 이력 저장값이 다를 수 있다. 이력 카드에는 `measured_date` 기준임을 캡션으로 표기 ("기록 당시 기준이에요")
-4. [ ] 오늘로 복귀하는 '오늘' 칩 제공 (과거 보기 상태에서만 노출)
+1. [x] `score_screen.dart` `_Header` — 날짜 칩을 `Pressable`로 감싸 탭 시 데이트 피커(범위: 오늘−27일 ~ 오늘, ko 로케일) 표시. 선택일 `_selectedDay` 상태 추가. 구현 노트: ko 로케일은 앱 전역(`MaterialApp.localizationsDelegates` + `locale: ko`, `flutter_localizations`)으로 적용 · 자정 경과로 선택일이 새 범위 밖이 되는 경우 대비 `initialDate` 클램프 · 칩 히트 영역은 시니어 최소 48px 확보(시각 크기 유지)
+2. [x] 과거 일자 선택 시:
+   - **실천 리스트**: `runDailyCoaching(day: _selectedDay, meals: _controller.mealsForDay(_selectedDay), ...)` — payload `date`에 과거일이 들어가며 일자 캐시는 선택일별 결과 맵(`_coachingCache[YYYY-MM-DD]`)으로 동작 — 같은 날짜 재진입(오늘 복귀 포함) 시 재호출하지 않아 생성형 재실행으로 제목이 바뀌어 체크 표시가 탈락하는 것을 막는다. 과거일은 체크 토글 **읽기 전용** 처리 + 추가 CTA 숨김
+   - **종합 점수**: `health_score`는 `GET /dashboard/summary`가 **호출 시점의 '당일'만 재계산**한다 — 과거 일자의 점수는 서버에 없으므로, (a) 영속 적용 **전**에는 점수 카드 대신 안내를 표시한다: "지난 날짜의 점수는 준비 중이에요. 실천 기록만 보여드려요." (a) 적용 **후**에는 `analysis-results` 이력(추이 조회 결과)에서 해당 일자 스냅샷을 찾아 표시 — 이력에 없는 날짜는 위 안내 유지
+3. [x] **한계 문서화(코드 주석 + 화면)**: 당일 점수도 재조회 시점의 기록 상태로 재계산되므로, 과거에 본 점수와 이력 저장값이 다를 수 있다. 이력 카드에는 `measured_date` 기준임을 캡션으로 표기 ("기록 당시 기준이에요")
+4. [x] 오늘로 복귀하는 '오늘' 칩 제공 (과거 보기 상태에서만 노출)
 
-### 4.4 (d) 등급별 링/칩 색상 규칙
+### 4.4 (d) 등급별 링/칩 색상 규칙 — ✅ 구현 완료 (2026-06-12)
 
-1. [ ] `score_screen.dart` — `Color _labelColor(String? label)` / `Color _labelSoftColor(String? label)` 헬퍼 추가 (2.4 매핑 표 그대로, 미지 값 → `AppColor.brand`/`brandSoft` 폴백)
-2. [ ] `_GradeChip`에 `label`(코드값) 전달 → 전경/배경 색 적용 (`label_text`는 현행대로 그대로 표기)
-3. [ ] `_ScoreRing`에 `color` 파라미터 추가 → `valueColor`에 매핑 색 적용
-4. [ ] 홈 점수 카드(`screens/dashboard_screen.dart`)와 동일 매핑 공유 — 헬퍼를 `shared/` 또는 `home_models.dart` 확장으로 승격해 두 화면 불일치 방지 (보류 결정 #5 "홈 카드·오늘의 분석 링 = 같은 score" 정합)
+1. [x] 헬퍼는 처음부터 공유 위치로 — `shared/score_label_colors.dart`의 `scoreLabelColor(String?)` / `scoreLabelSoftColor(String?)` (2.4 매핑 표 그대로, 미지 값 → `AppColor.brand`/`brandSoft` 폴백)
+2. [x] `_GradeChip`에 `labelCode` 전달 → 전경/배경 색 적용 (`label_text`는 현행대로 그대로 표기)
+3. [x] `_ScoreRing`에 `color` 파라미터 추가 → `valueColor`에 매핑 색 적용 (추이 차트 포인트 색도 동일 헬퍼로 통합)
+4. [x] 홈 점수 카드(`widgets/dashboard/health_hero_card.dart`)와 동일 매핑 공유 — `scoreLabel`(코드값) 전달 시 라벨 캡션에 매핑 색 적용, 위젯 테스트로 회귀 가드 (보류 결정 #5 "홈 카드·오늘의 분석 링 = 같은 score" 정합)
 
 ---
 
@@ -239,10 +239,10 @@
 
 ## ⑨ 완료 기준 (DoD)
 
-- [ ] (d) 등급 5단계가 success/warning/danger 토큰으로 링·칩에 반영되고, 홈 점수 카드와 동일 매핑을 공유한다
-- [ ] (b) 실천 체크가 앱 재시작 후에도 당일 내 유지되고, 날짜가 바뀌면 초기화된다. `safety_warnings`가 화면에 노출된다
-- [ ] (c) 날짜 칩으로 최근 28일 조회 가능 — 과거일 실천 리스트 표시 + 점수 한계 안내 문구 + '오늘' 복귀 칩
-- [ ] (a) 백엔드: `AnalysisType.DAILY_HEALTH_SCORE` + 1일 1행 영속 + 목록 응답 점수 필드 — pytest 통과(멱등/격리/금칙어). 모바일: 7일치 이상이면 추이 차트, 미만이면 잠금
-- [ ] `flutter analyze` 0건 + `flutter test` 전체 통과 (기존 170개 + 신규), 백엔드 unit suite 통과(허용 실패 = 사용자 WIP 2건뿐)
-- [ ] 회귀 가드 4종 충족: 금칙어 부재 / release_security_config_test / 신뢰도 % 미노출 / 면책 푸터 상시 표시
-- [ ] 양 플랫폼 스모크: 기록 → 홈 점수 → 오늘의 분석(점수·실천·추이) → 레몬봇 딥링크 E2E
+- [x] (d) 등급 5단계가 success/warning/danger 토큰으로 링·칩에 반영되고, 홈 점수 카드와 동일 매핑을 공유한다 (2026-06-12)
+- [x] (b) 실천 체크가 앱 재시작 후에도 당일 내 유지되고, 날짜가 바뀌면 초기화된다. `safety_warnings`가 화면에 노출된다 (2026-06-12)
+- [x] (c) 날짜 칩으로 최근 28일 조회 가능 — 과거일 실천 리스트 표시 + 점수 한계 안내 문구 + '오늘' 복귀 칩 (2026-06-12 — iOS 26.5 시뮬레이터 실화면 검증 포함)
+- [x] (a) 백엔드: `AnalysisType.DAILY_HEALTH_SCORE` + 1일 1행 영속 + 목록 응답 점수 필드 — pytest 통과(멱등/격리/금칙어). 모바일: 7일치 이상이면 추이 차트, 미만이면 잠금 (f8e1c07d)
+- [x] `flutter analyze` 0건 + `flutter test` 전체 통과 (2026-06-12 기준 370+), 백엔드 unit suite 통과(허용 실패 = 사용자 WIP 2건뿐)
+- [x] 회귀 가드 4종 충족: 금칙어 부재(표준 면책 문장은 정확 일치 화이트리스트) / release_security_config_test / 신뢰도 % 미노출 / 면책 푸터 상시 표시
+- [ ] 양 플랫폼 스모크: 기록 → 홈 점수 → 오늘의 분석(점수·실천·추이) → 레몬봇 딥링크 E2E — Android 풀사이클·iOS 인터랙티브(b/c/d) 완료, 7일치 누적 후 추이 차트 실데이터 렌더만 잔여
