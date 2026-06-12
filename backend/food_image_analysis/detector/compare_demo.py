@@ -9,11 +9,12 @@ import numpy as np
 st.set_page_config(page_title="LEMON-AID Detector 비교", layout="wide")
 st.title("🍋 디텍터 비교 — v3 / fast v5(mos0.5) / fast v5(mos1.0) + CLIP")
 
-PROJ = r"C:\Users\KDS23\Documents\Claude\Projects\음식"
+import os
+HERE = os.path.dirname(os.path.abspath(__file__))   # 이 스크립트가 있는 폴더 기준 (상대경로)
 MODELS = {
-    "v3 (옛날, 150ep)":        rf"{PROJ}\detector_best.pt",
-    "fast v5 mos0.5 (30ep)":   r"D:\runs\detect\fastv5_296\weights\best.pt",
-    "fast v5 mos1.0 (30ep)":   r"D:\fastv5_mos10_best.pt",
+    "v3 (옛날, 150ep)":        os.path.join(HERE, "detector_best.pt"),
+    "fast v5 mos0.5 (30ep)":   os.path.join(HERE, "fastv5_mos05.pt"),
+    "fast v5 mos1.0 (30ep)":   os.path.join(HERE, "fastv5_mos10.pt"),
 }
 
 with st.sidebar:

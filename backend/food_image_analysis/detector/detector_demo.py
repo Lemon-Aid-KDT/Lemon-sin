@@ -5,14 +5,16 @@ import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
-import io
+import io, os
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 st.set_page_config(page_title="LEMON-AID Detector", layout="wide")
 st.title("🍋 LEMON-AID 음식 디텍터 데모")
 
 with st.sidebar:
     st.markdown("### 설정")
-    model_path = st.text_input("Detector .pt", value=r"D:\runs\detect\fastv5_296\weights\best.pt")
+    model_path = st.text_input("Detector .pt", value=os.path.join(HERE, "detector_best.pt"))
     conf = st.slider("confidence", 0.05, 0.95, 0.30, 0.05)
     iou = st.slider("NMS IoU", 0.3, 0.95, 0.50, 0.05)
     imgsz = st.select_slider("imgsz", options=[512, 640, 768], value=512)
