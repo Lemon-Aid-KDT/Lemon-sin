@@ -25,8 +25,8 @@ Lemon-Aid 프로젝트 작업을 이어서 진행해줘. 아래는 직전 세션
 1. **미푸시 커밋 2개 푸시**: `c2a86240`, `4ffa671c` → `git push origin feat/ai-agent-chat-import && git push personal feat/ai-agent-chat-import` (사용자 확인 후)
 2. **Android 통합 테스트 마감**: `flutter test integration_test/app_smoke_test.dart -d emulator-5556`이 "No application found for TargetPlatform.android_arm64"로 실패 — build.gradle.kts의 flavor(dev/staging/prod) 미지정이 유력 원인. `--flavor dev` 지정(+필요시 `-PLEMON_ANDROID_APPLICATION_ID`)으로 재시도
 3. **실기기 UI 워크스루**: API 레벨은 전부 그린이나 UI 레벨 풀 사이클(촬영→후보 선택→저장→홈→캘린더→설정→챗 승인 루프) 미수행 — 양 플랫폼에서 `flutter run --dart-define=LEMON_API_BASE_URL=...`(iOS는 기본 127.0.0.1, Android는 기본 10.0.2.2)로 수행
-4. **가이드 06 추이 차트**: `PERSIST_DAILY_HEALTH_SCORE=true` 운영 채택 결정 후 S-09 4주 추이 잠금 해제 (보류 결정 #7 — `outputs/todo-list/2026-06-11/2026-06-11-daily-health-score-decisions.md`)
-5. **P2 트랙**: 가이드 01 인증(백엔드 `/auth/*` 공백 — Supabase Auth 우선 검토 결정 필요), Health Connect(별도 결정), 알림 센터
+4. ~~**가이드 06 추이 차트**~~ ✅ 완료(2026-06-12): 결정 #7 채택 — 플래그 기본 true(compose), 목록 응답 score/measured_date/label 보강, `_TrendChartCard`(CustomPainter) 구현. 7일치 미만 잠금 유지
+5. **P2 트랙**: 가이드 01 인증 — ✅ **Supabase Auth 채택**(ADR: `docs/Integration-docs/36-auth-backend-adr-supabase-auth.md`; 착수 시 Supabase 프로젝트/소셜 키 발급 필요). Health Connect(별도 결정), 알림 센터는 미결
 6. (별도 트랙) **A100 PaddleOCR**: 조기종료 감시자 2개(patience 10) 가동 중 — b16 조기종료 시 lr1e4 자동 기동. 상태 확인: `ssh -i ~/.ssh/lemon_a100_ed25519 -p 8875 lemon-aid@155.230.153.222 'powershell -NoProfile -ExecutionPolicy Bypass -File G:\lemon-aid\paddleocr_rec_work\a100_compact_status_check.ps1'` (Bypass 플래그 없으면 원격 실행 정책이 스크립트 차단). 종료 후 작업: best 회수(b16/b32 비교)→structured eval(full/section/ROI)→승격 게이트(field_match≥0.85, ned≥0.90)
 
 ## 적용 중인 규칙 (위반 금지)
