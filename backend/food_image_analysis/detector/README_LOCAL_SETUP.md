@@ -9,18 +9,23 @@
 | 부품 | 파일 | 비고 |
 |---|---|---|
 | 디텍터 | `detector_best.pt` (18.3MB, v3) | **이 폴더에 로컬 보관** — git 금지(2MB+ 규칙), 폴더 `.gitignore`(`*.pt`)가 보호. 타 PC는 파일공유로 복사 |
-| CLIP 필터 | `food_filter.py` | `transformers` 필요(설치됨 5.11.0). 첫 실행 시 CLIP 가중치 ~600MB 자동 다운로드(인터넷 필요, 1회) |
+| CLIP 필터 | `food_filter.py` | ⚠️ **`transformers<5` 필수**(5.x는 get_text_features 반환 타입 변경으로 비호환 — 4.57.6 설치됨). 첫 실행 시 CLIP 가중치 ~600MB 자동 다운로드(1회, 캐시됨) |
 
 최종 설정(그대로 사용): `conf 0.30 · NMS IoU 0.15 · agnostic_nms · max_det 50 · imgsz 512 · CLIP 임계 0.25 · padding 1.0` — 상세·추론 예시는 `README_디텍터_최종.md`.
 
 ## 데모 실행
 
 ```powershell
+# 디텍터 단독 (인계자 데모)
 C:\Lemon-sin\backend\.venv\Scripts\python.exe -m streamlit run backend\food_image_analysis\detector\compare_demo.py --server.port 8504
+
+# 통합 파이프라인: 디텍터(v3) → CLIP → 분류기(exp16b 지원 40클래스)  ← 한상(다중 음식) 대응
+C:\Lemon-sin\backend\.venv\Scripts\python.exe -m streamlit run backend\food_image_analysis\detector\pipeline_demo.py --server.port 8505
 ```
 
 ⚠️ compare_demo는 3모델 비교용으로 작성됐으나 fast v5 모델 2종은 폐기됨 — **v3만 선택**할 것
 (mos0.5/mos1.0 선택 시 파일 없음 에러).
+pipeline_demo의 분류기는 `runs/food_yolo/exp16b_*/weights/best.pt` 참조(없으면 `EXP16B_WEIGHTS` 환경변수로 지정).
 
 ## 주의
 
