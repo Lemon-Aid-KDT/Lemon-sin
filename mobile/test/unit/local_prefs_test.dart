@@ -64,6 +64,38 @@ void main() {
     });
   });
 
+  group('LocalPrefs capture guide dismissal', () {
+    test('defaults to not-dismissed for each mode', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+      expect(prefs.captureGuideDismissed('supplement'), isFalse);
+      expect(prefs.captureGuideDismissed('meal'), isFalse);
+    });
+
+    test('persists dismissal per mode independently', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+
+      await prefs.setCaptureGuideDismissed('supplement', true);
+
+      final LocalPrefs reopened = await LocalPrefs.create();
+      // Persists across re-create (영속), and only for the chosen mode.
+      expect(reopened.captureGuideDismissed('supplement'), isTrue);
+      expect(reopened.captureGuideDismissed('meal'), isFalse);
+    });
+
+    test('clears the dismissal when set back to false', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+
+      await prefs.setCaptureGuideDismissed('meal', true);
+      await prefs.setCaptureGuideDismissed('meal', false);
+
+      final LocalPrefs reopened = await LocalPrefs.create();
+      expect(reopened.captureGuideDismissed('meal'), isFalse);
+    });
+  });
+
   group('LocalPrefs brand theme', () {
     test('returns null when no theme is stored', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});

@@ -5,8 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:lemon_aid_mobile/core/storage/local_prefs.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/screens/camera_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('emulator Mac camera bridge bypasses picker-camera fallback', () {
@@ -680,6 +682,133 @@ void main() {
     expect(analyzedPath, isNotNull);
     expect(supplementPath, isNull);
     expect(find.textContaining('endpoint는 아직 연결 전'), findsNothing);
+  });
+
+  testWidgets('preview shows the two quality check rows (figma 912:46)', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    final File source = _writeTinyPng();
+    final _FakeImagePicker picker = _FakeImagePicker(source.path);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          imagePicker: picker,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.byIcon(Icons.photo_library_rounded));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('미리보기'), findsOneWidget);
+    // 두 품질 체크 행(선명도/밝기)이 노출된다 — 소프트 안내(차단 아님).
+    expect(find.text('선명도'), findsOneWidget);
+    expect(find.text('밝기'), findsOneWidget);
+    // 안내일 뿐 분석하기 버튼은 그대로 활성(차단 아님).
+    expect(find.text('분석하기'), findsOneWidget);
+  });
+
+  testWidgets('capture guide modal shows once and persists 다시 보지 않기', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final LocalPrefs prefs = await LocalPrefs.create();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          localPrefs: prefs,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+        ),
+      ),
+    );
+    // 카메라 프리뷰 루프가 계속 돌아 pumpAndSettle 이 끝나지 않으므로
+    // 명시 프레임으로 모달(post-frame 표출)을 띄운다.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // figma 920:23 — 첫 진입 1회 가이드 모달.
+    expect(find.text('영양제 촬영 팁'), findsOneWidget);
+    expect(find.text('프레임 안에 담아 주세요'), findsOneWidget);
+
+    // '다시 보지 않기' 체크 후 촬영 시작 → 모드별 즉시 영속.
+    await tester.tap(find.text('다시 보지 않기'));
+    await tester.pump();
+    await tester.tap(find.text('촬영 시작'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('영양제 촬영 팁'), findsNothing);
+    // '다시 보지 않기' 선택은 모드별로 즉시 영속된다.
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    expect(prefs.captureGuideDismissed('supplement'), isTrue);
+  });
+
+  testWidgets('capture guide modal is skipped when already dismissed', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'capture.guide.dismissed.supplement': true,
+    });
+    final LocalPrefs prefs = await LocalPrefs.create();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          localPrefs: prefs,
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('영양제 촬영 팁'), findsNothing);
+  });
+
+  testWidgets('supplement two-slot strip fixes roles and toggles complete CTA', (
+    WidgetTester tester,
+  ) async {
+    await _usePhoneSurface(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CameraScreen(
+          onAnalyzeSupplementImage:
+              (String imagePath, {required String ocrProvider}) async {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    // figma 947:23 — 앞면 + 성분표 2슬롯이 영양제 모드 촬영 화면에 보인다.
+    expect(find.byKey(const ValueKey<String>('two-slot-front')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('two-slot-facts')), findsOneWidget);
+    // 두 슬롯이 채워지기 전이라 완료 배지는 숨겨져 있다.
+    expect(
+      find.byKey(const ValueKey<String>('two-slot-complete')),
+      findsNothing,
+    );
+
+    // 슬롯 탭은 다음 촬영의 role 을 지정한다(앱이 크래시 없이 선택 반영).
+    await tester.tap(find.byKey(const ValueKey<String>('two-slot-facts')));
+    await tester.pump();
+    expect(find.text('성분표'), findsOneWidget);
   });
 }
 

@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -23,11 +24,18 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/storage/local_prefs.dart';
+import '../features/supplements/image_quality_probe.dart';
 import '../features/supplements/supplement_models.dart';
 import '../utils/design_tokens_v2.dart';
 import '../utils/device_env.dart';
+import '../widgets/common/capture_guide_modal.dart';
 
 enum _CaptureMode { supplement, meal }
+
+// 카메라 초기화 오류 분류 (figma 912:23 권한 / 912:69 초기화 실패).
+// 권한 거부면 설정·갤러리 안내, 그 외는 재시도·갤러리 안내로 가른다.
+enum _CameraErrorKind { permissionDenied, initFailed }
 
 class _CapturedSupplementImage {
   const _CapturedSupplementImage({required this.file, required this.role});
@@ -112,6 +120,8 @@ class CameraScreen extends StatefulWidget {
     this.macCameraPreviewFrameOverride,
     this.macCameraCaptureOverride,
     this.isEmulatorOverride,
+    this.localPrefs,
+    this.showCaptureGuide,
     this.onClose,
     super.key,
   });
@@ -143,6 +153,16 @@ class CameraScreen extends StatefulWidget {
 
   /// Optional emulator/simulator classification override used by widget tests.
   final bool? isEmulatorOverride;
+
+  /// Local persistence used for the capture-guide "다시 보지 않기" flag.
+  ///
+  /// When null the guide modal is skipped (e.g. consent gate not yet ready).
+  final LocalPrefs? localPrefs;
+
+  /// Optional override forcing the capture guide modal on/off in widget tests.
+  ///
+  /// When null the modal visibility is decided by [localPrefs] per mode.
+  final bool? showCaptureGuide;
 
   /// Sends a supplement image to the backend OCR analysis endpoint.
   final Future<void> Function(String imagePath, {required String ocrProvider})
@@ -179,6 +199,8 @@ class _CameraScreenState extends State<CameraScreen>
   List<CameraDescription>? _cameras;
   bool _initializing = true;
   String? _initError;
+  // 초기화 실패 분류(권한/일반). 권한 거부면 설정 안내 CTA를 노출한다.
+  _CameraErrorKind _initErrorKind = _CameraErrorKind.initFailed;
   // 카메라 방향 — 영양제 라벨 촬영은 후면을 우선한다.
   CameraLensDirection _lens = CameraLensDirection.back;
   // 에뮬 여부 — 카메라 영상 정렬 보정용
@@ -188,6 +210,9 @@ class _CameraScreenState extends State<CameraScreen>
   Uint8List? _macPreviewFrame;
   int? _macPreviewFrameId;
   String? _macPreviewError;
+
+  // 이번 세션에서 가이드 모달을 이미 띄운 모드(중복 표출 방지).
+  final Set<_CaptureMode> _guideShownThisSession = <_CaptureMode>{};
 
   @override
   void initState() {
@@ -200,8 +225,36 @@ class _CameraScreenState extends State<CameraScreen>
     _isEmulator = widget.isEmulatorOverride ?? DeviceEnv.isEmulatorSync;
     _startCameraAfterDeviceProbe();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _recoverLostGalleryPick();
+      if (!mounted) return;
+      _recoverLostGalleryPick();
+      _maybeShowCaptureGuide(_mode);
     });
+  }
+
+  // figma 920:23 — 모드별 첫 진입 1회 촬영 가이드 모달.
+  // '다시 보지 않기'는 LocalPrefs 로 모드별 즉시 영속(가이드 ④-3 정합).
+  String _modeKey(_CaptureMode mode) =>
+      mode == _CaptureMode.meal ? 'meal' : 'supplement';
+
+  Future<void> _maybeShowCaptureGuide(_CaptureMode mode) async {
+    if (!mounted || _captured != null) return;
+    if (_guideShownThisSession.contains(mode)) return;
+    final LocalPrefs? prefs = widget.localPrefs;
+    final bool forced = widget.showCaptureGuide ?? false;
+    // 영속 '다시 보지 않기' 또는 prefs 미주입이면(테스트 강제 제외) 건너뛴다.
+    if (!forced) {
+      if (prefs == null) return;
+      if (prefs.captureGuideDismissed(_modeKey(mode))) return;
+    }
+    _guideShownThisSession.add(mode);
+    final bool isMeal = mode == _CaptureMode.meal;
+    final CaptureGuideResult? result = await showCaptureGuideModal(
+      context,
+      isMeal: isMeal,
+    );
+    if (result != null && result.dismissedForever) {
+      await prefs?.setCaptureGuideDismissed(_modeKey(mode), true);
+    }
   }
 
   @override
@@ -270,6 +323,75 @@ class _CameraScreenState extends State<CameraScreen>
   int get _remainingSupplementSlots =>
       _maxSupplementGalleryImages - _supplementBatchCount;
 
+  // ─── 다중 촬영 2슬롯 (figma 947:23) ───
+  // 앞면(front_label) + 성분표(supplement_facts) 고정 슬롯의 충족 여부.
+  // 기존 6장 자유 배치 스트립은 슈퍼셋으로 유지(회귀 금지) — API 신규 배선 없음.
+  bool _hasCaptureWithRole(String role) =>
+      _captures.any((_CapturedSupplementImage image) => image.role == role);
+
+  bool get _slotFrontFilled => _hasCaptureWithRole('front_label');
+
+  bool get _slotFactsFilled => _hasCaptureWithRole('supplement_facts');
+
+  /// 2슬롯이 모두 충족됐는지(앞면 + 성분표).
+  bool get _twoSlotsComplete => _slotFrontFilled && _slotFactsFilled;
+
+  /// 2슬롯 중 하나를 탭 — 다음 촬영의 role 을 해당 슬롯으로 지정한다.
+  ///
+  /// 실제 촬영은 셔터(또는 미리보기의 "계속 촬영")로 이어진다 — 배선 신규 없음.
+  void _selectSlotRole(String role) {
+    HapticFeedback.selectionClick();
+    setState(() => _imageRole = role);
+  }
+
+  // figma 912:46 미리보기 품질 체크 2종(가이드 ④-4 · ⑥): 업로드 전 소프트 안내.
+  // 경로별 결과를 캐시한다(같은 사진 재계산 방지). null = 계산 전/진행 중.
+  String? _qualityProbedPath;
+  ImageQualityProbeResult? _qualityProbeResult;
+
+  /// 현재 미리보기 이미지의 품질을 비동기로 계산한다(소프트 안내 — 차단 아님).
+  ///
+  /// 결과가 준비되면 [setState] 로 갱신한다. 디코드 실패 시 조용히 무시한다.
+  Future<void> _ensureQualityProbe(File file) async {
+    if (_qualityProbedPath == file.path) return;
+    _qualityProbedPath = file.path;
+    _qualityProbeResult = null;
+    try {
+      final ImageLumaGrid? grid = await _decodeLumaGrid(file);
+      if (!mounted || _qualityProbedPath != file.path || grid == null) return;
+      setState(() => _qualityProbeResult = probeImageQuality(grid));
+    } on Object {
+      // 과한 이미지 분석 금지 — 실패하면 안내를 띄우지 않는다.
+    }
+  }
+
+  /// 이미지 파일을 [kProbeGridSize] 정사각 휘도 격자로 다운샘플 디코드한다.
+  Future<ImageLumaGrid?> _decodeLumaGrid(File file) async {
+    final Uint8List bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+    final ui.Codec codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: kProbeGridSize,
+      targetHeight: kProbeGridSize,
+    );
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    final ui.Image image = frame.image;
+    final ByteData? data = await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+    image.dispose();
+    if (data == null) return null;
+    final Uint8List rgba = data.buffer.asUint8List();
+    final int width = image.width;
+    final int height = image.height;
+    final List<int> luma = List<int>.filled(width * height, 0);
+    for (int i = 0; i < width * height; i++) {
+      final int base = i * 4;
+      luma[i] = lumaFromRgb(rgba[base], rgba[base + 1], rgba[base + 2]);
+    }
+    return ImageLumaGrid(width: width, height: height, luma: luma);
+  }
+
   String get _macCameraBridgeUrl {
     final String configured =
         (widget.macCameraBridgeUrl ?? _macCameraBridgeUrlFromEnv)
@@ -334,6 +456,7 @@ class _CameraScreenState extends State<CameraScreen>
       setState(() {
         _initializing = true;
         _initError = null;
+        _initErrorKind = _CameraErrorKind.initFailed;
       });
     }
     try {
@@ -398,14 +521,35 @@ class _CameraScreenState extends State<CameraScreen>
       }
     } catch (e) {
       if (mounted) {
+        final bool denied = _isPermissionDeniedError(e);
         setState(() {
-          _initError = '카메라를 열 수 없어요.\n권한과 실행 환경을 확인한 뒤 다시 시도해주세요.';
+          _initError = denied
+              ? '카메라 권한이 꺼져 있어요.\n설정에서 권한을 켜거나 갤러리로 진행해주세요.'
+              : '카메라를 열 수 없어요.\n다시 시도하거나 갤러리로 진행해주세요.';
+          _initErrorKind = denied
+              ? _CameraErrorKind.permissionDenied
+              : _CameraErrorKind.initFailed;
           _initializing = false;
         });
       }
     } finally {
       _initInFlight = false;
     }
+  }
+
+  /// 예외가 카메라 권한 거부(설정에서 켜야 하는)인지 판별한다.
+  bool _isPermissionDeniedError(Object error) {
+    if (error is CameraException) {
+      const Set<String> deniedCodes = <String>{
+        'CameraAccessDenied',
+        'CameraAccessDeniedWithoutPrompt',
+        'CameraAccessRestricted',
+        'AudioAccessDenied',
+        'AudioAccessDeniedWithoutPrompt',
+      };
+      return deniedCodes.contains(error.code);
+    }
+    return false;
   }
 
   Future<void> _disposeCamera() async {
@@ -1185,6 +1329,9 @@ class _CameraScreenState extends State<CameraScreen>
           controller: _controller,
           initializing: _initializing,
           error: _initError,
+          errorKind: _initErrorKind,
+          onRetry: _initCamera,
+          onGallery: _pickFromGallery,
           isFront: _lens == CameraLensDirection.front,
           isEmulator: _isEmulator,
           macPreviewFrame: _macPreviewFrame,
@@ -1221,6 +1368,7 @@ class _CameraScreenState extends State<CameraScreen>
               onModeChange: (m) {
                 HapticFeedback.selectionClick();
                 setState(() => _mode = m);
+                _maybeShowCaptureGuide(m);
               },
               onShutter: _shutter,
               onGallery: _pickFromGallery,
@@ -1232,6 +1380,16 @@ class _CameraScreenState extends State<CameraScreen>
                   _controller?.value.isInitialized == true ||
                   _canUseMacCameraBridge ||
                   _canUseCameraPickerFallback,
+              // 영양제 모드에만 2슬롯 안내(앞면+성분표). 식단 모드는 null.
+              twoSlotStrip: _mode == _CaptureMode.supplement
+                  ? _TwoSlotStrip(
+                      activeRole: _imageRole,
+                      frontFilled: _slotFrontFilled,
+                      factsFilled: _slotFactsFilled,
+                      complete: _twoSlotsComplete,
+                      onSelectRole: _selectSlotRole,
+                    )
+                  : null,
             ),
           ),
         ),
@@ -1241,6 +1399,13 @@ class _CameraScreenState extends State<CameraScreen>
 
   // ─── 미리보기 (촬영 후) ───
   Widget _buildPreview() {
+    final File? captured = _captured;
+    if (captured != null) {
+      // 업로드 전 품질 휴리스틱을 비동기로 계산(소프트 안내 — 차단 아님).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ensureQualityProbe(captured);
+      });
+    }
     return SafeArea(
       child: Column(
         children: [
@@ -1280,6 +1445,11 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
               ),
             ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+            child: _PreviewQualityChecks(result: _qualityProbeResult),
           ),
           if (_mode == _CaptureMode.supplement) ...[
             const SizedBox(height: AppSpace.md),
@@ -1597,6 +1767,116 @@ class _AutoAnalysisBadge extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════
+// 미리보기 품질 체크 2종 (figma 912:46) — 소프트 안내(차단 아님)
+// ═══════════════════════════════════════════
+class _PreviewQualityChecks extends StatelessWidget {
+  const _PreviewQualityChecks({required this.result});
+
+  /// 품질 휴리스틱 결과. null 이면 계산 중(확인 중 표시).
+  final ImageQualityProbeResult? result;
+
+  @override
+  Widget build(BuildContext context) {
+    final ImageQualityProbeResult? r = result;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm + 2,
+      ),
+      decoration: BoxDecoration(
+        color: _CamTone.surfaceStrong,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: _CamTone.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          _PreviewQualityRow(
+            label: '선명도',
+            okText: '또렷해요',
+            failText: '흐릿해요 · 다시 찍기를 권해요',
+            passed: r?.sharpness.passed,
+          ),
+          const SizedBox(height: 6),
+          _PreviewQualityRow(
+            label: '밝기',
+            okText: '적당해요',
+            failText: '어두워요 · 다시 찍기를 권해요',
+            passed: r?.brightness.passed,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewQualityRow extends StatelessWidget {
+  const _PreviewQualityRow({
+    required this.label,
+    required this.okText,
+    required this.failText,
+    required this.passed,
+  });
+
+  final String label;
+  final String okText;
+  final String failText;
+
+  /// null = 확인 중, true = 통과, false = 미달.
+  final bool? passed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool checking = passed == null;
+    final bool ok = passed == true;
+    final IconData icon = checking
+        ? Icons.hourglass_empty_rounded
+        : ok
+        ? Icons.check_circle_rounded
+        : Icons.warning_amber_rounded;
+    final Color tone = checking
+        ? Colors.white.withValues(alpha: 0.6)
+        : ok
+        ? AppColor.success
+        : AppColor.warning;
+    final String message = checking
+        ? '확인 중이에요'
+        : ok
+        ? okText
+        : failText;
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 18, color: tone),
+        const SizedBox(width: AppSpace.sm),
+        SizedBox(
+          width: 52,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(
+              color: tone,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
 // 상단 바
 // ═══════════════════════════════════════════
 class _TopBar extends StatelessWidget {
@@ -1712,6 +1992,9 @@ class _FullScreenPreview extends StatelessWidget {
   final CameraController? controller;
   final bool initializing;
   final String? error;
+  final _CameraErrorKind errorKind;
+  final VoidCallback? onRetry;
+  final VoidCallback? onGallery;
   final bool isFront;
   final bool isEmulator;
   final Uint8List? macPreviewFrame;
@@ -1721,6 +2004,9 @@ class _FullScreenPreview extends StatelessWidget {
     required this.controller,
     required this.initializing,
     required this.error,
+    this.errorKind = _CameraErrorKind.initFailed,
+    this.onRetry,
+    this.onGallery,
     this.isFront = false,
     this.isEmulator = false,
     this.macPreviewFrame,
@@ -1773,7 +2059,12 @@ class _FullScreenPreview extends StatelessWidget {
       return Container(
         color: Colors.black,
         alignment: Alignment.center,
-        child: _ErrorBox(message: error!),
+        child: _ErrorBox(
+          message: error!,
+          kind: errorKind,
+          onRetry: onRetry,
+          onGallery: onGallery,
+        ),
       );
     }
     final c = controller;
@@ -2015,20 +2306,46 @@ class _SpinnerWithLabel extends StatelessWidget {
 
 class _ErrorBox extends StatelessWidget {
   final String message;
-  const _ErrorBox({required this.message});
+  final _CameraErrorKind kind;
+  final VoidCallback? onRetry;
+  final VoidCallback? onGallery;
+  const _ErrorBox({
+    required this.message,
+    this.kind = _CameraErrorKind.initFailed,
+    this.onRetry,
+    this.onGallery,
+  });
+
   @override
   Widget build(BuildContext context) {
+    // figma 912:23 권한 / 912:69 초기화 실패 — StatusStateView 변형 톤.
+    final bool denied = kind == _CameraErrorKind.permissionDenied;
+    final String title = denied ? '권한이 필요해요' : '카메라를 열 수 없어요';
     return Padding(
       padding: const EdgeInsets.all(AppSpace.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           Icon(
-            Icons.no_photography_rounded,
+            denied
+                ? Icons.lock_outline_rounded
+                : Icons.no_photography_rounded,
             color: Colors.white.withValues(alpha: 0.4),
             size: 48,
           ),
           const SizedBox(height: AppSpace.md),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              height: 1.3,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 6),
           Text(
             message,
             textAlign: TextAlign.center,
@@ -2039,6 +2356,43 @@ class _ErrorBox extends StatelessWidget {
               height: 1.5,
             ),
           ),
+          const SizedBox(height: AppSpace.lg),
+          if (onRetry != null)
+            SizedBox(
+              width: double.infinity,
+              child: _PrimaryButton(
+                key: const ValueKey<String>('camera-error-retry'),
+                label: denied ? '권한 다시 확인' : '다시 시도',
+                onTap: onRetry!,
+              ),
+            ),
+          if (onGallery != null) ...<Widget>[
+            const SizedBox(height: AppSpace.sm),
+            GestureDetector(
+              key: const ValueKey<String>('camera-error-gallery'),
+              onTap: onGallery,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: double.infinity,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _CamTone.surfaceStrong,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(color: _CamTone.border),
+                ),
+                child: const Text(
+                  '갤러리로 진행',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2144,6 +2498,7 @@ class _BottomControls extends StatelessWidget {
   final VoidCallback? onDebugSupplementImage;
   final bool loading;
   final bool enabled;
+  final Widget? twoSlotStrip;
 
   const _BottomControls({
     required this.mode,
@@ -2153,6 +2508,7 @@ class _BottomControls extends StatelessWidget {
     this.onDebugSupplementImage,
     required this.loading,
     required this.enabled,
+    this.twoSlotStrip,
   });
 
   @override
@@ -2177,6 +2533,11 @@ class _BottomControls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // 다중 촬영 2슬롯 안내 (영양제 모드, figma 947:23).
+          if (twoSlotStrip != null) ...[
+            twoSlotStrip!,
+            const SizedBox(height: AppSpace.md),
+          ],
           // 안내 칩 — 모드 토글 위. 가이드 프레임/컨트롤과 안 겹침.
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 240),
@@ -2273,6 +2634,149 @@ class _DebugSampleButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 다중 촬영 2슬롯 (figma 947:23) — 앞면 + 성분표 고정 슬롯
+// ═══════════════════════════════════════════
+class _TwoSlotStrip extends StatelessWidget {
+  const _TwoSlotStrip({
+    required this.activeRole,
+    required this.frontFilled,
+    required this.factsFilled,
+    required this.complete,
+    required this.onSelectRole,
+  });
+
+  /// 다음 촬영에 적용될 현재 선택 role.
+  final String activeRole;
+  final bool frontFilled;
+  final bool factsFilled;
+
+  /// 두 슬롯 모두 충족됐는지.
+  final bool complete;
+  final ValueChanged<String> onSelectRole;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: _SlotChip(
+                key: const ValueKey<String>('two-slot-front'),
+                label: '앞면',
+                filled: frontFilled,
+                active: activeRole == 'front_label',
+                onTap: () => onSelectRole('front_label'),
+              ),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: _SlotChip(
+                key: const ValueKey<String>('two-slot-facts'),
+                label: '성분표',
+                filled: factsFilled,
+                active: activeRole == 'supplement_facts',
+                onTap: () => onSelectRole('supplement_facts'),
+              ),
+            ),
+          ],
+        ),
+        if (complete) ...<Widget>[
+          const SizedBox(height: AppSpace.sm),
+          Container(
+            key: const ValueKey<String>('two-slot-complete'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.md,
+              vertical: AppSpace.sm,
+            ),
+            decoration: BoxDecoration(
+              color: AppColor.brand.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              border: Border.all(color: AppColor.brand),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.check_circle_rounded, color: AppColor.brand, size: 18),
+                SizedBox(width: AppSpace.xs),
+                Text(
+                  '앞면 + 성분표 준비됐어요',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SlotChip extends StatelessWidget {
+  const _SlotChip({
+    super.key,
+    required this.label,
+    required this.filled,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool filled;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+        decoration: BoxDecoration(
+          color: _CamTone.surfaceStrong,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: active ? AppColor.brand : _CamTone.border,
+            width: active ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(
+              filled
+                  ? Icons.check_circle_rounded
+                  : Icons.add_a_photo_outlined,
+              size: 18,
+              color: filled ? AppColor.success : Colors.white,
+            ),
+            const SizedBox(width: AppSpace.xs),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
         ),
       ),
     );

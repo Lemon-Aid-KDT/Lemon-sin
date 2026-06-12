@@ -28,6 +28,7 @@ class LocalPrefs {
 
   static const String _supplementCheckedPrefix = 'home.supplement.checked.';
   static const String _medicationCheckedPrefix = 'home.medication.checked.';
+  static const String _captureGuideDismissedPrefix = 'capture.guide.dismissed.';
   static const String _brandThemeKey = 'brand.theme';
   static const String _profileDisplayNameKey = 'profile_display_name';
   static const String _medicationRemindersKey = 'medication_reminders';
@@ -71,6 +72,24 @@ class LocalPrefs {
   /// [day] 의 체크된 복약 id 집합을 저장한다.
   Future<void> setMedicationCheckedIds(DateTime day, Set<String> ids) {
     return _writeIdSet('$_medicationCheckedPrefix${dateKey(day)}', ids);
+  }
+
+  // ── 촬영 가이드 모달 '다시 보지 않기' (모드별) ──
+  // 가이드 03 ④-3: 모드별 첫 진입 1회 + '다시 보지 않기' 즉시 영속.
+
+  /// [mode]('supplement'/'meal')의 촬영 가이드가 '다시 보지 않기' 상태인지.
+  bool captureGuideDismissed(String mode) {
+    return _prefs.getBool('$_captureGuideDismissedPrefix${mode.trim()}') ??
+        false;
+  }
+
+  /// [mode]의 촬영 가이드 '다시 보지 않기' 상태를 저장한다.
+  Future<void> setCaptureGuideDismissed(String mode, bool dismissed) {
+    final String key = '$_captureGuideDismissedPrefix${mode.trim()}';
+    if (!dismissed) {
+      return _prefs.remove(key);
+    }
+    return _prefs.setBool(key, true);
   }
 
   // ── 브랜드 테마 ────────────────────────────────

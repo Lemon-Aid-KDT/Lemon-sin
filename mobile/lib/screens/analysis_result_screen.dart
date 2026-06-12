@@ -1,5 +1,7 @@
 // screens/analysis_result_screen.dart — 17 Pro UIUX analysis result surface.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -15,9 +17,13 @@ import '../features/supplements/supplement_models.dart';
 import '../shared/widgets/low_confidence_banner.dart';
 import '../utils/design_tokens_v2.dart';
 import '../utils/mascot_poses.dart';
+import '../shared/widgets/status_state_view.dart';
 import '../widgets/common/app_modals.dart';
 import '../widgets/common/confidence_grade_chip.dart';
+import '../widgets/common/detection_overlay.dart';
 import '../widgets/common/diet_result_cards.dart';
+import '../widgets/common/food_candidate_list.dart';
+import '../widgets/common/portion_sheet.dart';
 import 'food_search_screen.dart';
 
 /// Source-style analysis result screen backed by the real Lemon-Aid endpoints.
@@ -69,6 +75,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   final TextEditingController _mealSodiumController = TextEditingController();
   String? _seededAnalysisId;
   String? _seededMealAnalysisId;
+  // 음식 후보 선택 본편(figma 852:23): 현재 선택된 후보 인덱스 + 섭취량(인분).
+  // null 이면 미선택(저신뢰/0건 폴백 진입 또는 사용자가 아직 선택 안 함).
+  int? _selectedMealCandidateIndex;
+  double _mealPortionAmount = 1;
   // 직접 입력(음식 검색) 폴백으로 담은 카탈로그 항목 (source: 'database_match').
   // 카메라 분석 폴백에서만 채워지며 confirm payload food_items[] 로 합류한다.
   List<MealFoodItemInput> _databaseMatchedFoods = const <MealFoodItemInput>[];
@@ -316,83 +326,97 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     MealImageAnalysisPreview? preview,
     MealRecordResponse? registeredMeal,
   ) {
-    final FoodImagePipelineMetadata? pipeline = preview?.pipelineMetadata;
-    final List<MealFoodCandidate> candidates =
-        preview?.foodCandidates ?? const <MealFoodCandidate>[];
-    final bool hasCandidates = candidates.isNotEmpty;
-    final String firstCandidate = hasCandidates
-        ? candidates.first.displayName
-        : '후보 없음';
-    final String candidateValue = candidates.length > 1
-        ? '$firstCandidate 외 ${candidates.length - 1}개'
-        : firstCandidate;
-    final String detectorModel = pipeline?.detectorModel ?? 'not configured';
-    final String warningText = preview == null || preview.warningCodes.isEmpty
-        ? 'warning 없음'
-        : preview.warningCodes.join(', ');
+    if (preview == null) {
+      return <Widget>[
+        _ResultCard(
+          color: AppColor.brand,
+          icon: Icons.workspace_premium_rounded,
+          label: '분석 상태',
+          value: registeredMeal?.status ?? '분석 전',
+          desc: registeredMeal == null
+              ? '식단 사진을 먼저 분석해주세요'
+              : '${registeredMeal.foodItems.length}개 음식이 식단 기록으로 저장됐어요',
+          big: true,
+        ),
+      ];
+    }
+    // 등록 완료 후에는 후보 선택 UI 대신 저장 결과만 보여준다.
+    if (registeredMeal != null) {
+      return <Widget>[
+        _ResultCard(
+          color: AppColor.brand,
+          icon: Icons.workspace_premium_rounded,
+          label: '식단 저장 완료',
+          value: registeredMeal.status,
+          desc: '${registeredMeal.foodItems.length}개 음식이 식단 기록으로 저장됐어요',
+          big: true,
+        ),
+      ];
+    }
+
+    final FoodImagePipelineMetadata pipeline = preview.pipelineMetadata;
+    final List<MealFoodCandidate> candidates = preview.foodCandidates;
+    final double topConfidence = candidates.isEmpty
+        ? 0
+        : candidates
+              .map((MealFoodCandidate c) => c.confidence)
+              .reduce((double a, double b) => a > b ? a : b);
+    // 폴백 진입 조건(가이드 ④-1·⑥): 후보 0건 / requires_manual_entry /
+    // 최고 confidence < 0.6.
+    final bool forceManualFallback =
+        candidates.isEmpty ||
+        pipeline.requiresManualEntry ||
+        topConfidence < 0.6;
+
     return <Widget>[
-      _ResultCard(
-        color: Color(0xFF22B07D),
-        icon: Icons.eco_rounded,
-        label: '음식 후보',
-        value: candidateValue,
-        desc: hasCandidates
-            ? 'YOLO 후보는 등록 전 사용자 확인이 필요해요'
-            : '사진은 업로드됐지만 음식 후보는 직접 입력이 필요해요',
-      ),
-      const SizedBox(height: AppSpace.sm),
-      _ResultCard(
-        color: Color(0xFFFF9500),
-        icon: Icons.center_focus_strong_rounded,
-        label: 'Food YOLO',
-        value: pipeline?.detectorUsed == true ? 'on' : 'review',
-        desc: '모델 $detectorModel · 원본 이미지와 payload는 저장하지 않아요',
-      ),
-      const SizedBox(height: AppSpace.sm),
-      _ResultCard(
-        color: Color(0xFFFF6B6B),
-        icon: Icons.shield_outlined,
-        label: '수동 확인',
-        value: pipeline?.requiresManualEntry == false ? '후보 확인' : '직접 입력',
-        desc: warningText,
-      ),
-      const SizedBox(height: AppSpace.sm),
-      _ResultCard(
-        color: AppColor.brand,
-        icon: Icons.workspace_premium_rounded,
-        label: '분석 상태',
-        value: registeredMeal?.status ?? preview?.status ?? '분석 전',
-        desc: registeredMeal == null
-            ? preview?.algorithmVersion ?? '식단 사진을 먼저 분석해주세요'
-            : '${registeredMeal.foodItems.length}개 음식이 식단 기록으로 저장됐어요',
-        big: true,
-      ),
-      if (preview != null && registeredMeal == null) ...<Widget>[
-        const SizedBox(height: AppSpace.md),
-        _MealReviewCorrectionCard(
-          mealNameController: _mealNameController,
-          portionAmountController: _mealPortionAmountController,
-          portionUnitController: _mealPortionUnitController,
-          kcalController: _mealKcalController,
-          carbController: _mealCarbController,
-          proteinController: _mealProteinController,
-          fatController: _mealFatController,
-          sodiumController: _mealSodiumController,
-          requiresManualEntry: pipeline?.requiresManualEntry == true,
+      if (candidates.isNotEmpty) ...<Widget>[
+        FoodCandidateList(
+          candidates: candidates,
+          selectedIndex: _selectedMealCandidateIndex,
+          onSelect: (int index) => _selectMealCandidate(preview, index),
+          portionAmount: _mealPortionAmount,
+          onAdjustPortion: () => _adjustMealPortion(preview),
         ),
         const SizedBox(height: AppSpace.md),
-        _DatabaseMatchFallbackCard(
-          pickedFoods: _databaseMatchedFoods,
-          onOpenSearch: () => _openFoodSearchFallback(context),
-          onRemove: (MealFoodItemInput item) {
-            setState(() {
-              _databaseMatchedFoods = _databaseMatchedFoods
-                  .where((MealFoodItemInput input) => input != item)
-                  .toList(growable: false);
-            });
-          },
-        ),
       ],
+      // 저신뢰(951:76): 등급 칩만, % 비노출 — LowConfidenceBanner.
+      if (forceManualFallback) ...<Widget>[
+        const LowConfidenceBanner(),
+        const SizedBox(height: AppSpace.md),
+      ],
+      // 세부 수정(선택 후보에서 시드된 값 미세 조정).
+      _MealReviewCorrectionCard(
+        mealNameController: _mealNameController,
+        portionAmountController: _mealPortionAmountController,
+        portionUnitController: _mealPortionUnitController,
+        kcalController: _mealKcalController,
+        carbController: _mealCarbController,
+        proteinController: _mealProteinController,
+        fatController: _mealFatController,
+        sodiumController: _mealSodiumController,
+        requiresManualEntry: pipeline.requiresManualEntry,
+      ),
+      const SizedBox(height: AppSpace.md),
+      // 직접 입력 검색 폴백(916:23) — 후보 0건/저신뢰일 때 강조 안내.
+      if (forceManualFallback && _databaseMatchedFoods.isEmpty) ...<Widget>[
+        StatusStateView(
+          variant: StatusStateVariant.searchEmpty,
+          query: candidates.isEmpty ? '' : candidates.first.displayName,
+          onPrimary: () => _openFoodSearchFallback(context),
+        ),
+        const SizedBox(height: AppSpace.md),
+      ],
+      _DatabaseMatchFallbackCard(
+        pickedFoods: _databaseMatchedFoods,
+        onOpenSearch: () => _openFoodSearchFallback(context),
+        onRemove: (MealFoodItemInput item) {
+          setState(() {
+            _databaseMatchedFoods = _databaseMatchedFoods
+                .where((MealFoodItemInput input) => input != item)
+                .toList(growable: false);
+          });
+        },
+      ),
     ];
   }
 
@@ -402,6 +426,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return <Widget>[
       if (pipeline != null) ...<Widget>[
         _PipelineLedStrip(metadata: pipeline),
+        const SizedBox(height: AppSpace.sm),
+      ],
+      // 검출 오버레이(figma 946:50) — detected_product_regions[] 좌표 스케일 렌더.
+      if (preview != null && preview.detectedProductRegions.isNotEmpty) ...<Widget>[
+        DetectionPreviewCard(regions: preview.detectedProductRegions),
         const SizedBox(height: AppSpace.sm),
       ],
       _SupplementInfoCard(
@@ -1516,29 +1545,71 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   void _seedMealCorrectionFields(MealImageAnalysisPreview preview) {
     if (_seededMealAnalysisId == preview.analysisId) return;
+    _seededMealAnalysisId = preview.analysisId;
+    // 새 분석: 최고 신뢰도 후보를 기본 선택한다(0건이면 미선택).
+    final List<MealFoodCandidate> candidates = preview.foodCandidates;
+    final int? initialIndex = candidates.isEmpty ? null : 0;
+    _selectedMealCandidateIndex = initialIndex;
+    _mealPortionAmount = clampPortion(
+      initialIndex == null
+          ? 1
+          : (candidates[initialIndex].portionAmount ?? 1),
+    );
+    _applySelectedCandidateToFields(preview);
+  }
+
+  /// 현재 선택된 후보(+섭취량)를 식단 확인 텍스트 필드에 반영한다.
+  void _applySelectedCandidateToFields(MealImageAnalysisPreview preview) {
     _seedingCorrectionFields = true;
     try {
-      _seededMealAnalysisId = preview.analysisId;
-      final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
-          ? null
-          : preview.foodCandidates.first;
-      _mealNameController.text = firstCandidate?.displayName ?? '';
-      _mealPortionAmountController.text = _formatOptionalAmount(
-        firstCandidate?.portionAmount,
-      );
-      _mealPortionUnitController.text = firstCandidate?.portionUnit ?? '';
-      _mealKcalController.text = _formatOptionalAmount(firstCandidate?.kcal);
-      _mealCarbController.text = _formatOptionalAmount(firstCandidate?.carbG);
-      _mealProteinController.text = _formatOptionalAmount(
-        firstCandidate?.proteinG,
-      );
-      _mealFatController.text = _formatOptionalAmount(firstCandidate?.fatG);
-      _mealSodiumController.text = _formatOptionalAmount(
-        firstCandidate?.sodiumMg,
-      );
+      final int? index = _selectedMealCandidateIndex;
+      final MealFoodCandidate? candidate =
+          (index != null && index < preview.foodCandidates.length)
+          ? preview.foodCandidates[index]
+          : null;
+      _mealNameController.text = candidate?.displayName ?? '';
+      _mealPortionAmountController.text = candidate == null
+          ? ''
+          : _formatOptionalAmount(_mealPortionAmount);
+      _mealPortionUnitController.text = candidate == null
+          ? ''
+          : (candidate.portionUnit ?? 'serving');
+      _mealKcalController.text = _formatOptionalAmount(candidate?.kcal);
+      _mealCarbController.text = _formatOptionalAmount(candidate?.carbG);
+      _mealProteinController.text = _formatOptionalAmount(candidate?.proteinG);
+      _mealFatController.text = _formatOptionalAmount(candidate?.fatG);
+      _mealSodiumController.text = _formatOptionalAmount(candidate?.sodiumMg);
     } finally {
       _seedingCorrectionFields = false;
     }
+  }
+
+  /// 후보 카드 선택 — 인덱스 후보로 필드를 다시 시드한다.
+  void _selectMealCandidate(MealImageAnalysisPreview preview, int index) {
+    if (index < 0 || index >= preview.foodCandidates.length) return;
+    setState(() {
+      _selectedMealCandidateIndex = index;
+      _mealPortionAmount = clampPortion(
+        preview.foodCandidates[index].portionAmount ?? 1,
+      );
+      _applySelectedCandidateToFields(preview);
+    });
+  }
+
+  /// 섭취량 조절 바텀시트(figma 959:80)를 열고 선택 섭취량을 반영한다.
+  Future<void> _adjustMealPortion(MealImageAnalysisPreview preview) async {
+    final int? index = _selectedMealCandidateIndex;
+    if (index == null || index >= preview.foodCandidates.length) return;
+    final PortionSelection? selection = await showPortionSheet(
+      context,
+      foodName: preview.foodCandidates[index].displayName,
+      initialAmount: _mealPortionAmount,
+    );
+    if (selection == null || !mounted) return;
+    setState(() {
+      _mealPortionAmount = selection.portionAmount;
+      _applySelectedCandidateToFields(preview);
+    });
   }
 
   String _primaryLabel(
@@ -1753,9 +1824,15 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   MealConfirmationRequest _mealConfirmationRequest(
     MealImageAnalysisPreview preview,
   ) {
-    final MealFoodCandidate? firstCandidate = preview.foodCandidates.isEmpty
-        ? null
-        : preview.foodCandidates.first;
+    // 선택된 후보(없으면 첫 후보) 기준으로 confidence/source 추적값을 가져온다.
+    final int? selectedIndex = _selectedMealCandidateIndex;
+    final MealFoodCandidate? selectedCandidate =
+        (selectedIndex != null &&
+            selectedIndex < preview.foodCandidates.length)
+        ? preview.foodCandidates[selectedIndex]
+        : (preview.foodCandidates.isEmpty
+              ? null
+              : preview.foodCandidates.first);
     final List<MealFoodItemInput> foodItems = <MealFoodItemInput>[
       // 손으로 채운 대표 항목은 이름이 있을 때만 포함한다. 검색 폴백만으로
       // 끼니를 만들 수 있도록(이름 미입력 + database_match 만) 비어 있으면 생략.
@@ -1771,8 +1848,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           proteinG: _parseOptionalDouble(_mealProteinController.text),
           fatG: _parseOptionalDouble(_mealFatController.text),
           sodiumMg: _parseOptionalDouble(_mealSodiumController.text),
-          confidence: firstCandidate?.confidence,
-          source: firstCandidate?.source ?? 'manual',
+          confidence: selectedCandidate?.confidence,
+          source: selectedCandidate?.source ?? 'manual',
         ),
       // 직접 입력 검색에서 담은 카탈로그 항목 (source: 'database_match').
       ..._databaseMatchedFoods,
@@ -2612,10 +2689,68 @@ class _IngredientAmountCell extends StatelessWidget {
   }
 }
 
-class _AnalysisInProgressScreen extends StatelessWidget {
+/// 분석 중 3단계 체크리스트 한 단계.
+class _AnalysisStep {
+  const _AnalysisStep({required this.label});
+
+  /// 단계 라벨 (해요체 X — 짧은 명사구).
+  final String label;
+}
+
+// 음식: 검출→분류→후보 정리 / 영양제: 검출→OCR 추출→AI 해석 (가이드 ④-2).
+const List<_AnalysisStep> _kMealSteps = <_AnalysisStep>[
+  _AnalysisStep(label: '음식 영역 검출'),
+  _AnalysisStep(label: '음식 종류 분류'),
+  _AnalysisStep(label: '후보 정리'),
+];
+const List<_AnalysisStep> _kSupplementSteps = <_AnalysisStep>[
+  _AnalysisStep(label: '라벨 영역 검출'),
+  _AnalysisStep(label: 'OCR 글자 추출'),
+  _AnalysisStep(label: 'AI 해석'),
+];
+
+class _AnalysisInProgressScreen extends StatefulWidget {
   const _AnalysisInProgressScreen({required this.isMeal});
 
   final bool isMeal;
+
+  @override
+  State<_AnalysisInProgressScreen> createState() =>
+      _AnalysisInProgressScreenState();
+}
+
+class _AnalysisInProgressScreenState extends State<_AnalysisInProgressScreen> {
+  // ⚠️ 백엔드는 동기 202 단일 응답이고 진행률 스트림/폴링 라우트가 없다.
+  //    (가이드 ③-2 공백) → 단계 전환은 순수 시간 기반 연출이며, 실제 단계
+  //    완료 신호가 아니다. 완료 후 결과 화면에서 pipeline_metadata 로 실제
+  //    수행 여부를 검증 표기한다(가이드 ④-2).
+  static const Duration _stepInterval = Duration(milliseconds: 1100);
+
+  int _activeStep = 0;
+  Timer? _timer;
+
+  List<_AnalysisStep> get _steps =>
+      widget.isMeal ? _kMealSteps : _kSupplementSteps;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_stepInterval, (Timer timer) {
+      if (!mounted) return;
+      // 마지막 단계 직전까지만 전진(완료 신호는 화면 전환이 담당).
+      if (_activeStep >= _steps.length - 1) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _activeStep += 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2625,7 +2760,7 @@ class _AnalysisInProgressScreen extends StatelessWidget {
         bottom: false,
         child: Column(
           children: <Widget>[
-            _ResultTopBar(isMeal: isMeal),
+            _ResultTopBar(isMeal: widget.isMeal),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -2641,8 +2776,8 @@ class _AnalysisInProgressScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         Container(
-                          width: 172,
-                          height: 172,
+                          width: 140,
+                          height: 140,
                           padding: const EdgeInsets.all(AppSpace.md),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -2666,11 +2801,16 @@ class _AnalysisInProgressScreen extends StatelessWidget {
                             letterSpacing: 0,
                           ),
                         ),
-                        const SizedBox(height: AppSpace.sm),
+                        const SizedBox(height: AppSpace.lg),
+                        _AnalysisChecklist(
+                          steps: _steps,
+                          activeStep: _activeStep,
+                        ),
+                        const SizedBox(height: AppSpace.lg),
                         Text(
-                          isMeal
+                          widget.isMeal
                               ? '식단 후보를 확인하는 동안 다른 탭을 사용해도 괜찮아요.'
-                              : 'OCR, YOLO, LLM 후보를 함께 확인하는 동안 다른 탭을 사용해도 괜찮아요.',
+                              : '라벨을 함께 확인하는 동안 다른 탭을 사용해도 괜찮아요.',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: AppColor.inkSecondary,
@@ -2712,6 +2852,108 @@ class _AnalysisInProgressScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AnalysisChecklist extends StatelessWidget {
+  const _AnalysisChecklist({required this.steps, required this.activeStep});
+
+  final List<_AnalysisStep> steps;
+  final int activeStep;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        for (int index = 0; index < steps.length; index++) ...<Widget>[
+          _AnalysisChecklistRow(
+            label: steps[index].label,
+            done: index < activeStep,
+            active: index == activeStep,
+          ),
+          if (index != steps.length - 1) const SizedBox(height: AppSpace.sm),
+        ],
+      ],
+    );
+  }
+}
+
+class _AnalysisChecklistRow extends StatelessWidget {
+  const _AnalysisChecklistRow({
+    required this.label,
+    required this.done,
+    required this.active,
+  });
+
+  final String label;
+  final bool done;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color leadingColor = done
+        ? AppColor.success
+        : active
+        ? AppColor.brand
+        : AppColor.inkDisabled;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.md,
+      ),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: active ? AppColor.brand : AppColor.border,
+          width: active ? 1.5 : 1,
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: done
+                ? const Icon(
+                    Icons.check_circle_rounded,
+                    size: 22,
+                    color: AppColor.success,
+                  )
+                : active
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColor.brand,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    Icons.radio_button_unchecked_rounded,
+                    size: 20,
+                    color: leadingColor,
+                  ),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 15,
+                fontWeight: active || done ? FontWeight.w800 : FontWeight.w600,
+                color: done || active ? AppColor.ink : AppColor.inkTertiary,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

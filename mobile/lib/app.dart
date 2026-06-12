@@ -410,6 +410,7 @@ class _SupplementCameraBranch extends ConsumerWidget {
       key: ValueKey<String>('camera-$initialMode-$initialImageRole'),
       initialMode: initialMode,
       initialImageRole: initialImageRole,
+      localPrefs: ref.watch(localPrefsProvider).value,
       onClose: () => context.go('/shell/home'),
       onAnalyzeSupplementImage:
           (String imagePath, {required String ocrProvider}) async {

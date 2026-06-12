@@ -162,6 +162,40 @@ void main() {
 
     expect(find.text('분석을 하고 있어요.'), findsOneWidget);
     expect(find.text('메인으로 이동'), findsOneWidget);
+    // 영양제 3단계 체크리스트(검출→OCR 추출→AI 해석) 표출.
+    expect(find.text('라벨 영역 검출'), findsOneWidget);
+    expect(find.text('OCR 글자 추출'), findsOneWidget);
+    expect(find.text('AI 해석'), findsOneWidget);
+    // 클라이언트 연출 — 시간이 지나면 다음 단계가 켜진다.
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(find.text('라벨 영역 검출'), findsOneWidget);
+  });
+
+  testWidgets('meal analyzing page shows the food 3-step checklist', (
+    WidgetTester tester,
+  ) async {
+    final _PendingMealRepository repository = _PendingMealRepository();
+    final AppController controller = AppController(repository: repository);
+    addTearDown(() {
+      repository.complete();
+      controller.dispose();
+    });
+
+    await controller.startMealImageAnalysis('/tmp/meal.png');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisResultScreen(mode: 'meal', controller: controller),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('분석을 하고 있어요.'), findsOneWidget);
+    expect(find.text('메인으로 이동'), findsOneWidget);
+    // 음식 3단계 체크리스트(검출→분류→후보 정리).
+    expect(find.text('음식 영역 검출'), findsOneWidget);
+    expect(find.text('음식 종류 분류'), findsOneWidget);
+    expect(find.text('후보 정리'), findsOneWidget);
   });
 
   testWidgets(
@@ -567,12 +601,15 @@ void main() {
 
     expect(find.text('식단 분석'), findsOneWidget);
     expect(find.text('음식 후보 1개를 찾았어요'), findsOneWidget);
-    expect(find.text('음식 후보'), findsOneWidget);
-    expect(find.text('비빔밥'), findsOneWidget);
-    expect(find.text('Food YOLO'), findsOneWidget);
-    expect(find.text('on'), findsOneWidget);
-    expect(find.textContaining('food_yolo_local:best.pt'), findsOneWidget);
-    expect(find.textContaining('endpoint 연결 전'), findsNothing);
+    // 후보 선택 본편(figma 852:23): 후보 카드 헤더 + 후보명 + 등급 칩(% 비노출).
+    expect(find.text('어떤 음식이 맞나요?'), findsOneWidget);
+    expect(find.text('비빔밥'), findsWidgets);
+    expect(find.text('신뢰도 높음'), findsWidgets);
+    // 최고 신뢰도 후보가 기본 선택되어 섭취량 행이 노출된다(기본 1인분).
+    expect(find.text('섭취량'), findsOneWidget);
+    expect(find.text('1인분'), findsWidgets);
+    // % 숫자(신뢰도 88%)는 노출되지 않는다.
+    expect(find.textContaining('88%'), findsNothing);
   });
 
   testWidgets('confirms meal analysis into user-reviewed meal record', (
@@ -605,6 +642,45 @@ void main() {
       '수정 비빔밥',
     );
   });
+
+  testWidgets(
+    'meal candidate portion sheet reflects portion_amount in confirm payload',
+    (WidgetTester tester) async {
+      final _ReviewRepository repository = _ReviewRepository();
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisResultScreen(mode: 'meal', controller: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 후보가 기본 선택되어 섭취량 행이 보인다 — 탭해서 바텀시트를 연다.
+      await tester.tap(find.text('섭취량'));
+      await tester.pumpAndSettle();
+
+      // figma 959:80 — 프리셋 칩 + 그램 환산.
+      expect(find.text('얼마나 드셨어요?'), findsOneWidget);
+      expect(find.text('약 150g'), findsNothing); // 아직 1.5 선택 전
+      await tester.tap(find.text('1.5인분'));
+      await tester.pumpAndSettle();
+      expect(find.text('약 150g'), findsOneWidget);
+      await tester.tap(find.text('이 양으로 담기'));
+      await tester.pumpAndSettle();
+
+      // 저장 → confirm payload 의 portion_amount 가 1.5 로 반영된다.
+      await tester.tap(find.text('확인 후 식단 저장'));
+      await tester.pumpAndSettle();
+
+      final MealFoodItemInput saved =
+          repository.confirmedMealRequest!.foodItems.single;
+      expect(saved.displayName, '비빔밥');
+      expect(saved.portionAmount, 1.5);
+      expect(saved.portionUnit, 'serving');
+    },
+  );
 
   testWidgets(
     'meal manual-entry fallback merges database_match items into confirm',
@@ -730,9 +806,9 @@ void main() {
       );
       expect(find.text('당뇨'), findsOneWidget);
 
-      // Base meal cards remain intact below the C-hybrid cards.
-      await tester.scrollUntilVisible(find.text('음식 후보'), 160);
-      expect(find.text('음식 후보'), findsOneWidget);
+      // Base meal candidate selection remains intact below the C-hybrid cards.
+      await tester.scrollUntilVisible(find.text('어떤 음식이 맞나요?'), 160);
+      expect(find.text('어떤 음식이 맞나요?'), findsOneWidget);
     },
   );
 
@@ -780,7 +856,7 @@ void main() {
       find.byKey(const ValueKey<String>('cautionary-component-card')),
       findsNothing,
     );
-    expect(find.text('음식 후보'), findsOneWidget);
+    expect(find.text('어떤 음식이 맞나요?'), findsOneWidget);
     expect(find.text('확인 후 식단 저장'), findsOneWidget);
   });
 }
@@ -1440,6 +1516,27 @@ class _PendingReviewRepository extends _ReviewRepository {
   void complete() {
     if (!_completer.isCompleted) {
       _completer.complete(_preview());
+    }
+  }
+}
+
+class _PendingMealRepository extends _ReviewRepository {
+  final Completer<MealImageAnalysisPreview> _completer =
+      Completer<MealImageAnalysisPreview>();
+
+  @override
+  Future<MealImageAnalysisPreview> analyzeMealImage(
+    String imagePath, {
+    String mealType = 'unknown',
+  }) {
+    return _completer.future;
+  }
+
+  void complete() {
+    if (!_completer.isCompleted) {
+      _completer.complete(
+        MealImageAnalysisPreview.fromJson(_mealPreviewJson),
+      );
     }
   }
 }
