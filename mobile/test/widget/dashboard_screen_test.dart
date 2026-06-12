@@ -1,11 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:lemon_aid_mobile/app_controller.dart';
+import 'package:lemon_aid_mobile/core/api/api_client.dart';
 import 'package:lemon_aid_mobile/core/storage/local_prefs.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
+import 'package:lemon_aid_mobile/features/nutrition/kdri_models.dart';
+import 'package:lemon_aid_mobile/features/profile/profile_repository.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
@@ -63,6 +69,93 @@ void main() {
     // 복약 카드 빈 상태 (약 0개).
     expect(find.text('복약 관리'), findsOneWidget);
     expect(find.text('약 등록하기'), findsOneWidget);
+    // '영양소 상세 보기'는 풀폭 옐로 CTA 스타일 (figma 268:24, 가이드 10 ③-P2 5).
+    expect(
+      find.ancestor(
+        of: find.text('영양소 상세 보기'),
+        matching: find.byWidgetPredicate(
+          (Widget w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration! as BoxDecoration).color == AppColor.brandSoft,
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('injects the backend KDRI energy target into the kcal row', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+        kdris: const KdriLookupResult(
+          references: <KdriReference>[
+            KdriReference(
+              nutrientCode: 'energy_kcal',
+              referenceType: 'EER',
+              referenceUnit: 'kcal',
+              referenceAmount: 1700,
+            ),
+          ],
+          datasetStatus: 'official',
+          datasetVersion: 'kdris-2025',
+        ),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(
+      tester,
+      controller,
+      profileRepository: _profileRepository(<String, dynamic>{
+        'sex': 'female',
+        'birth_year': 1961,
+      }),
+    );
+
+    // 백엔드 EER 값이 그대로 '소비/목표' 모드로 주입된다 — 클라이언트 계산
+    // 금지 (가이드 02 ④-13).
+    expect(find.textContaining('/ 1700 kcal'), findsOneWidget);
+    expect(find.textContaining('오늘 기록 합계'), findsNothing);
+    // 잔여는 표시하되, 소모 kcal 은 Health Connect 주입 전에는 어떤 추정치도
+    // 노출하지 않는다 (가이드 02 ④-14 — 날조 금지).
+    expect(
+      find.textContaining('더 먹을 수 있어요', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('kcal 소모', findRichText: true), findsNothing);
+  });
+
+  testWidgets('keeps the totals-only kcal mode without a profile snapshot', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(
+      tester,
+      controller,
+      profileRepository: _profileRepository(<String, dynamic>{
+        'status': 'not_ready',
+      }),
+    );
+
+    // 프로필 미확보 시 목표 추정치를 날조하지 않는다 — 기록 합계 모드 유지.
+    expect(find.textContaining('오늘 기록 합계'), findsOneWidget);
   });
 
   testWidgets('shows the not_ready prompt when the score is unavailable', (
@@ -480,15 +573,55 @@ void main() {
   });
 }
 
-Future<void> _pumpScreen(WidgetTester tester, AppController controller) async {
+Future<void> _pumpScreen(
+  WidgetTester tester,
+  AppController controller, {
+  ProfileRepository? profileRepository,
+}) async {
   await tester.pumpWidget(
-    MaterialApp(home: DashboardScreen(controller: controller)),
+    MaterialApp(
+      home: DashboardScreen(
+        controller: controller,
+        profileRepository: profileRepository,
+      ),
+    ),
   );
   // 진입 애니메이션(게이지 차오름·스태거)이 끝나길 기다린다.
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
   await tester.pump(const Duration(milliseconds: 1300));
   await tester.pump(const Duration(milliseconds: 400));
+}
+
+class _FakeClient extends http.BaseClient {
+  _FakeClient(this.handler);
+
+  final Future<http.StreamedResponse> Function(http.Request request) handler;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    return handler(request as http.Request);
+  }
+}
+
+http.StreamedResponse _jsonResponse(Map<String, dynamic> body, int status) {
+  return http.StreamedResponse(
+    Stream<List<int>>.value(utf8.encode(jsonEncode(body))),
+    status,
+    headers: const <String, String>{'content-type': 'application/json'},
+  );
+}
+
+// GET /health/profile-snapshots/latest 가 [latestBody] 를 돌려주는 저장소.
+ProfileRepository _profileRepository(Map<String, dynamic> latestBody) {
+  return ProfileRepository(
+    apiClient: ApiClient(
+      baseUrl: 'https://api.example.com/api/v1',
+      httpClient: _FakeClient(
+        (http.Request request) async => _jsonResponse(latestBody, 200),
+      ),
+    ),
+  );
 }
 
 SupplementImpactPreviewResponse _impact({
@@ -518,12 +651,23 @@ class _HomeRepository implements LemonAidRepository {
     required this.supplements,
     required this.impact,
     this.medications = HomeMedicationsResult.empty,
+    this.kdris = KdriLookupResult.empty,
   });
 
   final DashboardHealthScore healthScore;
   final HomeSupplementsResult supplements;
   final SupplementImpactPreviewResponse impact;
   final HomeMedicationsResult medications;
+  final KdriLookupResult kdris;
+
+  @override
+  Future<KdriLookupResult> lookupKdris({
+    required int age,
+    required String sex,
+    String pregnancyStatus = 'none',
+  }) async {
+    return kdris;
+  }
 
   @override
   Future<ConsentState> fetchConsents() async {

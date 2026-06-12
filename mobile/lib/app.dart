@@ -128,6 +128,9 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                           return source_dashboard.DashboardScreen(
                             controller: ref.watch(appControllerProvider),
                             localPrefs: ref.watch(localPrefsProvider).value,
+                            profileRepository: ref.watch(
+                              profileRepositoryProvider,
+                            ),
                           );
                         },
                   );

@@ -20,6 +20,9 @@ import 'package:go_router/go_router.dart';
 import '../app_controller.dart';
 import '../core/storage/local_prefs.dart';
 import '../features/dashboard/home_models.dart';
+import '../features/nutrition/kdri_models.dart';
+import '../features/profile/profile_models.dart';
+import '../features/profile/profile_repository.dart';
 import '../features/supplements/supplement_models.dart';
 import '../features/supplements/supplement_repository.dart';
 import '../shared/widgets/status_state_view.dart';
@@ -43,11 +46,17 @@ class DashboardScreen extends StatefulWidget {
   /// null 이면(예: prefs 로딩 전·실패) 세션 메모리로만 동작한다 — 기능 영향 없음.
   final LocalPrefs? localPrefs;
 
+  /// 목표 kcal 주입용 프로필 스냅샷 저장소 (가이드 02 ④-13).
+  ///
+  /// null 이면 목표 조회를 생략하고 히어로 카드는 '기록 합계' 모드로 동작한다.
+  final ProfileRepository? profileRepository;
+
   const DashboardScreen({
     required this.controller,
     super.key,
     this.recordDate,
     this.localPrefs,
+    this.profileRepository,
   });
 
   bool get isRecordMode => recordDate != null;
@@ -65,6 +74,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Set<String> _checkedSupplementIds = <String>{};
   // 복약 복용 체크 토글 — 선택 날짜 기준 LocalPrefs 영속.
   Set<String> _checkedMedicationIds = <String>{};
+  // 목표 kcal — 백엔드(KDRIs 에너지 기준) 값 확보 시에만 채워진다.
+  int? _targetKcal;
 
   bool get _isRecordMode => widget.isRecordMode;
 
@@ -80,6 +91,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _selectedDate = DateTime(base.year, base.month, base.day);
     _focusedMonday = _mondayOf(_selectedDate);
     _loadChecksForSelectedDate();
+    _loadTargetKcal();
+  }
+
+  /// 목표 kcal 을 백엔드 값으로 주입한다 (가이드 02 ④-13 — 클라이언트 계산 금지).
+  ///
+  /// 프로필 스냅샷(sex/birth_year)이 있을 때만 KDRIs 에너지 기준(EER,
+  /// `energy_kcal`)을 조회해 그대로 전달한다. 미확보·실패 시 null 유지 —
+  /// 히어로 카드는 '기록 합계' 모드로 동작한다 (목표 추정치 날조 금지).
+  Future<void> _loadTargetKcal() async {
+    final ProfileRepository? profiles = widget.profileRepository;
+    if (profiles == null) return;
+    try {
+      final BodyProfileSnapshot? snapshot = await profiles.fetchLatest();
+      final ProfileSex? sex = snapshot?.sex;
+      final int? birthYear = snapshot?.birthYear;
+      if (sex == null || birthYear == null) return;
+      // 나이는 KDRIs 조회 파라미터 준비일 뿐 영양 연산이 아니다.
+      final int age = DateTime.now().year - birthYear;
+      if (age <= 0 || age > 120) return;
+      final KdriLookupResult result = await _controller.repository.lookupKdris(
+        age: age,
+        sex: sex.code,
+      );
+      final double? amount =
+          result.referenceFor('energy_kcal')?.referenceAmount;
+      if (!mounted || amount == null || amount <= 0) return;
+      setState(() => _targetKcal = amount.round());
+    } on Exception {
+      // 목표 미확보 — 기록 합계 모드 유지.
+    }
   }
 
   @override
@@ -309,7 +350,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               scoreLabelText: score.labelText,
               scoreLabel: score.label,
               consumedKcal: totals.kcal.round(),
-              targetKcal: null,
+              // 백엔드 KDRIs 에너지 기준 확보 시에만 '소비/목표' 모드 전환.
+              targetKcal: _targetKcal,
               macrosTotalsOnly: true,
               carbG: totals.carbG.round(),
               proteinG: totals.proteinG.round(),

@@ -39,7 +39,9 @@ class HealthHeroCard extends StatefulWidget {
   final int consumedKcal;
   // 목표 kcal — 백엔드 미제공 시 null. null 이면 '/ 목표' 숨기고 '기록 합계' 표시.
   final int? targetKcal;
-  final int burnedKcal;
+  // 소모 kcal — Health Connect 주입값이 있을 때만 표시 (가이드 02 ④-14).
+  // null 이면 소모 구간을 렌더하지 않는다 — 기본 추정치 노출 금지.
+  final int? burnedKcal;
   final int carbPct;
   final int proteinPct;
   final int fatPct;
@@ -71,7 +73,7 @@ class HealthHeroCard extends StatefulWidget {
     this.scoreLabel,
     this.consumedKcal = 600,
     this.targetKcal = 1500,
-    this.burnedKcal = 200,
+    this.burnedKcal,
     this.carbPct = 46,
     this.proteinPct = 24,
     this.fatPct = 30,
@@ -349,6 +351,8 @@ class _HealthHeroCardState extends State<HealthHeroCard>
 
             // ─── 소모/잔여 칼로리 한 줄 (목표 있을 때만 잔여 표시) ───
             // 미연동(목표 없음)이면 추정치 대신 워치 연동 잠금 안내 (figma 951:58).
+            // 소모 kcal 은 Health Connect 주입값(burnedKcal != null)일 때만 —
+            // 위젯 기본 추정치 노출 금지 (가이드 02 ④-14, 날조 금지 원칙).
             Center(
               child: _hasTarget
                   ? RichText(
@@ -358,12 +362,14 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                           color: AppColor.inkSecondary,
                         ),
                         children: [
-                          const TextSpan(text: '🔥 '),
-                          TextSpan(text: '${widget.burnedKcal} kcal 소모'),
-                          TextSpan(
-                            text: '  ·  ',
-                            style: TextStyle(color: AppColor.border),
-                          ),
+                          if (widget.burnedKcal != null) ...[
+                            const TextSpan(text: '🔥 '),
+                            TextSpan(text: '${widget.burnedKcal} kcal 소모'),
+                            TextSpan(
+                              text: '  ·  ',
+                              style: TextStyle(color: AppColor.border),
+                            ),
+                          ],
                           TextSpan(
                             text: '$_remainKcal kcal',
                             style: const TextStyle(
@@ -425,27 +431,35 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             ),
             const SizedBox(height: AppSpace.sm),
 
-            // ─── 영양소 상세 ───
+            // ─── 영양소 상세 ─── (figma 268:24 풀폭 옐로 CTA — 가이드 10 ③-P2 5.
+            // 레몬봇 CTA와 동일 토큰: brandSoft 배경 + brandDeep 텍스트.)
             Pressable(
               onTap: widget.onTapDetail,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
-                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.lg,
+                  vertical: AppSpace.md + 2,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColor.brandSoft,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       '영양소 상세 보기',
-                      style: AppText.caption.copyWith(
-                        color: AppColor.inkSecondary,
-                        fontWeight: FontWeight.w700,
+                      style: AppText.body.copyWith(
+                        color: AppColor.brandDeep,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
+                    const SizedBox(width: 2),
                     Icon(
                       Icons.chevron_right_rounded,
-                      color: AppColor.inkTertiary,
-                      size: 18,
+                      color: AppColor.brandDeep,
+                      size: 20,
                     ),
                   ],
                 ),
