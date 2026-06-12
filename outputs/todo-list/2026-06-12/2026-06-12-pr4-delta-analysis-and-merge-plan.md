@@ -69,7 +69,7 @@
   - 모바일 게이트: analyze 0건 + **360 테스트 전통과**
   - 컨테이너 재빌드·healthy — `medical_wiki_claims`(parents[5], 컨테이너에서 IndexError 경로)는 **런타임 import 체인에 없음을 확인**(스크립트/eval 전용)하여 마운트 불필요 판정
   - 라이브 스모크(재빌드 컨테이너): ① answerable 경로 — 프리셋 질문에 `answerable`+`kdris-2025`, **응답 sources가 화이트리스트 필드만 노출**(수동 패치 라이브 검증) ② 개인 복용량 표현은 `medical_decision_boundary`로 닫힘(안전 계약 의도 동작) ③ 승인 루프 2단계 — 게이트(requires_user_approval=True) → 승인 → snapshot 영속(nutrition_analysis 2→3행) ④ **dashboard/summary 200** — 챗 스냅샷 누적 상태에서 JSONB 필터 회귀 없음
-- **Phase 5 — CI (맨 마지막)**: `agent-backend-ci.yml` 임포트(push 트리거가 `feat/**`+`backend/**`에서 즉시 발화하므로 로컬 전부 그린 후) → 커밋·푸시
+- **Phase 5 — CI·커밋**: ✅ 완료(2026-06-12) — `agent-backend-ci.yml` 임포트(YAML parse OK, 로컬 전부 그린 확인 후 마지막 순서) → 논리 5커밋(mobile P1 / agent core+surface / ops scripts / docs / ci)으로 분리 커밋 → 양 리모트 푸시 `e931f7c0`. **PR#4 경로 단위 병합 전체 완료**
 - **금지 목록**: alembic 전체 / `src/llm/ollama.py` / `requirements-dev.txt` / `llm_wiki_retrieval.py`·`wiki_embedding_targets.py` 덮어쓰기
 
 ## 4. 결정 필요 (사용자/팀)
