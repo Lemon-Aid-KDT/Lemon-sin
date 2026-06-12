@@ -172,6 +172,10 @@ async def get_latest_nutrition_analysis_result(
         .where(
             AnalysisResult.owner_subject == build_owner_subject(user),
             AnalysisResult.analysis_type == AnalysisType.NUTRITION_ANALYSIS.value,
+            # 챗 승인 스냅샷(store_app_health_analysis_result)도 같은 analysis_type을
+            # {analysis_kind, snapshot} 형식으로 공유한다. 대시보드/진단/보충제 프리뷰는
+            # results 행을 가진 파이프라인 형식만 읽어야 하므로 형식 자체로 구분한다.
+            AnalysisResult.result_snapshot.has_key("results"),
         )
         .order_by(desc(AnalysisResult.created_at))
         .limit(1)
