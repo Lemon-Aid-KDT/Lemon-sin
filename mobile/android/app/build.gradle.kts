@@ -32,6 +32,9 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications는 java.time 사용으로 core library desugaring 필수.
+        // https://pub.dev/documentation/flutter_local_notifications/latest/index.html (Gradle setup)
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -84,6 +87,12 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+}
+
+dependencies {
+    // desugaring 런타임 — flutter_local_notifications 요구 최소 버전 2.1.4.
+    // https://pub.dev/documentation/flutter_local_notifications/latest/index.html (Gradle setup)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 gradle.taskGraph.whenReady {
