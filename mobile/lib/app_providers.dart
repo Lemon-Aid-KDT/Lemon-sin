@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_controller.dart';
 import 'core/api/api_client.dart';
 import 'core/config/app_config.dart';
+import 'core/storage/local_prefs.dart';
 import 'features/ai_coaching/ai_coaching_repository.dart';
 import 'features/auth/token_session.dart';
 import 'features/chat/chat_repository.dart';
@@ -12,6 +13,15 @@ import 'features/supplements/supplement_repository.dart';
 final Provider<AppConfig> appConfigProvider = Provider<AppConfig>((Ref ref) {
   return AppConfig.fromEnvironment();
 });
+
+/// Local persistence wrapper provider (shared_preferences).
+///
+/// Loads once on first watch. Consumers read `.value` and degrade gracefully to
+/// in-memory behavior while the future is still resolving or if it fails.
+final FutureProvider<LocalPrefs> localPrefsProvider =
+    FutureProvider<LocalPrefs>((Ref ref) {
+      return LocalPrefs.create();
+    });
 
 /// External bearer-token persistence provider.
 final Provider<BearerTokenStore> bearerTokenStoreProvider =

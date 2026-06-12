@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
+import 'package:lemon_aid_mobile/core/storage/local_prefs.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
@@ -9,6 +11,7 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
 import 'package:lemon_aid_mobile/screens/dashboard_screen.dart';
 import 'package:lemon_aid_mobile/utils/design_tokens_v2.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('shows the ready health score and a calm interaction state', (
@@ -264,6 +267,167 @@ void main() {
         );
       }
     }
+  });
+
+  testWidgets('shows the kcal watch-lock caption without an estimate', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.ready,
+          score: 70,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    // 목표 kcal 미연동 — 잠금 캡션 노출, 소모/잔여 추정치 미노출.
+    expect(
+      find.text('워치를 연동하면 소모·잔여 칼로리도 보여드려요'),
+      findsOneWidget,
+    );
+    expect(find.text('오늘 먹은 음식 합계예요'), findsOneWidget);
+    // '소모'/'더 먹을 수 있어요' 같은 추정 문구는 어디에도 없다.
+    expect(find.textContaining('kcal 소모'), findsNothing);
+    expect(find.textContaining('더 먹을 수 있어요'), findsNothing);
+  });
+
+  testWidgets("today's analysis card exposes a '자세히' deep link affordance", (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.ready,
+          score: 78,
+          message: '오늘 활동량이 좋아요.',
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    expect(find.text('오늘의 분석'), findsOneWidget);
+    expect(find.text('자세히'), findsOneWidget);
+  });
+
+  testWidgets("today's analysis card deep-links to the score tab", (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.ready,
+          score: 78,
+          message: '오늘 활동량이 좋아요.',
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    final GoRouter router = GoRouter(
+      initialLocation: '/shell/home',
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/shell/home',
+          builder: (BuildContext context, GoRouterState state) =>
+              DashboardScreen(controller: controller),
+        ),
+        GoRoute(
+          path: '/shell/score',
+          builder: (BuildContext context, GoRouterState state) =>
+              const Scaffold(body: Text('분석 탭 화면')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.ensureVisible(find.text('자세히'));
+    await tester.pump();
+    await tester.tap(find.text('자세히'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('분석 탭 화면'), findsOneWidget);
+  });
+
+  testWidgets('persists the supplement check across a screen rebuild', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final LocalPrefs prefs = await LocalPrefs.create();
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: const HomeSupplementsResult(
+          results: <HomeSupplement>[
+            HomeSupplement(
+              id: 'sup-1',
+              displayName: '비타민 D',
+              manufacturer: null,
+              schedule: null,
+            ),
+          ],
+          limit: 50,
+          offset: 0,
+        ),
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DashboardScreen(controller: controller, localPrefs: prefs),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('0/1 완료'), findsOneWidget);
+    await tester.ensureVisible(find.text('비타민 D'));
+    await tester.pump();
+    await tester.tap(find.text('비타민 D'));
+    await tester.pump();
+    expect(find.text('1/1 완료'), findsOneWidget);
+
+    // 토글이 prefs(오늘 날짜 키)에 영속됐는지 직접 확인.
+    final DateTime today = DateTime.now();
+    expect(
+      prefs.supplementCheckedIds(today),
+      contains('sup-1'),
+    );
+
+    // 같은 prefs 를 가진 새 화면을 다시 띄우면 체크가 복원된다.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DashboardScreen(controller: controller, localPrefs: prefs),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('1/1 완료'), findsOneWidget);
   });
 }
 

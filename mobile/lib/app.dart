@@ -8,9 +8,11 @@ import 'app_providers.dart';
 import 'core/config/app_config.dart';
 import 'features/auth/token_session.dart';
 import 'features/consent/consent_gate_screen.dart';
+import 'features/records/records_providers.dart';
 import 'features/supplements/supplement_models.dart';
 import 'features/supplements/supplement_repository.dart';
 import 'screens/analysis_result_screen.dart' as source_analysis;
+import 'screens/calendar_screen.dart' as source_calendar;
 import 'screens/camera_screen.dart' as source_camera;
 import 'screens/chat_screen.dart' as source_chat;
 import 'screens/dashboard_screen.dart' as source_dashboard;
@@ -117,6 +119,9 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                         (BuildContext context, WidgetRef ref, Widget? child) {
                           return source_dashboard.DashboardScreen(
                             controller: ref.watch(appControllerProvider),
+                            localPrefs: ref
+                                .watch(localPrefsProvider)
+                                .value,
                           );
                         },
                   );
@@ -125,10 +130,23 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                   GoRoute(
                     path: 'calendar',
                     builder: (BuildContext context, GoRouterState state) {
-                      return const _NeutralBranch(
-                        icon: Icons.calendar_month_rounded,
-                        title: '캘린더',
-                        message: '식단·복약 기록 캘린더는 다음 단계에서 API와 연결합니다.',
+                      return Consumer(
+                        builder:
+                            (
+                              BuildContext context,
+                              WidgetRef ref,
+                              Widget? child,
+                            ) {
+                              return source_calendar.CalendarScreen(
+                                repository: ref.watch(
+                                  recordsRepositoryProvider,
+                                ),
+                                controller: ref.watch(appControllerProvider),
+                                localPrefs: ref
+                                    .watch(localPrefsProvider)
+                                    .value,
+                              );
+                            },
                       );
                     },
                   ),

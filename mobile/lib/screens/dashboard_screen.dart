@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_controller.dart';
+import '../core/storage/local_prefs.dart';
 import '../features/dashboard/home_models.dart';
 import '../features/supplements/supplement_models.dart';
 import '../features/supplements/supplement_repository.dart';
@@ -37,7 +38,17 @@ class DashboardScreen extends StatefulWidget {
   /// 홈 데이터(점수·식단·영양제·상호작용)를 제공하는 앱 컨트롤러.
   final AppController controller;
 
-  const DashboardScreen({required this.controller, super.key, this.recordDate});
+  /// 날짜별 체크 상태를 영속하는 로컬 저장 래퍼.
+  ///
+  /// null 이면(예: prefs 로딩 전·실패) 세션 메모리로만 동작한다 — 기능 영향 없음.
+  final LocalPrefs? localPrefs;
+
+  const DashboardScreen({
+    required this.controller,
+    super.key,
+    this.recordDate,
+    this.localPrefs,
+  });
 
   bool get isRecordMode => recordDate != null;
 
@@ -50,14 +61,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late DateTime _selectedDate;
   // 헤더 strip 이 보여주는 주 (그 주의 월요일)
   late DateTime _focusedMonday;
-  // 영양제 체크 토글 — 세션 메모리. // TODO(persist): SharedPreferences 연동.
-  final Set<String> _checkedSupplementIds = <String>{};
-  // 복약 복용 체크 토글 — 세션 메모리. // TODO(persist: P1-5): SharedPreferences 연동.
-  final Set<String> _checkedMedicationIds = <String>{};
+  // 영양제 체크 토글 — 선택 날짜 기준 LocalPrefs 영속 (자정 넘어가면 새 날짜 키).
+  Set<String> _checkedSupplementIds = <String>{};
+  // 복약 복용 체크 토글 — 선택 날짜 기준 LocalPrefs 영속.
+  Set<String> _checkedMedicationIds = <String>{};
 
   bool get _isRecordMode => widget.isRecordMode;
 
   AppController get _controller => widget.controller;
+
+  LocalPrefs? get _prefs => widget.localPrefs;
 
   @override
   void initState() {
@@ -66,6 +79,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final base = widget.recordDate ?? now;
     _selectedDate = DateTime(base.year, base.month, base.day);
     _focusedMonday = _mondayOf(_selectedDate);
+    _loadChecksForSelectedDate();
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // prefs 가 늦게 로드되면(앱 기동 직후 FutureProvider) 그 시점에 한 번 더 읽는다.
+    if (oldWidget.localPrefs == null && widget.localPrefs != null) {
+      _loadChecksForSelectedDate();
+    }
+  }
+
+  // 선택 날짜의 영양제/복약 체크 상태를 LocalPrefs 에서 읽어온다.
+  void _loadChecksForSelectedDate() {
+    final LocalPrefs? prefs = _prefs;
+    if (prefs == null) return;
+    _checkedSupplementIds = prefs.supplementCheckedIds(_selectedDate);
+    _checkedMedicationIds = prefs.medicationCheckedIds(_selectedDate);
   }
 
   static DateTime _mondayOf(DateTime d) =>
@@ -84,6 +115,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _selectedDate = picked;
       _focusedMonday = _mondayOf(picked);
+      // 날짜가 바뀌면 그 날짜의 체크 상태를 다시 읽는다 (자정 롤오버 포함).
+      _loadChecksForSelectedDate();
     });
   }
 
@@ -103,6 +136,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _selectedDate = DateTime(now.year, now.month, now.day);
       _focusedMonday = _mondayOf(now);
+      _loadChecksForSelectedDate();
     });
   }
 
@@ -132,6 +166,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _checkedSupplementIds.add(id);
       }
     });
+    // 선택 날짜 키로 영속 (저장 실패는 무시 — 세션 상태는 이미 반영됨).
+    _prefs?.setSupplementCheckedIds(_selectedDate, _checkedSupplementIds);
   }
 
   void _toggleMedication(String id) {
@@ -142,6 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _checkedMedicationIds.add(id);
       }
     });
+    _prefs?.setMedicationCheckedIds(_selectedDate, _checkedMedicationIds);
   }
 
   // '+ 약 추가' → 바텀시트 폼 → POST. 성공 시 컨트롤러가 목록을 새로고침.
@@ -175,6 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     _checkedMedicationIds.remove(medication.id);
+    _prefs?.setMedicationCheckedIds(_selectedDate, _checkedMedicationIds);
     showUndoToast(
       context,
       message: '${medication.displayName}을(를) 목록에서 뺐어요.',
@@ -263,7 +301,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTapDetail: () =>
                   context.push('/shell/home/analysis-result?mode=meal'),
             ),
-            _TodayAnalysisCard(score: score),
+            _TodayAnalysisCard(
+              score: score,
+              onTap: () => context.go('/shell/score'),
+            ),
             _InteractionCard(
               preview: _controller.supplementImpactPreview,
               hasSupplements:
@@ -811,54 +852,76 @@ class _CardHeader extends StatelessWidget {
 
 // ═══════════════════════════════════════════
 // '오늘의 분석' — AI 요약 카드 (health_score.message 재사용)
-// 별도 daily-coaching 호출은 배치 C에서.
+// 카드 전체 탭 → 분석 탭(/shell/score) 딥링크 (가이드 02 ④(d)).
+// 홈에서 daily-coaching 추가 호출은 하지 않는다 (message 만 재사용).
 // ═══════════════════════════════════════════
 class _TodayAnalysisCard extends StatelessWidget {
   final DashboardHealthScore score;
-  const _TodayAnalysisCard({required this.score});
+  final VoidCallback onTap;
+  const _TodayAnalysisCard({required this.score, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final String? message = score.message;
     final bool hasMessage = message != null && message.trim().isNotEmpty;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
-      decoration: _mainCardDeco(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: AppColor.brandSoft,
-                  borderRadius: BorderRadius.circular(AppRadius.sm - 2),
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+        decoration: _mainCardDeco(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: AppColor.brandSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.sm - 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 18,
+                    color: AppColor.brandDeep,
+                  ),
                 ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 18,
-                  color: AppColor.brandDeep,
+                const SizedBox(width: AppSpace.sm),
+                Text('오늘의 분석', style: AppText.subtitle),
+                const Spacer(),
+                Row(
+                  children: [
+                    Text(
+                      '자세히',
+                      style: AppText.caption.copyWith(
+                        color: AppColor.inkSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: AppColor.inkTertiary,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: AppSpace.sm),
-              Text('오늘의 분석', style: AppText.subtitle),
-            ],
-          ),
-          const SizedBox(height: AppSpace.md),
-          Text(
-            hasMessage
-                ? message.trim()
-                : '오늘 끼니와 영양제를 기록하면 맞춤 코멘트를 보여드려요.',
-            style: AppText.body.copyWith(
-              color: AppColor.inkSecondary,
-              height: 1.5,
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: AppSpace.md),
+            Text(
+              hasMessage
+                  ? message.trim()
+                  : '오늘 끼니와 영양제를 기록하면 맞춤 코멘트를 보여드려요.',
+              style: AppText.body.copyWith(
+                color: AppColor.inkSecondary,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1209,7 +1272,7 @@ class _MealSlotRow extends StatelessWidget {
 
 // ═══════════════════════════════════════════
 // 영양제 관리 — 등록 영양제 체크리스트
-//   이름 + intake_schedule 요약 + 체크 토글 (세션 메모리).
+//   이름 + intake_schedule 요약 + 체크 토글 (날짜별 LocalPrefs 영속).
 // ═══════════════════════════════════════════
 class _SupplementChecklistCard extends StatelessWidget {
   final List<HomeSupplement> supplements;
@@ -1354,7 +1417,7 @@ class _SupplementRow extends StatelessWidget {
 // ═══════════════════════════════════════════
 // 복약 관리 — 등록 약 목록 (가이드 02 ④(a))
 //   행 = 이름 + medication_class 한국어 라벨 + condition_tags 칩(최대 2 + n)
-//        + 복용 체크 토글(세션 메모리) + 길게 누르면 비활성화.
+//        + 복용 체크 토글(날짜별 LocalPrefs 영속) + 길게 누르면 비활성화.
 //   빈 상태 = 가벼운 안내 + [약 등록하기].
 //   ⚠️ 용량/복용 시점 입력 금지 — 전문가 영역 문구로 대체.
 // ═══════════════════════════════════════════

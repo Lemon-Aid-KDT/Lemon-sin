@@ -1,0 +1,92 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lemon_aid_mobile/core/storage/local_prefs.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('LocalPrefs date-keyed checks', () {
+    test('round-trips supplement checked ids for a date', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+      final DateTime day = DateTime(2026, 6, 12);
+
+      expect(prefs.supplementCheckedIds(day), isEmpty);
+
+      await prefs.setSupplementCheckedIds(day, <String>{'sup-1', 'sup-2'});
+
+      // Re-create from the same mock store to prove persistence, not memory.
+      final LocalPrefs reopened = await LocalPrefs.create();
+      expect(
+        reopened.supplementCheckedIds(day),
+        <String>{'sup-1', 'sup-2'},
+      );
+    });
+
+    test('round-trips medication checked ids for a date', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+      final DateTime day = DateTime(2026, 6, 12);
+
+      await prefs.setMedicationCheckedIds(day, <String>{'med-1'});
+      final LocalPrefs reopened = await LocalPrefs.create();
+      expect(reopened.medicationCheckedIds(day), <String>{'med-1'});
+    });
+
+    test('checks are isolated per date (midnight rollover)', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+      final DateTime yesterday = DateTime(2026, 6, 11);
+      final DateTime today = DateTime(2026, 6, 12);
+
+      await prefs.setSupplementCheckedIds(yesterday, <String>{'sup-1'});
+
+      // Today starts empty even though yesterday has a check.
+      expect(prefs.supplementCheckedIds(today), isEmpty);
+      expect(prefs.supplementCheckedIds(yesterday), <String>{'sup-1'});
+    });
+
+    test('writing an empty set clears the stored key', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+      final DateTime day = DateTime(2026, 6, 12);
+
+      await prefs.setMedicationCheckedIds(day, <String>{'med-1'});
+      await prefs.setMedicationCheckedIds(day, <String>{});
+
+      final LocalPrefs reopened = await LocalPrefs.create();
+      expect(reopened.medicationCheckedIds(day), isEmpty);
+    });
+
+    test('dateKey zero-pads month and day', () {
+      expect(LocalPrefs.dateKey(DateTime(2026, 6, 1)), '2026-06-01');
+      expect(LocalPrefs.dateKey(DateTime(2026, 12, 25)), '2026-12-25');
+    });
+  });
+
+  group('LocalPrefs brand theme', () {
+    test('returns null when no theme is stored', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+      expect(prefs.brandThemeCode(), isNull);
+    });
+
+    test('saves and restores the selected theme code', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+
+      await prefs.setBrandThemeCode('purple');
+
+      final LocalPrefs reopened = await LocalPrefs.create();
+      expect(reopened.brandThemeCode(), 'purple');
+    });
+
+    test('restores a theme injected via setMockInitialValues', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'brand.theme': 'green',
+      });
+      final LocalPrefs prefs = await LocalPrefs.create();
+      expect(prefs.brandThemeCode(), 'green');
+    });
+  });
+}

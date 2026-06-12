@@ -340,6 +340,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             const SizedBox(height: AppSpace.sm),
 
             // ─── 소모/잔여 칼로리 한 줄 (목표 있을 때만 잔여 표시) ───
+            // 미연동(목표 없음)이면 추정치 대신 워치 연동 잠금 안내 (figma 951:58).
             Center(
               child: _hasTarget
                   ? RichText(
@@ -366,13 +367,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                         ],
                       ),
                     )
-                  : Text(
-                      '오늘 먹은 음식 합계예요',
-                      style: AppText.caption.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppColor.inkSecondary,
-                      ),
-                    ),
+                  : const _BurnedKcalLock(),
             ),
             const SizedBox(height: AppSpace.lg),
 
@@ -617,6 +612,64 @@ class _ThemeChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
+// 소모/잔여 kcal 잠금 안내 (Health Connect 미연동 · figma 951:58)
+//   - 추정치 표시 금지 — 색+아이콘+텍스트 병행으로 '연동하면 보여드려요' 톤.
+//   - 첫 줄: 지금 표시값이 오늘 기록 합계임을 명시.
+//   - 둘째 줄: 워치 아이콘 + 잠금 안내 (소모·잔여 미노출).
+// ═══════════════════════════════════════════
+class _BurnedKcalLock extends StatelessWidget {
+  const _BurnedKcalLock();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          '오늘 먹은 음식 합계예요',
+          style: AppText.caption.copyWith(
+            fontWeight: FontWeight.w700,
+            color: AppColor.inkSecondary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColor.sunken,
+            borderRadius: BorderRadius.circular(AppRadius.full),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.watch_outlined,
+                size: 14,
+                color: AppColor.inkTertiary,
+              ),
+              const SizedBox(width: 5),
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 12,
+                color: AppColor.inkTertiary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '워치를 연동하면 소모·잔여 칼로리도 보여드려요',
+                style: AppText.micro.copyWith(
+                  color: AppColor.inkSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

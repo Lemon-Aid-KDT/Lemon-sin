@@ -354,6 +354,7 @@ class HomeSupplement {
     required this.displayName,
     required this.manufacturer,
     required this.schedule,
+    this.registeredAt,
   });
 
   /// 영양제 식별자.
@@ -368,6 +369,12 @@ class HomeSupplement {
   /// 섭취 일정 요약 (intake_schedule 가 없으면 null).
   final HomeSupplementSchedule? schedule;
 
+  /// 등록 시각 — user_confirmed_at 우선, 없으면 created_at (캘린더 날짜 분배용).
+  ///
+  /// /supplements 응답에는 날짜 범위 필터가 없으므로 등록일 기준으로 집계한다
+  /// (가이드 07 §4 "등록일 기준").
+  final DateTime? registeredAt;
+
   /// /supplements 응답의 단일 항목을 파싱한다.
   factory HomeSupplement.fromJson(Map<String, dynamic> json) {
     final Map<String, dynamic>? scheduleJson = _optionalMap(
@@ -380,6 +387,9 @@ class HomeSupplement {
       schedule: scheduleJson != null
           ? HomeSupplementSchedule.fromJson(scheduleJson)
           : null,
+      registeredAt:
+          _optionalDateTime(json['user_confirmed_at']) ??
+          _optionalDateTime(json['created_at']),
     );
   }
 }
