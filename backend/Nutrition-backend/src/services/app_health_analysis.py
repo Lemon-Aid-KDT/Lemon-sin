@@ -261,8 +261,13 @@ async def store_app_health_analysis_result(
             "snapshot": dict(result_snapshot),
         },
     )
-    async with session.begin():
-        session.add(record)
+    # The chat route loads grounding context (medications/meals/supplements)
+    # on this same request session before persisting, so an implicit
+    # transaction is already open and session.begin() raises
+    # InvalidRequestError (caught on the first live E2E smoke). Commit
+    # directly instead — same pattern as store_daily_health_score_result.
+    session.add(record)
+    await session.commit()
     await session.refresh(record)
     return record
 

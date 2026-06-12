@@ -23,7 +23,10 @@ down_revision: str | Sequence[str] | None = "0041_harden_ai_agent_chat_table_sec
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-CONSTRAINT_NAME = "ck_analysis_results_analysis_type_allowed"
+# Bare name on purpose: alembic's naming convention wraps it into
+# ck_analysis_results_analysis_type_allowed at execution time; passing the
+# already-prefixed name double-wraps it (caught on the first live upgrade).
+CONSTRAINT_NAME = "analysis_type_allowed"
 TABLE_NAME = "analysis_results"
 OLD_TYPES = "('activity_score', 'weight_prediction', 'nutrition_analysis')"
 NEW_TYPES = "('activity_score', 'weight_prediction', 'nutrition_analysis', 'daily_health_score')"
