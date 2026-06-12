@@ -182,6 +182,97 @@ void main() {
     );
   });
 
+  testWidgets('intake controls persist stepper and chip choices', (
+    WidgetTester tester,
+  ) async {
+    // 섭취 기준 컨트롤 — 1일 복용량 스테퍼 + 주기/시간 선택 칩
+    // (figma 855:23, 가이드 10 ③-P2 7).
+    final _ReviewRepository repository = _ReviewRepository();
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byTooltip('섭취 방법 수정'), 220);
+    await tester.ensureVisible(find.byTooltip('섭취 방법 수정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('섭취 방법 수정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1일 복용량'), findsOneWidget);
+    // 시드 1회(라벨 dailyServings) → 스테퍼 +1 → 2회.
+    await tester.tap(find.byIcon(Icons.add_circle_outline));
+    await tester.pump();
+    await tester.ensureVisible(find.text('매주'));
+    await tester.tap(find.text('매주'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('저녁'));
+    await tester.tap(find.text('저녁'));
+    await tester.pump();
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('확인 후 저장'));
+    await tester.pumpAndSettle();
+
+    final UserSupplementCreate? request = repository.registeredRequest;
+    expect(request?.serving.dailyServings, 2);
+    expect(request?.intakeSchedule?.timesPerDay, 2);
+    expect(request?.intakeSchedule?.frequency, 'weekly');
+    // OCR이 읽어온 morning 은 보존되고 사용자가 evening 을 추가한다.
+    expect(request?.intakeSchedule?.timeOfDay, containsAll(<String>['morning', 'evening']));
+  });
+
+  testWidgets('manually added ingredient is saved as user_confirmed', (
+    WidgetTester tester,
+  ) async {
+    // 성분 직접 추가 — OCR이 놓친 성분을 수동 입력으로 보탠다
+    // (figma 855:23, 가이드 10 ③-P2 7).
+    final _ReviewRepository repository = _ReviewRepository();
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('성분 직접 추가'), 220);
+    await tester.ensureVisible(find.text('성분 직접 추가'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('성분 직접 추가'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), '아연');
+    await tester.enterText(find.byType(TextField).at(1), '10');
+    await tester.enterText(find.byType(TextField).at(2), 'mg');
+    await tester.tap(find.text('저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('아연'), findsOneWidget);
+
+    await tester.tap(find.text('확인 후 저장'));
+    await tester.pumpAndSettle();
+
+    final List<UserSupplementIngredientInput> ingredients =
+        repository.registeredRequest?.ingredients ??
+        const <UserSupplementIngredientInput>[];
+    final UserSupplementIngredientInput added = ingredients.singleWhere(
+      (UserSupplementIngredientInput input) => input.displayName == '아연',
+    );
+    expect(added.amount, 10);
+    expect(added.unit, 'mg');
+    expect(added.source, 'user_confirmed');
+  });
+
   testWidgets('renders analyzing page while background analysis runs', (
     WidgetTester tester,
   ) async {

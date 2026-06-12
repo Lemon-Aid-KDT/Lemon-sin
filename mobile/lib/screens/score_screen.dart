@@ -352,7 +352,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   readOnly: !_viewingToday,
                 ),
                 const SizedBox(height: AppSpace.md),
-                _TrendCard(points: _trendPoints),
+                _TrendCard(points: _trendPoints, onLemonBot: _openLemonBot),
                 const SizedBox(height: AppSpace.lg),
                 const _Disclaimer(),
               ],
@@ -1149,7 +1149,9 @@ class _ChecklistError extends StatelessWidget {
 // ═══════════════════════════════════════════
 class _TrendCard extends StatelessWidget {
   final List<ScoreTrendPoint> points;
-  const _TrendCard({required this.points});
+  // 카드 하단 레몬봇 CTA (figma 800:23 — 가이드 10 ③-P2 6).
+  final VoidCallback onLemonBot;
+  const _TrendCard({required this.points, required this.onLemonBot});
 
   /// 추이 차트를 그리는 최소 데이터 일수 (가이드 06 §4.1).
   static const int _minPoints = 7;
@@ -1183,13 +1185,15 @@ class _TrendCard extends StatelessWidget {
             child: CustomPaint(painter: _TrendChartPainter(points: points)),
           ),
           const SizedBox(height: AppSpace.sm),
+          // 주차 보조 라벨 — 시안 800:23 의 1주~4주 표기 (가이드 10 ③-P2 6).
+          // 데이터 구간을 7일 단위로 나눠 최대 4주까지만 표시한다.
           Padding(
             padding: const EdgeInsets.only(left: _TrendChartPainter.padLeft),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
-                Text(_axisDate(points.first.date), style: AppText.micro),
-                Text(_axisDate(points.last.date), style: AppText.micro),
+                for (int week = 1; week <= _weekCount(points); week++)
+                  Text('$week주', style: AppText.micro),
               ],
             ),
           ),
@@ -1198,23 +1202,26 @@ class _TrendCard extends StatelessWidget {
             '점수는 기록 당시 기준이에요',
             style: AppText.caption.copyWith(color: AppColor.inkTertiary),
           ),
+          const SizedBox(height: AppSpace.lg),
+          // 추세 코멘트는 백엔드 공백(서버 금칙어 처리 문구 필요 — 임의 구현
+          // 금지)이라 시안의 코멘트+CTA 중 CTA 만 반영한다.
+          _LemonBotCta(onTap: onLemonBot),
         ],
       ),
     );
   }
 
-  /// `YYYY-MM-DD`를 축 라벨 `M월 D일`로 줄인다. 형식이 다르면 원문 유지.
-  static String _axisDate(String date) {
-    final List<String> parts = date.split('-');
-    if (parts.length != 3) {
-      return date;
-    }
-    final int? month = int.tryParse(parts[1]);
-    final int? day = int.tryParse(parts[2]);
-    if (month == null || day == null) {
-      return date;
-    }
-    return '$month월 $day일';
+  /// 표시 구간이 며칠인지로 주 수를 셈한다 (1~4 클램프).
+  ///
+  /// 날짜 파싱이 안 되는 행은 점 개수로 대신 추정한다 — 라벨은 보조
+  /// 표기일 뿐 점수 값에는 영향이 없다.
+  static int _weekCount(List<ScoreTrendPoint> points) {
+    final DateTime? first = DateTime.tryParse(points.first.date);
+    final DateTime? last = DateTime.tryParse(points.last.date);
+    final int days = (first != null && last != null)
+        ? last.difference(first).inDays + 1
+        : points.length;
+    return ((days + 6) ~/ 7).clamp(1, 4);
   }
 }
 

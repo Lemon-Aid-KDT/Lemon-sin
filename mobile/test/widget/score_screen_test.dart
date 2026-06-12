@@ -288,6 +288,11 @@ void main() {
     expect(find.text('지난 4주 추이'), findsOneWidget);
     expect(find.text('기록이 쌓이면 추이를 보여드려요'), findsNothing);
     expect(find.text('점수는 기록 당시 기준이에요'), findsOneWidget);
+    // 주차 보조 라벨 + 카드 하단 레몬봇 CTA (가이드 10 ③-P2 6 —
+    // 종합 분석 카드 CTA 와 합쳐 2개).
+    expect(find.text('1주'), findsOneWidget);
+    expect(find.text('4주'), findsOneWidget);
+    expect(find.text('레몬봇에게 물어보기'), findsNWidgets(2));
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>

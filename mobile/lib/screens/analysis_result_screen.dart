@@ -24,6 +24,7 @@ import '../widgets/common/detection_overlay.dart';
 import '../widgets/common/diet_result_cards.dart';
 import '../widgets/common/food_candidate_list.dart';
 import '../widgets/common/portion_sheet.dart';
+import '../widgets/common/pressable.dart';
 import 'food_search_screen.dart';
 import 'ingredient_detail_screen.dart';
 
@@ -64,6 +65,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       TextEditingController();
   final TextEditingController _precautionsController = TextEditingController();
   final TextEditingController _timeOfDayController = TextEditingController();
+  // 1일 복용량 — 섭취 기준 스테퍼 값. serving.daily_servings 와
+  // intake_schedule.times_per_day 로 저장된다 (가이드 10 ③-P2 7).
+  int _dailyServings = 1;
   final TextEditingController _mealNameController = TextEditingController();
   final TextEditingController _mealPortionAmountController =
       TextEditingController();
@@ -1068,7 +1072,84 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       onSelectionChanged: _setIngredientDraftSelected,
       onAllSelectionChanged: _setAllIngredientDraftsSelected,
       onRowTap: _openIngredientDetail,
+      onAddIngredient: () => _addIngredientDraft(context),
     );
+  }
+
+  /// 성분을 직접 추가한다 (figma 855:23 — 가이드 10 ③-P2 7).
+  ///
+  /// 라벨에 없거나 OCR이 놓친 성분을 수동 입력으로 보탠다. 백엔드에 성분
+  /// 검색 라우트가 없어 검색 연계 없이 수동 입력만 받는다
+  /// (UserSupplementIngredientInput 은 display_name 만 필수).
+  Future<void> _addIngredientDraft(BuildContext context) async {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController amountController = TextEditingController();
+    final TextEditingController unitController = TextEditingController();
+    try {
+      final bool? confirmed = await _showEditDialog(
+        context,
+        title: '성분 직접 추가',
+        fields: <Widget>[
+          _ReviewTextField(
+            controller: nameController,
+            label: '성분명',
+            hintText: '예: 비타민 C',
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ReviewTextField(
+                  controller: amountController,
+                  label: '함량',
+                  hintText: '예: 500',
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Expanded(
+                child: _ReviewTextField(
+                  controller: unitController,
+                  label: '단위',
+                  hintText: '예: mg',
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+      if (confirmed == true && mounted && context.mounted) {
+        final String name = nameController.text.trim();
+        if (name.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('성분명을 입력해주세요.')),
+          );
+          return;
+        }
+        setState(() {
+          _ingredientDrafts = <_IngredientReviewDraft>[
+            ..._ingredientDrafts,
+            _IngredientReviewDraft(
+              displayName: name,
+              originalName: null,
+              amountText: amountController.text.trim(),
+              unit: unitController.text.trim(),
+              selected: true,
+              nutrientCode: null,
+              confidence: 1,
+              source: 'user_confirmed',
+              dailyValuePercent: null,
+            ),
+          ];
+          _syncPrimaryIngredientControllers();
+        });
+      }
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameController.dispose();
+        amountController.dispose();
+        unitController.dispose();
+      });
+    }
   }
 
   /// 성분 상세 화면(figma 12-④)으로 진입한다(가이드 ④-4 — Navigator.push).
@@ -1466,38 +1547,187 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     }
   }
 
+  /// 섭취 기준 수정 — 1일 복용량 스테퍼 + 복용 주기/시간 선택 칩
+  /// (figma 855:23 섭취 기준 정보, 가이드 10 ③-P2 7).
+  ///
+  /// 자유 텍스트 입력 대신 컨트롤로 받아 코드 오타를 막는다. 시간 코드는
+  /// 기록 화면과 같은 어휘(morning·lunch·evening·night — records_models
+  /// `_timeOfDayHour` 매핑)를 쓴다. OCR이 그 외 값을 읽어온 경우엔 해당
+  /// 값을 칩으로 보존해 사용자 확인 없이 지우지 않는다.
   Future<void> _editIntakeInfo(BuildContext context) async {
-    await _showEditDialog(
-      context,
-      title: '섭취 방법 수정',
-      fields: <Widget>[
-        _ReviewTextField(
-          controller: _intakeMethodTextController,
-          label: '라벨 문장',
-          hintText: '예: 하루 1회 1정',
-        ),
-        const SizedBox(height: AppSpace.sm),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: _ReviewTextField(
-                controller: _frequencyController,
-                label: '주기',
-                hintText: 'daily',
-              ),
-            ),
-            const SizedBox(width: AppSpace.sm),
-            Expanded(
-              child: _ReviewTextField(
-                controller: _timeOfDayController,
-                label: '복용 시간',
-                hintText: 'morning, evening',
-              ),
-            ),
-          ],
-        ),
-      ],
+    const Map<String, String> frequencyOptions = <String, String>{
+      'daily': '매일',
+      'weekly': '매주',
+    };
+    const Map<String, String> timeOptions = <String, String>{
+      'morning': '아침',
+      'lunch': '점심',
+      'evening': '저녁',
+      'night': '밤',
+    };
+    int dailyServings = _dailyServings;
+    String frequency = _nonEmpty(_frequencyController.text) ?? 'daily';
+    final Set<String> timeOfDay = _splitCsv(_timeOfDayController.text).toSet();
+    final Map<String, String> frequencyChips = <String, String>{
+      ...frequencyOptions,
+      if (!frequencyOptions.containsKey(frequency)) frequency: frequency,
+    };
+    final Map<String, String> timeChips = <String, String>{
+      ...timeOptions,
+      for (final String code in timeOfDay)
+        if (!timeOptions.containsKey(code)) code: code,
+    };
+    // 라벨 문장도 로컬 사본으로 받아 저장 시에만 커밋한다 — 취소 시 라이브
+    // 컨트롤러가 누설되던 비일관(스테퍼/칩은 폐기되는데 라벨만 보존)을 막는다.
+    final TextEditingController labelController = TextEditingController(
+      text: _intakeMethodTextController.text,
     );
+    try {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return StatefulBuilder(
+            builder: (BuildContext context, StateSetter setDialogState) {
+              return AlertDialog(
+                title: const Text('섭취 기준 수정'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      _ReviewTextField(
+                        controller: labelController,
+                        label: '라벨 문장',
+                        hintText: '예: 하루 1회 1정',
+                      ),
+                      const SizedBox(height: AppSpace.md),
+                      const Text(
+                        '1일 복용량',
+                        style: TextStyle(
+                          color: AppColor.inkSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      Row(
+                        children: <Widget>[
+                          _StepperButton(
+                            icon: Icons.remove_circle_outline,
+                            onPressed: dailyServings <= 1
+                                ? null
+                                : () =>
+                                      setDialogState(() => dailyServings -= 1),
+                          ),
+                          SizedBox(
+                            width: 56,
+                            child: Text(
+                              '$dailyServings회',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColor.ink,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                          ),
+                          _StepperButton(
+                            icon: Icons.add_circle_outline,
+                            onPressed: dailyServings >= 10
+                                ? null
+                                : () =>
+                                      setDialogState(() => dailyServings += 1),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpace.md),
+                      const Text(
+                        '복용 주기',
+                        style: TextStyle(
+                          color: AppColor.inkSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      Wrap(
+                        spacing: AppSpace.sm,
+                        runSpacing: AppSpace.sm,
+                        children: <Widget>[
+                          for (final MapEntry<String, String> option
+                              in frequencyChips.entries)
+                            _IntakeChoiceChip(
+                              label: option.value,
+                              selected: frequency == option.key,
+                              onSelected: () => setDialogState(
+                                () => frequency = option.key,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpace.md),
+                      const Text(
+                        '복용 시간',
+                        style: TextStyle(
+                          color: AppColor.inkSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      Wrap(
+                        spacing: AppSpace.sm,
+                        runSpacing: AppSpace.sm,
+                        children: <Widget>[
+                          for (final MapEntry<String, String> option
+                              in timeChips.entries)
+                            _IntakeChoiceChip(
+                              label: option.value,
+                              selected: timeOfDay.contains(option.key),
+                              onSelected: () {
+                                setDialogState(() {
+                                  if (timeOfDay.contains(option.key)) {
+                                    timeOfDay.remove(option.key);
+                                  } else {
+                                    timeOfDay.add(option.key);
+                                  }
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('취소'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('저장'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (confirmed == true && mounted) {
+        setState(() {
+          _intakeMethodTextController.text = labelController.text;
+          _dailyServings = dailyServings;
+          _frequencyController.text = frequency;
+          _timeOfDayController.text = timeOfDay.join(', ');
+        });
+      }
+    } finally {
+      labelController.dispose();
+    }
   }
 
   Future<void> _editPrecautionsInfo(BuildContext context) async {
@@ -1572,6 +1802,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           preview.intakeMethod.structured.frequency == 'unknown'
           ? ''
           : preview.intakeMethod.structured.frequency;
+      _dailyServings =
+          (preview.parsedProduct.dailyServings ??
+                  preview.intakeMethod.structured.timesPerDay ??
+                  1)
+              .round()
+              .clamp(1, 10)
+              .toInt();
       _intakeMethodTextController.text = preview.intakeMethod.text ?? '';
       _precautionsController.text = preview.precautions
           .map((SupplementPreviewPrecaution precaution) => precaution.text)
@@ -1955,14 +2192,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         unit:
             _nonEmpty(preview.parsedProduct.servingSize) ??
             _nonEmpty(preview.intakeMethod.structured.amountUnit),
-        dailyServings:
-            preview.parsedProduct.dailyServings ??
-            preview.intakeMethod.structured.timesPerDay ??
-            1,
+        // 사용자 확정 스테퍼 값 — 섭취 기준 컨트롤 (가이드 10 ③-P2 7).
+        dailyServings: _dailyServings.toDouble(),
       ),
       intakeSchedule: SupplementIntakeSchedule(
         frequency: _nonEmpty(_frequencyController.text) ?? 'daily',
         timeOfDay: _splitCsv(_timeOfDayController.text),
+        timesPerDay: _dailyServings.toDouble(),
       ),
       precautionSnapshot: _confirmedPrecautions(),
       evidenceRefs: _registrationEvidenceRefs(preview),
@@ -2470,12 +2706,82 @@ class _IngredientAmountRowData {
   final SupplementIngredientCandidate? candidate;
 }
 
+/// 섭취 기준 스테퍼 버튼 — 시각 아이콘 28 유지하되 히트 영역 52px 확보
+/// (시니어 최소 터치 타깃, 가이드 10 ③-P2 7).
+class _StepperButton extends StatelessWidget {
+  const _StepperButton({required this.icon, required this.onPressed});
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 28,
+      color: AppColor.brandDeep,
+      disabledColor: AppColor.inkTertiary,
+      constraints: const BoxConstraints(minWidth: 52, minHeight: 52),
+      visualDensity: VisualDensity.standard,
+    );
+  }
+}
+
+/// 섭취 기준 선택 칩 — ChoiceChip/FilterChip 의 M3 기본색 대신
+/// design_tokens_v2(brand/brandSoft) 를 쓰고 히트 영역 52px 를 확보한다
+/// (가이드 10 ③-P2 7, 저장소 칩 컨벤션 정합).
+class _IntakeChoiceChip extends StatelessWidget {
+  const _IntakeChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onSelected,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 52),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: AppSpace.sm,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? AppColor.brandSoft : AppColor.surface,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(
+            color: selected ? AppColor.brand : AppColor.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColor.brandDeep : AppColor.inkSecondary,
+            fontSize: 15,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            letterSpacing: 0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _IngredientAmountTable extends StatelessWidget {
   const _IngredientAmountTable({
     required this.rows,
     required this.onSelectionChanged,
     required this.onAllSelectionChanged,
     this.onRowTap,
+    this.onAddIngredient,
   });
 
   final List<_IngredientAmountRowData> rows;
@@ -2484,6 +2790,9 @@ class _IngredientAmountTable extends StatelessWidget {
 
   /// 성분 행(성분명/함량 셀) 탭 시 성분 상세 진입(가이드 ④-5). null 이면 비활성.
   final void Function(SupplementIngredientCandidate candidate)? onRowTap;
+
+  /// 표 하단 '성분 직접 추가' 행 탭(가이드 10 ③-P2 7). null 이면 미노출.
+  final VoidCallback? onAddIngredient;
 
   @override
   Widget build(BuildContext context) {
@@ -2568,6 +2877,30 @@ class _IngredientAmountTable extends StatelessWidget {
                   ),
               ],
             ),
+            if (onAddIngredient != null) ...<Widget>[
+              const Divider(height: 1, thickness: 1, color: Color(0xFFE7EAF0)),
+              // 시니어 최소 터치 높이 52 확보.
+              TextButton.icon(
+                onPressed: onAddIngredient,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                icon: const Icon(
+                  Icons.add_rounded,
+                  size: 20,
+                  color: AppColor.brandDeep,
+                ),
+                label: const Text(
+                  '성분 직접 추가',
+                  style: TextStyle(
+                    color: AppColor.brandDeep,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
