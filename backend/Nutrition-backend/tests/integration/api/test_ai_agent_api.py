@@ -907,6 +907,81 @@ def test_chat_route_replaces_client_preview_food_context_with_confirmed_db_conte
     assert "raw_ocr_text" not in str(context)
 
 
+def test_chat_route_limits_confirmed_db_food_context_newest_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the route never forwards an unbounded food history to the agent."""
+    captured: dict[str, object] = {}
+
+    async def _recent_food_records(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return [
+            {
+                "food_record_id": f"record-{index:02d}",
+                "recorded_date": f"2026-06-{index:02d}",
+                "meal_type": "lunch",
+                "display_items": [f"meal {index:02d}"],
+                "user_confirmed": True,
+                "source": "manual",
+            }
+            for index in range(1, 13)
+        ]
+
+    class _CapturingChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            captured["context"] = request.context
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="ok",
+                provider="deterministic",
+                used_tools=["knowledge_policy"],
+                answerability="answerable",
+            )
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _CapturingChatbotAgent)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "load_recent_user_food_record_context", _recent_food_records)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="What did I eat recently?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    context = captured["context"]
+    snapshot = context["user_health_context_snapshot"]
+    records = snapshot["recent_food_and_checklist_snapshot"]["recent_food_records"]
+    assert [record["food_record_id"] for record in records] == [
+        "record-12",
+        "record-11",
+        "record-10",
+        "record-09",
+        "record-08",
+        "record-07",
+        "record-06",
+        "record-05",
+        "record-04",
+        "record-03",
+    ]
+    assert [food["food_record_id"] for food in context["latest_confirmed_entries"]["foods"]] == [
+        "record-12",
+        "record-11",
+        "record-10",
+        "record-09",
+        "record-08",
+        "record-07",
+        "record-06",
+        "record-05",
+        "record-04",
+        "record-03",
+    ]
+
+
 def test_chat_route_loads_recent_food_records_before_context_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1388,6 +1463,206 @@ def test_chat_route_magnesium_blood_pressure_med_uses_caution_policy(
     assert body["answerability"] == "answerable_with_caution"
     assert any(source["source_id"] == "nih-ods-magnesium" for source in body["sources"])
     assert captured["generate_called"] is True
+
+
+def test_chat_route_medical_wiki_boundary_sources_are_public_and_claim_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify route-level source details keep boundary claim metadata public-only."""
+
+    class _BoundarySourceChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="Reviewed boundary response without raw question echo.",
+                provider="deterministic",
+                used_tools=["medical_knowledge_retrieval"],
+                answerability="medical_decision_boundary",
+                sources=[
+                    {
+                        "source_id": "reviewed_claim_drug_interaction_boundary",
+                        "source_family": "medical_wiki_claim",
+                        "review_status": "reviewed",
+                        "version_label": "2026-06-09",
+                        "reviewed_at": "2026-06-09",
+                        "expires_at": "2026-12-09",
+                        "source_url": "https://example.test/claim",
+                        "debug_trace": "hidden rank details",
+                        "retrieval_rank": "1",
+                    },
+                    {
+                        "source_id": "reviewed_section_supporting_context",
+                        "source_family": "medical_wiki_reviewed_section",
+                        "review_status": "reviewed",
+                        "version_label": "2026-06-09",
+                        "reviewed_at": "2026-06-09",
+                        "expires_at": "2026-12-09",
+                        "source_url": "https://example.test/section",
+                        "raw_text": "hidden source text",
+                    },
+                ],
+            )
+
+    async def _fake_retriever(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _BoundarySourceChatbotAgent)
+    monkeypatch.setattr(ai_agent, "build_chatbot_medical_knowledge_retriever", _fake_retriever)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="Can I change my medication timing for grapefruit?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["answerability"] == "medical_decision_boundary"
+    assert body["sources"][0]["source_id"] == "reviewed_claim_drug_interaction_boundary"
+    assert body["sources"][1]["source_id"] == "reviewed_section_supporting_context"
+    assert {
+        "source_id",
+        "source_family",
+        "review_status",
+        "version_label",
+        "reviewed_at",
+        "expires_at",
+        "source_url",
+    }.issubset(body["sources"][0])
+    public_text = str(body)
+    assert "debug_trace" not in public_text
+    assert "retrieval_rank" not in public_text
+    assert "raw_text" not in public_text
+
+
+def test_chat_route_medical_wiki_answerable_sources_are_deduped_and_public(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify answerable route source details include claim and section without raw fields."""
+
+    class _AnswerableSourceChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="Reviewed answerable response without provider payload.",
+                provider="deterministic",
+                used_tools=["medical_knowledge_retrieval"],
+                answerability="answerable_with_caution",
+                sources=[
+                    {
+                        "source_id": "reviewed_claim_warfarin_vitamin_k_boundary",
+                        "source_family": "medical_wiki_claim",
+                        "review_status": "reviewed",
+                        "version_label": "2026-06-09",
+                        "reviewed_at": "2026-06-09",
+                        "expires_at": "2026-12-09",
+                        "source_url": "https://example.test/claim",
+                    },
+                    {
+                        "source_id": "reviewed_section_leafy_greens_consistency",
+                        "source_family": "medical_wiki_reviewed_section",
+                        "review_status": "reviewed",
+                        "version_label": "2026-06-09",
+                        "reviewed_at": "2026-06-09",
+                        "expires_at": "2026-12-09",
+                        "source_url": "https://example.test/section",
+                        "provider_payload": "hidden",
+                    },
+                    {
+                        "source_id": "reviewed_claim_warfarin_vitamin_k_boundary",
+                        "source_family": "medical_wiki_claim",
+                        "review_status": "reviewed",
+                        "version_label": "2026-06-09",
+                        "reviewed_at": "2026-06-09",
+                        "expires_at": "2026-12-09",
+                        "source_url": "https://example.test/claim",
+                    },
+                ],
+            )
+
+    async def _fake_retriever(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _AnswerableSourceChatbotAgent)
+    monkeypatch.setattr(ai_agent, "build_chatbot_medical_knowledge_retriever", _fake_retriever)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message="Can I eat leafy greens while taking warfarin?"),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["answerability"] == "answerable_with_caution"
+    assert [source["source_id"] for source in body["sources"]] == [
+        "reviewed_claim_warfarin_vitamin_k_boundary",
+        "reviewed_section_leafy_greens_consistency",
+    ]
+    assert "provider_payload" not in str(body)
+
+
+def test_chat_route_medical_wiki_unknown_sources_stay_empty_and_raw_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify unknown route responses expose no sources and do not echo raw questions."""
+
+    class _UnknownSourceChatbotAgent:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def answer(self, request: object) -> ChatbotResponse:
+            return ChatbotResponse(
+                request_id=request.request_id,
+                message="No reviewed source is available for this topic.",
+                provider="deterministic",
+                used_tools=["medical_knowledge_retrieval"],
+                answerability="unknown_no_reviewed_source",
+                sources=[],
+            )
+
+    async def _fake_retriever(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    backlog_events: list[object] = []
+    raw_question = "RAW_UNREVIEWED_SUPPLEMENT_QUESTION"
+
+    monkeypatch.setattr(ai_agent, "ChatbotAgent", _UnknownSourceChatbotAgent)
+    monkeypatch.setattr(ai_agent, "build_chatbot_medical_knowledge_retriever", _fake_retriever)
+    monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(
+        ai_agent,
+        "record_unknown_knowledge_event",
+        lambda _session, event: backlog_events.append(event),
+    )
+
+    response = _client().post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(message=raw_question),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["answerability"] == "unknown_no_reviewed_source"
+    assert body["sources"] == []
+    assert raw_question not in str(body)
+    assert len(backlog_events) == 1
+    assert raw_question not in str(backlog_events[0].__dict__)
 
 
 def test_chat_route_unknown_question_fails_closed_without_llm(

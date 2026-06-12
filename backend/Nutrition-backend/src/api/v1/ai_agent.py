@@ -74,6 +74,18 @@ DEFAULT_REFERENCE_RANGES = [
     ReferenceRange("fiber", 25, "g"),
 ]
 
+# 앱/UI에 노출 가능한 소스 메타데이터 화이트리스트 (PR#4 계약 — raw payload 노출 금지).
+PUBLIC_CHATBOT_SOURCE_FIELDS = (
+    "source_id",
+    "source_family",
+    "review_status",
+    "version_label",
+    "reviewed_at",
+    "expires_at",
+    "source_url",
+    "boundary_code",
+)
+
 
 class ChatTurnPayload(BaseModel):
     """Client-supplied chatbot conversation turn."""
@@ -480,7 +492,7 @@ async def run_chatbot(
         safety_warnings=chatbot_response.safety_warnings,
         source_families=chatbot_response.source_families,
         answerability=chatbot_response.answerability,
-        sources=chatbot_response.sources,
+        sources=_public_chatbot_sources(chatbot_response.sources),
         requires_user_approval=chatbot_response.requires_user_approval,
         ctas=_merge_ctas(getattr(chatbot_response, "ctas", []), analysis_contract["ctas"]),
         analysis_snapshot=analysis_contract["analysis_snapshot"],
@@ -596,6 +608,26 @@ def _merge_ctas(*values: object) -> list[str]:
             if isinstance(item, str) and item.strip():
                 ctas.append(item.strip())
     return list(dict.fromkeys(ctas))[:3]
+
+
+def _public_chatbot_sources(sources: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Return de-duplicated source details safe for app/UI display."""
+    public_sources: list[dict[str, str]] = []
+    seen_source_ids: set[str] = set()
+    for source in sources:
+        source_id = str(source.get("source_id", "")).strip()
+        if not source_id or source_id in seen_source_ids:
+            continue
+        public_source = {
+            field: str(source[field]).strip()
+            for field in PUBLIC_CHATBOT_SOURCE_FIELDS
+            if source.get(field) is not None and str(source[field]).strip()
+        }
+        if "source_id" not in public_source:
+            continue
+        public_sources.append(public_source)
+        seen_source_ids.add(source_id)
+    return public_sources
 
 
 def _latest_confirmed_entries_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:

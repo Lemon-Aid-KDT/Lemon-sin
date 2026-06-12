@@ -1015,6 +1015,7 @@ _SUPPLEMENT_KEYWORDS = (
     "은행잎",
     "세인트존스워트",
     "세인트 존스 워트",
+    "크레아틴",
     "자몽",
     "자몽주스",
     "저염소금",
@@ -1034,6 +1035,7 @@ _SUPPLEMENT_KEYWORDS = (
     "beta-carotene",
     "omega",
     "ginkgo",
+    "creatine",
 )
 
 _P0_INTERACTION_BOUNDARY_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (

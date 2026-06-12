@@ -96,7 +96,8 @@ module = ["tests.*"]
 disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
-pythonpath = ["Nutrition-backend", "ai_agent_chat/src"]
+# "."은 신규 `from scripts import ...` 테스트(merge smoke·backlog report)의 수집 안정성용 (PR#4).
+pythonpath = [".", "Nutrition-backend", "ai_agent_chat/src"]
 testpaths = [
     "Nutrition-backend/tests",
     "ai_agent_chat/tests",

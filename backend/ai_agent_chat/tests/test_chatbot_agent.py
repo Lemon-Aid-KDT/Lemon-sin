@@ -314,6 +314,10 @@ def test_chatbot_llm_prompt_requires_korean_and_hides_internal_context() -> None
     assert "nutrition_reference" in user_prompt
     assert "data/nutrition_reference/kdris" in user_prompt
     assert "기능성 표시 범위" in user_prompt
+    assert "Deterministic safety slots to preserve exactly:" in user_prompt
+    assert "source_basis=" in user_prompt
+    assert "specific_examples=" in user_prompt
+    assert "expert_check_points=" in user_prompt
     assert "Internal context for grounding only" in user_prompt
     assert "internal_trace" not in user_prompt
     assert "supplement totals" not in user_prompt
@@ -727,6 +731,109 @@ def test_chatbot_structured_json_output_is_rendered_to_answer_sections() -> None
     assert "의사 또는 약사" in response.message
 
 
+def test_chatbot_structured_json_output_accepts_markdown_code_fence() -> None:
+    """Verify small SGLang-style code fenced JSON is normalized before rendering."""
+    client = _CapturingLLMClient(
+        text=(
+            "```json\n"
+            '{"summary":"마그네슘은 혈압약 복용 중이면 확인이 필요합니다.",'
+            '"why_it_matters":"제품 라벨과 혈압약 종류, 신장 기능에 따라 확인할 내용이 달라질 수 있습니다.",'
+            '"today_actions":["제품 라벨에서 마그네슘 함량을 확인하세요","혈압약 종류를 정리하세요"],'
+            '"specific_examples":["제품 라벨","마그네슘 함량","혈압약 종류","신장 기능"],'
+            '"caution_conditions":["혈압약 복용 중","신장 기능 저하"],'
+            '"expert_check_points":["제품 라벨","혈압약 종류","신장 기능","의사 또는 약사 확인"],'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+            "\n```"
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert "Chatbot response contract not followed" not in response.safety_warnings
+    assert "출처 기준:" in response.message
+    assert "제품 라벨" in response.message
+    assert "마그네슘 함량" in response.message
+    assert "혈압약 종류" in response.message
+
+
+def test_chatbot_structured_json_output_coerces_string_slots() -> None:
+    """Verify one-line string slots from small models are treated as single-item lists."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"마그네슘은 혈압약 복용 중이면 확인이 필요합니다.",'
+            '"why_it_matters":"제품 라벨과 혈압약 종류, 신장 기능에 따라 확인할 내용이 달라질 수 있습니다.",'
+            '"today_actions":"제품 라벨에서 마그네슘 함량을 확인하세요",'
+            '"specific_examples":"제품 라벨, 마그네슘 함량, 혈압약 종류, 신장 기능",'
+            '"caution_conditions":"혈압약 복용 중",'
+            '"expert_check_points":"혈압약 종류와 신장 기능을 의사 또는 약사에게 확인",'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert "Chatbot response contract not followed" not in response.safety_warnings
+    assert "오늘" in response.message
+    assert "마그네슘 함량" in response.message
+    assert "혈압약 종류" in response.message
+    assert "신장 기능" in response.message
+
+
+def test_chatbot_structured_json_reattaches_deterministic_slots() -> None:
+    """Verify SGLang polish cannot replace source, caution, or example slots."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"마그네슘 질문은 제품 라벨과 혈압약 종류를 같이 보면 좋습니다.",'
+            '"why_it_matters":"마그네슘 함량과 신장 기능에 따라 확인 지점이 달라질 수 있습니다.",'
+            '"today_actions":["제품 라벨에서 마그네슘 함량을 확인하세요","혈압약 종류를 정리하세요"],'
+            '"specific_examples":["자몽주스","스타틴","인터넷 블로그"],'
+            '"caution_conditions":["별문제 없으면 계속 드세요"],'
+            '"expert_check_points":["fake_boundary_claim_id"],'
+            '"source_basis":"인터넷 블로그"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "fake"
+    assert "NIH ODS Magnesium Fact Sheet" in response.message
+    assert "견과류" in response.message
+    assert "콩류" in response.message
+    assert "신장 기능" in response.message
+    assert "인터넷 블로그" not in response.message
+    assert "자몽주스" not in response.message
+    assert "스타틴" not in response.message
+    assert "fake_boundary_claim_id" not in response.message
+    assert "별문제 없으면 계속 드세요" not in response.message
+    assert response.sources[0]["source_id"] == "nih-ods-magnesium"
+    assert response.sources[0]["source_url"] == "https://ods.od.nih.gov/factsheets/Magnesium-Consumer/"
+
+
+def test_chatbot_unsafe_structured_polish_falls_back_to_deterministic_draft() -> None:
+    """Verify unsafe polish wording is discarded instead of partially reused."""
+    client = _CapturingLLMClient(
+        text=(
+            '{"summary":"혈압약을 줄이세요.",'
+            '"why_it_matters":"검사 없이도 안전합니다.",'
+            '"today_actions":["복용량을 줄이세요"],'
+            '"specific_examples":["제품 라벨","마그네슘 함량"],'
+            '"caution_conditions":["혈압약 복용 중"],'
+            '"expert_check_points":["제품 라벨"],'
+            '"source_basis":"NIH ODS Magnesium Fact Sheet"}'
+        )
+    )
+
+    response = ChatbotAgent(llm_client=client).answer(_magnesium_blood_pressure_med_request())
+
+    assert response.provider == "deterministic"
+    assert "unsafe_polish_fallback" in response.safety_warnings
+    assert "혈압약을 줄이세요" not in response.message
+    assert "복용량을 줄이세요" not in response.message
+    assert "NIH ODS Magnesium Fact Sheet" in response.message
+
+
 def test_chatbot_invalid_structured_json_falls_back_without_raw_payload() -> None:
     """Verify schema failure never leaks raw provider JSON to the user."""
     client = _CapturingLLMClient(text='{"summary":"먹어도 됩니다"}')
@@ -756,6 +863,26 @@ def test_chatbot_unknown_question_does_not_call_llm_or_hallucinate() -> None:
     assert response.answerability == "unknown_no_reviewed_source"
     assert "현재 검수된 지식 안에서 답할 수 없습니다" in response.message
     assert "타우린은 리튬과 함께 먹어도 됩니다" not in response.message
+    assert response.sources == []
+
+
+def test_chatbot_unreviewed_supplement_effect_question_returns_unknown() -> None:
+    """Supplement effect claims need reviewed evidence instead of generic lifestyle cards."""
+    client = _CapturingLLMClient(text="크레아틴은 수면 질을 개선합니다.")
+
+    response = ChatbotAgent(llm_client=client).answer(
+        ChatbotRequest(
+            request_id="chatbot-creatine-sleep",
+            user_id="local-dev-user",
+            message="크레아틴을 먹으면 수면 질이 좋아져?",
+        )
+    )
+
+    assert client.request is None
+    assert response.provider == "deterministic"
+    assert response.answerability == "unknown_no_reviewed_source"
+    assert "현재 검수된 지식 안에서 답할 수 없습니다" in response.message
+    assert "크레아틴은 수면 질을 개선합니다" not in response.message
     assert response.sources == []
 
 

@@ -6,7 +6,10 @@ from typing import Any
 from lemon_ai_agent.answer_card import AnswerCard, MedicalKnowledgeRetriever
 from lemon_ai_agent.chat_session import ChatbotRequest, ChatbotResponse
 from lemon_ai_agent.chat_turn import ChatTurnModule, ChatTurnPlan
-from lemon_ai_agent.entity_normalization import normalize_health_entities
+from lemon_ai_agent.entity_normalization import (
+    EntityNormalizationResult,
+    normalize_health_entities,
+)
 from lemon_ai_agent.guards.safety import SafetyEnvelope, SafetyGuard
 from lemon_ai_agent.knowledge import (
     AnswerPolicy,
@@ -16,12 +19,18 @@ from lemon_ai_agent.knowledge import (
     source_family_summary,
 )
 from lemon_ai_agent.llm import LLMCompletion, LLMMessage, LLMRequest, LocalLLMClient
+from lemon_ai_agent.polish_slots import (
+    build_deterministic_slot_contract,
+    slot_value_sets_match,
+    slot_values_are_preserved,
+)
 from lemon_ai_agent.renderers import (
     CHATBOT_TOOLS,
     BoundaryRenderer,
     CardAnswerRenderer,
     UnknownRenderer,
 )
+from lemon_ai_agent.tracing import AgentTraceRecorder, AgentTraceSpan, NoopAgentTraceRecorder
 
 MEAL_LABELS = {
     "breakfast": "아침",
@@ -55,6 +64,7 @@ REQUIRED_CHATBOT_ACTION_TERMS = (
     "조절",
     "기록",
 )
+MIN_MARKDOWN_CODE_FENCE_LINES = 3
 STRUCTURED_RESPONSE_FORMAT: dict[str, Any] = {
     "type": "json_schema",
     "json_schema": {
@@ -140,6 +150,7 @@ class ChatbotAgent:
         llm_client: LocalLLMClient | None = None,
         *,
         retriever: MedicalKnowledgeRetriever | None = None,
+        trace_recorder: AgentTraceRecorder | None = None,
     ) -> None:
         self._completion = LLMCompletion(llm_client)
         self._has_llm_client = llm_client is not None
@@ -149,35 +160,74 @@ class ChatbotAgent:
         self._boundary_renderer = BoundaryRenderer()
         self._unknown_renderer = UnknownRenderer()
         self._card_renderer = CardAnswerRenderer()
+        self._trace_recorder = trace_recorder or NoopAgentTraceRecorder()
 
     def answer(self, request: ChatbotRequest) -> ChatbotResponse:  # noqa: PLR0911
         warnings: list[str] = []
         turn = self._chat_turn.plan(request)
+        self._record_trace_span(turn, "chat_turn_plan", "planned", warnings=turn.retrieval_warnings)
+        self._record_trace_span(turn, "retrieval", "retrieved", warnings=turn.retrieval_warnings)
         boundary_response = self._boundary_renderer.render(turn, warnings)
         if boundary_response is not None:
+            self._record_response_trace(turn, boundary_response, "boundary", warnings)
             return boundary_response
         context_resolution_response = self._context_resolution_response(request)
         if context_resolution_response is not None:
+            self._record_response_trace(turn, context_resolution_response, "needs_more_info", warnings)
             return context_resolution_response
-        entity_resolution_response = self._entity_resolution_response(request)
+        entity_resolution_response = self._entity_resolution_response_for_turn(turn, request)
         if entity_resolution_response is not None:
+            self._record_response_trace(turn, entity_resolution_response, "needs_more_info", warnings)
             return entity_resolution_response
         label_only_response = self._label_only_supplement_response(request, warnings)
         if label_only_response is not None:
+            self._record_response_trace(turn, label_only_response, "unknown", warnings)
             return label_only_response
         if turn.answerability == "unknown_no_reviewed_source":
             warnings.extend(turn.retrieval_warnings)
-            return self._unknown_renderer.render(turn, warnings)
+            response = self._unknown_renderer.render(turn, warnings)
+            self._record_response_trace(turn, response, "unknown", warnings)
+            return response
 
         if not self._has_llm_client:
-            return self._fallback_response(turn, warnings)
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
 
-        completion = self._completion.complete(self._build_llm_request(turn))
+        return self._answer_with_llm_polish(request, turn, warnings)
+
+    def _answer_with_llm_polish(
+        self,
+        request: ChatbotRequest,
+        turn: ChatTurnPlan,
+        warnings: list[str],
+    ) -> ChatbotResponse:
+        draft_response = self._fallback_response(turn, [*warnings])
+        completion = self._completion.complete(self._build_llm_request(turn, draft_response))
         if not completion.ok:
             warnings.extend(completion.warnings)
-            return self._fallback_response(turn, warnings)
+            self._record_trace_span(
+                turn,
+                "llm_polish",
+                "completion_failed",
+                warnings=completion.warnings,
+                provider=completion.provider,
+                passed=False,
+            )
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
 
-        completion_text = self._render_structured_completion(completion.text) or completion.text
+        structured_text, slot_warnings = self._render_structured_completion(completion.text, turn)
+        completion_text = structured_text or completion.text
+        warnings.extend(slot_warnings)
+        self._record_trace_span(
+            turn,
+            "llm_polish",
+            "completed",
+            warnings=completion.warnings,
+            provider=completion.provider,
+        )
 
         safety = self._safety_envelope.screen_llm_output(
             completion_text,
@@ -192,13 +242,28 @@ class ChatbotAgent:
         has_required_shape = self._has_required_response_shape(completion_text)
         if not has_required_shape:
             warnings.append("Chatbot response contract not followed")
-        if not safety.allowed or not card_phrase_check.allowed or not has_required_shape:
-            return self._fallback_response(turn, warnings)
+        safety_passed = safety.allowed and card_phrase_check.allowed and has_required_shape
+        self._record_trace_span(
+            turn,
+            "safety_guard",
+            "checked",
+            warnings=warnings,
+            provider=completion.provider,
+            passed=safety_passed,
+        )
+        if not safety_passed:
+            if structured_text is not None:
+                warnings.append("unsafe_polish_fallback")
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
         if not self._has_required_card_specificity(completion_text, turn):
             warnings.append("Chatbot response card detail not followed")
-            return self._fallback_response(turn, warnings)
+            response = self._fallback_response(turn, warnings)
+            self._record_response_trace(turn, response, "card_answer", warnings)
+            return response
 
-        return ChatbotResponse(
+        response = ChatbotResponse(
             request_id=request.request_id,
             message=safety.text,
             provider=completion.provider,
@@ -208,6 +273,102 @@ class ChatbotAgent:
             answerability=turn.answerability,
             sources=turn.sources,
             requires_user_approval=False,
+        )
+        self._record_response_trace(turn, response, "llm_polish", warnings)
+        return response
+
+    def _record_response_trace(
+        self,
+        turn: ChatTurnPlan,
+        response: ChatbotResponse,
+        renderer_route: str,
+        warnings: list[str],
+    ) -> None:
+        self._record_trace_span(turn, "route_decision", renderer_route, warnings=warnings)
+        self._trace_recorder.record(
+            AgentTraceSpan(
+                request_id=turn.request.request_id,
+                span_name="render",
+                answerability=response.answerability,
+                retrieval_status=turn.retrieval_status,
+                renderer_route=renderer_route,
+                claim_ids=self._claim_ids_for_turn(turn),
+                source_ids=tuple(
+                    str(source.get("source_id", ""))
+                    for source in response.sources
+                    if source.get("source_id")
+                ),
+                boundary_code=self._boundary_code_for_turn(turn),
+                provider=response.provider,
+                warning_codes=tuple(dict.fromkeys(warnings)),
+                passed=True,
+            )
+        )
+
+    def _record_trace_span(
+        self,
+        turn: ChatTurnPlan,
+        span_name: str,
+        renderer_route: str,
+        *,
+        warnings: tuple[str, ...] | list[str],
+        provider: str = "",
+        passed: bool = True,
+    ) -> None:
+        self._trace_recorder.record(
+            AgentTraceSpan(
+                request_id=turn.request.request_id,
+                span_name=span_name,
+                answerability=turn.answerability,
+                retrieval_status=turn.retrieval_status,
+                renderer_route=renderer_route,
+                claim_ids=self._claim_ids_for_turn(turn),
+                source_ids=self._source_ids_for_turn(turn),
+                boundary_code=self._boundary_code_for_turn(turn),
+                provider=provider,
+                warning_codes=tuple(dict.fromkeys(warnings)),
+                passed=passed,
+            )
+        )
+
+    def _claim_ids_for_turn(self, turn: ChatTurnPlan) -> tuple[str, ...]:
+        claim_ids = [
+            card.linked_claim_id
+            for card in turn.answer_cards
+            if card.linked_claim_id
+        ]
+        return tuple(dict.fromkeys(claim_ids))
+
+    def _source_ids_for_turn(self, turn: ChatTurnPlan) -> tuple[str, ...]:
+        source_ids = [card.source_id for card in turn.answer_cards if card.source_id]
+        return tuple(dict.fromkeys(source_ids))
+
+    def _boundary_code_for_turn(self, turn: ChatTurnPlan) -> str:
+        if turn.answerability in {
+            "urgent_escalation",
+            "medical_decision_boundary",
+            "safety_boundary",
+        }:
+            return turn.answerability
+        return ""
+
+    def _record_normalization_trace(
+        self,
+        turn: ChatTurnPlan,
+        normalization: EntityNormalizationResult,
+    ) -> None:
+        warning_codes = []
+        if normalization.needs_specific_medication_name:
+            warning_codes.append("needs_specific_medication_name")
+        if normalization.missing_topics:
+            warning_codes.append("missing_topics_present")
+        warning_codes.append(f"normalized_entity_count_{len(normalization.entities)}")
+        self._record_trace_span(
+            turn,
+            "normalization",
+            "entity_resolution",
+            warnings=warning_codes,
+            passed=not normalization.needs_specific_medication_name,
         )
 
     def _fallback_response(
@@ -309,8 +470,21 @@ class ChatbotAgent:
             requires_user_approval=False,
         )
 
-    def _entity_resolution_response(self, request: ChatbotRequest) -> ChatbotResponse | None:
-        result = normalize_health_entities(request.message, request.context)
+    def _entity_resolution_response_for_turn(
+        self,
+        turn: ChatTurnPlan,
+        request: ChatbotRequest,
+    ) -> ChatbotResponse | None:
+        normalization = normalize_health_entities(request.message, request.context)
+        if normalization.needs_specific_medication_name:
+            self._record_normalization_trace(turn, normalization)
+        return self._entity_resolution_response(request, normalization)
+
+    def _entity_resolution_response(
+        self,
+        request: ChatbotRequest,
+        result: EntityNormalizationResult,
+    ) -> ChatbotResponse | None:
         if not result.needs_specific_medication_name:
             return None
         return ChatbotResponse(
@@ -370,6 +544,7 @@ class ChatbotAgent:
     def _build_llm_request(
         self,
         turn: ChatTurnPlan,
+        draft_response: ChatbotResponse,
     ) -> LLMRequest:
         request = turn.request
         history = "\n".join(f"{turn.role}: {turn.content}" for turn in request.conversation[-6:])
@@ -387,6 +562,8 @@ class ChatbotAgent:
                         "fixed card section labels. Write a natural mobile-readable answer "
                         "that still includes a short summary, the main caution, today's "
                         "action, and source basis. "
+                        "You are polishing a deterministic draft, not making medical "
+                        "decisions or choosing sources. "
                         "Do not diagnose, treat, prescribe, guarantee effects, "
                         "or promote buying a specific product. "
                         "Use cautious but practical phrasing such as '현재 입력 기준', "
@@ -406,6 +583,9 @@ class ChatbotAgent:
                         "Do not create new health judgments beyond the supplied context. "
                         "Do not use Semantic Scholar as a user-facing source. "
                         "Use only the provided reviewed answer cards as factual grounding. "
+                        "Do not change source_basis, caution_conditions, specific_examples, "
+                        "or expert_check_points; the backend will reattach those slots "
+                        "from reviewed cards after your polish. "
                         "If no reviewed answer card is provided, do not answer with model knowledge. "
                         "Do not answer with only broad categories such as vegetables or protein; "
                         "use concrete examples from the provided knowledge cards. "
@@ -438,6 +618,10 @@ class ChatbotAgent:
                         f"{turn.answer_plan.to_prompt_summary()}\n"
                         "Answer strategy:\n"
                         f"{self._answer_strategy(turn)}\n"
+                        "Deterministic safety slots to preserve exactly:\n"
+                        f"{self._deterministic_slot_contract(turn)}\n"
+                        "Deterministic answer draft to polish without changing safety slots:\n"
+                        f"{draft_response.message}\n"
                         f"Recent conversation:\n{history or 'none'}\n"
                         "Confirmed meal and nutrient context:\n"
                         f"{confirmed_foods}\n"
@@ -541,24 +725,28 @@ class ChatbotAgent:
             )
         )
 
-    def _render_structured_completion(self, text: str) -> str | None:
-        stripped = text.strip()
-        if not stripped.startswith("{"):
-            return None
+    def _render_structured_completion(
+        self,
+        text: str,
+        turn: ChatTurnPlan,
+    ) -> tuple[str | None, list[str]]:
+        stripped = self._extract_structured_json_object(text)
+        if stripped is None:
+            return None, []
         try:
             data = json.loads(stripped)
         except json.JSONDecodeError:
-            return None
+            return None, []
         if not isinstance(data, dict) or not self._has_structured_response_schema(data):
-            return None
+            return None, []
 
         summary = str(data["summary"]).strip()
         why_it_matters = str(data["why_it_matters"]).strip()
-        source_basis = str(data["source_basis"]).strip()
         today_actions = self._structured_string_list(data["today_actions"])
         specific_examples = self._structured_string_list(data["specific_examples"])
         caution_conditions = self._structured_string_list(data["caution_conditions"])
         expert_check_points = self._structured_string_list(data["expert_check_points"])
+        source_basis = str(data["source_basis"]).strip()
         if not all(
             (
                 summary,
@@ -570,15 +758,131 @@ class ChatbotAgent:
                 expert_check_points,
             )
         ):
-            return None
+            return None, []
 
-        return (
-            f"{summary} {why_it_matters} {'; '.join(caution_conditions[:3])}\n"
-            f"오늘은 {'; '.join(today_actions[:4])} "
-            f"구체적으로는 {', '.join(specific_examples[:6])}부터 확인하세요. "
-            f"확인 포인트는 {'; '.join(expert_check_points[:4])}입니다.\n\n"
-            f"출처 기준: {source_basis}"
+        warnings = self._structured_slot_mutation_warnings(
+            turn,
+            source_basis=source_basis,
+            specific_examples=specific_examples,
+            caution_conditions=caution_conditions,
+            expert_check_points=expert_check_points,
         )
+        deterministic_actions = self._deterministic_today_actions(turn)
+        deterministic_examples = self._deterministic_specific_examples(turn)
+        deterministic_cautions = self._deterministic_caution_conditions(turn)
+        deterministic_checks = self._deterministic_expert_check_points(turn)
+        deterministic_source_basis = self._source_basis_for_turn(turn)
+
+        message = (
+            f"{summary} {why_it_matters} {'; '.join(deterministic_cautions[:3])}\n"
+            f"오늘은 {'; '.join(deterministic_actions[:4])} "
+            f"구체적으로는 {', '.join(deterministic_examples[:6])}부터 확인하세요. "
+            f"확인 포인트는 {'; '.join(deterministic_checks[:5])}입니다.\n\n"
+            f"출처 기준: {deterministic_source_basis}"
+        )
+        return message, warnings
+
+    def _structured_slot_mutation_warnings(
+        self,
+        turn: ChatTurnPlan,
+        *,
+        source_basis: str,
+        specific_examples: list[str],
+        caution_conditions: list[str],
+        expert_check_points: list[str],
+    ) -> list[str]:
+        warnings: list[str] = []
+        if not slot_value_sets_match(
+            [source_basis],
+            [self._source_basis_for_turn(turn)],
+        ):
+            warnings.append("llm_source_slot_ignored")
+        if not self._slot_values_are_deterministic(
+            specific_examples,
+            self._deterministic_specific_examples(turn),
+        ):
+            warnings.append("llm_specific_examples_slot_ignored")
+        if not self._slot_values_are_deterministic(
+            caution_conditions,
+            self._deterministic_caution_conditions(turn),
+        ):
+            warnings.append("llm_caution_slot_ignored")
+        if not self._slot_values_are_deterministic(
+            expert_check_points,
+            self._deterministic_expert_check_points(turn),
+        ):
+            warnings.append("llm_expert_check_slot_ignored")
+        return warnings
+
+    def _deterministic_slot_contract(self, turn: ChatTurnPlan) -> str:
+        return build_deterministic_slot_contract(
+            source_basis=self._source_basis_for_turn(turn),
+            specific_examples=self._deterministic_specific_examples(turn),
+            caution_conditions=self._deterministic_caution_conditions(turn),
+            expert_check_points=self._deterministic_expert_check_points(turn),
+        )
+
+    def _slot_values_are_deterministic(
+        self,
+        candidate_values: list[str],
+        deterministic_values: list[str],
+    ) -> bool:
+        return slot_values_are_preserved(candidate_values, deterministic_values)
+
+    def _deterministic_today_actions(self, turn: ChatTurnPlan) -> list[str]:
+        checklist = self._deterministic_checklist_values(turn)
+        if checklist:
+            return [f"{item} 확인" for item in checklist[:4]]
+        guidance = self._unique_card_values(turn.answer_cards, "allowed_guidance")
+        if guidance:
+            return guidance[:4]
+        return ["검수된 카드 범위에서 확인할 항목을 먼저 정리하세요"]
+
+    def _deterministic_specific_examples(self, turn: ChatTurnPlan) -> list[str]:
+        examples = self._unique_card_values(turn.answer_cards, "specific_examples")
+        if examples:
+            return examples
+        checklist = self._unique_card_values(turn.answer_cards, "checklist")
+        if checklist:
+            return checklist
+        return ["검수된 answer card"]
+
+    def _deterministic_caution_conditions(self, turn: ChatTurnPlan) -> list[str]:
+        cautions = self._unique_card_values(turn.answer_cards, "caution_conditions")
+        if cautions:
+            return cautions
+        return ["개인 의료 결정은 앱에서 단정하지 않고 전문가 확인이 필요할 수 있습니다"]
+
+    def _deterministic_expert_check_points(self, turn: ChatTurnPlan) -> list[str]:
+        check_points = self._deterministic_checklist_values(turn)
+        if turn.policy.category == "medication_supplement_caution":
+            return list(dict.fromkeys([*check_points[:4], "의사 또는 약사 확인"]))
+        if check_points:
+            return list(dict.fromkeys(check_points))
+        return self._deterministic_caution_conditions(turn)
+
+    def _deterministic_checklist_values(self, turn: ChatTurnPlan) -> list[str]:
+        values: list[str] = []
+        for card in turn.answer_cards:
+            for value in card.checklist:
+                values.append(self._display_checklist_value(card, value))
+        return list(dict.fromkeys(values))
+
+    def _display_checklist_value(self, card: AnswerCard, value: str) -> str:
+        if value == "함량" and "마그네슘" in card.concrete_guidance:
+            return "마그네슘 함량"
+        return value
+
+    def _unique_card_values(
+        self,
+        answer_cards: tuple[AnswerCard, ...],
+        field_name: str,
+    ) -> list[str]:
+        values: list[str] = []
+        for card in answer_cards:
+            raw_values = getattr(card, field_name)
+            values.extend(str(value) for value in raw_values if str(value).strip())
+        return list(dict.fromkeys(values))
 
     def _has_structured_response_schema(self, data: dict[str, object]) -> bool:
         required = {
@@ -593,9 +897,31 @@ class ChatbotAgent:
         return required.issubset(data)
 
     def _structured_string_list(self, value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value.strip()] if value.strip() else []
         if not isinstance(value, list):
             return []
         return [str(item).strip() for item in value if str(item).strip()]
+
+    def _extract_structured_json_object(self, text: str) -> str | None:
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            if (
+                len(lines) >= MIN_MARKDOWN_CODE_FENCE_LINES
+                and lines[0].strip().casefold() in {"```", "```json"}
+            ):
+                stripped = "\n".join(lines[1:-1]).strip()
+        if stripped.startswith("{"):
+            return stripped
+
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        return stripped[start : end + 1]
 
     def _bullet_lines(self, values: list[str]) -> str:
         return "\n".join(f"- {value}" for value in values)

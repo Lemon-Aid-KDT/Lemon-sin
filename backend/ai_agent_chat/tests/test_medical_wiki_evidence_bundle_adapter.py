@@ -23,16 +23,64 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+class _FailingLLMClient:
+    provider = "fake-sglang"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, _request: object) -> object:
+        self.calls += 1
+        raise AssertionError("boundary EvidenceBundle fixtures must bypass LLM generation")
+
+
+def test_evidence_bundle_boundary_fixtures_bypass_llm_and_preserve_sources() -> None:
+    retriever = MedicalWikiEvidenceBundleRetriever(
+        MEDICAL_WIKI_FIXTURES,
+        as_of=date(2026, 6, 10),
+    )
+    boundary_fixtures = [
+        fixture
+        for fixture in retriever.fixtures
+        if fixture.expected_renderer_route == "boundary_renderer"
+    ]
+    client = _FailingLLMClient()
+    agent = ChatbotAgent(llm_client=client, retriever=retriever)
+
+    assert len(boundary_fixtures) == 84
+
+    for fixture in boundary_fixtures:
+        response = agent.answer(
+            ChatbotRequest(
+                request_id=f"medical-wiki-evidence-boundary-bypass-{fixture.fixture_id}",
+                user_id="medical-wiki-eval-user",
+                message=fixture.query,
+            )
+        )
+
+        assert response.provider == "deterministic", fixture.fixture_id
+        assert response.answerability in {
+            "urgent_escalation",
+            "medical_decision_boundary",
+            "safety_boundary",
+        }, fixture.fixture_id
+        assert set(fixture.expected_source_ids).issubset(
+            {source["source_id"] for source in response.sources}
+        ), fixture.fixture_id
+
+    assert client.calls == 0
+
+
 def test_evidence_bundle_retriever_loads_all_current_fixtures() -> None:
     retriever = MedicalWikiEvidenceBundleRetriever(
         MEDICAL_WIKI_FIXTURES,
         as_of=date(2026, 6, 9),
     )
 
-    assert len(retriever.fixtures) == 60
+    assert len(retriever.fixtures) == 94
     assert retriever.route_counts() == {
         "answer_renderer_with_boundary_anchor": 10,
-        "boundary_renderer": 50,
+        "boundary_renderer": 84,
     }
     assert all(bundle.expires_at > "2026-06-09" for bundle in retriever.fixtures)
 

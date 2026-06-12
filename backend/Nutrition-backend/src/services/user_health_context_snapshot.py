@@ -7,6 +7,8 @@ from typing import Any
 
 from lemon_ai_agent.user_health_context import UserHealthContextSnapshot
 
+_MAX_RECENT_FOOD_RECORDS = 10
+
 
 def build_user_health_context_snapshot(
     *,
@@ -253,11 +255,23 @@ def _sanitize_supplement_ingredient(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _confirmed_food_records(value: Any) -> list[dict[str, Any]]:
-    return [
+    records = [
         dict(record)
         for record in _mapping_items(value)
         if _is_confirmed_context_record(record)
     ]
+    return sorted(records, key=_record_recency_key, reverse=True)[:_MAX_RECENT_FOOD_RECORDS]
+
+
+def _record_recency_key(value: Mapping[str, Any]) -> str:
+    return _clean_identifier(
+        value.get("recorded_at")
+        or value.get("recorded_date")
+        or value.get("occurred_at")
+        or value.get("created_at")
+        or value.get("updated_at")
+        or value.get("date")
+    )
 
 
 def _mapping_items(value: Any) -> list[Mapping[str, Any]]:
@@ -347,6 +361,12 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _clean_identifier(value: Any) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).split())[:160]
 
 
 def _drop_empty_values(value: Mapping[str, Any]) -> dict[str, Any]:
