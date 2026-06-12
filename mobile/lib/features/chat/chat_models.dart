@@ -6,6 +6,8 @@
 // 의료법 가드: 사용자 노출 라벨은 "확인"·"안내"·"근거" 사용
 // (진단/처방/치료/효능·효과 금지).
 
+import 'chat_analysis_models.dart';
+
 /// One conversation turn carried in the chatbot request history.
 class ChatTurn {
   /// Creates a conversation turn.
@@ -140,6 +142,37 @@ class ChatbotResponse {
   bool get needsAnalysisApproval {
     return requiresUserApproval &&
         approvalPreview.approvalState == 'approval_required';
+  }
+
+  /// Whether this response is the completed leg of an approval loop that
+  /// persisted an analysis result (guide 05 (a) render gate).
+  ///
+  /// True only when the approval preview reports `approved` and the persisted
+  /// side effect is present, so ordinary chat turns never surface the card.
+  bool get isApprovedAnalysisResult {
+    return approvalPreview.approvalState == 'approved' &&
+        approvalPreview.sideEffects.contains('analysis_result_persisted');
+  }
+
+  /// Typed view of the `today_analysis` block.
+  ChatTodayAnalysis get today => ChatTodayAnalysis.fromJson(todayAnalysis);
+
+  /// Typed view of the `smart_analysis` block.
+  ChatSmartAnalysis get smart => ChatSmartAnalysis.fromJson(smartAnalysis);
+
+  /// Whether the persisted approval was a today-analysis run.
+  ///
+  /// Falls back to whichever snapshot carries content when the kind is absent.
+  bool get isTodayAnalysisKind {
+    final String kind = approvalPreview.analysisKind;
+    if (kind == 'today_analysis') {
+      return true;
+    }
+    if (kind == 'health_analysis') {
+      return false;
+    }
+    // No kind echoed: prefer today when it has content, else smart.
+    return !today.isEmpty || smart.isEmpty;
   }
 }
 

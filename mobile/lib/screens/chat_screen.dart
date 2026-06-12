@@ -18,6 +18,7 @@ import '../app_providers.dart';
 import '../core/api/api_error.dart';
 import '../features/chat/chat_models.dart';
 import '../features/chat/chat_repository.dart';
+import '../features/chat/widgets/chat_analysis_card.dart';
 import '../utils/design_tokens_v2.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -283,6 +284,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             preview: response.approvalPreview,
             onApprove: () => _approveAnalysis(message),
             onDecline: () => _declineAnalysis(message),
+          ),
+        );
+    }
+
+    // Inline analysis card — only after a completed approval loop persisted a
+    // result (guide 05 (a)); ordinary chat turns never surface it to avoid noise.
+    if (response.isApprovedAnalysisResult) {
+      extras
+        ..add(const SizedBox(height: AppSpace.sm))
+        ..add(
+          ChatAnalysisCard(
+            isToday: response.isTodayAnalysisKind,
+            today: response.today,
+            smart: response.smart,
+            candidates: response.checklistCandidates,
+            onCandidateTap: _thinking ? null : _send,
           ),
         );
     }
