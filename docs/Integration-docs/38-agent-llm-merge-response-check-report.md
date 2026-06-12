@@ -68,10 +68,11 @@ python backend\scripts\ask_chatbot_agent.py --preset hypertension-sodium-dinner 
 | provider | `sglang` |
 | answerability | `answerable` |
 | sources | `kdris-2025` |
-| safety warnings | 없음 |
-| 판정 | SGLang polish가 호출되고 answerable 경로가 `provider=sglang`으로 통과한다. deterministic safety slot reattach 후 사용자-facing source/example/caution 계약을 유지한다. |
+| safety warnings | 없음 또는 `llm_*_slot_ignored` 관측 warning |
+| 판정 | SGLang polish가 호출되고 answerable 경로가 `provider=sglang`으로 통과한다. LLM slot drift가 있어도 deterministic safety slot reattach 후 사용자-facing source/example/caution 계약을 유지한다. |
 
-현재 answerable sodium 대표 케이스는 live strict smoke에서 warning 없이 통과한다.
+현재 answerable sodium 대표 케이스는 live strict smoke에서 `provider=sglang`,
+`answerability=answerable`, `source_ids=["kdris-2025"]`, `failures=[]`로 통과한다.
 팀원 데모에서는 "LLM이 판단자가 아니라 polish 후보이며, slot sealing과 fallback gate가 적용된다"는 예시로
 보는 것이 맞다.
 
@@ -186,7 +187,8 @@ python backend\scripts\run_agent_llm_merge_smoke.py --llm sglang --timeout 90 --
 | answerable 대표 케이스는 `provider: sglang` | strict smoke에서 answerable이 `provider: deterministic`이면 live LLM polish가 조용히 fallback된 것 |
 | 약물/응급은 `provider: deterministic` | LLM이 복용 허용/금지 판단을 직접 말하면 위험 |
 | unknown은 sources 없음 + `unknown_no_reviewed_source` | reviewed source 없이 구체 효과를 말하면 위험 |
-| fallback warning은 운영 관측 대상 | fallback이 너무 잦으면 prompt/structured output 개선 필요 |
+| `failures: []` | failures가 하나라도 있으면 병합 전 확인 필요 |
+| `llm_*_slot_ignored` warning은 운영 관측 대상 | warning이 증가하면 prompt/structured output 개선 필요. 단 사용자-facing slot은 deterministic reattach로 보호 |
 
 GitHub Actions에서는 `Agent Backend CI`를 수동 실행할 때 `run_sglang_smoke=true`,
 `sglang_endpoint`, `sglang_model`을 지정하면 같은 strict gate가 실행된다. 기본 PR/push CI는
@@ -200,7 +202,7 @@ GitHub Actions에서는 `Agent Backend CI`를 수동 실행할 때 `run_sglang_s
 |---|---|---|
 | `PR-LiveSmoke-lite` | `run_agent_llm_merge_smoke.py` 추가. answerable, P0 boundary, urgent, unknown 케이스를 JSON gate로 확인. `--require-answerable-llm` strict live gate와 GitHub Actions manual opt-in 연결 | DB-backed migration smoke는 별도 test DB 준비 후 연결 |
 | `PR-UnknownLoop` | unknown backlog report에 `triage_priority`, `next_action`, `promotion_checklist` 추가 | admin UI 또는 정기 리포트에서 source reviewer 업무 흐름 연결 |
-| `PR-PolishQuality` | LLM prompt에 deterministic safety slot contract를 명시하고 harmless delimiter/suffix/source order 비교를 정규화해 answerable 대표 smoke warning을 0으로 줄임 | 앱 컨텍스트 복합 preset의 source/example drift warning은 운영 관측 대상으로 남기고 regression set에서 추적 |
+| `PR-PolishQuality` | LLM prompt에 deterministic safety slot contract를 명시하고 harmless delimiter/suffix/source order 비교를 정규화해 불필요한 warning을 줄임. live gate는 provider/source/failure를 엄격히 고정 | 앱 컨텍스트 복합 preset과 LLM 출력 변동에서 생기는 source/example drift warning은 운영 관측 대상으로 남기고 regression set에서 추적 |
 | `PR-Modularize` | LLM polish slot helper를 `polish_slots.py`로 분리 | `ChatbotAgent`, `knowledge.py`, `renderers.py`의 큰 모듈 분리는 별도 PR 필요 |
 
 다음으로 이어갈 때는 `PR-UnknownLoop`의 운영 리포트 자동화와 DB-backed migration smoke 준비를

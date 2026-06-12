@@ -84,10 +84,20 @@ jobs:
         run: python -X utf8 scripts/run_agent_llm_merge_smoke.py --llm none
 
       - name: Run medical wiki chatbot dry-run eval
-        run: python -X utf8 scripts/eval_medical_wiki_chatbot.py --as-of 2026-06-10 --dry-run
+        run: |
+          if [ -f ../MEDICAL-WIKI/manifest/reviewed_claims.jsonl ]; then
+            python -X utf8 scripts/eval_medical_wiki_chatbot.py --as-of 2026-06-10 --dry-run
+          else
+            echo "Skipping medical wiki chatbot eval: ../MEDICAL-WIKI/manifest/reviewed_claims.jsonl is not present on this runner."
+          fi
 
       - name: Run medical wiki evidence bundle dry-run eval
-        run: python -X utf8 scripts/eval_medical_wiki_evidence_bundles.py --as-of 2026-06-10 --dry-run
+        run: |
+          if [ -f ../MEDICAL-WIKI/manifest/evidence_bundle_adapter_fixtures.jsonl ]; then
+            python -X utf8 scripts/eval_medical_wiki_evidence_bundles.py --as-of 2026-06-10 --dry-run
+          else
+            echo "Skipping medical wiki evidence bundle eval: ../MEDICAL-WIKI/manifest/evidence_bundle_adapter_fixtures.jsonl is not present on this runner."
+          fi
 
       - name: Run ruff
         run: |
