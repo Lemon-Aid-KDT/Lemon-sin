@@ -43,7 +43,21 @@ class DailyCoachingRequest {
       'user_id': 'mobile-client',
       'payload': <String, dynamic>{
         'date': date,
-        'sources': <Map<String, dynamic>>[],
+        // lemon_ai_agent 오케스트레이터는 sources[] 의 user_confirmed 로
+        // 확정 여부를 판정한다(미확정 OCR 소스면 preview 로 강등). 앱은
+        // 확정 기록만 보내므로 소스 유형별 confirmed 엔트리를 동봉한다.
+        'sources': <Map<String, dynamic>>[
+          if (foods.isNotEmpty)
+            <String, dynamic>{
+              'source_type': 'food_user_input',
+              'user_confirmed': true,
+            },
+          if (supplements.isNotEmpty)
+            <String, dynamic>{
+              'source_type': 'supplement_user_input',
+              'user_confirmed': true,
+            },
+        ],
         'foods': foods,
         'supplements': supplements,
         'health_trends': <Map<String, dynamic>>[],

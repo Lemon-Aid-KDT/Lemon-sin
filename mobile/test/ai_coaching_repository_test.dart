@@ -137,16 +137,26 @@ void main() {
       final Map<String, dynamic> payload =
           body['payload'] as Map<String, dynamic>;
       expect(payload['date'], '2026-06-11');
-      expect(payload['sources'], isEmpty);
       expect(payload['health_trends'], isEmpty);
+
+      final List<dynamic> sources = payload['sources'] as List<dynamic>;
+      expect(sources, hasLength(2));
+      final Map<String, dynamic> foodSource =
+          sources.first as Map<String, dynamic>;
+      expect(foodSource['source_type'], 'food_user_input');
+      expect(foodSource['user_confirmed'], true);
 
       final List<dynamic> foods = payload['foods'] as List<dynamic>;
       expect(foods, hasLength(1));
       final Map<String, dynamic> food = foods.single as Map<String, dynamic>;
-      expect(food['display_name'], '닭가슴살 샐러드');
-      expect(food['protein_g'], 30);
-      expect(food['user_confirmed'], true);
-      expect(food['source'], 'user_confirmed');
+      expect(food['name'], '닭가슴살 샐러드');
+      expect(food['meal_type'], isNotEmpty);
+      final List<dynamic> nutrients = food['nutrients'] as List<dynamic>;
+      final Map<String, dynamic> protein = nutrients
+          .cast<Map<String, dynamic>>()
+          .firstWhere((Map<String, dynamic> n) => n['name'] == 'protein');
+      expect(protein['amount'], 30);
+      expect(protein['unit'], 'g');
 
       final List<dynamic> supplements =
           payload['supplements'] as List<dynamic>;

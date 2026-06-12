@@ -90,18 +90,37 @@ class AiCoachingRepository {
   }
 
   /// Maps a meal's food items into the agent `foods` payload entries.
+  ///
+  /// lemon_ai_agent `app_intake._build_food` 계약: `name`/`meal_type` 필수,
+  /// 영양소는 `nutrients[{name, amount, unit}]`. `display_name` 류 키는
+  /// KeyError 로 코칭 전체가 실패한다(첫 라이브 E2E 스모크에서 확인).
+  /// 값이 없는 영양소는 0 으로 지어내지 않고 생략한다.
   List<Map<String, dynamic>> _foodsForMeal(HomeMeal meal) {
     return meal.foodItems
         .map(
           (HomeFoodItem item) => <String, dynamic>{
-            'display_name': item.displayName,
-            'kcal': item.kcal,
-            'carb_g': item.carbG,
-            'protein_g': item.proteinG,
-            'fat_g': item.fatG,
-            'sodium_mg': 0,
-            'user_confirmed': true,
-            'source': 'user_confirmed',
+            'name': item.displayName,
+            'meal_type': meal.mealType,
+            'nutrients': <Map<String, dynamic>>[
+              if (item.proteinG > 0)
+                <String, dynamic>{
+                  'name': 'protein',
+                  'amount': item.proteinG,
+                  'unit': 'g',
+                },
+              if (item.carbG > 0)
+                <String, dynamic>{
+                  'name': 'carbohydrate',
+                  'amount': item.carbG,
+                  'unit': 'g',
+                },
+              if (item.fatG > 0)
+                <String, dynamic>{
+                  'name': 'fat',
+                  'amount': item.fatG,
+                  'unit': 'g',
+                },
+            ],
           },
         )
         .toList(growable: false);
