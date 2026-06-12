@@ -3,6 +3,9 @@
 // SoT v1.1 §9.5: 사용자가 설정에서 선택할 수 있는 4색 브랜드 테마 정의.
 // 기본값: yellow (#FFC700, design_tokens_v2 AppColor.brand 와 일치).
 // brandThemeNotifier → AppColors.brand 동적 반영 구상.
+//
+// 2026-06-12: Figma 01_Design_System(DesignSystem_v2.0) 4모드×5단계 정의에 정렬.
+// 비-yellow pressed/soft hex 교정 + deep/tint 단계 추가.
 
 import 'package:flutter/material.dart';
 
@@ -43,11 +46,25 @@ extension BrandThemeColor on BrandTheme {
       case BrandTheme.yellow:
         return const Color(0xFFE5B300);
       case BrandTheme.purple:
-        return const Color(0xFF7B6ED4);
+        return const Color(0xFF7164DB);
       case BrandTheme.green:
-        return const Color(0xFF4FA869);
+        return const Color(0xFF4AA663);
       case BrandTheme.blue:
-        return const Color(0xFF3A88EE);
+        return const Color(0xFF3884E5);
+    }
+  }
+
+  /// 깊은 톤 (브랜드 배경 위 텍스트 등).
+  Color get deepColor {
+    switch (this) {
+      case BrandTheme.yellow:
+        return const Color(0xFFC99100);
+      case BrandTheme.purple:
+        return const Color(0xFF4F44A6);
+      case BrandTheme.green:
+        return const Color(0xFF2F7C44);
+      case BrandTheme.blue:
+        return const Color(0xFF1F5BB8);
     }
   }
 
@@ -57,11 +74,25 @@ extension BrandThemeColor on BrandTheme {
       case BrandTheme.yellow:
         return const Color(0xFFFFF6CC);
       case BrandTheme.purple:
-        return const Color(0xFFF0EEFF);
+        return const Color(0xFFEEEBFD);
       case BrandTheme.green:
-        return const Color(0xFFE8F7ED);
+        return const Color(0xFFE4F4E8);
       case BrandTheme.blue:
         return const Color(0xFFE3F0FF);
+    }
+  }
+
+  /// 소프트보다 한 단계 진한 틴트 (선택 배경 등).
+  Color get tintColor {
+    switch (this) {
+      case BrandTheme.yellow:
+        return const Color(0xFFFFF0A8);
+      case BrandTheme.purple:
+        return const Color(0xFFE2DDFB);
+      case BrandTheme.green:
+        return const Color(0xFFD4EDDA);
+      case BrandTheme.blue:
+        return const Color(0xFFCEE3FF);
     }
   }
 
