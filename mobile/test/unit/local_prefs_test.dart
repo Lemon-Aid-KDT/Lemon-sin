@@ -121,4 +121,47 @@ void main() {
       expect(prefs.brandThemeCode(), 'green');
     });
   });
+
+  group('LocalPrefs first-launch (가입 경과일)', () {
+    test('seeds first-launch date once and keeps it stable', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create(
+        now: DateTime(2026, 6, 1, 14),
+      );
+      expect(prefs.firstLaunchDate(), DateTime(2026, 6, 1));
+
+      // 이후 실행이 더 늦어도 최초 실행일은 바뀌지 않는다.
+      final LocalPrefs reopened = await LocalPrefs.create(
+        now: DateTime(2026, 6, 13),
+      );
+      expect(reopened.firstLaunchDate(), DateTime(2026, 6, 1));
+    });
+
+    test('counts inclusive days with the app from the first launch', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create(
+        now: DateTime(2026, 6, 1, 9),
+      );
+      // 첫날 포함 → 같은 날은 1일째, 12일 뒤는 13일째.
+      expect(prefs.daysWithApp(DateTime(2026, 6, 1, 23)), 1);
+      expect(prefs.daysWithApp(DateTime(2026, 6, 13)), 13);
+    });
+
+    test('clamps to 1 when the clock moves backward', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create(
+        now: DateTime(2026, 6, 10),
+      );
+      expect(prefs.daysWithApp(DateTime(2026, 6, 5)), 1);
+    });
+
+    test('returns null days when no first-launch date is stored', () async {
+      // create() 가 시드하므로, 시드 없는 상태를 흉내내려면 직접 래핑한다.
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final SharedPreferences raw = await SharedPreferences.getInstance();
+      final LocalPrefs prefs = LocalPrefs(raw);
+      expect(prefs.firstLaunchDate(), isNull);
+      expect(prefs.daysWithApp(DateTime(2026, 6, 13)), isNull);
+    });
+  });
 }

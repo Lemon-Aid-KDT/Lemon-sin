@@ -33,14 +33,23 @@ class LocalPrefs {
   static const String _profileDisplayNameKey = 'profile_display_name';
   static const String _medicationRemindersKey = 'medication_reminders';
   static const String _notificationSettingsKey = 'notification_settings';
+  static const String _firstLaunchKey = 'app.first_launch';
 
   /// `SharedPreferences.getInstance()` 를 기다린 뒤 래퍼를 만든다.
   ///
+  /// 최초 실행일(`app.first_launch`)이 없으면 [now]로 1회 기록한다 — 설정
+  /// 헤더의 '함께한 지 N일' 산정 기준이다. auth 가 없어 서버 가입일이
+  /// 없으므로 로컬 최초 실행일로 임시 산정한다(서버 값 생기면 교체).
+  ///
   /// 테스트에서는 호출 전에 `SharedPreferences.setMockInitialValues({...})`
-  /// 로 초기값을 주입할 수 있다.
-  static Future<LocalPrefs> create() async {
+  /// 로 초기값을 주입할 수 있고, [now]로 기준 시각을 고정할 수 있다.
+  static Future<LocalPrefs> create({DateTime? now}) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    return LocalPrefs(prefs);
+    final LocalPrefs wrapper = LocalPrefs(prefs);
+    if (wrapper.firstLaunchDate() == null) {
+      await wrapper._setFirstLaunchDate(now ?? DateTime.now());
+    }
+    return wrapper;
   }
 
   /// 로컬 [day] 를 `yyyy-MM-dd` 문자열로 만든다 (체크 키의 날짜 부분).
@@ -90,6 +99,34 @@ class LocalPrefs {
       return _prefs.remove(key);
     }
     return _prefs.setBool(key, true);
+  }
+
+  // ── 최초 실행일 (가입 경과일 임시 산정) ──────────
+  // 백엔드 공백: auth 미도입이라 서버 가입일이 없어 로컬 최초 실행일로 대체.
+
+  /// 저장된 최초 실행일(로컬 날짜). 없으면 null.
+  DateTime? firstLaunchDate() {
+    final String? raw = _prefs.getString(_firstLaunchKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    final DateTime? parsed = DateTime.tryParse(raw.trim());
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  /// 최초 실행일부터 [today]까지 함께한 일수(첫날 포함, 최소 1).
+  ///
+  /// 최초 실행일이 없으면 null. [today]가 기록일보다 이전이면(시계 후퇴) 1.
+  int? daysWithApp(DateTime today) {
+    final DateTime? first = firstLaunchDate();
+    if (first == null) return null;
+    final DateTime todayDate = DateTime(today.year, today.month, today.day);
+    final int diff = todayDate.difference(first).inDays;
+    return diff < 0 ? 1 : diff + 1;
+  }
+
+  Future<void> _setFirstLaunchDate(DateTime date) {
+    final DateTime dateOnly = DateTime(date.year, date.month, date.day);
+    return _prefs.setString(_firstLaunchKey, dateOnly.toIso8601String());
   }
 
   // ── 브랜드 테마 ────────────────────────────────

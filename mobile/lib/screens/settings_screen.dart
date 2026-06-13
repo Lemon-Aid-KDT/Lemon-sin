@@ -43,6 +43,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String? _displayName;
   String? _profileSummary;
+  int? _daysWithApp;
 
   @override
   void initState() {
@@ -53,6 +54,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _loadProfileHeader() async {
     final LocalPrefs? prefs = await ref.read(localPrefsProvider.future);
     final String? name = prefs?.profileDisplayName();
+    // 가입 경과일 — 최초 실행일 기준(auth 도입 전 임시 산정).
+    final int? days = prefs?.daysWithApp(DateTime.now());
     try {
       final BodyProfileSnapshot? snapshot = await ref
           .read(profileRepositoryProvider)
@@ -61,11 +64,108 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() {
         _displayName = name;
         _profileSummary = snapshot?.summaryLine();
+        _daysWithApp = days;
       });
     } on ApiError {
       if (!mounted) return;
-      setState(() => _displayName = name);
+      setState(() {
+        _displayName = name;
+        _daysWithApp = days;
+      });
     }
+  }
+
+  /// 앱 버전 — 설정 푸터와 서비스 정보 시트가 공유한다.
+  static const String _appVersion = 'v1.0.0';
+
+  /// 표준 의료 면책 문장(대시보드와 동일 — 진단/처방은 부정 맥락 화이트리스트).
+  static const String _medicalDisclaimer =
+      '레몬에이드는 건강 관리를 도와드리는 서비스로\n의사·약사·영양사의 진단을 대신하진 않아요.';
+
+  /// 서비스 정보 시트 — 앱 소개·의료 면책·버전(콘텐츠 우리 소유).
+  ///
+  /// 데이터 내보내기/도움말·문의는 각각 백엔드 export 라우트·문의 채널이
+  /// 정해지지 않아(공백) 임의 버튼을 만들지 않는다(날조 금지).
+  Future<void> _showServiceInfoSheet(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColor.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpace.page,
+              AppSpace.sm,
+              AppSpace.page,
+              AppSpace.xl,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '서비스 정보',
+                  style: AppText.title.copyWith(fontSize: 20),
+                ),
+                const SizedBox(height: AppSpace.md),
+                Text(
+                  '레몬에이드는 만성질환을 가진 분들이 식단·영양제·활동을 쉽게 '
+                  '기록하고, 건강 관리에 참고할 정보를 받아보도록 돕는 앱이에요.',
+                  style: AppText.body.copyWith(
+                    color: AppColor.inkSecondary,
+                    height: 1.55,
+                  ),
+                ),
+                const SizedBox(height: AppSpace.lg),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpace.cardInside),
+                  decoration: BoxDecoration(
+                    color: AppColor.brandSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Icon(
+                        Icons.info_outline,
+                        color: AppColor.brandDeep,
+                        size: 18,
+                      ),
+                      const SizedBox(width: AppSpace.sm),
+                      Expanded(
+                        child: Text(
+                          _medicalDisclaimer,
+                          style: AppText.caption.copyWith(
+                            color: AppColor.ink,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpace.lg),
+                Center(
+                  child: Text(
+                    '$_appVersion · Lemon Aid',
+                    style: AppText.caption.copyWith(
+                      color: AppColor.inkTertiary,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -92,6 +192,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _ProfileHeader(
             displayName: _displayName,
             summary: _profileSummary,
+            daysWithApp: _daysWithApp,
             onEdit: () => context.go('/shell/settings/profile-edit'),
           ),
           Expanded(
@@ -254,12 +355,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SectionLabel('안내'),
                     SettingsCard(
                       children: [
-                        const SettingsRow(
+                        SettingsRow(
                           icon: Icons.info_outline_rounded,
-                          iconBg: Color(0xFFEDEFF3),
+                          iconBg: const Color(0xFFEDEFF3),
                           iconColor: AppColor.inkSecondary,
                           title: '서비스 정보',
-                          subtitle: '의료 판단 전 전문 의료진 상담 필요',
+                          subtitle: '앱 소개와 의료 면책 안내',
+                          onTap: () => _showServiceInfoSheet(context),
                         ),
                         const SettingsDivider(),
                         SettingsRow(
@@ -307,7 +409,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(height: AppSpace.lg),
                     Center(
                       child: Text(
-                        'v1.0.0 · Lemon Aid',
+                        '$_appVersion · Lemon Aid',
                         style: AppText.caption.copyWith(
                           color: AppColor.inkTertiary,
                           fontWeight: FontWeight.w700,
@@ -452,11 +554,14 @@ class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.displayName,
     required this.summary,
+    required this.daysWithApp,
     required this.onEdit,
   });
 
   final String? displayName;
   final String? summary;
+  // 함께한 일수(가입 경과일 임시 산정). null 이면 경과일 라인 숨김.
+  final int? daysWithApp;
   final VoidCallback onEdit;
 
   @override
@@ -464,6 +569,7 @@ class _ProfileHeader extends StatelessWidget {
     final String name = (displayName == null || displayName!.isEmpty)
         ? '레몬 회원님'
         : '$displayName님';
+    final int? days = daysWithApp;
     final String subtitle = summary ?? '신체 정보를 입력하면 분석이 더 정확해져요';
     return Container(
       width: double.infinity,
@@ -502,6 +608,18 @@ class _ProfileHeader extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                     ),
+                    if (days != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '레몬에이드와 함께한 지 $days일째',
+                        style: const TextStyle(
+                          color: AppColor.brandDeep,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     Text(
                       subtitle,
