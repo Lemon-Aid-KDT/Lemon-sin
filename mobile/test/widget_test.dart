@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/app.dart';
 import 'package:lemon_aid_mobile/app_controller.dart';
+import 'package:lemon_aid_mobile/core/storage/local_prefs.dart';
 import 'package:lemon_aid_mobile/features/consent/consent_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/dashboard_models.dart';
 import 'package:lemon_aid_mobile/features/dashboard/home_models.dart';
@@ -10,6 +11,7 @@ import 'package:lemon_aid_mobile/features/records/food_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/features/nutrition/kdri_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/comprehensive_analysis_models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('renders source dashboard shell with backend session wiring', (
@@ -98,6 +100,9 @@ void main() {
 }
 
 Future<void> _pumpReadyShell(WidgetTester tester) async {
+  // 첫 실행 온보딩이 끼어들지 않도록 본 적이 있는 상태로 시드한다(스플래시 분기).
+  SharedPreferences.setMockInitialValues(<String, Object>{});
+  await (await LocalPrefs.create()).setOnboardingSeen();
   await tester.pumpWidget(LemonAidApp(repository: _FakeRepository()));
   await tester.pump();
   expect(

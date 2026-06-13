@@ -11,6 +11,7 @@ import 'core/storage/local_prefs.dart';
 import 'features/auth/signup_wizard/profile_setup_wizard_screen.dart';
 import 'features/auth/token_session.dart';
 import 'features/consent/consent_gate_sheet.dart';
+import 'features/onboarding/onboarding_screen.dart';
 import 'features/profile/profile_interests_screen.dart';
 import 'features/records/records_providers.dart';
 import 'features/supplements/supplement_models.dart';
@@ -83,10 +84,12 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
       final String path = state.uri.path;
       final bool isLogin = path == '/login';
       final bool isSplash = path == '/splash';
+      final bool isOnboarding = path == '/onboarding';
       if (!session.bootstrapped) {
         return isSplash ? null : '/splash';
       }
-      if (isSplash) {
+      // 스플래시·온보딩은 스스로 다음 화면으로 이동하므로 redirect 면제.
+      if (isSplash || isOnboarding) {
         return null;
       }
       if (!session.canEnterShell && !isLogin) {
@@ -108,6 +111,32 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
         path: '/login',
         builder: (BuildContext context, GoRouterState state) {
           return const _BearerTokenLoginScreen();
+        },
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (BuildContext context, GoRouterState state) {
+          return Consumer(
+            builder: (BuildContext context, WidgetRef ref, Widget? child) {
+              final LocalPrefs? prefs = ref.watch(localPrefsProvider).value;
+              if (prefs == null) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+              return OnboardingScreen(
+                prefs: prefs,
+                onDone: () {
+                  final TokenSessionController session = ref.read(
+                    tokenSessionProvider,
+                  );
+                  context.go(
+                    session.canEnterShell ? '/shell/home' : '/login',
+                  );
+                },
+              );
+            },
+          );
         },
       ),
       StatefulShellRoute.indexedStack(

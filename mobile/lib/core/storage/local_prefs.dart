@@ -36,6 +36,7 @@ class LocalPrefs {
   static const String _firstLaunchKey = 'app.first_launch';
   static const String _profilePurposesKey = 'profile.purposes';
   static const String _profileConcernsKey = 'profile.concerns';
+  static const String _onboardingSeenKey = 'app.onboarding_seen';
 
   /// `SharedPreferences.getInstance()` 를 기다린 뒤 래퍼를 만든다.
   ///
@@ -136,6 +137,14 @@ class LocalPrefs {
     final DateTime dateOnly = DateTime(date.year, date.month, date.day);
     return _prefs.setString(_firstLaunchKey, dateOnly.toIso8601String());
   }
+
+  // ── 온보딩 3장 첫 실행 노출 플래그 ───────────────
+
+  /// 온보딩 3장을 본 적이 있으면 true (첫 실행 1회만 노출하기 위한 게이트).
+  bool onboardingSeen() => _prefs.getBool(_onboardingSeenKey) ?? false;
+
+  /// 온보딩을 봤다고 표시한다 (이후 스플래시가 바로 로그인/홈으로 보낸다).
+  Future<void> setOnboardingSeen() => _prefs.setBool(_onboardingSeenKey, true);
 
   // ── 브랜드 테마 ────────────────────────────────
 

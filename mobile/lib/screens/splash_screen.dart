@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_providers.dart';
+import '../core/storage/local_prefs.dart';
 
 /// 17 Pro UIUX branch style splash screen wired to the current token session.
 class SplashScreen extends ConsumerStatefulWidget {
@@ -70,11 +71,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       }
       final session = ref.read(tokenSessionProvider);
       if (session.bootstrapped) {
+        if (!await _onboardingSeen()) {
+          return '/onboarding';
+        }
         return session.canEnterShell ? '/shell/home' : '/login';
       }
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     return '/login';
+  }
+
+  Future<bool> _onboardingSeen() async {
+    try {
+      final LocalPrefs prefs = await ref.read(localPrefsProvider.future);
+      return prefs.onboardingSeen();
+    } on Object {
+      // 로컬 저장소 로드 실패(테스트/엣지) 시 온보딩을 건너뛰어 흐름을 막지 않는다.
+      return true;
+    }
   }
 
   @override
