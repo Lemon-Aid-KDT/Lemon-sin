@@ -1436,6 +1436,7 @@ class _SupplementRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? scheduleText = supplement.schedule?.summary;
+    final String? categoryLabel = supplement.categoryLabel;
     // 길게 누르면 삭제(영양제 관리 행) — 끼니 삭제는 백엔드 공백 2로 비노출.
     return GestureDetector(
       onLongPress: onDelete,
@@ -1448,17 +1449,32 @@ class _SupplementRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    supplement.displayName.isNotEmpty
-                        ? supplement.displayName
-                        : '이름 미상 영양제',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.body.copyWith(
-                      color: checked ? AppColor.inkTertiary : AppColor.ink,
-                      fontWeight: FontWeight.w600,
-                      decoration: checked ? TextDecoration.lineThrough : null,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          supplement.displayName.isNotEmpty
+                              ? supplement.displayName
+                              : '이름 미상 영양제',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.body.copyWith(
+                            color: checked
+                                ? AppColor.inkTertiary
+                                : AppColor.ink,
+                            fontWeight: FontWeight.w600,
+                            decoration: checked
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                      ),
+                      // 사용자가 고른 분류 칩 (가이드 10 P2 7 후속).
+                      if (categoryLabel != null) ...[
+                        const SizedBox(width: AppSpace.sm),
+                        _SupplementCategoryChip(label: categoryLabel),
+                      ],
+                    ],
                   ),
                   if (scheduleText != null) ...[
                     const SizedBox(height: 2),
@@ -1485,6 +1501,32 @@ class _SupplementRow extends StatelessWidget {
               child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 영양제 행에 붙는 분류 칩 (brandSoft pill — 가이드 10 P2 7 후속).
+class _SupplementCategoryChip extends StatelessWidget {
+  final String label;
+  const _SupplementCategoryChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColor.brandSoft,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppText.micro.copyWith(
+          color: AppColor.brandDeep,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

@@ -354,6 +354,7 @@ class HomeSupplement {
     required this.displayName,
     required this.manufacturer,
     required this.schedule,
+    this.categoryLabel,
     this.registeredAt,
   });
 
@@ -365,6 +366,12 @@ class HomeSupplement {
 
   /// 제조사 (있을 때).
   final String? manufacturer;
+
+  /// 사용자가 고른 분류의 표시 라벨 (미선택이면 null).
+  ///
+  /// 응답 `categories[0].display_name`(사용자 선택이 우선 반영됨)을 쓰고,
+  /// 비면 `category_key`로 폴백한다.
+  final String? categoryLabel;
 
   /// 섭취 일정 요약 (intake_schedule 가 없으면 null).
   final HomeSupplementSchedule? schedule;
@@ -384,6 +391,7 @@ class HomeSupplement {
       id: (json['id'] as Object?)?.toString() ?? '',
       displayName: _optionalText(json['display_name']) ?? '',
       manufacturer: _optionalText(json['manufacturer']),
+      categoryLabel: _categoryLabel(json),
       schedule: scheduleJson != null
           ? HomeSupplementSchedule.fromJson(scheduleJson)
           : null,
@@ -391,6 +399,23 @@ class HomeSupplement {
           _optionalDateTime(json['user_confirmed_at']) ??
           _optionalDateTime(json['created_at']),
     );
+  }
+
+  /// 응답에서 분류 표시 라벨을 고른다 (categories[0].display_name 우선,
+  /// 비면 category_key 폴백, 둘 다 없으면 null).
+  static String? _categoryLabel(Map<String, dynamic> json) {
+    final Object? categories = json['categories'];
+    if (categories is List<dynamic>) {
+      for (final Object? row in categories) {
+        if (row is Map<String, dynamic>) {
+          final String? label = _optionalText(row['display_name']);
+          if (label != null) {
+            return label;
+          }
+        }
+      }
+    }
+    return _optionalText(json['category_key']);
   }
 }
 

@@ -39,6 +39,7 @@ void main() {
               id: 'sup-1',
               displayName: '비타민 D',
               manufacturer: '레몬랩스',
+              categoryLabel: '비타민B',
               schedule: HomeSupplementSchedule(
                 frequency: 'daily',
                 timeOfDay: <String>['morning'],
@@ -66,6 +67,8 @@ void main() {
     expect(find.text('안심하고 드셔도 돼요'), findsOneWidget);
     expect(find.text('영양제 관리'), findsOneWidget);
     expect(find.text('비타민 D'), findsOneWidget);
+    // 사용자가 고른 분류가 영양제 행에 칩으로 표시된다 (가이드 10 P2 7 후속).
+    expect(find.text('비타민B'), findsOneWidget);
     // 복약 카드 빈 상태 (약 0개).
     expect(find.text('복약 관리'), findsOneWidget);
     expect(find.text('약 등록하기'), findsOneWidget);

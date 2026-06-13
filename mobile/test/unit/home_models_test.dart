@@ -247,6 +247,62 @@ void main() {
       final HomeSupplement supplement = result.results.first;
       expect(supplement.schedule, isNull);
     });
+
+    test('parses the chosen category label from categories[0]', () {
+      final HomeSupplementsResult result = HomeSupplementsResult.fromJson(
+        <String, dynamic>{
+          'results': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'sup-3',
+              'display_name': '비타민B 컴플렉스',
+              'category_key': '비타민B',
+              'categories': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'category_key': '비타민B',
+                  'display_name': '비타민B',
+                  'sort_order': 1,
+                },
+              ],
+            },
+          ],
+        },
+      );
+
+      expect(result.results.first.categoryLabel, '비타민B');
+    });
+
+    test('falls back to category_key when categories has no label', () {
+      final HomeSupplementsResult result = HomeSupplementsResult.fromJson(
+        <String, dynamic>{
+          'results': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'sup-4',
+              'display_name': '오메가3',
+              'category_key': '오메가3',
+              'categories': <Map<String, dynamic>>[],
+            },
+          ],
+        },
+      );
+
+      expect(result.results.first.categoryLabel, '오메가3');
+    });
+
+    test('keeps a null category label when none is chosen', () {
+      final HomeSupplementsResult result = HomeSupplementsResult.fromJson(
+        <String, dynamic>{
+          'results': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'sup-5',
+              'display_name': '분류없음',
+              'categories': <Map<String, dynamic>>[],
+            },
+          ],
+        },
+      );
+
+      expect(result.results.first.categoryLabel, isNull);
+    });
   });
 
   group('HomeMedicationsResult', () {
