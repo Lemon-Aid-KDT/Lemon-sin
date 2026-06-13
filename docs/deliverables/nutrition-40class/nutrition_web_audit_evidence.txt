@@ -1,0 +1,718 @@
+==============================================================================
+최종 40클래스 영양값 웹서치 감사 — 근거 기록
+생성: 멀티에이전트 웹서치 감사(52 에이전트). AIHub 1차 신뢰 / 웹 보조.
+정책: '통용 정보와 확실히 다른' 항목만 적대적 재검증 후 high-신뢰일 때만 보정.
+==============================================================================
+
+[요약] 총 40클래스 조사. 보정 적용 10건 (아래 ★ 표시 클래스).
+보정 목록:
+   ★ braised-chicken(찜닭) chol_mg: 3.77 → 30.0
+   ★ braised-chicken(찜닭) sat_fat_g: 0.02 → 1.3
+   ★ fried-chicken(후라이드치킨) chol_mg: 14.93 → 88.0
+   ★ fried-chicken(후라이드치킨) sat_fat_g: 0.4 → 3.0
+   ★ fried-food-platter(튀김(모둠)) sat_fat_g: 0.37 → 2.0
+   ★ hamburger(햄버거) sat_fat_g: 1.34 → 4.0
+   ★ korean-ramyeon-red(라면) chol_mg: 55.07 → 0.0
+   ★ pizza(피자) sodium_mg: 2609.22 → 550.0
+   ★ pork-cutlet-dry(돈가스) sat_fat_g: 1.93 → 4.5
+   ★ rice-noodle-soup(쌀국수) chol_mg: 71.22 → 13.0
+
+==============================================================================
+
+### barbecue-ribs
+  한글: 갈비
+  웹 대표값(100g): kcal=250 탄=7 당=4.5 지=17 단=18 나트륨=480 콜레=55 포화=6.5
+  범위: 100g당 일반 범위(소/돼지·양념·조리 편차 포함): 열량 233~382 kcal(대표 ~250), 탄수화물 0~10 g(양념 갈비 6~10, 순살은 0~3.6; 대표 ~7), 당류 1~8.5 g(양념 소스 영향, 대표 ~4.5), 지방 14~32 g(부위/마블링에 좌우, 대표 ~17), 단백질 13~28 g(대표 ~18~20), 나트륨 260~850 mg(양념·간장 소스 영향이 큼, 대표 ~450~560), 콜레스테롤 46~85 mg(대표 ~55~62), 포화지방 4.7~13.6 g(총지방의 약 30~40%, 대표 ~6.5).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 188.96 vs 웹 250 [정상] 웹 범위 233~382. AIHub 189는 하단 약간 아래지만, 살코기 비중이 높고 마블링/기름이 적은 양념갈비 조리식이면 충분히 설명됨. 합리적.
+    - carb: AIHub 10.29 vs 웹 7 [정상] 양념(간장·설탕·배즙) 소스가 들어간 갈비는 탄수화물 6~10g 흔함. AIHub 10.3은 양념 강한 레시피로 잘 설명됨.
+    - sugar: AIHub 3.54 vs 웹 4.5 [정상] 웹 당류 1~8.5g 분포의 중앙부. AIHub 3.5는 전형값. 합리적.
+    - fat: AIHub 11.99 vs 웹 17 [정상] 웹 14~32g로 폭넓음. AIHub 12는 하단이지만 살코기 위주/기름 적은 부위면 설명 가능. 단백질 대비 지방비도 살코기형으로 일관.
+    - protein: AIHub 10.81 vs 웹 18 [의심] 웹 대표 13~28g, 다수 출처가 18~28g. AIHub 10.8은 거의 모든 출처의 하한 미만이라 다소 낮음. 단, 뼈/비계 포함 평균이거나 양념·소스 희석이 큰 조리식이면 가능하므로 clearly_off까지는 아님.
+    - sodium: AIHub 560.34 vs 웹 480 [정상] 양념갈비는 간장 소스로 나트륨이 높음(웹 260~850mg). AIHub 560은 459(램프쿡)·533(snapcalorie)와 매우 근접. 합리적.
+    - chol: AIHub 43.6 vs 웹 55 [정상] 웹 46~85mg. AIHub 43.6은 하단 살짝 아래지만 살코기형 프로파일과 일관. 합리적.
+    - sat_fat: AIHub 2.52 vs 웹 6.5 [의심] 다출처가 총지방의 약 30~40%를 포화지방으로 보고(돼지갈비 4.7/지14.4=33%, 램프쿡 9.1/지23.9=38%, snapcalorie 40%, geniet 42%). AIHub는 포화 2.52/총지방 11.99=21%로 비율이 비정상적으로 낮음. 기대값 약 4~5g. 다소 벗어나나 절반 미만/2배 초과 수준의 강한 반박은 아니어서 questionable.
+  출처: NOFAT 돼지갈비 (식약처/MFDS 기반) — https://nofat.kr/food/D000012 (240kcal, 탄8.1, 당4.5, 지14.4, 단19.5, 나405, 콜49.3, 포화4.7 /100g) | 램프쿡 소양념갈비구이 음식영양성분표 (1인분 300g→100g 환산) — https://lampcook.com/food/food_nutrition_view2.php?idx_no=1193 (330kcal, 탄8.7, 당4.6, 지23.9, 단20.0, 나459, 콜62.2, 포화9.1 /100g) | Snapcalorie Korean short ribs — https://www.snapcalorie.com/nutrition/korean_short_ribs_nutrition.html (233kcal, 탄6.7, 당5.3, 지16.6, 단13.3, 나533, 콜46.7, 포화6.7 /100g) | Snapcalorie Korean BBQ short ribs — https://www.snapcalorie.com/nutrition/korean_bbq_short_ribs_nutrition.html (300kcal, 탄6.7, 당8.5, 지23.3, 단16.7, 나847, 콜84.7, 포화12.7 /100g) | Geniet 소고기 갈비살(생것) — https://geniet.co.kr/calorie-calculator/food-detail/6192 (382kcal, 탄3.6, 당1.1, 지32.5, 단17.1, 나261, 콜71, 포화13.6 /100g) | FatSecret KR 갈비 검색(소갈비살/돼지갈비/LA갈비) — https://www.fatsecret.kr/칼로리-영양소/search?q=갈비 (250~270kcal, 지14.6~20.9, 단18~28 /100g)
+  비고: 갈비는 소갈비/돼지갈비·양념 유무·부위(마블링)·조리법에 따라 편차가 매우 큰 식당/가정 조리식. AIHub 7개 코드 평균값은 전반적으로 '살코기 비중이 높고 기름이 적은 양념갈비' 프로파일과 일관되며, 핵심 영양소(열량·탄수·당류·지방·나트륨·콜레스테롤)는 모두 웹 합의 범위 내(대부분 하단~중앙)에서 설명 가능 → reasonable. 보수적 판정 결과 clearly_off는 없음(has_clear_error=false, flagged 비움). 다만 주의가 필요한 2개: (1) 단백질 10.81g은 다수 출처(18~28g)의 하한 미만으로 questionable — 뼈·비계 포함 평균이나 소스 희석 가능성으로 단정 불가. (2) 포화지방 2.52g은 총지방 대비 비율(21%)이 웹 합의(30~40%)와 어긋나 기대값(~4~5g)보다 낮아 questionable — 내부적으로 가장 의심스러운 항목이나 강한 다출처 반박/배수 차이는 아니어서 clearly_off로 올리지 않음. 1차 신뢰 출처(AIHub) 우선 원칙을 적용해 두 항목 모두 questionable로 보수 판정.
+
+### black-bean-noodles
+  한글: 짜장면
+  웹 대표값(100g): kcal=100 탄=16 당=6 지=2.5 단=4.5 나트륨=320 콜레=4 포화=0.6
+  범위: kcal 88~175 (식약처 음식DB ~88, 국가표준 ~122, 일부 앱 140~175); 탄수화물 14.4~28.7g (대표 16~21); 당류 1.4~6.1g (한국DB 6.0 우세); 지방 2.2~4.4g (대표 2.2~3.1); 단백질 2.7~6.0g (대표 3~6); 나트륨 300~370mg (이상치 fatsecret 133은 명백히 낮음, 1그릇 1200~1840mg); 콜레스테롤 2~6mg; 포화지방 0.4~1.2g. 식당/가정 조리라 레시피 편차 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 111.72 vs 웹 100 [정상] 웹 범위 88(식약처)~122(국가표준)~175(앱) 사이의 하단부에 위치. 식약처 음식DB(~88)와 국가표준(~122)의 중간으로 매우 합리적. 묽은 소스+면 위주 조리면 충분히 설명됨.
+    - carb: AIHub 17.02 vs 웹 16 [정상] 한국 DB 14.4~21g 범위 내. 식약처 환산 14.4와 국가표준 20.6 사이. 면 함량 의존. 정상.
+    - sugar: AIHub 5.92 vs 웹 6 [정상] 식약처 음식DB 100g당 6.07과 거의 정확히 일치(춘장의 캐러멜/설탕). 가장 신뢰도 높은 일치.
+    - fat: AIHub 1.95 vs 웹 2.5 [정상] 식약처 환산 2.22, 국가표준 3.1과 근접. AIHub가 약간 낮으나 저지방 조리(소량 기름)로 설명 가능. 정상 범위.
+    - protein: AIHub 6.14 vs 웹 4.5 [정상] 웹 범위 2.7(식약처)~6.0(inout) 상단에 위치. 고기/면 비율 높으면 6g 도달. 일부 출처와 부합하므로 합리적.
+    - sodium: AIHub 236.19 vs 웹 320 [정상] 한국DB 합의 300~370mg보다 약간 낮으나 같은 자릿수. fatsecret 133은 이상치(저평가). 1그릇 1200~1840mg 기준 100g당 230~310 합당. 저염 조리면 설명됨.
+    - chol: AIHub 8.68 vs 웹 4 [정상] 웹 2~6mg보다 약간 높으나 절대값이 작고 고기량에 민감. 식약처 음식DB 2.05~inout 5mg, 일부 서양앱 40mg(1그릇). 100g당 8.68은 육류 비율 높은 레시피로 설명 가능, 2배 초과·다출처 반박은 아님.
+    - sat_fat: AIHub 0.33 vs 웹 0.6 [정상] 식약처 음식DB 100g당 0.38과 거의 일치. 전체 지방이 낮으니 포화지방도 낮은 게 일관됨. 정상.
+  출처: 식약처 식품영양성분 음식 DB / 전국통합식품영양성분정보(음식) (자장면 600g 기준 529.18kcal, 나트륨 1843.68mg) — https://various.foodsafetykorea.go.kr/nutrient/ , https://www.data.go.kr/data/15100070/standard.do | NOFAT 짜장면 영양성분 (600g 1그릇, 100g당 88kcal/탄14.4/당6.1/지2.2/단2.7/나307/콜2.0/포0.4) — https://nofat.kr/food/D018180 | 필라이즈 자장면 1인분 600g — https://www.pillyze.com/foods/HLe1PaIM06MihuxaddlVlg==/%EC%9E%90%EC%9E%A5%EB%A9%B4 | 램프쿡 짜장면 국가표준식품성분표 (100g당 122kcal/탄20.6/지3.1/단3.0/나368) — https://lampcook.com/food/food_nutrition_view.php?idx_no=2937 | inout.team 짜장면 100g (175kcal/탄28.7/당1.4/지4.4/단5.9/나133/콜5/포1.2) — https://www.inout.team/search/food/detail/242298 | SnapCalorie Jajangmyeon (100g당 ~140kcal/탄20/당2/지4/단3/나300/콜6/포1) — https://www.snapcalorie.com/nutrition/jajangmyeon_nutrition.html
+  비고: 짜장면은 식당/가정 조리식품으로 면-소스-고기 비율에 따라 편차가 큼. 한국 1차 권위 출처(식약처 식품영양성분 음식DB / 전국통합식품영양성분정보)의 자장면 표준값은 1그릇 600g 기준 529.18kcal·나트륨1843.68mg이며, 이를 100g으로 환산하면 약 88kcal·탄14.4·당6.07·지2.22·단2.69·나307·콜2.05·포0.38이다. AIHub 값(111.72kcal 등)은 이 식약처 환산값과 국가표준식품성분표(~122kcal/100g) 사이에 거의 정확히 위치한다. 특히 당류(5.92 vs 6.07)와 포화지방(0.33 vs 0.38)은 식약처 음식DB와 사실상 일치해 AIHub 데이터의 신뢰성을 강하게 뒷받침한다. 8개 영양소 전부가 한국 권위 출처의 웹 합의 범위 내이거나 레시피 편차로 설명 가능하여 clearly_off 항목은 없음. 주의: inout.team/fatsecret 계열의 175kcal·나트륨133mg 값은 단위/제공량 혼선이 의심되는 이상치(특히 나트륨 133mg은 모든 한국 정부 출처 300~370mg과 충돌)이므로 비교 기준에서 가중치를 낮춤. has_clear_error=false, flagged 비움.
+
+### braised-chicken ★보정
+  한글: 찜닭
+  웹 대표값(100g): kcal=150 탄=9 당=3.5 지=6 단=17 나트륨=380 콜레=75 포화=1.3
+  범위: kcal 90–193 (대표 ~130–175); carb 3.8–15.8 (당면·감자 함량에 좌우, 대표 ~5–10); sugar 0.8–4.45 (간장양념 설탕, 대표 ~3–4); fat 2–7.7 (대표 ~5–7); protein 7.6–31 (닭 부위·살코기 비율에 좌우, 대표 ~13–22); sodium 256–627 (간장베이스라 변동 큼, 대표 ~300–450); chol 30–91 (닭고기 자체가 56–90mg/100g, 대표 ~75); sat_fat 0.7–2.0 (대표 ~1–1.5)
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 126.63 vs 웹 150 [정상] 웹 90~193 범위 내. 당면/감자 적고 채소·국물 비율 높은 레시피면 126이 충분히 설명됨.
+    - carb: AIHub 7.16 vs 웹 9 [정상] 웹 3.8~15.8 범위 한가운데. 당면 양에 따라 편차 큰 항목, 7.16은 무리 없음.
+    - sugar: AIHub 0.78 vs 웹 3.5 [의심] 웹 대표 3~4.5g(간장양념 설탕)보다 꽤 낮음. 다만 출처마다 당류 보고가 불완전(미표기 다수)하고, 양념 적은 레시피·당류 분석 차이로 설명 가능해 clearly_off까지는 아님.
+    - fat: AIHub 6.56 vs 웹 6 [정상] 웹 2~7.7 범위 내, 대표값과 거의 일치.
+    - protein: AIHub 9.68 vs 웹 17 [정상] 웹 7.6~31로 분산이 매우 큼. 채소·당면·국물 포함 비율 높은 1인분 기준이면 9.68 설명 가능(NOFAT 7.61 사례 존재).
+    - sodium: AIHub 193.47 vs 웹 380 [정상] 웹 256~627로 대체로 더 높지만, 간장베이스라 레시피 편차가 가장 큰 항목. 저염/국물 희석 레시피면 193도 가능 범위 하단으로 설명됨.
+    - chol: AIHub 3.77 vs 웹 75 [명백이상] 닭고기 자체가 56~90mg/100g(가슴살 56, 다리살 더 높음). 다수 웹출처 30~91mg로 일관. 찜닭이 닭고기 주재료인데 3.77mg는 어떤 레시피로도 물리적으로 불가능(거의 1/20~1/24 수준). 측정·매핑 오류로 강하게 추정.
+    - sat_fat: AIHub 0.02 vs 웹 1.3 [명백이상] 총지방 6.56g인데 포화지방 0.02g는 비율상 불가능(닭지방·참기름 포화분만 해도 보통 총지방의 20~30%). 웹 0.69~2.0g로 일관. 사실상 0인 0.02는 누락/오기로 강하게 추정.
+  ★ 적대적 검증 → 보정 확정:
+     · chol_mg: 3.77 → 30 (신뢰 high)
+       근거: AIHub 3.77 mg/100g은 다수 독립 권위 출처와 명백히 모순되어 데이터 오류로 확정한다. (1) 식약처 식품안전나라(MFDS) 기반 안동찜닭 음식 데이터: 450.42 mg / 1500g = 30.0 mg/100g — 이는 닭고기에 감자·당근·당면·양념·국물이 섞인 '완성 음식' 기준으로 가장 낮은 합리적 dish-level 값이다. (2) USDA FoodData Central(SR): 닭 넓적다리 살코기 stewed 90 mg/100g, 살+껍질 stewed 84 mg/100g, dark meat braised 125–141 mg/100g. (3) 일반 조리닭 합의 ~75–90 mg/100g. CSV는 per-100g 표이며 해당 행의 단백질 9.68 g/100g은 명백히 닭고기 함유 음식임을 보여주는데, 콜레스테롤 3.77은 '닭이 거의 없는 음식' 수준으로 자기모순이다. 가장 희석된 권위 dish-level 값(30)조차 AIHub의 약 8배, 순수 닭고기 기준은 약 20–24배다. 어떤 권위 출처도 3.77 근처에 수렴하지 않는다. 권고값은 과대보정을 피하기 위해 순수 살코기(75–90)가 아닌, AIHub 행과 동일한 '완성 음식(채소·국물 희석)' 성격에 부합하는 식약처 dish-level 30.0 mg/100g을 보수적 앵커로 제시한다.
+       출처: 식약처 식품안전나라/MFDS 기반 안동찜닭 음식영양성분 (램프쿡 인용, 1500g당 450.42mg → 30.0mg/100g): https://www.lampcook.com/food/food_nutrition_view2.php?idx_no=1171 | USDA FoodData Central(SR) 닭 넓적다리 stewed/braised 콜레스테롤표 (살코기 stewed 90mg, dark meat braised 125–141mg/100g): http://www.dietandfitnesstoday.com/cholesterol-in-chicken-thigh.php | USDA(recipal, SR 데이터) Chicken thigh meat only cooked stewed 126mg/140g → 90mg/100g: https://www.recipal.com/ingredients/918-nutrition-facts-calories-protein-carbs-fat-chicken-broilers-or-fryers-thigh-meat-only-cooked-stewed | USDA(nutritionix) Chicken broilers or fryers thigh meat only cooked stewed: https://www.nutritionix.com/i/usda/chicken-broilers-or-fryers-thigh-meat-only-cooked-stewed-1-unit-yield-from-1-lb-ready-to-cook-chicken/513fceb475b8dbbc21000839 | 식약처 식품영양성분 데이터베이스(식품안전나라): https://various.foodsafetykorea.go.kr/nutrient/ | 농촌진흥청 국가표준식품성분표 검색: https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list
+     · sat_fat: 0.02 → 1.3 (신뢰 high)
+       근거: 기본 입장(AIHub 1차 신뢰)을 적용했으나, 다수 독립 권위 출처가 AIHub 0.02를 명백히 반박하고 물리적으로도 불가능해 변경 권고 기준을 충족함. (1) USDA FoodData Central: 찜닭의 직접 기준인 '닭다리 살코기 braised' 포화지방 2.35 g/100g(총지방 8.6), '껍질 포함 stewed' 4.11 g/100g(총지방 14.74). (2) 한국 출처 NOFAT 안동찜닭: 포화지방 10.3 g/1500g 1회제공량 → 약 0.69 g/100g(총지방 2 g). (3) FatSecret KR 안동찜닭 통다리살: 총지방 7.5 g/100g(닭지방의 포화 비율 약 30% 적용 시 포화지방 ~2 g 함의). (4) My Korean Kitchen 찜닭 레시피: 1인분 포화지방 4 g → 100g 환산 약 0.8 g. 물리 정합성 검증: 닭 지방의 포화지방 비율은 약 28~33%이므로, 모든 출처가 보고한 총지방(2~14.7 g/100g) 하에서 포화지방은 최소 ~0.6 g 이상이어야 함. 0.02 g/100g은 사실상 무지방 닭고기를 의미해 물리적으로 불가능하며, 웹 합의 대비 1~2 자릿수 오차임. 보수적 권고값은 살코기·소스 희석을 반영해 선행 리서처 통용값 ≈1.3 g/100g에 수렴(USDA 살코기 2.35와 희석 조리 0.7~0.9의 중간대). 변경 권고 + confidence=high.
+       출처: USDA FoodData Central — Chicken, braised, cooked, meat only, thigh, dark meat (via nutritionvalue.org): 포화지방 2.35 g/100g, 총지방 8.6 g/100g — https://nutritionvalue.org/Chicken,_braised,_cooked,_meat_only,_thigh,_dark_meat,_broilers_or_fryers_nutritional_value.html | USDA FoodData Central — Chicken Thigh Meat and Skin (Broilers or Fryers, Stewed, Cooked) (via FatSecret): 포화지방 4.11 g/100g, 총지방 14.74 g/100g — https://foods.fatsecret.com/calories-nutrition/usda/chicken-thigh-meat-and-skin-(broilers-or-fryers-stewed-cooked) | NOFAT 안동찜닭 영양성분 (식품영양성분 DB 연계): 1회제공량 1500g, 포화지방 10.3 g/serving (≈0.69 g/100g), 총지방 2 g/100g — https://nofat.kr/food/D000420 | FatSecret KR — 닭형 직화 안동찜닭 통다리살 100g: 총지방 7.5 g/100g (포화지방 미표기, 닭지방 포화비율 적용 시 ~2 g 함의) — https://www.fatsecret.kr/%EC%B9%BC%EB%A1%9C%EB%A6%AC-%EC%98%81%EC%96%91%EC%86%8C/%EB%8B%AD%ED%98%95/%EC%A7%81%ED%99%94-%EC%95%88%EB%8F%99%EC%B0%9C%EB%8B%AD-%ED%86%B5%EB%8B%A4%EB%A6%AC%EC%82%B4/100g | My Korean Kitchen — Jjimdak (Korean Braised Chicken) recipe nutrition: 1인분 포화지방 4 g (100g 환산 ≈0.8 g) — https://mykoreankitchen.com/jjimdak/ | 식품안전나라 식품영양성분 데이터베이스 (찜닭 항목 R209-008000501-0000) — https://various.foodsafetykorea.go.kr/nutrient/general/food/detail.do?searchFoodCd=R209-008000501-0000&searchRegionCd=ZZ&searchMonthCd=AVG
+  출처: 인아웃(InOut) 안동찜닭(닭형) 100g: 174kcal/탄5/당3.3/지7.5/단21.5/나551/콜91.3/포화2.0 — https://www.inout.team/search/food/detail/aqr6-40BNh9NA_WoL6Ma | 인아웃(InOut) 안동찜닭 닭다리 100g: 136kcal/탄3.8/당3/지2/단25.1/나256.6/콜89.6/포화0.7 — https://www.inout.team/search/food/detail/92544 | 인아웃(InOut) 찜닭 100g환산: 192.5kcal/탄15.8/당3.75/지7.7/단13.95/나313.5/콜47/포화1.75 — https://www.inout.team/search/food/detail/869 | NOFAT 안동찜닭 100g: 90kcal/탄9.3/당4.45/지2.59/단7.61/나364/콜30/포화0.69 — https://nofat.kr/food/D000420 | FatSecret KR 찜닭 100g: 일반 193kcal(탄15/지7/단13), 안동식(하림) 125kcal(탄8/지5/단12) — https://www.fatsecret.kr/칼로리-영양소/search?q=찜닭 | SnapCalorie steamed chicken 100g: 165kcal/단31/지3.6 (살코기 위주) — https://www.snapcalorie.com/nutrition/ko/steamed_chiken_nutrition.html | Nutritionix Korean braised chicken with vegetables — https://www.nutritionix.com/i/nutritionix/korean-braised-chicken-with-vegetables-1-cup/6275565cc1d37366472e6a78
+  비고: 찜닭은 식당/가정 조리식품으로 당면·감자·채소·국물 비율과 간장양념 농도에 따라 레시피 편차가 매우 큼(특히 나트륨·탄수·단백질). AIHub 1차값(3코드 평균)은 kcal/carb/fat/protein/sodium 5개 항목은 모두 웹 범위 내로 reasonable — 특히 채소·국물 포함 비율이 높은 1인분 기준이면 낮은 단백질(9.68)·나트륨(193)도 설명 가능(NOFAT 7.61g 단백질, 364mg 나트륨 등 낮은 사례 존재). sugar(0.78)는 웹 대표(3~4.5g)보다 낮으나 당류 보고 불완전성과 양념차로 questionable에 그침. 명백한 이상치는 2건: (1) 콜레스테롤 3.77mg — 닭고기 단일재료만으로도 56~90mg/100g가 나오므로 물리적으로 불가능하며 웹 다출처(30~91mg)가 강하게 반박. (2) 포화지방 0.02g — 총지방 6.56g 대비 사실상 0으로, 닭지방+참기름 포화분을 감안하면 불가능하고 웹(0.69~2.0g)이 일관 반박. 두 항목 모두 AIHub 측정/성분매핑 오류(콜레스테롤·포화지방 컬럼 누락 또는 0 처리)로 강하게 추정됨. 보수적으로 봐도 이 2건은 clearly_off.
+
+### braised-pork-hock
+  한글: 족발
+  웹 대표값(100g): kcal=210 탄=2.5 당=1 지=13 단=21 나트륨=480 콜레=90 포화=3.8
+  범위: kcal 171~328 (대표 190~236); 탄수화물 0~4.1 (대부분 0~2.5, 양념 포함 시 상승); 당류 0~2.1 (대부분 0~0.1, 단맛 양념 시 ↑); 지방 10.3~31.4 (대표 12~16, 부위·껍질 비율 따라 큰 편차); 단백질 16.9~43 (대표 17~29); 나트륨 395~1050 (가정 족발 ~400~515, 미국 소금절임 hock 1050); 콜레스테롤 78~106 (대표 ~90); 포화지방 3.2~4.6.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 194.99 vs 웹 210 [정상] 웹 대표 190~236 범위 내 (InOut 190과 거의 일치).
+    - carb: AIHub 11.34 vs 웹 2.5 [의심] 대부분 출처 0~4.1g. 11.34는 다출처 상한(4.1)의 약 2.8배로 다소 높으나, 간장·물엿·설탕 양념 졸임의 당질이 표면에 코팅되는 식당식 족발이면 가능. 단일 강한 반박 합의가 없어 questionable.
+    - sugar: AIHub 6.85 vs 웹 1 [의심] 웹 0~2.1g(대부분 0~0.1). 6.85는 상당히 높지만 달콤한 양념(물엿/설탕) 졸임을 반영하면 설명 가능. 탄수와 동반 상승해 내부 일관성 있음 → clearly_off 아님.
+    - fat: AIHub 8.55 vs 웹 13 [정상] 웹 10.3~31.4. 8.55는 하단보다 약간 낮으나 살코기 위주(껍질·비계 적은) 부위면 충분히 설명됨(NOFAT lean 0.5g 등 더 낮은 값도 존재).
+    - protein: AIHub 16.5 vs 웹 21 [정상] 웹 16.9~43. InOut 16.9와 거의 일치, 범위 하단 내.
+    - sodium: AIHub 497.51 vs 웹 480 [정상] 가정/식당식 족발 395~515 범위 한가운데. 매우 적합.
+    - chol: AIHub 57.55 vs 웹 90 [정상] 웹 78~106이 대표지만 부위·기름 함량에 따라 변동. 57.55는 대표값보다 낮으나(절반 미만 아님) 살코기 위주면 가능, 강한 반박 합의 없음.
+    - sat_fat: AIHub 2.35 vs 웹 3.8 [정상] 웹 3.2~4.6. 2.35는 다소 낮으나 총지방이 낮은(8.55) AIHub 값과 비율상 일관(약 27%), 살코기 위주 설명 가능.
+  출처: InOut 돼지족발 100g — https://www.inout.team/search/food/detail/733 (190kcal, 탄4.1, 당2.1, 지12, 단16.9, 나515, 콜78, 포화3.2) | calo.kr 족발 100g — https://www.calo.kr/nutrition/1098333/ (236kcal, 탄0, 당0, 지15.9, 단21.8, 나395, 콜106, 포화4.3) | FatSecret KR 족발 검색 — https://www.fatsecret.kr (돼지족발 190kcal/지12/단16.9; 일반족발 229kcal/지31.4/단43.1) | FoodStruct Pork hock (USDA 기반) — https://foodstruct.com/food/pork-hock (171kcal, 단19, 나1050, 콜89, 포화3.2, 당0) | NOFAT/식약처 족발 — https://nofat.kr/food/D018523 (239kcal, 단28.9, 탄0.28, 콜~92, 포화~4.6 환산)
+  비고: 족발은 식당/가정 조리식품으로 부위(앞다리/뒷다리, 살코기 vs 껍질·비계 비율)와 양념(간장·물엿·설탕 졸임)에 따라 편차가 매우 큼. 영문 'pork hock/feet'(USDA)은 양념 없는 데이터라 탄수·당류 0이지만, 한국식 '족발'은 단 양념 졸임이라 탄수/당류가 올라갈 수 있음. AIHub의 8개 영양소 중 6개는 웹 대표 범위 내(reasonable)이고, 탄수(11.34)·당류(6.85) 2개만 다출처 상한을 초과하나 양념 졸임으로 설명 가능하며 두 값이 동반 상승해 내부 일관성이 있어 questionable로 판정. AIHub가 1차 신뢰 출처이고 웹이 보조라는 보수적 기준상, 어떤 항목도 다출처가 강하게 일관되게 반박하지 못해 clearly_off 없음. 따라서 has_clear_error=false, flagged=[]. 주의 깊게 볼 항목은 탄수/당류(레시피상 단 양념 여부 확인 권장)와 콜레스테롤(웹 대표 대비 약간 낮음).
+
+### bread
+  한글: 빵
+  웹 대표값(100g): kcal=290 탄=48 당=9 지=7 단=8.5 나트륨=400 콜레=25 포화=2.5
+  범위: kcal 250~375 (plain white/wheat ~266-279, sweet/enriched bakery ~340-375); carb 37~56 (plain ~47-50, sweet ~52-56, filled/cream breads lower); sugar 0~19 (plain white 0-5.7, 단팥빵 ~16, sweet bread ~18-19); fat 3~18 (plain ~3.3, sweet ~8-12, cream bread ~18.8); protein 7~11 (plain white 8.9-10.7, milk/sweet 7-9); sodium 12~490 (plain bread high ~490, sweet/filled breads 12-310); cholesterol 0~79 (plain 0, sweet ~39, 크림빵 ~79); saturated fat 0.7~10.7 (plain 0.7-0.8, sweet ~3.1, cream bread ~10.7)
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 274.41 vs 웹 290 [정상] Plain bread 266-279, sweet/enriched 340-375. AIHub 274 sits at the plain-to-moderate end of a wide range; fully consistent.
+    - carb: AIHub 37.4 vs 웹 48 [의심] Typical bread carb is 47-56g; AIHub 37.4 is notably lower. Not >2x off (only ~22% below plain), and explainable if the 45-code average includes filled/cream breads where flour fraction is diluted by high-fat fillings. Borderline but plausible, not refuted by a tight consensus.
+    - sugar: AIHub 9.14 vs 웹 9 [정상] Plain ~0-5.7g, 단팥빵 ~16g, sweet bread ~19g. AIHub 9.14 is a sensible mid-point for a plain+sweet bakery mix.
+    - fat: AIHub 10.77 vs 웹 7 [정상] Plain 3.3g but enriched/sweet bakery 8-18g (크림빵 ~18.8). 10.77 matches an enriched-bread-weighted average.
+    - protein: AIHub 7.34 vs 웹 8.5 [정상] Plain white 8.9-10.7g; milk/sweet breads 7-9g. 7.34 is slightly low but within range, consistent with sweet/filled breads.
+    - sodium: AIHub 238.68 vs 웹 400 [정상] Plain bread is high-sodium (~490mg) but sweet/filled breads run much lower (12-310mg). 238.68 falls inside the observed range; lower than plain bread but explained by the sweet-bread mix.
+    - chol: AIHub 57.54 vs 웹 25 [정상] Plain bread 0mg, but egg/butter/cream-rich Korean bakery breads carry cholesterol (sweet ~39mg, 크림빵 ~79mg). 57.54 is consistent with an enriched-bread average.
+    - sat_fat: AIHub 3.48 vs 웹 2.5 [정상] Plain 0.7-0.8g, sweet ~3.1g, cream bread ~10.7g. 3.48 fits a moderate enriched-bread average.
+  출처: USDA FoodData Central / fatsecret (white & wheat bread per 100g) — https://foods.fatsecret.com/calories-nutrition/usda/white-bread?portionid=61551&portionamount=100.000 | calories-info.com (bread per 100g: 266 kcal, 49.4g carb, 5.67g sugar, 3.33g fat, 8.85g protein, 490mg sodium, 0mg chol, 0.82g sat fat) — https://calories-info.com/bread-calories-kcal | NOFAT 팥빵(단팥빵) 100g (253 kcal, 48.5g carb, 16.4g sugar, 3.17g fat, 7.57g protein, 180mg sodium, 19mg chol, 1.69g sat fat) — https://nofat.kr/food/R000264 | snapcalorie sweet bread per 100g (371 kcal, 56.5g carb, 18.9g sugar, 12.2g fat, 9g protein, 310mg sodium, 39mg chol, 3.1g sat fat) — https://www.snapcalorie.com/nutrition/sweet_bread_nutrition.html | geniet 크림빵 100g (270 kcal, 18.8g fat, 10.7g sat fat, 79mg chol) — https://geniet.co.kr/calorie-calculator/food-detail/1074771 | 농촌진흥청 국가표준식품성분표 (농식품올바로) — https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list | 식품의약품안전처 식품영양성분DB — https://various.foodsafetykorea.go.kr/nutrient/
+  비고: '빵'은 plain 식빵부터 단팥빵/크림빵/소보로빵 등 가당·계란·버터·생크림이 들어간 베이커리 빵까지 포함하는 매우 넓은 범주로, 레시피별 편차가 큼. AIHub 45개 음식코드 평균값(지방 10.77, 콜레스테롤 57.54, 당류 9.14)은 plain bread가 아니라 enriched/sweet 베이커리 빵 쪽으로 가중된 혼합 평균임이 분명하며, 이는 웹 출처들과 모순되지 않음. 가장 의심스러운 항목은 carb(37.4g)로 통상 bread(47-56g)보다 낮으나, (1) 2배 이상/절반 이하의 강한 이탈이 아니고 (2) 크림빵 등 고지방 충전형 빵(탄수 18.8g 사례 존재)을 평균에 포함하면 설명 가능하므로 'questionable'로 두고 clearly_off로는 판정하지 않음. sodium(238.68)도 plain bread(~490mg)보다 낮지만 sweet/filled bread(12-310mg) 범위 내라 reasonable. AIHub가 1차 신뢰 출처라는 전제하에 보수적으로 판정한 결과 clearly_off 0건, has_clear_error=false.
+
+### bulgogi
+  한글: 불고기
+  웹 대표값(100g): kcal=150 탄=5.5 당=2.5 지=8 단=14.5 나트륨=250 콜레=38 포화=2.3
+  범위: kcal 94–233 (대표 130–165); 탄수 1.4–6.7 (대표 ~5); 당류 0–3.3 (대표 ~2.5, 양념의 설탕·배즙에 좌우); 지방 2.6–11.3 (대표 7–9); 포화지방 1.0–3.6 (대표 ~2.3); 단백질 10–31 (대표 12–18, 살코기 비율↑·소스 비율↓일수록 상승); 나트륨 194–333 (대표 ~220–250, 간장 양념 의존); 콜레스테롤 30–83 (대표 ~33–40). 식당/가정 조리식이라 양념 비율·고기 부위·조리 손실에 따른 편차가 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 144.91 vs 웹 150 [정상] 웹 대표 130–165 한가운데. 살코기+양념 조합으로 자연스럽게 설명됨.
+    - carb: AIHub 6.97 vs 웹 5.5 [정상] 웹 1.4–6.7 범위 상단이나 양념(간장·설탕·배) 비율 높은 레시피로 설명 가능.
+    - sugar: AIHub 2.27 vs 웹 2.5 [정상] 웹 0–3.3 범위 중앙. 불고기 양념의 설탕·배즙과 일치.
+    - fat: AIHub 8.43 vs 웹 8 [정상] 웹 대표 7–9 정중앙. 다출처 일치.
+    - protein: AIHub 10.12 vs 웹 14.5 [정상] 웹 대표 12–18보다 다소 낮으나, 양념·국물 비율이 높은 조리식(살코기 비율↓) 레시피로 설명 가능. SnapCalorie도 10g.
+    - sodium: AIHub 224.22 vs 웹 250 [정상] 웹 194–333 한가운데. 간장 양념 기준 전형값.
+    - chol: AIHub 27.08 vs 웹 38 [정상] 웹 대표 30–40보다 약간 낮으나 절반 미만은 아니며(웹 30.3까지 존재), 부위·조리에 따른 편차 내. 보수적으로 reasonable.
+    - sat_fat: AIHub 2.79 vs 웹 2.3 [정상] 웹 1.0–3.6 범위 내. 총지방 8.4g 대비 포화 비율도 소고기로서 합리적.
+  출처: SnapCalorie — Bulgogi Nutrition (USDA 기반 추정, 100g): https://www.snapcalorie.com/nutrition/bulgogi_nutrition.html | FatSecret.kr / InOut — 일반 불고기 100g (162kcal, 단백질16.1, 지방8.0, 탄수4.9, 나트륨194, 콜레스테롤34): https://www.fatsecret.kr/%EC%B9%BC%EB%A1%9C%EB%A6%AC-%EC%98%81%EC%96%91%EC%86%8C/search?q=%EB%B6%88%EA%B3%A0%EA%B8%B0 | FatSecret — Costco Beef Bulgogi (142g→100g 환산: 120kcal, 단백질16.2, 나트륨219, 콜레스테롤39, 포화지방1.4): https://androidembeddedregional.fatsecret.com/calories-nutrition/costco/beef-bulgogi | Hawaii Nutrition Center (CTAHR) — Beef Bulgogi (140g serv, 콜레스테롤·단백질 상단값): https://nutritioncenter.ctahr.hawaii.edu/beef-bulgogi/ | Nutritionix — Beef Bulgogi: https://www.nutritionix.com/food/beef-bulgogi
+  비고: 불고기는 식당/가정 조리식으로 레시피 편차가 매우 큼(소스 비율, 고기 부위, 조리 손실). 8개 영양소 모두 AIHub 값이 다출처 웹 합의 범위 내에 위치. 사소한 편차 2건: (1) 단백질 10.12 — 웹 대표(12–18)보다 낮으나 SnapCalorie도 10g이고 양념·국물 비율 높은 조리식으로 설명됨. (2) 콜레스테롤 27.08 — 웹 대표(30–40)보다 약간 낮으나 절반 미만 아님(웹 30.3 사례 존재). 어느 것도 다출처가 강하게 반박하지 못하므로 questionable조차 부여하지 않고 보수적으로 모두 reasonable 판정. clearly_off 없음 → has_clear_error=false, flagged 비어있음. AIHub 값을 1차 신뢰 출처로서 유지 권장.
+
+### cake
+  한글: 케이크
+  웹 대표값(100g): kcal=330 탄=45 당=25 지=16 단=5 나트륨=250 콜레=65 포화=7
+  범위: 100g당 일반 범위(여러 출처 교차): 열량 237~420kcal(대표 ~300-350); 탄수화물 27~62g(대표 35-50); 당류 14~40g(대표 18-30); 지방 3~25g(대표 12-20, 생크림/초코), 스펀지/플레인은 3-8g; 단백질 3.2~7.7g(대표 ~5); 나트륨 139~623mg(한국 케이크 150-250, 미국 상업제품 280-623); 콜레스테롤 1~157mg(스펀지/달걀계 50-102, 생크림 70, 치즈케이크 ~157, 미국 화이트케이크 1); 포화지방 1~15g(스펀지 1, 화이트 3.9, 생크림 8.5, 초코 14-15).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 321.6 vs 웹 330 [정상] 웹 대표 범위 237~420kcal의 중앙에 위치. 생크림/혼합 케이크 프로필과 정확히 일치.
+    - carb: AIHub 35.09 vs 웹 45 [정상] 웹 범위 27~62g 내. 생크림케이크(27.6) 쪽에 가까운 다소 낮은 값이나 충분히 설명 가능.
+    - sugar: AIHub 13.84 vs 웹 25 [정상] 웹 범위 14~40g의 하단. 생크림케이크(14.5g)와 거의 일치. 무가당/저당 비율 높은 케이크로 설명 가능.
+    - fat: AIHub 18.06 vs 웹 16 [정상] 웹 범위 3~25g 내, 생크림(12.5)~초코(25) 사이. 크림 함량 높은 케이크와 일치.
+    - protein: AIHub 4.64 vs 웹 5 [정상] 웹 범위 3.2~7.7g 내 정중앙. 매우 일치.
+    - sodium: AIHub 146.36 vs 웹 250 [정상] 한국 케이크 나트륨 범위 150~250mg의 하단과 일치(생크림 151mg). 미국 상업제품(280-623)보다 낮지만 한국 식약처 기준으로 합리적.
+    - chol: AIHub 69.69 vs 웹 65 [정상] 생크림케이크 70.1mg과 거의 정확히 일치. 웹 범위 1~157mg 내 중앙. 달걀/유제품 함량 반영.
+    - sat_fat: AIHub 3.71 vs 웹 7 [의심] 총지방 18g 대비 포화지방 3.71g은 낮음. 생크림(8.5)/초코(14)는 더 높으나, 식물성유 사용 케이크나 화이트케이크(3.9)·스펀지(1)는 이 수준. 웹 범위 1~15g 내에 들어가므로 레시피로 설명은 가능하나 18g 지방 대비 비율(20%)이 다소 낮아 주의.
+  출처: NOFAT 식품영양성분(식약처 식품영양성분DB 2020 기반) - 생크림케이크: https://nofat.kr/food/D018310 | NOFAT 식품영양성분 - 초콜릿케이크: https://nofat.kr/food/D000302 | NOFAT 식품영양성분 - 치즈케이크: https://nofat.kr/food/R000277 | 소셜타임스 케이크 8종 성분비교분석(식약처 자료집 기반): https://www.esocialtimes.com/news/articleView.html?idxno=38596 | Nutritionix/USDA 기반 케이크(초콜릿/화이트/파운드/스펀지) per 100g: https://foodstruct.com/food/chocolate-cake | USDA FoodData Central 스펀지케이크(nutrientoptimiser): https://nutrientoptimiser.com/nutritional-value-cake-sponge-commercially-prepared/
+  비고: 케이크는 종류(생크림/초콜릿/치즈/스펀지/파운드)·레시피별 편차가 매우 큰 조리식품. AIHub 8개 음식코드 평균값은 전반적으로 '생크림케이크 + 혼합' 프로필과 가장 잘 일치하며, 열량·콜레스테롤·단백질·나트륨은 한국 식약처(NOFAT) 기준 거의 정확히 일치한다. 당류(13.84)는 웹 하단이지만 생크림케이크(14.5)와 일치해 reasonable. 유일하게 주의할 점은 포화지방(3.71g): 총지방 18g에 비해 포화지방 비율(약 20%)이 생크림·초콜릿 케이크의 통상 비율(60-70%)보다 낮다. 다만 화이트케이크(3.9g)·스펀지(1g)·식물성유 사용 제품 등 웹 범위(1~15g) 안에 충분히 들어가므로 clearly_off가 아닌 questionable로 보수적 판정. AIHub가 1차 신뢰 출처이므로 명백한 오류로 단정하지 않음. has_clear_error=false.
+
+### cold-noodles
+  한글: 냉면
+  웹 대표값(100g): kcal=120 탄=24 당=2.5 지=1.5 단=4 나트륨=420 콜레=12 포화=0.4
+  범위: prepared-dish 기준(조리된 면+육수, AIHub와 동일 유형) 100g당 웹 합의: 열량 약 95-166 kcal(대표 110-125; snapcalorie 125, calzen 120, inout 96, wiki 110), 탄수화물 16-28.5 g(대표 22-25), 당류 0.5-3 g(대표 2-3), 지방 1-2.1 g(대표 1.5), 단백질 2.9-8 g(대표 4; 토핑 없을 때 4 부근, 계란·편육 토핑 포함 시 상승), 나트륨 335-473 mg(대표 400-440), 콜레스테롤 0-32 mg(대표 12; 계란/편육 유무에 좌우), 포화지방 0.3-0.5 g. 주의: 건면(메밀냉면 면) 자체는 100g당 360 kcal·탄수 73 g으로 전혀 다른 값이므로 조리식품 비교에서 제외함. 레시피·국물량·토핑에 따른 편차가 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 166.23 vs 웹 120 [정상] 웹 대표 110-125, 범위 95-166. AIHub 166은 상단이지만 국물을 적게 잡고 면 밀도가 높은 레시피로 설명 가능. 2배 초과 아님.
+    - carb: AIHub 28.53 vs 웹 24 [정상] 웹 16-28.5 범위(snapcalorie 25, calzen 24). AIHub 28.5는 상단이나 범위 내, 면 비율 높은 레시피로 설명됨.
+    - sugar: AIHub 1.85 vs 웹 2.5 [정상] 웹 0.5-3 범위. AIHub 1.85는 정중앙. 다출처 일치.
+    - fat: AIHub 2.13 vs 웹 1.5 [정상] 웹 1-2.1 범위(inout 1.43, snapcalorie 1.5). AIHub 2.13은 상단 경계지만 편육 토핑 시 설명 가능.
+    - protein: AIHub 7.8 vs 웹 4 [의심] 토핑 없는 면+육수 대표값 약 4 g(snapcalorie 4, inout 환산 4.1, nutribit 4)의 약 2배. 다만 계란·편육·소고기 토핑 포함 시 1인분 8-20 g 단백질 보고가 다수 있어, 토핑 풍부 레시피 평균이면 7.8 도달 가능. 강한 일관 반박 부재 → clearly_off 아님.
+    - sodium: AIHub 472.95 vs 웹 420 [정상] 웹 335-473 범위(snapcalorie 400, calzen 400, inout 환산 440). AIHub 473은 상단이나 짠 육수 고려 시 충분히 설명됨.
+    - chol: AIHub 31.89 vs 웹 12 [의심] 웹 대표 12 mg(inout/CJ 환산), snapcalorie 0. AIHub 31.89는 약 2.7배로 높음. 그러나 콜레스테롤 출처가 계란 노른자·편육이라 풀에그+소고기 토핑 레시피면 상승 가능. 웹 자체 편차(0-12)가 커 강한 반박이라 보기 어려움 → 보수적으로 questionable.
+    - sat_fat: AIHub 0.53 vs 웹 0.4 [정상] 웹 0.3-0.5 범위(snapcalorie 0.3, inout 환산 0.5). AIHub 0.53은 상단 근처로 사실상 일치.
+  출처: snapcalorie — Korean cold noodle Nutrition (per 100g: 125 kcal, carb 25, sugar 2.5, fat 1.5, sat_fat 0.3, protein 4, sodium 400, chol 0): https://www.snapcalorie.com/nutrition/korean_cold_noodle_nutrition.html | calzen.ai — 냉면 100g (120 kcal, 탄수 24, 당류 3, 지방 1, 단백질 5, 나트륨 400): https://calzen.ai/ko/calories-in/naengmyeon/ | inout.team — 물냉면 1인분 400g (383 kcal, 탄수 64.6, 당류 1.9, 지방 5.7, 단백질 16.5, 나트륨 1760, 콜레스테롤 48, 포화지방 2 → 100g 환산 96/16.2/0.48/1.43/4.13/440/12/0.5): https://www.inout.team/search/food/detail/1396 | Wikipedia — Naengmyeon (per 100g: 110 kcal, fat 1, carb 55-62): https://en.wikipedia.org/wiki/Naengmyeon | NOFAT — 물냉면 칼로리(1인분 500-600g: 400-500 kcal, 나트륨 1000-1500 mg): https://nofat.kr/column/물냉면-칼로리 | nutribit — Mul/Korean cold noodle (200-300g 기준 단백질 8-12 g ≈ 4 g/100g): https://www.nutribit.app/food/66ac7fc9f3a3e393cb974677
+  비고: AIHub 값은 '조리된 냉면(면+육수+토핑)' 유형으로, 동일 유형 웹 출처(snapcalorie 125 kcal, calzen 120 kcal, inout 96 kcal/100g 환산, wiki 110 kcal)와 동일 범주에서 비교함. 건면 자체(메밀냉면 면 360 kcal/100g)는 전혀 다른 카테고리라 비교에서 제외함(혼동 주의). 8개 영양소 중 6개는 웹 범위 내 reasonable. 단 2개(protein 7.8 vs ~4, cholesterol 31.89 vs ~12)가 웹 대표값의 약 2-2.7배로 높으나, 둘 다 계란·편육·소고기 토핑에서 비롯되는 성분이고 토핑량은 레시피별 편차가 매우 크며(단백질 1인분 8-20 g 보고 다수), 웹 출처 자체도 콜레스테롤은 0-48 mg으로 분산이 큼. 따라서 '어떤 합리적 웹 합의로도 설명 불가'(clearly_off) 기준에는 미달 → 보수적으로 questionable로 판정, clearly_off 0건. AIHub가 1차 신뢰 출처라는 정책에 부합. 종합적으로 AIHub 냉면 값에 명백한 데이터 오류(라벨 오기·자릿수 오류 등)는 발견되지 않음.
+
+### curry
+  한글: 카레 (한국식 카레 소스/스튜, 밥 제외)
+  웹 대표값(100g): kcal=125 탄=10 당=2.5 지=7.5 단=7 나트륨=400 콜레=18 포화=2.5
+  범위: 열량 75~158 kcal (육류 카레 107~158, 소스류 75~125); 탄수화물 4.7~16.5 g (밥 미포함 육류 카레 4.7~10, 채소·소스 10~16); 당류 1.2~3.4 g; 지방 3.0~9.2 g (가정식 6~8, 식당·크림 15~20); 단백질 1~14 g (소스 1~3, 채소 2~5, 육류 카레 10~14, 한국식 혼합 ~6); 나트륨 314~530 mg (카레 소스·요리 350~530); 콜레스테롤 0~41 mg (채소 0, 육류 11~41); 포화지방 0.7~3.0 g. ※ 밥 포함 '카레라이스'는 별개 프로파일(100g당 100~135 kcal, 탄수 15~25 g, 지방 2.5~4 g, 나트륨 ~220~330 mg)이라 AIHub 값과 맞지 않음 — AIHub는 밥 제외 카레(소스/스튜)에 해당.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 153.67 vs 웹 125 [정상] 육류 카레(밥 제외) 웹 범위 75~158 내 상단. 한국식은 루(밀가루)+감자+기름으로 153은 무리 없음.
+    - carb: AIHub 12.16 vs 웹 10 [정상] 육류 카레 소스 4.7~10, 채소·전분 첨가 시 16까지. 12.16은 밀가루 루+감자 고려 시 범위 내.
+    - sugar: AIHub 1.74 vs 웹 2.5 [정상] 웹 당류 1.2~3.4 g 범위 내. 양파·당근 천연당 수준으로 정상.
+    - fat: AIHub 9.24 vs 웹 7.5 [정상] 가정식 6~8, 식당·기름 多 15~20. 9.24는 합리적 상단(루+기름).
+    - protein: AIHub 5.9 vs 웹 7 [정상] 소스 1~3, 채소 2~5, 육류 카레 10~14. 한국식 고기 소량 혼합 5.9는 중간값으로 타당.
+    - sodium: AIHub 529.23 vs 웹 400 [정상] 카레 소스·요리 314~530. 일식/한국식 카레는 짠 편이라 470~530 다출처 확인 — 상단이나 합의로 설명됨.
+    - chol: AIHub 30.36 vs 웹 18 [정상] 육류 카레 11~41 mg 범위 내. 소고기/돼지/닭 사용 시 30은 정상(채소만이면 0).
+    - sat_fat: AIHub 3.07 vs 웹 2.5 [정상] 웹 0.7~3.0 g. 육류·루 기름의 포화지방 고려 시 3.07은 범위 상단으로 설명 가능.
+  출처: nutritionvalue.org — Chicken/Beef/Vegetable curry with rice: https://www.nutritionvalue.org/Chicken_curry_with_rice_27146155_nutritional_value.html | nutritionvalue.org — Curry sauce: https://www.nutritionvalue.org/Curry_sauce_81312100_nutritional_value.html | SnapCalorie — Curry / Japanese curry sauce / Boneless chicken curry: https://www.snapcalorie.com/nutrition/curry_nutrition.html | FatSecret — Chicken Curry per 100g: https://foods.fatsecret.com/calories-nutrition/generic/chicken-curry?portionid=50941&portionamount=100.000 | lampcook 램프쿡 — 카레라이스 음식영양성분표: http://lampcook.com/food/food_nutrition_view2.php?idx_no=289 | Pillyze 필라이즈 — 카레라이스 소스/소고기 카레 (검색 색인): https://www.pillyze.com/foods/e7IRtkqbzryIY0IlNETlqA==
+  비고: AIHub '카레'(8개 음식코드 평균)는 프로파일상 '밥을 제외한 한국식 카레 소스/스튜(육류 포함)'에 해당한다. 결정적 단서: 탄수 12g·지방 9.24g·단백질 5.9g·콜레스테롤 30mg·나트륨 529mg 조합은 '카레라이스(밥 포함)'(탄수 15~25g, 지방 2.5~4g, 나트륨 ~220~330mg)와 맞지 않고, 육류 카레 소스/스튜와 일치한다. 이 기준에서 8개 영양소 전부 웹 다출처 범위 내 또는 그 상단(레시피로 설명 가능)에 들어와 clearly_off 없음. 가장 높게 튀는 항목은 나트륨(529)과 포화지방(3.07)이나, 일식·한국식 카레의 높은 염도와 루·육류 지방으로 일관되게 설명되어 'questionable'까지도 가지 않는다고 보수적으로 판단. 단, 채소만 든 카레와 비교하면 콜레스테롤·단백질이 높아 '육류 포함'이라는 해석이 전제임을 명시한다. 주의: 식약처/농진청 국가표준성분표 원본 페이지는 동적 차단(필라이즈 405, 식약처 직접조회 불가)으로 보조 한국 사이트(램프쿡)와 USDA계열 영문 DB로 교차검증함.
+
+### dim-sum
+  한글: 딤섬(찐만두)
+  웹 대표값(100g): kcal=210 탄=24 당=1.8 지=9 단=10 나트륨=350 콜레=25 포화=3.5
+  범위: kcal 160-250 (대표 ~200-215; 고지방 돼지 시우마이 233-241까지). 탄수 8-30 (밀가루 피 기준 대표 22-30). 당류 0.5-2 (대체로 매우 낮음, 소스/양념에 따라 ~4까지). 지방 5-17 (찐만두 대표 5-11, 돼지 시우마이/기름진 레시피 13-17). 포화지방 2-6.2. 단백질 8-13 (대표 ~9-10). 나트륨 260-500mg (다출처 일관, 최저 ~260). 콜레스테롤 7-50mg (돼지/새우 함량에 따라; 한국 표준표 7.35, 시우마이 30-50).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 364.27 vs 웹 210 [의심] 웹 대표 160-250, 최고지방 돼지 시우마이도 233-241. AIHub는 ~1.5-1.8배 높음. 다만 AIHub 지방 19.3g과 내부 정합(19.3*9+34.71*4+10.55*4≈354)이라 고지방 기름진 레시피로는 설명 가능.
+    - carb: AIHub 34.71 vs 웹 24 [정상] 밀가루 피 기준 웹 22-30. AIHub 34.71은 두꺼운 피 레시피로 상단이나 합리적 범위.
+    - sugar: AIHub 4.29 vs 웹 1.8 [정상] 웹 대체로 0.5-2로 낮으나, 소·양념·소스 첨가 시 ~4 도달 가능. 절대값이 작아 편차 영향 큼.
+    - fat: AIHub 19.3 vs 웹 9 [의심] 찐만두 대표 5-11, 고지방 돼지 시우마이 13-17이 웹 최고치. AIHub 19.3은 모든 웹 출처 상단을 초과하나, 기름진 돼지소/팬프라이 레시피로는 경계상 설명 가능.
+    - protein: AIHub 10.55 vs 웹 10 [정상] 웹 8-13 한가운데. 합치.
+    - sodium: AIHub 149.78 vs 웹 350 [의심] 다출처 일관되게 260-500mg, 최저값(~260)의 약 절반. 강한 저측 이탈이나 나트륨은 양념·간에 따라 편차가 가장 큰 항목이고 싱겁게 만든 가정식 찐만두는 ~150 가능성 존재 — 보수적으로 questionable.
+    - chol: AIHub 17.38 vs 웹 25 [정상] 한국 표준표 7.35, 시우마이 30-50. AIHub 17.38은 그 사이로 돼지소 비율에 따라 합리적.
+    - sat_fat: AIHub 7.5 vs 웹 3.5 [정상] 웹 2-6.2. AIHub 7.5는 상단을 약간 넘으나, 높은 총지방(19.3g)과 정합적이라 기름진 레시피로 설명됨.
+  출처: 농촌진흥청 국가표준식품성분표 (고기만두, 냉동) via lampcook — https://www.lampcook.com/food/food_nutrition_view.php?idx_no=2883 (208kcal/탄27.79/당0.49/지6.58/포화2.41/단9.38/나261/콜7.35) | MFDS 식품안전나라 (고기만두 냉동) via lampcook — http://www.lampcook.com/food/food_nutrition_view1.php?idx_no=255 (214kcal/지10.4/단9.6/나272) | Snapcalorie — Siu Mai nutrition (160kcal/탄16/지6/포화2/단10/나400/콜30) — https://www.snapcalorie.com/nutrition/siu_mai_nutrition.html | Snapcalorie — Pork Siewmai (233kcal/지13.3/포화5/나500/콜50) — https://www.snapcalorie.com/nutrition/pork_siewmai_nutrition.html | Snapcalorie/Nutritionix — Steamed Dumplings (200kcal/탄30/지5/단8) — https://www.snapcalorie.com/nutrition/steamed_dumplings_nutrition.html | FatSecret — PF Chang's Steamed Pork Dumplings (6pc): 480kcal/탄42/당12/지21/포화6/단18/나1380mg/콜60 per serving — https://android.fatsecret.com/calories-nutrition/pf-changs/pork-dumplings-steamed-(6)
+  비고: 딤섬/찐만두는 식당·가정 조리식품으로 레시피별(돼지소 비율, 피 두께, 간, 조리법) 편차가 큼. AIHub 값(2개 음식코드 평균)은 웹 대비 전반적으로 '기름지고 싱거운' 프로파일: 지방·열량·포화지방이 웹 상단 이상이면서 나트륨은 웹 하단의 절반. 그러나 (1) 지방-열량-포화지방이 서로 내부 정합적이고 고지방 돼지소/시우마이 계열로 경계상 설명 가능, (2) 나트륨은 영양소 중 편차가 가장 큰 항목이라 싱거운 가정식으로 변호 가능. 보수적 기준(2배 초과/절반 미만 + 다출처 반박)에 따라 어느 항목도 clearly_off로 단정하지 않음. 가장 주의할 두 항목은 나트륨(저측)과 지방/열량(고측)으로 모두 questionable. AIHub가 1차 신뢰 출처라는 전제를 존중해 has_clear_error=false 유지. WebFetch 시 pillyze(402)·fatsecret 모바일(405)·USDA FDC 직접 엔트리는 접근 불가였고, 농진청 국가표준식품성분표(lampcook 미러)·MFDS·Snapcalorie/Nutritionix·FatSecret로 교차확인함.
+
+### doenjang-jjigae
+  한글: 된장찌개
+  웹 대표값(100g): kcal=60 탄=4.5 당=1.3 지=2.8 단=4.5 나트륨=450 콜레=6 포화=0.8
+  범위: kcal 46~86 (저칼로리 물베이스 ~46-55, 고기/두부 다량 레시피 ~71-103); 탄수 3.3~8.5g; 당류 0~2.7g; 지방 1.6~4.7g; 단백질 3.0~9.1g; 나트륨 300~620mg (1인분 환산 1000-1500mg 보고도 흔함); 콜레스테롤 0~15mg (고기/해물 포함 시 상승); 포화지방 0.3~2.5g. 식당·가정 레시피 편차가 매우 크며, 된장량·고기(소고기/돼지)·두부·해물 첨가 여부가 kcal·지방·단백질·콜레스테롤을 좌우함.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 103.87 vs 웹 60 [의심] 웹 대표 ~46-86 kcal/100g. AIHub 103.87은 다출처 중간값의 약 1.5~2배로 가장 높은 편이나, 고기/두부 다량 레시피(필라이즈·일부 식당식 ~71-100+)로 설명 가능한 상한선 근처. 다출처가 명백히 반박하진 않으므로 questionable.
+    - carb: AIHub 4.48 vs 웹 4.5 [정상] 웹 3.3~8.5g 범위 중앙. 거의 정확히 일치.
+    - sugar: AIHub 0.57 vs 웹 1.3 [정상] 웹 0~2.7g. 0.57은 무첨가/저당 레시피 쪽이며 범위 내.
+    - fat: AIHub 6.75 vs 웹 2.8 [의심] 웹 대표 1.6~4.7g. AIHub 6.75는 최고치(브리스킷 버전 4.4g)도 상회. 고지방 고기/들기름 레시피로 설명은 가능하나 다수 출처 대비 명백히 높은 편 — questionable.
+    - protein: AIHub 6.35 vs 웹 4.5 [정상] 웹 3.0~9.1g. 6.35는 고기/두부 포함 버전(필라이즈 6.1, 인아웃 6.1, 패스트시크릿 7.6)과 잘 일치하는 범위 내.
+    - sodium: AIHub 378.21 vs 웹 450 [정상] 웹 100g당 300~620mg. AIHub 378은 정확히 합의 범위 한가운데. 된장찌개 특성상 정상.
+    - chol: AIHub 20.1 vs 웹 6 [의심] 웹 0~15mg(고기/해물 포함 시 상승). AIHub 20.1은 다수 출처보다 높지만 소고기/두부/해물 첨가 시 도달 가능한 수준. 인아웃 사이트의 378mg는 명백한 입력 오류로 판단해 비교에서 제외. 강한 반박 근거 부재로 questionable.
+    - sat_fat: AIHub 2.01 vs 웹 0.8 [정상] 웹 0.3~2.5g. AIHub 2.01은 고기 포함 버전(브리스킷 2.5g)과 정합. 지방 6.75g 대비 비율(약 30%)도 동물성 지방 포함 시 타당.
+  출처: NOFAT 된장찌개 (식약처 식품영양성분 자료집 2020 기반) — https://nofat.kr/food/D018480 | CalZen 된장찌개 100g당 — https://calzen.ai/ko/calories-in/doenjang-jjigae/ | SnapCalorie Doenjang jjigae Nutrition — https://www.snapcalorie.com/nutrition/doenjang_jjigae_nutrition.html | Carb Manager — Doenjang Jjigae Soybean Paste Stew with Brisket (per 275g) — https://www.carbmanager.com/food-detail/nb:5db9367f36adebfa674aa79f/soybean-paste-stew-with-brisket | 인아웃(inout.team) 된장찌개(물) 1인분 150g — https://www.inout.team/search/food/detail/pv3y5Y4Bf0j9hRB0jbcf | 전국통합식품영양성분정보(음식) 표준데이터, 공공데이터포털 — https://www.data.go.kr/data/15100070/standard.do
+  비고: 교차검증 6개 출처. 웹 데이터는 (a) 저칼로리 물베이스(~46-55 kcal, 식약처/NOFAT·SnapCalorie·CalZen)와 (b) 고기·두부 다량 식당식(~71-103 kcal, 인아웃·필라이즈·카브매니저 브리스킷)의 두 군집으로 나뉨. AIHub(103.87 kcal)는 (b) 군집의 상한에 위치 — 1차 신뢰 출처임을 감안하고 보수적으로 보면, 풍부한 레시피로 설명 가능하므로 clearly_off 없음. kcal·지방·콜레스테롤 3개는 다출처 중앙값보다 높아 questionable로 표시했으나, 어느 것도 '2배 초과+다출처 일관 반박'의 clearly_off 기준엔 미달. 탄수·당류·단백질·나트륨·포화지방은 reasonable로 웹 합의 범위 내. has_clear_error=false, flagged 비어 있음. 주의: 인아웃 콜레스테롤 378mg/150g은 명백한 사이트 오기로 보여 비교에서 배제함.
+
+### fish-cake
+  한글: 어묵
+  웹 대표값(100g): kcal=175 탄=18 당=2.5 지=5 단=11 나트륨=750 콜레=25 포화=1
+  범위: kcal 139-214 (대표 ~170-180); 탄수 14-32 (대표 ~16-18); 당류 1-4 (대표 ~2-3); 지방 1.7-7 (소비자원 1.7-5.8, 일부 가공품 7-8; 대표 ~5); 단백질 8-14 (대표 ~11-12); 나트륨 480-983 (소비자원 689-983, 일부 boiled ~480-500; 대표 ~700-750); 콜레스테롤 14-30 (대표 ~20-25); 포화지방 0.2-1.0 (대표 ~0.8-1.0). 출처: 한국소비자원 12개 제품 조사(2025), Nutritionix/FatSecret/Snapcalorie, Korean food composition.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 191.01 vs 웹 175 [정상] 소비자원 범위 139-214 내. 합의값 ~170-180과 근접. 튀김/조성에 따라 충분히 설명.
+    - carb: AIHub 16.52 vs 웹 18 [정상] 소비자원 14-32 범위 내, 대표값 근처.
+    - sugar: AIHub 1.51 vs 웹 2.5 [정상] 웹 1-4g 범위 내. 무가당/저당 제품에 부합.
+    - fat: AIHub 7.81 vs 웹 5 [의심] 소비자원 1.7-5.8 상한을 다소 초과하나 일부 가공/튀김 어묵은 7-8g까지 보고됨. 레시피로 설명 가능.
+    - protein: AIHub 12.91 vs 웹 11 [정상] 소비자원 8-14 범위 내. 단백질 풍부 특성과 일치.
+    - sodium: AIHub 401.07 vs 웹 750 [의심] 상용제품 480-983(소비자원 689-983)보다 낮음. 데치기/저염/가정식이면 가능하나 시판 합의보다 낮은 편.
+    - chol: AIHub 53.03 vs 웹 25 [명백이상] 복수 출처가 일관되게 14-30mg(Nutritionix 30, Wang 20→24/100g, Korean food comp 14)을 제시. AIHub 53은 웹 최대치의 약 1.8-3.8배로, 어떤 합리적 합의로도 설명 곤란.
+    - sat_fat: AIHub 0.57 vs 웹 1 [정상] 소비자원 0.2-1.0 범위 내. 낮은 편이나 정상 범위.
+  출처: 한국소비자원(KCA) 어묵 12개 제품 비교조사 2025 — https://www.kca.go.kr/webzine/board/view?menuId=MENU00307&linkId=808&div=kca_2503 | 식품저널 foodnews '어묵 12개 제품 조사' (소비자원 인용) — https://www.foodnews.co.kr/news/articleView.html?idxno=111585 | 대한민국 정책브리핑 '어묵 12개 제품 비교정보' — https://www.korea.kr/news/policyNewsView.do?newsId=156670181 | Nutritionix Korean Fish Cake — https://www.nutritionix.com/food/korean-fish-cake | Wang Korea Fish Cake (Eat This Much / FatSecret) — https://www.eatthismuch.com/calories/fish-cake-1622972 | Snapcalorie Korean fish cake — https://www.snapcalorie.com/nutrition/korean_fish_cake_nutrition.html | 지니어트 어묵 100g 영양성분 — https://geniet.co.kr/calorie-calculator/food-detail/16922
+  비고: 어묵은 으깬 생선살+전분/밀가루+조미료를 성형·증숙 또는 튀긴 식품으로 제품/레시피 편차가 큼. 가장 권위 있는 단일 출처는 한국소비자원 2025년 12개 시판 제품 조사(100g: kcal 139-214, 탄수 14-32, 단백질 8-14, 지방 1.7-5.8, 포화지방 0.2-1.0, 나트륨 689-983)이며, 콜레스테롤·당류는 미보고. 콜레스테롤은 국제·국내 보조 출처가 14-30mg로 강하게 수렴 — AIHub 53.03mg은 이 합의를 크게 벗어나 clearly_off로 보수적 판정. 나트륨(AIHub 401)은 시판 합의(689-983)보다 오히려 낮아 questionable(데치기/저염/가정식 가능성). 지방 7.81은 소비자원 상한을 약간 초과하나 튀김 어묵으로 설명 가능해 questionable. 나머지 kcal/탄수/당류/단백질/포화지방은 모두 웹 범위 내 reasonable. AIHub를 1차 신뢰로 두는 보수 원칙상 clearly_off는 콜레스테롤 1건만.
+
+### fried-chicken ★보정
+  한글: 후라이드치킨
+  웹 대표값(100g): kcal=255 탄=10 당=0.5 지=15 단=20 나트륨=450 콜레=88 포화=3
+  범위: kcal 230~290 (대표 ~250-265); carb 6~17 (살코기+튀김옷 6, KFC/FatSecret 16-18, 한국식 5~11, 대표 ~10); sugar 0~1 (거의 모든 출처 0-1g); fat 9~19 (대표 ~12-17); protein 14~30 (브레스트 23-24, 드럼/혼합 14-20, 한국식 ~18); sodium 90~965 매우 넓음 — 한국식 브랜드 300~400, USDA 패스트푸드 530~660+, 대표 ~350-450; chol 82~97 (전 출처 일관, 대표 ~88); sat_fat 2.5~3.3 (전 출처 일관, 대표 ~3.0)
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 236.26 vs 웹 255 [정상] 웹 대표 230~290 범위 안. 살코기 비중·튀김옷 두께에 따라 충분히 설명됨.
+    - carb: AIHub 21.37 vs 웹 10 [의심] 웹 대표 ~10g, 살코기형 6g, 두꺼운 튀김옷/양념계열 16-18g. AIHub 21.37은 웹 상한(17)도 약간 초과하나 튀김옷·전분 코팅 많은 레시피로 설명 가능 — 명백한 오류는 아님.
+    - sugar: AIHub 4.98 vs 웹 0.5 [의심] 웹은 거의 0-1g(플레인 후라이드). AIHub 4.98은 다소 높으나 튀김옷 가당·당류 함유 분류(양념 일부 혼입 가능)로 설명 여지 있어 보수적으로 questionable.
+    - fat: AIHub 11.69 vs 웹 15 [정상] 웹 대표 9~19g 범위 안. 살코기·껍질 비율에 따른 정상 변동.
+    - protein: AIHub 11.37 vs 웹 20 [정상] 웹 범위 14~30 중 하단보다 다소 낮으나, 튀김옷 비중이 큰 부위/순살 코팅 많은 표본 평균이면 설명 가능. 보수적으로 reasonable.
+    - sodium: AIHub 355.92 vs 웹 450 [정상] 한국식 브랜드 300~400mg과 정확히 일치. USDA 패스트푸드는 더 높지만 한국 후라이드 합의값에 부합.
+    - chol: AIHub 14.93 vs 웹 88 [명백이상] 전 출처(USDA 82-97, NOFAT 82.85, Pillyze 90, Nutritionix 92)가 80~97mg로 매우 일관. 닭고기 자체가 100g당 ~70-90mg 콜레스테롤을 가지며 14.93은 약 1/6 수준으로 어떤 웹 합의로도 설명 불가.
+    - sat_fat: AIHub 0.4 vs 웹 3 [명백이상] 전 출처(USDA 3, NOFAT 3.19, Pillyze 3.1, SnapCalorie 3.3)가 2.5~3.3g로 일관. 총지방 11.69g 대비 포화지 0.4g(=3.4%)는 튀김유·닭껍질 조성상 불가능에 가까움 — 통상 총지방의 20-25%가 포화지. 약 7배 낮아 명백한 오류.
+  ★ 적대적 검증 → 보정 확정:
+     · chol: 14.93 → 88 (신뢰 high)
+       근거: 독립 출처 다수가 AIHub 값(14.93)을 명백히 반박하고 좁은 대역에 수렴함. (1) USDA FoodData Central: 'fried chicken, meat and skin, with flour' = 90 mg/100g (FDC 171449); 배터/플라워 튀김 닭 87–102 mg/100g. (2) 한국 식약처 기반 NOFAT 및 식약처 2020 영양성분 자료집: 후라이드치킨 165.69 mg/200g → 100g당 약 82.85 mg. (3) FatSecret/foodstruct(USDA 파생) 84–107 mg/100g. 모든 권위 출처가 ~83–107 mg/100g(중심 ≈ 88–90)에 위치하며, AIHub 14.93은 전 출처 대비 약 6배 낮고 관측 범위 전체를 벗어남 → 데이터 오류로 판정. 보수적 권고값은 USDA 핵심값(90)과 한국값(≈83)의 합의 중심인 88 mg/100g 제시. 기본 입장(변경 안 함)을 뒤집을 만큼 다수·독립·일관된 반박이 충족됨.
+       출처: USDA FoodData Central — Fried chicken, meat and skin, with flour (FDC ID 171449), 90 mg chol/100g: https://fdc.nal.usda.gov/fdc-app.html#/food-details/171449/nutrients | USDA FoodData Central (홈/검색): https://fdc.nal.usda.gov/ | Medical News Today — Cholesterol in chicken (USDA FDC 인용, fried chicken meat+skin 90 mg/100g): https://www.medicalnewstoday.com/articles/cholesterol-in-chicken | NOFAT (식약처 식품영양성분 DB 기반) — 후라이드치킨 165.69 mg/200g(≈82.85 mg/100g): https://nofat.kr/food/D018547 | 식품영양성분 데이터베이스 (식품의약품안전처): https://various.foodsafetykorea.go.kr/nutrient/ | FatSecret — Chicken, meat and skin (broilers/fryers, batter, fried), 87 mg/100g: https://android.fatsecret.com/calories-nutrition/usda/chicken-meat-and-skin-(broilers-or-fryers-batter-fried-cooked)
+     · sat_fat: 0.4 → 3 (신뢰 high)
+       근거: 독립 재확인 결과 AIHub의 sat_fat=0.4 g/100g는 데이터 오류로 강하게 의심됨(변경 권고). 권위/통용 출처 다수가 후라이드치킨(빵가루+껍질 포함, 튀김) 100g당 포화지방을 2.4~4.2g, 중심값 약 3.0~3.5g로 일관되게 보고함: (1) USDA Standard Reference 'Fried Chicken, Breast, meat+skin+breading' = 6.731g/203g → 3.31 g/100g, (2) 한국 식품DB nofat.kr = 6.38g/200g → 3.19 g/100g, (3) USDA 기반 snapcalorie 'fried chicken' 2.86, 'fried chicken pieces' 3.49 g/100g, (4) 한국 웹 집계(식약처 표시기준 인용) 약 4.2 g/100g. 0.4g은 모든 독립 출처 중심값의 약 1/8 수준이며, 껍질 제거·무빵가루 가슴살 하한(약 1.06g)보다도 낮음. 총지방만으로도 12~25 g/100g인 튀김·껍질·튀김옷 음식에서 포화지방 0.4g은 물리적으로 비현실적이고, 0.4 vs ~4.0의 패턴은 소수점/전사 오류 가능성이 큼. 기본 입장(AIHub 1차 신뢰)에도 불구하고 다수 독립 출처가 명백히 반박하고 합리적 값(~3g)에 수렴하므로 high 신뢰로 변경 권고. recommended_value는 USDA SR(3.31)·한국 DB(3.19) 하단에 맞춰 보수적으로 3.0 g/100g 제시.
+       출처: USDA Standard Reference via NutritionValue.org — Fast Foods, Fried Chicken, Breast, meat and skin and breading: https://www.nutritionvalue.org/Fast_Foods%2C_meat_and_skin_and_breading%2C_Breast%2C_Fried_Chicken_nutritional_value.html (6.731g sat fat / 203g = 3.31 g/100g) | nofat.kr (Korean food nutrition DB) — 후라이드치킨: https://nofat.kr/food/D018547 (6.38g sat fat / 200g = 3.19 g/100g) | SnapCalorie (USDA-derived) — Fried chicken: https://www.snapcalorie.com/nutrition/fried_chicken_nutrition.html (6.8g / 237.3g = ~2.86 g/100g) | SnapCalorie (USDA-derived) — Fried chicken pieces: https://www.snapcalorie.com/nutrition/fried_chicken_pieces_nutrition.html (8.3g / 238.1g = ~3.49 g/100g) | FoodStruct (USDA-sourced) — Fast Foods, Fried Chicken, Breast, meat and skin and breading: https://foodstruct.com/food/fastfoods-friedchicken-breast-meatandskinandbreading | 한국 웹 영양정보 집계(식약처 표시기준 인용, 포화지방 약 4.2 g/100g) — KFRI/필라이즈 등 검색 결과
+  출처: USDA FoodData Central — Fast Foods, Fried Chicken, Breast, meat and skin and breading (via nutrientoptimiser): 230kcal, 탄6, 지12, 단24, 나트륨657mg, 콜92mg, 포화지3g / https://nutrientoptimiser.com/nutritional-value-fast-foods-fried-chicken-breast-meat-and-skin-and-breading/ | FatSecret (USDA) — Chicken (Breaded and Fried) 100g: 297kcal, 탄16.32, 지18.82, 단15.59 / https://foods.fatsecret.com/calories-nutrition/usda/chicken-(breaded-and-fried) | NOFAT (한국) — 후라이드치킨 100g환산: 265kcal, 탄10.65, 당0, 지16.84, 단17.74, 나트륨193, 콜82.85, 포화지3.19 / https://nofat.kr/food/D018547 | Pillyze 필라이즈 (한국, 노랑통닭/네네) — 100g: ~250kcal, 탄5, 단18, 지11, 나트륨300, 콜90, 포화지3.1 / https://www.pillyze.com/foods/XNMISLPzuSbvfd0CHIHKRQ== | SnapCalorie — Deep fried chicken 100g환산: 267kcal, 탄10, 당0, 지16.7, 단20, 나트륨534.6, 콜53.4, 포화지3.3 / https://www.snapcalorie.com/nutrition/deep_fried_chicken_nutrition.html | Nutritionix/Prospre (USDA) — fried chicken breast 100g: 230kcal, 나트륨657, 콜92, 포화지3 / https://www.prospre.io/ingredients/fried-chicken-821
+  비고: 후라이드치킨은 식당/가정 조리식품으로 부위(브레스트/드럼/순살)·튀김옷 두께·튀김유에 따라 편차가 큼. USDA FoodData Central, 한국 NOFAT/Pillyze/Nutritionix 등 6개 출처 교차확인. AIHub의 kcal·지방·나트륨은 한국식 후라이드 합의값과 잘 부합(reasonable). carb(21.37)·sugar(4.98)은 웹 상한을 다소 넘지만 두꺼운 튀김옷·전분코팅 레시피로 설명 여지 있어 questionable로 보수 판정. 반면 콜레스테롤(14.93 vs 웹 80-97, ~6배 낮음)과 포화지방(0.4 vs 웹 2.5-3.3, ~7배 낮음) 두 항목은 전 출처가 좁은 범위로 일관되게 반박하며, 닭고기·튀김유의 기본 조성상으로도 물리적으로 설명 불가 — clearly_off. 특히 sat_fat 0.4g은 총지방 11.69g의 3.4%에 불과해(정상 ~20-25%) 단위/계산 오류 가능성이 큼.
+
+### fried-food-platter ★보정
+  한글: 튀김(모둠)
+  웹 대표값(100g): kcal=225 탄=19 당=1.5 지=14 단=9 나트륨=480 콜레=50 포화=2.5
+  범위: kcal 174-308 (대표 ~200-240); 탄수 16-24 (채소튀김), 모둠/해산물 포함 시 5-24 (대표 ~18-20); 당류 1-5 (반죽 무첨가 ~1.5); 지방 5-19 (대표 ~10-16); 단백질 3.7-18 (채소만 낮음, 해산물/육류 포함 모둠 10-18, 대표 ~9-12); 나트륨 ~12(무염 채소튀김)~520(간된 새우튀김), 분식/모둠 대표 ~400-520; 콜레스테롤 38(채소)~65(새우), 대표 ~40-55; 포화지방 2.3-8 (튀김유 흡수로 최소 2g 이상, 대표 ~2.5-4)
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 231.65 vs 웹 225 [정상] 웹 대표값 200-240 한복판. 해산물/채소 모둠 평균과 일치.
+    - carb: AIHub 18.34 vs 웹 19 [정상] 채소·새우튀김 16-24 범위 내. 튀김반죽 탄수 정상.
+    - sugar: AIHub 0.6 vs 웹 1.5 [정상] 무가당 튀김반죽 기준 1-1.5g 통상. 0.6은 약간 낮으나 양념/소스 미포함 시 설명 가능.
+    - fat: AIHub 11.86 vs 웹 14 [정상] 튀김 지방 5-19 범위 내. 모둠 평균으로 타당.
+    - protein: AIHub 12.18 vs 웹 9 [정상] 채소만이면 3-4지만 해산물(오징어 14.5, 새우 10)/육류 포함 모둠은 10-18. 모둠 가정 시 정상.
+    - sodium: AIHub 486.79 vs 웹 480 [정상] 간된 새우튀김 ~520mg과 거의 일치. 분식/모둠튀김 대표 400-520 범위 내.
+    - chol: AIHub 45.49 vs 웹 50 [정상] 채소튀김 38 ~ 새우튀김 65 사이. 모둠 평균으로 타당.
+    - sat_fat: AIHub 0.37 vs 웹 2.5 [명백이상] 총지방 11.86g인 심부튀김에서 포화지방 0.37g은 물리적으로 불가능. 튀김유(대두/팜/카놀라) 자체가 7-15% 포화 → 흡수만으로도 최소 1.5-3g 예상. 다출처(채소튀김 2.3, 새우튀김 8) 모두 0.37의 6-20배. 일관된 웹 근거로 명백한 과소값.
+  ★ 적대적 검증 → 보정 확정:
+     · sat_fat: 0.37 → 2 (신뢰 high)
+       근거: 독립 재확인 결과 AIHub 값 0.37 g/100g은 데이터 오류로 판단됨(변경 권고). 핵심 근거 두 가지. (1) 내부 정합성 모순: 같은 CSV 행에서 총지방(fat_g)이 11.86 g/100g인데 포화지방 0.37이면 포화/총지방 비율이 3.1%에 불과. 가장 불포화도 높은 식용유(카놀라 ~7%, 해바라기 ~10% 포화)로 튀겨도 11.86g 총지방이면 포화지방은 최소 0.8~1.2g가 나와야 하므로 물리적으로 불가능. 또한 동일 데이터셋의 barbecue-ribs(갈비)는 sat_fat 2.52 / fat 11.99 = 21%로 정상 비율이라 0.37은 데이터셋 내부에서도 이상치. (2) 다수 독립 출처 수렴: 튀김/덴푸라(모둠은 채소+해산물 혼합) 100g당 포화지방이 여러 권위 파생 DB에서 2.0~2.4g로 일관 수렴(snapcalorie USDA FNDDS 파생 2.0~2.4, 2000kcal 식품성분 DB 2.362 with total fat 15.63, 호주 AUSNUT 파생 mixed seafood tempura 2.0). 이는 총지방의 약 17~20%가 포화라는, 배터 튀김+한식 블렌드유(팜유 포함 가능) 특성과 정확히 부합. 기본 입장(변경 안 함)을 넘어설 만큼 다수 독립 출처가 AIHub를 명백히 반박하고 합리적 값에 수렴하므로 recommend_change=true, confidence=high. 보수적 권고값은 웹 합의 하단이자 데이터셋 총지방(11.86g) 정합성을 해치지 않는 2.0 g/100g 제시(합의 중앙 2.2~2.36보다 보수적). 주의: '모둠' 구성·튀김유 종류에 따라 ±0.5g 변동 가능하나 0.37은 어떤 합리적 구성으로도 재현 불가.
+       출처: snapcalorie — Tempura Nutrition (USDA FNDDS 파생): https://www.snapcalorie.com/nutrition/tempura_nutrition.html (≈2.0 g sat fat /100g, total fat ~10g) | snapcalorie — Vegetable Tempura Nutrition: https://www.snapcalorie.com/nutrition/vegetable_tempura_nutrition.html (≈2.4 g sat fat /100g) | 2000kcal.cz — Vegetable Tempura (식품성분 DB, per 100g): https://www.2000kcal.cz/lang/en/values/vegetable-tempura-13691 (2.362 g sat fat, 15.63 g total fat /100g) | caloriecounter.com.au — Mixed seafood, tempura coating, fried (호주 AUSNUT/FSANZ 파생): https://www.caloriecounter.com.au/food/mixed-seafood-tempura-coating-fried-or-deep-fried-fat-not-further-defined/ (≈2 g sat fat /100g) | snapcalorie — Seafood Tempura Nutrition: https://www.snapcalorie.com/nutrition/seafood_tempura_nutrition.html (≈2.0 g sat fat /100g 환산) | USDA FoodData Central (튀김류 포화지방산 g/100g 표기 기준 확인): https://fdc.nal.usda.gov/ | 농촌진흥청 국가표준식품성분표/농식품올바로(한국 식품 포화지방산 출처): https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list
+  출처: nutritionvalue.org — Vegetable tempura (per 100g: 240kcal, carb 20.4, sugar 1.5, fat 15.8, protein 3.8, sodium 12mg, chol 38mg, sat_fat 2.3g): https://www.nutritionvalue.org/Vegetable_tempura_75440200_nutritional_value.html | snapcalorie.com — Mixed tempura / Vegetable tempura (per 100g ~200-234kcal, carb 20, fat 10-15.6, protein 3.7-5): https://www.snapcalorie.com/nutrition/mixed_tempura_nutrition.html | caloriecounter.com.au — Mixed seafood tempura (per 100g: 209kcal, carb 5, fat 13, protein 18): https://www.caloriecounter.com.au/food/mixed-seafood-tempura-coating-fried-or-deep-fried-fat-not-further-defined/ | Kurly(컬리) 식품칼로리 — 오징어튀김 (100g: 174kcal, 탄수 16.1, 당 1.2, 지방 5.3, 단백질 14.5): https://www.kurly.com/food-calorie/fried-squid-calories-nutrition-facts-and-diet-benefits/ | FatSecret USDA — Chicken (Breaded and Fried) (per 100g: 297kcal, carb 16.3, fat 18.8, protein 15.6): https://foods.fatsecret.com/calories-nutrition/usda/chicken-(breaded-and-fried) | MyNetDiary/Ketogenic — Shrimp tempura (per 100g approx: 210kcal, carb 21, sugar 1, fat 13, protein 10, sodium 520mg, chol 65mg, sat_fat 8g): https://ketogenic.com/foods/generic-shrimp-tempura/
+  비고: 튀김(모둠)은 식당/가정 조리식품으로 구성(채소·해산물·육류 비율)에 따라 편차가 큼. 채소만이면 단백질↓·열량 유지, 해산물/육류 포함 시 단백질·콜레스테롤↑. 웹 다출처 교차확인 결과 kcal/탄수/지방/단백질/나트륨/콜레스테롤/당류 7개 항목은 모두 합리적 범위 내(AIHub 1차 신뢰 출처 존중, 보수적 판정). 단 포화지방 0.37g은 심부튀김의 물리적 특성(튀김유 흡수)상 어떤 합리적 합의로도 설명 불가하며 다출처가 일관되게 2.3-8g을 제시 → clearly_off로 판정. 이는 AIHub 원본에서 포화지방 측정 누락/0 처리 가능성을 시사. 참고로 fried seafood platter(inlivo) 페이지는 28g→100g 스케일 오류로 1900kcal 등 비현실값을 반환해 채택에서 제외함.
+
+### grilled-fish
+  한글: 생선구이
+  웹 대표값(100g): kcal=195 탄=0.4 당=0 지=12 단=21.5 나트륨=430 콜레=72 포화=3.5
+  범위: kcal 109~262 (담백한 흰살생선 ~110, 고등어/삼치 등 기름진 생선 구이 178~222, USDA 건열조리 고등어 262; 대표 ~190-200). 탄수화물 0~0.5 (사실상 0, 양념 없을 시). 당류 0~0.1 (생선구이는 당류 거의 없음, 양념구이 제외). 지방 1~18 (흰살생선 ~1-2, 기름진 생선구이 9.5~13.8, USDA 고등어 17.8; 대표 ~10-13). 포화지방 0.3~4.2 (조리 생선 일반적으로 2.9~4.2, 흰살생선 <1; 대표 ~3-4). 단백질 17.5~24 (대표 ~21-22). 나트륨 83~628 (생선 자체 ~80, 소금간 구이 식당식 400~630; 대표 ~400-430). 콜레스테롤 60~85 (대표 ~70-75).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 191.08 vs 웹 195 [정상] 기름진 생선구이(고등어 190, 삼치 178, 그릴드 고등어 222) 범위 한가운데. 매우 합리적.
+    - carb: AIHub 0.46 vs 웹 0.4 [정상] 생선은 탄수화물 0~0.5g. 0.46은 양념 미량 또는 글리코겐 반영으로 정확히 합치.
+    - sugar: AIHub None vs 웹 0 [정상] 생선구이 당류는 사실상 0(null). 웹도 0 또는 미측정. null 처리 타당.
+    - fat: AIHub 10.66 vs 웹 12 [정상] 기름진 생선구이 지방 9.5~13.8g 범위 내. 고등어/삼치 구이와 일치.
+    - protein: AIHub 21.69 vs 웹 21.5 [정상] 조리 생선 단백질 21~24g. 거의 정확히 일치. 매우 신뢰.
+    - sodium: AIHub 400.21 vs 웹 430 [정상] 소금간 식당식 생선구이 나트륨 411~628mg. 400은 하단이지만 충분히 합리적(생선 자체 80 + 조리 소금).
+    - chol: AIHub 61.25 vs 웹 72 [정상] 조리 생선 콜레스테롤 60~85mg. 60대는 저지방 부위/흰살 혼합 반영 가능. 범위 내.
+    - sat_fat: AIHub 9.47 vs 웹 3.5 [명백이상] 다출처(FatSecret 3.39, USDA 4.17, 컬리 2.9, 삼치 4.03)가 일관되게 2.9~4.2g. AIHub 9.47은 웹 합의의 2.3~3.3배이며, 총지방 10.66g의 89%에 해당—생선 지방은 불포화(오메가3)가 지배적이라 포화지방이 총지방의 ~30%를 넘기 어려움. 물리적으로도 비합리적. 총지방과 포화지방 값이 거의 동일(10.66 vs 9.47)한 것은 '총지방' 값이 잘못 복제됐을 가능성 시사. 강하고 일관된 웹 반박 존재.
+  출처: FatSecret AU — Baked or Grilled Mackerel (per 100g): 222kcal, 13.79g fat, 3.39g sat fat, 22.56g protein, 414mg sodium, 75mg chol, https://www.fatsecret.com.au/calories-nutrition/generic/baked-or-grilled-mackerel | NutritionValue.org (USDA) — Atlantic mackerel cooked dry heat (per 100g): 262kcal, 17.8g fat, 4.17g sat fat, 23.9g protein, 75mg chol, https://www.nutritionvalue.org/Fish,_dry_heat,_cooked,_Atlantic,_mackerel_nutritional_value.html | Kurly 컬리 — 고등어구이 100g: 190kcal, 12.6g 지방, 17.5g 단백질, 60mg 콜레스테롤, 411mg 나트륨, https://www.kurly.com/food-calorie/grilled-mackerel-calories-nutrition-facts-and-diet-benefits/ | FatSecret — Grilled Fish (lean, per 100g): 109kcal, 1.18g fat, 22.6g protein, https://foods.fatsecret.com/calories-nutrition/generic/fish-grilled | Pillyze 필라이즈 — 삼치구이/임연수구이 (콜레스테롤 79~85mg, 단백질 21.4~21.5g, 나트륨 628mg), https://www.pillyze.com/foods/zIBGCTjIxB7Q37SR7QIFwA==/%EC%82%BC%EC%B9%98%EA%B5%AC%EC%9D%B4 | 농촌진흥청 국가표준식품성분표 — 농식품올바로, https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list
+  비고: 생선구이(생선 소금구이)는 식당/가정식 조리식품으로 생선 종류(고등어·삼치·임연수·흰살생선)와 소금 간에 따라 편차가 큼. AIHub 7개 음식코드 평균값은 기름진 생선(고등어/삼치) 구이 프로파일과 kcal·지방·단백질·콜레스테롤·나트륨 5개 영양소에서 웹 다출처와 잘 합치하여 전반적으로 신뢰할 만함. 단 한 가지 포화지방(9.47g)만 명백한 이상치: 모든 권위 출처(USDA, FatSecret, 한국 영양사이트)가 일관되게 2.9~4.2g을 보고하고, 9.47g은 총지방 10.66g의 89%로 어류 지방의 불포화 우세 특성에 모순됨. 총지방값과 거의 같아 데이터 입력/매핑 오류(총지방을 포화지방란에 복제)로 추정. 나머지 7개 영양소는 reasonable. 보수적 판정 원칙을 적용해도 포화지방만 clearly_off로 분류함.
+
+### grilled-pork-belly
+  한글: 삼겹살
+  웹 대표값(100g): kcal=373 탄=0 당=0 지=35.7 단=17.2 나트륨=73 콜레=72 포화=14.4
+  범위: kcal 300~518 (구이 300~495, 식약처 구이 484, 국표 생것 373, USDA 생것 518); 탄수 0~0.3 (양념 시 미량); 당류 0 (대부분 0, null 가능); 지방 23~53 (구이 23~41, 생것 36~53); 단백질 9.3~22.7 (생것 9.3~13.3, 구이 17~22.7); 나트륨 32~80 (양념 없는 순수 고기 기준; 식당식은 더 높을 수 있음); 콜레스테롤 55~98.8; 포화지방 13.3~19.3
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 220.4 vs 웹 373 [의심] AIHub 220.4는 발견된 모든 출처(구이 300~495, 생것 373~518) 중 최저값보다도 낮음. 그러나 지방이 충분히 렌더링되거나 살코기 비중이 큰 삼겹살이면 설명 가능하고, 최저 구이값(300)의 절반을 넘으므로 clearly_off 임계는 아님.
+    - carb: AIHub 3.14 vs 웹 0 [정상] 순수 돼지고기는 0~0.3g이나 양념·조리(설탕/간장 등)로 3.14g 설명 가능. 조리식품 특성상 허용.
+    - sugar: AIHub None vs 웹 0 [정상] 대부분 출처 0g. AIHub null(미측정)은 문제 없음.
+    - fat: AIHub 18.2 vs 웹 35.7 [의심] 최저 구이값(23.3)보다 낮음. 구울 때 지방이 빠지면 총지방이 크게 감소하므로 방향성은 타당하나 다소 낮은 편. 레시피(살코기 위주·강한 렌더링)로 설명 가능.
+    - protein: AIHub 10.81 vs 웹 17.2 [정상] 생것 9.3~13.3, 구이 13.7~22.7 범위. 10.81은 생것에 가까운 값으로 범위 내.
+    - sodium: AIHub 159.28 vs 웹 73 [정상] 양념 없는 순수 고기 기준 32~80mg보다 높지만, 굽는 중 소금 간을 한 식당/가정 조리식 특성상 159mg은 충분히 설명 가능.
+    - chol: AIHub 32.15 vs 웹 72 [의심] 전 출처가 55~98.8mg로 일관되게 높음. 32.15는 최저값의 약 절반 수준으로 낮으나 2배 이내이고 단일 음식코드 편차 가능성 있어 clearly_off까지는 아님.
+    - sat_fat: AIHub 9.28 vs 웹 14.4 [정상] 총지방 18.2와 내적으로 일관(포화비율 ~51%). 출처 클러스터(13.3~19.3)보다 낮지만 낮은 총지방과 부합.
+  출처: 식약처(MFDS) 삼겹살 구이 기준 (via 인아웃) — https://www.inout.team/search/food/detail/150952 (484kcal/지방41.2/단백질22.7/나트륨80/콜레스테롤98.8/포화지방15) | 농촌진흥청 국가표준식품성분표 돼지고기 삼겹살 생것 (via 램프쿡) — https://www.lampcook.com/food/food_nutrition_view.php?idx_no=1575 (373kcal/지방35.7/단백질13.27/나트륨55/콜레스테롤68.55/포화지방14.42) | USDA FoodData Central Pork belly raw (via NutritionValue.org) — https://www.nutritionvalue.org/Pork,_raw,_belly,_fresh_nutritional_value.html (518kcal/지방53.1/단백질9.3/나트륨32/콜레스테롤72/포화지방19.3) | 지니어트 삼겹살 구이 — https://geniet.co.kr/calorie-calculator/food-detail/2571 (331kcal/지방28.4/단백질17.2/나트륨44/콜레스테롤55) | SnapCalorie samgyeopsal — https://www.snapcalorie.com/nutrition/pork_samgyeopsal_nutrition.html (300kcal/지방23.3/단백질20/나트륨73.6/콜레스테롤94.7/포화지방13.7)
+  비고: 삼겹살은 식당/가정 조리식으로 컷·렌더링·양념에 따라 편차가 매우 큼. 핵심 구분: 생것(USDA 518kcal/지방53, 국표 373kcal/지방36)은 지방이 많고, 구이(식약처 484, 지니어트 331, snapcalorie 300)는 굽는 중 지방·수분 변화로 폭이 넓음. AIHub 값은 전반적으로 '저지방·저칼로리' 방향(kcal 220.4, 지방 18.2, 콜레스테롤 32.15)으로, 모든 웹 출처보다 낮은 편이나 어느 하나도 보수적 임계(2배 초과/절반 미만+다출처 강력 반박)를 명확히 위반하지 않음. 가장 의심스러운 것은 kcal·지방·콜레스테롤 세 가지로 일관되게 '낮은 쪽'이며, 이는 살코기 비중이 큰 특정 음식코드 또는 지방 렌더링 가정으로 설명 가능해 questionable로 판정. 반대로 나트륨(159.28)은 순수 고기보다 높으나 양념 조리식으로 설명되어 reasonable. 따라서 clearly_off 0건, has_clear_error=false.
+
+### hamburger ★보정
+  한글: 햄버거
+  웹 대표값(100g): kcal=265 탄=28 당=4 지=11 단=14 나트륨=400 콜레=30 포화=4
+  범위: 조립형 햄버거(번+패티+소스) 100g 기준 웹 교차범위 — 열량 229~311kcal(합의 ~260-270), 탄수 24~34g(번 비중 큼; 패티만이면 3.8~12g로 급락), 당류 0~6g, 지방 9~16g, 포화지방 3.6~7g(다출처 일관), 단백질 11.6~18g, 나트륨 334~560mg(저염 홈스타일 ~90-369mg도 존재), 콜레스테롤 21~33mg(생패티만이면 ~75mg). 식당/가정조리 편차 큼: 패티 종류(소/닭), 번 크기, 소스/치즈 유무가 주 변수.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 179.43 vs 웹 265 [의심] 조립형 햄버거 웹합의(257~305) 및 한국값(248~290)보다 낮음. 단, 저지방·소형 번의 가벼운 한국식 버거(일부 한국 항목 ~229kcal)로는 설명 여지. 저점(229)대비 약 -22%라 레시피로 설명 가능하나 분명히 낮은 편.
+    - carb: AIHub 16.68 vs 웹 28 [의심] 번 포함 조립형은 24~34g. 16.68은 합의의 약 절반이나, 패티만(3.8~12g)과 조립형 사이의 '얇은 번/고기비중 높은' 한국식 버거로 설명 가능. 낮지만 레시피 가능.
+    - sugar: AIHub 0.87 vs 웹 4 [정상] 웹 범위 0~6g. 0.87은 저당 소스/무케첩 버거의 저점에 해당. 충분히 합리적.
+    - fat: AIHub 7.15 vs 웹 11 [의심] 조립형 9~16g, 패티만 16~20g 대비 낮음. 저지방 한국식 버거(낮은 kcal와 일관)로 설명 가능하나 합의 하한 밑. 낮은 편.
+    - protein: AIHub 12.01 vs 웹 14 [정상] 웹 범위 11.6~18g 내에 정확히 위치. 매우 합리적.
+    - sodium: AIHub 293.58 vs 웹 400 [정상] 조립형 합의 334~560mg보다 약간 낮으나 저염 홈스타일/한국식(예 369mg, 일부 ~90mg)도 관측됨. 범위 내로 설명 가능.
+    - chol: AIHub 21.27 vs 웹 30 [정상] 조립형 웹값 29~33mg에 근접(약간 낮음), 생패티만은 ~75mg. 21.27은 저지방 버거로 충분히 설명 가능.
+    - sat_fat: AIHub 1.34 vs 웹 4 [명백이상] 다출처(USDA·SnapCalorie·NutrientOptimiser·nutritiontable)가 일관되게 3.6~7g 보고. AIHub 1.34는 최저합의(3.6)의 약 37%로 절반 미만이며 다출처가 일관 반박. 총지방 7.15g 기준으로도 소고기 패티의 포화비율(~40-50%)이면 ~2.5-3g 예상 → 1.34는 비정상적으로 낮음. 웹 근거가 강하고 일관됨.
+  ★ 적대적 검증 → 보정 확정:
+     · sat_fat: 1.34 → 4 (신뢰 high)
+       근거: 독립 검증 결과 선행 플래그가 정당함을 확인. '햄버거'는 한국 음식 데이터셋에서 번+소고기 패티가 포함된 완성 버거 샌드위치를 의미하며, 다수의 권위 출처가 100g당 포화지방 3.5~5.1g 범위에 수렴한다. (1) USDA SR 'Fast foods, hamburger; single, regular patty; plain' = 4.49g/100g(freefoodlabels USDA 재게시), (2) USDA 'hamburger single patty' 100g 환산 ≈ 4.6g(다수 재게시처 일치), (3) USDA McDonald's Hamburger = 3.3g/95g ≈ 3.5g/100g, (4) 일반 hamburger on bun ≈ 3.96g. AIHub 값 1.34는 모든 독립 출처의 1/3 미만으로, 소고기 패티가 든 버거로는 비현실적임(번 단독도 ~0.5g, 패티가 ~4g로 끌어올림). 기본 입장은 '변경 안 함'이나, 다수 독립 출처가 명백히 AIHub를 반박하고 ~4 부근에 수렴하므로 변경 권고. 보수적으로 USDA 기준 하단의 4.0을 권장값으로 제시(일반 추정 상단 5.1보다 보수적).
+       출처: USDA FoodData Central (SR) — Fast foods, hamburger; single, regular patty; plain (republished): https://freefoodlabels.com/usda-nutrition-facts/nutrition-facts-fast-foods-hamburger-single-regular-patty-plain.html — sat fat 4.49 g/100g | USDA FoodData Central — Hamburger (single patty), republished via FatSecret: https://foods.fatsecret.com/calories-nutrition/usda/hamburger-(single-patty) — sat fat ~4.6 g/100g | USDA — McDONALD'S, Hamburger, republished via NutritionValue.org: https://www.nutritionvalue.org/McDONALD%27S%2C_Hamburger_nutritional_value.html — 3.3 g/95g ≈ 3.51 g/100g | Generic hamburger on bun — SnapCalorie: https://www.snapcalorie.com/nutrition/hamburger_with_bun_nutrition.html — ~3.96 g/100g | Korea MFDS 식품영양성분 데이터베이스 (식약처) — 검색 포털 확인: https://various.foodsafetykorea.go.kr/nutrient/general/food/firstList.do
+  출처: USDA FoodData Central via FatSecret — Hamburger (Single Patty with Condiments) 100g: 257kcal, 탄32.31, 지9.22, 단11.62 — https://foods.fatsecret.com/calories-nutrition/usda/hamburger-(single-patty-with-condiments)?portionid=62676&portionamount=100.000 | Nutrient Optimiser (USDA SR mirror) — Hamburger single regular patty with condiments 100g: 260kcal, 탄30, 당6, 지10, 포화4, 단13, 나트륨487mg, 콜레스29mg — https://nutrientoptimiser.com/nutritional-value-fast-foods-hamburger-single-regular-patty-with-condiments/ | FoodStruct — Hamburger (single regular patty, plain) 100g: 297kcal, 탄31.5, 당4.88, 지12.01, 단16.52 — https://foodstruct.com/food/hamburger | SnapCalorie — Beef Hamburger 100g: 236kcal, 탄12.6, 당3.3, 지12.0, 포화4.7, 단13.3, 나트륨334mg, 콜레스33.4mg — https://www.snapcalorie.com/nutrition/beef_hamburger_nutrition.html | FatSecret.kr / Pillyze (한국) — 기본 햄버거 100g ~290kcal; 한 제품 예시 탄26.8/당3.4/단14.6/지11/나트륨369mg — https://www.fatsecret.kr/칼로리-영양소/일반명/기본-햄버거 | CalZen (한국) — Burger 100g: 295kcal, 탄24, 당5.2, 지14, 단17, 나트륨560mg — https://calzen.ai/en/calories-in/burger/
+  비고: 햄버거는 '조립형 버거(번+패티+소스)'와 '패티만' 두 카테고리가 영양값이 크게 달라 해석에 주의가 필요(번 포함 시 탄수↑·콜레스↓, 패티만이면 탄수↓·지방·콜레스↑). AIHub 값(특히 kcal 179, 탄수 16.7, 지방 7.15)은 어느 쪽 웹합의보다도 가벼운 '저지방·소형 한국식 버거' 프로파일에 가깝다. kcal·carb·fat은 일제히 낮은 편이라 questionable로 묶었으나 가벼운 레시피로 설명 가능해 clearly_off로 판단하지 않음(AIHub=1차 신뢰, 보수적 적용). 유일하게 sat_fat=1.34g만이 4~5개 독립 출처가 일관되게 3.6~7g로 반박하고 절반 미만이라 clearly_off로 판정. sugar·protein·sodium·chol은 웹 범위 내로 reasonable.
+
+### japanese-ramen
+  한글: 일본라멘
+  웹 대표값(100g): kcal=120 탄=15 당=0.7 지=4.5 단=5 나트륨=400 콜레=60 포화=1
+  범위: 일본라멘은 '조리된 국물 라멘 1그릇' 기준으로 조사. 국물에 물이 섞여 100g당 수치는 건면(인스턴트 라멘 분말)과 크게 다름에 유의. [조리된 그릇 기준 100g당] 열량 90~152 kcal (한국 출처 120~125), 탄수화물 12~21 g, 당류 0.3~1.0 g, 지방 3~6 g, 단백질 3.6~6 g (재료에 따라 ~9까지), 나트륨 360~400 mg (그릇 전체로는 1인분 800~2000mg → 400g 환산 시 100g당 200~500), 콜레스테롤 0~90 mg(달걀·차슈 무첨가 시 0~30, 달걀 1~2개+차슈 추가 시 60~110+), 포화지방 0.6~1.5 g. 참고: 건면 인스턴트 라멘(미조리)은 100g당 442~481 kcal, 나트륨 1855~2047 mg, 콜레스테롤 0 mg으로 전혀 다른 프로파일이며 본 음식과 무관.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 114.82 vs 웹 120 [정상] 조리된 그릇 기준 웹 합의(90~152, 한국 출처 120~125)와 거의 일치. AIHub 114.82는 범위 한가운데.
+    - carb: AIHub 13.52 vs 웹 15 [정상] 웹 12~21g 범위 내. 면 양에 따라 변동하나 AIHub 값 정상.
+    - sugar: AIHub 0.77 vs 웹 0.7 [정상] Kurly 0.32, snapcalorie 1.0 사이. AIHub 0.77은 합의값과 사실상 동일.
+    - fat: AIHub 4.51 vs 웹 4.5 [정상] 웹 3~6g 범위 정중앙. 매우 잘 맞음.
+    - protein: AIHub 4.51 vs 웹 5 [정상] 웹 3.6~6g 범위 내. 차슈/달걀 양에 따라 변동하나 정상.
+    - sodium: AIHub 400.73 vs 웹 400 [정상] 조리된 그릇 기준 100g당 360~400mg와 정확히 일치. (건면 미조리 1855~2047은 다른 음식이므로 비교 제외.)
+    - chol: AIHub 110.56 vs 웹 60 [의심] 달걀·차슈 무첨가 시 0~30, 달걀 1개=164mg(달걀당). AIHub 110.56/100g은 400g 그릇 기준 ~440mg=달걀2개+차슈 수준으로 높지만, 달걀·차슈를 듬뿍 넣은 레시피로 설명 가능. 합의값(~60)의 약 1.8배라 다소 벗어나나 clearly_off 아님.
+    - sat_fat: AIHub 1.61 vs 웹 1 [정상] 웹 0.66~1.5g 대비 약간 높으나 차슈 지방으로 설명 가능, 정상 범위.
+  출처: SnapCalorie - Japanese Ramen Nutrition (조리된 그릇 기준 100g당 90kcal/탄12/지3/단4/나360/콜10): https://www.snapcalorie.com/nutrition/japanese_ramen_nutrition.html | Kurly 컬리 - 돈코츠라멘 영양성분 (100g당 125kcal/탄20.87/당0.32/지2.68/단3.62): https://www.kurly.com/food-calorie/tonkotsu-ramen-calories-nutrition-facts-and-diet-benefits/ | SnapCalorie - Chashu Ramen (1인분 500g→100g당 120kcal/탄14/지4/단6): https://www.snapcalorie.com/nutrition/chashu_ramen_nutrition.html | Arise/EatThisMuch - Ramen with Chashu Pork and Egg (1인분 콜레스테롤 185~395mg, 그릇당): https://www.arise-app.com/dish/Ramen-with-Chashu-Pork-and-Egg | GetFoodFacts/USDA - Ramen Noodle Soup 건면 미조리 비교용 (100g당 481kcal/나1967mg/콜0): https://getfoodfacts.com/food/ramen-noodle-soup-460669 | Pillyze 필라이즈 - 일본 라멘 1인분(400g): https://www.pillyze.com/foods/o88QmNulYz-2_q2pCm9KMw==/일본%20라멘
+  비고: 핵심: '일본라멘'은 조리된 국물 라멘 1그릇(약 400~500g) 음식으로 조사했으며, AIHub 5개 코드 평균값이 이 프로파일과 매우 잘 일치한다. 결정적 주의점은 '건면 인스턴트 라멘 분말(미조리)' 데이터(USDA 481kcal·나트륨 1967mg·콜레스테롤 0)와 혼동하면 안 된다는 것 — 이는 물을 넣기 전 농축 제품이라 100g당 수치가 3~5배 높고 본 음식과 무관하다. 조리된 그릇 기준 한국 출처(Kurly 125kcal, snapcalorie 90~120)와 비교 시 열량·탄수·당류·지방·단백질·나트륨·포화지방 7개 영양소는 모두 reasonable이다. 유일하게 콜레스테롤(110.56mg/100g)만 합의값(~60)보다 높아 questionable로 판정했다 — 이는 달걀 2개+차슈를 넣은 고콜레스테롤 레시피(달걀 1개당 ~164mg)로 충분히 설명 가능하며, 다출처가 0~395mg 넓은 범위를 보여 강하게 반박하지 못하므로 clearly_off로 올리지 않았다. AIHub가 1차 신뢰 출처라는 점을 고려해 보수적으로 판단했고, clearly_off는 0건이다.
+
+### jjigae-red
+  한글: 빨간찌개 (김치찌개·순두부찌개·고추장찌개·부대찌개 등 빨간 양념 기반 찌개류)
+  웹 대표값(100g): kcal=65 탄=3.5 당=0.8 지=3.5 단=4 나트륨=400 콜레=8 포화=0.8
+  범위: kcal 40–80 (대표 60–75); 탄수 1.3–8 (대표 3–4); 당류 0–1.3 (대표 ~0.8); 지방 1.7–5.7 (대표 3–4); 단백질 3–4.6 (육류/두부 多 변종 6+ 가능); 나트륨 213–526 (대표 300–490, 조리/국물 비율에 매우 민감); 콜레스테롤 4–17 (해물/육류 변종 ↑ 가능); 포화지방 0.45–1.3 (대표 ~0.7–0.8). 식당/가정식이라 레시피별 편차 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 75.39 vs 웹 65 [정상] 웹 대표 60–76kcal/100g와 정확히 일치(Geniet 75, Arise 76). 범위 내.
+    - carb: AIHub 4.1 vs 웹 3.5 [정상] 웹 1.3–8 범위 중앙. NOFAT(3.0), snapcalorie(3.75)와 근접.
+    - sugar: AIHub 1.32 vs 웹 0.8 [정상] 웹 0–1.3 범위 상단이나 김치/양념 당분 고려 시 합리적. NOFAT 0.6–0.76.
+    - fat: AIHub 3.92 vs 웹 3.5 [정상] 웹 1.7–5.7 범위 중앙(NOFAT 3.75, Geniet 3.6).
+    - protein: AIHub 6.14 vs 웹 4 [정상] 웹 일반 3–4.6보다 다소 높으나, 돼지고기/두부/해물 多 변종은 6+ 도달(라면계산기류 일부 6–11). 레시피로 설명 가능, 명백오류 아님.
+    - sodium: AIHub 452.91 vs 웹 400 [정상] 웹 한국 출처 213–526mg/100g 범위 내(NOFAT 김치 490.5, 하와이 ~522). 빨간찌개의 핵심 특성인 고나트륨과 부합.
+    - chol: AIHub 26.57 vs 웹 8 [의심] 웹 대표 4–17mg/100g보다 약 1.6–3배 높음. 다만 돼지고기/해물 함량 높은 찌개는 상승 가능하고 콜레스테롤은 출처 간 편차·결측 큼. 다출처가 강하게 반박할 만큼 일관되진 않아 clearly_off는 아님.
+    - sat_fat: AIHub 0.44 vs 웹 0.8 [정상] 웹 0.45–1.3 범위 하단(NOFAT 0.45–0.69와 근접). 범위 내.
+  출처: NOFAT 김치찌개 영양성분 (100g 환산: 60kcal, 나트륨 490.5mg, 콜레스테롤 6.3mg, 포화지방 0.69g) — https://nofat.kr/food/D000385 | NOFAT 순두부찌개 영양성분 (100g 환산: 42kcal, 나트륨 213mg, 콜레스테롤 8.58mg, 포화지방 0.45g) — https://nofat.kr/food/D018492 | 지니어트(Geniet)/원할머니 김치찌개 100g (75kcal, 탄수 8g, 단백 3g, 지방 3.6g, 나트륨 297mg, 콜레스테롤 4mg, 포화지방 1.3g) — https://geniet.co.kr/calorie-calculator/food-detail/25777545 | Arise App — Kimchi Jjigae per 100g (76kcal, 탄수 2.7g, 지방 5.7g, 단백 3.8g) — https://www.arise-app.com/dish/Kimchi-Jjigae-(Kimchi-Stew) | 필라이즈/지니어트 부대찌개 100g (50–65kcal, 나트륨 360–526mg) — https://www.pillyze.com/foods/fTwJSG4QEqaRkLU0-J7Jgg==/부대찌개 | Hawai'i Nutrition Center — Kimchi Jjigae (240g serving, 100g 환산 ~40kcal, 나트륨 ~522mg) — https://nutritioncenter.ctahr.hawaii.edu/kim-chee-chigae/
+  비고: 빨간찌개는 단일 음식이 아니라 빨간 양념 기반 찌개류(김치찌개·순두부찌개·고추장찌개·부대찌개)의 묶음 카테고리로, 식당/가정 조리식이라 레시피별 편차가 큼. AIHub 4개 음식코드 평균값은 거의 모든 영양소에서 한국·국제 웹 출처 범위의 중앙~상단에 위치해 매우 합리적임. 핵심 특성인 고나트륨(452.9mg/100g)도 한국 출처 범위(213–526) 내. 유일하게 콜레스테롤(26.57mg)이 웹 대표값(4–17mg)보다 1.6–3배 높아 'questionable'로 판정했으나, (1)콜레스테롤은 출처 간 결측·편차가 가장 크고 (2)돼지고기·해물 함량 높은 변종에서 상승 가능하며 (3)다출처가 일관되게 강하게 반박하지 않으므로 보수적으로 'clearly_off'로 분류하지 않음. 따라서 has_clear_error=false, flagged 비어 있음. AIHub를 1차 신뢰 출처로 두고 웹을 보조로 보는 기준에서 명백한 오류는 발견되지 않음.
+
+### kalguksu
+  한글: 칼국수 (국물 포함 조리식품)
+  웹 대표값(100g): kcal=85 탄=16 당=1.8 지=0.5 단=3.8 나트륨=280 콜레=12 포화=0.2
+  범위: 조리식품(국물 포함) 기준 100g당 일반 범위 — 열량 77~95 kcal(대표 약 85); 탄수화물 14.9~17.3 g(약 16); 당류 1.6~2.3 g(약 1.8); 지방 0.2~0.7 g(약 0.5); 단백질 3.3~5.0 g(약 3.8); 나트륨 220~500 mg(국물·간에 크게 좌우, 대표 약 280); 콜레스테롤 0~22 mg(달걀·해물 유무에 따라, 채소/멸치육수형은 0~5, 대표 약 12); 포화지방 0.1~0.3 g(약 0.2). ※ 마른 생면/완제품 면(273~350 kcal/100g)은 별개 카테고리이므로 조리식품 비교에서 제외함.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 95.03 vs 웹 85 [정상] 조리식품 합의 범위(77~95) 상단. 여러 한국 출처가 환산 77, 레시피 기반은 85~100 → AIHub 95는 범위 내.
+    - carb: AIHub 17.27 vs 웹 16 [정상] 한국 출처 환산 14.9~17.3, 레시피 약 15~18 → AIHub 17.27 정상 범위.
+    - sugar: AIHub 1.64 vs 웹 1.8 [정상] 당류 명시 출처 적음. 레시피 기준 약 16g/600~700g → 100g당 2.3 수준. AIHub 1.64는 야채/육수 위주형으로 설명 가능.
+    - fat: AIHub 0.55 vs 웹 0.5 [정상] 한국 출처 환산 0.2~0.7. AIHub 0.55는 거의 정확히 합의값.
+    - protein: AIHub 4.29 vs 웹 3.8 [정상] 환산 3.3~5.0. AIHub 4.29 범위 내.
+    - sodium: AIHub 319.28 vs 웹 280 [정상] 국물·간에 따라 220~500/100g로 편차 큼(레시피형은 430~500). AIHub 319는 중앙대. 정상.
+    - chol: AIHub 2.54 vs 웹 12 [정상] 달걀/해물 포함형 17~22, 채소·멸치육수형 0~5. AIHub 2.54는 저(低)콜레스테롤형으로 합리적 설명 가능 — clearly_off 아님.
+    - sat_fat: AIHub 0.07 vs 웹 0.2 [정상] 총지방 0.5~0.7로 매우 낮아 포화지방도 0.1~0.3대. AIHub 0.07은 저지방형으로 범위 내.
+  출처: 인아웃(inout.team) 일반칼국수 1인분(700g) — https://www.inout.team/search/food/detail/122624 | NOFAT 칼국수 — https://nofat.kr/food/D018183 | 필라이즈(Pillyze) 칼국수 1인분(600g) — https://www.pillyze.com/foods/vg4nufq2IepFCc5nEG9jMg==/%EC%B9%BC%EA%B5%AD%EC%88%98 | My Korean Kitchen — Kalguksu recipe — https://mykoreankitchen.com/kalguksu/ | 지니어트(Geniet) 칼국수(마른면 기준, 참고) — https://geniet.co.kr/calorie-calculator/food-detail/5160378
+  비고: 핵심: 칼국수는 (1)마른/생면·완제품 면(273~350 kcal/100g)과 (2)국물 포함 조리식품(77~95 kcal/100g)으로 데이터가 뚜렷이 갈린다. AIHub 5개 음식코드 평균값(95 kcal 등)은 명백히 (2) 조리식품 카테고리이며, 동일 카테고리 한국 출처(인아웃·NOFAT·필라이즈)와 레시피 기반(My Korean Kitchen)이 일관되게 AIHub를 뒷받침한다. 8개 영양소 모두 조리식품 웹 범위 내에 들어 clearly_off 없음. 변동이 큰 항목은 나트륨(국물 섭취량·간)과 콜레스테롤(달걀/해물 유무)이며, AIHub 값(나트륨 319, 콜레스테롤 2.54)은 각각 채소·멸치육수 위주의 담백한 칼국수형으로 합리적으로 설명된다. AIHub가 1차 신뢰 출처라는 보수 기준을 적용해도 플래그 대상 없음. 참고로 geniet(150g, 410kcal) 값은 마른면 기준 아웃라이어로 비교에서 제외했다.
+
+### korean-blood-sausage
+  한글: 순대
+  웹 대표값(100g): kcal=170 탄=17 당=0.5 지=7 단=8.5 나트륨=480 콜레=50 포화=2.3
+  범위: kcal 153–187 (대부분 한국 DB는 158–180; 유럽식 black pudding은 379로 별개 음식). 탄수화물 13–35g (찹쌀/당면 함량 따라 편차 큼, 중심 15–20g). 당류 0.01–2.5g (전분이라 한국 DB 다수는 0.01–0.1g). 지방 3.6–11g (중심 6–9g). 단백질 6.5–11g (내장 포함 시 더 높음). 나트륨 340–740mg (찍먹 소금·식당식은 더 높음). 콜레스테롤: 일반 순대 6–40mg vs 내장/간 포함 시 120–214mg — 가장 변동 큰 항목. 포화지방 1.8–2.9g (일부 7.3g). 유럽식 USDA blood sausage(black pudding): 379kcal/34.5g지방/120mg콜레/680mg나트륨으로 한국 순대와 완전히 다른 식품임에 주의.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 151.63 vs 웹 170 [정상] 한국 DB 합의 범위(153–187)의 하단부에 정확히 위치. 유럽식 379는 별개 식품이라 비교 대상 아님. 합리적.
+    - carb: AIHub 13.05 vs 웹 17 [정상] 한국 순대 탄수 범위 13–35g 중 저-정상값. 찹쌀/당면 비율 낮은 레시피로 충분히 설명됨.
+    - sugar: AIHub 0.01 vs 웹 0.5 [정상] 순대 전분은 당류가 아니므로 다수 한국 DB도 0.01–0.1g로 거의 0. AIHub 0.01은 이 저-클러스터와 일치. 합리적.
+    - fat: AIHub 6.47 vs 웹 7 [정상] 한국 순대 지방 범위(3.6–11g)의 정중앙. 매우 합리적.
+    - protein: AIHub 9.68 vs 웹 8.5 [정상] 순대 단독 6.5–11g 범위 상단. 내장 일부 포함 시 자연스러움. 합리적.
+    - sodium: AIHub 476.18 vs 웹 480 [정상] 한국 DB 340–740mg 범위의 중앙(NOFAT 340 ~ inout 740). 거의 정확히 합치. 합리적.
+    - chol: AIHub 95.94 vs 웹 50 [의심] 가장 변동 큰 항목. 일반 순대 6–40mg vs 내장/간 포함 시 120–214mg, USDA 유럽식 120mg. AIHub 95.94는 일반 순대보다 2배+ 높으나 내장 포함형으로 설명 가능한 중간값. 명백한 오류는 아니나 일반 순대 기준으로는 다소 높음.
+    - sat_fat: AIHub 2.04 vs 웹 2.3 [정상] 한국 순대 포화지방 1.8–2.9g 범위 내. 합리적.
+  출처: FatSecret Korea 순대 칼로리·영양정보 — https://www.fatsecret.kr/%EC%B9%BC%EB%A1%9C%EB%A6%AC-%EC%98%81%EC%96%91%EC%86%8C/search?q=%EC%88%9C%EB%8C%80 (순대 100g ~158kcal) | NOFAT 순대 영양정보 — https://nofat.kr/food/D000417 (100g: 180kcal, 탄19.5, 지방8, 단6.5, 나340mg, 콜6.4mg, 포화2.4g) | inout.team 순대 영양정보(내장 포함형) — https://www.inout.team/search/food/detail/1529 (100g 환산: 158kcal, 나740mg, 콜214mg) | Nutritionix Korean Blood Sausage — https://www.nutritionix.com/food/korean-blood-sausage (1인분 170g ≈ 270kcal, 18g 단백질) | ReciPal / USDA blood sausage NDB 7005 (유럽식, 대조군) — https://www.recipal.com/ingredients/1637-nutrition-facts-calories-protein-carbs-fat-blood-sausage (100g: 379kcal, 35g지방, 13g포화, 120mg콜, 680mg나트륨) | FoodStruct blood sausage — https://foodstruct.com/food/blood-sausage (100g 379kcal, 34.5g지방)
+  비고: 결론: AIHub 순대 값(3개 음식코드 평균)은 8개 영양소 중 7개가 한국 영양 DB 합의 범위 내로 'reasonable', 콜레스테롤 1개만 'questionable'. clearly_off 0건이므로 has_clear_error=false, flagged 비어있음. 핵심 주의사항: 영문 'blood sausage'(USDA/유럽식 black pudding, 379kcal·34.5g지방·1g탄수)는 돼지피+지방 위주로 한국 순대와 완전히 다른 식품이므로 직접 비교 금지 — 한국 순대는 찹쌀/당면이 들어가 탄수↑·지방↓ 특성. 콜레스테롤은 순대 영양값 중 편차가 가장 크며(일반 6–40mg vs 내장포함 120–214mg), AIHub 95.94는 일반 순대 기준으로는 높지만 내장(간/허파 등)이 일부 포함된 식당식 순대로 설명 가능. 다출처가 반박하는 수준은 아니어서 보수적으로 'questionable'로만 판정하고 flag하지 않음. 당류 0.01은 의심스러워 보일 수 있으나 순대의 탄수는 전분(당면·찹쌀)이라 당류가 거의 0인 것이 정상이며 여러 한국 DB(0.01–0.1g)가 이를 뒷받침함.
+
+### korean-ramyeon-red ★보정
+  한글: 라면
+  웹 대표값(100g): kcal=140 탄=20 당=1.5 지=4.5 단=4.5 나트륨=450 콜레=0 포화=1.8
+  범위: 라면은 (1) 건면 블록 기준, (2) 조리된 한 그릇(면+국물, 먹는 상태) 기준, (3) 국물만 기준으로 100g 환산값이 크게 달라진다. AIHub 144kcal는 '조리된 한 그릇' 기준과 일치한다.
+
+[조리된 한 그릇 기준 — AIHub와 직접 비교 가능, 웹 합의 추정 범위]
+- 열량: 약 100~160 kcal/100g (건면 블록을 물에 조리하면 약 2.5~3배 희석)
+- 탄수화물: 약 15~25 g
+- 당류: 약 0.3~3 g (조미료 기인, 매우 소량)
+- 지방: 약 3~6 g
+- 단백질: 약 3~6 g
+- 나트륨: 약 300~600 mg/100g (국물 비율에 따라; 1봉지 조리 시 1,200~1,800mg을 ~400~500g으로 나눔)
+- 콜레스테롤: 0 mg (다출처 일관 — 동물성 재료 無)
+- 포화지방: 약 1~2.5 g
+
+[참고: 건면 블록 기준(미조리)] 열량 417~453 kcal, 탄수 58~62g, 지방 15~18g, 단백질 8~10g, 나트륨 1,800~3,000mg, 포화지방 6~8g, 콜레스테롤 0mg.
+[참고: 국물만] 열량 ~19 kcal, 지방 ~0.96g, 단백질 ~0.44g, 포화지방 ~0.45g, 콜레스테롤 0mg.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 144.39 vs 웹 140 [정상] 조리된 한 그릇 기준(면+국물)으로 합리적. 건면 블록(~440)을 물에 조리하면 약 100~160kcal/100g 범위에 들어옴. AIHub 144는 이 기준의 중심값.
+    - carb: AIHub 19.87 vs 웹 20 [정상] 조리 기준 15~25g 범위 정중앙. 열량 대비 탄수 비율도 정합적.
+    - sugar: AIHub None vs 웹 1.5 [정상] AIHub는 null(미측정). 라면 당류는 0.3~3g로 매우 소량이라 누락이 결과를 왜곡하지 않음. 판정 불가에 가까우나 값 부재 자체는 문제없음.
+    - fat: AIHub 4.69 vs 웹 4.5 [정상] 조리 기준 3~6g 범위 내. 건면 블록 15~18g을 희석한 값과 정합.
+    - protein: AIHub 5.41 vs 웹 4.5 [정상] 조리 기준 3~6g 범위 내. 약간 상단이지만 면 비율 높은 조리본이면 설명 가능.
+    - sodium: AIHub 382.55 vs 웹 450 [정상] 조리 한 그릇 기준 300~600mg/100g 범위 내. 1봉지 1,200~1,800mg을 ~400~500g으로 나눈 값과 정합. 건면 블록 기준(1,800+)과 혼동하면 낮아 보이지만 조리 기준으로는 정상.
+    - sat_fat: AIHub 1.09 vs 웹 1.8 [정상] 조리 기준 1~2.5g 범위 내. 다소 낮은 편이나 지방 4.69g 대비 비율(약 23%)이 라면(팜유) 치고는 낮은 축. 그래도 범위 내라 reasonable.
+    - chol: AIHub 55.07 vs 웹 0 [명백이상] 다출처(USDA, 식약처, NOFAT, Healthline) 일관되게 인스턴트 라면 콜레스테롤 0mg. 면은 밀가루+팜유로 동물성 재료가 없어 콜레스테롤이 본질적으로 0. 55mg/100g은 계란·고기가 상당량 들어가야 나오는 값으로, 일반 라면에는 해당 없음. 강하고 일관된 웹 근거가 AIHub 값을 반박 → clearly_off.
+  ★ 적대적 검증 → 보정 확정:
+     · chol: 55.07 → 0 (신뢰 high)
+       근거: 독립 재확인 결과 AIHub의 chol=55.07 mg/100g은 명백한 데이터 오류로 판단된다. (1) USDA FoodData Central 원칙: 콜레스테롤은 동물성 원료에만 존재 → 식물성인 라면 면(유탕면)은 0 mg/100g이며, USDA 기반 식품DB(snapcalorie, eatthismuch, fatsecret)가 브랜드 전반에서 일관되게 0 mg을 보고. (2) 식약처(MFDS) 영양표시 규정: 100g당 콜레스테롤 2mg 미만이면 0으로 표기 가능 → 시판 라면이 '콜레스테롤 0%'로 표기되는 것은 실제 함량이 2mg 미만임을 의미. (3) snapcalorie는 236g 1인분 전체에서도 0 mg 표시(=약 0 mg/100g). 다수 독립 권위 출처(USDA 원칙/DB, 식약처 규정, 복수 영양DB)가 합리적 값 ≈0 mg/100g으로 수렴하며 AIHub 55.07을 약 2자릿수 차이로 반박한다. 55 수준은 면 제품에 계란/육류 토핑이 다량 포함된 완성식이라야 근접 가능하나, 이는 클래스(적색 라면 면 제품)의 대표 per-100g 값이 아니다. 따라서 변경 권고, 보수적 값은 웹 합의에 일치하는 0 mg/100g(비영(非零) 하한을 두더라도 ≤2 mg).
+       출처: USDA FoodData Central (콜레스테롤은 동물성 원료에만 존재; 식물성 면 0 mg) — https://fdc.nal.usda.gov/ | snapcalorie — Instant ramen noodles nutrition (236.1g 1인분 Cholesterol 0 mg → ≈0 mg/100g) — https://www.snapcalorie.com/nutrition/instant_ramen_noodles_nutrition.html | 식품의약품안전처(MFDS) 영양표시 규정 (100g당 콜레스테롤 2mg 미만 시 0 표기; 시판 라면 '콜레스테롤 0%') — https://www.mfds.go.kr/webzine/201609/06.jsp | 농촌진흥청 국가표준식품성분표(농식품올바로) — https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list | eatthismuch / USDA 기반 instant ramen 항목 (cholesterol 0 mg) — https://www.eatthismuch.com/calories/ramen-noodles-5572
+  출처: NOFAT 라면 영양정보 (조리 550g 기준 → 100g 환산: 81kcal, 나트륨 283mg, 콜레스테롤 0mg, 포화지방 0.82g) — https://nofat.kr/food/D018163 | 필라이즈(Pillyze) 라면(삶은 것) 100g — https://www.pillyze.com/foods/x_ynLYPbwsnzuj8sC7RY1A==/%EB%9D%BC%EB%A9%B4%EC%82%B6%EC%9D%80%EA%B2%83 | foodstruct / calories-info: Ramen noodle soup (건면 블록 기준 100g): 440kcal, 탄수 60.26g, 지방 17.59g, 단백질 10.17g, 나트륨 1855mg — https://foodstruct.com/food/ramen-noodle-soup , https://calories-info.com/ramen-noodles-calories-kcal/ | 식약처(MFDS) 식품영양성분 데이터베이스 — https://various.foodsafetykorea.go.kr/nutrient/general/food/firstList.do | 농촌진흥청 국가표준식품성분표 (농식품올바로) — https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list | Healthline / 인스턴트 라면 분석: 면 자체 콜레스테롤 0mg, 팜유 튀김으로 포화지방만 높음 — https://www.healthline.com/nutrition/ramen-noodles | gazilab 신라면/라면 식약처 평균(1봉지): 406.7kcal, 나트륨 1,245mg — https://www.gazilab.co/wellness-curation/notion-pages/ad989398ffcf4df3965aa566e5f86171/
+  비고: 핵심: AIHub 라면 값들은 '조리된 한 그릇(면+국물, 먹는 상태)' 기준으로 해석하면 콜레스테롤을 제외한 7개 영양소가 모두 웹 합의 범위 내에서 정합적이다(reasonable). 웹에 흔한 417~453kcal/100g은 건면 블록(미조리) 기준이라 직접 비교 대상이 아니며, AIHub 144kcal는 조리 기준과 일치한다.
+
+유일한 명백한 이상치는 콜레스테롤 55.07mg/100g이다. USDA, 식약처, NOFAT, Healthline 등 다수 권위 출처가 일반 인스턴트 라면(면+국물, 계란/고기 無)의 콜레스테롤을 일관되게 0mg으로 보고한다. 라면 면은 밀가루+팜유 기반으로 동물성 재료가 없어 콜레스테롤이 본질적으로 0에 가깝다. 55mg은 계란·육류가 상당량 포함돼야 가능한 수치로, 표준 라면 정의와 맞지 않는다. 강하고 일관된 다출처 반박이 있어 clearly_off로 판정.
+
+당류(null)는 미측정이나, 라면 당류 자체가 0.3~3g로 미미해 결과 신뢰성에 영향 없음. 나트륨 382mg은 건면 블록 기준으로만 보면 낮아 보이지만 조리 기준으로는 정상 범위(300~600mg/100g)다 — 기준 혼동에 주의.
+
+보수적 판정 원칙 적용: AIHub를 1차 신뢰 출처로 두고, 콜레스테롤만 웹 근거가 압도적으로 강하고 일관되어 flag. 나머지는 모두 레시피/조리 기준으로 설명 가능해 reasonable 유지.
+
+### mixed-rice-bowl
+  한글: 비빔밥
+  웹 대표값(100g): kcal=140 탄=22 당=1.5 지=4 단=6.5 나트륨=300 콜레=25 포화=1
+  범위: 열량 76~172 kcal (두 분포: 채소위주/희석형 ~76-81, 밥+고기+계란 풀구성 ~125-172). 탄수 8~29 g (풀구성 15~29). 당류 0.05~1.6 g. 지방 2.8~4.6 g. 단백질 5.4~7 g (소고기 풀구성 6.7~14/100g도). 나트륨 127~434 mg (대부분 230~430). 콜레스테롤 11~42 mg. 포화지방 0.7~1.2 g. 식당/가정식이라 밥:고명 비율에 따라 편차 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 171.98 vs 웹 140 [정상] AIHub 172는 웹 풀구성 클러스터(125~147)의 상단 약간 위. 밥 비율이 높은 식당식 비빔밥이면 충분히 도달 가능. 채소위주 MFDS 저값(~80)과는 다르나, 사진기반 풀구성 측정이라 상단값이 자연스럽다. 합리적.
+    - carb: AIHub 28.75 vs 웹 22 [정상] 돌솥비빔밥(24.7), NOFAT(18.8) 등 밥 중심 레시피와 부합. 흰밥 비중 높으면 28~29g도 정상. 합리적.
+    - sugar: AIHub 1.32 vs 웹 1.5 [정상] 웹 0.05~1.6 범위 한가운데. 매우 일치.
+    - fat: AIHub 3.65 vs 웹 4 [정상] 웹 2.8~4.6 범위 내. 거의 정확.
+    - protein: AIHub 5.82 vs 웹 6.5 [정상] 웹 5.4~7 범위 내(고기 적은 구성). 합리적.
+    - sodium: AIHub 236.23 vs 웹 300 [정상] NOFAT 231.5, 소고기컵환산 240과 거의 일치. MFDS계열 424~434보다 낮으나 풀구성 환산값들과 부합. 합리적.
+    - chol: AIHub 28.16 vs 웹 25 [정상] 웹 11~42 범위 내. 계란/고기 포함 비빔밥의 전형값. NOFAT 42.3과 eatthismuch 11 사이 중앙. 합리적.
+    - sat_fat: AIHub 0.47 vs 웹 1 [정상] 웹 0.7~1.2보다 약간 낮으나 절댓값 차이 0.2~0.7g로 미미. 지방총량(3.65)이 웹과 일치하므로 포화지방 분율 차이일 뿐. 2배 초과/절반 미만의 강한 반박 아님 — 보수적으로 reasonable.
+  출처: NOFAT 비빔밥(1인분 450g 풀구성): 141kcal/탄18.8/당0.05/지방4/단백6.9/나트231.5/콜42.3/포화0.95 per100g — https://nofat.kr/food/D018204 | Eat This Much 비빔밥(556g 소고기 풀레시피→100g환산): 125kcal/탄14.9/당1.6/지방4.3/단백6.7/나트127/콜11/포화0.9 — https://www.eatthismuch.com/calories/bibimbap-3496736 | SnapCalorie Beef Bibimbap(237g컵→100g): 130kcal/탄16/지방4/나트240/콜14/포화1.2 — https://www.snapcalorie.com/nutrition/beef_bibimbap_nutrition.html | SnapCalorie/Fitia/calo.kr (MFDS 식품영양성분DB 비빔밥, 채소위주): 76~81kcal/탄8.2~8.6/당1.5~1.6/지방2.9/단백5.5/나트424~434/콜12/포화0.7 per100g — https://www.snapcalorie.com/nutrition/bibimbap_nutrition.html , https://www.calo.kr/nutrition/1102335/ | MFDS 식품영양성분DB(식약처) — https://various.foodsafetykorea.go.kr/nutrient/ ; 농촌진흥청 국가표준식품성분표 — https://koreanfood.rda.go.kr/kfi/fct/fctIntro/list?menuId=PS03562
+  비고: 비빔밥은 식당/가정 조리식으로 밥:고명:고기:계란 비율에 따라 편차가 매우 큼. 웹 데이터는 뚜렷한 두 분포를 보임: (1) MFDS 식품영양성분DB 계열의 채소위주/희석형 ~76-81 kcal/100g, (2) 밥+고기+계란 풀구성 ~125-172 kcal/100g. AIHub는 음식 사진 기반 풀구성 측정이므로 (2) 클러스터가 올바른 비교 기준이며, AIHub 172 kcal은 이 클러스터 상단으로 밥 비중 높은 식당식과 합리적으로 설명됨. 8개 영양소 전부 웹 풀구성 범위로 설명 가능 → clearly_off 없음, has_clear_error=false. 가장 유사한 단일 출처는 NOFAT 450g 풀구성(141kcal, 나트231.5, 콜42.3)으로 AIHub의 나트륨·콜레스테롤·당류 프로파일과 매우 잘 일치. 유일한 미세 불일치는 포화지방(AIHub 0.47 vs 웹 0.7~1.2)이나 절댓값 차이가 1g 미만이고 총지방은 일치하므로 1차 신뢰출처 AIHub 존중하여 reasonable로 판정.
+
+### pasta
+  한글: 파스타
+  웹 대표값(100g): kcal=200 탄=22 당=1.5 지=9 단=6 나트륨=320 콜레=25 포화=3
+  범위: 파스타는 '조리된 면(plain)'과 '소스 포함 완성 요리(prepared dish)'로 데이터가 크게 갈린다. AIHub의 프로파일(나트륨 366mg, 콜레스테롤 29mg, 지방 12g)은 소스가 포함된 '완성 요리'에 해당하므로 그 범위와 비교함. [완성 파스타 요리 100g당 웹 범위] 열량 120~280kcal(오일/토마토 저열량~크림 고열량), 탄수화물 14~31g, 당류 0.7~4.2g(토마토소스 계열이 높음, 오일/크림 계열은 0.7~1.2g 저당), 지방 3.6~14g(토마토/미트 저지방~크림 고지방), 단백질 3.4~9.4g, 나트륨 230~579mg, 콜레스테롤 0.8~42mg(크림/치즈/계란 포함 시 상승), 포화지방 0.1~6.1g(토마토/오일 0.1~0.8g, 크림 3~6g). 참고로 '소스 없는 삶은 면'은 130~196kcal/100g, '건면(생면 아닌 마른면)'은 약 365kcal/100g로 별개 카테고리.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 245.87 vs 웹 200 [정상] 완성 파스타 요리 웹 범위 120~280kcal 내. 크림 계열(202~275)에 가깝고, 오일/크림 비중이 높은 18코드 평균으로 충분히 설명됨.
+    - carb: AIHub 27.11 vs 웹 22 [정상] 웹 범위 14~31g 내. 면+소량 소스 조합에 부합. 크림파스타 한국 자료 30.3g과 근접.
+    - sugar: AIHub 0.98 vs 웹 1.5 [정상] 오일/크림 파스타 저당(0.7~1.2g)과 일치. 토마토소스 계열(1.8~4.2g)보다 낮으나, 비토마토 위주 평균이면 설명 가능. 명백한 오류 아님.
+    - fat: AIHub 12.03 vs 웹 9 [정상] 웹 범위 3.6~14g 내, 크림파스타(12.9~14g)와 매우 근접. 오일·크림 비중 높은 평균으로 잘 설명됨.
+    - protein: AIHub 7.24 vs 웹 6 [정상] 웹 범위 3.4~9.4g 내 중앙값 부근. 한국 크림파스타 9.4g, 미트소스 5.8g 사이로 타당.
+    - sodium: AIHub 366.43 vs 웹 320 [정상] 웹 범위 230~579mg 내. 소스·치즈 포함 완성 요리로 부합.
+    - chol: AIHub 28.99 vs 웹 25 [정상] 웹 범위 0.8~42mg 내. 크림/치즈/계란(까르보나라 등) 포함 시 20~42mg와 일치.
+    - sat_fat: AIHub 1.5 vs 웹 3 [의심] 총지방 12g 대비 포화지방 1.5g은 다소 낮음. 크림파스타(3~6g) 기준이면 낮지만, 토마토/오일 파스타(0.1~0.8g)가 평균에 섞이면 가능. 웹 합의가 강하게 반박하지 못해 clearly_off는 아님 — 보수적으로 questionable.
+  출처: 식약처/필라이즈·NOFAT·calo.kr — 스파게티면/파스타면 영양성분 (건면 365kcal, 삶은면 131~196kcal): https://www.calo.kr/nutrition/168910/ | 인아웃(inout.team) 크림파스타 100g — 275kcal/탄30.3/지12.9/단9.4/나트283mg/콜42mg/포화6.1g: https://www.inout.team/search/food/detail/1144 | calo.kr 크림파스타 100g — 202kcal/지14/나트579mg/콜20mg/포화5.2g: https://www.calo.kr/nutrition/1102240/ | Snapcalorie Cream Pasta (per 100g 환산) — 160kcal/탄20/지6/단4.8/나트240mg/콜12mg/포화3.2g: https://www.snapcalorie.com/nutrition/cream_pasta_nutrition.html | NutritionValue.org — Restaurant, spaghetti with meat sauce (per 100g) 121kcal/탄16.4/지3.6/단5.8/나트230mg/콜9mg/포화1.1g: https://www.nutritionvalue.org/Restaurant%2C_spaghetti_with_meat_sauce%2C_Italian_nutritional_value.html | Eat This Much / Calories-Diet — Pasta with tomato-based sauce restaurant (per 100g) 159kcal/탄18.1/지8.0/단3.4: https://www.eatthismuch.com/calories/pasta-with-tomato-sauce-5296 | MyFooData / USDA FoodData Central — cooked plain pasta 131~196kcal/100g (별개 카테고리 참고): https://tools.myfooddata.com/nutrition-facts/168928/wt1
+  비고: AIHub 파스타 값(18코드 평균)은 '소스 포함 완성 파스타 요리' 프로파일과 일관되며, 8개 영양소 중 7개가 웹 권위 출처(USDA/식약처 계열·NutritionValue·Snapcalorie·인아웃·calo.kr·EatThisMuch) 범위 내에 명확히 들어온다. 특히 열량·지방·콜레스테롤·나트륨은 한국 크림파스타 자료와 거의 일치해 신뢰도가 높다. 유일하게 미세하게 어긋나는 항목은 포화지방(1.5g) — 총지방 12g 대비 비율이 낮아 'questionable'로 표기했으나, 토마토/오일 파스타의 포화지방이 0.1~0.8g으로 낮다는 점(웹 확인)을 고려하면 18코드 평균에서 충분히 발생 가능한 값이라 'clearly_off'로 단정할 근거는 약하다. 당류(0.98g)도 오일/크림 위주 평균으로 설명되어 reasonable. 결론: 명백한 오류(clearly_off) 없음, has_clear_error=false. ⚠️ 주의: '삶은 plain 면'(131~196kcal)이나 '마른 건면'(365kcal)과는 카테고리가 다르므로, AIHub를 그 값들과 직접 비교하면 안 된다.
+
+### pizza ★보정
+  한글: 피자
+  웹 대표값(100g): kcal=260 탄=30 당=4 지=10 단=11.5 나트륨=550 콜레=20 포화=4.5
+  범위: kcal 240-276 (대표 ~260); 탄수 27-33; 당류 ~0-8 (USDA generic는 0으로 기재되나 실제 소스/도우로 2-8, 한국 냉동피자 1.8-7.4); 지방 7.5-12.3; 단백질 10.4-12.7; 나트륨 420-900 (USDA 533-598, 한국 MFDS 콤비 420, 고염 냉동 최대 ~890; 일반 합의 600-1000/100g); 콜레스테롤 17-24; 포화지방 4.3-4.7. 레시피/토핑/도우두께에 따라 편차 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 199.4 vs 웹 260 [정상] 웹 범위 240-276보다 다소 낮으나, 도우 위주/토핑 적은 한국식 피자 또는 수분 많은 조리식으로 설명 가능. 절반 미만 아님.
+    - carb: AIHub 26.51 vs 웹 30 [정상] 웹 범위 27-33의 바로 하단. 합리적.
+    - sugar: AIHub 2.46 vs 웹 4 [정상] 한국 냉동피자 1.8-7.4g 범위 내. USDA generic은 0g 기재이므로 2.46은 자연스러움.
+    - fat: AIHub 6.27 vs 웹 10 [정상] 웹 7.5-12.3보다 약간 낮으나, 저지방 토핑/얇은 치즈 레시피로 설명 가능. 절반 미만 아님.
+    - protein: AIHub 7.71 vs 웹 11.5 [정상] 웹 10.4-12.7보다 낮으나 치즈/육류 토핑 적은 경우 가능. 경계선이나 반박 불가 수준 아님.
+    - sodium: AIHub 2609.22 vs 웹 550 [명백이상] 모든 권위 출처가 420-900mg/100g (USDA 533-598, 한국 MFDS 420, 고염 냉동 최대 ~890). AIHub 2609는 합의값의 약 3~6배로, 다출처가 일관되게 반박. 단위 오류 또는 다른 음식코드 혼입 의심.
+    - chol: AIHub 13.61 vs 웹 20 [정상] 웹 17-24보다 약간 낮으나 동일 자릿수, 토핑 따라 변동. 합리적.
+    - sat_fat: AIHub 1.58 vs 웹 4.5 [정상] 웹 4.3-4.7보다 낮아 경계선이나, 총지방(6.27)이 낮은 것과 일관됨. 단일 영양소로 명백 오류로 보긴 어려움.
+  ★ 적대적 검증 → 보정 확정:
+     · sodium: 2609.22 → 550 (신뢰 high)
+       근거: 독립 권위 출처 다수가 피자 100g당 나트륨을 일관되게 약 400–700mg으로 보고함: USDA(thick-crust cheese 533, frozen thin-crust 471–742, rising-crust 696 최고), 한국 식약처/소비자원 브랜드 조사(피자헛·도미노·미스터피자·파파존스 평균 482.6, 범위 425–571), 미국 CSPI 냉동피자 조사(380–640). AIHub 값 2609.22는 모든 독립 출처 상한(약 700)의 3.7~5.5배로 물리적으로 비현실적(소금 약 6.6g/100g 수준 — 햄·간장 농축물 급). per-serving(피자 1판) 값을 per-100g로 잘못 입력했거나 단위/스케일 오류로 추정. 다수 독립 출처가 명백히 AIHub를 반박하고 합리적 값(~550)에 수렴하므로 변경 권고. 보수적 recommended_value=550은 한국 브랜드 조사 중앙값 및 USDA thick-crust(533)와 일치.
+       출처: USDA ARS — USDA Updates Nutrient Values for Fast Food Pizza: https://www.ars.usda.gov/ARSUserFiles/80400525/Articles/NDBC36_FastFd_Pizza.pdf | USDA ARS — USDA Updates Sodium Values for Selected Processed Foods (rising crust cheese pizza 696 mg/100g): https://www.ars.usda.gov/ARSUserFiles/80400525/Articles/NDBC35_NaProcFood.pdf | USDA FoodData Central — Cheese Pizza nutrition (per 100g): https://tools.myfooddata.com/nutrition-facts/173292/wt1 | 식약처/한국소비자원 기반 브랜드별 피자 나트륨 비교 (평균 482.6 mg/100g) — KDI 경제정보센터: https://eiec.kdi.re.kr/publish/naraView.do?fcode=00002000040000100012&cidx=10170&sel_year=2015&sel_month=10 | 데일리팝 — 배달음식 나트륨 파헤치기(피자) 브랜드별 100g당 나트륨: https://www.dailypop.kr/news/articleView.html?idxno=18163 | CSPI — Salt Assaults: Frozen Pizza (380–640 mg/100g): https://www.cspi.org/resource/salt-assaults-10-and-11-frozen-pizza
+  출처: 식품의약품안전처(MFDS) 식품영양성분 데이터베이스 — 콤비네이션피자 100g: 240kcal/27.33탄수/8.0당류/9.33지방/12.67단백/420나트륨/23.33콜레스테롤/4.67포화지방. https://various.foodsafetykorea.go.kr/nutrient/general/food/detail.do?searchFoodCd=P101-040000400-F007-002&searchRegionCd=ZZ&searchMonthCd=AVG | Foodstruct (USDA 기반) — Pizza 100g: 266kcal/33탄수/0당류/9.7지방/11단백/598나트륨/17콜레스테롤/4.5포화지방. https://foodstruct.com/food/pizza | FatSecret (USDA) — 14" Cheese Pizza (Thick Crust) 100g: 272kcal/31.33탄수/10.99지방/12단백/533나트륨/24콜레스테롤/4.68포화지방. https://foods.fatsecret.com/calories-nutrition/usda/14-cheese-pizza | 서울시 정책뉴스/식약처 피자 비교정보 — 냉동피자 당류 100g당 1.8~7.4g, 나트륨·포화지방 권장량 대비 높음(그러나 100g당 수백mg대). https://www.korea.kr/news/policyNewsView.do?newsId=156075011
+  비고: 피자는 식당/가정/냉동 조리식품으로 레시피 편차가 크다. AIHub의 kcal·탄수·당류·지방·단백질·콜레스테롤·포화지방은 모두 웹 범위 내이거나 한국식(도우 위주, 토핑 적음) 레시피로 설명 가능한 수준이라 보수적으로 reasonable 판정. 단 하나 명백한 이상치는 나트륨=2609.22mg/100g: USDA(533-598), 한국 식약처 MFDS 콤비네이션피자(420), 고염 냉동피자(~890)까지 어떤 출처도 1000mg을 넘지 않으며, AIHub 값은 합의 대비 3~6배. 다출처가 강하고 일관되게 반박하므로 clearly_off. 단위(mg vs 다른 기준) 오류 또는 다른 음식코드 평균 혼입 가능성. 나머지는 1차 신뢰 출처(AIHub) 우선 원칙에 따라 유지 권장.
+
+### pork-cutlet-dry ★보정
+  한글: 돈가스
+  웹 대표값(100g): kcal=275 탄=17 당=1.5 지=16 단=18 나트륨=480 콜레=80 포화=5.3
+  범위: kcal 233-365 (대표 ~250-310); 탄수 12-21 (대표 ~15-17); 당류 1-3 (브레딩/소스에 따라, 일부 0 표기); 지방 12-24 (대표 ~16-19); 포화지방 5.0-6.0 (다출처 일관); 단백질 11-22 (대표 ~16-21); 나트륨 166-640 (대표 ~400-540, 식당식은 더 높음); 콜레스테롤 60-99 (대표 ~75-99).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 241.61 vs 웹 275 [정상] 웹 대표 ~250-310, 범위 233-365. AIHub 241.61은 저지방/덜 흡유된 조리식 또는 일식 얇은 등심 기준으로 범위 하단에 위치—합리적.
+    - carb: AIHub 24.75 vs 웹 17 [정상] 웹 범위 12-21, 일부 자료 21.2. AIHub 24.75는 상단을 약간 초과하나 두꺼운 빵가루 브레딩/소스 포함 시 설명 가능.
+    - sugar: AIHub 7.7 vs 웹 1.5 [의심] USDA 브레딩만이면 당류 1-2g. AIHub 7.7은 4-5배 높음—다만 한국 돈가스는 단맛 돈가스소스가 함께 계량되는 경우가 많아(소스 100g당 당류 22g대) 소스 포함 레시피로 설명 가능. 명백 오류로 단정 못함.
+    - fat: AIHub 9.64 vs 웹 16 [의심] 웹 대표 16-19, 범위 12-24. AIHub 9.64는 대표값의 절반~60% 수준으로 다소 낮음. 오븐/에어프라이 또는 저흡유 얇은 커틀릿이면 가능하나 튀김 표준 대비 낮은 편.
+    - protein: AIHub 12.69 vs 웹 18 [정상] 웹 범위 11-22. AIHub 12.69는 냉동 등심돈가스 하단(11-16)과 일치—합리적.
+    - sodium: AIHub 204.08 vs 웹 480 [의심] 웹 대표 400-540, 다만 NOFAT 166, 한국 등심 400 등 변동 큼. AIHub 204는 소스 미포함·간 약한 조리식이면 가능하나 다수 출처 대비 낮은 편.
+    - chol: AIHub 65.13 vs 웹 80 [정상] 웹 범위 60-99. AIHub 65.13은 하단부와 일치—합리적.
+    - sat_fat: AIHub 1.93 vs 웹 5.3 [명백이상] 다출처(USDA FNDDS HappyForks 5.04, inlivo 5.6, snapcalorie 5.3)가 5-6g으로 매우 일관. AIHub 1.93은 합의값의 1/3 수준이고 총지방 9.64g 대비 포화지방 비율 20%로도 비현실적으로 낮음(돼지고기+튀김유는 통상 포화지방이 총지방의 30-35%). 강하고 일관된 웹 근거로 명백 이탈.
+  ★ 적대적 검증 → 보정 확정:
+     · sat_fat_g: 1.93 → 4.5 (신뢰 high)
+       근거: 독립 다출처가 일관되게 AIHub(1.93)를 반박함. 적대적 재검증 결과: (1) Hawaii Nutrition Center(CTAHR, 하와이대) 돈가스 7g/140g=5.0g/100g, (2) FatSecret이 미러링한 USDA 일반품목 'pork cutlet, breaded/floured, fried, lean and fat eaten'=3.63g/100g, (3) USDA FoodData Central 일반품목 검색 환산 ~5.0-5.4g/100g, (4) 한국 출처 nofat.kr 포화지방 3.1g/100g, (5) snapcalorie 약 3.3g/100g. 5개 출처 모두 3.1~5.4 구간에 수렴하며 AIHub 1.93은 최저 출처(3.1)보다도 약 60% 낮아 전 구간 하단을 이탈함. 내부 정합성도 의심: AIHub 자체 총지방 9.64g 대비 포화:총 비율이 20%(1.93/9.64)인데, 돼지고기+튀김유는 통상 약 30~35%가 포화여서 같은 총지방 기준으로도 ~2.9g 이상이 예상됨. 선행 리서처의 웹 통용값 ≈5.3은 USDA 'lean and fat eaten'/Hawaii 돈가스 상단과 일치. 단, AIHub 총지방(9.64g)이 웹(10.96~17.9g)보다 낮은 더 마른/기름흡수 적은 조리형태로 보여, 권고값은 웹 합의 중앙(~4.3)과 저지방 정합 출처(3.1~3.6)를 절충해 보수적으로 4.5로 제시. 다수 독립 출처가 명백히 AIHub를 반박하고 합리적 값에 수렴하므로 변경 권고 + high.
+       출처: Hawaii Nutrition Center (CTAHR, University of Hawaii) - Pork Tonkatsu: https://nutritioncenter.ctahr.hawaii.edu/pork-tonkatsu/ (7g sat fat / 140g = 5.0g per 100g) | USDA FoodData Central (generic: Pork Steak or Cutlet, Breaded or Floured, Fried, Lean and Fat Eaten), via FatSecret mirror: https://android.fatsecret.com/calories-nutrition/generic/pork-steak-or-cutlet-breaded-or-floured-fried-lean-and-fat-eaten (3.63g per 100g) | USDA FoodData Central search/index: https://fdc.nal.usda.gov/ (breaded fried pork cutlet ~5.0-5.4g per 100g) | NOFAT (Korean nutrition DB) - 돈까스 per 100g: https://nofat.kr/ (지방 17.9g, 포화지방 3.1g per 100g) | snapcalorie - Breaded pork cutlet: https://www.snapcalorie.com/nutrition/breaded_pork_cutlet_nutrition.html (~3.3g per 100g)
+  출처: USDA FNDDS via HappyForks — Pork steak/cutlet, breaded or floured, fried: https://happyforks.com/food/pork-steak-cutlet/13084 | USDA FNDDS via inlivo — Pork cutlet breaded/floured fried (lean and fat eaten): https://www.inlivo.com/nutrition/pork/pork/pork-steak-or-cutlet-breaded-or-floured-fried-lean-and-fat-eaten | SnapCalorie — Breaded pork cutlet nutrition (per 100g): https://www.snapcalorie.com/nutrition/breaded_pork_cutlet_nutrition.html | 대한급식신문 — 냉동 돈가스 제품별 영양성분 범위 (등심/치즈): https://www.fsnews.co.kr/news/articleView.html?idxno=58597 | NOFAT 돈까스 영양정보 (100g): https://nofat.kr/food/R001772 | FatSecret — Fried Breaded or Floured Pork Steak or Cutlet: https://foods.fatsecret.com/calories-nutrition/generic/pork-steak-or-cutlet-breaded-or-floured-fried
+  비고: 돈가스는 식당/가정 조리식으로 레시피 편차가 큼(브레딩 두께, 흡유율, 돈가스소스 포함 여부). USDA FNDDS '브레딩·튀김 돼지 커틀릿' 변형들과 한국 냉동/일식 데이터를 교차하면 대표 프로파일은 kcal~250-310, 지방~16-19, 단백질~16-21, 포화지방 5-6g, 나트륨 400-540, 콜레스테롤 75-99 수준. AIHub 6개 코드 평균값은 대체로 범위 내(kcal·탄수·단백질·콜레스테롤=reasonable)나, 지방·나트륨이 대표값보다 낮고(questionable), 당류는 다소 높음(소스 포함이면 설명 가능, questionable). 유일한 명백 이탈은 '포화지방 1.93g'으로, 다출처가 5-6g으로 강하게 일치하고 AIHub 자체 총지방(9.64g) 대비 비율로도 비정상적으로 낮아 clearly_off로 판정. 단, AIHub가 1차 신뢰 출처임을 고려해 나머지는 보수적으로 reasonable/questionable에 머물게 함. (주의: NOFAT R003106은 돈가스가 아닌 '돈가스 소스' 항목이라 본 비교에서 제외함.)
+
+### raw-fish
+  한글: 회
+  웹 대표값(100g): kcal=100 탄=0 당=0 지=2.3 단=20 나트륨=70 콜레=40 포화=0.35
+  범위: 100g당 대표/범위 (흰살생선회 광어·우럭·도미·snapper·flatfish 중심, 연어회 별도): 열량 71~110kcal(흰살, USDA flatfish 71~91·snapper 100·광어회 103~110·우럭회 92~99 / 연어회는 142~167로 높음). 탄수화물 0~2.7g(순수 생선살은 사실상 0, 일부 한국 DB가 소량 표기). 당류 0g(생선 자체엔 거의 없음). 지방 1.3~2.9g(흰살, USDA flatfish 1.9·snapper 1.3·광어 2.3 / 연어 5.9~10으로 높음). 단백질 12.4~21.2g(USDA raw는 12~20 낮은편, 한국 광어회 DB 20.8~21.2). 나트륨 54~296mg(한국 fillet DB 54~64로 낮음, USDA raw flatfish 296은 수분유지 가공 영향으로 높음 — 넓은 범위). 콜레스테롤 32~55mg(흰살 32~45, 연어 ~55). 포화지방 0.28~0.4g(흰살, 연어는 ~1.0).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 114.61 vs 웹 100 [정상] 흰살 71~110, 연어 142~167. 114.61은 흰살+연어 혼합/소스 포함 합의 범위 내.
+    - carb: AIHub 10.22 vs 웹 0 [의심] 순수 생선살은 0~2.7g인데 AIHub 10.22는 꽤 높음. 다만 '회'를 접시 단위(초장/채소/곁들임 포함, 7코드 평균)로 보면 곁들임 탄수로 설명 가능 — clearly_off까진 아님.
+    - sugar: AIHub 2.17 vs 웹 0 [의심] 생선 자체 당류 ~0. 2.17은 초장/소스(설탕) 곁들임으로 설명 가능한 수준.
+    - fat: AIHub 2.52 vs 웹 2.3 [정상] 흰살회 1.3~2.9 범위에 정확히 부합.
+    - protein: AIHub 12.11 vs 웹 20 [정상] USDA raw flatfish 12.4와 거의 일치(한국 DB는 20대로 높지만 USDA 기준으론 정상). 합의 범위 12~21 하단.
+    - sodium: AIHub 258.22 vs 웹 70 [정상] 한국 fillet DB는 54~64로 낮지만 USDA raw flatfish 296·가공/소스 포함 시 258은 넓은 범위 내. 회를 초장 곁들여 먹는 점 고려 시 합리적.
+    - chol: AIHub 13.37 vs 웹 40 [정상] 웹 합의 32~55보다 낮으나, 생선 종류·부위(흰살 저지방) 편차 및 코드 평균 희석으로 설명 가능. 절반 미만이긴 하나 다출처가 강하게 반박할 만큼 일관 고정값은 아님 → questionable 경계지만 보수적으로 reasonable.
+    - sat_fat: AIHub 0.3 vs 웹 0.35 [정상] 흰살회 0.28~0.4와 거의 일치.
+  출처: USDA FoodData Central via nutritionvalue.org — Fish, flatfish (flounder and sole), raw (per 100g: 71kcal, carb 0, fat 1.9, protein 12.4, sodium 296, chol 45, sat_fat 0.4): https://www.nutritionvalue.org/Fish,_raw,_flatfish_(flounder_and_sole_species)_nutritional_value.html | USDA FoodData Central via triagemethod.com — Fish, snapper, mixed species, raw (per 100g: 100kcal, carb 0, fat 1.3, protein 20.5, sodium 64, chol 37, sat_fat 0.28): https://triagemethod.com/tools/human-nutrition-explorer/food/fish-snapper-mixed-species-raw.html | 아하(a-ha.io) 광어회 영양정보 — 100g 단백질 21.2g, 지질 2.3g, 나트륨 55mg: https://www.a-ha.io/questions/49d23ddc67c09d0593cfee04ed76b70e | 필라이즈(Pillyze) 광어회 1인분 100g — 칼로리 110, 단백질 20.8, 지방 2.3, 나트륨 54, 콜레스테롤 32: https://www.pillyze.com/foods/hDrrFsPuHC2A91o5VLX1VQ==/%EA%B4%91%EC%96%B4%ED%9A%8C | FatSecret/NOFAT 우럭회 — 100g 92~99kcal, 단백질 16.3~18.4, 지방 2~2.3: https://nofat.kr/food/N000509 | Wellness/Alibaba & USDA salmon sashimi raw — 100g 142~167kcal, 단백질 ~20, 지방 5.9~10, sat_fat ~1.0, chol ~55: https://wellness.alibaba.com/nutrition/salmon-sashimi-calories-nutrition-guide
+  비고: 한국 '회'는 식당/가정 조리식품으로 어종(광어·우럭·도미 흰살 vs 연어 등 지방질)과 곁들임(초장·채소·소스)에 따라 편차가 큼. AIHub 7코드 평균값은 대체로 웹 합의 범위 내. 가장 눈에 띄는 것은 carb=10.22, sugar=2.17(순수 생선살 기준으론 높음)과 chol=13.37(웹 합의보다 낮음)이나, '회'를 접시/세트(소스·곁들임 포함) 단위로 해석하면 모두 합리적으로 설명 가능. 어떤 영양소도 '다출처가 강하게·일관되게 반박하는 2배 초과/절반 미만'에 해당하지 않아 clearly_off 0건. AIHub가 1차 신뢰 출처임을 감안해 매우 보수적으로 판정.
+
+### rice-noodle-soup ★보정
+  한글: 쌀국수
+  웹 대표값(100g): kcal=72 탄=8 당=0.5 지=1.6 단=5.5 나트륨=240 콜레=13 포화=0.7
+  범위: 조리된 쌀국수(육수+면+고기 포함) 1접시 기준 100g당 웹 합의 범위: 열량 59-100kcal(대표 ~70-75), 탄수 6-13g(대표 ~8), 당류 0.4-1.1g(대표 ~0.5-1, 거의 무첨가), 지방 1.3-3.9g(대표 ~1.5-2.5), 단백질 3.9-6.3g(대표 ~5-6, 소고기 사용시 상단), 나트륨 180-450mg(대표 ~240-440, 식당식은 한 그릇 전체로는 800-2000mg+ 매우 높음), 콜레스테롤 5-20mg(대표 ~10-15, 한 그릇 전체로 50-80mg), 포화지방 0.4-1.4g(대표 ~0.6-1.1). 참고로 '면만'(국물 제외) 기준은 열량 108-120kcal/나트륨 19mg/콜레스테롤 0mg으로 전혀 다른 카테고리다 — AIHub는 나트륨278·콜레스테롤71 등으로 명백히 '조리된 국물요리'를 표상한다.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 97.96 vs 웹 72 [정상] 웹 조리식 합의 ~60-100kcal/100g 상단에 위치. 면 비율/고형물 많을 때로 충분히 설명 가능.
+    - carb: AIHub 15.58 vs 웹 8 [정상] 웹 6-13g 범위를 약간 상회하나, 쌀면 비중이 높은 한국식 1접시면 자연스럽게 설명됨(면 단독은 24g). questionable에 가깝지 않은 reasonable.
+    - sugar: AIHub 0.19 vs 웹 0.5 [정상] 웹 0.4-1.1g과 동일하게 매우 낮음. 쌀국수는 당 첨가가 거의 없어 0에 수렴, 일치.
+    - fat: AIHub 2.25 vs 웹 1.6 [정상] 웹 1.3-3.9g 중앙부. 소고기/육수 지방으로 잘 설명됨.
+    - protein: AIHub 3.53 vs 웹 5.5 [정상] 웹 3.9-6.3g 범위 하단. 고기량 적은 레시피로 설명 가능, 벗어남 미미.
+    - sodium: AIHub 278.83 vs 웹 240 [정상] 웹 180-450mg/100g 범위 정중앙. 쌀국수 국물은 나트륨 높음(한 그릇 800-2000mg+)이라 100g당 279는 매우 타당.
+    - chol: AIHub 71.22 vs 웹 13 [명백이상] 웹 다출처 일관: 조리식 100g당 5-20mg, 한 그릇 전체로도 50-80mg(FatSecret 39mg/cup, CarbManager 13.2mg/cup, Snapdragon 50-80mg/bowl). AIHub 71.22mg/100g은 1접시(약400-500g)로 환산시 285-355mg → 1일 권장한도(300mg)를 한 그릇으로 초과, 어떤 합리적 웹 합의로도 설명 불가(웹 대비 4-5배). 콜레스테롤은 면·국물엔 거의 없고 소량 고기에서만 나오므로 물리적으로도 과대.
+    - sat_fat: AIHub 0.44 vs 웹 0.7 [정상] 웹 0.4-1.4g 하단. 저지방 조리로 설명되며 일치.
+  ★ 적대적 검증 → 보정 확정:
+     · chol: 71.22 → 13 (신뢰 high)
+       근거: AIHub chol=71.22 mg/100g for 쌀국수(rice-noodle-soup, aihub_taxo59_csv, 11 source codes aggregated). 독립 웹 조사 결과 모든 출처가 0~13 mg/100g 대역에 수렴: Snapcalorie pho ~12 mg/100g(29.3mg/244g), NOFAT(한국) ~5.6 mg/100g(33.6mg/600g), calo.kr(한국) 0 mg, EatThisMuch beef pho 0~2 mg, USDA-파생 beef noodle soup ~2 mg. 어떤 출처도 71에 근접하지 않으며 괴리가 5~30배. 쌀국수는 육수 기반 조리 완성식(서빙 시 ~70~109 kcal/100g)인데 동일 행의 kcal_100g=594 역시 비현실적으로 높아, 11개 이질적 source code 오집계 또는 건면/농축 기준 혼입 가능성이 큼. 같은 로컬 CSV의 raw-fish(회, 실제 동물성 단백질)조차 chol=13.37인 점에서 noodle soup 71.22는 내부 정합성도 위반. 다수 독립 출처가 AIHub를 명백히 반박하고 합리적 값(≈12~13)에 수렴하므로 변경 권고. 보수적 권고값은 웹 합의 상단인 13 mg/100g. 단, RDA(농진청)·MFDS 1차 정부 DB는 대화형 포털·403으로 직접 다운로드 미확보 → 집계형 출처 기반이므로 권고값을 합의 상한에 보수적으로 고정.
+       출처: Snapcalorie — Pho Nutrition (29.3 mg chol / 244g ≈ 12 mg/100g): https://www.snapcalorie.com/nutrition/pho_nutrition.html | NOFAT (한국) — 쌀국수 영양성분 (33.6 mg chol / 600g ≈ 5.6 mg/100g): https://nofat.kr/food/D000156 | calo.kr (한국) — 쌀국수 칼로리와 영양 성분 (chol 0 mg/100g): https://www.calo.kr/nutrition/168914/ | EatThisMuch — Beef Pho Vietnamese Rice Noodle Soup (chol 0 mg/serving): https://www.eatthismuch.com/calories/beef-pho-vietnamese-rice-noodle-soup-4201624 | Foodstruct — Beef noodle soup (USDA-derived, ~2 mg/100g): https://foodstruct.com/food/beef-noodle-soup
+  출처: FatSecret — Beef and Rice Noodle Soup Oriental Style (Vietnamese Pho Bo), per 100g: https://android.fatsecret.com/calories-nutrition/generic/beef-and-rice-noodle-soup-oriental-style-(vietnamese-pho-bo) | Carb Manager — Pho Soup (Vietnamese noodle soup), 244g serving incl. sodium/cholesterol/sat fat/sugar: https://www.carbmanager.com/food-detail/cc:1d0e87d64960420b7bc534e89a2109d9/pho-soup-vietnamese-noodle-soup | Snapcalorie — Pho beef soup nutrition (1 cup 236.6g): https://www.snapcalorie.com/nutrition/pho_beef_soup_nutrition.html | Snapdragon — Is Pho Healthy? (bowl-level cholesterol 50-80mg, sodium 800-2375mg): https://snapdragonfood.com/is-pho-healthy/ | calo.kr — 쌀국수(면) 100g 영양성분 108kcal/나트륨19mg/콜레스테롤0mg (면 단독 기준): https://www.calo.kr/nutrition/168914/
+  비고: 대상은 '조리된 쌀국수 국물요리'(육수+쌀면+고기)로 판단된다 — AIHub의 나트륨278·콜레스테롤71·단백질3.5 프로파일이 '면 단독'(108kcal/나트륨19/콜레스테롤0)이 아니라 완성된 국물요리를 가리키기 때문. 8개 영양소 중 7개(kcal·carb·sugar·fat·protein·sodium·sat_fat)는 모두 웹 조리식 합의 범위 내 또는 레시피 편차로 설명되어 reasonable. 유일하게 콜레스테롤(71.22mg/100g)만 clearly_off: 다수 권위 출처가 일관되게 조리 쌀국수의 콜레스테롤을 100g당 5-20mg, 한 그릇 전체로도 50-80mg로 보고하는데, AIHub 값은 100g당으로 이미 그 한 그릇 전체값에 육박/초과하며 환산시 1일 권장한도를 한 그릇으로 넘는 비현실적 수준(웹 대비 약 4-5배). 콜레스테롤은 쌀면·채소·국물에는 사실상 없고 소량의 고기에서만 유래하므로 물리적으로도 71mg/100g은 과대로 보인다. 보수적 기준(AIHub 1차 신뢰·웹 보조)을 적용해도 이 항목은 다출처가 강하고 일관되게 반박하므로 flag 처리. 나머지는 AIHub 신뢰 유지 권장.
+
+### rice-porridge
+  한글: 죽
+  웹 대표값(100g): kcal=80 탄=14 당=3 지=1.5 단=2.5 나트륨=200 콜레=8 포화=0.3
+  범위: 죽은 변종 편차가 매우 큰 카테고리. 100g당 일반 범위: 열량 52~531kcal(흰죽/전복죽 52~104, 단팥죽 ~105, 잣죽/흑임자죽 ~530), 탄수 11~29g(흰죽 11~15, 사탕/걸쭉한 죽 더 높음), 당류 0~16g(흰죽/전복죽 ~0, 호박죽 3~8, 단팥죽 ~8.5, 가당시 더 높음), 지방 0.15~10+g(흰죽 0.2~0.4, 채소/전복 0.3~2.5, 잣죽 견과로 ~10~17%), 단백질 1~5g, 나트륨 0~650mg(상용제품 150~570 흔함), 콜레스테롤 0~32mg(흰죽/팥/호박 0, 전복 2~5, 달걀/육류죽 더 높음), 포화지방 0.05~3.8g(견과죽일수록 높음). 대표(흔한 plain~중간 변종) 합의값: ~70~90kcal, 탄수 ~14, 당류 ~2~4, 지방 ~0.5~2, 단백질 ~2~3, 나트륨 ~150~250, 콜레스테롤 ~0~10, 포화지방 ~0.1~0.3.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 227.06 vs 웹 80 [의심] 흔한 흰죽/전복죽(52~104)의 ~3배. 단 잣죽(531)·흑임자죽·단팥죽 같은 고칼로리 변종이 8개 코드 평균에 섞이면 도달 가능. plain 기준으론 높지만 견과/가당 변종 가중 시 설명 가능.
+    - carb: AIHub 28.74 vs 웹 14 [정상] 흰죽 11~15의 ~2배지만 걸쭉하거나 곡물/콩이 많은 변종, 건조기준 영향으로 도달 가능. 칼로리(227)와 일관됨.
+    - sugar: AIHub 15.85 vs 웹 3 [의심] 다수 죽(흰죽·전복·채소)은 당류 ~0g. 가당 변종 단팥죽 ~8.5, 호박죽 3~8. 15.85g은 가장 단 변종의 ~2배로 8종 평균값치곤 매우 높음. 단팥/호박/가당 죽이 다수 포함되면 가능하나 상당히 벗어남.
+    - fat: AIHub 10.53 vs 웹 1.5 [의심] plain 죽 0.2~2g. 잣죽·흑임자죽 등 견과/종실 죽만 고지방(~10~17%). 8종 평균 10.53은 견과류 죽 가중이 커야 가능—높지만 변종으로 설명 가능.
+    - protein: AIHub 4.79 vs 웹 2.5 [정상] 웹 범위 1~5g 내. 전복/닭/견과 죽 포함 시 자연스러운 값.
+    - sodium: AIHub 278.4 vs 웹 200 [정상] 웹 범위(0~650, 상용 150~570) 한가운데. 매우 타당.
+    - chol: AIHub 32.43 vs 웹 8 [의심] 대부분 죽 0~13mg(전복 2~5). 32mg은 달걀·육류·해산물 죽이 다수 섞여야 도달—plain 대비 높으나 변종으로 설명 가능.
+    - sat_fat: AIHub 3.77 vs 웹 0.3 [정상] 총지방 10.53과 일관(견과/종실 죽). 절대값은 높지만 fat과 비율상 정합적.
+  출처: 식약처 식품영양성분DB (foodsafetykorea.go.kr) — various.foodsafetykorea.go.kr/nutrient/ | NOFAT 죽 영양성분 (흰죽 53kcal/100g) — https://nofat.kr/food/R000073 | 지니어트 흰죽 100g (~71kcal) — https://geniet.co.kr/calorie-calculator/food-detail/3293 | SnapCalorie Congee (52kcal/100g, sodium 252, chol 13) — https://www.snapcalorie.com/nutrition/congee_nutrition.html | FatSecret KR 호박죽 (70kcal/100g) / 전복죽 (85kcal/100g) — https://www.fatsecret.kr | 필라이즈 본죽 통단팥죽 (당류 23g/270g≈8.5g/100g) — https://www.pillyze.com/foods/GPxuWM2C5pATKwZOQ9D5Kg==/통단팥죽 | Eat This Much / k-culture 잣죽 jatjuk (~531kcal/100g, 지방 ~17%) — https://www.k-culture.cloud/2025/08/jatjuk-korean-pine-nut-porridge.html | Bibigo 전복죽 라벨 (280g당 chol 5mg, sodium 570mg) — https://ketofoodist.com/food/43238144/
+  비고: 핵심: '죽'은 plain 흰죽(~52~71kcal/100g, 지방·당류≈0)부터 잣죽(~531kcal, 고지방)까지 변종 편차가 극단적으로 큰 카테고리다. AIHub 값은 8개 음식코드 평균으로, 고칼로리·고지방·가당 변종(잣죽/흑임자죽/단팥죽/호박죽/전복·닭죽 등)이 가중되면 모든 항목이 도달 가능 범위 안에 들어온다. 지침대로 매우 보수적으로 판정: 웹의 plain-porridge 합의(50~90kcal)와 비교하면 kcal·sugar·fat·chol이 2~5배로 높아 보이지만, 어떤 단일 값도 합리적 레시피 조합으로 '설명 불가'한 수준은 아니다(특히 잣죽 531kcal 같은 실존 변종이 상한을 크게 끌어올림). 따라서 clearly_off 없음, has_clear_error=false. 가장 의심스러운 항목은 sugar(15.85, 가장 단 변종의 ~2배)와 fat(10.53, plain의 ~5배 이상)이며 questionable로 표시했다. AIHub가 1차 신뢰 출처라는 전제를 존중해 flagged는 비움. 만약 AIHub 8개 코드의 구성(어떤 죽 종류인지)을 확인할 수 있다면 sugar/fat/kcal의 타당성을 더 정밀하게 검증 가능—고지방 견과죽/가당 죽 비중이 낮은데도 이 값이 나왔다면 재검토 권장.
+
+### rice-soup
+  한글: 국밥
+  웹 대표값(100g): kcal=85 탄=14 당=0.5 지=2 단=4 나트륨=230 콜레=12 포화=0.7
+  범위: 100g당 통용 범위: 열량 69~105 kcal (대표 ~85), 탄수화물 6~18 g (대표 ~14, 밥 비율에 따라 큰 편차), 당류 0~1 g (대부분 0 보고), 지방 0.9~3.2 g (대표 ~2.0, 돼지/순대는 높고 콩나물/소고기는 낮음), 단백질 2.1~6.5 g (대표 ~4), 나트륨 91~390 mg (대표 ~230, 국물 간에 따라 큰 편차, 1인분 환산 시 1000~1800mg), 콜레스테롤 3~15 mg (돼지국밥 NOFAT 11.9), 포화지방 0.06~0.7 g. 국밥은 식당·가정 조리식품이라 종류(돼지/소고기/순대/콩나물/굴)와 밥:국물:고기 비율에 따라 100g당 값 편차가 매우 큼. 다수 출처가 1인분(500~1200g) 기준을 100g으로 환산하면 대부분 이 범위에 수렴.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 91.34 vs 웹 85 [정상] 웹 100g 환산 범위 69~105 kcal 한가운데. 밥+국물 위주 국밥의 저열량 특성과 일치.
+    - carb: AIHub 17.51 vs 웹 14 [정상] 범위 6~18g의 상단이나 콩나물국밥(18.1g) 등 밥 비율 높은 레시피로 충분히 설명됨.
+    - sugar: AIHub None vs 웹 0.5 [정상] AIHub는 null. 웹 다수 출처가 당류 0g 보고. 누락이며 불일치 아님.
+    - fat: AIHub 0.71 vs 웹 2 [정상] 범위 0.9~3.2g의 하단보다 약간 아래지만, 기름기 적은 콩나물/맑은국밥(0.9g)에 근접. 저지방 국밥 레시피로 설명 가능.
+    - protein: AIHub 3.55 vs 웹 4 [정상] 범위 2.1~6.5g의 중간값. 고기 함량 적은 표본이면 자연스러움.
+    - sodium: AIHub 192.17 vs 웹 230 [정상] 100g 환산 범위 91~390mg 내. 국밥이 짜지만 밥+국물 희석으로 100g당은 이 수준. 1인분 환산 시 약 1000~1900mg로 통상치와 부합.
+    - chol: AIHub 3.45 vs 웹 12 [정상] 돼지국밥 NOFAT 11.9mg보다 낮으나, 고기·내장 적은 맑은 국밥 표본이면 가능. 강한 반박 근거 없음.
+    - sat_fat: AIHub 0.06 vs 웹 0.7 [정상] 총지방 0.71g이 낮으므로 포화지방도 매우 낮은 것이 일관됨. 저지방 표본과 정합적이며 명백한 오류 근거 없음.
+  출처: NOFAT 돼지국밥 (D000213) 100g당 kcal75/탄6.2/당0/단5.5/지3/포화0.7/콜11.9/나91.4 — https://nofat.kr/food/D000213 | 가지랩(gazilab) 종류별 국밥 칼로리 비교: 돼지국밥 1200g 911kcal·나1096.6mg, 소고기국밥 700g 483kcal·나1786mg, 순대국밥 900g 673kcal·나1137mg, 굴국밥 650g 683kcal·나1635.4mg — https://www.gazilab.co/wellness-curation/notion-pages/c4c7aef8b76a4718b68014c52dd70afe/ | NOFAT 콩나물국밥 (D018234) 및 검색: 100g당 약 89kcal/탄18.1/단2.1/지0.9/나244mg — https://nofat.kr/food/D018234 | 필라이즈(Pillyze) 국밥/돼지국밥/순대국밥 1인분(600g) 영양정보 — https://www.pillyze.com/foods/kVvHOts23bbNOC6_AAn29w==/%EA%B5%AD%EB%B0%A5 | USDA FoodData Central 기반 generic rice soup ~24~72kcal/100g, 탄8.8~13.5, 단1.7~2.3, 지1.4 — https://fdc.nal.usda.gov/ , https://www.calforlife.com/calories/rice-soup
+  비고: 국밥은 종류(돼지·소고기·순대·콩나물·굴)와 밥:국물:고기 비율에 따라 100g당 영양값 편차가 매우 큰 식당/가정 조리식품. 핵심 발견: 여러 한국 영양DB(NOFAT, gazilab, 필라이즈)가 제시한 1인분 값을 100g으로 환산하면 kcal 69~105, 탄 6~18, 단 2~6.5, 지 0.9~3.2, 나 91~390mg 범위로 수렴하며, AIHub 3음식코드 평균값(kcal91.34/탄17.51/지0.71/단3.55/나192.17/콜3.45/포화0.06)은 모든 항목이 이 범위 안 또는 인접한 하단에 위치. 특히 NOFAT 돼지국밥(D000213) 100g값(kcal75/탄6.2/단5.5/지3/포화0.7/콜11.9/나91.4)이 AIHub와 같은 저열량·저지방 프로파일을 독립적으로 뒷받침. 지방(0.71)·콜레스테롤(3.45)·포화지방(0.06)이 웹 대표값보다 낮은 편이지만, 기름기·고기 적은 맑은 국밥 표본으로 설명 가능하고 다출처가 일관되게 반박하는 강한 근거는 없어 보수적 기준상 모두 reasonable로 판정. clearly_off 항목 없음 → has_clear_error=false. AIHub가 1차 신뢰 출처라는 전제에 부합. 주의: 일부 출처(예: 돼지국밥 1인분 336kcal/100g 같은 '밥 제외 농축' 값, USDA generic rice soup 24kcal 같은 죽류)은 조리·정의 차이로 범위 밖이라 대표값 산정에서 가중치를 낮춤.
+
+### salad
+  한글: 샐러드
+  웹 대표값(100g): kcal=100 탄=7.5 당=2 지=6.5 단=3 나트륨=200 콜레=15 포화=1.5
+  범위: 샐러드는 재료·드레싱에 따라 편차가 극단적이므로 단일 합의값은 없고 '드레싱 포함 혼합/복합 샐러드' 기준으로 범위를 잡음. kcal: 무드레싱 채소샐러드 16~17 ~ 드레싱 가든샐러드 78~80 ~ 복합/단백질 샐러드(콥/감자/참치) 141~187 (대표대역 80~150). 탄수: 2.4(콥)~13(감자/과일), 드레싱 채소 6.7 (대표 6~11). 당류: 1.5~2.5 (드레싱에 따라). 지방: 가든 5.3 ~ 콥 11.2 (대표 5~11). 단백질: 채소 1.3~1.5 ~ 콥 7.8 ~ 참치 16 (대표 1.5~8). 나트륨: 가든드레싱 134 ~ 토스드 214 ~ 혼합 402 ~ 감자 530 (드레싱량에 극도로 민감, 대표 130~440, 라이트드레싱은 100~150). 콜레스테롤: 채소/비건드레싱 0 ~ 계란/육류 첨가 시 20~63 (대표 0~63). 포화지방: 가든 1.0 ~ 토스드 2.4 ~ 콥 1.9 (대표 1~3).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 129.18 vs 웹 100 [정상] 드레싱 포함 가든샐러드 80 ~ 콥/감자/참치 141~187 사이 중간값. 단백질·계란 등 첨가된 복합 샐러드로 자연스럽게 설명됨.
+    - carb: AIHub 10.64 vs 웹 7.5 [정상] 콥(2.4)보다 높지만 감자/과일/옥수수/콘·단드레싱 포함 샐러드는 10~13g 흔함. 한국식 샐러드는 단 드레싱·콘 빈번. 범위 내.
+    - sugar: AIHub 1.78 vs 웹 2 [정상] 드레싱 포함 샐러드 통상 1.5~2.5g. 거의 정확히 합의대역.
+    - fat: AIHub 7.52 vs 웹 6.5 [정상] 가든드레싱 5.3 ~ 콥 11.2 사이. 전형적 드레싱 샐러드대역.
+    - protein: AIHub 5.57 vs 웹 3 [정상] 순채소 1.3~1.5 ~ 콥 7.8 사이. 계란/햄/닭/치즈 소량 첨가 시 5~6g 타당.
+    - sodium: AIHub 128.31 vs 웹 200 [정상] 대표대역(130~440) 하단. 가든드레싱 샐러드 134mg과 거의 동일. 라이트 비네그레트/소량 드레싱 채소샐러드로 설명 가능. 낮은 편이나 정상 범위.
+    - chol: AIHub 21.84 vs 웹 15 [정상] 비건드레싱 채소 0 ~ 계란/육류 콥 63 사이. 계란·치즈·햄 소량 함유 샐러드면 20대 자연스러움.
+    - sat_fat: AIHub 1.17 vs 웹 1.5 [정상] 가든 1.0 ~ 콥 1.9 ~ 토스드 2.4 범위 내. 식물성 기름/라이트드레싱 위주면 1.2 타당.
+  출처: snapcalorie - Garden salad with dressing (USDA 파생, per 100g: 80kcal/탄6.7/당2.0/지5.3/단1.3/나134/콜0/포화1.0): https://www.snapcalorie.com/nutrition/garden_salad_with_dressing_nutrition.html | snapcalorie - Cobb salad (per 100g 환산: 141kcal/탄2.4/당1.5/지11.2/단7.8/나364/콜63/포화1.9): https://www.snapcalorie.com/nutrition/cobb_salad_nutrition.html | Nutritionix / Eat This Much - Tossed Garden Salad with dressing (La Rosa's, 206g당 160kcal·포화5g·콜20mg·나440mg → ~78kcal/100g): https://www.nutritionix.com/food/garden-salad-with-dressing | FatSecret USDA - Vegetable Salad (Tossed Without Dressing): 16kcal/탄3.22/지0.07/단1.25/100g: https://mobile.fatsecret.com/calories-nutrition/usda/vegetable-salad-(tossed-without-dressing) | 농촌진흥청 국가표준식품성분표(농식품올바로, 100g 기준 제공): https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list | 식약처 식품영양성분DB(식품안전나라): https://various.foodsafetykorea.go.kr/nutrient/ | calo.kr - 코울슬로 드레싱(마요 기반, 100g: 404kcal/나850/콜41/포화5.3 — 드레싱 단독 상한 참고): https://www.calo.kr/nutrition/1103875/
+  비고: '샐러드'는 단일 음식이 아니라 재료·드레싱 편차가 극단적인 카테고리(무드레싱 채소 16kcal ~ 참치/시저 187~265kcal)라 웹 단일 합의값이 존재하지 않음. AIHub 11코드 평균값(129.18kcal, 지7.52, 단5.57, 콜21.84)은 '드레싱+계란/햄/닭 등 단백질 소량 첨가 복합 샐러드' 프로필과 정확히 일치하며, 8개 영양소 전부가 여러 출처(USDA 파생 snapcalorie/FatSecret, Nutritionix, 한국 calo.kr, 농진청/식약처 DB)의 합리적 범위 내에 들어옴. 어떤 영양소도 다출처 합의를 2배 초과/절반 미만으로 위배하지 않음. 가장 낮은 축은 나트륨(128mg, 대표대역 하단)이나 가든드레싱 샐러드 실측 134mg과 사실상 동일해 라이트드레싱 채소샐러드로 설명되어 reasonable 유지. clearly_off 없음 → has_clear_error=false, flagged 비움. AIHub를 1차 신뢰 출처로 두는 보수적 판정 기준상 플래그 대상 없음.
+
+### sandwich
+  한글: 샌드위치
+  웹 대표값(100g): kcal=280 탄=28 당=4 지=12.5 단=12 나트륨=650 콜레=35 포화=3.5
+  범위: kcal 213~304 (대표 ~250~300; 치즈샌드위치류 497은 이상치). 탄수 20~34 (대표 ~28; 빵 비중↑일수록↑). 당류 3~9 (대표 ~4; 단 스프레드/잼 여부 따라 편차). 지방 8~17 (대표 ~12~14; 치즈샌드위치 25는 이상치). 단백질 8~17 (대표 ~12; 한국형 에그/참치는 8~10대). 나트륨 400~840 (대표 ~600~700; 햄/가공육·소스 의존). 콜레스테롤 7~58 (대표 ~30~40; 에그/햄에그류는 상단). 포화지방 1.9~6.8 (대표 ~3.5~4.5).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 242.8 vs 웹 280 [정상] 웹 대표 250~304 범위 안. AIHub 242.8은 약간 하단이나 USDA 클럽/서브/로스트비프(213~250)와 합치.
+    - carb: AIHub 22.36 vs 웹 28 [정상] 웹 20~34. AIHub 22.36은 USDA 서브/치킨(20~21)대와 일치, 빵 비중 낮은 필링 위주 한국형으로 설명 가능.
+    - sugar: AIHub 1.77 vs 웹 4 [의심] 웹 대표 3~9(USDA 3.2~4.7, snapcalorie 8.9). AIHub 1.77은 절반 미만이나, 단 스프레드 없는 짭짤한 샌드위치 레시피로 설명 가능. 다출처가 강하게 반박할 만큼 일관 높지는 않음.
+    - fat: AIHub 13.77 vs 웹 12.5 [정상] 웹 8~17 중앙. FatSecret 14.56·calo.kr 13.7과 거의 동일.
+    - protein: AIHub 8.34 vs 웹 12 [정상] 웹 8~17. AIHub 8.34는 하단이나 calo.kr 9.3·FatSecret 9.75 등 한국/제네릭 값과 부합.
+    - sodium: AIHub 445.3 vs 웹 650 [정상] 웹 400~840. AIHub 445.3은 하단이나 뚜레쥬르 햄치즈(404) 등 한국 제품과 합치, 범위 내.
+    - chol: AIHub 53.57 vs 웹 35 [정상] 웹 7~58. AIHub 53.57은 상단이나 클럽(46)·햄치즈(58)·에그류로 설명 가능, 상한 내.
+    - sat_fat: AIHub 4.47 vs 웹 3.5 [정상] 웹 1.9~6.8. AIHub 4.47은 중앙대, 치즈/햄치즈 포함 시 자연스러움.
+  출처: FoodStruct (USDA 기반) — Submarine/Fish/Chicken/Roast beef/Club/Cheese sandwich per 100g: https://foodstruct.com/food/sandwich | FatSecret — Generic Sandwich per 100g (304kcal, 탄수 32.88, 지방 14.56, 단백질 9.75): https://foods.fatsecret.com/calories-nutrition/generic/sandwich?portionid=51387&portionamount=100.000 | SnapCalorie — Sandwich per 100g (293kcal, 탄수 33.8, 당 8.9, 지방 12, 포화 3.4, 단백 12.8, 나트륨 590, 콜레스 15): https://www.snapcalorie.com/nutrition/sandwich_nutrition.html | calo.kr — 샌드위치 100g (295kcal, 탄수 33, 당 4.0, 지방 13.7, 포화 3.5, 단백 9.3, 나트륨 773, 콜레스 31): https://www.calo.kr/nutrition/1099753/ | 식약처 식품영양성분 데이터베이스: https://various.foodsafetykorea.go.kr/nutrient/
+  비고: 샌드위치는 레시피·필링(에그/햄치즈/참치/치킨/클럽 등)에 따라 편차가 큰 조리식품으로, 출처마다 100g 환산값이 크게 갈림(치즈샌드위치 497kcal 같은 이상치 존재). AIHub 26개 코드 평균은 전체적으로 웹 합의 범위 내에 위치하며 clearly_off 항목 없음. 8개 중 7개 reasonable, 당류(sugar)만 questionable — AIHub 1.77이 웹 대표값(3~9)의 절반 미만이나, 잼·꿀 등 단 스프레드를 쓰지 않는 짭짤한 샌드위치 레시피로 충분히 설명되고 다출처가 일관되게 높은 값으로 강하게 반박하지는 않으므로 보수적으로 questionable 유지. 콜레스테롤(53.57)과 나트륨(445.3)은 각각 상단/하단에 치우치나 한국 제품·에그/햄 레시피로 모두 설명 가능. has_clear_error=false.
+
+### savory-pancake
+  한글: 전/부침개
+  웹 대표값(100g): kcal=160 탄=21 당=1.5 지=7 단=5 나트륨=300 콜레=35 포화=1.5
+  범위: 100g당 웹 교차검증 범위 — 열량 129~195 kcal (대표 ~160, 채소전은 130대·파전/해물전은 170~195), 탄수화물 10~27 g (대표 ~21), 당류 0.5~5 g (배터 자체는 1 미만, 채소·소스 포함 시 상승; 대표 ~1.5), 지방 3.7~9.4 g (대표 ~7), 단백질 2.7~6.7 g (대표 ~5, 해물·계란 함량에 비례), 나트륨 174~529 mg (대표 ~300, 조리·간장 의존으로 편차 큼), 콜레스테롤 0~53 mg (계란·해물 유무에 따라; 채소전 0, 일반 30~53; 대표 ~35), 포화지방 0.5~2.1 g (대표 ~1.5).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 171.05 vs 웹 160 [정상] 웹 범위 129~195 kcal 한가운데. 파전/해물전 170대와 일치.
+    - carb: AIHub 23.73 vs 웹 21 [정상] 웹 범위 10~27 g 내. 밀가루 배터 기준 자연스러운 값.
+    - sugar: AIHub None vs 웹 1.5 [정상] AIHub는 null(미측정). 짭짤한 배터라 당류 본래 낮음(0.5~5 g). 결측이며 오류 아님.
+    - fat: AIHub 4.55 vs 웹 7 [정상] 웹 범위 3.7~9.4 g 내. 기름 적게 부친 채소전 쪽(3.7~6) 수준. 약간 낮으나 레시피로 설명 가능.
+    - protein: AIHub 8.15 vs 웹 5 [정상] 웹 범위 2.7~6.7 g보다 다소 높으나, 해물/계란 함량 높은 전(해물파전·계란전)이면 8 g대 도달 가능. 3개 코드 평균이라 단백질 풍부 항목 포함 추정.
+    - sodium: AIHub 318.42 vs 웹 300 [정상] 웹 범위 174~529 mg 한가운데. 간/간장 의존으로 편차 크며 대표값과 거의 일치.
+    - chol: AIHub 10.99 vs 웹 35 [정상] 웹 0~53 mg. 채소 위주·계란 적은 배터(채소전 0 mg)와 일반(30~53) 사이의 낮은 값으로, 3코드 평균상 충분히 설명 가능.
+    - sat_fat: AIHub 0.27 vs 웹 1.5 [의심] 웹 범위 0.5~2.1 g 하한보다 약 절반 낮음. 식물성 기름·저계란 배터면 낮아질 수 있으나 다출처가 0.5 이상을 보여 다소 벗어남. 단, 지방 4.55 g 대비 포화 0.27은 비율상 가능하므로 clearly_off 아님(보수적 판정).
+  출처: NOFAT 파전 (식약처 외식영양성분자료집 기반) — https://nofat.kr/food/D000351 | NOFAT 호박부침개 (식약처 외식영양성분자료집 기반) — https://nofat.kr/food/D000354 | SnapCalorie Pajeon Nutrition — https://www.snapcalorie.com/nutrition/pajeon_nutrition.html | SnapCalorie Korean Vegetable Pancake — https://www.snapcalorie.com/nutrition/korean_vegetable_pancake_nutrition.html | FatSecret 파전 칼로리/영양정보 — https://www.fatsecret.kr/칼로리-영양소/search?q=파전 | Nutritionix Korean Kimchi Pancake — https://www.nutritionix.com/i/nutritionix/korean-kimchi-pancake-1-pancake-10/5acb87f3274588d314a63d21 | EatThisMuch Korean vegetable pancake — https://www.eatthismuch.com/calories/korean-vegetable-pancakes-2020741
+  비고: 전/부침개는 식당·가정 조리식품으로 레시피 편차가 매우 큼(채소전 vs 해물파전 vs 김치전). AIHub 3개 음식코드 평균값은 모든 영양소에서 웹 교차검증 범위 내에 위치하여 clearly_off 0건. 가장 주목할 점: (1) 단백질 8.15 g은 일반 웹 대표값(~5 g)보다 높으나 해물·계란 함량 높은 전이 평균에 포함되면 설명 가능, (2) 포화지방 0.27 g은 웹 하한(0.5 g)보다 낮아 questionable로 두었으나 총지방 대비 비율은 합리적이며 식물성 기름 조리 특성으로 설명 가능해 clearly_off로 격상하지 않음(AIHub 1차 신뢰 원칙·보수 판정), (3) 당류는 AIHub null(미측정)로 짭짤한 배터 특성상 본래 낮아 결측이 오류는 아님. 출처는 한국 식약처 외식DB 기반(NOFAT), 미국 SnapCalorie/Nutritionix/EatThisMuch, FatSecret 등 다수 교차확인.
+
+### seaweed-rice-roll
+  한글: 김밥
+  웹 대표값(100g): kcal=155 탄=26 당=3 지=4 단=5 나트륨=370 콜레=20 포화=1.2
+  범위: kcal 150~232 (웹 합의 ~150-160, lampcook 국가표준 158, 일부 사이트 ~452는 1줄 기준 오기로 추정); 탄수 23~38g (합의 25-29); 당류 0~3g (합의 2-3); 지방 3.2~5.7g (합의 ~4); 포화지방 0~1.2g (합의 ~1); 단백질 3.6~7.5g (합의 5-6); 나트륨 144~420mg (합의 350-420); 콜레스테롤 0~46mg (계란/참치 유무로 편차 큼, 합의 ~10-30, 계란 다량 시 40+도 가능)
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 232.96 vs 웹 155 [의심] 웹 합의 150-160kcal/100g 대비 AIHub 233은 약 1.5배 높음. 다만 기름·계란·참치마요 등 고열량 재료 다량, 밥 비율 높은 식당 김밥은 200kcal 이상도 가능. 2배 초과는 아니므로 레시피 편차로 설명 가능 — clearly_off는 아님.
+    - carb: AIHub 37.97 vs 웹 26 [정상] 웹 범위 23-29g, AIHub 38g은 다소 높으나 밥 비율 높은 김밥(밥이 무게의 절반 이상)에서 충분히 가능. 레시피로 설명됨.
+    - sugar: AIHub 1.75 vs 웹 3 [정상] 웹 0-3g 범위 내. 단무지·양념 설탕 미량으로 일치.
+    - fat: AIHub 5.11 vs 웹 4 [정상] 웹 3.2-5.7g 범위 내. 참기름·계란 포함 시 정상.
+    - protein: AIHub 7.51 vs 웹 5 [정상] 웹 3.6-7.5g 상단에 위치. 계란·햄·참치 등 단백질 재료 많은 김밥과 일치.
+    - sodium: AIHub 372.18 vs 웹 370 [정상] 웹 합의 350-420mg(단무지·간장·소금)과 거의 정확히 일치. 매우 신뢰도 높음.
+    - chol: AIHub 46.19 vs 웹 20 [의심] 웹 합의 10-30mg(계란 유무 의존), 채소김밥 0mg. AIHub 46은 합의 상단의 약 1.5-2배. 다만 계란 다량(여러 장)·참치마요·햄 포함 김밥에선 40mg대 도달 가능. 웹 한 사례서 1줄당 86mg(=100g당 ~43mg)도 보고됨. 따라서 반박이 일관되지 않아 clearly_off는 아님.
+    - sat_fat: AIHub 0.51 vs 웹 1.2 [정상] 웹 0-1.2g 범위 내. AIHub 0.51g은 합의보다 약간 낮으나 식물성 위주(참기름) 김밥에선 가능. 범위 내.
+  출처: 식품 국가표준식품성분표(램프쿡 인용) — 김밥 100g: 158kcal, 탄수 28.8g, 지방 3.2g, 단백질 3.6g, 나트륨 417mg: https://www.lampcook.com/food/food_nutrition_view.php?idx_no=2846 | SnapCalorie — Gimbap/Kimbap nutrition (100g 환산: 150kcal, 탄수25, 당3, 지방4, 포화1.2, 단백5, 나트륨353, 콜레11.75): https://www.snapcalorie.com/nutrition/gimbap_nutrition.html | Hawai'i Nutrition Center (CTAHR) — Gimbap (35g serving, 100g 환산 ~160kcal, 콜레스테롤 30mg): https://nutritioncenter.ctahr.hawaii.edu/kim-bap/ | NutriScan — Kimbap per 100g (150kcal, 탄수25, 당3, 지방4, 단백5, 나트륨353): https://nutriscan.app/calories-nutrition/kimbap | FatSecret 한국 — 김밥 일반 100g 118kcal: https://www.fatsecret.kr/칼로리-영양소/search?q=김밥 | 농촌진흥청 국가표준식품성분표(농식품올바로, 100g 기준 원칙): https://koreanfood.rda.go.kr/kfi/fct/fctNutCal/list
+  비고: 김밥은 식당/가정 조리식품으로 재료 구성(밥량, 계란·햄·참치·치즈·참기름 사용량)에 따라 영양 편차가 매우 큼. 웹 다수 출처(SnapCalorie, NutriScan, Hawaii, 국가표준성분표 인용)는 표준 채소+계란 김밥 기준 100g당 약 150-160kcal로 수렴. AIHub 평균값(233kcal)은 이보다 높으나, 이는 (1) 10개 음식코드 평균에 고열량 변형(참치마요·제육·치즈 김밥 등)이 포함됐거나 (2) 밥 비율이 높은 식당식 김밥을 반영했을 가능성이 큼 — 어느 영양소도 합리적 웹 합의의 2배 초과 또는 절반 미만으로 다출처가 일관되게 반박하지 못함. 특히 나트륨(372 vs 370)은 거의 정확히 일치하여 데이터 신뢰도를 뒷받침. kcal과 콜레스테롤은 웹 중앙값보다 높아 'questionable'로 분류했으나, 둘 다 고재료 김밥 레시피로 설명 가능 범위(약 1.5배 이내, 일부 단일 출처는 AIHub 수준 보고)이므로 clearly_off로 판정하지 않음. 보수적 원칙(AIHub=1차 신뢰 출처)에 따라 clearly_off 0건, has_clear_error=false.
+
+### spicy-mixed-noodles
+  한글: 비빔국수
+  웹 대표값(100g): kcal=115 탄=19.5 당=5 지=1.8 단=4.2 나트륨=400 콜레=2 포화=0.3
+  범위: kcal: 약 95~150 (대표 ~110~120; 조리·물기 정도에 따라 변동, 건면 환산 시 더 높음). 탄수화물: 16~21 g (대표 ~19~20). 당류: 3~8 g (고추장·설탕·식초 양념으로 단맛, 레시피별 편차 큼). 지방: 1~5 g (참기름 유무로 변동, 대표 ~1.5~2). 단백질: 3~6 g (계란/고기 고명 시 상단). 나트륨: 200~452 mg (양념·간 정도에 따라 큰 편차, 대표 ~350~450). 콜레스테롤: 0~7 mg (채식형 ~0, 계란 고명 시 상승). 포화지방: 0.05~0.7 g (대표 ~0.2~0.3).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 230.02 vs 웹 115 [의심] 웹 조리식품 대표값(~100~150 kcal/100g)의 약 2배. 다만 AIHub의 탄수(47.3)와 내부적으로 일관(47.3×4≈189kcal)되고, 건면 환산(~360kcal)과 익힌 면(~100kcal) 사이의 '물기를 뺀 진한 면' 기준이면 설명 가능. 다출처가 100~150대를 가리키나 단일 합의가 아주 강하진 않아 clearly_off 아님.
+    - carb: AIHub 47.3 vs 웹 19.5 [의심] 웹 대표(16~21 g)의 약 2.3배. kcal와 동일한 '건조/고밀도 면' 기준이면 일관되게 설명됨. 칼로리와 같은 방향으로 함께 높아 단일 측정 기준 차이(물기 함량)로 귀결될 가능성. 보수적으로 questionable.
+    - sugar: AIHub 3.88 vs 웹 5 [정상] 웹 범위 3~8 g 내. 양념(고추장·설탕·식초)량에 따른 정상 편차 범위.
+    - fat: AIHub 0.77 vs 웹 1.8 [정상] 웹 1~5 g 범위의 하단. 참기름·식용유 거의 없는 담백한 조리(채식형)면 충분히 설명 가능.
+    - protein: AIHub 6.54 vs 웹 4.2 [정상] 웹 3~6 g의 상단/약간 초과. 진한 면 기준(고밀도) 및 고명 포함 시 자연스러움.
+    - sodium: AIHub 448.53 vs 웹 400 [정상] 웹 범위 200~452 mg 내 상단. 양념장 간 정도에 따른 정상 편차. 매우 합리적.
+    - chol: AIHub 0.54 vs 웹 2 [정상] 웹 0~7 mg 범위 내. 계란 고명 없는 채식형이면 0에 가까운 게 정상.
+    - sat_fat: AIHub 0.08 vs 웹 0.3 [정상] 웹 0.05~0.7 g 범위 내. 총지방이 낮으니 포화지방도 낮은 것이 일관됨.
+  출처: NOFAT 비빔국수 영양정보 — https://nofat.kr/food/D018172 (100g당: 102.5kcal, 탄수 20.5, 당류 4.1, 지방 0.95, 단백질 3.0, 나트륨 239mg, 콜레스테롤 1.0mg, 포화지방 0.2) | FatSecret 비빔국수 (400g 1인분 기준→100g 환산) — https://www.fatsecret.kr/칼로리-영양소/search?q=비빔국수 (425kcal/400g → 106kcal/100g, 나트륨 407mg/100g) | Hawai'i Nutrition Center, Bi Bim Kook Soo (153g 1인분) — https://nutritioncenter.ctahr.hawaii.edu/bi-bim-kook-soo/ (224kcal, 탄수 29, 지방 8, 단백질 9, 나트륨 691mg, 콜레스테롤 10.4mg, 포화지방 1g → 100g당 146kcal/452mg Na) | Kimchimari, Bibim Guksu (1인분, 2인분 레시피) — https://kimchimari.com/bibim-guksu-korean-spicy-cold-noodles/ (309kcal, 탄수 64, 당류 23, 지방 3, 단백질 8, 나트륨 615mg, 콜레스테롤 1mg) | My Korean Kitchen, Bibim Guksu (1인분) — https://mykoreankitchen.com/spicy-sweet-and-vinegary-noodles-bibim-guksu/ (518kcal, 탄수 98, 당류 21, 지방 10, 단백질 17, 나트륨 1259mg, 포화지방 1g) | Inlivo, Korean spicy cold noodles bi bim guk su — https://www.inlivo.com/nutrition/asian-foods/asian-noodles/korean-spicy-cold-noodles-bi-bim-guk-su (95.8kcal/100g, 탄수 16.2, 단백질 4.1)
+  비고: 비빔국수는 식당/가정 조리식품으로 레시피별 편차가 매우 큼(특히 나트륨·당류·칼로리). 웹 조리식품 출처 6개를 교차확인. 100g당 직접 표기 출처(NOFAT, FatSecret, Inlivo)는 ~95~146 kcal, 환산 대표 ~110~120 kcal. AIHub kcal(230)·탄수(47.3)는 웹 조리식품 합의의 약 2배지만 (1) 둘이 서로 내부 일관되고(carb×4≈cal), (2) 건면(~360kcal)~익힌면(~100kcal) 사이의 '물기 적은 면 위주' 측정 기준이면 설명 가능하여 clearly_off가 아닌 questionable로 보수 판정. 나트륨(448), 당류(3.88), 지방(0.77), 단백질(6.54), 콜레스테롤(0.54), 포화지방(0.08)은 모두 웹 범위 내로 reasonable. 단일·강한 웹 합의로 반박되는 항목이 없어 has_clear_error=false, flagged 비움. 주의: eatthismuch의 'Bibim Myun'(431kcal/100g)은 인스턴트 봉지면 제품이라 조리식품 대표값에서 제외함.
+
+### sushi
+  한글: 초밥
+  웹 대표값(100g): kcal=150 탄=24 당=2.5 지=2 단=7 나트륨=380 콜레=20 포화=0.4
+  범위: kcal 93-180 (대표 130-160); 탄수 12.8-25.5g (대표 18-26); 당류 0.8-3.0g (대표 2-3); 지방 0.3-8.1g (대표 0.7-2.5, 장어/계란/튀김류 높음); 단백질 2.9-12.7g (대표 6-9, 생선니기리 높음); 나트륨 146-474mg (대표 300-450, 간장 추가 시 더 높음); 콜레스테롤 0-212mg (생선롤 5-30, 계란니기리 212/새우 73 예외); 포화지방 0.1-1.7g (대표 0.1-0.5, 계란 1.7 예외). 초밥 종류(니기리/마키/모둠)와 토핑(생선/계란/새우/장어/아보카도)에 따라 편차 큼.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 248.86 vs 웹 150 [의심] 웹 대표 130-160, 최대 180(생선니기리). AIHub 248.86은 모든 다출처 상한(180)을 ~38% 초과. 밥 비율이 매우 높고 단맛(설탕)·기름 토핑(튀김/장어/마요 캘리포니아롤)이 많은 레시피면 200대 가능하나, 단일 출처도 248을 지지하지 않음. 2배 미만이라 clearly_off는 아니되 명백히 상단 이탈.
+    - carb: AIHub 36.9 vs 웹 24 [의심] 웹 대표 18-26g, 단일 출처 최대 ~27.6g(150g당). AIHub 36.9는 상한을 ~36% 초과. 밥 다량·단촛물(설탕) 레시피로 부분 설명 가능하나 다출처 합의 대비 상단 이탈. 2배 미만.
+    - sugar: AIHub 3.29 vs 웹 2.5 [정상] 웹 0.8-3.0g, 단촛물 설탕 함량 고려 시 3.29g 정상 범위. 모둠초밥(NOFAT) 당류 2.9g과 거의 일치.
+    - fat: AIHub 3.55 vs 웹 2 [정상] 웹 0.3-8.1g(장어 4.2/계란 5.2/니기리믹스 8.1). 3.55g은 생선+약간의 기름 토핑 혼합으로 충분히 설명됨.
+    - protein: AIHub 15.17 vs 웹 7 [의심] 웹 모둠 6-9g, 생선니기리 단품 최대 9.7-12.7g. AIHub 15.17은 다출처 상한도 초과하나, 생선 토핑 비율이 매우 높은 모둠/사시미초밥이면 접근 가능. 2배 미만이며 단품 니기리 추세와 방향 일치 → questionable.
+    - sodium: AIHub 536.98 vs 웹 380 [정상] 웹 146-474mg, 간장 추가/식당식은 더 높음(포장 니기리 1070-1290mg/팩 사례). 536.98은 간장 양념 고려 시 합리적 범위.
+    - chol: AIHub 111.78 vs 웹 20 [의심] 생선 롤/니기리 대표 5-30mg이나, 계란초밥(212mg)·새우(73mg)·게(7mg) 등 토핑 편차 극심. 모둠초밥에 계란·새우·생선알(이쿠라/날치알) 비중이 높으면 100대 가능. 다출처 평균은 낮지만 토핑 구성으로 설명 가능 → 보수적으로 questionable(clearly_off 아님).
+    - sat_fat: AIHub 0.69 vs 웹 0.4 [정상] 웹 0.1-1.7g(계란 1.7 예외). 0.69g은 생선 위주 모둠초밥에 정상 범위.
+  출처: NOFAT 모듬초밥 영양성분 (한국, 300g→100g 환산: 154kcal/탄25.5/단8.5/나트륨323/콜23.6) - https://nofat.kr/food/D000229 | Nutrition Advance — Sushi Nutrition Facts for 13 Types (니기리/롤별 100g 상세: 칼로리·나트륨·콜레스테롤·포화지방) - https://www.nutritionadvance.com/sushi-nutrition-facts/ | snapcalorie Sushi Nutrition (100g: 94kcal/탄18.4/당2.1/나트륨428/콜4) - https://www.snapcalorie.com/nutrition/sushi_nutrition.html | glycemic-index.net Sushi (100g: 158kcal/탄21.1/지4.9/단4.3) - https://glycemic-index.net/sushi/ | eatthismuch Assorted Nigiri / 식약처·필라이즈 모듬초밥 교차참조 - https://www.eatthismuch.com/calories/assorted-nigiri-1881347
+  비고: 초밥은 식당/가정 조리식품으로 종류(니기리·마키·모둠)·토핑(생선·계란·새우·장어·아보카도)·밥 비율·간장 양념에 따라 편차가 매우 큼. 6개 이상 출처 교차확인 결과 웹 합의는 대략 kcal 130-160, 탄수 18-26g, 단백질 6-9g, 나트륨 300-450mg에 수렴. AIHub 값 중 kcal(248.86), carb(36.9), protein(15.17), chol(111.78)이 웹 다출처 상한을 초과하나, 모두 2배 미만이며 (a)밥·단촛물 다량 (b)생선 토핑 고비율 (c)계란·새우 포함 모둠 (d)식당식 간장 양념 등의 레시피 시나리오로 부분 설명 가능. AIHub가 1차 신뢰 출처이고 어떤 항목도 '2배 초과+다출처 강력 반박'에 해당하지 않으므로 clearly_off 판정 없음(has_clear_error=false). 다만 kcal·carb·protein·chol은 검수 권장(상단 이탈, AIHub 9개 음식코드 평균이 생선 니기리 위주로 편향됐을 가능성). 주의: AIHub는 영양표시 기준 100g당 값으로 보이며, 웹의 일부 '조각당' 표기를 100g로 환산해 비교했다. 단백질·콜레스테롤이 동시에 높은 점은 생선·계란·갑각류 토핑 비율이 높은 모둠초밥 구성과 정성적으로 일관되어 내부 정합성이 있음.
+
+### takoyaki
+  한글: 타코야키
+  웹 대표값(100g): kcal=162 탄=20.5 당=1.5 지=6.3 단=5.3 나트륨=420 콜레=50 포화=1.4
+  범위: kcal 160~243 (대표 ~160-167; 일본 Slism 소스 듬뿍 버전 243 상단), 탄수화물 20~36g (대표 ~20-23; Slism 36 상단), 당류 1.1~5.4g (대표 ~1.5), 지방 6.1~13.3g (대표 ~6.3; arise 13.3 상단), 단백질 5~12.7g (대표 ~5.3로 매우 일관, Slism 10-12 상단), 나트륨 344~533mg (대표 ~400-450; 소스/마요네즈로 변동 큼), 콜레스테롤 37.8~101.8mg (대표 ~50-68; 문어/계란 함량 의존), 포화지방 1~4.5g (대표 ~1.4-1.9).
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 161.46 vs 웹 162 [정상] AIHub 161.46가 다출처 합의값(160-167, MyFitnessPal·CarbManager·SnapCalorie·EatThisMuch)과 거의 정확히 일치. Slism 243은 소스 듬뿍 버전 상단 outlier. 완벽히 합리적.
+    - carb: AIHub 15.56 vs 웹 20.5 [정상] AIHub 15.56이 웹 대표 20-23보다 약간 낮으나 범위 하단으로 설명 가능. 소스·마요 토핑이 적거나 반죽 밀도 차이로 레시피 변동 내. 합리적.
+    - sugar: AIHub 1.65 vs 웹 1.5 [정상] AIHub 1.65가 MyFitnessPal/CarbManager 1.1, SnapCalorie 2.3 사이 정중앙. 매우 합리적.
+    - fat: AIHub 8.26 vs 웹 6.3 [정상] AIHub 8.26이 웹 대표 6.1-6.4보다 다소 높으나 arise 13.3·Slism까지 보면 범위 내. 기름·마요 함량 차이로 설명. 합리적.
+    - protein: AIHub 5.23 vs 웹 5.3 [정상] AIHub 5.23이 다수 출처 5.3과 거의 완벽 일치(가장 일관된 영양소). 합리적.
+    - sodium: AIHub 120.11 vs 웹 420 [의심] AIHub 120mg이 웹 다출처 합의(400-454mg, 4곳 일관)의 약 1/3.5로 크게 낮음. 단 타코야키 나트륨은 소스·마요네즈 토핑 유무에 극도로 의존적이며, '소스 없는 plain 반죽+문어'만 측정했다면 120mg도 물리적으로 가능(반죽 자체 염분). 웹 대부분이 소스 포함 완성품 기준이라 직접 비교 한계. 1차 신뢰 출처 존중하여 clearly_off 아닌 questionable.
+    - chol: AIHub 36.6 vs 웹 50 [정상] AIHub 36.6이 SnapCalorie 37.8과 거의 일치. EatThisMuch 68·Slism 82는 계란/문어 비율 높은 상단. 범위 하단으로 합리적.
+    - sat_fat: AIHub 0.49 vs 웹 1.4 [의심] AIHub 0.49가 웹 대표 1-1.9g의 약 1/3로 낮음(MyFitnessPal/CarbManager 1g, SnapCalorie 1.9g, Slism 1.13g). 다만 총지방 8.26g 대비 포화 비율이 비현실적으로 낮긴 하나, 식물성 기름 위주 조리 시 포화지방 낮을 수 있어 레시피로 부분 설명 가능. 웹 합의가 강하나 절대값이 작아(1g 미만) 2배 차이의 실질 영향 미미. 보수적으로 questionable.
+  출처: MyFitnessPal — Takoyaki (100g): 160 kcal, 탄20, 당1.1, 지6.4, 포화1, 단5.3, 나트륨400mg — https://www.myfitnesspal.com/food/calories/takoyaki-1123936063 | Carb Manager — Takoyaki Octopus Ball (100g): 160.1 kcal, 탄20, 당1.1, 지6.4, 포화1, 단5.3, 나트륨400mg — https://www.carbmanager.com/food-detail/md:fb1e50ce117e749f691c9ebc964c1b2a/octopus-ball | SnapCalorie — Takoyaki (1컵 235.7g 환산 100g): ~166 kcal, 탄22.7, 당2.3, 지6.1, 포화1.9, 단5.3, 나트륨454mg, 콜레스테롤37.8mg — https://www.snapcalorie.com/nutrition/takoyaki_nutrition.html | EatThisMuch — Takoyaki (132g 1인분 환산 100g): ~167 kcal, 탄23, 지6.1, 단5.3, 나트륨~344mg, 콜레스테롤~68mg — https://www.eatthismuch.com/calories/takoyaki-ball-2725084 | カロリーSlism — たこ焼き (123.5g/8개 환산 100g): 243 kcal, 탄29.4, 당34.9(per serving 43.06), 지6.58, 포화1.13, 단10.3, 나트륨432mg, 콜레스테롤82.4mg — https://calorie.slism.jp/200065/ | Arise App — Takoyaki (100g): 217 kcal, 탄20, 지13.3, 단5 — https://www.arise-app.com/dish/Takoyaki
+  비고: 타코야키 100g 영양성분을 5개 이상 독립 출처(MyFitnessPal, Carb Manager, SnapCalorie, EatThisMuch, 일본 カロリーSlism, Arise)로 교차 확인. 핵심 결론: AIHub의 kcal(161.46)·단백질(5.23)·당류(1.65)·콜레스테롤(36.6)은 웹 다출처 합의와 거의 정확히 일치하여 매우 신뢰할 만함 — 특히 열량과 단백질은 MyFitnessPal/CarbManager의 160kcal·5.3g과 사실상 동일. 탄수화물(15.56 vs 웹 20)·지방(8.26 vs 웹 6.3)은 약간 차이 나나 레시피 편차(반죽 밀도, 기름·마요 함량)로 설명되는 범위 내. 두 영양소만 주목할 만함: (1)나트륨 120mg은 웹 합의 400-450mg의 약 1/3.5로 크게 낮음 — 단 타코야키는 소스/마요 토핑 유무에 나트륨이 극단적으로 좌우되며 웹 값 대부분이 '소스 포함 완성품' 기준인 반면 AIHub는 plain 반죽 기준일 가능성이 있어 직접 비교에 한계. (2)포화지방 0.49g은 웹 ~1-1.9g의 약 1/3이나 절대값이 1g 미만으로 작아 실질 영향 미미하고 식물성유 조리로 부분 설명 가능. 두 항목 모두 '웹 근거가 강하고 일관되며 어떤 합리적 레시피로도 설명 불가' 기준에는 미달하고(소스 유무 변수가 명확한 대체 설명 제공), 1차 신뢰 출처가 AIHub임을 존중하여 보수적으로 questionable 판정. clearly_off 없음 → has_clear_error=false, flagged 비움. 데이터 노이즈: inlivo(6g=432kcal 비현실), Kurly(29kcal 1개 기준), Calbee Takoyaki Ball(옥수수 과자 스낵, 실제 타코야키 아님)은 신뢰 불가로 제외함.
+
+### tteokbokki-red
+  한글: 떡볶이
+  웹 대표값(100g): kcal=175 탄=33 당=4 지=4 단=5 나트륨=400 콜레=6 포화=0.9
+  범위: 조리식품이라 출처별 편차가 큼. 데이터가 두 군집으로 갈림 — (A) 서양/USDA계 DB(국물·어묵 많고 묽은 '1컵' 기준): kcal~131, 탄수~19.8g, 당류~1.5g, 지방~4.0g, 포화지방~0.9g, 단백질~4.1g, 나트륨~198mg, 콜레스테롤~6mg. (B) 한국계(소스코팅 길거리/가정식, 떡 비중 큼): kcal 144~230, 탄수 26~47g, 당류 4~8g, 나트륨 230mg(저측)~480~600mg(소비자원 환산). 대표(합의) 범위: 열량 131~230kcal, 탄수 20~47g, 당류 1.5~8g, 지방 1.7~4.4g, 포화지방 0.3~0.9g, 단백질 3.5~6g, 나트륨 198~600mg, 콜레스테롤 0~7mg. 한국소비자원 2020 공식 시험(즉석떡볶이 14종): 1인분 평균 459kcal(376~547), 나트륨 1,207mg(=1일치 60%), 당류 평균 16g(10~28). 1인분 약 200~250g 가정 시 100g 환산하면 나트륨 ~480~600mg, 열량 ~185~230kcal로 한국계 군집과 일치.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 199.53 vs 웹 175 [정상] 웹 합의 범위 131(묽은 서양식)~230(한국 소스코팅) 내 중상단. 한국 길거리/가정식 떡 비중 큰 조리식에 부합. 소비자원 1인분 459kcal를 ~230g로 환산해도 ~200kcal로 일치.
+    - carb: AIHub 33.73 vs 웹 33 [정상] 서양 묽은형 19.8g와 한국 진한형 46.5g 사이 중앙값. 떡(쌀)이 주성분이라 탄수 비중 큼. 합리적.
+    - sugar: AIHub 3.77 vs 웹 4 [정상] 웹 1.5g(서양)~7.6g(caloriejudge), 소비자원 16g/1인분÷~230g≈7/100g. 3.77은 범위 내 저~중간. 매운맛 단계·고추장 양에 따라 편차 큼. 합리적.
+    - fat: AIHub 4.42 vs 웹 4 [정상] 서양 DB군 ~4.0g과 거의 일치. 합리적.
+    - protein: AIHub 6.17 vs 웹 5 [정상] 웹 3.5~4.1g(떡·소스 위주)보다 약간 높으나, 어묵·달걀 포함 버전(snapcalorie 10.2g/250g 등)을 감안하면 설명 가능. 합리적.
+    - sodium: AIHub 458.77 vs 웹 400 [정상] 서양 DB는 ~198mg로 낮지만, 1차 한국 권위출처(소비자원 2020 공식시험) 1인분 1207mg을 ~230g로 환산하면 ~525mg/100g. AIHub 459는 오히려 한국 공식데이터와 일치. caloriejudge 230mg은 저측 이상치. 합리적.
+    - chol: AIHub 7.84 vs 웹 6 [정상] 웹 0~6mg. 어묵·달걀 등 부재료 포함 시 7.84 충분히 설명됨. 합리적.
+    - sat_fat: AIHub 1.06 vs 웹 0.9 [정상] 웹 0.3~0.9g과 근접(약간 상단). 합리적.
+  출처: NutriScan / snapcalorie (USDA계, 1컵 250g→100g 환산): kcal131/탄19.8/당1.6/지4.0/포화0.9/단4.1/나198/콜6 — https://www.snapcalorie.com/nutrition/tteokbokki_nutrition.html | nutritionvalue.org (Dukboki/Tteokbokki Korean, 100g): kcal131/탄19.6/당1.5/지4.1/포화0.9/단4.1/나198/콜6 — https://www.nutritionvalue.org/Dukboki_or_Tteokbokki%2C_Korean_58150520_nutritional_value.html | 한국소비자원 공식 시험결과 2020 (즉석떡볶이 14종, 1인분): 평균 459kcal·나트륨1207mg·당류16g — https://www.khan.co.kr/article/202012101721001 / https://www.fsnews.co.kr/news/articleView.html?idxno=40824 | 칼로리판사 caloriejudge (한국계, 100g): kcal215/탄46.5/당7.6/지1.7/포화0.4/단3.6/나230/콜0 — https://caloriejudge.com/food/tteokbokki | NOFAT (한국계, 180g→100g 환산): kcal144/탄26/당4.4/지3.0/단3.5/나391/콜2.3 — https://nofat.kr/food/D018256 | 농촌진흥청 국가표준식품성분표(한국 공식 100g 기준 DB) — https://koreanfood.rda.go.kr/kfi/fct/fctFoodSrch/list
+  비고: 결론: 떡볶이는 레시피 편차가 매우 큰 조리식품으로 웹 데이터가 두 군집(서양/USDA계 묽은 1컵 기준 vs 한국계 소스코팅 진한 기준)으로 갈린다. AIHub 8개 영양소 전부가 어느 한 군집 또는 그 사이로 합리적으로 설명되며, clearly_off는 0건. 특히 한국 음식 정체성이 강한 두 축(나트륨·탄수)에서 AIHub는 서양 DB보다 1차 권위출처인 한국소비자원 2020 공식 시험결과(1인분 평균 459kcal·나트륨1207mg·당류16g, ~230g 1인분 가정 환산 시 나트륨~525mg·열량~200kcal/100g)와 더 잘 부합한다. AIHub가 1차 신뢰 출처라는 전제하에 보수적으로 판정한 결과, 어떤 영양소도 다출처 웹 합의로 반박되지 않으므로 has_clear_error=false. 단, 서양 DB군만 보면 나트륨(198 vs 459)과 열량(131 vs 200)은 2배 이상 차이가 나므로, 향후 AIHub 검증 시 '한국 음식은 한국 공식 DB(소비자원·농진청)를 우선 비교'할 것을 권고한다.
+
+### udon
+  한글: 조리된 우동 국물요리 (국물+면) — 식당/가정 조리식
+  웹 대표값(100g): kcal=90 탄=11 당=0.6 지=2.5 단=3.2 나트륨=400 콜레=8 포화=0.7
+  범위: 조리 우동 국물요리(국물+면) 100g당 일반 범위 — kcal 60~203 (대표 ~90, 일반 60~130), 탄수 8.5~32.5 (대표 ~11), 당류 0.1~1.7 (대표 ~0.6), 지방 0.8~6.7 (대표 ~2.5), 포화지방 0.2~3.3 (대표 ~0.5), 단백질 2.4~4.2 (대표 ~3), 나트륨 320~840 (저염 레시피는 230 부근까지 내려감, 마른면 환산값은 1537로 별개 클래스), 콜레스테롤 0~21 (대표 ~8). 참고: 마른 우동면(361kcal/100g)·삶은 우동면(105~127kcal/100g)은 별개 클래스로 AIHub의 92kcal와 직접 비교 대상 아님.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 92.39 vs 웹 90 [정상] 조리 우동 국물요리 일반 범위(60~203) 한가운데. 대표값 ~90과 거의 일치. 면만(105~127)·마른면(361)과 헷갈리면 안 됨 — AIHub는 국물요리 클래스로 정확히 들어맞음.
+    - carb: AIHub 10.01 vs 웹 11 [정상] 국물요리 범위(8.5~32.5)의 하단부. 묽은 국물 비중 큰 레시피로 자연스러움. 대표값 ~11과 근접.
+    - sugar: AIHub None vs 웹 0.6 [정상] AIHub 당류 null(미측정). 웹 조리 우동 당류는 0.1~1.7로 매우 낮음 — 측정됐다면 1g 미만 예상. 판정 불가 항목이나 충돌 없음.
+    - fat: AIHub 4.27 vs 웹 2.5 [정상] 국물요리 범위(0.8~6.7) 내 중상단. 유부·기름양념·튀김고명 포함 레시피면 설명 가능. clearly_off 아님.
+    - protein: AIHub 2.51 vs 웹 3.2 [정상] 국물요리 범위(2.4~4.2) 하단. 면 비율 낮고 국물 많은 묽은 우동에 부합.
+    - sodium: AIHub 233.21 vs 웹 400 [의심] 웹 조리 우동 국물요리는 320~840이 다수 — 233은 다소 낮음. 다만 저염/연한 국물 레시피로 설명 가능하고 다출처가 강하게 반박할 만큼 일관되지 않음(SnapCalorie 320으로 근접). 2배 초과/절반 미만 기준엔 미달이라 clearly_off는 아님.
+    - chol: AIHub 9.31 vs 웹 8 [정상] 국물요리 범위(0~21) 한가운데. 어묵·계란 고명 유무에 따른 편차 내. 대표값과 근접.
+    - sat_fat: AIHub 0.34 vs 웹 0.7 [정상] NOFAT 중식 우동(0.34)과 정확히 일치. 국물요리 범위(0.2~3.3) 하단으로 합리적.
+  출처: NOFAT 중식 우동 (조리 국물요리 100g당: 64.85kcal/나트륨339.6/콜레스테롤20.84/포화0.34) — https://nofat.kr/food/D000162 | SnapCalorie Udon Soup (100g 환산: 59.9kcal/탄수11.2/지방0.8/나트륨319.6/콜레스테롤0) — https://www.snapcalorie.com/nutrition/udon_soup_nutrition.html | Eat This Much U-dong Udon Noodle Soup (100g: 203kcal/나트륨813/포화3.3 — 농축형 상한) — https://www.eatthismuch.com/calories/udon-noodle-soup-2013770 | Nutritionix Cooked Udon Noodles (100g: ~105kcal/탄수21/지방0.5/단백질3.5 — 면만) — https://www.nutritionix.com/food/cooked-udon-noodles | 인아웃 우동(마른면 100g: 361kcal/나트륨1537/콜레스테롤14 — 별개 클래스) — https://www.inout.team/search/food/detail/4330
+  비고: AIHub의 우동 값(92.39kcal/100g)은 마른면(361)이나 삶은 면(105~127)이 아니라 '조리된 우동 국물요리(국물+면)' 클래스로 정확히 분류됨 — 이 클래스 기준으로 교차검증해야 공정함. 이 클래스로 보면 kcal·탄수·지방·단백질·콜레스테롤·포화지방 6개 모두 웹 합의 범위 내에 들어가며 NOFAT 중식 우동 프로파일과 특히 잘 맞음(포화지방 0.34 정확 일치). 유일하게 나트륨(233)이 웹 조리식 다수값(320~840)보다 낮아 'questionable'로 표기했으나, (1)저염/연한 국물 레시피로 설명 가능, (2)SnapCalorie 320 등 근접 출처 존재, (3)2배초과·절반미만의 강한 반박 기준 미달이라 clearly_off로 격상하지 않음. AIHub가 1차 신뢰 출처라는 점을 고려해 보수적으로 판정 — clearly_off 0건, has_clear_error=false.
+
+### western-cream-soup
+  한글: 양식수프
+  웹 대표값(100g): kcal=80 탄=7 당=1.5 지=4.5 단=2.5 나트륨=480 콜레=8 포화=1.6
+  범위: kcal 39-139 (희석/캔 39-90, 한국 시판/식당식 99-139); 탄수 3.3-8.1g; 당류 0.2-3g (짠맛 수프라 대체로 낮음); 지방 2.6-8.1g; 단백질 0.7-5.0g (우유/크림 사용량에 좌우); 나트륨 340-702mg (시판/식당식 대표 약 470-530mg); 콜레스테롤 0-15mg (물조리 0-8, 우유/크림·버터 사용 시 11-15); 포화지방 0.5-2.0g.
+  영양소별 판정(AIHub vs 웹):
+    - kcal: AIHub 139.17 vs 웹 80 [의심] 웹 대표 prepared 값은 39-105kcal로 AIHub(139)가 다출처 대표값을 분명히 상회. 다만 생크림+버터+루(roux)를 넉넉히 쓴 식당/가정식 진한 양식수프라면 130-140kcal 도달 가능(한국 시판 양송이스프 이미 99-105). 2배 초과는 아니므로 clearly_off는 아님 — 레시피로 설명 가능한 상단 경계.
+    - carb: AIHub 16.24 vs 웹 7 [의심] 웹 prepared 탄수 범위 3.3-8.1g 대비 AIHub 16.24g는 약 2배. 다만 감자/옥수수/밀가루 루를 많이 쓴 양식수프(콘크림·포타주류)는 탄수가 높아질 수 있어 레시피상 가능. 다출처 대표값보다 확연히 높지만 단일 합의 반박이라 보긴 어려워 questionable.
+    - sugar: AIHub 0.36 vs 웹 1.5 [정상] 짠맛 수프의 당류는 0.2-3g로 낮음. AIHub 0.36g은 범위 하단으로 합리적(첨가당 거의 없음, 옥수수/우유 유래 당 미량).
+    - fat: AIHub 5.84 vs 웹 4.5 [정상] 웹 prepared 지방 2.6-8.1g 내에 정확히 위치. 크림 사용 양식수프로서 전형적.
+    - protein: AIHub 5.05 vs 웹 2.5 [정상] 웹 범위 0.7-3.0g보다 다소 높지만, 우유/크림·치즈·닭육수를 충분히 쓴 식당식이면 5g 도달 가능. 한국 양송이스프도 2.4g. 레시피로 설명되는 상단.
+    - sodium: AIHub 527.14 vs 웹 480 [정상] prepared 수프 나트륨 340-702mg 범위의 중앙부. 한국 시판(474mg)과 매우 근접 — 합리적.
+    - chol: AIHub 14.95 vs 웹 8 [정상] 물조리 0-8mg, 우유/크림+버터 조리 시 11-15mg. AIHub 14.95mg은 크림 베이스 양식수프로서 범위 상단이나 합리적.
+    - sat_fat: AIHub 1.38 vs 웹 1.6 [정상] 웹 포화지방 0.5-2.0g 내. 총지방 5.84g 대비 비율도 자연스러움 — 합리적.
+  출처: FatSecret — Cream of Soup per 100g (생제네릭 ~75 kcal): https://foods.fatsecret.com/calories-nutrition/generic/soup-cream-of?portionid=55498&portionamount=100.000 | Triage Method (USDA SR) — Cream of chicken soup prepared with milk per 100g (77 kcal / carb 6.0 / fat 4.6 / protein 3.0 / sodium 362 / chol 11 / sat_fat 1.9): https://triagemethod.com/tools/human-nutrition-explorer/food/soup-cream-of-chicken-canned-prepared-with-equal-volume-milk.html | Foodstruct — Cream of mushroom soup per 100g (39 kcal / sodium 340): https://foodstruct.com/food/cream-of-mushroom-soup | Eat This Much — Cream of chicken soup prepared with water per 100g (90 kcal / fat 5.8 / sodium 702 / chol 8 / sat_fat 1.7): https://www.eatthismuch.com/calories/cream-of-chicken-soup-850 | NOFAT (한국) — 양송이스프 100g (105.29 kcal / 탄수 8.06 / 단백 2.41 / 지방 8.06): https://nofat.kr/food/D018459 | Pillyze (한국) — 샐러디 양송이크림스프 100g (99 kcal / 당류 3 / 나트륨 474): https://www.pillyze.com/foods/Ie2nwwFMrnOpCDQFZSWG3A==/%EC%96%91%EC%86%A1%EC%9D%B4%ED%81%AC%EB%A6%BC%EC%8A%A4%ED%94%84
+  비고: '양식수프'는 USDA의 cream-of-X soup(prepared)와 한국 시판/식당식 크림수프(양송이·콘크림 등)에 대응하는 크림 베이스 양식 수프로 정의. 핵심 변수는 (1) 농도(캔 희석<시판<식당 진한 크림)와 (2) 우유/크림·버터 사용량 → 같은 음식이라도 39kcal(묽은 머쉬룸)~139kcal(진한 식당식)까지 4배 편차. AIHub 5개 코드 평균값은 전반적으로 '진한 식당/가정식 양식수프' 프로파일과 일관됨. 6개 영양소(당류·지방·단백질·나트륨·콜레스테롤·포화지방)는 웹 범위 내 reasonable. kcal(139)과 carb(16.24) 두 가지만 다출처 대표 prepared 값(80/7)을 뚜렷이 상회해 questionable로 표시 — 그러나 (a)둘이 서로 정합적(탄수↑→열량↑)이고 (b)감자·옥수수·루를 많이 쓴 포타주/콘크림형 양식수프로 물리적으로 설명 가능하며 (c)2배 초과를 다출처가 일관 반박하는 수준은 아니어서 clearly_off로 격상하지 않음. AIHub가 1차 신뢰 출처라는 보수 원칙에 따라 clearly_off 0건, has_clear_error=false. 향후 검증 시 어떤 음식코드(콘크림/포타주 포함 여부)가 carb를 끌어올렸는지 확인 권장.
+
