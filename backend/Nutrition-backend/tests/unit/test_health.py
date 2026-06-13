@@ -50,7 +50,9 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
     assert body["ocr"]["live_provider_auth_checked"] is False
     assert body["vision"]["classifier_enabled"] is False
     assert body["vision"]["supplement_yolo_contract"] == "disabled"
+    assert body["vision"]["section_roi_model_configured"] is False
     assert body["vision"]["supplement_yolo_allowed_labels"] == [
+        "allergen_warning",
         "blister_pack",
         "functional_claims",
         "ingredient_amounts",
@@ -63,6 +65,7 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
         "supplement_label",
     ]
     assert body["vision"]["supplement_yolo_required_section_labels"] == [
+        "allergen_warning",
         "functional_claims",
         "ingredient_amounts",
         "intake_method",
@@ -97,3 +100,38 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
     assert "placeholder-key" not in response_text
     assert "example.test" not in response_text
     assert "/app/runs/food_yolo/example/weights/best.pt" not in response_text
+
+
+def test_readiness_reports_section_roi_model_configured_for_trained_model() -> None:
+    """Verify a non-stock section model flips ``section_roi_model_configured`` true."""
+    settings = Settings(
+        _env_file=None,
+        ocr_primary_provider="none",
+        enable_vision_classifier=True,
+        vision_classifier_model="local-supplement-section.pt",
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.get("/ready")
+
+    assert response.status_code == HTTP_OK
+    body = response.json()
+    assert body["vision"]["classifier_enabled"] is True
+    assert body["vision"]["supplement_yolo_contract"] == "section_roi_model_required"
+    assert body["vision"]["section_roi_model_configured"] is True
+    assert "local-supplement-section.pt" not in response.text
+
+
+def test_readiness_section_roi_model_unconfigured_for_stock_model() -> None:
+    """Verify the stock ``yolo26n.pt`` model is not reported as a section model."""
+    settings = Settings(
+        _env_file=None,
+        ocr_primary_provider="none",
+        enable_vision_classifier=True,
+    )
+    client = TestClient(create_app(settings=settings))
+
+    body = client.get("/ready").json()
+
+    assert body["vision"]["classifier_enabled"] is True
+    assert body["vision"]["section_roi_model_configured"] is False

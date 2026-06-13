@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.config import Settings
+from src.config import DEFAULT_VISION_CLASSIFIER_MODEL, Settings
 from src.ocr.factory import (
     OCRConfigurationError,
     SupplementOCRProviderSelector,
@@ -87,6 +87,7 @@ class VisionReadiness(BaseModel):
         supplement_yolo_contract: Safe class-name contract required for supplement ROI detection.
         supplement_yolo_allowed_labels: Canonical configured labels accepted for supplement ROI OCR.
         supplement_yolo_required_section_labels: Required section labels for custom detector readiness.
+        section_roi_model_configured: Whether a non-stock section detector model is wired.
         food_yolo_enabled: Whether food image YOLO candidate detection is enabled.
         food_yolo_model_configured: Whether a food YOLO model path is configured.
         food_yolo_model_label: Safe local model label for food YOLO metadata.
@@ -107,6 +108,7 @@ class VisionReadiness(BaseModel):
     ]
     supplement_yolo_allowed_labels: list[str]
     supplement_yolo_required_section_labels: list[str]
+    section_roi_model_configured: bool
     food_yolo_enabled: bool
     food_yolo_model_configured: bool
     food_yolo_model_label: str | None = Field(default=None, max_length=80)
@@ -202,6 +204,11 @@ def build_readiness_response(settings: Settings) -> ReadinessResponse:
                 settings.vision_roi_allowed_classes
             ),
             supplement_yolo_required_section_labels=sorted(VISION_SECTION_LABELS),
+            section_roi_model_configured=(
+                settings.enable_vision_classifier
+                and settings.vision_classifier_model.strip()
+                not in {"", DEFAULT_VISION_CLASSIFIER_MODEL}
+            ),
             food_yolo_enabled=settings.enable_food_yolo_detector,
             food_yolo_model_configured=bool(
                 settings.meal_yolo_model_path and settings.meal_yolo_model_path.strip()

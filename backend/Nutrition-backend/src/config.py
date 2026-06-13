@@ -34,6 +34,10 @@ DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
     "supplement_bottle",
     "blister_pack",
 ]
+# Stock Ultralytics net shipped as the default ``vision_classifier_model``. It is a
+# generic COCO model that fails ``_validate_model_class_contract`` at load, so a
+# trained supplement section detector must replace it before YOLO ROI runs.
+DEFAULT_VISION_CLASSIFIER_MODEL = "yolo26n.pt"
 DEFAULT_LLM_WIKI_PATH = Path("/Volumes/Corsair EX400U Media/LLM-WIKI")
 # Deliberately insecure development sentinel; production validation rejects this exact value.
 DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
@@ -547,7 +551,14 @@ class Settings(BaseSettings):
         default=False,
         description="라벨 영역 검출용 YOLO 어댑터 활성화. docs/17 §9 게이트 #2 필요.",
     )
-    vision_classifier_model: str = Field(default="yolo26n.pt")
+    vision_classifier_model: str = Field(
+        default=DEFAULT_VISION_CLASSIFIER_MODEL,
+        description=(
+            "공급 라벨 SECTION 검출용 8-class YOLO 모델 경로/태그. 기본값은 stock "
+            "yolo26n.pt이며, 운영 시 학습된 section 가중치로 교체해야 한다. 로드 시 "
+            "_validate_model_class_contract가 VISION_SECTION_LABELS 노출을 강제한다."
+        ),
+    )
     ocr_roi_preprocessing_policy: Literal[
         "disabled",
         "detect_only",
@@ -711,6 +722,15 @@ class Settings(BaseSettings):
         min_length=1,
         max_length=16,
         description="YOLO ROI 보조에서 허용하는 object-detection 또는 label-section class labels.",
+    )
+    vision_roi_max_detections: int = Field(
+        default=16,
+        ge=1,
+        le=50,
+        description=(
+            "YOLO section 검출기가 반환할 최대 ROI box 수. 다운스트림 OCR cap"
+            "(MAX_PRIMARY_OCR_ROI_CANDIDATES=4)보다 앞선 source-level 상한이다."
+        ),
     )
     enable_food_yolo_detector: bool = Field(
         default=False,

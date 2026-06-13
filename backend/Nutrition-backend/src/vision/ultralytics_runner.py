@@ -11,7 +11,7 @@ from PIL import Image, UnidentifiedImageError
 from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard
 from src.vision.base import BoundingBox, VisionError
 from src.vision.preprocessing import VisionPreprocessingError, clamp_bounding_box
-from src.vision.taxonomy import VISION_SECTION_LABELS, normalize_vision_label
+from src.vision.taxonomy import VISION_SECTION_LABELS, label_priority, normalize_vision_label
 
 XYXY_COORDINATE_COUNT = 4
 
@@ -52,6 +52,7 @@ class UltralyticsYoloRunner:
         model_name: str,
         allowed_labels: set[str],
         min_confidence: float,
+        max_detections: int,
         model_factory: ModelFactory | None = None,
     ) -> None:
         """Initialize the optional YOLO runner.
@@ -60,11 +61,19 @@ class UltralyticsYoloRunner:
             model_name: Local model path or model tag configured for ROI detection.
             allowed_labels: Canonical ROI labels accepted by the pipeline.
             min_confidence: Minimum detection confidence accepted as an OCR ROI.
+            max_detections: Maximum ROI boxes returned, keeping the highest-priority
+                sections (priority dominant, confidence as tie-breaker).
             model_factory: Optional test factory. Production uses ``ultralytics.YOLO``.
+
+        Raises:
+            ValueError: If ``max_detections`` is not positive.
         """
+        if max_detections <= 0:
+            raise ValueError("max_detections must be > 0")
         self.model_name = model_name
         self.allowed_labels = allowed_labels
         self.min_confidence = min_confidence
+        self.max_detections = max_detections
         self.model_factory = model_factory
         self._model: _PredictModel | None = None
 
@@ -102,6 +111,7 @@ class UltralyticsYoloRunner:
             image_height=image_height,
             allowed_labels=self.allowed_labels,
             min_confidence=self.min_confidence,
+            max_detections=self.max_detections,
             model_name=self.model_name,
         )
 
@@ -173,6 +183,7 @@ def _normalize_prediction_results(
     image_height: int,
     allowed_labels: set[str],
     min_confidence: float,
+    max_detections: int,
     model_name: str,
 ) -> list[BoundingBox]:
     """Normalize Ultralytics boxes into the internal ``BoundingBox`` contract.
@@ -184,10 +195,14 @@ def _normalize_prediction_results(
         image_height: Source image height.
         allowed_labels: Canonical ROI labels accepted by the pipeline.
         min_confidence: Minimum confidence.
+        max_detections: Maximum boxes returned, keeping the highest-priority sections.
         model_name: Model tag or path for metadata.
 
     Returns:
-        Normalized bounding boxes.
+        Normalized bounding boxes ordered by section priority (confidence as
+        tie-breaker) and capped at ``max_detections``, matching the downstream
+        ``select_best_label_region`` / ``_ordered_ocr_regions`` ranking so the cap
+        never drops a higher-priority section in favor of a lower-priority one.
 
     Raises:
         VisionError: If the result shape is unsupported or no allowed boxes remain.
@@ -231,7 +246,11 @@ def _normalize_prediction_results(
 
     if not regions:
         raise VisionError("YOLO did not detect an allowed supplement ROI.")
-    return regions
+    # Truncate with the same (priority, -confidence) key the downstream selectors use
+    # (preprocessing.select_best_label_region, _ordered_ocr_regions) so a high-priority
+    # section is never crowded out of the source cap by lower-priority high-confidence boxes.
+    regions.sort(key=lambda region: (label_priority(region.label), -region.confidence))
+    return regions[:max_detections]
 
 
 def _first_result(prediction_results: Any) -> Any:

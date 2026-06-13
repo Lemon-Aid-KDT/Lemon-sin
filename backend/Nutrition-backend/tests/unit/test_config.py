@@ -172,6 +172,7 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.local_ocr_preprocess_mode == "autocontrast"
     assert settings.enable_clova_ocr is False
     assert settings.vision_roi_min_confidence == 0.50
+    assert settings.vision_roi_max_detections == 16
     assert settings.vision_roi_allowed_classes == [
         "product_identity",
         "supplement_facts",

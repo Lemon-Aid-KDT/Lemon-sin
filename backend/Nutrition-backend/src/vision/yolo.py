@@ -85,6 +85,7 @@ class YoloLabelDetector(VisionAdapter):
             model_name=self.settings.vision_classifier_model,
             allowed_labels=_allowed_labels(self.settings.vision_roi_allowed_classes),
             min_confidence=self.settings.vision_roi_min_confidence,
+            max_detections=self.settings.vision_roi_max_detections,
         )
         return active_runner.detect_regions(image_bytes)
 
