@@ -42,17 +42,21 @@ http.StreamedResponse _json(Map<String, dynamic> body, int status) {
   );
 }
 
-Future<void> _pump(WidgetTester tester, LocalPrefs prefs) async {
+Future<void> _pump(
+  WidgetTester tester,
+  LocalPrefs prefs, {
+  http.StreamedResponse Function(http.Request request)? latestResponse,
+}) async {
   tester.view.physicalSize = const Size(1200, 3200);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
   final _FakeClient client = _FakeClient(
-    // 프로필 latest 는 not_ready (스냅샷 없음).
-    (http.Request request) async => _json(<String, dynamic>{
-      'status': 'not_ready',
-    }, 200),
+    (http.Request request) async =>
+        latestResponse?.call(request) ??
+        // 기본: 프로필 latest 는 not_ready (스냅샷 없음).
+        _json(<String, dynamic>{'status': 'not_ready'}, 200),
   );
 
   await tester.pumpWidget(
@@ -105,6 +109,35 @@ void main() {
 
     expect(find.text('태동님'), findsOneWidget);
     expect(find.text('레몬에이드와 함께한 지 14일째'), findsOneWidget);
+  });
+
+  testWidgets('days line survives a non-JSON-object profile response', (
+    WidgetTester tester,
+  ) async {
+    // 프록시/캡티브 포털이 200으로 HTML 본문을 주면 ApiClient 가 ApiError 가
+    // 아닌 FormatException 을 던진다. 이 경우에도 로컬 경과일은 유지돼야 한다.
+    final DateTime first = DateTime.now().subtract(const Duration(days: 6));
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'app.first_launch': DateTime(
+        first.year,
+        first.month,
+        first.day,
+      ).toIso8601String(),
+    });
+    final LocalPrefs prefs = await LocalPrefs.create();
+
+    await _pump(
+      tester,
+      prefs,
+      latestResponse: (http.Request request) => http.StreamedResponse(
+        Stream<List<int>>.value('<html>captive portal</html>'.codeUnits),
+        200,
+        headers: const <String, String>{'content-type': 'text/html'},
+      ),
+    );
+
+    // 스냅샷 조회가 FormatException 으로 실패해도 경과일 라인은 렌더된다.
+    expect(find.text('레몬에이드와 함께한 지 7일째'), findsOneWidget);
   });
 
   testWidgets('service info row opens a sheet with disclaimer and version', (

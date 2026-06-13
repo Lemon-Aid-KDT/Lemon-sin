@@ -1214,14 +1214,22 @@ class _TrendCard extends StatelessWidget {
   /// 표시 구간이 며칠인지로 주 수를 셈한다 (1~4 클램프).
   ///
   /// 날짜 파싱이 안 되는 행은 점 개수로 대신 추정한다 — 라벨은 보조
-  /// 표기일 뿐 점수 값에는 영향이 없다.
+  /// 표기일 뿐 점수 값에는 영향이 없다. 두 날짜는 UTC 자정으로 정규화해
+  /// 빼므로 봄철 DST(23시간) 구간에서도 일수가 한 칸 적게 잘리지 않는다.
   static int _weekCount(List<ScoreTrendPoint> points) {
-    final DateTime? first = DateTime.tryParse(points.first.date);
-    final DateTime? last = DateTime.tryParse(points.last.date);
+    final DateTime? first = _utcDate(points.first.date);
+    final DateTime? last = _utcDate(points.last.date);
     final int days = (first != null && last != null)
         ? last.difference(first).inDays + 1
         : points.length;
     return ((days + 6) ~/ 7).clamp(1, 4);
+  }
+
+  /// `YYYY-MM-DD`를 UTC 자정 DateTime 으로 파싱한다(형식 불가 시 null).
+  static DateTime? _utcDate(String date) {
+    final DateTime? parsed = DateTime.tryParse(date);
+    if (parsed == null) return null;
+    return DateTime.utc(parsed.year, parsed.month, parsed.day);
   }
 }
 

@@ -116,11 +116,17 @@ class LocalPrefs {
   /// 최초 실행일부터 [today]까지 함께한 일수(첫날 포함, 최소 1).
   ///
   /// 최초 실행일이 없으면 null. [today]가 기록일보다 이전이면(시계 후퇴) 1.
+  ///
+  /// 두 날짜를 UTC 자정으로 정규화해 빼므로 모든 달력일이 정확히 24시간이다
+  /// — 로컬 자정끼리 빼면 봄철 DST(23시간) 구간에서 `Duration.inDays`가
+  /// 한 칸 적게 잘려 경과일이 영구히 1 모자라는 버그를 막는다(한국은 DST가
+  /// 없으나 코드는 지역 무관).
   int? daysWithApp(DateTime today) {
     final DateTime? first = firstLaunchDate();
     if (first == null) return null;
-    final DateTime todayDate = DateTime(today.year, today.month, today.day);
-    final int diff = todayDate.difference(first).inDays;
+    final DateTime firstUtc = DateTime.utc(first.year, first.month, first.day);
+    final DateTime todayUtc = DateTime.utc(today.year, today.month, today.day);
+    final int diff = todayUtc.difference(firstUtc).inDays;
     return diff < 0 ? 1 : diff + 1;
   }
 

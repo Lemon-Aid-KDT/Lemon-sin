@@ -155,6 +155,18 @@ void main() {
       expect(prefs.daysWithApp(DateTime(2026, 6, 5)), 1);
     });
 
+    test('inclusive count is timezone-stable across a DST-crossing span',
+        () async {
+      // 2/1 → 5/1 은 89일 차이(포함 90일)다. 봄철 DST 구간을 지나는 이 구간을
+      // 로컬 자정끼리 빼면 inDays 가 한 칸 적게 잘려 89가 나오지만, UTC 정규화
+      // 덕에 어느 지역/CI 에서도 90으로 고정된다(회귀 가드).
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create(
+        now: DateTime(2026, 2, 1),
+      );
+      expect(prefs.daysWithApp(DateTime(2026, 5, 1)), 90);
+    });
+
     test('returns null days when no first-launch date is stored', () async {
       // create() 가 시드하므로, 시드 없는 상태를 흉내내려면 직접 래핑한다.
       SharedPreferences.setMockInitialValues(<String, Object>{});

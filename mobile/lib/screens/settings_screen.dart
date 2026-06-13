@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../app_controller.dart';
 import '../app_providers.dart';
-import '../core/api/api_error.dart';
 import '../core/storage/local_prefs.dart';
 import '../features/auth/token_session.dart';
 import '../features/consent/consent_models.dart';
@@ -56,23 +55,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final String? name = prefs?.profileDisplayName();
     // 가입 경과일 — 최초 실행일 기준(auth 도입 전 임시 산정).
     final int? days = prefs?.daysWithApp(DateTime.now());
+    BodyProfileSnapshot? snapshot;
     try {
-      final BodyProfileSnapshot? snapshot = await ref
-          .read(profileRepositoryProvider)
-          .fetchLatest();
-      if (!mounted) return;
-      setState(() {
-        _displayName = name;
-        _profileSummary = snapshot?.summaryLine();
-        _daysWithApp = days;
-      });
-    } on ApiError {
-      if (!mounted) return;
-      setState(() {
-        _displayName = name;
-        _daysWithApp = days;
-      });
+      snapshot = await ref.read(profileRepositoryProvider).fetchLatest();
+    } on Object {
+      // 스냅샷 조회 실패(ApiError·FormatException 등 무엇이든)는 헤더를
+      // 비우지 않는다 — 로컬 이름/경과일은 이미 확보돼 있으므로 그대로
+      // 반영하고 신체 요약만 비운다(기본 안내 문구로 강하).
+      snapshot = null;
     }
+    if (!mounted) return;
+    setState(() {
+      _displayName = name;
+      _profileSummary = snapshot?.summaryLine();
+      _daysWithApp = days;
+    });
   }
 
   /// 앱 버전 — 설정 푸터와 서비스 정보 시트가 공유한다.
