@@ -132,3 +132,25 @@ GT preflight 권위 측정값:
 - **새 모델 학습**: `yolo_section_annotation` 큐 **205건 미검토 bbox**(운영자, 사적 이미지) + A100. 도구는 완비(`train_ultralytics_section_detector.py`, `a100_section_detector_spawn_detached.py`, `materialize_…`, `validate_…`).
 - **기존 모델**: 2026-06-09 yolo26s 300ep run(305img/1929box) 존재하나 클래스 불균형(other_ingredients train 42/val 1/test 2)으로 운영 적합성 미검증.
 
+## 7. det thresh 스윕 — ✅ 완료 (2026-06-13, 사용자 승인 A100 재전송)
+
+홀드아웃 번들(41행, 전송 전 41/41 external_transfer_allowed·contains_personal_data=False 재확인) A100 재전송 → b32 inference 재export(보존된 best_accuracy.pdparams로부터) → **5개 config 스윕** → 결과 pull → A100/로컬 사적 산출물 정리(체크포인트 보존).
+
+**확인값 (집계만, 원본 OCR 텍스트 0건):**
+
+| config | macro | Δmacro | micro | ingredient_recall | ntext_precision |
+|---|---:|---:|---:|---:|---:|
+| baseline (기본 0.3/0.6/2.0) | 0.6425 | — | 0.6199 | 0.6421 | 0.3023 |
+| text_det_thresh 0.2 | 0.6486 | +0.0061 | 0.6257 | 0.6421 | 0.3033 |
+| **text_det_box_thresh 0.4** | **0.6523** | **+0.0098** | **0.6374** | **0.6632** | 0.2796 |
+| text_det_unclip_ratio 2.5 | 0.6470 | +0.0045 | 0.6199 | 0.6526 | 0.3023 |
+| combined (0.2/0.4/2.5) | 0.6397 | −0.0028 | 0.6257 | 0.6526 | 0.2816 |
+
+**해석:**
+- **승자: `text_det_box_thresh=0.4`** — 단일 노브 최대(macro +0.0098, micro +0.0175, ingredient_recall +0.021). 무학습 free lever.
+- 개별 노브 모두 소폭 +(thresh 0.2 +0.006, unclip 2.5 +0.0045)이나, **combined는 오버슈트(−0.0028)** — 텍스트를 과다 복원해 precision 하락(0.3023→0.2816). 노브 동시 적용은 역효과.
+- 레버 크기 **작음**(사용자 사전 평가와 일치). 그러나 box_thresh=0.4는 일관된 +이고 비용 0.
+- **베이스라인 재측정 주의**: 이번 baseline 0.6425는 §5.5 기록(0.6049)보다 높다. 그 사이 운영자가 GT `expected`를 정련 → **신뢰 신호는 cross-run(vs 0.6049)이 아니라 within-sweep Δ**다(동일 GT·동일 스크립트·동일 export로 통제).
+
+**권고**: 런타임에 `LOCAL_OCR_TEXT_DET_BOX_THRESH=0.4` 적용(설정 필드 `local_ocr_text_det_box_thresh`는 892bceaa로 이미 배선됨, 기본 None=PaddleOCR 0.6). 41-image 홀드아웃 근거이므로 코드 기본값 하드변경보다 **문서화된 튜너블 권고**로 팀 채택 결정. 산출물: `outputs/generated/…/b32-holdout-eval/det-thresh-sweep/*.json`(gitignore, 집계만).
+
