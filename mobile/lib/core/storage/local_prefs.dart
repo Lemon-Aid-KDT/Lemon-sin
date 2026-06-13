@@ -34,6 +34,8 @@ class LocalPrefs {
   static const String _medicationRemindersKey = 'medication_reminders';
   static const String _notificationSettingsKey = 'notification_settings';
   static const String _firstLaunchKey = 'app.first_launch';
+  static const String _profilePurposesKey = 'profile.purposes';
+  static const String _profileConcernsKey = 'profile.concerns';
 
   /// `SharedPreferences.getInstance()` 를 기다린 뒤 래퍼를 만든다.
   ///
@@ -166,6 +168,42 @@ class LocalPrefs {
       return _prefs.remove(_profileDisplayNameKey);
     }
     return _prefs.setString(_profileDisplayNameKey, trimmed);
+  }
+
+  // ── 가입 목적 / 건강 관심사 (로컬 전용) ─────────────
+  // 백엔드 공백: profile-snapshots 에 목적/관심사 필드가 없어 로컬에만 저장한다
+  // (가이드 01 2단계, 날조 금지). 선택값은 안정적인 옵션 id 목록으로 보관한다.
+
+  /// 저장된 가입 목적 id 목록 (없으면 빈 목록).
+  List<String> profilePurposes() => _readOrderedList(_profilePurposesKey);
+
+  /// 가입 목적 id 목록을 저장한다 (빈 목록이면 키 제거).
+  Future<void> setProfilePurposes(List<String> ids) =>
+      _writeOrderedList(_profilePurposesKey, ids);
+
+  /// 저장된 건강 관심사 id 목록 (없으면 빈 목록).
+  List<String> profileConcerns() => _readOrderedList(_profileConcernsKey);
+
+  /// 건강 관심사 id 목록을 저장한다 (빈 목록이면 키 제거).
+  Future<void> setProfileConcerns(List<String> ids) =>
+      _writeOrderedList(_profileConcernsKey, ids);
+
+  List<String> _readOrderedList(String key) {
+    final List<String>? raw = _prefs.getStringList(key);
+    if (raw == null) return <String>[];
+    return raw
+        .where((String id) => id.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _writeOrderedList(String key, List<String> ids) {
+    final List<String> clean = ids
+        .where((String id) => id.trim().isNotEmpty)
+        .toList(growable: false);
+    if (clean.isEmpty) {
+      return _prefs.remove(key);
+    }
+    return _prefs.setStringList(key, clean);
   }
 
   // ── 복약 알림 (로컬 스케줄 1차 소스) ─────────────
