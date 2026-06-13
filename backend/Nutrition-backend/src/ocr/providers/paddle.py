@@ -255,6 +255,15 @@ def _predict_kwargs(settings: Settings) -> dict[str, object]:
         kwargs["text_det_limit_side_len"] = settings.local_ocr_text_det_limit_side_len
     if settings.local_ocr_text_det_limit_type is not None:
         kwargs["text_det_limit_type"] = settings.local_ocr_text_det_limit_type
+    # DB detection thresholds — official PP-OCR pipeline predict() params
+    # (text_det_thresh 0.3 / text_det_box_thresh 0.6 / text_det_unclip_ratio 2.0):
+    # https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/pipeline_usage/PP-ChatOCRv4.en.md
+    if settings.local_ocr_text_det_thresh is not None:
+        kwargs["text_det_thresh"] = settings.local_ocr_text_det_thresh
+    if settings.local_ocr_text_det_box_thresh is not None:
+        kwargs["text_det_box_thresh"] = settings.local_ocr_text_det_box_thresh
+    if settings.local_ocr_text_det_unclip_ratio is not None:
+        kwargs["text_det_unclip_ratio"] = settings.local_ocr_text_det_unclip_ratio
     if settings.local_ocr_text_rec_score_thresh is not None:
         kwargs["text_rec_score_thresh"] = settings.local_ocr_text_rec_score_thresh
     return kwargs

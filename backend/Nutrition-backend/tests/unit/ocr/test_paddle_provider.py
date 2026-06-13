@@ -257,6 +257,9 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
             local_ocr_preprocess_mode="none",
             local_ocr_text_det_limit_side_len=1216,
             local_ocr_text_det_limit_type="max",
+            local_ocr_text_det_thresh=0.2,
+            local_ocr_text_det_box_thresh=0.5,
+            local_ocr_text_det_unclip_ratio=2.5,
             local_ocr_text_rec_score_thresh=0.15,
         ),
         predictor=predictor,
@@ -268,8 +271,32 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
     assert predictor.received_kwargs == {
         "text_det_limit_side_len": 1216,
         "text_det_limit_type": "max",
+        "text_det_thresh": 0.2,
+        "text_det_box_thresh": 0.5,
+        "text_det_unclip_ratio": 2.5,
         "text_rec_score_thresh": 0.15,
     }
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_omits_unset_detection_thresholds() -> None:
+    """Verify unset DB detection thresholds are not forwarded (pipeline defaults)."""
+    predictor = _FakePaddlePredictor([{"rec_texts": ["비타민"], "rec_scores": [0.88]}])
+    adapter = PaddleOCRAdapter(
+        Settings(
+            _env_file=None,
+            enable_local_ocr=True,
+            local_ocr_preprocess_mode="none",
+        ),
+        predictor=predictor,
+    )
+
+    await adapter.extract_text(_image_input())
+
+    # None settings keep the upstream defaults — no det-threshold keys forwarded.
+    assert "text_det_thresh" not in predictor.received_kwargs
+    assert "text_det_box_thresh" not in predictor.received_kwargs
+    assert "text_det_unclip_ratio" not in predictor.received_kwargs
 
 
 @pytest.mark.asyncio

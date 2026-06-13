@@ -654,6 +654,40 @@ class Settings(BaseSettings):
             "keeps the upstream recognition-score default."
         ),
     )
+    # PaddleOCR 3.x DB text-detection thresholds (predict()-time overrides).
+    # Names/defaults per the official PP-OCR pipeline parameter reference:
+    # https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/pipeline_usage/PP-ChatOCRv4.en.md
+    # None keeps the upstream pipeline default for each (thresh 0.3 / box_thresh
+    # 0.6 / unclip_ratio 2.0). Set only during measured OCR detection tuning runs.
+    local_ocr_text_det_thresh: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Optional PaddleOCR predict() text_det_thresh override (pixel score "
+            "threshold; upstream default 0.3). None keeps the pipeline default."
+        ),
+    )
+    local_ocr_text_det_box_thresh: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Optional PaddleOCR predict() text_det_box_thresh override (box "
+            "average-score threshold; upstream default 0.6). None keeps the "
+            "pipeline default."
+        ),
+    )
+    local_ocr_text_det_unclip_ratio: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=10.0,
+        description=(
+            "Optional PaddleOCR predict() text_det_unclip_ratio override (text "
+            "region expansion coefficient; upstream default 2.0). None keeps the "
+            "pipeline default."
+        ),
+    )
     paddle_disable_model_source_check: bool = Field(
         default=True,
         description=(
