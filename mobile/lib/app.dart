@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'app_controller.dart';
 import 'app_providers.dart';
 import 'core/config/app_config.dart';
+import 'features/auth/signup_wizard/profile_setup_wizard_screen.dart';
 import 'features/auth/token_session.dart';
 import 'features/consent/consent_gate_sheet.dart';
 import 'features/records/records_providers.dart';
@@ -281,6 +282,11 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                     path: 'profile-edit',
                     builder: (BuildContext context, GoRouterState state) =>
                         const ProfileEditScreen(),
+                  ),
+                  GoRoute(
+                    path: 'profile-setup',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        const ProfileSetupWizardScreen(),
                   ),
                   GoRoute(
                     path: 'health-profile',
