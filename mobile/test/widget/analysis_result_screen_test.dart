@@ -273,6 +273,90 @@ void main() {
     expect(added.source, 'user_confirmed');
   });
 
+  testWidgets('category dropdown sends the chosen category_key', (
+    WidgetTester tester,
+  ) async {
+    // 분류 드롭다운 — 카탈로그에서 고른 분류가 등록 요청 category_key 로 간다
+    // (figma 855:23, 가이드 10 ③-P2 7).
+    final _ReviewRepository repository = _ReviewRepository(
+      supplementCategories: const <SupplementCategory>[
+        SupplementCategory(
+          categoryKey: '비타민B',
+          displayName: '비타민B',
+          sortOrder: 1,
+        ),
+        SupplementCategory(
+          categoryKey: '오메가3',
+          displayName: '오메가3',
+          sortOrder: 2,
+        ),
+      ],
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    // 카탈로그가 로드되면 '분류' 카드가 노출되고, 기본값은 '선택 안 함'이다.
+    expect(find.text('분류'), findsOneWidget);
+    await tester.ensureVisible(find.text('선택 안 함'));
+    await tester.tap(find.text('선택 안 함'));
+    await tester.pumpAndSettle();
+    // 드롭다운 메뉴에서 비타민B 를 고른다.
+    await tester.tap(find.text('비타민B').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('확인 후 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.registeredRequest?.categoryKey, '비타민B');
+    // 미선택 시에는 키를 보내지 않는다(별도 케이스): toJson 직렬화 확인.
+    expect(
+      repository.registeredRequest?.toJson()['category_key'],
+      '비타민B',
+    );
+  });
+
+  testWidgets('omitting the category sends no category_key', (
+    WidgetTester tester,
+  ) async {
+    // 분류를 고르지 않으면 등록 요청에 category_key 가 빠진다.
+    final _ReviewRepository repository = _ReviewRepository(
+      supplementCategories: const <SupplementCategory>[
+        SupplementCategory(
+          categoryKey: '비타민B',
+          displayName: '비타민B',
+          sortOrder: 1,
+        ),
+      ],
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('확인 후 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.registeredRequest?.categoryKey, isNull);
+    expect(
+      repository.registeredRequest?.toJson().containsKey('category_key'),
+      isFalse,
+    );
+  });
+
   testWidgets('renders analyzing page while background analysis runs', (
     WidgetTester tester,
   ) async {
@@ -1003,6 +1087,7 @@ class _ReviewRepository implements LemonAidRepository {
     ComprehensiveDietAnalysis? comprehensive,
     Map<String, Object?>? mealPreviewJson,
     this.foodCatalog = const <FoodCatalogItem>[],
+    this.supplementCategories = const <SupplementCategory>[],
   }) : _previewOverride = preview,
        _multiPreviewOverride = multiPreview,
        _comprehensiveOverride = comprehensive,
@@ -1012,6 +1097,9 @@ class _ReviewRepository implements LemonAidRepository {
   final SupplementMultiImageAnalysisPreview? _multiPreviewOverride;
   final ComprehensiveDietAnalysis? _comprehensiveOverride;
   final Map<String, Object?>? _mealPreviewJsonOverride;
+
+  /// Curated categories returned by the 분류 드롭다운 catalog fetch.
+  final List<SupplementCategory> supplementCategories;
 
   /// Catalog rows returned by the direct-input food search fallback.
   List<FoodCatalogItem> foodCatalog;
@@ -1119,6 +1207,10 @@ class _ReviewRepository implements LemonAidRepository {
 
   @override
   Future<FoodCuisineList> fetchCuisines() async => FoodCuisineList.empty;
+
+  @override
+  Future<List<SupplementCategory>> fetchSupplementCategories() async =>
+      supplementCategories;
 
   @override
   Future<void> deleteSupplement(String supplementId) async {

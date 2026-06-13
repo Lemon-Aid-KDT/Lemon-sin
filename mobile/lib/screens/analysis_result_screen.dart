@@ -91,6 +91,12 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   List<_IngredientReviewDraft> _ingredientDrafts =
       const <_IngredientReviewDraft>[];
   bool _seedingCorrectionFields = false;
+  // 영양제 분류 드롭다운(figma 855:23, 가이드 10 ③-P2 7) — 카탈로그 옵션과
+  // 사용자가 고른 category_key. 카탈로그는 진입 시 1회 로드, 실패 시 빈 목록
+  // 유지(드롭다운 미노출 — 백엔드 카탈로그 부재 시 조용히 강하).
+  List<SupplementCategory> _supplementCategories =
+      const <SupplementCategory>[];
+  String? _selectedCategoryKey;
 
   bool get _isMeal => widget.mode == 'meal';
 
@@ -99,6 +105,30 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     super.initState();
     for (final TextEditingController controller in _primaryActionControllers) {
       controller.addListener(_handlePrimaryActionFieldChanged);
+    }
+    if (!_isMeal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadSupplementCategories();
+      });
+    }
+  }
+
+  /// 영양제 분류 카탈로그를 불러온다. 실패는 화면 오류로 올리지 않는다 —
+  /// 드롭다운만 숨기고 등록은 분류 없이 진행한다(가이드 10 ③-P2 7).
+  Future<void> _loadSupplementCategories() async {
+    final AppController? controller = widget.controller;
+    if (controller == null) {
+      return;
+    }
+    try {
+      final List<SupplementCategory> categories =
+          await controller.repository.fetchSupplementCategories();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _supplementCategories = categories);
+    } on Object {
+      // 카탈로그 부재/일시 오류 — 분류 드롭다운 비노출 유지.
     }
   }
 
@@ -448,6 +478,16 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         onEdit: preview == null ? null : () => _editProductInfo(context),
       ),
       const SizedBox(height: AppSpace.sm),
+      // 분류 드롭다운(figma 855:23) — 카탈로그가 로드됐을 때만 노출한다.
+      if (_supplementCategories.isNotEmpty) ...<Widget>[
+        _CategoryDropdownCard(
+          categories: _supplementCategories,
+          selectedKey: _selectedCategoryKey,
+          onChanged: (String? key) =>
+              setState(() => _selectedCategoryKey = key),
+        ),
+        const SizedBox(height: AppSpace.sm),
+      ],
       _SupplementInfoCard(
         icon: Icons.fact_check_rounded,
         title: '상세 성분 및 함량',
@@ -2200,6 +2240,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         timeOfDay: _splitCsv(_timeOfDayController.text),
         timesPerDay: _dailyServings.toDouble(),
       ),
+      // 사용자가 고른 분류 키 — 미선택 시 null (가이드 10 ③-P2 7).
+      categoryKey: _selectedCategoryKey,
       precautionSnapshot: _confirmedPrecautions(),
       evidenceRefs: _registrationEvidenceRefs(preview),
     );
@@ -4033,6 +4075,111 @@ class _PipelineLed extends StatelessWidget {
       'failed' => const Color(0xFFFF6B6B),
       _ => const Color(0xFFC7CDD6),
     };
+  }
+}
+
+/// 영양제 분류 드롭다운 카드 (figma 855:23 — 가이드 10 ③-P2 7).
+///
+/// 카탈로그(`GET /supplements/categories`)에서 받은 분류 중 하나를 고른다.
+/// '선택 안 함'(null)이 기본이며, 미선택 시 등록 요청에 category_key 를
+/// 보내지 않는다.
+class _CategoryDropdownCard extends StatelessWidget {
+  const _CategoryDropdownCard({
+    required this.categories,
+    required this.selectedKey,
+    required this.onChanged,
+  });
+
+  final List<SupplementCategory> categories;
+  final String? selectedKey;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadow.elev1,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColor.brand.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons.category_rounded,
+                  color: AppColor.brand,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              const Expanded(
+                child: Text(
+                  '분류',
+                  style: TextStyle(
+                    color: AppColor.ink,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+            decoration: BoxDecoration(
+              color: AppColor.surface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColor.border),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: selectedKey,
+                isExpanded: true,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                icon: const Icon(
+                  Icons.expand_more_rounded,
+                  color: AppColor.inkSecondary,
+                ),
+                style: AppText.body.copyWith(color: AppColor.ink),
+                items: <DropdownMenuItem<String?>>[
+                  DropdownMenuItem<String?>(
+                    child: Text(
+                      '선택 안 함',
+                      style: AppText.body.copyWith(
+                        color: AppColor.inkSecondary,
+                      ),
+                    ),
+                  ),
+                  for (final SupplementCategory category in categories)
+                    DropdownMenuItem<String?>(
+                      value: category.categoryKey,
+                      child: Text(
+                        category.displayName,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body.copyWith(color: AppColor.ink),
+                      ),
+                    ),
+                ],
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

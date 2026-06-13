@@ -101,6 +101,11 @@ abstract class LemonAidRepository {
     throw UnimplementedError();
   }
 
+  /// Fetches the curated supplement category catalog (분류 드롭다운 옵션).
+  Future<List<SupplementCategory>> fetchSupplementCategories() {
+    throw UnimplementedError();
+  }
+
   /// Soft-deletes a registered supplement (DELETE /supplements/{id} → 204).
   Future<void> deleteSupplement(String supplementId) {
     throw UnimplementedError();
@@ -349,6 +354,14 @@ class BackendLemonAidRepository implements LemonAidRepository {
       '/meals/cuisines',
     );
     return FoodCuisineList.fromJson(json);
+  }
+
+  @override
+  Future<List<SupplementCategory>> fetchSupplementCategories() async {
+    final Map<String, dynamic> json = await _apiClient.getJson(
+      '/supplements/categories?limit=100',
+    );
+    return SupplementCategory.listFromJson(json);
   }
 
   @override

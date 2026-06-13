@@ -1626,6 +1626,7 @@ class UserSupplementCreate {
     required this.ingredients,
     required this.serving,
     required this.intakeSchedule,
+    this.categoryKey,
     this.precautionSnapshot = const <String>[],
     this.evidenceRefs = const <String>[],
   });
@@ -1648,6 +1649,9 @@ class UserSupplementCreate {
   /// Optional user-confirmed intake schedule.
   final SupplementIntakeSchedule? intakeSchedule;
 
+  /// User-chosen curated category key from the catalog (null when unset).
+  final String? categoryKey;
+
   /// User-confirmed precaution sentences from the label.
   final List<String> precautionSnapshot;
 
@@ -1667,10 +1671,64 @@ class UserSupplementCreate {
           .toList(growable: false),
       'serving': serving.toJson(),
       'intake_schedule': intakeSchedule?.toJson(),
+      // 분류 미선택 시 키를 생략한다 — 서버는 누락을 '선택 안 함'으로 본다.
+      if (categoryKey != null) 'category_key': categoryKey,
       'precaution_snapshot': precautionSnapshot,
       'evidence_refs': evidenceRefs,
       'user_confirmed': true,
     };
+  }
+}
+
+/// Curated supplement category from `GET /supplements/categories`.
+class SupplementCategory {
+  /// Creates a curated supplement category.
+  const SupplementCategory({
+    required this.categoryKey,
+    required this.displayName,
+    required this.sortOrder,
+  });
+
+  /// Stable machine key sent back as the user's chosen category.
+  final String categoryKey;
+
+  /// User-facing category label.
+  final String displayName;
+
+  /// Catalog sort order (ascending).
+  final int sortOrder;
+
+  /// Parses one catalog row; returns null when required fields are missing.
+  static SupplementCategory? fromJson(Map<String, dynamic> json) {
+    final Object? key = json['category_key'];
+    final Object? label = json['display_name'];
+    if (key is! String || key.isEmpty || label is! String || label.isEmpty) {
+      return null;
+    }
+    final Object? sort = json['sort_order'];
+    return SupplementCategory(
+      categoryKey: key,
+      displayName: label,
+      sortOrder: sort is int ? sort : 0,
+    );
+  }
+
+  /// Parses the catalog list response (`results[]`), skipping malformed rows.
+  static List<SupplementCategory> listFromJson(Map<String, dynamic> json) {
+    final Object? rows = json['results'];
+    if (rows is! List<dynamic>) {
+      return const <SupplementCategory>[];
+    }
+    final List<SupplementCategory> out = <SupplementCategory>[];
+    for (final Object? row in rows) {
+      if (row is Map<String, dynamic>) {
+        final SupplementCategory? parsed = SupplementCategory.fromJson(row);
+        if (parsed != null) {
+          out.add(parsed);
+        }
+      }
+    }
+    return out;
   }
 }
 

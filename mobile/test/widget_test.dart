@@ -203,6 +203,10 @@ class _FakeRepository implements LemonAidRepository {
   }
 
   @override
+  Future<List<SupplementCategory>> fetchSupplementCategories() async =>
+      const <SupplementCategory>[];
+
+  @override
   Future<void> deleteSupplement(String supplementId) async {
     throw UnimplementedError();
   }
