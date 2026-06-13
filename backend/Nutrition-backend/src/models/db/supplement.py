@@ -306,6 +306,7 @@ class UserSupplement(TimestampMixin, Base):
         matched_product_id: Optional reference product selected by matching or user review.
         display_name: User-confirmed supplement display name.
         manufacturer: User-confirmed manufacturer.
+        category_key: User-chosen curated supplement category key (None when unset).
         serving_snapshot: User-confirmed serving values.
         intake_schedule: User-confirmed intake schedule.
         precaution_snapshot: User-confirmed label precautions only.
@@ -323,6 +324,10 @@ class UserSupplement(TimestampMixin, Base):
         CheckConstraint(
             "jsonb_typeof(precaution_snapshot) = 'array'",
             name="precaution_snapshot_array",
+        ),
+        CheckConstraint(
+            "category_key IS NULL OR category_key <> ''",
+            name="category_key_nonempty",
         ),
         Index("ix_user_supplements_owner_created_at", "owner_subject", "created_at"),
         Index("ix_user_supplements_owner_deleted_at", "owner_subject", "deleted_at"),
@@ -344,6 +349,10 @@ class UserSupplement(TimestampMixin, Base):
     )
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     manufacturer: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    # User-chosen curated category key (references supplement_categories.category_key
+    # by value; soft reference validated in the registration service, not an FK, so
+    # catalog churn never blocks a stored record). None when the user did not pick one.
+    category_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     serving_snapshot: Mapped[dict[str, Any]] = mapped_column(
         postgresql.JSONB, nullable=False, default=dict
     )

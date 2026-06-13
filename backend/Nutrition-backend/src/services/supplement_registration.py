@@ -37,7 +37,10 @@ from src.models.schemas.taxonomy import SupplementCategorySummary
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.supplement_matching import match_supplement_product
-from src.services.taxonomy_catalog import resolve_supplement_category_filter
+from src.services.taxonomy_catalog import (
+    TaxonomyFilterNotFoundError,
+    resolve_supplement_category_filter,
+)
 
 REFERENCE_DATA_PATH = resolve_nutrition_reference_root() / "nutrient"
 NUTRIENT_CODES_PATH = REFERENCE_DATA_PATH / "nutrient_codes.json"
@@ -105,6 +108,10 @@ async def create_user_supplement_from_confirmation(
     owner_subject = build_owner_subject(user)
     now = datetime.now(UTC)
 
+    # Validate the user-chosen category before any write so an unknown key
+    # returns 422 without leaving a partial record.
+    chosen_category = await _resolve_chosen_category(session, request.category_key)
+
     preview = await _get_owned_preview_for_confirmation(
         session,
         owner_subject,
@@ -119,6 +126,7 @@ async def create_user_supplement_from_confirmation(
         matched_product_id=match.matched_product_id,
         display_name=request.display_name,
         manufacturer=request.manufacturer,
+        category_key=chosen_category.category_key if chosen_category is not None else None,
         serving_snapshot=request.serving.model_dump(mode="json", exclude_none=True),
         intake_schedule=(
             request.intake_schedule.model_dump(mode="json", exclude_none=True)
@@ -162,14 +170,23 @@ async def create_user_supplement_from_confirmation(
 
     await session.commit()
     await session.refresh(supplement)
-    categories = await _load_categories_for_products(
+    product_categories = await _load_categories_for_products(
         session,
         [supplement.matched_product_id] if supplement.matched_product_id else [],
+    )
+    chosen_by_key = (
+        {chosen_category.category_key: _category_summary(chosen_category)}
+        if chosen_category is not None
+        else {}
     )
     return UserSupplementStoreResult(
         supplement=supplement,
         ingredients=ingredients,
-        categories=categories.get(supplement.matched_product_id, []),
+        categories=_effective_categories(
+            supplement,
+            chosen_by_key=chosen_by_key,
+            product_categories=product_categories.get(supplement.matched_product_id, []),
+        ),
     )
 
 
@@ -217,12 +234,20 @@ async def list_user_supplement_records(
         session,
         [record.matched_product_id for record in records if record.matched_product_id],
     )
+    chosen_by_key = await _load_user_chosen_categories(
+        session,
+        [record.category_key for record in records if record.category_key],
+    )
     return UserSupplementListResponse(
         results=[
             user_supplement_to_response(
                 record,
                 ingredients.get(record.id, []),
-                categories=categories.get(record.matched_product_id, []),
+                categories=_effective_categories(
+                    record,
+                    chosen_by_key=chosen_by_key,
+                    product_categories=categories.get(record.matched_product_id, []),
+                ),
             )
             for record in records
         ],
@@ -260,10 +285,18 @@ async def get_user_supplement_record(
         session,
         [record.matched_product_id] if record.matched_product_id else [],
     )
+    chosen_by_key = await _load_user_chosen_categories(
+        session,
+        [record.category_key] if record.category_key else [],
+    )
     return UserSupplementStoreResult(
         supplement=record,
         ingredients=ingredients.get(record.id, []),
-        categories=categories.get(record.matched_product_id, []),
+        categories=_effective_categories(
+            record,
+            chosen_by_key=chosen_by_key,
+            product_categories=categories.get(record.matched_product_id, []),
+        ),
     )
 
 
@@ -336,10 +369,101 @@ def user_supplement_to_response(
         ),
         precaution_snapshot=list(supplement.precaution_snapshot or []),
         evidence_refs=_safe_evidence_refs(supplement.evidence_refs),
+        category_key=supplement.category_key,
         categories=list(categories or []),
         user_confirmed_at=supplement.user_confirmed_at,
         created_at=supplement.created_at,
     )
+
+
+async def _resolve_chosen_category(
+    session: AsyncSession,
+    category_key: str | None,
+) -> SupplementCategory | None:
+    """Resolve and validate a user-chosen category key against the catalog.
+
+    Args:
+        session: Request-scoped async database session.
+        category_key: Optional category key the user selected.
+
+    Returns:
+        The active category row, or None when no key was chosen.
+
+    Raises:
+        SupplementRegistrationValidationError: If a key was supplied but does not
+            match an active catalog category (mapped to HTTP 422 by the route).
+    """
+    if category_key is None:
+        return None
+    try:
+        return await resolve_supplement_category_filter(
+            session,
+            category_key=category_key,
+            category_id=None,
+        )
+    except TaxonomyFilterNotFoundError as exc:
+        raise SupplementRegistrationValidationError(
+            "선택한 영양제 분류를 찾을 수 없어요."
+        ) from exc
+
+
+def _category_summary(category: SupplementCategory) -> SupplementCategorySummary:
+    """Build a safe public category summary from a category row."""
+    return SupplementCategorySummary(
+        id=category.id,
+        category_key=category.category_key,
+        display_name=category.display_name,
+        sort_order=category.sort_order,
+    )
+
+
+async def _load_user_chosen_categories(
+    session: AsyncSession,
+    category_keys: list[str],
+) -> dict[str, SupplementCategorySummary]:
+    """Resolve active curated categories for user-chosen keys, grouped by key.
+
+    Args:
+        session: Request-scoped async database session.
+        category_keys: User-chosen category keys stored on supplement rows.
+
+    Returns:
+        Mapping from category key to public summary for keys that still resolve
+        to an active catalog row. Deactivated/unknown keys are omitted so the
+        response falls back to product-derived categories.
+    """
+    keys = [key for key in dict.fromkeys(category_keys) if key]
+    if not keys:
+        return {}
+    rows = await session.scalars(
+        select(SupplementCategory).where(
+            SupplementCategory.category_key.in_(keys),
+            SupplementCategory.is_active.is_(True),
+        )
+    )
+    return {row.category_key: _category_summary(row) for row in rows.all()}
+
+
+def _effective_categories(
+    supplement: UserSupplement,
+    *,
+    chosen_by_key: dict[str, SupplementCategorySummary],
+    product_categories: list[SupplementCategorySummary],
+) -> list[SupplementCategorySummary]:
+    """Pick the categories to surface: user choice when it resolves, else product.
+
+    The user-chosen category is authoritative when it still maps to an active
+    catalog row; otherwise the matched-product categories are used so display
+    degrades gracefully without losing the stored key.
+    """
+    chosen = (
+        chosen_by_key.get(supplement.category_key)
+        if supplement.category_key is not None
+        else None
+    )
+    if chosen is not None:
+        return [chosen]
+    return list(product_categories)
 
 
 async def _get_owned_preview_for_confirmation(

@@ -18,9 +18,13 @@ from src.models.schemas.supplement import (
     UserSupplementCreate,
     UserSupplementListResponse,
 )
+from src.models.schemas.taxonomy import SupplementCategorySummary
 from src.security.auth import AuthenticatedUser
 from src.services.privacy import ConsentRequiredError
-from src.services.supplement_registration import UserSupplementStoreResult
+from src.services.supplement_registration import (
+    SupplementRegistrationValidationError,
+    UserSupplementStoreResult,
+)
 
 
 async def _fake_session_dependency() -> AsyncIterator[object]:
@@ -193,6 +197,84 @@ def test_create_user_supplement_uses_current_user_confirmation(
     assert body["evidence_refs"] == ["span-1"]
     assert body["ingredients"][0].get("original_name") is None
     assert "owner_subject" not in body
+
+
+def test_create_user_supplement_passes_category_key_and_echoes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify a chosen category_key flows to the service and is echoed back."""
+    captured: dict[str, object] = {}
+    supplement = _stored_supplement()
+    supplement.category_key = "비타민B"
+    ingredient = _stored_ingredient(supplement.id)
+    summary = SupplementCategorySummary(
+        id=uuid4(),
+        category_key="비타민B",
+        display_name="비타민B",
+        sort_order=1,
+    )
+
+    async def fake_store(
+        _session: object,
+        _user: AuthenticatedUser,
+        request: UserSupplementCreate,
+        _settings: object,
+    ) -> UserSupplementStoreResult:
+        """Capture the chosen category key and return a stored row."""
+        captured["category_key"] = request.category_key
+        return UserSupplementStoreResult(
+            supplement=supplement,
+            ingredients=[ingredient],
+            categories=[summary],
+        )
+
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(supplements, "create_user_supplement_from_confirmation", fake_store)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements",
+        json={**_payload(), "category_key": "비타민B"},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert captured["category_key"] == "비타민B"
+    body = response.json()
+    assert body["category_key"] == "비타민B"
+    assert [item["category_key"] for item in body["categories"]] == ["비타민B"]
+
+
+def test_create_user_supplement_rejects_unknown_category_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify an unknown category key maps to HTTP 422."""
+
+    async def fake_store(
+        _session: object,
+        _user: AuthenticatedUser,
+        _request: UserSupplementCreate,
+        _settings: object,
+    ) -> UserSupplementStoreResult:
+        """Raise the validation error the service raises for unknown categories."""
+        raise SupplementRegistrationValidationError("선택한 영양제 분류를 찾을 수 없어요.")
+
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(supplements, "create_user_supplement_from_confirmation", fake_store)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements",
+        json={**_payload(), "category_key": "없는분류"},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"]["code"] == "invalid_supplement_confirmation"
 
 
 def test_create_user_supplement_rejects_mass_assignment_fields(

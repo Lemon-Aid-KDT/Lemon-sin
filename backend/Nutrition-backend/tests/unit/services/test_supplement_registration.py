@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.db.supplement import (
     SupplementAnalysisRun,
+    SupplementCategory,
     SupplementProduct,
     SupplementProductIngredient,
     UserSupplement,
@@ -194,6 +195,7 @@ def _request(
     analysis_id: object | None = None,
     nutrient_code: str | None = "vitamin_d_ug",
     evidence_refs: list[str] | None = None,
+    category_key: str | None = None,
 ) -> UserSupplementCreate:
     """Return a confirmed supplement creation request.
 
@@ -201,6 +203,7 @@ def _request(
         analysis_id: Optional source analysis id.
         nutrient_code: Ingredient nutrient code.
         evidence_refs: Optional preview evidence ids.
+        category_key: Optional user-chosen curated category key.
 
     Returns:
         User supplement creation request.
@@ -225,7 +228,27 @@ def _request(
     }
     if evidence_refs is not None:
         payload["evidence_refs"] = evidence_refs
+    if category_key is not None:
+        payload["category_key"] = category_key
     return UserSupplementCreate.model_validate(payload)
+
+
+def _category(category_key: str = "비타민B") -> SupplementCategory:
+    """Return a curated supplement category row.
+
+    Args:
+        category_key: Stable folder-derived category key.
+
+    Returns:
+        Active supplement category row.
+    """
+    return SupplementCategory(
+        id=uuid4(),
+        category_key=category_key,
+        display_name=category_key,
+        sort_order=1,
+        is_active=True,
+    )
 
 
 def _preview(analysis_id: object | None = None, *, expired: bool = False) -> SupplementAnalysisRun:
@@ -417,6 +440,75 @@ async def test_create_user_supplement_rejects_unknown_nutrient_code() -> None:
             _user(),
             _request(nutrient_code="fake_code"),
         )
+
+
+@pytest.mark.asyncio
+async def test_create_user_supplement_stores_user_chosen_category() -> None:
+    """Verify a valid user-chosen category is stored and becomes authoritative.
+
+    The single ``scalar`` call resolves the category (no preview because
+    ``analysis_id`` is None), so the fake session can return the category row.
+    """
+    session = _FakeRegistrationSession(
+        scalar_result=_category("비타민B"),
+        scalars_results=[[], []],
+    )
+
+    result = await create_user_supplement_from_confirmation(
+        cast(AsyncSession, session),
+        _user(),
+        _request(analysis_id=None, category_key="비타민B"),
+    )
+
+    assert session.committed is True
+    assert result.supplement.category_key == "비타민B"
+    # The user choice overrides product-derived categories.
+    assert [summary.category_key for summary in result.categories] == ["비타민B"]
+    response = user_supplement_to_response(
+        result.supplement,
+        result.ingredients,
+        categories=result.categories,
+    )
+    assert response.category_key == "비타민B"
+    assert [summary.category_key for summary in response.categories] == ["비타민B"]
+
+
+@pytest.mark.asyncio
+async def test_create_user_supplement_rejects_unknown_category_key() -> None:
+    """Verify an unknown category key fails validation before any write."""
+    session = _FakeRegistrationSession(scalar_result=None, scalars_results=[[], []])
+
+    with pytest.raises(SupplementRegistrationValidationError):
+        await create_user_supplement_from_confirmation(
+            cast(AsyncSession, session),
+            _user(),
+            _request(analysis_id=None, category_key="없는분류"),
+        )
+
+    # Validation happens before persistence, so nothing is committed.
+    assert session.committed is False
+    assert session.added == []
+
+
+@pytest.mark.asyncio
+async def test_create_user_supplement_without_category_leaves_key_null() -> None:
+    """Verify omitting a category stores a null key and no override occurs."""
+    session = _FakeRegistrationSession(scalars_results=[[], []])
+
+    result = await create_user_supplement_from_confirmation(
+        cast(AsyncSession, session),
+        _user(),
+        _request(analysis_id=None),
+    )
+
+    assert session.committed is True
+    assert result.supplement.category_key is None
+    response = user_supplement_to_response(
+        result.supplement,
+        result.ingredients,
+        categories=result.categories,
+    )
+    assert response.category_key is None
 
 
 @pytest.mark.asyncio

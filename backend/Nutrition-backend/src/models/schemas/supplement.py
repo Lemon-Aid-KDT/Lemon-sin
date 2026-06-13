@@ -662,6 +662,7 @@ class UserSupplementCreate(BaseModel):
         ingredients: User-confirmed ingredient list.
         serving: User-confirmed serving values.
         intake_schedule: User-confirmed intake schedule.
+        category_key: Optional curated category key the user selected from the catalog.
         precaution_snapshot: User-confirmed label precaution sentences.
         evidence_refs: Preview evidence ids supporting the confirmed values.
         user_confirmed: Must be true because preview values cannot be stored as final data.
@@ -675,6 +676,7 @@ class UserSupplementCreate(BaseModel):
     ingredients: list[UserSupplementIngredientInput] = Field(min_length=1, max_length=80)
     serving: SupplementServing
     intake_schedule: SupplementIntakeSchedule | None = None
+    category_key: str | None = Field(default=None, min_length=1, max_length=120)
     precaution_snapshot: list[str] = Field(
         default_factory=list,
         max_length=USER_SUPPLEMENT_PRECAUTION_LIMIT,
@@ -730,7 +732,9 @@ class UserSupplementResponse(BaseModel):
         intake_schedule: Stored intake schedule.
         precaution_snapshot: User-confirmed label precaution sentences.
         evidence_refs: Preview evidence ids that supported the stored values.
-        categories: Curated categories attached through the matched reference product.
+        category_key: User-chosen curated category key (None when unset).
+        categories: Curated categories — the user-chosen category when set, otherwise
+            the categories attached through the matched reference product.
         user_confirmed_at: Time when the user confirmed the values.
         created_at: Server-side record creation time.
     """
@@ -748,6 +752,7 @@ class UserSupplementResponse(BaseModel):
         max_length=USER_SUPPLEMENT_PRECAUTION_LIMIT,
     )
     evidence_refs: list[str] = Field(default_factory=list, max_length=80)
+    category_key: str | None = None
     categories: list[SupplementCategorySummary] = Field(default_factory=list)
     user_confirmed_at: datetime
     created_at: datetime
