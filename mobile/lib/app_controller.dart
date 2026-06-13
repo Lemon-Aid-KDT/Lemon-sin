@@ -406,6 +406,30 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// Grants the consent buckets selected in the consent gate, then refreshes.
+  ///
+  /// Used by the consent gate sheet: the user checks one or more consent rows
+  /// (all required plus any optional) and the gate grants exactly those buckets.
+  /// When the minimum consents are met afterward, the dashboard and home blocks
+  /// are loaded so the shell is ready on entry.
+  ///
+  /// Args:
+  ///   consentTypes: Backend consent bucket identifiers the user agreed to.
+  Future<void> grantConsents(Iterable<String> consentTypes) async {
+    await _run(() async {
+      for (final String consentType in consentTypes) {
+        await _repository.grantConsent(consentType);
+      }
+      _consentState = await _repository.fetchConsents();
+      if (hasMinimumConsents) {
+        _dashboardSummary = await _repository.fetchDashboardSummary();
+        _healthScore = _dashboardSummary!.healthScore;
+        await _loadHomeData();
+      }
+      _notice = '동의가 저장됐어요.';
+    });
+  }
+
   /// Refreshes the dashboard summary and home data blocks.
   Future<void> refreshDashboard() async {
     await _run(() async {

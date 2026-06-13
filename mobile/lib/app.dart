@@ -8,7 +8,7 @@ import 'app_controller.dart';
 import 'app_providers.dart';
 import 'core/config/app_config.dart';
 import 'features/auth/token_session.dart';
-import 'features/consent/consent_gate_screen.dart';
+import 'features/consent/consent_gate_sheet.dart';
 import 'features/records/records_providers.dart';
 import 'features/supplements/supplement_models.dart';
 import 'features/supplements/supplement_repository.dart';
@@ -420,7 +420,7 @@ class _SupplementCameraBranch extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppController controller = ref.watch(appControllerProvider);
     if (!controller.hasMinimumConsents) {
-      return ConsentGateScreen(controller: controller);
+      return ConsentGateSheet(controller: controller);
     }
     return source_camera.CameraScreen(
       key: ValueKey<String>('camera-$initialMode-$initialImageRole'),
