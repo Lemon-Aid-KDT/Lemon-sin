@@ -31,6 +31,8 @@ class MedicationReminderScreen extends ConsumerStatefulWidget {
 class _MedicationReminderScreenState
     extends ConsumerState<MedicationReminderScreen> {
   List<MedicationReminder> _reminders = <MedicationReminder>[];
+  // 삭제됐지만 아직 서버에서 비활성화하지 못한 알림의 serverId (저장 시 disable).
+  final List<String> _removedServerIds = <String>[];
   bool _permissionDenied = false;
   bool _saving = false;
 
@@ -79,6 +81,11 @@ class _MedicationReminderScreenState
 
   void _removeReminder(int index) {
     setState(() {
+      final MedicationReminder removed = _reminders[index];
+      final String? serverId = removed.serverId;
+      if (serverId != null) {
+        _removedServerIds.add(serverId);
+      }
       _reminders = List<MedicationReminder>.of(_reminders)..removeAt(index);
     });
   }
@@ -86,35 +93,88 @@ class _MedicationReminderScreenState
   Future<void> _save() async {
     setState(() => _saving = true);
 
-    // 1) 로컬 영속.
     final MedicationReminderStore store = ref.read(
       medicationReminderStoreProvider,
     );
-    await store.save(_reminders);
-
-    // 2) 로컬 알림 권한 + 재스케줄 (1차 소스).
     final ReminderScheduler scheduler = ref.read(reminderSchedulerProvider);
-    final bool granted = await scheduler.ensurePermissions();
-    if (!granted) {
-      if (!mounted) return;
-      setState(() => _permissionDenied = true);
-    }
-    await scheduler.reschedule(_reminders);
-
-    // 3) 서버 동기화 (동기화 사본 — 실패해도 로컬 유지).
     final MedicationReminderSync sync = ref.read(
       medicationReminderSyncProvider,
     );
+
+    // 저장 중 추가/삭제와의 경합을 피하려 작업 스냅샷을 뜬다.
+    final List<MedicationReminder> working = List<MedicationReminder>.of(
+      _reminders,
+    );
+    final List<String> removedServerIds = List<String>.of(_removedServerIds);
+
+    // 1) 로컬 영속(내구성). serverId 갱신은 서버 동기화 후 다시 저장한다.
+    await store.save(working);
+
+    // 2) 로컬 알림 권한 + 재스케줄 (1차 소스).
+    final bool granted = await scheduler.ensurePermissions();
+    if (!granted && mounted) {
+      setState(() => _permissionDenied = true);
+    }
+    await scheduler.reschedule(working);
+
+    // 3) 서버 동기화 (동기화 사본 — 실패해도 로컬은 유지).
     bool anyServerFailure = false;
-    for (final MedicationReminder reminder in _reminders) {
-      if (!reminder.enabled) continue;
-      if (reminder.serverId != null) continue; // 이미 동기화됨.
-      final ReminderSyncResult result = await sync.push(reminder);
-      if (!result.synced) anyServerFailure = true;
+
+    // 3a) 삭제된 알림: 서버에서 비활성화. 실패분은 다음 저장에 재시도하도록 남긴다.
+    // (삭제분은 _removeReminder 에서 _reminders/working 에서 이미 빠지므로 3b 와
+    // 중복 disable 되지 않는다.)
+    final List<String> stillPendingRemoval = <String>[];
+    for (final String serverId in removedServerIds) {
+      if (await sync.disable(serverId)) continue;
+      anyServerFailure = true;
+      stillPendingRemoval.add(serverId);
     }
 
+    // 3b) 현재 알림: 활성·미동기화면 생성(serverId 회수), 비활성·동기화됐으면 비활성화.
+    final List<MedicationReminder> synced = <MedicationReminder>[];
+    for (final MedicationReminder reminder in working) {
+      final String? serverId = reminder.serverId;
+      if (reminder.enabled && serverId == null) {
+        final ReminderSyncResult result = await sync.push(reminder);
+        if (result.synced) {
+          synced.add(reminder.copyWith(serverId: result.serverId));
+        } else {
+          anyServerFailure = true;
+          synced.add(reminder);
+        }
+      } else if (!reminder.enabled && serverId != null) {
+        if (await sync.disable(serverId)) {
+          synced.add(reminder.copyWith(clearServerId: true));
+        } else {
+          anyServerFailure = true;
+          synced.add(reminder);
+        }
+      } else {
+        synced.add(reminder);
+      }
+    }
+
+    // 4) serverId 갱신을 "현재 목록"에 병합해 로컬 저장(다음 저장 시 중복 생성 방지).
+    //    synced 는 working 스냅샷 기반이라 그대로 저장하면 저장 중 추가/삭제가
+    //    누락·부활하므로, 영속본과 메모리 모두 _reminders 기준으로 병합한다.
+    final Map<String, MedicationReminder> syncedById =
+        <String, MedicationReminder>{
+          for (final MedicationReminder r in synced) r.id: r,
+        };
+    await store.save(<MedicationReminder>[
+      for (final MedicationReminder r in _reminders) syncedById[r.id] ?? r,
+    ]);
+
     if (!mounted) return;
-    setState(() => _saving = false);
+    setState(() {
+      _reminders = <MedicationReminder>[
+        for (final MedicationReminder r in _reminders) syncedById[r.id] ?? r,
+      ];
+      _removedServerIds
+        ..clear()
+        ..addAll(stillPendingRemoval);
+      _saving = false;
+    });
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(

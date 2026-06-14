@@ -165,4 +165,114 @@ void main() {
     expect(scheduler.lastReminders.single.weekdays.contains(7), isFalse);
     expect(scheduler.lastReminders.single.weekdays, hasLength(6));
   });
+
+  testWidgets('saving captures the server id and does not re-create on re-save',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final LocalPrefs prefs = await LocalPrefs.create();
+    final _FakeScheduler scheduler = _FakeScheduler();
+    final _FakeClient client = _FakeClient(
+      (http.Request request) async => request.url.path.endsWith('/disable')
+          ? _json(<String, dynamic>{'status': 'disabled'}, 200)
+          : _json(<String, dynamic>{'id': 'srv-1'}, 201),
+    );
+
+    await pump(tester, scheduler: scheduler, client: client, prefs: prefs);
+
+    await tester.tap(find.text('시간 추가'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('저장하기'));
+    await tester.pumpAndSettle();
+
+    // 첫 저장: 서버 생성 1회 + serverId 가 로컬에 영속된다.
+    expect(client.requests, hasLength(1));
+    expect(prefs.medicationReminders().single['server_id'], 'srv-1');
+
+    // 두 번째 저장: 이미 동기화됐으므로 추가 생성 POST 가 없어야 한다(중복 방지).
+    await tester.tap(find.text('저장하기'));
+    await tester.pumpAndSettle();
+    expect(client.requests, hasLength(1));
+    // 두 번째 저장이 serverId 를 지우지 않았다(영속본 회귀 가드).
+    expect(prefs.medicationReminders().single['server_id'], 'srv-1');
+  });
+
+  testWidgets('toggling a synced reminder off disables it on the server',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'medication_reminders': jsonEncode(<Map<String, dynamic>>[
+        const MedicationReminder(
+          id: 'rem-1',
+          hour: 8,
+          minute: 0,
+          weekdays: <int>{1, 2, 3, 4, 5, 6, 7},
+          serverId: 'srv-1',
+        ).toJson(),
+      ]),
+    });
+    final LocalPrefs prefs = await LocalPrefs.create();
+    final _FakeScheduler scheduler = _FakeScheduler();
+    final _FakeClient client = _FakeClient(
+      (http.Request request) async => request.url.path.endsWith('/disable')
+          ? _json(<String, dynamic>{'status': 'disabled'}, 200)
+          : _json(<String, dynamic>{'id': 'srv-x'}, 201),
+    );
+
+    await pump(tester, scheduler: scheduler, client: client, prefs: prefs);
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pump();
+    await tester.tap(find.text('저장하기'));
+    await tester.pumpAndSettle();
+
+    // 비활성화한 알림은 서버에서도 disable 되고 serverId 가 비워진다.
+    expect(client.requests, hasLength(1));
+    expect(
+      client.requests.single.url.path,
+      '/api/v1/notifications/reminders/srv-1/disable',
+    );
+    expect(
+      prefs.medicationReminders().single.containsKey('server_id'),
+      isFalse,
+    );
+    expect(prefs.medicationReminders().single['enabled'], isFalse);
+  });
+
+  testWidgets('deleting a synced reminder disables it on the server',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'medication_reminders': jsonEncode(<Map<String, dynamic>>[
+        const MedicationReminder(
+          id: 'rem-1',
+          hour: 8,
+          minute: 0,
+          weekdays: <int>{1, 2, 3},
+          serverId: 'srv-1',
+        ).toJson(),
+      ]),
+    });
+    final LocalPrefs prefs = await LocalPrefs.create();
+    final _FakeScheduler scheduler = _FakeScheduler();
+    final _FakeClient client = _FakeClient(
+      (http.Request request) async => request.url.path.endsWith('/disable')
+          ? _json(<String, dynamic>{'status': 'disabled'}, 200)
+          : _json(<String, dynamic>{'id': 'srv-x'}, 201),
+    );
+
+    await pump(tester, scheduler: scheduler, client: client, prefs: prefs);
+
+    await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+    await tester.pump();
+    await tester.tap(find.text('저장하기'));
+    await tester.pumpAndSettle();
+
+    // 삭제된 알림도 서버에서 disable 된다.
+    expect(
+      client.requests.single.url.path,
+      '/api/v1/notifications/reminders/srv-1/disable',
+    );
+    expect(prefs.medicationReminders(), isEmpty);
+  });
 }
