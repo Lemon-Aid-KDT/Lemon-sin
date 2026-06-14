@@ -10,7 +10,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import notifications
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.schemas.notification import (
     ReminderCategory,
@@ -42,7 +42,9 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
 def _client() -> TestClient:
     """Return a TestClient with the DB session dependency replaced."""
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # Routes adopted get_rls_context_session (ambient-tx Step 4, RLS Stage-2
+    # rollout); overriding get_async_session alone no longer reaches them.
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     return TestClient(app)
 
 
@@ -132,9 +134,7 @@ def test_reminder_preferences_crud_routes_use_current_user(
         f"/api/v1/notifications/reminders/{reminder_id}",
         json={"time_of_day": "20:30", "message": "저녁 기록 확인"},
     )
-    disable_response = _client().post(
-        f"/api/v1/notifications/reminders/{reminder_id}/disable"
-    )
+    disable_response = _client().post(f"/api/v1/notifications/reminders/{reminder_id}/disable")
 
     assert create_response.status_code == status.HTTP_201_CREATED
     assert create_response.json()["category"] == "supplement_reminder"

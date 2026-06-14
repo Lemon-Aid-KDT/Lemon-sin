@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.user_medication import UserMedication
 from src.models.schemas.user_medication import (
     UserMedicationCreate,
@@ -57,9 +58,10 @@ async def create_user_medication_service(
         is_active=request.is_active,
         last_confirmed_at=now,
     )
-    session.add(record)
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        session.add(record)
+        await session.flush()
+        await session.refresh(record)
     return user_medication_to_response(record)
 
 
@@ -102,8 +104,9 @@ async def update_user_medication_service(
         record.is_active = request.is_active
     record.confirmation_status = "user_confirmed"
     record.last_confirmed_at = now
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        await session.flush()
+        await session.refresh(record)
     return user_medication_to_response(record)
 
 
@@ -116,8 +119,9 @@ async def deactivate_user_medication_service(
     """Deactivate a current-user medication row."""
     record = await _get_current_user_medication(session, user, settings, medication_id)
     record.is_active = False
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        await session.flush()
+        await session.refresh(record)
     return user_medication_to_response(record)
 
 

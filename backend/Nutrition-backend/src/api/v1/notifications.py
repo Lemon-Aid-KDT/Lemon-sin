@@ -17,7 +17,8 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
+from src.db.tx import persist_scope
 from src.models.db.notification import ReminderPreference
 from src.models.schemas.notification import (
     ReminderPreferenceCreate,
@@ -104,9 +105,10 @@ async def create_reminder_preference_service(
         preference_metadata=request.metadata,
         disabled_at=None if request.enabled else datetime.now(UTC),
     )
-    session.add(record)
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        session.add(record)
+        await session.flush()
+        await session.refresh(record)
     return reminder_preference_to_response(record)
 
 
@@ -142,8 +144,9 @@ async def update_reminder_preference_service(
     if request.enabled is not None:
         record.enabled = request.enabled
         record.disabled_at = None if request.enabled else datetime.now(UTC)
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        await session.flush()
+        await session.refresh(record)
     return reminder_preference_to_response(record)
 
 
@@ -156,8 +159,9 @@ async def disable_reminder_preference_service(
     record = await _get_current_user_reminder(session, user, reminder_id)
     record.enabled = False
     record.disabled_at = datetime.now(UTC)
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        await session.flush()
+        await session.refresh(record)
     return reminder_preference_to_response(record)
 
 
@@ -206,7 +210,7 @@ def _not_found_error() -> HTTPException:
 )
 async def list_reminder_preferences(
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
 ) -> ReminderPreferenceListResponse:
     """List current-user reminder preferences."""
     return ReminderPreferenceListResponse(
@@ -233,7 +237,7 @@ async def create_reminder_preference(
     http_request: Request,
     request: ReminderPreferenceCreate,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ReminderPreferenceResponse:
     """Create a current-user health reminder preference."""
@@ -272,7 +276,7 @@ async def update_reminder_preference(
     http_request: Request,
     request: ReminderPreferenceUpdate,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ReminderPreferenceResponse:
     """Update a current-user health reminder preference."""
@@ -314,7 +318,7 @@ async def disable_reminder_preference(
     reminder_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ReminderPreferenceResponse:
     """Disable a current-user health reminder preference."""

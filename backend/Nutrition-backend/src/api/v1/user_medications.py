@@ -15,7 +15,7 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.user_medication import (
     UserMedicationCreate,
@@ -98,7 +98,7 @@ def _not_found_error() -> HTTPException:
 async def list_user_medications(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserMedicationListResponse:
     """List saved medication names for the current user."""
@@ -133,7 +133,7 @@ async def create_user_medication(
     http_request: Request,
     request: UserMedicationCreate,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserMedicationResponse:
     """Save a user-confirmed medication name."""
@@ -178,7 +178,7 @@ async def update_user_medication(
     http_request: Request,
     request: UserMedicationUpdate,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserMedicationResponse:
     """Update a saved medication row."""
@@ -230,7 +230,7 @@ async def deactivate_user_medication(
     medication_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserMedicationResponse:
     """Deactivate a saved medication row."""

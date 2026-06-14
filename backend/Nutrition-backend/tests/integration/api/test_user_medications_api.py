@@ -10,7 +10,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import user_medications
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.schemas.user_medication import (
     UserMedicationCreate,
@@ -41,7 +41,9 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
 def _client() -> TestClient:
     """Return a TestClient with DB session replaced."""
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # Routes adopted get_rls_context_session (ambient-tx Step 4, RLS Stage-2
+    # rollout); overriding get_async_session alone no longer reaches them.
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     return TestClient(app)
 
 
@@ -137,9 +139,7 @@ def test_user_medication_crud_routes_use_current_user(
         f"/api/v1/me/medications/{medication_id}",
         json={"display_name": "losartan", "medication_class": "arb"},
     )
-    deactivate_response = _client().post(
-        f"/api/v1/me/medications/{medication_id}/deactivate"
-    )
+    deactivate_response = _client().post(f"/api/v1/me/medications/{medication_id}/deactivate")
 
     assert create_response.status_code == status.HTTP_201_CREATED
     assert create_response.json()["display_name"] == "amlodipine"
