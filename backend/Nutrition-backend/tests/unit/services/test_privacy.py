@@ -55,6 +55,7 @@ class _FakeAuditSession:
     def __init__(self) -> None:
         self.added: list[object] = []
         self.committed = False
+        self.info: dict[str, object] = {}
 
     def add(self, record: object) -> None:
         """Capture a persisted object.

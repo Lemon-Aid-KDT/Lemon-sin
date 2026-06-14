@@ -34,6 +34,7 @@ class _FakeSession:
         self.begun = False
         self.committed = False
         self.closed = False
+        self.info: dict[str, Any] = {}
 
     async def execute(self, statement: object, params: dict[str, Any]) -> None:
         """Record an executed statement and its bind params."""

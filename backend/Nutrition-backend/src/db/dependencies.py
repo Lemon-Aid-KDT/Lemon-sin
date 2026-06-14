@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings, get_settings
 from src.db.rls_context import set_request_rls_context
 from src.db.session import get_sessionmaker
+from src.db.tx import REQUEST_MANAGED_TX
 from src.security.auth import AuthenticatedUser, require_current_user
 from src.security.privacy import hash_actor_subject
 from src.security.subjects import build_owner_subject
@@ -69,4 +70,8 @@ async def get_rls_context_session(
             subject=owner_subject,
             subject_hash=subject_hash,
         )
+        # Mark this request as owning the transaction so write/audit services
+        # participate (flush only) instead of committing — committing mid-request
+        # would drop the transaction-local RLS GUCs set above. See src/db/tx.py.
+        session.info[REQUEST_MANAGED_TX] = True
         yield session
