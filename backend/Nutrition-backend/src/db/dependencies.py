@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends
@@ -75,3 +76,52 @@ async def get_rls_context_session(
         # would drop the transaction-local RLS GUCs set above. See src/db/tx.py.
         session.info[REQUEST_MANAGED_TX] = True
         yield session
+
+
+@asynccontextmanager
+async def rls_request_transaction(
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    settings: Settings,
+) -> AsyncIterator[AsyncSession]:
+    """Open a route-owned RLS transaction that commits before the route returns.
+
+    Same owner-scoped, single-transaction semantics as
+    :func:`get_rls_context_session`, but the request transaction is opened and
+    committed *inside the route body* rather than at dependency teardown. This
+    is required for routes that schedule post-commit work via FastAPI
+    ``BackgroundTasks``: Starlette runs background tasks **before** the
+    yield-dependency teardown, so a ``get_rls_context_session`` route (which
+    commits at teardown) would run the background task before its writes are
+    durable. Committing in the route body — which happens before the response is
+    sent and therefore before the background task runs — keeps the deferred
+    fresh-session work (e.g. learning image storage) safely post-commit.
+
+    Use with ``get_async_session`` (which opens no transaction). The wrapped
+    block must perform all owner-scoped reads/writes via ``persist_scope`` and
+    must not call ``session.commit()``/``session.begin()`` itself; the context
+    manager owns begin + commit (rollback on error), and clears the
+    request-managed marker on exit so any later use of the session reverts to
+    legacy ownership.
+
+    Args:
+        session: Request-scoped async session from ``get_async_session``.
+        current_user: Authenticated principal whose owner subject scopes the RLS GUCs.
+        settings: Runtime settings supplying the privacy hash secret.
+
+    Yields:
+        The same session, inside an open transaction with owner-subject GUCs set.
+    """
+    owner_subject = build_owner_subject(current_user)
+    subject_hash = hash_actor_subject(current_user, settings)
+    async with session.begin():
+        await set_request_rls_context(
+            session,
+            subject=owner_subject,
+            subject_hash=subject_hash,
+        )
+        session.info[REQUEST_MANAGED_TX] = True
+        try:
+            yield session
+        finally:
+            session.info.pop(REQUEST_MANAGED_TX, None)

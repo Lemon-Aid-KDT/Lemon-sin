@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import Self, cast
@@ -11,7 +12,7 @@ import pytest
 from fastapi import UploadFile
 from PIL import Image
 from pydantic import SecretStr
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.config import Settings
 from src.learning.object_storage import (
     LearningImageObjectInput,
@@ -42,9 +43,14 @@ from src.services.supplement_image_analysis import (
     OCR_VERIFICATION_MISMATCH_CODE,
     SUPPLEMENT_FACTS_REQUIRED_CODE,
     SupplementImageAnalysisAdapters,
+    SupplementLearningArtifactsInput,
     analyze_supplement_image,
+    store_supplement_learning_artifacts,
 )
-from src.services.supplement_intake import supplement_analysis_run_to_preview
+from src.services.supplement_intake import (
+    ValidatedSupplementImage,
+    supplement_analysis_run_to_preview,
+)
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
 from starlette.datastructures import Headers
 
@@ -127,6 +133,18 @@ class _FakePipelineSession:
             return self.existing_learning_object
         if entity is AnnotationTask:
             return self.existing_annotation_task
+        return self.added_analysis
+
+    async def get(self, _entity: object, _ident: object) -> object | None:
+        """Return the stored analysis row for a primary-key lookup.
+
+        Args:
+            _entity: ORM entity class requested.
+            _ident: Primary-key identity requested.
+
+        Returns:
+            Stored analysis row (used by the post-commit learning helper).
+        """
         return self.added_analysis
 
     def add(self, record: object) -> None:
@@ -212,6 +230,36 @@ class _FakeLearningImageObjectStore(LearningImageObjectStore):
             version_id: Optional fake version id.
         """
         self.deleted.append((object_uri, version_id))
+
+
+class _FakeSessionContext:
+    """Async context manager yielding a pre-built fake session."""
+
+    def __init__(self, session: _FakePipelineSession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> _FakePipelineSession:
+        """Return the wrapped fake session."""
+        return self._session
+
+    async def __aexit__(self, *_exc_info: object) -> bool:
+        """Exit without suppressing exceptions."""
+        return False
+
+
+class _FakeSessionFactory:
+    """Callable session factory returning one fixed fake session per call.
+
+    Mirrors the ``async_sessionmaker`` call shape used by the post-commit
+    learning helper (``async with factory() as session``) without a real engine.
+    """
+
+    def __init__(self, session: _FakePipelineSession) -> None:
+        self._session = session
+
+    def __call__(self) -> _FakeSessionContext:
+        """Return a fresh async context wrapping the fixed fake session."""
+        return _FakeSessionContext(self._session)
 
 
 class _FakeOCRAdapter(OCRAdapter):
@@ -456,6 +504,21 @@ def _upload(data: bytes) -> UploadFile:
         file=BytesIO(data),
         filename="label.png",
         headers=Headers({"content-type": "image/png"}),
+    )
+
+
+def _validated_image() -> ValidatedSupplementImage:
+    """Return validated image metadata for post-commit helper tests.
+
+    Returns:
+        Minimal validated supplement image metadata fixture.
+    """
+    return ValidatedSupplementImage(
+        sha256="0" * 64,
+        mime_type="image/png",
+        size_bytes=64,
+        width=3,
+        height=2,
     )
 
 
@@ -880,10 +943,9 @@ async def test_analyze_supplement_image_promotes_ocr_layout_to_preview_sections(
 
 
 @pytest.mark.asyncio
-async def test_analyze_supplement_image_queues_learning_source_annotation_task() -> None:
-    """Verify consent-retained images can queue sanitized section review tasks."""
+async def test_analyze_supplement_image_defers_learning_artifacts_for_post_commit() -> None:
+    """Verify the orchestrator defers learning writes instead of storing in-request."""
     fake_session = _FakePipelineSession()
-    fake_store = _FakeLearningImageObjectStore()
     fake_ocr = _FakeOCRAdapter(
         "Warning Allergy Information Contains soy. If pregnant, consult doctor.",
         pages=(_ocr_warning_page(),),
@@ -907,18 +969,99 @@ async def test_analyze_supplement_image_queues_learning_source_annotation_task()
             ConsentType.DATA_RETENTION,
             ConsentType.IMAGE_LEARNING_DATASET,
         ),
-        learning_object_store=fake_store,
+    )
+
+    # The orchestrator must NOT write learning rows inside the request transaction.
+    assert not [
+        record for record in fake_session.added_records if isinstance(record, LearningImageObject)
+    ]
+    assert not [
+        record for record in fake_session.added_records if isinstance(record, AnnotationTask)
+    ]
+    # Instead it bundles the deferred inputs for the route's post-commit task.
+    assert result.learning_artifacts is not None
+    assert result.learning_artifacts.analysis_id == result.record.id
+    assert result.learning_artifacts.image_bytes
+    assert result.learning_artifacts.ocr_result is not None
+    assert ConsentType.IMAGE_LEARNING_DATASET in result.learning_artifacts.learning_consents
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_skips_learning_artifacts_when_gate_closed() -> None:
+    """Verify no deferred learning inputs are produced without learning consents."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("Supplement Facts\nVitamin D 25 ug", pages=(_ocr_page(),))
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+        ),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+        learning_consents=(),
+    )
+
+    assert result.learning_artifacts is None
+
+
+@pytest.mark.asyncio
+async def test_store_supplement_learning_artifacts_persists_image_and_annotation() -> None:
+    """Verify the post-commit helper stores the image and queues a section review task."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter(
+        "Warning Allergy Information Contains soy. If pregnant, consult doctor.",
+        pages=(_ocr_warning_page(),),
+    )
+    fake_parser = _FakeParser(_parse_result())
+    settings = Settings(
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        enable_image_learning_pipeline=True,
+        enable_pgvector_storage=True,
+        image_retention_days=30,
+    )
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        settings,
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+        learning_consents=(
+            ConsentType.OCR_IMAGE_PROCESSING,
+            ConsentType.DATA_RETENTION,
+            ConsentType.IMAGE_LEARNING_DATASET,
+        ),
+    )
+    assert result.learning_artifacts is not None
+
+    # Post-commit: a FRESH session re-fetches the now-durable analysis row.
+    post_session = _FakePipelineSession()
+    post_session.added_analysis = result.record
+    fake_store = _FakeLearningImageObjectStore()
+
+    await store_supplement_learning_artifacts(
+        user=_user(),
+        artifacts=result.learning_artifacts,
+        settings=settings,
+        object_store=fake_store,
+        session_factory=cast(async_sessionmaker[AsyncSession], _FakeSessionFactory(post_session)),
     )
 
     learning_objects = [
-        record for record in fake_session.added_records if isinstance(record, LearningImageObject)
+        record for record in post_session.added_records if isinstance(record, LearningImageObject)
     ]
     annotation_tasks = [
-        record for record in fake_session.added_records if isinstance(record, AnnotationTask)
+        record for record in post_session.added_records if isinstance(record, AnnotationTask)
     ]
 
-    assert result.learning_image_object_created is True
-    assert result.annotation_task_created is True
     assert fake_store.put_payload is not None
     assert len(learning_objects) == 1
     assert len(annotation_tasks) == 1
@@ -933,6 +1076,156 @@ async def test_analyze_supplement_image_queues_learning_source_annotation_task()
     serialized = str(task.label_snapshot)
     assert "Contains soy" not in serialized
     assert str(learning_objects[0].id) not in serialized
+
+
+@pytest.mark.asyncio
+async def test_store_supplement_learning_artifacts_skips_when_analysis_missing() -> None:
+    """Verify the helper is a no-op when the analysis row is not yet durable."""
+    post_session = _FakePipelineSession()  # added_analysis stays None -> get() returns None
+    fake_store = _FakeLearningImageObjectStore()
+    artifacts = SupplementLearningArtifactsInput(
+        analysis_id=uuid4(),
+        image_bytes=_png_bytes(),
+        image_metadata=_validated_image(),
+        ocr_result=None,
+        learning_consents=(
+            ConsentType.OCR_IMAGE_PROCESSING,
+            ConsentType.DATA_RETENTION,
+            ConsentType.IMAGE_LEARNING_DATASET,
+        ),
+    )
+
+    await store_supplement_learning_artifacts(
+        user=_user(),
+        artifacts=artifacts,
+        settings=Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+        ),
+        object_store=fake_store,
+        session_factory=cast(async_sessionmaker[AsyncSession], _FakeSessionFactory(post_session)),
+    )
+
+    assert fake_store.put_payload is None
+    assert not post_session.added_records
+
+
+@pytest.mark.asyncio
+async def test_store_supplement_learning_artifacts_swallows_store_failure() -> None:
+    """Verify a learning-store failure is logged and swallowed (best-effort)."""
+
+    class _RaisingStore(_FakeLearningImageObjectStore):
+        async def put_image(self, _payload: LearningImageObjectInput) -> StoredLearningImage:
+            raise RuntimeError("object store unavailable")
+
+    post_session = _FakePipelineSession()
+    post_session.added_analysis = SupplementAnalysisRun(id=uuid4())
+    artifacts = SupplementLearningArtifactsInput(
+        analysis_id=post_session.added_analysis.id,
+        image_bytes=_png_bytes(),
+        image_metadata=_validated_image(),
+        ocr_result=None,
+        learning_consents=(
+            ConsentType.OCR_IMAGE_PROCESSING,
+            ConsentType.DATA_RETENTION,
+            ConsentType.IMAGE_LEARNING_DATASET,
+        ),
+    )
+
+    # Must NOT raise even though the object store fails mid-store.
+    await store_supplement_learning_artifacts(
+        user=_user(),
+        artifacts=artifacts,
+        settings=Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+        ),
+        object_store=_RaisingStore(),
+        session_factory=cast(async_sessionmaker[AsyncSession], _FakeSessionFactory(post_session)),
+    )
+
+    assert not [
+        record for record in post_session.added_records if isinstance(record, LearningImageObject)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_within_optional_budget_returns_fallback_on_timeout() -> None:
+    """A slow optional stage is abandoned at the budget and yields the fallback."""
+
+    async def _fast() -> str:
+        return "real"
+
+    async def _slow() -> str:
+        await asyncio.sleep(5)
+        return "real"
+
+    assert (
+        await supplement_image_analysis._within_optional_budget(
+            _fast(), budget_sec=5, fallback="fallback", label="fast"
+        )
+        == "real"
+    )
+    assert (
+        await supplement_image_analysis._within_optional_budget(
+            _slow(), budget_sec=0.05, fallback="fallback", label="slow"
+        )
+        == "fallback"
+    )
+
+
+class _SlowMultimodalAdapter(OCRAdapter):
+    """Multimodal vision adapter that sleeps past the optional-stage budget."""
+
+    def __init__(self, delay_sec: float) -> None:
+        self.delay_sec = delay_sec
+        self.call_count = 0
+
+    async def extract_text(self, image: OCRImageInput) -> OCRResult:
+        """Sleep, then return a deliberately mismatching candidate."""
+        _ = image
+        self.call_count += 1
+        await asyncio.sleep(self.delay_sec)
+        return OCRResult(text="UNRELATED TEXT", provider="ollama_vision_assist", confidence=None)
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_skips_slow_verification_within_budget() -> None:
+    """A slow warn-only verification is bounded by the budget and degrades to no warning."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.9)
+    fake_parser = _FakeParser(_parse_result())
+    slow_verifier = _SlowMultimodalAdapter(delay_sec=5)
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_multimodal_verification=True,
+            multimodal_verification_sample_rate=1.0,
+            analyze_optional_stage_budget_sec=1,
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            multimodal_ocr=slow_verifier,
+        ),
+    )
+
+    # Verification was attempted but abandoned at the 1s budget -> no mismatch warning,
+    # and the rest of the pipeline still produced a usable preview.
+    assert slow_verifier.call_count == 1
+    assert OCR_VERIFICATION_MISMATCH_CODE not in result.ocr_warning_codes
+    assert result.parser_used is True
+    assert result.ocr_result is not None
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
+import threading
+import time
 import types
 from io import BytesIO
 from pathlib import Path
@@ -581,3 +584,60 @@ async def test_paddle_adapter_propagates_custom_recognition_model_dir(
         assert predictor.kwargs["text_recognition_model_dir"] == str(model_dir)  # type: ignore[attr-defined]
     finally:
         _get_paddle_predictor.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_extract_text_runs_predict_off_the_event_loop() -> None:
+    """The blocking predict runs in a worker thread, keeping the event loop responsive."""
+    started = threading.Event()
+    release = threading.Event()
+
+    class _BlockingPredictor:
+        def predict(self, _image_path: str, **_kwargs: object) -> object:
+            started.set()
+            # If predict ran ON the event loop, the loop could never reach
+            # release.set() below, so this wait would time out and fail the test.
+            if not release.wait(timeout=5):
+                raise AssertionError("predict was not released — event loop was blocked")
+            return [{"rec_texts": ["비타민 D"], "rec_scores": [0.9]}]
+
+    adapter = PaddleOCRAdapter(
+        Settings(_env_file=None, enable_local_ocr=True, local_ocr_preprocess_mode="none"),
+        predictor=_BlockingPredictor(),
+    )
+    task = asyncio.create_task(adapter.extract_text(_image_input()))
+    # Wait off the loop until predict has started in its worker thread.
+    await asyncio.to_thread(started.wait, 5)
+    # Releasing from the loop only succeeds if the loop was never blocked by predict.
+    release.set()
+    result = await task
+
+    assert result.text == "비타민 D"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_extract_text_calls_are_serialized() -> None:
+    """The single-worker executor serializes predicts on the shared predictor."""
+    lock = threading.Lock()
+    state = {"active": 0, "max_active": 0}
+
+    class _RecordingPredictor:
+        def predict(self, _image_path: str, **_kwargs: object) -> object:
+            with lock:
+                state["active"] += 1
+                state["max_active"] = max(state["max_active"], state["active"])
+            time.sleep(0.05)
+            with lock:
+                state["active"] -= 1
+            return [{"rec_texts": ["X"], "rec_scores": [0.9]}]
+
+    settings = Settings(_env_file=None, enable_local_ocr=True, local_ocr_preprocess_mode="none")
+    # One predictor instance shared across adapters, mirroring the lru_cached predictor.
+    predictor = _RecordingPredictor()
+    adapters = [PaddleOCRAdapter(settings, predictor=predictor) for _ in range(4)]
+
+    results = await asyncio.gather(*(adapter.extract_text(_image_input()) for adapter in adapters))
+
+    assert all(result.text == "X" for result in results)
+    # Two predicts must never run concurrently on the shared, non-thread-safe predictor.
+    assert state["max_active"] == 1

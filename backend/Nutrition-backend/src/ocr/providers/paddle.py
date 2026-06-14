@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from importlib import import_module
 from pathlib import Path
@@ -37,6 +39,19 @@ PADDLE_SCORE_KEYS = {"score", "confidence", "inferConfidence"}
 LEGACY_TEXT_SCORE_PAIR_LENGTH = 2
 PADDLE_BOX_COORDINATE_COUNT = 4
 PADDLE_POINT_COORDINATE_COUNT = 2
+
+# Dedicated single-worker executor for the synchronous, CPU-bound PaddleOCR
+# ``predict()`` call. A single worker serializes inference across requests — the
+# lru_cached predictor is shared process-wide and PaddleOCR is not guaranteed
+# thread-safe — and that serialization is immune to async cancellation: a
+# cancelled/disconnected request leaves an orphan thread that keeps the worker
+# busy, so the next ``predict()`` queues behind it instead of running concurrently
+# on the shared predictor (an ``asyncio.Lock`` would release on cancel and break
+# this). A module global (not a FastAPI-lifespan resource) so offline callers —
+# unit tests and benchmark scripts that never start the app — work too. The worker
+# thread is spawned lazily on first submit; it is non-daemon and atexit-joined, so
+# no explicit shutdown is needed (in-flight inference drains on process exit).
+_PADDLE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle-ocr")
 
 
 class PaddlePredictor(Protocol):
@@ -90,6 +105,9 @@ class PaddleOCRAdapter(OCRAdapter):
         if not self._settings.enable_local_ocr:
             raise OCRError("ENABLE_LOCAL_OCR=true is required for PaddleOCR fallback.")
 
+        # Resolve the predictor on the event loop — a fast lru_cache lookup after the
+        # one-time cold-start model load — then run the blocking OCR pipeline in the
+        # dedicated single-worker thread so it never stalls the loop.
         predictor = self._predictor or _get_paddle_predictor(
             language=self._settings.local_ocr_language,
             device=self._settings.local_ocr_device,
@@ -97,6 +115,28 @@ class PaddleOCRAdapter(OCRAdapter):
             text_recognition_model_dir=self._settings.local_ocr_text_recognition_model_dir,
             use_textline_orientation=self._settings.local_ocr_use_textline_orientation,
         )
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _PADDLE_EXECUTOR, self._blocking_extract, predictor, image
+        )
+
+    def _blocking_extract(self, predictor: PaddlePredictor, image: OCRImageInput) -> OCRResult:
+        """Run the synchronous PaddleOCR pipeline (executed in the worker thread).
+
+        Owns the temporary-directory lifecycle inside the worker thread so a
+        cancelled await (e.g. client disconnect) cannot delete the image file
+        while ``predict()`` is still reading it.
+
+        Args:
+            predictor: Resolved PaddleOCR predictor.
+            image: Validated OCR image input.
+
+        Returns:
+            OCR result with joined text and averaged confidence when available.
+
+        Raises:
+            OCRError: If preprocessing fails or no readable text is returned.
+        """
         try:
             image_bytes, mime_type = preprocess_local_ocr_image(
                 image.image_bytes,

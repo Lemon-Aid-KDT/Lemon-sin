@@ -14,6 +14,7 @@ from src.barcode.normalization import (
     normalize_barcode_text,
 )
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.supplement import (
     MatchedSupplementCandidate,
@@ -329,30 +330,30 @@ async def attach_barcode_lookup_to_analysis(
     """
 
     response = barcode_lookup_result_to_response(result)
-    parsed_snapshot = dict(record.parsed_snapshot or {})
-    parsed_snapshot["barcode_lookup"] = response.model_dump(mode="json")
+    async with persist_scope(session):
+        parsed_snapshot = dict(record.parsed_snapshot or {})
+        parsed_snapshot["barcode_lookup"] = response.model_dump(mode="json")
 
-    match_snapshot = dict(record.match_snapshot or {})
-    match_snapshot["barcode_lookup"] = {
-        "status": response.status,
-        "candidate_count": response.candidate_count,
-        "auto_confirmed": False,
-        "raw_provider_payload_stored": False,
-    }
-    match_snapshot["matched_product_candidates"] = _merge_matched_candidates(
-        match_snapshot.get("matched_product_candidates"),
-        result.candidates,
-    )
+        match_snapshot = dict(record.match_snapshot or {})
+        match_snapshot["barcode_lookup"] = {
+            "status": response.status,
+            "candidate_count": response.candidate_count,
+            "auto_confirmed": False,
+            "raw_provider_payload_stored": False,
+        }
+        match_snapshot["matched_product_candidates"] = _merge_matched_candidates(
+            match_snapshot.get("matched_product_candidates"),
+            result.candidates,
+        )
 
-    existing_warnings = list(record.warnings or [])
-    for warning in result.warnings:
-        if warning not in existing_warnings:
-            existing_warnings.append(warning)
+        existing_warnings = list(record.warnings or [])
+        for warning in result.warnings:
+            if warning not in existing_warnings:
+                existing_warnings.append(warning)
 
-    record.parsed_snapshot = parsed_snapshot
-    record.match_snapshot = match_snapshot
-    record.warnings = existing_warnings
-    await session.commit()
+        record.parsed_snapshot = parsed_snapshot
+        record.match_snapshot = match_snapshot
+        record.warnings = existing_warnings
     await session.refresh(record)
     return record
 

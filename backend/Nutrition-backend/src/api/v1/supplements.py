@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     File,
@@ -47,7 +48,12 @@ from src.api.v1.examples import (
     USER_SUPPLEMENT_RESPONSE_EXAMPLES,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session, get_rls_context_session
+from src.db.dependencies import (
+    get_async_session,
+    get_rls_context_session,
+    rls_request_transaction,
+)
+from src.db.tx import persist_scope
 from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import (
     build_confirmed_supplement_learning_metadata,
@@ -126,6 +132,7 @@ from src.services.supplement_explanation import (
 from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
     analyze_supplement_image,
+    store_supplement_learning_artifacts,
 )
 from src.services.supplement_intake import (
     SupplementImageValidationError,
@@ -443,15 +450,15 @@ async def _annotate_multi_image_record(
         analysis_group_id: Ephemeral batch group identifier.
         image_count: Number of images in the batch.
     """
-    parsed_snapshot = dict(result_record.parsed_snapshot or {})
-    parsed_snapshot["image_role"] = image_role
-    parsed_snapshot["multi_image_group_id"] = analysis_group_id
-    pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
-    pipeline_metadata["image_count"] = image_count
-    pipeline_metadata["image_role"] = image_role
-    parsed_snapshot["pipeline_metadata"] = pipeline_metadata
-    result_record.parsed_snapshot = parsed_snapshot
-    await session.commit()
+    async with persist_scope(session):
+        parsed_snapshot = dict(result_record.parsed_snapshot or {})
+        parsed_snapshot["image_role"] = image_role
+        parsed_snapshot["multi_image_group_id"] = analysis_group_id
+        pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
+        pipeline_metadata["image_count"] = image_count
+        pipeline_metadata["image_role"] = image_role
+        parsed_snapshot["pipeline_metadata"] = pipeline_metadata
+        result_record.parsed_snapshot = parsed_snapshot
 
 
 async def _refresh_multi_image_count(
@@ -464,15 +471,16 @@ async def _refresh_multi_image_count(
         session: Request-scoped async database session.
         analysis_runs: Current group rows loaded for the owner.
     """
+    if not analysis_runs:
+        return
     image_count = len(analysis_runs)
-    for record in analysis_runs:
-        parsed_snapshot = dict(record.parsed_snapshot or {})
-        pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
-        pipeline_metadata["image_count"] = image_count
-        parsed_snapshot["pipeline_metadata"] = pipeline_metadata
-        record.parsed_snapshot = parsed_snapshot
-    if analysis_runs:
-        await session.commit()
+    async with persist_scope(session):
+        for record in analysis_runs:
+            parsed_snapshot = dict(record.parsed_snapshot or {})
+            pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
+            pipeline_metadata["image_count"] = image_count
+            parsed_snapshot["pipeline_metadata"] = pipeline_metadata
+            record.parsed_snapshot = parsed_snapshot
 
 
 def _build_multi_image_response(
@@ -1067,6 +1075,7 @@ async def _require_sensitive_health_consent(
 )
 async def analyze_supplement_label(
     http_request: Request,
+    background_tasks: BackgroundTasks,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
     image: Annotated[UploadFile, File(description="Supplement label image file.")],
     session: Annotated[AsyncSession, Depends(get_async_session)],
@@ -1125,169 +1134,181 @@ async def analyze_supplement_label(
     required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
     missing_consents: list[ConsentType] = []
     last_consent_error: ConsentRequiredError | None = None
-    for consent_type in required_consents:
-        try:
-            await require_user_consent(session, current_user, consent_type)
-        except ConsentRequiredError as exc:
-            missing_consents.append(consent_type)
-            last_consent_error = exc
+    # Route-owned RLS transaction: owner reads/writes participate in one request
+    # transaction that commits in the route body — before the response and the
+    # post-commit learning BackgroundTask run. See rls_request_transaction.
+    async with rls_request_transaction(session, current_user, settings):
+        for consent_type in required_consents:
+            try:
+                await require_user_consent(session, current_user, consent_type)
+            except ConsentRequiredError as exc:
+                missing_consents.append(consent_type)
+                last_consent_error = exc
 
-    await _commit_consent_read_transaction(session)
-
-    if missing_consents:
-        missing_values = [consent.value for consent in missing_consents]
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action=(
-                "supplement_external_ocr_blocked"
-                if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
-                else "supplement_image_intake_blocked"
-            ),
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"missing_consents": missing_values},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "consent_required",
-                "message": str(last_consent_error),
-                "required_consents": missing_values,
-            },
-        ) from last_consent_error
-
-    try:
-        learning_consents = await _collect_learning_consents_if_enabled(
-            session,
-            current_user,
-            settings,
-        )
-        await _commit_consent_read_transaction(session)
-        result = await analyze_supplement_image(
-            session=session,
-            user=current_user,
-            image=image,
-            client_request_id=client_request_id,
-            settings=settings,
-            adapters=selected_adapters,
-            learning_consents=learning_consents,
-            learning_object_store=build_learning_object_store(settings),
-        )
-        barcode_lookup_result: BarcodeLookupServiceResult | None = None
-        if barcode_text and barcode_text.strip():
-            barcode_lookup_result = await barcode_service.lookup(
-                barcode_text,
-                barcode_format=barcode_format,
-            )
-            result_record = await attach_barcode_lookup_to_analysis(
+        if missing_consents:
+            missing_values = [consent.value for consent in missing_consents]
+            await record_sensitive_audit_event(
                 session,
-                result.record,
-                barcode_lookup_result,
+                current_user,
+                action=(
+                    "supplement_external_ocr_blocked"
+                    if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
+                    else "supplement_image_intake_blocked"
+                ),
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"missing_consents": missing_values},
             )
-        else:
-            result_record = result.record
-    except SupplementImageValidationError as exc:
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action="supplement_image_intake_rejected",
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"validation_code": exc.code},
-        )
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={"code": exc.code, "message": exc.message},
-        ) from exc
-    except SupplementIntakeConflictError as exc:
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action="supplement_image_intake_conflict",
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"client_request_id_present": bool(client_request_id)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "idempotency_conflict",
-                "message": str(exc),
-            },
-        ) from exc
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "consent_required",
+                    "message": str(last_consent_error),
+                    "required_consents": missing_values,
+                },
+            ) from last_consent_error
 
-    if result.ocr_attempted:
-        provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+        try:
+            learning_consents = await _collect_learning_consents_if_enabled(
+                session,
+                current_user,
+                settings,
+            )
+            result = await analyze_supplement_image(
+                session=session,
+                user=current_user,
+                image=image,
+                client_request_id=client_request_id,
+                settings=settings,
+                adapters=selected_adapters,
+                learning_consents=learning_consents,
+            )
+            if result.learning_artifacts is not None:
+                background_tasks.add_task(
+                    store_supplement_learning_artifacts,
+                    user=current_user,
+                    artifacts=result.learning_artifacts,
+                    settings=settings,
+                    object_store=build_learning_object_store(settings),
+                )
+            barcode_lookup_result: BarcodeLookupServiceResult | None = None
+            if barcode_text and barcode_text.strip():
+                barcode_lookup_result = await barcode_service.lookup(
+                    barcode_text,
+                    barcode_format=barcode_format,
+                )
+                result_record = await attach_barcode_lookup_to_analysis(
+                    session,
+                    result.record,
+                    barcode_lookup_result,
+                )
+            else:
+                result_record = result.record
+        except SupplementImageValidationError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_intake_rejected",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"validation_code": exc.code},
+            )
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+        except SupplementIntakeConflictError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_intake_conflict",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"client_request_id_present": bool(client_request_id)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "idempotency_conflict",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        # Success audits stay inside the request transaction so they run
+        # out-of-band (record_audit_event branches on the request-managed
+        # marker); outside the block they would take the legacy in-session
+        # INSERT path that the lemon_app request role cannot perform post-flip.
+        if result.ocr_attempted:
+            provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action=(
+                    "supplement_ocr_provider_failed"
+                    if provider_warning_codes
+                    else "supplement_ocr_provider_completed"
+                ),
+                resource_type="supplement_analysis_run",
+                resource_id=str(result.record.id),
+                outcome="failed" if provider_warning_codes else "success",
+                request=http_request,
+                settings=settings,
+                event_metadata={
+                    "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
+                    "ocr_confidence_present": (
+                        result.ocr_result.confidence is not None if result.ocr_result else False
+                    ),
+                    "warning_codes": provider_warning_codes,
+                    "raw_image_stored": False,
+                    "raw_ocr_text_stored": False,
+                },
+            )
+
         await record_sensitive_audit_event(
             session,
             current_user,
             action=(
-                "supplement_ocr_provider_failed"
-                if provider_warning_codes
-                else "supplement_ocr_provider_completed"
+                "supplement_image_intake_reused"
+                if result.reused_existing
+                else "supplement_image_intake_created"
             ),
             resource_type="supplement_analysis_run",
             resource_id=str(result.record.id),
-            outcome="failed" if provider_warning_codes else "success",
+            outcome="success",
             request=http_request,
             settings=settings,
             event_metadata={
+                "client_request_id_present": bool(client_request_id),
+                "image_mime_type": result.image_metadata.mime_type,
+                "image_size_bytes": result.image_metadata.size_bytes,
+                "reused_existing": result.reused_existing,
                 "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
-                "ocr_confidence_present": (
-                    result.ocr_result.confidence is not None if result.ocr_result else False
+                "parser_used": result.parser_used,
+                "vision_roi_used": result.vision_region is not None,
+                "image_quality_status": (
+                    result.image_quality_report.status if result.image_quality_report else None
                 ),
-                "warning_codes": provider_warning_codes,
-                "raw_image_stored": False,
-                "raw_ocr_text_stored": False,
+                "image_quality_retake_reasons": (
+                    list(result.image_quality_report.retake_reasons)
+                    if result.image_quality_report
+                    else []
+                ),
+                "learning_image_object_scheduled": result.learning_artifacts is not None,
+                "barcode_text_present": bool(barcode_text and barcode_text.strip()),
+                "barcode_lookup_status": (
+                    barcode_lookup_result.status if barcode_lookup_result is not None else None
+                ),
             },
         )
-
-    await record_sensitive_audit_event(
-        session,
-        current_user,
-        action=(
-            "supplement_image_intake_reused"
-            if result.reused_existing
-            else "supplement_image_intake_created"
-        ),
-        resource_type="supplement_analysis_run",
-        resource_id=str(result.record.id),
-        outcome="success",
-        request=http_request,
-        settings=settings,
-        event_metadata={
-            "client_request_id_present": bool(client_request_id),
-            "image_mime_type": result.image_metadata.mime_type,
-            "image_size_bytes": result.image_metadata.size_bytes,
-            "reused_existing": result.reused_existing,
-            "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
-            "parser_used": result.parser_used,
-            "vision_roi_used": result.vision_region is not None,
-            "image_quality_status": (
-                result.image_quality_report.status if result.image_quality_report else None
-            ),
-            "image_quality_retake_reasons": (
-                list(result.image_quality_report.retake_reasons)
-                if result.image_quality_report
-                else []
-            ),
-            "learning_image_object_created": result.learning_image_object_created,
-            "barcode_text_present": bool(barcode_text and barcode_text.strip()),
-            "barcode_lookup_status": (
-                barcode_lookup_result.status if barcode_lookup_result is not None else None
-            ),
-        },
-    )
     combined = SupplementAnalysisPreviewWithRecommendation.model_validate(
         supplement_analysis_run_to_preview(result_record).model_dump()
     )
@@ -1412,6 +1433,7 @@ async def create_supplement_analysis_session(
 )
 async def upload_supplement_analysis_session_image(
     http_request: Request,
+    background_tasks: BackgroundTasks,
     analysis_group_id: Annotated[
         str,
         Path(
@@ -1464,170 +1486,178 @@ async def upload_supplement_analysis_session_image(
     required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
     missing_consents: list[ConsentType] = []
     last_consent_error: ConsentRequiredError | None = None
-    for consent_type in required_consents:
-        try:
-            await require_user_consent(session, current_user, consent_type)
-        except ConsentRequiredError as exc:
-            missing_consents.append(consent_type)
-            last_consent_error = exc
+    # Route-owned RLS transaction (see rls_request_transaction): owner reads/writes
+    # commit in the route body, before the post-commit learning BackgroundTask runs.
+    async with rls_request_transaction(session, current_user, settings):
+        for consent_type in required_consents:
+            try:
+                await require_user_consent(session, current_user, consent_type)
+            except ConsentRequiredError as exc:
+                missing_consents.append(consent_type)
+                last_consent_error = exc
 
-    await _commit_consent_read_transaction(session)
-
-    if missing_consents:
-        missing_values = [consent.value for consent in missing_consents]
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action=(
-                "supplement_external_ocr_blocked"
-                if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
-                else "supplement_image_analysis_session_image_blocked"
-            ),
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"missing_consents": missing_values},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "consent_required",
-                "message": str(last_consent_error),
-                "required_consents": missing_values,
-            },
-        ) from last_consent_error
-
-    existing_runs = await _load_multi_image_analysis_runs(
-        session,
-        owner_subject=build_owner_subject(current_user),
-        analysis_group_id=analysis_group_id,
-    )
-    if len(existing_runs) >= MAX_MULTI_IMAGE_ANALYSIS_IMAGES:
-        raise _supplement_http_error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            code="image_count_invalid",
-            message=f"Upload between 1 and {MAX_MULTI_IMAGE_ANALYSIS_IMAGES} images.",
-        )
-
-    try:
-        learning_consents = await _collect_learning_consents_if_enabled(
-            session,
-            current_user,
-            settings,
-        )
-        await _commit_consent_read_transaction(session)
-        result = await analyze_supplement_image(
-            session=session,
-            user=current_user,
-            image=image,
-            client_request_id=_session_image_client_request_id(
-                analysis_group_id,
-                client_request_id,
-                validated_role,
-            ),
-            settings=settings,
-            adapters=selected_adapters,
-            learning_consents=learning_consents,
-            learning_object_store=build_learning_object_store(settings),
-        )
-        await _annotate_multi_image_record(
-            session,
-            result.record,
-            image_role=validated_role,
-            analysis_group_id=analysis_group_id,
-            image_count=len(existing_runs) + 1,
-        )
-        if result.ocr_attempted:
-            provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+        if missing_consents:
+            missing_values = [consent.value for consent in missing_consents]
             await record_sensitive_audit_event(
                 session,
                 current_user,
                 action=(
-                    "supplement_ocr_provider_failed"
-                    if provider_warning_codes
-                    else "supplement_ocr_provider_completed"
+                    "supplement_external_ocr_blocked"
+                    if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
+                    else "supplement_image_analysis_session_image_blocked"
                 ),
                 resource_type="supplement_analysis_run",
-                resource_id=str(result.record.id),
-                outcome="failed" if provider_warning_codes else "success",
+                resource_id=None,
+                outcome="blocked",
                 request=http_request,
                 settings=settings,
-                event_metadata={
-                    "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
-                    "ocr_confidence_present": (
-                        result.ocr_result.confidence is not None if result.ocr_result else False
-                    ),
-                    "warning_codes": provider_warning_codes,
-                    "raw_image_stored": False,
-                    "raw_ocr_text_stored": False,
-                },
+                event_metadata={"missing_consents": missing_values},
             )
-    except SupplementImageValidationError as exc:
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action="supplement_image_analysis_session_image_rejected",
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"validation_code": exc.code},
-        )
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={"code": exc.code, "message": exc.message},
-        ) from exc
-    except SupplementIntakeConflictError as exc:
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action="supplement_image_analysis_session_image_conflict",
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"client_request_id_present": bool(client_request_id)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "idempotency_conflict",
-                "message": str(exc),
-            },
-        ) from exc
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "consent_required",
+                    "message": str(last_consent_error),
+                    "required_consents": missing_values,
+                },
+            ) from last_consent_error
 
-    analysis_runs = await _load_multi_image_analysis_runs(
-        session,
-        owner_subject=build_owner_subject(current_user),
-        analysis_group_id=analysis_group_id,
-    )
-    await _refresh_multi_image_count(session, analysis_runs)
-    previews = [supplement_analysis_run_to_preview(record) for record in analysis_runs]
-    response = _build_multi_image_response(
-        analysis_group_id=analysis_group_id,
-        previews=previews,
-    )
-    await record_sensitive_audit_event(
-        session,
-        current_user,
-        action="supplement_image_analysis_session_image_uploaded",
-        resource_type="supplement_analysis_run",
-        resource_id=None,
-        outcome="success",
-        request=http_request,
-        settings=settings,
-        event_metadata={
-            "image_count": response.image_count,
-            "ocr_provider": response.pipeline_metadata.ocr_provider,
-            "missing_required_sections": list(response.missing_required_sections),
-            "raw_image_stored": False,
-            "raw_ocr_text_stored": False,
-        },
-    )
+        existing_runs = await _load_multi_image_analysis_runs(
+            session,
+            owner_subject=build_owner_subject(current_user),
+            analysis_group_id=analysis_group_id,
+        )
+        if len(existing_runs) >= MAX_MULTI_IMAGE_ANALYSIS_IMAGES:
+            raise _supplement_http_error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="image_count_invalid",
+                message=f"Upload between 1 and {MAX_MULTI_IMAGE_ANALYSIS_IMAGES} images.",
+            )
+
+        try:
+            learning_consents = await _collect_learning_consents_if_enabled(
+                session,
+                current_user,
+                settings,
+            )
+            result = await analyze_supplement_image(
+                session=session,
+                user=current_user,
+                image=image,
+                client_request_id=_session_image_client_request_id(
+                    analysis_group_id,
+                    client_request_id,
+                    validated_role,
+                ),
+                settings=settings,
+                adapters=selected_adapters,
+                learning_consents=learning_consents,
+            )
+            if result.learning_artifacts is not None:
+                background_tasks.add_task(
+                    store_supplement_learning_artifacts,
+                    user=current_user,
+                    artifacts=result.learning_artifacts,
+                    settings=settings,
+                    object_store=build_learning_object_store(settings),
+                )
+            await _annotate_multi_image_record(
+                session,
+                result.record,
+                image_role=validated_role,
+                analysis_group_id=analysis_group_id,
+                image_count=len(existing_runs) + 1,
+            )
+            if result.ocr_attempted:
+                provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+                await record_sensitive_audit_event(
+                    session,
+                    current_user,
+                    action=(
+                        "supplement_ocr_provider_failed"
+                        if provider_warning_codes
+                        else "supplement_ocr_provider_completed"
+                    ),
+                    resource_type="supplement_analysis_run",
+                    resource_id=str(result.record.id),
+                    outcome="failed" if provider_warning_codes else "success",
+                    request=http_request,
+                    settings=settings,
+                    event_metadata={
+                        "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
+                        "ocr_confidence_present": (
+                            result.ocr_result.confidence is not None if result.ocr_result else False
+                        ),
+                        "warning_codes": provider_warning_codes,
+                        "raw_image_stored": False,
+                        "raw_ocr_text_stored": False,
+                    },
+                )
+        except SupplementImageValidationError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_analysis_session_image_rejected",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"validation_code": exc.code},
+            )
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+        except SupplementIntakeConflictError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_analysis_session_image_conflict",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"client_request_id_present": bool(client_request_id)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "idempotency_conflict",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        analysis_runs = await _load_multi_image_analysis_runs(
+            session,
+            owner_subject=build_owner_subject(current_user),
+            analysis_group_id=analysis_group_id,
+        )
+        await _refresh_multi_image_count(session, analysis_runs)
+        previews = [supplement_analysis_run_to_preview(record) for record in analysis_runs]
+        response = _build_multi_image_response(
+            analysis_group_id=analysis_group_id,
+            previews=previews,
+        )
+        # In-transaction success audit → out-of-band writer (see route 1 note).
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_analysis_session_image_uploaded",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="success",
+            request=http_request,
+            settings=settings,
+            event_metadata={
+                "image_count": response.image_count,
+                "ocr_provider": response.pipeline_metadata.ocr_provider,
+                "missing_required_sections": list(response.missing_required_sections),
+                "raw_image_stored": False,
+                "raw_ocr_text_stored": False,
+            },
+        )
     return response
 
 
@@ -1654,6 +1684,7 @@ async def upload_supplement_analysis_session_image(
 )
 async def analyze_supplement_label_multi(
     http_request: Request,
+    background_tasks: BackgroundTasks,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
     images: Annotated[
         list[UploadFile],
@@ -1700,153 +1731,166 @@ async def analyze_supplement_label_multi(
     required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
     missing_consents: list[ConsentType] = []
     last_consent_error: ConsentRequiredError | None = None
-    for consent_type in required_consents:
-        try:
-            await require_user_consent(session, current_user, consent_type)
-        except ConsentRequiredError as exc:
-            missing_consents.append(consent_type)
-            last_consent_error = exc
+    # Route-owned RLS transaction (see rls_request_transaction): all per-image
+    # owner writes commit in the route body, before the post-commit learning
+    # BackgroundTasks run.
+    async with rls_request_transaction(session, current_user, settings):
+        for consent_type in required_consents:
+            try:
+                await require_user_consent(session, current_user, consent_type)
+            except ConsentRequiredError as exc:
+                missing_consents.append(consent_type)
+                last_consent_error = exc
 
-    await _commit_consent_read_transaction(session)
-
-    if missing_consents:
-        missing_values = [consent.value for consent in missing_consents]
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action=(
-                "supplement_external_ocr_blocked"
-                if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
-                else "supplement_image_multi_intake_blocked"
-            ),
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"missing_consents": missing_values},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "consent_required",
-                "message": str(last_consent_error),
-                "required_consents": missing_values,
-            },
-        ) from last_consent_error
-
-    analysis_group_id = f"multi-{uuid4()}"
-    previews: list[SupplementAnalysisPreview] = []
-    try:
-        learning_consents = await _collect_learning_consents_if_enabled(
-            session,
-            current_user,
-            settings,
-        )
-        await _commit_consent_read_transaction(session)
-        for index, image in enumerate(images):
-            result = await analyze_supplement_image(
-                session=session,
-                user=current_user,
-                image=image,
-                client_request_id=_multi_image_client_request_id(client_request_id, index),
-                settings=settings,
-                adapters=selected_adapters,
-                learning_consents=learning_consents,
-                learning_object_store=build_learning_object_store(settings),
-            )
-            await _annotate_multi_image_record(
+        if missing_consents:
+            missing_values = [consent.value for consent in missing_consents]
+            await record_sensitive_audit_event(
                 session,
-                result.record,
-                image_role=roles[index],
-                analysis_group_id=analysis_group_id,
-                image_count=len(images),
+                current_user,
+                action=(
+                    "supplement_external_ocr_blocked"
+                    if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
+                    else "supplement_image_multi_intake_blocked"
+                ),
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"missing_consents": missing_values},
             )
-            if result.ocr_attempted:
-                provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
-                await record_sensitive_audit_event(
-                    session,
-                    current_user,
-                    action=(
-                        "supplement_ocr_provider_failed"
-                        if provider_warning_codes
-                        else "supplement_ocr_provider_completed"
-                    ),
-                    resource_type="supplement_analysis_run",
-                    resource_id=str(result.record.id),
-                    outcome="failed" if provider_warning_codes else "success",
-                    request=http_request,
-                    settings=settings,
-                    event_metadata={
-                        "ocr_provider": result.ocr_result.provider if result.ocr_result else None,
-                        "ocr_confidence_present": (
-                            result.ocr_result.confidence is not None if result.ocr_result else False
-                        ),
-                        "warning_codes": provider_warning_codes,
-                        "raw_image_stored": False,
-                        "raw_ocr_text_stored": False,
-                    },
-                )
-            previews.append(supplement_analysis_run_to_preview(result.record))
-    except SupplementImageValidationError as exc:
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action="supplement_image_multi_intake_rejected",
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"validation_code": exc.code},
-        )
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={"code": exc.code, "message": exc.message},
-        ) from exc
-    except SupplementIntakeConflictError as exc:
-        await record_sensitive_audit_event(
-            session,
-            current_user,
-            action="supplement_image_multi_intake_conflict",
-            resource_type="supplement_analysis_run",
-            resource_id=None,
-            outcome="blocked",
-            request=http_request,
-            settings=settings,
-            event_metadata={"client_request_id_present": bool(client_request_id)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "idempotency_conflict",
-                "message": str(exc),
-            },
-        ) from exc
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "consent_required",
+                    "message": str(last_consent_error),
+                    "required_consents": missing_values,
+                },
+            ) from last_consent_error
 
-    response = _build_multi_image_response(
-        analysis_group_id=analysis_group_id,
-        previews=previews,
-    )
-    await record_sensitive_audit_event(
-        session,
-        current_user,
-        action="supplement_image_multi_intake_created",
-        resource_type="supplement_analysis_run",
-        resource_id=None,
-        outcome="success",
-        request=http_request,
-        settings=settings,
-        event_metadata={
-            "image_count": response.image_count,
-            "ocr_provider": response.pipeline_metadata.ocr_provider,
-            "parser_used": response.pipeline_metadata.llm_parser_used,
-            "vision_roi_used": response.pipeline_metadata.vision_roi_used,
-            "missing_required_sections": list(response.missing_required_sections),
-            "raw_image_stored": False,
-            "raw_ocr_text_stored": False,
-        },
-    )
+        analysis_group_id = f"multi-{uuid4()}"
+        previews: list[SupplementAnalysisPreview] = []
+        try:
+            learning_consents = await _collect_learning_consents_if_enabled(
+                session,
+                current_user,
+                settings,
+            )
+            for index, image in enumerate(images):
+                result = await analyze_supplement_image(
+                    session=session,
+                    user=current_user,
+                    image=image,
+                    client_request_id=_multi_image_client_request_id(client_request_id, index),
+                    settings=settings,
+                    adapters=selected_adapters,
+                    learning_consents=learning_consents,
+                )
+                if result.learning_artifacts is not None:
+                    background_tasks.add_task(
+                        store_supplement_learning_artifacts,
+                        user=current_user,
+                        artifacts=result.learning_artifacts,
+                        settings=settings,
+                        object_store=build_learning_object_store(settings),
+                    )
+                await _annotate_multi_image_record(
+                    session,
+                    result.record,
+                    image_role=roles[index],
+                    analysis_group_id=analysis_group_id,
+                    image_count=len(images),
+                )
+                if result.ocr_attempted:
+                    provider_warning_codes = _ocr_provider_warning_codes(result.ocr_warning_codes)
+                    await record_sensitive_audit_event(
+                        session,
+                        current_user,
+                        action=(
+                            "supplement_ocr_provider_failed"
+                            if provider_warning_codes
+                            else "supplement_ocr_provider_completed"
+                        ),
+                        resource_type="supplement_analysis_run",
+                        resource_id=str(result.record.id),
+                        outcome="failed" if provider_warning_codes else "success",
+                        request=http_request,
+                        settings=settings,
+                        event_metadata={
+                            "ocr_provider": (
+                                result.ocr_result.provider if result.ocr_result else None
+                            ),
+                            "ocr_confidence_present": (
+                                result.ocr_result.confidence is not None
+                                if result.ocr_result
+                                else False
+                            ),
+                            "warning_codes": provider_warning_codes,
+                            "raw_image_stored": False,
+                            "raw_ocr_text_stored": False,
+                        },
+                    )
+                previews.append(supplement_analysis_run_to_preview(result.record))
+        except SupplementImageValidationError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_multi_intake_rejected",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"validation_code": exc.code},
+            )
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+        except SupplementIntakeConflictError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_multi_intake_conflict",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"client_request_id_present": bool(client_request_id)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "idempotency_conflict",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        response = _build_multi_image_response(
+            analysis_group_id=analysis_group_id,
+            previews=previews,
+        )
+        # In-transaction success audit → out-of-band writer (see route 1 note).
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_multi_intake_created",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="success",
+            request=http_request,
+            settings=settings,
+            event_metadata={
+                "image_count": response.image_count,
+                "ocr_provider": response.pipeline_metadata.ocr_provider,
+                "parser_used": response.pipeline_metadata.llm_parser_used,
+                "vision_roi_used": response.pipeline_metadata.vision_roi_used,
+                "missing_required_sections": list(response.missing_required_sections),
+                "raw_image_stored": False,
+                "raw_ocr_text_stored": False,
+            },
+        )
     return response
 
 

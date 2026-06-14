@@ -625,6 +625,23 @@ class Settings(BaseSettings):
     )
     multimodal_verification_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     multimodal_verification_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
+    analyze_optional_stage_budget_sec: int = Field(
+        default=15,
+        ge=1,
+        le=20,
+        description=(
+            "지원 분석 동기 응답 안에서 *선택적·비동기* vision 추론 단계(multimodal vision 보조·"
+            "multimodal 검증)가 단계당 점유할 수 있는 최대 시간(초). 이 단계들은 에러 시 primary "
+            "결과로 graceful degrade하지만 *느린* local vision 추론(CPU에서 수십 초)은 막지 못해 "
+            "모바일 업로드 타임아웃(60s)을 초과시킬 수 있다 → 이 예산을 넘으면 해당 단계를 건너뛰고 "
+            "primary 결과/무경고로 진행한다. ⚠️ 단계당 적용이므로 활성 단계 수만큼 합산된다(현재 최대 "
+            "2단계). primary Clova OCR + parser(약 ~15s) 위에 더해지므로 모바일 60s 대비 여유를 "
+            "두고 설정할 것(그래서 le=20 상한). cross-provider 병합(local Paddle)은 동기 blocking "
+            "predict라 asyncio timeout으로 선점 불가 → 이 예산이 아니라 자기 완료시간으로 bound된다. "
+            "ollama_timeout_sec(전역, 기본 60)와 별개로 요청 경로 보강 단계에만 적용된다. GPU 등 빠른 "
+            "추론 호스트에서만 상향."
+        ),
+    )
     enable_local_ocr: bool = Field(
         default=True,
         description=(

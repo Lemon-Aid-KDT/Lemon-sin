@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from typing import Self, cast
 from uuid import uuid4
 
@@ -12,15 +13,38 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from PIL import Image
+from pydantic import SecretStr
 from src.api.v1 import supplements
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session
 from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
+from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import SupplementAnalysisStatus
 from src.services.privacy import ConsentRequiredError
 from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
+
+
+@pytest.fixture(autouse=True)
+def _capture_supplement_audits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Capture out-of-band audits into the fake session for assertion.
+
+    The orchestrator routes adopted a route-owned RLS transaction
+    (ambient-tx Step 7), so ``record_sensitive_audit_event`` runs out-of-band on a
+    privileged session that the fake cannot observe. Capture the call args into the
+    fake's ``added_audits`` so the audit assertions keep working and no real audit
+    connection is opened during these fake-session route tests. Tests that override
+    this with their own ``record_sensitive_audit_event`` patch still win (the later
+    monkeypatch takes precedence).
+    """
+
+    async def _capture(session: object, _current_user: object, **kwargs: object) -> None:
+        audits = getattr(session, "added_audits", None)
+        if audits is not None:
+            audits.append(SimpleNamespace(**kwargs))
+
+    monkeypatch.setattr(supplements, "record_sensitive_audit_event", _capture)
 
 
 class _TransactionContext:
@@ -95,6 +119,13 @@ class _FakeSupplementSession:
             Fake async transaction context.
         """
         return _TransactionContext()
+
+    async def execute(self, *_args: object, **_kwargs: object) -> None:
+        """No-op execute for the route-owned RLS set_config statements.
+
+        Returns:
+            None.
+        """
 
     def in_transaction(self) -> bool:
         """Return whether the fake session has an active implicit transaction.
@@ -384,6 +415,112 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     assert body["status"] == "requires_confirmation"
     assert body["ingredient_candidates"] == []
     assert body["algorithm_version"] == "supplement-intake-v1.0.0"
+
+
+def test_analyze_supplement_label_schedules_post_commit_learning_when_gate_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the route schedules learning storage as a post-commit background task.
+
+    Proves the Step 7 Phase 2 wiring: when the image-learning gate passes, the
+    route hands the orchestrator's deferred artifacts to
+    ``store_supplement_learning_artifacts`` via FastAPI ``BackgroundTasks``. The
+    background task runs after the route body (where the intake row is already
+    committed inline), so the captured artifacts reference the durable run id.
+    """
+    fake_session = _FakeSupplementSession()
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+
+    learning_consents = (
+        ConsentType.OCR_IMAGE_PROCESSING,
+        ConsentType.DATA_RETENTION,
+        ConsentType.IMAGE_LEARNING_DATASET,
+    )
+
+    async def _grant_learning_consents(
+        *_args: object, **_kwargs: object
+    ) -> tuple[ConsentType, ...]:
+        return learning_consents
+
+    monkeypatch.setattr(
+        supplements, "_collect_learning_consents_if_enabled", _grant_learning_consents
+    )
+    # Avoid depending on real object-storage configuration in the route body.
+    monkeypatch.setattr(supplements, "build_learning_object_store", lambda _settings: object())
+
+    captured: list[dict[str, object]] = []
+
+    async def _recording_store(**kwargs: object) -> None:
+        captured.append(kwargs)
+
+    monkeypatch.setattr(supplements, "store_supplement_learning_artifacts", _recording_store)
+
+    settings = Settings(
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        enable_image_learning_pipeline=True,
+        enable_pgvector_storage=True,
+        image_retention_days=30,
+    )
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
+        _empty_analysis_adapters
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={"client_request_id": "client-learn"},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert fake_session.added_analysis is not None
+    # The background task ran (TestClient executes background tasks) with the
+    # deferred artifacts pointing at the now-durable analysis run.
+    assert len(captured) == 1
+    artifacts = captured[0]["artifacts"]
+    assert artifacts.analysis_id == fake_session.added_analysis.id
+    assert artifacts.learning_consents == learning_consents
+    assert captured[0]["settings"] is settings
+    assert captured[0]["object_store"] is not None
+    # Audit metadata exposes only the scheduling signal, never a created flag.
+    intake_audit = fake_session.added_audits[-1]
+    assert intake_audit.event_metadata["learning_image_object_scheduled"] is True
+
+
+def test_analyze_supplement_label_skips_learning_schedule_when_gate_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify no background learning task is scheduled without learning consents."""
+    fake_session = _FakeSupplementSession()
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+
+    captured: list[dict[str, object]] = []
+
+    async def _recording_store(**kwargs: object) -> None:
+        captured.append(kwargs)
+
+    monkeypatch.setattr(supplements, "store_supplement_learning_artifacts", _recording_store)
+
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
+        _empty_analysis_adapters
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze",
+        files={"image": ("label.png", _png_bytes(), "image/png")},
+        data={"client_request_id": "client-no-learn"},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert captured == []
+    intake_audit = fake_session.added_audits[-1]
+    assert intake_audit.event_metadata["learning_image_object_scheduled"] is False
 
 
 def test_analyze_supplement_label_multi_accepts_roles_and_returns_group(

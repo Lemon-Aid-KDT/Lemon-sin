@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from io import BytesIO
+from types import SimpleNamespace
 from typing import Self, cast
 from uuid import uuid4
 
@@ -23,6 +24,24 @@ from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
 from src.ocr.providers.paddle import PADDLE_OCR_PROVIDER
 from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
+
+
+@pytest.fixture(autouse=True)
+def _capture_supplement_audits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Capture out-of-band audits into the fake session (ambient-tx Step 7).
+
+    The analyze route adopted a route-owned RLS transaction, so
+    ``record_sensitive_audit_event`` runs out-of-band on a privileged session the
+    fake cannot observe. Capture the call args into the fake's ``added_audits`` so
+    no real audit connection opens during these fake-session route tests.
+    """
+
+    async def _capture(session: object, _current_user: object, **kwargs: object) -> None:
+        audits = getattr(session, "added_audits", None)
+        if audits is not None:
+            audits.append(SimpleNamespace(**kwargs))
+
+    monkeypatch.setattr(supplements, "record_sensitive_audit_event", _capture)
 
 
 class _TransactionContext:
@@ -67,6 +86,13 @@ class _FakeSupplementSession:
             Fake transaction context.
         """
         return _TransactionContext()
+
+    async def execute(self, *_args: object, **_kwargs: object) -> None:
+        """No-op execute for the route-owned RLS set_config statements.
+
+        Returns:
+            None.
+        """
 
     def in_transaction(self) -> bool:
         """Return whether the fake session has an active implicit transaction.

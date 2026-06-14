@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 from src.config import Settings
 from src.db import dependencies as deps
-from src.db.dependencies import get_rls_context_session
+from src.db.dependencies import get_rls_context_session, rls_request_transaction
+from src.db.tx import REQUEST_MANAGED_TX
 from src.security.auth import AuthenticatedUser
 
 
@@ -21,8 +22,11 @@ class _FakeTransaction:
         self._session.begun = True
         return self
 
-    async def __aexit__(self, *_exc: object) -> bool:
-        self._session.committed = True
+    async def __aexit__(self, *exc: object) -> bool:
+        if exc and exc[0] is not None:
+            self._session.rolled_back = True
+        else:
+            self._session.committed = True
         return False
 
 
@@ -33,6 +37,7 @@ class _FakeSession:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.begun = False
         self.committed = False
+        self.rolled_back = False
         self.closed = False
         self.info: dict[str, Any] = {}
 
@@ -102,3 +107,43 @@ async def test_get_rls_context_session_rejects_empty_subject(
     with pytest.raises(ValueError, match="owner subject"):
         await agen.__anext__()
     assert session.calls == []  # no GUCs set when the subject is invalid
+
+
+@pytest.mark.asyncio
+async def test_rls_request_transaction_sets_gucs_marks_and_commits() -> None:
+    """The route-owned helper opens a tx, sets owner GUCs, marks request-managed."""
+    session = _FakeSession()
+    user = AuthenticatedUser(subject="user-1", issuer="https://issuer.example/")
+    settings = Settings(_env_file=None)
+
+    async with rls_request_transaction(session, user, settings) as yielded:  # type: ignore[arg-type]
+        assert yielded is session
+        assert session.begun is True
+        # Owner-scoped writes participate (flush only) while inside the block.
+        assert session.info.get(REQUEST_MANAGED_TX) is True
+        names = [params["name"] for _sql, params in session.calls]
+        assert names == ["app.current_subject", "app.current_subject_hash"]
+        values = {params["name"]: params["value"] for _sql, params in session.calls}
+        assert values["app.current_subject"] == "https://issuer.example/::user-1"
+        assert values["app.current_subject_hash"]
+
+    # Commit happens at block exit (before the route returns); marker cleared.
+    assert session.committed is True
+    assert REQUEST_MANAGED_TX not in session.info
+
+
+@pytest.mark.asyncio
+async def test_rls_request_transaction_clears_marker_on_error() -> None:
+    """An error inside the block propagates and still clears the request marker."""
+    session = _FakeSession()
+    user = AuthenticatedUser(subject="user-1", issuer="https://issuer.example/")
+    settings = Settings(_env_file=None)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        async with rls_request_transaction(session, user, settings):  # type: ignore[arg-type]
+            assert session.info.get(REQUEST_MANAGED_TX) is True
+            raise RuntimeError("boom")
+
+    assert REQUEST_MANAGED_TX not in session.info
+    assert session.rolled_back is True  # the request transaction rolls back on error
+    assert session.committed is False

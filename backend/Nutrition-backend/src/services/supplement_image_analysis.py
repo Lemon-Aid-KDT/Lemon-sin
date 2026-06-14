@@ -7,19 +7,23 @@ runtime behavior remains intake-only unless adapters are explicitly provided.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from decimal import Decimal
 from difflib import SequenceMatcher
 from http import HTTPStatus
 from random import random
 from typing import Protocol, runtime_checkable
+from uuid import UUID
 
 from fastapi import UploadFile
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.config import Settings
+from src.db.session import get_sessionmaker
 from src.db.tx import persist_scope
 from src.learning.consent_gate import evaluate_image_learning_gate
 from src.learning.object_storage import LearningImageObjectStore
@@ -113,6 +117,44 @@ PARSER_RECOVERABLE_ERRORS = (
 )
 
 
+async def _within_optional_budget[T](
+    awaitable: Awaitable[T],
+    *,
+    budget_sec: float,
+    fallback: T,
+    label: str,
+) -> T:
+    """Run an *optional* OCR-enrichment stage under a hard per-stage time budget.
+
+    The optional/warn-only enrichment stages (cross-provider ensemble merge,
+    multimodal vision OCR assist, multimodal verification) call OCR/vision
+    inference that can be slow on CPU hosts — a single local vision call can take
+    tens of seconds. They already degrade gracefully on *error*; this also
+    degrades on *slowness* so no single optional stage can push the synchronous
+    analyze response past the mobile upload timeout. On timeout the awaited stage
+    is cancelled and the caller-supplied fallback (primary result / no-warning) is
+    returned. Load-bearing stages (primary OCR, parser) are never wrapped here.
+
+    Args:
+        awaitable: The optional stage coroutine to run.
+        budget_sec: Maximum seconds the stage may block the request.
+        fallback: Value to return if the stage exceeds the budget.
+        label: Stage name for diagnostic logging.
+
+    Returns:
+        The stage result, or ``fallback`` on timeout.
+    """
+    try:
+        return await asyncio.wait_for(awaitable, timeout=budget_sec)
+    except TimeoutError:
+        logger.warning(
+            "Optional analyze stage '%s' exceeded its %ss budget; using primary result.",
+            label,
+            budget_sec,
+        )
+        return fallback
+
+
 class SupplementImageAnalysisConfigurationError(RuntimeError):
     """Raised when a feature flag is enabled without the required adapter."""
 
@@ -153,6 +195,32 @@ class SupplementImageAnalysisAdapters:
 
 
 @dataclass(frozen=True)
+class SupplementLearningArtifactsInput:
+    """Deferred inputs for post-commit learning image storage + annotation enqueue.
+
+    The orchestrator no longer writes learning rows inside the request
+    transaction (a mid-request ``commit`` would drop the FORCE-RLS GUCs, and the
+    learning store needs the analysis row to be durable for its foreign key).
+    Instead, when the image-learning gate passes, it bundles these inputs so the
+    route can hand them to :func:`store_supplement_learning_artifacts` as a
+    post-commit background task running on a fresh session.
+
+    Attributes:
+        analysis_id: Durable supplement analysis run id the learning object links to.
+        image_bytes: Validated image bytes retained only for the consented store.
+        image_metadata: Validated image metadata (sha256/mime/size).
+        ocr_result: OCR output used to derive sanitized section annotation candidates.
+        learning_consents: Active learning consent grants used by the gate + snapshot.
+    """
+
+    analysis_id: UUID
+    image_bytes: bytes
+    image_metadata: ValidatedSupplementImage
+    ocr_result: OCRResult | None
+    learning_consents: tuple[ConsentType, ...]
+
+
+@dataclass(frozen=True)
 class SupplementImageAnalysisResult:
     """Result returned by the image analysis orchestration service.
 
@@ -167,8 +235,10 @@ class SupplementImageAnalysisResult:
         parser_used: Whether structured OCR text parsing was invoked.
         ocr_attempted: Whether a primary OCR adapter was configured and called.
         ocr_warning_codes: Recoverable OCR/parser warning codes added to the preview.
-        learning_image_object_created: Whether a learning image object row was created or reused.
-        annotation_task_created: Whether OCR layout candidates were queued for human review.
+        learning_artifacts: Deferred post-commit learning inputs when the image
+            learning gate passed; ``None`` when learning is not eligible. The
+            orchestrator does not itself persist learning rows — the route
+            schedules :func:`store_supplement_learning_artifacts` post-commit.
     """
 
     record: SupplementAnalysisRun
@@ -181,8 +251,7 @@ class SupplementImageAnalysisResult:
     parser_used: bool
     ocr_attempted: bool
     ocr_warning_codes: tuple[str, ...]
-    learning_image_object_created: bool
-    annotation_task_created: bool
+    learning_artifacts: SupplementLearningArtifactsInput | None
 
 
 @dataclass(frozen=True)
@@ -213,7 +282,6 @@ async def analyze_supplement_image(
     settings: Settings,
     adapters: SupplementImageAnalysisAdapters | None = None,
     learning_consents: tuple[ConsentType, ...] = (),
-    learning_object_store: LearningImageObjectStore | None = None,
 ) -> SupplementImageAnalysisResult:
     """Validate, persist, and optionally OCR/parse a supplement label image.
 
@@ -225,12 +293,14 @@ async def analyze_supplement_image(
         settings: Runtime settings.
         adapters: Optional OCR/parser/vision adapters. Missing adapters keep the flow
             intake-only unless a corresponding feature flag requires one.
-        learning_consents: Active learning consent grants. Used only for optional
-            image retention.
-        learning_object_store: Optional object storage adapter for retained learning images.
+        learning_consents: Active learning consent grants. Used to evaluate the
+            image-learning gate and, when it passes, bundle deferred inputs
+            (``learning_artifacts``) for the route's post-commit background task.
 
     Returns:
-        Image analysis result with the current preview record.
+        Image analysis result with the current preview record. Learning image
+        storage is not performed here; eligible inputs are returned via
+        ``learning_artifacts`` for :func:`store_supplement_learning_artifacts`.
 
     Raises:
         SupplementImageAnalysisConfigurationError: If vision is enabled without an adapter.
@@ -272,6 +342,15 @@ async def analyze_supplement_image(
         settings=settings,
     )
     ocr_result = ocr_extraction.ocr_result
+    optional_budget = settings.analyze_optional_stage_budget_sec
+    # The ensemble secondary OCR (local Paddle) now runs off the event loop in a
+    # dedicated single-worker thread (PaddleOCRAdapter offloads its synchronous,
+    # CPU-bound predict()), so it no longer stalls the loop. It is intentionally
+    # NOT wrapped in the optional-stage budget: it is load-bearing (supplements the
+    # primary OCR text) and abandoning it would drop useful recognition. The budget
+    # is applied only to the genuinely-optional vision-inference stages below
+    # (multimodal assist + verification), where the request-blowing local vision
+    # LLM spikes (tens of seconds) occur.
     ocr_result = await _supplement_ensemble_ocr_if_allowed(
         image_bytes=image_bytes,
         image_metadata=image_metadata,
@@ -280,14 +359,19 @@ async def analyze_supplement_image(
         secondary_merge_adapter=active_adapters.secondary_merge_ocr,
         settings=settings,
     )
-    ocr_result = await _extract_multimodal_ocr_if_allowed(
-        image_bytes=image_bytes,
-        image_metadata=image_metadata,
-        label_region=vision_region,
-        ocr_result=ocr_result,
-        primary_ocr_attempted=active_adapters.ocr is not None,
-        settings=settings,
-        multimodal_adapter=active_adapters.multimodal_ocr,
+    ocr_result = await _within_optional_budget(
+        _extract_multimodal_ocr_if_allowed(
+            image_bytes=image_bytes,
+            image_metadata=image_metadata,
+            label_region=vision_region,
+            ocr_result=ocr_result,
+            primary_ocr_attempted=active_adapters.ocr is not None,
+            settings=settings,
+            multimodal_adapter=active_adapters.multimodal_ocr,
+        ),
+        budget_sec=optional_budget,
+        fallback=ocr_result,
+        label="multimodal_assist",
     )
     ocr_result = await _extract_secondary_ocr_if_allowed(
         image_bytes=image_bytes,
@@ -297,15 +381,18 @@ async def analyze_supplement_image(
         primary_ocr_attempted=active_adapters.ocr is not None,
         fallback_adapters=active_adapters.fallback_ocr_adapters,
     )
-    verification_warning_code, verification_warning_message = (
-        await _verify_ocr_with_multimodal_if_allowed(
+    verification_warning_code, verification_warning_message = await _within_optional_budget(
+        _verify_ocr_with_multimodal_if_allowed(
             image_bytes=image_bytes,
             image_metadata=image_metadata,
             label_region=vision_region,
             ocr_result=ocr_result,
             settings=settings,
             multimodal_adapter=active_adapters.multimodal_ocr,
-        )
+        ),
+        budget_sec=optional_budget,
+        fallback=(None, None),
+        label="multimodal_verification",
     )
     parsed_record, parse_warning_code, parse_warning_message = await _parse_ocr_if_available(
         session=session,
@@ -338,26 +425,6 @@ async def analyze_supplement_image(
             result_record,
             facts_guidance,
         )
-    learning_object = None
-    if learning_object_store is not None:
-        learning_object = await maybe_store_learning_image_object(
-            session=session,
-            user=user,
-            analysis=result_record,
-            image_bytes=image_bytes,
-            image_metadata=image_metadata,
-            settings=settings,
-            object_store=learning_object_store,
-            granted_consents=learning_consents,
-        )
-    annotation_task_created = await _enqueue_supplement_section_annotation_task_if_available(
-        session=session,
-        user=user,
-        learning_object=learning_object,
-        ocr_result=ocr_result,
-        settings=settings,
-    )
-
     pipeline_metadata = _build_pipeline_metadata(
         record=result_record,
         vision_region=vision_region,
@@ -378,6 +445,18 @@ async def analyze_supplement_image(
             image_metadata=image_metadata,
         )
 
+    learning_artifacts = (
+        SupplementLearningArtifactsInput(
+            analysis_id=result_record.id,
+            image_bytes=image_bytes,
+            image_metadata=image_metadata,
+            ocr_result=ocr_result,
+            learning_consents=learning_consents,
+        )
+        if learning_gate_allowed and image_bytes is not None
+        else None
+    )
+
     return SupplementImageAnalysisResult(
         record=result_record,
         reused_existing=intake.reused_existing,
@@ -391,8 +470,7 @@ async def analyze_supplement_image(
         parser_used=parsed_record is not None,
         ocr_attempted=ocr_attempted,
         ocr_warning_codes=warning_codes,
-        learning_image_object_created=learning_object is not None,
-        annotation_task_created=annotation_task_created,
+        learning_artifacts=learning_artifacts,
     )
 
 
@@ -800,6 +878,69 @@ async def _enqueue_supplement_section_annotation_task_if_available(
     await session.commit()
     await session.refresh(task)
     return True
+
+
+async def store_supplement_learning_artifacts(
+    *,
+    user: AuthenticatedUser,
+    artifacts: SupplementLearningArtifactsInput,
+    settings: Settings,
+    object_store: LearningImageObjectStore,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
+    """Persist consent-retained learning image + section annotation post-commit.
+
+    Runs as a route-level FastAPI background task after the request transaction
+    commits, so the analysis row is already durable (the learning object's
+    foreign key) and the request session's transaction-local RLS GUCs have been
+    released. A short-lived session opened from its own factory keeps this work
+    fully independent of the request transaction; ``maybe_store_learning_image_object``
+    keeps its own commit semantics (DO-NOT-TOUCH learning pipeline). Best-effort:
+    any failure is logged and swallowed so a learning miss never surfaces to the
+    user (matching the prior in-request best-effort behavior).
+
+    Args:
+        user: Authenticated owner used for the privacy-preserving subject hash.
+        artifacts: Deferred learning inputs bundled by :func:`analyze_supplement_image`.
+        settings: Runtime settings (privacy hash secret, retention, gate flags).
+        object_store: Learning image object store the route built for this request.
+        session_factory: Optional session factory override (tests); defaults to the
+            shared application session factory.
+
+    Returns:
+        None.
+    """
+    factory = session_factory or get_sessionmaker()
+    try:
+        async with factory() as session:
+            analysis = await session.get(SupplementAnalysisRun, artifacts.analysis_id)
+            if analysis is None:
+                logger.warning(
+                    "Skipping learning artifacts: analysis row is not durable yet.",
+                )
+                return
+            learning_object = await maybe_store_learning_image_object(
+                session=session,
+                user=user,
+                analysis=analysis,
+                image_bytes=artifacts.image_bytes,
+                image_metadata=artifacts.image_metadata,
+                settings=settings,
+                object_store=object_store,
+                granted_consents=artifacts.learning_consents,
+            )
+            if learning_object is None:
+                return
+            await _enqueue_supplement_section_annotation_task_if_available(
+                session=session,
+                user=user,
+                learning_object=learning_object,
+                ocr_result=artifacts.ocr_result,
+                settings=settings,
+            )
+    except Exception:
+        # Best-effort post-commit task: a learning miss must never surface to the user.
+        logger.exception("Post-commit learning artifact storage failed.")
 
 
 def _select_vision_region(vision_regions: tuple[BoundingBox, ...]) -> BoundingBox | None:
