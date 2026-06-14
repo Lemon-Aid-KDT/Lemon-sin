@@ -226,6 +226,36 @@ void main() {
     );
     expect(controller.notice, '분석이 완료 되었어요.');
     expect(controller.analysisPreview?.analysisId, isNotEmpty);
+    // Default analysis must issue a SINGLE 'configured' OCR request, not a
+    // 4-provider fan-out: one scan otherwise fired 4 parallel /analyze calls and
+    // tripped the backend per-caller rate limit (burst 6) on re-scan.
+    expect(repository.ocrProviders, <String>['configured']);
+
+    controller.markAnalysisCompletionRead();
+
+    expect(controller.hasUnreadAnalysisCompletion, isFalse);
+  });
+
+  test('analyzeImage issues a single configured OCR request by default', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository();
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeImage('/tmp/supplement-label.png');
+
+    expect(repository.ocrProviders, <String>['configured']);
+    expect(controller.analysisPreview, isNotNull);
+    expect(controller.apiError, isNull);
+  });
+
+  test('analyzeImage compareOcrProviders fans out the diagnostic providers', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository();
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeImage(
+      '/tmp/supplement-label.png',
+      compareOcrProviders: true,
+    );
+
     expect(
       repository.ocrProviders,
       containsAll(<String>[
@@ -235,10 +265,56 @@ void main() {
         'google_vision',
       ]),
     );
+    expect(repository.ocrProviders.length, 4);
+  });
 
-    controller.markAnalysisCompletionRead();
+  test('analyzeImage surfaces the rate-limit error instead of an empty result', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      rateLimitedOcrProviders: <String>{'configured'},
+    );
+    final AppController controller = AppController(repository: repository);
 
-    expect(controller.hasUnreadAnalysisCompletion, isFalse);
+    await controller.analyzeImage('/tmp/supplement-label.png');
+
+    expect(controller.analysisPreview, isNull);
+    expect(controller.apiError?.statusCode, 429);
+    expect(controller.apiError?.code, 'rate_limited');
+  });
+
+  test('compareOcrProviders prefers a rate-limit error over an empty preview', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      rateLimitedOcrProviders: <String>{'clova'},
+      emptyPreviewOcrProviders: <String>{
+        'configured',
+        'paddleocr',
+        'google_vision',
+      },
+    );
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeImage(
+      '/tmp/supplement-label.png',
+      compareOcrProviders: true,
+    );
+
+    expect(controller.analysisPreview, isNull);
+    expect(controller.apiError?.statusCode, 429);
+    expect(controller.apiError?.code, 'rate_limited');
+  });
+
+  test('compareOcrProviders keeps a usable preview even when one provider is rate-limited', () async {
+    final _AutoInsightRepository repository = _AutoInsightRepository(
+      rateLimitedOcrProviders: <String>{'clova'},
+    );
+    final AppController controller = AppController(repository: repository);
+
+    await controller.analyzeImage(
+      '/tmp/supplement-label.png',
+      compareOcrProviders: true,
+    );
+
+    expect(controller.analysisPreview, isNotNull);
+    expect(controller.apiError, isNull);
   });
 
   test('confirmMealImagePreview stores user-confirmed meal', () async {
@@ -467,6 +543,8 @@ class _AutoInsightRepository implements LemonAidRepository {
     this.failMedications = false,
     this.analysisDelay = Duration.zero,
     this.medications = HomeMedicationsResult.empty,
+    this.rateLimitedOcrProviders = const <String>{},
+    this.emptyPreviewOcrProviders = const <String>{},
   });
 
   final bool failExplanation;
@@ -474,6 +552,12 @@ class _AutoInsightRepository implements LemonAidRepository {
   final bool failMedications;
   final Duration analysisDelay;
   final HomeMedicationsResult medications;
+
+  /// OCR providers that respond with a backend rate-limit (HTTP 429) error.
+  final Set<String> rateLimitedOcrProviders;
+
+  /// OCR providers that respond with a structurally empty (unusable) preview.
+  final Set<String> emptyPreviewOcrProviders;
   Map<String, bool> consents = const <String, bool>{};
   int registerCalls = 0;
   int impactCalls = 0;
@@ -643,6 +727,16 @@ class _AutoInsightRepository implements LemonAidRepository {
       await Future<void>.delayed(analysisDelay);
     }
     ocrProviders.add(ocrProvider);
+    if (rateLimitedOcrProviders.contains(ocrProvider)) {
+      throw const ApiError(
+        statusCode: 429,
+        message: 'Rate limit exceeded. Please retry after a short delay.',
+        code: 'rate_limited',
+      );
+    }
+    if (emptyPreviewOcrProviders.contains(ocrProvider)) {
+      return SupplementAnalysisPreview.fromJson(_emptyPreviewJson);
+    }
     return SupplementAnalysisPreview.fromJson(
       _multiPreviewJson['merged_preview']! as Map<String, Object?>,
     );
@@ -868,6 +962,20 @@ final Map<String, Object?> _multiPreviewJson = <String, Object?>{
     'raw_image_stored': false,
     'raw_ocr_text_stored': false,
   },
+  'expires_at': '2026-05-28T00:00:00Z',
+};
+
+/// A structurally empty (unusable) supplement preview: no product name, no
+/// ingredient candidates, no label sections — the shape a provider returns when
+/// OCR ran but produced nothing the parser could structure.
+final Map<String, Object?> _emptyPreviewJson = <String, Object?>{
+  'analysis_id': '00000000-0000-0000-0000-000000000009',
+  'status': 'requires_confirmation',
+  'parsed_product': <String, Object?>{'product_name': null},
+  'ingredient_candidates': <Object?>[],
+  'label_sections': <Object?>[],
+  'algorithm_version': 'test',
+  'source_manifest_version': null,
   'expires_at': '2026-05-28T00:00:00Z',
 };
 

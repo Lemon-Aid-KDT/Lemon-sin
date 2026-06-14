@@ -249,7 +249,16 @@ class AppController extends ChangeNotifier {
   int _chatDraftSerial = 0;
   bool _consentRequired = false;
 
-  static const List<String> _automaticOcrProviders = <String>[
+  /// Default single OCR provider for normal scans. The backend resolves
+  /// 'configured' to its primary provider, so one scan = one `/analyze` call.
+  static const String _defaultOcrProvider = 'configured';
+
+  /// Diagnostic-only provider set for side-by-side OCR comparison.
+  ///
+  /// NOT the default path: fanning these out per scan fired 4 parallel
+  /// `/analyze` calls into the same per-caller bucket and tripped the backend
+  /// rate limit (burst 6) on re-scan. Opt in via `compareOcrProviders: true`.
+  static const List<String> _diagnosticOcrProviders = <String>[
     'configured',
     'paddleocr',
     'clova',
@@ -604,13 +613,21 @@ class AppController extends ChangeNotifier {
   }
 
   /// Uploads a supplement label image and stores the preview.
+  ///
+  /// Issues a single `ocrProvider` request by default. Set `compareOcrProviders`
+  /// (dev/diagnostic only) to fan out across providers for side-by-side compare.
   Future<void> analyzeImage(
     String imagePath, {
-    String ocrProvider = 'configured',
+    String ocrProvider = _defaultOcrProvider,
+    bool compareOcrProviders = false,
   }) async {
     await _run(() async {
       final _SupplementAnalysisSelection selection =
-          await _analyzeSupplementImageAutomatically(imagePath);
+          await _analyzeSupplementImageAutomatically(
+            imagePath,
+            ocrProvider: ocrProvider,
+            compareOcrProviders: compareOcrProviders,
+          );
       _lastRequestedOcrProvider = selection.provider;
       _analysisPreview = selection.preview;
       _multiImageAnalysisPreview = null;
@@ -627,13 +644,21 @@ class AppController extends ChangeNotifier {
   }
 
   /// Uploads a multi-image supplement label batch and stores its review preview.
+  ///
+  /// Issues a single `ocrProvider` request per call by default. Set
+  /// `compareOcrProviders` (dev/diagnostic only) to fan out for compare.
   Future<void> analyzeImages(
     List<SupplementImageUpload> images, {
-    String ocrProvider = 'configured',
+    String ocrProvider = _defaultOcrProvider,
+    bool compareOcrProviders = false,
   }) async {
     await _run(() async {
       final _SupplementAnalysisSelection selection =
-          await _analyzeSupplementImagesAutomatically(images);
+          await _analyzeSupplementImagesAutomatically(
+            images,
+            ocrProvider: ocrProvider,
+            compareOcrProviders: compareOcrProviders,
+          );
       _lastRequestedOcrProvider = selection.provider;
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
@@ -650,7 +675,10 @@ class AppController extends ChangeNotifier {
   }
 
   /// Starts supplement image analysis and lets the UI navigate away immediately.
-  Future<void> startSupplementImageAnalysis(String imagePath) async {
+  Future<void> startSupplementImageAnalysis(
+    String imagePath, {
+    bool compareOcrProviders = false,
+  }) async {
     if (_analysisJob.isRunning) {
       _apiError = const ApiError(
         statusCode: 0,
@@ -660,13 +688,20 @@ class AppController extends ChangeNotifier {
       return;
     }
     final int serial = _beginAnalysisJob('supplement');
-    unawaited(_finishSupplementImageAnalysis(serial, imagePath));
+    unawaited(
+      _finishSupplementImageAnalysis(
+        serial,
+        imagePath,
+        compareOcrProviders: compareOcrProviders,
+      ),
+    );
   }
 
   /// Starts multi-image supplement analysis without blocking navigation.
   Future<void> startSupplementImageBatchAnalysis(
-    List<SupplementImageUpload> images,
-  ) async {
+    List<SupplementImageUpload> images, {
+    bool compareOcrProviders = false,
+  }) async {
     if (_analysisJob.isRunning) {
       _apiError = const ApiError(
         statusCode: 0,
@@ -676,7 +711,13 @@ class AppController extends ChangeNotifier {
       return;
     }
     final int serial = _beginAnalysisJob('supplement');
-    unawaited(_finishSupplementImageBatchAnalysis(serial, images));
+    unawaited(
+      _finishSupplementImageBatchAnalysis(
+        serial,
+        images,
+        compareOcrProviders: compareOcrProviders,
+      ),
+    );
   }
 
   /// Starts meal image analysis without blocking navigation.
@@ -1073,11 +1114,15 @@ class AppController extends ChangeNotifier {
 
   Future<void> _finishSupplementImageAnalysis(
     int serial,
-    String imagePath,
-  ) async {
+    String imagePath, {
+    bool compareOcrProviders = false,
+  }) async {
     try {
       final _SupplementAnalysisSelection selection =
-          await _analyzeSupplementImageAutomatically(imagePath);
+          await _analyzeSupplementImageAutomatically(
+            imagePath,
+            compareOcrProviders: compareOcrProviders,
+          );
       if (!_isCurrentAnalysisJob(serial)) return;
       _lastRequestedOcrProvider = selection.provider;
       _analysisPreview = selection.preview;
@@ -1105,11 +1150,15 @@ class AppController extends ChangeNotifier {
 
   Future<void> _finishSupplementImageBatchAnalysis(
     int serial,
-    List<SupplementImageUpload> images,
-  ) async {
+    List<SupplementImageUpload> images, {
+    bool compareOcrProviders = false,
+  }) async {
     try {
       final _SupplementAnalysisSelection selection =
-          await _analyzeSupplementImagesAutomatically(images);
+          await _analyzeSupplementImagesAutomatically(
+            images,
+            compareOcrProviders: compareOcrProviders,
+          );
       if (!_isCurrentAnalysisJob(serial)) return;
       _lastRequestedOcrProvider = selection.provider;
       _multiImageAnalysisPreview = selection.multiPreview;
@@ -1162,10 +1211,15 @@ class AppController extends ChangeNotifier {
   }
 
   Future<_SupplementAnalysisSelection> _analyzeSupplementImageAutomatically(
-    String imagePath,
-  ) async {
+    String imagePath, {
+    String ocrProvider = _defaultOcrProvider,
+    bool compareOcrProviders = false,
+  }) async {
+    final List<String> providers = compareOcrProviders
+        ? _diagnosticOcrProviders
+        : <String>[ocrProvider];
     final List<_SupplementAnalysisAttempt> attempts = await Future.wait(
-      _automaticOcrProviders.map((String provider) async {
+      providers.map((String provider) async {
         try {
           final SupplementAnalysisPreview preview = await _repository
               .analyzeSupplementImage(imagePath, ocrProvider: provider);
@@ -1188,10 +1242,15 @@ class AppController extends ChangeNotifier {
   }
 
   Future<_SupplementAnalysisSelection> _analyzeSupplementImagesAutomatically(
-    List<SupplementImageUpload> images,
-  ) async {
+    List<SupplementImageUpload> images, {
+    String ocrProvider = _defaultOcrProvider,
+    bool compareOcrProviders = false,
+  }) async {
+    final List<String> providers = compareOcrProviders
+        ? _diagnosticOcrProviders
+        : <String>[ocrProvider];
     final List<_SupplementAnalysisAttempt> attempts = await Future.wait(
-      _automaticOcrProviders.map((String provider) async {
+      providers.map((String provider) async {
         try {
           final SupplementMultiImageAnalysisPreview multiPreview =
               await _repository.analyzeSupplementImages(
@@ -1231,7 +1290,19 @@ class AppController extends ChangeNotifier {
     final List<_SupplementAnalysisAttempt> successful = attempts
         .where((_SupplementAnalysisAttempt attempt) => attempt.succeeded)
         .toList(growable: false);
+    // Surface a backend rate limit (HTTP 429) ahead of an empty/unusable
+    // preview: a rate-limited scan must tell the user to retry, not silently
+    // render the "can't read the label" fallback as if analysis had run.
+    final ApiError? rateLimited = attempts
+        .map((_SupplementAnalysisAttempt attempt) => attempt.error)
+        .whereType<ApiError>()
+        .where(
+          (ApiError error) =>
+              error.statusCode == 429 || error.code == 'rate_limited',
+        )
+        .firstOrNull;
     if (successful.isEmpty) {
+      if (rateLimited != null) throw rateLimited;
       final Object? firstError = attempts
           .map((_SupplementAnalysisAttempt attempt) => attempt.error)
           .whereType<Object>()
@@ -1251,12 +1322,23 @@ class AppController extends ChangeNotifier {
         left.provider,
       ).compareTo(_providerPriority(right.provider));
     });
-    return successful.first;
+    final _SupplementAnalysisAttempt best = successful.first;
+    if (rateLimited != null && !_isUsableSupplementPreview(best.preview!)) {
+      throw rateLimited;
+    }
+    return best;
+  }
+
+  /// Whether a preview carries any structured content worth showing the user.
+  bool _isUsableSupplementPreview(SupplementAnalysisPreview preview) {
+    return preview.ingredientCandidates.isNotEmpty ||
+        preview.labelSections.isNotEmpty ||
+        (preview.parsedProduct.productName?.trim().isNotEmpty ?? false);
   }
 
   int _providerPriority(String provider) {
-    final int index = _automaticOcrProviders.indexOf(provider);
-    return index < 0 ? _automaticOcrProviders.length : index;
+    final int index = _diagnosticOcrProviders.indexOf(provider);
+    return index < 0 ? _diagnosticOcrProviders.length : index;
   }
 
   int _scoreSupplementPreview(SupplementAnalysisPreview preview) {

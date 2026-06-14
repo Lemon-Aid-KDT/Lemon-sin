@@ -131,7 +131,7 @@ void main() {
     expect(find.text('분석하기'), findsOneWidget);
   });
 
-  testWidgets('automatic OCR providers reach real analysis flow', (
+  testWidgets('default analysis issues a single configured OCR request', (
     WidgetTester tester,
   ) async {
     final File image = _writeTinyPng();
@@ -166,15 +166,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.lastImagePath, image.path);
-    expect(
-      repository.ocrProviders,
-      containsAll(<String>[
-        'configured',
-        'paddleocr',
-        'clova',
-        'google_vision',
-      ]),
-    );
+    // Default scan must reach the real flow with a SINGLE 'configured' request,
+    // not a 4-provider fan-out (which tripped the backend rate limit on re-scan).
+    expect(repository.ocrProviders, <String>['configured']);
     expect(picker.lastMaxWidth, 2400);
     expect(picker.lastImageQuality, 95);
     expect(find.text('Preview'), findsOneWidget);
