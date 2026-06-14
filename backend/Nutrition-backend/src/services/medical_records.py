@@ -11,6 +11,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.medical import (
     MedicalRecordCollection,
     PatientCondition,
@@ -128,48 +129,50 @@ async def create_medical_record(
         ),
         consent_snapshot={"consent_type": "sensitive_health_analysis"},
     )
-    session.add(collection)
-    await session.flush()
-
     conditions: list[PatientCondition] = []
     medications: list[PatientMedication] = []
-    if request.condition is not None:
-        condition = PatientCondition(
-            medical_collection_id=collection.id,
-            condition_text=request.condition.condition_text,
-            condition_code_system=request.condition.condition_code_system,
-            condition_code_hash=(
-                request.condition.condition_code_hash.lower()
-                if request.condition.condition_code_hash
-                else None
-            ),
-            clinical_status=request.condition.clinical_status.value,
-            onset_date_text=request.condition.onset_date_text,
-            source=request.condition.source,
-            confirmed_at=now if request.user_confirmed else None,
-        )
-        session.add(condition)
-        conditions.append(condition)
-    if request.medication is not None:
-        medication = PatientMedication(
-            medical_collection_id=collection.id,
-            medication_name_text=request.medication.medication_name_text,
-            dose_text=request.medication.dose_text,
-            frequency_text=request.medication.frequency_text,
-            route_text=request.medication.route_text,
-            period_text=request.medication.period_text,
-            active_status=request.medication.active_status.value,
-            source_document_id=request.medication.source_document_id or request.source_document_id,
-            confirmed_at=now if request.user_confirmed else None,
-        )
-        session.add(medication)
-        medications.append(medication)
+    async with persist_scope(session):
+        session.add(collection)
+        await session.flush()  # assign collection.id before building FK children
 
-    await session.flush()
-    await session.commit()
-    await session.refresh(collection)
-    for row in [*conditions, *medications]:
-        await session.refresh(row)
+        if request.condition is not None:
+            condition = PatientCondition(
+                medical_collection_id=collection.id,
+                condition_text=request.condition.condition_text,
+                condition_code_system=request.condition.condition_code_system,
+                condition_code_hash=(
+                    request.condition.condition_code_hash.lower()
+                    if request.condition.condition_code_hash
+                    else None
+                ),
+                clinical_status=request.condition.clinical_status.value,
+                onset_date_text=request.condition.onset_date_text,
+                source=request.condition.source,
+                confirmed_at=now if request.user_confirmed else None,
+            )
+            session.add(condition)
+            conditions.append(condition)
+        if request.medication is not None:
+            medication = PatientMedication(
+                medical_collection_id=collection.id,
+                medication_name_text=request.medication.medication_name_text,
+                dose_text=request.medication.dose_text,
+                frequency_text=request.medication.frequency_text,
+                route_text=request.medication.route_text,
+                period_text=request.medication.period_text,
+                active_status=request.medication.active_status.value,
+                source_document_id=(
+                    request.medication.source_document_id or request.source_document_id
+                ),
+                confirmed_at=now if request.user_confirmed else None,
+            )
+            session.add(medication)
+            medications.append(medication)
+
+        await session.flush()
+        await session.refresh(collection)
+        for row in [*conditions, *medications]:
+            await session.refresh(row)
     return collection, conditions, medications
 
 
@@ -358,10 +361,11 @@ async def confirm_medical_record(
     for row in [*conditions, *medications]:
         if row.confirmed_at is None:
             row.confirmed_at = now
-    await session.commit()
-    await session.refresh(collection)
-    for row in [*conditions, *medications]:
-        await session.refresh(row)
+    async with persist_scope(session):
+        await session.flush()
+        await session.refresh(collection)
+        for row in [*conditions, *medications]:
+            await session.refresh(row)
     return medical_record_to_response(collection, conditions, medications)
 
 
@@ -401,10 +405,10 @@ async def create_patient_status_snapshot(
         generated_by=request.generated_by.value,
         expires_at=request.expires_at or status_at + timedelta(hours=24),
     )
-    session.add(snapshot)
-    await session.flush()
-    await session.commit()
-    await session.refresh(snapshot)
+    async with persist_scope(session):
+        session.add(snapshot)
+        await session.flush()
+        await session.refresh(snapshot)
     return snapshot
 
 

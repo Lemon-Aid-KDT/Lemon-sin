@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.v1.contract import route_contract
 from src.api.v1.examples import CONSENT_REQUIRED_EXAMPLE, UNAUTHORIZED_EXAMPLE
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.medical import (
     MedicalRecordConfirmRequest,
     MedicalRecordCreateRequest,
@@ -99,17 +99,6 @@ async def _require_sensitive_health_consent(
         ) from exc
 
 
-async def _commit_consent_read_transaction(session: AsyncSession) -> None:
-    """Close an implicit consent-read transaction before service-level writes.
-
-    Args:
-        session: Request-scoped async database session.
-    """
-    in_transaction = getattr(session, "in_transaction", None)
-    if callable(in_transaction) and in_transaction():
-        await session.commit()
-
-
 @router.post(
     "/medical-records",
     response_model=MedicalRecordResponse,
@@ -128,7 +117,7 @@ async def create_current_user_medical_record(
     http_request: Request,
     request: Annotated[MedicalRecordCreateRequest, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_medical_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> MedicalRecordResponse:
     """Create a user-confirmed medical record collection.
@@ -154,7 +143,6 @@ async def create_current_user_medical_record(
         action="medical_record_create_blocked",
         resource_type="medical_record_collection",
     )
-    await _commit_consent_read_transaction(session)
     collection, conditions, medications = await create_medical_record(
         session,
         current_user,
@@ -198,7 +186,7 @@ async def create_current_user_medical_record(
 async def list_current_user_medical_records(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_medical_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     include_archived: Annotated[bool, Query()] = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -268,7 +256,7 @@ async def confirm_current_user_medical_record(
     http_request: Request,
     request: Annotated[MedicalRecordConfirmRequest, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_medical_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> MedicalRecordResponse:
     """Confirm an existing current-user medical record collection.
@@ -295,7 +283,6 @@ async def confirm_current_user_medical_record(
         action="medical_record_confirm_blocked",
         resource_type="medical_record_collection",
     )
-    await _commit_consent_read_transaction(session)
     try:
         response = await confirm_medical_record(
             session,
@@ -346,7 +333,7 @@ async def create_current_user_patient_status(
     http_request: Request,
     request: Annotated[PatientStatusSnapshotCreate, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_medical_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> PatientStatusSnapshotResponse:
     """Create a non-diagnostic current-user patient status snapshot.
@@ -372,7 +359,6 @@ async def create_current_user_patient_status(
         action="patient_status_create_blocked",
         resource_type="patient_status_snapshot",
     )
-    await _commit_consent_read_transaction(session)
     snapshot = await create_patient_status_snapshot(session, current_user, settings, request)
     await record_sensitive_audit_event(
         session,
@@ -409,7 +395,7 @@ async def create_current_user_patient_status(
 async def get_current_user_patient_status_latest(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_medical_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> PatientStatusSnapshotResponse:
     """Return the latest non-diagnostic current-user patient status snapshot.

@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.medical import (
     MedicalRecordCollection,
     PatientCondition,
@@ -16,6 +17,7 @@ from src.models.db.medical import (
     PatientStatusSnapshot,
 )
 from src.models.schemas.medical import (
+    MedicalRecordConfirmRequest,
     MedicalRecordCreateRequest,
     PatientConditionInput,
     PatientStatusSnapshotCreate,
@@ -24,7 +26,9 @@ from src.security.auth import AuthenticatedUser
 from src.security.privacy import hash_actor_subject
 from src.services.medical_records import (
     build_medical_context_summary,
+    confirm_medical_record,
     create_medical_record,
+    create_patient_status_snapshot,
     get_latest_patient_status_snapshot,
     medical_record_to_response,
     patient_status_to_response,
@@ -54,15 +58,25 @@ class _FakeScalarResult:
 class _FakeSession:
     """Fake async session for medical service tests."""
 
-    def __init__(self, *, scalar_rows: list[object | None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        scalar_rows: list[object | None] | None = None,
+        request_managed: bool = False,
+    ) -> None:
         """Initialize fake session.
 
         Args:
             scalar_rows: Ordered scalar return values.
+            request_managed: When True, stamp the marker so ``persist_scope``
+                participates (flush only) instead of owning the transaction.
         """
         self.scalar_rows = list(scalar_rows or [])
         self.added: list[object] = []
         self.refreshed: list[object] = []
+        self.commits = 0
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
 
     async def scalar(self, _statement: object) -> object | None:
         """Return next scalar value.
@@ -103,7 +117,11 @@ class _FakeSession:
                 record.id = uuid4()
 
     async def commit(self) -> None:
-        """No-op commit."""
+        """Count commits (own-mode must commit exactly once)."""
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        """No-op rollback (own-mode rolls back on exception)."""
 
     async def refresh(self, record: object) -> None:
         """Populate generated timestamps.
@@ -291,3 +309,103 @@ def test_medical_context_summary_uses_buckets_without_raw_text() -> None:
     assert "Warfarin" not in serialized
     assert "high blood pressure" not in serialized
     assert "사용자 확인 질환명" not in serialized
+
+
+# --- persist_scope transaction-ownership contract (ambient-tx Step 5) ----------
+#
+# Under the request-managed (RLS) session the medical-record write services must
+# PARTICIPATE (flush only, never commit) so the transaction-local owner GUCs
+# survive to the dependency's commit-on-exit; under a legacy session they must
+# OWN the transaction (commit exactly once), reproducing today's add+commit.
+
+
+def _create_request() -> MedicalRecordCreateRequest:
+    """Return a minimal user-confirmed medical record create request."""
+    return MedicalRecordCreateRequest(
+        record_type="condition",
+        condition=PatientConditionInput(
+            condition_text="사용자 확인 질환명",
+            clinical_status="active",
+        ),
+        user_confirmed=True,
+    )
+
+
+def _existing_collection() -> MedicalRecordCollection:
+    """Return a persisted (owner-matched, non-deleted) collection for confirm tests."""
+    collection = MedicalRecordCollection(
+        owner_subject_hash=hash_actor_subject(_user(), _settings()),
+        record_type="condition",
+        source="user_manual",
+        source_document_id=None,
+        status="requires_review",
+        consent_snapshot={"consent_type": "sensitive_health_analysis"},
+    )
+    collection.id = uuid4()
+    collection.created_at = datetime.now(UTC)
+    collection.updated_at = datetime.now(UTC)
+    return collection
+
+
+@pytest.mark.asyncio
+async def test_create_medical_record_participates_without_commit_when_request_managed() -> None:
+    session = _FakeSession(request_managed=True)
+    collection, _conditions, _medications = await create_medical_record(
+        cast(AsyncSession, session), _user(), _settings(), _create_request()
+    )
+    assert session.commits == 0  # GUCs must survive to the dependency commit
+    assert collection.id is not None
+
+
+@pytest.mark.asyncio
+async def test_create_medical_record_commits_once_in_legacy_own_mode() -> None:
+    session = _FakeSession(request_managed=False)
+    await create_medical_record(
+        cast(AsyncSession, session), _user(), _settings(), _create_request()
+    )
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_medical_record_participates_without_commit_when_request_managed() -> None:
+    session = _FakeSession(request_managed=True, scalar_rows=[_existing_collection()])
+    await confirm_medical_record(
+        cast(AsyncSession, session),
+        _user(),
+        _settings(),
+        uuid4(),
+        MedicalRecordConfirmRequest(),
+    )
+    assert session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_confirm_medical_record_commits_once_in_legacy_own_mode() -> None:
+    session = _FakeSession(request_managed=False, scalar_rows=[_existing_collection()])
+    await confirm_medical_record(
+        cast(AsyncSession, session),
+        _user(),
+        _settings(),
+        uuid4(),
+        MedicalRecordConfirmRequest(),
+    )
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_create_patient_status_participates_without_commit_when_request_managed() -> None:
+    session = _FakeSession(request_managed=True)
+    snapshot = await create_patient_status_snapshot(
+        cast(AsyncSession, session), _user(), _settings(), PatientStatusSnapshotCreate()
+    )
+    assert session.commits == 0
+    assert snapshot.id is not None
+
+
+@pytest.mark.asyncio
+async def test_create_patient_status_commits_once_in_legacy_own_mode() -> None:
+    session = _FakeSession(request_managed=False)
+    await create_patient_status_snapshot(
+        cast(AsyncSession, session), _user(), _settings(), PatientStatusSnapshotCreate()
+    )
+    assert session.commits == 1
