@@ -14,6 +14,7 @@ from fastapi import UploadFile
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.meal import (
     FoodImageAnalysisRun,
     FoodNutrition,
@@ -98,6 +99,7 @@ class _FakeStoreSession:
         existing_run: FoodImageAnalysisRun | None = None,
         existing_meal: MealRecord | None = None,
         food_nutrition_rows: list[FoodNutrition] | None = None,
+        request_managed: bool = False,
     ) -> None:
         """Initialize fake persisted records.
 
@@ -105,6 +107,7 @@ class _FakeStoreSession:
             existing_run: Existing food image analysis run returned for idempotency lookup.
             existing_meal: Existing meal record returned for idempotency lookup.
             food_nutrition_rows: Active food nutrition rows returned for class lookups.
+            request_managed: Stamp the request-managed marker so persist_scope participates.
         """
         self.existing_run = existing_run
         self.existing_meal = existing_meal
@@ -113,6 +116,9 @@ class _FakeStoreSession:
         self.refreshed: list[object] = []
         self.flush_count = 0
         self.committed = False
+        self.commits = 0
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
 
     async def scalars(self, statement: object) -> _ScalarResult:
         """Return fake nutrition rows for food nutrition class lookups.
@@ -180,6 +186,10 @@ class _FakeStoreSession:
             None.
         """
         self.committed = True
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        """No-op rollback (persist_scope own-mode rolls back on exception)."""
 
     async def refresh(self, record: object) -> None:
         """Populate server-generated timestamps after fake persistence.
@@ -461,7 +471,8 @@ async def test_create_meal_image_preview_stores_manual_entry_preview_only() -> N
 
     assert result.reused_existing is False
     assert fake_session.added == [result.meal_record, result.analysis_run]
-    assert fake_session.flush_count == 1
+    # persist_scope adds one flush on scope exit, on top of the in-body flush.
+    assert fake_session.flush_count == 2
     assert fake_session.refreshed == [result.meal_record, result.analysis_run]
     assert result.meal_record.meal_type == "lunch"
     assert result.meal_record.eaten_at == eaten_at
@@ -504,7 +515,8 @@ async def test_create_meal_image_preview_uses_food_yolo_candidates() -> None:
     )
 
     assert detector.received_image_bytes == _png_bytes()
-    assert fake_session.flush_count == 1
+    # persist_scope adds one flush on scope exit, on top of the in-body flush.
+    assert fake_session.flush_count == 2
     assert result.analysis_run.detector_model == "food_yolo_local:best.pt"
     assert result.analysis_run.detected_items_snapshot["items"][0]["display_name"] == "비빔밥"
     assert result.analysis_run.warning_codes == ["food_detection_review_required"]
@@ -815,3 +827,193 @@ async def test_confirm_meal_record_rejects_non_review_state() -> None:
                 user_confirmed=True,
             ),
         )
+
+
+def _confirm_request(run_id: object) -> MealConfirmationRequest:
+    """Build a minimal valid confirmation request for persist_scope contract tests."""
+    return MealConfirmationRequest(
+        analysis_id=run_id,
+        meal_type=MealType.LUNCH,
+        food_items=[
+            MealFoodItemInput(
+                display_name="비빔밥",
+                portion_amount=1,
+                portion_unit="bowl",
+                kcal=520,
+                confidence=0.88,
+                source="vision",
+            )
+        ],
+        user_confirmed=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_preview_owns_transaction_in_legacy_mode() -> None:
+    """Legacy (get_async_session) sessions commit the meal preview exactly once."""
+    fake_session = _FakeStoreSession()  # no marker → OWN mode
+
+    await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-own",
+        settings=_settings(),
+    )
+
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_create_preview_participates_in_request_managed_transaction() -> None:
+    """RLS (get_rls_context_session) sessions never commit; the dependency owns the tx."""
+    fake_session = _FakeStoreSession(request_managed=True)
+
+    await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-participate",
+        settings=_settings(),
+    )
+
+    assert fake_session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_confirm_owns_transaction_in_legacy_mode() -> None:
+    """Legacy sessions commit the confirmation (meal update + food items) exactly once."""
+    meal, run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal)  # OWN mode
+
+    await confirm_meal_record_from_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        meal_id=meal.id,
+        request=_confirm_request(run.id),
+    )
+
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_participates_in_request_managed_transaction() -> None:
+    """RLS sessions never commit the confirmation; the dependency owns the tx."""
+    meal, run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(
+        existing_run=run, existing_meal=meal, request_managed=True
+    )
+
+    await confirm_meal_record_from_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        meal_id=meal.id,
+        request=_confirm_request(run.id),
+    )
+
+    assert fake_session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_create_preview_reuse_owns_transaction_in_legacy_mode() -> None:
+    """Legacy sessions commit the read-only idempotency-reuse path exactly once.
+
+    The reuse branch performs no writes; persist_scope OWN mode must still commit the
+    autobegun read transaction (reproducing the old ``async with session.begin()`` exit).
+    """
+    meal, run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal)  # OWN mode
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.DINNER,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(),
+    )
+
+    assert result.reused_existing is True
+    assert fake_session.added == []  # read-only reuse: no rows written
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_create_preview_reuse_participates_in_request_managed_transaction() -> None:
+    """RLS sessions never commit the reuse path; the dependency owns the tx."""
+    meal, run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(
+        existing_run=run, existing_meal=meal, request_managed=True
+    )
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.DINNER,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(),
+    )
+
+    assert result.reused_existing is True
+    assert fake_session.commits == 0
+
+
+def _confirm_request_without_analysis() -> MealConfirmationRequest:
+    """Build a valid confirmation request that carries no analysis run id."""
+    return MealConfirmationRequest(
+        meal_type=MealType.LUNCH,
+        food_items=[
+            MealFoodItemInput(
+                display_name="비빔밥",
+                portion_amount=1,
+                portion_unit="bowl",
+                kcal=520,
+                confidence=0.88,
+                source="vision",
+            )
+        ],
+        user_confirmed=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_confirm_without_analysis_id_owns_transaction_in_legacy_mode() -> None:
+    """Legacy sessions commit a confirm with no analysis run exactly once.
+
+    Exercises the ``analysis_run is None`` confirm branch (meal update + food items only)
+    under persist_scope OWN mode.
+    """
+    meal, _run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(existing_meal=meal)  # OWN, no analysis run
+
+    await confirm_meal_record_from_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        meal_id=meal.id,
+        request=_confirm_request_without_analysis(),
+    )
+
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_without_analysis_id_participates_in_request_managed_transaction() -> None:
+    """RLS sessions never commit the no-analysis-run confirm; the dependency owns the tx."""
+    meal, _run = _existing_preview("a" * 64)
+    fake_session = _FakeStoreSession(existing_meal=meal, request_managed=True)
+
+    await confirm_meal_record_from_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        meal_id=meal.id,
+        request=_confirm_request_without_analysis(),
+    )
+
+    assert fake_session.commits == 0

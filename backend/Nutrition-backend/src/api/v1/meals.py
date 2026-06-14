@@ -80,17 +80,6 @@ MEAL_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-async def _commit_consent_read_transaction(session: AsyncSession) -> None:
-    """Close an implicit consent-read transaction before service-level writes.
-
-    Args:
-        session: Request-scoped async database session.
-    """
-    in_transaction = getattr(session, "in_transaction", None)
-    if callable(in_transaction) and in_transaction():
-        await session.commit()
-
-
 @router.post(
     "/analyze-image",
     response_model=MealImageAnalysisPreview,
@@ -114,7 +103,7 @@ async def analyze_meal_image(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_meal_write)],
     image: Annotated[UploadFile, File(description="Food or meal image file.")],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     client_request_id: Annotated[str | None, Form(max_length=80)] = None,
     meal_type: Annotated[MealType, Form()] = MealType.UNKNOWN,
@@ -160,8 +149,6 @@ async def analyze_meal_image(
                 "required_consents": [ConsentType.FOOD_IMAGE_PROCESSING.value],
             },
         ) from exc
-
-    await _commit_consent_read_transaction(session)
 
     try:
         image_metadata = await read_and_validate_meal_image(image, settings)
@@ -486,7 +473,7 @@ async def confirm_meal_image_preview(
     meal_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_meal_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     request: Annotated[
         MealConfirmationRequest,

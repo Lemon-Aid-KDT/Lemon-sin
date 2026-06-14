@@ -17,6 +17,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.meal import (
     FoodCatalogItem,
     FoodCourse,
@@ -308,7 +309,7 @@ async def create_meal_image_analysis_preview(
     meal_record: MealRecord | None = None
     reused_existing = False
 
-    async with session.begin():
+    async with persist_scope(session):
         if normalized_client_request_id is not None:
             analysis_run = await session.scalar(
                 select(FoodImageAnalysisRun).where(
@@ -479,21 +480,21 @@ async def confirm_meal_record_from_preview(
         _meal_food_item_from_input(meal_record.id, item, sort_order=index)
         for index, item in enumerate(request.food_items)
     ]
-    meal_record.meal_type = (request.meal_type or MealType(meal_record.meal_type)).value
-    meal_record.eaten_at = (
-        _normalize_eaten_at(request.eaten_at) if request.eaten_at else meal_record.eaten_at
-    )
-    meal_record.status = MealAnalysisStatus.CONFIRMED.value
-    meal_record.nutrition_summary = _confirmed_nutrition_summary(request.food_items)
-    meal_record.confidence = _mean_confidence(request.food_items)
-    meal_record.confirmed_at = now
-    if analysis_run is not None:
-        analysis_run.status = MealAnalysisStatus.CONFIRMED.value
+    async with persist_scope(session):
+        meal_record.meal_type = (request.meal_type or MealType(meal_record.meal_type)).value
+        meal_record.eaten_at = (
+            _normalize_eaten_at(request.eaten_at) if request.eaten_at else meal_record.eaten_at
+        )
+        meal_record.status = MealAnalysisStatus.CONFIRMED.value
+        meal_record.nutrition_summary = _confirmed_nutrition_summary(request.food_items)
+        meal_record.confidence = _mean_confidence(request.food_items)
+        meal_record.confirmed_at = now
+        if analysis_run is not None:
+            analysis_run.status = MealAnalysisStatus.CONFIRMED.value
 
-    for item in food_items:
-        session.add(item)
+        for item in food_items:
+            session.add(item)
 
-    await session.commit()
     await session.refresh(meal_record)
     return MealConfirmationStoreResult(
         meal_record=meal_record,
