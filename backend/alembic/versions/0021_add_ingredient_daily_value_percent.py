@@ -27,14 +27,54 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _drop_check_by_definition(table: str, definition_needle: str) -> None:
+    """Drop the CHECK constraint on ``table`` matching ``definition_needle``.
+
+    Locates the constraint by its CHECK definition rather than its name, so the
+    downgrade works whether the live name is the convention-correct one or a
+    historical double-wrapped variant (the divergence 0044 normalizes). It does
+    not depend on 0044 having run. Idempotent: a no-op when no matching
+    constraint is present. ``table`` must remain a hardcoded constant; the
+    resolved name goes through ``format(... %I ...)``.
+    """
+    needle = definition_needle.replace("'", "''")
+    op.execute(
+        f"""
+        DO $$
+        DECLARE
+            v_name text;
+        BEGIN
+            SELECT conname
+            INTO v_name
+            FROM pg_constraint
+            WHERE conrelid = 'public.{table}'::regclass
+              AND contype = 'c'
+              AND pg_get_constraintdef(oid) ILIKE '%{needle}%'
+            LIMIT 1;
+
+            IF v_name IS NOT NULL THEN
+                EXECUTE format(
+                    'ALTER TABLE public.{table} DROP CONSTRAINT %I',
+                    v_name
+                );
+            END IF;
+        END $$;
+        """
+    )
+
+
 def upgrade() -> None:
     """Add nullable, non-negative daily_value_percent to ingredient tables."""
     op.add_column(
         "supplement_product_ingredients",
         sa.Column("daily_value_percent", sa.Numeric(7, 3), nullable=True),
     )
+    # Bare name on purpose: Base.metadata's naming convention prefixes it with
+    # ck_<table>_ at execution time; passing the already-prefixed name
+    # double-wraps it and diverges from the ORM model. Existing environments are
+    # corrected by 0044.
     op.create_check_constraint(
-        "ck_supplement_product_ingredients_daily_value_percent_nonnegative",
+        "daily_value_percent_nonnegative",
         "supplement_product_ingredients",
         "daily_value_percent IS NULL OR daily_value_percent >= 0",
     )
@@ -44,7 +84,7 @@ def upgrade() -> None:
         sa.Column("daily_value_percent", sa.Numeric(7, 3), nullable=True),
     )
     op.create_check_constraint(
-        "ck_user_supplement_ingredients_daily_value_percent_nonnegative",
+        "daily_value_percent_nonnegative",
         "user_supplement_ingredients",
         "daily_value_percent IS NULL OR daily_value_percent >= 0",
     )
@@ -52,16 +92,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove the daily_value_percent columns from ingredient tables."""
-    op.drop_constraint(
-        "ck_user_supplement_ingredients_daily_value_percent_nonnegative",
-        "user_supplement_ingredients",
-        type_="check",
+    _drop_check_by_definition(
+        "user_supplement_ingredients", "daily_value_percent IS NULL"
     )
     op.drop_column("user_supplement_ingredients", "daily_value_percent")
 
-    op.drop_constraint(
-        "ck_supplement_product_ingredients_daily_value_percent_nonnegative",
-        "supplement_product_ingredients",
-        type_="check",
+    _drop_check_by_definition(
+        "supplement_product_ingredients", "daily_value_percent IS NULL"
     )
     op.drop_column("supplement_product_ingredients", "daily_value_percent")

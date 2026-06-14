@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0043_add_user_supplement_category_key"]
+    assert script.get_heads() == ["0044_normalize_check_constraint_names"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0043_add_user_supplement_category_key"]
+    assert script.get_heads() == ["0044_normalize_check_constraint_names"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -521,3 +521,72 @@ def test_learning_dataset_model_registry_migration_is_fail_closed() -> None:
         'sa.Column("signed_url"',
     ):
         assert forbidden_column not in migration
+
+
+def test_normalize_check_constraint_migration_file_exists() -> None:
+    """Verify the check-constraint normalization migration file exists."""
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0044_normalize_check_constraint_names.py"
+    )
+
+    assert migration_path.is_file()
+
+
+def test_normalize_check_constraint_migration_is_definition_based_and_idempotent() -> None:
+    """Verify 0044 locates constraints by CHECK definition and converges safely.
+
+    The fix must (a) match by ``pg_get_constraintdef`` rather than the
+    version-sensitive drifted name, (b) rename the drifted constraint when the
+    canonical target is absent, and (c) drop the drifted duplicate when both the
+    drifted and canonical names exist (a partial manual fix) instead of leaving
+    an orphan. Targets are frozen literals because SQLAlchemy's truncation/hash
+    is version-sensitive.
+    """
+    migration_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0044_normalize_check_constraint_names.py"
+    )
+    migration = migration_path.read_text(encoding="utf-8")
+
+    assert "pg_get_constraintdef(oid) ILIKE" in migration
+    assert "RENAME CONSTRAINT %I TO %I" in migration
+    assert "DROP CONSTRAINT %I" in migration
+    assert "v_has_target" in migration
+    assert "ck_supplement_product_ingredients_daily_value_percent_n_230f" in migration
+    assert "ck_user_supplement_ingredients_daily_value_percent_nonnegative" in migration
+    assert "ck_user_supplements_evidence_refs_array" in migration
+    assert "ck_user_supplements_precaution_snapshot_array" in migration
+    # Ingredient needle is the discriminating clause, not the bare column name.
+    assert "daily_value_percent IS NULL" in migration
+
+
+def test_check_constraint_source_migrations_use_bare_tokens_and_definition_drop() -> None:
+    """Verify 0019/0021/0024 pass bare tokens and drop by CHECK definition.
+
+    The naming convention ``ck_%(table_name)s_%(constraint_name)s`` prefixes the
+    token at execution time, so the create call must pass the bare token (an
+    already-prefixed name would double-wrap). The downgrade must drop by CHECK
+    definition so it succeeds whether the live name is convention-correct or a
+    historical double-wrapped variant — i.e. it must not depend on 0044.
+    """
+    versions = BACKEND_ROOT / "alembic" / "versions"
+
+    evidence = (versions / "0019_add_user_supplement_evidence_refs.py").read_text(encoding="utf-8")
+    assert 'op.create_check_constraint(\n        "evidence_refs_array",' in evidence
+    assert (
+        '_drop_check_by_definition("user_supplements", "jsonb_typeof(evidence_refs)")'
+        in evidence
+    )
+
+    dvp = (versions / "0021_add_ingredient_daily_value_percent.py").read_text(encoding="utf-8")
+    assert 'op.create_check_constraint(\n        "daily_value_percent_nonnegative",' in dvp
+    assert "_drop_check_by_definition(" in dvp
+    assert "daily_value_percent IS NULL" in dvp
+
+    precaution = (
+        versions / "0024_add_user_supplement_precaution_snapshot.py"
+    ).read_text(encoding="utf-8")
+    assert 'op.create_check_constraint(\n        "precaution_snapshot_array",' in precaution
+    assert (
+        '_drop_check_by_definition("user_supplements", "jsonb_typeof(precaution_snapshot)")'
+        in precaution
+    )
