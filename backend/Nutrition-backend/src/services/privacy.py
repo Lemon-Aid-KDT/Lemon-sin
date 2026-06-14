@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.db.session import get_audit_sessionmaker
-from src.db.tx import request_manages_transaction
+from src.db.tx import persist_scope, request_manages_transaction
 from src.learning.consent_gate import IMAGE_LEARNING_REQUIRED_CONSENTS
 from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import delete_learning_artifacts_for_owner
@@ -435,8 +435,12 @@ async def grant_consent(
         ip_hash=ip_hash,
         user_agent_hash=user_agent_hash,
     )
-    audit_log = _build_audit_log(
-        user=user,
+    async with persist_scope(session):
+        session.add(record)
+    await session.refresh(record)
+    await record_audit_event(
+        session,
+        user,
         action="consent_granted",
         resource_type="consent",
         resource_id=consent_type.value,
@@ -445,11 +449,6 @@ async def grant_consent(
         settings=settings,
         event_metadata={"consent_type": consent_type.value, "policy_version": policy.version},
     )
-
-    async with session.begin():
-        session.add(record)
-        session.add(audit_log)
-    await session.refresh(record)
     return record
 
 
@@ -489,7 +488,7 @@ async def revoke_consent(
         ip_hash=ip_hash,
         user_agent_hash=user_agent_hash,
     )
-    async with session.begin():
+    async with persist_scope(session):
         session.add(record)
         event_metadata: dict[str, Any] = {
             "consent_type": consent_type.value,
@@ -513,18 +512,18 @@ async def revoke_consent(
                 0,
             )
         )
-        audit_log = _build_audit_log(
-            user=user,
-            action="consent_revoked",
-            resource_type="consent",
-            resource_id=consent_type.value,
-            outcome="failed" if learning_delete_failed else "success",
-            request=request,
-            settings=settings,
-            event_metadata=event_metadata,
-        )
-        session.add(audit_log)
     await session.refresh(record)
+    await record_audit_event(
+        session,
+        user,
+        action="consent_revoked",
+        resource_type="consent",
+        resource_id=consent_type.value,
+        outcome="failed" if learning_delete_failed else "success",
+        request=request,
+        settings=settings,
+        event_metadata=event_metadata,
+    )
     return record
 
 
@@ -680,40 +679,27 @@ async def delete_analysis_result_for_user(
         ValueError: If owner identity cannot be persisted safely.
     """
     owner_subject = build_owner_subject(user)
-    async with session.begin():
+    async with persist_scope(session):
         record = await session.scalar(
             select(AnalysisResult).where(
                 AnalysisResult.id == result_id,
                 AnalysisResult.owner_subject == owner_subject,
             )
         )
-        if record is None:
-            session.add(
-                _build_audit_log(
-                    user=user,
-                    action="analysis_result_deleted",
-                    resource_type="analysis_result",
-                    resource_id=str(result_id),
-                    outcome="not_found",
-                    request=request,
-                    settings=settings,
-                )
-            )
-            return False
-
-        await session.delete(record)
-        session.add(
-            _build_audit_log(
-                user=user,
-                action="analysis_result_deleted",
-                resource_type="analysis_result",
-                resource_id=str(result_id),
-                outcome="success",
-                request=request,
-                settings=settings,
-            )
-        )
-        return True
+        deleted = record is not None
+        if record is not None:
+            await session.delete(record)
+    await record_audit_event(
+        session,
+        user,
+        action="analysis_result_deleted",
+        resource_type="analysis_result",
+        resource_id=str(result_id),
+        outcome="success" if deleted else "not_found",
+        request=request,
+        settings=settings,
+    )
+    return deleted
 
 
 async def _scalar_records(session: AsyncSession, statement: Any) -> list[Any]:
@@ -894,7 +880,7 @@ async def create_delete_all_user_data_request(
         failure_reason=None,
     )
 
-    async with session.begin():
+    async with persist_scope(session):
         health_daily_summaries = await _scalar_records(
             session,
             select(HealthDailySummary).where(HealthDailySummary.owner_subject == owner_subject),

@@ -11,6 +11,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.algorithms.activity import ACTIVITY_ALGORITHM_VERSION, calculate_activity_score
+from src.db.tx import persist_scope
 from src.models.db.analysis_result import AnalysisResult
 from src.models.schemas.algorithm import ActivityScoreRequest, WeightPredictionRequest
 from src.models.schemas.analysis_result import (
@@ -128,9 +129,10 @@ async def _persist_result(
         result_snapshot=result_snapshot,
     )
 
-    async with session.begin():
+    async with persist_scope(session):
         session.add(record)
-    await session.refresh(record)
+        await session.flush()
+        await session.refresh(record)
     return record
 
 

@@ -10,7 +10,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import privacy
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 from src.models.db.privacy import ConsentRecord, DeletionRequest
 from src.models.schemas.privacy import ConsentType, DeletionRequestStatus, DeletionRequestType
@@ -26,8 +26,11 @@ async def _fake_session_dependency() -> AsyncIterator[object]:
     yield object()
 
 
-def _consent_record() -> ConsentRecord:
+def _consent_record(*, granted: bool = True) -> ConsentRecord:
     """Return a consent record fixture.
+
+    Args:
+        granted: Whether the consent event is a grant (True) or revocation (False).
 
     Returns:
         Consent record ORM object.
@@ -38,8 +41,9 @@ def _consent_record() -> ConsentRecord:
         owner_subject="local-development::local-dev-user",
         consent_type=ConsentType.SENSITIVE_HEALTH_ANALYSIS.value,
         policy_version="2026-05-11",
-        granted=True,
+        granted=granted,
         occurred_at=now,
+        revoked_at=None if granted else now,
         created_at=now,
         updated_at=now,
     )
@@ -94,7 +98,8 @@ def test_grant_consent_route_returns_policy_action(
 
     monkeypatch.setattr(privacy, "grant_consent", fake_grant)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # grant_consent route adopted get_rls_context_session (ambient-tx Step 6b).
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post("/api/v1/me/privacy/consents/sensitive_health_analysis")
@@ -103,6 +108,47 @@ def test_grant_consent_route_returns_policy_action(
     assert captured["subject"] == "local-dev-user"
     assert captured["consent_type"] == ConsentType.SENSITIVE_HEALTH_ANALYSIS
     assert response.json()["granted"] is True
+
+
+def test_revoke_consent_route_returns_revocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify consent revoke route adopted get_rls_context_session and returns the revocation."""
+    captured: dict[str, object] = {}
+
+    async def fake_revoke(
+        _session: object,
+        user: AuthenticatedUser,
+        consent_type: ConsentType,
+        *_args: object,
+    ) -> ConsentRecord:
+        """Capture revoke route inputs and return a fake revoked consent record.
+
+        Args:
+            _session: Fake session dependency.
+            user: Authenticated user passed by the route.
+            consent_type: Requested consent type.
+            *_args: Request and settings arguments.
+
+        Returns:
+            Fake revoked consent record.
+        """
+        captured["subject"] = user.subject
+        captured["consent_type"] = consent_type
+        return _consent_record(granted=False)
+
+    monkeypatch.setattr(privacy, "revoke_consent", fake_revoke)
+    app = create_app()
+    # revoke_consent route adopted get_rls_context_session (ambient-tx Step 6b).
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
+    client = TestClient(app)
+
+    response = client.delete("/api/v1/me/privacy/consents/sensitive_health_analysis")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["subject"] == "local-dev-user"
+    assert captured["consent_type"] == ConsentType.SENSITIVE_HEALTH_ANALYSIS
+    assert response.json()["granted"] is False
 
 
 def test_create_deletion_request_route_returns_accepted(

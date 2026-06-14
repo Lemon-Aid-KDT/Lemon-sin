@@ -11,7 +11,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import analysis_results
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.db.analysis_result import AnalysisResult
 from src.models.schemas.algorithm import ActivityScoreRequest
@@ -108,7 +108,7 @@ def test_create_analysis_result_requires_authentication() -> None:
     """Verify protected storage endpoints reject missing JWT credentials in JWT mode."""
     app = create_app(settings=_jwt_settings())
     app.dependency_overrides[get_settings] = _jwt_settings
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post("/api/v1/analysis-results/activity-score", json=_activity_payload())
@@ -146,7 +146,7 @@ def test_create_activity_result_uses_current_user_and_ignores_mass_assignment(
     monkeypatch.setattr(analysis_results, "require_user_consent", _allow_consent)
     monkeypatch.setattr(analysis_results, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
     payload = {
         **_activity_payload(),
@@ -191,7 +191,7 @@ def test_create_activity_result_requires_sensitive_health_consent(
     monkeypatch.setattr(analysis_results, "require_user_consent", deny_consent)
     monkeypatch.setattr(analysis_results, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post("/api/v1/analysis-results/activity-score", json=_activity_payload())
@@ -224,7 +224,7 @@ def test_get_analysis_result_returns_404_for_non_owner_or_missing_row(
     monkeypatch.setattr(analysis_results, "get_analysis_result", fake_get)
     monkeypatch.setattr(analysis_results, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.get(f"/api/v1/analysis-results/{uuid4()}")
@@ -261,7 +261,7 @@ def test_delete_analysis_result_returns_204_when_owned_row_is_deleted(
 
     monkeypatch.setattr(analysis_results, "delete_analysis_result_for_user", fake_delete)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
     result_id = uuid4()
 

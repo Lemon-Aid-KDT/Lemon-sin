@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.analysis_result import AnalysisResult
 from src.models.schemas.algorithm import ActivityScoreRequest
 from src.models.schemas.analysis_result import AnalysisType
@@ -48,8 +49,11 @@ class _TransactionContext:
 class _FakeWriteSession:
     """Fake async session for service write tests."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, request_managed: bool = False) -> None:
         self.added: AnalysisResult | None = None
+        self.commits = 0
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -58,6 +62,16 @@ class _FakeWriteSession:
             Fake async transaction context.
         """
         return _TransactionContext()
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
+
+    async def commit(self) -> None:
+        """Count commits (own-mode must commit exactly once)."""
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        """No-op rollback (own-mode rolls back on exception)."""
 
     def add(self, record: object) -> None:
         """Capture the ORM record being added.
@@ -250,6 +264,42 @@ async def test_store_activity_result_persists_server_computed_snapshot() -> None
     assert record.input_snapshot["daily_steps"] == 7000
     assert record.result_snapshot["recommended_steps"] == 7500
     assert "owner_subject" not in record.input_snapshot
+
+
+@pytest.mark.asyncio
+async def test_persist_result_owns_transaction_in_legacy_mode() -> None:
+    """Verify legacy (get_async_session) sessions commit the result exactly once.
+
+    persist_scope OWN mode reproduces the historical ``add + commit`` behavior, so
+    an un-migrated route's session must see exactly one commit.
+    """
+    fake_session = _FakeWriteSession()  # no REQUEST_MANAGED_TX marker → OWN mode
+
+    await store_activity_score_result(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _activity_request(),
+    )
+
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_persist_result_participates_in_request_managed_transaction() -> None:
+    """Verify RLS (get_rls_context_session) sessions never commit mid-request.
+
+    The request dependency owns begin + commit so the transaction-local RLS GUCs
+    survive to dependency exit; persist_scope must only flush.
+    """
+    fake_session = _FakeWriteSession(request_managed=True)
+
+    await store_activity_score_result(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _activity_request(),
+    )
+
+    assert fake_session.commits == 0
 
 
 @pytest.mark.asyncio

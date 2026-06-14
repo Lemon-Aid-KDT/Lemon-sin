@@ -15,7 +15,7 @@ from src.api.v1.examples import (
     WEIGHT_PREDICTION_REQUEST_EXAMPLES,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.algorithm import ActivityScoreRequest, WeightPredictionRequest
 from src.models.schemas.analysis_result import (
     AnalysisResultListResponse,
@@ -114,7 +114,7 @@ async def create_activity_score_result(
         ActivityScoreRequest,
         Body(openapi_examples=ACTIVITY_SCORE_REQUEST_EXAMPLES),
     ],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisResultResponse:
@@ -161,7 +161,7 @@ async def create_weight_prediction_result(
         WeightPredictionRequest,
         Body(openapi_examples=WEIGHT_PREDICTION_REQUEST_EXAMPLES),
     ],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisResultResponse:
@@ -208,7 +208,7 @@ async def create_nutrition_analysis_result(
         NutritionAnalysisRequest,
         Body(openapi_examples=NUTRITION_ANALYSIS_REQUEST_EXAMPLES),
     ],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisResultResponse:
@@ -249,7 +249,7 @@ async def create_nutrition_analysis_result(
 @router.get("", response_model=AnalysisResultListResponse)
 async def list_current_user_analysis_results(
     http_request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_read)],
     settings: Annotated[Settings, Depends(get_settings)],
     analysis_type: Annotated[AnalysisType | None, Query()] = None,
@@ -299,7 +299,7 @@ async def list_current_user_analysis_results(
 async def get_current_user_analysis_result(
     result_id: UUID,
     http_request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_read)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisResultResponse:
@@ -355,7 +355,7 @@ async def get_current_user_analysis_result(
 async def delete_current_user_analysis_result(
     result_id: UUID,
     http_request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_delete)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
