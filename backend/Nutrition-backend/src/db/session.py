@@ -25,6 +25,8 @@ class _DatabaseState:
 
     engine: AsyncEngine | None = None
     sessionmaker: async_sessionmaker[AsyncSession] | None = None
+    audit_engine: AsyncEngine | None = None
+    audit_sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
 _state = _DatabaseState()
@@ -59,14 +61,49 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return _state.sessionmaker
 
 
+def get_audit_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    """Return the session factory for privileged audit writes.
+
+    Audit rows are written out-of-band of the request transaction (preserving
+    the legacy "commit the audit immediately" semantics). Under the FORCE RLS
+    Stage-2 posture the request role (``lemon_app``) holds only SELECT on
+    ``audit_logs``, so audits must use a privileged connection: set
+    ``AUDIT_DATABASE_URL`` to a role that can INSERT audit rows. When it is unset
+    (or equal to ``DATABASE_URL``, e.g. today's superuser request role) the main
+    factory is reused — but each audit still opens its own short-lived session,
+    so the write is always independent of the request transaction.
+
+    Returns:
+        Async sessionmaker bound to the audit (privileged) engine.
+    """
+    settings = get_settings()
+    audit_url = settings.audit_database_url
+    if audit_url is None or audit_url == settings.database_url:
+        return get_sessionmaker()
+
+    if _state.audit_sessionmaker is None:
+        _state.audit_engine = create_async_engine(audit_url, pool_pre_ping=True)
+        _state.audit_sessionmaker = async_sessionmaker(
+            bind=_state.audit_engine,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+
+    return _state.audit_sessionmaker
+
+
 async def dispose_engine() -> None:
-    """Dispose the shared async engine and reset cached factories.
+    """Dispose the shared async engines and reset cached factories.
 
     Returns:
         None.
     """
     if _state.engine is not None:
         await _state.engine.dispose()
+    if _state.audit_engine is not None:
+        await _state.audit_engine.dispose()
 
     _state.engine = None
     _state.sessionmaker = None
+    _state.audit_engine = None
+    _state.audit_sessionmaker = None

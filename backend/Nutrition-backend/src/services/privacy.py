@@ -14,7 +14,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.db.session import get_sessionmaker
+from src.db.session import get_audit_sessionmaker
 from src.db.tx import request_manages_transaction
 from src.learning.consent_gate import IMAGE_LEARNING_REQUIRED_CONSENTS
 from src.learning.factory import build_learning_object_store
@@ -528,23 +528,26 @@ async def revoke_consent(
     return record
 
 
-async def _commit_audit_out_of_band(audit_log: AuditLog) -> AuditLog:
-    """Commit one audit row in its own short-lived transaction.
+async def _write_audit_out_of_band(audit_log: AuditLog) -> AuditLog:
+    """Write one audit row via the privileged audit engine, in its own tx.
 
-    Used on request-managed (RLS) failure paths so a compliance audit survives
-    the request transaction's rollback — preserving the historical
-    "roll back the work, keep the audit" two-phase behavior.
+    Used for request-managed (FORCE RLS) sessions: the request role
+    (``lemon_app``) holds only SELECT on ``audit_logs`` and audits must not ride
+    the request transaction anyway, so they are committed independently through
+    the privileged audit session factory (see ``get_audit_sessionmaker``). This
+    matches the legacy "commit the audit immediately" behavior and keeps the
+    audit even if the request transaction later rolls back.
 
     Args:
         audit_log: A freshly built, transient AuditLog not added to any session.
 
     Returns:
         The audit log after its independent commit (attributes stay loaded
-        because the engine session uses ``expire_on_commit=False``).
+        because the session factory uses ``expire_on_commit=False``).
     """
-    sessionmaker = get_sessionmaker()
-    async with sessionmaker() as out_of_band, out_of_band.begin():
-        out_of_band.add(audit_log)
+    audit_sessionmaker = get_audit_sessionmaker()
+    async with audit_sessionmaker() as audit_session, audit_session.begin():
+        audit_session.add(audit_log)
     return audit_log
 
 
@@ -559,19 +562,18 @@ async def record_audit_event(
     request: Request,
     settings: Settings,
     event_metadata: dict[str, Any] | None = None,
-    on_failure: bool = False,
 ) -> AuditLog:
     """Persist one sanitized audit event.
 
     Transaction-ownership aware (FORCE RLS rollout, see src/db/tx.py):
 
-    * Request-managed sessions (``get_rls_context_session``): the dependency owns
-      the commit. The success path rides that transaction (flush now, commit on
-      dependency exit). The failure path (``on_failure=True``) — the caller is
-      about to raise and the request transaction will roll back — commits the
-      audit out-of-band so it is not lost.
-    * Legacy sessions (``get_async_session``): own the audit transaction with the
-      historical ``add + commit`` (unchanged).
+    * Request-managed sessions (``get_rls_context_session``): the request role
+      cannot INSERT ``audit_logs`` and the audit must not ride the request
+      transaction, so it is written via the privileged audit engine out-of-band
+      (independent commit — matches the legacy immediate commit and survives a
+      request-transaction rollback).
+    * Legacy sessions (``get_async_session``): the request session is privileged
+      (``DATABASE_URL``); persist with the historical ``add + commit``.
 
     Args:
         session: Request-scoped async database session.
@@ -583,8 +585,6 @@ async def record_audit_event(
         request: Current FastAPI request.
         settings: Application settings containing the privacy hash secret.
         event_metadata: Optional sanitized metadata.
-        on_failure: When True on a request-managed session, persist the audit
-            out-of-band so it survives the request transaction's rollback.
 
     Returns:
         Persisted audit log object.
@@ -603,11 +603,7 @@ async def record_audit_event(
         event_metadata=event_metadata,
     )
     if request_manages_transaction(session):
-        if on_failure:
-            return await _commit_audit_out_of_band(audit_log)
-        session.add(audit_log)
-        await session.flush()
-        return audit_log
+        return await _write_audit_out_of_band(audit_log)
     session.add(audit_log)
     await session.commit()
     return audit_log
@@ -624,7 +620,6 @@ async def record_sensitive_audit_event(
     request: Request,
     settings: Settings,
     event_metadata: dict[str, Any] | None = None,
-    on_failure: bool = False,
 ) -> AuditLog:
     """Persist a sanitized audit event for sensitive health data access.
 
@@ -638,8 +633,6 @@ async def record_sensitive_audit_event(
         request: Current FastAPI request.
         settings: Application settings containing the privacy hash secret.
         event_metadata: Optional sanitized metadata.
-        on_failure: When True on a request-managed session, persist the audit
-            out-of-band so it survives the request transaction's rollback.
 
     Returns:
         Persisted audit log object.
@@ -657,7 +650,6 @@ async def record_sensitive_audit_event(
         request=request,
         settings=settings,
         event_metadata=event_metadata,
-        on_failure=on_failure,
     )
 
 

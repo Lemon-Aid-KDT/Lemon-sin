@@ -361,6 +361,16 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
 
     database_url: str = Field(default=DEFAULT_DATABASE_URL)
+    audit_database_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional privileged PostgreSQL asyncpg URL for out-of-band audit "
+            "writes. Under FORCE RLS Stage-2 the request role (lemon_app) holds "
+            "only SELECT on audit_logs, so set this to a role that can INSERT "
+            "audit rows. None reuses DATABASE_URL (correct while the request role "
+            "is still privileged)."
+        ),
+    )
     redis_url: str = Field(default=DEFAULT_REDIS_URL)
     supabase_project_ref: str | None = Field(default=None)
     supabase_url: str | None = Field(default=None)
