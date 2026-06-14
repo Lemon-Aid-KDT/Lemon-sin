@@ -71,6 +71,14 @@ void main() {
           ),
       isTrue,
     );
+    // 요약 카드에 탭 가능 단서가 보여야 사용자가 라벨 글자 보기를 발견한다.
+    expect(
+      find.byKey(const ValueKey<String>('summary-card-ocr-hint')),
+      findsOneWidget,
+    );
+    expect(find.text('텍스트 보기'), findsOneWidget);
+    expect(find.byIcon(Icons.unfold_more_rounded), findsOneWidget);
+
     await tester.tap(
       find.byKey(const ValueKey<String>('supplement-candidate-summary')),
     );
@@ -411,6 +419,43 @@ void main() {
     expect(find.text('음식 종류 분류'), findsOneWidget);
     expect(find.text('후보 정리'), findsOneWidget);
   });
+
+  testWidgets(
+    'surfaces recognized label text when structured ingredients are empty',
+    (WidgetTester tester) async {
+      final _ReviewRepository repository = _ReviewRepository(
+        preview: _recognizedTextPreview(),
+      );
+      final AppController controller = AppController(repository: repository);
+      await controller.analyzeImage(
+        '/tmp/supplement-label.jpg',
+        ocrProvider: 'paddleocr',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: AnalysisResultScreen(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+
+      // Tier B: OCR read the label text but produced no structured rows, so the
+      // recognized section text is shown instead of the dead-end placeholder.
+      expect(
+        find.text('읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.'),
+        findsOneWidget,
+      );
+      expect(find.text('성분·함량'), findsOneWidget);
+      expect(find.text('비타민C 1000mg, 아연 15mg'), findsOneWidget);
+      expect(find.text('성분명과 함량을 확인할 수 없어요.'), findsNothing);
+
+      // "전체 보기" routes to the existing OCR-text dialog.
+      expect(find.text('인식된 텍스트 전체 보기'), findsOneWidget);
+      await tester.ensureVisible(find.text('인식된 텍스트 전체 보기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('인식된 텍스트 전체 보기'));
+      await tester.pumpAndSettle();
+      expect(find.text('OCR 텍스트 전체'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'registers user-corrected ingredient when OCR candidates are empty',
@@ -815,6 +860,11 @@ void main() {
 
     expect(find.text('식단 분석'), findsOneWidget);
     expect(find.text('음식 후보 1개를 찾았어요'), findsOneWidget);
+    // 식단 모드는 요약 카드 onTap 이 없어 탭 가능 단서를 표시하지 않는다.
+    expect(
+      find.byKey(const ValueKey<String>('summary-card-ocr-hint')),
+      findsNothing,
+    );
     // 후보 선택 본편(figma 852:23): 후보 카드 헤더 + 후보명 + 등급 칩(% 비노출).
     expect(find.text('어떤 음식이 맞나요?'), findsOneWidget);
     expect(find.text('비빔밥'), findsWidgets);
@@ -1837,6 +1887,90 @@ SupplementAnalysisPreview _emptyCandidatePreview() {
       missingRequiredSections: <String>[
         'product_name',
         'supplement_facts',
+        'intake_method',
+        'precautions',
+      ],
+      rawImageStored: false,
+      rawOcrTextStored: false,
+    ),
+    lowConfidenceFields: const <String>['ingredient_candidates'],
+    warnings: const <String>['Automatic parsing needs review.'],
+    algorithmVersion: 'test',
+    sourceManifestVersion: null,
+    expiresAt: DateTime.utc(2026, 5, 26),
+  );
+}
+
+/// OCR이 성분 섹션 글자는 읽었지만 구조화 성분 후보가 비어 있는 미리보기.
+SupplementAnalysisPreview _recognizedTextPreview() {
+  return SupplementAnalysisPreview(
+    analysisId: 'analysis-recognized-text',
+    status: 'requires_confirmation',
+    parsedProduct: const SupplementParsedProduct(
+      productName: null,
+      manufacturer: null,
+      servingSize: null,
+      dailyServings: null,
+    ),
+    ingredientCandidates: const <SupplementIngredientCandidate>[],
+    layoutAvailable: true,
+    layoutFallbackReason: null,
+    labelSections: const <SupplementPreviewLabelSection>[
+      SupplementPreviewLabelSection(
+        sectionId: 'section-facts',
+        sectionType: 'supplement_facts',
+        headingText: '성분·함량',
+        textBundle: '비타민C 1000mg, 아연 15mg',
+        confidence: 0.61,
+        requiresReview: true,
+        evidenceRefs: <String>['span-facts'],
+      ),
+    ],
+    intakeMethod: SupplementPreviewIntakeMethod.empty,
+    precautions: const <SupplementPreviewPrecaution>[],
+    functionalClaims: const <SupplementPreviewFunctionalClaim>[],
+    evidenceSpans: const <SupplementPreviewEvidenceSpan>[
+      SupplementPreviewEvidenceSpan(
+        spanId: 'span-facts',
+        sourceType: 'ocr',
+        sectionType: 'supplement_facts',
+        textExcerpt: '비타민C 1000mg, 아연 15mg',
+        pageIndex: null,
+        cellRef: null,
+        confidence: 0.61,
+      ),
+    ],
+    imageQualityReport: null,
+    analysisScope: 'supplement_label',
+    actionRequired: 'review_required',
+    detectedProductRegions: const <SupplementDetectedProductRegion>[],
+    selectedRegionId: null,
+    missingRequiredSections: const <String>[
+      'product_name',
+      'intake_method',
+      'precautions',
+    ],
+    imageRole: 'unknown',
+    multiImageGroupId: null,
+    sourceType: 'uploaded_image',
+    identityConflict: null,
+    pipelineMetadata: const SupplementImagePipelineMetadata(
+      intakeCompleted: true,
+      imageCount: 1,
+      imageRole: 'unknown',
+      visionRoiUsed: false,
+      ocrStatus: 'success',
+      visionStatus: 'skipped',
+      llmStatus: 'warning',
+      ocrProvider: 'clova_ocr',
+      ocrTextPresent: true,
+      ocrConfidenceBucket: 'medium',
+      roiCount: 0,
+      sectionCount: 1,
+      llmParserUsed: true,
+      parserContractVersion: 'test-parser-v3',
+      missingRequiredSections: <String>[
+        'product_name',
         'intake_method',
         'precautions',
       ],

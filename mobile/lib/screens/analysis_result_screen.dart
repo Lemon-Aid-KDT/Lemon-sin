@@ -1093,9 +1093,108 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return '$productName\n$manufacturer';
   }
 
+  /// 성분 관련 라벨 섹션 타입(OCR 인식 텍스트 폴백 판별/표시에 사용).
+  static const Set<String> _ingredientTextSectionTypes = <String>{
+    'supplement_facts',
+    'ingredients',
+    'ingredient_candidates',
+  };
+
+  /// 구조화 성분은 없지만 OCR이 읽어온 성분 관련 라벨 글자가 있는지 본다.
+  ///
+  /// 섹션 검출기가 아직 학습 전이라 구조화 성분이 비더라도, OCR 자체는 글자를
+  /// 읽어낸 경우가 있다. 그때 막다른 안내 대신 읽어온 글자를 보여주기 위한 판별.
+  bool _hasRecognizedIngredientText(SupplementAnalysisPreview preview) {
+    return preview.labelSections.any(
+      (SupplementPreviewLabelSection section) =>
+          _ingredientTextSectionTypes.contains(section.sectionType) &&
+          _nonEmpty(section.textBundle) != null,
+    );
+  }
+
+  /// 읽어온 라벨 글자(성분 섹션)를 framed 카드로 보여주고, 전체 인식 텍스트는
+  /// 기존 `_showOcrTextTable` 다이얼로그로, 입력은 하단 CTA로 잇는다.
+  Widget _recognizedLabelTextBlock(SupplementAnalysisPreview preview) {
+    final List<Widget> cards = <Widget>[];
+    for (final SupplementPreviewLabelSection section in preview.labelSections) {
+      if (cards.length >= 2) break;
+      if (!_ingredientTextSectionTypes.contains(section.sectionType)) continue;
+      final String? text = _nonEmpty(section.textBundle);
+      if (text == null) continue;
+      if (cards.isNotEmpty) {
+        cards.add(const SizedBox(height: AppSpace.sm));
+      }
+      cards.add(_recognizedTextCard(_recognizedSectionHeading(section), text));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text(
+          '읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.',
+          style: AppText.caption,
+        ),
+        const SizedBox(height: AppSpace.sm),
+        ...cards,
+        const SizedBox(height: AppSpace.sm),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _showOcrTextTable(context, preview),
+            icon: const Icon(Icons.unfold_more_rounded, size: 18),
+            label: const Text('인식된 텍스트 전체 보기'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 인식 텍스트 카드 제목. headingText가 있으면 우선, 없으면 성분 하위타입을
+  /// 구분해 두 카드가 같은 '성분표'로 겹치지 않게 한다(공유 _sectionLabel 불변).
+  static String _recognizedSectionHeading(SupplementPreviewLabelSection section) {
+    final String? heading = _nonEmpty(section.headingText);
+    if (heading != null) return heading;
+    return switch (section.sectionType) {
+      'supplement_facts' => '성분표',
+      'ingredients' => '성분 목록',
+      'ingredient_candidates' => '성분 후보',
+      _ => _sectionLabel(section.sectionType),
+    };
+  }
+
+  static Widget _recognizedTextCard(String heading, String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.md),
+      decoration: BoxDecoration(
+        color: AppColor.sunken,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColor.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            heading,
+            style: AppText.caption.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpace.xs),
+          Text(
+            text,
+            style: AppText.body,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _ingredientInfoTable(SupplementAnalysisPreview? preview) {
     final List<_IngredientAmountRowData> rows = _ingredientAmountRows(preview);
     if (rows.isEmpty) {
+      if (preview != null && _hasRecognizedIngredientText(preview)) {
+        return _recognizedLabelTextBlock(preview);
+      }
       return const Text(
         '성분명과 함량을 확인할 수 없어요.',
         style: TextStyle(
@@ -3597,11 +3696,54 @@ class _SummaryCard extends StatelessWidget {
               ],
             ),
           ),
+          // 탭 가능 단서 — 영양제 미리보기(onTap 존재)에서만 노출.
+          // 식단 모드(onTap == null)에서는 행에 추가하지 않는다.
+          if (onTap != null) ...<Widget>[
+            const SizedBox(width: AppSpace.sm),
+            _ocrHint(),
+          ],
         ],
       ),
     );
     if (onTap == null) return card;
     return GestureDetector(onTap: onTap, child: card);
+  }
+
+  /// 카드 우측의 작은 시각 단서.
+  ///
+  /// 카드를 탭하면 인식한 라벨 글자 전체를 볼 수 있다는 점을 시니어도
+  /// 알아보게 안내해요. 영양제 미리보기에서만 쓰이며, 탭 영역은 카드 전체라
+  /// 터치 타깃은 48px 이상으로 유지돼요.
+  Widget _ocrHint() {
+    return Container(
+      key: const ValueKey<String>('summary-card-ocr-hint'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.sm,
+        vertical: AppSpace.xs,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(
+            Icons.unfold_more_rounded,
+            color: AppColor.ink,
+            size: 18,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '텍스트 보기',
+            style: AppText.caption.copyWith(
+              color: AppColor.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _headline() {
