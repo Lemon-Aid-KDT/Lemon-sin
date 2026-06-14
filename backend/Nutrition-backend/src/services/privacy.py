@@ -570,8 +570,12 @@ async def record_audit_event(
     * Request-managed sessions (``get_rls_context_session``): the request role
       cannot INSERT ``audit_logs`` and the audit must not ride the request
       transaction, so it is written via the privileged audit engine out-of-band
-      (independent commit — matches the legacy immediate commit and survives a
-      request-transaction rollback).
+      (committed independently, so it survives a request-transaction rollback).
+      The audit therefore commits *before* the owner-row commit at dependency
+      exit — inverting the legacy order, where the service committed the row
+      first; under Option A the audit is intentionally decoupled from the work it
+      records, so a recorded ``success`` audit does not by itself guarantee the
+      owner row is durable.
     * Legacy sessions (``get_async_session``): the request session is privileged
       (``DATABASE_URL``); persist with the historical ``add + commit``.
 

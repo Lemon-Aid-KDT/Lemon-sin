@@ -16,7 +16,7 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.food_record import (
     FoodRecordCreate,
     FoodRecordListResponse,
@@ -97,7 +97,7 @@ def _not_found_error() -> HTTPException:
 async def list_food_records(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     date_from: date | None = None,
     date_to: date | None = None,
@@ -143,7 +143,7 @@ async def create_food_record(
     http_request: Request,
     request: FoodRecordCreate,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FoodRecordResponse:
     await _require_sensitive_health_consent(
@@ -187,7 +187,7 @@ async def update_food_record(
     http_request: Request,
     request: FoodRecordUpdate,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FoodRecordResponse:
     await _require_sensitive_health_consent(
@@ -239,7 +239,7 @@ async def delete_food_record(
     food_record_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     await _require_sensitive_health_consent(

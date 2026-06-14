@@ -10,7 +10,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import food_records
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.schemas.food_record import FoodRecordCreate, FoodRecordResponse
 from src.security.auth import AuthenticatedUser
@@ -35,7 +35,10 @@ async def _record_noop_audit(*_args: object, **_kwargs: object) -> None:
 
 def _client() -> TestClient:
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # The /me/food-records routes adopted get_rls_context_session (RLS Stage-2
+    # ambient-tx rollout, Step 3); overriding get_async_session alone no longer
+    # reaches them.
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     return TestClient(app)
 
 

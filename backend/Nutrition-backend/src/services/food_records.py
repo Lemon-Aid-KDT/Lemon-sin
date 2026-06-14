@@ -12,6 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.food_record import FoodRecord
 from src.models.schemas.food_record import FoodRecordCreate, FoodRecordResponse, FoodRecordUpdate
 from src.security.auth import AuthenticatedUser
@@ -134,9 +135,10 @@ async def create_food_record_service(
         ),
         nutrient_estimates=request.nutrient_estimates,
     )
-    session.add(record)
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        session.add(record)
+        await session.flush()
+        await session.refresh(record)
     return food_record_to_response(record)
 
 
@@ -195,8 +197,9 @@ async def update_food_record_service(
     record = await _get_current_user_food_record(session, user, settings, food_record_id)
     _apply_food_record_update(record, request)
 
-    await session.commit()
-    await session.refresh(record)
+    async with persist_scope(session):
+        await session.flush()
+        await session.refresh(record)
     return food_record_to_response(record)
 
 
@@ -207,15 +210,15 @@ async def delete_food_record_service(
     food_record_id: UUID,
 ) -> None:
     owner_subject_hash = hash_actor_subject(user, settings)
-    result = await session.execute(
-        delete(FoodRecord).where(
-            FoodRecord.id == food_record_id,
-            FoodRecord.owner_subject_hash == owner_subject_hash,
+    async with persist_scope(session):
+        result = await session.execute(
+            delete(FoodRecord).where(
+                FoodRecord.id == food_record_id,
+                FoodRecord.owner_subject_hash == owner_subject_hash,
+            )
         )
-    )
-    if result.rowcount == 0:
-        raise FoodRecordNotFoundError("Food record not found.")
-    await session.commit()
+        if result.rowcount == 0:
+            raise FoodRecordNotFoundError("Food record not found.")
 
 
 async def _get_current_user_food_record(
