@@ -1,0 +1,134 @@
+[
+  {
+    "topic": "drug_supplement_interaction_boundary",
+    "algorithm_area": "supplement_interaction",
+    "claim_summary": "Warfarin-vitamin K, thyroid medication-calcium/iron, metformin-B12, anticoagulant-omega3/ginkgo/vitamin E, and MAOI-tyramine cases should route to professional-confirmation boundaries.",
+    "recommended_action": "Keep as deterministic boundary routing until MFDS/KDCA/official drug-label review creates reviewed rule cards.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "docs/Nutrition-docs/07-core-algorithm.md; docs/Nutrition-docs/dev-guides/15-goal-based-analysis.md; core-algorithm intake plan",
+    "priority": "P0",
+    "implementation_target": "backend/ai_agent_chat/src/lemon_ai_agent/knowledge.py"
+  },
+  {
+    "topic": "smoker_beta_carotene_vitamin_a_boundary",
+    "algorithm_area": "supplement_interaction",
+    "claim_summary": "Smoker context with beta-carotene or high-vitamin-A supplement requests should not receive allow/ban guidance from the LLM.",
+    "recommended_action": "Route to boundary wording and promote only after NIH ODS, KDCA, MFDS, or reviewed clinical-source confirmation.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "docs/Nutrition-docs/07-core-algorithm.md lines around smoker beta-carotene caution; core-algorithm intake plan",
+    "priority": "P0",
+    "implementation_target": "backend/ai_agent_chat/src/lemon_ai_agent/knowledge.py"
+  },
+  {
+    "topic": "alcohol_vitamin_a_acetaminophen_boundary",
+    "algorithm_area": "supplement_interaction",
+    "claim_summary": "Frequent alcohol use with vitamin A single-ingredient products or acetaminophen should be treated as professional-confirmation boundary content.",
+    "recommended_action": "Keep as boundary routing; verify official Korean and drug-label sources before adding user-facing cautions.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "core-algorithm intake plan",
+    "priority": "P0",
+    "implementation_target": "backend/ai_agent_chat/src/lemon_ai_agent/knowledge.py"
+  },
+  {
+    "topic": "weight_prediction_medical_limiter_boundary",
+    "algorithm_area": "weight_prediction",
+    "claim_summary": "Thyroid disease, CKD, liver disease, systemic steroid use, and diabetes medication classes can materially change body-weight trajectories.",
+    "recommended_action": "Disable Hall-lite automatic long-term prediction or attach low-confidence warnings until reviewed clinical rules exist.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "docs/Nutrition-docs/dev-guides/14-hall-dynamic-model.md; core-algorithm intake plan",
+    "priority": "P0",
+    "implementation_target": "backend/Nutrition-backend/src/prediction/selector.py"
+  },
+  {
+    "topic": "bmi_ksso_class3_gap",
+    "algorithm_area": "bmi",
+    "claim_summary": "Korean obesity class 3 handling at BMI 35+ needs explicit review against local obesity guidance.",
+    "recommended_action": "Add as source-backed backlog; do not change BMI categories until KSSO source is reviewed.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "docs/Nutrition-docs/18-enhancement-brainstorm-notes.md; core-algorithm intake plan",
+    "priority": "P1",
+    "implementation_target": "backend/Nutrition-backend/src/algorithms/bmi.py"
+  },
+  {
+    "topic": "whtr_supporting_metric_gap",
+    "algorithm_area": "bmi",
+    "claim_summary": "Waist-to-height ratio may be useful as a supporting risk indicator but is not implemented.",
+    "recommended_action": "Keep as backlog and require source review plus request-schema impact review before implementation.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "core-algorithm intake plan",
+    "priority": "P1",
+    "implementation_target": "backend/Nutrition-backend/src/algorithms/bmi.py"
+  },
+  {
+    "topic": "tanaka_hrmax_default_review",
+    "algorithm_area": "activity",
+    "claim_summary": "Tanaka 2001 HRmax is already an option candidate while guide_220_age remains the compatibility default.",
+    "recommended_action": "Preserve default behavior; review whether Tanaka should become user-selectable or source-noted only.",
+    "source_type": "paper_candidate",
+    "review_status": "draft",
+    "source_doc": "docs/Nutrition-docs/07-core-algorithm.md; docs/Nutrition-docs/13-algorithm-literature-evidence.md",
+    "priority": "P1",
+    "implementation_target": "backend/Nutrition-backend/src/algorithms/activity.py"
+  },
+  {
+    "topic": "kdris_pregnancy_elderly_chronic_routing",
+    "algorithm_area": "nutrition_reference",
+    "claim_summary": "Pregnancy, elderly, and chronic-disease nutrition routing requires reviewed KDRIs/KDCA source cards before user-facing personalization.",
+    "recommended_action": "Keep current KDRIs lookup stable and add reviewed routing only after source metadata is complete.",
+    "source_type": "official_source_candidate",
+    "review_status": "draft",
+    "source_doc": "data/nutrition_reference/kdris; core-algorithm intake plan",
+    "priority": "P1",
+    "implementation_target": "backend/Nutrition-backend/src/nutrition/kdris.py"
+  },
+  {
+    "topic": "hall_dynamic_model_enhancement",
+    "algorithm_area": "weight_prediction",
+    "claim_summary": "Hall dynamic modeling is a long-term enhancement and current Hall-lite is a simplified conservative simulation, not a full model reproduction.",
+    "recommended_action": "Keep feature-gated; add validation tasks before stronger accuracy claims.",
+    "source_type": "paper_candidate",
+    "review_status": "draft",
+    "source_doc": "docs/Nutrition-docs/dev-guides/14-hall-dynamic-model.md; docs/Nutrition-docs/13-algorithm-literature-evidence.md",
+    "priority": "P2",
+    "implementation_target": "backend/Nutrition-backend/src/prediction/hall.py"
+  },
+  {
+    "topic": "mets_cadence_activity_enhancement",
+    "algorithm_area": "activity",
+    "claim_summary": "METs and cadence could improve activity scoring beyond steps and heart-rate proxy inputs.",
+    "recommended_action": "Track as future deterministic algorithm backlog; do not change current API contract.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "core-algorithm intake plan",
+    "priority": "P2",
+    "implementation_target": "backend/Nutrition-backend/src/algorithms/activity.py"
+  },
+  {
+    "topic": "smoking_alcohol_activity_modifier",
+    "algorithm_area": "activity",
+    "claim_summary": "Smoking and alcohol modifiers for activity scoring are not implemented and need clinical rationale before use.",
+    "recommended_action": "Keep as draft backlog; avoid scoring penalties or rewards without source review.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "core-algorithm intake plan",
+    "priority": "P2",
+    "implementation_target": "backend/Nutrition-backend/src/algorithms/activity.py"
+  },
+  {
+    "topic": "long_term_personalization_correction",
+    "algorithm_area": "personalization",
+    "claim_summary": "Long-term personalization correction requires confirmed records and explicit validation before changing deterministic recommendations.",
+    "recommended_action": "Keep inside learning backlog; do not let draft research directly affect user-facing advice.",
+    "source_type": "internal_external_review_intake",
+    "review_status": "draft",
+    "source_doc": "core-algorithm intake plan",
+    "priority": "P2",
+    "implementation_target": "backend/Nutrition-backend/src/services/agent_memory.py"
+  }
+]

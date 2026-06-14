@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lemon Aid Agent 구조 — 발표용</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f172a;
+  --bg2: #1e293b;
+  --bg3: #334155;
+  --text: #f1f5f9;
+  --text2: #94a3b8;
+  --blue: #3b82f6;
+  --purple: #9333ea;
+  --cyan: #06b6d4;
+  --yellow: #f59e0b;
+  --red: #ef4444;
+  --green: #10b981;
+  --accent: #60a5fa;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  overflow: hidden;
+}
+
+/* ── 슬라이드 컨테이너 ── */
+.deck {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.slides-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 48px 64px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(60px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.slide.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+.slide.prev {
+  opacity: 0;
+  transform: translateX(-60px);
+}
+
+.slide-tag {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 12px;
+  align-self: flex-start;
+}
+
+.slide-title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1.2;
+  align-self: flex-start;
+  margin-bottom: 36px;
+}
+
+/* ── 하단 컨트롤 바 ── */
+.controls {
+  background: var(--bg2);
+  border-top: 1px solid var(--bg3);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.btn {
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: #475569; }
+.btn.primary { background: var(--blue); border-color: var(--blue); }
+.btn.primary:hover { background: #2563eb; }
+.btn.danger { background: var(--red); border-color: var(--red); }
+
+.progress-wrap {
+  flex: 1;
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.slide-counter {
+  font-size: 0.8rem;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.timer-display {
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--green);
+  white-space: nowrap;
+  min-width: 48px;
+  text-align: center;
+}
+.timer-display.warn { color: var(--yellow); }
+.timer-display.danger { color: var(--red); }
+
+/* ── 대본 패널 ── */
+.script-panel {
+  position: fixed;
+  bottom: 56px;
+  right: 0;
+  width: 360px;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: rgba(15,23,42,0.97);
+  border: 1px solid var(--bg3);
+  border-right: none;
+  border-radius: 10px 0 0 0;
+  padding: 16px 18px;
+  font-size: 0.82rem;
+  line-height: 1.75;
+  color: #cbd5e1;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 50;
+}
+.script-panel.open { transform: translateX(0); }
+.script-panel h3 {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.script-panel p { margin-bottom: 8px; }
+.script-panel strong { color: #fbbf24; }
+.script-time {
+  font-size: 0.7rem;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+
+/* ═══════════════════════════════════
+   SLIDE 1 — 왜 이 구조인가
+═══════════════════════════════════ */
+.s1-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  max-width: 900px;
+}
+.problem-box {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 12px;
+  padding: 24px 28px;
+}
+.solution-box {
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.4);
+  border-radius: 12px;
+  padding: 24px 28px;
+}
+.split-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.problem-box .split-label { color: var(--red); }
+.solution-box .split-label { color: var(--blue); }
+.split-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #e2e8f0;
+}
+.split-icon { flex-shrink: 0; font-size: 1rem; margin-top: 1px; }
+
+/* ═══════════════════════════════════
+   SLIDE 2 — 4개 Agent 역할
+═══════════════════════════════════ */
+.s2-orch {
+  background: rgba(59,130,246,0.15);
+  border: 2px solid var(--blue);
+  border-radius: 10px;
+  padding: 14px 28px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #93c5fd;
+  margin-bottom: 0;
+  align-self: stretch;
+  text-align: center;
+}
+.s2-orch small { display: block; font-weight: 400; font-size: 0.78rem; color: #94a3b8; margin-top: 3px; }
+
+.s2-line-v {
+  width: 2px;
+  height: 20px;
+  background: #475569;
+  margin: 0 auto;
+}
+.s2-line-h {
+  width: 80%;
+  height: 2px;
+  background: #475569;
+  position: relative;
+}
+
+.s2-agents {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  width: 100%;
+  max-width: 960px;
+  position: relative;
+}
+.s2-agents::before {
+  content: '';
+  position: absolute;
+  top: -22px;
+  left: 12.5%;
+  width: 75%;
+  height: 2px;
+  background: #475569;
+}
+
+.agent-pill {
+  border-radius: 10px;
+  padding: 16px 14px;
+  position: relative;
+}
+.agent-pill::before {
+  content: '';
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 22px;
+  background: #475569;
+}
+.agent-pill-icon { font-size: 1.6rem; margin-bottom: 8px; }
+.agent-pill-name { font-weight: 700; font-size: 0.88rem; margin-bottom: 6px; }
+.agent-pill-role { font-size: 0.75rem; line-height: 1.5; color: #cbd5e1; }
+
+.ap-ctx  { background: rgba(147,51,234,0.15); border: 1.5px solid #9333ea; }
+.ap-ctx .agent-pill-name  { color: #c084fc; }
+.ap-plan { background: rgba(6,182,212,0.12); border: 1.5px solid #06b6d4; }
+.ap-plan .agent-pill-name { color: #67e8f9; }
+.ap-safe { background: rgba(239,68,68,0.12); border: 1.5px solid #ef4444; }
+.ap-safe .agent-pill-name { color: #fca5a5; }
+.ap-rend { background: rgba(245,158,11,0.12); border: 1.5px solid #f59e0b; }
+.ap-rend .agent-pill-name { color: #fcd34d; }
+
+/* ═══════════════════════════════════
+   SLIDE 3 — 요청 흐름
+═══════════════════════════════════ */
+.flow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 800px;
+}
+.flow-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0;
+}
+.flow-step {
+  flex: 1;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+.flow-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: white;
+}
+.flow-arrow-v {
+  width: 2px;
+  height: 14px;
+  background: #475569;
+  margin-left: 13px;
+}
+.flow-step-title { font-weight: 700; margin-bottom: 2px; }
+.flow-step-desc { font-size: 0.75rem; color: #94a3b8; }
+
+.fs-user  { background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.35); }
+.fs-orch  { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.45); }
+.fs-ctx   { background: rgba(147,51,234,0.12); border: 1px solid rgba(147,51,234,0.4); }
+.fs-plan  { background: rgba(6,182,212,0.1);  border: 1px solid rgba(6,182,212,0.35); }
+.fs-safe  { background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.35); }
+.fs-rend  { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); }
+.fs-gate  { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.4); }
+
+/* ═══════════════════════════════════
+   SLIDE 4 — 핵심 원칙
+═══════════════════════════════════ */
+.principles {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 800px;
+}
+.principle-card {
+  border-radius: 14px;
+  padding: 28px 36px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.pc-yellow { background: rgba(245,158,11,0.12); border: 2px solid rgba(245,158,11,0.5); }
+.pc-green  { background: rgba(16,185,129,0.12); border: 2px solid rgba(16,185,129,0.5); }
+.principle-icon { font-size: 2.2rem; flex-shrink: 0; }
+.principle-main {
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.pc-yellow .principle-main { color: #fcd34d; }
+.pc-green  .principle-main { color: #6ee7b7; }
+.principle-sub { font-size: 0.82rem; color: #94a3b8; line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<div class="deck">
+  <div class="slides-viewport">
+
+    <!-- ══════════════════════════
+         SLIDE 1 — 왜 이 구조인가
+    ══════════════════════════ -->
+    <div class="slide active" id="slide-1">
+      <div class="slide-tag">Slide 1 · 설계 배경</div>
+      <div class="slide-title">왜 Multi-Agent<br>구조인가?</div>
+      <div class="s1-split">
+        <div class="problem-box">
+          <div class="split-label">❌ 하나의 AI가 다 하면</div>
+          <div class="split-item"><span class="split-icon">🔴</span>의료 경계 판단과 답변 생성이 뒤섞여 오류 원인을 추적하기 어렵다</div>
+          <div class="split-item"><span class="split-icon">🔴</span>안전 정책을 부분만 바꾸려 해도 전체 로직을 수정해야 한다</div>
+          <div class="split-item"><span class="split-icon">🔴</span>메모리, 검수 근거, LLM 생성이 한 곳에 뭉쳐 유지보수가 힘들다</div>
+        </div>
+        <div class="solution-box">
+          <div class="split-label">✅ 역할을 분리하면</div>
+          <div class="split-item"><span class="split-icon">🟢</span>각 Agent가 한 가지 책임만 가져 오류가 생긴 지점을 바로 특정할 수 있다</div>
+          <div class="split-item"><span class="split-icon">🟢</span>의료 안전 정책은 Safety Agent만 수정하면 전체에 반영된다</div>
+          <div class="split-item"><span class="split-icon">🟢</span>LLM은 표현만, 판단은 Agent — 역할이 명확하다</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════
+         SLIDE 2 — Agent 역할
+    ══════════════════════════ -->
+    <div class="slide" id="slide-2">
+      <div class="slide-tag">Slide 2 · Agent 구성</div>
+      <div class="slide-title">4개 Agent 역할</div>
+
+      <div style="width:100%;max-width:960px;display:flex;flex-direction:column;align-items:center;gap:0;">
+        <div class="s2-orch">
+          🎯 Orchestrator Agent
+          <small>요청 분류 → 하위 Agent 호출 → 결과 조합 → 최종 응답 반환</small>
+        </div>
+        <div class="s2-line-v"></div>
+
+        <div class="s2-agents">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            <div class="s2-line-v" style="height:22px;"></div>
+            <div class="agent-pill ap-ctx">
+              <div class="agent-pill-icon">🧠</div>
+              <div class="agent-pill-name">Context &amp; Memory Agent</div>
+              <div class="agent-pill-role">사용자 메모리 4종 + 앱 데이터 + 검수 근거를 수집해 컨텍스트 조립</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            <div class="s2-line-v" style="height:22px;"></div>
+            <div class="agent-pill ap-plan">
+              <div class="agent-pill-icon">📋</div>
+              <div class="agent-pill-name">Planning Agent</div>
+              <div class="agent-pill-role">컨텍스트 기반으로 AnswerPlan / AnalysisPlan 구조 설계</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            <div class="s2-line-v" style="height:22px;"></div>
+            <div class="agent-pill ap-safe">
+              <div class="agent-pill-icon">⚠️</div>
+              <div class="agent-pill-name">Safety &amp; Boundary Agent</div>
+              <div class="agent-pill-role">의료 경계 판단 — 진단·처방 결정은 여기서 차단, unknown은 backlog 기록</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            <div class="s2-line-v" style="height:22px;"></div>
+            <div class="agent-pill ap-rend">
+              <div class="agent-pill-icon">🖨️</div>
+              <div class="agent-pill-name">Rendering Agent</div>
+              <div class="agent-pill-role">Plan → LLM으로 자연스러운 한국어 변환 + sources[] 첨부</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════
+         SLIDE 3 — 흐름
+    ══════════════════════════ -->
+    <div class="slide" id="slide-3">
+      <div class="slide-tag">Slide 3 · 요청 흐름</div>
+      <div class="slide-title">요청이 흘러가는 방식</div>
+
+      <div class="flow-steps">
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#3b82f6;">1</div>
+          <div class="flow-step fs-user">
+            <div class="flow-step-title">📱 사용자 요청</div>
+            <div class="flow-step-desc">채팅 질문 / 분석 요청 / 체크리스트 요청 입력</div>
+          </div>
+        </div>
+        <div class="flow-arrow-v"></div>
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#3b82f6;">2</div>
+          <div class="flow-step fs-orch">
+            <div class="flow-step-title">🎯 Orchestrator 분류</div>
+            <div class="flow-step-desc">채팅 / 분석 / 의료 boundary 중 어떤 유형인지 판단하고 하위 Agent 호출</div>
+          </div>
+        </div>
+        <div class="flow-arrow-v"></div>
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#9333ea;">3</div>
+          <div class="flow-step fs-ctx">
+            <div class="flow-step-title">🧠 Context Agent — 컨텍스트 수집</div>
+            <div class="flow-step-desc">관련 메모리(profile / behavior / conversation / safety) + 앱 데이터 + 검수 근거 선별</div>
+          </div>
+        </div>
+        <div class="flow-arrow-v"></div>
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#06b6d4;">4</div>
+          <div class="flow-step fs-plan">
+            <div class="flow-step-title">📋 Planning Agent — 답변 구조 설계</div>
+            <div class="flow-step-desc">AnswerPlan 또는 AnalysisPlan 객체 생성 — LLM이 아닌 Agent가 구조 결정</div>
+          </div>
+        </div>
+        <div class="flow-arrow-v"></div>
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#ef4444;">5</div>
+          <div class="flow-step fs-safe">
+            <div class="flow-step-title">⚠️ Safety Agent — 의료 경계 확인</div>
+            <div class="flow-step-desc">진단·처방·복용량 결정 여부 검사 → normal / boundary / unknown 판정 후 Rendering으로 전달</div>
+          </div>
+        </div>
+        <div class="flow-arrow-v"></div>
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#f59e0b;">6</div>
+          <div class="flow-step fs-rend">
+            <div class="flow-step-title">🖨️ Rendering Agent — 최종 답변 생성</div>
+            <div class="flow-step-desc">LLM이 Plan을 자연스러운 한국어로 변환 + sources[] 첨부 → Orchestrator에게 반환</div>
+          </div>
+        </div>
+        <div class="flow-arrow-v"></div>
+
+        <div class="flow-row">
+          <div class="flow-num" style="background:#10b981;">7</div>
+          <div class="flow-step fs-gate">
+            <div class="flow-step-title">🔒 사용자 확인 후 앱 반영</div>
+            <div class="flow-step-desc">체크리스트 저장·알림 등록·기록 수정 — 사용자가 승인한 것만 실행, Memory 갱신</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══════════════════════════
+         SLIDE 4 — 핵심 원칙
+    ══════════════════════════ -->
+    <div class="slide" id="slide-4">
+      <div class="slide-tag">Slide 4 · 핵심 원칙</div>
+      <div class="slide-title">두 가지 설계 원칙</div>
+
+      <div class="principles">
+        <div class="principle-card pc-yellow">
+          <div class="principle-icon">🤖</div>
+          <div>
+            <div class="principle-main">LLM은 판단자가 아니라 표현 보조자입니다.</div>
+            <div class="principle-sub">
+              의료 경계 판단, 답변 구조, 우선순위 결정은 Agent가 합니다.<br>
+              LLM은 그 결과를 자연스러운 한국어로 바꾸는 역할만 담당합니다.
+            </div>
+          </div>
+        </div>
+        <div class="principle-card pc-green">
+          <div class="principle-icon">🔒</div>
+          <div>
+            <div class="principle-main">사용자가 확인하지 않은 행동은 절대 자동 실행하지 않습니다.</div>
+            <div class="principle-sub">
+              체크리스트 추가, 알림 등록, 공식 기록 저장 — 모든 앱 데이터 변경은<br>
+              반드시 사용자 승인 후에만 이루어집니다.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /slides-viewport -->
+
+  <!-- ── 컨트롤 바 ── -->
+  <div class="controls">
+    <button class="btn" id="btn-prev" onclick="changeSlide(-1)">◀ 이전</button>
+    <button class="btn primary" id="btn-next" onclick="changeSlide(1)">다음 ▶</button>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress-bar" style="width:25%;"></div>
+    </div>
+    <span class="slide-counter" id="slide-counter">1 / 4</span>
+    <div class="timer-display" id="timer">1:30</div>
+    <button class="btn primary" id="btn-timer" onclick="toggleTimer()">▶ 타이머</button>
+    <button class="btn" onclick="resetTimer()">↺ 초기화</button>
+    <button class="btn" id="btn-script" onclick="toggleScript()">📄 대본 보기</button>
+  </div>
+</div>
+
+<!-- ── 대본 패널 ── -->
+<div class="script-panel" id="script-panel">
+  <h3>📄 발표 대본</h3>
+
+  <div id="script-s1">
+    <div class="script-time">⏱ Slide 1 — 약 20초</div>
+    <p>
+      저희 Lemon Aid Agent는 <strong>개인화 건강관리 오케스트레이터</strong>입니다.
+    </p>
+    <p>
+      처음에는 하나의 AI가 모든 걸 처리하는 방식을 생각했는데요,<br>
+      문제는 의료 경계 판단, 메모리 관리, 답변 생성이 섞이면<br>
+      어디서 오류가 났는지 추적하기 어렵고,<br>
+      의료 안전 정책을 일관되게 유지하기 힘들다는 점이었습니다.
+    </p>
+    <p>
+      그래서 <strong>각 책임을 전문 Agent로 분리</strong>했습니다.
+    </p>
+  </div>
+
+  <div id="script-s2" style="display:none;">
+    <div class="script-time">⏱ Slide 2 — 약 30초</div>
+    <p>
+      구조는 <strong>Orchestrator 아래 4개 하위 Agent</strong>로 이루어져 있습니다.
+    </p>
+    <p>
+      첫 번째, <strong>Context &amp; Memory Agent</strong>는<br>
+      사용자의 개인화 메모리와 앱 데이터를 수집합니다.
+    </p>
+    <p>
+      두 번째, <strong>Planning Agent</strong>는<br>
+      수집된 정보를 바탕으로 AnswerPlan을 만듭니다.
+    </p>
+    <p>
+      세 번째, <strong>Safety &amp; Boundary Agent</strong>는<br>
+      의료적으로 위험한 결정을 여기서 차단합니다.
+    </p>
+    <p>
+      네 번째, <strong>Rendering Agent</strong>는<br>
+      Plan을 자연스러운 한국어 답변으로 변환합니다.
+    </p>
+  </div>
+
+  <div id="script-s3" style="display:none;">
+    <div class="script-time">⏱ Slide 3 — 약 30초</div>
+    <p>
+      요청이 들어오면 <strong>Orchestrator가 분류</strong>합니다.<br>
+      채팅인지, 분석인지, 의료 boundary인지 판단한 뒤
+    </p>
+    <p>
+      <strong>Context Agent</strong>가 관련 메모리와 검수 근거를 모아오고,<br>
+      <strong>Planning Agent</strong>가 답변 구조를 설계합니다.
+    </p>
+    <p>
+      <strong>Safety Agent</strong>가 의료 경계를 확인한 후,<br>
+      <strong>Rendering Agent</strong>가 LLM을 사용해 최종 답변을 생성합니다.
+    </p>
+    <p>
+      단, <strong>모든 앱 데이터 변경은 사용자 확인 후에만 실행</strong>됩니다.
+    </p>
+  </div>
+
+  <div id="script-s4" style="display:none;">
+    <div class="script-time">⏱ Slide 4 — 약 10초</div>
+    <p>
+      핵심은 두 가지입니다.
+    </p>
+    <p>
+      <strong>LLM은 판단자가 아니라 표현 보조자</strong>이고,
+    </p>
+    <p>
+      <strong>사용자가 확인하지 않은 행동은 절대 자동 실행하지 않습니다.</strong>
+    </p>
+  </div>
+</div>
+
+<script>
+const TOTAL = 4;
+let current = 1;
+let timerInterval = null;
+let timerSeconds = 90;
+let timerRunning = false;
+
+function changeSlide(dir) {
+  const slides = document.querySelectorAll('.slide');
+  slides[current - 1].classList.remove('active');
+  slides[current - 1].classList.add('prev');
+
+  current = Math.max(1, Math.min(TOTAL, current + dir));
+
+  slides.forEach((s, i) => {
+    s.classList.remove('active', 'prev');
+    if (i + 1 < current) s.classList.add('prev');
+  });
+  slides[current - 1].classList.add('active');
+
+  document.getElementById('slide-counter').textContent = `${current} / ${TOTAL}`;
+  document.getElementById('progress-bar').style.width = `${(current / TOTAL) * 100}%`;
+  document.getElementById('btn-prev').disabled = current === 1;
+  document.getElementById('btn-next').disabled = current === TOTAL;
+
+  // 대본 전환
+  for (let i = 1; i <= TOTAL; i++) {
+    const el = document.getElementById(`script-s${i}`);
+    if (el) el.style.display = i === current ? 'block' : 'none';
+  }
+}
+
+function toggleTimer() {
+  if (timerRunning) {
+    clearInterval(timerInterval);
+    timerRunning = false;
+    document.getElementById('btn-timer').textContent = '▶ 타이머';
+  } else {
+    timerRunning = true;
+    document.getElementById('btn-timer').textContent = '⏸ 일시정지';
+    timerInterval = setInterval(() => {
+      timerSeconds--;
+      updateTimerDisplay();
+      if (timerSeconds <= 0) {
+        clearInterval(timerInterval);
+        timerRunning = false;
+        document.getElementById('btn-timer').textContent = '▶ 타이머';
+      }
+    }, 1000);
+  }
+}
+
+function resetTimer() {
+  clearInterval(timerInterval);
+  timerRunning = false;
+  timerSeconds = 90;
+  updateTimerDisplay();
+  document.getElementById('btn-timer').textContent = '▶ 타이머';
+}
+
+function updateTimerDisplay() {
+  const m = Math.floor(timerSeconds / 60);
+  const s = timerSeconds % 60;
+  const el = document.getElementById('timer');
+  el.textContent = `${m}:${String(s).padStart(2, '0')}`;
+  el.className = 'timer-display';
+  if (timerSeconds <= 30) el.classList.add('warn');
+  if (timerSeconds <= 10) el.classList.add('danger');
+}
+
+function toggleScript() {
+  const panel = document.getElementById('script-panel');
+  const btn = document.getElementById('btn-script');
+  panel.classList.toggle('open');
+  btn.textContent = panel.classList.contains('open') ? '📄 대본 숨기기' : '📄 대본 보기';
+}
+
+// 키보드 네비게이션
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changeSlide(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   changeSlide(-1);
+  if (e.key === ' ') { e.preventDefault(); toggleTimer(); }
+});
+
+// 초기 상태
+changeSlide(0);
+document.getElementById('btn-prev').disabled = true;
+</script>
+</body>
+</html>

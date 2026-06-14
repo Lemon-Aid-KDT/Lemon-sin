@@ -1,0 +1,47 @@
+# Keep cross-platform diffs stable by normalizing source and docs to LF.
+* text=auto
+.gitattributes text eol=lf
+
+# Source, config, docs, and generated web artifacts.
+*.css text eol=lf
+*.dart text eol=lf
+*.gradle text eol=lf
+*.html text eol=lf
+*.java text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.kt text eol=lf
+*.lock text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.sql text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Shell scripts must stay LF for Linux, Docker, and WSL execution.
+*.sh text eol=lf
+
+# Windows command scripts are safest with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets should never be line-ending normalized.
+*.7z binary
+*.db binary
+*.gif binary
+*.gz binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.otf binary
+*.pdf binary
+*.png binary
+*.sqlite binary
+*.tar binary
+*.ttf binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary

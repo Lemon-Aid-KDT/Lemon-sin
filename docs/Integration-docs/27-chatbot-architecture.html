@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lemon Aid 챗봇 — 개인화 × RAG 근거 검색</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+    background: #f0f4f8;
+    color: #1e293b;
+    padding: 32px 24px 60px;
+    min-width: 900px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 22px;
+  }
+
+  /* ── 26 연결 브리지 ── */
+  .bridge {
+    max-width: 960px;
+    margin: 0 auto 34px;
+    background: #eef2ff;
+    border: 1px solid #6366f1;
+    border-left: 5px solid #4f46e5;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 0.82rem;
+    color: #3730a3;
+    line-height: 1.6;
+  }
+  .bridge strong { color: #312e81; }
+
+  /* ── 공통 박스 ── */
+  .box {
+    border-radius: 10px;
+    padding: 12px 16px;
+    position: relative;
+    cursor: default;
+    transition: box-shadow 0.2s, transform 0.15s;
+  }
+  .box:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.15); transform: translateY(-2px); }
+  .box-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 6px; }
+  .box-body { font-size: 0.78rem; line-height: 1.6; color: #334155; }
+
+  /* ── 색상 테마 (26과 동일) ── */
+  .c-user    { background:#dbeafe; border:2px solid #3b82f6; }
+  .c-agent   { background:#eff6ff; border:2px solid #2563eb; }
+  .c-ctx     { background:#e0f2fe; border:2px solid #0284c7; }
+  .c-memory  { background:#f3e8ff; border:2px solid #9333ea; }
+  .c-evidence{ background:#d1fae5; border:2px solid #059669; }
+  .c-app     { background:#fef3c7; border:2px solid #d97706; }
+  .c-plan    { background:#e0f2fe; border:2px solid #0369a1; }
+  .c-llm     { background:#fef9c3; border:2px solid #ca8a04; }
+  .c-render  { background:#ede9fe; border:2px solid #7c3aed; }
+  .c-gate    { background:#fee2e2; border:2px solid #dc2626; }
+  .c-persist { background:#dcfce7; border:2px solid #16a34a; }
+  .c-determ  { background:#f1f5f9; border:2px solid #94a3b8; }
+
+  /* ── 최상위 레이아웃 ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* ── 화살표 ── */
+  .arrow {
+    width: 2px;
+    height: 28px;
+    background: #94a3b8;
+    position: relative;
+    margin: 0 auto;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 8px solid #94a3b8;
+  }
+  .arrow-label {
+    position: absolute;
+    left: 10px;
+    top: 4px;
+    font-size: 0.7rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+
+  /* ── 사용자 박스 ── */
+  .user-box { width: 480px; text-align: center; }
+  .user-box .box-title { color: #1d4ed8; font-size: 1rem; }
+
+  /* ── 챗봇 외곽 래퍼 ── */
+  .agent-wrapper {
+    width: 100%;
+    border: 2.5px dashed #2563eb;
+    border-radius: 14px;
+    padding: 22px 18px;
+    background: #f8faff;
+    position: relative;
+  }
+  .agent-wrapper-label {
+    position: absolute;
+    top: -13px;
+    left: 20px;
+    background: #2563eb;
+    color: white;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 2px 12px;
+    border-radius: 20px;
+    letter-spacing: 0.02em;
+  }
+  .step-num {
+    display: inline-block;
+    width: 18px; height: 18px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 50%;
+    background: #1e293b;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-right: 6px;
+  }
+
+  /* ── 내부 화살표 (짧음) ── */
+  .inner-arrow {
+    width: 2px;
+    height: 20px;
+    background: #94a3b8;
+    margin: 0 auto;
+    position: relative;
+  }
+  .inner-arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #94a3b8;
+  }
+
+  /* ── 답변 생성 2-컬럼 ── */
+  .gen-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* ── 응답 박스 ── */
+  .resp-box { width: 100%; text-align: center; }
+  .resp-box .box-title { color: #1e40af; font-size: 0.95rem; }
+
+  /* ── 툴팁 ── */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f1f5f9;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    padding: 8px 12px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    width: 300px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    pointer-events: none;
+  }
+  [data-tip]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #1e293b;
+    z-index: 101;
+  }
+
+  /* ── 섹션 공통 ── */
+  .section { max-width: 960px; margin: 44px auto 0; }
+  .section h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 6px;
+    padding-left: 4px;
+  }
+  .section .star { color: #9333ea; }
+  .section-desc {
+    font-size: 0.82rem;
+    color: #64748b;
+    margin-bottom: 16px;
+    padding-left: 4px;
+    line-height: 1.6;
+  }
+
+  /* ── Snapshot 카드 그리드 ── */
+  .snap-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+  .snap-card {
+    background: #faf5ff;
+    border: 1px solid #c084fc;
+    border-radius: 10px;
+    padding: 13px 15px;
+    font-size: 0.78rem;
+    line-height: 1.6;
+  }
+  .snap-card h3 { font-size: 0.84rem; color: #6b21a8; margin-bottom: 5px; }
+  .snap-note {
+    margin-top: 12px;
+    font-size: 0.78rem;
+    color: #6b21a8;
+    background: #faf5ff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    border-left: 3px solid #9333ea;
+  }
+  .snap-note strong { color: #7e22ce; }
+
+  /* ── ContextResolver 3-상태 ── */
+  .resolver-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+  .resolver-card {
+    border-radius: 10px;
+    padding: 13px 15px;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    background: #e0f2fe;
+    border: 1px solid #0284c7;
+  }
+  .resolver-card h3 { font-size: 0.84rem; color: #075985; margin-bottom: 5px; }
+  .resolver-card .label { font-size: 0.72rem; font-weight: 700; color: #0369a1; }
+  .resolver-note {
+    margin-top: 12px;
+    font-size: 0.78rem;
+    color: #075985;
+    background: #f0f9ff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    border-left: 3px solid #0284c7;
+  }
+  .resolver-note strong { color: #0369a1; }
+
+  /* ── RAG 검색 흐름 (가로) ── */
+  .retr-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex-wrap: wrap;
+    background: white;
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .retr-step {
+    background: #d1fae5;
+    border: 1px solid #059669;
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #065f46;
+    display: flex;
+    align-items: center;
+    text-align: center;
+  }
+  .retr-arrow { font-size: 1.05rem; color: #94a3b8; padding: 0 7px; display: flex; align-items: center; }
+
+  /* ── RAG '어떤 정보' 카드 ── */
+  .rag-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .rag-card {
+    background: #ecfdf5;
+    border: 1px solid #10b981;
+    border-radius: 9px;
+    padding: 11px 14px;
+    font-size: 0.77rem;
+    line-height: 1.55;
+  }
+  .rag-card h3 { font-size: 0.82rem; color: #065f46; margin-bottom: 4px; }
+  .rag-note {
+    margin-top: 14px;
+    font-size: 0.78rem;
+    color: #065f46;
+    background: #ecfdf5;
+    border-radius: 8px;
+    padding: 10px 14px;
+    border-left: 3px solid #059669;
+  }
+  .rag-note strong { color: #047857; }
+
+  /* ── 안전 원칙 (보조) ── */
+  .safety-note {
+    max-width: 960px;
+    margin: 16px auto 0;
+    font-size: 0.8rem;
+    color: #7f1d1d;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #dc2626;
+    border-radius: 10px;
+    padding: 14px 18px;
+    line-height: 1.7;
+  }
+  .safety-note strong { color: #b91c1c; }
+  .safety-note .tag {
+    display: inline-block;
+    background: #fee2e2;
+    border: 1px solid #f87171;
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 0.72rem;
+    color: #b91c1c;
+    font-weight: 700;
+    margin: 1px 2px;
+  }
+
+  /* ── 표 ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  th {
+    background: #1e40af;
+    color: white;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+    line-height: 1.55;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f8faff; }
+  td:first-child { font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+  .no { color: #dc2626; }
+  .yes { color: #16a34a; }
+
+  .footer-note {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 44px;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+
+<h1>🤖 Lemon Aid 챗봇 — 개인화 × RAG 근거 검색</h1>
+<p class="subtitle">사용자 맥락을 모아 개인화하고, 검수된 지식을 RAG로 검색해 근거 있는 답을 만드는 흐름</p>
+
+<div class="bridge">
+  🔗 <strong>26번 아키텍처와 이어지는 문서:</strong>
+  <a href="./26-agent-architecture.html" style="color:#4f46e5;">26-agent-architecture.html</a>의
+  <em>개인화 건강관리 오케스트레이터</em> 안에 있던 <strong>ContextResolver · Reviewed Evidence</strong> 부분을
+  확대한 것입니다. 큰 그림(26)에서 "사용자마다 다른 맥락을 이해하고 근거 있는 답을 찾는" 핵심부를 여기서 자세히 봅니다.
+</div>
+
+<!-- ════ 메인 개념 플로우 ════ -->
+<div class="flow">
+
+  <!-- 사용자 질문 -->
+  <div class="box c-user user-box" data-tip="만성질환·식단·복약·영양제에 대한 자연어 질문&#10;예: '고혈압인데 라면 먹어도 돼?'&#10;'혈압약 먹는데 마그네슘 같이 먹어도 돼?'">
+    <div class="box-title">📱 사용자 질문 (Mobile App)</div>
+    <div class="box-body">건강·식단·복약·영양제에 대한 자연어 질문</div>
+  </div>
+
+  <div class="arrow"><span class="arrow-label">질문</span></div>
+
+  <!-- 챗봇 파이프라인 -->
+  <div class="agent-wrapper">
+    <span class="agent-wrapper-label">Lemon Aid 챗봇 — 개인화 컨텍스트 + 근거 검색 오케스트레이터</span>
+
+    <!-- ① 개인화 컨텍스트 수집 -->
+    <div class="box c-memory" data-tip="사용자의 건강 데이터를 답변 직전 하나의 안전한 객체로 모은다.&#10;· 프로필/질환/약/영양제/최근 식사/오늘 분석&#10;· 확인(confirmed)된 기록만 — draft·OCR 미리보기 제외&#10;· raw OCR·프롬프트·LLM 출력은 자동 제거">
+      <div class="box-title"><span class="step-num">1</span>🧠 개인화 컨텍스트 수집 — UserHealthContextSnapshot</div>
+      <div class="box-body">프로필·질환·약·영양제·최근 식사·오늘 분석을 한 객체로 (확인된 데이터만, raw 제외)</div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- ② ContextResolver -->
+    <div class="box c-ctx" data-tip="질문 유형을 보고 필요한 맥락만 선택한다.&#10;· 충분하면 스냅샷 그대로 사용&#10;· 특정 식사 기록이 더 필요하면 DB 추가 조회 요청&#10;· 맥락이 비면 정보 부족(되묻기)&#10;→ 매 요청에 모든 기록을 주입하지 않음">
+      <div class="box-title"><span class="step-num">2</span>🔍 ContextResolver — 필요한 맥락만 선별</div>
+      <div class="box-body">질문마다 관련 맥락만 선택 (부족하면 추가 조회 / 정보 부족이면 되묻기)</div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- ③ RAG 근거 검색 -->
+    <div class="box c-evidence" data-tip="질문 의도·엔티티를 분류한 뒤 검수된 지식을 RAG로 검색한다.&#10;· 키워드 + 벡터 임베딩 하이브리드 검색&#10;· 검수·유효기간·노출 허용 governance 필터&#10;· 검색 원문은 LLM에 직접 주지 않음 (정규화 후 전달)">
+      <div class="box-title"><span class="step-num">3</span>📚 RAG 근거 검색 — 검수 지식 검색</div>
+      <div class="box-body">의도·엔티티 분류 → 키워드+벡터 하이브리드 검색 → 검수·유효·노출허용 필터</div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- ④ AnswerCard 정규화 -->
+    <div class="box c-plan" data-tip="검색된 검수 근거를 답변 프레임(AnswerCard)으로 정규화한다.&#10;· 허용 문구 / 구체 예시 / 오늘 점검 / 주의 조건 / 금지 표현 / 출처&#10;· 개인화 컨텍스트(질환·약·식사)와 결합&#10;※ 질문별 수동 FAQ 카드가 아니다">
+      <div class="box-title"><span class="step-num">4</span>🗂️ AnswerCardNormalizer → AnswerCard</div>
+      <div class="box-body">검수 근거를 답변 프레임으로 정리하고 개인화 맥락과 결합</div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- ⑤ 답변 생성 (2갈래) -->
+    <div class="gen-cols">
+      <div class="box c-llm" data-tip="역할: 표현 보조자 (판단자 아님)&#10;✅ AnswerCard를 자연스러운 한국어 문장으로&#10;✅ 정해진 항목 구조(JSON)로 생성&#10;❌ 근거 밖 건강 사실·수치 생성 금지">
+        <div class="box-title"><span class="step-num">5</span>🤖 LLM 표현 <small style="font-weight:400;color:#92400e;">(판단자 아님)</small></div>
+        <div class="box-body">AnswerCard → 자연스러운 한국어 답변 (근거 밖 사실 생성 금지)</div>
+      </div>
+      <div class="box c-determ" data-tip="LLM 없이 규칙으로 답하는 경로.&#10;· 응급·의료 경계·고위험 상호작용·모름&#10;· LLM 답변이 안전 점검을 통과 못하면 교체 fallback">
+        <div class="box-title">⚙️ 결정론적 렌더러</div>
+        <div class="box-body">경계·모름·교체 응답은 LLM 없이 규칙으로 생성</div>
+      </div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- ⑥ 안전 점검 -->
+    <div class="box c-gate" data-tip="응답 직전 마지막 점검.&#10;· 금지 표현(진단·처방·완치) 차단&#10;· 근거에 없는 사실·수치 차단&#10;· '말하면 안 되는 표현'이 나오면 결정론적 답변으로 교체">
+      <div class="box-title"><span class="step-num">6</span>🔒 안전 점검 (SafetyGuard)</div>
+      <div class="box-body">금지 문구·근거 없는 사실/수치 차단 → 문제 시 결정론적 답변으로 교체</div>
+    </div>
+
+  </div><!-- /agent-wrapper -->
+
+  <div class="arrow"><span class="arrow-label">개인화 + 검수 근거</span></div>
+
+  <!-- 응답 -->
+  <div class="box c-agent resp-box" data-tip="최종 응답.&#10;· 답변 본문&#10;· answerability (어디까지 답했는지)&#10;· sources[] (검수 출처: 발행처·버전·검토일·유효기간)">
+    <div class="box-title">💬 응답 (답변 + answerability + sources[])</div>
+    <div class="box-body">개인화된 답변과 함께 답변 상태·검수 출처를 같이 전달</div>
+  </div>
+
+</div><!-- /flow -->
+
+
+<!-- ════ ★ 개인화 ① Snapshot ════ -->
+<div class="section">
+  <h2><span class="star">★</span> 개인화 ① 무엇을 가져오나 — UserHealthContextSnapshot</h2>
+  <p class="section-desc">답변 직전, 사용자의 건강 데이터를 하나의 안전한 객체로 모읍니다. 이 맥락이 있어야 "일반론"이 아니라 "이 사용자에게 맞는" 답이 나옵니다.</p>
+  <div class="snap-grid">
+    <div class="snap-card">
+      <h3>👤 프로필 · 질환</h3>
+      키·몸무게·만성질환·복약·목표. 질환이 있으면 <strong>건강 축이 자동 확장</strong>됩니다 (예: 고혈압 → 나트륨·혈압 축).
+    </div>
+    <div class="snap-card">
+      <h3>📈 오늘 / 전체 분석</h3>
+      오늘 식사·영양제·체크리스트 상태와 누적 건강 분석 스냅샷.
+    </div>
+    <div class="snap-card">
+      <h3>💊 활성 영양제</h3>
+      등록된 영양제와 오늘 체크 여부 (병용 주의 판단의 입력).
+    </div>
+    <div class="snap-card">
+      <h3>🍽️ 최근 식사 · 체크리스트</h3>
+      최근 식사 기록(최근 10개)과 체크리스트 — <strong>확인된 기록만</strong> 포함.
+    </div>
+    <div class="snap-card">
+      <h3>💬 대화 건강 신호</h3>
+      대화에서 추출한 건강 신호 (예: 어지러움·증상 언급). 후속 질문 맥락 유지에 사용.
+    </div>
+    <div class="snap-card">
+      <h3>🪞 사용자가 본 분석</h3>
+      사용자가 화면에서 본 분석 맥락 — 오래된(stale) 정보 기준 답변을 막기 위한 참조.
+    </div>
+  </div>
+  <div class="snap-note">
+    <strong>불변식:</strong> raw OCR·프롬프트·LLM 출력은 스냅샷에서 자동 제거되고, <strong>사용자가 확인(confirmed)한 데이터만</strong> 들어갑니다. 그래서 개인화하면서도 민감정보·미확정 정보가 새지 않습니다.
+  </div>
+</div>
+
+
+<!-- ════ ★ 개인화 ② ContextResolver ════ -->
+<div class="section">
+  <h2><span class="star" style="color:#0284c7;">★</span> 개인화 ② 필요한 맥락만 — ContextResolver</h2>
+  <p class="section-desc">스냅샷을 통째로 넣지 않습니다. 질문 유형에 따라 필요한 맥락만 선택하고, 모자라면 추가로 가져오거나 되묻습니다.</p>
+  <div class="resolver-grid">
+    <div class="resolver-card">
+      <span class="label">sufficient</span>
+      <h3>✅ 충분</h3>
+      스냅샷만으로 답할 수 있음 → 그대로 사용.
+    </div>
+    <div class="resolver-card">
+      <span class="label">needs_structured_lookup</span>
+      <h3>🔎 추가 조회 필요</h3>
+      "그날 점심 뭐였지?"처럼 특정 식사 기록이 더 필요하면 프로필만 유지하고 <strong>DB 추가 조회</strong>를 요청.
+    </div>
+    <div class="resolver-card">
+      <span class="label">needs_more_info</span>
+      <h3>❓ 정보 부족</h3>
+      맥락이 비어 있으면 답을 만들지 않고 <strong>필요한 정보를 되묻기</strong>.
+    </div>
+  </div>
+  <div class="resolver-note">
+    <strong>왜 선별하나:</strong> 매 요청에 모든 기록을 주입하면 토큰 낭비와 노이즈가 생깁니다. 질문과 관련된 맥락만 골라야 답이 정확하고 빨라집니다.
+  </div>
+</div>
+
+
+<!-- ════ 🔎 RAG 근거 검색 ════ -->
+<div class="section">
+  <h2>🔎 RAG 근거 검색 — 어떤 정보를, 어떻게 가져오나</h2>
+  <p class="section-desc">개인화 맥락이 정해지면, 검수된 의료·영양 지식을 RAG로 검색해 답의 "사실 근거"를 가져옵니다.</p>
+
+  <h3 style="font-size:0.92rem;color:#065f46;margin:6px 0 10px 4px;">① 어떻게 — 검색 흐름</h3>
+  <div class="retr-flow">
+    <div class="retr-step">질문 의도·엔티티 분류</div>
+    <span class="retr-arrow">→</span>
+    <div class="retr-step">하이브리드 검색<br>(키워드 + 벡터 임베딩)</div>
+    <span class="retr-arrow">→</span>
+    <div class="retr-step">순위 결합 · 안전/신뢰 reranking</div>
+    <span class="retr-arrow">→</span>
+    <div class="retr-step">governance 필터<br>(검수 · 유효 · 노출허용)</div>
+    <span class="retr-arrow">→</span>
+    <div class="retr-step" style="background:#bbf7d0;">AnswerCard 정규화</div>
+  </div>
+
+  <h3 style="font-size:0.92rem;color:#065f46;margin:22px 0 4px 4px;">② 어떤 정보 — 검수 지식에 담긴 것</h3>
+  <p class="section-desc" style="margin-bottom:0;">검색은 "아무 문서"가 아니라, 검토를 거친 지식의 정리된 항목을 가져옵니다.</p>
+  <div class="rag-info-grid">
+    <div class="rag-card"><h3>🗣️ 허용 문구</h3>사용자에게 말해도 되는 표현·원리.</div>
+    <div class="rag-card"><h3>🥗 구체 예시</h3>음식·행동 후보 (예: 나트륨↓ 식품).</div>
+    <div class="rag-card"><h3>📋 오늘 점검 항목</h3>지금 확인하면 좋은 것들.</div>
+    <div class="rag-card"><h3>⚠️ 주의 조건</h3>전문가 상담이 필요한 시점.</div>
+    <div class="rag-card"><h3>🚫 금지 표현</h3>이 주제에서 말하면 안 되는 표현.</div>
+    <div class="rag-card"><h3>🔖 출처</h3>발행처·버전·검토일·유효기간.</div>
+  </div>
+  <div class="rag-note">
+    <strong>핵심:</strong> 검색 결과 원문(raw)을 LLM이나 사용자에게 그대로 주지 않습니다. 항상 <strong>AnswerCard로 정규화</strong>해서, 검수·유효·노출 허용된 근거만 개인화 맥락과 함께 전달합니다.
+  </div>
+</div>
+
+
+<!-- ════ 🔒 안전·근거 원칙 ════ -->
+<div class="section">
+  <h2>🔒 안전·근거 원칙 (개인화·검색 위에 항상)</h2>
+  <div class="safety-note">
+    개인화와 검색이 아무리 풍부해도, 답은 <strong>검수된 지식 안</strong>에 머뭅니다.
+    <span class="tag">근거 없음</span> 검수 근거가 없으면 일반 지식으로 채우지 않고 "지금은 모른다"고 말합니다.
+    <span class="tag">개인 의료 결정</span> 진단·처방·용량·검사수치 해석은 결정하지 않고, 가져갈 정보를 안내합니다.
+    <span class="tag">응급·고위험</span> 응급·고위험 상호작용(P0)은 LLM 없이 결정론적으로 처리합니다.
+    LLM은 끝까지 <strong>표현 보조자</strong>이며 판단자가 아닙니다.
+  </div>
+</div>
+
+
+<!-- ════ 📌 역할 요약 ════ -->
+<div class="section">
+  <h2>📌 구성요소 역할 요약 (개념)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:24%;">구성요소</th>
+        <th>핵심 역할</th>
+        <th style="width:30%;">하지 않는 것</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>개인화 컨텍스트 수집<br>(Snapshot)</td>
+        <td class="yes">프로필·질환·약·식사·분석을 한 객체로 모아 답을 개인화</td>
+        <td class="no">raw OCR/프롬프트·미확정 데이터 포함</td>
+      </tr>
+      <tr>
+        <td>ContextResolver</td>
+        <td class="yes">질문별 필요한 맥락만 선택, 부족하면 추가 조회·되묻기</td>
+        <td class="no">모든 기록을 항상 주입</td>
+      </tr>
+      <tr>
+        <td>RAG 근거 검색</td>
+        <td class="yes">키워드+벡터로 검수 지식을 검색해 사실 근거 확보</td>
+        <td class="no">미검수·만료 자료를 답변에 사용</td>
+      </tr>
+      <tr>
+        <td>AnswerCard 정규화</td>
+        <td class="yes">검수 근거를 답변 프레임으로 정리하고 개인화 맥락과 결합</td>
+        <td class="no">검색 원문(raw)을 그대로 전달</td>
+      </tr>
+      <tr>
+        <td>LLM 표현</td>
+        <td class="yes">AnswerCard를 자연스러운 한국어 문장으로 변환</td>
+        <td class="no">근거 밖 의료 사실·수치 생성, 진단·처방 결정</td>
+      </tr>
+      <tr>
+        <td>결정론적 렌더러</td>
+        <td class="yes">경계·모름·교체 응답을 규칙으로 생성</td>
+        <td class="no">응급·경계 판단을 LLM에 위임</td>
+      </tr>
+      <tr>
+        <td>안전 점검</td>
+        <td class="yes">금지 표현·근거 없는 사실/수치 차단 → 문제 시 fallback</td>
+        <td class="no">LLM 답변을 무검증으로 전달</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<p class="footer-note">
+  본 문서는 <a href="./26-agent-architecture.html" style="color:#64748b;">26-agent-architecture.html</a>의 개인화 컨텍스트 수집과 근거(RAG) 검색 부분을 확대한 자료입니다.<br>
+  각 컴포넌트 박스에 마우스를 올리면 상세 설명이 표시됩니다.
+</p>
+
+</body>
+</html>
