@@ -12,7 +12,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import dashboard, meals, supplements
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 from src.models.schemas.dashboard import (
     DashboardActivitySummary,
@@ -399,6 +399,8 @@ def test_taxonomy_catalog_endpoints_return_safe_payloads(
     monkeypatch.setattr(meals, "list_food_catalog_items", fake_list_food_catalog_items)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # Catalog read routes adopted get_rls_context_session (RLS Stage-2 rollout).
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     supplement_response = client.get("/api/v1/supplements/categories?q=vit&limit=3&offset=1")

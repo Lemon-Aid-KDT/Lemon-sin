@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.db.tx import REQUEST_MANAGED_TX, persist_scope, request_manages_transaction
@@ -29,6 +31,10 @@ class _FakeSession:
 def test_request_manages_transaction_reads_marker() -> None:
     assert request_manages_transaction(_FakeSession(request_managed=True)) is True
     assert request_manages_transaction(_FakeSession()) is False
+    # Guard: a partial double without a dict ``.info`` reads as legacy
+    # (not request-managed) rather than raising AttributeError.
+    assert request_manages_transaction(object()) is False  # type: ignore[arg-type]
+    assert request_manages_transaction(SimpleNamespace(info=None)) is False  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

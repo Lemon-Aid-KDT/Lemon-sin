@@ -29,7 +29,7 @@ from src.api.v1.examples import (
     UNSUPPORTED_MEDIA_TYPE_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.models.schemas.meal import (
     MealConfirmationRequest,
     MealExplainRequest,
@@ -250,7 +250,7 @@ async def analyze_meal_image(
 )
 async def list_food_cuisine_catalog(
     current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
 ) -> FoodCuisineListResponse:
     """List active food cuisines and nested courses for meal filter UIs.
 
@@ -277,7 +277,7 @@ async def list_food_cuisine_catalog(
 )
 async def list_food_catalog(
     current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     cuisine_code: Annotated[str | None, Query(max_length=40)] = None,
     course_code: Annotated[str | None, Query(max_length=60)] = None,
     q: Annotated[str | None, Query(max_length=120)] = None,

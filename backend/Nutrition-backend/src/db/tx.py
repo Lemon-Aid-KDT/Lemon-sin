@@ -54,8 +54,15 @@ def request_manages_transaction(session: AsyncSession) -> bool:
         True when ``get_rls_context_session`` opened the request transaction
         (so callees must participate, not commit); False for legacy
         ``get_async_session`` routes.
+
+    Notes:
+        A real ``AsyncSession`` always exposes ``.info`` (a dict), so the guard
+        below never triggers in production; it only makes an unmarked session —
+        including a partial test double without ``.info`` — read as legacy
+        (not request-managed), which is the correct default.
     """
-    return bool(session.info.get(REQUEST_MANAGED_TX, False))
+    info = getattr(session, "info", None)
+    return bool(info.get(REQUEST_MANAGED_TX, False)) if isinstance(info, dict) else False
 
 
 @asynccontextmanager

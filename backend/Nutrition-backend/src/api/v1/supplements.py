@@ -47,7 +47,7 @@ from src.api.v1.examples import (
     USER_SUPPLEMENT_RESPONSE_EXAMPLES,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import (
     build_confirmed_supplement_learning_metadata,
@@ -2965,7 +2965,7 @@ async def list_user_supplements(
 )
 async def list_supplement_category_catalog(
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     q: Annotated[str | None, Query(max_length=120)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
