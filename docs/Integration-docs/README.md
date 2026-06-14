@@ -151,8 +151,11 @@ structured output, source UI 같은 기존 영역을 수정해야 할 때 확인
 - [23-agent-llm-pipeline-flow.md](./23-agent-llm-pipeline-flow.md): 23. 에이전트/LLM 파이프라인 흐름 정리
 - [24-post-merge-integration-blueprint.md](./24-post-merge-integration-blueprint.md): 24. 병합 후 통합 계획 (Post-Merge Integration Blueprint)
 - [25-llm-rag-agent-advancement-start-gate.md](./25-llm-rag-agent-advancement-start-gate.md): 25. LLM/RAG/Agent 고도화 시작 기준
+- [26-agent-architecture.html](./26-agent-architecture.html): 26 agent architecture
 - [26-agent-llm-product-direction-reset.md](./26-agent-llm-product-direction-reset.md): 26. Agent/LLM 제품 방향 재정리
+- [26-agent-presentation.html](./26-agent-presentation.html): 26 agent presentation
 - [27-agent-llm-prd.md](./27-agent-llm-prd.md): 27. Agent/LLM PRD
+- [27-chatbot-architecture.html](./27-chatbot-architecture.html): 27 chatbot architecture
 - [28-agent-llm-trd.md](./28-agent-llm-trd.md): 28. Agent/LLM TRD
 - [29-agent-llm-tdd.md](./29-agent-llm-tdd.md): 29. Agent/LLM TDD
 - [30-agent-llm-todo.md](./30-agent-llm-todo.md): 30. Agent/LLM TODO

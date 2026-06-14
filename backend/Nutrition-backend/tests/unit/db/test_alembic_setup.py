@@ -18,7 +18,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0017_extend_unknown_backlog_status_lifecycle"]
+    assert script.get_heads() == ["0018_seed_dyslipidemia_weight_evidence"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -29,7 +29,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0017_extend_unknown_backlog_status_lifecycle"]
+    assert script.get_heads() == ["0018_seed_dyslipidemia_weight_evidence"]
 
 
 def test_initial_migration_file_exists() -> None:

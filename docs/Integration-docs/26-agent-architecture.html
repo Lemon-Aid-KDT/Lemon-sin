@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lemon Aid Agent 아키텍처</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+    background: #f0f4f8;
+    color: #1e293b;
+    padding: 32px 24px 60px;
+    min-width: 900px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 36px;
+  }
+
+  /* ── 공통 박스 ── */
+  .box {
+    border-radius: 10px;
+    padding: 12px 16px;
+    position: relative;
+    cursor: default;
+    transition: box-shadow 0.2s, transform 0.15s;
+  }
+  .box:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.15); transform: translateY(-2px); }
+  .box-title {
+    font-weight: 700;
+    font-size: 0.88rem;
+    margin-bottom: 6px;
+  }
+  .box-body {
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: #334155;
+  }
+
+  /* ── 색상 테마 ── */
+  .c-user    { background:#dbeafe; border:2px solid #3b82f6; }
+  .c-agent   { background:#eff6ff; border:2px solid #2563eb; }
+  .c-ctx     { background:#e0f2fe; border:2px solid #0284c7; }
+  .c-memory  { background:#f3e8ff; border:2px solid #9333ea; }
+  .c-evidence{ background:#d1fae5; border:2px solid #059669; }
+  .c-app     { background:#fef3c7; border:2px solid #d97706; }
+  .c-plan    { background:#e0f2fe; border:2px solid #0369a1; }
+  .c-llm     { background:#fef9c3; border:2px solid #ca8a04; }
+  .c-render  { background:#ede9fe; border:2px solid #7c3aed; }
+  .c-gate    { background:#fee2e2; border:2px solid #dc2626; }
+  .c-persist { background:#dcfce7; border:2px solid #16a34a; }
+  .c-determ  { background:#f1f5f9; border:2px solid #94a3b8; }
+
+  /* ── 최상위 레이아웃 ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* ── 화살표 ── */
+  .arrow {
+    width: 2px;
+    height: 28px;
+    background: #94a3b8;
+    position: relative;
+    margin: 0 auto;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 8px solid #94a3b8;
+  }
+  .arrow-label {
+    position: absolute;
+    left: 10px;
+    top: 4px;
+    font-size: 0.7rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+
+  /* ── 사용자 박스 ── */
+  .user-box {
+    width: 420px;
+    text-align: center;
+  }
+  .user-box .box-title { color: #1d4ed8; font-size: 1rem; }
+
+  /* ── Agent 외곽 래퍼 ── */
+  .agent-wrapper {
+    width: 100%;
+    border: 2.5px dashed #2563eb;
+    border-radius: 14px;
+    padding: 18px 18px 22px;
+    background: #f8faff;
+    position: relative;
+  }
+  .agent-wrapper-label {
+    position: absolute;
+    top: -13px;
+    left: 20px;
+    background: #2563eb;
+    color: white;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 2px 12px;
+    border-radius: 20px;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── ContextResolver ── */
+  .ctx-box { margin-bottom: 14px; }
+
+  /* ── 3-컬럼 입력 ── */
+  .input-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  /* ── 내부 화살표 (짧음) ── */
+  .inner-arrow {
+    width: 2px;
+    height: 20px;
+    background: #94a3b8;
+    margin: 0 auto;
+    position: relative;
+  }
+  .inner-arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #94a3b8;
+  }
+
+  /* ── Plan 박스 ── */
+  .plan-box {
+    margin-bottom: 14px;
+  }
+  .plan-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .plan-item {
+    background: #bae6fd;
+    border: 1px solid #0284c7;
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-align: center;
+    color: #0c4a6e;
+  }
+
+  /* ── LLM 박스 ── */
+  .llm-box { margin-bottom: 14px; }
+
+  /* ── 3-컬럼 Renderer ── */
+  .render-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* ── 게이트 ── */
+  .gate-box {
+    width: 100%;
+    text-align: center;
+  }
+  .gate-box .box-title { color: #b91c1c; font-size: 0.95rem; }
+
+  /* ── 하단 2-컬럼 ── */
+  .bottom-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    width: 100%;
+    margin-top: 0;
+  }
+
+  /* ── 툴팁 ── */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f1f5f9;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    padding: 8px 12px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    width: 260px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    pointer-events: none;
+  }
+  [data-tip]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #1e293b;
+    z-index: 101;
+  }
+
+  /* ── Memory 태그 ── */
+  .mem-tag {
+    display: inline-block;
+    background: #f3e8ff;
+    border: 1px solid #a855f7;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.72rem;
+    font-family: monospace;
+    color: #7e22ce;
+    margin: 2px 2px 2px 0;
+  }
+
+  /* ── 하단 요약 표 ── */
+  .summary-section {
+    max-width: 960px;
+    margin: 40px auto 0;
+  }
+  .summary-section h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 14px;
+    padding-left: 4px;
+    border-left: 4px solid #3b82f6;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  th {
+    background: #1e40af;
+    color: white;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+    line-height: 1.55;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f8faff; }
+  td:first-child { font-weight: 600; font-family: monospace; color: #1d4ed8; white-space: nowrap; }
+  .no { color: #dc2626; }
+  .yes { color: #16a34a; }
+
+  /* ── 학습 레이어 섹션 ── */
+  .learning-section {
+    max-width: 960px;
+    margin: 32px auto 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+  .learn-card {
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 0.8rem;
+    line-height: 1.6;
+  }
+  .learn-card h3 { font-size: 0.88rem; margin-bottom: 8px; }
+
+  /* ── Unknown 운영 루프 ── */
+  .loop-section {
+    max-width: 960px;
+    margin: 28px auto 0;
+  }
+  .loop-section h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 14px;
+    padding-left: 4px;
+    border-left: 4px solid #10b981;
+  }
+  .loop-steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    background: white;
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .loop-step {
+    background: #d1fae5;
+    border: 1px solid #059669;
+    border-radius: 7px;
+    padding: 8px 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #065f46;
+    white-space: nowrap;
+  }
+  .loop-arrow {
+    font-size: 1.1rem;
+    color: #94a3b8;
+    padding: 0 8px;
+  }
+
+  /* ── 의료 Boundary 박스 ── */
+  .boundary-section {
+    max-width: 960px;
+    margin: 28px auto 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .boundary-card {
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 0.8rem;
+    line-height: 1.6;
+  }
+  .boundary-card h3 { font-size: 0.88rem; margin-bottom: 8px; }
+  .can { background: #d1fae5; border: 1px solid #059669; }
+  .cannot { background: #fee2e2; border: 1px solid #dc2626; }
+  .can h3 { color: #065f46; }
+  .cannot h3 { color: #991b1b; }
+  ul { padding-left: 16px; }
+  li { margin-bottom: 3px; }
+
+  .footer-note {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 40px;
+  }
+
+  /* ── v2 추가 섹션 공통 ── */
+  .v2-section {
+    max-width: 960px;
+    margin: 44px auto 0;
+  }
+  .v2-section h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 8px;
+    padding-left: 4px;
+  }
+  .v2-section .section-desc {
+    font-size: 0.82rem;
+    color: #64748b;
+    margin-bottom: 20px;
+    padding-left: 4px;
+  }
+
+  /* ── Multi-Agent 계층 ── */
+  .hierarchy-root {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+  .agent-card {
+    border-radius: 10px;
+    padding: 14px 18px;
+    cursor: default;
+    transition: box-shadow 0.2s, transform 0.15s;
+  }
+  .agent-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.15); transform: translateY(-2px); }
+  .agent-card-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 5px; }
+  .agent-card-meta { font-size: 0.75rem; color: #475569; margin-bottom: 3px; }
+  .agent-card-role { font-size: 0.8rem; line-height: 1.5; margin-bottom: 10px; }
+  .agent-card-io {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 0.73rem;
+    margin-bottom: 10px;
+  }
+  .io-box {
+    background: rgba(255,255,255,0.55);
+    border-radius: 6px;
+    padding: 5px 8px;
+  }
+  .io-label { font-weight: 700; color: #374151; margin-bottom: 2px; }
+  .tool-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .tool-tag {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.7rem;
+    font-family: monospace;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* Orchestrator */
+  .orch-card { background: #dbeafe; border: 2px solid #2563eb; width: 420px; }
+  .orch-card .agent-card-name { color: #1e3a8a; }
+  .orch-tag { background: #bfdbfe; color: #1e40af; border: 1px solid #3b82f6; }
+
+  /* 수직 연결선 */
+  .hier-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .hier-vline {
+    width: 2px;
+    height: 24px;
+    background: #94a3b8;
+  }
+  .hier-hline-wrap {
+    position: relative;
+    width: 100%;
+    height: 2px;
+    background: #94a3b8;
+  }
+  /* 하위 agent 그룹 */
+  .sub-agents {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    position: relative;
+  }
+  .sub-agents::before {
+    content: '';
+    position: absolute;
+    top: -24px;
+    left: 12.5%;
+    width: 75%;
+    height: 2px;
+    background: #94a3b8;
+  }
+  .sub-agent-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .sub-vline {
+    width: 2px;
+    height: 22px;
+    background: #94a3b8;
+  }
+
+  /* Sub-agent 색상 */
+  .ctx-card  { background: #f3e8ff; border: 2px solid #9333ea; }
+  .ctx-card  .agent-card-name { color: #6b21a8; }
+  .ctx-tag   { background: #e9d5ff; color: #7e22ce; border: 1px solid #a855f7; }
+
+  .plan-card { background: #e0f2fe; border: 2px solid #0284c7; }
+  .plan-card .agent-card-name { color: #075985; }
+  .plan-tag  { background: #bae6fd; color: #0369a1; border: 1px solid #38bdf8; }
+
+  .safe-card { background: #fee2e2; border: 2px solid #dc2626; }
+  .safe-card .agent-card-name { color: #991b1b; }
+  .safe-tag  { background: #fecaca; color: #b91c1c; border: 1px solid #f87171; }
+
+  .rend-card { background: #fef9c3; border: 2px solid #ca8a04; }
+  .rend-card .agent-card-name { color: #92400e; }
+  .rend-tag  { background: #fef08a; color: #854d0e; border: 1px solid #eab308; }
+
+  /* ── Memory 생명주기 ── */
+  .memory-cycle {
+    background: white;
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .mem-steps {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0;
+    align-items: start;
+  }
+  .mem-step-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+  .mem-step-wrap:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: -10px;
+    top: 22px;
+    font-size: 1.1rem;
+    color: #94a3b8;
+    z-index: 2;
+  }
+  .mem-step-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: white;
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+  .mem-step-box {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    text-align: center;
+    line-height: 1.5;
+    width: 100%;
+  }
+  .mem-step-box strong { display: block; color: #0369a1; margin-bottom: 3px; font-size: 0.78rem; }
+  .mem-step-box .mem-tags { margin-top: 5px; }
+
+  /* 갱신되는 메모리 표시 */
+  .cycle-note {
+    margin-top: 16px;
+    font-size: 0.78rem;
+    color: #64748b;
+    background: #f8faff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    border-left: 3px solid #8b5cf6;
+  }
+  .cycle-note strong { color: #6d28d9; }
+</style>
+</head>
+<body>
+
+<h1>🍋 Lemon Aid Agent 아키텍처</h1>
+<p class="subtitle">출처: 26-agent-llm-product-direction-reset.md — 개인화 건강관리 오케스트레이터</p>
+
+<!-- ════ 메인 플로우 ════ -->
+<div class="flow">
+
+  <!-- 사용자 -->
+  <div class="box c-user user-box" data-tip="채팅 입력 / 분석 요청 / 체크리스트 요청&#10;확인된 행동만 앱에 반영됨">
+    <div class="box-title">📱 사용자 (Mobile App)</div>
+    <div class="box-body">채팅 입력 · 분석 요청 · 체크리스트 요청</div>
+  </div>
+
+  <div class="arrow"><span class="arrow-label">질문 / 요청</span></div>
+
+  <!-- Agent 오케스트레이터 래퍼 -->
+  <div class="agent-wrapper">
+    <span class="agent-wrapper-label">Lemon Aid Agent — 개인화 건강관리 오케스트레이터</span>
+
+    <!-- ContextResolver -->
+    <div class="box c-ctx ctx-box" data-tip="질문 유형 파악 후 필요한 컨텍스트만 선별&#10;(매 요청마다 모든 기록을 주입하지 않음)&#10;· 채팅 / 분석 / 체크리스트 / 의료 boundary 판단">
+      <div class="box-title">🔍 ContextResolver</div>
+      <div class="box-body">질문 유형 파악 → 필요한 컨텍스트만 선별하여 주입</div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- 3-컬럼 입력 -->
+    <div class="input-cols">
+
+      <div class="box c-app" data-tip="· food_records (음식 기록)&#10;· user_medications (복약)&#10;· supplements (영양제 체크율)&#10;· checklist 수행 기록&#10;· 사용자 프로필 (키·몸무게·질환 등)">
+        <div class="box-title">📊 앱 데이터 Snapshot</div>
+        <div class="box-body">
+          food_records<br>
+          user_medications<br>
+          supplements<br>
+          checklist 기록<br>
+          사용자 프로필
+        </div>
+      </div>
+
+      <div class="box c-memory" data-tip="4종 개인화 메모리 (rolling summary 방식)&#10;· profile_memory: 키·몸무게·질환·선호&#10;· behavior_memory: 식사패턴·체크리스트 수행률&#10;· conversation_memory: 대화 요약·말투 선호&#10;· safety_memory: 복약·상호작용 주의 맥락">
+        <div class="box-title">🧠 Agent Memory</div>
+        <div class="box-body">
+          <span class="mem-tag">profile_memory</span><br>
+          <span class="mem-tag">behavior_memory</span><br>
+          <span class="mem-tag">conversation_memory</span><br>
+          <span class="mem-tag">safety_memory</span>
+        </div>
+      </div>
+
+      <div class="box c-evidence" data-tip="검수된 의료·영양·복약 근거 검색 계층&#10;· RAG 검색 → AnswerCardNormalizer 정규화&#10;· 검수 없으면 unknown backlog으로&#10;· raw 검색 결과를 바로 prompt에 넣지 않음">
+        <div class="box-title">📚 Reviewed Evidence</div>
+        <div class="box-body">
+          RAG 검색<br>
+          AnswerCard<br>
+          AnswerCardNormalizer<br>
+          source governance<br>
+          golden test
+        </div>
+      </div>
+
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- Plan 생성 -->
+    <div class="box c-plan plan-box" data-tip="UserHealthContextSnapshot 기반으로&#10;질문 유형에 맞는 Plan 생성&#10;(LLM이 판단하는 것이 아니라 Agent가 구조 결정)">
+      <div class="box-title">📋 Plan 생성 (UserHealthContextSnapshot)</div>
+      <div class="plan-inner">
+        <div class="plan-item">💬 AnswerPlan<br><small>채팅 답변용</small></div>
+        <div class="plan-item">📈 AnalysisPlan<br><small>분석 탭용</small></div>
+      </div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- LLM -->
+    <div class="box c-llm llm-box" data-tip="역할: 표현 보조자 (판단자 아님)&#10;✅ 할 수 있는 것:&#10;  · plan → 자연스러운 한국어 답변&#10;  · structured output 생성 (JSON, 요약)&#10;  · OCR/라벨 텍스트 구조화 보조&#10;❌ 하면 안 되는 것:&#10;  · 검수 없는 의료 사실 생성&#10;  · 진단·치료·복용량 결정&#10;  · RAG 결과 무검증 직접 사용">
+      <div class="box-title">🤖 LLM — 표현 &amp; 구조화 보조자 <small style="font-weight:400;color:#92400e;">(판단자 아님)</small></div>
+      <div class="box-body">Plan → 자연스러운 한국어 답변 · structured output · OCR 구조화 보조</div>
+    </div>
+
+    <div class="inner-arrow"></div>
+
+    <!-- 3-컬럼 Renderer -->
+    <div class="render-cols">
+
+      <div class="box c-render" data-tip="· 채팅 답변 출력&#10;· 실천 코칭 문구&#10;· CTA 제안 (체크리스트, 앱 액션)&#10;· sources[] 응답 포함">
+        <div class="box-title">💬 ChatRenderer</div>
+        <div class="box-body">채팅 답변<br>실천 코칭<br>CTA 제안<br>sources[]</div>
+      </div>
+
+      <div class="box c-render" data-tip="오늘 현재 분석 점수 (오늘 기록 기준)&#10;· 오늘 식사·영양제·체크리스트 상태&#10;스마트 생활관리 점수 (누적 패턴)&#10;· 누적 기록·체크리스트 수행률·대화 메모리&#10;⚠️ 질병 위험 예측·건강 상태 판정 아님">
+        <div class="box-title">📊 AnalysisRenderer</div>
+        <div class="box-body">오늘 현재 분석 점수<br>스마트 생활관리 점수<br><small style="color:#92400e;">※ 질병 판정 아님</small></div>
+      </div>
+
+      <div class="box c-render" data-tip="BoundaryRenderer:&#10;· 결정 금지 안에서 충분히 설명&#10;· 응급·복약·검사수치 → 위험 범주 설명&#10;  + 상담 준비 항목 + 즉시 행동 안내&#10;UnknownRenderer:&#10;· unknown → safe backlog → 검수 후 등록">
+        <div class="box-title">⚠️ BoundaryRenderer<br><small>/ UnknownRenderer</small></div>
+        <div class="box-body">결정 금지 안 최대 설명<br>응급 안내<br>unknown → backlog</div>
+      </div>
+
+    </div>
+  </div><!-- /agent-wrapper -->
+
+  <!-- 화살표 -->
+  <div class="arrow"><span class="arrow-label">제안 (답변 + 액션 후보)</span></div>
+
+  <!-- 사용자 확인 게이트 -->
+  <div class="box c-gate gate-box" data-tip="모든 앱 변경 행동은 사용자 명시 승인 후에만 실행&#10;✅ 사용자가 승인한 것만:&#10;  · 체크리스트 추가&#10;  · 알림 등록&#10;  · 공식 기록 저장 (음식·영양제·복약)&#10;❌ 자동 실행 금지:&#10;  · 프로필·복약·질환 자동 수정&#10;  · 채팅 언급만으로 공식 등록">
+    <div class="box-title">🔒 사용자 확인 게이트 (필수)</div>
+    <div class="box-body">체크리스트 추가 · 알림 등록 · 공식 기록 저장 — 모두 사용자 승인 후 실행</div>
+  </div>
+
+  <div class="arrow"><span class="arrow-label">승인된 행동만</span></div>
+
+  <!-- 하단 2-컬럼 -->
+  <div class="bottom-cols">
+
+    <div class="box c-persist" data-tip="사용자가 승인한 행동만 반영&#10;· food_records, user_medications 등 공식 DB 갱신&#10;· behavior_memory 갱신 (수행률·패턴 반영)&#10;· conversation_memory rolling summary 갱신">
+      <div class="box-title">💾 앱 공식 데이터 반영</div>
+      <div class="box-body">food_records · user_medications · supplements<br>behavior_memory · conversation_memory 갱신</div>
+    </div>
+
+    <div class="box c-determ" data-tip="Agent와 병렬로 독립 동작하는 결정론적 파이프라인&#10;· 음식 사진 → OCR/인식 → DB 매칭 → 영양성분 계산&#10;· 영양제 OCR → 성분/함량/단위 파이프라인&#10;· 최종 칼로리·함량은 DB·알고리즘 결과 기준&#10;  (LLM이 판단하지 않음)&#10;· 결과를 Agent context에 전달">
+      <div class="box-title">⚙️ Deterministic 분석 파이프라인</div>
+      <div class="box-body">음식 OCR → DB 매칭 → 영양성분 계산<br>영양제 성분/함량/단위 파이프라인<br><small style="color:#475569;">→ Agent context에 전달 (LLM 판단 아님)</small></div>
+    </div>
+
+  </div>
+
+</div><!-- /flow -->
+
+
+<!-- ════ Unknown 운영 루프 ════ -->
+<div class="loop-section">
+  <h2>🔄 Unknown Topic 처리 운영 루프</h2>
+  <div class="loop-steps">
+    <div class="loop-step">unknown topic 입력</div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">safe metadata backlog</div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">공식 source 검수</div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">evidence · boundary · wording 등록</div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">AnswerCard 정규화</div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step">golden test 추가</div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-step" style="background:#bbf7d0">✅ 다음부터 답변 가능</div>
+  </div>
+</div>
+
+
+<!-- ════ 학습 레이어 ════ -->
+<div class="learning-section">
+  <div class="learn-card" style="background:#ede9fe;border:1px solid #8b5cf6;">
+    <h3 style="color:#6d28d9;">🧑 개인화 메모리 (MVP 우선)</h3>
+    <ul>
+      <li>사용자별 요약·패턴·선호·주의 맥락</li>
+      <li>아침 결식, 나트륨 반복, 체크리스트 성공률</li>
+      <li>다음 분석·답변·체크리스트에 반영</li>
+    </ul>
+  </div>
+  <div class="learn-card" style="background:#e0f2fe;border:1px solid #0284c7;">
+    <h3 style="color:#0369a1;">📐 Deterministic 정책 업데이트 (MVP 우선)</h3>
+    <ul>
+      <li>검수된 규칙·알고리즘·안전 정책 갱신</li>
+      <li>KDRIs, 복약 boundary, unknown 정책</li>
+      <li>모든 사용자 또는 조건군에 일관 적용</li>
+    </ul>
+  </div>
+  <div class="learn-card" style="background:#fef9c3;border:1px solid #ca8a04;">
+    <h3 style="color:#92400e;">🔬 모델 학습 (장기 고도화)</h3>
+    <ul>
+      <li>충분한 동의·비식별 데이터 축적 후</li>
+      <li>OCR, 음식 인식, 질문 분류 모델 개선</li>
+      <li>LLM fine-tuning: 말투·형식 품질만 (의료 지식 주입 아님)</li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ════ 의료 Boundary ════ -->
+<div class="boundary-section">
+  <div class="boundary-card can">
+    <h3>✅ Agent가 할 수 있는 것 (결정 금지 안에서 설명)</h3>
+    <ul>
+      <li>검수 evidence 기반 위험 범주·일반 원리 설명</li>
+      <li>사용자 메모리 맥락 연결 (복약·질환·생활습관)</li>
+      <li>상담 전 정리할 정보 안내</li>
+      <li>응급 질문: 가능한 위험 범주 + 즉시 행동 안내 (119 등)</li>
+      <li>병용 주의 조건·확인 항목 설명</li>
+      <li>체크리스트 후보 생성 (사용자 확인 후 저장)</li>
+    </ul>
+  </div>
+  <div class="boundary-card cannot">
+    <h3>❌ Agent가 하지 않는 것</h3>
+    <ul>
+      <li>진단명 확정 / 치료 여부 결정</li>
+      <li>약 시작·중단·증량·감량·개인 복용량 결정</li>
+      <li>병용 가능/불가 단정</li>
+      <li>응급 여부 확정</li>
+      <li>검수 없는 의료 사실 생성 (LLM 일반 지식 채우기)</li>
+      <li>사용자 몰래 공식 프로필·복약·알림 수정</li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ════ 핵심 개념 표 ════ -->
+<div class="summary-section">
+  <h2>📌 구성요소 역할 요약</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>구성요소</th>
+        <th>핵심 역할</th>
+        <th>하지 않는 것</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Agent</td>
+        <td class="yes">컨텍스트 선별 → Plan 생성 → 답변·실천안·CTA 제안</td>
+        <td class="no">몰래 공식 데이터 수정, 진단·치료 결정</td>
+      </tr>
+      <tr>
+        <td>LLM</td>
+        <td class="yes">Plan을 자연어로 변환, 구조화 출력, OCR 보조</td>
+        <td class="no">검수 없는 의료 사실 생성, RAG 결과 무검증 사용</td>
+      </tr>
+      <tr>
+        <td>ContextResolver</td>
+        <td class="yes">매 요청마다 필요한 메모리·앱데이터·evidence만 선택</td>
+        <td class="no">모든 기록을 항상 주입 (token 낭비·노이즈)</td>
+      </tr>
+      <tr>
+        <td>AnswerCard / RAG</td>
+        <td class="yes">검수된 의료·영양 근거 검색 및 AnswerCardNormalizer 정규화</td>
+        <td class="no">검색 결과 바로 사용자에게 전달</td>
+      </tr>
+      <tr>
+        <td>Memory 4종</td>
+        <td class="yes">개인화 맥락 유지 (profile / behavior / conversation / safety)</td>
+        <td class="no">raw chat/prompt를 개인화에 직접 사용</td>
+      </tr>
+      <tr>
+        <td>BoundaryRenderer</td>
+        <td class="yes">결정 금지 범위 내 최대한 상세 설명 + 상담 준비 안내</td>
+        <td class="no">"모릅니다" 단답, 또는 진단·처방</td>
+      </tr>
+      <tr>
+        <td>사용자 확인 게이트</td>
+        <td class="yes">모든 앱 액션 — 사용자 명시 승인 후 실행</td>
+        <td class="no">자동 저장, 자동 알림 등록, 공식 기록 자동 수정</td>
+      </tr>
+      <tr>
+        <td>Deterministic 파이프라인</td>
+        <td class="yes">음식/영양제 OCR → DB 매칭 → 영양성분 계산 → Agent context 전달</td>
+        <td class="no">LLM이 최종 칼로리·함량 판단</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- ════ v2: Multi-Agent 계층 구조 ════ -->
+<div class="v2-section">
+  <h2 style="border-left:4px solid #2563eb;">🤖 Multi-Agent 계층 구조</h2>
+  <p class="section-desc">Orchestrator Agent가 요청을 분류하고, 전문화된 4개 하위 Agent를 호출하여 결과를 조합합니다. 각 박스에 마우스를 올리면 상세 설명이 표시됩니다.</p>
+
+  <!-- Orchestrator -->
+  <div class="hierarchy-root">
+    <div class="agent-card orch-card" data-tip="최상위 조율자. 사용자 요청을 분류하고&#10;어느 하위 Agent를 호출할지 결정합니다.&#10;하위 Agent의 결과를 합쳐 최종 응답을 구성합니다.&#10;&#10;입력: 사용자 요청 텍스트&#10;출력: 완성된 응답 (ChatResponse / AnalysisResponse)">
+      <div class="agent-card-name">🎯 Orchestrator Agent</div>
+      <div class="agent-card-role">사용자 요청 분류 → 하위 Agent 호출 → 결과 조합 → 최종 응답 반환</div>
+      <div class="agent-card-io">
+        <div class="io-box"><div class="io-label">📥 입력</div>사용자 요청 텍스트</div>
+        <div class="io-box"><div class="io-label">📤 출력</div>최종 응답 (채팅 / 분석 / boundary)</div>
+      </div>
+      <div class="tool-tags">
+        <span class="tool-tag orch-tag">request_classify</span>
+        <span class="tool-tag orch-tag">response_compose</span>
+        <span class="tool-tag orch-tag">agent_dispatch</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 수직선 + 수평선 + 하위 agents -->
+  <div style="display:flex;flex-direction:column;align-items:center;">
+    <div style="width:2px;height:22px;background:#94a3b8;"></div>
+  </div>
+
+  <div class="sub-agents">
+    <!-- Context & Memory Agent -->
+    <div class="sub-agent-wrap">
+      <div style="width:2px;height:22px;background:#94a3b8;"></div>
+      <div class="agent-card ctx-card" style="width:100%;" data-tip="개인화 컨텍스트 조립 담당.&#10;4종 메모리 중 질문과 관련 있는 것만 선택하고&#10;앱 데이터 snapshot과 reviewed evidence를 수집합니다.&#10;&#10;입력: 요청 유형 + 사용자 ID&#10;출력: UserHealthContextSnapshot">
+        <div class="agent-card-name">🧠 Context &amp; Memory Agent</div>
+        <div class="agent-card-meta">개인화 컨텍스트 수집</div>
+        <div class="agent-card-role">메모리 4종 중 관련분 선택 · 앱 데이터 조회 · Evidence 검색 → Snapshot 조립</div>
+        <div class="agent-card-io">
+          <div class="io-box"><div class="io-label">📥 입력</div>요청 유형 + 사용자 ID</div>
+          <div class="io-box"><div class="io-label">📤 출력</div>UserHealthContextSnapshot</div>
+        </div>
+        <div class="tool-tags">
+          <span class="tool-tag ctx-tag">memory_read</span>
+          <span class="tool-tag ctx-tag">app_data_query</span>
+          <span class="tool-tag ctx-tag">evidence_search</span>
+          <span class="tool-tag ctx-tag">context_filter</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Planning Agent -->
+    <div class="sub-agent-wrap">
+      <div style="width:2px;height:22px;background:#94a3b8;"></div>
+      <div class="agent-card plan-card" style="width:100%;" data-tip="Snapshot을 받아 구조화된 Plan 객체를 생성합니다.&#10;LLM은 자연어 변환 보조만 담당하며&#10;Plan의 구조·우선순위·섹션은 Agent가 결정합니다.&#10;&#10;입력: UserHealthContextSnapshot&#10;출력: AnswerPlan 또는 AnalysisPlan">
+        <div class="agent-card-name">📋 Planning Agent</div>
+        <div class="agent-card-meta">Plan 생성</div>
+        <div class="agent-card-role">Snapshot 기반으로 AnswerPlan / AnalysisPlan 구조 결정 · 섹션·우선순위 설정</div>
+        <div class="agent-card-io">
+          <div class="io-box"><div class="io-label">📥 입력</div>UserHealthContextSnapshot</div>
+          <div class="io-box"><div class="io-label">📤 출력</div>AnswerPlan / AnalysisPlan</div>
+        </div>
+        <div class="tool-tags">
+          <span class="tool-tag plan-tag">plan_build</span>
+          <span class="tool-tag plan-tag">llm_structure</span>
+          <span class="tool-tag plan-tag">section_rank</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Safety & Boundary Agent -->
+    <div class="sub-agent-wrap">
+      <div style="width:2px;height:22px;background:#94a3b8;"></div>
+      <div class="agent-card safe-card" style="width:100%;" data-tip="답변 전 의료 경계를 확인하고 처리 방향을 결정합니다.&#10;응급·복약·검사수치·병용 질문을 탐지하며&#10;unknown topic은 backlog에 기록합니다.&#10;&#10;입력: AnswerPlan + safety_memory&#10;출력: 처리 방향 (normal / boundary / unknown)">
+        <div class="agent-card-name">⚠️ Safety &amp; Boundary Agent</div>
+        <div class="agent-card-meta">의료 경계 판단</div>
+        <div class="agent-card-role">응급·복약·병용 질문 탐지 · boundary 정책 적용 · unknown topic → backlog 기록</div>
+        <div class="agent-card-io">
+          <div class="io-box"><div class="io-label">📥 입력</div>AnswerPlan + safety_memory</div>
+          <div class="io-box"><div class="io-label">📤 출력</div>방향 판정 (normal / boundary / unknown)</div>
+        </div>
+        <div class="tool-tags">
+          <span class="tool-tag safe-tag">safety_check</span>
+          <span class="tool-tag safe-tag">boundary_policy</span>
+          <span class="tool-tag safe-tag">unknown_backlog_write</span>
+          <span class="tool-tag safe-tag">emergency_detect</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rendering Agent -->
+    <div class="sub-agent-wrap">
+      <div style="width:2px;height:22px;background:#94a3b8;"></div>
+      <div class="agent-card rend-card" style="width:100%;" data-tip="Plan과 boundary 판정 결과를 받아 최종 출력을 생성합니다.&#10;LLM을 사용해 자연스러운 한국어로 변환하고&#10;적절한 Renderer(Chat/Analysis/Boundary)를 선택합니다.&#10;&#10;입력: Plan + 방향 판정&#10;출력: 최종 응답 + sources[]">
+        <div class="agent-card-name">🖨️ Rendering Agent</div>
+        <div class="agent-card-meta">최종 출력 생성</div>
+        <div class="agent-card-role">Renderer 선택 · LLM으로 자연어 변환 · structured output 생성 · sources[] 첨부</div>
+        <div class="agent-card-io">
+          <div class="io-box"><div class="io-label">📥 입력</div>Plan + 방향 판정</div>
+          <div class="io-box"><div class="io-label">📤 출력</div>최종 응답 텍스트 + sources[]</div>
+        </div>
+        <div class="tool-tags">
+          <span class="tool-tag rend-tag">llm_generate</span>
+          <span class="tool-tag rend-tag">renderer_select</span>
+          <span class="tool-tag rend-tag">sources_attach</span>
+          <span class="tool-tag rend-tag">structured_output</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ v2: Tool 사용 구조 ════ -->
+<div class="v2-section">
+  <h2 style="border-left:4px solid #7c3aed;">🔧 Agent별 Tool 사용 구조</h2>
+  <p class="section-desc">각 Agent가 어떤 Tool을 어떤 시점에 호출하는지 정리한 매핑입니다.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Agent</th>
+        <th>Tool</th>
+        <th>호출 시점</th>
+        <th>출력</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="color:#1e3a8a;">🎯 Orchestrator</td>
+        <td><span class="tool-tag orch-tag">request_classify</span> <span class="tool-tag orch-tag">agent_dispatch</span> <span class="tool-tag orch-tag">response_compose</span></td>
+        <td>요청 수신 직후 / 하위 결과 수신 후</td>
+        <td>요청 유형 레이블 · 최종 응답 JSON</td>
+      </tr>
+      <tr>
+        <td style="color:#6b21a8;">🧠 Context &amp; Memory</td>
+        <td><span class="tool-tag ctx-tag">memory_read</span> <span class="tool-tag ctx-tag">app_data_query</span> <span class="tool-tag ctx-tag">evidence_search</span> <span class="tool-tag ctx-tag">context_filter</span></td>
+        <td>Orchestrator 요청 직후 · 컨텍스트 조립 전</td>
+        <td>UserHealthContextSnapshot</td>
+      </tr>
+      <tr>
+        <td style="color:#075985;">📋 Planning</td>
+        <td><span class="tool-tag plan-tag">plan_build</span> <span class="tool-tag plan-tag">llm_structure</span> <span class="tool-tag plan-tag">section_rank</span></td>
+        <td>Snapshot 수신 후 · Plan 구조 결정 단계</td>
+        <td>AnswerPlan / AnalysisPlan 객체</td>
+      </tr>
+      <tr>
+        <td style="color:#991b1b;">⚠️ Safety &amp; Boundary</td>
+        <td><span class="tool-tag safe-tag">safety_check</span> <span class="tool-tag safe-tag">boundary_policy</span> <span class="tool-tag safe-tag">unknown_backlog_write</span> <span class="tool-tag safe-tag">emergency_detect</span></td>
+        <td>Plan 생성 직후 · 렌더링 전 반드시 통과</td>
+        <td>방향 판정 (normal / boundary / unknown)</td>
+      </tr>
+      <tr>
+        <td style="color:#92400e;">🖨️ Rendering</td>
+        <td><span class="tool-tag rend-tag">llm_generate</span> <span class="tool-tag rend-tag">renderer_select</span> <span class="tool-tag rend-tag">sources_attach</span> <span class="tool-tag rend-tag">structured_output</span></td>
+        <td>Safety 판정 후 · 사용자 응답 직전</td>
+        <td>자연어 응답 + sources[] JSON</td>
+      </tr>
+      <tr>
+        <td style="color:#166534;" colspan="1">💾 Memory 갱신<br><small style="font-weight:400;">(Orchestrator 후처리)</small></td>
+        <td><span class="tool-tag" style="background:#d1fae5;color:#065f46;border:1px solid #34d399;">memory_write</span> <span class="tool-tag" style="background:#d1fae5;color:#065f46;border:1px solid #34d399;">behavior_update</span> <span class="tool-tag" style="background:#d1fae5;color:#065f46;border:1px solid #34d399;">conv_summarize</span></td>
+        <td>사용자 확인 완료 후 · 다음 요청 전</td>
+        <td>갱신된 behavior_memory · conversation_memory</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- ════ v2: Memory 생명주기 ════ -->
+<div class="v2-section">
+  <h2 style="border-left:4px solid #9333ea;">🔄 Memory 생명주기 (읽기 → 선택 → 사용 → 갱신)</h2>
+  <p class="section-desc">4종 메모리가 하나의 요청 사이클 안에서 어떻게 흐르는지 단계별로 표시합니다.</p>
+  <div class="memory-cycle">
+    <div class="mem-steps">
+
+      <div class="mem-step-wrap">
+        <div class="mem-step-num">1</div>
+        <div class="mem-step-box">
+          <strong>요청 수신</strong>
+          Orchestrator가 요청 유형 분류
+          <div class="mem-tags">
+            <span class="tool-tag orch-tag">request_classify</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mem-step-wrap">
+        <div class="mem-step-num" style="background:#9333ea;">2</div>
+        <div class="mem-step-box" style="background:#faf5ff;border-color:#e9d5ff;">
+          <strong style="color:#6d28d9;">Memory 읽기</strong>
+          4종 메모리 DB 조회<br>질문과 무관한 메모리는 제외
+          <div class="mem-tags">
+            <span class="tool-tag ctx-tag">memory_read</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mem-step-wrap">
+        <div class="mem-step-num" style="background:#0284c7;">3</div>
+        <div class="mem-step-box" style="background:#f0f9ff;border-color:#bae6fd;">
+          <strong style="color:#075985;">컨텍스트 조립</strong>
+          관련 메모리만 선택 → Snapshot 생성<br>앱 데이터 + Evidence 포함
+          <div class="mem-tags">
+            <span class="tool-tag plan-tag">context_filter</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mem-step-wrap">
+        <div class="mem-step-num" style="background:#ca8a04;">4</div>
+        <div class="mem-step-box" style="background:#fefce8;border-color:#fef08a;">
+          <strong style="color:#854d0e;">Plan 생성 + LLM</strong>
+          Snapshot → Plan → LLM 렌더링<br>Safety 판정 후 응답 생성
+          <div class="mem-tags">
+            <span class="tool-tag rend-tag">llm_generate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mem-step-wrap">
+        <div class="mem-step-num" style="background:#dc2626;">5</div>
+        <div class="mem-step-box" style="background:#fef2f2;border-color:#fecaca;">
+          <strong style="color:#991b1b;">사용자 확인</strong>
+          제안된 행동에 대해 사용자 승인<br>(체크리스트·알림·저장)
+        </div>
+      </div>
+
+      <div class="mem-step-wrap">
+        <div class="mem-step-num" style="background:#16a34a;">6</div>
+        <div class="mem-step-box" style="background:#f0fdf4;border-color:#bbf7d0;">
+          <strong style="color:#166534;">Memory 갱신</strong>
+          승인된 행동 기반 갱신<br>다음 사이클에 반영
+          <div class="mem-tags">
+            <span class="tool-tag" style="background:#d1fae5;color:#065f46;border:1px solid #34d399;">memory_write</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="cycle-note">
+      <strong>갱신되는 메모리:</strong>
+      <span class="mem-tag">behavior_memory</span> 체크리스트 수행률·거절 항목·반복 패턴 갱신 &nbsp;|&nbsp;
+      <span class="mem-tag">conversation_memory</span> rolling summary 갱신 (전체 raw 채팅 아님) &nbsp;|&nbsp;
+      <span class="mem-tag">safety_memory</span> 새로운 복약·상호작용 언급 추가 &nbsp;|&nbsp;
+      <span class="mem-tag">profile_memory</span> 명시 확인된 건강 정보만 갱신 (채팅 언급만으로는 공식 등록 안 함)
+    </div>
+  </div>
+</div>
+
+
+<p class="footer-note">
+  출처: docs/Integration-docs/26-agent-llm-product-direction-reset.md (2026-06-04)<br>
+  각 컴포넌트 박스에 마우스를 올리면 상세 설명이 표시됩니다.
+</p>
+
+</body>
+</html>
