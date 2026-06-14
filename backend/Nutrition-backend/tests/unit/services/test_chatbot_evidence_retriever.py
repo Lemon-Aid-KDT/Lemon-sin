@@ -39,6 +39,7 @@ def _row() -> SimpleNamespace:
     return SimpleNamespace(
         evidence_id="evidence-magnesium-bp",
         source_id="nih-ods-magnesium",
+        source_title="NIH ODS Magnesium Fact Sheet",
         source_url="https://ods.od.nih.gov/factsheets/Magnesium-Consumer/",
         source_family="supplement_guidance",
         source_version_id="source-version-1",

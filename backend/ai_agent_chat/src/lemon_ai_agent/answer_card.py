@@ -59,6 +59,7 @@ class AnswerCard:
     def source_metadata(self) -> dict[str, str]:
         return {
             "source_id": self.source_id,
+            "source_title": self.source_name,
             "source_family": self.source_family,
             "review_status": self.review_status,
             "version_label": self.version_label,
@@ -100,6 +101,7 @@ class MedicalEvidenceAnswerCardRecord:
     checklist: tuple[str, ...]
     caution_conditions: tuple[str, ...]
     must_not_say: tuple[str, ...]
+    source_title: str = ""
 
 
 class AnswerCardNormalizer:
@@ -206,7 +208,7 @@ class AnswerCardNormalizer:
             reviewed_at=record.reviewed_at,
             expires_at=record.expires_at,
             grounding_snippet_ids=(f"db:{record.evidence_id}",),
-            source_name=record.source_id,
+            source_name=record.source_title or record.source_id,
             concrete_guidance=record.claim_summary,
         )
 
@@ -535,6 +537,12 @@ def _topic_keyword_matches(topic: str, normalized_question: str) -> bool:
         "general_health_record_review": ("기록", "식사 기록", "활동 기록", "건강 기록"),
         "supplement_label_check": ("영양제", "건강기능식품", "라벨", "성분", "supplement", "label"),
         "magnesium_supplement_caution": ("마그네슘", "magnesium"),
+        "dyslipidemia_saturated_fat_reduction": ("고지혈증", "콜레스테롤", "ldl", "포화지방", "dyslipidemia", "cholesterol"),
+        "dyslipidemia_omega3_fish_sources": ("고지혈증", "콜레스테롤", "오메가3", "등푸른 생선", "omega3", "dyslipidemia"),
+        "triglyceride_sugar_alcohol_reduction": ("중성지방", "당분", "알코올", "triglyceride", "술"),
+        "weight_management_plate_composition": ("체중", "식단", "다이어트", "weight management"),
+        "weight_management_meal_timing": ("체중", "야식", "식사 간격", "다이어트"),
+        "weight_management_record_pattern_review": ("체중 기록", "체중", "기록 활용", "weight management"),
     }
     actual_korean_keywords: dict[str, tuple[str, ...]] = {
         "diabetes_plate_method": ("당뇨", "혈당", "탄수화물", "초콜릿", "밥", "과식"),
@@ -551,6 +559,12 @@ def _topic_keyword_matches(topic: str, normalized_question: str) -> bool:
         "general_health_record_review": ("기록", "식사 기록", "활동 기록", "건강 기록"),
         "supplement_label_check": ("영양제", "건강기능식품", "라벨", "성분"),
         "magnesium_supplement_caution": ("마그네슘", "magnesium"),
+        "dyslipidemia_saturated_fat_reduction": ("고지혈증", "콜레스테롤", "포화지방"),
+        "dyslipidemia_omega3_fish_sources": ("고지혈증", "콜레스테롤", "오메가3", "등푸른 생선"),
+        "triglyceride_sugar_alcohol_reduction": ("중성지방", "당분", "알코올"),
+        "weight_management_plate_composition": ("체중", "식단", "다이어트"),
+        "weight_management_meal_timing": ("체중", "야식", "식사 간격"),
+        "weight_management_record_pattern_review": ("체중 기록", "체중", "기록 활용"),
     }
     keywords = (*topic_keywords.get(topic, ()), *actual_korean_keywords.get(topic, ()))
     return any(keyword in normalized_question for keyword in keywords)

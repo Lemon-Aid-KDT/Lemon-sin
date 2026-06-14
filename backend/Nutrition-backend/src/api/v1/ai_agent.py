@@ -75,6 +75,7 @@ DEFAULT_REFERENCE_RANGES = [
 
 PUBLIC_CHATBOT_SOURCE_FIELDS = (
     "source_id",
+    "source_title",
     "source_family",
     "review_status",
     "version_label",
