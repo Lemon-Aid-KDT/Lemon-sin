@@ -926,21 +926,25 @@ async def test_supplement_section_annotation_task_enqueue_skips_existing_task() 
         review_notes_code="ocr_layout_section_candidate",
     )
 
-    created = await supplement_image_analysis._enqueue_supplement_section_annotation_task_if_available(
-        session=cast(AsyncSession, fake_session),
-        user=_user(),
-        learning_object=learning_object,
-        ocr_result=OCRResult(
-            text="Warning Contains soy.",
-            provider="fake-ocr",
-            confidence=0.88,
-            pages=(_ocr_warning_page(),),
-        ),
-        settings=_settings(),
+    created = (
+        await supplement_image_analysis._enqueue_supplement_section_annotation_task_if_available(
+            session=cast(AsyncSession, fake_session),
+            user=_user(),
+            learning_object=learning_object,
+            ocr_result=OCRResult(
+                text="Warning Contains soy.",
+                provider="fake-ocr",
+                confidence=0.88,
+                pages=(_ocr_warning_page(),),
+            ),
+            settings=_settings(),
+        )
     )
 
     assert created is False
-    assert not [record for record in fake_session.added_records if isinstance(record, AnnotationTask)]
+    assert not [
+        record for record in fake_session.added_records if isinstance(record, AnnotationTask)
+    ]
 
 
 @pytest.mark.asyncio
@@ -1484,3 +1488,160 @@ async def test_multimodal_verification_skipped_branch_is_deterministic(
 
     assert fake_multimodal.call_count == 0
     assert OCR_VERIFICATION_MISMATCH_CODE not in result.ocr_warning_codes
+
+
+@pytest.mark.asyncio
+async def test_ensemble_merge_disabled_is_passthrough() -> None:
+    """Verify the secondary-merge adapter is never called when policy is disabled."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    secondary_merge = _FakeOCRAdapter("마그네슘 400mg", confidence=0.80)
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        _settings(),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            secondary_merge_ocr=secondary_merge,
+        ),
+    )
+
+    assert fake_ocr.call_count == 1
+    assert secondary_merge.call_count == 0
+    assert fake_parser.received_text == "비타민 D 1000"
+    assert result.ocr_result is not None
+    assert result.ocr_result.provider == "fake-ocr"
+
+
+@pytest.mark.asyncio
+async def test_ensemble_merge_always_runs_and_merges() -> None:
+    """Verify the secondary adapter always runs and its novel line is merged in."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    secondary_merge = _FakeOCRAdapter("비타민 D 1000\n마그네슘 400mg", confidence=0.80)
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            ocr_secondary_merge_policy="always",
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            secondary_merge_ocr=secondary_merge,
+        ),
+    )
+
+    assert fake_ocr.call_count == 1
+    assert secondary_merge.call_count == 1
+    assert fake_parser.received_text == "비타민 D 1000\n마그네슘 400mg"
+    assert result.ocr_result is not None
+    assert result.ocr_result.provider == "fake-ocr+fake-ocr"
+
+
+@pytest.mark.asyncio
+async def test_ensemble_merge_does_not_trigger_legacy_secondary_fallback() -> None:
+    """Verify a strong merged result does not invoke the legacy fallback chain."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    secondary_merge = _FakeOCRAdapter("비타민 D 1000\n마그네슘 400mg", confidence=0.80)
+    fallback_ocr = _FakeOCRAdapter("주의사항", confidence=0.83)
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            ocr_secondary_merge_policy="always",
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            secondary_merge_ocr=secondary_merge,
+            fallback_ocr_adapters=(fallback_ocr,),
+        ),
+    )
+
+    assert secondary_merge.call_count == 1
+    assert fallback_ocr.call_count == 0
+    assert result.ocr_result is not None
+    assert result.ocr_result.provider == "fake-ocr+fake-ocr"
+
+
+@pytest.mark.asyncio
+async def test_ensemble_merge_low_confidence_policy_skips_when_primary_strong() -> None:
+    """Verify the low_confidence policy skips the merge when primary is confident."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    secondary_merge = _FakeOCRAdapter("마그네슘 400mg", confidence=0.80)
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            ocr_secondary_merge_policy="low_confidence",
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            secondary_merge_ocr=secondary_merge,
+        ),
+    )
+
+    assert secondary_merge.call_count == 0
+    assert result.ocr_result is not None
+    assert result.ocr_result.provider == "fake-ocr"
+
+
+@pytest.mark.asyncio
+async def test_always_on_merge_forces_verification_despite_zero_sample_rate() -> None:
+    """Verify a merged result is always verified when mode is always_on_merge."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter("비타민 D 1000", confidence=0.91)
+    secondary_merge = _FakeOCRAdapter("비타민 D 1000\n마그네슘 400mg", confidence=0.80)
+    fake_multimodal = _FakeMultimodalVerifierAdapter(_verification_result())
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            ocr_secondary_merge_policy="always",
+            ocr_ensemble_verification_mode="always_on_merge",
+            enable_multimodal_llm=True,
+            enable_multimodal_verification=True,
+            multimodal_verification_sample_rate=0.0,
+            multimodal_verification_threshold=0.95,
+        ),
+        adapters=SupplementImageAnalysisAdapters(
+            ocr=fake_ocr,
+            parser=fake_parser,
+            secondary_merge_ocr=secondary_merge,
+            multimodal_ocr=fake_multimodal,
+        ),
+    )
+
+    assert secondary_merge.call_count == 1
+    assert fake_multimodal.verify_call_count == 1
+    assert result.ocr_result is not None
+    assert result.ocr_result.provider == "fake-ocr+fake-ocr"

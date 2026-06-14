@@ -97,6 +97,7 @@ def build_supplement_image_analysis_adapters(settings: Settings) -> SupplementIm
         ocr=build_supplement_ocr_adapter(settings),
         vision=_build_vision_adapter(settings),
         multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+        secondary_merge_ocr=_build_secondary_merge_ocr_adapter(settings),
         fallback_ocr_adapters=tuple(_build_fallback_ocr_adapters(settings)),
     )
 
@@ -128,6 +129,7 @@ def build_supplement_image_analysis_adapters_for_provider(
             ocr=_build_google_vision_adapter(settings),
             vision=_build_vision_adapter(settings),
             multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            secondary_merge_ocr=None,
             fallback_ocr_adapters=(),
         )
     if provider_selector == "paddleocr":
@@ -135,6 +137,7 @@ def build_supplement_image_analysis_adapters_for_provider(
             ocr=_build_paddleocr_primary_adapter(settings),
             vision=_build_vision_adapter(settings),
             multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            secondary_merge_ocr=None,
             fallback_ocr_adapters=(),
         )
     if provider_selector == "clova":
@@ -142,6 +145,7 @@ def build_supplement_image_analysis_adapters_for_provider(
             ocr=_build_clova_primary_adapter(settings),
             vision=_build_vision_adapter(settings),
             multimodal_ocr=_build_multimodal_ocr_adapter(settings),
+            secondary_merge_ocr=None,
             fallback_ocr_adapters=(),
         )
     raise OCRConfigurationError(f"Unsupported OCR provider selector: {provider_selector}")
@@ -182,6 +186,28 @@ def _build_multimodal_ocr_adapter(settings: Settings) -> OllamaVisionAssistAdapt
             "ENABLE_MULTIMODAL_LLM=true is required for Ollama vision assist."
         )
     return OllamaVisionAssistAdapter(settings)
+
+
+def _build_secondary_merge_ocr_adapter(settings: Settings) -> OCRAdapter | None:
+    """Build the optional PaddleOCR secondary-merge adapter for the ensemble stage.
+
+    The ensemble stage line-union merges this provider into the primary OCR
+    result instead of replacing it. Paddle is never merged into Paddle.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        PaddleOCR adapter when the merge policy is enabled and Paddle is not the
+        primary provider, otherwise None.
+    """
+    if settings.ocr_secondary_merge_policy == "disabled":
+        return None
+    if not settings.enable_local_ocr:
+        return None
+    if settings.ocr_primary_provider == "paddleocr":
+        return None
+    return PaddleOCRAdapter(settings)
 
 
 def _build_paddleocr_primary_adapter(settings: Settings) -> PaddleOCRAdapter:

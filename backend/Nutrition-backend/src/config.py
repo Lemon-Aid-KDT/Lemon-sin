@@ -585,6 +585,40 @@ class Settings(BaseSettings):
         default="disabled",
         description="Ollama vision assist 호출 조건. 기본값 disabled.",
     )
+    ocr_secondary_merge_policy: Literal["disabled", "always", "low_confidence"] = Field(
+        default="disabled",
+        description=(
+            "Secondary OCR provider 병합 정책. 'disabled'(기본)=기존 fallback 체인 유지. "
+            "'always'=secondary(Paddle)를 항상 실행해 primary(Clova)에 line-union 병합(보충). "
+            "'low_confidence'=primary가 약할 때만 병합."
+        ),
+    )
+    ocr_merge_dedup_threshold: float = Field(
+        default=0.92,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Cross-provider line near-duplicate 임계값(SequenceMatcher ratio). 기본 "
+            "0.92는 공백·대소문자 변형과 매우 높은 유사도만 잡는다 — 짧은 토큰의 한 글자 "
+            "드리프트(예: 0↔O는 ratio 0.78~0.88)는 임계 미만이라 보충 라인에 남을 수 있다 "
+            "(보충은 데이터를 잃지 않으므로 보수적 기본값; 더 공격적 dedup은 값을 낮추되 "
+            "서로 다른 짧은 성분명 과병합 위험 주의)."
+        ),
+    )
+    ocr_merge_max_supplement_lines: int = Field(
+        default=40,
+        ge=0,
+        le=200,
+        description="Secondary가 추가로 보충할 수 있는 최대 line 수(비용/garbage bound).",
+    )
+    ocr_ensemble_verification_mode: Literal["inherit_sample", "always_on_merge"] = Field(
+        default="inherit_sample",
+        description=(
+            "'inherit_sample'(기본)=기존 multimodal_verification_sample_rate 사용. "
+            "'always_on_merge'=병합이 실제로 일어난 결과는 sample_rate와 무관하게 항상 Gemma 검증. "
+            "(두 모드 모두 ENABLE_MULTIMODAL_VERIFICATION=true·ENABLE_MULTIMODAL_LLM=true 전제.)"
+        ),
+    )
     enable_multimodal_verification: bool = Field(
         default=False,
         description="Primary OCR 결과를 local vision model로 샘플 검증. 기본값 disabled.",

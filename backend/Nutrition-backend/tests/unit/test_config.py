@@ -152,6 +152,10 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.llm_wiki_max_sources == 4
     assert settings.llm_wiki_excerpt_chars == 700
     assert settings.multimodal_ocr_assist_policy == "disabled"
+    assert settings.ocr_secondary_merge_policy == "disabled"
+    assert settings.ocr_merge_dedup_threshold == 0.92
+    assert settings.ocr_merge_max_supplement_lines == 40
+    assert settings.ocr_ensemble_verification_mode == "inherit_sample"
     assert settings.enable_multimodal_verification is False
     assert settings.multimodal_verification_sample_rate == 0.0
     assert settings.multimodal_verification_threshold == 0.80

@@ -138,6 +138,8 @@ class SupplementImageAnalysisAdapters:
         parser: Structured OCR text parser, primarily injected by tests.
         vision: Label-region detector. Used only when ``enable_vision_classifier`` is true.
         multimodal_ocr: Local vision LLM assist adapter used only as OCR fallback.
+        secondary_merge_ocr: Optional secondary OCR adapter line-union merged into
+            the primary result (ensemble supplement), distinct from the fallback chain.
         fallback_ocr_adapters: Optional secondary OCR fallback adapters.
     """
 
@@ -145,6 +147,7 @@ class SupplementImageAnalysisAdapters:
     parser: SupplementOCRTextParser | None = None
     vision: VisionAdapter | None = None
     multimodal_ocr: OCRAdapter | None = None
+    secondary_merge_ocr: OCRAdapter | None = None
     fallback_ocr_adapters: tuple[OCRAdapter, ...] = ()
 
 
@@ -268,6 +271,14 @@ async def analyze_supplement_image(
         settings=settings,
     )
     ocr_result = ocr_extraction.ocr_result
+    ocr_result = await _supplement_ensemble_ocr_if_allowed(
+        image_bytes=image_bytes,
+        image_metadata=image_metadata,
+        label_region=vision_region,
+        ocr_result=ocr_result,
+        secondary_merge_adapter=active_adapters.secondary_merge_ocr,
+        settings=settings,
+    )
     ocr_result = await _extract_multimodal_ocr_if_allowed(
         image_bytes=image_bytes,
         image_metadata=image_metadata,
@@ -1073,6 +1084,18 @@ def _ordered_ocr_regions(
     )[:MAX_PRIMARY_OCR_ROI_CANDIDATES]
 
 
+def _normalized_nonempty_lines(text: str) -> list[str]:
+    """Return stripped non-empty lines from OCR text.
+
+    Args:
+        text: Raw OCR text.
+
+    Returns:
+        Stripped lines with empty lines removed, in original order.
+    """
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
 def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
     """Merge multi-ROI OCR text in memory without preserving raw provider payloads.
 
@@ -1095,7 +1118,7 @@ def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
     confidences: list[float] = []
     pages: list[OCRPage] = []
     for result in usable:
-        normalized = "\n".join(line.strip() for line in result.text.splitlines() if line.strip())
+        normalized = "\n".join(_normalized_nonempty_lines(result.text))
         if not normalized or normalized in seen_texts:
             continue
         text_parts.append(normalized)
@@ -1110,6 +1133,188 @@ def _merge_ocr_results(results: list[OCRResult]) -> OCRResult | None:
         confidence=confidence,
         pages=tuple(pages),
     )
+
+
+def _line_dedup_key(line: str) -> str:
+    """Build a whitespace-insensitive, case-folded dedup key for one OCR line.
+
+    Args:
+        line: OCR line text.
+
+    Returns:
+        Dedup key with all whitespace stripped and case folded.
+    """
+    return "".join(line.casefold().split())
+
+
+def _is_near_duplicate(key: str, seen: set[str], threshold: float) -> bool:
+    """Check whether a dedup key is a near-duplicate of any seen key.
+
+    Args:
+        key: Candidate line dedup key.
+        seen: Dedup keys already accepted into the merge.
+        threshold: SequenceMatcher ratio threshold for treating two keys as duplicates.
+
+    Returns:
+        True when any seen key has a similarity ratio at or above ``threshold``.
+    """
+    return any(SequenceMatcher(None, key, existing).ratio() >= threshold for existing in seen)
+
+
+def _merge_confidence(primary: OCRResult, secondary: OCRResult) -> float | None:
+    """Choose the merged confidence, deliberately anchoring on the primary provider.
+
+    The primary (e.g. Clova) confidence is the trust anchor and is reported
+    verbatim even when many secondary lines were supplemented — the merge adds
+    coverage, it does not dilute the primary's reliability. This anchor-on-primary
+    choice is load-bearing: the legacy ``_extract_secondary_ocr_if_allowed`` no-op
+    under ensemble mode relies on a merged result keeping the primary's
+    (above-threshold) confidence so ``_should_run_secondary_fallback`` stays False
+    and Paddle is not run a second time.
+
+    Args:
+        primary: Primary OCR result.
+        secondary: Secondary OCR result.
+
+    Returns:
+        Primary confidence when present, otherwise the secondary confidence.
+    """
+    return primary.confidence if primary.confidence is not None else secondary.confidence
+
+
+# Upper bound on how many secondary lines the cross-provider merge will examine.
+# ``ocr_merge_max_supplement_lines`` bounds how many are *appended*; this bounds the
+# *iteration* so a noisy secondary pass that emits only near-duplicates (appends
+# stay low, so that cap never trips) cannot make the per-line near-dup scan run
+# over an unbounded number of lines. Real supplement labels are well under this.
+_MAX_SECONDARY_MERGE_CANDIDATES = 200
+
+
+def _merge_cross_provider_ocr_results(
+    primary: OCRResult | None,
+    secondary: OCRResult | None,
+    settings: Settings,
+) -> OCRResult | None:
+    """Line-union merge a secondary OCR result into a primary result (supplement).
+
+    The primary text is never replaced; only novel secondary lines (neither exact,
+    whitespace/casing, nor SequenceMatcher near-duplicates of a primary line) are
+    appended, bounded by ``ocr_merge_max_supplement_lines`` and, for iteration cost,
+    ``_MAX_SECONDARY_MERGE_CANDIDATES``.
+
+    Carve-out: when the primary is empty/whitespace this returns the secondary
+    result object *unchanged* (a graceful stand-in, not a merge) — its provider is
+    the secondary's own label (no ``"+"`` marker), so the always-on-merge
+    verification gate does not treat that empty-primary stand-in as a merge.
+
+    Args:
+        primary: Primary OCR result, if any.
+        secondary: Secondary OCR result to merge in, if any.
+        settings: Runtime settings controlling dedup threshold and line cap.
+
+    Returns:
+        Merged OCR result, or whichever single result is non-empty, or None.
+    """
+    primary_lines = _normalized_nonempty_lines(primary.text) if primary is not None else []
+    secondary_lines = _normalized_nonempty_lines(secondary.text) if secondary is not None else []
+    if not primary_lines:
+        return secondary if secondary is not None else primary
+    if not secondary_lines:
+        return primary
+    assert primary is not None
+    assert secondary is not None
+
+    merged = list(primary_lines)
+    seen = {_line_dedup_key(line) for line in primary_lines}
+    threshold = settings.ocr_merge_dedup_threshold
+    appended = 0
+    for line in secondary_lines[:_MAX_SECONDARY_MERGE_CANDIDATES]:
+        if appended >= settings.ocr_merge_max_supplement_lines:
+            break
+        key = _line_dedup_key(line)
+        if key in seen or _is_near_duplicate(key, seen, threshold):
+            continue
+        merged.append(line)
+        seen.add(key)
+        appended += 1
+
+    return OCRResult(
+        text="\n".join(merged),
+        provider=f"{primary.provider}+{secondary.provider}",
+        confidence=_merge_confidence(primary, secondary),
+        pages=(*primary.pages, *secondary.pages),
+    )
+
+
+def _should_run_ensemble_merge(primary_result: OCRResult | None, settings: Settings) -> bool:
+    """Determine whether the ensemble secondary-merge stage should run.
+
+    Args:
+        primary_result: Primary OCR result, if any.
+        settings: Runtime settings controlling the merge policy.
+
+    Returns:
+        True only for the configured ``always`` or qualifying ``low_confidence`` cases.
+    """
+    if settings.ocr_secondary_merge_policy == "disabled":
+        return False
+    if settings.ocr_secondary_merge_policy == "always":
+        return True
+    if primary_result is None or not primary_result.text.strip():
+        return True
+    return _is_low_confidence(primary_result.confidence)
+
+
+async def _supplement_ensemble_ocr_if_allowed(
+    *,
+    image_bytes: bytes | None,
+    image_metadata: ValidatedSupplementImage,
+    label_region: BoundingBox | None,
+    ocr_result: OCRResult | None,
+    secondary_merge_adapter: OCRAdapter | None,
+    settings: Settings,
+) -> OCRResult | None:
+    """Always-run secondary OCR and line-union merge it into the primary result.
+
+    Unlike the legacy fallback chain this stage supplements the primary result
+    instead of replacing it, and uses a single full-image OCR call with no ROI
+    fan-out. It is fully config-gated and defaults to a passthrough.
+
+    Args:
+        image_bytes: Validated image bytes, if loaded for adapter use.
+        image_metadata: Validated image metadata.
+        label_region: Optional YOLO ROI metadata passed to the secondary adapter.
+        ocr_result: Primary OCR result candidate.
+        secondary_merge_adapter: Optional secondary OCR adapter to merge in.
+        settings: Runtime settings controlling the merge policy.
+
+    Returns:
+        Primary OCR result unchanged, or the cross-provider merged result.
+    """
+    if not _should_run_ensemble_merge(ocr_result, settings):
+        return ocr_result
+    if secondary_merge_adapter is None or image_bytes is None:
+        return ocr_result
+
+    secondary_input = OCRImageInput(
+        image_bytes=image_bytes,
+        mime_type=image_metadata.mime_type,
+        width=image_metadata.width,
+        height=image_metadata.height,
+        label_region=label_region,
+    )
+    try:
+        secondary_result = await secondary_merge_adapter.extract_text(secondary_input)
+    except OCRError as exc:
+        # Diagnostic only: a failed supplement merge leaves the primary result
+        # intact. Log the failure class so a silently-skipped merge is observable.
+        logger.warning(
+            "Secondary ensemble OCR merge failed (%s); using primary OCR result.",
+            exc.__class__.__name__,
+        )
+        return ocr_result
+
+    return _merge_cross_provider_ocr_results(ocr_result, secondary_result, settings)
 
 
 def _prepare_primary_ocr_image_input(
@@ -1306,9 +1511,7 @@ async def _verify_ocr_with_multimodal_if_allowed(
         )
 
     try:
-        candidate = await multimodal_adapter.extract_text(
-            verification_input
-        )
+        candidate = await multimodal_adapter.extract_text(verification_input)
     except (OCRError, OllamaClientError, OllamaConfigurationError, OllamaStructuredOutputError):
         return None, None
 
@@ -1436,7 +1639,20 @@ def _should_run_multimodal_verification(
         return False
     if not ocr_result.text.strip() or ocr_result.provider == "ollama_vision_assist":
         return False
-    sample_rate = settings.multimodal_verification_sample_rate
+    if settings.ocr_ensemble_verification_mode == "always_on_merge" and "+" in ocr_result.provider:
+        return True
+    return _verification_sample_passes(settings.multimodal_verification_sample_rate)
+
+
+def _verification_sample_passes(sample_rate: float) -> bool:
+    """Resolve the verification sampling decision for the inherit-sample path.
+
+    Args:
+        sample_rate: Configured verification sample rate.
+
+    Returns:
+        True when the configured sampling rate selects this result.
+    """
     if sample_rate <= 0:
         return False
     if sample_rate >= 1:
