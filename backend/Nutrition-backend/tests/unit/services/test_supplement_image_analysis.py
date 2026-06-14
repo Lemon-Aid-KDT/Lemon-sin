@@ -49,6 +49,20 @@ from src.vision.base import BoundingBox, VisionAdapter, VisionError
 from starlette.datastructures import Headers
 
 
+@pytest.fixture(autouse=True)
+def _isolate_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make these settings hermetic: ignore a developer's local PROJECT_ROOT/.env.
+
+    These tests build ``Settings(...)`` directly and assert *default* OCR-ensemble /
+    multimodal behavior. A live local ``.env`` (e.g. the OCR-ensemble activation
+    ``OCR_SECONDARY_MERGE_POLICY=always`` + ``ENABLE_MULTIMODAL_*=true``) is read by
+    pydantic-settings for any field the test leaves unset, flipping those defaults
+    and breaking the assertions locally. CI has no ``.env`` so this only neutralizes
+    local leakage; explicit ``Settings(field=...)`` init args still take precedence.
+    """
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+
+
 class _TransactionContext:
     """Async context manager used by the fake session transaction."""
 
