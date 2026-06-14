@@ -679,14 +679,21 @@ class Settings(BaseSettings):
             "threshold; upstream default 0.3). None keeps the pipeline default."
         ),
     )
+    # Adopted default 0.4 (team decision 2026-06-14). The held-out detection
+    # sweep picked box_thresh=0.4 as the single best lever (within-sweep macro
+    # +0.0098 / micro +0.0175 / ingredient_recall +0.021 vs the 0.6 upstream
+    # default). Authority: outputs/todo-list/2026-06-13/
+    # 2026-06-13-ocr-benchmark-required-section-decision.md §7. PaddleOCR's own
+    # upstream default is 0.6 (confirmed against the official reference above);
+    # set LOCAL_OCR_TEXT_DET_BOX_THRESH to None/another value to override.
     local_ocr_text_det_box_thresh: float | None = Field(
-        default=None,
+        default=0.4,
         gt=0.0,
         le=1.0,
         description=(
-            "Optional PaddleOCR predict() text_det_box_thresh override (box "
-            "average-score threshold; upstream default 0.6). None keeps the "
-            "pipeline default."
+            "PaddleOCR predict() text_det_box_thresh (box average-score "
+            "threshold). Adopted default 0.4 (held-out sweep winner; upstream "
+            "PaddleOCR default 0.6). Override via LOCAL_OCR_TEXT_DET_BOX_THRESH."
         ),
     )
     local_ocr_text_det_unclip_ratio: float | None = Field(
