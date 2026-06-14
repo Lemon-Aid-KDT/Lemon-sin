@@ -15,7 +15,7 @@ from PIL import Image
 from pydantic import SecretStr
 from src.api.v1 import regulated_inputs
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDocument
@@ -57,6 +57,11 @@ class _FakeRegulatedSession:
         self.added_prescription_items: list[PrescriptionItem] = []
         self.added_lab_result_items: list[LabResultItem] = []
         self.committed = False
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {}
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -195,7 +200,8 @@ def _client(fake_session: _FakeRegulatedSession, settings: Settings) -> TestClie
     """
     app = create_app(settings=settings)
     app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    # Routes adopted get_rls_context_session (ambient-tx Step 6, RLS Stage-2 rollout).
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     return TestClient(app)
 
 

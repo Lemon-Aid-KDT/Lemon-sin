@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.medical import MedicalRecordCollection, PatientMedication
 from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDocument
 from src.models.schemas.regulated import (
@@ -300,7 +301,7 @@ async def confirm_regulated_document(
     owner_subject_hash = hash_actor_subject(user, settings)
     assert_no_blocked_medical_outputs(request.model_dump(mode="json"))
 
-    async with session.begin():
+    async with persist_scope(session):
         document = await session.scalar(
             select(RegulatedDocument).where(
                 RegulatedDocument.id == document_id,
@@ -479,9 +480,10 @@ async def _create_regulated_ocr_preview(
         expires_at=now + timedelta(minutes=settings.regulated_document_preview_ttl_minutes),
         confirmed_at=None,
     )
-    async with session.begin():
+    async with persist_scope(session):
         session.add(document)
-    await session.refresh(document)
+        await session.flush()
+        await session.refresh(document)
     return document
 
 

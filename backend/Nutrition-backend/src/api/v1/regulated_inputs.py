@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.contract import route_contract
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.regulated import (
     LabResultOCRPreviewResponse,
@@ -186,7 +186,7 @@ async def analyze_prescription_ocr(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_regulated_input_write)],
     image: Annotated[UploadFile, File(description="Prescription document image.")],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> PrescriptionOCRPreviewResponse:
     """Create a prescription OCR preview that must be confirmed by the user.
@@ -288,7 +288,7 @@ async def analyze_lab_result_ocr(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_regulated_input_write)],
     image: Annotated[UploadFile, File(description="Lab result document image.")],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LabResultOCRPreviewResponse:
     """Create a lab result OCR preview that must be confirmed by the user.
@@ -392,7 +392,7 @@ async def confirm_regulated_ocr_preview(
     http_request: Request,
     request: Annotated[RegulatedDocumentConfirmRequest, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_regulated_input_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> RegulatedDocumentConfirmResponse:
     """Confirm a regulated OCR preview after user review.

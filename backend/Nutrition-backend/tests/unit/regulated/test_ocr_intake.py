@@ -13,6 +13,7 @@ from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.medical import MedicalRecordCollection, PatientMedication
 from src.models.db.regulated import LabResultItem, PrescriptionItem, RegulatedDocument
 from src.models.schemas.regulated import (
@@ -58,13 +59,21 @@ class _TransactionContext:
 class _FakeRegulatedSession:
     """Fake async session for regulated intake service tests."""
 
-    def __init__(self, document: RegulatedDocument | None = None) -> None:
+    def __init__(
+        self,
+        document: RegulatedDocument | None = None,
+        *,
+        request_managed: bool = False,
+    ) -> None:
         self.document = document
         self.added_documents: list[RegulatedDocument] = []
         self.added_prescription_items: list[PrescriptionItem] = []
         self.added_lab_result_items: list[LabResultItem] = []
         self.added_medical_collections: list[MedicalRecordCollection] = []
         self.added_patient_medications: list[PatientMedication] = []
+        self.commits = 0
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -73,6 +82,16 @@ class _FakeRegulatedSession:
             Fake transaction context.
         """
         return _TransactionContext()
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
+
+    async def commit(self) -> None:
+        """Count commits (own-mode must commit exactly once)."""
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        """No-op rollback (own-mode rolls back on exception)."""
 
     async def scalar(self, _statement: object) -> RegulatedDocument | None:
         """Return the configured regulated document.
@@ -341,6 +360,102 @@ async def test_confirm_lab_result_stores_user_confirmed_items() -> None:
     assert fake_session.added_medical_collections[0].record_type == "lab_result"
     assert fake_session.added_medical_collections[0].source_document_id == document.id
     assert fake_session.added_patient_medications == []
+
+
+@pytest.mark.asyncio
+async def test_preview_owns_transaction_in_legacy_mode() -> None:
+    """Verify legacy (get_async_session) sessions commit the OCR preview exactly once."""
+    settings = _settings()
+    fake_session = _FakeRegulatedSession()  # no marker → OWN mode
+    fake_ocr = _FakeOCRAdapter("Amoxicillin 500mg 하루 2회 7일")
+
+    await create_prescription_ocr_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image=_upload(),
+        settings=settings,
+        adapters=RegulatedOCRAdapters(ocr=fake_ocr),
+    )
+
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_preview_participates_in_request_managed_transaction() -> None:
+    """Verify RLS (get_rls_context_session) sessions never commit the OCR preview."""
+    settings = _settings()
+    fake_session = _FakeRegulatedSession(request_managed=True)
+    fake_ocr = _FakeOCRAdapter("Amoxicillin 500mg 하루 2회 7일")
+
+    await create_prescription_ocr_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image=_upload(),
+        settings=settings,
+        adapters=RegulatedOCRAdapters(ocr=fake_ocr),
+    )
+
+    assert fake_session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_confirm_owns_transaction_in_legacy_mode() -> None:
+    """Verify legacy sessions commit the confirmation (document + items + audit) once."""
+    settings = _settings()
+    document = _document(RegulatedDocumentType.PRESCRIPTION, settings)
+    fake_session = _FakeRegulatedSession(document=document)  # no marker → OWN mode
+
+    await confirm_regulated_document(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        document_id=document.id,
+        request=RegulatedDocumentConfirmRequest(
+            document_type=RegulatedDocumentType.PRESCRIPTION,
+            prescription_items=[
+                PrescriptionItemConfirm(
+                    medication_name_text="Amoxicillin",
+                    dose_text="500mg",
+                    frequency_text="하루 2회",
+                    period_text="7일",
+                )
+            ],
+        ),
+        settings=settings,
+    )
+
+    assert fake_session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_participates_in_request_managed_transaction() -> None:
+    """Verify RLS sessions never commit the confirmation; the dependency owns the tx.
+
+    The document update, child item inserts, and medical-collection writes must all
+    stay in the request transaction so the transaction-local RLS GUCs survive.
+    """
+    settings = _settings()
+    document = _document(RegulatedDocumentType.PRESCRIPTION, settings)
+    fake_session = _FakeRegulatedSession(document=document, request_managed=True)
+
+    await confirm_regulated_document(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        document_id=document.id,
+        request=RegulatedDocumentConfirmRequest(
+            document_type=RegulatedDocumentType.PRESCRIPTION,
+            prescription_items=[
+                PrescriptionItemConfirm(
+                    medication_name_text="Amoxicillin",
+                    dose_text="500mg",
+                    frequency_text="하루 2회",
+                    period_text="7일",
+                )
+            ],
+        ),
+        settings=settings,
+    )
+
+    assert fake_session.commits == 0
 
 
 def test_direct_dose_change_guidance_is_blocked() -> None:
