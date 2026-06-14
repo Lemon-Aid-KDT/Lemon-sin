@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.schemas.health import HealthSyncRequest
 from src.security.auth import AuthenticatedUser
@@ -44,12 +45,24 @@ class _TransactionContext:
 class _FakeHealthSyncSession:
     """Fake async session for health sync service tests."""
 
-    def __init__(self, scalar_results: list[object | None] | None = None) -> None:
+    def __init__(
+        self,
+        scalar_results: list[object | None] | None = None,
+        *,
+        request_managed: bool = False,
+    ) -> None:
         self.scalar_results = list(scalar_results or [])
         self.added: list[object] = []
-        self.committed = False
+        self.commit_count = 0
         self.refreshed: object | None = None
         self.flushed = False
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
+
+    @property
+    def committed(self) -> bool:
+        """Whether at least one commit happened (kept for existing assertions)."""
+        return self.commit_count > 0
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -93,12 +106,12 @@ class _FakeHealthSyncSession:
                 record.id = uuid4()
 
     async def commit(self) -> None:
-        """Record a fake commit.
+        """Count fake commits (own-mode must commit exactly once).
 
         Returns:
             None.
         """
-        self.committed = True
+        self.commit_count += 1
 
     async def refresh(self, record: object) -> None:
         """Populate server-generated timestamps.
@@ -284,3 +297,27 @@ async def test_sync_health_daily_aggregates_updates_existing_daily_summary() -> 
     assert existing_summary.steps == 8100
     assert existing_summary.weight_kg == Decimal("69.5")
     assert session.committed is True
+
+
+# --- persist_scope transaction-ownership contract (ambient-tx Step 4) ----------
+#
+# Under a request-managed (RLS) session the write path must PARTICIPATE (flush
+# only, never commit) so the transaction-local owner GUCs survive to the
+# dependency's commit-on-exit; under a legacy session it must OWN the
+# transaction (commit exactly once), reproducing today's add+commit behavior.
+
+
+@pytest.mark.asyncio
+async def test_sync_health_participates_without_commit_when_request_managed() -> None:
+    session = _FakeHealthSyncSession(scalar_results=[None, None, None], request_managed=True)
+    result = await sync_health_daily_aggregates(cast(AsyncSession, session), _user(), _request())
+    assert session.committed is False  # GUCs must survive to the dependency commit
+    assert session.flushed is True
+    assert result.batch.id is not None
+
+
+@pytest.mark.asyncio
+async def test_sync_health_commits_once_in_legacy_own_mode() -> None:
+    session = _FakeHealthSyncSession(scalar_results=[None, None, None], request_managed=False)
+    await sync_health_daily_aggregates(cast(AsyncSession, session), _user(), _request())
+    assert session.commit_count == 1  # exactly once (re-entrancy/double-commit guard)

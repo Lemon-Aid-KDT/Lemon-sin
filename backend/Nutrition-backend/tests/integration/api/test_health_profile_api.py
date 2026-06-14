@@ -11,7 +11,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import health
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.db.health import BodyProfileSnapshot, HealthDailySummary, HealthMetricSample
 from src.models.schemas.health import BodyProfileSnapshotCreate, HealthMetricSampleCreate
@@ -52,7 +52,9 @@ def _client() -> TestClient:
         FastAPI test client.
     """
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # Routes adopted get_rls_context_session (ambient-tx Step 4, RLS Stage-2
+    # rollout); overriding get_async_session alone no longer reaches them.
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     return TestClient(app)
 
 

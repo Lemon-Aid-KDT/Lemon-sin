@@ -18,7 +18,7 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.health import (
     BodyProfileSnapshotCreate,
     BodyProfileSnapshotResponse,
@@ -152,17 +152,6 @@ async def _require_sensitive_health_consent(
         ) from exc
 
 
-async def _commit_consent_read_transaction(session: AsyncSession) -> None:
-    """Close an implicit consent-read transaction before service-level writes.
-
-    Args:
-        session: Request-scoped async database session.
-    """
-    in_transaction = getattr(session, "in_transaction", None)
-    if callable(in_transaction) and in_transaction():
-        await session.commit()
-
-
 @router.post(
     "/sync",
     response_model=HealthSyncResponse,
@@ -187,7 +176,7 @@ async def sync_health_daily_aggregates(
         Body(openapi_examples=HEALTH_SYNC_REQUEST_EXAMPLES),
     ],
     current_user: Annotated[AuthenticatedUser, Depends(require_health_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HealthSyncResponse:
     """Sync current-user health aggregates from the mobile app.
@@ -257,7 +246,7 @@ async def create_profile_snapshot(
     http_request: Request,
     request: Annotated[BodyProfileSnapshotCreate, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_health_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> BodyProfileSnapshotResponse:
     """Create a versioned current-user body profile snapshot.
@@ -283,7 +272,6 @@ async def create_profile_snapshot(
         action="body_profile_snapshot_blocked",
         resource_type="body_profile_snapshot",
     )
-    await _commit_consent_read_transaction(session)
     snapshot = await create_body_profile_snapshot(session, current_user, request)
     await record_sensitive_audit_event(
         session,
@@ -321,7 +309,7 @@ async def create_profile_snapshot(
 async def get_latest_profile_snapshot(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_health_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> BodyProfileSnapshotResponse | EmptyLatestBodyProfileResponse:
     """Return the latest current-user body profile snapshot.
@@ -382,7 +370,7 @@ async def create_metric_sample(
     http_request: Request,
     request: Annotated[HealthMetricSampleCreate, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_health_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HealthMetricSampleResponse:
     """Create or reuse a current-user point-in-time health metric sample.
@@ -401,7 +389,6 @@ async def create_metric_sample(
         HTTPException: If consent is missing or the idempotency hash conflicts.
     """
     await _require_health_device_consent(session, current_user, http_request, settings)
-    await _commit_consent_read_transaction(session)
     try:
         sample = await create_health_metric_sample(session, current_user, request)
     except HealthProfileConflictError as exc:
@@ -456,7 +443,7 @@ async def create_metric_sample(
 async def get_daily_summary(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_health_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,

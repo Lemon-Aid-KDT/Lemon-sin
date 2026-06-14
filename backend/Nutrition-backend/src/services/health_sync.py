@@ -12,6 +12,7 @@ from typing import cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.db.tx import persist_scope
 from src.models.db.health import HealthDailySummary, HealthSyncBatch
 from src.models.schemas.health import HealthDailyAggregate, HealthSyncRequest, HealthSyncResponse
 from src.security.auth import AuthenticatedUser
@@ -98,14 +99,13 @@ async def sync_health_daily_aggregates(
         },
         synced_at=synced_at,
     )
-    session.add(batch)
-    await session.flush()
-
-    for record in request.records:
-        await _upsert_daily_summary(session, owner_subject, record, synced_at)
-
-    await session.commit()
-    await session.refresh(batch)
+    async with persist_scope(session):
+        session.add(batch)
+        await session.flush()
+        for record in request.records:
+            await _upsert_daily_summary(session, owner_subject, record, synced_at)
+        await session.flush()
+        await session.refresh(batch)
     return HealthSyncResult(
         batch=batch,
         accepted_count=accepted_count,

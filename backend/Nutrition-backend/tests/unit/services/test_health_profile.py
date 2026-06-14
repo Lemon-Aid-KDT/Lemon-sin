@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.health import BodyProfileSnapshot, HealthDailySummary, HealthMetricSample
 from src.models.schemas.health import (
     BodyProfileSnapshotCreate,
@@ -48,16 +49,25 @@ class _FakeScalarResult:
 class _FakeSession:
     """Fake async session for health profile service tests."""
 
-    def __init__(self, *, scalar_rows: list[object | None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        scalar_rows: list[object | None] | None = None,
+        request_managed: bool = False,
+    ) -> None:
         """Initialize fake session.
 
         Args:
             scalar_rows: Ordered values returned by `scalar`.
+            request_managed: When True, stamp the marker so ``persist_scope``
+                participates (flush only) instead of owning the transaction.
         """
         self.scalar_rows = list(scalar_rows or [])
         self.added: list[object] = []
         self.commits = 0
         self.refreshed: list[object] = []
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
 
     async def scalar(self, _statement: object) -> object | None:
         """Return the next scalar row.
@@ -242,3 +252,70 @@ def test_daily_summaries_response_hides_source_hash() -> None:
     assert "owner_subject" not in serialized
     assert "source_record_hash" not in serialized
     assert serialized["summaries"][0]["steps"] == 7000
+
+
+# --- persist_scope transaction-ownership contract (ambient-tx Step 4) ----------
+#
+# Under a request-managed (RLS) session the write services must PARTICIPATE
+# (flush only, never commit) so the transaction-local owner GUCs survive to the
+# dependency's commit-on-exit; under a legacy session they must OWN the
+# transaction (commit exactly once), reproducing today's add+commit behavior.
+
+
+def _profile_create_request() -> BodyProfileSnapshotCreate:
+    """Return a minimal body profile create request."""
+    return BodyProfileSnapshotCreate(
+        effective_at=datetime(2026, 5, 27, tzinfo=UTC),
+        source="manual",
+        height_cm=Decimal("172.5"),
+        weight_kg=Decimal("68.4"),
+    )
+
+
+def _metric_create_request() -> HealthMetricSampleCreate:
+    """Return a metric sample create request without an idempotency hash."""
+    return HealthMetricSampleCreate(
+        metric_type="weight_kg",
+        measured_at=datetime(2026, 5, 27, 9, 30, tzinfo=UTC),
+        value_numeric=Decimal("68.4000"),
+        unit="kg",
+        source_platform="manual",
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_body_profile_participates_without_commit_when_request_managed() -> None:
+    session = _FakeSession(scalar_rows=[None], request_managed=True)
+    snapshot = await create_body_profile_snapshot(
+        cast(AsyncSession, session), _user(), _profile_create_request()
+    )
+    assert session.commits == 0  # GUCs must survive to the dependency commit
+    assert snapshot.id is not None
+
+
+@pytest.mark.asyncio
+async def test_create_body_profile_commits_once_in_legacy_own_mode() -> None:
+    session = _FakeSession(scalar_rows=[None], request_managed=False)
+    await create_body_profile_snapshot(
+        cast(AsyncSession, session), _user(), _profile_create_request()
+    )
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_create_metric_sample_participates_without_commit_when_request_managed() -> None:
+    session = _FakeSession(scalar_rows=[None], request_managed=True)
+    sample = await create_health_metric_sample(
+        cast(AsyncSession, session), _user(), _metric_create_request()
+    )
+    assert session.commits == 0
+    assert sample.id is not None
+
+
+@pytest.mark.asyncio
+async def test_create_metric_sample_commits_once_in_legacy_own_mode() -> None:
+    session = _FakeSession(scalar_rows=[None], request_managed=False)
+    await create_health_metric_sample(
+        cast(AsyncSession, session), _user(), _metric_create_request()
+    )
+    assert session.commits == 1

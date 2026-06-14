@@ -9,6 +9,7 @@ from typing import cast
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.db.tx import persist_scope
 from src.models.db.health import BodyProfileSnapshot, HealthDailySummary, HealthMetricSample
 from src.models.schemas.health import (
     BodyProfileSnapshotCreate,
@@ -68,10 +69,10 @@ async def create_body_profile_snapshot(
         activity_level=request.activity_level.value if request.activity_level is not None else None,
         consent_snapshot={"consent_type": "sensitive_health_analysis"},
     )
-    session.add(snapshot)
-    await session.flush()
-    await session.commit()
-    await session.refresh(snapshot)
+    async with persist_scope(session):
+        session.add(snapshot)
+        await session.flush()
+        await session.refresh(snapshot)
     return snapshot
 
 
@@ -134,10 +135,10 @@ async def create_health_metric_sample(
         ),
         quality_flags=request.quality_flags,
     )
-    session.add(sample)
-    await session.flush()
-    await session.commit()
-    await session.refresh(sample)
+    async with persist_scope(session):
+        session.add(sample)
+        await session.flush()
+        await session.refresh(sample)
     return sample
 
 
