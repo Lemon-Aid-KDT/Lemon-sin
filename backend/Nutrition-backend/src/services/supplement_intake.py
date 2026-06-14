@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.image_quality import ImageQualityReport
 from src.models.schemas.supplement import (
@@ -361,7 +362,7 @@ async def create_supplement_analysis_intake(
     record: SupplementAnalysisRun | None = None
     reused_existing = False
 
-    async with session.begin():
+    async with persist_scope(session):
         if normalized_client_request_id is not None:
             record = await session.scalar(
                 select(SupplementAnalysisRun).where(

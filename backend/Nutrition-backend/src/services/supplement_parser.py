@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaSupplementParser
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.label_layout import LabelLayout, LabelSection
@@ -314,22 +315,22 @@ async def parse_supplement_analysis_ocr_text(
     parse_result = _merge_ocr_text_section_fallbacks(parse_result, normalized_text)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
-    record.ocr_provider = normalized_provider
-    record.ocr_confidence = normalized_confidence
-    record.ocr_text_hash = text_hash
-    record.parsed_snapshot = _build_parsed_snapshot(
-        parse_result=parse_result,
-        previous_snapshot=record.parsed_snapshot,
-        ocr_confidence=normalized_confidence,
-        ocr_provider=normalized_provider,
-        ocr_layout=ocr_layout,
-        settings=settings,
-    )
-    record.warnings = _build_warning_list(parse_result.warnings, normalized_provider)
-    record.algorithm_version = settings.supplement_parser_algorithm_version
-    record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
+    async with persist_scope(session):
+        record.ocr_provider = normalized_provider
+        record.ocr_confidence = normalized_confidence
+        record.ocr_text_hash = text_hash
+        record.parsed_snapshot = _build_parsed_snapshot(
+            parse_result=parse_result,
+            previous_snapshot=record.parsed_snapshot,
+            ocr_confidence=normalized_confidence,
+            ocr_provider=normalized_provider,
+            ocr_layout=ocr_layout,
+            settings=settings,
+        )
+        record.warnings = _build_warning_list(parse_result.warnings, normalized_provider)
+        record.algorithm_version = settings.supplement_parser_algorithm_version
+        record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
 
-    await session.commit()
     await session.refresh(record)
     return SupplementParserStoreResult(record=record, parse_result=parse_result)
 

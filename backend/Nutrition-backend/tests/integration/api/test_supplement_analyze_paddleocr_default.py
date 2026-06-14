@@ -51,6 +51,14 @@ class _FakeSupplementSession:
         self.added_analysis: SupplementAnalysisRun | None = None
         self.added_audits: list[AuditLog] = []
         self.committed = False
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {}
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
+
+    async def rollback(self) -> None:
+        """No-op rollback (persist_scope own-mode rolls back on exception)."""
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.

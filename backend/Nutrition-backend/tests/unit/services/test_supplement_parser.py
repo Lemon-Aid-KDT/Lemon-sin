@@ -57,7 +57,16 @@ class _FakeParserSession:
     def __init__(self, record: SupplementAnalysisRun | None) -> None:
         self.record = record
         self.committed = False
+        self.commits = 0
         self.refreshed: SupplementAnalysisRun | None = None
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {}
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
+
+    async def rollback(self) -> None:
+        """No-op rollback (persist_scope own-mode rolls back on exception)."""
 
     async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
         """Return the configured analysis row.
@@ -77,6 +86,7 @@ class _FakeParserSession:
             None.
         """
         self.committed = True
+        self.commits += 1
 
     async def refresh(self, record: object) -> None:
         """Record the refreshed analysis row.

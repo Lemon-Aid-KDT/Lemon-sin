@@ -59,6 +59,19 @@ class _FakeStoreSession:
         self.existing = existing
         self.added: SupplementAnalysisRun | None = None
         self.refreshed: SupplementAnalysisRun | None = None
+        self.commits = 0
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {}
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
+
+    async def commit(self) -> None:
+        """Count commits (persist_scope own-mode must commit exactly once)."""
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        """No-op rollback (persist_scope own-mode rolls back on exception)."""
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.

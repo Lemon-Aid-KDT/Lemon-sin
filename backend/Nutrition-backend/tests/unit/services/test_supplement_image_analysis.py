@@ -94,7 +94,16 @@ class _FakePipelineSession:
         self.existing_learning_object: LearningImageObject | None = None
         self.existing_annotation_task: AnnotationTask | None = None
         self.committed = False
+        self.commits = 0
         self.refresh_count = 0
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {}
+
+    async def flush(self) -> None:
+        """No-op flush (persist_scope flushes pending writes)."""
+
+    async def rollback(self) -> None:
+        """No-op rollback (persist_scope own-mode rolls back on exception)."""
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
@@ -159,6 +168,7 @@ class _FakePipelineSession:
             None.
         """
         self.committed = True
+        self.commits += 1
 
 
 def _selected_entity(statement: object) -> type[object] | None:
@@ -757,7 +767,8 @@ async def test_analyze_supplement_image_defaults_to_intake_only() -> None:
         "intake_method",
         "precautions",
     ]
-    assert fake_session.committed is False
+    # Intake-only path: only the intake persist_scope commits; no parser/pipeline writes.
+    assert fake_session.commits == 1
 
 
 @pytest.mark.asyncio

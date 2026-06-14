@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import persist_scope
 from src.learning.consent_gate import evaluate_image_learning_gate
 from src.learning.object_storage import LearningImageObjectStore
 from src.learning.pipeline import maybe_store_learning_image_object
@@ -615,20 +616,20 @@ async def _store_supplement_facts_guidance(
     Returns:
         Refreshed preview row.
     """
-    parsed_snapshot = dict(record.parsed_snapshot or {})
-    parsed_snapshot["image_quality_report"] = guidance.image_quality_report.model_dump(
-        exclude_none=True
-    )
-    parsed_snapshot["missing_required_sections"] = list(guidance.missing_required_sections)
-    parsed_snapshot["action_required"] = guidance.action_required
-    parsed_snapshot["analysis_scope"] = guidance.analysis_scope
-    parsed_snapshot["image_role"] = guidance.image_role
-    record.parsed_snapshot = parsed_snapshot
-    record.warnings = _append_unique_warning(
-        record.warnings,
-        SUPPLEMENT_FACTS_REQUIRED_WARNING,
-    )
-    await session.commit()
+    async with persist_scope(session):
+        parsed_snapshot = dict(record.parsed_snapshot or {})
+        parsed_snapshot["image_quality_report"] = guidance.image_quality_report.model_dump(
+            exclude_none=True
+        )
+        parsed_snapshot["missing_required_sections"] = list(guidance.missing_required_sections)
+        parsed_snapshot["action_required"] = guidance.action_required
+        parsed_snapshot["analysis_scope"] = guidance.analysis_scope
+        parsed_snapshot["image_role"] = guidance.image_role
+        record.parsed_snapshot = parsed_snapshot
+        record.warnings = _append_unique_warning(
+            record.warnings,
+            SUPPLEMENT_FACTS_REQUIRED_WARNING,
+        )
     await session.refresh(record)
     return record
 
@@ -732,23 +733,23 @@ async def _store_pipeline_metadata(
     Returns:
         Refreshed preview row.
     """
-    parsed_snapshot = dict(record.parsed_snapshot or {})
-    detected_regions = _vision_regions_to_preview(
-        vision_regions,
-        selected_region=selected_region,
-        image_metadata=image_metadata,
-    )
-    if detected_regions:
-        parsed_snapshot["detected_product_regions"] = detected_regions
-        selected_region_id = next(
-            (region["region_id"] for region in detected_regions if region["selected"]),
-            None,
+    async with persist_scope(session):
+        parsed_snapshot = dict(record.parsed_snapshot or {})
+        detected_regions = _vision_regions_to_preview(
+            vision_regions,
+            selected_region=selected_region,
+            image_metadata=image_metadata,
         )
-        if selected_region_id is not None:
-            parsed_snapshot["selected_region_id"] = selected_region_id
-    parsed_snapshot["pipeline_metadata"] = metadata.model_dump(exclude_none=True)
-    record.parsed_snapshot = parsed_snapshot
-    await session.commit()
+        if detected_regions:
+            parsed_snapshot["detected_product_regions"] = detected_regions
+            selected_region_id = next(
+                (region["region_id"] for region in detected_regions if region["selected"]),
+                None,
+            )
+            if selected_region_id is not None:
+                parsed_snapshot["selected_region_id"] = selected_region_id
+        parsed_snapshot["pipeline_metadata"] = metadata.model_dump(exclude_none=True)
+        record.parsed_snapshot = parsed_snapshot
     await session.refresh(record)
     return record
 
@@ -1751,10 +1752,10 @@ async def _store_preview_warnings(
         record: Intake preview row.
         warnings: Safe warning strings to add.
     """
-    existing_warnings = list(record.warnings or [])
-    for warning in warnings:
-        if warning not in existing_warnings:
-            existing_warnings.append(warning)
-    record.warnings = existing_warnings
-    await session.commit()
+    async with persist_scope(session):
+        existing_warnings = list(record.warnings or [])
+        for warning in warnings:
+            if warning not in existing_warnings:
+                existing_warnings.append(warning)
+        record.warnings = existing_warnings
     await session.refresh(record)
