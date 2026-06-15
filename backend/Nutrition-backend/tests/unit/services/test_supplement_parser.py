@@ -663,6 +663,51 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
 
 
 @pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_canonicalizes_unit_variants() -> None:
+    """LLM ingredient units canonicalize so unit variants dedupe across paths (§6.2).
+
+    The LLM emits 비타민 D with unit "μg" while the deterministic OCR-pattern path
+    extracts the same "비타민 D 25mcg" row as unit "ug". Both must canonicalize to "ug"
+    so the candidate renders consistently and the two sources dedupe to a single entry
+    instead of a near-duplicate (before the fix the LLM "μg" and the fallback "ug" keyed
+    differently and survived as two 비타민 D rows).
+    """
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    llm_result = SupplementStructuredParseResult.model_validate(
+        {
+            "ingredient_candidates": [
+                {
+                    "display_name": "비타민 D",
+                    "original_name": "Vitamin D",
+                    "amount": 25,
+                    "unit": "μg",
+                    "confidence": 0.9,
+                    "source": "ollama_structured",
+                }
+            ],
+        }
+    )
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "원재료명 및 함량 비타민 D 25mcg",
+        "paddleocr_local",
+        0.74,
+        _settings(),
+        parser=_FakeParser(llm_result),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    vit_d = [c for c in candidates if c["display_name"] == "비타민 D"]
+    assert len(vit_d) == 1
+    assert vit_d[0]["unit"] == "ug"
+    assert vit_d[0]["amount"] == 25
+
+
+@pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_degrades_when_fallback_exceeds_max() -> None:
     """Over-limit fallback enrichment degrades to a recoverable error, not a raw 500.
 

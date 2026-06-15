@@ -489,7 +489,11 @@ def _sanitize_parser_result(
         unit_res = sanitize_unit(candidate.get("unit"))
         candidate["display_name"] = name_res.value
         candidate["original_name"] = original_name_res.value or None
-        candidate["unit"] = unit_res.value or None
+        # Canonicalize the unit so LLM-emitted variants (㎎/μg/㎍/mcg/iu) match the
+        # deterministic OCR-pattern path (which already normalizes via
+        # _normalize_ingredient_unit). Without this, the same ingredient with a unit
+        # variant fails to dedupe across the two sources and renders inconsistently.
+        candidate["unit"] = _normalize_ingredient_unit(unit_res.value) if unit_res.value else None
         warnings.extend(original_name_res.warnings)
         warnings.extend(unit_res.warnings)
         if candidate.get("amount") is None:
@@ -1583,7 +1587,7 @@ def _ingredient_candidate_key(candidate: dict[str, Any]) -> tuple[str, float | N
     return (
         _ingredient_name_key(str(candidate.get("display_name") or "")),
         normalized_amount,
-        str(unit).casefold() if unit is not None else None,
+        _normalize_ingredient_unit(str(unit)) if unit is not None else None,
     )
 
 
