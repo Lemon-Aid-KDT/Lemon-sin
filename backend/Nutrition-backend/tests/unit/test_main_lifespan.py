@@ -94,3 +94,27 @@ async def test_lifespan_logs_trusted_host_active_mode(
     assert "TrustedHost allowed_hosts" in stdout
     assert "example.com" in stdout
     assert "active=explicit" in stdout
+
+
+@pytest.mark.asyncio
+async def test_lifespan_rejects_lemon_app_without_privileged_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify startup fails fast when the lemon_app request role lacks privileged URLs.
+
+    This proves the Stage-2 misconfiguration guard is actually wired into the
+    startup path: a DATABASE_URL connecting as the non-superuser ``lemon_app``
+    role without AUDIT/LEARNING privileged URLs must abort boot rather than let
+    out-of-band audit and post-commit learning writes fail closed under FORCE RLS.
+    """
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://lemon_app:pw@localhost:5432/lemon")
+    monkeypatch.delenv("AUDIT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("LEARNING_DATABASE_URL", raising=False)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(RuntimeError, match="lemon_app"):
+            async with lifespan(cast(FastAPI, _Sentinel())):
+                pass
+    finally:
+        get_settings.cache_clear()

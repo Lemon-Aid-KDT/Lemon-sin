@@ -14,7 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from src.api.v1.examples import HEALTH_RESPONSE_EXAMPLES
 from src.api.v1.router import api_router
 from src.config import Settings, get_settings
-from src.db.session import dispose_engine
+from src.db.session import dispose_engine, verify_stage2_privileged_database_urls
 from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.secure_headers import SecureHeadersMiddleware
 from src.readiness import ReadinessResponse, build_readiness_response
@@ -36,6 +36,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     settings = get_settings()
     setup_logging(settings.log_level)
+    # Fail fast if the request role is lemon_app but its privileged audit/learning
+    # engines are not configured (FORCE RLS Stage-2 misconfiguration).
+    verify_stage2_privileged_database_urls(settings)
     logger.info(
         "TrustedHost allowed_hosts=%s active=%s",
         settings.allowed_hosts or ["<sentinel>"],

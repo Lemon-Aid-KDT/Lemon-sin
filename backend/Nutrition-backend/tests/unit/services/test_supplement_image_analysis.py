@@ -1113,6 +1113,53 @@ async def test_store_supplement_learning_artifacts_skips_when_analysis_missing()
 
 
 @pytest.mark.asyncio
+async def test_store_supplement_learning_artifacts_defaults_to_learning_sessionmaker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default (no session_factory) must resolve via the privileged learning factory.
+
+    After the Step 8 flip the main factory binds ``lemon_app`` (NOSUPERUSER /
+    NOBYPASSRLS), which cannot write the FORCE-RLS learning tables from a fresh
+    GUC-less session. The default must therefore be ``get_learning_sessionmaker``,
+    never ``get_sessionmaker``.
+    """
+    post_session = _FakePipelineSession()  # added_analysis None -> get() returns None -> no-op
+    fake_store = _FakeLearningImageObjectStore()
+    used: dict[str, bool] = {}
+
+    def _fake_learning_sessionmaker() -> _FakeSessionFactory:
+        used["called"] = True
+        return _FakeSessionFactory(post_session)
+
+    monkeypatch.setattr(
+        "src.services.supplement_image_analysis.get_learning_sessionmaker",
+        _fake_learning_sessionmaker,
+    )
+
+    artifacts = SupplementLearningArtifactsInput(
+        analysis_id=uuid4(),
+        image_bytes=_png_bytes(),
+        image_metadata=_validated_image(),
+        ocr_result=None,
+        learning_consents=(ConsentType.IMAGE_LEARNING_DATASET,),
+    )
+
+    await store_supplement_learning_artifacts(
+        user=_user(),
+        artifacts=artifacts,
+        settings=Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+        ),
+        object_store=fake_store,
+    )
+
+    assert used.get("called") is True
+
+
+@pytest.mark.asyncio
 async def test_store_supplement_learning_artifacts_swallows_store_failure() -> None:
     """Verify a learning-store failure is logged and swallowed (best-effort)."""
 

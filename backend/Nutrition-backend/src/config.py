@@ -371,6 +371,16 @@ class Settings(BaseSettings):
             "is still privileged)."
         ),
     )
+    learning_database_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional privileged PostgreSQL asyncpg URL for post-commit learning "
+            "writes (learning_image_objects, annotation_tasks). Those tables are "
+            "under FORCE RLS, so the fresh GUC-less post-commit session needs a "
+            "superuser or BYPASSRLS role; lemon_app would fail closed. None reuses "
+            "DATABASE_URL (correct while the request role is still privileged)."
+        ),
+    )
     redis_url: str = Field(default=DEFAULT_REDIS_URL)
     supabase_project_ref: str | None = Field(default=None)
     supabase_url: str | None = Field(default=None)

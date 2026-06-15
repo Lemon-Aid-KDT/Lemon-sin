@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.config import Settings
-from src.db.session import get_sessionmaker
+from src.db.session import get_learning_sessionmaker
 from src.db.tx import persist_scope
 from src.learning.consent_gate import evaluate_image_learning_gate
 from src.learning.object_storage import LearningImageObjectStore
@@ -905,12 +905,14 @@ async def store_supplement_learning_artifacts(
         settings: Runtime settings (privacy hash secret, retention, gate flags).
         object_store: Learning image object store the route built for this request.
         session_factory: Optional session factory override (tests); defaults to the
-            shared application session factory.
+            privileged learning session factory (``get_learning_sessionmaker``),
+            which bypasses FORCE RLS so the GUC-less post-commit fresh session can
+            write the learning tables under the Stage-2 ``lemon_app`` posture.
 
     Returns:
         None.
     """
-    factory = session_factory or get_sessionmaker()
+    factory = session_factory or get_learning_sessionmaker()
     try:
         async with factory() as session:
             analysis = await session.get(SupplementAnalysisRun, artifacts.analysis_id)
