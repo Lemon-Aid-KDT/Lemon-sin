@@ -250,21 +250,14 @@ class AppController extends ChangeNotifier {
   int _chatDraftSerial = 0;
   bool _consentRequired = false;
 
-  /// Default single OCR provider for normal scans. The backend resolves
-  /// 'configured' to its primary provider, so one scan = one `/analyze` call.
-  static const String _defaultOcrProvider = 'configured';
+  /// Default OCR provider for normal scans while PaddleOCR fine-tuning is active.
+  static const String _defaultOcrProvider = 'clova';
 
   /// Diagnostic-only provider set for side-by-side OCR comparison.
   ///
-  /// NOT the default path: fanning these out per scan fired 4 parallel
-  /// `/analyze` calls into the same per-caller bucket and tripped the backend
-  /// rate limit (burst 6) on re-scan. Opt in via `compareOcrProviders: true`.
-  static const List<String> _diagnosticOcrProviders = <String>[
-    'configured',
-    'paddleocr',
-    'clova',
-    'google_vision',
-  ];
+  /// Kept CLOVA-only for now: PaddleOCR is being retrained and must not be
+  /// invoked by mobile scans until the promotion gate selects a runtime model.
+  static const List<String> _diagnosticOcrProviders = <String>['clova'];
 
   /// Whether a network operation is in progress.
   bool get busy => _busy;

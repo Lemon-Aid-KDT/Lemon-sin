@@ -8,7 +8,12 @@ from typing import Any, ClassVar
 import pytest
 from PIL import Image
 from src.vision.base import BoundingBox, VisionError
-from src.vision.food_yolo import FoodDetection, FoodYoloDetector, food_model_label
+from src.vision.food_yolo import (
+    FoodDetection,
+    FoodYoloDetector,
+    food_classifier_model_label,
+    food_model_label,
+)
 from src.vision.taxonomy import normalize_food_vision_label, normalize_food_vision_label_set
 
 
@@ -31,6 +36,40 @@ class _Result:
         self.names = {0: "bibimbap", 1: "salad", 2: "rice_bowl"}
 
 
+class _SingleDetectorBoxes:
+    """Fake detector boxes object with one food-region candidate."""
+
+    xyxy: ClassVar[list[list[int]]] = [[0, 0, 8, 6]]
+    cls: ClassVar[list[int]] = [0]
+    conf: ClassVar[list[float]] = [0.91]
+
+
+class _SingleDetectorResult:
+    """Fake detector result with one box."""
+
+    def __init__(self) -> None:
+        """Create a single detector result."""
+        self.boxes = _SingleDetectorBoxes()
+        self.names = {0: "food_item"}
+
+
+class _ClassifierBoxes:
+    """Fake crop classifier boxes object."""
+
+    xyxy: ClassVar[list[list[int]]] = [[0, 0, 8, 6]]
+    cls: ClassVar[list[int]] = [3]
+    conf: ClassVar[list[float]] = [0.77]
+
+
+class _ClassifierResult:
+    """Fake crop classifier result object."""
+
+    def __init__(self) -> None:
+        """Create a crop classifier result."""
+        self.boxes = _ClassifierBoxes()
+        self.names = {3: "fried-chicken", 4: "rice-bowl"}
+
+
 class _EmptyResult:
     """Fake empty Ultralytics result object."""
 
@@ -50,21 +89,42 @@ class _FakeModel:
         """
         self.prediction_results = prediction_results
 
-    def predict(self, *, source: Any, conf: float, verbose: bool) -> Any:
+    def predict(self, **kwargs: Any) -> Any:
         """Return configured fake prediction results.
 
         Args:
-            source: PIL image passed by the detector.
-            conf: Confidence threshold.
-            verbose: Verbose flag.
+            **kwargs: Keyword arguments passed by the detector.
 
         Returns:
             Configured prediction results.
         """
+        source = kwargs["source"]
         assert source.size == (10, 8)
-        assert conf == 0.5
-        assert verbose is False
+        assert kwargs["conf"] == 0.5
+        assert kwargs["verbose"] is False
+        assert kwargs["max_det"] == 5
         return self.prediction_results
+
+
+class _FakeClassifierModel:
+    """Fake crop classifier model."""
+
+    names: ClassVar[dict[int, str]] = {3: "fried-chicken", 4: "rice-bowl"}
+
+    def predict(self, **kwargs: Any) -> Any:
+        """Return a configured food class prediction.
+
+        Args:
+            **kwargs: Keyword arguments passed by the detector.
+
+        Returns:
+            Fake classifier prediction results.
+        """
+        assert kwargs["source"].size == (8, 6)
+        assert kwargs["conf"] == 0.1
+        assert kwargs["verbose"] is False
+        assert kwargs["classes"] == [3]
+        return [_ClassifierResult()]
 
 
 def _png_bytes(width: int = 10, height: int = 8) -> bytes:
@@ -126,6 +186,44 @@ def test_food_yolo_detector_normalizes_review_candidates() -> None:
     ]
 
 
+def test_food_yolo_detector_forwards_predict_args_and_classifier_labels() -> None:
+    """Verify detector crops can be classified into nutrition class_en labels."""
+    detector = FoodYoloDetector(
+        model_path="/app/runs/food_yolo/detector/weights/best.pt",
+        model_label="food_yolo_local:best.pt",
+        min_confidence=0.5,
+        max_detections=5,
+        iou_threshold=0.15,
+        agnostic_nms=True,
+        image_size=512,
+        classifier_model_path="/app/runs/food_yolo/exp16b/weights/best.pt",
+        classifier_model_label="food_exp16b_local:best.pt",
+        classifier_min_confidence=0.1,
+        model_factory=lambda _path: _FakeModel([_SingleDetectorResult()]),
+        classifier_model_factory=lambda _path: _FakeClassifierModel(),
+    )
+
+    detections = detector.detect_foods(_png_bytes())
+
+    assert detections == [
+        FoodDetection(
+            label="fried-chicken",
+            confidence=0.77,
+            bbox=BoundingBox(
+                x=0,
+                y=0,
+                width=8,
+                height=6,
+                confidence=0.77,
+                label="fried-chicken",
+                model="food_yolo_local:best.pt+food_exp16b_local:best.pt",
+            ),
+            model="food_yolo_local:best.pt+food_exp16b_local:best.pt",
+            classifier_model="food_exp16b_local:best.pt",
+        )
+    ]
+
+
 def test_food_yolo_detector_returns_empty_when_no_food_boxes() -> None:
     """Verify empty detector output degrades to manual-entry candidates."""
     detector = FoodYoloDetector(
@@ -167,6 +265,14 @@ def test_food_model_label_uses_basename_only() -> None:
         == "food_yolo_local:best.pt"
     )
     assert food_model_label(None, "food_yolo_local") is None
+    assert (
+        food_classifier_model_label(
+            "/app/runs/food_yolo/private/exp16b/weights/best.pt",
+            "food_exp16b_local",
+        )
+        == "food_exp16b_local:best.pt"
+    )
+    assert food_classifier_model_label(None, "food_exp16b_local") is None
 
 
 def test_food_vision_taxonomy_normalizes_region_role_aliases() -> None:

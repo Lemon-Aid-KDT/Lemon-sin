@@ -226,96 +226,92 @@ void main() {
     );
     expect(controller.notice, '분석이 완료 되었어요.');
     expect(controller.analysisPreview?.analysisId, isNotEmpty);
-    // Default analysis must issue a SINGLE 'configured' OCR request, not a
-    // 4-provider fan-out: one scan otherwise fired 4 parallel /analyze calls and
-    // tripped the backend per-caller rate limit (burst 6) on re-scan.
-    expect(repository.ocrProviders, <String>['configured']);
+    // Default analysis must issue a single CLOVA request while PaddleOCR is
+    // being retrained and not promoted for runtime use.
+    expect(repository.ocrProviders, <String>['clova']);
 
     controller.markAnalysisCompletionRead();
 
     expect(controller.hasUnreadAnalysisCompletion, isFalse);
   });
 
-  test('analyzeImage issues a single configured OCR request by default', () async {
+  test('analyzeImage issues a single CLOVA OCR request by default', () async {
     final _AutoInsightRepository repository = _AutoInsightRepository();
     final AppController controller = AppController(repository: repository);
 
     await controller.analyzeImage('/tmp/supplement-label.png');
 
-    expect(repository.ocrProviders, <String>['configured']);
+    expect(repository.ocrProviders, <String>['clova']);
     expect(controller.analysisPreview, isNotNull);
     expect(controller.apiError, isNull);
   });
 
-  test('analyzeImage compareOcrProviders fans out the diagnostic providers', () async {
-    final _AutoInsightRepository repository = _AutoInsightRepository();
-    final AppController controller = AppController(repository: repository);
+  test(
+    'analyzeImage compareOcrProviders stays CLOVA-only while PaddleOCR trains',
+    () async {
+      final _AutoInsightRepository repository = _AutoInsightRepository();
+      final AppController controller = AppController(repository: repository);
 
-    await controller.analyzeImage(
-      '/tmp/supplement-label.png',
-      compareOcrProviders: true,
-    );
+      await controller.analyzeImage(
+        '/tmp/supplement-label.png',
+        compareOcrProviders: true,
+      );
 
-    expect(
-      repository.ocrProviders,
-      containsAll(<String>[
-        'configured',
-        'paddleocr',
-        'clova',
-        'google_vision',
-      ]),
-    );
-    expect(repository.ocrProviders.length, 4);
-  });
+      expect(repository.ocrProviders, <String>['clova']);
+    },
+  );
 
-  test('analyzeImage surfaces the rate-limit error instead of an empty result', () async {
-    final _AutoInsightRepository repository = _AutoInsightRepository(
-      rateLimitedOcrProviders: <String>{'configured'},
-    );
-    final AppController controller = AppController(repository: repository);
+  test(
+    'analyzeImage surfaces the rate-limit error instead of an empty result',
+    () async {
+      final _AutoInsightRepository repository = _AutoInsightRepository(
+        rateLimitedOcrProviders: <String>{'clova'},
+      );
+      final AppController controller = AppController(repository: repository);
 
-    await controller.analyzeImage('/tmp/supplement-label.png');
+      await controller.analyzeImage('/tmp/supplement-label.png');
 
-    expect(controller.analysisPreview, isNull);
-    expect(controller.apiError?.statusCode, 429);
-    expect(controller.apiError?.code, 'rate_limited');
-  });
+      expect(controller.analysisPreview, isNull);
+      expect(controller.apiError?.statusCode, 429);
+      expect(controller.apiError?.code, 'rate_limited');
+    },
+  );
 
-  test('compareOcrProviders prefers a rate-limit error over an empty preview', () async {
-    final _AutoInsightRepository repository = _AutoInsightRepository(
-      rateLimitedOcrProviders: <String>{'clova'},
-      emptyPreviewOcrProviders: <String>{
-        'configured',
-        'paddleocr',
-        'google_vision',
-      },
-    );
-    final AppController controller = AppController(repository: repository);
+  test(
+    'compareOcrProviders prefers a rate-limit error over an empty preview',
+    () async {
+      final _AutoInsightRepository repository = _AutoInsightRepository(
+        rateLimitedOcrProviders: <String>{'clova'},
+        emptyPreviewOcrProviders: <String>{},
+      );
+      final AppController controller = AppController(repository: repository);
 
-    await controller.analyzeImage(
-      '/tmp/supplement-label.png',
-      compareOcrProviders: true,
-    );
+      await controller.analyzeImage(
+        '/tmp/supplement-label.png',
+        compareOcrProviders: true,
+      );
 
-    expect(controller.analysisPreview, isNull);
-    expect(controller.apiError?.statusCode, 429);
-    expect(controller.apiError?.code, 'rate_limited');
-  });
+      expect(controller.analysisPreview, isNull);
+      expect(controller.apiError?.statusCode, 429);
+      expect(controller.apiError?.code, 'rate_limited');
+    },
+  );
 
-  test('compareOcrProviders keeps a usable preview even when one provider is rate-limited', () async {
-    final _AutoInsightRepository repository = _AutoInsightRepository(
-      rateLimitedOcrProviders: <String>{'clova'},
-    );
-    final AppController controller = AppController(repository: repository);
+  test(
+    'compareOcrProviders stores a usable CLOVA preview when available',
+    () async {
+      final _AutoInsightRepository repository = _AutoInsightRepository();
+      final AppController controller = AppController(repository: repository);
 
-    await controller.analyzeImage(
-      '/tmp/supplement-label.png',
-      compareOcrProviders: true,
-    );
+      await controller.analyzeImage(
+        '/tmp/supplement-label.png',
+        compareOcrProviders: true,
+      );
 
-    expect(controller.analysisPreview, isNotNull);
-    expect(controller.apiError, isNull);
-  });
+      expect(controller.analysisPreview, isNotNull);
+      expect(controller.apiError, isNull);
+    },
+  );
 
   test('confirmMealImagePreview stores user-confirmed meal', () async {
     final _AutoInsightRepository repository = _AutoInsightRepository();

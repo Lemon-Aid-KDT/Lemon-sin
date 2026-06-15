@@ -26,8 +26,14 @@ param(
     [string]$PythonExe = "",
     [string]$GpuId = "0",
     [int]$BatchSize = 128,
+    [int]$SamplerFirstBatchSize = 0,
     [int]$Epochs = 100,
-    [double]$LearningRate = 0.0005,
+    [double]$LearningRate = 0.0001,
+    [string]$Checkpoints = "",
+    [string]$MixedTrainLabelFiles = "",
+    [string]$TrainRatioList = "",
+    [switch]$RequireMixedTraining,
+    [switch]$DisableRecConAug,
     [string]$PretrainedModel = "pretrain\korean_PP-OCRv5_mobile_rec_pretrained",
     [string]$PretrainedModelUrl = "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_pretrained_model/korean_PP-OCRv5_mobile_rec_pretrained.pdparams"
 )
@@ -122,6 +128,41 @@ function Resolve-PaddleOCRConfig {
     throw "korean_PP-OCRv5_mobile_rec.yml was not found under the PaddleOCR checkout."
 }
 
+function Resolve-EffectivePaddleOCRConfig {
+    $configPath = Resolve-PaddleOCRConfig
+    if (-not $DisableRecConAug) {
+        return $configPath
+    }
+
+    $sourcePath = Join-Path $PaddleOCRRoot $configPath
+    $generatedConfigDir = Join-Path $WorkspaceRoot "generated_configs"
+    $targetPath = Join-Path $generatedConfigDir "korean_PP-OCRv5_mobile_rec_no_recconaug.yml"
+    New-Item -ItemType Directory -Force -Path $generatedConfigDir | Out-Null
+
+    $sourceLines = Get-Content -LiteralPath $sourcePath -Encoding UTF8
+    $outputLines = New-Object System.Collections.Generic.List[string]
+    $skippingRecConAug = $false
+    foreach ($line in $sourceLines) {
+        if ($line -match '^\s*-\s*RecConAug\s*:') {
+            $skippingRecConAug = $true
+            continue
+        }
+        if ($skippingRecConAug) {
+            if ($line -match '^\s*-\s*[A-Za-z0-9_]+\s*:') {
+                $skippingRecConAug = $false
+            }
+            else {
+                continue
+            }
+        }
+        $outputLines.Add($line)
+    }
+
+    Set-Content -LiteralPath $targetPath -Value $outputLines -Encoding UTF8
+    Write-Host "Using generated PaddleOCR config with RecConAug disabled."
+    return $targetPath
+}
+
 function Resolve-PretrainedModel {
     if ([string]::IsNullOrWhiteSpace($PretrainedModel)) {
         return ""
@@ -150,6 +191,101 @@ function Resolve-PretrainedModel {
     return $modelPrefix
 }
 
+function Resolve-Checkpoints {
+    if ([string]::IsNullOrWhiteSpace($Checkpoints)) {
+        return ""
+    }
+
+    $checkpointPrefix = $Checkpoints
+    if ($checkpointPrefix.EndsWith(".pdparams")) {
+        $checkpointPrefix = $checkpointPrefix.Substring(0, $checkpointPrefix.Length - ".pdparams".Length)
+    }
+
+    $checkpointFile = "$checkpointPrefix.pdparams"
+    if ([System.IO.Path]::IsPathRooted($checkpointFile)) {
+        $checkpointFilePath = $checkpointFile
+    }
+    else {
+        $checkpointFilePath = Join-Path $PaddleOCRRoot $checkpointFile
+    }
+
+    if (-not (Test-Path -LiteralPath $checkpointFilePath -PathType Leaf)) {
+        throw "Checkpoint weights are missing: $checkpointFilePath"
+    }
+
+    return $checkpointPrefix
+}
+
+function ConvertTo-PaddleStringListLiteral {
+    param([string[]]$Items)
+
+    $quotedItems = @()
+    foreach ($item in $Items) {
+        $escapedItem = $item.Replace("'", "''")
+        $quotedItems += "'$escapedItem'"
+    }
+    return "[" + ($quotedItems -join ",") + "]"
+}
+
+function ConvertTo-PaddleFloatLiteral {
+    param([double]$Value)
+
+    return $Value.ToString("0.################", [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Resolve-TrainLabelFiles {
+    if ([string]::IsNullOrWhiteSpace($MixedTrainLabelFiles)) {
+        $labelFiles = @($TrainLabel)
+    }
+    else {
+        $labelFiles = @(
+            $MixedTrainLabelFiles -split "[;]" |
+                ForEach-Object { $_.Trim() } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+    }
+
+    if ($RequireMixedTraining -and $labelFiles.Count -lt 2) {
+        throw "Mixed training was required, but fewer than two training label files were provided."
+    }
+
+    foreach ($labelFile in $labelFiles) {
+        if (-not (Test-Path -LiteralPath $labelFile -PathType Leaf)) {
+            throw "Training label file is missing."
+        }
+    }
+
+    return $labelFiles
+}
+
+function Resolve-TrainRatioOverride {
+    param([int]$ExpectedCount)
+
+    if ([string]::IsNullOrWhiteSpace($TrainRatioList)) {
+        if ($ExpectedCount -gt 1) {
+            throw "Mixed training label files were provided, but TrainRatioList is empty."
+        }
+        return ""
+    }
+
+    $trimmedRatioList = $TrainRatioList.Trim()
+    if ($trimmedRatioList -notmatch '^\[[0-9.,\s]+\]$') {
+        throw "TrainRatioList must be a numeric list literal, for example [1.0,0.1]."
+    }
+
+    $ratioBody = $trimmedRatioList.Substring(1, $trimmedRatioList.Length - 2)
+    $ratioValues = @(
+        $ratioBody -split "," |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($ratioValues.Count -ne $ExpectedCount) {
+        throw "TrainRatioList item count does not match training label file count."
+    }
+
+    return "Train.dataset.ratio_list=$trimmedRatioList"
+}
+
 function Invoke-CudaPreflight {
     Write-Host "Running NVIDIA/Paddle CUDA preflight..."
     Write-Host "Python executable: $PythonExe"
@@ -171,27 +307,51 @@ function Invoke-PaddleOCRTrain {
     Push-Location $PaddleOCRRoot
     try {
         $env:CUDA_VISIBLE_DEVICES = $GpuId
-        $configPath = Resolve-PaddleOCRConfig
+        $configPath = Resolve-EffectivePaddleOCRConfig
         $pretrainedModelArg = Resolve-PretrainedModel
+        $checkpointArg = Resolve-Checkpoints
+        $trainLabelFiles = Resolve-TrainLabelFiles
+        $trainLabelFileList = ConvertTo-PaddleStringListLiteral -Items $trainLabelFiles
+        $trainRatioOverride = Resolve-TrainRatioOverride -ExpectedCount $trainLabelFiles.Count
+        $learningRateLiteral = ConvertTo-PaddleFloatLiteral -Value $LearningRate
+        $effectiveSamplerFirstBatchSize = $SamplerFirstBatchSize
+        if ($effectiveSamplerFirstBatchSize -le 0) {
+            $effectiveSamplerFirstBatchSize = $BatchSize
+        }
+        Write-Host "Training label files: $($trainLabelFiles.Count)"
         $trainArgs = @(
             "tools\train.py",
             "-c", $configPath,
             "-o",
-            "Global.pretrained_model=$pretrainedModelArg",
             "Global.save_model_dir=$OutputDir",
             "Global.epoch_num=$EpochCount",
             "Global.character_dict_path=$DictFile",
             "Global.use_space_char=True",
-            "Optimizer.lr.learning_rate=$LearningRate",
+            "Optimizer.lr.learning_rate=$learningRateLiteral",
             "Train.dataset.data_dir=$DatasetDir",
-            "Train.dataset.label_file_list=['$TrainLabel']",
+            "Train.dataset.label_file_list=$trainLabelFileList",
             "Eval.dataset.data_dir=$DatasetDir",
             "Eval.dataset.label_file_list=['$ValLabel']",
             "Train.loader.batch_size_per_card=$BatchSize",
+            "Train.sampler.first_bs=$effectiveSamplerFirstBatchSize",
             "Train.loader.num_workers=0",
             "Eval.loader.num_workers=0"
         )
+        if (-not [string]::IsNullOrWhiteSpace($trainRatioOverride)) {
+            $trainArgs += $trainRatioOverride
+        }
+        if (-not [string]::IsNullOrWhiteSpace($checkpointArg)) {
+            $trainArgs += "Global.checkpoints=$checkpointArg"
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($pretrainedModelArg)) {
+            $trainArgs += "Global.pretrained_model=$pretrainedModelArg"
+        }
         & $PythonExe @trainArgs
+        $trainExitCode = $LASTEXITCODE
+        Write-Host "PaddleOCR train.py exit_code=$trainExitCode"
+        if ($trainExitCode -ne 0) {
+            throw "PaddleOCR train.py failed with exit_code=$trainExitCode"
+        }
     }
     finally {
         Pop-Location
@@ -201,7 +361,7 @@ function Invoke-PaddleOCRTrain {
 function Invoke-PaddleOCRExport {
     Push-Location $PaddleOCRRoot
     try {
-        $configPath = Resolve-PaddleOCRConfig
+        $configPath = Resolve-EffectivePaddleOCRConfig
         $exportArgs = @(
             "tools\export_model.py",
             "-c", $configPath,
@@ -211,6 +371,11 @@ function Invoke-PaddleOCRExport {
             "Global.save_inference_dir=$FullOutput\best_accuracy\inference"
         )
         & $PythonExe @exportArgs
+        $exportExitCode = $LASTEXITCODE
+        Write-Host "PaddleOCR export_model.py exit_code=$exportExitCode"
+        if ($exportExitCode -ne 0) {
+            throw "PaddleOCR export_model.py failed with exit_code=$exportExitCode"
+        }
     }
     finally {
         Pop-Location

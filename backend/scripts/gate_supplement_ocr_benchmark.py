@@ -241,12 +241,6 @@ def build_ocr_benchmark_gate(
         if ground_truth_bundle_summary_path is not None
         else None
     )
-    gt_counts = _gt_counts(gt_summary)
-    gt_review_ready = (
-        gt_summary is not None
-        and gt_counts["ready_for_benchmark_rows"] > 0
-        and gt_counts["ready_for_benchmark_rows"] == gt_counts["ground_truth_template_row_count"]
-    )
     gt_preflight_summary = (
         _load_summary(ground_truth_preflight_path, expected_schema=GT_PREFLIGHT_SCHEMA)
         if ground_truth_preflight_path is not None
@@ -257,6 +251,15 @@ def build_ocr_benchmark_gate(
         gt_preflight_summary is not None
         and gt_preflight_summary.get("ready_for_benchmark_build") is True
         and gt_preflight_counts["ground_truth_preflight_benchmark_ready_row_count"] > 0
+    )
+    gt_counts, gt_count_source, gt_bundle_summary_usable = _gt_counts(
+        gt_summary,
+        fallback_preflight_counts=gt_preflight_counts,
+        fallback_preflight_ready=gt_preflight_ready,
+    )
+    gt_review_ready = (
+        gt_counts["ready_for_benchmark_rows"] > 0
+        and gt_counts["ready_for_benchmark_rows"] == gt_counts["ground_truth_template_row_count"]
     )
 
     benchmark_summary = (
@@ -346,6 +349,8 @@ def build_ocr_benchmark_gate(
         **gt_preflight_counts,
         **benchmark_counts,
         **split_counts,
+        "ground_truth_review_count_source": gt_count_source,
+        "ground_truth_bundle_summary_usable": gt_bundle_summary_usable,
         "benchmark_required_expected_sections": list(benchmark_required_sections),
         "benchmark_required_expected_section_policy": list(required_expected_sections),
         "benchmark_missing_required_expected_sections": list(missing_benchmark_required_sections),
@@ -417,8 +422,19 @@ def build_markdown(summary: Mapping[str, Any]) -> str:
             f"- Pending PII actions: `{_non_negative_int(summary['pii_pending_operator_action_count'])}`",
             f"- Ground-truth rows: `{_non_negative_int(summary['ground_truth_template_row_count'])}`",
             f"- Ready benchmark rows: `{_non_negative_int(summary['ready_for_benchmark_rows'])}`",
+            (
+                "- Ground-truth count source: "
+                f"`{_safe_token(str(summary['ground_truth_review_count_source']))}`"
+            ),
+            (
+                "- Ground-truth bundle summary usable: "
+                f"`{_bool_text(summary['ground_truth_bundle_summary_usable'])}`"
+            ),
             f"- Ground-truth preflight ready: `{_bool_text(summary['ground_truth_preflight_ready'])}`",
-            f"- Ground-truth preflight benchmark-ready rows: `{_non_negative_int(summary['ground_truth_preflight_benchmark_ready_row_count'])}`",
+            (
+                "- Ground-truth preflight benchmark-ready rows: "
+                f"`{_non_negative_int(summary['ground_truth_preflight_benchmark_ready_row_count'])}`"
+            ),
             f"- Benchmark fixtures: `{_non_negative_int(summary['benchmark_fixture_count'])}`",
             f"- Scoreable fixtures: `{_non_negative_int(summary['scoreable_fixture_count'])}`",
             f"- Benchmark required sections ready: `{_bool_text(summary['benchmark_required_sections_ready'])}`",
@@ -511,31 +527,94 @@ def _pii_strict_clear(payload: Mapping[str, Any], *, counts: Mapping[str, int]) 
     )
 
 
-def _gt_counts(payload: Mapping[str, Any] | None) -> dict[str, int]:
+def _gt_counts(
+    payload: Mapping[str, Any] | None,
+    *,
+    fallback_preflight_counts: Mapping[str, int],
+    fallback_preflight_ready: bool,
+) -> tuple[dict[str, int], str, bool]:
     """Return normalized ground-truth review counts.
 
     Args:
         payload: Optional GT review bundle summary.
+        fallback_preflight_counts: Redacted GT preflight counts used when a
+            stale bundle summary lacks valid counts.
+        fallback_preflight_ready: Whether the GT preflight is authoritative for
+            benchmark readiness.
+
+    Returns:
+        Count mapping, count authority, and whether bundle summary counts were
+        usable.
+    """
+    if payload is None:
+        if fallback_preflight_ready:
+            return (
+                _gt_counts_from_preflight(fallback_preflight_counts),
+                "ground_truth_preflight",
+                False,
+            )
+        return _empty_gt_counts(), "missing", False
+
+    template_count = _optional_non_negative_int(payload.get("ground_truth_template_row_count"))
+    reviewable_count = _optional_non_negative_int(payload.get("reviewable_row_count"))
+    ready_count = _optional_non_negative_int(payload.get("ready_for_benchmark_rows"))
+    manual_required_count = _optional_non_negative_int(payload.get("manual_review_required_count"))
+    if (
+        template_count is not None
+        and reviewable_count is not None
+        and ready_count is not None
+        and manual_required_count is not None
+    ):
+        return (
+            {
+                "ground_truth_template_row_count": template_count,
+                "ground_truth_reviewable_row_count": reviewable_count,
+                "ready_for_benchmark_rows": ready_count,
+                "manual_ground_truth_review_required_count": manual_required_count,
+            },
+            "bundle_summary",
+            True,
+        )
+    if fallback_preflight_ready:
+        return (
+            _gt_counts_from_preflight(fallback_preflight_counts),
+            "ground_truth_preflight",
+            False,
+        )
+    return _empty_gt_counts(), "invalid_bundle_summary", False
+
+
+def _empty_gt_counts() -> dict[str, int]:
+    """Return zeroed ground-truth counts for blocked states.
 
     Returns:
         Count mapping.
     """
-    if payload is None:
-        return {
-            "ground_truth_template_row_count": 0,
-            "ground_truth_reviewable_row_count": 0,
-            "ready_for_benchmark_rows": 0,
-            "manual_ground_truth_review_required_count": 0,
-        }
     return {
-        "ground_truth_template_row_count": _non_negative_int(
-            payload.get("ground_truth_template_row_count")
-        ),
-        "ground_truth_reviewable_row_count": _non_negative_int(payload.get("reviewable_row_count")),
-        "ready_for_benchmark_rows": _non_negative_int(payload.get("ready_for_benchmark_rows")),
-        "manual_ground_truth_review_required_count": _non_negative_int(
-            payload.get("manual_review_required_count")
-        ),
+        "ground_truth_template_row_count": 0,
+        "ground_truth_reviewable_row_count": 0,
+        "ready_for_benchmark_rows": 0,
+        "manual_ground_truth_review_required_count": 0,
+    }
+
+
+def _gt_counts_from_preflight(counts: Mapping[str, int]) -> dict[str, int]:
+    """Build benchmark-ready GT counts from authoritative preflight counts.
+
+    Args:
+        counts: Normalized ground-truth preflight counts.
+
+    Returns:
+        Count mapping scoped to rows the preflight marked benchmark-ready.
+    """
+    ready_count = _non_negative_int(
+        counts.get("ground_truth_preflight_benchmark_ready_row_count")
+    )
+    return {
+        "ground_truth_template_row_count": ready_count,
+        "ground_truth_reviewable_row_count": ready_count,
+        "ready_for_benchmark_rows": ready_count,
+        "manual_ground_truth_review_required_count": 0,
     }
 
 
@@ -706,6 +785,20 @@ def _non_negative_int(value: Any) -> int:
     if not isinstance(value, int) or value < 0:
         raise ValueError("Expected a non-negative integer.")
     return value
+
+
+def _optional_non_negative_int(value: Any) -> int | None:
+    """Return a non-negative integer when present and valid.
+
+    Args:
+        value: Candidate value.
+
+    Returns:
+        Non-negative integer, or None when the value is absent/stale.
+    """
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
 
 
 def _safe_token(value: str) -> str:

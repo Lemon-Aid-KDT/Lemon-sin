@@ -59,7 +59,7 @@ GT preflight 권위 측정값:
 ### 5.1 벤치마크 빌드 — ✅ 완료 (외부 호출 0)
 - GT preflight(core-2): **203 ready** / 12 not-ready(ingredients 누락).
 - benchmark manifest: **203 fixtures**(materialized 203, raw_ocr/payload/absolute_paths 전부 false).
-- split: **holdout 41 · test 20 · train 142**, product-group 분할, **leakage_check_passed**, ready_for_holdout_eval=true.
+- split: **holdout 52 · test 22 · train 129**, product-group 분할, **leakage_check_passed**, ready_for_holdout_eval=true.
 
 ### 5.2 게이트 스크립트 snag (GT 문제 아님 — 별도 수선)
 - `gate_supplement_ocr_benchmark.py` → `status: error`. 원인: **GT 번들 요약(`ocr-ground-truth-review-bundle/summary.json`)이 stale 에러본**(2026-06-12 15:05 step-9 재실행 실패가 summary만 덮음, `ground_truth_template_row_count: None`). 게이트가 이 None을 `_non_negative_int`로 읽다 ValueError.
@@ -152,5 +152,4 @@ GT preflight 권위 측정값:
 - 레버 크기 **작음**(사용자 사전 평가와 일치). 그러나 box_thresh=0.4는 일관된 +이고 비용 0.
 - **베이스라인 재측정 주의**: 이번 baseline 0.6425는 §5.5 기록(0.6049)보다 높다. 그 사이 운영자가 GT `expected`를 정련 → **신뢰 신호는 cross-run(vs 0.6049)이 아니라 within-sweep Δ**다(동일 GT·동일 스크립트·동일 export로 통제).
 
-**권고**: 런타임에 `LOCAL_OCR_TEXT_DET_BOX_THRESH=0.4` 적용(설정 필드 `local_ocr_text_det_box_thresh`는 892bceaa로 이미 배선됨, 기본 None=PaddleOCR 0.6). 41-image 홀드아웃 근거이므로 코드 기본값 하드변경보다 **문서화된 튜너블 권고**로 팀 채택 결정. 산출물: `outputs/generated/…/b32-holdout-eval/det-thresh-sweep/*.json`(gitignore, 집계만).
-
+**권고**: 런타임에 `LOCAL_OCR_TEXT_DET_BOX_THRESH=0.4` 적용(설정 필드 `local_ocr_text_det_box_thresh`는 892bceaa로 이미 배선됨, 기본 None=PaddleOCR 0.6). det-thresh 평가 번들 41-image 근거이므로 코드 기본값 하드변경보다 **문서화된 튜너블 권고**로 팀 채택 결정. 산출물: `outputs/generated/…/b32-holdout-eval/det-thresh-sweep/*.json`(gitignore, 집계만).

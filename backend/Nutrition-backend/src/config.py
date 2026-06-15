@@ -40,7 +40,9 @@ DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
 DEFAULT_VISION_CLASSIFIER_MODEL = "yolo26n.pt"
 DEFAULT_LLM_WIKI_PATH = Path("/Volumes/Corsair EX400U Media/LLM-WIKI")
 # Deliberately insecure development sentinel; production validation rejects this exact value.
-DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
+DEFAULT_PRIVACY_HASH_SECRET = (
+    "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
+)
 # Minimum production length for the privacy HMAC secret (~192 bits of entropy at
 # base64). Enforced only in production; dev keeps the short sentinel above.
 DEFAULT_PRIVACY_HASH_SECRET_MIN_LENGTH = 32
@@ -771,21 +773,15 @@ class Settings(BaseSettings):
             "threshold; upstream default 0.3). None keeps the pipeline default."
         ),
     )
-    # Adopted default 0.4 (team decision 2026-06-14). The held-out detection
-    # sweep picked box_thresh=0.4 as the single best lever (within-sweep macro
-    # +0.0098 / micro +0.0175 / ingredient_recall +0.021 vs the 0.6 upstream
-    # default). Authority: outputs/todo-list/2026-06-13/
-    # 2026-06-13-ocr-benchmark-required-section-decision.md §7. PaddleOCR's own
-    # upstream default is 0.6 (confirmed against the official reference above);
-    # set LOCAL_OCR_TEXT_DET_BOX_THRESH to None/another value to override.
     local_ocr_text_det_box_thresh: float | None = Field(
-        default=0.4,
+        default=None,
         gt=0.0,
         le=1.0,
         description=(
-            "PaddleOCR predict() text_det_box_thresh (box average-score "
-            "threshold). Adopted default 0.4 (held-out sweep winner; upstream "
-            "PaddleOCR default 0.6). Override via LOCAL_OCR_TEXT_DET_BOX_THRESH."
+            "Optional PaddleOCR predict() text_det_box_thresh override (box "
+            "average-score threshold; upstream default 0.6). The 2026-06-13 "
+            "holdout sweep recommends 0.4 as an env-tunable candidate, but "
+            "None keeps the pipeline default."
         ),
     )
     local_ocr_text_det_unclip_ratio: float | None = Field(
@@ -857,6 +853,60 @@ class Settings(BaseSettings):
         ge=1,
         le=50,
         description="식단 YOLO가 review UI에 반환할 최대 후보 수.",
+    )
+    meal_yolo_iou_threshold: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="식단 YOLO predict NMS IoU threshold. 팀 handoff 기본값은 0.15.",
+    )
+    meal_yolo_agnostic_nms: bool = Field(
+        default=True,
+        description="식단 YOLO predict class-agnostic NMS 사용 여부. 팀 handoff 기본값은 true.",
+    )
+    meal_yolo_image_size: int = Field(
+        default=512,
+        ge=64,
+        le=4096,
+        description="식단 YOLO predict imgsz. 팀 handoff 기본값은 512.",
+    )
+    enable_food_clip_filter: bool = Field(
+        default=False,
+        description="식단 YOLO crop에 CLIP food/non-food 필터를 적용한다. 기본값 disabled.",
+    )
+    meal_food_clip_model_id: str = Field(
+        default="openai/clip-vit-base-patch16",
+        description="Hugging Face Transformers CLIP model id. ENABLE_FOOD_CLIP_FILTER=true일 때만 로드.",
+    )
+    meal_food_clip_threshold: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="CLIP food filter threshold. 팀 handoff 기본값은 0.25.",
+    )
+    meal_food_crop_padding: float = Field(
+        default=1.0,
+        ge=1.0,
+        le=2.0,
+        description="Detector bbox crop 확장 배율. 1.0은 원 bbox 그대로 사용.",
+    )
+    meal_food_classifier_model_path: str | None = Field(
+        default=None,
+        description="exp16b 음식 crop classifier best.pt 경로. Git에 커밋하지 않고 env로만 주입.",
+    )
+    exp16b_weights: str | None = Field(
+        default=None,
+        description="팀 handoff 데모와 호환되는 exp16b classifier weight path alias.",
+    )
+    meal_food_classifier_model_label: str = Field(
+        default="food_exp16b_local",
+        description="식단 crop classifier를 API metadata에 노출할 때 쓰는 안전한 라벨.",
+    )
+    meal_food_classifier_min_confidence: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description="exp16b crop classifier 후보 최소 confidence. 팀 handoff 기본값은 0.10.",
     )
     label_studio_url: str = Field(
         default="http://localhost:8080",
@@ -970,12 +1020,7 @@ class Settings(BaseSettings):
                 "GOOGLE_VISION_AUTH_MODE=api_key requires "
                 "ALLOW_GOOGLE_API_KEY_AUTH=true (non-production only)."
             )
-        if self.enable_food_yolo_detector and not (
-            self.meal_yolo_model_path and self.meal_yolo_model_path.strip()
-        ):
-            raise ValueError(
-                "MEAL_YOLO_MODEL_PATH is required when ENABLE_FOOD_YOLO_DETECTOR=true."
-            )
+        self._validate_food_detector_settings()
         if self.allow_google_api_key_auth and self.environment == "production":
             raise ValueError(
                 "ALLOW_GOOGLE_API_KEY_AUTH=true is forbidden in production; "
@@ -1219,6 +1264,35 @@ class Settings(BaseSettings):
         if errors:
             raise ValueError(" ".join(errors))
         return self
+
+    def _validate_food_detector_settings(self) -> None:
+        """Validate local food detector, CLIP filter, and classifier settings.
+
+        Raises:
+            ValueError: If detector-dependent settings are enabled without the
+                detector gate or if classifier path aliases diverge.
+        """
+        if self.enable_food_yolo_detector and not (
+            self.meal_yolo_model_path and self.meal_yolo_model_path.strip()
+        ):
+            raise ValueError(
+                "MEAL_YOLO_MODEL_PATH is required when ENABLE_FOOD_YOLO_DETECTOR=true."
+            )
+        if self.enable_food_clip_filter and not self.enable_food_yolo_detector:
+            raise ValueError("ENABLE_FOOD_CLIP_FILTER requires ENABLE_FOOD_YOLO_DETECTOR=true.")
+
+        classifier_path = (self.meal_food_classifier_model_path or "").strip()
+        exp16b_path = (self.exp16b_weights or "").strip()
+        if classifier_path and exp16b_path and classifier_path != exp16b_path:
+            raise ValueError(
+                "MEAL_FOOD_CLASSIFIER_MODEL_PATH and EXP16B_WEIGHTS must point to the same file "
+                "when both are set."
+            )
+        if (classifier_path or exp16b_path) and not self.enable_food_yolo_detector:
+            raise ValueError(
+                "MEAL_FOOD_CLASSIFIER_MODEL_PATH or EXP16B_WEIGHTS requires "
+                "ENABLE_FOOD_YOLO_DETECTOR=true."
+            )
 
     def _validate_learning_object_storage_settings(self) -> None:
         """Validate consent-gated learning image object storage settings.

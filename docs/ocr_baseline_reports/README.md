@@ -1,5 +1,15 @@
 # OCR 정확도 베이스라인 보고서
 
+> **2026-06-14 기준 현재 적용 순서**
+>
+> 이 README의 `CER <= 5%`, `Field-level exact match >= 95%` 목표와 합성 데이터셋 절차는 초기 baseline 기록이다. 현재 영양제 라벨 OCR 개선 의사결정은 아래 문서를 우선 적용한다.
+>
+> 1. [`2026-06-12-ocr-field-match-design-and-team-guideline.md`](./2026-06-12-ocr-field-match-design-and-team-guideline.md) — 현재 확정 가이드. production gate는 `field_match >= 0.85`, `ingredient_recall >= 0.85`, 보조 `norm_edit_dis >= 0.90`.
+> 2. [`../../outputs/todo-list/2026-06-13/2026-06-13-ocr-benchmark-required-section-decision.md`](../../outputs/todo-list/2026-06-13/2026-06-13-ocr-benchmark-required-section-decision.md) — 최신 benchmark/holdout/b32/det-threshold 결정. core-2 필수 섹션, 203 fixtures, b32 holdout gate fail, `text_det_box_thresh=0.4` 튜너블 권고.
+> 3. [`../../outputs/todo-list/2026-06-13/2026-06-13-section-detector-training-gate-runbook.md`](../../outputs/todo-list/2026-06-13/2026-06-13-section-detector-training-gate-runbook.md) — 최신 section detector gate. 2026-06-09 yolo26s 임시 배선 금지, 205 bbox 운영자 리뷰·라벨 보강·재학습 필요.
+>
+> 충돌 시 위 문서 순서를 우선한다. 특히 95% char-LCS 계열 목표는 현재 `field_match`/`ingredient_recall` production gate를 대체하지 않는다.
+
 > 목표: 한국어 + 영어 영양제 라벨 OCR 정확도 **CER ≤ 5% AND Field-level exact match ≥ 95%**
 > 측정 대상 어댑터: `paddleocr-ko`, `paddleocr-en`, `multi (ko+en)`
 

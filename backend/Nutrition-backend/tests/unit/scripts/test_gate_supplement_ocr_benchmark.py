@@ -551,6 +551,49 @@ def test_ocr_benchmark_gate_allows_teacher_eval_after_all_gates(tmp_path: Path) 
     ]
 
 
+def test_ocr_benchmark_gate_uses_ready_preflight_when_bundle_summary_is_stale(
+    tmp_path: Path,
+) -> None:
+    """Verify ready GT preflight can supersede stale bundle count fields."""
+    pii_path = _write_json(
+        tmp_path / "pii.json",
+        _pii_payload(ready=True, cleared_count=3, blank_count=0, pending_count=0),
+    )
+    stale_gt_summary = _gt_payload(row_count=3, ready_count=3)
+    stale_gt_summary["ground_truth_template_row_count"] = None
+    stale_gt_summary["ready_for_benchmark_rows"] = None
+    gt_path = _write_json(tmp_path / "gt-summary.json", stale_gt_summary)
+    gt_preflight_path = _write_json(
+        tmp_path / "gt-preflight.json",
+        _gt_preflight_payload(row_count=3, ready_count=3),
+    )
+    benchmark_path = _write_json(
+        tmp_path / "benchmark-summary.json",
+        _benchmark_payload(fixture_count=3, scoreable_count=3),
+    )
+    split_path = _write_json(
+        tmp_path / "split-summary.json",
+        _split_payload(row_count=3, holdout_count=1),
+    )
+
+    summary = gate.build_ocr_benchmark_gate(
+        pii_preflight_path=pii_path,
+        ground_truth_bundle_summary_path=gt_path,
+        ground_truth_preflight_path=gt_preflight_path,
+        benchmark_summary_path=benchmark_path,
+        benchmark_split_summary_path=split_path,
+    )
+
+    assert summary["status"] == "ready_for_teacher_ocr_eval"
+    assert summary["ground_truth_review_count_source"] == "ground_truth_preflight"
+    assert summary["ground_truth_bundle_summary_usable"] is False
+    assert summary["ground_truth_template_row_count"] == 3
+    assert summary["ready_for_benchmark_rows"] == 3
+    assert summary["ground_truth_review_ready"] is True
+    assert summary["ground_truth_preflight_ready"] is True
+    assert summary["teacher_ocr_benchmark_allowed"] is True
+
+
 def test_ocr_benchmark_gate_rejects_unsafe_input_payload(tmp_path: Path) -> None:
     """Verify raw OCR/provider payload keys fail closed."""
     payload = _pii_payload()

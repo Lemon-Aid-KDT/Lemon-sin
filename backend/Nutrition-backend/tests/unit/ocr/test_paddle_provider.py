@@ -285,9 +285,9 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
 async def test_paddle_adapter_omits_unset_detection_thresholds() -> None:
     """Verify None-default DB detection thresholds are not forwarded.
 
-    text_det_box_thresh now defaults to the adopted 0.4 (covered by the dedicated
-    test below); text_det_thresh and unclip_ratio remain None-default so they keep
-    the upstream pipeline defaults and are not forwarded.
+    The 2026-06-13 holdout sweep recommends text_det_box_thresh=0.4 as an
+    operator-tunable env value, not a hard-coded runtime default. Unset values
+    keep the upstream PaddleOCR pipeline defaults and are not forwarded.
     """
     predictor = _FakePaddlePredictor([{"rec_texts": ["비타민"], "rec_scores": [0.88]}])
     adapter = PaddleOCRAdapter(
@@ -303,22 +303,20 @@ async def test_paddle_adapter_omits_unset_detection_thresholds() -> None:
 
     # None settings keep the upstream defaults — no key forwarded.
     assert "text_det_thresh" not in predictor.received_kwargs
+    assert "text_det_box_thresh" not in predictor.received_kwargs
     assert "text_det_unclip_ratio" not in predictor.received_kwargs
 
 
 @pytest.mark.asyncio
-async def test_paddle_adapter_forwards_adopted_box_thresh_default() -> None:
-    """Verify the adopted box_thresh default (0.4) is forwarded when left unset.
-
-    Team decision 2026-06-14: box_thresh=0.4 is the held-out detection-sweep
-    winner and is now the code default (upstream PaddleOCR default is 0.6).
-    """
+async def test_paddle_adapter_forwards_box_thresh_when_configured() -> None:
+    """Verify the recommended 0.4 box threshold is forwarded when configured."""
     predictor = _FakePaddlePredictor([{"rec_texts": ["엽산"], "rec_scores": [0.9]}])
     adapter = PaddleOCRAdapter(
         Settings(
             _env_file=None,
             enable_local_ocr=True,
             local_ocr_preprocess_mode="none",
+            local_ocr_text_det_box_thresh=0.4,
         ),
         predictor=predictor,
     )

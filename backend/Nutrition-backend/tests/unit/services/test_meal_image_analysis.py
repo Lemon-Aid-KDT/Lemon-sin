@@ -252,6 +252,7 @@ def _settings(
     supplement_image_max_bytes: int = 5 * 1024 * 1024,
     supplement_image_max_pixels: int = 12_000_000,
     enable_food_yolo_detector: bool = False,
+    meal_food_classifier_model_path: str | None = None,
 ) -> Settings:
     """Return settings for meal image analysis tests.
 
@@ -259,6 +260,7 @@ def _settings(
         supplement_image_max_bytes: Maximum image byte size.
         supplement_image_max_pixels: Maximum decoded image pixels.
         enable_food_yolo_detector: Whether the optional food detector is enabled.
+        meal_food_classifier_model_path: Optional exp16b classifier weight path.
 
     Returns:
         Settings object.
@@ -273,6 +275,7 @@ def _settings(
             if enable_food_yolo_detector
             else None
         ),
+        meal_food_classifier_model_path=meal_food_classifier_model_path,
     )
 
 
@@ -362,6 +365,29 @@ def _food_detection(label: str = "비빔밥", confidence: float = 0.88) -> FoodD
             model="food_yolo_local:best.pt",
         ),
         model="food_yolo_local:best.pt",
+    )
+
+
+def _classifier_food_detection() -> FoodDetection:
+    """Return a detector candidate labelled by the exp16b classifier.
+
+    Returns:
+        Food detection fixture with classifier metadata.
+    """
+    return FoodDetection(
+        label="fried-chicken",
+        confidence=0.77,
+        bbox=BoundingBox(
+            x=1,
+            y=2,
+            width=10,
+            height=12,
+            confidence=0.77,
+            label="fried-chicken",
+            model="food_yolo_local:best.pt+food_exp16b_local:best.pt",
+        ),
+        model="food_yolo_local:best.pt+food_exp16b_local:best.pt",
+        classifier_model="food_exp16b_local:best.pt",
     )
 
 
@@ -529,6 +555,41 @@ async def test_create_meal_image_preview_uses_food_yolo_candidates() -> None:
     serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
     assert "provider_payload" not in serialized_records
     assert "image_bytes" not in serialized_records
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_records_classifier_metadata() -> None:
+    """Verify exp16b classifier metadata is stored without raw model paths."""
+    fake_session = _FakeStoreSession()
+    detector = _FakeFoodDetector([_classifier_food_detection()])
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(
+            enable_food_yolo_detector=True,
+            meal_food_classifier_model_path="/app/runs/food_yolo/exp16b/weights/best.pt",
+        ),
+        food_detector=detector,
+    )
+
+    assert result.analysis_run.detector_model == "food_yolo_local:best.pt"
+    assert result.analysis_run.classifier_model == "food_exp16b_local:best.pt"
+    item = result.analysis_run.detected_items_snapshot["items"][0]
+    assert item["display_name"] == "fried-chicken"
+    assert item["classifier_model"] == "food_exp16b_local:best.pt"
+
+    preview = meal_image_analysis_to_preview(result)
+    assert preview.pipeline_metadata.detector_used is True
+    assert preview.pipeline_metadata.classifier_used is True
+    assert preview.pipeline_metadata.raw_provider_payload_stored is False
+    serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
+    assert "/app/runs/food_yolo/exp16b" not in serialized_records
+    assert "provider_payload" not in serialized_records
 
 
 @pytest.mark.asyncio

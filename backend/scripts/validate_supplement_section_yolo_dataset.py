@@ -15,11 +15,19 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.vision.taxonomy import VISION_DETECTION_LABELS, normalize_vision_label
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+NUTRITION_BACKEND_ROOT = BACKEND_ROOT / "Nutrition-backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+if str(NUTRITION_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(NUTRITION_BACKEND_ROOT))
+
+from src.vision.taxonomy import VISION_DETECTION_LABELS, normalize_vision_label  # noqa: E402
 
 REQUIRED_SECTION_LABELS = (
     "product_identity",

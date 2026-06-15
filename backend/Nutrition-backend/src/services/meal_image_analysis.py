@@ -55,7 +55,13 @@ from src.utils.image_safety import (
     strip_image_metadata,
 )
 from src.vision.base import VisionError
-from src.vision.food_yolo import FoodDetection, FoodYoloDetector, food_model_label
+from src.vision.food_yolo import (
+    FoodClipFilter,
+    FoodDetection,
+    FoodYoloDetector,
+    food_classifier_model_label,
+    food_model_label,
+)
 
 FOOD_IMAGE_ANALYSIS_ALGORITHM_VERSION = "food-image-preview-v1.0.0"
 FOOD_IMAGE_ANALYSIS_WARNING_CODES = (
@@ -137,12 +143,14 @@ class FoodDetectionResult:
     Attributes:
         detections: Review-only detector candidates.
         detector_model: Sanitized model label when configured.
+        classifier_model: Sanitized classifier model label when configured.
         detector_used: Whether detector inference ran.
         warning_codes: Stable warning codes for the preview.
     """
 
     detections: tuple[FoodDetection, ...]
     detector_model: str | None
+    classifier_model: str | None
     detector_used: bool
     warning_codes: tuple[str, ...]
 
@@ -361,7 +369,7 @@ async def create_meal_image_analysis_preview(
                 image_mime_type=image_metadata.mime_type,
                 image_size_bytes=image_metadata.size_bytes,
                 detector_model=detection.detector_model,
-                classifier_model=None,
+                classifier_model=detection.classifier_model,
                 status=MealAnalysisStatus.REQUIRES_CONFIRMATION.value,
                 detected_items_snapshot=detected_items_snapshot,
                 nutrition_estimate_snapshot=nutrition_estimate_snapshot,
@@ -409,7 +417,8 @@ def meal_image_analysis_to_preview(
             classifier_model=analysis_run.classifier_model,
             detector_used=bool(analysis_run.detector_model)
             and not _contains_warning(analysis_run.warning_codes, "food_detector_unavailable"),
-            classifier_used=False,
+            classifier_used=bool(analysis_run.classifier_model)
+            and not _contains_warning(analysis_run.warning_codes, "food_detector_unavailable"),
             raw_image_stored=False,
             raw_provider_payload_stored=False,
             requires_manual_entry=not bool(_snapshot_items(analysis_run.detected_items_snapshot)),
@@ -695,6 +704,7 @@ def _detect_food_candidates_if_enabled(
         return FoodDetectionResult(
             detections=(),
             detector_model=None,
+            classifier_model=None,
             detector_used=False,
             warning_codes=FOOD_IMAGE_ANALYSIS_WARNING_CODES,
         )
@@ -703,19 +713,39 @@ def _detect_food_candidates_if_enabled(
         settings.meal_yolo_model_path,
         settings.meal_yolo_model_label,
     )
+    classifier_path = _configured_food_classifier_path(settings)
+    classifier_model = food_classifier_model_label(
+        classifier_path,
+        settings.meal_food_classifier_model_label,
+    )
     if detector_model is None:
         return FoodDetectionResult(
             detections=(),
             detector_model=None,
+            classifier_model=classifier_model,
             detector_used=False,
             warning_codes=FOOD_IMAGE_DETECTOR_UNAVAILABLE_WARNING_CODES,
         )
 
+    clip_filter = (
+        FoodClipFilter(model_id=settings.meal_food_clip_model_id)
+        if settings.enable_food_clip_filter
+        else None
+    )
     detector = food_detector or FoodYoloDetector(
         model_path=settings.meal_yolo_model_path or "",
         model_label=detector_model,
         min_confidence=settings.meal_yolo_min_confidence,
         max_detections=settings.meal_yolo_max_detections,
+        iou_threshold=settings.meal_yolo_iou_threshold,
+        agnostic_nms=settings.meal_yolo_agnostic_nms,
+        image_size=settings.meal_yolo_image_size,
+        clip_filter=clip_filter,
+        clip_threshold=settings.meal_food_clip_threshold,
+        crop_padding=settings.meal_food_crop_padding,
+        classifier_model_path=classifier_path,
+        classifier_model_label=classifier_model,
+        classifier_min_confidence=settings.meal_food_classifier_min_confidence,
     )
     try:
         detections = tuple(detector.detect_foods(image_metadata.normalized_bytes))
@@ -723,6 +753,7 @@ def _detect_food_candidates_if_enabled(
         return FoodDetectionResult(
             detections=(),
             detector_model=detector_model,
+            classifier_model=classifier_model,
             detector_used=False,
             warning_codes=FOOD_IMAGE_DETECTOR_UNAVAILABLE_WARNING_CODES,
         )
@@ -730,15 +761,32 @@ def _detect_food_candidates_if_enabled(
         return FoodDetectionResult(
             detections=(),
             detector_model=detector_model,
+            classifier_model=classifier_model,
             detector_used=True,
             warning_codes=FOOD_IMAGE_DETECTOR_EMPTY_WARNING_CODES,
         )
     return FoodDetectionResult(
         detections=detections,
         detector_model=detector_model,
+        classifier_model=classifier_model,
         detector_used=True,
         warning_codes=FOOD_IMAGE_DETECTION_REVIEW_WARNING_CODES,
     )
+
+
+def _configured_food_classifier_path(settings: Settings) -> str | None:
+    """Return the configured exp16b classifier path from canonical or alias env.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        Non-empty classifier path, if configured.
+    """
+    classifier_path = settings.meal_food_classifier_model_path or settings.exp16b_weights
+    if classifier_path is None or not classifier_path.strip():
+        return None
+    return classifier_path
 
 
 def _food_detections_to_snapshot(
@@ -765,6 +813,11 @@ def _food_detections_to_snapshot(
                     "height": detection.bbox.height,
                 },
                 "model": detection.model,
+                **(
+                    {"classifier_model": detection.classifier_model}
+                    if detection.classifier_model is not None
+                    else {}
+                ),
             }
             for detection in detections
         ]

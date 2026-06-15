@@ -20,14 +20,14 @@ SUPPORTED_SPLITS = frozenset({"train", "val", "test"})
 
 
 def _split_map(manifests: list[Path]) -> dict[str, str]:
-    """Return ``fixture_id(candidate_id) -> v2_split`` from candidate manifests."""
+    """Return ``fixture_id -> v2_split`` from candidate manifests."""
     out: dict[str, str] = {}
     for m in manifests:
         for line in m.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             rec = json.loads(line)
-            cid = rec.get("candidate_id")
+            cid = rec.get("fixture_id") or rec.get("candidate_id")
             split = rec.get("v2_split")
             if cid and split in SUPPORTED_SPLITS:
                 out[cid] = split
@@ -59,7 +59,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--template", required=True, type=Path, help="Promote-template JSONL (from extract).")
     ap.add_argument("--candidate-manifest", required=True, type=Path, action="append",
-                    help="v2 candidate manifest with candidate_id + v2_split (repeatable).")
+                    help="v2 candidate manifest with fixture_id/candidate_id + v2_split (repeatable).")
     ap.add_argument("--output", required=True, type=Path)
     ap.add_argument("--default-split", default="train", choices=sorted(SUPPORTED_SPLITS))
     a = ap.parse_args()

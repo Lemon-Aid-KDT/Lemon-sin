@@ -1,0 +1,41 @@
+{
+  "schema_version": "paddleocr-recognizer-finetune-resume-decision-v1",
+  "date": "2026-06-10",
+  "holdout_fixture_count": 52,
+  "no_train_gate_path": "outputs/generated/supplement-learning/2026-06-05/operator-review/reconciled/paddleocr-no-train-ablation-20260609/no-train-ablation-promotion-gate.json",
+  "recognizer_finetune_resume_allowed_now": true,
+  "provider_promotion_allowed": false,
+  "best_stable_no_train_config": {
+    "name": "full_mobile_2048_autocontrast",
+    "reason": "This was the only emitted no-training candidate marked as exceeding the full-image mobile 2048 baseline on every emitted metric."
+  },
+  "a100_submission_from_codex": {
+    "attempted": true,
+    "status": "blocked_by_ssh_auth",
+    "error_class": "permission_denied",
+    "note": "The local Codex shell cannot authenticate to 155.230.153.222 even though VS Code Remote SSH is connected."
+  },
+  "script_remediation": {
+    "low_lr_default": 0.0001,
+    "requires_existing_dict": true,
+    "supports_mixed_train_label_files": true,
+    "supports_train_ratio_list": true,
+    "supports_require_mixed_training_guard": true,
+    "supports_disable_recconaug_config_copy": true,
+    "supports_checkpoint_resume": true
+  },
+  "required_a100_inputs_before_training": {
+    "domain_train_label": "G:/lemon-aid/paddleocr_rec_work/rec_dataset/v2/rec/rec_gt_train.txt",
+    "general_korean_train_label_candidates": [
+      "G:/lemon-aid/paddleocr_rec_work/rec_dataset/general_korean/rec/rec_gt_train.txt",
+      "G:/lemon-aid/paddleocr_rec_work/rec_dataset/paddleocr_general_korean/rec/rec_gt_train.txt",
+      "G:/lemon-aid/paddleocr_rec_work/rec_dataset/public_korean/rec/rec_gt_train.txt"
+    ]
+  },
+  "a100_resume_script": "outputs/generated/supplement-learning/2026-06-10/paddleocr-recognizer-finetune-resume/a100_resume_paddleocr_rec_finetune.ps1",
+  "privacy": {
+    "raw_ocr_text_stored": false,
+    "raw_provider_payload_stored": false,
+    "label_text_stored": false
+  }
+}

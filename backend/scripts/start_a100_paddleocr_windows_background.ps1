@@ -16,6 +16,16 @@ param(
     [string]$WorkspaceRoot = "G:\lemon-aid\paddleocr_rec_work",
     [string]$DatasetVersion = "v2",
     [string]$RunSuffix = "v2_clean",
+    [int]$BatchSize = 128,
+    [int]$SamplerFirstBatchSize = 0,
+    [int]$Epochs = 100,
+    [double]$LearningRate = 0.0001,
+    [string]$Checkpoints = "",
+    [string]$PretrainedModel = "",
+    [string]$MixedTrainLabelFiles = "",
+    [string]$TrainRatioList = "",
+    [switch]$RequireMixedTraining,
+    [switch]$DisableRecConAug,
     [ValidateRange(1, 100)]
     [int]$EarlyStopPatienceEpochs = 5,
     [ValidateRange(10, 3600)]
@@ -28,6 +38,18 @@ $runScriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\run_a100_pa
 $watchScriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\watch_a100_paddleocr_windows_early_stop.ps1"
 $workdir = Join-Path $WorkspaceRoot "Lemon-Aid"
 
+function ConvertTo-SingleQuotedPowerShellArgument {
+    param([string]$Value)
+
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function ConvertTo-PowerShellFloatArgument {
+    param([double]$Value)
+
+    return $Value.ToString("0.################", [Globalization.CultureInfo]::InvariantCulture)
+}
+
 if ($Mode -eq "early-stop") {
     $scriptPath = $watchScriptPath
     $logPath = Join-Path $WorkspaceRoot "early_stop.$RunSuffix.combined.log"
@@ -39,10 +61,47 @@ if ($Mode -eq "early-stop") {
 else {
     $scriptPath = $runScriptPath
     $logPath = Join-Path $WorkspaceRoot "$Mode.$RunSuffix.combined.log"
+    $launchScriptPath = Join-Path $WorkspaceRoot "launch.$Mode.$RunSuffix.ps1"
     if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
         throw "A100 run script is missing: $scriptPath"
     }
-    $command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -DatasetVersion {2} -RunSuffix {3} > "{4}" 2>&1' -f $scriptPath, $Mode, $DatasetVersion, $RunSuffix, $logPath
+
+    $learningRateArg = ConvertTo-PowerShellFloatArgument -Value $LearningRate
+    $optionalArgs = " -BatchSize $BatchSize -Epochs $Epochs -LearningRate $learningRateArg"
+    if ($SamplerFirstBatchSize -gt 0) {
+        $optionalArgs += " -SamplerFirstBatchSize $SamplerFirstBatchSize"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Checkpoints)) {
+        $optionalArgs += " -Checkpoints " + (ConvertTo-SingleQuotedPowerShellArgument -Value $Checkpoints)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PretrainedModel)) {
+        $optionalArgs += " -PretrainedModel " + (ConvertTo-SingleQuotedPowerShellArgument -Value $PretrainedModel)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($MixedTrainLabelFiles)) {
+        $optionalArgs += " -MixedTrainLabelFiles " + (ConvertTo-SingleQuotedPowerShellArgument -Value $MixedTrainLabelFiles)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TrainRatioList)) {
+        $optionalArgs += " -TrainRatioList " + (ConvertTo-SingleQuotedPowerShellArgument -Value $TrainRatioList)
+    }
+    if ($RequireMixedTraining) {
+        $optionalArgs += " -RequireMixedTraining"
+    }
+    if ($DisableRecConAug) {
+        $optionalArgs += " -DisableRecConAug"
+    }
+
+    $scriptInvocation = '& {0} -Mode {1} -DatasetVersion {2} -RunSuffix {3}{4}' -f `
+        (ConvertTo-SingleQuotedPowerShellArgument -Value $scriptPath),
+        (ConvertTo-SingleQuotedPowerShellArgument -Value $Mode),
+        (ConvertTo-SingleQuotedPowerShellArgument -Value $DatasetVersion),
+        (ConvertTo-SingleQuotedPowerShellArgument -Value $RunSuffix),
+        $optionalArgs
+    Set-Content -LiteralPath $launchScriptPath -Value @(
+        '$ErrorActionPreference = "Stop"',
+        $scriptInvocation
+    ) -Encoding UTF8
+
+    $command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" > "{1}" 2>&1' -f $launchScriptPath, $logPath
 }
 
 $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{

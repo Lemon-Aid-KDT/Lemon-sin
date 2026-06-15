@@ -41,14 +41,17 @@ import json
 import unicodedata
 from decimal import Decimal
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
+from PIL import Image, ImageOps
 from rapidfuzz import fuzz
 from rapidfuzz.distance import LCSseq
 
 MAX_METRIC_CHARS = 12000
 TARGET_PROVIDER = "paddleocr_local"
 FIELD_MATCH_THRESHOLD = 85.0  # rapidfuzz partial_ratio (0-100) for field presence.
+PREPROCESS_MODES = ("none", "autocontrast", "grayscale_autocontrast")
 
 PROFILES: dict[str, dict[str, Any]] = {
     "mobile": {
@@ -271,9 +274,67 @@ def _build_ocr(
     )
 
 
-def _predict_text(ocr: Any, image_path: Path) -> str:
-    """Run PaddleOCR on one image and return its joined recognized text."""
-    result = ocr.predict(str(image_path))
+def _prepared_image_path(*, image_path: Path, preprocess_mode: str, tmp_dir: Path) -> Path:
+    """Return a temporary OCR input image with the requested preprocessing.
+
+    Args:
+        image_path: Source image path.
+        preprocess_mode: One of ``none``, ``autocontrast``, or
+            ``grayscale_autocontrast``.
+        tmp_dir: Temporary directory used for preprocessed images.
+
+    Returns:
+        Path to the source image or a temporary preprocessed PNG.
+
+    Raises:
+        ValueError: If ``preprocess_mode`` is unsupported.
+    """
+    if preprocess_mode == "none":
+        return image_path
+    if preprocess_mode not in PREPROCESS_MODES:
+        raise ValueError(f"unsupported preprocess_mode={preprocess_mode}")
+    with Image.open(image_path) as raw:
+        normalized = ImageOps.exif_transpose(raw).convert("RGB")
+        if preprocess_mode == "autocontrast":
+            processed = ImageOps.autocontrast(normalized)
+        else:
+            processed = ImageOps.autocontrast(ImageOps.grayscale(normalized)).convert("RGB")
+        tmp_path = tmp_dir / f"{image_path.stem}.{preprocess_mode}.png"
+        processed.save(tmp_path, format="PNG", optimize=True)
+        return tmp_path
+
+
+def _predict_text(
+    ocr: Any,
+    image_path: Path,
+    *,
+    preprocess_mode: str = "none",
+    tmp_dir: Path | None = None,
+) -> str:
+    """Run PaddleOCR on one image and return its joined recognized text.
+
+    Args:
+        ocr: Configured PaddleOCR pipeline.
+        image_path: Image path to score.
+        preprocess_mode: Optional temporary preprocessing mode.
+        tmp_dir: Temporary directory required when preprocessing is enabled.
+
+    Returns:
+        Recognized text joined by spaces. Raw text is kept in memory only.
+
+    Raises:
+        ValueError: If preprocessing is requested without ``tmp_dir``.
+    """
+    input_path = image_path
+    if preprocess_mode != "none":
+        if tmp_dir is None:
+            raise ValueError("tmp_dir is required when preprocess_mode is not none.")
+        input_path = _prepared_image_path(
+            image_path=image_path,
+            preprocess_mode=preprocess_mode,
+            tmp_dir=tmp_dir,
+        )
+    result = ocr.predict(str(input_path))
     if not result:
         return ""
     first = result[0]
@@ -292,6 +353,7 @@ def evaluate(
     det_thresh: float | None = None,
     det_unclip_ratio: float | None = None,
     rec_model_dir: str | None = None,
+    preprocess_mode: str = "none",
 ) -> dict[str, Any]:
     """Score PaddleOCR text extraction over the ready GT rows.
 
@@ -304,6 +366,7 @@ def evaluate(
         det_box_thresh: Optional detection box score threshold.
         det_thresh: Optional detection pixel binarization threshold.
         det_unclip_ratio: Optional detection box expansion ratio.
+        preprocess_mode: Temporary image preprocessing mode for PaddleOCR input.
 
     Returns:
         Redacted results: aggregates, per-image numeric scores, and per-image
@@ -342,65 +405,72 @@ def evaluate(
     failed = 0
     recall_found = 0
     recall_total = 0
-    for row in ready:
-        expected = row["expected"]
-        fixture_id = row.get("fixture_id")
-        image_path = str(row.get("image_path", "")).strip()
-        if not image_path:
-            failed += 1
-            continue
-        try:
-            predicted = _predict_text(ocr, bundle_dir / image_path)
-        except Exception:  # per-row isolation: count and continue (no raw error text stored)
-            failed += 1
-            continue
-        hypothesis_norm = _normalize_for_metric(predicted)
-        reference = _structured_reference(expected)
-        metrics = _text_extraction_metrics(reference, predicted)
-        f_matched, f_total = _field_match_ratio(_field_units(expected), hypothesis_norm)
-        found, total = _ingredient_recall(expected, hypothesis_norm)
-        recall_found += found
-        recall_total += total
-        field_matched_total += f_matched
-        field_unit_total += f_total
-        if metrics is None:
-            skipped += 1
-            continue
-        scored += 1
-        for key in sums:
-            sums[key] += metrics[key]
-        image_field_ratio = round(f_matched / f_total, 4) if f_total else 0.0
-        field_ratio_sum += image_field_ratio
-        per_image.append(
-            {
-                "fixture_id": fixture_id,
-                "field_match_ratio": image_field_ratio,
-                "field_matched": f_matched,
-                "field_total": f_total,
-                "normalized_text_precision": metrics["normalized_text_precision"],
-                "normalized_text_recall": metrics["normalized_text_recall"],
-                "normalized_text_f1": metrics["normalized_text_f1"],
-                "ingredient_found": found,
-                "ingredient_total": total,
-            }
-        )
-        observations.append(
-            {
-                "fixture_id": fixture_id,
-                "provider": TARGET_PROVIDER,
-                "status": "completed",
-                "text_non_empty": bool(predicted.strip()),
-                "char_count": metrics["hypothesis_char_count"],
-                "field_match_ratio": image_field_ratio,
-                "matched_char_count": metrics["matched_char_count"],
-                "reference_char_count": metrics["reference_char_count"],
-                "hypothesis_char_count": metrics["hypothesis_char_count"],
-                "normalized_text_precision": metrics["normalized_text_precision"],
-                "normalized_text_recall": metrics["normalized_text_recall"],
-                "normalized_text_f1": metrics["normalized_text_f1"],
-                "text_metric_reference_source": "expected.structured_sections",
-            }
-        )
+    with TemporaryDirectory(prefix="lemon-paddleocr-preprocess-") as tmp:
+        tmp_dir = Path(tmp)
+        for row in ready:
+            expected = row["expected"]
+            fixture_id = row.get("fixture_id")
+            image_path = str(row.get("image_path", "")).strip()
+            if not image_path:
+                failed += 1
+                continue
+            try:
+                predicted = _predict_text(
+                    ocr,
+                    bundle_dir / image_path,
+                    preprocess_mode=preprocess_mode,
+                    tmp_dir=tmp_dir,
+                )
+            except Exception:  # per-row isolation: count and continue (no raw error text stored)
+                failed += 1
+                continue
+            hypothesis_norm = _normalize_for_metric(predicted)
+            reference = _structured_reference(expected)
+            metrics = _text_extraction_metrics(reference, predicted)
+            f_matched, f_total = _field_match_ratio(_field_units(expected), hypothesis_norm)
+            found, total = _ingredient_recall(expected, hypothesis_norm)
+            recall_found += found
+            recall_total += total
+            field_matched_total += f_matched
+            field_unit_total += f_total
+            if metrics is None:
+                skipped += 1
+                continue
+            scored += 1
+            for key in sums:
+                sums[key] += metrics[key]
+            image_field_ratio = round(f_matched / f_total, 4) if f_total else 0.0
+            field_ratio_sum += image_field_ratio
+            per_image.append(
+                {
+                    "fixture_id": fixture_id,
+                    "field_match_ratio": image_field_ratio,
+                    "field_matched": f_matched,
+                    "field_total": f_total,
+                    "normalized_text_precision": metrics["normalized_text_precision"],
+                    "normalized_text_recall": metrics["normalized_text_recall"],
+                    "normalized_text_f1": metrics["normalized_text_f1"],
+                    "ingredient_found": found,
+                    "ingredient_total": total,
+                }
+            )
+            observations.append(
+                {
+                    "fixture_id": fixture_id,
+                    "provider": TARGET_PROVIDER,
+                    "status": "completed",
+                    "text_non_empty": bool(predicted.strip()),
+                    "char_count": metrics["hypothesis_char_count"],
+                    "field_match_ratio": image_field_ratio,
+                    "matched_char_count": metrics["matched_char_count"],
+                    "reference_char_count": metrics["reference_char_count"],
+                    "hypothesis_char_count": metrics["hypothesis_char_count"],
+                    "normalized_text_precision": metrics["normalized_text_precision"],
+                    "normalized_text_recall": metrics["normalized_text_recall"],
+                    "normalized_text_f1": metrics["normalized_text_f1"],
+                    "text_metric_reference_source": "expected.structured_sections",
+                }
+            )
     return {
         "schema_version": "paddleocr-clova-eval-v3",
         "provider": TARGET_PROVIDER,
@@ -411,6 +481,7 @@ def evaluate(
         "det_box_thresh": det_box_thresh,
         "det_thresh": det_thresh,
         "det_unclip_ratio": det_unclip_ratio,
+        "preprocess_mode": preprocess_mode,
         "field_match_threshold": FIELD_MATCH_THRESHOLD,
         "scored_images": scored,
         "skipped_images": skipped,
@@ -466,6 +537,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Detection box expansion ratio (higher = larger boxes, fewer truncated lines).",
     )
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--preprocess-mode", choices=PREPROCESS_MODES, default="none")
     parser.add_argument("--apply", action="store_true")
     return parser.parse_args(argv)
 
@@ -495,6 +567,7 @@ def main(argv: list[str] | None = None) -> int:
         det_thresh=args.det_thresh,
         det_unclip_ratio=args.det_unclip_ratio,
         rec_model_dir=args.rec_model_dir,
+        preprocess_mode=args.preprocess_mode,
     )
     observations = results.pop("observations")
     args.output.parent.mkdir(parents=True, exist_ok=True)
