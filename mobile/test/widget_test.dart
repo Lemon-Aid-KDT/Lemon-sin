@@ -144,6 +144,12 @@ class _FakeRepository implements LemonAidRepository {
   }
 
   @override
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImagesOneShot(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) => analyzeSupplementImages(images, ocrProvider: ocrProvider);
+
+  @override
   Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImages(
     List<SupplementImageUpload> images, {
     String ocrProvider = 'configured',

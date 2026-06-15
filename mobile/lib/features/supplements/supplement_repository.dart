@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
 import '../consent/consent_models.dart';
@@ -203,6 +205,18 @@ abstract class LemonAidRepository {
     String ocrProvider = 'configured',
   }) {
     throw UnimplementedError();
+  }
+
+  /// Uploads a one-product batch as a SINGLE request to the fusion route so the
+  /// backend OCRs every image, fuses the text, and parses once into one result.
+  ///
+  /// Defaults to the per-image session flow ([analyzeSupplementImages]) so impls
+  /// that do not need one-shot fusion keep working unchanged.
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImagesOneShot(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) {
+    return analyzeSupplementImages(images, ocrProvider: ocrProvider);
   }
 
   /// Rebuilds the backend-merged preview for an existing multi-image batch.
@@ -622,6 +636,39 @@ class BackendLemonAidRepository implements LemonAidRepository {
       );
     }
     return finalizeSupplementAnalysisSession(session.analysisGroupId);
+  }
+
+  @override
+  Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImagesOneShot(
+    List<SupplementImageUpload> images, {
+    String ocrProvider = 'configured',
+  }) async {
+    if (images.isEmpty) {
+      throw ArgumentError.value(
+        images,
+        'images',
+        'At least one image is required',
+      );
+    }
+    final String selectedOcrProvider = _normalizeOcrProvider(ocrProvider);
+    final List<String> roles = <String>[
+      for (final SupplementImageUpload image in images)
+        _normalizeImageRole(image.role),
+    ];
+    final Map<String, dynamic> json = await _apiClient.postMultipartFiles(
+      '/supplements/analyze-multi',
+      fileField: 'images',
+      filePaths: <String>[
+        for (final SupplementImageUpload image in images) image.path,
+      ],
+      fields: <String, String>{
+        'ocr_provider': selectedOcrProvider,
+        'merge_strategy': 'single_product',
+        'image_roles_json': jsonEncode(roles),
+      },
+      expectedStatusCodes: const <int>{202},
+    );
+    return SupplementMultiImageAnalysisPreview.fromJson(json);
   }
 
   @override

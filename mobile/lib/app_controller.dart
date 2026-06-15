@@ -665,6 +665,7 @@ class AppController extends ChangeNotifier {
             images,
             ocrProvider: ocrProvider,
             compareOcrProviders: compareOcrProviders,
+            singleProduct: sameSupplementBatch,
           );
       _lastRequestedOcrProvider = selection.provider;
       _lastSupplementBatchIsSingleProduct = sameSupplementBatch;
@@ -1172,6 +1173,7 @@ class AppController extends ChangeNotifier {
           await _analyzeSupplementImagesAutomatically(
             images,
             compareOcrProviders: compareOcrProviders,
+            singleProduct: sameSupplementBatch,
           );
       if (!_isCurrentAnalysisJob(serial)) return;
       _lastRequestedOcrProvider = selection.provider;
@@ -1260,6 +1262,7 @@ class AppController extends ChangeNotifier {
     List<SupplementImageUpload> images, {
     String ocrProvider = _defaultOcrProvider,
     bool compareOcrProviders = false,
+    bool singleProduct = true,
   }) async {
     final List<String> providers = compareOcrProviders
         ? _diagnosticOcrProviders
@@ -1267,11 +1270,18 @@ class AppController extends ChangeNotifier {
     final List<_SupplementAnalysisAttempt> attempts = await Future.wait(
       providers.map((String provider) async {
         try {
+          // One product photographed across several images → fuse server-side in
+          // one request; otherwise keep the per-image session flow.
           final SupplementMultiImageAnalysisPreview multiPreview =
-              await _repository.analyzeSupplementImages(
-                images,
-                ocrProvider: provider,
-              );
+              await (singleProduct
+                  ? _repository.analyzeSupplementImagesOneShot(
+                      images,
+                      ocrProvider: provider,
+                    )
+                  : _repository.analyzeSupplementImages(
+                      images,
+                      ocrProvider: provider,
+                    ));
           final SupplementAnalysisPreview? preview =
               multiPreview.primaryPreview;
           if (preview == null) {

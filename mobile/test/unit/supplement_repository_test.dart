@@ -227,6 +227,56 @@ void main() {
     );
   });
 
+  test(
+    'one-shot single-product batch posts all images in one analyze-multi request',
+    () async {
+      final File front = _writeTinyPng(fileName: 'one-front.png');
+      final File facts = _writeTinyPng(fileName: 'one-facts.png');
+      addTearDown(() {
+        for (final File image in <File>[front, facts]) {
+          if (image.existsSync()) {
+            image.deleteSync();
+          }
+        }
+      });
+      final _OneShotFlowClient oneShotClient = _OneShotFlowClient();
+      final ApiClient apiClient = ApiClient(
+        baseUrl: 'http://localhost:8000/api/v1',
+        httpClient: oneShotClient,
+      );
+      addTearDown(apiClient.close);
+      final BackendLemonAidRepository repository = BackendLemonAidRepository(
+        apiClient: apiClient,
+      );
+
+      final SupplementMultiImageAnalysisPreview response = await repository
+          .analyzeSupplementImagesOneShot(<SupplementImageUpload>[
+            SupplementImageUpload(path: front.path, role: 'front_label'),
+            SupplementImageUpload(path: facts.path, role: 'intake_method'),
+          ], ocrProvider: 'clova');
+
+      // Exactly ONE request to the fusion route (not the 4-call session flow).
+      expect(
+        oneShotClient.requests.map((http.BaseRequest r) => r.url.path),
+        <String>['/api/v1/supplements/analyze-multi'],
+      );
+      final http.MultipartRequest request =
+          oneShotClient.requests.single as http.MultipartRequest;
+      expect(request.fields['ocr_provider'], 'clova');
+      expect(request.fields['merge_strategy'], 'single_product');
+      expect(
+        request.fields['image_roles_json'],
+        jsonEncode(<String>['front_label', 'intake_method']),
+      );
+      // Both images travel in one multipart request under the 'images' field.
+      expect(
+        request.files.map((http.MultipartFile f) => f.field).toList(),
+        <String>['images', 'images'],
+      );
+      expect(response.analysisGroupId, 'multi-test');
+    },
+  );
+
   test('rejects unsupported multi-image role before upload', () async {
     final File image = _writeTinyPng();
     addTearDown(() {
@@ -711,6 +761,32 @@ class _SessionFlowClient extends http.BaseClient {
     return http.StreamedResponse(
       Stream<List<int>>.value(utf8.encode(jsonEncode(body))),
       statusCode,
+      headers: <String, String>{'content-type': 'application/json'},
+    );
+  }
+}
+
+class _OneShotFlowClient extends http.BaseClient {
+  final List<http.BaseRequest> requests = <http.BaseRequest>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests.add(request);
+    if (request is http.MultipartRequest &&
+        request.url.path == '/api/v1/supplements/analyze-multi') {
+      return http.StreamedResponse(
+        Stream<List<int>>.value(utf8.encode(jsonEncode(_multiPreviewResponse))),
+        202,
+        headers: <String, String>{'content-type': 'application/json'},
+      );
+    }
+    return http.StreamedResponse(
+      Stream<List<int>>.value(
+        utf8.encode(
+          jsonEncode(<String, Object?>{'detail': 'unexpected request'}),
+        ),
+      ),
+      500,
       headers: <String, String>{'content-type': 'application/json'},
     );
   }
