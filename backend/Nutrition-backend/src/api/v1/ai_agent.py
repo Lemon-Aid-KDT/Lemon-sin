@@ -28,7 +28,11 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session, get_rls_context_session
+from src.db.dependencies import (
+    get_async_session,
+    get_rls_context_session,
+    rls_request_transaction_allow_inner_commit,
+)
 from src.llm.ollama import validate_local_ollama_settings
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser, require_analysis_write
@@ -347,160 +351,165 @@ async def run_chatbot(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ChatbotApiResponse:
     """Run the safety-bounded Lemon Aid chatbot for the authenticated user."""
-    await _require_sensitive_health_consent(
-        session,
-        current_user,
-        http_request,
-        settings,
-        blocked_action="ai_agent_chat_blocked",
-        blocked_resource_type="ai_agent_chat",
-    )
-    sources_ready, source_warnings = await _production_medical_source_gate(session, settings)
-    if not sources_ready:
-        return ChatbotApiResponse(
-            request_id=request.request_id,
-            message=(
-                "요약\n"
-                "- 현재 검수된 의료 지식 출처가 준비되지 않아 답변할 수 없습니다.\n"
-                "현재 답할 수 없는 이유\n"
-                "- production 환경에서는 reviewed source governance DB가 준비된 경우에만 "
-                "건강 답변을 생성합니다.\n"
-                "필요한 검수 지식\n"
-                "- reviewed source, source version, expiry, user-facing 허용 상태가 필요합니다.\n"
-                "지금 할 수 있는 안전한 행동\n"
-                "- 긴급 증상이 있으면 119 또는 가까운 응급실을 이용하고, 복약·치료 판단은 "
-                "의사 또는 약사에게 확인하세요."
-            ),
-            provider="deterministic",
-            used_tools=["medical_source_readiness"],
-            safety_warnings=source_warnings,
-            source_families=[],
-            answerability="unknown_no_reviewed_source",
-            sources=[],
-            requires_user_approval=False,
+    async with rls_request_transaction_allow_inner_commit(session, current_user, settings):
+        await _require_sensitive_health_consent(
+            session,
+            current_user,
+            http_request,
+            settings,
+            blocked_action="ai_agent_chat_blocked",
+            blocked_resource_type="ai_agent_chat",
         )
+        sources_ready, source_warnings = await _production_medical_source_gate(session, settings)
+        if not sources_ready:
+            return ChatbotApiResponse(
+                request_id=request.request_id,
+                message=(
+                    "요약\n"
+                    "- 현재 검수된 의료 지식 출처가 준비되지 않아 답변할 수 없습니다.\n"
+                    "현재 답할 수 없는 이유\n"
+                    "- production 환경에서는 reviewed source governance DB가 준비된 경우에만 "
+                    "건강 답변을 생성합니다.\n"
+                    "필요한 검수 지식\n"
+                    "- reviewed source, source version, expiry, user-facing 허용 상태가 필요합니다.\n"
+                    "지금 할 수 있는 안전한 행동\n"
+                    "- 긴급 증상이 있으면 119 또는 가까운 응급실을 이용하고, 복약·치료 판단은 "
+                    "의사 또는 약사에게 확인하세요."
+                ),
+                provider="deterministic",
+                used_tools=["medical_source_readiness"],
+                safety_warnings=source_warnings,
+                source_families=[],
+                answerability="unknown_no_reviewed_source",
+                sources=[],
+                requires_user_approval=False,
+            )
 
-    memory_context = await load_agent_memory_context(session, current_user, settings)
-    medication_context = await load_active_user_medication_context(session, current_user, settings)
-    food_record_context = await load_recent_user_food_record_context(
-        session,
-        current_user,
-        settings,
-    )
-    active_supplement_context = await load_active_supplement_context(session, current_user)
-    context = dict(request.context)
-    context["agent_memory"] = memory_context
-    context = _merge_user_medication_context(context, medication_context)
-    context.setdefault("daily_coaching_summary", _memory_summary_for_chat(memory_context))
-    user_health_snapshot = build_user_health_context_snapshot(
-        request_context=context,
-        memory_context=memory_context,
-        medication_context=medication_context,
-        food_record_context=food_record_context,
-        active_supplement_context=active_supplement_context,
-    )
-    context_resolution = ContextResolver().resolve(request.message, user_health_snapshot)
-    context["user_health_context_snapshot"] = user_health_snapshot.to_safe_context()
-    context["latest_confirmed_entries"] = _latest_confirmed_entries_from_snapshot(
-        context["user_health_context_snapshot"]
-    )
-    context["user_health_context_resolution"] = {
-        "status": context_resolution.status,
-        "required_records": list(context_resolution.required_records),
-        "lookup_filters": context_resolution.lookup_filters,
-        "reason": context_resolution.reason,
-    }
-    analysis_response = await _maybe_handle_chat_analysis_run(
-        session=session,
-        current_user=current_user,
-        request=request,
-        user_health_snapshot=context["user_health_context_snapshot"],
-    )
-    if analysis_response is not None:
+        memory_context = await load_agent_memory_context(session, current_user, settings)
+        medication_context = await load_active_user_medication_context(
+            session, current_user, settings
+        )
+        food_record_context = await load_recent_user_food_record_context(
+            session,
+            current_user,
+            settings,
+        )
+        active_supplement_context = await load_active_supplement_context(session, current_user)
+        context = dict(request.context)
+        context["agent_memory"] = memory_context
+        context = _merge_user_medication_context(context, medication_context)
+        context.setdefault("daily_coaching_summary", _memory_summary_for_chat(memory_context))
+        user_health_snapshot = build_user_health_context_snapshot(
+            request_context=context,
+            memory_context=memory_context,
+            medication_context=medication_context,
+            food_record_context=food_record_context,
+            active_supplement_context=active_supplement_context,
+        )
+        context_resolution = ContextResolver().resolve(request.message, user_health_snapshot)
+        context["user_health_context_snapshot"] = user_health_snapshot.to_safe_context()
+        context["latest_confirmed_entries"] = _latest_confirmed_entries_from_snapshot(
+            context["user_health_context_snapshot"]
+        )
+        context["user_health_context_resolution"] = {
+            "status": context_resolution.status,
+            "required_records": list(context_resolution.required_records),
+            "lookup_filters": context_resolution.lookup_filters,
+            "reason": context_resolution.reason,
+        }
+        analysis_response = await _maybe_handle_chat_analysis_run(
+            session=session,
+            current_user=current_user,
+            request=request,
+            user_health_snapshot=context["user_health_context_snapshot"],
+        )
+        if analysis_response is not None:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="ai_agent_chat_analysis_confirmation",
+                resource_type="ai_agent_chat",
+                resource_id=request.request_id,
+                outcome="success",
+                request=http_request,
+                settings=settings,
+                event_metadata={
+                    "requires_user_approval": analysis_response.requires_user_approval,
+                },
+            )
+            return analysis_response
+
+        llm_client = _build_llm_client(settings)
+        retriever = await build_chatbot_medical_knowledge_retriever(session, settings)
+        chatbot_response = ChatbotAgent(llm_client=llm_client, retriever=retriever).answer(
+            AgentChatbotRequest(
+                request_id=request.request_id,
+                user_id=current_user.subject,
+                message=request.message,
+                conversation=[
+                    AgentChatTurn(
+                        role=turn.role,
+                        content=turn.content,
+                        created_at=turn.created_at,
+                    )
+                    for turn in request.conversation
+                ],
+                context=context,
+            )
+        )
+        if chatbot_response.answerability == "unknown_no_reviewed_source":
+            record_unknown_knowledge_event(
+                session,
+                build_unknown_knowledge_event(
+                    message=request.message,
+                    answerability=chatbot_response.answerability,
+                    retrieval_warnings=chatbot_response.safety_warnings,
+                ),
+            )
+
+        used_tools = list(
+            dict.fromkeys(
+                [
+                    *chatbot_response.used_tools,
+                    "agent_memory",
+                    "user_health_context_snapshot",
+                ]
+            )
+        )
         await record_sensitive_audit_event(
             session,
             current_user,
-            action="ai_agent_chat_analysis_confirmation",
+            action="ai_agent_chat_completed",
             resource_type="ai_agent_chat",
-            resource_id=request.request_id,
+            resource_id=chatbot_response.request_id,
             outcome="success",
             request=http_request,
             settings=settings,
             event_metadata={
-                "requires_user_approval": analysis_response.requires_user_approval,
+                "provider": chatbot_response.provider,
+                "requires_user_approval": chatbot_response.requires_user_approval,
             },
         )
-        return analysis_response
-
-    llm_client = _build_llm_client(settings)
-    retriever = await build_chatbot_medical_knowledge_retriever(session, settings)
-    chatbot_response = ChatbotAgent(llm_client=llm_client, retriever=retriever).answer(
-        AgentChatbotRequest(
-            request_id=request.request_id,
-            user_id=current_user.subject,
-            message=request.message,
-            conversation=[
-                AgentChatTurn(
-                    role=turn.role,
-                    content=turn.content,
-                    created_at=turn.created_at,
-                )
-                for turn in request.conversation
-            ],
-            context=context,
+        analysis_contract = build_analysis_response_contract(
+            context["user_health_context_snapshot"]
         )
-    )
-    if chatbot_response.answerability == "unknown_no_reviewed_source":
-        record_unknown_knowledge_event(
-            session,
-            build_unknown_knowledge_event(
-                message=request.message,
-                answerability=chatbot_response.answerability,
-                retrieval_warnings=chatbot_response.safety_warnings,
-            ),
+        return ChatbotApiResponse(
+            request_id=chatbot_response.request_id,
+            message=chatbot_response.message,
+            provider=chatbot_response.provider,
+            used_tools=used_tools,
+            safety_warnings=chatbot_response.safety_warnings,
+            source_families=chatbot_response.source_families,
+            answerability=chatbot_response.answerability,
+            sources=_public_chatbot_sources(chatbot_response.sources),
+            requires_user_approval=chatbot_response.requires_user_approval,
+            ctas=_merge_ctas(getattr(chatbot_response, "ctas", []), analysis_contract["ctas"]),
+            analysis_snapshot=analysis_contract["analysis_snapshot"],
+            today_analysis=analysis_contract["today_analysis"],
+            smart_analysis=analysis_contract["smart_analysis"],
+            checklist_candidates=analysis_contract["checklist_candidates"],
+            approval_preview=analysis_contract["approval_preview"],
         )
-
-    used_tools = list(
-        dict.fromkeys(
-            [
-                *chatbot_response.used_tools,
-                "agent_memory",
-                "user_health_context_snapshot",
-            ]
-        )
-    )
-    await record_sensitive_audit_event(
-        session,
-        current_user,
-        action="ai_agent_chat_completed",
-        resource_type="ai_agent_chat",
-        resource_id=chatbot_response.request_id,
-        outcome="success",
-        request=http_request,
-        settings=settings,
-        event_metadata={
-            "provider": chatbot_response.provider,
-            "requires_user_approval": chatbot_response.requires_user_approval,
-        },
-    )
-    analysis_contract = build_analysis_response_contract(context["user_health_context_snapshot"])
-    return ChatbotApiResponse(
-        request_id=chatbot_response.request_id,
-        message=chatbot_response.message,
-        provider=chatbot_response.provider,
-        used_tools=used_tools,
-        safety_warnings=chatbot_response.safety_warnings,
-        source_families=chatbot_response.source_families,
-        answerability=chatbot_response.answerability,
-        sources=_public_chatbot_sources(chatbot_response.sources),
-        requires_user_approval=chatbot_response.requires_user_approval,
-        ctas=_merge_ctas(getattr(chatbot_response, "ctas", []), analysis_contract["ctas"]),
-        analysis_snapshot=analysis_contract["analysis_snapshot"],
-        today_analysis=analysis_contract["today_analysis"],
-        smart_analysis=analysis_contract["smart_analysis"],
-        checklist_candidates=analysis_contract["checklist_candidates"],
-        approval_preview=analysis_contract["approval_preview"],
-    )
 
 
 async def _maybe_handle_chat_analysis_run(

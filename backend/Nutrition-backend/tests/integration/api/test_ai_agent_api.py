@@ -9,6 +9,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 from lemon_ai_agent.chat_session import ChatbotResponse
 from lemon_ai_agent.llm import LLMRequest, LLMResponse
+from sqlalchemy.orm import Session
 from src.api.v1 import ai_agent
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session, get_rls_context_session
@@ -51,13 +52,42 @@ def _disable_live_ollama_for_route_tests(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
 
+class _FakeChatSession:
+    """Fake session supporting the route-owned RLS context managers.
+
+    ``rls_request_transaction_allow_inner_commit`` (run_chatbot) registers an
+    ``after_begin`` listener on ``sync_session`` and, at exit, commits only when
+    a transaction is still open. A real (unbound) ``Session`` is a valid event
+    target; no transaction ever begins on it in these route tests, so the
+    listener never fires and ``in_transaction()`` stays False.
+    """
+
+    def __init__(self) -> None:
+        self.sync_session = Session()
+        self.info: dict[str, object] = {}
+
+    def in_transaction(self) -> bool:
+        """No real transaction is opened on this fake."""
+        return False
+
+    async def commit(self) -> None:
+        """No-op commit (exit-path only fires when in_transaction())."""
+
+    async def rollback(self) -> None:
+        """No-op rollback (error-path only fires when in_transaction())."""
+
+
 async def _fake_session_dependency() -> AsyncIterator[object]:
     """Yield a fake session for route tests.
 
     Yields:
         Fake session object.
     """
-    yield object()
+    session = _FakeChatSession()
+    try:
+        yield session
+    finally:
+        session.sync_session.close()
 
 
 async def _allow_consent(*_args: object, **_kwargs: object) -> None:

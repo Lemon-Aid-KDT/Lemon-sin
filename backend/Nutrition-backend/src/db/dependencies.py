@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends
+from sqlalchemy import event, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
-from src.db.rls_context import set_request_rls_context
+from src.db.rls_context import SUBJECT_GUC, SUBJECT_HASH_GUC, set_request_rls_context
 from src.db.session import get_sessionmaker
 from src.db.tx import REQUEST_MANAGED_TX
 from src.security.auth import AuthenticatedUser, require_current_user
@@ -125,3 +127,81 @@ async def rls_request_transaction(
             yield session
         finally:
             session.info.pop(REQUEST_MANAGED_TX, None)
+
+
+@asynccontextmanager
+async def rls_request_transaction_allow_inner_commit(
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    settings: Settings,
+) -> AsyncIterator[AsyncSession]:
+    """Route-owned RLS transaction that tolerates a callee's mid-request commit.
+
+    Same goal as :func:`rls_request_transaction` — owner-subject GUCs set so the
+    0023b owner policies admit reads/writes once ``DATABASE_URL`` flips to the
+    non-superuser ``lemon_app`` role — but it survives a DO-NOT-TOUCH callee that
+    commits *and then refreshes* on the request session
+    (``store_app_health_analysis_result``, app_health_analysis.py: ``add → commit
+    → refresh``). Two problems that ``rls_request_transaction`` cannot handle:
+
+    * ``async with session.begin()`` is unusable: the callee's inner ``commit()``
+      closes that transaction, so the begin-block's exit raises ``Can't operate
+      on closed transaction inside context manager``.
+    * The GUCs are transaction-local (``set_config(..., is_local=true)``), so the
+      inner commit releases them; the callee's subsequent ``refresh()`` autobegins
+      a *new* transaction whose RLS read then matches 0 rows and raises
+      ``Could not refresh instance`` under FORCE RLS.
+
+    The fix keeps the leak-free is_local GUC but re-applies it on **every**
+    transaction begin via an ``after_begin`` listener — so the request's first
+    autobegun transaction, the callee's refresh transaction, and any later
+    autobegin all carry the subject. Transactions are managed manually (no
+    begin-block): the block commits at exit only when a transaction is still open
+    (rolls back on error), which covers both the non-analysis path (one
+    transaction spanning reads + the unknown-backlog insert) and the analysis
+    path (the callee committed its own row; the trailing read-only refresh
+    transaction is committed harmlessly).
+
+    Use with ``get_async_session`` (which opens no transaction). The listener is
+    scoped to this session and removed on exit, and is_local guarantees nothing
+    survives onto the pooled connection.
+
+    Args:
+        session: Request-scoped async session from ``get_async_session``.
+        current_user: Authenticated principal whose owner subject scopes the GUCs.
+        settings: Runtime settings supplying the privacy hash secret.
+
+    Yields:
+        The same session, with owner-subject GUCs re-applied on every begin.
+    """
+    owner_subject = build_owner_subject(current_user)
+    subject_hash = hash_actor_subject(current_user, settings)
+
+    def _reapply_rls_guc(_session: object, _transaction: object, connection: Connection) -> None:
+        # Fires on every (auto)begin. Use the passed sync connection — never the
+        # AsyncSession — per the after_begin contract. is_local=true keeps the
+        # GUC scoped to this transaction (released at its end; no pool leak).
+        connection.execute(
+            text("SELECT set_config(:name, :value, true)"),
+            {"name": SUBJECT_GUC, "value": owner_subject or ""},
+        )
+        connection.execute(
+            text("SELECT set_config(:name, :value, true)"),
+            {"name": SUBJECT_HASH_GUC, "value": subject_hash or ""},
+        )
+
+    sync_session = session.sync_session
+    event.listen(sync_session, "after_begin", _reapply_rls_guc)
+    session.info[REQUEST_MANAGED_TX] = True
+    try:
+        yield session
+    except BaseException:
+        if session.in_transaction():
+            await session.rollback()
+        raise
+    else:
+        if session.in_transaction():
+            await session.commit()
+    finally:
+        session.info.pop(REQUEST_MANAGED_TX, None)
+        event.remove(sync_session, "after_begin", _reapply_rls_guc)
