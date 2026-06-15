@@ -40,6 +40,26 @@ class _DatabaseState:
 _state = _DatabaseState()
 
 
+def _engine_kwargs(settings: Settings) -> dict[str, object]:
+    """Build the shared ``create_async_engine`` keyword arguments.
+
+    Applies the configured connection-pool sizing uniformly to every engine
+    (main, audit, learning) so the per-engine, per-worker connection budget is
+    explicit and tunable against the server's ``max_connections``.
+
+    Args:
+        settings: Loaded application settings.
+
+    Returns:
+        Keyword arguments for ``create_async_engine``.
+    """
+    return {
+        "pool_pre_ping": True,
+        "pool_size": settings.db_pool_size,
+        "max_overflow": settings.db_max_overflow,
+    }
+
+
 def get_engine() -> AsyncEngine:
     """Return the shared async SQLAlchemy engine.
 
@@ -48,7 +68,7 @@ def get_engine() -> AsyncEngine:
     """
     if _state.engine is None:
         settings = get_settings()
-        _state.engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        _state.engine = create_async_engine(settings.database_url, **_engine_kwargs(settings))
 
     return _state.engine
 
@@ -90,7 +110,7 @@ def get_audit_sessionmaker() -> async_sessionmaker[AsyncSession]:
         return get_sessionmaker()
 
     if _state.audit_sessionmaker is None:
-        _state.audit_engine = create_async_engine(audit_url, pool_pre_ping=True)
+        _state.audit_engine = create_async_engine(audit_url, **_engine_kwargs(settings))
         _state.audit_sessionmaker = async_sessionmaker(
             bind=_state.audit_engine,
             autoflush=False,
@@ -130,7 +150,7 @@ def get_learning_sessionmaker() -> async_sessionmaker[AsyncSession]:
         return get_sessionmaker()
 
     if _state.learning_sessionmaker is None:
-        _state.learning_engine = create_async_engine(learning_url, pool_pre_ping=True)
+        _state.learning_engine = create_async_engine(learning_url, **_engine_kwargs(settings))
         _state.learning_sessionmaker = async_sessionmaker(
             bind=_state.learning_engine,
             autoflush=False,

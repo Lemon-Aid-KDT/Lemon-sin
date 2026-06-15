@@ -381,6 +381,27 @@ class Settings(BaseSettings):
             "DATABASE_URL (correct while the request role is still privileged)."
         ),
     )
+    db_pool_size: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description=(
+            "SQLAlchemy connection pool size, applied per engine per worker "
+            "process to the main, audit, and learning engines independently. Peak "
+            "Postgres connections = workers x active_engines x (db_pool_size + "
+            "db_max_overflow); keep that under the server's max_connections "
+            "(audit/learning engines only materialize when their URL is set)."
+        ),
+    )
+    db_max_overflow: int = Field(
+        default=10,
+        ge=0,
+        le=100,
+        description=(
+            "SQLAlchemy overflow connections allowed beyond db_pool_size, per "
+            "engine per worker. See db_pool_size for the total-connection budget."
+        ),
+    )
     redis_url: str = Field(default=DEFAULT_REDIS_URL)
     supabase_project_ref: str | None = Field(default=None)
     supabase_url: str | None = Field(default=None)

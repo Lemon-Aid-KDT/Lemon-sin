@@ -27,6 +27,8 @@ class DummySettings:
     database_url = "postgresql+asyncpg://user:pass@localhost:5432/lemon_test"
     audit_database_url: str | None = None
     learning_database_url: str | None = None
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
 
 
 def get_dummy_settings() -> DummySettings:
@@ -145,6 +147,74 @@ def test_guard_raises_when_privileged_url_is_a_distinct_lemon_app_dsn() -> None:
                 learning_database_url=_LEARNING_URL,
             )
         )
+
+
+def _settings_with_pool(pool_size: int, max_overflow: int) -> DummySettings:
+    """Return dummy settings overriding the connection-pool sizing.
+
+    Args:
+        pool_size: Value for ``db_pool_size``.
+        max_overflow: Value for ``db_max_overflow``.
+
+    Returns:
+        Dummy settings instance with the requested pool sizing.
+    """
+    settings = DummySettings()
+    settings.db_pool_size = pool_size
+    settings.db_max_overflow = max_overflow
+    return settings
+
+
+async def test_get_engine_applies_configured_pool_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The main engine is built with the configured pool sizing."""
+    await dispose_engine()
+    captured: dict[str, object] = {}
+    real_create = session_module.create_async_engine
+
+    def _spy(url: str, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return real_create(url, **kwargs)
+
+    monkeypatch.setattr("src.db.session.create_async_engine", _spy)
+    monkeypatch.setattr("src.db.session.get_settings", lambda: _settings_with_pool(7, 3))
+
+    get_engine()
+
+    assert captured["pool_size"] == 7
+    assert captured["max_overflow"] == 3
+    assert captured["pool_pre_ping"] is True
+
+    await dispose_engine()
+
+
+async def test_get_learning_sessionmaker_applies_configured_pool_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The privileged learning engine is built with the configured pool sizing."""
+    await dispose_engine()
+    captured: dict[str, object] = {}
+    real_create = session_module.create_async_engine
+
+    def _spy(url: str, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return real_create(url, **kwargs)
+
+    settings = DummySettings()
+    settings.learning_database_url = "postgresql+asyncpg://learn:pass@localhost:5432/lemon_learn"
+    settings.db_pool_size = 9
+    settings.db_max_overflow = 2
+    monkeypatch.setattr("src.db.session.create_async_engine", _spy)
+    monkeypatch.setattr("src.db.session.get_settings", lambda: settings)
+
+    get_learning_sessionmaker()
+
+    assert captured["pool_size"] == 9
+    assert captured["max_overflow"] == 2
+    assert captured["pool_pre_ping"] is True
+
+    await dispose_engine()
 
 
 async def test_get_engine_uses_configured_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
