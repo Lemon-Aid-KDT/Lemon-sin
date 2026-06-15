@@ -255,7 +255,10 @@ async def test_ollama_parser_bounds_long_ocr_text_in_prompt() -> None:
     assert TRUNCATED_OCR_TEXT_MARKER in user_prompt
     assert "비타민 D 25 ug" in user_prompt
     assert "마그네슘 100 mg" in user_prompt
-    assert len(user_prompt) < MAX_OLLAMA_OCR_PROMPT_CHARS + 1_000
+    # The OCR block is still compacted to MAX_OLLAMA_OCR_PROMPT_CHARS (asserted
+    # above); this bound only caps the fixed instruction template, which grew a
+    # little for the bilingual "한글 (English)" ingredient contract.
+    assert len(user_prompt) < MAX_OLLAMA_OCR_PROMPT_CHARS + 1_200
 
 
 @pytest.mark.asyncio

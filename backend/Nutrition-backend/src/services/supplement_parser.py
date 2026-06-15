@@ -83,12 +83,20 @@ LAYOUT_SECTION_TYPE_MAP = {
     "functionality": "functional_info",
     "storage_method": "storage_method",
 }
+INGREDIENT_UNIT_PATTERN = r"mg|㎎|g|mcg|μg|ug|㎍|iu|IU|%"
 INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
     r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
-    r"(?P<unit>mg|g|mcg|μg|ug|㎍|iu|IU|%)\b"
+    rf"(?P<unit>{INGREDIENT_UNIT_PATTERN})"
     # Optional trailing %DV (영양성분기준치) after a real unit, e.g. "1000 mg 100%".
     r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?"
+    r"(?=$|[\s,;:)\uff09\]]|[^\w])",
+    re.IGNORECASE,
+)
+BARE_INGREDIENT_AMOUNT_PATTERN = re.compile(
+    rf"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
+    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
+    re.IGNORECASE,
 )
 TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•()"
 MAX_PATTERN_FALLBACK_INGREDIENTS = 20
@@ -168,7 +176,7 @@ INGREDIENT_DECLARATION_PERCENT_PATTERN = re.compile(r"(?P<percent>\d+(?:[.,]\d+)
 # the OCR amount-pattern path; here we strip the amount so the declaration stays
 # strictly name-only ("비타민 D") and dedupes against the amount-bearing candidate.
 INGREDIENT_DECLARATION_TRAILING_AMOUNT_PATTERN = re.compile(
-    r"\s*\d+(?:[.,]\d+)?\s*(?:mg|g|kg|mcg|μg|ug|㎍|iu|ml|l|억|%)?\s*$",
+    r"\s*\d+(?:[.,]\d+)?\s*(?:mg|㎎|g|kg|mcg|μg|ug|㎍|iu|ml|l|억|%)?\s*$",
     re.IGNORECASE,
 )
 MAX_DECLARATION_INGREDIENTS = 40
@@ -1118,38 +1126,94 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
     """
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, float, str]] = set()
-    for line in _ocr_lines(ocr_text):
+    lines = _ocr_lines(ocr_text)
+    for line in lines:
         for match in INGREDIENT_AMOUNT_PATTERN.finditer(line):
-            name = _clean_ingredient_name(match.group("name"))
-            if not name:
-                continue
-            # Excipients can also appear as "name + amount + unit" in OCR text;
-            # keep the fallback path consistent with the LLM-path excipient filter.
-            if _is_excipient_name(name):
-                continue
-            amount = _parse_ingredient_amount(match.group("amount"))
-            unit = _normalize_ingredient_unit(match.group("unit"))
-            dv_raw = match.group("dv")
-            daily_value_percent = _parse_ingredient_amount(dv_raw) if dv_raw else None
-            key = (_ingredient_name_key(name), amount, unit)
-            if key in seen:
-                continue
-            seen.add(key)
-            candidates.append(
-                {
-                    "display_name": name,
-                    "original_name": name,
-                    "nutrient_code": None,
-                    "amount": amount,
-                    "unit": unit,
-                    "daily_value_percent": daily_value_percent,
-                    "confidence": 0.55,
-                    "source": OCR_PATTERN_FALLBACK_SOURCE,
-                }
+            _append_ocr_pattern_candidate(
+                candidates,
+                seen,
+                name=match.group("name"),
+                amount_text=match.group("amount"),
+                unit_text=match.group("unit"),
+                daily_value_text=match.group("dv"),
             )
             if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
                 return candidates
+    previous_name: str | None = None
+    for line in lines:
+        amount_match = BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(line)
+        if amount_match is not None:
+            if previous_name is not None:
+                _append_ocr_pattern_candidate(
+                    candidates,
+                    seen,
+                    name=previous_name,
+                    amount_text=amount_match.group("amount"),
+                    unit_text=amount_match.group("unit"),
+                    daily_value_text=amount_match.group("dv"),
+                )
+                if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+                    return candidates
+            previous_name = None
+            continue
+        if INGREDIENT_AMOUNT_PATTERN.search(line):
+            previous_name = None
+            continue
+        previous_name = _clean_split_line_ingredient_name(line) or None
     return candidates
+
+
+def _append_ocr_pattern_candidate(
+    candidates: list[dict[str, Any]],
+    seen: set[tuple[str, float, str]],
+    *,
+    name: str,
+    amount_text: str,
+    unit_text: str,
+    daily_value_text: str | None,
+) -> bool:
+    """Append one deterministic OCR ingredient candidate when it is safe.
+
+    Args:
+        candidates: Mutable output candidate list.
+        seen: Mutable dedupe set keyed by normalized name, amount, and unit.
+        name: Visible ingredient name text from OCR.
+        amount_text: Visible amount number from OCR.
+        unit_text: Visible amount unit from OCR.
+        daily_value_text: Optional visible %DV number from OCR.
+
+    Returns:
+        True when a candidate was appended.
+    """
+    cleaned_name = _clean_ingredient_name(name)
+    if not cleaned_name:
+        return False
+    # Excipients can also appear as "name + amount + unit" in OCR text; keep the
+    # fallback path consistent with the LLM-path excipient filter.
+    if _is_excipient_name(cleaned_name):
+        return False
+    amount = _parse_ingredient_amount(amount_text)
+    unit = _normalize_ingredient_unit(unit_text)
+    daily_value_percent = (
+        _parse_ingredient_amount(daily_value_text) if daily_value_text else None
+    )
+    key = (_ingredient_name_key(cleaned_name), amount, unit)
+    if key in seen:
+        return False
+    seen.add(key)
+    candidates.append(
+        {
+            "display_name": cleaned_name,
+            "original_name": cleaned_name,
+            "nutrient_code": None,
+            "amount": amount,
+            "unit": unit,
+            "daily_value_percent": daily_value_percent,
+            "confidence": 0.55,
+            "source": OCR_PATTERN_FALLBACK_SOURCE,
+        }
+    )
+    return True
 
 
 def _sanitize_ocr_pattern_candidates(
@@ -1358,6 +1422,33 @@ def _clean_ingredient_name(value: str) -> str:
     return cleaned
 
 
+def _clean_split_line_ingredient_name(value: str) -> str:
+    """Normalize an OCR line that may be followed by a bare amount line.
+
+    Args:
+        value: Candidate ingredient-name line from OCR.
+
+    Returns:
+        Cleaned ingredient name, or an empty string when unusable.
+    """
+    cleaned = _clean_ingredient_name(value)
+    if not cleaned:
+        return ""
+    if BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(cleaned):
+        return ""
+    if INGREDIENT_AMOUNT_PATTERN.search(cleaned):
+        return ""
+    if _is_excipient_name(cleaned):
+        return ""
+    # A split-line name should be mostly textual. This avoids turning noisy
+    # product/package fragments such as "30 capsule count" into ingredients.
+    alpha_count = len(re.findall(r"[A-Za-z가-힣]", cleaned))
+    digit_count = len(re.findall(r"\d", cleaned))
+    if digit_count > 0 and digit_count >= alpha_count:
+        return ""
+    return cleaned
+
+
 def _strip_ingredient_heading_prefix(value: str) -> str:
     """Remove common Korean/English section prefixes from a candidate.
 
@@ -1463,6 +1554,8 @@ def _normalize_ingredient_unit(value: str) -> str:
         Normalized unit string.
     """
     stripped = value.strip()
+    if stripped == "㎎":
+        return "mg"
     if stripped in {"μg", "㎍"} or stripped.casefold() in {"mcg", "ug"}:
         return "ug"
     if stripped.casefold() == "iu":

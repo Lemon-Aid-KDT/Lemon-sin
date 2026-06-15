@@ -562,14 +562,7 @@ def test_analyze_supplement_label_multi_accepts_roles_and_returns_group(
     assert body["previews"][1]["image_role"] == "intake_method"
     assert body["previews"][0]["multi_image_group_id"] == body["analysis_group_id"]
     assert body["previews"][1]["pipeline_metadata"]["image_count"] == 2
-    assert body["merged_preview"]["multi_image_group_id"] == body["analysis_group_id"]
-    assert body["merged_preview"]["image_role"] == "mixed"
-    assert body["merged_preview"]["pipeline_metadata"]["image_count"] == 2
-    assert body["merged_preview"]["missing_required_sections"] == [
-        "product_name",
-        "supplement_facts",
-        "precautions",
-    ]
+    assert body["merged_preview"] is None
     assert body["missing_required_sections"] == [
         "product_name",
         "supplement_facts",
@@ -577,7 +570,6 @@ def test_analyze_supplement_label_multi_accepts_roles_and_returns_group(
     ]
     assert body["action_required"] == "additional_label_image_required"
     assert all("ocr_text" not in preview for preview in body["previews"])
-    assert "ocr_text" not in body["merged_preview"]
 
 
 def test_analyze_supplement_label_multi_accepts_json_roles(
@@ -607,7 +599,7 @@ def test_analyze_supplement_label_multi_accepts_json_roles(
     body = response.json()
     assert body["previews"][0]["image_role"] == "front_label"
     assert body["previews"][1]["image_role"] == "supplement_facts"
-    assert body["merged_preview"]["image_role"] == "mixed"
+    assert body["merged_preview"] is None
 
 
 def test_analyze_supplement_label_multi_rejects_role_count_mismatch(
@@ -703,7 +695,7 @@ def test_upload_supplement_analysis_session_image_returns_current_group(
     assert body["image_count"] == 1
     assert body["previews"][0]["image_role"] == "supplement_facts"
     assert body["previews"][0]["pipeline_metadata"]["image_count"] == 1
-    assert body["merged_preview"]["multi_image_group_id"] == "multi-test"
+    assert body["merged_preview"] is None
     assert "ocr_text" not in body["previews"][0]
 
 

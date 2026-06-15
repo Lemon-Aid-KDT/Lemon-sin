@@ -632,9 +632,10 @@ def _build_merged_multi_image_preview(
     Returns:
         A merged preview using one persisted preview id for confirmation traceability.
     """
-    if not previews:
+    reviewable_previews = [preview for preview in previews if _has_preview_review_content(preview)]
+    if not reviewable_previews:
         return None
-    base = _select_merged_preview_base(previews)
+    base = _select_merged_preview_base(reviewable_previews)
     merged = _MergedPreviewParts()
     for preview_index, preview in enumerate(previews, start=1):
         span_ref_map = _append_prefixed_evidence_spans(merged, preview, preview_index)
@@ -667,6 +668,27 @@ def _build_merged_multi_image_preview(
             ),
         },
         deep=True,
+    )
+
+
+def _has_preview_review_content(preview: SupplementAnalysisPreview) -> bool:
+    """Return whether a preview has structured content worth merging.
+
+    Args:
+        preview: Per-image preview already sanitized for client display.
+
+    Returns:
+        True when the preview has any product, section, ingredient, intake,
+        precaution, or claim content that can improve the batch-level review.
+    """
+    return (
+        bool(preview.ingredient_candidates)
+        or bool(preview.label_sections)
+        or bool(preview.parsed_product.product_name)
+        or bool(preview.parsed_product.manufacturer)
+        or bool(preview.intake_method.text)
+        or bool(preview.precautions)
+        or bool(preview.functional_claims)
     )
 
 

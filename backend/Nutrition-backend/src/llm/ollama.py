@@ -34,10 +34,11 @@ Return one JSON object.
   candidates with that amount+unit; also take NAMES from the declaration
   list (원재료명/원료명/성분명) with amount=null, unit=null. Amounts come ONLY
   from the facts table; never invented.
-- For each ingredient, set original_name to the visible OCR label. If an English
-  label has an obvious Korean name, set display_name Korean. If unsure, keep
-  display_name equal to original_name and mark low_confidence_fields. Never
-  invent ingredients.
+- For each ingredient, set original_name to the visible OCR label. If the label
+  is English and has an obvious Korean supplement/nutrient name, set
+  display_name to Korean and keep the English in original_name so the app can
+  render "한글 (English)". If unsure, keep display_name equal to original_name
+  and mark low_confidence_fields. Never invent ingredients or translations.
 - Ignore package counts ("30정", "180g") unless attached to a named row.
 - Required sections are product_name, supplement_facts, intake_method, precautions.
 - label_sections, intake_method, functional_claims: as seen

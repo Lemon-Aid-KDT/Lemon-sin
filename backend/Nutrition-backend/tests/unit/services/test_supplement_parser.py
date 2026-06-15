@@ -663,6 +663,57 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
 
 
 @pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_pairs_split_name_and_amount_lines() -> None:
+    """Verify OCR table cells split across lines still preserve visible amounts."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "Supplement Facts",
+                "Vitamin C",
+                "1,000 mg",
+                "Zinc",
+                "15 ㎎",
+                "Serving Size",
+                "2 capsules",
+            ]
+        ),
+        "clova_ocr",
+        0.82,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    assert candidates[:2] == [
+        {
+            "display_name": "Vitamin C",
+            "original_name": "Vitamin C",
+            "amount": 1000.0,
+            "unit": "mg",
+            "confidence": 0.55,
+            "source": "ocr_pattern_fallback",
+        },
+        {
+            "display_name": "Zinc",
+            "original_name": "Zinc",
+            "amount": 15.0,
+            "unit": "mg",
+            "confidence": 0.55,
+            "source": "ocr_pattern_fallback",
+        },
+    ]
+    assert "Serving Size" not in {
+        candidate["display_name"] for candidate in candidates
+    }
+
+
+@pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_promotes_intake_instruction_text() -> None:
     """Verify dosage rows are shown as intake method, not ingredient candidates."""
     record = _analysis_run()
