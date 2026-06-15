@@ -2081,3 +2081,87 @@ async def test_always_on_merge_forces_verification_despite_zero_sample_rate() ->
     assert fake_multimodal.verify_call_count == 1
     assert result.ocr_result is not None
     assert result.ocr_result.provider == "fake-ocr+fake-ocr"
+
+
+@pytest.mark.asyncio
+async def test_extract_supplement_ocr_only_returns_ocr_without_intake_or_parse() -> None:
+    """OCR-only extraction returns text but creates no intake row and runs no parse."""
+    fake_ocr = _SequenceOCRAdapter(
+        [OCRResult(text="비타민 C 1000 mg", provider="clova", confidence=0.9)]
+    )
+
+    result = await supplement_image_analysis.extract_supplement_ocr_only(
+        _upload(_png_bytes()),
+        settings=_settings(),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr),
+    )
+
+    assert isinstance(result, supplement_image_analysis.SupplementOCROnlyResult)
+    assert result.ocr_result is not None
+    assert result.ocr_result.text == "비타민 C 1000 mg"
+    assert result.ocr_attempted is True
+    # One OCR call, no DB session passed → no intake row and no structured parse.
+    assert len(fake_ocr.received_images) == 1
+
+
+def test_fuse_supplement_ocr_texts_joins_with_role_markers_and_dedups() -> None:
+    """Fusion adds per-image role markers, dedups shared lines, composites provider."""
+    labeled = [
+        (
+            "front_label",
+            OCRResult(text="Product Name\nVitamin D Complex", provider="clova", confidence=0.9),
+        ),
+        (
+            "intake_method",
+            OCRResult(text="Product Name\nVitamin D 25 ug", provider="paddleocr", confidence=0.8),
+        ),
+    ]
+
+    fused = supplement_image_analysis._fuse_supplement_ocr_texts(labeled, _settings())
+
+    assert fused is not None
+    assert "[이미지 1 · front_label]" in fused.text
+    assert "[이미지 2 · intake_method]" in fused.text
+    assert "Vitamin D Complex" in fused.text
+    assert "Vitamin D 25 ug" in fused.text
+    # "Product Name" appears once (deduplicated across the two images).
+    assert fused.text.count("Product Name") == 1
+    # Composite provider records every contributing OCR provider; confidence anchors first.
+    assert fused.provider == "clova+paddleocr"
+    assert fused.confidence == 0.9
+
+
+@pytest.mark.asyncio
+async def test_analyze_fused_supplement_images_creates_single_run_and_parses_once() -> None:
+    """Two images fuse into ONE run; the parser runs once over the fused text."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _SequenceOCRAdapter(
+        [
+            OCRResult(text="ALPHAONE Vitamin C", provider="clova", confidence=0.9),
+            OCRResult(text="BRAVOTWO 1000 mg", provider="clova", confidence=0.8),
+        ]
+    )
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await supplement_image_analysis.analyze_fused_supplement_images(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        images=[_upload(_png_bytes()), _upload(_png_bytes())],
+        image_roles=["front_label", "intake_method"],
+        client_request_id=None,
+        settings=_settings(),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    # Exactly one analysis run is persisted for the whole batch.
+    runs = [r for r in fake_session.added_records if isinstance(r, SupplementAnalysisRun)]
+    assert len(runs) == 1
+    # The parser ran once over the fused text containing BOTH images plus role markers.
+    assert fake_parser.received_text is not None
+    assert "ALPHAONE" in fake_parser.received_text
+    assert "BRAVOTWO" in fake_parser.received_text
+    assert "이미지 1" in fake_parser.received_text
+    assert "이미지 2" in fake_parser.received_text
+    assert result.parser_used is True
+    assert result.record.ocr_text_hash is not None
+    assert result.record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False

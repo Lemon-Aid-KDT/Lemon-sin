@@ -8,6 +8,7 @@ runtime behavior remains intake-only unless adapters are explicitly provided.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Awaitable
 from dataclasses import dataclass
@@ -491,6 +492,352 @@ async def analyze_supplement_image(
             facts_guidance.image_quality_report if facts_guidance is not None else None
         ),
         ocr_result=ocr_result,
+        parser_used=parsed_record is not None,
+        ocr_attempted=ocr_attempted,
+        ocr_warning_codes=warning_codes,
+        learning_artifacts=learning_artifacts,
+    )
+
+
+@dataclass(frozen=True)
+class SupplementOCROnlyResult:
+    """OCR-phase output for one image, with no intake row and no structured parse.
+
+    Used by the one-shot multi-image fusion path so several images can be OCR'd
+    in-request and their texts fused before a single structured parse. No raw OCR
+    text is persisted; only the in-memory ``ocr_result`` is returned.
+    """
+
+    image_metadata: ValidatedSupplementImage
+    image_bytes: bytes | None
+    vision_region: BoundingBox | None
+    vision_regions: tuple[BoundingBox, ...]
+    ocr_result: OCRResult | None
+    ocr_attempted: bool
+    ocr_warning_codes: tuple[str, ...]
+    learning_gate_allowed: bool
+
+
+async def extract_supplement_ocr_only(
+    image: UploadFile,
+    *,
+    settings: Settings,
+    adapters: SupplementImageAnalysisAdapters | None = None,
+    learning_consents: tuple[ConsentType, ...] = (),
+) -> SupplementOCROnlyResult:
+    """Run the OCR phase for one image without creating an intake row or parsing.
+
+    Re-uses the same OCR helpers as :func:`analyze_supplement_image` (validation,
+    optional vision ROI, primary OCR, cross-provider ensemble, optional multimodal
+    assist, secondary fallback) but performs no database write and no structured
+    parse — the caller fuses several results and parses once. The optional
+    warn-only multimodal *verification* stage is intentionally skipped here: it
+    never changes the OCR text, only emits a per-image diagnostic warning.
+
+    NOTE: keep the stage order here in sync with the OCR section of
+    :func:`analyze_supplement_image`.
+    """
+    active_adapters = adapters or SupplementImageAnalysisAdapters()
+    image_metadata = await read_and_validate_supplement_image(image, settings)
+    learning_gate_allowed = evaluate_image_learning_gate(settings, learning_consents).allowed
+    image_bytes = await _read_validated_image_bytes_if_needed(
+        image,
+        active_adapters=active_adapters,
+        settings=settings,
+        needs_learning_image_bytes=learning_gate_allowed,
+        image_metadata=image_metadata,
+    )
+    vision_regions = await _detect_label_regions_if_enabled(
+        image_bytes=image_bytes,
+        settings=settings,
+        vision_adapter=active_adapters.vision,
+    )
+    vision_region = _select_vision_region(vision_regions)
+    ocr_attempted = active_adapters.ocr is not None
+    ocr_extraction = await _extract_ocr_if_configured(
+        image_bytes=image_bytes,
+        image_metadata=image_metadata,
+        label_regions=vision_regions,
+        selected_region=vision_region,
+        ocr_adapter=active_adapters.ocr,
+        settings=settings,
+    )
+    ocr_result = ocr_extraction.ocr_result
+    optional_budget = settings.analyze_optional_stage_budget_sec
+    ocr_result = await _supplement_ensemble_ocr_if_allowed(
+        image_bytes=image_bytes,
+        image_metadata=image_metadata,
+        label_region=vision_region,
+        ocr_result=ocr_result,
+        secondary_merge_adapter=active_adapters.secondary_merge_ocr,
+        settings=settings,
+    )
+    ocr_result = await _within_optional_budget(
+        _extract_multimodal_ocr_if_allowed(
+            image_bytes=image_bytes,
+            image_metadata=image_metadata,
+            label_region=vision_region,
+            ocr_result=ocr_result,
+            primary_ocr_attempted=active_adapters.ocr is not None,
+            settings=settings,
+            multimodal_adapter=active_adapters.multimodal_ocr,
+        ),
+        budget_sec=optional_budget,
+        fallback=ocr_result,
+        label="multimodal_assist",
+    )
+    ocr_result = await _extract_secondary_ocr_if_allowed(
+        image_bytes=image_bytes,
+        image_metadata=image_metadata,
+        label_region=vision_region,
+        ocr_result=ocr_result,
+        primary_ocr_attempted=active_adapters.ocr is not None,
+        fallback_adapters=active_adapters.fallback_ocr_adapters,
+    )
+    warning_codes = tuple(
+        code
+        for code, message in ((ocr_extraction.warning_code, ocr_extraction.warning_message),)
+        if code and message
+    )
+    return SupplementOCROnlyResult(
+        image_metadata=image_metadata,
+        image_bytes=image_bytes,
+        vision_region=vision_region,
+        vision_regions=vision_regions,
+        ocr_result=ocr_result,
+        ocr_attempted=ocr_attempted,
+        ocr_warning_codes=warning_codes,
+        learning_gate_allowed=learning_gate_allowed,
+    )
+
+
+# Defensive upper bound on fused content lines before the parser's own char-level
+# truncation (``supplement_ocr_text_max_chars``) applies. A multi-image label is
+# small; this only guards against pathological OCR output.
+_MAX_FUSED_OCR_LINES = 1_000
+
+
+def _fuse_supplement_ocr_texts(
+    labeled_results: list[tuple[str, OCRResult | None]],
+    settings: Settings,
+) -> OCRResult | None:
+    """Fuse per-image OCR text into one block for a single structured parse.
+
+    Each non-empty image contributes an image-role marker line followed by its OCR
+    lines; content lines are near-duplicate-deduplicated across images (so a line
+    shared by overlapping photos appears once) while the role markers are kept to
+    help the parser place sections. The composite provider records every
+    contributing OCR provider; confidence anchors to the first non-null result.
+
+    Args:
+        labeled_results: ``(image_role, ocr_result)`` pairs in upload order.
+        settings: Runtime settings (near-duplicate dedup threshold).
+
+    Returns:
+        A single fused ``OCRResult`` or ``None`` when no image produced text.
+    """
+    seen: set[str] = set()
+    parts: list[str] = []
+    providers: list[str] = []
+    confidence: float | None = None
+    threshold = settings.ocr_merge_dedup_threshold
+    content_lines = 0
+    for index, (role, result) in enumerate(labeled_results, start=1):
+        if result is None or not result.text.strip():
+            continue
+        providers.append(result.provider)
+        if confidence is None and result.confidence is not None:
+            confidence = result.confidence
+        kept: list[str] = []
+        for line in _normalized_nonempty_lines(result.text):
+            if content_lines >= _MAX_FUSED_OCR_LINES:
+                break
+            key = _line_dedup_key(line)
+            if key in seen or _is_near_duplicate(key, seen, threshold):
+                continue
+            seen.add(key)
+            kept.append(line)
+            content_lines += 1
+        if kept:
+            safe_role = role.strip() or "unknown"
+            parts.append(f"=== [이미지 {index} · {safe_role}] ===")
+            parts.extend(kept)
+        if content_lines >= _MAX_FUSED_OCR_LINES:
+            break
+    if not parts:
+        return None
+    unique_providers = list(dict.fromkeys(providers))
+    return OCRResult(
+        text="\n".join(parts),
+        provider="+".join(unique_providers) if unique_providers else "fused",
+        confidence=confidence,
+    )
+
+
+def _build_fused_image_metadata(
+    metadatas: list[ValidatedSupplementImage],
+) -> ValidatedSupplementImage:
+    """Synthesize one image metadata for the single fused run.
+
+    The sha256 is derived from the sorted set of per-image sha256s so the same
+    image set in any order yields a stable idempotency anchor for the fused run.
+    Size/width/height use the per-image maxima as a safe representative.
+
+    Args:
+        metadatas: Per-image validated metadata (must be non-empty).
+
+    Returns:
+        Synthetic validated metadata describing the fused batch.
+    """
+    ordered_hashes = sorted(meta.sha256 for meta in metadatas)
+    fused_sha = hashlib.sha256("".join(ordered_hashes).encode("utf-8")).hexdigest()
+    return ValidatedSupplementImage(
+        sha256=fused_sha,
+        mime_type=metadatas[0].mime_type,
+        size_bytes=max(meta.size_bytes for meta in metadatas),
+        width=max(meta.width for meta in metadatas),
+        height=max(meta.height for meta in metadatas),
+    )
+
+
+async def analyze_fused_supplement_images(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    images: list[UploadFile],
+    image_roles: list[str],
+    client_request_id: str | None,
+    settings: Settings,
+    adapters: SupplementImageAnalysisAdapters | None = None,
+    learning_consents: tuple[ConsentType, ...] = (),
+) -> SupplementImageAnalysisResult:
+    """OCR each image, fuse the text, and parse ONCE into a single analysis run.
+
+    The one-shot fusion path for a single-product multi-image batch: every image
+    is OCR'd in-memory (no per-image intake or parse), the texts are fused with
+    image-role markers and near-duplicate line dedup, and the structured parser
+    runs once over the fused text so the model reasons over the whole label. Raw
+    OCR text is never persisted (only the parsed snapshot and an OCR text hash).
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        images: Uploaded label images for one product (must be non-empty).
+        image_roles: Role labels aligned one-to-one with ``images``.
+        client_request_id: Optional batch idempotency key.
+        settings: Runtime settings.
+        adapters: Optional OCR/parser/vision adapters.
+        learning_consents: Active learning consent grants.
+
+    Returns:
+        Image analysis result holding the single fused preview record.
+    """
+    active_adapters = adapters or SupplementImageAnalysisAdapters()
+    ocr_only_results = [
+        await extract_supplement_ocr_only(
+            image,
+            settings=settings,
+            adapters=active_adapters,
+            learning_consents=learning_consents,
+        )
+        for image in images
+    ]
+    roles = list(image_roles)
+    labeled = [
+        (roles[index] if index < len(roles) else "unknown", result.ocr_result)
+        for index, result in enumerate(ocr_only_results)
+    ]
+    fused_ocr_result = _fuse_supplement_ocr_texts(labeled, settings)
+    fused_metadata = _build_fused_image_metadata(
+        [result.image_metadata for result in ocr_only_results]
+    )
+    intake = await create_supplement_analysis_intake(
+        session=session,
+        user=user,
+        image_metadata=fused_metadata,
+        client_request_id=client_request_id,
+        settings=settings,
+    )
+    parsed_record, parse_warning_code, parse_warning_message = await _parse_ocr_if_available(
+        session=session,
+        user=user,
+        intake=intake,
+        ocr_result=fused_ocr_result,
+        settings=settings,
+        parser=active_adapters.parser,
+    )
+    warning_codes_list: list[str] = []
+    warning_messages: list[str] = []
+    for result in ocr_only_results:
+        warning_codes_list.extend(result.ocr_warning_codes)
+    if parse_warning_code and parse_warning_message:
+        warning_codes_list.append(parse_warning_code)
+        warning_messages.append(parse_warning_message)
+    if warning_messages:
+        await _store_preview_warnings(session, parsed_record or intake.record, warning_messages)
+
+    result_record = parsed_record or intake.record
+    facts_guidance = _build_supplement_facts_guidance(
+        record=result_record,
+        ocr_result=fused_ocr_result,
+        parser_used=parsed_record is not None,
+    )
+    warning_codes = tuple(warning_codes_list)
+    if facts_guidance is not None:
+        warning_codes = (*warning_codes, SUPPLEMENT_FACTS_REQUIRED_CODE)
+        result_record = await _store_supplement_facts_guidance(
+            session,
+            result_record,
+            facts_guidance,
+        )
+
+    representative = ocr_only_results[0] if ocr_only_results else None
+    vision_region = representative.vision_region if representative else None
+    vision_regions = representative.vision_regions if representative else ()
+    ocr_attempted = any(result.ocr_attempted for result in ocr_only_results)
+    pipeline_metadata = _build_pipeline_metadata(
+        record=result_record,
+        vision_region=vision_region,
+        vision_regions=vision_regions,
+        ocr_result=fused_ocr_result,
+        ocr_attempted=ocr_attempted,
+        warning_codes=warning_codes,
+        parser_used=parsed_record is not None,
+        settings=settings,
+    )
+    if _should_store_pipeline_metadata(result_record, pipeline_metadata, vision_regions):
+        result_record = await _store_pipeline_metadata(
+            session,
+            result_record,
+            pipeline_metadata,
+            vision_regions=vision_regions,
+            selected_region=vision_region,
+            image_metadata=fused_metadata,
+        )
+
+    learning_gate_allowed = bool(representative and representative.learning_gate_allowed)
+    image_bytes = representative.image_bytes if representative else None
+    learning_artifacts = (
+        SupplementLearningArtifactsInput(
+            analysis_id=result_record.id,
+            image_bytes=image_bytes,
+            image_metadata=fused_metadata,
+            ocr_result=fused_ocr_result,
+            learning_consents=learning_consents,
+        )
+        if learning_gate_allowed and image_bytes is not None
+        else None
+    )
+    return SupplementImageAnalysisResult(
+        record=result_record,
+        reused_existing=intake.reused_existing,
+        image_metadata=fused_metadata,
+        vision_region=vision_region,
+        vision_regions=vision_regions,
+        image_quality_report=(
+            facts_guidance.image_quality_report if facts_guidance is not None else None
+        ),
+        ocr_result=fused_ocr_result,
         parser_used=parsed_record is not None,
         ocr_attempted=ocr_attempted,
         ocr_warning_codes=warning_codes,

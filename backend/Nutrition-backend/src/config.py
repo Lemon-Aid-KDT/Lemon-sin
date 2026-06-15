@@ -559,6 +559,10 @@ class Settings(BaseSettings):
         max_length=64,
     )
     supplement_parser_max_ingredients: int = Field(default=80, ge=1, le=80)
+    # One-shot multi-image OCR fusion: when a batch is one product
+    # (merge_strategy=single_product), OCR every image in-request, fuse the text,
+    # and run the structured parser ONCE so the model sees the whole label.
+    supplement_one_shot_fusion_enabled: bool = Field(default=True)
     regulated_document_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     sensitive_document_original_image_retention_seconds: int = Field(default=0, ge=0, le=3600)
 
