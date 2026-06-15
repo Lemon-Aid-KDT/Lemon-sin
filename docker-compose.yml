@@ -74,15 +74,19 @@ services:
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-gemma4:e4b}
       OLLAMA_TIMEOUT_SEC: ${OLLAMA_TIMEOUT_SEC:-60}
       ALLOW_EXTERNAL_LLM: "false"
-      OCR_PRIMARY_PROVIDER: ${OCR_PRIMARY_PROVIDER:-paddleocr}
-      ENABLE_LOCAL_OCR: ${ENABLE_LOCAL_OCR:-true}
+      # OCR provider: current phase is CLOVA-only while PaddleOCR is retrained, so the
+      # fallback defaults select CLOVA + disable local OCR (override via .env for
+      # paddleocr/google_vision). CLOVA_OCR_API_URL/SECRET still come from .env — without
+      # them the adapter fails loud at startup, which is the intended "no silent OCR" guard.
+      OCR_PRIMARY_PROVIDER: ${OCR_PRIMARY_PROVIDER:-clova}
+      ENABLE_LOCAL_OCR: ${ENABLE_LOCAL_OCR:-false}
       LOCAL_OCR_LANGUAGE: ${LOCAL_OCR_LANGUAGE:-korean}
       LOCAL_OCR_MODEL_PROFILE: ${LOCAL_OCR_MODEL_PROFILE:-mobile}
       LOCAL_OCR_PREPROCESS_MODE: ${LOCAL_OCR_PREPROCESS_MODE:-autocontrast}
       LOCAL_OCR_CONFIDENCE_THRESHOLD: ${LOCAL_OCR_CONFIDENCE_THRESHOLD:-0.75}
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "true"
-      ALLOW_EXTERNAL_OCR: ${ALLOW_EXTERNAL_OCR:-false}
-      ENABLE_CLOVA_OCR: ${ENABLE_CLOVA_OCR:-false}
+      ALLOW_EXTERNAL_OCR: ${ALLOW_EXTERNAL_OCR:-true}
+      ENABLE_CLOVA_OCR: ${ENABLE_CLOVA_OCR:-true}
       CLOVA_OCR_API_URL: ${CLOVA_OCR_API_URL:-}
       CLOVA_OCR_SECRET: ${CLOVA_OCR_SECRET:-}
       GOOGLE_VISION_AUTH_MODE: ${GOOGLE_VISION_AUTH_MODE:-adc}

@@ -17,6 +17,7 @@ from src.config import Settings, get_settings
 from src.db.session import dispose_engine, verify_stage2_privileged_database_urls
 from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.secure_headers import SecureHeadersMiddleware
+from src.ocr.factory import OCRConfigurationError, build_supplement_ocr_adapter
 from src.readiness import ReadinessResponse, build_readiness_response
 from src.utils.image_safety import configure_pillow_limits
 from src.utils.logger import setup_logging
@@ -47,7 +48,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_pillow_limits(settings.supplement_image_max_pixels)
     if settings.paddle_disable_model_source_check:
         os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "true")
-    # TODO: Phase 2에서 Redis/OCR/LLM adapter readiness check를 분리한다.
+    # Fail fast on an inconsistent OCR provider config (e.g. CLOVA selected without
+    # ALLOW_EXTERNAL_OCR/credentials, or PaddleOCR primary while local OCR is disabled
+    # during retraining) instead of surfacing it as a 500 on the first analyze request.
+    try:
+        build_supplement_ocr_adapter(settings)
+    except OCRConfigurationError as exc:
+        raise RuntimeError(f"OCR provider configuration is invalid at startup: {exc}") from exc
+    # TODO: Phase 2에서 Redis/LLM adapter readiness check를 분리한다.
     try:
         yield
     finally:

@@ -118,3 +118,26 @@ async def test_lifespan_rejects_lemon_app_without_privileged_urls(
                 pass
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_rejects_inconsistent_ocr_provider_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify startup fails fast on an OCR config that yields no working primary OCR.
+
+    PaddleOCR selected as primary while local OCR is disabled — the drift state when a
+    CLOVA-only deployment (PaddleOCR retraining) loses its env overrides — must abort boot
+    via the lifespan OCR pre-flight rather than surface as a 500 on the first analyze
+    request. Proves the OCR provider guard is wired into the startup path.
+    """
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("OCR_PRIMARY_PROVIDER", "paddleocr")
+    monkeypatch.setenv("ENABLE_LOCAL_OCR", "false")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(RuntimeError, match="OCR provider configuration is invalid"):
+            async with lifespan(cast(FastAPI, _Sentinel())):
+                pass
+    finally:
+        get_settings.cache_clear()
