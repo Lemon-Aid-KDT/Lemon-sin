@@ -1,0 +1,12 @@
+# food_classifier 모듈 의존성 (단일요리 음식 분류기)
+# 설치: pip install -r requirements.txt
+# ⚠️ transformers는 반드시 5 미만 — 5.x는 DINOv3(get_text_features 반환 변경)와 비호환
+transformers<5
+ultralytics>=8.4          # exp16b 음식 유무 게이트(YOLO26s)
+torch>=2.0                # DINOv3 백본 추론
+pillow>=10
+numpy
+pyyaml
+streamlit>=1.30           # 데모(app.py)용
+# 별도: DINOv3 가중치는 HuggingFace 게이트 모델 — 라이선스 동의 + HF_TOKEN 필요
+# 별도: exp16b best.pt(19.5MB)는 git 외부 — 파일공유로 runs/food_yolo/exp16b_.../weights/ 에 배치
