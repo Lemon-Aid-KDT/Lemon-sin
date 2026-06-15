@@ -22,6 +22,8 @@ from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import SupplementAnalysisStatus
+from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.ocr.base import OCRAdapter, OCRImageInput, OCRResult
 from src.services.privacy import ConsentRequiredError
 from src.services.supplement_image_analysis import SupplementImageAnalysisAdapters
 
@@ -135,15 +137,27 @@ class _FakeSupplementSession:
         """
         return False
 
-    async def scalar(self, _statement: object) -> SupplementAnalysisRun | None:
-        """Return a fake existing row for idempotency lookup.
+    async def scalar(self, statement: object) -> SupplementAnalysisRun | None:
+        """Return the row a service expects from a select.
+
+        Intake idempotency lookups (filtered by ``client_request_id``) get the
+        configured ``existing`` row, while the parser's by-id lookup gets the
+        matching just-added run so routes exercising real OCR/parse adapters work
+        end-to-end against the fake session.
 
         Args:
-            _statement: SQLAlchemy select statement.
+            statement: SQLAlchemy select statement.
 
         Returns:
-            Existing supplement analysis run or None.
+            Matching supplement analysis run, the configured existing row, or None.
         """
+        try:
+            bound_values = set(statement.compile().params.values())  # type: ignore[attr-defined]
+        except Exception:  # defensive: opaque fake statements never fail to compile
+            bound_values = set()
+        for run in self.added_analyses:
+            if run.id is not None and run.id in bound_values:
+                return run
         return self.existing
 
     async def scalars(self, _statement: object) -> _FakeScalarResult:
@@ -600,6 +614,140 @@ def test_analyze_supplement_label_multi_accepts_json_roles(
     assert body["previews"][0]["image_role"] == "front_label"
     assert body["previews"][1]["image_role"] == "supplement_facts"
     assert body["merged_preview"] is None
+
+
+class _SequenceOCRAdapterForFusion(OCRAdapter):
+    """Fake OCR adapter returning one configured result per image call."""
+
+    def __init__(self, results: list[OCRResult]) -> None:
+        self._results = results
+        self.calls = 0
+
+    async def extract_text(self, image: OCRImageInput) -> OCRResult:
+        """Return the configured result for the current call index."""
+        _ = image
+        result = self._results[min(self.calls, len(self._results) - 1)]
+        self.calls += 1
+        return result
+
+
+class _FixedParserForFusion:
+    """Fake structured parser returning a fixed result and capturing input text."""
+
+    def __init__(self, result: SupplementStructuredParseResult) -> None:
+        self._result = result
+        self.received_text: str | None = None
+
+    async def parse_supplement_ocr_text(self, ocr_text: str) -> SupplementStructuredParseResult:
+        """Capture the fused OCR text and return the configured parse result."""
+        self.received_text = ocr_text
+        return self._result
+
+
+def _fusion_parse_result() -> SupplementStructuredParseResult:
+    """Return a minimal valid structured parse result for fusion tests."""
+    return SupplementStructuredParseResult.model_validate(
+        {
+            "parsed_product": {"product_name": "비타민 D 1000"},
+            "ingredient_candidates": [
+                {"display_name": "비타민 D", "amount": 25, "unit": "ug", "confidence": 0.9}
+            ],
+            "intake_method": {
+                "text": "하루 1회 1캡슐",
+                "confidence": 0.86,
+                "evidence_refs": ["intake-1"],
+            },
+            "precautions": [],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+
+def _fusion_adapters() -> SupplementImageAnalysisAdapters:
+    """Adapters with a per-image OCR sequence and a fixed parser for fusion tests."""
+    return SupplementImageAnalysisAdapters(
+        ocr=_SequenceOCRAdapterForFusion(
+            [
+                OCRResult(text="ALPHAONE Vitamin D Complex", provider="clova", confidence=0.9),
+                OCRResult(text="BRAVOTWO 하루 1회 1캡슐", provider="clova", confidence=0.8),
+            ]
+        ),
+        parser=_FixedParserForFusion(_fusion_parse_result()),
+    )
+
+
+def test_analyze_supplement_label_multi_single_product_fuses_to_one_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """single_product fuses N images into ONE run with a single merged preview."""
+    fake_session = _FakeSupplementSession()
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = _fusion_adapters
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze-multi",
+        files=[
+            ("images", ("front.png", _png_bytes(), "image/png")),
+            ("images", ("intake.png", _png_bytes(), "image/png")),
+        ],
+        data={
+            "image_roles": ["front_label", "intake_method"],
+            "merge_strategy": "single_product",
+        },
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    # Two images fused into exactly ONE persisted analysis run.
+    assert len(fake_session.added_analyses) == 1
+    body = response.json()
+    assert len(body["previews"]) == 1
+    assert body["merged_preview"] is not None
+    assert body["merged_preview"]["parsed_product"]["product_name"] == "비타민 D 1000"
+    # Privacy: no raw OCR text exposed anywhere in the response.
+    assert "ocr_text" not in body["merged_preview"]
+    assert all("ocr_text" not in preview for preview in body["previews"])
+    # Audit records the one-shot fusion and never stores raw OCR text.
+    created = [
+        audit
+        for audit in fake_session.added_audits
+        if audit.action == "supplement_image_multi_intake_created"
+    ]
+    assert created
+    assert created[-1].event_metadata["merge_strategy"] == "single_product"
+    assert created[-1].event_metadata["raw_ocr_text_stored"] is False
+
+
+def test_analyze_supplement_label_multi_distinct_products_keeps_per_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """distinct_products keeps the per-image path: one run per image."""
+    fake_session = _FakeSupplementSession()
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    app = create_app()
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = _fusion_adapters
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze-multi",
+        files=[
+            ("images", ("front.png", _png_bytes(), "image/png")),
+            ("images", ("intake.png", _png_bytes(), "image/png")),
+        ],
+        data={
+            "image_roles": ["front_label", "intake_method"],
+            "merge_strategy": "distinct_products",
+        },
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert len(fake_session.added_analyses) == 2
 
 
 def test_analyze_supplement_label_multi_rejects_role_count_mismatch(

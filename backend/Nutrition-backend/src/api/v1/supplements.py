@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -131,6 +131,7 @@ from src.services.supplement_explanation import (
 from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
     SupplementLearningEmbeddingInput,
+    analyze_fused_supplement_images,
     analyze_supplement_image,
     store_supplement_learning_artifacts,
     store_supplement_learning_embedding_job,
@@ -1710,6 +1711,9 @@ async def analyze_supplement_label_multi(
     ocr_provider: Annotated[SupplementOCRProviderSelector, Form()] = "configured",
     image_roles: Annotated[list[str] | None, Form()] = None,
     image_roles_json: Annotated[str | None, Form(max_length=1000)] = None,
+    merge_strategy: Annotated[
+        Literal["single_product", "distinct_products"], Form()
+    ] = "distinct_products",
 ) -> SupplementMultiImageAnalysisPreview:
     """Create per-image previews for a multi-photo supplement label batch.
 
@@ -1786,6 +1790,95 @@ async def analyze_supplement_label_multi(
                 current_user,
                 settings,
             )
+            if merge_strategy == "single_product" and settings.supplement_one_shot_fusion_enabled:
+                # One-shot fusion: OCR every image in-request, fuse the text, and
+                # parse ONCE into a single run so the model reasons over the whole
+                # label. Raw OCR text is never persisted.
+                fused_result = await analyze_fused_supplement_images(
+                    session=session,
+                    user=current_user,
+                    images=images,
+                    image_roles=roles,
+                    client_request_id=client_request_id,
+                    settings=settings,
+                    adapters=selected_adapters,
+                    learning_consents=learning_consents,
+                )
+                if fused_result.learning_artifacts is not None:
+                    background_tasks.add_task(
+                        store_supplement_learning_artifacts,
+                        user=current_user,
+                        artifacts=fused_result.learning_artifacts,
+                        settings=settings,
+                        object_store=build_learning_object_store(settings),
+                    )
+                await _annotate_multi_image_record(
+                    session,
+                    fused_result.record,
+                    image_role="mixed",
+                    analysis_group_id=analysis_group_id,
+                    image_count=len(images),
+                )
+                if fused_result.ocr_attempted:
+                    provider_warning_codes = _ocr_provider_warning_codes(
+                        fused_result.ocr_warning_codes
+                    )
+                    await record_sensitive_audit_event(
+                        session,
+                        current_user,
+                        action=(
+                            "supplement_ocr_provider_failed"
+                            if provider_warning_codes
+                            else "supplement_ocr_provider_completed"
+                        ),
+                        resource_type="supplement_analysis_run",
+                        resource_id=str(fused_result.record.id),
+                        outcome="failed" if provider_warning_codes else "success",
+                        request=http_request,
+                        settings=settings,
+                        event_metadata={
+                            "ocr_provider": (
+                                fused_result.ocr_result.provider
+                                if fused_result.ocr_result
+                                else None
+                            ),
+                            "ocr_confidence_present": (
+                                fused_result.ocr_result.confidence is not None
+                                if fused_result.ocr_result
+                                else False
+                            ),
+                            "warning_codes": provider_warning_codes,
+                            "raw_image_stored": False,
+                            "raw_ocr_text_stored": False,
+                            "merge_strategy": "single_product",
+                        },
+                    )
+                fused_response = _build_multi_image_response(
+                    analysis_group_id=analysis_group_id,
+                    previews=[supplement_analysis_run_to_preview(fused_result.record)],
+                )
+                # In-transaction success audit → out-of-band writer (see route 1 note).
+                await record_sensitive_audit_event(
+                    session,
+                    current_user,
+                    action="supplement_image_multi_intake_created",
+                    resource_type="supplement_analysis_run",
+                    resource_id=None,
+                    outcome="success",
+                    request=http_request,
+                    settings=settings,
+                    event_metadata={
+                        "image_count": len(images),
+                        "ocr_provider": fused_response.pipeline_metadata.ocr_provider,
+                        "parser_used": fused_response.pipeline_metadata.llm_parser_used,
+                        "vision_roi_used": fused_response.pipeline_metadata.vision_roi_used,
+                        "missing_required_sections": list(fused_response.missing_required_sections),
+                        "raw_image_stored": False,
+                        "raw_ocr_text_stored": False,
+                        "merge_strategy": "single_product",
+                    },
+                )
+                return fused_response
             for index, image in enumerate(images):
                 result = await analyze_supplement_image(
                     session=session,
