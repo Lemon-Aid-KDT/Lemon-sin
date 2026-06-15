@@ -435,6 +435,8 @@ def test_user_supplement_taxonomy_filter_not_found_returns_422(
     )
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    # list_user_supplements adopted get_rls_context_session (RLS Stage-2 rollout).
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.get("/api/v1/supplements?category_key=stale")

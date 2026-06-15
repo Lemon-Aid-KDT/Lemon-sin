@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     SupplementCategory,
@@ -607,3 +608,28 @@ async def test_list_get_and_soft_delete_user_supplements_are_owner_scoped() -> N
     assert deleted is True
     assert delete_session.committed is True
     assert supplement.deleted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_soft_delete_user_supplement_participates_in_request_transaction() -> None:
+    """Request-managed sessions flush the soft delete but never commit it.
+
+    Under the RLS Stage-2 seam (``get_rls_context_session``) the delete route owns
+    the transaction; ``soft_delete_user_supplement`` must participate (flush only)
+    so the per-request RLS GUCs survive to the dependency's single commit. A
+    mid-service commit here would drop the GUCs and break the owner DELETE.
+    """
+    supplement = _stored_supplement()
+    session = _FakeRegistrationSession(scalar_result=supplement)
+    session.info[REQUEST_MANAGED_TX] = True
+
+    deleted = await soft_delete_user_supplement(
+        cast(AsyncSession, session),
+        _user(),
+        supplement.id,
+    )
+
+    assert deleted is True
+    assert supplement.deleted_at is not None
+    assert session.flushed is True  # the soft delete is flushed into the request tx
+    assert session.committed is False  # the dependency owns the commit (GUC survives)

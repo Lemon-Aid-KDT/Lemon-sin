@@ -11,7 +11,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import supplements
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 from src.models.db.supplement import UserSupplement, UserSupplementIngredient
 from src.models.schemas.supplement import (
@@ -227,6 +227,7 @@ def test_create_user_supplement_uses_current_user_confirmation(
     monkeypatch.setattr(supplements, "create_user_supplement_from_confirmation", fake_store)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post("/api/v1/supplements", json=_payload())
@@ -277,6 +278,7 @@ def test_create_user_supplement_passes_category_key_and_echoes_it(
     monkeypatch.setattr(supplements, "create_user_supplement_from_confirmation", fake_store)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post(
@@ -310,6 +312,7 @@ def test_create_user_supplement_rejects_unknown_category_key(
     monkeypatch.setattr(supplements, "create_user_supplement_from_confirmation", fake_store)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post(
@@ -329,6 +332,7 @@ def test_create_user_supplement_rejects_mass_assignment_fields(
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
     payload = {
         **_payload(),
@@ -349,6 +353,7 @@ def test_create_user_supplement_requires_sensitive_health_consent(
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post("/api/v1/supplements", json=_payload())
@@ -398,6 +403,7 @@ def test_list_user_supplements_returns_owner_scoped_response(
     monkeypatch.setattr(supplements, "list_user_supplement_records", fake_list)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.get("/api/v1/supplements")
@@ -426,6 +432,7 @@ def test_get_user_supplement_returns_404_for_inaccessible_row(
     monkeypatch.setattr(supplements, "get_user_supplement_record", fake_get)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.get(f"/api/v1/supplements/{uuid4()}")
@@ -462,6 +469,7 @@ def test_delete_user_supplement_returns_204_when_deleted(
     monkeypatch.setattr(supplements, "soft_delete_user_supplement", fake_delete)
     app = create_app()
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
     supplement_id = uuid4()
 

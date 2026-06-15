@@ -2976,7 +2976,7 @@ async def explain_supplement_recommendations(
         AuthenticatedUser,
         Depends(require_supplement_recommendation_read),
     ],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SupplementRecommendationExplainResponse:
     """Explain deterministic supplement impact output with safety guardrails.
@@ -3040,7 +3040,7 @@ async def explain_supplement_recommendations(
 async def list_user_supplements(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -3158,7 +3158,7 @@ async def get_user_supplement(
     supplement_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserSupplementResponse:
     """Return one supplement record owned by the current user.
@@ -3223,7 +3223,7 @@ async def delete_user_supplement(
     supplement_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_delete)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     """Delete one supplement record owned by the current user.

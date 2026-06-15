@@ -325,8 +325,8 @@ async def soft_delete_user_supplement(
     )
     if record is None:
         return False
-    record.deleted_at = datetime.now(UTC)
-    await session.commit()
+    async with persist_scope(session):
+        record.deleted_at = datetime.now(UTC)
     return True
 
 
