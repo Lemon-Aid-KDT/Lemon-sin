@@ -46,6 +46,14 @@ Return one JSON object.
   summarize or rewrite beyond OCR cleanup.
 - evidence_spans: short excerpts, never full OCR text
 - missing_required_sections, low_confidence_fields, warnings: brief
+- The OCR may contain several image fragments separated by markers like
+  "=== [이미지 N · role] ===" (role = front_label/supplement_facts/ingredients/
+  intake_method/precautions). They are the SAME product photographed in parts;
+  integrate them into ONE product. If ingredient names appear in one fragment and
+  their amounts/units appear in another fragment in the SAME order (e.g. a facts
+  table split into a name column and an amount column across images), align them by
+  row position to reconstruct name+amount pairs. Only pair when the row counts
+  plausibly correspond; never invent amounts, names, or pairings.
 No keys outside the schema in the format field.
 """.strip()
 
