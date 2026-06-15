@@ -244,6 +244,7 @@ class AppController extends ChangeNotifier {
   SupplementRecommendationExplainResponse? _supplementExplanation;
   ChatExplanationDraft? _pendingChatExplanationDraft;
   String? _lastRequestedOcrProvider;
+  bool _lastSupplementBatchIsSingleProduct = true;
   AnalysisJobSnapshot _analysisJob = const AnalysisJobSnapshot.idle();
   int _analysisJobSerial = 0;
   int _chatDraftSerial = 0;
@@ -372,6 +373,10 @@ class AppController extends ChangeNotifier {
 
   /// Most recent mobile-selected OCR provider for smoke-test diagnostics.
   String? get lastRequestedOcrProvider => _lastRequestedOcrProvider;
+
+  /// Whether the most recent multi-image supplement scan was one product.
+  bool get lastSupplementBatchIsSingleProduct =>
+      _lastSupplementBatchIsSingleProduct;
 
   /// Current long-running image analysis job, if any.
   AnalysisJobSnapshot get analysisJob => _analysisJob;
@@ -629,6 +634,7 @@ class AppController extends ChangeNotifier {
             compareOcrProviders: compareOcrProviders,
           );
       _lastRequestedOcrProvider = selection.provider;
+      _lastSupplementBatchIsSingleProduct = true;
       _analysisPreview = selection.preview;
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
@@ -651,6 +657,7 @@ class AppController extends ChangeNotifier {
     List<SupplementImageUpload> images, {
     String ocrProvider = _defaultOcrProvider,
     bool compareOcrProviders = false,
+    bool sameSupplementBatch = true,
   }) async {
     await _run(() async {
       final _SupplementAnalysisSelection selection =
@@ -660,6 +667,7 @@ class AppController extends ChangeNotifier {
             compareOcrProviders: compareOcrProviders,
           );
       _lastRequestedOcrProvider = selection.provider;
+      _lastSupplementBatchIsSingleProduct = sameSupplementBatch;
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
@@ -701,6 +709,7 @@ class AppController extends ChangeNotifier {
   Future<void> startSupplementImageBatchAnalysis(
     List<SupplementImageUpload> images, {
     bool compareOcrProviders = false,
+    bool sameSupplementBatch = true,
   }) async {
     if (_analysisJob.isRunning) {
       _apiError = const ApiError(
@@ -716,6 +725,7 @@ class AppController extends ChangeNotifier {
         serial,
         images,
         compareOcrProviders: compareOcrProviders,
+        sameSupplementBatch: sameSupplementBatch,
       ),
     );
   }
@@ -1053,6 +1063,7 @@ class AppController extends ChangeNotifier {
     _supplementExplanation = null;
     _pendingChatExplanationDraft = null;
     _lastRequestedOcrProvider = null;
+    _lastSupplementBatchIsSingleProduct = true;
     if (!_analysisJob.isRunning) {
       _analysisJob = const AnalysisJobSnapshot.idle();
     }
@@ -1101,6 +1112,7 @@ class AppController extends ChangeNotifier {
     _supplementImpactPreview = null;
     _supplementExplanation = null;
     _pendingChatExplanationDraft = null;
+    _lastSupplementBatchIsSingleProduct = true;
     _analysisJob = AnalysisJobSnapshot.running(mode: mode);
     _apiError = null;
     _notice = '분석을 하고 있어요.';
@@ -1125,6 +1137,7 @@ class AppController extends ChangeNotifier {
           );
       if (!_isCurrentAnalysisJob(serial)) return;
       _lastRequestedOcrProvider = selection.provider;
+      _lastSupplementBatchIsSingleProduct = true;
       _analysisPreview = selection.preview;
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
@@ -1152,6 +1165,7 @@ class AppController extends ChangeNotifier {
     int serial,
     List<SupplementImageUpload> images, {
     bool compareOcrProviders = false,
+    bool sameSupplementBatch = true,
   }) async {
     try {
       final _SupplementAnalysisSelection selection =
@@ -1161,6 +1175,7 @@ class AppController extends ChangeNotifier {
           );
       if (!_isCurrentAnalysisJob(serial)) return;
       _lastRequestedOcrProvider = selection.provider;
+      _lastSupplementBatchIsSingleProduct = sameSupplementBatch;
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
@@ -1662,7 +1677,7 @@ class AppController extends ChangeNotifier {
         originalName.toLowerCase() == displayName.toLowerCase()) {
       return displayName;
     }
-    return '$displayName($originalName)';
+    return '$displayName ($originalName)';
   }
 
   String _formatBilingualConfirmedIngredientName(
@@ -1676,7 +1691,7 @@ class AppController extends ChangeNotifier {
         originalName.toLowerCase() == displayName.toLowerCase()) {
       return displayName;
     }
-    return '$displayName($originalName)';
+    return '$displayName ($originalName)';
   }
 
   String _formatServing(SupplementServing serving) {

@@ -223,6 +223,7 @@ void main() {
       multiPaths: <String>[sourceA.path, sourceB.path, sourceC.path],
     );
     List<SupplementImageUpload>? uploadedImages;
+    bool? sameBatchIntent;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -234,8 +235,10 @@ void main() {
               (
                 List<SupplementImageUpload> images, {
                 required String ocrProvider,
+                required bool sameSupplementBatch,
               }) async {
                 uploadedImages = images;
+                sameBatchIntent = sameSupplementBatch;
               },
         ),
       ),
@@ -273,6 +276,7 @@ void main() {
 
     expect(uploadedImages, isNotNull);
     expect(uploadedImages, hasLength(3));
+    expect(sameBatchIntent, isTrue);
   });
 
   testWidgets('Android lost multi-image selection restores supplement batch', (
@@ -306,6 +310,7 @@ void main() {
                 (
                   List<SupplementImageUpload> images, {
                   required String ocrProvider,
+                  required bool sameSupplementBatch,
                 }) async {
                   uploadedImages = images;
                 },
@@ -462,6 +467,7 @@ void main() {
               (
                 List<SupplementImageUpload> images, {
                 required String ocrProvider,
+                required bool sameSupplementBatch,
               }) async {},
         ),
       ),
@@ -524,6 +530,7 @@ void main() {
               (
                 List<SupplementImageUpload> images, {
                 required String ocrProvider,
+                required bool sameSupplementBatch,
               }) async {
                 uploadedImages = images;
               },
@@ -594,6 +601,7 @@ void main() {
               (
                 List<SupplementImageUpload> images, {
                 required String ocrProvider,
+                required bool sameSupplementBatch,
               }) async {
                 uploadedImages = images;
               },
@@ -781,35 +789,42 @@ void main() {
     expect(find.text('영양제 촬영 팁'), findsNothing);
   });
 
-  testWidgets('supplement two-slot strip fixes roles and toggles complete CTA', (
-    WidgetTester tester,
-  ) async {
-    await _usePhoneSurface(tester);
+  testWidgets(
+    'supplement two-slot strip fixes roles and toggles complete CTA',
+    (WidgetTester tester) async {
+      await _usePhoneSurface(tester);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CameraScreen(
-          onAnalyzeSupplementImage:
-              (String imagePath, {required String ocrProvider}) async {},
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CameraScreen(
+            onAnalyzeSupplementImage:
+                (String imagePath, {required String ocrProvider}) async {},
+          ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(seconds: 1));
+      );
+      await tester.pump(const Duration(seconds: 1));
 
-    // figma 947:23 — 앞면 + 성분표 2슬롯이 영양제 모드 촬영 화면에 보인다.
-    expect(find.byKey(const ValueKey<String>('two-slot-front')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('two-slot-facts')), findsOneWidget);
-    // 두 슬롯이 채워지기 전이라 완료 배지는 숨겨져 있다.
-    expect(
-      find.byKey(const ValueKey<String>('two-slot-complete')),
-      findsNothing,
-    );
+      // figma 947:23 — 앞면 + 성분표 2슬롯이 영양제 모드 촬영 화면에 보인다.
+      expect(
+        find.byKey(const ValueKey<String>('two-slot-front')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('two-slot-facts')),
+        findsOneWidget,
+      );
+      // 두 슬롯이 채워지기 전이라 완료 배지는 숨겨져 있다.
+      expect(
+        find.byKey(const ValueKey<String>('two-slot-complete')),
+        findsNothing,
+      );
 
-    // 슬롯 탭은 다음 촬영의 role 을 지정한다(앱이 크래시 없이 선택 반영).
-    await tester.tap(find.byKey(const ValueKey<String>('two-slot-facts')));
-    await tester.pump();
-    expect(find.text('성분표'), findsOneWidget);
-  });
+      // 슬롯 탭은 다음 촬영의 role 을 지정한다(앱이 크래시 없이 선택 반영).
+      await tester.tap(find.byKey(const ValueKey<String>('two-slot-facts')));
+      await tester.pump();
+      expect(find.text('성분표'), findsOneWidget);
+    },
+  );
 }
 
 Future<void> _usePhoneSurface(WidgetTester tester) async {

@@ -130,9 +130,7 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                   final TokenSessionController session = ref.read(
                     tokenSessionProvider,
                   );
-                  context.go(
-                    session.canEnterShell ? '/shell/home' : '/login',
-                  );
+                  context.go(session.canEnterShell ? '/shell/home' : '/login');
                 },
               );
             },
@@ -500,8 +498,12 @@ class _SupplementCameraBranch extends ConsumerWidget {
           (
             List<SupplementImageUpload> images, {
             required String ocrProvider,
+            required bool sameSupplementBatch,
           }) async {
-            await controller.startSupplementImageBatchAnalysis(images);
+            await controller.startSupplementImageBatchAnalysis(
+              images,
+              sameSupplementBatch: sameSupplementBatch,
+            );
             if (!context.mounted) return;
             context.go('/shell/home/analysis-result?mode=supplement');
           },

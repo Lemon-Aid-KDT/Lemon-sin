@@ -94,8 +94,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   // 영양제 분류 드롭다운(figma 855:23, 가이드 10 ③-P2 7) — 카탈로그 옵션과
   // 사용자가 고른 category_key. 카탈로그는 진입 시 1회 로드, 실패 시 빈 목록
   // 유지(드롭다운 미노출 — 백엔드 카탈로그 부재 시 조용히 강하).
-  List<SupplementCategory> _supplementCategories =
-      const <SupplementCategory>[];
+  List<SupplementCategory> _supplementCategories = const <SupplementCategory>[];
   String? _selectedCategoryKey;
 
   bool get _isMeal => widget.mode == 'meal';
@@ -121,8 +120,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       return;
     }
     try {
-      final List<SupplementCategory> categories =
-          await controller.repository.fetchSupplementCategories();
+      final List<SupplementCategory> categories = await controller.repository
+          .fetchSupplementCategories();
       if (!mounted) {
         return;
       }
@@ -464,7 +463,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         const SizedBox(height: AppSpace.sm),
       ],
       // 검출 오버레이(figma 946:50) — detected_product_regions[] 좌표 스케일 렌더.
-      if (preview != null && preview.detectedProductRegions.isNotEmpty) ...<Widget>[
+      if (preview != null &&
+          preview.detectedProductRegions.isNotEmpty) ...<Widget>[
         DetectionPreviewCard(regions: preview.detectedProductRegions),
         const SizedBox(height: AppSpace.sm),
       ],
@@ -523,10 +523,39 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   List<_SupplementReviewGroup> _supplementReviewGroups(
     AppController? controller,
   ) {
+    final SupplementMultiImageAnalysisPreview? multiPreview =
+        controller?.multiImageAnalysisPreview;
     final List<SupplementAnalysisPreview> multiPreviews =
-        controller?.multiImageAnalysisPreview?.previews ??
-        const <SupplementAnalysisPreview>[];
+        multiPreview?.previews ?? const <SupplementAnalysisPreview>[];
     if (multiPreviews.length > 1) {
+      final SupplementAnalysisPreview? mergedPreview =
+          multiPreview?.mergedPreview;
+      final bool mergeAsSingleSupplement =
+          controller?.lastSupplementBatchIsSingleProduct ?? true;
+      if (mergeAsSingleSupplement) {
+        if (mergedPreview != null && mergedPreview.hasReviewContent) {
+          return <_SupplementReviewGroup>[
+            _SupplementReviewGroup(
+              label: _supplementPreviewLabel(mergedPreview, 0),
+              preview: mergedPreview,
+              sourcePreviews: multiPreviews,
+            ),
+          ];
+        }
+        return <_SupplementReviewGroup>[
+          _buildSupplementReviewGroup(multiPreviews, 0),
+        ];
+      }
+      if (mergedPreview != null &&
+          _shouldUseMergedSupplementPreview(mergedPreview, multiPreviews)) {
+        return <_SupplementReviewGroup>[
+          _SupplementReviewGroup(
+            label: _supplementPreviewLabel(mergedPreview, 0),
+            preview: mergedPreview,
+            sourcePreviews: multiPreviews,
+          ),
+        ];
+      }
       return _groupSupplementPreviews(multiPreviews);
     }
     final SupplementAnalysisPreview? singlePreview =
@@ -539,6 +568,24 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         sourcePreviews: <SupplementAnalysisPreview>[singlePreview],
       ),
     ];
+  }
+
+  bool _shouldUseMergedSupplementPreview(
+    SupplementAnalysisPreview mergedPreview,
+    List<SupplementAnalysisPreview> sourcePreviews,
+  ) {
+    if (!mergedPreview.hasReviewContent) return false;
+    final Set<String> distinctIdentities = sourcePreviews
+        .map(_supplementIdentityKey)
+        .whereType<String>()
+        .toSet();
+    if (distinctIdentities.length > 1) return false;
+    final int bestSourceScore = sourcePreviews.fold<int>(
+      0,
+      (int best, SupplementAnalysisPreview preview) =>
+          preview.reviewContentScore > best ? preview.reviewContentScore : best,
+    );
+    return mergedPreview.reviewContentScore >= bestSourceScore;
   }
 
   List<_SupplementReviewGroup> _groupSupplementPreviews(
@@ -1129,10 +1176,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text(
-          '읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.',
-          style: AppText.caption,
-        ),
+        const Text('읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.', style: AppText.caption),
         const SizedBox(height: AppSpace.sm),
         ...cards,
         const SizedBox(height: AppSpace.sm),
@@ -1150,7 +1194,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   /// 인식 텍스트 카드 제목. headingText가 있으면 우선, 없으면 성분 하위타입을
   /// 구분해 두 카드가 같은 '성분표'로 겹치지 않게 한다(공유 _sectionLabel 불변).
-  static String _recognizedSectionHeading(SupplementPreviewLabelSection section) {
+  static String _recognizedSectionHeading(
+    SupplementPreviewLabelSection section,
+  ) {
     final String? heading = _nonEmpty(section.headingText);
     if (heading != null) return heading;
     return switch (section.sectionType) {
@@ -1259,9 +1305,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       if (confirmed == true && mounted && context.mounted) {
         final String name = nameController.text.trim();
         if (name.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('성분명을 입력해주세요.')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('성분명을 입력해주세요.')));
           return;
         }
         setState(() {
@@ -1370,12 +1416,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   _IngredientAmountRowData _ingredientAmountRowFromCandidate(
     SupplementIngredientCandidate candidate,
   ) {
+    final String name = _bilingualIngredientName(
+      candidate.displayName,
+      candidate.originalName,
+    );
     return _IngredientAmountRowData(
-      name: candidate.displayName,
-      originalName: _visibleOriginalName(
-        candidate.displayName,
-        candidate.originalName,
-      ),
+      name: name,
+      originalName: _visibleOriginalName(name, candidate.originalName),
       amount: _ingredientAmountText(candidate.amount, candidate.unit),
       candidate: candidate,
     );
@@ -1388,11 +1435,15 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final String displayName = draft.displayName.isEmpty
         ? '성분명 확인 필요'
         : draft.displayName;
+    final String name = _bilingualIngredientName(
+      displayName,
+      draft.originalName,
+    );
     return _IngredientAmountRowData(
       draftIndex: index,
       selected: draft.selected,
-      name: displayName,
-      originalName: _visibleOriginalName(draft.displayName, draft.originalName),
+      name: name,
+      originalName: _visibleOriginalName(name, draft.originalName),
       amount: _ingredientAmountText(
         _parseOptionalDouble(draft.amountText),
         draft.unit,
@@ -1422,7 +1473,24 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     if (display.isNotEmpty && original.toLowerCase() == display.toLowerCase()) {
       return null;
     }
+    if (display.toLowerCase().contains(original.toLowerCase())) {
+      return null;
+    }
     return original;
+  }
+
+  static String _bilingualIngredientName(
+    String displayName,
+    String? originalName,
+  ) {
+    final String display = displayName.trim();
+    final String? original = _nonEmpty(originalName);
+    if (original == null) return display;
+    if (display.isNotEmpty && original.toLowerCase() == display.toLowerCase()) {
+      return display;
+    }
+    if (display.contains(original)) return display;
+    return '$display ($original)';
   }
 
   String _ingredientAmountText(double? amount, String? unit) {
@@ -1800,9 +1868,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                             _IntakeChoiceChip(
                               label: option.value,
                               selected: frequency == option.key,
-                              onSelected: () => setDialogState(
-                                () => frequency = option.key,
-                              ),
+                              onSelected: () =>
+                                  setDialogState(() => frequency = option.key),
                             ),
                         ],
                       ),
@@ -1967,9 +2034,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final int? initialIndex = candidates.isEmpty ? null : 0;
     _selectedMealCandidateIndex = initialIndex;
     _mealPortionAmount = clampPortion(
-      initialIndex == null
-          ? 1
-          : (candidates[initialIndex].portionAmount ?? 1),
+      initialIndex == null ? 1 : (candidates[initialIndex].portionAmount ?? 1),
     );
     _applySelectedCandidateToFields(preview);
   }
@@ -2247,8 +2312,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     // 선택된 후보(없으면 첫 후보) 기준으로 confidence/source 추적값을 가져온다.
     final int? selectedIndex = _selectedMealCandidateIndex;
     final MealFoodCandidate? selectedCandidate =
-        (selectedIndex != null &&
-            selectedIndex < preview.foodCandidates.length)
+        (selectedIndex != null && selectedIndex < preview.foodCandidates.length)
         ? preview.foodCandidates[selectedIndex]
         : (preview.foodCandidates.isEmpty
               ? null
@@ -2445,7 +2509,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         preview.ingredientCandidates;
     if (candidates.isEmpty) return null;
     final Set<String> riskCodes = <String>{
-      for (final SupplementNutritionInsight risk in impact.excessOrDuplicateRisks)
+      for (final SupplementNutritionInsight risk
+          in impact.excessOrDuplicateRisks)
         risk.nutrientCode,
     };
     for (final SupplementIngredientCandidate candidate in candidates) {
@@ -3533,9 +3598,7 @@ class _AnalysisChecklistRow extends StatelessWidget {
                     height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.4,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        AppColor.brand,
-                      ),
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColor.brand),
                     ),
                   )
                 : Icon(
@@ -3728,11 +3791,7 @@ class _SummaryCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const Icon(
-            Icons.unfold_more_rounded,
-            color: AppColor.ink,
-            size: 18,
-          ),
+          const Icon(Icons.unfold_more_rounded, color: AppColor.ink, size: 18),
           const SizedBox(width: 4),
           Text(
             '텍스트 보기',

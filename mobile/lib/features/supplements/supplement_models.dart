@@ -586,19 +586,22 @@ class SupplementMultiImageAnalysisPreview {
 
   /// First preview that can seed the existing single-preview review flow.
   SupplementAnalysisPreview? get primaryPreview {
-    if (mergedPreview != null) {
-      return mergedPreview;
+    final List<SupplementAnalysisPreview> candidates =
+        <SupplementAnalysisPreview>[?mergedPreview, ...previews]
+            .where((SupplementAnalysisPreview preview) {
+              return preview.hasReviewContent;
+            })
+            .toList(growable: false);
+    if (candidates.isNotEmpty) {
+      candidates.sort((
+        SupplementAnalysisPreview left,
+        SupplementAnalysisPreview right,
+      ) {
+        return right.reviewContentScore.compareTo(left.reviewContentScore);
+      });
+      return candidates.first;
     }
-    if (previews.isEmpty) {
-      return null;
-    }
-    for (final SupplementAnalysisPreview preview in previews) {
-      if (preview.ingredientCandidates.isNotEmpty ||
-          preview.labelSections.isNotEmpty) {
-        return preview;
-      }
-    }
-    return previews.first;
+    return mergedPreview ?? (previews.isEmpty ? null : previews.first);
   }
 }
 
@@ -715,6 +718,36 @@ class SupplementAnalysisPreview {
 
   /// Preview expiration time.
   final DateTime expiresAt;
+
+  /// Whether the preview contains structured review content worth displaying.
+  bool get hasReviewContent {
+    return ingredientCandidates.isNotEmpty ||
+        labelSections.isNotEmpty ||
+        (parsedProduct.productName?.trim().isNotEmpty ?? false) ||
+        (parsedProduct.manufacturer?.trim().isNotEmpty ?? false) ||
+        (intakeMethod.text?.trim().isNotEmpty ?? false) ||
+        precautions.isNotEmpty ||
+        functionalClaims.isNotEmpty;
+  }
+
+  /// Weighted score used to pick the richest preview in a multi-image response.
+  int get reviewContentScore {
+    int score = 0;
+    score += ingredientCandidates.length * 1000;
+    score += labelSections.length * 120;
+    score += evidenceSpans.length * 30;
+    score += pipelineMetadata.sectionCount * 80;
+    if (pipelineMetadata.ocrTextPresent) score += 150;
+    if (pipelineMetadata.llmParserUsed) score += 80;
+    if (parsedProduct.productName?.trim().isNotEmpty == true) score += 120;
+    if (parsedProduct.manufacturer?.trim().isNotEmpty == true) score += 40;
+    if (intakeMethod.text?.trim().isNotEmpty == true) score += 80;
+    score += precautions.length * 60;
+    score += functionalClaims.length * 40;
+    if (actionRequired == 'additional_label_image_required') score -= 120;
+    if (actionRequired == 'blocked') score -= 400;
+    return score;
+  }
 
   /// Parses a backend supplement analysis preview.
   factory SupplementAnalysisPreview.fromJson(Map<String, dynamic> json) {

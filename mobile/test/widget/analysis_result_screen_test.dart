@@ -58,12 +58,12 @@ void main() {
     expect(find.byType(Table), findsOneWidget);
     expect(find.text('성분명'), findsOneWidget);
     expect(find.text('함량'), findsOneWidget);
-    expect(find.text('비타민 D'), findsOneWidget);
-    expect(find.text('원문: Vitamin D'), findsOneWidget);
+    expect(find.text('비타민 D (Vitamin D)'), findsOneWidget);
+    expect(find.text('원문: Vitamin D'), findsNothing);
     expect(find.text('25 mcg'), findsOneWidget);
     expect(
       tester
-          .widgetList<Text>(find.text('비타민 D'))
+          .widgetList<Text>(find.text('비타민 D (Vitamin D)'))
           .any(
             (Text widget) =>
                 widget.style?.fontWeight == FontWeight.w900 &&
@@ -165,8 +165,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('글루코사민 염산염'), findsOneWidget);
-    expect(find.text('원문: Glucosamine Hydrochloride'), findsOneWidget);
+    expect(find.text('글루코사민 염산염 (Glucosamine Hydrochloride)'), findsOneWidget);
+    expect(find.text('원문: Glucosamine Hydrochloride'), findsNothing);
 
     await tester.tap(find.byTooltip('상세 성분 및 함량 수정'));
     await tester.pumpAndSettle();
@@ -174,8 +174,8 @@ void main() {
     await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
 
-    expect(find.text('글루코사민 HCl'), findsOneWidget);
-    expect(find.text('원문: Glucosamine Hydrochloride'), findsOneWidget);
+    expect(find.text('글루코사민 HCl (Glucosamine Hydrochloride)'), findsOneWidget);
+    expect(find.text('원문: Glucosamine Hydrochloride'), findsNothing);
 
     await tester.tap(find.text('확인 후 저장'));
     await tester.pumpAndSettle();
@@ -234,7 +234,10 @@ void main() {
     expect(request?.intakeSchedule?.timesPerDay, 2);
     expect(request?.intakeSchedule?.frequency, 'weekly');
     // OCR이 읽어온 morning 은 보존되고 사용자가 evening 을 추가한다.
-    expect(request?.intakeSchedule?.timeOfDay, containsAll(<String>['morning', 'evening']));
+    expect(
+      request?.intakeSchedule?.timeOfDay,
+      containsAll(<String>['morning', 'evening']),
+    );
   });
 
   testWidgets('manually added ingredient is saved as user_confirmed', (
@@ -325,10 +328,7 @@ void main() {
 
     expect(repository.registeredRequest?.categoryKey, '비타민B');
     // 미선택 시에는 키를 보내지 않는다(별도 케이스): toJson 직렬화 확인.
-    expect(
-      repository.registeredRequest?.toJson()['category_key'],
-      '비타민B',
-    );
+    expect(repository.registeredRequest?.toJson()['category_key'], '비타민B');
   });
 
   testWidgets('omitting the category sends no category_key', (
@@ -439,10 +439,7 @@ void main() {
 
       // Tier B: OCR read the label text but produced no structured rows, so the
       // recognized section text is shown instead of the dead-end placeholder.
-      expect(
-        find.text('읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.'),
-        findsOneWidget,
-      );
+      expect(find.text('읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.'), findsOneWidget);
       expect(find.text('성분·함량'), findsOneWidget);
       expect(find.text('비타민C 1000mg, 아연 15mg'), findsOneWidget);
       expect(find.text('성분명과 함량을 확인할 수 없어요.'), findsNothing);
@@ -592,7 +589,7 @@ void main() {
     );
     expect(
       controller.pendingChatExplanationDraft?.assistantMessage,
-      contains('비타민 D(Vitamin D): 25 mcg'),
+      contains('비타민 D (Vitamin D): 25 mcg'),
     );
     expect(repository.registeredRequest?.evidenceRefs, <String>[
       'span-1',
@@ -751,7 +748,7 @@ void main() {
     await controller.analyzeImages(const <SupplementImageUpload>[
       SupplementImageUpload(path: '/tmp/supplement-a.jpg'),
       SupplementImageUpload(path: '/tmp/supplement-b.jpg'),
-    ]);
+    ], sameSupplementBatch: false);
 
     await tester.pumpWidget(
       MaterialApp(home: AnalysisResultScreen(controller: controller)),
@@ -793,7 +790,7 @@ void main() {
         SupplementImageUpload(path: '/tmp/lemon-multi-facts.jpg'),
         SupplementImageUpload(path: '/tmp/omega-plus.jpg'),
         SupplementImageUpload(path: '/tmp/magnesium-calm.jpg'),
-      ]);
+      ], sameSupplementBatch: false);
 
       await tester.pumpWidget(
         MaterialApp(home: AnalysisResultScreen(controller: controller)),
@@ -1819,9 +1816,7 @@ class _PendingMealRepository extends _ReviewRepository {
 
   void complete() {
     if (!_completer.isCompleted) {
-      _completer.complete(
-        MealImageAnalysisPreview.fromJson(_mealPreviewJson),
-      );
+      _completer.complete(MealImageAnalysisPreview.fromJson(_mealPreviewJson));
     }
   }
 }

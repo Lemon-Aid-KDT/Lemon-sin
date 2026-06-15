@@ -172,6 +172,7 @@ class CameraScreen extends StatefulWidget {
   final Future<void> Function(
     List<SupplementImageUpload> images, {
     required String ocrProvider,
+    required bool sameSupplementBatch,
   })?
   onAnalyzeSupplementImages;
 
@@ -192,6 +193,7 @@ class _CameraScreenState extends State<CameraScreen>
   final List<_CapturedSupplementImage> _captures = <_CapturedSupplementImage>[];
   bool _picking = false;
   late String _imageRole;
+  bool _sameSupplementBatch = true;
   bool _lostDataChecked = false;
 
   // ─── 카메라 컨트롤러 ───
@@ -1254,6 +1256,7 @@ class _CameraScreenState extends State<CameraScreen>
         await widget.onAnalyzeSupplementImages!(
           uploads,
           ocrProvider: 'configured',
+          sameSupplementBatch: _sameSupplementBatch,
         );
       } else {
         await widget.onAnalyzeSupplementImage(
@@ -1380,14 +1383,27 @@ class _CameraScreenState extends State<CameraScreen>
                   _controller?.value.isInitialized == true ||
                   _canUseMacCameraBridge ||
                   _canUseCameraPickerFallback,
-              // 영양제 모드에만 2슬롯 안내(앞면+성분표). 식단 모드는 null.
+              // 영양제 모드에만 묶음 의도 + 2슬롯 안내. 식단 모드는 null.
               twoSlotStrip: _mode == _CaptureMode.supplement
-                  ? _TwoSlotStrip(
-                      activeRole: _imageRole,
-                      frontFilled: _slotFrontFilled,
-                      factsFilled: _slotFactsFilled,
-                      complete: _twoSlotsComplete,
-                      onSelectRole: _selectSlotRole,
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        _SupplementBatchIntentToggle(
+                          sameSupplementBatch: _sameSupplementBatch,
+                          onChanged: (bool value) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _sameSupplementBatch = value);
+                          },
+                        ),
+                        const SizedBox(height: AppSpace.sm),
+                        _TwoSlotStrip(
+                          activeRole: _imageRole,
+                          frontFilled: _slotFrontFilled,
+                          factsFilled: _slotFactsFilled,
+                          complete: _twoSlotsComplete,
+                          onSelectRole: _selectSlotRole,
+                        ),
+                      ],
                     )
                   : null,
             ),
@@ -1453,6 +1469,17 @@ class _CameraScreenState extends State<CameraScreen>
           ),
           if (_mode == _CaptureMode.supplement) ...[
             const SizedBox(height: AppSpace.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+              child: _SupplementBatchIntentToggle(
+                sameSupplementBatch: _sameSupplementBatch,
+                onChanged: (bool value) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _sameSupplementBatch = value);
+                },
+              ),
+            ),
+            const SizedBox(height: AppSpace.sm),
             _SupplementBatchStrip(
               captures: _captures,
               onRemove: _removeBatchImage,
@@ -2327,9 +2354,7 @@ class _ErrorBox extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(
-            denied
-                ? Icons.lock_outline_rounded
-                : Icons.no_photography_rounded,
+            denied ? Icons.lock_outline_rounded : Icons.no_photography_rounded,
             color: Colors.white.withValues(alpha: 0.4),
             size: 48,
           ),
@@ -2641,6 +2666,94 @@ class _DebugSampleButton extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════
+// 영양제 다중 사진 묶음 의도 — 기본은 "한 영양제" 병합.
+// ═══════════════════════════════════════════
+class _SupplementBatchIntentToggle extends StatelessWidget {
+  const _SupplementBatchIntentToggle({
+    required this.sameSupplementBatch,
+    required this.onChanged,
+  });
+
+  final bool sameSupplementBatch;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _CamTone.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: _CamTone.border),
+        boxShadow: _CamTone.softShadow,
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _BatchIntentChip(
+              key: const ValueKey<String>('supplement-batch-same'),
+              label: '한 영양제 묶음',
+              selected: sameSupplementBatch,
+              onTap: () => onChanged(true),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _BatchIntentChip(
+              key: const ValueKey<String>('supplement-batch-separate'),
+              label: '서로 다른 영양제',
+              selected: !sameSupplementBatch,
+              onTap: () => onChanged(false),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BatchIntentChip extends StatelessWidget {
+  const _BatchIntentChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColor.brand : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: selected ? AppColor.ink : Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════
 // 다중 촬영 2슬롯 (figma 947:23) — 앞면 + 성분표 고정 슬롯
 // ═══════════════════════════════════════════
 class _TwoSlotStrip extends StatelessWidget {
@@ -2706,7 +2819,11 @@ class _TwoSlotStrip extends StatelessWidget {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Icon(Icons.check_circle_rounded, color: AppColor.brand, size: 18),
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: AppColor.brand,
+                  size: 18,
+                ),
                 SizedBox(width: AppSpace.xs),
                 Text(
                   '앞면 + 성분표 준비됐어요',
@@ -2760,9 +2877,7 @@ class _SlotChip extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Icon(
-              filled
-                  ? Icons.check_circle_rounded
-                  : Icons.add_a_photo_outlined,
+              filled ? Icons.check_circle_rounded : Icons.add_a_photo_outlined,
               size: 18,
               color: filled ? AppColor.success : Colors.white,
             ),
