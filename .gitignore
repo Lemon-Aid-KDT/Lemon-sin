@@ -158,11 +158,16 @@ outputs/generated/supplement-learning/**/*.pdmodel
 outputs/generated/supplement-learning/**/*.pdopt
 outputs/generated/supplement-learning/**/*.pdparams
 outputs/generated/supplement-learning/**/*.states
+# Large PaddleOCR/YOLO model checkpoint snapshots (multi-100MB zips; external storage/LFS only).
+outputs/generated/supplement-learning/**/a100-paddleocr-best-snapshots/
+outputs/generated/supplement-learning/**/*.zip
 # Python 3.12 PaddleOCR/PaddleX training venv (multi-GB; companion to .venv/).
 .venv-paddle/
 backend/.venv-paddle/
 .omc_probe_*.txt
 mobile/uiux/Lemon Aid Design System/
+# Figma design export (large binary .fig + PNG mockups; external storage/LFS, not repo history).
+mobile/uiux/figma/
 
 # -----------------------------------------------------------------------------
 # iOS
