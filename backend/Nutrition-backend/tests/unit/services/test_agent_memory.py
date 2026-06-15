@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from lemon_ai_agent.adapters import AgentFinding, AgentInput, AgentOutput
 from src.config import Settings
+from src.db.tx import REQUEST_MANAGED_TX
 from src.models.db.agent_memory import AgentMemory
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.supplement import UserSupplement, UserSupplementIngredient
@@ -19,6 +20,7 @@ from src.services.agent_memory import (
     PROFILE_MEMORY_TYPE,
     SAFETY_MEMORY_TYPE,
     SUPPLEMENT_MEMORY_TYPE,
+    _commit_if_possible,
     load_agent_memory_context,
     record_agent_run,
     upsert_agent_memory_record,
@@ -175,6 +177,50 @@ def test_upsert_agent_memory_record_stores_sanitized_v2_summary() -> None:
     assert session.committed
 
 
+def test_commit_if_possible_participates_under_request_managed_tx() -> None:
+    """Under a request-managed (RLS) session, flush only — never commit.
+
+    Committing here would drop the transaction-local RLS GUCs the request
+    dependency set, so the agent-memory writes must participate (flush) and let
+    the request transaction commit at dependency teardown.
+    """
+
+    class _ParticipateSession:
+        def __init__(self) -> None:
+            self.info = {REQUEST_MANAGED_TX: True}
+            self.flushed = False
+            self.committed = False
+
+        async def flush(self) -> None:
+            self.flushed = True
+
+        async def commit(self) -> None:
+            self.committed = True
+
+    session = _ParticipateSession()
+    asyncio.run(_commit_if_possible(session))
+
+    assert session.flushed is True
+    assert session.committed is False
+
+
+def test_commit_if_possible_commits_legacy_session() -> None:
+    """A legacy (non-request-managed) session commits as before."""
+
+    class _LegacySession:
+        def __init__(self) -> None:
+            self.info: dict[str, object] = {}
+            self.committed = False
+
+        async def commit(self) -> None:
+            self.committed = True
+
+    session = _LegacySession()
+    asyncio.run(_commit_if_possible(session))
+
+    assert session.committed is True
+
+
 def test_load_agent_memory_context_groups_v2_types_and_keeps_v0_summary() -> None:
     """Verify retrieval returns v2 memory bundle while preserving v0 summaries."""
     session = _FakeSession(
@@ -245,9 +291,7 @@ def test_daily_coaching_memory_uses_canonical_nutrient_schema() -> None:
     )
 
     memory = asyncio.run(
-        upsert_daily_coaching_memory(
-            session, _user(), _settings(), request, _agent_output()
-        )
+        upsert_daily_coaching_memory(session, _user(), _settings(), request, _agent_output())
     )
 
     assert memory is not None
@@ -307,9 +351,7 @@ def test_nutrition_analysis_memory_canonicalizes_priority_items() -> None:
     )
     record.created_at = datetime(2026, 5, 19, tzinfo=UTC)
 
-    memory = asyncio.run(
-        upsert_nutrition_analysis_memory(session, _user(), _settings(), record)
-    )
+    memory = asyncio.run(upsert_nutrition_analysis_memory(session, _user(), _settings(), record))
 
     assert memory is not None
     assert memory.memory_type == NUTRITION_ANALYSIS_MEMORY_TYPE

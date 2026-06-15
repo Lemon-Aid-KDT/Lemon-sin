@@ -28,7 +28,7 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.llm.ollama import validate_local_ollama_settings
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser, require_analysis_write
@@ -232,9 +232,7 @@ async def _production_medical_source_gate(
         return True, []
 
     error_codes = [
-        source.error_code or source.status
-        for source in readiness.sources
-        if not source.ready
+        source.error_code or source.status for source in readiness.sources if not source.ready
     ]
     return False, list(dict.fromkeys(error_codes or ["no_reviewed_sources"]))
 
@@ -243,7 +241,9 @@ async def _production_medical_source_gate(
     "/daily-coaching",
     response_model=AgentOutput,
     responses={
-        200: {"content": {"application/json": {"examples": AI_AGENT_DAILY_COACHING_RESPONSE_EXAMPLES}}},
+        200: {
+            "content": {"application/json": {"examples": AI_AGENT_DAILY_COACHING_RESPONSE_EXAMPLES}}
+        },
         401: {"content": {"application/json": {"examples": UNAUTHORIZED_EXAMPLE}}},
         403: {"content": {"application/json": {"examples": CONSENT_REQUIRED_EXAMPLE}}},
         422: {"content": {"application/json": {"examples": UNPROCESSABLE_ENTITY_EXAMPLE}}},
@@ -261,7 +261,7 @@ async def run_daily_coaching(
         Body(openapi_examples=AI_AGENT_DAILY_COACHING_REQUEST_EXAMPLES),
     ],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AgentOutput:
     """Run deterministic daily health coaching for the authenticated user.
@@ -287,9 +287,7 @@ async def run_daily_coaching(
     output = DailyHealthAgentAppAdapter(
         default_references=DEFAULT_REFERENCE_RANGES,
         llm_client=llm_client,
-    ).run(
-        server_owned_request
-    )
+    ).run(server_owned_request)
     if output.status != "preview":
         await upsert_daily_coaching_memory(
             session,
@@ -303,7 +301,9 @@ async def run_daily_coaching(
             current_user,
             settings,
             output,
-            model=getattr(llm_client, "model", None) if output.provider != "deterministic" else None,
+            model=(
+                getattr(llm_client, "model", None) if output.provider != "deterministic" else None
+            ),
         )
     await record_sensitive_audit_event(
         session,
@@ -677,14 +677,10 @@ def _merge_user_medication_context(
     """Merge DB-confirmed medication profile context without raw free text."""
     profile = dict(context.get("profile") or {})
     existing_names = [
-        str(name).strip()
-        for name in profile.get("medications", [])
-        if str(name).strip()
+        str(name).strip() for name in profile.get("medications", []) if str(name).strip()
     ]
     medication_names = [
-        str(name).strip()
-        for name in medication_context.get("medications", [])
-        if str(name).strip()
+        str(name).strip() for name in medication_context.get("medications", []) if str(name).strip()
     ]
     profile["medications"] = list(dict.fromkeys([*existing_names, *medication_names]))
     medication_details = medication_context.get("medication_details", [])

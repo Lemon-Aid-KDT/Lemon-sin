@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
+from src.db.tx import request_manages_transaction
 from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.supplement import UserSupplement, UserSupplementIngredient
@@ -361,7 +362,9 @@ def _memory_record_to_context(record: AgentMemory) -> dict[str, Any]:
     }
 
 
-def _memory_bundle_from_summaries(summaries: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def _memory_bundle_from_summaries(
+    summaries: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
     bundle: dict[str, list[dict[str, Any]]] = {
         memory_type: [] for memory_type in AGENT_MEMORY_TYPES
     }
@@ -448,6 +451,19 @@ def _utc_now() -> datetime:
 
 
 async def _commit_if_possible(session: AsyncSession) -> None:
+    """Persist agent-memory writes under the correct transaction-ownership mode.
+
+    Request-managed (RLS) sessions own begin + commit at the dependency seam, so
+    committing here would drop the transaction-local RLS GUCs; flush only
+    (participate) and let the request transaction commit at teardown. Legacy
+    sessions commit as before (reproducing the historical add + commit behavior).
+    The ``getattr`` guards keep partial test doubles working.
+    """
+    if request_manages_transaction(session):
+        flush = getattr(session, "flush", None)
+        if flush is not None:
+            await flush()
+        return
     commit = getattr(session, "commit", None)
     if commit is not None:
         await commit()

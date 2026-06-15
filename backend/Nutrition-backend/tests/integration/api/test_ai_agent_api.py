@@ -11,7 +11,7 @@ from lemon_ai_agent.chat_session import ChatbotResponse
 from lemon_ai_agent.llm import LLMRequest, LLMResponse
 from src.api.v1 import ai_agent
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 from src.services.privacy import ConsentRequiredError
 
@@ -183,7 +183,11 @@ def _client(settings: Settings | None = None) -> TestClient:
         FastAPI test client.
     """
     app = create_app()
+    # run_daily_coaching adopted get_rls_context_session; run_chatbot is still on
+    # get_async_session (Phase C). Override both so this mixed router's tests yield
+    # the fake session regardless of which seam a route uses.
     app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     if settings is not None:
         app.dependency_overrides[get_settings] = lambda: settings
     return TestClient(app)
