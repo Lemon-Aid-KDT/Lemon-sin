@@ -17,7 +17,7 @@ from src.api.v1.examples import (
     UNPROCESSABLE_ENTITY_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.dashboard import DashboardSummaryResponse
 from src.models.schemas.privacy import ConsentType
 from src.security.auth import AuthenticatedUser, require_dashboard_read
@@ -115,7 +115,7 @@ async def _require_sensitive_health_consent(
 async def get_dashboard_summary(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_dashboard_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     as_of: Annotated[date | None, Query()] = None,
     days: Annotated[int, Query(ge=1, le=365)] = 30,

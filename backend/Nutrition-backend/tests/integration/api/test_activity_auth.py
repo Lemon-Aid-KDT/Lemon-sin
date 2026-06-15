@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 from src.api.v1 import activity as activity_module
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.schemas.privacy import ConsentType
@@ -86,7 +86,7 @@ def test_returns_401_when_authentication_dependency_rejects(
 ) -> None:
     """Verify the route propagates 401 from ``require_analysis_read``."""
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(_FakeSession())
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(_FakeSession())
     monkeypatch.setattr(activity_module, "require_user_consent", _allow_consent)
     monkeypatch.setattr(activity_module, "record_sensitive_audit_event", _record_noop)
 
@@ -113,7 +113,7 @@ def test_returns_403_when_sensitive_consent_missing(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(activity_module, "require_user_consent", _deny)
     monkeypatch.setattr(activity_module, "record_sensitive_audit_event", _record_noop)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(_FakeSession())
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(_FakeSession())
     client = TestClient(app)
 
     response = client.post("/api/v1/activity/score", json=_VALID_REQUEST)
@@ -136,7 +136,7 @@ def test_returns_200_and_emits_audit_event_when_consent_granted(
     monkeypatch.setattr(activity_module, "require_user_consent", _allow_consent)
     monkeypatch.setattr(activity_module, "record_sensitive_audit_event", _capture_audit)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(_FakeSession())
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(_FakeSession())
     client = TestClient(app)
 
     response = client.post("/api/v1/activity/score", json=_VALID_REQUEST)

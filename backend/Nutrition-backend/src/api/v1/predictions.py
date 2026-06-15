@@ -16,7 +16,7 @@ from src.api.v1.examples import (
     WEIGHT_PREDICTION_RESPONSE_EXAMPLES,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.algorithm import WeightPredictionRequest, WeightPredictionResponse
 from src.models.schemas.privacy import ConsentType
 from src.prediction.selector import predict_weight_periods_selected
@@ -99,7 +99,7 @@ async def predict_weight(
         Body(openapi_examples=WEIGHT_PREDICTION_REQUEST_EXAMPLES),
     ],
     http_request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_analysis_read)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeightPredictionResponse:

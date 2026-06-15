@@ -13,7 +13,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import supplements
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.llm.ollama import OllamaClientError, OllamaStructuredOutputError
 from src.main import create_app
 from src.models.db.health import BodyProfileSnapshot
@@ -285,6 +285,7 @@ def _client(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     return TestClient(app)
 
 
@@ -451,6 +452,7 @@ def test_explain_supplement_analysis_preview_can_include_profile_context(
     monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -516,6 +518,7 @@ def test_explain_supplement_analysis_preview_can_include_medical_context(
     monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -582,6 +585,7 @@ def test_explain_supplement_analysis_preview_requires_profile_consent(
     monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -644,6 +648,7 @@ def test_explain_supplement_analysis_preview_requires_medical_consent(
     monkeypatch.setattr(supplements, "require_user_consent", fake_require_user_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -748,6 +753,7 @@ def test_parse_supplement_ocr_text_requires_ocr_consent(
     monkeypatch.setattr(supplements, "require_user_consent", _deny_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(f"/api/v1/supplements/analyses/{uuid4()}/ocr-text", json=_payload())

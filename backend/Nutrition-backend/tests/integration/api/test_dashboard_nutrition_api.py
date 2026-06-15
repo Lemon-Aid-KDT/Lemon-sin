@@ -10,7 +10,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import dashboard, nutrition
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.schemas.dashboard import (
     DashboardActivitySummary,
@@ -150,7 +150,7 @@ def _client() -> TestClient:
         FastAPI test client.
     """
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     return TestClient(app)
 
 

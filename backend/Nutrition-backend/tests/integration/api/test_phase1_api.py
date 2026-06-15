@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from src.api.v1 import activity as activity_module
 from src.api.v1 import predictions as predictions_module
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.prediction.selector import HALL_LITE_WARNING
 
@@ -70,7 +70,7 @@ def _apply_phase1_overrides(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> No
         monkeypatch: pytest monkeypatch fixture.
     """
     fake_session = _FakePhase1Session()
-    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     monkeypatch.setattr(predictions_module, "require_user_consent", _allow_consent)
     monkeypatch.setattr(predictions_module, "record_sensitive_audit_event", _record_noop_audit)
     monkeypatch.setattr(activity_module, "require_user_consent", _allow_consent)

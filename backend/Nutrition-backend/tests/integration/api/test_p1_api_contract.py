@@ -308,7 +308,7 @@ def test_p1_dashboard_endpoint_returns_summary_after_auth_in_development(
     monkeypatch.setattr(dashboard, "record_sensitive_audit_event", _record_noop_audit)
     monkeypatch.setattr(dashboard, "build_dashboard_summary", fake_build_dashboard_summary)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.get("/api/v1/dashboard/summary")
@@ -468,7 +468,7 @@ def test_meal_list_requires_meal_read_scope_and_returns_empty_filtered_results(
     monkeypatch.setattr(meals, "list_user_meal_records", fake_list_user_meal_records)
     monkeypatch.setattr(meals, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     app.dependency_overrides[auth_dependencies.require_current_user] = fake_current_user_write_only
     client = TestClient(app)
 
@@ -493,7 +493,7 @@ def test_meal_taxonomy_filter_not_found_returns_422(
 
     monkeypatch.setattr(meals, "list_user_meal_records", fake_list_user_meal_records)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.get("/api/v1/meals?cuisine_code=stale")

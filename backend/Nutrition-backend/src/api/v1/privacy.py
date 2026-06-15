@@ -40,7 +40,7 @@ router = APIRouter(prefix="/me", tags=["privacy"])
 @router.get("/privacy/consents", response_model=ConsentStateResponse)
 async def get_current_user_consents(
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_privacy_read)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ConsentStateResponse:
@@ -168,7 +168,7 @@ async def create_current_user_data_deletion_request(
 async def get_current_user_data_deletion_request(
     deletion_request_id: UUID,
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_privacy_read)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> DeletionRequestResponse:

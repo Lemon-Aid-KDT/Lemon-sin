@@ -2340,7 +2340,7 @@ async def explain_supplement_analysis_preview_route(
     http_request: Request,
     request: Annotated[SupplementAnalysisExplainRequest, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SupplementRecommendationExplainResponse:
     """Explain a stored analysis preview before user-confirmed registration.
@@ -2783,7 +2783,7 @@ async def get_latest_supplement_recommendations(
         AuthenticatedUser,
         Depends(require_supplement_recommendation_read),
     ],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SupplementImpactPreviewResponse:
     """Return the latest deterministic supplement impact preview.

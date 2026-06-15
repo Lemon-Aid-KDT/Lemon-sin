@@ -2,14 +2,36 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from fastapi import status
 from fastapi.testclient import TestClient
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
+
+
+async def _fake_rls_session() -> AsyncIterator[object]:
+    """Yield a stand-in session so request-validation tests never open a real engine.
+
+    The RLS-migrated routes depend on ``get_rls_context_session``, which eagerly
+    begins a transaction (connecting the shared async engine). Body-validation
+    422s fire before the route handler runs, so the yielded value is never used;
+    overriding it keeps these stateless validation tests off the real engine
+    (avoiding cross-test event-loop pollution).
+    """
+    yield object()
+
+
+def _client_without_db() -> TestClient:
+    """Build a TestClient whose RLS session dependency is a no-op stand-in."""
+    app = create_app()
+    app.dependency_overrides[get_rls_context_session] = _fake_rls_session
+    return TestClient(app)
 
 
 def test_activity_rejects_too_many_peer_scores() -> None:
     """Verify activity score requests cap peer score payload size."""
-    client = TestClient(create_app())
+    client = _client_without_db()
 
     response = client.post(
         "/api/v1/activity/score",
@@ -25,7 +47,7 @@ def test_activity_rejects_too_many_peer_scores() -> None:
 
 def test_activity_rejects_too_many_chronic_disease_codes() -> None:
     """Verify profile disease-code list size is bounded."""
-    client = TestClient(create_app())
+    client = _client_without_db()
 
     response = client.post(
         "/api/v1/activity/score",
@@ -46,7 +68,7 @@ def test_activity_rejects_too_many_chronic_disease_codes() -> None:
 
 def test_weight_prediction_rejects_period_over_one_year() -> None:
     """Verify prediction periods are capped at one year."""
-    client = TestClient(create_app())
+    client = _client_without_db()
 
     response = client.post(
         "/api/v1/predictions/weight",
@@ -66,7 +88,7 @@ def test_weight_prediction_rejects_period_over_one_year() -> None:
 
 def test_weight_prediction_rejects_too_many_periods() -> None:
     """Verify period list size is bounded."""
-    client = TestClient(create_app())
+    client = _client_without_db()
 
     response = client.post(
         "/api/v1/predictions/weight",
@@ -86,7 +108,7 @@ def test_weight_prediction_rejects_too_many_periods() -> None:
 
 def test_nutrition_analysis_rejects_too_many_intakes() -> None:
     """Verify nutrition analysis caps intake list size."""
-    client = TestClient(create_app())
+    client = _client_without_db()
 
     response = client.post(
         "/api/v1/nutrition/analyze",
@@ -103,7 +125,7 @@ def test_nutrition_analysis_rejects_too_many_intakes() -> None:
 
 def test_nutrition_analysis_rejects_long_code_and_unit() -> None:
     """Verify nutrient code and unit string lengths are bounded."""
-    client = TestClient(create_app())
+    client = _client_without_db()
 
     response = client.post(
         "/api/v1/nutrition/analyze",

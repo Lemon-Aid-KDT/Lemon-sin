@@ -29,7 +29,7 @@ from src.api.v1.examples import (
     UNSUPPORTED_MEDIA_TYPE_EXAMPLE,
 )
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session, get_rls_context_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.meal import (
     MealConfirmationRequest,
     MealExplainRequest,
@@ -309,7 +309,7 @@ async def list_food_catalog(
 async def list_meal_records(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     cuisine_code: Annotated[str | None, Query(max_length=40)] = None,
     course_code: Annotated[str | None, Query(max_length=60)] = None,
@@ -404,7 +404,7 @@ async def explain_confirmed_meal(
     meal_id: UUID,
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_meal_read)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     request: Annotated[
         MealExplainRequest | None,

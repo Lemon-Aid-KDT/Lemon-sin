@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 from src.api.v1 import predictions as predictions_module
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.schemas.privacy import ConsentType
@@ -76,7 +76,7 @@ def test_returns_401_when_authentication_dependency_rejects(
 ) -> None:
     """Verify the route now wires ``require_analysis_read`` and propagates 401."""
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(_FakeSession())
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(_FakeSession())
     monkeypatch.setattr(predictions_module, "require_user_consent", _allow_consent)
     monkeypatch.setattr(predictions_module, "record_sensitive_audit_event", _record_noop)
 
@@ -104,7 +104,7 @@ def test_returns_403_when_sensitive_consent_missing(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(predictions_module, "require_user_consent", _deny)
     monkeypatch.setattr(predictions_module, "record_sensitive_audit_event", _record_noop)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(session)
     client = TestClient(app)
 
     response = client.post("/api/v1/predictions/weight", json=_VALID_REQUEST)
@@ -128,7 +128,7 @@ def test_returns_200_and_emits_audit_event_when_consent_granted(
     monkeypatch.setattr(predictions_module, "require_user_consent", _allow_consent)
     monkeypatch.setattr(predictions_module, "record_sensitive_audit_event", _capture_audit)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(session)
     client = TestClient(app)
 
     response = client.post("/api/v1/predictions/weight", json=_VALID_REQUEST)
@@ -145,7 +145,7 @@ def test_returns_200_and_emits_audit_event_when_consent_granted(
 def test_returns_401_when_scope_check_rejects_user(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify users missing ``analysis_read`` scope are rejected before audit/consent."""
     app = create_app()
-    app.dependency_overrides[get_async_session] = _session_dependency(_FakeSession())
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(_FakeSession())
     monkeypatch.setattr(predictions_module, "require_user_consent", _allow_consent)
     monkeypatch.setattr(predictions_module, "record_sensitive_audit_event", _record_noop)
 
