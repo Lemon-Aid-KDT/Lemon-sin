@@ -10,7 +10,7 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from src.api.v1 import privacy
-from src.db.dependencies import get_async_session, get_rls_context_session
+from src.db.dependencies import get_rls_context_session
 from src.main import create_app
 from src.models.db.privacy import ConsentRecord, DeletionRequest
 from src.models.schemas.privacy import ConsentType, DeletionRequestStatus, DeletionRequestType
@@ -177,7 +177,7 @@ def test_create_deletion_request_route_returns_accepted(
 
     monkeypatch.setattr(privacy, "create_delete_all_user_data_request", fake_delete_all)
     app = create_app()
-    app.dependency_overrides[get_async_session] = _fake_session_dependency
+    app.dependency_overrides[get_rls_context_session] = _fake_session_dependency
     client = TestClient(app)
 
     response = client.post(

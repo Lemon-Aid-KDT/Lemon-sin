@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session, get_rls_context_session
+from src.db.dependencies import get_rls_context_session
 from src.models.schemas.privacy import (
     ConsentActionResponse,
     ConsentStateResponse,
@@ -130,7 +130,7 @@ async def revoke_current_user_consent(
 async def create_current_user_data_deletion_request(
     payload: DeletionRequestCreate,
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     current_user: Annotated[AuthenticatedUser, Depends(require_privacy_delete)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> DeletionRequestResponse:
