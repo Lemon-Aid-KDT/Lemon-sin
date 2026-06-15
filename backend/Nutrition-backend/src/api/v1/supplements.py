@@ -1000,17 +1000,6 @@ def _aggregate_confidence_bucket(previews: list[SupplementAnalysisPreview]) -> s
     return "none"
 
 
-async def _commit_consent_read_transaction(session: AsyncSession) -> None:
-    """Close an implicit consent-read transaction before service-level writes.
-
-    Args:
-        session: Request-scoped async database session.
-    """
-    in_transaction = getattr(session, "in_transaction", None)
-    if callable(in_transaction) and in_transaction():
-        await session.commit()
-
-
 async def _require_sensitive_health_consent(
     session: AsyncSession,
     current_user: AuthenticatedUser,
@@ -1344,7 +1333,7 @@ async def analyze_supplement_label(
 async def create_supplement_analysis_session(
     http_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SupplementAnalysisSessionResponse:
     """Create a lightweight multi-image supplement analysis session id.
@@ -1368,7 +1357,6 @@ async def create_supplement_analysis_session(
             ConsentType.OCR_IMAGE_PROCESSING,
         )
     except ConsentRequiredError as exc:
-        await _commit_consent_read_transaction(session)
         await record_sensitive_audit_event(
             session,
             current_user,
@@ -1389,7 +1377,6 @@ async def create_supplement_analysis_session(
             },
         ) from exc
 
-    await _commit_consent_read_transaction(session)
     response = _build_analysis_session_response(f"multi-{uuid4()}")
     await record_sensitive_audit_event(
         session,
@@ -1920,7 +1907,7 @@ async def finalize_supplement_analysis_session(
         ),
     ],
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SupplementMultiImageAnalysisPreview:
     """Rebuild a safe merged preview for an existing multi-image analysis batch.
@@ -1945,7 +1932,6 @@ async def finalize_supplement_analysis_session(
             ConsentType.OCR_IMAGE_PROCESSING,
         )
     except ConsentRequiredError as exc:
-        await _commit_consent_read_transaction(session)
         await record_sensitive_audit_event(
             session,
             current_user,
@@ -1965,8 +1951,6 @@ async def finalize_supplement_analysis_session(
                 "required_consents": [ConsentType.OCR_IMAGE_PROCESSING.value],
             },
         ) from exc
-
-    await _commit_consent_read_transaction(session)
 
     analysis_runs = await _load_multi_image_analysis_runs(
         session,
@@ -2033,7 +2017,7 @@ async def lookup_supplement_barcode(
     http_request: Request,
     request: Annotated[SupplementBarcodeLookupRequest, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     barcode_service: Annotated[
         SupplementBarcodeLookupService,
@@ -2152,7 +2136,7 @@ async def parse_supplement_analysis_ocr_text_preview(
     http_request: Request,
     request: Annotated[SupplementOCRTextParseRequest, Body()],
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SupplementAnalysisPreview:
     """Attach OCR text to an existing preview and return structured parse candidates.

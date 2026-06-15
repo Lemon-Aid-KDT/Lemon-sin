@@ -16,7 +16,7 @@ from PIL import Image
 from pydantic import SecretStr
 from src.api.v1 import supplements
 from src.config import Settings, get_settings
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 from src.models.db.privacy import AuditLog
 from src.models.db.supplement import SupplementAnalysisRun
@@ -387,6 +387,7 @@ def test_analyze_supplement_label_accepts_valid_png_and_stores_preview(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -464,6 +465,7 @@ def test_analyze_supplement_label_schedules_post_commit_learning_when_gate_open(
     app = create_app(settings=settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -506,6 +508,7 @@ def test_analyze_supplement_label_skips_learning_schedule_when_gate_closed(
 
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -531,6 +534,7 @@ def test_analyze_supplement_label_multi_accepts_roles_and_returns_group(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -584,6 +588,7 @@ def test_analyze_supplement_label_multi_accepts_json_roles(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -613,6 +618,7 @@ def test_analyze_supplement_label_multi_rejects_role_count_mismatch(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -640,6 +646,7 @@ def test_create_supplement_analysis_session_returns_upload_contract(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post("/api/v1/supplements/analysis-sessions")
@@ -668,6 +675,7 @@ def test_upload_supplement_analysis_session_image_returns_current_group(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = (
         _empty_analysis_adapters
     )
@@ -814,6 +822,7 @@ def test_finalize_supplement_analysis_session_returns_merged_group(
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(f"/api/v1/supplements/analysis-sessions/{group_id}/finalize")
@@ -843,6 +852,7 @@ def test_finalize_supplement_analysis_session_returns_404_for_missing_group(
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post("/api/v1/supplements/analysis-sessions/missing/finalize")
@@ -862,6 +872,7 @@ def test_analyze_supplement_label_requires_ocr_consent(
     app = create_app(settings=settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -883,6 +894,7 @@ def test_analyze_supplement_label_rejects_media_type_spoofing(
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -906,6 +918,7 @@ def test_analyze_supplement_label_rejects_oversized_image(
     app = create_app(settings=settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
@@ -927,6 +940,7 @@ def test_analyze_supplement_label_rejects_idempotency_conflict(
     monkeypatch.setattr(supplements, "record_sensitive_audit_event", _record_noop_audit)
     app = create_app()
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     client = TestClient(app)
 
     response = client.post(
