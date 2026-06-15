@@ -546,7 +546,7 @@ dart run build_runner watch       # 변경 감시
 
 # 정적 분석
 flutter analyze
-dart format lib test --line-length=100
+dart format lib test
 
 # 테스트
 flutter test                                    # 전체
