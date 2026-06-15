@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -317,10 +317,22 @@ async def parse_supplement_analysis_ocr_text(
     active_parser = parser or OllamaSupplementParser(settings)
     parse_result = await active_parser.parse_supplement_ocr_text(normalized_text)
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
-    parse_result = _sanitize_parser_result(parse_result)
-    parse_result = _merge_ocr_pattern_fallbacks(parse_result, normalized_text)
-    parse_result = _merge_layout_precaution_fallbacks(parse_result, ocr_layout)
-    parse_result = _merge_ocr_text_section_fallbacks(parse_result, normalized_text)
+    try:
+        # The deterministic OCR fallbacks below append candidates on top of the
+        # already-validated LLM result. When a label yields many ingredient-like
+        # lines, the enriched list can exceed the structured schema's max_length and
+        # make model_validate() raise a raw pydantic ValidationError. Translate it
+        # into the recoverable parser error (the same signal _validate_parser_result
+        # raises for the over-limit case it would otherwise check below) so callers
+        # degrade to parser_used=False with a warning instead of returning HTTP 500.
+        parse_result = _sanitize_parser_result(parse_result)
+        parse_result = _merge_ocr_pattern_fallbacks(parse_result, normalized_text)
+        parse_result = _merge_layout_precaution_fallbacks(parse_result, ocr_layout)
+        parse_result = _merge_ocr_text_section_fallbacks(parse_result, normalized_text)
+    except ValidationError as exc:
+        raise SupplementParserInputError(
+            "Parser fallback enrichment exceeded the structured result schema bounds."
+        ) from exc
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
     async with persist_scope(session):

@@ -40,6 +40,7 @@ from src.parsing.layout_parser import parse_label_layout
 from src.security.auth import AuthenticatedUser
 from src.services import supplement_image_analysis
 from src.services.supplement_image_analysis import (
+    OCR_PARSE_PREVIEW_UNAVAILABLE_CODE,
     OCR_VERIFICATION_MISMATCH_CODE,
     SUPPLEMENT_FACTS_REQUIRED_CODE,
     SupplementImageAnalysisAdapters,
@@ -869,6 +870,56 @@ async def test_analyze_supplement_image_runs_ocr_then_parser_when_adapter_suppli
     assert preview.pipeline_metadata.parser_contract_version == result.record.algorithm_version
     assert preview.pipeline_metadata.missing_required_sections == []
     assert fake_session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_degrades_gracefully_when_fallback_exceeds_max() -> None:
+    """Verify an over-limit parser+fallback result degrades instead of raising (no 500).
+
+    Regression for the legacy per-image analyze-multi path: when the LLM returns the
+    maximum ingredient candidates and OCR yields one more amount-pattern candidate, the
+    deterministic fallback merge would push the structured result past the schema bound
+    and raise a raw ``pydantic`` ``ValidationError`` that escaped to HTTP 500. The
+    orchestrator must surface this as a recoverable parse failure (``parser_used=False``
+    with the ``ocr_parse_preview_unavailable`` warning) so the route still returns 202.
+    """
+    settings = _settings()
+    max_candidates = settings.supplement_parser_max_ingredients
+    maxed_result = SupplementStructuredParseResult.model_validate(
+        {
+            "ingredient_candidates": [
+                {
+                    "display_name": f"성분{index}",
+                    "amount": 1,
+                    "unit": "mg",
+                    "confidence": 0.9,
+                }
+                for index in range(max_candidates)
+            ],
+            "missing_required_sections": [],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+    fake_session = _FakePipelineSession()
+    # OCR yields one amount-pattern ingredient the LLM result did not include, so the
+    # deterministic fallback merge appends it on top of the already-maxed candidate list.
+    fake_ocr = _FakeOCRAdapter("아연\t10 mg\t50%")
+    fake_parser = _FakeParser(maxed_result)
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        settings,
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    assert result.parser_used is False
+    assert OCR_PARSE_PREVIEW_UNAVAILABLE_CODE in result.ocr_warning_codes
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.pipeline_metadata.llm_parser_used is False
 
 
 @pytest.mark.asyncio

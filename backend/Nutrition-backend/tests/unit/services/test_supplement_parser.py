@@ -663,6 +663,58 @@ async def test_parse_supplement_analysis_ocr_text_adds_ocr_pattern_fallback_cand
 
 
 @pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_degrades_when_fallback_exceeds_max() -> None:
+    """Over-limit fallback enrichment degrades to a recoverable error, not a raw 500.
+
+    Regression: when the LLM already returns the maximum number of ingredient
+    candidates, the deterministic OCR-pattern fallback can append one more, pushing the
+    structured result past the schema's ``max_length``. ``model_validate`` then raises a
+    raw ``pydantic`` ``ValidationError`` that previously escaped this service and
+    surfaced as HTTP 500 on the legacy per-image analyze-multi path. The service must
+    translate it into the recoverable ``SupplementParserInputError`` so callers degrade
+    to ``parser_used=False`` with a warning instead.
+    """
+    settings = _settings()
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    max_candidates = settings.supplement_parser_max_ingredients
+    maxed_result = SupplementStructuredParseResult.model_validate(
+        {
+            "ingredient_candidates": [
+                {
+                    "display_name": f"성분{index}",
+                    "amount": 1,
+                    "unit": "mg",
+                    "confidence": 0.9,
+                }
+                for index in range(max_candidates)
+            ],
+            "missing_required_sections": [],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+    with pytest.raises(SupplementParserInputError):
+        await parse_supplement_analysis_ocr_text(
+            cast(AsyncSession, fake_session),
+            _user(),
+            record.id,
+            # An amount-pattern ingredient line the LLM result omitted; the fallback
+            # merge appends it, pushing the candidate list to max + 1.
+            "아연\t10 mg\t50%",
+            "paddleocr_local",
+            0.74,
+            settings,
+            parser=_FakeParser(maxed_result),
+        )
+
+    # Degraded before any preview write committed.
+    assert fake_session.committed is False
+    assert record.status == SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
+
+
+@pytest.mark.asyncio
 async def test_parse_supplement_analysis_ocr_text_pairs_split_name_and_amount_lines() -> None:
     """Verify OCR table cells split across lines still preserve visible amounts."""
     record = _analysis_run()
