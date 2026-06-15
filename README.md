@@ -23,6 +23,62 @@
 
 ---
 
+## ⚠️ 이 브랜치 주의 — DB 연결이 `lemon_app`(FORCE RLS Stage-2)로 바뀌었습니다
+
+> **이 브랜치(`feat/ai-agent-chat-import`)를 받아 로컬에서 실행하기 전에 꼭 읽어주세요.**
+> `docker-compose.yml`의 백엔드 DB 연결이 슈퍼유저 `lemon` → **비-슈퍼유저 요청 역할 `lemon_app`** 으로 전환되었습니다(FORCE RLS Stage-2 flip, 커밋 `a957d1a4`). 준비가 안 된 로컬 DB에서는 **백엔드가 DB 연결에 실패하거나(인증) owner write가 막힐(fail-closed) 수 있습니다.** 아래 1회 설정만 하면 됩니다.
+
+### 무엇이 / 왜 바뀌었나
+- 지금까지 앱은 모든 테이블을 소유한 **슈퍼유저 `lemon`** 으로 접속했습니다. 슈퍼유저는 Row-Level Security(RLS)를 **우회**하므로, 행 단위 소유자 격리 정책이 실제로는 적용되지 않았습니다.
+- 이제 일반 요청은 **`lemon_app`(NOSUPERUSER·NOBYPASSRLS)** 으로 접속합니다. 그러면 사용자 데이터 read/write가 요청별 GUC(`is_local` owner-subject)를 통해 **`0023b`/`0023c`/`0041` RLS 정책을 강제로 따르게** 됩니다 — "내 데이터만" 보고 쓰는 것을 **DB 레벨에서 보장**합니다.
+- 단, **out-of-band 감사 로그 기록**과 **post-commit 학습 쓰기**는 슈퍼유저 권한이 필요하므로, 이 둘만 별도의 **privileged 엔진(`lemon`)** 으로 분리했습니다(`AUDIT_DATABASE_URL`, `LEARNING_DATABASE_URL`).
+- 백엔드는 기동 시 `verify_stage2_privileged_database_urls`(`backend/Nutrition-backend/src/main.py`) 가드로 **"DATABASE_URL이 `lemon_app`인데 AUDIT/LEARNING이 privileged가 아니면 즉시 기동 실패"** 하도록 fail-fast 합니다.
+
+### 현재 `docker-compose.yml`(backend) 설정 요약
+```yaml
+DATABASE_URL:          postgresql+asyncpg://lemon_app:lemon_app@db:5432/lemon   # 요청 역할 → RLS 적용
+AUDIT_DATABASE_URL:    postgresql+asyncpg://lemon:lemon@db:5432/lemon           # privileged(감사)
+LEARNING_DATABASE_URL: postgresql+asyncpg://lemon:lemon@db:5432/lemon           # privileged(학습)
+# 마이그레이션은 DDL 권한이 필요하므로 privileged lemon으로 실행한다(lemon_app은 alembic_version 권한 없음):
+#   DATABASE_URL='postgresql+asyncpg://lemon:lemon@db:5432/lemon' alembic upgrade head
+```
+
+### 로컬에서 실행하려면 (필수 1회 설정)
+`lemon_app` 역할은 마이그레이션 `0023a`가 **LOGIN 권한은 주지만 비밀번호는 만들지 않습니다**(비밀번호를 마이그레이션에 넣으면 시크릿이 커밋되므로). 따라서 앱이 `lemon_app:lemon_app`으로 접속하려면 **로컬 DB에서 비밀번호를 직접 설정**해야 합니다.
+
+```bash
+# 1) 마이그레이션 최신화(역할·권한·RLS 정책 생성) — compose가 기동 시 privileged URL로 자동 실행합니다.
+# 2) lemon_app 비밀번호를 compose 기본값과 동일하게 설정:
+docker exec -i lemon-aid-db-1 psql -U lemon -d lemon \
+  -c "ALTER ROLE lemon_app LOGIN PASSWORD 'lemon_app';"
+# 3) 백엔드 재기동:
+docker compose up -d backend
+```
+
+> 운영(production)에서는 `lemon_app` 비밀번호를 **시크릿에서 주입**하고 `DATABASE_URL`도 그 시크릿을 사용하세요. `'lemon_app'`은 로컬 개발 편의값일 뿐입니다.
+
+### 잘 됐는지 확인
+- 백엔드 health 200, `GET /me/privacy/consents` 200(감사 이벤트가 `audit_logs`에 기록되면 privileged 엔진이 정상 동작하는 것).
+- 요청 연결은 `lemon_app`, 감사/학습 연결은 `lemon`으로 분리되어 보이면 정상:
+  ```bash
+  docker exec -i lemon-aid-db-1 psql -U lemon -d lemon \
+    -c "SELECT usename, count(*) FROM pg_stat_activity WHERE datname='lemon' GROUP BY usename;"
+  ```
+- `permission denied` / RLS 관련 에러가 **0** 이어야 합니다.
+
+### 증상별 대처
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| 기동 직후 DB 연결 실패(auth) | `lemon_app` 비밀번호 미설정 | 위 2단계 `ALTER ROLE … PASSWORD 'lemon_app'` 실행 |
+| 기동은 되는데 owner write가 막힘(fail-closed) | 마이그레이션 미적용(역할·정책 없음) 또는 옛 컨테이너 재사용 | privileged URL로 `alembic upgrade head` 재적용 후 재기동 |
+| 기동 가드에서 즉시 실패 | AUDIT/LEARNING이 privileged 아님 | compose의 `AUDIT_DATABASE_URL`/`LEARNING_DATABASE_URL`을 `lemon`으로 |
+| 코드 변경이 반영 안 됨 | 소스가 이미지에 baked(바인드마운트 아님) | `docker compose build backend` 후 재기동 |
+
+### 원래대로(슈퍼유저 `lemon`) 롤백
+`docker-compose.yml`에서 `DATABASE_URL`을 `lemon:lemon@db`로 되돌리고, `AUDIT_DATABASE_URL`/`LEARNING_DATABASE_URL`과 alembic의 privileged override를 제거한 뒤, 필요하면 `ALTER ROLE lemon_app PASSWORD NULL;`로 로그인을 닫고 컨테이너를 재기동하세요.
+
+---
+
 ## 📋 프로젝트 정의
 
 Lemon Aid는 (주)레몬헬스케어 기업 프로젝트 맥락에서 진행하는 AI 헬스케어 팀 프로젝트입니다. 현재 저장소는 건강의신 직접 연동 완성본이 아니라, 영양제 분석을 중심으로 음식 사진 분석, AI agent chat, 모바일/프론트엔드 파트를 통합하기 위한 참조 구현 작업 공간입니다.
