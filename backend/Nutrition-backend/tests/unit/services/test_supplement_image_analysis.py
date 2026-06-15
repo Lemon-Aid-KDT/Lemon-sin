@@ -2165,3 +2165,58 @@ async def test_analyze_fused_supplement_images_creates_single_run_and_parses_onc
     assert result.parser_used is True
     assert result.record.ocr_text_hash is not None
     assert result.record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
+    # No learning consents → gate closed → no per-image learning artifacts bundled.
+    assert result.learning_artifacts is None
+    assert result.learning_artifacts_per_image == ()
+
+
+@pytest.mark.asyncio
+async def test_analyze_fused_supplement_images_emits_per_image_learning_artifacts() -> None:
+    """One-shot fusion bundles one learning artifact PER image, not one fused.
+
+    The fused parse is a single preview, but the section-detector training
+    dataset needs each physical image with its own layout-bearing OCR result, so
+    the orchestrator emits a per-image artifact list (all linked to the single
+    fused run) and leaves the singular ``learning_artifacts`` field None.
+    """
+    fake_session = _FakePipelineSession()
+    fake_ocr = _SequenceOCRAdapter(
+        [
+            OCRResult(text="ALPHAONE Vitamin C", provider="clova", confidence=0.9),
+            OCRResult(text="BRAVOTWO 1000 mg", provider="clova", confidence=0.8),
+        ]
+    )
+    fake_parser = _FakeParser(_parse_result())
+
+    result = await supplement_image_analysis.analyze_fused_supplement_images(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        images=[_upload(_png_bytes()), _upload(_png_bytes())],
+        image_roles=["front_label", "intake_method"],
+        client_request_id=None,
+        settings=Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_image_learning_pipeline=True,
+            enable_pgvector_storage=True,
+            image_retention_days=30,
+        ),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+        learning_consents=(
+            ConsentType.OCR_IMAGE_PROCESSING,
+            ConsentType.DATA_RETENTION,
+            ConsentType.IMAGE_LEARNING_DATASET,
+        ),
+    )
+
+    # The fused path bundles one artifact per image — NOT a single fused artifact.
+    assert result.learning_artifacts is None
+    assert len(result.learning_artifacts_per_image) == 2
+    # All per-image artifacts link to the SAME single fused analysis run.
+    assert {a.analysis_id for a in result.learning_artifacts_per_image} == {result.record.id}
+    # Each artifact carries its OWN image's OCR result (layout-bearing), not the
+    # layout-less fused text — proving the per-image learning signal is preserved.
+    per_image_texts = {
+        a.ocr_result.text for a in result.learning_artifacts_per_image if a.ocr_result is not None
+    }
+    assert per_image_texts == {"ALPHAONE Vitamin C", "BRAVOTWO 1000 mg"}
+    assert all(a.image_bytes for a in result.learning_artifacts_per_image)

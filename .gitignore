@@ -119,6 +119,9 @@ coverage/
 # OCR evaluation artifacts may contain provider-derived observations.
 outputs/generated/ocr-eval/
 
+# One-shot fusion real-label verification reports (contain parsed product/label content).
+outputs/oneshot-fusion-verification/
+
 # Local supplement source image datasets and private review fixtures.
 data/nutrition_reference/crawling-image/
 data/nutrition_reference/sample-image/

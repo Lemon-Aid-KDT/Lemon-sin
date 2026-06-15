@@ -264,6 +264,16 @@ class SupplementImageAnalysisResult:
             learning gate passed; ``None`` when learning is not eligible. The
             orchestrator does not itself persist learning rows — the route
             schedules :func:`store_supplement_learning_artifacts` post-commit.
+            Used by the single-image and per-image (distinct) paths.
+        learning_artifacts_per_image: Deferred post-commit learning inputs, one
+            per physical image, used only by the one-shot fusion path
+            (:func:`analyze_fused_supplement_images`). The fused parse yields a
+            single preview, but the section-detector training dataset needs each
+            image with its own layout-bearing OCR result (the fused ``OCRResult``
+            drops per-image layout), so each image is bundled separately. Empty
+            for the single-image and distinct paths (which use
+            ``learning_artifacts``). The route schedules one
+            :func:`store_supplement_learning_artifacts` task per entry.
     """
 
     record: SupplementAnalysisRun
@@ -277,6 +287,7 @@ class SupplementImageAnalysisResult:
     ocr_attempted: bool
     ocr_warning_codes: tuple[str, ...]
     learning_artifacts: SupplementLearningArtifactsInput | None
+    learning_artifacts_per_image: tuple[SupplementLearningArtifactsInput, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -815,18 +826,24 @@ async def analyze_fused_supplement_images(
             image_metadata=fused_metadata,
         )
 
-    learning_gate_allowed = bool(representative and representative.learning_gate_allowed)
-    image_bytes = representative.image_bytes if representative else None
-    learning_artifacts = (
+    # Per-image learning artifacts: the fused parse yields ONE preview, but the
+    # section-detector training dataset needs each physical image paired with its
+    # own layout-bearing OCR result (the fused OCRResult intentionally drops
+    # per-image layout). Emit one artifact per image whose learning gate passed
+    # and whose bytes were retained; all link to the single fused analysis run id
+    # — ``maybe_store_learning_image_object`` dedups on
+    # ``(owner, analysis_id, image_sha256)``, so distinct images coexist under one
+    # run and each gets its own section annotation task.
+    learning_artifacts_per_image = tuple(
         SupplementLearningArtifactsInput(
             analysis_id=result_record.id,
-            image_bytes=image_bytes,
-            image_metadata=fused_metadata,
-            ocr_result=fused_ocr_result,
+            image_bytes=ocr_only.image_bytes,
+            image_metadata=ocr_only.image_metadata,
+            ocr_result=ocr_only.ocr_result,
             learning_consents=learning_consents,
         )
-        if learning_gate_allowed and image_bytes is not None
-        else None
+        for ocr_only in ocr_only_results
+        if ocr_only.learning_gate_allowed and ocr_only.image_bytes is not None
     )
     return SupplementImageAnalysisResult(
         record=result_record,
@@ -841,7 +858,8 @@ async def analyze_fused_supplement_images(
         parser_used=parsed_record is not None,
         ocr_attempted=ocr_attempted,
         ocr_warning_codes=warning_codes,
-        learning_artifacts=learning_artifacts,
+        learning_artifacts=None,
+        learning_artifacts_per_image=learning_artifacts_per_image,
     )
 
 

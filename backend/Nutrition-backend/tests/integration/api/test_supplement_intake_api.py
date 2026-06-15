@@ -683,7 +683,10 @@ def test_analyze_supplement_label_multi_single_product_fuses_to_one_run(
     """single_product fuses N images into ONE run with a single merged preview."""
     fake_session = _FakeSupplementSession()
     monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
-    app = create_app()
+    # Fusion is dark-launched (default False); enable it explicitly for this path.
+    fusion_settings = Settings(supplement_one_shot_fusion_enabled=True)
+    app = create_app(settings=fusion_settings)
+    app.dependency_overrides[get_settings] = lambda: fusion_settings
     app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
     app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
     app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = _fusion_adapters
@@ -748,6 +751,115 @@ def test_analyze_supplement_label_multi_distinct_products_keeps_per_image(
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert len(fake_session.added_analyses) == 2
+
+
+def test_analyze_supplement_label_multi_single_product_falls_through_when_fusion_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dark-launch default: single_product without the flag uses the per-image path.
+
+    With ``supplement_one_shot_fusion_enabled`` False (the dark-launch default),
+    a single_product request must fall through to the distinct per-image branch
+    and persist one run per image — never the fused single run.
+    """
+    fake_session = _FakeSupplementSession()
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+    disabled_settings = Settings(supplement_one_shot_fusion_enabled=False)
+    app = create_app(settings=disabled_settings)
+    app.dependency_overrides[get_settings] = lambda: disabled_settings
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = _fusion_adapters
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze-multi",
+        files=[
+            ("images", ("front.png", _png_bytes(), "image/png")),
+            ("images", ("intake.png", _png_bytes(), "image/png")),
+        ],
+        data={
+            "image_roles": ["front_label", "intake_method"],
+            "merge_strategy": "single_product",
+        },
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    # Flag off → fusion skipped → per-image distinct path → one run per image.
+    assert len(fake_session.added_analyses) == 2
+
+
+def test_analyze_supplement_label_multi_single_product_schedules_per_image_learning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One-shot fusion schedules one post-commit learning task PER image.
+
+    The fused parse is a single preview, but each physical image must reach the
+    section-detector dataset with its own layout-bearing OCR result, so the route
+    schedules ``store_supplement_learning_artifacts`` once per image. All
+    artifacts link to the single fused run id.
+    """
+    fake_session = _FakeSupplementSession()
+    monkeypatch.setattr(supplements, "require_user_consent", _allow_consent)
+
+    learning_consents = (
+        ConsentType.OCR_IMAGE_PROCESSING,
+        ConsentType.DATA_RETENTION,
+        ConsentType.IMAGE_LEARNING_DATASET,
+    )
+
+    async def _grant_learning_consents(
+        *_args: object, **_kwargs: object
+    ) -> tuple[ConsentType, ...]:
+        return learning_consents
+
+    monkeypatch.setattr(
+        supplements, "_collect_learning_consents_if_enabled", _grant_learning_consents
+    )
+    monkeypatch.setattr(supplements, "build_learning_object_store", lambda _settings: object())
+
+    captured: list[dict[str, object]] = []
+
+    async def _recording_store(**kwargs: object) -> None:
+        captured.append(kwargs)
+
+    monkeypatch.setattr(supplements, "store_supplement_learning_artifacts", _recording_store)
+
+    settings = Settings(
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        enable_image_learning_pipeline=True,
+        enable_pgvector_storage=True,
+        image_retention_days=30,
+        supplement_one_shot_fusion_enabled=True,
+    )
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_async_session] = _session_dependency(fake_session)
+    app.dependency_overrides[get_rls_context_session] = _session_dependency(fake_session)
+    app.dependency_overrides[supplements.get_supplement_image_analysis_adapters] = _fusion_adapters
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/supplements/analyze-multi",
+        files=[
+            ("images", ("front.png", _png_bytes(), "image/png")),
+            ("images", ("intake.png", _png_bytes(), "image/png")),
+        ],
+        data={
+            "image_roles": ["front_label", "intake_method"],
+            "merge_strategy": "single_product",
+        },
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    # Exactly ONE fused analysis run for the whole batch...
+    assert len(fake_session.added_analyses) == 1
+    # ...but one scheduled learning task PER image (two images here).
+    assert len(captured) == 2
+    # Every per-image artifact links to the single fused run.
+    analysis_ids = {kwargs["artifacts"].analysis_id for kwargs in captured}
+    assert len(analysis_ids) == 1
+    assert all(kwargs["artifacts"].learning_consents == learning_consents for kwargs in captured)
 
 
 def test_analyze_supplement_label_multi_rejects_role_count_mismatch(

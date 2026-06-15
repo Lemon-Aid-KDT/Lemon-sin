@@ -1804,11 +1804,15 @@ async def analyze_supplement_label_multi(
                     adapters=selected_adapters,
                     learning_consents=learning_consents,
                 )
-                if fused_result.learning_artifacts is not None:
+                # One learning artifact per image: the fused parse is a single
+                # preview, but the section-detector dataset needs each image with
+                # its own layout-bearing OCR result. Schedule one post-commit task
+                # per image (all link to the single fused run id).
+                for fused_learning_artifact in fused_result.learning_artifacts_per_image:
                     background_tasks.add_task(
                         store_supplement_learning_artifacts,
                         user=current_user,
-                        artifacts=fused_result.learning_artifacts,
+                        artifacts=fused_learning_artifact,
                         settings=settings,
                         object_store=build_learning_object_store(settings),
                     )

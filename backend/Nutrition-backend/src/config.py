@@ -562,7 +562,10 @@ class Settings(BaseSettings):
     # One-shot multi-image OCR fusion: when a batch is one product
     # (merge_strategy=single_product), OCR every image in-request, fuse the text,
     # and run the structured parser ONCE so the model sees the whole label.
-    supplement_one_shot_fusion_enabled: bool = Field(default=True)
+    # Dark-launched (default False): single_product requests fall through to the
+    # per-image distinct path until real multi-image label verification passes.
+    # Flip to True (env override) to exercise the fusion path.
+    supplement_one_shot_fusion_enabled: bool = Field(default=False)
     regulated_document_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     sensitive_document_original_image_retention_seconds: int = Field(default=0, ge=0, le=3600)
 
