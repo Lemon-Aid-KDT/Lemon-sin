@@ -58,7 +58,6 @@ from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import (
     build_confirmed_supplement_learning_metadata,
     collect_active_learning_consents,
-    enqueue_learning_embedding_job_for_confirmation,
 )
 from src.llm.ollama import (
     OllamaClientError,
@@ -131,8 +130,10 @@ from src.services.supplement_explanation import (
 )
 from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
+    SupplementLearningEmbeddingInput,
     analyze_supplement_image,
     store_supplement_learning_artifacts,
+    store_supplement_learning_embedding_job,
 )
 from src.services.supplement_intake import (
     SupplementImageValidationError,
@@ -2637,6 +2638,7 @@ async def create_user_supplement(
         UserSupplementCreate,
         Body(openapi_examples=SUPPLEMENT_CREATE_REQUEST_EXAMPLES),
     ],
+    background_tasks: BackgroundTasks,
     current_user: Annotated[AuthenticatedUser, Depends(require_supplement_write)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -2656,71 +2658,82 @@ async def create_user_supplement(
     Raises:
         HTTPException: If consent is missing, preview state is invalid, or payload is invalid.
     """
-    await _require_sensitive_health_consent(session, current_user, http_request, settings)
-    try:
-        result = await create_user_supplement_from_confirmation(
+    # Route-owned RLS transaction (see rls_request_transaction): owner reads/writes
+    # commit before the response is sent, so the post-commit learning-embedding
+    # BackgroundTask runs against durable rows. The embedding enqueue itself
+    # commits and reads FORCE-RLS learning tables, so it is deferred to a fresh
+    # privileged session out-of-band instead of running inside this transaction.
+    async with rls_request_transaction(session, current_user, settings):
+        await _require_sensitive_health_consent(session, current_user, http_request, settings)
+        try:
+            result = await create_user_supplement_from_confirmation(
+                session,
+                current_user,
+                request,
+                settings,
+            )
+        except SupplementRegistrationValidationError as exc:
+            raise _supplement_http_error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="invalid_supplement_confirmation",
+                message=str(exc),
+            ) from exc
+        except SupplementPreviewNotFoundError as exc:
+            raise _supplement_http_error(
+                status.HTTP_404_NOT_FOUND,
+                code="supplement_analysis_not_found",
+                message=str(exc),
+            ) from exc
+        except (SupplementPreviewExpiredError, SupplementPreviewStateError) as exc:
+            raise _supplement_http_error(
+                status.HTTP_409_CONFLICT,
+                code="supplement_analysis_not_confirmable",
+                message=str(exc),
+            ) from exc
+
+        learning_consents = await _collect_learning_consents_if_enabled(
             session,
             current_user,
-            request,
             settings,
         )
-    except SupplementRegistrationValidationError as exc:
-        raise _supplement_http_error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            code="invalid_supplement_confirmation",
-            message=str(exc),
-        ) from exc
-    except SupplementPreviewNotFoundError as exc:
-        raise _supplement_http_error(
-            status.HTTP_404_NOT_FOUND,
-            code="supplement_analysis_not_found",
-            message=str(exc),
-        ) from exc
-    except (SupplementPreviewExpiredError, SupplementPreviewStateError) as exc:
-        raise _supplement_http_error(
-            status.HTTP_409_CONFLICT,
-            code="supplement_analysis_not_confirmable",
-            message=str(exc),
-        ) from exc
+        embedding_input = SupplementLearningEmbeddingInput(
+            analysis_id=result.supplement.source_analysis_run_id,
+            metadata_snapshot=build_confirmed_supplement_learning_metadata(
+                result.supplement,
+                result.ingredients,
+            ),
+            learning_consents=learning_consents,
+        )
+        learning_scheduled = embedding_input.analysis_id is not None and bool(learning_consents)
 
-    learning_consents = await _collect_learning_consents_if_enabled(
-        session,
-        current_user,
-        settings,
-    )
-    learning_job = await enqueue_learning_embedding_job_for_confirmation(
-        session=session,
-        user=current_user,
-        analysis_id=result.supplement.source_analysis_run_id,
-        metadata_snapshot=build_confirmed_supplement_learning_metadata(
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_registered",
+            resource_type="user_supplement",
+            resource_id=str(result.supplement.id),
+            outcome="success",
+            request=http_request,
+            settings=settings,
+            event_metadata={
+                "analysis_id_present": request.analysis_id is not None,
+                "ingredient_count": len(result.ingredients),
+                "matched_product_id_present": result.supplement.matched_product_id is not None,
+                "learning_embedding_job_scheduled": learning_scheduled,
+            },
+        )
+        if learning_scheduled:
+            background_tasks.add_task(
+                store_supplement_learning_embedding_job,
+                user=current_user,
+                embedding_input=embedding_input,
+                settings=settings,
+            )
+        return user_supplement_to_response(
             result.supplement,
             result.ingredients,
-        ),
-        settings=settings,
-        granted_consents=learning_consents,
-    )
-
-    await record_sensitive_audit_event(
-        session,
-        current_user,
-        action="supplement_registered",
-        resource_type="user_supplement",
-        resource_id=str(result.supplement.id),
-        outcome="success",
-        request=http_request,
-        settings=settings,
-        event_metadata={
-            "analysis_id_present": request.analysis_id is not None,
-            "ingredient_count": len(result.ingredients),
-            "matched_product_id_present": result.supplement.matched_product_id is not None,
-            "learning_embedding_job_enqueued": learning_job is not None,
-        },
-    )
-    return user_supplement_to_response(
-        result.supplement,
-        result.ingredients,
-        categories=result.categories,
-    )
+            categories=result.categories,
+        )
 
 
 async def _collect_learning_consents_if_enabled(

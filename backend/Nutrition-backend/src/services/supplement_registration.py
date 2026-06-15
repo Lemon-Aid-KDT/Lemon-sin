@@ -15,6 +15,7 @@ from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import resolve_nutrition_reference_root
+from src.db.tx import persist_scope
 from src.models.db.supplement import (
     SupplementAnalysisRun,
     SupplementCategory,
@@ -137,38 +138,38 @@ async def create_user_supplement_from_confirmation(
         evidence_refs=evidence_refs,
         user_confirmed_at=now,
     )
-    session.add(supplement)
-    await session.flush()
+    async with persist_scope(session):
+        session.add(supplement)
+        await session.flush()
 
-    ingredients = [
-        UserSupplementIngredient(
-            user_supplement_id=supplement.id,
-            display_name=ingredient.display_name,
-            nutrient_code=ingredient.nutrient_code,
-            amount=_decimal_or_none(ingredient.amount),
-            unit=ingredient.unit,
-            daily_value_percent=_decimal_or_none(ingredient.daily_value_percent),
-            confidence=Decimal(str(ingredient.confidence)),
-            source=ingredient.source,
-            sort_order=index,
-        )
-        for index, ingredient in enumerate(request.ingredients)
-    ]
-    for ingredient in ingredients:
-        session.add(ingredient)
+        ingredients = [
+            UserSupplementIngredient(
+                user_supplement_id=supplement.id,
+                display_name=ingredient.display_name,
+                nutrient_code=ingredient.nutrient_code,
+                amount=_decimal_or_none(ingredient.amount),
+                unit=ingredient.unit,
+                daily_value_percent=_decimal_or_none(ingredient.daily_value_percent),
+                confidence=Decimal(str(ingredient.confidence)),
+                source=ingredient.source,
+                sort_order=index,
+            )
+            for index, ingredient in enumerate(request.ingredients)
+        ]
+        for ingredient in ingredients:
+            session.add(ingredient)
 
-    if preview is not None:
-        preview.status = SupplementAnalysisStatus.CONFIRMED.value
-        preview.confirmed_at = now
-        preview.match_snapshot = {
-            "matched_product_candidates": [
-                candidate.model_dump(mode="json") for candidate in match.candidates
-            ]
-        }
-        if match.matched_source_manifest_version is not None:
-            preview.source_manifest_version = match.matched_source_manifest_version
+        if preview is not None:
+            preview.status = SupplementAnalysisStatus.CONFIRMED.value
+            preview.confirmed_at = now
+            preview.match_snapshot = {
+                "matched_product_candidates": [
+                    candidate.model_dump(mode="json") for candidate in match.candidates
+                ]
+            }
+            if match.matched_source_manifest_version is not None:
+                preview.source_manifest_version = match.matched_source_manifest_version
 
-    await session.commit()
     await session.refresh(supplement)
     product_categories = await _load_categories_for_products(
         session,

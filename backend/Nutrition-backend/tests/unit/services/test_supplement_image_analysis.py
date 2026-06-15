@@ -44,8 +44,10 @@ from src.services.supplement_image_analysis import (
     SUPPLEMENT_FACTS_REQUIRED_CODE,
     SupplementImageAnalysisAdapters,
     SupplementLearningArtifactsInput,
+    SupplementLearningEmbeddingInput,
     analyze_supplement_image,
     store_supplement_learning_artifacts,
+    store_supplement_learning_embedding_job,
 )
 from src.services.supplement_intake import (
     ValidatedSupplementImage,
@@ -1157,6 +1159,75 @@ async def test_store_supplement_learning_artifacts_defaults_to_learning_sessionm
     )
 
     assert used.get("called") is True
+
+
+@pytest.mark.asyncio
+async def test_store_supplement_learning_embedding_job_defaults_to_learning_sessionmaker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default (no session_factory) must resolve via the privileged learning factory.
+
+    The post-commit embedding-job enqueue calls
+    ``enqueue_learning_embedding_job_for_confirmation``, which reads/writes the
+    FORCE-RLS learning tables. After the Step 8 flip the main factory binds
+    ``lemon_app`` (NOSUPERUSER / NOBYPASSRLS) and cannot touch those tables from a
+    fresh GUC-less session, so the default must be ``get_learning_sessionmaker``.
+    """
+    post_session = _FakePipelineSession()
+    used: dict[str, bool] = {}
+
+    def _fake_learning_sessionmaker() -> _FakeSessionFactory:
+        used["called"] = True
+        return _FakeSessionFactory(post_session)
+
+    monkeypatch.setattr(
+        "src.services.supplement_image_analysis.get_learning_sessionmaker",
+        _fake_learning_sessionmaker,
+    )
+
+    # analysis_id=None short-circuits enqueue before any DB access, so the fake
+    # session is only exercised through the factory/context-manager call shape.
+    embedding_input = SupplementLearningEmbeddingInput(
+        analysis_id=None,
+        metadata_snapshot={},
+        learning_consents=(ConsentType.IMAGE_LEARNING_DATASET,),
+    )
+
+    await store_supplement_learning_embedding_job(
+        user=_user(),
+        embedding_input=embedding_input,
+        settings=Settings(privacy_hash_secret=SecretStr("test-privacy-secret")),
+    )
+
+    assert used.get("called") is True
+
+
+@pytest.mark.asyncio
+async def test_store_supplement_learning_embedding_job_swallows_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-commit enqueue failure must be logged and swallowed (best-effort)."""
+
+    def _raising_learning_sessionmaker() -> _FakeSessionFactory:
+        raise RuntimeError("learning engine unavailable")
+
+    monkeypatch.setattr(
+        "src.services.supplement_image_analysis.get_learning_sessionmaker",
+        _raising_learning_sessionmaker,
+    )
+
+    embedding_input = SupplementLearningEmbeddingInput(
+        analysis_id=None,
+        metadata_snapshot={},
+        learning_consents=(),
+    )
+
+    # Must not raise: a learning miss never surfaces to the user.
+    await store_supplement_learning_embedding_job(
+        user=_user(),
+        embedding_input=embedding_input,
+        settings=Settings(privacy_hash_secret=SecretStr("test-privacy-secret")),
+    )
 
 
 @pytest.mark.asyncio

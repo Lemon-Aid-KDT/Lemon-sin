@@ -27,13 +27,57 @@ from src.services.supplement_registration import (
 )
 
 
+class _RouteFakeTransaction:
+    """No-op async transaction context for the route-owned RLS seam."""
+
+    async def __aenter__(self) -> _RouteFakeTransaction:
+        return self
+
+    async def __aexit__(self, *_exc_info: object) -> None:
+        return None
+
+
+class _RouteFakeScalars:
+    def all(self) -> list[object]:
+        return []
+
+
+class _RouteFakeSession:
+    """Async session double supporting rls_request_transaction in route tests."""
+
+    def __init__(self) -> None:
+        # A real AsyncSession always exposes ``.info``; rls_request_transaction reads it.
+        self.info: dict[str, object] = {}
+
+    def begin(self) -> _RouteFakeTransaction:
+        return _RouteFakeTransaction()
+
+    async def execute(self, *_args: object, **_kwargs: object) -> None:
+        """No-op: absorbs the RLS set_config statements."""
+
+    async def scalar(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    async def scalars(self, *_args: object, **_kwargs: object) -> _RouteFakeScalars:
+        return _RouteFakeScalars()
+
+    async def commit(self) -> None:
+        return None
+
+    async def flush(self) -> None:
+        return None
+
+    async def rollback(self) -> None:
+        return None
+
+
 async def _fake_session_dependency() -> AsyncIterator[object]:
     """Yield a fake session for route tests.
 
     Yields:
-        Fake session object.
+        Fake async session supporting the route-owned RLS transaction seam.
     """
-    yield object()
+    yield _RouteFakeSession()
 
 
 async def _allow_consent(*_args: object, **_kwargs: object) -> None:

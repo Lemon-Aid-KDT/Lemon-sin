@@ -15,7 +15,7 @@ from decimal import Decimal
 from difflib import SequenceMatcher
 from http import HTTPStatus
 from random import random
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -27,7 +27,10 @@ from src.db.session import get_learning_sessionmaker
 from src.db.tx import persist_scope
 from src.learning.consent_gate import evaluate_image_learning_gate
 from src.learning.object_storage import LearningImageObjectStore
-from src.learning.pipeline import maybe_store_learning_image_object
+from src.learning.pipeline import (
+    enqueue_learning_embedding_job_for_confirmation,
+    maybe_store_learning_image_object,
+)
 from src.learning.supplement_section_labels import (
     SUPPLEMENT_SECTION_ANNOTATION_REVIEW_NOTES_CODE,
     SUPPLEMENT_SECTION_ANNOTATION_TASK_TYPE,
@@ -217,6 +220,27 @@ class SupplementLearningArtifactsInput:
     image_bytes: bytes
     image_metadata: ValidatedSupplementImage
     ocr_result: OCRResult | None
+    learning_consents: tuple[ConsentType, ...]
+
+
+@dataclass(frozen=True)
+class SupplementLearningEmbeddingInput:
+    """Deferred inputs for post-commit supplement learning embedding enqueue.
+
+    After a user confirms a supplement, the embedding-job enqueue
+    (:func:`enqueue_learning_embedding_job_for_confirmation`, which commits and
+    reads FORCE-RLS learning tables) must run post-commit on the privileged
+    learning engine, not inside the request transaction. The route bundles these
+    inputs and hands them to :func:`store_supplement_learning_embedding_job`.
+
+    Attributes:
+        analysis_id: Source supplement analysis run id (embedding job FK).
+        metadata_snapshot: User-confirmed structured metadata for the job.
+        learning_consents: Active learning consent grants used by the gate.
+    """
+
+    analysis_id: UUID | None
+    metadata_snapshot: dict[str, Any]
     learning_consents: tuple[ConsentType, ...]
 
 
@@ -943,6 +967,50 @@ async def store_supplement_learning_artifacts(
     except Exception:
         # Best-effort post-commit task: a learning miss must never surface to the user.
         logger.exception("Post-commit learning artifact storage failed.")
+
+
+async def store_supplement_learning_embedding_job(
+    *,
+    user: AuthenticatedUser,
+    embedding_input: SupplementLearningEmbeddingInput,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
+    """Enqueue the supplement learning embedding job post-commit.
+
+    Runs as a route-level FastAPI background task after the request transaction
+    commits, so the confirmed supplement and its learning image object are
+    durable. Uses the privileged learning session factory
+    (``get_learning_sessionmaker``) because
+    ``enqueue_learning_embedding_job_for_confirmation`` reads/writes the FORCE-RLS
+    learning tables and commits on its own (DO-NOT-TOUCH learning pipeline).
+    Best-effort: any failure is logged and swallowed so a learning miss never
+    surfaces to the user (matching the prior in-request best-effort behavior).
+
+    Args:
+        user: Authenticated owner used for the privacy-preserving subject hash.
+        embedding_input: Deferred inputs bundled by the confirmation route.
+        settings: Runtime settings (privacy hash secret, gate flags, model).
+        session_factory: Optional session factory override (tests); defaults to
+            the privileged learning session factory.
+
+    Returns:
+        None.
+    """
+    try:
+        factory = session_factory or get_learning_sessionmaker()
+        async with factory() as session:
+            await enqueue_learning_embedding_job_for_confirmation(
+                session=session,
+                user=user,
+                analysis_id=embedding_input.analysis_id,
+                metadata_snapshot=embedding_input.metadata_snapshot,
+                settings=settings,
+                granted_consents=embedding_input.learning_consents,
+            )
+    except Exception:
+        # Best-effort post-commit task: a learning miss must never surface to the user.
+        logger.exception("Post-commit learning embedding enqueue failed.")
 
 
 def _select_vision_region(vision_regions: tuple[BoundingBox, ...]) -> BoundingBox | None:

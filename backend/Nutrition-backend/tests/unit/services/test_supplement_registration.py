@@ -86,6 +86,8 @@ class _FakeRegistrationSession:
         self.committed = False
         self.refreshed: object | None = None
         self.flushed = False
+        # A real AsyncSession always exposes ``.info``; persist_scope reads it.
+        self.info: dict[str, object] = {}
 
     def begin(self) -> _TransactionContext:
         """Return a fake transaction context.
