@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from fastapi.dependencies.utils import get_flat_dependant
 from fastapi.routing import APIRoute
-from src.db.dependencies import get_async_session
+from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 
 # Routes that intentionally keep ``get_async_session`` because they own their RLS
@@ -37,6 +37,32 @@ _IN_BODY_RLS_CM_ROUTES: frozenset[str] = frozenset(
         "create_user_supplement",  # rls_request_transaction (+ post-commit learning task)
     }
 )
+
+
+# Owner routes that were unmigrated until the live flip exposed them (HTTP 500:
+# GUC-less owner reads returned 0 rows; in-session audit INSERT denied). They must
+# stay on get_rls_context_session so reads carry the per-request GUC and audits go
+# out-of-band on the privileged engine.
+_RLS_DEP_REQUIRED_ROUTES: frozenset[str] = frozenset(
+    {
+        "list_user_supplements",
+        "get_user_supplement",
+        "delete_user_supplement",
+        "explain_supplement_recommendations",
+    }
+)
+
+
+def _route_deps_by_endpoint_name() -> dict[str, set[object]]:
+    """Map each route's endpoint name to the set of dependency callables it uses."""
+    app = create_app()
+    deps: dict[str, set[object]] = {}
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        flat = get_flat_dependant(route.dependant)
+        deps[route.endpoint.__name__] = {dep.call for dep in flat.dependencies}
+    return deps
 
 
 def _routes_using_get_async_session() -> list[str]:
@@ -76,4 +102,19 @@ def test_cm_wrapped_allowlist_has_no_stale_entries() -> None:
         "These allowlist entries no longer use get_async_session (route renamed, "
         "removed, or migrated to get_rls_context_session); drop them from "
         "_IN_BODY_RLS_CM_ROUTES: " + ", ".join(stale)
+    )
+
+
+def test_formerly_unmigrated_supplement_routes_sit_on_get_rls_context_session() -> None:
+    """Lock in the fix: the four flip-exposed owner routes must use the RLS dep."""
+    deps = _route_deps_by_endpoint_name()
+    missing = sorted(
+        name
+        for name in _RLS_DEP_REQUIRED_ROUTES
+        if get_rls_context_session not in deps.get(name, set())
+    )
+    assert not missing, (
+        "These owner routes must depend on get_rls_context_session (per-request GUC + "
+        "out-of-band audit) or they fail closed under the lemon_app FORCE-RLS flip: "
+        + ", ".join(missing)
     )
