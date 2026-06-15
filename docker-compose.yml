@@ -55,7 +55,13 @@ services:
       ENVIRONMENT: development
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       AUTH_MODE: ${AUTH_MODE:-disabled}
-      DATABASE_URL: postgresql+asyncpg://lemon:lemon@db:5432/lemon  # pragma: allowlist secret
+      # FORCE RLS Stage-2 flip: the app connects as the non-superuser request role
+      # lemon_app (NOSUPERUSER/NOBYPASSRLS), so owner reads/writes obey the 0023b/0041
+      # RLS policies via per-request GUCs. Out-of-band audit + post-commit learning
+      # writes need a privileged (superuser) engine, so AUDIT/LEARNING stay on lemon.
+      DATABASE_URL: postgresql+asyncpg://lemon_app:lemon_app@db:5432/lemon  # pragma: allowlist secret
+      AUDIT_DATABASE_URL: postgresql+asyncpg://lemon:lemon@db:5432/lemon  # pragma: allowlist secret
+      LEARNING_DATABASE_URL: postgresql+asyncpg://lemon:lemon@db:5432/lemon  # pragma: allowlist secret
       REDIS_URL: redis://redis:6379/0
       ALLOWED_HOSTS: '["localhost","127.0.0.1","testserver","0.0.0.0","10.0.2.2"]'
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-[]}
@@ -103,7 +109,7 @@ services:
       - sh
       - -c
       - |
-        alembic upgrade head
+        DATABASE_URL='postgresql+asyncpg://lemon:lemon@db:5432/lemon' alembic upgrade head
         exec uvicorn src.main:app --host 0.0.0.0 --port 8000
 
 volumes:
