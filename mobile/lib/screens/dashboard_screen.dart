@@ -114,8 +114,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         age: age,
         sex: sex.code,
       );
-      final double? amount =
-          result.referenceFor('energy_kcal')?.referenceAmount;
+      final double? amount = result
+          .referenceFor('energy_kcal')
+          ?.referenceAmount;
       if (!mounted || amount == null || amount <= 0) return;
       setState(() => _targetKcal = amount.round());
     } on Exception {
@@ -343,8 +344,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           gap: AppSpace.md,
           children: [
             HealthHeroCard(
-              date: _selectedDate,
-              isToday: _isToday,
               scoreReady: score.isReady,
               healthScore: score.score ?? 0,
               scoreLabelText: score.labelText,
@@ -356,13 +355,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               carbG: totals.carbG.round(),
               proteinG: totals.proteinG.round(),
               fatG: totals.fatG.round(),
-              onPrevDay: () =>
-                  _selectDate(_selectedDate.subtract(const Duration(days: 1))),
-              onNextDay: _isToday
-                  ? null
-                  : () =>
-                        _selectDate(_selectedDate.add(const Duration(days: 1))),
-              onTapDate: () => context.push('/shell/home/calendar'),
               onTapScore: score.isReady
                   ? () => context.go('/shell/score')
                   : () => _openCamera('meal'),
@@ -426,6 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onSelectDate: _selectDate,
                 onShiftWeek: _shiftWeek,
                 onGoToday: _goToday,
+                onTapMonth: () => context.push('/shell/home/calendar'),
               ),
 
               // ─── 본문 ───
@@ -489,6 +482,7 @@ class _BrandHeader extends StatelessWidget {
   final ValueChanged<DateTime> onSelectDate;
   final ValueChanged<int> onShiftWeek; // -1 이전 주 / +1 다음 주
   final VoidCallback onGoToday;
+  final VoidCallback onTapMonth; // 월 드롭다운 → 캘린더
 
   const _BrandHeader({
     required this.selectedDate,
@@ -499,6 +493,7 @@ class _BrandHeader extends StatelessWidget {
     required this.onSelectDate,
     required this.onShiftWeek,
     required this.onGoToday,
+    required this.onTapMonth,
   });
 
   static bool _isSameDay(DateTime a, DateTime b) =>
@@ -512,6 +507,43 @@ class _BrandHeader extends StatelessWidget {
     final days = List.generate(7, (i) => focusedMonday.add(Duration(days: i)));
     const weekdayLabels = ['월', '화', '수', '목', '금', '토', '일'];
 
+    // 요일 라벨 행 — 주말 색(토 blue · 일 red), 평일은 옅은 ink.
+    Widget weekdayLabelRow() => Row(
+      children: [
+        for (int i = 0; i < 7; i++)
+          Expanded(
+            child: Center(
+              child: Text(
+                weekdayLabels[i],
+                style: AppText.caption.copyWith(
+                  color: i == 5
+                      ? AppColor.info
+                      : i == 6
+                      ? AppColor.danger
+                      : AppColor.ink.withValues(alpha: 0.75),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    // 날짜 버블 7칸 (Expanded 배열) — 양 모드 공용.
+    List<Widget> dateBubbles() => [
+      for (int i = 0; i < 7; i++)
+        Expanded(
+          child: _DateBubble(
+            date: days[i],
+            selected: _isSameDay(days[i], selectedDate),
+            isToday: _isSameDay(days[i], today),
+            isFuture: days[i].isAfter(today),
+            hasRecord: recordDots.contains(_dotKey(days[i])),
+            onTap: () => onSelectDate(days[i]),
+          ),
+        ),
+    ];
+
     return Container(
       color: AppColor.brand,
       child: SafeArea(
@@ -521,6 +553,8 @@ class _BrandHeader extends StatelessWidget {
             AppSpace.page,
             AppSpace.lg,
             AppSpace.page,
+            // 날짜 strip 이 본문 라운드 겹침과 충돌하지 않도록 여유 확보
+            // (기록 모드에서 검증된 값을 메인에도 동일 적용).
             AppSpace.xl + AppSpace.xl,
           ),
           child: Column(
@@ -570,9 +604,6 @@ class _BrandHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-
-              // 메인 = 노란 헤더는 워드마크 + 아이콘만 (심플).
-              // 날짜 네비는 히어로 카드 맨 위로 이동.
 
               // ─── 기록 모드 = 주 이동 + 날짜 strip ───
               if (isRecordMode) ...[
@@ -627,37 +658,42 @@ class _BrandHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpace.md),
                 // 요일 strip
-                Row(
-                  children: [
-                    for (int i = 0; i < 7; i++)
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            weekdayLabels[i],
-                            style: AppText.caption.copyWith(
-                              color: AppColor.ink.withValues(alpha: 0.75),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                weekdayLabelRow(),
                 const SizedBox(height: AppSpace.sm),
                 // 날짜 strip
+                Row(children: dateBubbles()),
+              ]
+              // ─── 메인 모드 = 월 드롭다운 + 오늘 pill + 주간 strip ───
+              else ...[
+                const SizedBox(height: AppSpace.lg),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _MonthDropdown(
+                      selectedDate: selectedDate,
+                      onTap: onTapMonth,
+                    ),
+                    if (!isToday) _TodayPill(onTap: onGoToday),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.md),
+                // 요일 strip
+                weekdayLabelRow(),
+                const SizedBox(height: AppSpace.sm),
+                // 날짜 strip — 양 끝에 주 이동 화살표
                 Row(
                   children: [
-                    for (int i = 0; i < 7; i++)
-                      Expanded(
-                        child: _DateBubble(
-                          date: days[i],
-                          selected: _isSameDay(days[i], selectedDate),
-                          isToday: _isSameDay(days[i], today),
-                          isFuture: days[i].isAfter(today),
-                          hasRecord: recordDots.contains(_dotKey(days[i])),
-                          onTap: () => onSelectDate(days[i]),
-                        ),
-                      ),
+                    _WeekArrow(
+                      icon: Icons.chevron_left_rounded,
+                      onTap: () => onShiftWeek(-1),
+                    ),
+                    Expanded(child: Row(children: dateBubbles())),
+                    _WeekArrow(
+                      icon: Icons.chevron_right_rounded,
+                      onTap: focusedMonday.isBefore(_mondayOfToday(today))
+                          ? () => onShiftWeek(1)
+                          : null,
+                    ),
                   ],
                 ),
               ],
@@ -673,6 +709,71 @@ class _BrandHeader extends StatelessWidget {
     today.month,
     today.day,
   ).subtract(Duration(days: today.weekday - 1));
+}
+
+// 월 드롭다운 — '{n}월 ▾' 탭 → 캘린더 (figma 268:24 헤더 좌측)
+class _MonthDropdown extends StatelessWidget {
+  final DateTime selectedDate;
+  final VoidCallback onTap;
+  const _MonthDropdown({required this.selectedDate, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${selectedDate.month}월',
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              color: AppColor.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: AppColor.ink,
+            size: 20,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// '오늘' pill — 메인 모드에서 과거 날짜 선택 시 오늘로 복귀 (figma 268:24 헤더 우측)
+class _TodayPill extends StatelessWidget {
+  final VoidCallback onTap;
+  const _TodayPill({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: AppColor.surface,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          boxShadow: AppShadow.softCard,
+        ),
+        child: Text(
+          '오늘',
+          style: AppText.caption.copyWith(
+            color: AppColor.ink,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // 주 이동 화살표 — null onTap 이면 비활성(흐림)

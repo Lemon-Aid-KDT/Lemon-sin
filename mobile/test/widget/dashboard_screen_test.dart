@@ -574,6 +574,110 @@ void main() {
     await tester.pump();
     expect(controller.homeSupplements.results.length, 1);
   });
+
+  testWidgets('renders the persistent weekly strip in main mode', (
+    WidgetTester tester,
+  ) async {
+    final AppController controller = AppController(
+      repository: _HomeRepository(
+        healthScore: const DashboardHealthScore(
+          status: HealthScoreStatus.notReady,
+        ),
+        supplements: HomeSupplementsResult.empty,
+        impact: _impact(risks: const <SupplementNutritionInsight>[]),
+      ),
+    );
+    await controller.bootstrap();
+
+    await _pumpScreen(tester, controller);
+
+    // 노랑 브랜드 헤더 (color: AppColor.brand) — 모든 헤더 스코프의 기준.
+    final Finder header = find.byWidgetPredicate(
+      (Widget w) => w is Container && w.color == AppColor.brand,
+    );
+    expect(header, findsOneWidget);
+
+    // 요일 라벨 월~일이 메인 모드 헤더에 상시 노출된다.
+    for (final String label in const <String>[
+      '월',
+      '화',
+      '수',
+      '목',
+      '금',
+      '토',
+      '일',
+    ]) {
+      expect(
+        find.descendant(of: header, matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+
+    // 월 드롭다운은 현재 선택 월을 보여준다 (오늘 기준).
+    final DateTime now = DateTime.now();
+    expect(
+      find.descendant(of: header, matching: find.text('${now.month}월')),
+      findsOneWidget,
+    );
+
+    // 헤더 '오늘' pill = softCard 그림자 컨테이너 안의 '오늘' 텍스트.
+    // (히어로 카드의 brand 배지 '오늘'과 구분하기 위해 데코로 스코프.)
+    final Finder todayPill = find.ancestor(
+      of: find.text('오늘'),
+      matching: find.byWidgetPredicate(
+        (Widget w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration! as BoxDecoration).boxShadow == AppShadow.softCard,
+      ),
+    );
+
+    // 오늘이면 헤더 '오늘' pill 은 숨김.
+    expect(todayPill, findsNothing);
+
+    // 이전 주로 이동 후 과거 날짜를 선택하면 헤더 '오늘' pill 이 나타난다.
+    // 헤더 안 좌측 화살표만 탭 (히어로 카드의 하루 이동 화살표와 구분).
+    await tester.tap(
+      find.descendant(
+        of: header,
+        matching: find.byIcon(Icons.chevron_left_rounded),
+      ),
+    );
+    await tester.pump();
+    // 지난주 7일 중 헤더 strip 안에서 고유한 day 숫자를 골라 탭한다.
+    final DateTime lastMonday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1 + 7));
+    Finder? pastDay;
+    for (int i = 0; i < 7; i++) {
+      final Finder candidate = find.descendant(
+        of: header,
+        matching: find.text('${lastMonday.add(Duration(days: i)).day}'),
+      );
+      if (candidate.evaluate().length == 1) {
+        pastDay = candidate;
+        break;
+      }
+    }
+    expect(pastDay, isNotNull, reason: '헤더 strip 에 고유한 day 숫자가 하나도 없음');
+    await tester.tap(pastDay!);
+    await tester.pump();
+    // 본문 페이드 전환(AnimatedSwitcher 280ms)과 새 히어로 카드 진입
+    // 애니메이션이 끝나길 기다린다 (_pumpScreen 과 동일 cadence — 펜딩 타이머 방지).
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(todayPill, findsOneWidget);
+
+    // 헤더(주간 strip)에는 신뢰도 % 가 노출되지 않는다.
+    // (히어로 카드의 매크로 % '탄/단/지'는 헤더 밖이므로 스코프 제외.)
+    expect(
+      find.descendant(of: header, matching: find.textContaining('%')),
+      findsNothing,
+    );
+  });
 }
 
 Future<void> _pumpScreen(
