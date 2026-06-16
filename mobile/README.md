@@ -33,6 +33,73 @@ If the backend runs with JWT auth enabled, also pass:
 
 Local backend development can run without `LEMON_API_TOKEN` when `AUTH_MODE=disabled`.
 
+## Build Environments (dev / staging / prod)
+
+The app selects a deployment environment at build time. One selection drives the
+native app id, the backend base URL, and the release security posture. The
+environment is bound across three layers that must stay in lock-step:
+
+| Layer | dev | staging | prod |
+| --- | --- | --- | --- |
+| Android `--flavor` | `dev` | `staging` | `prod` |
+| `--dart-define=LEMON_APP_ENV` | `dev` | `staging` | `prod` |
+| Android applicationId | `kr.ai.lemonade.mobile.dev` | `kr.ai.lemonade.mobile.staging` | `kr.ai.lemonade.mobile` |
+| iOS bundle id | `kr.ai.lemonade.mobile.dev` | `kr.ai.lemonade.mobile.staging` | `kr.ai.lemonade.mobile` |
+| Default backend URL | local loopback | `https://staging.lemon-aid.invalid/api/v1` (TODO) | `https://api.lemon-aid.invalid/api/v1` (TODO) |
+
+- Android product flavors live in `android/app/build.gradle.kts`; each declares
+  `resValue("string", "lemon_app_env", ...)`.
+- iOS environments live in `ios/config/{Dev,Staging,Prod}.xcconfig`, included by
+  `ios/Flutter/{Debug,Profile,Release}.xcconfig` (Debug/Profile → Dev,
+  Release → Prod). The shared base bundle id is in
+  `ios/config/AppEnvironment.xcconfig`.
+- The Dart selection lives in `lib/core/config/app_environment.dart` +
+  `app_config.dart`.
+- `staging`/`prod` default URLs are **unprovisioned placeholders** on the
+  reserved `.invalid` domain (RFC 2606). Release builds fail closed unless a
+  real `--dart-define=LEMON_API_BASE_URL` (HTTPS) and `LEMON_CERTIFICATE_PINS`
+  are supplied. Replace the placeholders in `app_config.dart` once the real
+  URLs are provisioned.
+- Override the Android base applicationId with
+  `-PLEMON_ANDROID_APPLICATION_ID=...`; override the iOS base bundle id in
+  `ios/config/AppEnvironment.xcconfig`.
+
+### dev
+
+```sh
+# Android emulator (Pixel 10 Pro, Android 17)
+flutter run -d emulator-5554 --flavor dev \
+  --dart-define=LEMON_APP_ENV=dev \
+  --dart-define=LEMON_API_BASE_URL=http://10.0.2.2:8000/api/v1
+# helper: ./scripts/run-android-dev.sh
+
+# iOS simulator (iPhone 17 Pro, iOS 26.5) — Debug.xcconfig already selects dev
+flutter run -d 7B2E1A72-B3C9-4102-8E3C-0009CCBFB4FB \
+  --dart-define=LEMON_APP_ENV=dev \
+  --dart-define=LEMON_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+### staging / prod (URLs not yet provisioned)
+
+```sh
+# Android — replace <TODO> once the staging/prod backend is provisioned
+flutter build apk --flavor staging \
+  --dart-define=LEMON_APP_ENV=staging \
+  --dart-define=LEMON_API_BASE_URL=<TODO-staging-https-url>/api/v1 \
+  --dart-define=LEMON_CERTIFICATE_PINS=<TODO-pin1,TODO-pin2>
+
+flutter build appbundle --flavor prod \
+  --dart-define=LEMON_APP_ENV=prod \
+  --dart-define=LEMON_API_BASE_URL=<TODO-prod-https-url>/api/v1 \
+  --dart-define=LEMON_CERTIFICATE_PINS=<TODO-pin1,TODO-pin2>
+```
+
+> iOS staging/prod are scaffolded as xcconfig only. Selecting them from a build
+> additionally requires a dedicated Xcode build configuration + scheme wired to
+> `ios/config/Staging.xcconfig` / `Prod.xcconfig`. That step is deferred until
+> the staging/prod URLs are provisioned; `Release.xcconfig` already maps release
+> builds to the prod bundle id.
+
 ## Xcode With The Same Flutter UIUX
 
 The Android Studio app UIUX is implemented in Flutter under `mobile/lib`.

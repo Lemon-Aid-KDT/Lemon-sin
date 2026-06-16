@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lemon_aid_mobile/core/config/app_config.dart';
+import 'package:lemon_aid_mobile/core/config/app_environment.dart';
 
 void main() {
   test('defaults Android emulator runs to host loopback', () {
@@ -110,5 +111,80 @@ void main() {
     expect(config.apiToken, isNull);
     expect(config.devGatewayToken, isNull);
     expect(config.certificatePins, const <String>['pin-primary', 'pin-backup']);
+  });
+
+  test('dev environment defaults to the platform loopback host', () {
+    expect(
+      AppConfig.defaultApiBaseUrlForEnvironment(
+        AppEnvironment.dev,
+        TargetPlatform.android,
+      ),
+      'http://10.0.2.2:8000/api/v1',
+    );
+    expect(
+      AppConfig.defaultApiBaseUrlForEnvironment(
+        AppEnvironment.dev,
+        TargetPlatform.iOS,
+      ),
+      'http://127.0.0.1:8000/api/v1',
+    );
+  });
+
+  test('staging and prod default to unprovisioned .invalid placeholders', () {
+    expect(
+      AppConfig.defaultApiBaseUrlForEnvironment(
+        AppEnvironment.staging,
+        TargetPlatform.android,
+      ),
+      'https://staging.lemon-aid.invalid/api/v1',
+    );
+    expect(
+      AppConfig.defaultApiBaseUrlForEnvironment(
+        AppEnvironment.prod,
+        TargetPlatform.iOS,
+      ),
+      'https://api.lemon-aid.invalid/api/v1',
+    );
+  });
+
+  test('defaults to dev environment when LEMON_APP_ENV is unset', () {
+    final AppConfig config = AppConfig.fromEnvironment(
+      platform: TargetPlatform.android,
+    );
+
+    expect(config.environment, AppEnvironment.dev);
+  });
+
+  test('retains the selected environment on the config', () {
+    final AppConfig config = AppConfig.fromValues(
+      apiBaseUrl: 'https://staging.lemon-aid.invalid/api/v1',
+      environment: AppEnvironment.staging,
+    );
+
+    expect(config.environment, AppEnvironment.staging);
+  });
+
+  test('rejects unprovisioned placeholder URLs in release builds', () {
+    expect(
+      () => AppConfig.fromValues(
+        apiBaseUrl: 'https://staging.lemon-aid.invalid/api/v1',
+        environment: AppEnvironment.staging,
+        certificatePins: const <String>['pin-primary'],
+        releaseMode: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('allows a provisioned staging URL in release builds', () {
+    final AppConfig config = AppConfig.fromValues(
+      apiBaseUrl: 'https://staging.lemonade.example/api/v1',
+      environment: AppEnvironment.staging,
+      certificatePins: const <String>['pin-primary', 'pin-backup'],
+      releaseMode: true,
+    );
+
+    expect(config.environment, AppEnvironment.staging);
+    expect(config.apiBaseUrl, 'https://staging.lemonade.example/api/v1');
   });
 }

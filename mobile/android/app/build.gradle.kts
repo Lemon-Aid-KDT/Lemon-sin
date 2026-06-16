@@ -18,8 +18,11 @@ fun keystoreValue(name: String): String? = keystoreProperties.getProperty(name)?
     it.isNotBlank()
 }
 
+// Reviewed reverse-domain application id (mirrors the iOS LEMON_BUNDLE_ID in
+// ios/config/AppEnvironment.xcconfig). Overridable per build/CI through
+// -PLEMON_ANDROID_APPLICATION_ID. Product flavors append .dev/.staging below.
 val releaseApplicationId = providers.gradleProperty("LEMON_ANDROID_APPLICATION_ID")
-    .orElse("com.example.lemon_aid_mobile")
+    .orElse("kr.ai.lemonade.mobile")
     .get()
 val requiredKeystoreKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
 val defaultExampleMainActivityFile = file(
@@ -53,20 +56,29 @@ android {
         versionName = flutter.versionName
     }
 
+    // Each product flavor declares its deployment environment so the native
+    // build is self-describing. The Flutter/Dart layer reads the matching
+    // environment from --dart-define=LEMON_APP_ENV; the run scripts and the
+    // README build matrix pair --flavor <env> with --dart-define=LEMON_APP_ENV.
+    // The backend base URL is injected at build time (compile-time Dart value);
+    // staging/prod URLs are not yet provisioned (see lib/core/config).
     flavorDimensions += "environment"
     productFlavors {
         create("dev") {
             dimension = "environment"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
+            resValue("string", "lemon_app_env", "dev")
         }
         create("staging") {
             dimension = "environment"
             applicationIdSuffix = ".staging"
             versionNameSuffix = "-staging"
+            resValue("string", "lemon_app_env", "staging")
         }
         create("prod") {
             dimension = "environment"
+            resValue("string", "lemon_app_env", "prod")
         }
     }
 

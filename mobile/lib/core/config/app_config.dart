@@ -1,18 +1,25 @@
 import 'package:flutter/foundation.dart';
 
+import 'app_environment.dart';
+
 /// Runtime configuration loaded from Flutter compile-time definitions.
 class AppConfig {
   /// Creates app configuration.
   ///
   /// Args:
+  ///   environment: Selected deployment environment (dev/staging/prod).
   ///   apiBaseUrl: Backend API base URL ending at `/api/v1`.
   ///   apiToken: Optional bearer token. Local `AUTH_MODE=disabled` runs without it.
   const AppConfig({
+    required this.environment,
     required this.apiBaseUrl,
     required this.apiToken,
     required this.devGatewayToken,
     required this.certificatePins,
   });
+
+  /// Deployment environment selected via `--dart-define=LEMON_APP_ENV`.
+  final AppEnvironment environment;
 
   /// Backend API base URL ending at `/api/v1`.
   final String apiBaseUrl;
@@ -34,6 +41,7 @@ class AppConfig {
     bool releaseMode = kReleaseMode,
     TargetPlatform? platform,
   }) {
+    const String rawEnv = String.fromEnvironment('LEMON_APP_ENV');
     const String rawBaseUrl = String.fromEnvironment('LEMON_API_BASE_URL');
     const String rawToken = String.fromEnvironment('LEMON_API_TOKEN');
     const String rawDevGatewayToken = String.fromEnvironment(
@@ -43,15 +51,53 @@ class AppConfig {
       'LEMON_CERTIFICATE_PINS',
     );
 
+    final AppEnvironment environment = AppEnvironment.fromName(rawEnv);
     return AppConfig.fromValues(
+      environment: environment,
       apiBaseUrl: rawBaseUrl.trim().isEmpty
-          ? defaultApiBaseUrlForPlatform(platform ?? defaultTargetPlatform)
+          ? defaultApiBaseUrlForEnvironment(
+              environment,
+              platform ?? defaultTargetPlatform,
+            )
           : rawBaseUrl,
       apiToken: rawToken,
       devGatewayToken: rawDevGatewayToken,
       certificatePins: _splitCommaSeparated(rawCertificatePins),
       releaseMode: releaseMode,
     );
+  }
+
+  /// Reserved host suffix for environments without a provisioned backend.
+  ///
+  /// The `.invalid` top-level domain is reserved by RFC 2606, so it can never
+  /// resolve to a real host. Staging/prod placeholders use it until real URLs
+  /// land; release builds reject any base URL on this suffix (fail closed).
+  static const String unprovisionedHostSuffix = '.invalid';
+
+  /// Returns the default backend base URL for an environment.
+  ///
+  /// Args:
+  ///   environment: Selected deployment environment.
+  ///   platform: Target Flutter platform (only used for the local `dev` host).
+  ///
+  /// Returns:
+  ///   For `dev`, the simulator-aware loopback URL. For `staging`/`prod`, a
+  ///   provisioning placeholder on the reserved `.invalid` domain that must be
+  ///   overridden with `--dart-define=LEMON_API_BASE_URL` before shipping.
+  @visibleForTesting
+  static String defaultApiBaseUrlForEnvironment(
+    AppEnvironment environment,
+    TargetPlatform platform,
+  ) {
+    return switch (environment) {
+      AppEnvironment.dev => defaultApiBaseUrlForPlatform(platform),
+      // TODO(env): replace with the provisioned staging URL once available.
+      AppEnvironment.staging =>
+        'https://staging.lemon-aid$unprovisionedHostSuffix/api/v1',
+      // TODO(env): replace with the provisioned production URL once available.
+      AppEnvironment.prod =>
+        'https://api.lemon-aid$unprovisionedHostSuffix/api/v1',
+    };
   }
 
   /// Returns the local backend URL that works for the current simulator host.
@@ -85,6 +131,7 @@ class AppConfig {
   ///   StateError: If release configuration contains unsafe values.
   factory AppConfig.fromValues({
     required String apiBaseUrl,
+    AppEnvironment environment = AppEnvironment.dev,
     String? apiToken,
     String? devGatewayToken,
     List<String> certificatePins = const <String>[],
@@ -124,8 +171,16 @@ class AppConfig {
         'LEMON_CERTIFICATE_PINS must be provided in release builds.',
       );
     }
+    final String host = Uri.tryParse(normalizedBaseUrl)?.host ?? '';
+    if (releaseMode && host.endsWith(unprovisionedHostSuffix)) {
+      throw StateError(
+        'LEMON_API_BASE_URL is an unprovisioned ${environment.name} '
+        'placeholder; pass a real --dart-define=LEMON_API_BASE_URL.',
+      );
+    }
 
     return AppConfig(
+      environment: environment,
       apiBaseUrl: normalizedBaseUrl,
       apiToken: normalizedToken,
       devGatewayToken: normalizedDevGatewayToken,

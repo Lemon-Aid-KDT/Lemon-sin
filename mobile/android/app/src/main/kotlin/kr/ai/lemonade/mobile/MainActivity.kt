@@ -1,4 +1,4 @@
-package com.example.lemon_aid_mobile
+package kr.ai.lemonade.mobile
 
 import android.os.Bundle
 import android.os.SystemClock
