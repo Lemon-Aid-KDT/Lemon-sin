@@ -1,14 +1,12 @@
 // widgets/dashboard/health_hero_card.dart — 메인 대시보드 히어로 카드
 //
-// 디자인: Figma node 48-2 구조를 LADS(Flat 2.0 + Soft UI) 로 변환.
-//   - 흰 배경 카드 + soft shadow (LADS 기본)
-//   - 포인트 색만 사용 — 게이지·탄단지·칼로리 강조에만 컬러, 나머지는 ink
-//   - 상단: 시간대별 인사 + 테마 칩
-//   - 건강 점수 + 칼로리
-//   - 반원 게이지 위에 시간대별 레몬 마스코트
-//   - 하단: 소모/잔여 칼로리 + 순탄수·단백질·지방
+// 디자인: Figma 268:24 (S-07 Main) 히어로 — 중앙 정렬.
+//   - 흰 배경 카드 + soft shadow
+//   - 날짜 네비 캡슐 → '오늘의 건강 점수' + 큰 점수(ink) + 등급 라벨
+//   - 매크로 %(탄·단·지 점+라벨) → 굵은 골드 반원 게이지 + 레몬 마스코트
+//   - kcal + 진행 바 → 소모/잔여(또는 워치 잠금) → 매크로 미니카드 3종 → 영양소 상세 CTA
 //
-// 시간대별 캐릭터: MascotFor.timedRandom(DateTime.now()) — 시간 버킷마다 자동 변경
+// 시간대별 캐릭터: MascotFor.timedRandom — 시간 버킷마다 자동 변경
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -98,8 +96,6 @@ class _HealthHeroCardState extends State<HealthHeroCard>
   late final AnimationController _gaugeCtl;
   late final Animation<double> _gauge;
   static const Duration _poseRefreshInterval = Duration(minutes: 5);
-  // 테마 칩으로 캐릭터 포즈 순환 (확인용) — null 이면 시간대 자동
-  int? _poseOverride;
   late DateTime _poseClock;
   Timer? _poseTimer;
 
@@ -130,7 +126,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
     _gauge = CurvedAnimation(parent: _gaugeCtl, curve: Curves.easeOutQuart);
     _poseClock = DateTime.now();
     _poseTimer = Timer.periodic(_poseRefreshInterval, (_) {
-      if (!mounted || _poseOverride != null) return;
+      if (!mounted) return;
       setState(() => _poseClock = DateTime.now());
     });
     // 진입 직후 살짝 지연 후 차오름
@@ -146,26 +142,13 @@ class _HealthHeroCardState extends State<HealthHeroCard>
     super.dispose();
   }
 
-  // 테마 칩 — 캐릭터 포즈 순환 (확인용)
-  void _cyclePose() {
-    setState(() {
-      final next = ((_poseOverride ?? -1) + 1) % MascotPose.values.length;
-      _poseOverride = next;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final hour = DateTime.now().hour;
-    final greeting = hour < 11
-        ? '좋은 아침이에요'
-        : hour < 17
-        ? '오늘도 화이팅이에요'
-        : '오늘 하루 어떠셨어요';
-    // 포즈 — 테마칩으로 오버라이드했으면 그거, 아니면 시간 버킷 기반 자동 랜덤
-    final pose = _poseOverride != null
-        ? MascotPose.values[_poseOverride!]
-        : MascotFor.timedRandom(_poseClock, interval: _poseRefreshInterval);
+    // 포즈 — 시간 버킷 기반 자동 랜덤 (시간대마다 자동 변경)
+    final pose = MascotFor.timedRandom(
+      _poseClock,
+      interval: _poseRefreshInterval,
+    );
 
     return Container(
       width: double.infinity,
@@ -191,7 +174,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
           AppSpace.cardInside + 4,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // ─── 날짜 네비게이션 — ‹ 5월 24일 일 ▾ › ───
             _DateNav(
@@ -203,101 +186,137 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             ),
             const SizedBox(height: AppSpace.xl),
 
-            // ─── 상단: 인사 + 테마 칩 ───
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  greeting,
-                  style: AppText.caption.copyWith(
-                    color: AppColor.inkTertiary,
-                    fontWeight: FontWeight.w700,
-                  ),
+            // ─── 점수 블록 (figma 268:24 — 중앙 정렬) ───
+            if (widget.scoreReady) ...[
+              Text(
+                '오늘의 건강 점수',
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkTertiary,
+                  fontWeight: FontWeight.w700,
                 ),
-                _ThemeChip(onTap: _cyclePose),
-              ],
-            ),
-            const SizedBox(height: AppSpace.sm),
-
-            // ─── 건강 점수 (포인트 — brand) ───
-            Pressable(
-              onTap: widget.onTapScore,
-              child: widget.scoreReady
-                  ? Row(
+              ),
+              const SizedBox(height: AppSpace.xs),
+              Pressable(
+                onTap: widget.onTapScore,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 점수 카운트업 — 0 → healthScore (게이지와 동기)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
-                        // 점수 카운트업 — 0 → healthScore (게이지와 동기)
                         AnimatedBuilder(
                           animation: _gauge,
                           builder: (context, child) => Text(
                             '${(_gauge.value * widget.healthScore).round()}',
                             style: const TextStyle(
                               fontFamily: 'Pretendard',
-                              color: AppColor.brandDeep,
-                              fontSize: 44,
+                              color: AppColor.ink,
+                              fontSize: 52,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0,
                               height: 1.0,
                             ),
                           ),
                         ),
-                        Text(
-                          '점',
-                          style: TextStyle(
-                            color: AppColor.brandDeep,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpace.sm),
+                        const SizedBox(width: 3),
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
+                          padding: const EdgeInsets.only(bottom: 7),
                           child: Text(
-                            widget.scoreLabelText ?? '오늘의 건강 점수',
-                            style: AppText.caption.copyWith(
-                              // 등급 코드가 오면 오늘의 분석 링/칩과 같은
-                              // 시맨틱 색을 쓴다 — 두 화면 등급 색 정합.
-                              color: widget.scoreLabel != null
-                                  ? scoreLabelColor(widget.scoreLabel)
-                                  : AppColor.inkSecondary,
-                              fontWeight: FontWeight.w600,
+                            '점',
+                            style: TextStyle(
+                              color: AppColor.ink,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
                             ),
-                          ),
-                        ),
-                        const Spacer(),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Icon(
-                            Icons.chevron_right_rounded,
-                            color: AppColor.inkTertiary,
-                            size: 20,
                           ),
                         ),
                       ],
-                    )
-                  : Row(
+                    ),
+                    const SizedBox(height: AppSpace.xs),
+                    // 등급 라벨 — 오늘의 분석 링/칩과 같은 시맨틱 색 (등급 정합)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: Text(
-                            '기록을 추가하면 점수를 보여드려요',
-                            style: AppText.body.copyWith(
-                              color: AppColor.inkSecondary,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        Text(
+                          widget.scoreLabelText ?? '오늘도 화이팅이에요',
+                          style: AppText.caption.copyWith(
+                            color: widget.scoreLabel != null
+                                ? scoreLabelColor(widget.scoreLabel)
+                                : AppColor.inkSecondary,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         Icon(
                           Icons.chevron_right_rounded,
                           color: AppColor.inkTertiary,
-                          size: 20,
+                          size: 18,
                         ),
                       ],
                     ),
-            ),
-            const SizedBox(height: 2),
-            // 칼로리 — 목표 있으면 '소비/목표', 없으면 '기록 합계'
+                  ],
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: AppSpace.sm),
+              Pressable(
+                onTap: widget.onTapScore,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '기록을 추가하면 점수를 보여드려요',
+                        textAlign: TextAlign.center,
+                        style: AppText.body.copyWith(
+                          color: AppColor.inkSecondary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColor.inkTertiary,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: AppSpace.md),
+
+            // ─── 매크로 % (figma — 중앙 점+라벨+%) ───
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _MacroDotLabel(label: '탄', pct: widget.carbPct, color: _kCarb),
+                const SizedBox(width: AppSpace.lg),
+                _MacroDotLabel(
+                  label: '단',
+                  pct: widget.proteinPct,
+                  color: _kProtein,
+                ),
+                const SizedBox(width: AppSpace.lg),
+                _MacroDotLabel(label: '지', pct: widget.fatPct, color: _kFat),
+              ],
+            ),
+            const SizedBox(height: AppSpace.sm),
+
+            // ─── 반원 게이지 + 캐릭터 (게이지 차오름 애니메이션) ───
+            AnimatedBuilder(
+              animation: _gauge,
+              builder: (context, child) => _GaugeWithMascot(
+                ratio: _kcalRatio * _gauge.value,
+                pose: pose,
+              ),
+            ),
+            const SizedBox(height: AppSpace.md),
+
+            // ─── 칼로리 + 진행 바 (figma — 중앙) ───
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
@@ -306,7 +325,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                   style: const TextStyle(
                     fontFamily: 'Pretendard',
                     color: AppColor.ink,
-                    fontSize: 17,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -321,32 +340,21 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                 ),
               ],
             ),
-            const SizedBox(height: AppSpace.md),
-
-            // ─── 탄단지 알약 칩 (포인트 — 매크로 3색) ───
-            Row(
-              children: [
-                _MacroPill(label: '탄', pct: widget.carbPct, color: _kCarb),
-                const SizedBox(width: AppSpace.sm),
-                _MacroPill(
-                  label: '단',
-                  pct: widget.proteinPct,
-                  color: _kProtein,
+            if (_hasTarget) ...[
+              const SizedBox(height: AppSpace.sm),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.full),
+                child: AnimatedBuilder(
+                  animation: _gauge,
+                  builder: (context, child) => LinearProgressIndicator(
+                    value: _kcalRatio * _gauge.value,
+                    minHeight: 6,
+                    backgroundColor: AppColor.sunken,
+                    valueColor: const AlwaysStoppedAnimation(AppColor.brand),
+                  ),
                 ),
-                const SizedBox(width: AppSpace.sm),
-                _MacroPill(label: '지', pct: widget.fatPct, color: _kFat),
-              ],
-            ),
-            const SizedBox(height: AppSpace.md),
-
-            // ─── 반원 게이지 + 캐릭터 (게이지 차오름 애니메이션) ───
-            AnimatedBuilder(
-              animation: _gauge,
-              builder: (context, child) => _GaugeWithMascot(
-                ratio: _kcalRatio * _gauge.value,
-                pose: pose,
               ),
-            ),
+            ],
             const SizedBox(height: AppSpace.sm),
 
             // ─── 소모/잔여 칼로리 한 줄 (목표 있을 때만 잔여 표시) ───
@@ -356,6 +364,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             Center(
               child: _hasTarget
                   ? RichText(
+                      textAlign: TextAlign.center,
                       text: TextSpan(
                         style: AppText.caption.copyWith(
                           fontWeight: FontWeight.w700,
@@ -385,49 +394,42 @@ class _HealthHeroCardState extends State<HealthHeroCard>
             ),
             const SizedBox(height: AppSpace.lg),
 
-            // ─── 순탄수 · 단백질 · 지방 (sunken 박스) ───
-            Container(
-              padding: const EdgeInsets.all(AppSpace.md),
-              decoration: BoxDecoration(
-                color: AppColor.sunken, // 옅은 회색 — LADS sunken
-                borderRadius: BorderRadius.circular(AppRadius.md),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _MacroBar(
-                      label: '순탄수',
-                      value: widget.carbG,
-                      target: widget.carbTargetG,
-                      color: _kCarb,
-                      progress: _gauge,
-                      totalsOnly: widget.macrosTotalsOnly,
-                    ),
+            // ─── 매크로 미니카드 3종 (figma 268:24 — 매크로별 틴트 박스) ───
+            Row(
+              children: [
+                Expanded(
+                  child: _MacroMiniCard(
+                    label: '순탄수',
+                    value: widget.carbG,
+                    target: widget.carbTargetG,
+                    color: _kCarb,
+                    progress: _gauge,
+                    totalsOnly: widget.macrosTotalsOnly,
                   ),
-                  const SizedBox(width: AppSpace.md),
-                  Expanded(
-                    child: _MacroBar(
-                      label: '단백질',
-                      value: widget.proteinG,
-                      target: widget.proteinTargetG,
-                      color: _kProtein,
-                      progress: _gauge,
-                      totalsOnly: widget.macrosTotalsOnly,
-                    ),
+                ),
+                const SizedBox(width: AppSpace.sm),
+                Expanded(
+                  child: _MacroMiniCard(
+                    label: '단백질',
+                    value: widget.proteinG,
+                    target: widget.proteinTargetG,
+                    color: _kProtein,
+                    progress: _gauge,
+                    totalsOnly: widget.macrosTotalsOnly,
                   ),
-                  const SizedBox(width: AppSpace.md),
-                  Expanded(
-                    child: _MacroBar(
-                      label: '지방',
-                      value: widget.fatG,
-                      target: widget.fatTargetG,
-                      color: _kFat,
-                      progress: _gauge,
-                      totalsOnly: widget.macrosTotalsOnly,
-                    ),
+                ),
+                const SizedBox(width: AppSpace.sm),
+                Expanded(
+                  child: _MacroMiniCard(
+                    label: '지방',
+                    value: widget.fatG,
+                    target: widget.fatTargetG,
+                    color: _kFat,
+                    progress: _gauge,
+                    totalsOnly: widget.macrosTotalsOnly,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
             const SizedBox(height: AppSpace.sm),
 
@@ -472,9 +474,6 @@ class _HealthHeroCardState extends State<HealthHeroCard>
   }
 }
 
-// ═══════════════════════════════════════════
-// 테마 칩 — 누르면 캐릭터 포즈 순환 (확인용)
-// ═══════════════════════════════════════════
 // ═══════════════════════════════════════════
 // 날짜 네비게이션 — ‹  5월 24일 일 [오늘] ▾  ›
 //   카드 맨 위. 화살표로 하루 이동, 가운데 탭 → 캘린더.
@@ -597,47 +596,6 @@ class _NavArrow extends StatelessWidget {
   }
 }
 
-class _ThemeChip extends StatelessWidget {
-  final VoidCallback onTap;
-  const _ThemeChip({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpace.md,
-          vertical: 7,
-        ),
-        decoration: BoxDecoration(
-          color: AppColor.brandSoft,
-          borderRadius: BorderRadius.circular(AppRadius.full),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              color: AppColor.brandDeep,
-              size: 13,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '테마',
-              style: AppText.micro.copyWith(
-                color: AppColor.brandDeep,
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ═══════════════════════════════════════════
 // 소모/잔여 kcal 잠금 안내 (Health Connect 미연동 · figma 951:58)
 //   - 추정치 표시 금지 — 색+아이콘+텍스트 병행으로 '연동하면 보여드려요' 톤.
@@ -669,11 +627,7 @@ class _BurnedKcalLock extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(
-                Icons.watch_outlined,
-                size: 14,
-                color: AppColor.inkTertiary,
-              ),
+              Icon(Icons.watch_outlined, size: 14, color: AppColor.inkTertiary),
               const SizedBox(width: 5),
               Icon(
                 Icons.lock_outline_rounded,
@@ -697,13 +651,13 @@ class _BurnedKcalLock extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════
-// 탄단지 알약 칩 — 포인트 컬러 (매크로별)
+// 매크로 % — 점 + 라벨 + % (figma 268:24 중앙 정렬)
 // ═══════════════════════════════════════════
-class _MacroPill extends StatelessWidget {
+class _MacroDotLabel extends StatelessWidget {
   final String label;
   final int pct;
   final Color color;
-  const _MacroPill({
+  const _MacroDotLabel({
     required this.label,
     required this.pct,
     required this.color,
@@ -711,40 +665,25 @@ class _MacroPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppRadius.full),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            alignment: Alignment.center,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$label $pct%',
+          style: TextStyle(
+            color: AppColor.ink,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
           ),
-          const SizedBox(width: 6),
-          Text(
-            '$pct%',
-            style: TextStyle(
-              color: AppColor.ink,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -814,14 +753,14 @@ class _HalfGaugePainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height);
     final radius = size.width / 2 - 14;
     final rect = Rect.fromCircle(center: center, radius: radius);
-    const stroke = 16.0;
+    const stroke = 18.0;
 
-    // 트랙 — 옅은 회색 (LADS sunken 톤)
+    // 트랙 — 옅은 노랑 (figma 268:24 굵은 골드 아크 톤)
     final trackPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
-      ..color = AppColor.sunken;
+      ..color = AppColor.brandSoft;
     canvas.drawArc(rect, math.pi, math.pi, false, trackPaint);
 
     // 진행 호 — 포인트 컬러 (brand 노랑 그라데)
@@ -846,9 +785,9 @@ class _HalfGaugePainter extends CustomPainter {
 }
 
 // ═══════════════════════════════════════════
-// 순탄수/단백질/지방 막대
+// 순탄수/단백질/지방 미니카드 — 매크로별 틴트 박스 (figma 268:24)
 // ═══════════════════════════════════════════
-class _MacroBar extends StatelessWidget {
+class _MacroMiniCard extends StatelessWidget {
   final String label;
   final int value;
   final int target;
@@ -857,7 +796,7 @@ class _MacroBar extends StatelessWidget {
   final Animation<double> progress;
   // 목표 미제공 — '/ target' 숨기고 'g' 단위만, 막대는 은은하게 표시.
   final bool totalsOnly;
-  const _MacroBar({
+  const _MacroMiniCard({
     required this.label,
     required this.value,
     required this.target,
@@ -872,58 +811,79 @@ class _MacroBar extends StatelessWidget {
     final r = totalsOnly
         ? (value > 0 ? 0.5 : 0.0)
         : (target > 0 ? (value / target).clamp(0.0, 1.0) : 0.0);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppText.micro.copyWith(
-            color: AppColor.inkTertiary,
-            fontWeight: FontWeight.w700,
-            fontSize: 11.5,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            // 숫자 카운트업
-            AnimatedBuilder(
-              animation: progress,
-              builder: (context, child) => Text(
-                '${(progress.value * value).round()}',
-                style: TextStyle(
-                  color: AppColor.ink,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.md,
+      ),
+      decoration: BoxDecoration(
+        // 매크로 색 옅은 틴트 — figma 매크로별 박스
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: AppText.micro.copyWith(
+                  color: AppColor.inkSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11.5,
                 ),
               ),
-            ),
-            Text(
-              totalsOnly ? ' g' : ' / $target g',
-              style: AppText.micro.copyWith(
-                color: AppColor.inkTertiary,
-                fontSize: 11,
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              // 숫자 카운트업
+              AnimatedBuilder(
+                animation: progress,
+                builder: (context, child) => Text(
+                  '${(progress.value * value).round()}',
+                  style: TextStyle(
+                    color: AppColor.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                totalsOnly ? ' g' : ' / $target g',
+                style: AppText.micro.copyWith(
+                  color: AppColor.inkTertiary,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          // 막대 차오름
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            child: AnimatedBuilder(
+              animation: progress,
+              builder: (context, child) => LinearProgressIndicator(
+                value: r * progress.value,
+                minHeight: 5,
+                backgroundColor: Colors.white.withValues(alpha: 0.6),
+                valueColor: AlwaysStoppedAnimation(color),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 5),
-        // 막대 차오름
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.full),
-          child: AnimatedBuilder(
-            animation: progress,
-            builder: (context, child) => LinearProgressIndicator(
-              value: r * progress.value,
-              minHeight: 5,
-              backgroundColor: AppColor.border,
-              valueColor: AlwaysStoppedAnimation(color),
-            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
