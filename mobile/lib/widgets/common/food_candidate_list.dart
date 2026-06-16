@@ -1,11 +1,11 @@
-// widgets/common/food_candidate_list.dart — 음식 후보 선택 리스트 (figma 852:23)
+// widgets/common/food_candidate_list.dart — 음식 후보 선택 리스트 (figma 06 · 852:23)
 //
-// 카메라 음식 분석 후 백엔드 후보(MealFoodCandidate[])를 카드로 보여주고
-// 하나를 단일 선택(라디오)하게 한다.
-//   - 후보 카드: 썸네일 자리 + 음식명 + 일치 등급 칩(ConfidenceGradeChip, % 비노출)
-//                + 예상 영양 요약(kcal·탄단지 — null 필드는 숨김)
-//   - 선택 상태: brand 테두리 + 라디오 채움
-//   - 섭취량: 선택된 카드에 현재 섭취량 칩 노출 + [섭취량 조절] 탭 → 호출부에서 시트 표시
+// 카메라 음식 분석 후 백엔드 후보(MealFoodCandidate[])를 하나의 카드 안에
+// 구분선으로 나눠 보여주고 하나를 단일 선택(라디오)하게 한다 (figma 06 인식 결과).
+//   - 후보 행: 썸네일 자리 + 음식명 + 일치 등급(ConfidenceGradeChip, % 비노출)
+//              + 예상 영양 요약(kcal·탄단지 — null 필드는 숨김)
+//   - 선택 상태: brandSoft 행 배경 + 체크 아이콘
+//   - 섭취량: 후보 카드 아래 별도 행 — 탭 → 호출부에서 섭취량 시트 표시
 //
 // 표시만 담당 — 선택/섭취량 변경 콜백은 호출부 책임.
 // 신뢰도 %·금칙어(진단/처방/치료/효능) 노출 없음.
@@ -44,6 +44,11 @@ class FoodCandidateList extends StatelessWidget {
   /// 섭취량 조절 탭 콜백.
   final VoidCallback onAdjustPortion;
 
+  bool get _hasSelection =>
+      selectedIndex != null &&
+      selectedIndex! >= 0 &&
+      selectedIndex! < candidates.length;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -65,130 +70,128 @@ class FoodCandidateList extends StatelessWidget {
           style: AppText.caption.copyWith(color: AppColor.inkTertiary),
         ),
         const SizedBox(height: AppSpace.md),
-        for (int index = 0; index < candidates.length; index++) ...<Widget>[
-          _FoodCandidateCard(
-            candidate: candidates[index],
-            selected: selectedIndex == index,
-            portionAmount: portionAmount,
-            onTap: () => onSelect(index),
-            onAdjustPortion: onAdjustPortion,
+        // 후보 그룹 카드 — 하나의 카드 안에 구분선으로 행 분리 (figma 06).
+        Container(
+          decoration: BoxDecoration(
+            color: AppColor.surface,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColor.border),
           ),
-          if (index != candidates.length - 1)
-            const SizedBox(height: AppSpace.sm),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: Column(
+              children: <Widget>[
+                for (
+                  int index = 0;
+                  index < candidates.length;
+                  index++
+                ) ...<Widget>[
+                  _FoodCandidateRow(
+                    candidate: candidates[index],
+                    selected: selectedIndex == index,
+                    onTap: () => onSelect(index),
+                  ),
+                  if (index != candidates.length - 1)
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: AppColor.border,
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        // 섭취량 — 선택된 후보가 있을 때만, 카드 아래 별도 행 (figma 06).
+        if (_hasSelection) ...<Widget>[
+          const SizedBox(height: AppSpace.md),
+          _PortionRow(portionAmount: portionAmount, onTap: onAdjustPortion),
         ],
       ],
     );
   }
 }
 
-class _FoodCandidateCard extends StatelessWidget {
-  const _FoodCandidateCard({
+class _FoodCandidateRow extends StatelessWidget {
+  const _FoodCandidateRow({
     required this.candidate,
     required this.selected,
-    required this.portionAmount,
     required this.onTap,
-    required this.onAdjustPortion,
   });
 
   final MealFoodCandidate candidate;
   final bool selected;
-  final double portionAmount;
   final VoidCallback onTap;
-  final VoidCallback onAdjustPortion;
 
   @override
   Widget build(BuildContext context) {
     final String? nutritionSummary = _nutritionSummary(candidate);
     return Material(
-      color: Colors.transparent,
+      color: selected ? AppColor.brandSoft : AppColor.surface,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        child: Container(
+        child: Padding(
           padding: const EdgeInsets.all(AppSpace.md),
-          decoration: BoxDecoration(
-            color: selected ? AppColor.brandSoft : AppColor.surface,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(
-              color: selected ? AppColor.brand : AppColor.border,
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  // 썸네일 자리 (백엔드 후보 이미지 미노출 — placeholder).
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColor.sunken,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.restaurant_rounded,
-                      size: 22,
-                      color: AppColor.inkTertiary,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          candidate.displayName,
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColor.ink,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: ConfidenceGradeChip(
-                            confidence: candidate.confidence,
-                            compact: true,
-                          ),
-                        ),
-                        if (nutritionSummary != null) ...<Widget>[
-                          const SizedBox(height: 6),
-                          Text(
-                            nutritionSummary,
-                            style: AppText.caption.copyWith(
-                              color: AppColor.inkSecondary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.sm),
-                  // 단일 선택 라디오.
-                  Icon(
-                    selected
-                        ? Icons.radio_button_checked_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 24,
-                    color: selected ? AppColor.brand : AppColor.inkDisabled,
-                  ),
-                ],
-              ),
-              // 선택된 후보에만 섭취량 조절 행 노출.
-              if (selected) ...<Widget>[
-                const SizedBox(height: AppSpace.md),
-                _PortionRow(
-                  portionAmount: portionAmount,
-                  onTap: onAdjustPortion,
+              // 썸네일 자리 (백엔드 후보 이미지 미노출 — placeholder).
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColor.sunken,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
-              ],
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.restaurant_rounded,
+                  size: 20,
+                  color: AppColor.inkTertiary,
+                ),
+              ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      candidate.displayName,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColor.ink,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: ConfidenceGradeChip(
+                        confidence: candidate.confidence,
+                        compact: true,
+                      ),
+                    ),
+                    if (nutritionSummary != null) ...<Widget>[
+                      const SizedBox(height: 5),
+                      Text(
+                        nutritionSummary,
+                        style: AppText.caption.copyWith(
+                          color: AppColor.inkSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              // 단일 선택 — 선택 시 체크, 미선택 시 빈 원 (figma 06).
+              Icon(
+                selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                size: 24,
+                color: selected ? AppColor.brand : AppColor.inkDisabled,
+              ),
             ],
           ),
         ),
