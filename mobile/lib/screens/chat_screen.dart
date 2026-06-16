@@ -378,37 +378,77 @@ class _Message {
 class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColor.brand,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpace.page,
-            AppSpace.lg,
-            AppSpace.page,
-            AppSpace.lg,
+    // Figma 773:23 — 노란 라운드 카드 + 마스코트 아바타(초록 온라인 점) + 부제.
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.page,
+          AppSpace.md,
+          AppSpace.page,
+          AppSpace.sm,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpace.lg),
+          decoration: BoxDecoration(
+            color: AppColor.brand,
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            boxShadow: [
+              BoxShadow(
+                color: AppColor.brand.withValues(alpha: 0.30),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.chat_bubble_rounded,
-                  color: AppColor.ink,
-                  size: 22,
+              // 마스코트 아바타 + 온라인 상태 점 (figma)
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      padding: const EdgeInsets.all(5),
+                      decoration: const BoxDecoration(
+                        color: AppColor.surface,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Image.asset(
+                        'assets/mascot/poses/find.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.smart_toy_rounded,
+                              color: AppColor.brandDeep,
+                              size: 28,
+                            ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 2,
+                      child: Container(
+                        width: 13,
+                        height: 13,
+                        decoration: BoxDecoration(
+                          color: AppColor.success,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColor.brand, width: 2.5),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: AppSpace.md),
-              Column(
+              const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     '레몬봇',
                     style: TextStyle(
@@ -418,12 +458,12 @@ class _ChatHeader extends StatelessWidget {
                       letterSpacing: 0,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  SizedBox(height: 3),
                   Text(
-                    '영양·식단 궁금한 거 편하게 물어봐요',
+                    '영양·식단 도우미 · 항상 대기 중',
                     style: TextStyle(
                       color: AppColor.ink,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0,
                     ),
@@ -439,61 +479,44 @@ class _ChatHeader extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════
-// 인사 카드 (마스코트)
+// 인사 — 봇 말풍선 (figma 773:23, 좌측 흰 버블)
 // ═══════════════════════════════════════════
 class _IntroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside),
-      decoration: BoxDecoration(
-        color: AppColor.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(140, 155, 175, 0.16),
-            blurRadius: 14,
-            offset: Offset(0, 4),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.82,
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.lg,
+            vertical: AppSpace.md + 2,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Image.asset(
-            'assets/mascot/hello-mascot.png',
-            width: 64,
-            height: 64,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColor.brandSoft,
-                shape: BoxShape.circle,
+          decoration: BoxDecoration(
+            color: AppColor.surface,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(140, 155, 175, 0.14),
+                blurRadius: 14,
+                offset: Offset(0, 4),
               ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.emoji_food_beverage,
-                color: AppColor.brand,
-                size: 32,
-              ),
+            ],
+          ),
+          child: const Text(
+            '안녕하세요! 영양·식단·복약까지,\n궁금한 걸 편하게 물어보세요.',
+            style: TextStyle(
+              color: AppColor.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.5,
+              letterSpacing: 0,
             ),
           ),
-          const SizedBox(width: AppSpace.md),
-          const Expanded(
-            child: Text(
-              '안녕하세요, 태동님!\n오늘 어떤 게 궁금해요?',
-              style: TextStyle(
-                color: AppColor.ink,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                height: 1.4,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -524,14 +547,12 @@ class _SuggestionGrid extends StatelessWidget {
             ),
           ),
         ),
-        Wrap(
-          spacing: AppSpace.sm,
-          runSpacing: AppSpace.sm,
-          children: [
-            for (final s in suggestions)
-              _SuggestChip(text: s, onTap: () => onTap(s)),
-          ],
-        ),
+        // Figma 773:23 — 세로 스택 + ↗ 아이콘 (그리드 아님)
+        for (final s in suggestions)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpace.sm),
+            child: _SuggestChip(text: s, onTap: () => onTap(s)),
+          ),
       ],
     );
   }
@@ -544,25 +565,45 @@ class _SuggestChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpace.md,
-          vertical: 10,
-        ),
-        decoration: BoxDecoration(
-          color: AppColor.surface,
-          borderRadius: BorderRadius.circular(AppRadius.full),
-          border: Border.all(color: AppColor.border, width: 1),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            color: AppColor.ink,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.md,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: AppColor.surface,
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(140, 155, 175, 0.12),
+                blurRadius: 10,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.north_east_rounded,
+                size: 16,
+                color: AppColor.inkTertiary,
+              ),
+              const SizedBox(width: AppSpace.sm),
+              Text(
+                text,
+                style: const TextStyle(
+                  color: AppColor.ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
           ),
         ),
       ),
