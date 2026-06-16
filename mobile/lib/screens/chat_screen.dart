@@ -91,7 +91,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // Only record the turn pair in history after a successful exchange so a
       // failed send does not poison later requests.
       _history
-        ..add(ChatTurn(role: 'user', content: message, createdAt: DateTime.now()))
+        ..add(
+          ChatTurn(role: 'user', content: message, createdAt: DateTime.now()),
+        )
         ..add(
           ChatTurn(
             role: 'assistant',
@@ -112,9 +114,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _messages.add(
-          _Message.error('잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요.'),
-        );
+        _messages.add(_Message.error('잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요.'));
         _thinking = false;
       });
     }
@@ -308,12 +308,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (response.ctas.isNotEmpty) {
       extras
         ..add(const SizedBox(height: AppSpace.sm))
-        ..add(
-          _CtaChips(
-            ctas: response.ctas,
-            onTap: _thinking ? null : _send,
-          ),
-        );
+        ..add(_CtaChips(ctas: response.ctas, onTap: _thinking ? null : _send));
     }
 
     return extras;
@@ -625,7 +620,8 @@ class _MessageBubble extends StatelessWidget {
             message.text,
             style: TextStyle(
               color: fg,
-              fontSize: 14,
+              // 시니어 최소치(SoT §9.1) — 주 읽기면이라 본문 15px
+              fontSize: 15,
               fontWeight: mine ? FontWeight.w700 : FontWeight.w500,
               height: 1.45,
               letterSpacing: 0,
@@ -705,11 +701,10 @@ class _SourceChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> labels = sources
-        .map((ChatbotSource s) => s.label)
-        .where((String label) => label.isNotEmpty)
+    final List<ChatbotSource> visible = sources
+        .where((ChatbotSource s) => s.label.isNotEmpty)
         .toList(growable: false);
-    if (labels.isEmpty) {
+    if (visible.isEmpty) {
       return const SizedBox.shrink();
     }
     return Align(
@@ -721,6 +716,7 @@ class _SourceChips extends StatelessWidget {
         child: Wrap(
           spacing: AppSpace.xs,
           runSpacing: AppSpace.xs,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             const Padding(
               padding: EdgeInsets.only(top: 3),
@@ -734,24 +730,39 @@ class _SourceChips extends StatelessWidget {
                 ),
               ),
             ),
-            for (final String label in labels)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpace.sm,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColor.section,
-                  borderRadius: BorderRadius.circular(AppRadius.full),
-                  border: Border.all(color: AppColor.border, width: 1),
-                ),
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppColor.inkTertiary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
+            // 출처 칩 탭 → 상세 바텀시트(가이드 05 ⑧). url_launcher 미도입 → 복사 전용.
+            for (final ChatbotSource source in visible)
+              GestureDetector(
+                onTap: () => _showSourceSheet(context, source),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.section,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    border: Border.all(color: AppColor.border, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        source.label,
+                        style: const TextStyle(
+                          color: AppColor.inkSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 13,
+                        color: AppColor.inkTertiary,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -760,6 +771,128 @@ class _SourceChips extends StatelessWidget {
       ),
     );
   }
+}
+
+// 출처 상세 바텀시트 — 제목/출처군/식별자/URL(복사 전용) + 안내 캡션.
+void _showSourceSheet(BuildContext context, ChatbotSource source) {
+  final String title = source.title.trim();
+  final String family = source.sourceFamily.trim();
+  final String id = source.sourceId.trim();
+  final String url = source.sourceUrl.trim();
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppColor.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+    ),
+    builder: (BuildContext sheetContext) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpace.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColor.borderStrong,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpace.lg),
+              Text(
+                title.isNotEmpty ? title : '출처',
+                style: AppText.subtitle.copyWith(fontWeight: FontWeight.w800),
+              ),
+              if (family.isNotEmpty) ...<Widget>[
+                const SizedBox(height: AppSpace.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.section,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    border: Border.all(color: AppColor.border, width: 1),
+                  ),
+                  child: Text(
+                    family,
+                    style: AppText.micro.copyWith(color: AppColor.inkSecondary),
+                  ),
+                ),
+              ],
+              if (id.isNotEmpty) ...<Widget>[
+                const SizedBox(height: AppSpace.sm),
+                Text(
+                  id,
+                  style: AppText.micro.copyWith(color: AppColor.inkTertiary),
+                ),
+              ],
+              if (url.isNotEmpty) ...<Widget>[
+                const SizedBox(height: AppSpace.md),
+                SelectableText(
+                  url,
+                  style: AppText.caption.copyWith(color: AppColor.inkSecondary),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: url));
+                    HapticFeedback.selectionClick();
+                    Navigator.of(sheetContext).pop();
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '링크를 복사했어요.',
+                          style: AppText.body.copyWith(color: AppColor.bg),
+                        ),
+                        backgroundColor: AppColor.ink,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  child: Container(
+                    height: 48,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.copy_rounded,
+                          size: 18,
+                          color: AppColor.brandDeep,
+                        ),
+                        const SizedBox(width: AppSpace.xs),
+                        Text(
+                          'URL 복사',
+                          style: AppText.caption.copyWith(
+                            color: AppColor.brandDeep,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: AppSpace.lg),
+              Text(
+                '검수된 출처 기반 안내예요. 참고용으로 봐주세요.',
+                style: AppText.micro.copyWith(color: AppColor.inkTertiary),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 // ═══════════════════════════════════════════
@@ -847,11 +980,7 @@ class _ApprovalCard extends StatelessWidget {
             children: [
               Row(
                 children: const [
-                  Icon(
-                    Icons.insights_rounded,
-                    size: 18,
-                    color: AppColor.info,
-                  ),
+                  Icon(Icons.insights_rounded, size: 18, color: AppColor.info),
                   SizedBox(width: AppSpace.sm),
                   Text(
                     '분석을 실행할까요?',
@@ -1049,11 +1178,7 @@ class _ChatDisclaimerLine extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          const Icon(
-            Icons.info_outline,
-            size: 13,
-            color: AppColor.inkTertiary,
-          ),
+          const Icon(Icons.info_outline, size: 13, color: AppColor.inkTertiary),
           const SizedBox(width: 4),
           Flexible(child: Text(text, style: AppText.micro)),
         ],
@@ -1127,14 +1252,11 @@ class _InputBar extends StatelessWidget {
               GestureDetector(
                 onTap: disabled ? null : () => onSend(controller.text),
                 child: Container(
-                  width: 44,
-                  height: 44,
+                  // 48px 터치 타깃(시니어 최소치) + 솔리드 brand(토큰)
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0xFFFFD43A), AppColor.brand],
-                    ),
+                    color: AppColor.brand,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
