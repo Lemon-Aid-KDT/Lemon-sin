@@ -45,7 +45,7 @@ class AppSectionHeader extends StatelessWidget {
                 ),
                 child: Text(
                   action!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

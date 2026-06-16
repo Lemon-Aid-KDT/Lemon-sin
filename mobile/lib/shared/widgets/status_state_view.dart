@@ -180,7 +180,7 @@ class StatusStateView extends StatelessWidget {
             Container(
               width: 112,
               height: 112,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppColor.brandSoft,
                 shape: BoxShape.circle,
               ),
@@ -189,7 +189,7 @@ class StatusStateView extends StatelessWidget {
                 child: Image.asset(
                   _pose().asset,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(
+                  errorBuilder: (_, _, _) => Icon(
                     Icons.sentiment_satisfied_rounded,
                     size: 48,
                     color: AppColor.brand,

@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kReleaseMode, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -126,7 +127,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      const Icon(
+                      Icon(
                         Icons.info_outline,
                         color: AppColor.brandDeep,
                         size: 18,
@@ -252,7 +253,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           icon: Icons.watch_rounded,
                           iconBg: AppColor.brandSoft,
                           iconColor: AppColor.brandDeep,
-                          title: '갤럭시 워치 연동',
+                          // iOS = 애플 워치(HealthKit), Android = 갤럭시 워치(Health Connect)
+                          title: defaultTargetPlatform == TargetPlatform.iOS
+                              ? '애플 워치 연동'
+                              : '갤럭시 워치 연동',
                           subtitle: '걸음·심박·활동량 자동 기록',
                           trailing: const _StatusChip(label: '미연동'),
                           onTap: _showComingSoon,
@@ -407,7 +411,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     if (!kReleaseMode) ...[
                       const SizedBox(height: AppSpace.lg),
                       const SectionLabel('OCR 테스트'),
-                      const SettingsCard(
+                      SettingsCard(
                         children: [
                           SettingsRow(
                             icon: Icons.camera_alt_rounded,
@@ -416,16 +420,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             title: '촬영 환경',
                             subtitle: 'Android Studio AVD와 live flag 사용',
                           ),
-                          SettingsDivider(),
-                          SettingsRow(
+                          const SettingsDivider(),
+                          const SettingsRow(
                             icon: Icons.photo_library_rounded,
                             iconBg: AppColor.successSoft,
                             iconColor: AppColor.success,
                             title: '갤러리 입력',
                             subtitle: '선택 이미지는 앱 캐시에 복사 후 OCR 업로드',
                           ),
-                          SettingsDivider(),
-                          SettingsRow(
+                          const SettingsDivider(),
+                          const SettingsRow(
                             icon: Icons.psychology_rounded,
                             iconBg: AppColor.warningSoft,
                             iconColor: AppColor.warning,
@@ -685,10 +689,10 @@ class _ProfileHeader extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 42,
                 backgroundColor: AppColor.brandTint,
-                child: Icon(
+                child: const Icon(
                   Icons.person_rounded,
                   color: AppColor.ink,
                   size: 38,
@@ -712,7 +716,7 @@ class _ProfileHeader extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '레몬에이드와 함께한 지 $days일째',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColor.brandDeep,
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
@@ -734,7 +738,7 @@ class _ProfileHeader extends StatelessWidget {
                 ),
               ),
               DecoratedBox(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppColor.brandTint,
                   shape: BoxShape.circle,
                 ),

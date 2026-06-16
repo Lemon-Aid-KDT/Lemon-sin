@@ -84,7 +84,7 @@ class MedicalDisclaimer extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(Icons.info_outline, color: AppColor.brandDeep, size: 18),
+          Icon(Icons.info_outline, color: AppColor.brandDeep, size: 18),
           const SizedBox(width: AppSpace.sm),
           Expanded(
             child: Text(

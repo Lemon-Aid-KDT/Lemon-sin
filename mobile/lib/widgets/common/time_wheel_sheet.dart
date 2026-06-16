@@ -37,10 +37,8 @@ Future<TimeOfDayResult?> showTimeWheelSheet(
     barrierColor: const Color(0x80141A2C),
     isScrollControlled: true,
     showDragHandle: false,
-    builder: (BuildContext sheetContext) => _TimeWheelSheet(
-      initialHour: initialHour,
-      initialMinute: initialMinute,
-    ),
+    builder: (BuildContext sheetContext) =>
+        _TimeWheelSheet(initialHour: initialHour, initialMinute: initialMinute),
   );
 }
 
@@ -160,8 +158,7 @@ class _TimeWheelSheetState extends State<_TimeWheelSheet> {
                       child: _wheel(
                         controller: _hourController,
                         childCount: 12,
-                        labelBuilder: (int i) =>
-                            '${i == 0 ? 12 : i}시',
+                        labelBuilder: (int i) => '${i == 0 ? 12 : i}시',
                         onChanged: (int i) => setState(() => _hour12Index = i),
                       ),
                     ),
@@ -182,9 +179,9 @@ class _TimeWheelSheetState extends State<_TimeWheelSheet> {
                 height: 52,
                 child: AppPrimaryButton(
                   label: '확인',
-                  onPressed: () => Navigator.of(context).pop(
-                    TimeOfDayResult(hour: _hour24, minute: _minuteIndex),
-                  ),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop(TimeOfDayResult(hour: _hour24, minute: _minuteIndex)),
                 ),
               ),
             ],
@@ -204,7 +201,7 @@ class _TimeWheelSheetState extends State<_TimeWheelSheet> {
       scrollController: controller,
       itemExtent: 40,
       onSelectedItemChanged: onChanged,
-      selectionOverlay: const CupertinoPickerDefaultSelectionOverlay(
+      selectionOverlay: CupertinoPickerDefaultSelectionOverlay(
         background: AppColor.brandSoft,
       ),
       children: List<Widget>.generate(

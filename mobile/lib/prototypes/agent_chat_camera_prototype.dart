@@ -730,7 +730,7 @@ const _dailyPromises = [
   ),
 ];
 
-const _analysisResults = [
+final _analysisResults = [
   _AnalysisResult(
     id: 'diet',
     title: '식단 분석',

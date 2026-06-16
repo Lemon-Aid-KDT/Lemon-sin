@@ -421,12 +421,11 @@ class _ChatHeader extends StatelessWidget {
                       child: Image.asset(
                         'assets/mascot/poses/find.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                              Icons.smart_toy_rounded,
-                              color: AppColor.brandDeep,
-                              size: 28,
-                            ),
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          Icons.smart_toy_rounded,
+                          color: AppColor.brandDeep,
+                          size: 28,
+                        ),
                       ),
                     ),
                     Positioned(
@@ -905,7 +904,7 @@ void _showSourceSheet(BuildContext context, ChatbotSource source) {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Icon(
+                        Icon(
                           Icons.copy_rounded,
                           size: 18,
                           color: AppColor.brandDeep,
@@ -971,7 +970,7 @@ class _CtaChips extends StatelessWidget {
                   ),
                   child: Text(
                     cta,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColor.brandDeep,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,

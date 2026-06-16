@@ -425,10 +425,14 @@ class _AvatarHeader extends StatelessWidget {
         onTap: onEditPhoto,
         child: Stack(
           children: <Widget>[
-            const CircleAvatar(
+            CircleAvatar(
               radius: 42,
               backgroundColor: AppColor.brandTint,
-              child: Icon(Icons.person_rounded, color: AppColor.ink, size: 42),
+              child: const Icon(
+                Icons.person_rounded,
+                color: AppColor.ink,
+                size: 42,
+              ),
             ),
             Positioned(
               right: 0,
@@ -436,7 +440,7 @@ class _AvatarHeader extends StatelessWidget {
               child: Container(
                 width: 32,
                 height: 32,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppColor.brand,
                   shape: BoxShape.circle,
                 ),

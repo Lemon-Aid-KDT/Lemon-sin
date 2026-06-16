@@ -461,7 +461,7 @@ class _Header extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 2),
-                      const Icon(
+                      Icon(
                         Icons.expand_more_rounded,
                         color: AppColor.brandDeep,
                         size: 16,
@@ -666,8 +666,8 @@ class _GradeChip extends StatelessWidget {
 /// 도넛 링 점수 (점수/100) — 진행 색은 등급 매핑, 중앙 숫자는 ink 유지.
 class _ScoreRing extends StatelessWidget {
   final int score;
-  final Color color;
-  const _ScoreRing({required this.score, this.color = AppColor.brand});
+  final Color? color;
+  const _ScoreRing({required this.score, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -685,7 +685,9 @@ class _ScoreRing extends StatelessWidget {
               value: ratio,
               strokeWidth: 12,
               backgroundColor: AppColor.section,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                color ?? AppColor.brand,
+              ),
             ),
           ),
           Column(
@@ -748,7 +750,7 @@ class _LemonBotCta extends StatelessWidget {
                 ),
               ),
             ),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
               color: AppColor.brandDeep,
               size: 22,
@@ -919,8 +921,8 @@ class _ChecklistCard extends StatelessWidget {
 
   Widget _buildBody(DailyCoachingResult? result) {
     if (loading && result == null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: AppSpace.lg),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.lg),
         child: Center(
           child: SizedBox(
             width: 24,

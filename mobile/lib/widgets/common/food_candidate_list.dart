@@ -225,7 +225,7 @@ class _PortionRow extends StatelessWidget {
           ),
           child: Row(
             children: <Widget>[
-              const Icon(
+              Icon(
                 Icons.rice_bowl_rounded,
                 size: 18,
                 color: AppColor.brandDeep,

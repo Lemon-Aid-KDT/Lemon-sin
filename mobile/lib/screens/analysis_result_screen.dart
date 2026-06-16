@@ -3107,9 +3107,9 @@ class _IngredientAmountTable extends StatelessWidget {
                 horizontalInside: BorderSide(color: AppColor.border),
               ),
               children: <TableRow>[
-                const TableRow(
+                TableRow(
                   decoration: BoxDecoration(color: AppColor.brandSoft),
-                  children: <Widget>[
+                  children: const <Widget>[
                     _IngredientAmountCell(text: '선택', isHeader: true),
                     _IngredientAmountCell(text: '성분명', isHeader: true),
                     _IngredientAmountCell(text: '함량', isHeader: true),
@@ -3160,12 +3160,12 @@ class _IngredientAmountTable extends StatelessWidget {
                 style: TextButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),
-                icon: const Icon(
+                icon: Icon(
                   Icons.add_rounded,
                   size: 20,
                   color: AppColor.brandDeep,
                 ),
-                label: const Text(
+                label: Text(
                   '성분 직접 추가',
                   style: TextStyle(
                     color: AppColor.brandDeep,
@@ -3697,7 +3697,7 @@ class _AnalysisChecklistRow extends StatelessWidget {
                     color: AppColor.success,
                   )
                 : active
-                ? const SizedBox(
+                ? SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
@@ -3805,10 +3805,10 @@ class _SummaryCard extends StatelessWidget {
         AppSpace.lg,
       ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFFFFE07A), AppColor.brand],
+          colors: <Color>[const Color(0xFFFFE07A), AppColor.brand],
         ),
         borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: <BoxShadow>[
@@ -4097,11 +4097,7 @@ class _DatabaseMatchFallbackCard extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(
-                Icons.search_rounded,
-                size: 20,
-                color: AppColor.brandDeep,
-              ),
+              Icon(Icons.search_rounded, size: 20, color: AppColor.brandDeep),
               const SizedBox(width: AppSpace.sm),
               Expanded(
                 child: Text(
@@ -4176,7 +4172,7 @@ class _FallbackPickedChip extends StatelessWidget {
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onRemove,
-            child: const Icon(
+            child: Icon(
               Icons.close_rounded,
               size: 16,
               color: AppColor.brandDeep,
@@ -4350,7 +4346,7 @@ class _PredictedNutrientCard extends StatelessWidget {
                     color: AppColor.brandSoft,
                     borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
-                  child: const Text(
+                  child: Text(
                     '예상 열량',
                     style: TextStyle(
                       color: AppColor.brandDeep,
@@ -4717,7 +4713,7 @@ class _CategoryDropdownCard extends StatelessWidget {
                   color: AppColor.brand.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.category_rounded,
                   color: AppColor.brand,
                   size: 22,
@@ -5088,7 +5084,7 @@ class _ReviewTextField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: const BorderSide(color: AppColor.brand, width: 1.5),
+          borderSide: BorderSide(color: AppColor.brand, width: 1.5),
         ),
       ),
     );
@@ -5226,7 +5222,7 @@ class _AnalysisExplanationCard extends StatelessWidget {
               label: Text(busy ? '요청 중' : '분석 설명 받기'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColor.ink,
-                side: const BorderSide(color: AppColor.brand),
+                side: BorderSide(color: AppColor.brand),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.md),
                 ),

@@ -234,7 +234,7 @@ class DetectionPreviewCard extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(
+              Icon(
                 Icons.crop_free_rounded,
                 size: 20,
                 color: AppColor.brandDeep,

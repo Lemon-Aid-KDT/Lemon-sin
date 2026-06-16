@@ -70,19 +70,24 @@ Future<CaptureGuideResult?> showCaptureGuideModal(
     barrierColor: const Color(0x59141A2C),
     transitionDuration: const Duration(milliseconds: 220),
     transitionBuilder:
-        (BuildContext _, Animation<double> anim, Animation<double> _, Widget child) {
-      final CurvedAnimation curved = CurvedAnimation(
-        parent: anim,
-        curve: Curves.easeOutCubic,
-      );
-      return Opacity(
-        opacity: curved.value,
-        child: Transform.scale(
-          scale: 0.96 + 0.04 * curved.value,
-          child: child,
-        ),
-      );
-    },
+        (
+          BuildContext _,
+          Animation<double> anim,
+          Animation<double> _,
+          Widget child,
+        ) {
+          final CurvedAnimation curved = CurvedAnimation(
+            parent: anim,
+            curve: Curves.easeOutCubic,
+          );
+          return Opacity(
+            opacity: curved.value,
+            child: Transform.scale(
+              scale: 0.96 + 0.04 * curved.value,
+              child: child,
+            ),
+          );
+        },
     pageBuilder: (BuildContext _, Animation<double> _, Animation<double> _) =>
         _CaptureGuideModal(isMeal: isMeal),
   );
@@ -124,7 +129,7 @@ class _CaptureGuideModalState extends State<_CaptureGuideModal> {
                   child: Container(
                     width: 84,
                     height: 84,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColor.brandSoft,
                       shape: BoxShape.circle,
                     ),
@@ -132,13 +137,12 @@ class _CaptureGuideModalState extends State<_CaptureGuideModal> {
                     child: Image.asset(
                       MascotFor.camera.asset,
                       fit: BoxFit.contain,
-                      errorBuilder:
-                          (BuildContext _, Object _, StackTrace? _) =>
-                              const Icon(
-                                Icons.photo_camera_rounded,
-                                size: 36,
-                                color: AppColor.brand,
-                              ),
+                      errorBuilder: (BuildContext _, Object _, StackTrace? _) =>
+                          Icon(
+                            Icons.photo_camera_rounded,
+                            size: 36,
+                            color: AppColor.brand,
+                          ),
                     ),
                   ),
                 ),
@@ -156,7 +160,11 @@ class _CaptureGuideModalState extends State<_CaptureGuideModal> {
                   ),
                 ),
                 const SizedBox(height: AppSpace.lg),
-                for (int index = 0; index < _kGuideRules.length; index++) ...<Widget>[
+                for (
+                  int index = 0;
+                  index < _kGuideRules.length;
+                  index++
+                ) ...<Widget>[
                   _GuideRuleRow(rule: _kGuideRules[index]),
                   if (index != _kGuideRules.length - 1)
                     const SizedBox(height: AppSpace.md),

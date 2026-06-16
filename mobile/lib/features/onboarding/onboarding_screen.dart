@@ -174,7 +174,7 @@ class _SlideView extends StatelessWidget {
             width: 200,
             height: 200,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: ds2.AppColor.brandSoft,
               shape: BoxShape.circle,
             ),

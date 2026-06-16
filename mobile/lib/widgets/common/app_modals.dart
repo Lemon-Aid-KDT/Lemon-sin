@@ -559,10 +559,10 @@ class _AppCelebrate extends StatelessWidget {
                         height: 88,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: const RadialGradient(
-                            center: Alignment(-0.4, -0.4),
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.4, -0.4),
                             radius: 0.9,
-                            colors: [Color(0xFFFFE066), AppColor.yellow],
+                            colors: [const Color(0xFFFFE066), AppColor.yellow],
                           ),
                           boxShadow: [
                             BoxShadow(
@@ -772,7 +772,7 @@ class _InteractionWarningDialog extends StatelessWidget {
                     color: AppColor.brandSoft,
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
-                  child: const Text(
+                  child: Text(
                     '드시기 전 의사·약사와 상담을 권해요',
                     style: TextStyle(
                       fontFamily: 'Pretendard',
@@ -847,10 +847,8 @@ Future<bool> showDeleteConfirmDialog(
         child: Transform.scale(scale: 0.96 + 0.04 * curved.value, child: child),
       );
     },
-    pageBuilder: (_, _, _) => _DeleteConfirmDialog(
-      targetLabel: targetLabel,
-      subLabel: subLabel,
-    ),
+    pageBuilder: (_, _, _) =>
+        _DeleteConfirmDialog(targetLabel: targetLabel, subLabel: subLabel),
   );
   return result ?? false;
 }
@@ -859,10 +857,7 @@ class _DeleteConfirmDialog extends StatelessWidget {
   final String targetLabel;
   final String? subLabel;
 
-  const _DeleteConfirmDialog({
-    required this.targetLabel,
-    this.subLabel,
-  });
+  const _DeleteConfirmDialog({required this.targetLabel, this.subLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -1048,12 +1043,12 @@ class _CelebrationDialog extends StatelessWidget {
                 Container(
                   width: 88,
                   height: 88,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColor.brandSoft,
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(
+                  child: Icon(
                     Icons.celebration_rounded,
                     color: AppColor.brand,
                     size: 44,

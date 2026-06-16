@@ -16,7 +16,15 @@ import '../../utils/design_tokens_v2.dart';
 import '../../widgets/common/time_wheel_sheet.dart';
 
 /// 요일 칩 라벨 (1=월 … 7=일).
-const List<String> _kWeekdayLabels = <String>['월', '화', '수', '목', '금', '토', '일'];
+const List<String> _kWeekdayLabels = <String>[
+  '월',
+  '화',
+  '수',
+  '목',
+  '금',
+  '토',
+  '일',
+];
 
 /// 복약 알림 설정 화면.
 class MedicationReminderScreen extends ConsumerStatefulWidget {
@@ -400,7 +408,7 @@ class _AddTimeButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Icon(Icons.add_rounded, color: AppColor.brandDeep),
+            Icon(Icons.add_rounded, color: AppColor.brandDeep),
             const SizedBox(width: AppSpace.sm),
             Text(
               '시간 추가',

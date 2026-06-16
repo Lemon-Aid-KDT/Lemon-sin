@@ -89,10 +89,7 @@ class ChatAnalysisCard extends StatelessWidget {
     if (today.isPending) {
       return <Widget>[_PendingNotice(missingRecords: today.missingRecords)];
     }
-    final List<String> strengths = _mapCodes(
-      today.strengths,
-      _strengthLabels,
-    );
+    final List<String> strengths = _mapCodes(today.strengths, _strengthLabels);
     final List<String> priorities = _mapCodes(
       today.priorityAdjustments,
       _axisLabels,
@@ -189,10 +186,10 @@ class _CardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: const <Widget>[
+      children: <Widget>[
         Icon(Icons.insights_rounded, size: 18, color: AppColor.brandDeep),
-        SizedBox(width: AppSpace.sm),
-        Text(
+        const SizedBox(width: AppSpace.sm),
+        const Text(
           '분석 결과 정리',
           style: TextStyle(
             color: AppColor.ink,
@@ -232,7 +229,7 @@ class _ScoreRow extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             '$value',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColor.brandDeep,
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -302,7 +299,7 @@ class _ReadinessRow extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColor.brandDeep,
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
@@ -357,8 +354,8 @@ class _SummaryRows extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Padding(
-                  padding: EdgeInsets.only(top: 2, right: 6),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 6),
                   child: Icon(
                     Icons.check_circle_outline_rounded,
                     size: 14,

@@ -331,7 +331,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                     value: _kcalRatio * _gauge.value,
                     minHeight: 6,
                     backgroundColor: AppColor.sunken,
-                    valueColor: const AlwaysStoppedAnimation(AppColor.brand),
+                    valueColor: AlwaysStoppedAnimation(AppColor.brand),
                   ),
                 ),
               ),
@@ -362,7 +362,7 @@ class _HealthHeroCardState extends State<HealthHeroCard>
                           ],
                           TextSpan(
                             text: '$_remainKcal kcal',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColor.brandDeep,
                               fontWeight: FontWeight.w800,
                             ),
@@ -628,8 +628,8 @@ class _HalfGaugePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
-      ..shader = const LinearGradient(
-        colors: [Color(0xFFFFD64A), AppColor.brand],
+      ..shader = LinearGradient(
+        colors: [const Color(0xFFFFD64A), AppColor.brand],
       ).createShader(rect);
     canvas.drawArc(
       rect,

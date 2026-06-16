@@ -393,6 +393,9 @@ class _LemonAidRouterApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final BrandTheme brandTheme = ref.watch(brandThemeProvider);
     return MaterialApp.router(
+      // 테마 변경 시 트리 전체 재빌드 → static AppColor(brand 계열) 읽는 위젯까지
+      // 새 색을 다시 읽는다. GoRouter(routerConfig)는 provider 라 내비 상태 보존.
+      key: ValueKey<BrandTheme>(brandTheme),
       title: 'Lemon Aid',
       debugShowCheckedModeBanner: false,
       theme: buildLemonAidTheme(brandTheme.color),

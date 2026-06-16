@@ -590,7 +590,7 @@ class _CategoryChipStyle {
 /// 영양제: brandDeep 필 + 흰 텍스트.
 _CategoryChipStyle _categoryChipStyle(RecordTimelineEntry entry) {
   if (entry.kind == RecordTimelineKind.supplement) {
-    return const _CategoryChipStyle(
+    return _CategoryChipStyle(
       label: '영양제',
       fill: AppColor.brandDeep,
       textColor: AppColor.surface,
@@ -598,7 +598,7 @@ _CategoryChipStyle _categoryChipStyle(RecordTimelineEntry entry) {
   }
   switch (entry.subtitle) {
     case '아침':
-      return const _CategoryChipStyle(
+      return _CategoryChipStyle(
         label: '아침',
         fill: AppColor.brandSoft,
         textColor: AppColor.brandDeep,

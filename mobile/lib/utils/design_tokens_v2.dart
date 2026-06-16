@@ -29,16 +29,19 @@ class AppColor {
   // 메인 컬러 확정 (UX_DIARY §14.12, 2026-05-18 갱신)
   // 블루 폐기 → 워드마크 "레몬·에이드" 중간 점 색 (Lemon Yellow) 으로 통일
   // 일관성 §17: brand = yellow 로 통합. 모든 CTA / 활성 / 강조에 사용.
-  static const Color brand = Color(0xFFFFC700); // ★ Lemon Aid 메인 (워드마크 점 색)
-  static const Color brandPressed = Color(0xFFE5B300); // 눌림 (어두운 톤)
-  static const Color brandDeep = Color(0xFFC99100); // 깊은 톤 (텍스트 on yellow)
-  static const Color brandSoft = Color(0xFFFFF6CC); // chip 배경 / 옅은 강조
-  static const Color brandTint = Color(0xFFFFF0A8); // 더 옅은 노랑 (선택 배경)
+  // ⚠️ brand 계열은 사용자 테마 선택(BrandTheme)에 따라 런타임에 교체된다.
+  //    BrandThemeNotifier 가 select/restore 시 아래 값을 갱신하고, app.dart 루트가
+  //    ValueKey(brandTheme) 로 전체 트리를 재빌드해 적용한다. 그래서 const 가 아니다.
+  static Color brand = const Color(0xFFFFC700); // ★ Lemon Aid 메인 (테마 기본=옐로)
+  static Color brandPressed = const Color(0xFFE5B300); // 눌림 (어두운 톤)
+  static Color brandDeep = const Color(0xFFC99100); // 깊은 톤 (텍스트 on brand)
+  static Color brandSoft = const Color(0xFFFFF6CC); // chip 배경 / 옅은 강조
+  static Color brandTint = const Color(0xFFFFF0A8); // 더 옅은 (선택 배경)
 
   // 액센트 ───────────────────────────────────
   // 호환성 유지 — yellow = brand 동의어
-  static const Color yellow = Color(0xFFFFC700); // = brand (마스코트·하이라이트)
-  static const Color yellowSoft = Color(0xFFFFF6CC); // = brandSoft
+  static Color yellow = const Color(0xFFFFC700); // = brand (테마 따라 교체)
+  static Color yellowSoft = const Color(0xFFFFF6CC); // = brandSoft
   static const Color kakao = Color(0xFFFEE500); // 카카오 브랜드 가이드
   static const Color appleBlack = Color(0xFF1A1F2E);
 

@@ -698,13 +698,9 @@ class _HelpfulInfoCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Icon(
-                      Icons.circle,
-                      size: 6,
-                      color: AppColor.brand,
-                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(Icons.circle, size: 6, color: AppColor.brand),
                   ),
                   const SizedBox(width: AppSpace.sm),
                   Expanded(
@@ -750,17 +746,14 @@ class _SourceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.md,
-        vertical: 4,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: 4),
       decoration: BoxDecoration(
         color: AppColor.brandSoft,
         borderRadius: BorderRadius.circular(AppRadius.full),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Pretendard',
           color: AppColor.brandDeep,
           fontSize: 12,
@@ -781,8 +774,7 @@ class _CautionBannerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool high =
-        (component.severity ?? '').trim().toLowerCase() == 'high';
+    final bool high = (component.severity ?? '').trim().toLowerCase() == 'high';
     final Color accent = high ? AppColor.danger : AppColor.review;
     final Color accentSoft = high ? AppColor.dangerSoft : AppColor.reviewSoft;
     final String? message = _nonEmpty(component.message);

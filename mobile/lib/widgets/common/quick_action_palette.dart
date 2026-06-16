@@ -38,7 +38,7 @@ class _ActionSpec {
 // Figma 팔레트 — 아이콘은 전부 단일 딥 골드(모노). 멀티컬러 아님.
 // 흰 원 위 대비 확보 위해 brand(#FFC700) 대신 brandDeep(#C99100) 사용.
 // 라벨은 Figma 표기대로 짧게 (영양제 / 식단 / 복약). 색은 토큰만.
-const List<_ActionSpec> _kActions = [
+final List<_ActionSpec> _kActions = [
   _ActionSpec(
     QuickAction.manualInput,
     Icons.edit_rounded,

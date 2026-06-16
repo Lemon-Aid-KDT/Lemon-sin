@@ -971,7 +971,7 @@ class _DateBubble extends StatelessWidget {
                   width: 4,
                   height: 4,
                   margin: const EdgeInsets.only(top: 1),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColor.brandDeep,
                     shape: BoxShape.circle,
                   ),
@@ -1589,11 +1589,7 @@ class _MealSlotRow extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const Icon(
-                Icons.add_rounded,
-                size: 16,
-                color: AppColor.brandDeep,
-              ),
+              Icon(Icons.add_rounded, size: 16, color: AppColor.brandDeep),
             ],
           )
         else
@@ -1779,7 +1775,7 @@ class _SupplementRow extends StatelessWidget {
 }
 
 // 행 리딩 아이콘 색 로테이션 — Figma의 다채로운 알약 색을 모사.
-const List<Color> _rowPalette = <Color>[
+final List<Color> _rowPalette = <Color>[
   AppColor.danger,
   AppColor.success,
   AppColor.info,

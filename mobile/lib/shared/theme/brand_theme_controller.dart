@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app_providers.dart';
 import '../../core/storage/local_prefs.dart';
 import '../../utils/brand_palette.dart';
+import '../../utils/design_tokens_v2.dart';
 
 /// 현재 선택된 [BrandTheme] 을 관리하는 StateNotifier.
 ///
@@ -24,9 +25,24 @@ class BrandThemeNotifier extends StateNotifier<BrandTheme> {
   /// 저장된 테마가 있으면 복원하고, 없으면 yellow 로 시작한다.
   BrandThemeNotifier({LocalPrefs? prefs})
     : _prefs = prefs,
-      super(_restore(prefs));
+      super(_restore(prefs)) {
+    // 복원된 테마를 전역 디자인 토큰(AppColor brand 계열)에 즉시 반영.
+    _applyToTokens(state);
+  }
 
   final LocalPrefs? _prefs;
+
+  /// 선택된 브랜드 테마 색을 전역 AppColor 토큰에 반영한다.
+  /// app.dart 루트가 ValueKey(brandTheme) 로 트리를 재빌드해 화면에 적용된다.
+  static void _applyToTokens(BrandTheme theme) {
+    AppColor.brand = theme.color;
+    AppColor.brandPressed = theme.pressedColor;
+    AppColor.brandDeep = theme.deepColor;
+    AppColor.brandSoft = theme.softColor;
+    AppColor.brandTint = theme.tintColor;
+    AppColor.yellow = theme.color;
+    AppColor.yellowSoft = theme.softColor;
+  }
 
   static BrandTheme _restore(LocalPrefs? prefs) {
     final String? code = prefs?.brandThemeCode();
@@ -40,6 +56,7 @@ class BrandThemeNotifier extends StateNotifier<BrandTheme> {
   /// 브랜드 테마를 변경하고 선택을 영속한다.
   void select(BrandTheme theme) {
     if (state == theme) return;
+    _applyToTokens(theme); // 전역 토큰 먼저 갱신 후 상태 변경 → 루트 재빌드 시 적용
     state = theme;
     // 저장 실패는 무시 (다음 기동에서 기본값으로 복원되며 기능 영향 없음).
     _prefs?.setBrandThemeCode(theme.name);

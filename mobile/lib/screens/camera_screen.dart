@@ -1605,11 +1605,7 @@ class _BatchCountBadge extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.collections_rounded,
-            color: AppColor.brand,
-            size: 18,
-          ),
+          Icon(Icons.collections_rounded, color: AppColor.brand, size: 18),
           const SizedBox(height: 3),
           Text(
             '$count장',
@@ -1738,12 +1734,12 @@ class _AutoAnalysisBadge extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.full),
           border: Border.all(color: _CamTone.border),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Icon(Icons.auto_awesome_rounded, color: AppColor.brand, size: 18),
-            SizedBox(width: AppSpace.xs),
-            Text(
+            const SizedBox(width: AppSpace.xs),
+            const Text(
               '자동 분석',
               style: TextStyle(
                 color: Colors.white,
@@ -2274,7 +2270,7 @@ class _SpinnerWithLabel extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(
+        SizedBox(
           width: 28,
           height: 28,
           child: CircularProgressIndicator(
@@ -2865,7 +2861,7 @@ class _ShutterButtonState extends State<_ShutterButton> {
                 padding: const EdgeInsets.all(4),
                 child: Container(
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [AppColor.brandTint, AppColor.brand],
@@ -2986,7 +2982,7 @@ class _PrimaryButton extends StatelessWidget {
         ),
         child: Ink(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [AppColor.brandTint, AppColor.brand],
