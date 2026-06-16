@@ -61,15 +61,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _loading = false;
   bool _failed = false;
 
-  // Figma 364:24 — 월요일 시작 (월 화 수 목 금 토 일)
+  // Figma 05 "캘린더 (홈 서브)" canonical — 일요일 시작 (일 월 화 수 목 금 토)
   static const List<String> _weekdayLabels = <String>[
+    '일',
     '월',
     '화',
     '수',
     '목',
     '금',
     '토',
-    '일',
   ];
 
   @override
@@ -229,7 +229,7 @@ BoxDecoration _calendarCardDeco() => BoxDecoration(
 );
 
 // ═══════════════════════════════════════════
-// 월 네비 — 2026년 6월 (좌) · ◀ ▶ (우)  — Figma 364:24
+// 월 네비 — ‹ 2026년 6월 ›  (중앙정렬) — Figma 05 "캘린더 (홈 서브)"
 // ═══════════════════════════════════════════
 class _MonthNav extends StatelessWidget {
   final DateTime month;
@@ -246,15 +246,15 @@ class _MonthNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        Expanded(
-          child: Text(
-            '${month.year}년 ${month.month}월',
-            style: AppText.subtitle.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ),
         _NavArrow(icon: Icons.chevron_left_rounded, onTap: onPrev),
-        const SizedBox(width: AppSpace.sm),
+        const SizedBox(width: AppSpace.lg),
+        Text(
+          '${month.year}년 ${month.month}월',
+          style: AppText.subtitle.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(width: AppSpace.lg),
         _NavArrow(icon: Icons.chevron_right_rounded, onTap: onNext),
       ],
     );
@@ -317,9 +317,9 @@ class _WeekdayRow extends StatelessWidget {
   }
 
   static Color _weekdayColor(int index) {
-    // 월요일 시작: index 5 = 토(info/파랑), 6 = 일(danger/빨강)
-    if (index == 5) return AppColor.info; // 토요일
-    if (index == 6) return AppColor.danger; // 일요일
+    // 일요일 시작: index 0 = 일(danger/빨강), 6 = 토(info/파랑)
+    if (index == 0) return AppColor.danger; // 일요일
+    if (index == 6) return AppColor.info; // 토요일
     return AppColor.inkSecondary; // 평일
   }
 }
@@ -344,8 +344,8 @@ class _MonthGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final DateTime firstOfMonth = DateTime(month.year, month.month);
-    // 월요일=0 시작. DateTime.weekday 는 월=1..일=7 → (weekday-1)%7.
-    final int leadingBlanks = (firstOfMonth.weekday - 1) % 7;
+    // 일요일=0 시작. DateTime.weekday 는 월=1..일=7 → 일=0 으로 변환(%7).
+    final int leadingBlanks = firstOfMonth.weekday % 7;
     final int daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     final int totalCells = ((leadingBlanks + daysInMonth) / 7).ceil() * 7;
     final DateTime now = DateTime.now();
