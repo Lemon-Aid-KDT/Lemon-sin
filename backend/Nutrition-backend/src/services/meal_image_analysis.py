@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -55,6 +56,11 @@ from src.utils.image_safety import (
     strip_image_metadata,
 )
 from src.vision.base import VisionError
+from src.vision.food_dino_classifier import (
+    FoodClassification,
+    FoodDinoClassifier,
+    food_classifier_model_label,
+)
 from src.vision.food_yolo import FoodDetection, FoodYoloDetector, food_model_label
 
 FOOD_IMAGE_ANALYSIS_ALGORITHM_VERSION = "food-image-preview-v1.0.0"
@@ -69,6 +75,15 @@ FOOD_IMAGE_DETECTOR_EMPTY_WARNING_CODES = (
 )
 FOOD_IMAGE_DETECTOR_UNAVAILABLE_WARNING_CODES = (
     "food_detector_unavailable",
+    "manual_entry_required",
+)
+FOOD_IMAGE_CLASSIFICATION_REVIEW_WARNING_CODES = ("food_classification_review_required",)
+FOOD_IMAGE_CLASSIFIER_EMPTY_WARNING_CODES = (
+    "food_classifier_empty",
+    "manual_entry_required",
+)
+FOOD_IMAGE_CLASSIFIER_UNAVAILABLE_WARNING_CODES = (
+    "food_classifier_unavailable",
     "manual_entry_required",
 )
 ALLOWED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
@@ -147,6 +162,46 @@ class FoodDetectionResult:
     warning_codes: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class FoodClassificationResult:
+    """Sanitized food classifier outcome for one request.
+
+    Attributes:
+        classification: Review-only classifier candidate when available.
+        classifier_model: Sanitized classifier model label when configured.
+        classifier_used: Whether classifier inference ran.
+        warning_codes: Stable warning codes for the preview.
+    """
+
+    classification: FoodClassification | None
+    classifier_model: str | None
+    classifier_used: bool
+    warning_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FoodImageInferenceResult:
+    """Combined food detector and classifier outcome for preview persistence.
+
+    Attributes:
+        detections: Review-only YOLO detector candidates.
+        classification: Review-only DINO classifier candidate.
+        detector_model: Sanitized detector model label when configured.
+        classifier_model: Sanitized classifier model label when configured.
+        detector_used: Whether detector inference ran.
+        classifier_used: Whether classifier inference ran.
+        warning_codes: Stable warning codes for the preview.
+    """
+
+    detections: tuple[FoodDetection, ...]
+    classification: FoodClassification | None
+    detector_model: str | None
+    classifier_model: str | None
+    detector_used: bool
+    classifier_used: bool
+    warning_codes: tuple[str, ...]
+
+
 class FoodDetector(Protocol):
     """Protocol for request-local food image detectors."""
 
@@ -158,6 +213,21 @@ class FoodDetector(Protocol):
 
         Returns:
             Review-only food detections.
+        """
+        ...
+
+
+class FoodImageClassifier(Protocol):
+    """Protocol for request-local food image classifiers."""
+
+    def classify_food(self, image_bytes: bytes) -> FoodClassification | None:
+        """Classify one food image candidate.
+
+        Args:
+            image_bytes: Request-local normalized image bytes.
+
+        Returns:
+            Review-only food classification or None if no food is detected.
         """
         ...
 
@@ -267,6 +337,7 @@ async def create_meal_image_analysis_preview(
     client_request_id: str | None,
     settings: Settings,
     food_detector: FoodDetector | None = None,
+    food_classifier: FoodImageClassifier | None = None,
 ) -> MealImageAnalysisStoreResult:
     """Persist a review-required food image preview for the current owner.
 
@@ -279,6 +350,7 @@ async def create_meal_image_analysis_preview(
         client_request_id: Optional client idempotency key.
         settings: Runtime settings containing the privacy hash secret.
         food_detector: Optional injected local detector for tests.
+        food_classifier: Optional injected local classifier for tests.
 
     Returns:
         Stored meal and food image preview rows.
@@ -294,16 +366,22 @@ async def create_meal_image_analysis_preview(
         owner_subject,
         settings.privacy_hash_secret,
     )
-    detection = _detect_food_candidates_if_enabled(
+    inference = _run_food_image_inference_if_enabled(
         image_metadata=image_metadata,
         settings=settings,
         food_detector=food_detector,
+        food_classifier=food_classifier,
     )
-    detected_items_snapshot = _food_detections_to_snapshot(detection.detections)
+    detected_items_snapshot = _food_candidates_to_snapshot(
+        inference.detections,
+        inference.classification,
+    )
     nutrition_estimate_snapshot = await _nutrition_estimate_snapshot(
         session,
-        detection.detections,
-        detector_used=detection.detector_used,
+        inference.detections,
+        classification=inference.classification,
+        detector_used=inference.detector_used,
+        classifier_used=inference.classifier_used,
     )
     analysis_run: FoodImageAnalysisRun | None = None
     meal_record: MealRecord | None = None
@@ -360,12 +438,12 @@ async def create_meal_image_analysis_preview(
                 image_sha256=image_metadata.sha256,
                 image_mime_type=image_metadata.mime_type,
                 image_size_bytes=image_metadata.size_bytes,
-                detector_model=detection.detector_model,
-                classifier_model=None,
+                detector_model=inference.detector_model,
+                classifier_model=inference.classifier_model,
                 status=MealAnalysisStatus.REQUIRES_CONFIRMATION.value,
                 detected_items_snapshot=detected_items_snapshot,
                 nutrition_estimate_snapshot=nutrition_estimate_snapshot,
-                warning_codes=list(detection.warning_codes),
+                warning_codes=list(inference.warning_codes),
             )
             session.add(analysis_run)
             reused_existing = False
@@ -409,7 +487,8 @@ def meal_image_analysis_to_preview(
             classifier_model=analysis_run.classifier_model,
             detector_used=bool(analysis_run.detector_model)
             and not _contains_warning(analysis_run.warning_codes, "food_detector_unavailable"),
-            classifier_used=False,
+            classifier_used=bool(analysis_run.classifier_model)
+            and not _contains_warning(analysis_run.warning_codes, "food_classifier_unavailable"),
             raw_image_stored=False,
             raw_provider_payload_stored=False,
             requires_manual_entry=not bool(_snapshot_items(analysis_run.detected_items_snapshot)),
@@ -538,7 +617,11 @@ async def list_user_meal_records(
     """
     normalized_from = _normalize_optional_datetime(from_eaten_at)
     normalized_to = _normalize_optional_datetime(to_eaten_at)
-    if normalized_from is not None and normalized_to is not None and normalized_from > normalized_to:
+    if (
+        normalized_from is not None
+        and normalized_to is not None
+        and normalized_from > normalized_to
+    ):
         raise ValueError("from_eaten_at must be before or equal to to_eaten_at.")
 
     await validate_food_catalog_filters(
@@ -741,41 +824,172 @@ def _detect_food_candidates_if_enabled(
     )
 
 
-def _food_detections_to_snapshot(
+def _classify_food_candidate_if_enabled(
+    *,
+    image_metadata: ValidatedMealImage,
+    settings: Settings,
+    food_classifier: FoodImageClassifier | None,
+) -> FoodClassificationResult:
+    """Run optional food DINO classifier without storing image bytes or payloads.
+
+    Args:
+        image_metadata: Validated in-memory image metadata and bytes.
+        settings: Runtime settings.
+        food_classifier: Optional injected classifier.
+
+    Returns:
+        Sanitized classifier outcome for persistence.
+    """
+    if not settings.enable_food_dino_classifier:
+        return FoodClassificationResult(
+            classification=None,
+            classifier_model=None,
+            classifier_used=False,
+            warning_codes=(),
+        )
+
+    classifier_model = food_classifier_model_label(
+        settings.meal_food_classifier_model_label,
+        settings.meal_food_classifier_probe_path,
+    )
+    if classifier_model is None:
+        return FoodClassificationResult(
+            classification=None,
+            classifier_model=None,
+            classifier_used=False,
+            warning_codes=FOOD_IMAGE_CLASSIFIER_UNAVAILABLE_WARNING_CODES,
+        )
+
+    classifier = food_classifier or FoodDinoClassifier(
+        module_dir=settings.meal_food_classifier_module_dir,
+        exp16b_model_path=settings.meal_food_classifier_exp16b_model_path or "",
+        probe_path=settings.meal_food_classifier_probe_path or "",
+        nutrition_csv_path=settings.meal_food_classifier_nutrition_csv_path or "",
+        model_label=classifier_model,
+        detector_confidence=settings.meal_food_classifier_gate_confidence,
+        max_px=settings.meal_food_classifier_max_px,
+    )
+    try:
+        classification = classifier.classify_food(image_metadata.normalized_bytes)
+    except (OSError, ValueError, VisionError):
+        return FoodClassificationResult(
+            classification=None,
+            classifier_model=classifier_model,
+            classifier_used=False,
+            warning_codes=FOOD_IMAGE_CLASSIFIER_UNAVAILABLE_WARNING_CODES,
+        )
+    if classification is None:
+        return FoodClassificationResult(
+            classification=None,
+            classifier_model=classifier_model,
+            classifier_used=True,
+            warning_codes=FOOD_IMAGE_CLASSIFIER_EMPTY_WARNING_CODES,
+        )
+    return FoodClassificationResult(
+        classification=classification,
+        classifier_model=classifier_model,
+        classifier_used=True,
+        warning_codes=FOOD_IMAGE_CLASSIFICATION_REVIEW_WARNING_CODES,
+    )
+
+
+def _run_food_image_inference_if_enabled(
+    *,
+    image_metadata: ValidatedMealImage,
+    settings: Settings,
+    food_detector: FoodDetector | None,
+    food_classifier: FoodImageClassifier | None,
+) -> FoodImageInferenceResult:
+    """Run enabled food image inference providers and merge safe preview metadata.
+
+    Args:
+        image_metadata: Validated in-memory image metadata and bytes.
+        settings: Runtime settings.
+        food_detector: Optional injected detector.
+        food_classifier: Optional injected classifier.
+
+    Returns:
+        Combined detector/classifier inference result.
+    """
+    detection = _detect_food_candidates_if_enabled(
+        image_metadata=image_metadata,
+        settings=settings,
+        food_detector=food_detector,
+    )
+    classification = _classify_food_candidate_if_enabled(
+        image_metadata=image_metadata,
+        settings=settings,
+        food_classifier=food_classifier,
+    )
+    has_candidates = bool(detection.detections) or classification.classification is not None
+    warning_codes = _merged_food_warning_codes(
+        detector_enabled=settings.enable_food_yolo_detector,
+        classifier_enabled=settings.enable_food_dino_classifier,
+        detection_warning_codes=detection.warning_codes,
+        classification_warning_codes=classification.warning_codes,
+        has_candidates=has_candidates,
+    )
+    return FoodImageInferenceResult(
+        detections=detection.detections,
+        classification=classification.classification,
+        detector_model=detection.detector_model,
+        classifier_model=classification.classifier_model,
+        detector_used=detection.detector_used,
+        classifier_used=classification.classifier_used,
+        warning_codes=warning_codes,
+    )
+
+
+def _food_candidates_to_snapshot(
     detections: tuple[FoodDetection, ...],
+    classification: FoodClassification | None,
 ) -> dict[str, object]:
-    """Convert food detections into sanitized JSON snapshot data.
+    """Convert food inference outputs into sanitized JSON snapshot data.
 
     Args:
         detections: Detector candidates.
+        classification: Classifier candidate.
 
     Returns:
         JSON object without image bytes or provider payloads.
     """
-    return {
-        "items": [
-            {
-                "display_name": detection.label,
-                "confidence": detection.confidence,
-                "source": "vision",
-                "bbox": {
-                    "x": detection.bbox.x,
-                    "y": detection.bbox.y,
-                    "width": detection.bbox.width,
-                    "height": detection.bbox.height,
-                },
-                "model": detection.model,
-            }
-            for detection in detections
-        ]
-    }
+    items: list[dict[str, object]] = []
+    if classification is not None:
+        item: dict[str, object] = {
+            "display_name": classification.display_name,
+            "class_en": classification.name_en,
+            "confidence": classification.confidence,
+            "source": "vision",
+            "model": classification.model,
+            "candidate_type": "classifier",
+        }
+        if classification.bbox is not None:
+            item["bbox"] = _bbox_snapshot(classification.bbox)
+        nutrition = _classification_serving_nutrition(classification.nutrition)
+        if nutrition:
+            item["nutrition"] = nutrition
+        items.append(item)
+    items.extend(
+        {
+            "display_name": detection.label,
+            "confidence": detection.confidence,
+            "source": "vision",
+            "bbox": _bbox_snapshot(detection.bbox),
+            "model": detection.model,
+            "candidate_type": "detector",
+        }
+        for detection in detections
+    )
+    return {"items": items}
 
 
 async def _nutrition_estimate_snapshot(
     session: AsyncSession,
     detections: tuple[FoodDetection, ...],
     *,
+    classification: FoodClassification | None,
     detector_used: bool,
+    classifier_used: bool,
 ) -> dict[str, object]:
     """Build a bounded advisory pre-confirmation nutrition summary.
 
@@ -787,18 +1001,22 @@ async def _nutrition_estimate_snapshot(
     Args:
         session: Request-scoped async database session for catalog lookups.
         detections: Detector candidates.
+        classification: Classifier candidate.
         detector_used: Whether detector inference ran.
+        classifier_used: Whether classifier inference ran.
 
     Returns:
         Safe nutrition summary for user review with sanitized, bounded values.
     """
-    status = "detected_review_required" if detections else "analysis_unavailable"
-    if not detections:
+    has_candidates = bool(detections) or classification is not None
+    status = "detected_review_required" if has_candidates else "analysis_unavailable"
+    if not has_candidates:
         return {
             "status": status,
             "items": [],
             "totals": {},
             "detector_used": detector_used,
+            "classifier_used": classifier_used,
         }
 
     nutrition_by_class = await load_food_nutrition_by_class_ens(
@@ -808,11 +1026,27 @@ async def _nutrition_estimate_snapshot(
     items: list[dict[str, object]] = []
     totals: dict[str, float] = {}
     matched = False
+    if classification is not None:
+        item = {
+            "display_name": classification.display_name,
+            "class_en": classification.name_en,
+            "confidence": classification.confidence,
+            "source": "vision",
+            "candidate_type": "classifier",
+        }
+        serving = _classification_serving_nutrition(classification.nutrition)
+        if serving:
+            matched = True
+            item["nutrition"] = serving
+            for key, value in serving.items():
+                totals[key] = round(totals.get(key, 0.0) + value, 2)
+        items.append(item)
     for detection in detections:
         item: dict[str, object] = {
             "display_name": detection.label,
             "confidence": detection.confidence,
             "source": "vision",
+            "candidate_type": "detector",
         }
         row = nutrition_by_class.get(detection.label)
         if row is not None:
@@ -832,6 +1066,7 @@ async def _nutrition_estimate_snapshot(
         "items": items,
         "totals": totals,
         "detector_used": detector_used,
+        "classifier_used": classifier_used,
     }
     if matched:
         snapshot["basis"] = "class_average_per_serving"
@@ -856,16 +1091,18 @@ def _snapshot_to_food_candidates(value: Any) -> list[MealFoodCandidate]:
             continue
         if not isinstance(confidence, int | float):
             continue
+        nutrition = item.get("nutrition")
+        nutrition_mapping = nutrition if isinstance(nutrition, dict) else {}
         candidates.append(
             MealFoodCandidate(
                 display_name=display_name,
-                portion_amount=None,
-                portion_unit=None,
-                kcal=None,
-                carb_g=None,
-                protein_g=None,
-                fat_g=None,
-                sodium_mg=None,
+                portion_amount=_float_or_none(nutrition_mapping.get("serving_g")),
+                portion_unit="g" if _float_or_none(nutrition_mapping.get("serving_g")) else None,
+                kcal=_float_or_none(nutrition_mapping.get("kcal")),
+                carb_g=_float_or_none(nutrition_mapping.get("carb_g")),
+                protein_g=_float_or_none(nutrition_mapping.get("protein_g")),
+                fat_g=_float_or_none(nutrition_mapping.get("fat_g")),
+                sodium_mg=_float_or_none(nutrition_mapping.get("sodium_mg")),
                 confidence=float(confidence),
                 source="vision",
             )
@@ -901,6 +1138,125 @@ def _contains_warning(value: Any, warning_code: str) -> bool:
         True when present.
     """
     return isinstance(value, list) and warning_code in value
+
+
+def _merged_food_warning_codes(
+    *,
+    detector_enabled: bool,
+    classifier_enabled: bool,
+    detection_warning_codes: tuple[str, ...],
+    classification_warning_codes: tuple[str, ...],
+    has_candidates: bool,
+) -> tuple[str, ...]:
+    """Merge detector and classifier warning codes without duplicate UI prompts.
+
+    Args:
+        detector_enabled: Whether the detector provider was configured.
+        classifier_enabled: Whether the classifier provider was configured.
+        detection_warning_codes: Detector warning codes.
+        classification_warning_codes: Classifier warning codes.
+        has_candidates: Whether any review candidate exists.
+
+    Returns:
+        Stable, de-duplicated warning codes.
+    """
+    if not detector_enabled and not classifier_enabled:
+        return FOOD_IMAGE_ANALYSIS_WARNING_CODES
+
+    warning_codes: list[str] = []
+    if detector_enabled:
+        warning_codes.extend(detection_warning_codes)
+    if classifier_enabled:
+        warning_codes.extend(classification_warning_codes)
+
+    if has_candidates:
+        warning_codes = [
+            code
+            for code in warning_codes
+            if code
+            not in {
+                "food_analysis_unavailable",
+                "food_detector_empty",
+                "food_classifier_empty",
+                "manual_entry_required",
+            }
+        ]
+
+    if not has_candidates and "manual_entry_required" not in warning_codes:
+        warning_codes.append("manual_entry_required")
+    return tuple(dict.fromkeys(warning_codes))
+
+
+def _bbox_snapshot(bbox: Any) -> dict[str, object]:
+    """Convert a bounding box into safe JSON metadata.
+
+    Args:
+        bbox: Bounding box-like object.
+
+    Returns:
+        JSON-serializable box snapshot.
+    """
+    return {
+        "x": bbox.x,
+        "y": bbox.y,
+        "width": bbox.width,
+        "height": bbox.height,
+    }
+
+
+def _classification_serving_nutrition(
+    nutrition: Mapping[str, object] | None,
+) -> dict[str, float]:
+    """Convert a classifier CSV row into one-serving nutrition values.
+
+    Args:
+        nutrition: Raw classifier nutrition row keyed by CSV column name.
+
+    Returns:
+        Per-serving nutrition estimate, including ``serving_g`` when available.
+    """
+    if nutrition is None:
+        return {}
+    serving_g = _float_or_none(nutrition.get("serving_g"))
+    scaled = compute_serving_nutrition(
+        {
+            "kcal": _float_or_none(nutrition.get("kcal_100g")),
+            "carb_g": _float_or_none(nutrition.get("carb_g")),
+            "sugar_g": _float_or_none(nutrition.get("sugar_g")),
+            "fat_g": _float_or_none(nutrition.get("fat_g")),
+            "protein_g": _float_or_none(nutrition.get("protein_g")),
+            "sodium_mg": _float_or_none(nutrition.get("sodium_mg")),
+            "cholesterol_mg": _float_or_none(nutrition.get("chol_mg")),
+            "saturated_fat_g": _float_or_none(nutrition.get("sat_fat_g")),
+            "trans_fat_g": _float_or_none(nutrition.get("trans_fat_g")),
+        },
+        serving_g=serving_g,
+    )
+    if serving_g is not None and scaled:
+        scaled["serving_g"] = serving_g
+    return scaled
+
+
+def _float_or_none(value: object) -> float | None:
+    """Safely coerce a numeric value to float.
+
+    Args:
+        value: Candidate numeric value.
+
+    Returns:
+        Float value, or None when the input is absent/invalid.
+    """
+    parsed: float | None = None
+    if isinstance(value, Decimal | int | float):
+        parsed = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                parsed = float(stripped)
+            except ValueError:
+                parsed = None
+    return parsed
 
 
 async def _read_limited_upload(image: UploadFile, max_bytes: int) -> bytes:
@@ -1036,9 +1392,7 @@ async def _validate_food_catalog_item_inputs(
         MealConfirmationValidationError: If any supplied catalog item is missing or inactive.
     """
     catalog_ids = [
-        item.food_catalog_item_id
-        for item in food_items
-        if item.food_catalog_item_id is not None
+        item.food_catalog_item_id for item in food_items if item.food_catalog_item_id is not None
     ]
     if not catalog_ids:
         return {}
@@ -1132,11 +1486,7 @@ async def _load_catalog_refs_for_food_items(
     """Load catalog references for confirmed food item rows."""
     return await load_food_catalog_item_references(
         session,
-        [
-            item.food_catalog_item_id
-            for item in food_items
-            if item.food_catalog_item_id is not None
-        ],
+        [item.food_catalog_item_id for item in food_items if item.food_catalog_item_id is not None],
     )
 
 
@@ -1210,9 +1560,7 @@ def _meal_food_item_to_response(
         sodium_mg=_float_or_none(item.sodium_mg),
         food_catalog_item_id=catalog_item_id,
         catalog_item=(
-            catalog_item_refs.get(catalog_item_id)
-            if catalog_item_id is not None
-            else None
+            catalog_item_refs.get(catalog_item_id) if catalog_item_id is not None else None
         ),
         confidence=_float_or_none(item.confidence),
         source=item.source,

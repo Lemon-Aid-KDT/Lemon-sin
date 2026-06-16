@@ -192,7 +192,9 @@ def _build_secondary_merge_ocr_adapter(settings: Settings) -> OCRAdapter | None:
     """Build the optional PaddleOCR secondary-merge adapter for the ensemble stage.
 
     The ensemble stage line-union merges this provider into the primary OCR
-    result instead of replacing it. Paddle is never merged into Paddle.
+    result instead of replacing it. Paddle is merged into Paddle only when a
+    distinct secondary recognition model directory is configured; otherwise the
+    factory avoids duplicating the same local OCR pass.
 
     Args:
         settings: Runtime settings.
@@ -205,9 +207,30 @@ def _build_secondary_merge_ocr_adapter(settings: Settings) -> OCRAdapter | None:
         return None
     if not settings.enable_local_ocr:
         return None
-    if settings.ocr_primary_provider == "paddleocr":
+    if (
+        settings.ocr_primary_provider == "paddleocr"
+        and settings.local_ocr_secondary_text_recognition_model_dir is None
+    ):
         return None
-    return PaddleOCRAdapter(settings)
+    return PaddleOCRAdapter(_secondary_merge_paddle_settings(settings))
+
+
+def _secondary_merge_paddle_settings(settings: Settings) -> Settings:
+    """Return settings for the secondary PaddleOCR merge adapter.
+
+    Args:
+        settings: Runtime settings.
+
+    Returns:
+        Original settings, or a copy whose recognizer directory points at the
+        secondary merge model.
+    """
+    secondary_recognition_model_dir = settings.local_ocr_secondary_text_recognition_model_dir
+    if secondary_recognition_model_dir is None:
+        return settings
+    return settings.model_copy(
+        update={"local_ocr_text_recognition_model_dir": secondary_recognition_model_dir}
+    )
 
 
 def _build_paddleocr_primary_adapter(settings: Settings) -> PaddleOCRAdapter:

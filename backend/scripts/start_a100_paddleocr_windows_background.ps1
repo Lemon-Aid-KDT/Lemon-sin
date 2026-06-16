@@ -14,8 +14,16 @@ param(
     [string]$Mode = "full",
 
     [string]$WorkspaceRoot = "G:\lemon-aid\paddleocr_rec_work",
+    [string]$RepoRoot = "G:\lemon-aid",
     [string]$DatasetVersion = "v2",
     [string]$RunSuffix = "v2_clean",
+    [int]$BatchSize = 128,
+    [int]$Epochs = 100,
+    [double]$LearningRate = 0.0005,
+    [int]$ExpectedTrainRows = 70778,
+    [int]$ExpectedValRows = 6828,
+    [int]$ExpectedDictRows = 1066,
+    [string]$PretrainedModel = "pretrain\korean_PP-OCRv5_mobile_rec_pretrained",
     [ValidateRange(1, 100)]
     [int]$EarlyStopPatienceEpochs = 5,
     [ValidateRange(10, 3600)]
@@ -24,9 +32,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$runScriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\run_a100_paddleocr_windows_training.ps1"
-$watchScriptPath = Join-Path $WorkspaceRoot "Lemon-Aid\backend\scripts\watch_a100_paddleocr_windows_early_stop.ps1"
-$workdir = Join-Path $WorkspaceRoot "Lemon-Aid"
+$runScriptPath = Join-Path $RepoRoot "backend\scripts\run_a100_paddleocr_windows_training.ps1"
+$watchScriptPath = Join-Path $RepoRoot "backend\scripts\watch_a100_paddleocr_windows_early_stop.ps1"
+$workdir = $RepoRoot
 
 if ($Mode -eq "early-stop") {
     $scriptPath = $watchScriptPath
@@ -42,7 +50,7 @@ else {
     if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
         throw "A100 run script is missing: $scriptPath"
     }
-    $command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -DatasetVersion {2} -RunSuffix {3} > "{4}" 2>&1' -f $scriptPath, $Mode, $DatasetVersion, $RunSuffix, $logPath
+    $command = 'cmd.exe /c powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -DatasetVersion {2} -RunSuffix {3} -BatchSize {4} -Epochs {5} -LearningRate {6} -ExpectedTrainRows {7} -ExpectedValRows {8} -ExpectedDictRows {9} -PretrainedModel "{10}" > "{11}" 2>&1' -f $scriptPath, $Mode, $DatasetVersion, $RunSuffix, $BatchSize, $Epochs, $LearningRate, $ExpectedTrainRows, $ExpectedValRows, $ExpectedDictRows, $PretrainedModel, $logPath
 }
 
 $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{

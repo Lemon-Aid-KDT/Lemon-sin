@@ -37,12 +37,14 @@ RUN pip install --upgrade pip \
     fi \
     && if [ "${INSTALL_VISION}" = "true" ]; then \
         pip install --index-url "${TORCH_INDEX_URL}" "torch>=2.2" "torchvision>=0.17" \
-        && pip install "ultralytics>=8.1"; \
+        && pip install "ultralytics>=8.1" "transformers<5" "numpy"; \
     fi
 
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY Nutrition-backend ./Nutrition-backend
+COPY Nutrition-backend/data/nutrition_reference ./data/nutrition_reference
+COPY Food-backend ./Food-backend
 COPY ai_agent_chat ./ai_agent_chat
 COPY scripts ./scripts
 

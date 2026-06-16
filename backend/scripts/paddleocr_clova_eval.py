@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import unicodedata
 from decimal import Decimal
 from pathlib import Path
@@ -49,6 +50,52 @@ from rapidfuzz.distance import LCSseq
 MAX_METRIC_CHARS = 12000
 TARGET_PROVIDER = "paddleocr_local"
 FIELD_MATCH_THRESHOLD = 85.0  # rapidfuzz partial_ratio (0-100) for field presence.
+POST_PASS_NONE = "none"
+POST_PASS_INGREDIENT_ALIAS_AMOUNT_UNIT = "ingredient_alias_amount_unit"
+POST_PASS_CHOICES = (POST_PASS_NONE, POST_PASS_INGREDIENT_ALIAS_AMOUNT_UNIT)
+
+INGREDIENT_ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("vitamin c", "ascorbic acid", "비타민 c", "비타민씨", "아스코르브산"),
+    ("vitamin d", "vitamin d3", "cholecalciferol", "비타민 d", "비타민 d3", "콜레칼시페롤"),
+    ("vitamin b1", "thiamine", "티아민", "비타민 b1"),
+    ("vitamin b2", "riboflavin", "리보플라빈", "비타민 b2"),
+    ("vitamin b6", "pyridoxine", "피리독신", "비타민 b6"),
+    ("vitamin b12", "cyanocobalamin", "methylcobalamin", "코발라민", "비타민 b12"),
+    ("niacin", "nicotinic acid", "나이아신", "니코틴산"),
+    ("folate", "folic acid", "엽산"),
+    ("biotin", "비오틴"),
+    ("calcium", "칼슘"),
+    ("magnesium", "마그네슘"),
+    ("zinc", "아연"),
+    ("iron", "ferrous", "철", "철분"),
+    ("iodine", "iodide", "요오드"),
+    ("selenium", "셀레늄"),
+    ("omega-3", "omega 3", "epa", "dha", "오메가 3", "오메가3"),
+    ("coq10", "coenzyme q10", "코큐텐", "코엔자임 q10"),
+    ("lutein", "루테인"),
+    ("zeaxanthin", "지아잔틴"),
+    ("probiotics", "lactobacillus", "bifidobacterium", "유산균", "프로바이오틱스"),
+    ("collagen", "콜라겐"),
+    ("glucosamine", "글루코사민"),
+    ("msm", "methylsulfonylmethane", "식이유황"),
+    ("milk thistle", "silymarin", "밀크씨슬", "실리마린"),
+    ("ginseng", "홍삼", "인삼"),
+)
+
+UNIT_ALIASES: dict[str, tuple[str, ...]] = {
+    "mg": ("mg", "㎎", "밀리그램"),
+    "g": ("g", "그램"),
+    "mcg": ("mcg", "ug", "μg", "µg", "㎍", "마이크로그램"),
+    "iu": ("iu", "i.u.", "아이유"),
+    "cfu": ("cfu", "씨에프유"),
+    "%": ("%", "퍼센트"),
+}
+
+AMOUNT_UNIT_PATTERN = re.compile(
+    r"(?P<amount>\d+(?:[.,]\d+)?)\s*"
+    r"(?P<unit>mg|㎎|밀리그램|g|그램|mcg|ug|μg|µg|㎍|마이크로그램|iu|i\.u\.|아이유|cfu|씨에프유|%)",
+    re.IGNORECASE,
+)
 
 PROFILES: dict[str, dict[str, Any]] = {
     "mobile": {
@@ -59,6 +106,12 @@ PROFILES: dict[str, dict[str, Any]] = {
     "server": {
         # No Korean server recognizer exists in PP-OCRv5; use server detector +
         # Korean mobile recognizer at higher resolution for better detection.
+        "det": "PP-OCRv5_server_det",
+        "rec": "korean_PP-OCRv5_mobile_rec",
+        "max_side": 3072,
+    },
+    "server_detection": {
+        # Runtime-aligned alias for LOCAL_OCR_MODEL_PROFILE=server_detection.
         "det": "PP-OCRv5_server_det",
         "rec": "korean_PP-OCRv5_mobile_rec",
         "max_side": 3072,
@@ -218,6 +271,91 @@ def _ingredient_recall(expected: dict[str, Any], hypothesis_norm: str) -> tuple[
     return found, len(names)
 
 
+def _canonical_unit(unit: str) -> str | None:
+    """Return the canonical unit key for a recognized unit token.
+
+    Args:
+        unit: Unit token found beside an amount.
+
+    Returns:
+        Canonical unit key, or ``None`` when the token is not in the deterministic
+        unit table.
+    """
+    unit_norm = unicodedata.normalize("NFKC", unit).strip().lower()
+    aliases = {
+        "mg": "mg",
+        "밀리그램": "mg",
+        "g": "g",
+        "그램": "g",
+        "mcg": "mcg",
+        "ug": "mcg",
+        "μg": "mcg",
+        "µg": "mcg",
+        "마이크로그램": "mcg",
+        "iu": "iu",
+        "i.u.": "iu",
+        "아이유": "iu",
+        "cfu": "cfu",
+        "씨에프유": "cfu",
+        "%": "%",
+        "퍼센트": "%",
+    }
+    return aliases.get(unit_norm)
+
+
+def _canonical_amount(amount: str) -> str:
+    """Normalize OCR amount text without changing its numeric value."""
+    normalized = amount.replace(",", "").strip()
+    return normalized[:-2] if normalized.endswith(".0") else normalized
+
+
+def _postprocess_hypothesis_text(text: str, *, mode: str) -> tuple[str, bool]:
+    """Return OCR hypothesis text augmented with deterministic visible-text aliases.
+
+    This post-pass never invents ingredients from the expected label. It only adds
+    canonical Korean/English aliases or unit variants when one alias/amount-unit
+    form is already visible in the OCR hypothesis. The goal is to make the
+    structured metric robust to bilingual supplement labels and equivalent unit
+    spellings while preserving a no-raw-text artifact policy.
+
+    Args:
+        text: Raw joined OCR hypothesis.
+        mode: Post-pass mode.
+
+    Returns:
+        ``(augmented_text, applied)``.
+
+    Raises:
+        ValueError: If ``mode`` is unsupported.
+    """
+    if mode == POST_PASS_NONE:
+        return text, False
+    if mode != POST_PASS_INGREDIENT_ALIAS_AMOUNT_UNIT:
+        raise ValueError(f"Unsupported post-pass mode: {mode}")
+
+    additions: list[str] = []
+    text_norm = _normalize_for_metric(text)
+    for aliases in INGREDIENT_ALIAS_GROUPS:
+        normalized_aliases = [(alias, _normalize_for_metric(alias)) for alias in aliases]
+        if any(alias_norm and alias_norm in text_norm for _, alias_norm in normalized_aliases):
+            additions.extend(alias for alias, _ in normalized_aliases)
+
+    normalized_text = unicodedata.normalize("NFKC", text)
+    for match in AMOUNT_UNIT_PATTERN.finditer(normalized_text):
+        amount = _canonical_amount(match.group("amount"))
+        canonical_unit = _canonical_unit(match.group("unit"))
+        if canonical_unit is None:
+            continue
+        for unit_alias in UNIT_ALIASES[canonical_unit]:
+            additions.append(f"{amount} {unit_alias}")
+            additions.append(f"{amount}{unit_alias}")
+
+    unique_additions = list(dict.fromkeys(item for item in additions if item.strip()))
+    if not unique_additions:
+        return text, False
+    return f"{text} {' '.join(unique_additions)}", True
+
+
 def _build_ocr(
     *,
     det_model: str,
@@ -281,7 +419,7 @@ def _predict_text(ocr: Any, image_path: Path) -> str:
     return " ".join(texts) if texts else ""
 
 
-def evaluate(
+def evaluate(  # noqa: PLR0915
     *,
     bundle_dir: Path,
     limit: int | None,
@@ -292,6 +430,7 @@ def evaluate(
     det_thresh: float | None = None,
     det_unclip_ratio: float | None = None,
     rec_model_dir: str | None = None,
+    post_pass: str = POST_PASS_NONE,
 ) -> dict[str, Any]:
     """Score PaddleOCR text extraction over the ready GT rows.
 
@@ -304,6 +443,7 @@ def evaluate(
         det_box_thresh: Optional detection box score threshold.
         det_thresh: Optional detection pixel binarization threshold.
         det_unclip_ratio: Optional detection box expansion ratio.
+        post_pass: Optional deterministic hypothesis post-pass.
 
     Returns:
         Redacted results: aggregates, per-image numeric scores, and per-image
@@ -342,6 +482,7 @@ def evaluate(
     failed = 0
     recall_found = 0
     recall_total = 0
+    post_pass_applied_total = 0
     for row in ready:
         expected = row["expected"]
         fixture_id = row.get("fixture_id")
@@ -354,9 +495,14 @@ def evaluate(
         except Exception:  # per-row isolation: count and continue (no raw error text stored)
             failed += 1
             continue
-        hypothesis_norm = _normalize_for_metric(predicted)
+        predicted_for_metric, post_pass_applied = _postprocess_hypothesis_text(
+            predicted, mode=post_pass
+        )
+        if post_pass_applied:
+            post_pass_applied_total += 1
+        hypothesis_norm = _normalize_for_metric(predicted_for_metric)
         reference = _structured_reference(expected)
-        metrics = _text_extraction_metrics(reference, predicted)
+        metrics = _text_extraction_metrics(reference, predicted_for_metric)
         f_matched, f_total = _field_match_ratio(_field_units(expected), hypothesis_norm)
         found, total = _ingredient_recall(expected, hypothesis_norm)
         recall_found += found
@@ -382,6 +528,7 @@ def evaluate(
                 "normalized_text_f1": metrics["normalized_text_f1"],
                 "ingredient_found": found,
                 "ingredient_total": total,
+                "post_pass_applied": post_pass_applied,
             }
         )
         observations.append(
@@ -399,6 +546,8 @@ def evaluate(
                 "normalized_text_recall": metrics["normalized_text_recall"],
                 "normalized_text_f1": metrics["normalized_text_f1"],
                 "text_metric_reference_source": "expected.structured_sections",
+                "post_pass": post_pass,
+                "post_pass_applied": post_pass_applied,
             }
         )
     return {
@@ -406,11 +555,13 @@ def evaluate(
         "provider": TARGET_PROVIDER,
         "detection_model": det_model,
         "recognition_model": rec_model,
-        "recognition_model_dir": rec_model_dir,
+        "recognition_model_dir_present": rec_model_dir is not None,
         "max_side": max_side,
         "det_box_thresh": det_box_thresh,
         "det_thresh": det_thresh,
         "det_unclip_ratio": det_unclip_ratio,
+        "post_pass": post_pass,
+        "post_pass_applied_total": post_pass_applied_total,
         "field_match_threshold": FIELD_MATCH_THRESHOLD,
         "scored_images": scored,
         "skipped_images": skipped,
@@ -465,6 +616,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Detection box expansion ratio (higher = larger boxes, fewer truncated lines).",
     )
+    parser.add_argument(
+        "--post-pass",
+        choices=POST_PASS_CHOICES,
+        default=POST_PASS_NONE,
+        help="Deterministic metric-time post-pass; no raw OCR text is stored.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--apply", action="store_true")
     return parser.parse_args(argv)
@@ -495,6 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         det_thresh=args.det_thresh,
         det_unclip_ratio=args.det_unclip_ratio,
         rec_model_dir=args.rec_model_dir,
+        post_pass=args.post_pass,
     )
     observations = results.pop("observations")
     args.output.parent.mkdir(parents=True, exist_ok=True)

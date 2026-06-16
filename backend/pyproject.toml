@@ -10,6 +10,7 @@ license = { text = "MIT" }
 # Phase 3 게이트 #2 통과 시에만 설치 (docs/17 §9, docs/06 §2.3)
 vision = [
     "torch>=2.2",
+    "transformers<5",
     "ultralytics>=8.1",
 ]
 # Phase 4 게이트 #3 통과 시에만 설치

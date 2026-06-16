@@ -44,6 +44,7 @@ from src.services.meal_image_analysis import (
     read_and_validate_meal_image,
 )
 from src.vision.base import BoundingBox, VisionError
+from src.vision.food_dino_classifier import FoodClassification
 from src.vision.food_yolo import FoodDetection
 from starlette.datastructures import Headers
 
@@ -247,11 +248,52 @@ class _FailingFoodDetector:
         raise VisionError("detector unavailable")
 
 
+class _FakeFoodClassifier:
+    """Fake food classifier for meal image preview tests."""
+
+    def __init__(self, classification: FoodClassification | None = None) -> None:
+        """Initialize fake classifier output.
+
+        Args:
+            classification: Classification returned by classify_food.
+        """
+        self.classification = classification
+        self.received_image_bytes: bytes | None = None
+
+    def classify_food(self, image_bytes: bytes) -> FoodClassification | None:
+        """Return configured classification while capturing input bytes.
+
+        Args:
+            image_bytes: Request-local normalized image bytes.
+
+        Returns:
+            Configured classification result.
+        """
+        self.received_image_bytes = image_bytes
+        return self.classification
+
+
+class _FailingFoodClassifier:
+    """Fake food classifier that fails safely."""
+
+    def classify_food(self, _image_bytes: bytes) -> FoodClassification | None:
+        """Raise a stable vision error.
+
+        Args:
+            image_bytes: Request-local normalized image bytes.
+
+        Raises:
+            VisionError: Always raised.
+        """
+        raise VisionError("classifier unavailable")
+
+
 def _settings(
     *,
     supplement_image_max_bytes: int = 5 * 1024 * 1024,
     supplement_image_max_pixels: int = 12_000_000,
     enable_food_yolo_detector: bool = False,
+    enable_food_dino_classifier: bool = False,
 ) -> Settings:
     """Return settings for meal image analysis tests.
 
@@ -259,6 +301,7 @@ def _settings(
         supplement_image_max_bytes: Maximum image byte size.
         supplement_image_max_pixels: Maximum decoded image pixels.
         enable_food_yolo_detector: Whether the optional food detector is enabled.
+        enable_food_dino_classifier: Whether the optional food classifier is enabled.
 
     Returns:
         Settings object.
@@ -268,9 +311,14 @@ def _settings(
         supplement_image_max_pixels=supplement_image_max_pixels,
         enable_food_yolo_detector=enable_food_yolo_detector,
         meal_yolo_model_path=(
-            "/app/runs/food_yolo/exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true/"
-            "weights/best.pt"
+            "/app/Food-backend/best.pt"
             if enable_food_yolo_detector
+            else None
+        ),
+        enable_food_dino_classifier=enable_food_dino_classifier,
+        meal_food_classifier_exp16b_model_path=(
+            "/app/Food-backend/best.pt"
+            if enable_food_dino_classifier
             else None
         ),
     )
@@ -362,6 +410,45 @@ def _food_detection(label: str = "비빔밥", confidence: float = 0.88) -> FoodD
             model="food_yolo_local:best.pt",
         ),
         model="food_yolo_local:best.pt",
+    )
+
+
+def _food_classification(label: str = "pizza", confidence: float = 0.93) -> FoodClassification:
+    """Return a sanitized food classification fixture.
+
+    Args:
+        label: English class key.
+        confidence: Candidate confidence.
+
+    Returns:
+        Food classification fixture.
+    """
+    return FoodClassification(
+        name_en=label,
+        display_name="피자",
+        confidence=confidence,
+        bbox=BoundingBox(
+            x=0,
+            y=0,
+            width=3,
+            height=2,
+            confidence=confidence,
+            label=label,
+            model="food_dino_exp16b:probe_head.pt",
+        ),
+        model="food_dino_exp16b:probe_head.pt",
+        nutrition={
+            "serving_g": "150.0",
+            "kcal_100g": "250.0",
+            "carb_g": "30.0",
+            "sugar_g": "4.0",
+            "fat_g": "9.0",
+            "protein_g": "11.0",
+            "sodium_mg": "550.0",
+            "chol_mg": "18.0",
+            "sat_fat_g": "3.0",
+            "trans_fat_g": "0.1",
+        },
     )
 
 
@@ -481,6 +568,7 @@ async def test_create_meal_image_preview_stores_manual_entry_preview_only() -> N
         "items": [],
         "totals": {},
         "detector_used": False,
+        "classifier_used": False,
     }
     assert result.analysis_run.media_object_id is None
     assert result.analysis_run.image_sha256 == "a" * 64
@@ -490,9 +578,49 @@ async def test_create_meal_image_preview_stores_manual_entry_preview_only() -> N
         "items": [],
         "totals": {},
         "detector_used": False,
+        "classifier_used": False,
     }
     serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
     assert "raw-client-name" not in serialized_records
+    assert "provider_payload" not in serialized_records
+    assert "image_bytes" not in serialized_records
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_uses_food_dino_classifier_candidate() -> None:
+    """Verify enabled food classifier stores review candidates and nutrition estimates."""
+    fake_session = _FakeStoreSession()
+    classifier = _FakeFoodClassifier(_food_classification())
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(enable_food_dino_classifier=True),
+        food_classifier=classifier,
+    )
+
+    assert classifier.received_image_bytes == _png_bytes()
+    assert result.analysis_run.classifier_model == "food_dino_exp16b:probe_head.pt"
+    assert result.analysis_run.detector_model is None
+    assert result.analysis_run.detected_items_snapshot["items"][0]["display_name"] == "피자"
+    assert result.analysis_run.detected_items_snapshot["items"][0]["class_en"] == "pizza"
+    assert result.analysis_run.warning_codes == ["food_classification_review_required"]
+
+    preview = meal_image_analysis_to_preview(result)
+    assert preview.food_candidates[0].display_name == "피자"
+    assert preview.food_candidates[0].kcal == 375.0
+    assert preview.food_candidates[0].protein_g == 16.5
+    assert preview.food_candidates[0].portion_amount == 150.0
+    assert preview.food_candidates[0].portion_unit == "g"
+    assert preview.pipeline_metadata.classifier_used is True
+    assert preview.pipeline_metadata.detector_used is False
+    assert preview.pipeline_metadata.requires_manual_entry is False
+    assert result.analysis_run.nutrition_estimate_snapshot["totals"]["kcal"] == 375.0
+    serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
     assert "provider_payload" not in serialized_records
     assert "image_bytes" not in serialized_records
 
@@ -618,6 +746,35 @@ async def test_create_meal_image_preview_degrades_when_food_yolo_fails() -> None
     preview = meal_image_analysis_to_preview(result)
     assert preview.food_candidates == []
     assert preview.pipeline_metadata.detector_used is False
+    assert preview.pipeline_metadata.requires_manual_entry is True
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_degrades_when_food_classifier_fails() -> None:
+    """Verify classifier failures degrade to manual entry without leaking details."""
+    fake_session = _FakeStoreSession()
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-1",
+        settings=_settings(enable_food_dino_classifier=True),
+        food_classifier=_FailingFoodClassifier(),
+    )
+
+    assert result.analysis_run.classifier_model == "food_dino_exp16b:probe_head.pt"
+    assert result.analysis_run.detected_items_snapshot == {"items": []}
+    assert result.analysis_run.warning_codes == [
+        "food_classifier_unavailable",
+        "manual_entry_required",
+    ]
+
+    preview = meal_image_analysis_to_preview(result)
+    assert preview.food_candidates == []
+    assert preview.pipeline_metadata.classifier_used is False
     assert preview.pipeline_metadata.requires_manual_entry is True
 
 
@@ -904,9 +1061,7 @@ async def test_confirm_owns_transaction_in_legacy_mode() -> None:
 async def test_confirm_participates_in_request_managed_transaction() -> None:
     """RLS sessions never commit the confirmation; the dependency owns the tx."""
     meal, run = _existing_preview("a" * 64)
-    fake_session = _FakeStoreSession(
-        existing_run=run, existing_meal=meal, request_managed=True
-    )
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal, request_managed=True)
 
     await confirm_meal_record_from_preview(
         session=cast(AsyncSession, fake_session),
@@ -947,9 +1102,7 @@ async def test_create_preview_reuse_owns_transaction_in_legacy_mode() -> None:
 async def test_create_preview_reuse_participates_in_request_managed_transaction() -> None:
     """RLS sessions never commit the reuse path; the dependency owns the tx."""
     meal, run = _existing_preview("a" * 64)
-    fake_session = _FakeStoreSession(
-        existing_run=run, existing_meal=meal, request_managed=True
-    )
+    fake_session = _FakeStoreSession(existing_run=run, existing_meal=meal, request_managed=True)
 
     result = await create_meal_image_analysis_preview(
         session=cast(AsyncSession, fake_session),

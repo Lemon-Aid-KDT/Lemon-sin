@@ -285,9 +285,9 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
 async def test_paddle_adapter_omits_unset_detection_thresholds() -> None:
     """Verify None-default DB detection thresholds are not forwarded.
 
-    text_det_box_thresh now defaults to the adopted 0.4 (covered by the dedicated
-    test below); text_det_thresh and unclip_ratio remain None-default so they keep
-    the upstream pipeline defaults and are not forwarded.
+    text_det_box_thresh and text_det_unclip_ratio now default to the adopted
+    Lemon-Aid values (covered by dedicated tests below); text_det_thresh remains
+    None-default so it keeps the upstream pipeline default and is not forwarded.
     """
     predictor = _FakePaddlePredictor([{"rec_texts": ["비타민"], "rec_scores": [0.88]}])
     adapter = PaddleOCRAdapter(
@@ -303,7 +303,6 @@ async def test_paddle_adapter_omits_unset_detection_thresholds() -> None:
 
     # None settings keep the upstream defaults — no key forwarded.
     assert "text_det_thresh" not in predictor.received_kwargs
-    assert "text_det_unclip_ratio" not in predictor.received_kwargs
 
 
 @pytest.mark.asyncio
@@ -326,6 +325,24 @@ async def test_paddle_adapter_forwards_adopted_box_thresh_default() -> None:
     await adapter.extract_text(_image_input())
 
     assert predictor.received_kwargs["text_det_box_thresh"] == 0.4
+
+
+@pytest.mark.asyncio
+async def test_paddle_adapter_forwards_adopted_unclip_ratio_default() -> None:
+    """Verify the adopted unclip_ratio default (2.5) is forwarded when left unset."""
+    predictor = _FakePaddlePredictor([{"rec_texts": ["엽산"], "rec_scores": [0.9]}])
+    adapter = PaddleOCRAdapter(
+        Settings(
+            _env_file=None,
+            enable_local_ocr=True,
+            local_ocr_preprocess_mode="none",
+        ),
+        predictor=predictor,
+    )
+
+    await adapter.extract_text(_image_input())
+
+    assert predictor.received_kwargs["text_det_unclip_ratio"] == 2.5
 
 
 @pytest.mark.asyncio

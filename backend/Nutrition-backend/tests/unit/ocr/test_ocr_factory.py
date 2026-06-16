@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 from pydantic import SecretStr
@@ -168,6 +169,26 @@ def test_analysis_factory_skips_paddleocr_fallback_when_primary() -> None:
 
     assert isinstance(adapters.ocr, PaddleOCRAdapter)
     assert all(not isinstance(item, PaddleOCRAdapter) for item in adapters.fallback_ocr_adapters)
+    assert adapters.secondary_merge_ocr is None
+
+
+def test_analysis_factory_wires_distinct_paddle_secondary_merge_when_primary() -> None:
+    """Verify Paddle primary can line-union merge a distinct secondary recognizer."""
+    secondary_dir = Path("/models/b64-secondary")
+    adapters = build_supplement_image_analysis_adapters(
+        Settings(
+            _env_file=None,
+            ocr_primary_provider="paddleocr",
+            enable_local_ocr=True,
+            ocr_secondary_merge_policy="always",
+            local_ocr_text_recognition_model_dir=Path("/models/b128-primary"),
+            local_ocr_secondary_text_recognition_model_dir=secondary_dir,
+        )
+    )
+
+    assert isinstance(adapters.ocr, PaddleOCRAdapter)
+    assert isinstance(adapters.secondary_merge_ocr, PaddleOCRAdapter)
+    assert adapters.secondary_merge_ocr._settings.local_ocr_text_recognition_model_dir == secondary_dir
 
 
 def test_analysis_factory_builds_yolo_adapter_when_gate_enabled() -> None:

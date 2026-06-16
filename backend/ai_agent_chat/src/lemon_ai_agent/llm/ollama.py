@@ -29,6 +29,7 @@ class OllamaClient:
                 for message in request.messages
             ],
             "stream": False,
+            "think": False,
             "options": {
                 "temperature": request.temperature,
                 "num_predict": request.max_tokens,

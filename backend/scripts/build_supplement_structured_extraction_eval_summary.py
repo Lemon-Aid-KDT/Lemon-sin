@@ -86,7 +86,10 @@ def build_summary(
         },
         "leakage_check_passed": bool(leakage_check_passed),
         "privacy_review_cleared": bool(privacy_review_cleared),
-        "recognition_model_dir_present": eval_json.get("recognition_model_dir") is not None,
+        "recognition_model_dir_present": (
+            bool(eval_json.get("recognition_model_dir_present"))
+            or eval_json.get("recognition_model_dir") is not None
+        ),
     }
 
 

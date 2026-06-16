@@ -49,6 +49,7 @@ class ChatbotEvidenceRepository:
             select(
                 MedicalEvidenceItem.id.label("evidence_id"),
                 MedicalSource.id.label("source_id"),
+                MedicalSource.title.label("source_title"),
                 MedicalSource.canonical_url.label("source_url"),
                 MedicalSource.source_family.label("source_family"),
                 MedicalSourceVersion.id.label("source_version_id"),
@@ -113,6 +114,7 @@ def _row_to_record(row: Any) -> MedicalEvidenceAnswerCardRecord:
     return MedicalEvidenceAnswerCardRecord(
         evidence_id=str(row.evidence_id),
         source_id=str(row.source_id),
+        source_title=str(row.source_title or ""),
         source_url=str(row.source_url or ""),
         source_family=_source_family(row.source_family),
         source_version_id=str(row.source_version_id),

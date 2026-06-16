@@ -166,8 +166,23 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.meal_yolo_model_label == "food_yolo_local"
     assert settings.meal_yolo_min_confidence == 0.25
     assert settings.meal_yolo_max_detections == 20
+    assert settings.enable_food_dino_classifier is False
+    assert settings.meal_food_classifier_module_dir.endswith("Food-backend/src/classifier")
+    assert settings.meal_food_classifier_exp16b_model_path is not None
+    assert settings.meal_food_classifier_exp16b_model_path.endswith("Food-backend/best.pt")
+    assert settings.meal_food_classifier_probe_path is not None
+    assert settings.meal_food_classifier_probe_path.endswith("Food-backend/src/classifier/probe_head.pt")
+    assert settings.meal_food_classifier_nutrition_csv_path is not None
+    assert settings.meal_food_classifier_nutrition_csv_path.endswith(
+        "Food-backend/src/classifier/nutrition/food_nutrition_40class.csv"
+    )
+    assert settings.meal_food_classifier_model_label == "food_dino_exp16b"
+    assert settings.meal_food_classifier_gate_confidence == 0.10
+    assert settings.meal_food_classifier_max_px == 896
     assert settings.ocr_roi_preprocessing_policy == "disabled"
     assert settings.enable_local_ocr is True
+    assert settings.local_ocr_secondary_text_recognition_model_dir is None
+    assert settings.local_ocr_text_det_unclip_ratio == 2.5
     assert settings.local_ocr_provider == "paddleocr"
     assert settings.local_ocr_language == "korean"
     assert settings.local_ocr_device is None
@@ -222,6 +237,10 @@ def test_env_example_matches_supplement_section_yolo_defaults() -> None:
     assert _env_example_value("VISION_CLASSIFIER_MODEL") == settings.vision_classifier_model
     assert json.loads(_env_example_value("VISION_ROI_ALLOWED_CLASSES")) == (
         settings.vision_roi_allowed_classes
+    )
+    assert _env_example_value("ENABLE_FOOD_DINO_CLASSIFIER") == "false"
+    assert _env_example_value("MEAL_FOOD_CLASSIFIER_MODEL_LABEL") == (
+        settings.meal_food_classifier_model_label
     )
 
 
@@ -479,26 +498,70 @@ def test_development_food_yolo_settings_load() -> None:
     settings = Settings(
         _env_file=None,
         enable_food_yolo_detector=True,
-        meal_yolo_model_path="/app/runs/food_yolo/example/weights/best.pt",
+        meal_yolo_model_path="/app/Food-backend/best.pt",
         meal_yolo_model_label="food_yolo_local",
         meal_yolo_min_confidence=0.42,
         meal_yolo_max_detections=7,
     )
 
     assert settings.enable_food_yolo_detector is True
-    assert settings.meal_yolo_model_path == "/app/runs/food_yolo/example/weights/best.pt"
+    assert settings.meal_yolo_model_path == "/app/Food-backend/best.pt"
     assert settings.meal_yolo_model_label == "food_yolo_local"
     assert settings.meal_yolo_min_confidence == 0.42
     assert settings.meal_yolo_max_detections == 7
+
+
+def test_development_food_dino_classifier_requires_model_paths() -> None:
+    """Verify food classifier cannot be enabled without required local artifacts."""
+    with pytest.raises(ValidationError, match="MEAL_FOOD_CLASSIFIER_EXP16B_MODEL_PATH"):
+        Settings(
+            _env_file=None,
+            enable_food_dino_classifier=True,
+            meal_food_classifier_exp16b_model_path=None,
+        )
+
+
+def test_development_food_dino_classifier_settings_load() -> None:
+    """Verify local food DINO settings can be enabled for operator smoke tests."""
+    settings = Settings(
+        _env_file=None,
+        enable_food_dino_classifier=True,
+        meal_food_classifier_module_dir="/app/Food-backend/src/classifier",
+        meal_food_classifier_exp16b_model_path="/app/Food-backend/best.pt",
+        meal_food_classifier_probe_path="/app/Food-backend/src/classifier/probe_head.pt",
+        meal_food_classifier_nutrition_csv_path=(
+            "/app/Food-backend/src/classifier/nutrition/food_nutrition_40class.csv"
+        ),
+        meal_food_classifier_model_label="food_dino_exp16b",
+        meal_food_classifier_gate_confidence=0.11,
+        meal_food_classifier_max_px=768,
+    )
+
+    assert settings.enable_food_dino_classifier is True
+    assert settings.meal_food_classifier_module_dir == "/app/Food-backend/src/classifier"
+    assert settings.meal_food_classifier_exp16b_model_path == "/app/Food-backend/best.pt"
+    assert settings.meal_food_classifier_model_label == "food_dino_exp16b"
+    assert settings.meal_food_classifier_gate_confidence == 0.11
+    assert settings.meal_food_classifier_max_px == 768
 
 
 def test_production_rejects_food_yolo_without_signoff() -> None:
     """Verify production cannot enable food YOLO before validation sign-off."""
     kwargs = _valid_production_kwargs()
     kwargs["enable_food_yolo_detector"] = True
-    kwargs["meal_yolo_model_path"] = "/app/runs/food_yolo/example/weights/best.pt"
+    kwargs["meal_yolo_model_path"] = "/app/Food-backend/best.pt"
 
     with pytest.raises(ValidationError, match="ENABLE_FOOD_YOLO_DETECTOR"):
+        Settings(**kwargs)
+
+
+def test_production_rejects_food_dino_classifier_without_signoff() -> None:
+    """Verify production cannot enable food DINO classifier before validation sign-off."""
+    kwargs = _valid_production_kwargs()
+    kwargs["enable_food_dino_classifier"] = True
+    kwargs["meal_food_classifier_exp16b_model_path"] = "/app/Food-backend/best.pt"
+
+    with pytest.raises(ValidationError, match="ENABLE_FOOD_DINO_CLASSIFIER"):
         Settings(**kwargs)
 
 

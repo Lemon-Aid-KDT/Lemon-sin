@@ -85,7 +85,7 @@ def _png_bytes(width: int = 10, height: int = 8) -> bytes:
 def test_food_yolo_detector_normalizes_review_candidates() -> None:
     """Verify food YOLO emits bounded review-only candidates."""
     detector = FoodYoloDetector(
-        model_path="/app/runs/food_yolo/example/weights/best.pt",
+        model_path="/app/Food-backend/best.pt",
         model_label="food_yolo_local:best.pt",
         min_confidence=0.5,
         max_detections=5,
@@ -129,7 +129,7 @@ def test_food_yolo_detector_normalizes_review_candidates() -> None:
 def test_food_yolo_detector_returns_empty_when_no_food_boxes() -> None:
     """Verify empty detector output degrades to manual-entry candidates."""
     detector = FoodYoloDetector(
-        model_path="/app/runs/food_yolo/example/weights/best.pt",
+        model_path="/app/Food-backend/best.pt",
         model_label="food_yolo_local:best.pt",
         min_confidence=0.5,
         max_detections=5,
@@ -146,7 +146,7 @@ def test_food_yolo_detector_wraps_model_load_errors() -> None:
         raise RuntimeError("local path missing")
 
     detector = FoodYoloDetector(
-        model_path="/app/runs/food_yolo/example/weights/best.pt",
+        model_path="/app/Food-backend/best.pt",
         model_label="food_yolo_local:best.pt",
         min_confidence=0.5,
         max_detections=5,
@@ -161,7 +161,7 @@ def test_food_model_label_uses_basename_only() -> None:
     """Verify model metadata does not expose local directory paths."""
     assert (
         food_model_label(
-            "/app/runs/food_yolo/private/weights/best.pt",
+            "/app/Food-backend/private/best.pt",
             "food_yolo_local",
         )
         == "food_yolo_local:best.pt"

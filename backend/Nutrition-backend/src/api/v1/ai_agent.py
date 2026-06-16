@@ -81,6 +81,7 @@ DEFAULT_REFERENCE_RANGES = [
 # 앱/UI에 노출 가능한 소스 메타데이터 화이트리스트 (PR#4 계약 — raw payload 노출 금지).
 PUBLIC_CHATBOT_SOURCE_FIELDS = (
     "source_id",
+    "source_title",
     "source_family",
     "review_status",
     "version_label",

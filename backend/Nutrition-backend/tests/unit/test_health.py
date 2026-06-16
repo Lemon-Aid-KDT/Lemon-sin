@@ -32,7 +32,7 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
         google_cloud_api_key="placeholder-key",  # pragma: allowlist secret
         allow_google_api_key_auth=True,
         enable_food_yolo_detector=True,
-        meal_yolo_model_path="/app/runs/food_yolo/example/weights/best.pt",
+        meal_yolo_model_path="/app/Food-backend/best.pt",
         meal_yolo_model_label="food_yolo_local",
         meal_yolo_min_confidence=0.35,
         meal_yolo_max_detections=12,
@@ -99,7 +99,7 @@ def test_readiness_check_returns_sanitized_ocr_status() -> None:
     assert "placeholder-value" not in response_text
     assert "placeholder-key" not in response_text
     assert "example.test" not in response_text
-    assert "/app/runs/food_yolo/example/weights/best.pt" not in response_text
+    assert "/app/Food-backend/best.pt" not in response_text
 
 
 def test_readiness_reports_section_roi_model_configured_for_trained_model() -> None:

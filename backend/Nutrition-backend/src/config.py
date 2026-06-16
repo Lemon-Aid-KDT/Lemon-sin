@@ -40,7 +40,9 @@ DEFAULT_VISION_ROI_ALLOWED_CLASSES = [
 DEFAULT_VISION_CLASSIFIER_MODEL = "yolo26n.pt"
 DEFAULT_LLM_WIKI_PATH = Path("/Volumes/Corsair EX400U Media/LLM-WIKI")
 # Deliberately insecure development sentinel; production validation rejects this exact value.
-DEFAULT_PRIVACY_HASH_SECRET = "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
+DEFAULT_PRIVACY_HASH_SECRET = (
+    "development-insecure-privacy-hash-secret"  # noqa: S105, RUF100  # pragma: allowlist secret
+)
 # Minimum production length for the privacy HMAC secret (~192 bits of entropy at
 # base64). Enforced only in production; dev keeps the short sentinel above.
 DEFAULT_PRIVACY_HASH_SECRET_MIN_LENGTH = 32
@@ -714,6 +716,15 @@ class Settings(BaseSettings):
             "text_recognition_model_dir while keeping the selected detector/profile."
         ),
     )
+    local_ocr_secondary_text_recognition_model_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Optional secondary PaddleOCR inference model directory used only by "
+            "the OCR secondary-merge stage. This lets production run a primary "
+            "recognizer and a distinct recall-oriented recognizer, then line-union "
+            "their visible OCR text candidates without replacing the primary."
+        ),
+    )
     local_ocr_preprocess_mode: Literal[
         "none",
         "autocontrast",
@@ -767,8 +778,8 @@ class Settings(BaseSettings):
     # PaddleOCR 3.x DB text-detection thresholds (predict()-time overrides).
     # Names/defaults per the official PP-OCR pipeline parameter reference:
     # https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/pipeline_usage/PP-ChatOCRv4.en.md
-    # None keeps the upstream pipeline default for each (thresh 0.3 / box_thresh
-    # 0.6 / unclip_ratio 2.0). Set only during measured OCR detection tuning runs.
+    # None keeps the upstream pipeline default for text_det_thresh; box_thresh
+    # and unclip_ratio below use measured Lemon-Aid defaults.
     local_ocr_text_det_thresh: float | None = Field(
         default=None,
         gt=0.0,
@@ -795,14 +806,21 @@ class Settings(BaseSettings):
             "PaddleOCR default 0.6). Override via LOCAL_OCR_TEXT_DET_BOX_THRESH."
         ),
     )
+    # Adopted default 2.5 (team decision 2026-06-16). The held-out A100 adaptive
+    # run kept b128_20260615 and selected unclip25 as the best ingredient-recall
+    # detector expansion among measured candidates:
+    # outputs/generated/ocr-eval/2026-06-16-a100-v2-clean-b128-export/
+    # adaptive-b128-b64-unclip25-a100/adaptive-structured-summary.json.
+    # PaddleOCR's upstream default is 2.0; set LOCAL_OCR_TEXT_DET_UNCLIP_RATIO
+    # to None/another value to override in controlled experiments.
     local_ocr_text_det_unclip_ratio: float | None = Field(
-        default=None,
+        default=2.5,
         gt=0.0,
         le=10.0,
         description=(
-            "Optional PaddleOCR predict() text_det_unclip_ratio override (text "
-            "region expansion coefficient; upstream default 2.0). None keeps the "
-            "pipeline default."
+            "PaddleOCR predict() text_det_unclip_ratio override (text region "
+            "expansion coefficient). Adopted default 2.5 from held-out A100 "
+            "structured gate measurements; upstream PaddleOCR default is 2.0."
         ),
     )
     paddle_disable_model_source_check: bool = Field(
@@ -847,7 +865,7 @@ class Settings(BaseSettings):
     )
     meal_yolo_model_path: str | None = Field(
         default=None,
-        description="식단 이미지 음식 탐지 YOLO 모델 경로. 예: /app/runs/food_yolo/.../best.pt",
+        description="식단 이미지 음식 탐지 YOLO 모델 경로. 예: /app/Food-backend/best.pt",
     )
     meal_yolo_model_label: str = Field(
         default="food_yolo_local",
@@ -864,6 +882,55 @@ class Settings(BaseSettings):
         ge=1,
         le=50,
         description="식단 YOLO가 review UI에 반환할 최대 후보 수.",
+    )
+    enable_food_dino_classifier: bool = Field(
+        default=False,
+        description=(
+            "식단 이미지 단일요리 후보 분류용 exp16b+DINOv3 adapter 활성화. "
+            "기본값 false이며 사용자 확인용 후보만 생성한다."
+        ),
+    )
+    meal_food_classifier_module_dir: str = Field(
+        default=str(BACKEND_ROOT / "Food-backend" / "src" / "classifier"),
+        description="Food-backend canonical 음식 분류기 모듈 디렉터리.",
+    )
+    meal_food_classifier_exp16b_model_path: str | None = Field(
+        default=str(BACKEND_ROOT / "Food-backend" / "best.pt"),
+        description="음식 유무 gate용 exp16b YOLO 가중치 경로.",
+    )
+    meal_food_classifier_probe_path: str | None = Field(
+        default=str(BACKEND_ROOT / "Food-backend" / "src" / "classifier" / "probe_head.pt"),
+        description="DINOv3 linear probe checkpoint 경로.",
+    )
+    meal_food_classifier_nutrition_csv_path: str | None = Field(
+        default=str(
+            BACKEND_ROOT
+            / "Food-backend"
+            / "src"
+            / "classifier"
+            / "nutrition"
+            / "food_nutrition_40class.csv"
+        ),
+        description="40-class food nutrition CSV 경로.",
+    )
+    meal_food_classifier_model_label: str = Field(
+        default="food_dino_exp16b",
+        description="음식 분류기 모델을 API metadata에 노출할 때 쓰는 안전한 라벨.",
+    )
+    meal_food_classifier_gate_confidence: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "팀 food_classifier.py 기본 gate confidence. 공식 권장값이 아니라 "
+            "해당 handoff 모듈의 실험 설정이다."
+        ),
+    )
+    meal_food_classifier_max_px: int = Field(
+        default=896,
+        ge=224,
+        le=2048,
+        description="DINOv3 분류 전 이미지 축소 상한. 팀 handoff 모듈 기본값.",
     )
     label_studio_url: str = Field(
         default="http://localhost:8080",
@@ -977,12 +1044,7 @@ class Settings(BaseSettings):
                 "GOOGLE_VISION_AUTH_MODE=api_key requires "
                 "ALLOW_GOOGLE_API_KEY_AUTH=true (non-production only)."
             )
-        if self.enable_food_yolo_detector and not (
-            self.meal_yolo_model_path and self.meal_yolo_model_path.strip()
-        ):
-            raise ValueError(
-                "MEAL_YOLO_MODEL_PATH is required when ENABLE_FOOD_YOLO_DETECTOR=true."
-            )
+        self._validate_food_image_model_settings()
         if self.allow_google_api_key_auth and self.environment == "production":
             raise ValueError(
                 "ALLOW_GOOGLE_API_KEY_AUTH=true is forbidden in production; "
@@ -1160,6 +1222,10 @@ class Settings(BaseSettings):
                     "ENABLE_FOOD_YOLO_DETECTOR=true requires food YOLO validation sign-off.",
                 ),
                 (
+                    self.enable_food_dino_classifier,
+                    "ENABLE_FOOD_DINO_CLASSIFIER=true requires food classifier validation sign-off.",
+                ),
+                (
                     self.ocr_roi_preprocessing_policy != "disabled",
                     "OCR_ROI_PREPROCESSING_POLICY requires docs/17 §9 gate #2 sign-off.",
                 ),
@@ -1226,6 +1292,40 @@ class Settings(BaseSettings):
         if errors:
             raise ValueError(" ".join(errors))
         return self
+
+    def _validate_food_image_model_settings(self) -> None:
+        """Validate local food image detector/classifier settings.
+
+        Raises:
+            ValueError: If an enabled food image model lacks required local paths.
+        """
+        if self.enable_food_yolo_detector and not (
+            self.meal_yolo_model_path and self.meal_yolo_model_path.strip()
+        ):
+            raise ValueError(
+                "MEAL_YOLO_MODEL_PATH is required when ENABLE_FOOD_YOLO_DETECTOR=true."
+            )
+        if not self.enable_food_dino_classifier:
+            return
+
+        missing_food_classifier_fields = [
+            name
+            for name, value in (
+                (
+                    "MEAL_FOOD_CLASSIFIER_EXP16B_MODEL_PATH",
+                    self.meal_food_classifier_exp16b_model_path,
+                ),
+                ("MEAL_FOOD_CLASSIFIER_PROBE_PATH", self.meal_food_classifier_probe_path),
+                (
+                    "MEAL_FOOD_CLASSIFIER_NUTRITION_CSV_PATH",
+                    self.meal_food_classifier_nutrition_csv_path,
+                ),
+            )
+            if not (value and value.strip())
+        ]
+        if missing_food_classifier_fields:
+            fields = ", ".join(missing_food_classifier_fields)
+            raise ValueError(f"{fields} required when ENABLE_FOOD_DINO_CLASSIFIER=true.")
 
     def _validate_learning_object_storage_settings(self) -> None:
         """Validate consent-gated learning image object storage settings.

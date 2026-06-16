@@ -28,6 +28,9 @@ param(
     [int]$BatchSize = 128,
     [int]$Epochs = 100,
     [double]$LearningRate = 0.0005,
+    [int]$ExpectedTrainRows = 70778,
+    [int]$ExpectedValRows = 6828,
+    [int]$ExpectedDictRows = 1066,
     [string]$PretrainedModel = "pretrain\korean_PP-OCRv5_mobile_rec_pretrained",
     [string]$PretrainedModelUrl = "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_pretrained_model/korean_PP-OCRv5_mobile_rec_pretrained.pdparams"
 )
@@ -51,6 +54,12 @@ $ValLabel = Join-Path $DatasetDir "rec\rec_gt_val.txt"
 $DictFile = Join-Path $DatasetDir "dict.txt"
 $SmokeOutput = "output\supplement_rec_crawling_${RunSuffix}_smoke"
 $FullOutput = "output\supplement_rec_crawling_$RunSuffix"
+
+function Format-InvariantDecimal {
+    param([double]$Value)
+
+    return $Value.ToString("0.################", [System.Globalization.CultureInfo]::InvariantCulture)
+}
 
 function Get-TextLineCount {
     param([string]$Path)
@@ -84,6 +93,9 @@ function Assert-DatasetGate {
     if (Test-Path -LiteralPath $CountGateScript -PathType Leaf) {
         & $PythonExe $CountGateScript `
             --dataset-dir $DatasetDir `
+            --expected-train-rows $ExpectedTrainRows `
+            --expected-val-rows $ExpectedValRows `
+            --expected-dict-rows $ExpectedDictRows `
             --summary-output $CountGateSummary
         if ($LASTEXITCODE -ne 0) {
             throw "Dataset count gate failed."
@@ -92,15 +104,15 @@ function Assert-DatasetGate {
         return
     }
 
-    Assert-FileLineCount -Path $TrainLabel -Expected 70778 -Name "train"
-    Assert-FileLineCount -Path $ValLabel -Expected 6828 -Name "val"
-    Assert-FileLineCount -Path $DictFile -Expected 1066 -Name "dict"
+    Assert-FileLineCount -Path $TrainLabel -Expected $ExpectedTrainRows -Name "train"
+    Assert-FileLineCount -Path $ValLabel -Expected $ExpectedValRows -Name "val"
+    Assert-FileLineCount -Path $DictFile -Expected $ExpectedDictRows -Name "dict"
     Write-Host "Dataset gate passed."
 }
 
 function Assert-ExportInputs {
     Write-Host "Checking export inputs..."
-    Assert-FileLineCount -Path $DictFile -Expected 1066 -Name "dict"
+    Assert-FileLineCount -Path $DictFile -Expected $ExpectedDictRows -Name "dict"
     $bestCheckpoint = Join-Path $PaddleOCRRoot "$FullOutput\best_accuracy"
     $bestParams = "$bestCheckpoint.pdparams"
     if (-not (Test-Path -LiteralPath $bestParams -PathType Leaf)) {
@@ -173,6 +185,7 @@ function Invoke-PaddleOCRTrain {
         $env:CUDA_VISIBLE_DEVICES = $GpuId
         $configPath = Resolve-PaddleOCRConfig
         $pretrainedModelArg = Resolve-PretrainedModel
+        $learningRateArg = Format-InvariantDecimal -Value $LearningRate
         $trainArgs = @(
             "tools\train.py",
             "-c", $configPath,
@@ -182,7 +195,7 @@ function Invoke-PaddleOCRTrain {
             "Global.epoch_num=$EpochCount",
             "Global.character_dict_path=$DictFile",
             "Global.use_space_char=True",
-            "Optimizer.lr.learning_rate=$LearningRate",
+            "Optimizer.lr.learning_rate=$learningRateArg",
             "Train.dataset.data_dir=$DatasetDir",
             "Train.dataset.label_file_list=['$TrainLabel']",
             "Eval.dataset.data_dir=$DatasetDir",

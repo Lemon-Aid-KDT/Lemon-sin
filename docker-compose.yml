@@ -49,8 +49,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - lemon-aid-paddle-cache:/home/lemon/.paddlex
-      - ./data/nutrition_reference:/app/data/nutrition_reference:ro
-      - ./runs/food_yolo:/app/runs/food_yolo:ro
+      - lemon-aid-hf-cache:/home/lemon/.cache/huggingface
     environment:
       ENVIRONMENT: development
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -81,9 +80,15 @@ services:
       OCR_PRIMARY_PROVIDER: ${OCR_PRIMARY_PROVIDER:-clova}
       ENABLE_LOCAL_OCR: ${ENABLE_LOCAL_OCR:-false}
       LOCAL_OCR_LANGUAGE: ${LOCAL_OCR_LANGUAGE:-korean}
-      LOCAL_OCR_MODEL_PROFILE: ${LOCAL_OCR_MODEL_PROFILE:-mobile}
+      LOCAL_OCR_MODEL_PROFILE: ${LOCAL_OCR_MODEL_PROFILE:-server_detection}
+      LOCAL_OCR_TEXT_RECOGNITION_MODEL_DIR: ${LOCAL_OCR_TEXT_RECOGNITION_MODEL_DIR:-/app/models/paddleocr-rec}
+      LOCAL_OCR_SECONDARY_TEXT_RECOGNITION_MODEL_DIR: ${LOCAL_OCR_SECONDARY_TEXT_RECOGNITION_MODEL_DIR:-/app/models/paddleocr-rec-secondary}
       LOCAL_OCR_PREPROCESS_MODE: ${LOCAL_OCR_PREPROCESS_MODE:-autocontrast}
+      LOCAL_OCR_TEXT_DET_LIMIT_TYPE: ${LOCAL_OCR_TEXT_DET_LIMIT_TYPE:-max}
+      LOCAL_OCR_TEXT_DET_LIMIT_SIDE_LEN: ${LOCAL_OCR_TEXT_DET_LIMIT_SIDE_LEN:-3072}
+      LOCAL_OCR_TEXT_DET_UNCLIP_RATIO: ${LOCAL_OCR_TEXT_DET_UNCLIP_RATIO:-2.5}
       LOCAL_OCR_CONFIDENCE_THRESHOLD: ${LOCAL_OCR_CONFIDENCE_THRESHOLD:-0.75}
+      OCR_SECONDARY_MERGE_POLICY: ${OCR_SECONDARY_MERGE_POLICY:-disabled}
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "true"
       ALLOW_EXTERNAL_OCR: ${ALLOW_EXTERNAL_OCR:-true}
       ENABLE_CLOVA_OCR: ${ENABLE_CLOVA_OCR:-true}
@@ -102,10 +107,24 @@ services:
       VISION_CLASSIFIER_MODEL: ${VISION_CLASSIFIER_MODEL:-yolov8n.pt}
       OCR_ROI_PREPROCESSING_POLICY: ${OCR_ROI_PREPROCESSING_POLICY:-disabled}
       ENABLE_FOOD_YOLO_DETECTOR: ${ENABLE_FOOD_YOLO_DETECTOR:-false}
-      MEAL_YOLO_MODEL_PATH: ${MEAL_YOLO_MODEL_PATH:-/app/runs/food_yolo/exp01_yolov8n_baseline_pc1_b48_w8_cache_disk_det_true/weights/best.pt}
+      MEAL_YOLO_MODEL_PATH: ${MEAL_YOLO_MODEL_PATH:-/app/Food-backend/best.pt}
       MEAL_YOLO_MODEL_LABEL: ${MEAL_YOLO_MODEL_LABEL:-food_yolo_local}
       MEAL_YOLO_MIN_CONFIDENCE: ${MEAL_YOLO_MIN_CONFIDENCE:-0.25}
       MEAL_YOLO_MAX_DETECTIONS: ${MEAL_YOLO_MAX_DETECTIONS:-20}
+      ENABLE_FOOD_DINO_CLASSIFIER: ${ENABLE_FOOD_DINO_CLASSIFIER:-false}
+      MEAL_FOOD_CLASSIFIER_MODULE_DIR: ${MEAL_FOOD_CLASSIFIER_MODULE_DIR:-/app/Food-backend/src/classifier}
+      MEAL_FOOD_CLASSIFIER_EXP16B_MODEL_PATH: ${MEAL_FOOD_CLASSIFIER_EXP16B_MODEL_PATH:-/app/Food-backend/best.pt}
+      MEAL_FOOD_CLASSIFIER_PROBE_PATH: ${MEAL_FOOD_CLASSIFIER_PROBE_PATH:-/app/Food-backend/src/classifier/probe_head.pt}
+      MEAL_FOOD_CLASSIFIER_NUTRITION_CSV_PATH: ${MEAL_FOOD_CLASSIFIER_NUTRITION_CSV_PATH:-/app/Food-backend/src/classifier/nutrition/food_nutrition_40class.csv}
+      MEAL_FOOD_CLASSIFIER_MODEL_LABEL: ${MEAL_FOOD_CLASSIFIER_MODEL_LABEL:-food_dino_exp16b}
+      MEAL_FOOD_CLASSIFIER_GATE_CONFIDENCE: ${MEAL_FOOD_CLASSIFIER_GATE_CONFIDENCE:-0.10}
+      MEAL_FOOD_CLASSIFIER_MAX_PX: ${MEAL_FOOD_CLASSIFIER_MAX_PX:-896}
+      # HF_TOKEN is required for gated DINOv3 food classifier weights after accepting
+      # the model license on Hugging Face. Keep it server-only and never expose it to
+      # Flutter/frontend bundles.
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /home/lemon/.cache/huggingface
+      HF_HUB_CACHE: /home/lemon/.cache/huggingface/hub
       ENABLE_MULTIMODAL_LLM: ${ENABLE_MULTIMODAL_LLM:-false}
       MULTIMODAL_OCR_ASSIST_POLICY: ${MULTIMODAL_OCR_ASSIST_POLICY:-disabled}
       ENABLE_MULTIMODAL_VERIFICATION: ${ENABLE_MULTIMODAL_VERIFICATION:-false}
@@ -120,3 +139,4 @@ volumes:
   lemon-aid-pg-data:
   lemon-aid-redis-data:
   lemon-aid-paddle-cache:
+  lemon-aid-hf-cache:
