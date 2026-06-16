@@ -32,14 +32,16 @@ class _MainShellState extends State<MainShell> {
   static const List<_TabSpec> _leftTabs = <_TabSpec>[
     _TabSpec(
       branchIndex: 0,
-      iconOutline: Icons.favorite_rounded,
-      iconFilled: Icons.favorite_rounded,
+      // Figma 268:24 — 홈은 집 아이콘 (하트 아님)
+      iconOutline: Icons.home_rounded,
+      iconFilled: Icons.home_rounded,
       label: '홈',
     ),
     _TabSpec(
       branchIndex: 2,
-      iconOutline: Icons.chat_bubble_rounded,
-      iconFilled: Icons.chat_bubble_rounded,
+      // Figma 268:24 — 챗은 겹친 말풍선 2개 (단일 버블 아님)
+      iconOutline: Icons.forum_rounded,
+      iconFilled: Icons.forum_rounded,
       label: '챗',
     ),
   ];
@@ -85,9 +87,27 @@ class _MainShellState extends State<MainShell> {
             break;
           case QuickAction.water:
           case QuickAction.manualInput:
+            // 백엔드/화면 미구현 — 무음 no-op 대신 안전한 '준비 중' 안내.
+            _showComingSoon();
             break;
         }
       },
+    );
+  }
+
+  // 아직 구현되지 않은 빠른 액션 — 조용히 실패하지 않도록 안내 토스트.
+  void _showComingSoon() {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '아직 준비 중이에요.',
+          style: AppText.body.copyWith(color: AppColor.bg),
+        ),
+        backgroundColor: AppColor.ink,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -150,15 +170,9 @@ class _BottomBar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColor.surface,
-        // Pillyze 시안: 상단에 매우 옅은 1px 구분선 + soft shadow
-        border: Border(top: BorderSide(color: Color(0xFFF1F3F6), width: 1)),
-        boxShadow: [
-          BoxShadow(
-            color: Color.fromRGBO(140, 155, 175, 0.06),
-            blurRadius: 16,
-            offset: Offset(0, -2),
-          ),
-        ],
+        // 상단에 매우 옅은 1px 구분선 + soft shadow (토큰)
+        border: Border(top: BorderSide(color: AppColor.border, width: 1)),
+        boxShadow: AppShadow.navBar,
       ),
       child: SafeArea(
         top: false,
@@ -222,10 +236,8 @@ class _TabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 포커스: brand 비비드 노랑
-    // 비활성: 옅은 그레이지 (#C5CBD6) — 너무 회색이면 묻히고, 너무 진하면 활성과 안 구분
-    const inactive = Color(0xFFC5CBD6);
-    final iconColor = active ? AppColor.brand : inactive;
+    // 포커스: brand 비비드 노랑 / 비활성: 옅은 그레이지 (토큰 inkDisabled #C5C8CE)
+    final iconColor = active ? AppColor.brand : AppColor.inkDisabled;
     // 라벨은 활성 시 ink(검정), 비활성은 한 톤 위 (#8A92A5 = inkTertiary)
     final labelColor = active ? AppColor.ink : AppColor.inkTertiary;
     return GestureDetector(
@@ -279,29 +291,18 @@ class _CameraFab extends StatelessWidget {
         width: 64,
         height: 64,
         decoration: BoxDecoration(
-          // 위→아래 살짝 그라데이션 (밝은 노랑 → 살짝 더 진한 노랑)
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFFFD43A), // 위: brand 보다 한 톤 밝게
-              AppColor.brand, // 아래: #FFC700
-            ],
-          ),
+          // Figma 268:24 — 솔리드 레몬 옐로 (그라데이션 없음)
+          color: AppColor.brand,
           shape: BoxShape.circle,
           boxShadow: [
-            // brand 색 hue 그림자 — Pillyze 처럼 색상 잔향
+            // brand 색 hue 잔향 글로우
             BoxShadow(
               color: AppColor.brand.withValues(alpha: active ? 0.50 : 0.35),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
-            // 미세 검정 — 깊이감
-            const BoxShadow(
-              color: Color.fromRGBO(0, 0, 0, 0.10),
-              blurRadius: 6,
-              offset: Offset(0, 3),
-            ),
+            // 미세 검정 — 깊이감 (토큰)
+            AppShadow.fabDepth,
           ],
         ),
         alignment: Alignment.center,

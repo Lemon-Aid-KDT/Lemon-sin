@@ -34,37 +34,38 @@ class _ActionSpec {
   const _ActionSpec(this.action, this.icon, this.label, this.color);
 }
 
-// 왼쪽 → 오른쪽 순서로 부채꼴에 배치
+// 왼쪽 → 오른쪽 순서로 부채꼴에 배치.
+// 색은 디자인 토큰(시맨틱 팔레트)으로 — 하드코딩 hex 금지.
 const List<_ActionSpec> _kActions = [
   _ActionSpec(
     QuickAction.manualInput,
     Icons.edit_rounded,
     '직접 입력',
-    Color(0xFFFF6B6B),
+    AppColor.danger,
   ),
   _ActionSpec(
     QuickAction.water,
     Icons.water_drop_rounded,
     '물 섭취',
-    Color(0xFF2CA8E0),
+    AppColor.info,
   ),
   _ActionSpec(
     QuickAction.supplementShot,
     Icons.medication_rounded,
     '영양제 촬영',
-    Color(0xFF22B07D),
+    AppColor.success,
   ),
   _ActionSpec(
     QuickAction.mealShot,
     Icons.restaurant_rounded,
     '식단 촬영',
-    Color(0xFFFF9500),
+    AppColor.warning,
   ),
   _ActionSpec(
     QuickAction.medication,
     Icons.check_circle_rounded,
     '복약 기록',
-    Color(0xFF4D7BFF),
+    AppColor.brand,
   ),
 ];
 
@@ -148,11 +149,8 @@ class _QuickActionPalette extends StatelessWidget {
                   width: _fabSize,
                   height: _fabSize,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0xFFFFD43A), AppColor.brand],
-                    ),
+                    // main_shell _CameraFab 와 동일 — 솔리드 brand + 토큰 그림자
+                    color: AppColor.brand,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -160,11 +158,7 @@ class _QuickActionPalette extends StatelessWidget {
                         blurRadius: 20,
                         offset: const Offset(0, 8),
                       ),
-                      const BoxShadow(
-                        color: Color.fromRGBO(0, 0, 0, 0.10),
-                        blurRadius: 6,
-                        offset: Offset(0, 3),
-                      ),
+                      AppShadow.fabDepth,
                     ],
                   ),
                   alignment: Alignment.center,
@@ -270,17 +264,17 @@ class _QuickActionPalette extends StatelessWidget {
                         child: Icon(spec.icon, color: spec.color, size: 25),
                       ),
                       const SizedBox(height: 8),
-                      // 라벨 — 버튼 아래, 흰 글자 (어두운 배경 위라 칩 없이 깔끔)
+                      // 라벨 — 버튼 아래, 흰 글자 (어두운 배경 위라 칩 없이 깔끔).
+                      // 타이포는 AppText.micro 토큰 기반 + 어두운 배리어 가독성용 그림자.
                       Text(
                         spec.label,
                         maxLines: 1,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: AppText.micro.copyWith(
                           color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                          shadows: [
+                          shadows: const [
                             Shadow(
                               color: Color.fromRGBO(0, 0, 0, 0.5),
                               blurRadius: 4,
