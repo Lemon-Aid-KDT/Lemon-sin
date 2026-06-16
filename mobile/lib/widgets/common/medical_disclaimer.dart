@@ -20,11 +20,19 @@ class MedicalDisclaimer extends StatelessWidget {
       "본 서비스에서 제공하는 정보는 일반적인 건강 관리를 위한 참고 자료이며,\n"
       "의사·약사·영양사의 전문적 진단이나 처방을 대체하지 않습니다.";
 
+  // 분석/점수 요약 화면용 면책 문구 (해요체 · 브랜드 톤) — figma Main.
+  // 화면 톤(해요체)을 유지하기 위해 표준 문구와 별도로 둔다.
+  // 문구 변경 시 금칙어 가드 테스트(score_screen_test) 화이트리스트도 함께 갱신.
+  static const String summaryDisclaimerText =
+      '이 분석은 건강 관리를 돕는 참고 정보예요.\n의사·약사·영양사의 진단을 대신하진 않아요.';
+
   @override
   Widget build(BuildContext context) {
     switch (variant) {
       case DisclaimerVariant.standard:
         return _standard();
+      case DisclaimerVariant.summary:
+        return _summary();
       case DisclaimerVariant.compact:
         return _compact();
       case DisclaimerVariant.inline:
@@ -64,6 +72,31 @@ class MedicalDisclaimer extends StatelessWidget {
     );
   }
 
+  // 분석/점수 요약 화면 하단 (해요체 · 브랜드 톤 pill). figma Main 톤 유지.
+  Widget _summary() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.brandSoft,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.info_outline, color: AppColor.brandDeep, size: 18),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Text(
+              summaryDisclaimerText,
+              style: AppText.caption.copyWith(color: AppColor.ink, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _compact() {
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -92,6 +125,9 @@ class MedicalDisclaimer extends StatelessWidget {
 enum DisclaimerVariant {
   /// 화면 하단 표준 면책 박스 (가장 자주 사용)
   standard,
+
+  /// 분석/점수 요약 화면 하단 (해요체 · 브랜드 톤 pill)
+  summary,
 
   /// 화면 하단 작은 한 줄
   compact,

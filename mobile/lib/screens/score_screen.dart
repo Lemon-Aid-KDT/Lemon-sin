@@ -34,6 +34,7 @@ import '../features/analysis_trend/analysis_trend_repository.dart';
 import '../features/dashboard/home_models.dart';
 import '../shared/score_label_colors.dart';
 import '../utils/design_tokens_v2.dart';
+import '../widgets/common/medical_disclaimer.dart';
 import '../widgets/common/pressable.dart';
 
 /// 오늘의 분석 화면 (figma S-09).
@@ -354,7 +355,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                 const SizedBox(height: AppSpace.md),
                 _TrendCard(points: _trendPoints, onLemonBot: _openLemonBot),
                 const SizedBox(height: AppSpace.lg),
-                const _Disclaimer(),
+                const MedicalDisclaimer(variant: DisclaimerVariant.summary),
               ],
             ),
           ),
@@ -380,7 +381,15 @@ class _Header extends StatelessWidget {
     required this.onBackToToday,
   });
 
-  static const List<String> _weekdays = <String>['월', '화', '수', '목', '금', '토', '일'];
+  static const List<String> _weekdays = <String>[
+    '월',
+    '화',
+    '수',
+    '목',
+    '금',
+    '토',
+    '일',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -474,13 +483,7 @@ class _Header extends StatelessWidget {
 BoxDecoration _cardDeco() => BoxDecoration(
   color: AppColor.surface,
   borderRadius: BorderRadius.circular(AppRadius.lg),
-  boxShadow: const <BoxShadow>[
-    BoxShadow(
-      color: Color.fromRGBO(140, 155, 175, 0.20),
-      blurRadius: 16,
-      offset: Offset(0, 5),
-    ),
-  ],
+  boxShadow: AppShadow.softCard,
 );
 
 // ═══════════════════════════════════════════
@@ -680,7 +683,7 @@ class _ScoreRing extends StatelessWidget {
             child: CircularProgressIndicator(
               value: ratio,
               strokeWidth: 12,
-              backgroundColor: const Color(0xFFF1F3F6),
+              backgroundColor: AppColor.section,
               valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
           ),
@@ -890,8 +893,7 @@ class _ChecklistCard extends StatelessWidget {
             const SizedBox(height: AppSpace.lg),
             for (int i = 0; i < warnings.length; i++) ...<Widget>[
               _SafetyWarningRow(text: warnings[i]),
-              if (i != warnings.length - 1)
-                const SizedBox(height: AppSpace.sm),
+              if (i != warnings.length - 1) const SizedBox(height: AppSpace.sm),
             ],
           ],
           if (!loading && !readOnly) ...<Widget>[
@@ -933,14 +935,10 @@ class _ChecklistCard extends StatelessWidget {
       return _ChecklistError(onRetry: onRetry);
     }
     if (result != null && result.requiresUserApproval && result.items.isEmpty) {
-      return _ChecklistHint(
-        text: '기록을 확정하면 맞춤 제안을 드려요.',
-      );
+      return _ChecklistHint(text: '기록을 확정하면 맞춤 제안을 드려요.');
     }
     if (result == null || result.items.isEmpty) {
-      return _ChecklistHint(
-        text: '오늘 끼니와 영양제를 기록하면 실천 항목을 만들어 드려요.',
-      );
+      return _ChecklistHint(text: '오늘 끼니와 영양제를 기록하면 실천 항목을 만들어 드려요.');
     }
     return Column(
       children: <Widget>[
@@ -1023,7 +1021,7 @@ class _ChecklistRow extends StatelessWidget {
             width: 24,
             height: 24,
             decoration: BoxDecoration(
-              color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
+              color: checked ? AppColor.brand : AppColor.borderStrong,
               shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
@@ -1379,34 +1377,5 @@ class _TrendLockedCard extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════
-// 하단 면책 (LADS §14)
-// ═══════════════════════════════════════════
-class _Disclaimer extends StatelessWidget {
-  const _Disclaimer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside),
-      decoration: BoxDecoration(
-        color: AppColor.brandSoft,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(Icons.info_outline, color: AppColor.brandDeep, size: 18),
-          const SizedBox(width: AppSpace.sm),
-          Expanded(
-            child: Text(
-              '이 분석은 건강 관리를 돕는 참고 정보예요.\n의사·약사·영양사의 진단을 대신하진 않아요.',
-              style: AppText.caption.copyWith(color: AppColor.ink, height: 1.5),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// 하단 면책 고지는 공용 위젯으로 단일화 — MedicalDisclaimer(summary 변형).
+// 문구·스타일 단일 출처: lib/widgets/common/medical_disclaimer.dart

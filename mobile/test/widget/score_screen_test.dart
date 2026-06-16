@@ -16,6 +16,7 @@ import 'package:lemon_aid_mobile/features/supplements/supplement_models.dart';
 import 'package:lemon_aid_mobile/features/records/food_models.dart';
 import 'package:lemon_aid_mobile/features/supplements/supplement_repository.dart';
 import 'package:lemon_aid_mobile/screens/score_screen.dart';
+import 'package:lemon_aid_mobile/widgets/common/medical_disclaimer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeClient extends http.BaseClient {
@@ -159,15 +160,15 @@ Future<void> _pickPastDay(WidgetTester tester, String chipLabel, String day) asy
 
 // 화면 전체 금칙어·신뢰도 % 가드 (가이드 06 ⑦). 표준 면책 문장은 '진단'을
 // 부정 맥락으로 포함하므로 정확 일치 화이트리스트로 제외한다
-// (챗 면책 가드와 동일 규칙).
+// (챗 면책 가드와 동일 규칙). 문구 단일 출처는 공용 위젯의 상수를 직접 참조해
+// 위젯과 가드가 절대 어긋나지 않도록 한다.
 void _expectNoForbiddenCopy(WidgetTester tester) {
-  const String standardDisclaimer =
-      '이 분석은 건강 관리를 돕는 참고 정보예요.\n의사·약사·영양사의 진단을 대신하진 않아요.';
+  const String summaryDisclaimer = MedicalDisclaimer.summaryDisclaimerText;
   final Iterable<Text> texts = tester.widgetList<Text>(find.byType(Text));
   expect(texts, isNotEmpty);
   for (final Text text in texts) {
     final String data = text.data ?? '';
-    if (data == standardDisclaimer) {
+    if (data == summaryDisclaimer) {
       continue;
     }
     for (final String term in const <String>['진단', '처방', '치료', '효능']) {
