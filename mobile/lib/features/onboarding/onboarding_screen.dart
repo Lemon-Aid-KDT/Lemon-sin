@@ -7,14 +7,14 @@ import '../../widgets/common/medical_disclaimer.dart';
 /// 온보딩 슬라이드 정의.
 class _Slide {
   const _Slide({
-    required this.icon,
+    required this.assetPath,
     required this.title,
     required this.description,
     this.showDisclaimer = false,
   });
 
-  /// 슬라이드 상단 아이콘.
-  final IconData icon;
+  /// 슬라이드 상단 마스코트 일러스트 경로.
+  final String assetPath;
 
   /// 슬라이드 제목.
   final String title;
@@ -28,18 +28,18 @@ class _Slide {
 
 const List<_Slide> _slides = <_Slide>[
   _Slide(
-    icon: Icons.waving_hand_rounded,
+    assetPath: 'assets/mascot/poses/hello.png',
     title: '레몬에이드에 오신 걸\n환영해요',
     description: '음식과 영양제를 한 번에 관리하는\n똑똑한 건강 도우미예요.',
   ),
   _Slide(
-    icon: Icons.center_focus_strong_rounded,
+    assetPath: 'assets/mascot/poses/find.png',
     title: '사진 한 장으로\n분석해요',
     description: '영양제 라벨이나 식단을 찍으면\n부족하거나 넘치는 영양을 알려드려요.',
     showDisclaimer: true,
   ),
   _Slide(
-    icon: Icons.event_available_rounded,
+    assetPath: 'assets/mascot/poses/celebrate.png',
     title: '매일의 루틴을\n챙겨드려요',
     description: '복용 체크와 변화 추이로\n건강 습관을 이어가요.',
   ),
@@ -52,7 +52,11 @@ const List<_Slide> _slides = <_Slide>[
 /// 이 화면으로 라우팅한다.
 class OnboardingScreen extends StatefulWidget {
   /// 온보딩 화면을 만든다.
-  const OnboardingScreen({required this.prefs, required this.onDone, super.key});
+  const OnboardingScreen({
+    required this.prefs,
+    required this.onDone,
+    super.key,
+  });
 
   /// 온보딩 노출 여부를 영속하는 로컬 저장소.
   final LocalPrefs prefs;
@@ -167,13 +171,18 @@ class _SlideView extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           Container(
-            width: 132,
-            height: 132,
+            width: 200,
+            height: 200,
+            alignment: Alignment.center,
             decoration: const BoxDecoration(
               color: ds2.AppColor.brandSoft,
               shape: BoxShape.circle,
             ),
-            child: Icon(slide.icon, size: 60, color: ds2.AppColor.brandDeep),
+            child: Image.asset(
+              slide.assetPath,
+              height: 160,
+              fit: BoxFit.contain,
+            ),
           ),
           const SizedBox(height: ds2.AppSpace.xxl),
           Text(
@@ -185,7 +194,9 @@ class _SlideView extends StatelessWidget {
           Text(
             slide.description,
             textAlign: TextAlign.center,
-            style: ds2.AppText.bodyLg.copyWith(color: ds2.AppColor.inkSecondary),
+            style: ds2.AppText.bodyLg.copyWith(
+              color: ds2.AppColor.inkSecondary,
+            ),
           ),
           if (slide.showDisclaimer) ...<Widget>[
             const SizedBox(height: ds2.AppSpace.xl),

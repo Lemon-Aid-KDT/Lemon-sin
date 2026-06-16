@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../app_providers.dart';
 import '../core/storage/local_prefs.dart';
+import '../utils/design_tokens_v2.dart' as ds2;
 
 /// 17 Pro UIUX branch style splash screen wired to the current token session.
 class SplashScreen extends ConsumerStatefulWidget {
@@ -98,7 +99,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       _typedCount.clamp(0, _tagline.length),
     );
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: ds2.AppColor.bg,
       body: SafeArea(
         child: Center(
           child: Column(
@@ -132,14 +133,7 @@ class _TypingTagline extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 17,
-          fontWeight: FontWeight.w500,
-          color: Color(0xFF4E5968),
-          height: 1.45,
-          letterSpacing: 0,
-        ),
+        style: ds2.AppText.bodyLg.copyWith(color: ds2.AppColor.inkSecondary),
       ),
     );
   }
