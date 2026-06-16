@@ -1,0 +1,85 @@
+code,name_ko,name_en,unit,sex,age_min,age_max,rda,ai,ear,ul,is_pregnant,is_lactating
+energy_kcal,에너지,Energy,kcal,male,19,29,2600,,,,false,false
+energy_kcal,에너지,Energy,kcal,male,30,49,2500,,,,false,false
+energy_kcal,에너지,Energy,kcal,male,50,64,2200,,,,false,false
+energy_kcal,에너지,Energy,kcal,male,65,74,2000,,,,false,false
+energy_kcal,에너지,Energy,kcal,male,75,120,1900,,,,false,false
+energy_kcal,에너지,Energy,kcal,female,19,29,2000,,,,false,false
+energy_kcal,에너지,Energy,kcal,female,30,49,1900,,,,false,false
+energy_kcal,에너지,Energy,kcal,female,50,64,1700,,,,false,false
+energy_kcal,에너지,Energy,kcal,female,65,74,1600,,,,false,false
+energy_kcal,에너지,Energy,kcal,female,75,120,1500,,,,false,false
+protein_g,단백질,Protein,g,male,19,29,65,,,,false,false
+protein_g,단백질,Protein,g,male,30,49,65,,,,false,false
+protein_g,단백질,Protein,g,male,50,64,60,,,,false,false
+protein_g,단백질,Protein,g,male,65,74,60,,,,false,false
+protein_g,단백질,Protein,g,male,75,120,60,,,,false,false
+protein_g,단백질,Protein,g,female,19,29,55,,,,false,false
+protein_g,단백질,Protein,g,female,30,49,50,,,,false,false
+protein_g,단백질,Protein,g,female,50,64,50,,,,false,false
+protein_g,단백질,Protein,g,female,65,74,50,,,,false,false
+protein_g,단백질,Protein,g,female,75,120,50,,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,male,19,29,,30,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,male,30,49,,30,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,male,50,64,,30,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,male,65,74,,25,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,male,75,120,,25,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,female,19,29,,20,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,female,30,49,,20,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,female,50,64,,20,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,female,65,74,,20,,,false,false
+fiber_g,식이섬유,Dietary Fiber,g,female,75,120,,20,,,false,false
+sodium_mg,나트륨,Sodium,mg,male,19,29,,1500,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,male,30,49,,1500,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,male,50,64,,1500,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,male,65,74,,1300,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,male,75,120,,1100,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,female,19,29,,1500,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,female,30,49,,1500,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,female,50,64,,1500,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,female,65,74,,1300,,2300,false,false
+sodium_mg,나트륨,Sodium,mg,female,75,120,,1100,,2300,false,false
+calcium_mg,칼슘,Calcium,mg,male,19,29,800,,,2500,false,false
+calcium_mg,칼슘,Calcium,mg,male,30,49,800,,,2500,false,false
+calcium_mg,칼슘,Calcium,mg,male,50,64,750,,,2000,false,false
+calcium_mg,칼슘,Calcium,mg,male,65,74,700,,,2000,false,false
+calcium_mg,칼슘,Calcium,mg,male,75,120,700,,,2000,false,false
+calcium_mg,칼슘,Calcium,mg,female,19,29,700,,,2500,false,false
+calcium_mg,칼슘,Calcium,mg,female,30,49,700,,,2500,false,false
+calcium_mg,칼슘,Calcium,mg,female,50,64,800,,,2000,false,false
+calcium_mg,칼슘,Calcium,mg,female,65,74,800,,,2000,false,false
+calcium_mg,칼슘,Calcium,mg,female,75,120,800,,,2000,false,false
+iron_mg,철,Iron,mg,male,19,29,10,,,45,false,false
+iron_mg,철,Iron,mg,male,30,49,10,,,45,false,false
+iron_mg,철,Iron,mg,male,50,64,10,,,45,false,false
+iron_mg,철,Iron,mg,male,65,74,9,,,45,false,false
+iron_mg,철,Iron,mg,male,75,120,9,,,45,false,false
+iron_mg,철,Iron,mg,female,19,29,14,,,45,false,false
+iron_mg,철,Iron,mg,female,30,49,14,,,45,false,false
+iron_mg,철,Iron,mg,female,50,64,8,,,45,false,false
+iron_mg,철,Iron,mg,female,65,74,8,,,45,false,false
+iron_mg,철,Iron,mg,female,75,120,7,,,45,false,false
+iron_mg,철,Iron,mg,female,,,27,,,45,true,false
+iron_mg,철,Iron,mg,female,,,14,,,45,false,true
+vitamin_a_ug,비타민 A,Vitamin A,ug,male,19,29,800,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,male,30,49,800,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,male,50,64,750,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,male,65,74,700,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,male,75,120,700,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,female,19,29,650,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,female,30,49,650,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,female,50,64,600,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,female,65,74,600,,,3000,false,false
+vitamin_a_ug,비타민 A,Vitamin A,ug,female,75,120,600,,,3000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,19,29,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,30,49,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,50,64,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,65,74,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,75,120,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,19,29,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,30,49,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,50,64,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,65,74,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,75,120,100,,,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,,,110,,,2000,true,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,,,140,,,2000,false,true

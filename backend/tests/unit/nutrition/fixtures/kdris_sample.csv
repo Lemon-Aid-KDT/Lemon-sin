@@ -1,0 +1,18 @@
+code,name_ko,name_en,unit,sex,age_min,age_max,rda,ai,ear,ul,is_pregnant,is_lactating
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,19,29,100,,75,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,19,29,100,,75,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,30,49,100,,75,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,30,49,100,,75,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,male,50,64,100,,75,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,50,64,100,,75,2000,false,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,,,110,,85,2000,true,false
+vitamin_c_mg,비타민 C,Vitamin C,mg,female,,,140,,100,2000,false,true
+calcium_mg,칼슘,Calcium,mg,male,19,29,800,,650,2500,false,false
+calcium_mg,칼슘,Calcium,mg,female,19,29,700,,550,2500,false,false
+calcium_mg,칼슘,Calcium,mg,male,50,64,750,,600,2000,false,false
+calcium_mg,칼슘,Calcium,mg,female,50,64,800,,650,2000,false,false
+iron_mg,철,Iron,mg,male,19,29,10,,8,45,false,false
+iron_mg,철,Iron,mg,female,19,29,14,,11,45,false,false
+iron_mg,철,Iron,mg,female,,,27,,21,45,true,false
+water_ml,수분,Water,ml,male,19,29,,2600,,,false,false
+water_ml,수분,Water,ml,female,19,29,,2100,,,false,false

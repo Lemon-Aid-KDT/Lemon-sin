@@ -1,0 +1,30 @@
+{
+  "source": "2020 한국인 영양소 섭취기준 (Dietary Reference Intakes for Koreans 2020)",
+  "publisher": "보건복지부 · 한국영양학회",
+  "version": "2020",
+  "digitized_on": "2026-06-16",
+  "scope": {
+    "nutrients": [
+      "energy_kcal",
+      "protein_g",
+      "fiber_g",
+      "sodium_mg",
+      "calcium_mg",
+      "iron_mg",
+      "vitamin_a_ug",
+      "vitamin_c_mg"
+    ],
+    "age_groups": ["19-29", "30-49", "50-64", "65-74", "75-120"],
+    "sex": ["male", "female"],
+    "special_rows": ["female pregnant (iron, vitamin C)", "female lactating (iron, vitamin C)"]
+  },
+  "column_notes": {
+    "rda": "권장섭취량(RDA). energy_kcal 행은 RDA가 아니라 에너지필요추정량(EER)을 이 칸에 담는다.",
+    "ai": "충분섭취량(AI). fiber_g·sodium_mg는 RDA 대신 AI를 기준값으로 사용한다.",
+    "ear": "평균필요량(EAR). 본 테이블에서는 비교에 사용하지 않아 비워둔다.",
+    "ul": "상한섭취량(UL). sodium_mg의 ul 칸은 UL이 아니라 만성질환위험감소섭취량(CDRR, 2300mg)을 과잉 경계로 사용한다."
+  },
+  "reference_value_rule": "KDRIsValue.reference_value = rda가 있으면 rda, 없으면 ai.",
+  "verification_note": "값은 2020 KDRIs 요약표를 기준으로 정리했다. 운영(production) 투입 전 보건복지부 공식 전체표와 1행씩 대조 검증이 필요하다. 임신·수유부는 값이 일반 성인과 다른 영양소(철, 비타민 C)만 별도 행으로 두었고, 별도 행이 없는 영양소는 일반 성별·연령 행으로 폴백된다.",
+  "row_count": 84
+}
