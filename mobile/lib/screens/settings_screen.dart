@@ -436,17 +436,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ],
                     const SizedBox(height: AppSpace.lg),
-                    // 7. 로그아웃 (단독, danger 톤)
+                    // 7. 로그아웃 (단독, danger 톤) — Figma 780:23 중앙정렬
                     SettingsCard(
                       children: [
-                        SettingsRow(
-                          icon: Icons.logout_rounded,
-                          iconBg: AppColor.dangerSoft,
-                          iconColor: AppColor.danger,
-                          title: '로그아웃',
-                          subtitle: '이 기기에서 로그아웃해요',
-                          titleColor: AppColor.danger,
+                        GestureDetector(
                           onTap: widget.session.clearBearerToken,
+                          behavior: HitTestBehavior.opaque,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              vertical: AppSpace.sm,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.logout_rounded,
+                                  color: AppColor.danger,
+                                  size: 20,
+                                ),
+                                SizedBox(width: AppSpace.sm),
+                                Text(
+                                  '로그아웃',
+                                  style: TextStyle(
+                                    color: AppColor.danger,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -744,66 +764,52 @@ class _ThemeSwatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Figma 780:23 — 라운드 사각 스와치 + 라벨(옐로/퍼플/그린/블루) 균등 배치.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
       child: Row(
-        children: [
-          Expanded(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: BrandTheme.values.map((BrandTheme t) {
+          final bool selected = t == current;
+          return GestureDetector(
+            onTap: () => onSelect(t),
+            behavior: HitTestBehavior.opaque,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '앱 색상 테마',
-                  style: AppText.subtitle.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: t.color,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(
+                      color: selected ? AppColor.ink : Colors.transparent,
+                      width: 3,
+                    ),
                   ),
+                  child: selected
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: Colors.black,
+                          size: 24,
+                        )
+                      : null,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpace.sm),
                 Text(
-                  current.label,
+                  t.label,
                   style: AppText.caption.copyWith(
-                    color: AppColor.inkTertiary,
-                    fontWeight: FontWeight.w600,
+                    color: selected ? AppColor.ink : AppColor.inkTertiary,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                     letterSpacing: 0,
                   ),
                 ),
               ],
             ),
-          ),
-          Row(
-            children: BrandTheme.values.map((BrandTheme t) {
-              final bool selected = t == current;
-              return Padding(
-                padding: const EdgeInsets.only(left: AppSpace.sm),
-                child: GestureDetector(
-                  onTap: () => onSelect(t),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: t.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: selected ? AppColor.ink : Colors.transparent,
-                        width: 2.5,
-                      ),
-                    ),
-                    child: selected
-                        ? const Icon(
-                            Icons.check_rounded,
-                            color: Colors.black,
-                            size: 18,
-                          )
-                        : null,
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
+          );
+        }).toList(),
       ),
     );
   }
