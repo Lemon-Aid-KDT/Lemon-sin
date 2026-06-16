@@ -68,7 +68,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   // 선택된 날짜 — 메인이면 항상 오늘, 기록 모드면 recordDate 부터.
   late DateTime _selectedDate;
-  // 헤더 strip 이 보여주는 주 (그 주의 월요일)
+  // 헤더 strip 이 보여주는 주 (그 주의 시작일 = 일요일, 캘린더와 통일)
   late DateTime _focusedMonday;
   // 영양제 체크 토글 — 선택 날짜 기준 LocalPrefs 영속 (자정 넘어가면 새 날짜 키).
   Set<String> _checkedSupplementIds = <String>{};
@@ -141,8 +141,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _checkedMedicationIds = prefs.medicationCheckedIds(_selectedDate);
   }
 
+  // 주 시작 = 일요일. DateTime.weekday: 월=1..일=7 → 일=0 으로 (weekday % 7).
   static DateTime _mondayOf(DateTime d) =>
-      DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
+      DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday % 7));
 
   static bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -505,9 +506,10 @@ class _BrandHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final today = DateTime.now();
     final days = List.generate(7, (i) => focusedMonday.add(Duration(days: i)));
-    const weekdayLabels = ['월', '화', '수', '목', '금', '토', '일'];
+    // 일요일 시작 (캘린더와 통일).
+    const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토'];
 
-    // 요일 라벨 행 — 주말 색(토 blue · 일 red), 평일은 옅은 ink.
+    // 요일 라벨 행 — 주말 색(일 red · 토 blue), 평일은 옅은 ink.
     Widget weekdayLabelRow() => Row(
       children: [
         for (int i = 0; i < 7; i++)
@@ -516,10 +518,10 @@ class _BrandHeader extends StatelessWidget {
               child: Text(
                 weekdayLabels[i],
                 style: AppText.caption.copyWith(
-                  color: i == 5
-                      ? AppColor.info
-                      : i == 6
+                  color: i == 0
                       ? AppColor.danger
+                      : i == 6
+                      ? AppColor.info
                       : AppColor.ink.withValues(alpha: 0.75),
                   fontWeight: FontWeight.w600,
                 ),
@@ -633,7 +635,7 @@ class _BrandHeader extends StatelessWidget {
                           TextSpan(
                             text: isToday
                                 ? '  ·  오늘'
-                                : '  (${weekdayLabels[selectedDate.weekday - 1]})',
+                                : '  (${weekdayLabels[selectedDate.weekday % 7]})',
                             style: TextStyle(
                               color: isToday
                                   ? AppColor.brandDeep
@@ -708,7 +710,7 @@ class _BrandHeader extends StatelessWidget {
     today.year,
     today.month,
     today.day,
-  ).subtract(Duration(days: today.weekday - 1));
+  ).subtract(Duration(days: today.weekday % 7));
 }
 
 // 월 드롭다운 — '{n}월 ▾' 탭 → 캘린더 (figma 268:24 헤더 좌측)
