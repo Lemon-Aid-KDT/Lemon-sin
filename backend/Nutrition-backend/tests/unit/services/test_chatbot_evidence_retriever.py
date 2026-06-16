@@ -39,6 +39,7 @@ def _row() -> SimpleNamespace:
     return SimpleNamespace(
         evidence_id="evidence-magnesium-bp",
         source_id="nih-ods-magnesium",
+        source_title="NIH ODS Magnesium Fact Sheet",
         source_url="https://ods.od.nih.gov/factsheets/Magnesium-Consumer/",
         source_family="supplement_guidance",
         source_version_id="source-version-1",
@@ -77,6 +78,7 @@ async def test_chatbot_evidence_repository_maps_db_rows_to_answer_card_records()
     assert len(records) == 1
     record = records[0]
     assert record.evidence_id == "evidence-magnesium-bp"
+    assert record.source_title == "NIH ODS Magnesium Fact Sheet"
     assert record.source_family == "supplement_reference"
     assert record.specific_examples == ("제품 라벨", "마그네슘 함량", "혈압약 종류")
     assert record.checklist == ("제품 라벨", "함량", "신장 기능", "이상 증상")
