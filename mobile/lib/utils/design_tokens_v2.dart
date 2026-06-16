@@ -67,6 +67,16 @@ class AppShadow {
     ),
   ];
 
+  // softCard — 그레이지 톤 부드러운 카드 그림자.
+  // 점수·캘린더·기록·홈 히어로 카드 공용 (단일 출처).
+  static const List<BoxShadow> softCard = [
+    BoxShadow(
+      color: Color.fromRGBO(140, 155, 175, 0.20),
+      blurRadius: 16,
+      offset: Offset(0, 5),
+    ),
+  ];
+
   // Elev 2 — 떠 있는 카드 / 상단 BottomSheet
   static const List<BoxShadow> elev2 = [
     BoxShadow(
@@ -108,6 +118,24 @@ class AppShadow {
 
   // neuInset — "눌린" 느낌. 토글 트랙, 감성 인풋 등에 사용 (CustomPaint 보조)
   // BoxShadow inset 은 Flutter 기본 미지원이라 CustomPainter 로 그려야 함 (예: SignupScreen _NeuInsetPainter)
+
+  // ─── 내비게이션 / FAB ─────────────────────────
+  // navBar — 하단 탭바 상단 방향 옅은 그림자 (main_shell _BottomBar)
+  static const List<BoxShadow> navBar = [
+    BoxShadow(
+      color: Color.fromRGBO(140, 155, 175, 0.06),
+      blurRadius: 16,
+      offset: Offset(0, -2),
+    ),
+  ];
+
+  // fabDepth — 중앙 카메라 FAB 깊이감(미세 검정).
+  // brand 색 잔향 글로우는 동적(alpha)이라 위젯에서 AppColor.brand 로 생성.
+  static const BoxShadow fabDepth = BoxShadow(
+    color: Color.fromRGBO(0, 0, 0, 0.10),
+    blurRadius: 6,
+    offset: Offset(0, 3),
+  );
 }
 
 class AppRadius {
