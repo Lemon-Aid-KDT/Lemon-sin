@@ -35,37 +35,39 @@ class _ActionSpec {
 }
 
 // 왼쪽 → 오른쪽 순서로 부채꼴에 배치.
-// 색은 디자인 토큰(시맨틱 팔레트)으로 — 하드코딩 hex 금지.
+// Figma 팔레트 — 아이콘은 전부 단일 딥 골드(모노). 멀티컬러 아님.
+// 흰 원 위 대비 확보 위해 brand(#FFC700) 대신 brandDeep(#C99100) 사용.
+// 라벨은 Figma 표기대로 짧게 (영양제 / 식단 / 복약). 색은 토큰만.
 const List<_ActionSpec> _kActions = [
   _ActionSpec(
     QuickAction.manualInput,
     Icons.edit_rounded,
     '직접 입력',
-    AppColor.danger,
+    AppColor.brandDeep,
   ),
   _ActionSpec(
     QuickAction.water,
     Icons.water_drop_rounded,
     '물 섭취',
-    AppColor.info,
+    AppColor.brandDeep,
   ),
   _ActionSpec(
     QuickAction.supplementShot,
     Icons.medication_rounded,
-    '영양제 촬영',
-    AppColor.success,
+    '영양제',
+    AppColor.brandDeep,
   ),
   _ActionSpec(
     QuickAction.mealShot,
     Icons.restaurant_rounded,
-    '식단 촬영',
-    AppColor.warning,
+    '식단',
+    AppColor.brandDeep,
   ),
   _ActionSpec(
     QuickAction.medication,
     Icons.check_circle_rounded,
-    '복약 기록',
-    AppColor.brand,
+    '복약',
+    AppColor.brandDeep,
   ),
 ];
 
@@ -80,7 +82,8 @@ Future<void> showQuickActionPalette(
     context: context,
     barrierDismissible: true,
     barrierLabel: '닫기',
-    barrierColor: Colors.black.withValues(alpha: 0.58),
+    // Figma — 거의 불투명 다크 (뒤 카드/헤더가 비치지 않게).
+    barrierColor: Colors.black.withValues(alpha: 0.86),
     transitionDuration: _kPaletteTransitionDuration,
     pageBuilder: (_, _, _) => const SizedBox.shrink(),
     transitionBuilder: (_, anim, _, _) {
@@ -102,9 +105,9 @@ class _QuickActionPalette extends StatelessWidget {
   const _QuickActionPalette({required this.progress});
 
   static const double _fabSize = 64;
-  // 부채꼴 반지름 — 크게 할수록 호가 길어져 원 사이 간격이 벌어짐
-  static const double _radius = 150;
-  static const double _btnSize = 54;
+  // 부채꼴 반지름 — Figma 측정값(≈160pt). 5개 버튼이 FAB 중심 기준 반원에 위치.
+  static const double _radius = 160;
+  static const double _btnSize = 56;
 
   @override
   Widget build(BuildContext context) {
@@ -113,8 +116,8 @@ class _QuickActionPalette extends StatelessWidget {
     // FAB 중심 Y — MainShell 의 FAB 와 정확히 동일 위치.
     //   ⇒ 화면높이 - bottomPad - 60
     final fabCenterY = media.size.height - media.padding.bottom - 60;
-    // 부채꼴 펼침 중심 — FAB 보다 살짝 위로 (원들이 더 위에 뜨게)
-    final centerY = fabCenterY - 18;
+    // 부채꼴 펼침 중심 = FAB(닫기버튼) 중심. Figma 는 X 버튼 중심을 호의 원점으로 함.
+    final centerY = fabCenterY;
     final n = _kActions.length;
 
     // showGeneralDialog 결과는 Material 밖이라 — 감싸야 Text 노란 밑줄 사라짐
@@ -261,7 +264,7 @@ class _QuickActionPalette extends StatelessWidget {
                           ],
                         ),
                         alignment: Alignment.center,
-                        child: Icon(spec.icon, color: spec.color, size: 25),
+                        child: Icon(spec.icon, color: spec.color, size: 26),
                       ),
                       const SizedBox(height: 8),
                       // 라벨 — 버튼 아래, 흰 글자 (어두운 배경 위라 칩 없이 깔끔).
@@ -272,7 +275,7 @@ class _QuickActionPalette extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: AppText.micro.copyWith(
                           color: Colors.white,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                           shadows: const [
                             Shadow(

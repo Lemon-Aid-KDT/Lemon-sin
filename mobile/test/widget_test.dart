@@ -31,8 +31,9 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.pumpAndSettle();
-    expect(find.text('영양제 촬영'), findsOneWidget);
-    expect(find.text('식단 촬영'), findsOneWidget);
+    // Figma 팔레트 라벨 — 짧게 (영양제 / 식단 / 복약)
+    expect(find.text('영양제'), findsOneWidget);
+    expect(find.text('식단'), findsOneWidget);
     await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
 
@@ -49,7 +50,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('영양제 촬영'));
+    await tester.tap(find.text('영양제'));
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('성분표를 테두리 안에 맞춰주세요'), findsOneWidget);
@@ -62,7 +63,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('식단 촬영'));
+    await tester.tap(find.text('식단'));
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('음식이 테두리 안에 들어오게 맞춰주세요'), findsOneWidget);
