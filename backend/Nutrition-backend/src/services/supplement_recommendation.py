@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import get_settings
 from src.models.db.analysis_result import AnalysisResult
 from src.models.schemas.supplement_recommendation import (
     SupplementImpactDataStatus,
@@ -16,9 +17,13 @@ from src.models.schemas.user import UserProfile
 from src.nutrition.deficiency_analysis import contains_forbidden_terms
 from src.nutrition.kdris import get_kdris_dataset_context
 from src.security.auth import AuthenticatedUser
+from src.services.medical_records import get_current_medical_context_summary
 from src.services.nutrition_diagnosis import get_latest_nutrition_analysis_result
 from src.services.personalized_nutrition_risk import classify_personalized_supplement_risks
 from src.services.supplement_contribution import load_supplement_contribution_result
+
+# Chronic conditions max stored on a profile (mirrors UserProfile.chronic_diseases).
+_MAX_PROFILE_CHRONIC_DISEASES = 10
 
 SUPPLEMENT_IMPACT_ALGORITHM_VERSION = "supplement-impact-v1.0.0"
 # NOTE: user-facing text is scanned against FORBIDDEN_TERMS ("진단","치료","처방",
@@ -51,6 +56,9 @@ async def build_supplement_impact_preview(
     """
     latest_result = await get_latest_nutrition_analysis_result(session, user)
     profile, profile_warnings = resolve_preview_profile(request, latest_result)
+    # 만성질환(예: 당뇨) 자동 로드: 분석 스냅샷 프로필이 조건을 누락했더라도
+    # 사용자가 등록한 의료 기록의 조건을 알고리즘 입력 프로필에 반영한다.
+    profile = await _apply_stored_chronic_conditions(session, user, profile)
     contribution_result = await load_supplement_contribution_result(
         session,
         user,
@@ -138,6 +146,42 @@ def resolve_preview_profile(
         return UserProfile.model_validate(raw_profile), ()
     except ValidationError:
         return None, ("profile_invalid",)
+
+
+async def _apply_stored_chronic_conditions(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    profile: UserProfile | None,
+) -> UserProfile | None:
+    """Merge the current user's recorded chronic conditions into the profile.
+
+    The supplement-impact algorithm escalates guidance to professional review
+    when chronic conditions are present, so conditions recorded in the user's
+    medical records are loaded automatically even when the nutrition-analysis
+    snapshot profile omitted them.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        profile: Profile resolved from the analysis snapshot or request override.
+
+    Returns:
+        Profile with stored chronic-condition codes merged in, or the input
+        profile unchanged when none apply.
+    """
+    if profile is None:
+        return None
+    summary = await get_current_medical_context_summary(session, user, get_settings())
+    if not summary.canonical_condition_codes:
+        return profile
+    merged = list(
+        dict.fromkeys(
+            [*profile.chronic_diseases, *summary.canonical_condition_codes]
+        )
+    )[:_MAX_PROFILE_CHRONIC_DISEASES]
+    if merged == list(profile.chronic_diseases):
+        return profile
+    return profile.model_copy(update={"chronic_diseases": merged})
 
 
 def _combined_warnings(
