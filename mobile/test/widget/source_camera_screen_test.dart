@@ -790,7 +790,7 @@ void main() {
   });
 
   testWidgets(
-    'supplement two-slot strip fixes roles and toggles complete CTA',
+    'supplement mode keeps the batch toggle but drops the slot strip',
     (WidgetTester tester) async {
       await _usePhoneSurface(tester);
 
@@ -804,25 +804,19 @@ void main() {
       );
       await tester.pump(const Duration(seconds: 1));
 
-      // figma 947:23 — 앞면 + 성분표 2슬롯이 영양제 모드 촬영 화면에 보인다.
+      // 묶음 의도 토글은 유지된다.
+      expect(find.text('한 영양제 묶음'), findsOneWidget);
+      expect(find.text('서로 다른 영양제'), findsOneWidget);
+
+      // 앞면/성분표 2슬롯 칩은 제거됐다(figma 947:23 슬롯 UI 삭제).
       expect(
         find.byKey(const ValueKey<String>('two-slot-front')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('two-slot-facts')),
-        findsOneWidget,
-      );
-      // 두 슬롯이 채워지기 전이라 완료 배지는 숨겨져 있다.
-      expect(
-        find.byKey(const ValueKey<String>('two-slot-complete')),
         findsNothing,
       );
-
-      // 슬롯 탭은 다음 촬영의 role 을 지정한다(앱이 크래시 없이 선택 반영).
-      await tester.tap(find.byKey(const ValueKey<String>('two-slot-facts')));
-      await tester.pump();
-      expect(find.text('성분표'), findsOneWidget);
     },
   );
 }

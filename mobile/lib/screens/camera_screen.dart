@@ -325,27 +325,6 @@ class _CameraScreenState extends State<CameraScreen>
   int get _remainingSupplementSlots =>
       _maxSupplementGalleryImages - _supplementBatchCount;
 
-  // ─── 다중 촬영 2슬롯 (figma 947:23) ───
-  // 앞면(front_label) + 성분표(supplement_facts) 고정 슬롯의 충족 여부.
-  // 기존 6장 자유 배치 스트립은 슈퍼셋으로 유지(회귀 금지) — API 신규 배선 없음.
-  bool _hasCaptureWithRole(String role) =>
-      _captures.any((_CapturedSupplementImage image) => image.role == role);
-
-  bool get _slotFrontFilled => _hasCaptureWithRole('front_label');
-
-  bool get _slotFactsFilled => _hasCaptureWithRole('supplement_facts');
-
-  /// 2슬롯이 모두 충족됐는지(앞면 + 성분표).
-  bool get _twoSlotsComplete => _slotFrontFilled && _slotFactsFilled;
-
-  /// 2슬롯 중 하나를 탭 — 다음 촬영의 role 을 해당 슬롯으로 지정한다.
-  ///
-  /// 실제 촬영은 셔터(또는 미리보기의 "계속 촬영")로 이어진다 — 배선 신규 없음.
-  void _selectSlotRole(String role) {
-    HapticFeedback.selectionClick();
-    setState(() => _imageRole = role);
-  }
-
   // figma 912:46 미리보기 품질 체크 2종(가이드 ④-4 · ⑥): 업로드 전 소프트 안내.
   // 경로별 결과를 캐시한다(같은 사진 재계산 방지). null = 계산 전/진행 중.
   String? _qualityProbedPath;
@@ -1383,27 +1362,14 @@ class _CameraScreenState extends State<CameraScreen>
                   _controller?.value.isInitialized == true ||
                   _canUseMacCameraBridge ||
                   _canUseCameraPickerFallback,
-              // 영양제 모드에만 묶음 의도 + 2슬롯 안내. 식단 모드는 null.
-              twoSlotStrip: _mode == _CaptureMode.supplement
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _SupplementBatchIntentToggle(
-                          sameSupplementBatch: _sameSupplementBatch,
-                          onChanged: (bool value) {
-                            HapticFeedback.selectionClick();
-                            setState(() => _sameSupplementBatch = value);
-                          },
-                        ),
-                        const SizedBox(height: AppSpace.sm),
-                        _TwoSlotStrip(
-                          activeRole: _imageRole,
-                          frontFilled: _slotFrontFilled,
-                          factsFilled: _slotFactsFilled,
-                          complete: _twoSlotsComplete,
-                          onSelectRole: _selectSlotRole,
-                        ),
-                      ],
+              // 영양제 모드에만 묶음 의도 토글. 식단 모드는 null.
+              supplementBatchStrip: _mode == _CaptureMode.supplement
+                  ? _SupplementBatchIntentToggle(
+                      sameSupplementBatch: _sameSupplementBatch,
+                      onChanged: (bool value) {
+                        HapticFeedback.selectionClick();
+                        setState(() => _sameSupplementBatch = value);
+                      },
                     )
                   : null,
             ),
@@ -2523,7 +2489,7 @@ class _BottomControls extends StatelessWidget {
   final VoidCallback? onDebugSupplementImage;
   final bool loading;
   final bool enabled;
-  final Widget? twoSlotStrip;
+  final Widget? supplementBatchStrip;
 
   const _BottomControls({
     required this.mode,
@@ -2533,7 +2499,7 @@ class _BottomControls extends StatelessWidget {
     this.onDebugSupplementImage,
     required this.loading,
     required this.enabled,
-    this.twoSlotStrip,
+    this.supplementBatchStrip,
   });
 
   @override
@@ -2558,9 +2524,9 @@ class _BottomControls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 다중 촬영 2슬롯 안내 (영양제 모드, figma 947:23).
-          if (twoSlotStrip != null) ...[
-            twoSlotStrip!,
+          // 영양제 묶음 의도 토글 (영양제 모드).
+          if (supplementBatchStrip != null) ...[
+            supplementBatchStrip!,
             const SizedBox(height: AppSpace.md),
           ],
           // 안내 칩 — 모드 토글 위. 가이드 프레임/컨트롤과 안 겹침.
@@ -2747,151 +2713,6 @@ class _BatchIntentChip extends StatelessWidget {
             fontWeight: FontWeight.w900,
             letterSpacing: 0,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════
-// 다중 촬영 2슬롯 (figma 947:23) — 앞면 + 성분표 고정 슬롯
-// ═══════════════════════════════════════════
-class _TwoSlotStrip extends StatelessWidget {
-  const _TwoSlotStrip({
-    required this.activeRole,
-    required this.frontFilled,
-    required this.factsFilled,
-    required this.complete,
-    required this.onSelectRole,
-  });
-
-  /// 다음 촬영에 적용될 현재 선택 role.
-  final String activeRole;
-  final bool frontFilled;
-  final bool factsFilled;
-
-  /// 두 슬롯 모두 충족됐는지.
-  final bool complete;
-  final ValueChanged<String> onSelectRole;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: _SlotChip(
-                key: const ValueKey<String>('two-slot-front'),
-                label: '앞면',
-                filled: frontFilled,
-                active: activeRole == 'front_label',
-                onTap: () => onSelectRole('front_label'),
-              ),
-            ),
-            const SizedBox(width: AppSpace.sm),
-            Expanded(
-              child: _SlotChip(
-                key: const ValueKey<String>('two-slot-facts'),
-                label: '성분표',
-                filled: factsFilled,
-                active: activeRole == 'supplement_facts',
-                onTap: () => onSelectRole('supplement_facts'),
-              ),
-            ),
-          ],
-        ),
-        if (complete) ...<Widget>[
-          const SizedBox(height: AppSpace.sm),
-          Container(
-            key: const ValueKey<String>('two-slot-complete'),
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpace.md,
-              vertical: AppSpace.sm,
-            ),
-            decoration: BoxDecoration(
-              color: AppColor.brand.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(AppRadius.full),
-              border: Border.all(color: AppColor.brand),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColor.brand,
-                  size: 18,
-                ),
-                SizedBox(width: AppSpace.xs),
-                Text(
-                  '앞면 + 성분표 준비됐어요',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _SlotChip extends StatelessWidget {
-  const _SlotChip({
-    super.key,
-    required this.label,
-    required this.filled,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool filled;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
-        decoration: BoxDecoration(
-          color: _CamTone.surfaceStrong,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(
-            color: active ? AppColor.brand : _CamTone.border,
-            width: active ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              filled ? Icons.check_circle_rounded : Icons.add_a_photo_outlined,
-              size: 18,
-              color: filled ? AppColor.success : Colors.white,
-            ),
-            const SizedBox(width: AppSpace.xs),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
-            ),
-          ],
         ),
       ),
     );
