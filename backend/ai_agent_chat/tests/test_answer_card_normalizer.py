@@ -469,6 +469,76 @@ def test_db_evidence_retriever_falls_back_only_when_configured() -> None:
     assert any(card.card_id.startswith("seed:") for card in local_dev.cards)
 
 
+def test_db_evidence_retriever_matches_dyslipidemia_topics() -> None:
+    """고지혈증·중성지방 관련 한국어 질문이 올바른 카드를 검색한다."""
+    records = (
+        _db_record(
+            evidence_id="evidence-dyslipidemia-sat-fat",
+            topic="dyslipidemia_saturated_fat_reduction",
+            source_id="cdc-public-health",
+            source_family="general_medical",
+            claim_summary="Reducing saturated fat and trans fat helps manage LDL cholesterol.",
+            examples=("소고기 → 생선", "버터 → 올리브오일", "가공식품 성분표 확인"),
+            checklist=("포화지방 섭취 빈도", "약 복용 여부", "최근 혈액검사 수치"),
+        ),
+        _db_record(
+            evidence_id="evidence-triglyceride-sugar",
+            topic="triglyceride_sugar_alcohol_reduction",
+            source_id="kdca-healthinfo",
+            source_family="public_health_guidance",
+            claim_summary="High triglycerides are linked to excess simple sugar and alcohol.",
+            examples=("탄산음료 → 물·녹차", "과자 → 견과류", "음주 횟수 줄이기"),
+            checklist=("당분 음료 섭취 빈도", "음주 빈도", "당뇨 동반 여부"),
+        ),
+    )
+    retriever = EvidenceRecordMedicalKnowledgeRetriever(
+        records,
+        normalizer=AnswerCardNormalizer(today=date(2026, 6, 13)),
+    )
+
+    sat_fat_result = retriever.retrieve(analyze_chat_intent("고지혈증인데 뭘 먹으면 안 되나요?"))
+    triglyceride_result = retriever.retrieve(
+        analyze_chat_intent("중성지방이 높으면 어떤 음식을 줄여야 해요?")
+    )
+
+    assert any(card.topic == "dyslipidemia_saturated_fat_reduction" for card in sat_fat_result.cards)
+    assert any(card.topic == "triglyceride_sugar_alcohol_reduction" for card in triglyceride_result.cards)
+
+
+def test_db_evidence_retriever_matches_weight_management_topics() -> None:
+    """체중 관리 관련 한국어 질문이 올바른 카드를 검색한다."""
+    records = (
+        _db_record(
+            evidence_id="evidence-weight-plate",
+            topic="weight_management_plate_composition",
+            source_id="cdc-public-health",
+            source_family="general_medical",
+            claim_summary="Balanced plate: half vegetables, quarter protein, quarter complex carbs.",
+            examples=("비전분 채소 절반", "닭가슴살·두부·생선 1/4", "현미·고구마 1/4"),
+            checklist=("채소 비중", "단백질 공급원", "정제 탄수화물 비중"),
+        ),
+        _db_record(
+            evidence_id="evidence-weight-record",
+            topic="weight_management_record_pattern_review",
+            source_id="cdc-public-health",
+            source_family="general_medical",
+            claim_summary="Reviewing weight and meal records helps identify overeating patterns.",
+            examples=("주간 체중 변화 그래프", "야식 빈도 확인", "과식 시간대 파악"),
+            checklist=("기록 주기", "야식 빈도", "주간 체중 변화"),
+        ),
+    )
+    retriever = EvidenceRecordMedicalKnowledgeRetriever(
+        records,
+        normalizer=AnswerCardNormalizer(today=date(2026, 6, 13)),
+    )
+
+    plate_result = retriever.retrieve(analyze_chat_intent("체중 관리 중에 식사를 어떻게 구성해요?"))
+    record_result = retriever.retrieve(analyze_chat_intent("체중 기록이랑 식사 기록을 어떻게 활용해요?"))
+
+    assert any(card.topic == "weight_management_plate_composition" for card in plate_result.cards)
+    assert any(card.topic == "weight_management_record_pattern_review" for card in record_result.cards)
+
+
 def _db_record(
     *,
     evidence_id: str,
