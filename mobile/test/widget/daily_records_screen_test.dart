@@ -68,8 +68,9 @@ void main() {
     await pump(tester, repo);
     await tester.pumpAndSettle();
 
-    // 합계 카드: 총 1,120kcal · 끼니 2회 · 영양제 1개.
-    expect(find.textContaining('1,120kcal를 기록했어요'), findsOneWidget);
+    // 합계 카드: 섭취 열량 / 끼니 / 영양제 3분할 (figma — 헤더 문장 제거).
+    expect(find.text('섭취 열량'), findsOneWidget);
+    expect(find.text('끼니'), findsOneWidget);
     expect(find.text('아침밥'), findsOneWidget);
     expect(find.text('저녁밥'), findsOneWidget);
     expect(find.text('오메가3'), findsOneWidget);
@@ -108,18 +109,18 @@ void main() {
     await tester.pumpAndSettle();
 
     // 오늘이면 ▶ 비활성 (onTap null) → IconButton/Pressable 없음. 좌측 ◀ 는 활성.
-    // 미래로 이동 불가: 라벨이 오늘 그대로인지 확인.
+    // 미래로 이동 불가: 라벨이 오늘 그대로인지 확인 (figma — 전체 요일 표기).
     final String weekday = <String>[
-      '월',
-      '화',
-      '수',
-      '목',
-      '금',
-      '토',
-      '일',
+      '월요일',
+      '화요일',
+      '수요일',
+      '목요일',
+      '금요일',
+      '토요일',
+      '일요일',
     ][today.weekday - 1];
     expect(
-      find.text('${today.month}월 ${today.day}일 ($weekday)'),
+      find.text('${today.month}월 ${today.day}일 $weekday'),
       findsOneWidget,
     );
   });
@@ -135,8 +136,8 @@ void main() {
     await pump(tester, repo);
     await tester.pumpAndSettle();
 
-    // 영양제 행의 ⋯ 탭 → 삭제 확인 모달.
-    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    // 영양제 카드 길게 누르기 → 삭제 확인 모달 (figma 카드엔 인라인 ⋯ 없음).
+    await tester.longPress(find.text('오메가3'));
     await tester.pumpAndSettle();
     expect(find.text('이 기록을 삭제할까요?'), findsOneWidget);
     await tester.tap(find.text('삭제'));

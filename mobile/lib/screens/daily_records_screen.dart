@@ -59,14 +59,14 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
   // 낙관적으로 화면에서 숨긴 영양제 id (실행취소 시 복원).
   final Set<String> _hiddenSupplementIds = <String>{};
 
-  static const List<String> _weekdayShort = <String>[
-    '월',
-    '화',
-    '수',
-    '목',
-    '금',
-    '토',
-    '일',
+  static const List<String> _weekdayFull = <String>[
+    '월요일',
+    '화요일',
+    '수요일',
+    '목요일',
+    '금요일',
+    '토요일',
+    '일요일',
   ];
 
   @override
@@ -184,14 +184,33 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
     final List<RecordTimelineEntry> timeline = day.timeline;
 
     return Scaffold(
-      backgroundColor: AppColor.bg,
+      backgroundColor: AppColor.sunken,
       appBar: AppBar(
-        backgroundColor: AppColor.bg,
+        backgroundColor: AppColor.sunken,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppColor.ink),
-          onPressed: () => Navigator.of(context).maybePop(),
+        scrolledUnderElevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: AppSpace.sm),
+          child: Pressable(
+            onTap: () => Navigator.of(context).maybePop(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColor.surface,
+                shape: BoxShape.circle,
+                boxShadow: AppShadow.elev1,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.chevron_left_rounded,
+                size: 24,
+                color: AppColor.ink,
+              ),
+            ),
+          ),
         ),
+        leadingWidth: 40 + AppSpace.sm * 2,
         title: Text(
           '오늘의 기록',
           style: AppText.subtitle.copyWith(fontWeight: FontWeight.w800),
@@ -249,8 +268,8 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
   }
 
   String _dateLabel(DateTime date) {
-    final String weekday = _weekdayShort[date.weekday - 1];
-    return '${date.month}월 ${date.day}일 ($weekday)';
+    final String weekday = _weekdayFull[date.weekday - 1];
+    return '${date.month}월 ${date.day}일 $weekday';
   }
 }
 
@@ -295,14 +314,16 @@ class _NavArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool enabled = onTap != null;
+    // 페이지 배경이 sunken 이라 내비 화살표는 흰 원형 + elev1 으로 떠 보이게 한다.
     return Pressable(
       onTap: onTap,
       child: Container(
-        width: 44,
-        height: 44,
-        decoration: const BoxDecoration(
-          color: AppColor.sunken,
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: AppColor.surface,
           shape: BoxShape.circle,
+          boxShadow: enabled ? AppShadow.elev1 : null,
         ),
         alignment: Alignment.center,
         child: Icon(
@@ -334,40 +355,30 @@ class _SummaryCard extends StatelessWidget {
               '불러오는 중이에요',
               style: AppText.body.copyWith(color: AppColor.inkTertiary),
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          : Row(
               children: <Widget>[
-                Text(
-                  '오늘 ${_formatKcal(day.totalKcal)}kcal를 기록했어요',
-                  style: AppText.bodyLg.copyWith(fontWeight: FontWeight.w800),
+                Expanded(
+                  child: _SummaryCell(
+                    value: '${day.totalKcal}',
+                    unit: 'kcal',
+                    label: '섭취 열량',
+                  ),
                 ),
-                const SizedBox(height: AppSpace.md),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: _SummaryCell(
-                        value: '${day.totalKcal}',
-                        unit: 'kcal',
-                        label: '총 섭취',
-                      ),
-                    ),
-                    _divider(),
-                    Expanded(
-                      child: _SummaryCell(
-                        value: '${day.meals.length}',
-                        unit: '회',
-                        label: '끼니',
-                      ),
-                    ),
-                    _divider(),
-                    Expanded(
-                      child: _SummaryCell(
-                        value: '${day.supplements.length}',
-                        unit: '개',
-                        label: '영양제',
-                      ),
-                    ),
-                  ],
+                _divider(),
+                Expanded(
+                  child: _SummaryCell(
+                    value: '${day.meals.length}',
+                    unit: '회',
+                    label: '끼니',
+                  ),
+                ),
+                _divider(),
+                Expanded(
+                  child: _SummaryCell(
+                    value: '${day.supplements.length}',
+                    unit: '개',
+                    label: '영양제',
+                  ),
                 ),
               ],
             ),
@@ -380,16 +391,6 @@ class _SummaryCard extends StatelessWidget {
     color: AppColor.border,
     margin: const EdgeInsets.symmetric(horizontal: AppSpace.sm),
   );
-
-  static String _formatKcal(int kcal) {
-    final String text = kcal.toString();
-    final StringBuffer buffer = StringBuffer();
-    for (int i = 0; i < text.length; i++) {
-      if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(text[i]);
-    }
-    return buffer.toString();
-  }
 }
 
 class _SummaryCell extends StatelessWidget {
@@ -444,114 +445,213 @@ class _TimelineList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _CardFrame(
-      child: Column(
-        children: <Widget>[
-          for (int i = 0; i < entries.length; i++) ...<Widget>[
-            _TimelineRow(
-              entry: entries[i],
-              onDelete:
-                  entries[i].kind == RecordTimelineKind.supplement &&
-                      entries[i].supplement != null
-                  ? () => onDeleteSupplement(entries[i].supplement!)
-                  : null,
-            ),
-            if (i != entries.length - 1)
-              Divider(color: AppColor.border, height: AppSpace.lg),
-          ],
+    // 항목마다 개별 흰 카드(figma) — 카드 사이 간격, 행간 구분선 없음.
+    return Column(
+      children: <Widget>[
+        for (int i = 0; i < entries.length; i++) ...<Widget>[
+          _TimelineCard(
+            entry: entries[i],
+            onDelete:
+                entries[i].kind == RecordTimelineKind.supplement &&
+                    entries[i].supplement != null
+                ? () => onDeleteSupplement(entries[i].supplement!)
+                : null,
+          ),
+          if (i != entries.length - 1) const SizedBox(height: AppSpace.md),
         ],
+      ],
+    );
+  }
+}
+
+/// 타임라인 한 항목 = 독립 흰 카드.
+///
+/// 레이아웃: [56×56 라운드 썸네일 타일] | [카테고리 칩 + 시각 / 볼드 제목]
+/// | [우측 정렬 값(끼니 kcal·영양제는 생략)].
+/// 영양제 카드는 길게 누르면 삭제 플로우로 진입한다(인라인 ⋯ 미노출).
+class _TimelineCard extends StatelessWidget {
+  final RecordTimelineEntry entry;
+  final VoidCallback? onDelete;
+  const _TimelineCard({required this.entry, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isMeal = entry.kind == RecordTimelineKind.meal;
+    final _CategoryChipStyle chip = _categoryChipStyle(entry);
+
+    // figma 카드엔 인라인 ⋯ 가 없다 — 영양제는 길게 눌러 삭제로 진입한다.
+    // (삭제 플로우: 확인 모달 → 낙관적 제거 → 실행취소 토스트 → 지연 커밋).
+    return GestureDetector(
+      onLongPress: onDelete,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpace.md),
+        decoration: BoxDecoration(
+          color: AppColor.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          boxShadow: AppShadow.softCard,
+        ),
+        child: Row(
+          children: <Widget>[
+            _LeadingTile(isMeal: isMeal),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      _CategoryChip(style: chip),
+                      const SizedBox(width: AppSpace.sm),
+                      Flexible(
+                        child: Text(
+                          entry.timeLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption.copyWith(
+                            color: AppColor.inkTertiary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpace.xs),
+                  Text(
+                    entry.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            // 끼니 = kcal 값, 영양제 = 분량 데이터 없어 생략(가짜 '1정' 금지).
+            if (isMeal && entry.trailing != null) ...<Widget>[
+              const SizedBox(width: AppSpace.sm),
+              Text(
+                entry.trailing!,
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkSecondary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _TimelineRow extends StatelessWidget {
-  final RecordTimelineEntry entry;
-  final VoidCallback? onDelete;
-  const _TimelineRow({required this.entry, required this.onDelete});
+/// 끼니/영양제 리딩 썸네일 타일 (56×56, 소프트 틴트 + 아이콘).
+class _LeadingTile extends StatelessWidget {
+  final bool isMeal;
+  const _LeadingTile({required this.isMeal});
 
   @override
   Widget build(BuildContext context) {
-    final bool isMeal = entry.kind == RecordTimelineKind.meal;
-    final Color accent = isMeal ? AppColor.brand : AppColor.info;
+    // meal 모델에 사진 url 필드가 없어 소프트 틴트 아이콘 타일로 통일한다.
+    final Color tileColor = isMeal ? AppColor.successSoft : AppColor.brandSoft;
+    final Color iconColor = isMeal ? AppColor.success : AppColor.brandDeep;
     final IconData icon = isMeal
         ? Icons.restaurant_rounded
-        : Icons.medication_outlined;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
-      child: Row(
-        children: <Widget>[
-          SizedBox(
-            width: 48,
-            child: Text(
-              entry.timeLabel,
-              style: AppText.caption.copyWith(
-                color: AppColor.inkSecondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 20, color: accent),
-          ),
-          const SizedBox(width: AppSpace.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  entry.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.body.copyWith(fontWeight: FontWeight.w700),
-                ),
-                if (entry.subtitle != null) ...<Widget>[
-                  const SizedBox(height: 2),
-                  Text(
-                    entry.subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.caption.copyWith(
-                      color: AppColor.inkTertiary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (entry.trailing != null) ...<Widget>[
-            const SizedBox(width: AppSpace.sm),
-            Text(
-              entry.trailing!,
-              style: AppText.caption.copyWith(
-                color: AppColor.inkSecondary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-          // 영양제 행만 ⋯ → 삭제 (끼니 삭제는 백엔드 공백 2로 비노출).
-          if (onDelete != null)
-            Pressable(
-              onTap: onDelete,
-              child: Padding(
-                padding: const EdgeInsets.only(left: AppSpace.xs),
-                child: Icon(
-                  Icons.more_horiz_rounded,
-                  size: 22,
-                  color: AppColor.inkTertiary,
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: AppSpace.lg),
-        ],
+        : Icons.medication_rounded;
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: tileColor,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 28, color: iconColor),
+    );
+  }
+}
+
+/// 카테고리 칩(색+텍스트 병행) 스타일 묶음.
+class _CategoryChipStyle {
+  const _CategoryChipStyle({
+    required this.label,
+    required this.fill,
+    required this.textColor,
+  });
+  final String label;
+  final Color fill;
+  final Color textColor;
+}
+
+/// 타임라인 항목 → 카테고리 칩 스타일을 매핑한다.
+///
+/// 끼니: 아침→brandSoft/brandDeep, 점심→successSoft/success,
+/// 저녁→infoSoft/info, 간식→warningSoft/warning.
+/// 영양제: brandDeep 필 + 흰 텍스트.
+_CategoryChipStyle _categoryChipStyle(RecordTimelineEntry entry) {
+  if (entry.kind == RecordTimelineKind.supplement) {
+    return const _CategoryChipStyle(
+      label: '영양제',
+      fill: AppColor.brandDeep,
+      textColor: AppColor.surface,
+    );
+  }
+  switch (entry.subtitle) {
+    case '아침':
+      return const _CategoryChipStyle(
+        label: '아침',
+        fill: AppColor.brandSoft,
+        textColor: AppColor.brandDeep,
+      );
+    case '점심':
+      return const _CategoryChipStyle(
+        label: '점심',
+        fill: AppColor.successSoft,
+        textColor: AppColor.success,
+      );
+    case '저녁':
+      return const _CategoryChipStyle(
+        label: '저녁',
+        fill: AppColor.infoSoft,
+        textColor: AppColor.info,
+      );
+    case '간식':
+      return const _CategoryChipStyle(
+        label: '간식',
+        fill: AppColor.warningSoft,
+        textColor: AppColor.warning,
+      );
+    default:
+      return _CategoryChipStyle(
+        label: entry.subtitle ?? '끼니',
+        fill: AppColor.section,
+        textColor: AppColor.inkSecondary,
+      );
+  }
+}
+
+/// 카테고리 알약 칩.
+class _CategoryChip extends StatelessWidget {
+  final _CategoryChipStyle style;
+  const _CategoryChip({required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.sm,
+        vertical: AppSpace.xs,
+      ),
+      decoration: BoxDecoration(
+        color: style.fill,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        style.label,
+        style: AppText.micro.copyWith(
+          color: style.textColor,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -715,11 +815,5 @@ class _RecordsDisclaimer extends StatelessWidget {
 BoxDecoration _cardDeco() => BoxDecoration(
   color: AppColor.surface,
   borderRadius: BorderRadius.circular(AppRadius.lg),
-  boxShadow: const <BoxShadow>[
-    BoxShadow(
-      color: Color.fromRGBO(140, 155, 175, 0.20),
-      blurRadius: 16,
-      offset: Offset(0, 5),
-    ),
-  ],
+  boxShadow: AppShadow.softCard,
 );
