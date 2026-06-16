@@ -61,14 +61,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _loading = false;
   bool _failed = false;
 
+  // Figma 364:24 — 월요일 시작 (월 화 수 목 금 토 일)
   static const List<String> _weekdayLabels = <String>[
-    '일',
     '월',
     '화',
     '수',
     '목',
     '금',
     '토',
+    '일',
   ];
 
   @override
@@ -176,21 +177,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
             AppSpace.xl,
           ),
           children: <Widget>[
-            _MonthNav(
-              month: _focusedMonth,
-              canGoNext: _canGoNextMonth,
-              onPrev: () => _shiftMonth(-1),
-              onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
-            ),
-            const SizedBox(height: AppSpace.lg),
-            _WeekdayRow(labels: _weekdayLabels),
-            const SizedBox(height: AppSpace.sm),
-            _MonthGrid(
-              month: _focusedMonth,
-              records: _records,
-              selectedDate: _selectedDate,
-              loading: _loading,
-              onSelectDate: _selectDate,
+            // Figma 364:24 — 월 헤더 + 요일 + 그리드를 하나의 흰 카드로 묶음.
+            Container(
+              width: double.infinity,
+              decoration: _calendarCardDeco(),
+              padding: const EdgeInsets.all(AppSpace.cardInside),
+              child: Column(
+                children: <Widget>[
+                  _MonthNav(
+                    month: _focusedMonth,
+                    canGoNext: _canGoNextMonth,
+                    onPrev: () => _shiftMonth(-1),
+                    onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+                  ),
+                  const SizedBox(height: AppSpace.lg),
+                  _WeekdayRow(labels: _weekdayLabels),
+                  const SizedBox(height: AppSpace.sm),
+                  _MonthGrid(
+                    month: _focusedMonth,
+                    records: _records,
+                    selectedDate: _selectedDate,
+                    loading: _loading,
+                    onSelectDate: _selectDate,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: AppSpace.xl),
             _DayDetail(
@@ -210,8 +221,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
+// 캘린더 공용 카드 데코 — 월 그리드 카드 + 일자 상세 카드 공유 (단일 출처).
+BoxDecoration _calendarCardDeco() => BoxDecoration(
+  color: AppColor.surface,
+  borderRadius: BorderRadius.circular(AppRadius.lg),
+  boxShadow: AppShadow.softCard,
+);
+
 // ═══════════════════════════════════════════
-// 월 네비 — ◀ 2026년 6월 ▶
+// 월 네비 — 2026년 6월 (좌) · ◀ ▶ (우)  — Figma 364:24
 // ═══════════════════════════════════════════
 class _MonthNav extends StatelessWidget {
   final DateTime month;
@@ -228,15 +246,15 @@ class _MonthNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        _NavArrow(icon: Icons.chevron_left_rounded, onTap: onPrev),
-        const SizedBox(width: AppSpace.lg),
-        Text(
-          '${month.year}년 ${month.month}월',
-          style: AppText.subtitle.copyWith(fontWeight: FontWeight.w800),
+        Expanded(
+          child: Text(
+            '${month.year}년 ${month.month}월',
+            style: AppText.subtitle.copyWith(fontWeight: FontWeight.w800),
+          ),
         ),
-        const SizedBox(width: AppSpace.lg),
+        _NavArrow(icon: Icons.chevron_left_rounded, onTap: onPrev),
+        const SizedBox(width: AppSpace.sm),
         _NavArrow(icon: Icons.chevron_right_rounded, onTap: onNext),
       ],
     );
@@ -299,8 +317,9 @@ class _WeekdayRow extends StatelessWidget {
   }
 
   static Color _weekdayColor(int index) {
-    if (index == 0) return AppColor.danger; // 일요일
-    if (index == 6) return AppColor.info; // 토요일
+    // 월요일 시작: index 5 = 토(info/파랑), 6 = 일(danger/빨강)
+    if (index == 5) return AppColor.info; // 토요일
+    if (index == 6) return AppColor.danger; // 일요일
     return AppColor.inkSecondary; // 평일
   }
 }
@@ -325,8 +344,8 @@ class _MonthGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final DateTime firstOfMonth = DateTime(month.year, month.month);
-    // 일요일=0 시작. DateTime.weekday 는 월=1..일=7 이므로 일=0 으로 변환.
-    final int leadingBlanks = firstOfMonth.weekday % 7;
+    // 월요일=0 시작. DateTime.weekday 는 월=1..일=7 → (weekday-1)%7.
+    final int leadingBlanks = (firstOfMonth.weekday - 1) % 7;
     final int daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     final int totalCells = ((leadingBlanks + daysInMonth) / 7).ceil() * 7;
     final DateTime now = DateTime.now();
@@ -356,7 +375,7 @@ class _MonthGrid extends StatelessWidget {
         final bool hasSupplement = records?.hasSupplement(day) ?? false;
         return _DayCell(
           dayNumber: dayNumber,
-          weekday: index % 7,
+          dateWeekday: day.weekday,
           isToday: isToday,
           isSelected: isSelected,
           isFuture: isFuture,
@@ -376,7 +395,7 @@ class _MonthGrid extends StatelessWidget {
 
 class _DayCell extends StatelessWidget {
   final int dayNumber;
-  final int weekday; // 0=일 .. 6=토
+  final int dateWeekday; // DateTime.weekday: 1=월 .. 7=일
   final bool isToday;
   final bool isSelected;
   final bool isFuture;
@@ -386,7 +405,7 @@ class _DayCell extends StatelessWidget {
   final VoidCallback? onTap;
   const _DayCell({
     required this.dayNumber,
-    required this.weekday,
+    required this.dateWeekday,
     required this.isToday,
     required this.isSelected,
     required this.isFuture,
@@ -398,14 +417,14 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 숫자 색: 오늘=ink(원 위), 미래=흐림, 일/토 요일색, 평일 ink.
+    // 숫자 색: 오늘=ink(원 위), 미래=흐림, 일(7)=danger·토(6)=info, 평일 ink.
     Color numberColor;
     if (isFuture) {
       numberColor = AppColor.inkDisabled;
-    } else if (weekday == 0) {
-      numberColor = AppColor.danger;
-    } else if (weekday == 6) {
-      numberColor = AppColor.info;
+    } else if (dateWeekday == 7) {
+      numberColor = AppColor.danger; // 일요일
+    } else if (dateWeekday == 6) {
+      numberColor = AppColor.info; // 토요일
     } else {
       numberColor = AppColor.ink;
     }
@@ -447,18 +466,12 @@ class _DayCell extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 3),
-          // 기록 점: 식단(brand)·영양제(info) 최대 2개.
+          // 기록 점: Figma 364:24 — 기록 있는 날 단일 점.
+          // 오늘 셀(brand 원)은 중립 회색 점, 그 외는 brand 노랑 점.
           SizedBox(
             height: 6,
-            child: showDots
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      if (hasMeal) _dot(AppColor.brand),
-                      if (hasMeal && hasSupplement) const SizedBox(width: 3),
-                      if (hasSupplement) _dot(AppColor.info),
-                    ],
-                  )
+            child: showDots && (hasMeal || hasSupplement)
+                ? _dot(isToday ? AppColor.inkTertiary : AppColor.brand)
                 : const SizedBox.shrink(),
           ),
         ],
@@ -595,17 +608,7 @@ class _DayDetail extends StatelessWidget {
     );
   }
 
-  BoxDecoration _cardDeco() => BoxDecoration(
-    color: AppColor.surface,
-    borderRadius: BorderRadius.circular(AppRadius.lg),
-    boxShadow: const <BoxShadow>[
-      BoxShadow(
-        color: Color.fromRGBO(140, 155, 175, 0.20),
-        blurRadius: 16,
-        offset: Offset(0, 5),
-      ),
-    ],
-  );
+  BoxDecoration _cardDeco() => _calendarCardDeco();
 }
 
 class _RecordRow extends StatelessWidget {
