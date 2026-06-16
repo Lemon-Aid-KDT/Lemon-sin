@@ -22,7 +22,10 @@ class ApiClient {
     String? devGatewayToken,
     http.Client? httpClient,
     Duration requestTimeout = const Duration(seconds: 30),
-    Duration uploadTimeout = const Duration(seconds: 60),
+    // 영양제/식단 분석은 OCR+LLM 파이프라인이 동기라 수십 초 걸릴 수 있어
+    // 업로드 타임아웃을 넉넉히 둔다(서버 지연 시 조기 실패 방지). 백엔드
+    // latency 근본 완화는 ENABLE_MULTIMODAL_VERIFICATION=false + Ollama 등.
+    Duration uploadTimeout = const Duration(seconds: 120),
     int maxUploadBytes = _defaultMaxUploadBytes,
   }) : _baseUrl = _normalizeBaseUrl(baseUrl),
        _bearerToken = bearerToken,
