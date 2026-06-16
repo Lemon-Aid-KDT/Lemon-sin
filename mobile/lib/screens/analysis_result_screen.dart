@@ -3077,7 +3077,10 @@ class _IngredientAmountTable extends StatelessWidget {
                             ? null
                             : entry.value.candidate,
                         onRowTap: onRowTap,
-                        child: _IngredientAmountCell(text: entry.value.amount),
+                        child: _IngredientAmountCell(
+                          text: entry.value.amount,
+                          pill: true,
+                        ),
                       ),
                     ],
                   ),
@@ -3313,14 +3316,49 @@ class _IngredientAmountCell extends StatelessWidget {
     required this.text,
     this.secondaryText,
     this.isHeader = false,
+    this.pill = false,
   });
 
   final String text;
   final String? secondaryText;
   final bool isHeader;
+  // 함량 값을 옅은 회색 알약으로 표시 (figma 07 · 정보 확인·수정).
+  final bool pill;
 
   @override
   Widget build(BuildContext context) {
+    // figma 07 — 함량 값은 옅은 회색 알약(우측 정렬). 값이 없으면 알약 숨김.
+    if (pill && !isHeader) {
+      if (text.trim().isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.sm,
+          vertical: AppSpace.xs,
+        ),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.md,
+              vertical: 5,
+            ),
+            decoration: BoxDecoration(
+              color: AppColor.sunken,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: AppColor.ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpace.sm,
