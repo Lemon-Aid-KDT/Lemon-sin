@@ -27,6 +27,7 @@ import '../features/supplements/supplement_models.dart';
 import '../features/supplements/supplement_repository.dart';
 import '../shared/widgets/status_state_view.dart';
 import '../utils/design_tokens_v2.dart';
+import '../utils/mascot_poses.dart';
 import '../widgets/common/app_modals.dart';
 import '../widgets/common/pressable.dart';
 import '../widgets/common/staggered_entrance.dart';
@@ -362,28 +363,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTapDetail: () =>
                   context.push('/shell/home/analysis-result?mode=meal'),
             ),
-            _TodayAnalysisCard(
-              score: score,
-              onTap: () => context.go('/shell/score'),
-            ),
+            // Figma 268:24 섹션 순서 — 히어로 → 상호작용 → 오늘의 분석
+            //   → 식단 관리 → 복약 관리 → 영양제 관리.
             _InteractionCard(
               preview: _controller.supplementImpactPreview,
               hasSupplements: _controller.homeSupplements.results.isNotEmpty,
               medicationCount: _controller.homeMedications.activeItems.length,
               failed: _controller.homeImpactFailed,
             ),
+            _TodayAnalysisCard(
+              score: score,
+              onTap: () => context.go('/shell/score'),
+            ),
             _MealManagementCard(
               meals: dayMeals,
               failed: _controller.homeMealsFailed,
               onRecord: () => _openCamera('meal'),
-            ),
-            _SupplementChecklistCard(
-              supplements: _controller.homeSupplements.results,
-              checkedIds: _checkedSupplementIds,
-              failed: _controller.homeSupplementsFailed,
-              onToggle: _toggleSupplement,
-              onAdd: () => _openCamera('supplement'),
-              onDelete: _confirmDeleteSupplement,
             ),
             _MedicationCard(
               medications: _controller.homeMedications.activeItems,
@@ -392,6 +387,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onToggle: _toggleMedication,
               onAdd: _openAddMedication,
               onDeactivate: _confirmDeactivateMedication,
+            ),
+            _SupplementChecklistCard(
+              supplements: _controller.homeSupplements.results,
+              checkedIds: _checkedSupplementIds,
+              failed: _controller.homeSupplementsFailed,
+              onToggle: _toggleSupplement,
+              onAdd: () => _openCamera('supplement'),
+              onDelete: _confirmDeleteSupplement,
             ),
             const _MedicalDisclaimer(),
           ],
@@ -428,8 +431,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Transform.translate(
                   offset: const Offset(0, -24),
                   child: Container(
+                    // Figma 268:24 — 본문은 옅은 회색 배경, 흰 카드가 떠 보임.
                     decoration: const BoxDecoration(
-                      color: AppColor.bg,
+                      color: AppColor.section,
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(28),
                         topRight: Radius.circular(28),
@@ -1007,16 +1011,126 @@ BoxDecoration _mainCardDeco() => BoxDecoration(
   ],
 );
 
-// 카드 헤더 (제목)
-class _CardHeader extends StatelessWidget {
-  final String title;
-  const _CardHeader({required this.title});
+// ═══════════════════════════════════════════
+// Figma 268:24 — 회색 본문 위 섹션 공통 위젯
+//   - 섹션 제목 옆 '+' 원형 어포던스 (_AddCircleButton)
+//   - 행 앞 컬러 라운드 스퀘어 아이콘 (_RowLeadIcon)
+//   - 섹션 하단 회색 '+ 추가' 버튼 (_SectionAddButton)
+//   - 개별 흰 카드 (_ItemCard) — 끼니/복약/영양제 행 1개당 1카드
+// ═══════════════════════════════════════════
+
+// 섹션 헤더 우측 '+' 원형 버튼 (흰 원 + 옅은 보더).
+class _AddCircleButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddCircleButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [Text(title, style: AppText.subtitle)],
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: AppColor.surface,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColor.border),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.add_rounded,
+          size: 20,
+          color: AppColor.inkSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+// 행 앞 컬러 라운드 스퀘어 아이콘 (40x40).
+class _RowLeadIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  const _RowLeadIcon({required this.icon, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 22, color: color),
+    );
+  }
+}
+
+// 섹션 하단 회색 '+ 추가' 버튼 (sunken, 52px).
+class _SectionAddButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _SectionAddButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          color: AppColor.sunken,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.add_rounded,
+              size: 20,
+              color: AppColor.inkSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppText.body.copyWith(
+                color: AppColor.inkSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// 끼니/복약/영양제 행 1개를 감싸는 개별 흰 카드.
+class _ItemCard extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  const _ItemCard({required this.child, this.onTap, this.onLongPress});
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget card = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.lg,
+        vertical: 14,
+      ),
+      decoration: _mainCardDeco(),
+      child: child,
+    );
+    if (onTap == null && onLongPress == null) return card;
+    return GestureDetector(
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: Pressable(onTap: onTap ?? () {}, child: card),
     );
   }
 }
@@ -1035,62 +1149,70 @@ class _TodayAnalysisCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? message = score.message;
     final bool hasMessage = message != null && message.trim().isNotEmpty;
+    // Figma 268:24 — 섹션 제목 + '자세히 >'는 회색 본문 위(카드 밖),
+    // 그 아래 흰 카드에 레몬봇 요약. 전체를 한 번에 탭하면 분석 탭으로.
     return Pressable(
       onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(AppSpace.cardInside + 2),
-        decoration: _mainCardDeco(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: AppColor.brandSoft,
-                    borderRadius: BorderRadius.circular(AppRadius.sm - 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('오늘의 분석', style: AppText.subtitle),
+              Row(
+                children: [
+                  Text(
+                    '자세히',
+                    style: AppText.caption.copyWith(
+                      color: AppColor.inkSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
+                  Icon(
+                    Icons.chevron_right_rounded,
                     size: 18,
-                    color: AppColor.brandDeep,
+                    color: AppColor.inkTertiary,
                   ),
-                ),
-                const SizedBox(width: AppSpace.sm),
-                Text('오늘의 분석', style: AppText.subtitle),
-                const Spacer(),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpace.cardInside + 2),
+            decoration: _mainCardDeco(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
                   children: [
+                    Image.asset(MascotPose.find.asset, width: 32, height: 32),
+                    const SizedBox(width: AppSpace.sm),
                     Text(
-                      '자세히',
+                      '레몬봇 AI 요약',
                       style: AppText.caption.copyWith(
-                        color: AppColor.inkSecondary,
-                        fontWeight: FontWeight.w700,
+                        color: AppColor.brandDeep,
+                        fontWeight: FontWeight.w800,
                       ),
-                    ),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 18,
-                      color: AppColor.inkTertiary,
                     ),
                   ],
                 ),
+                const SizedBox(height: AppSpace.md),
+                Text(
+                  hasMessage
+                      ? message.trim()
+                      : '오늘 끼니와 영양제를 기록하면 맞춤 코멘트를 보여드려요.',
+                  style: AppText.body.copyWith(
+                    color: AppColor.inkSecondary,
+                    height: 1.5,
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: AppSpace.md),
-            Text(
-              hasMessage ? message.trim() : '오늘 끼니와 영양제를 기록하면 맞춤 코멘트를 보여드려요.',
-              style: AppText.body.copyWith(
-                color: AppColor.inkSecondary,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1183,7 +1305,32 @@ class _InteractionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _CardHeader(title: '영양제 상호작용'),
+          // Figma 268:24 — '상호작용 주의' + 위험 N건 배지(주황).
+          Row(
+            children: [
+              Text('상호작용 주의', style: AppText.subtitle),
+              if (risks.isNotEmpty) ...[
+                const SizedBox(width: AppSpace.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.warning,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: Text(
+                    '${risks.length}건',
+                    style: AppText.micro.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: AppSpace.md),
           body,
           if (hasMedications) ...[
@@ -1316,12 +1463,12 @@ class _MealManagementCard extends StatelessWidget {
     required this.onRecord,
   });
 
-  static const List<MapEntry<String, String>> _slots =
+  // Figma 268:24 — 아침/점심/저녁은 개별 카드, 간식은 하단 '+ 간식 추가' 버튼.
+  static const List<MapEntry<String, String>> _mainSlots =
       <MapEntry<String, String>>[
         MapEntry('breakfast', '아침'),
         MapEntry('lunch', '점심'),
         MapEntry('dinner', '저녁'),
-        MapEntry('snack', '간식'),
       ];
 
   HomeMeal? _firstFor(String mealType) {
@@ -1333,107 +1480,139 @@ class _MealManagementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
-      decoration: _mainCardDeco(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _CardHeader(title: '식단 관리'),
-          const SizedBox(height: AppSpace.md),
-          if (failed)
-            StatusStateView(
-              variant: StatusStateVariant.syncFailed,
-              onPrimary: onRecord,
-            )
-          else
-            for (int i = 0; i < _slots.length; i++) ...[
-              _MealSlotRow(
-                label: _slots[i].value,
-                meal: _firstFor(_slots[i].key),
-                onRecord: onRecord,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 섹션 제목 + '+' 원형 — 회색 본문 위(카드 밖).
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('식단 관리', style: AppText.subtitle),
+            _AddCircleButton(onTap: onRecord),
+          ],
+        ),
+        const SizedBox(height: AppSpace.md),
+        if (failed)
+          StatusStateView(
+            variant: StatusStateVariant.syncFailed,
+            onPrimary: onRecord,
+          )
+        else ...[
+          for (int i = 0; i < _mainSlots.length; i++) ...[
+            _ItemCard(
+              onTap: onRecord,
+              child: _MealSlotRow(
+                slotKey: _mainSlots[i].key,
+                label: _mainSlots[i].value,
+                meal: _firstFor(_mainSlots[i].key),
               ),
-              if (i != _slots.length - 1)
-                Divider(color: AppColor.border, height: AppSpace.lg),
-            ],
+            ),
+            const SizedBox(height: AppSpace.sm + 2),
+          ],
+          _SectionAddButton(label: '간식 추가', onTap: onRecord),
         ],
-      ),
+      ],
     );
   }
 }
 
 class _MealSlotRow extends StatelessWidget {
+  final String slotKey;
   final String label;
   final HomeMeal? meal;
-  final VoidCallback onRecord;
   const _MealSlotRow({
+    required this.slotKey,
     required this.label,
     required this.meal,
-    required this.onRecord,
   });
+
+  // 끼니별 리딩 아이콘 + 색 (Figma — 아침/점심 웜, 저녁 쿨/라벤더).
+  ({IconData icon, Color color}) get _lead {
+    switch (slotKey) {
+      case 'breakfast':
+        return (icon: Icons.wb_twilight_rounded, color: AppColor.warning);
+      case 'lunch':
+        return (icon: Icons.wb_sunny_rounded, color: AppColor.warning);
+      case 'dinner':
+      default:
+        return (icon: Icons.bedtime_rounded, color: AppColor.info);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final HomeMeal? recorded = meal;
+    final lead = _lead;
     return Row(
       children: [
-        SizedBox(
-          width: 44,
-          child: Text(
-            label,
-            style: AppText.body.copyWith(
-              color: AppColor.ink,
-              fontWeight: FontWeight.w700,
-            ),
+        _RowLeadIcon(icon: lead.icon, color: lead.color),
+        const SizedBox(width: AppSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AppText.body.copyWith(
+                  color: AppColor.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              recorded == null
+                  ? Text(
+                      '아직 기록 전',
+                      style: AppText.caption.copyWith(
+                        color: AppColor.inkTertiary,
+                      ),
+                    )
+                  : Text(
+                      recorded.primaryName ?? '기록됨',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption.copyWith(
+                        color: AppColor.inkSecondary,
+                      ),
+                    ),
+            ],
           ),
         ),
         const SizedBox(width: AppSpace.sm),
-        Expanded(
-          child: recorded == null
-              ? Text(
-                  '아직 기록 전',
-                  style: AppText.caption.copyWith(color: AppColor.inkTertiary),
-                )
-              : Text(
-                  recorded.primaryName ?? '기록됨',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.body.copyWith(
-                    color: AppColor.ink,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-        ),
-        const SizedBox(width: AppSpace.sm),
         if (recorded == null)
-          Pressable(
-            onTap: onRecord,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpace.md,
-                vertical: 6,
-              ),
-              decoration: BoxDecoration(
-                color: AppColor.brandSoft,
-                borderRadius: BorderRadius.circular(AppRadius.full),
-              ),
-              child: Text(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
                 '기록하기',
                 style: AppText.caption.copyWith(
                   color: AppColor.brandDeep,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-            ),
+              const Icon(
+                Icons.add_rounded,
+                size: 16,
+                color: AppColor.brandDeep,
+              ),
+            ],
           )
         else
-          Text(
-            '${recorded.nutrition.kcal.round()} kcal',
-            style: AppText.caption.copyWith(
-              color: AppColor.inkSecondary,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${recorded.nutrition.kcal.round()} kcal',
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: AppColor.inkTertiary,
+              ),
+            ],
           ),
       ],
     );
@@ -1467,13 +1646,15 @@ class _SupplementChecklistCard extends StatelessWidget {
         .where((HomeSupplement item) => checkedIds.contains(item.id))
         .length;
 
+    // Figma 268:24 — 회색 본문 위 개별 흰 카드. 빈 상태는 StatusStateView 유지.
+    final bool isEmpty = supplements.isEmpty;
     Widget body;
-    if (failed && supplements.isEmpty) {
+    if (failed && isEmpty) {
       body = StatusStateView(
         variant: StatusStateVariant.syncFailed,
         onPrimary: onAdd,
       );
-    } else if (supplements.isEmpty) {
+    } else if (isEmpty) {
       body = StatusStateView(
         variant: StatusStateVariant.emptyNew,
         onPrimary: onAdd,
@@ -1482,133 +1663,128 @@ class _SupplementChecklistCard extends StatelessWidget {
       body = Column(
         children: [
           for (int i = 0; i < supplements.length; i++) ...[
-            _SupplementRow(
-              supplement: supplements[i],
-              checked: checkedIds.contains(supplements[i].id),
-              onToggle: () => onToggle(supplements[i].id),
-              onDelete: () => onDelete(supplements[i]),
+            _ItemCard(
+              onTap: () => onToggle(supplements[i].id),
+              onLongPress: () => onDelete(supplements[i]),
+              child: _SupplementRow(
+                supplement: supplements[i],
+                index: i,
+                checked: checkedIds.contains(supplements[i].id),
+              ),
             ),
-            if (i != supplements.length - 1)
-              Divider(color: AppColor.border, height: AppSpace.lg),
+            const SizedBox(height: AppSpace.sm + 2),
           ],
+          _SectionAddButton(label: '영양제 추가', onTap: onAdd),
         ],
       );
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
-      decoration: _mainCardDeco(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('영양제 관리', style: AppText.subtitle),
-              if (total > 0)
-                Text(
-                  '$done/$total 완료',
-                  style: AppText.caption.copyWith(
-                    color: AppColor.brandDeep,
-                    fontWeight: FontWeight.w700,
-                  ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('영양제 관리', style: AppText.subtitle),
+            const Spacer(),
+            if (total > 0)
+              Text(
+                '$done/$total 완료',
+                style: AppText.caption.copyWith(
+                  color: AppColor.brandDeep,
+                  fontWeight: FontWeight.w700,
                 ),
-            ],
-          ),
-          const SizedBox(height: AppSpace.md),
-          body,
-        ],
-      ),
+              ),
+            const SizedBox(width: AppSpace.sm),
+            _AddCircleButton(onTap: onAdd),
+          ],
+        ),
+        const SizedBox(height: AppSpace.md),
+        body,
+      ],
     );
   }
 }
 
 class _SupplementRow extends StatelessWidget {
   final HomeSupplement supplement;
+  final int index;
   final bool checked;
-  final VoidCallback onToggle;
-  final VoidCallback onDelete;
   const _SupplementRow({
     required this.supplement,
+    required this.index,
     required this.checked,
-    required this.onToggle,
-    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     final String? scheduleText = supplement.schedule?.summary;
     final String? categoryLabel = supplement.categoryLabel;
-    // 길게 누르면 삭제(영양제 관리 행) — 끼니 삭제는 백엔드 공백 2로 비노출.
-    return GestureDetector(
-      onLongPress: onDelete,
-      behavior: HitTestBehavior.opaque,
-      child: Pressable(
-        onTap: onToggle,
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final Color iconColor = _rowPalette[index % _rowPalette.length];
+    return Row(
+      children: [
+        _RowLeadIcon(icon: Icons.medication_liquid_rounded, color: iconColor),
+        const SizedBox(width: AppSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          supplement.displayName.isNotEmpty
-                              ? supplement.displayName
-                              : '이름 미상 영양제',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.body.copyWith(
-                            color: checked
-                                ? AppColor.inkTertiary
-                                : AppColor.ink,
-                            fontWeight: FontWeight.w600,
-                            decoration: checked
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
-                        ),
-                      ),
-                      // 사용자가 고른 분류 칩 (가이드 10 P2 7 후속).
-                      if (categoryLabel != null) ...[
-                        const SizedBox(width: AppSpace.sm),
-                        _SupplementCategoryChip(label: categoryLabel),
-                      ],
-                    ],
-                  ),
-                  if (scheduleText != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      scheduleText,
-                      style: AppText.caption.copyWith(
-                        color: AppColor.inkTertiary,
+                  Flexible(
+                    child: Text(
+                      supplement.displayName.isNotEmpty
+                          ? supplement.displayName
+                          : '이름 미상 영양제',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.body.copyWith(
+                        color: checked ? AppColor.inkTertiary : AppColor.ink,
+                        fontWeight: FontWeight.w700,
+                        decoration: checked ? TextDecoration.lineThrough : null,
                       ),
                     ),
+                  ),
+                  // 사용자가 고른 분류 칩 (가이드 10 P2 7 후속).
+                  if (categoryLabel != null) ...[
+                    const SizedBox(width: AppSpace.sm),
+                    _SupplementCategoryChip(label: categoryLabel),
                   ],
                 ],
               ),
-            ),
-            const SizedBox(width: AppSpace.sm),
-            // 체크 박스
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
-            ),
-          ],
+              if (scheduleText != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  scheduleText,
+                  style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+                ),
+              ],
+            ],
+          ),
         ),
-      ),
+        const SizedBox(width: AppSpace.sm),
+        // 체크 박스
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
+        ),
+      ],
     );
   }
 }
+
+// 행 리딩 아이콘 색 로테이션 — Figma의 다채로운 알약 색을 모사.
+const List<Color> _rowPalette = <Color>[
+  AppColor.danger,
+  AppColor.success,
+  AppColor.info,
+  AppColor.brandDeep,
+];
 
 /// 영양제 행에 붙는 분류 칩 (brandSoft pill — 가이드 10 P2 7 후속).
 class _SupplementCategoryChip extends StatelessWidget {
@@ -1666,6 +1842,7 @@ class _MedicationCard extends StatelessWidget {
         .where((HomeMedication item) => checkedIds.contains(item.id))
         .length;
 
+    // Figma 268:24 — 회색 본문 위 개별 흰 카드 + 하단 회색 '약 추가'.
     Widget body;
     if (failed && medications.isEmpty) {
       body = StatusStateView(
@@ -1679,51 +1856,49 @@ class _MedicationCard extends StatelessWidget {
       body = Column(
         children: [
           for (int i = 0; i < medications.length; i++) ...[
-            _MedicationRow(
-              medication: medications[i],
-              checked: checkedIds.contains(medications[i].id),
-              onToggle: () => onToggle(medications[i].id),
+            _ItemCard(
+              onTap: () => onToggle(medications[i].id),
               onLongPress: () => onDeactivate(medications[i]),
+              child: _MedicationRow(
+                medication: medications[i],
+                index: i,
+                checked: checkedIds.contains(medications[i].id),
+              ),
             ),
-            if (i != medications.length - 1)
-              Divider(color: AppColor.border, height: AppSpace.lg),
+            const SizedBox(height: AppSpace.sm + 2),
           ],
-          const SizedBox(height: AppSpace.md),
-          _AddMedicationButton(onTap: onAdd),
+          _SectionAddButton(label: '약 추가', onTap: onAdd),
         ],
       );
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpace.cardInside + 2),
-      decoration: _mainCardDeco(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('복약 관리', style: AppText.subtitle),
-              if (total > 0)
-                Text(
-                  '$done/$total 완료',
-                  style: AppText.caption.copyWith(
-                    color: AppColor.brandDeep,
-                    fontWeight: FontWeight.w700,
-                  ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('복약 관리', style: AppText.subtitle),
+            const Spacer(),
+            if (total > 0)
+              Text(
+                '$done/$total 완료',
+                style: AppText.caption.copyWith(
+                  color: AppColor.brandDeep,
+                  fontWeight: FontWeight.w700,
                 ),
-            ],
-          ),
-          const SizedBox(height: AppSpace.md),
-          body,
-          const SizedBox(height: AppSpace.md),
-          Text(
-            '약 변경은 의사·약사와 상담해주세요.',
-            style: AppText.micro.copyWith(color: AppColor.inkTertiary),
-          ),
-        ],
-      ),
+              ),
+            const SizedBox(width: AppSpace.sm),
+            _AddCircleButton(onTap: onAdd),
+          ],
+        ),
+        const SizedBox(height: AppSpace.md),
+        body,
+        const SizedBox(height: AppSpace.md),
+        Text(
+          '약 변경은 의사·약사와 상담해주세요.',
+          style: AppText.micro.copyWith(color: AppColor.inkTertiary),
+        ),
+      ],
     );
   }
 }
@@ -1746,118 +1921,78 @@ class _MedicationEmpty extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpace.md),
-        _AddMedicationButton(onTap: onAdd, label: '약 등록하기'),
+        _SectionAddButton(label: '약 등록하기', onTap: onAdd),
       ],
-    );
-  }
-}
-
-// '+ 약 추가' / '약 등록하기' 버튼 — 시니어 최소 높이(52px+) 준수.
-class _AddMedicationButton extends StatelessWidget {
-  final VoidCallback onTap;
-  final String label;
-  const _AddMedicationButton({required this.onTap, this.label = '+ 약 추가'});
-
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColor.brandSoft,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-        ),
-        child: Text(
-          label,
-          style: AppText.body.copyWith(
-            color: AppColor.brandDeep,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
     );
   }
 }
 
 class _MedicationRow extends StatelessWidget {
   final HomeMedication medication;
+  final int index;
   final bool checked;
-  final VoidCallback onToggle;
-  final VoidCallback onLongPress;
   const _MedicationRow({
     required this.medication,
+    required this.index,
     required this.checked,
-    required this.onToggle,
-    required this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     final String? classLabel = medication.medicationClassLabel;
     final List<String> tagLabels = medication.conditionTagLabels;
-    return GestureDetector(
-      onLongPress: onLongPress,
-      behavior: HitTestBehavior.opaque,
-      child: Pressable(
-        onTap: onToggle,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final Color iconColor = _rowPalette[index % _rowPalette.length];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _RowLeadIcon(icon: Icons.medication_rounded, color: iconColor),
+        const SizedBox(width: AppSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          medication.displayName.isNotEmpty
-                              ? medication.displayName
-                              : '이름 미상 약',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.body.copyWith(
-                            color: checked
-                                ? AppColor.inkTertiary
-                                : AppColor.ink,
-                            fontWeight: FontWeight.w600,
-                            decoration: checked
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
-                        ),
+                  Flexible(
+                    child: Text(
+                      medication.displayName.isNotEmpty
+                          ? medication.displayName
+                          : '이름 미상 약',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.body.copyWith(
+                        color: checked ? AppColor.inkTertiary : AppColor.ink,
+                        fontWeight: FontWeight.w700,
+                        decoration: checked ? TextDecoration.lineThrough : null,
                       ),
-                      if (classLabel != null) ...[
-                        const SizedBox(width: AppSpace.sm),
-                        _ClassLabelChip(label: classLabel),
-                      ],
-                    ],
+                    ),
                   ),
-                  if (tagLabels.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    _ConditionTagChips(labels: tagLabels),
+                  if (classLabel != null) ...[
+                    const SizedBox(width: AppSpace.sm),
+                    _ClassLabelChip(label: classLabel),
                   ],
                 ],
               ),
-            ),
-            const SizedBox(width: AppSpace.sm),
-            // 복용 체크 박스
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
-            ),
-          ],
+              if (tagLabels.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _ConditionTagChips(labels: tagLabels),
+              ],
+            ],
+          ),
         ),
-      ),
+        const SizedBox(width: AppSpace.sm),
+        // 복용 체크 박스
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: checked ? AppColor.brand : const Color(0xFFE5E8EB),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
+        ),
+      ],
     );
   }
 }
