@@ -1120,6 +1120,69 @@ void main() {
     expect(find.text('어떤 음식이 맞나요?'), findsOneWidget);
     expect(find.text('확인 후 식단 저장'), findsOneWidget);
   });
+
+  testWidgets('predicted nutrient card shows grams without any % (D2)', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository repository = _ReviewRepository(
+      mealPreviewJson: _predictedNutrientMealPreviewJson,
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeMealImage('/tmp/meal.png', mealType: 'lunch');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnalysisResultScreen(mode: 'meal', controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 예상 영양소 카드(읽기 전용) — 1인분 기준 기본 노출.
+    expect(
+      find.byKey(const ValueKey<String>('predicted-nutrient-card')),
+      findsOneWidget,
+    );
+    // D2: 매크로는 그램 값으로만, 단백질은 분석 그리드와 충돌 피해 '단백질 (예상)'.
+    expect(find.text('단백질 (예상)'), findsOneWidget);
+    expect(find.text('탄수화물'), findsOneWidget);
+    expect(find.text('지방'), findsOneWidget);
+    // 신뢰도/기준치 % 숫자는 어디에도 노출되지 않는다.
+    expect(find.textContaining('%'), findsNothing);
+    expect(find.textContaining('88%'), findsNothing);
+  });
+
+  testWidgets('core ingredient card uses grade chips without any % (D2)', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository repository = _ReviewRepository(
+      preview: _coreIngredientPreview(),
+    );
+    final AppController controller = AppController(repository: repository);
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    // 핵심성분 배지 카드 — dailyValuePercent 가 있을 때만 노출(리스트 하단이라 스크롤).
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('core-ingredient-card')),
+      200,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('core-ingredient-card')),
+      findsOneWidget,
+    );
+    // 충족 등급은 칩(충분/부족)으로만, %DV 숫자는 노출하지 않는다.
+    expect(find.text('충분'), findsWidgets);
+    expect(find.text('부족'), findsWidgets);
+    expect(find.textContaining('%'), findsNothing);
+    expect(find.textContaining('120'), findsNothing);
+  });
 }
 
 Future<void> _scrollResultDetails(WidgetTester tester) async {
@@ -1983,6 +2046,82 @@ SupplementAnalysisPreview _recognizedTextPreview() {
     algorithmVersion: 'test',
     sourceManifestVersion: null,
     expiresAt: DateTime.utc(2026, 5, 26),
+  );
+}
+
+/// 매크로가 채워진 음식 후보(예상 영양소 카드 가드용).
+final Map<String, Object?> _predictedNutrientMealPreviewJson =
+    <String, Object?>{
+      ..._mealPreviewJson,
+      'food_candidates': <Object?>[
+        <String, Object?>{
+          'display_name': '비빔밥',
+          'portion_amount': 1,
+          'portion_unit': 'serving',
+          'kcal': 520,
+          'carb_g': 78,
+          'protein_g': 18,
+          'fat_g': 12,
+          'sodium_mg': 820,
+          'confidence': 0.88,
+          'source': 'vision',
+        },
+      ],
+    };
+
+/// dailyValuePercent 가 채워진 성분 후보(핵심성분 배지 카드 가드용).
+SupplementAnalysisPreview _coreIngredientPreview() {
+  final _ReviewRepository source = _ReviewRepository();
+  final SupplementAnalysisPreview base = source._preview();
+  return SupplementAnalysisPreview(
+    analysisId: base.analysisId,
+    status: base.status,
+    parsedProduct: base.parsedProduct,
+    ingredientCandidates: const <SupplementIngredientCandidate>[
+      SupplementIngredientCandidate(
+        displayName: '비타민 C',
+        originalName: 'Vitamin C',
+        nutrientCode: 'vitamin_c',
+        amount: 1000,
+        unit: 'mg',
+        confidence: 0.92,
+        source: 'ocr_llm_preview',
+        dailyValuePercent: 120,
+      ),
+      SupplementIngredientCandidate(
+        displayName: '아연',
+        originalName: 'Zinc',
+        nutrientCode: 'zinc',
+        amount: 5,
+        unit: 'mg',
+        confidence: 0.9,
+        source: 'ocr_llm_preview',
+        dailyValuePercent: 60,
+      ),
+    ],
+    layoutAvailable: base.layoutAvailable,
+    layoutFallbackReason: base.layoutFallbackReason,
+    labelSections: base.labelSections,
+    intakeMethod: base.intakeMethod,
+    precautions: base.precautions,
+    functionalClaims: base.functionalClaims,
+    evidenceSpans: base.evidenceSpans,
+    imageQualityReport: base.imageQualityReport,
+    analysisScope: base.analysisScope,
+    actionRequired: base.actionRequired,
+    detectedProductRegions: base.detectedProductRegions,
+    selectedRegionId: base.selectedRegionId,
+    missingRequiredSections: base.missingRequiredSections,
+    imageRole: base.imageRole,
+    multiImageGroupId: base.multiImageGroupId,
+    sourceType: base.sourceType,
+    identityConflict: base.identityConflict,
+    pipelineMetadata: base.pipelineMetadata,
+    lowConfidenceFields: base.lowConfidenceFields,
+    warnings: base.warnings,
+    algorithmVersion: base.algorithmVersion,
+    sourceManifestVersion: base.sourceManifestVersion,
+    expiresAt: base.expiresAt,
   );
 }
 

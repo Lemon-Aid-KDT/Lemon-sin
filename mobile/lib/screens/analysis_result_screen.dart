@@ -263,6 +263,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                   ] else
                     ..._supplementCards(preview),
                   if (!_isMeal && preview != null) ...<Widget>[
+                    if (_coreIngredientCandidates(
+                      preview,
+                    ).isNotEmpty) ...<Widget>[
+                      const SizedBox(height: AppSpace.md),
+                      _CoreIngredientCard(
+                        ingredients: _coreIngredientCandidates(preview),
+                      ),
+                    ],
                     const SizedBox(height: AppSpace.md),
                     _AnalysisExplanationCard(
                       explanation: controller?.supplementExplanation,
@@ -402,6 +410,14 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         pipeline.requiresManualEntry ||
         topConfidence < 0.6;
 
+    final int? selectedIndex = _selectedMealCandidateIndex;
+    final MealFoodCandidate? selectedCandidate =
+        (selectedIndex != null &&
+            selectedIndex >= 0 &&
+            selectedIndex < candidates.length)
+        ? candidates[selectedIndex]
+        : null;
+
     return <Widget>[
       if (candidates.isNotEmpty) ...<Widget>[
         FoodCandidateList(
@@ -410,6 +426,20 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           onSelect: (int index) => _selectMealCandidate(preview, index),
           portionAmount: _mealPortionAmount,
           onAdjustPortion: () => _adjustMealPortion(preview),
+        ),
+        const SizedBox(height: AppSpace.md),
+      ],
+      // 인라인 섭취량 토글 + 예상 영양소 카드 — 후보가 선택됐을 때만(figma 06 심화).
+      if (selectedCandidate != null) ...<Widget>[
+        _PortionSegment(
+          selectedAmount: _mealPortionAmount,
+          onSelected: (double amount) =>
+              _selectMealPortionPreset(preview, amount),
+        ),
+        const SizedBox(height: AppSpace.md),
+        _PredictedNutrientCard(
+          candidate: selectedCandidate,
+          portionAmount: _mealPortionAmount,
         ),
         const SizedBox(height: AppSpace.md),
       ],
@@ -491,6 +521,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       _SupplementInfoCard(
         icon: Icons.fact_check_rounded,
         title: '상세 성분 및 함량',
+        trailingCount: _ingredientAmountRows(preview).isEmpty
+            ? null
+            : '성분 ${_ingredientAmountRows(preview).length}개',
         bodyWidget: _ingredientInfoTable(preview),
         missingMessage: missingSections.contains('supplement_facts')
             ? '성분표가 보이게 한 장 더 촬영해주세요'
@@ -1376,6 +1409,23 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         .toList(growable: false);
   }
 
+  /// 핵심성분 배지 카드(상위 5개)에 쓸 성분 후보 목록.
+  ///
+  /// 충족 등급(영양성분기준치 기반)을 보여주는 카드라, 후보 중 하나라도
+  /// dailyValuePercent 가 있을 때만 목록을 돌려준다(없으면 빈 목록 → 카드 미노출).
+  /// 등급 데이터가 없을 땐 상세 성분표만으로 충분해 빈 카드를 만들지 않는다.
+  List<SupplementIngredientCandidate> _coreIngredientCandidates(
+    SupplementAnalysisPreview preview,
+  ) {
+    final List<SupplementIngredientCandidate> top = preview.ingredientCandidates
+        .take(5)
+        .toList(growable: false);
+    final bool hasAdequacyData = top.any(
+      (SupplementIngredientCandidate c) => c.dailyValuePercent != null,
+    );
+    return hasAdequacyData ? top : const <SupplementIngredientCandidate>[];
+  }
+
   String _intakeInfoBody(SupplementAnalysisPreview? preview) {
     if (_missingRequiredSections(preview).contains('intake_method')) {
       return '해당 이미지에는 해당하는 내용이 없습니다';
@@ -2073,6 +2123,22 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       _mealPortionAmount = clampPortion(
         preview.foodCandidates[index].portionAmount ?? 1,
       );
+      _applySelectedCandidateToFields(preview);
+    });
+  }
+
+  /// 인라인 섭취량 프리셋 칩 선택 — 바텀시트 없이 즉시 섭취량을 반영한다.
+  void _selectMealPortionPreset(
+    MealImageAnalysisPreview preview,
+    double amount,
+  ) {
+    final int? index = _selectedMealCandidateIndex;
+    if (index == null || index >= preview.foodCandidates.length) return;
+    final double clamped = clampPortion(amount);
+    if (clamped == _mealPortionAmount) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _mealPortionAmount = clamped;
       _applySelectedCandidateToFields(preview);
     });
   }
@@ -3015,8 +3081,8 @@ class _IngredientAmountTable extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFE7EAF0)),
+          color: AppColor.surface,
+          border: Border.all(color: AppColor.border),
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Column(
@@ -3029,7 +3095,7 @@ class _IngredientAmountTable extends StatelessWidget {
                   ? null
                   : () => onAllSelectionChanged(!allSelected),
             ),
-            const Divider(height: 1, thickness: 1, color: Color(0xFFE7EAF0)),
+            const Divider(height: 1, thickness: 1, color: AppColor.border),
             Table(
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               columnWidths: const <int, TableColumnWidth>{
@@ -3038,11 +3104,11 @@ class _IngredientAmountTable extends StatelessWidget {
                 2: FlexColumnWidth(1),
               },
               border: const TableBorder(
-                horizontalInside: BorderSide(color: Color(0xFFE7EAF0)),
+                horizontalInside: BorderSide(color: AppColor.border),
               ),
               children: <TableRow>[
                 const TableRow(
-                  decoration: BoxDecoration(color: Color(0xFFFFF7D6)),
+                  decoration: BoxDecoration(color: AppColor.brandSoft),
                   children: <Widget>[
                     _IngredientAmountCell(text: '선택', isHeader: true),
                     _IngredientAmountCell(text: '성분명', isHeader: true),
@@ -3087,7 +3153,7 @@ class _IngredientAmountTable extends StatelessWidget {
               ],
             ),
             if (onAddIngredient != null) ...<Widget>[
-              const Divider(height: 1, thickness: 1, color: Color(0xFFE7EAF0)),
+              const Divider(height: 1, thickness: 1, color: AppColor.border),
               // 시니어 최소 터치 높이 52 확보.
               TextButton.icon(
                 onPressed: onAddIngredient,
@@ -4122,6 +4188,302 @@ class _FallbackPickedChip extends StatelessWidget {
   }
 }
 
+/// 인라인 섭취량 토글(figma 06 심화) — 프리셋 칩으로 바텀시트 없이 섭취량 조절.
+///
+/// 상세 조절(그램 환산)은 음식 후보 카드의 '섭취량' 행(바텀시트)이 담당하고,
+/// 여기선 ½/1/1.5/2 인분 빠른 선택만 제공한다. D2: 숫자(%) 노출 없음.
+class _PortionSegment extends StatelessWidget {
+  const _PortionSegment({
+    required this.selectedAmount,
+    required this.onSelected,
+  });
+
+  final double selectedAmount;
+  final ValueChanged<double> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: const ValueKey<String>('portion-segment'),
+      children: <Widget>[
+        for (final double preset in kPortionPresets) ...<Widget>[
+          Expanded(
+            child: _PortionSegmentChip(
+              number: _segmentNumber(preset),
+              selected: selectedAmount == preset,
+              onTap: () => onSelected(preset),
+            ),
+          ),
+          if (preset != kPortionPresets.last)
+            const SizedBox(width: AppSpace.sm),
+        ],
+      ],
+    );
+  }
+
+  /// 세그먼트 칩의 인분 숫자만 ('½', '1', '1.5', '2'). 단위 '인분'은 칩 안의
+  /// 별도 Text 로 붙여, 상세 시트의 'N인분' 한 덩어리 라벨 탭 단언과 글자 매칭이
+  /// 겹치지 않게 한다(같은 의미·다른 위젯 구성).
+  static String _segmentNumber(double preset) {
+    if (preset == 0.5) return '½';
+    return preset == preset.roundToDouble()
+        ? preset.toStringAsFixed(0)
+        : preset
+              .toStringAsFixed(2)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
+  }
+}
+
+class _PortionSegmentChip extends StatelessWidget {
+  const _PortionSegmentChip({
+    required this.number,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String number;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = selected ? AppColor.brandDeep : AppColor.inkSecondary;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        // 시니어 최소 터치 타깃 48px 확보.
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.md),
+        decoration: BoxDecoration(
+          color: selected ? AppColor.brandSoft : AppColor.sunken,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(
+            color: selected ? AppColor.brand : AppColor.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: <Widget>[
+            Text(
+              number,
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: fg,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              '인분',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: fg,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 예상 영양소 카드(figma 06 심화) — 선택 후보의 예상 열량·탄단지를 읽기 전용
+/// 표시한다. D2 준수: 매크로는 그램 값으로만 표기하고 신뢰도/기준치 %는 노출하지
+/// 않는다. 섭취량(인분)에 비례해 스케일하며, 값이 없는 행은 숨긴다(미허위).
+class _PredictedNutrientCard extends StatelessWidget {
+  const _PredictedNutrientCard({
+    required this.candidate,
+    required this.portionAmount,
+  });
+
+  final MealFoodCandidate candidate;
+  final double portionAmount;
+
+  /// 후보 기준 섭취량(없거나 0 이하면 1인분 가정) 대비 현재 섭취량 배율.
+  double get _scale {
+    final double base = candidate.portionAmount ?? 1;
+    if (base <= 0) return portionAmount <= 0 ? 1 : portionAmount;
+    return portionAmount / base;
+  }
+
+  double? _scaled(double? value) => value == null ? null : value * _scale;
+
+  @override
+  Widget build(BuildContext context) {
+    final double? kcal = _scaled(candidate.kcal);
+    final double? carb = _scaled(candidate.carbG);
+    final double? protein = _scaled(candidate.proteinG);
+    final double? fat = _scaled(candidate.fatG);
+    final double? sodium = _scaled(candidate.sodiumMg);
+    return Container(
+      key: const ValueKey<String>('predicted-nutrient-card'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadow.softCard,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (kcal != null) ...<Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColor.brandSoft,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: const Text(
+                    '예상 열량',
+                    style: TextStyle(
+                      color: AppColor.brandDeep,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  _round(kcal),
+                  style: const TextStyle(
+                    color: AppColor.ink,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    'kcal',
+                    style: AppText.caption.copyWith(
+                      color: AppColor.inkTertiary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${formatPortionLabel(portionAmount)} 기준',
+              style: AppText.caption.copyWith(color: AppColor.inkTertiary),
+            ),
+            const SizedBox(height: AppSpace.md),
+          ],
+          // 매크로 행 — D2: 그램 값만, % 비노출. null 행은 숨김.
+          _PredictedMacroRow(
+            label: '탄수화물',
+            grams: carb,
+            color: AppColor.warning,
+          ),
+          // '단백질' 단독 텍스트는 영양분석 그리드와 충돌하므로 '단백질 (예상)' 사용.
+          _PredictedMacroRow(
+            label: '단백질 (예상)',
+            grams: protein,
+            color: AppColor.success,
+          ),
+          _PredictedMacroRow(label: '지방', grams: fat, color: AppColor.danger),
+          _PredictedMacroRow(
+            label: '나트륨',
+            grams: sodium,
+            color: AppColor.review,
+            unit: 'mg',
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _round(double value) => value.round().toString();
+}
+
+/// 예상 매크로 한 행 — 색 점 + 라벨 + 채움 바 + 그램 값. 값이 null 이면 숨김.
+class _PredictedMacroRow extends StatelessWidget {
+  const _PredictedMacroRow({
+    required this.label,
+    required this.grams,
+    required this.color,
+    this.unit = 'g',
+  });
+
+  final String label;
+  final double? grams;
+  final Color color;
+  final String unit;
+
+  @override
+  Widget build(BuildContext context) {
+    final double? value = grams;
+    if (value == null) return const SizedBox.shrink();
+    // 채움 바는 단순 시각 단서(상한 100g/2000mg 가정) — 숫자(%)는 노출 안 함.
+    final double cap = unit == 'mg' ? 2000 : 100;
+    final double fill = (value / cap).clamp(0, 1).toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.sm),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          SizedBox(
+            width: 84,
+            child: Text(
+              label,
+              style: AppText.body.copyWith(color: AppColor.inkSecondary),
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              child: LinearProgressIndicator(
+                value: fill,
+                minHeight: 6,
+                backgroundColor: AppColor.sunken,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          Text(
+            '${value.round()}$unit',
+            style: const TextStyle(
+              color: AppColor.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MealReviewCorrectionCard extends StatelessWidget {
   const _MealReviewCorrectionCard({
     required this.mealNameController,
@@ -4422,6 +4784,159 @@ class _CategoryDropdownCard extends StatelessWidget {
   }
 }
 
+/// 핵심성분 배지 카드(figma 12) — 상위 성분의 함량과 충족 등급을 한눈에 보여준다.
+///
+/// 각 행: 성분명 · 함량값(w900) · 충족 등급 칩 · 채움 바.
+/// D2 준수: 영양성분기준치(%DV)는 숫자로 노출하지 않고 충분/부족 등급 칩으로만
+/// 표현하며, null 이면 '직접 확인' 칩과 빈 바(숨김)로 처리한다.
+class _CoreIngredientCard extends StatelessWidget {
+  const _CoreIngredientCard({required this.ingredients});
+
+  final List<SupplementIngredientCandidate> ingredients;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey<String>('core-ingredient-card'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpace.cardInside),
+      decoration: BoxDecoration(
+        color: AppColor.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadow.softCard,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '핵심 성분 한눈에',
+            style: TextStyle(
+              color: AppColor.ink,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: AppSpace.md),
+          for (int index = 0; index < ingredients.length; index++) ...<Widget>[
+            if (index != 0) const SizedBox(height: AppSpace.md),
+            _CoreIngredientRow(ingredient: ingredients[index]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CoreIngredientRow extends StatelessWidget {
+  const _CoreIngredientRow({required this.ingredient});
+
+  final SupplementIngredientCandidate ingredient;
+
+  @override
+  Widget build(BuildContext context) {
+    final double? dv = ingredient.dailyValuePercent;
+    // 충족 등급(figma) — %DV ≥ 100 충분 / < 100 부족 / null 직접 확인.
+    final (String gradeLabel, Color gradeFg, Color gradeBg) = dv == null
+        ? ('직접 확인', AppColor.review, AppColor.reviewSoft)
+        : dv >= 100
+        ? ('충분', AppColor.success, AppColor.successSoft)
+        : ('부족', AppColor.review, AppColor.reviewSoft);
+    final double? fillValue = dv == null ? null : (dv / 100).clamp(0, 1);
+    final Color fillColor = (dv != null && dv >= 100)
+        ? AppColor.success
+        : AppColor.review;
+    final String? amountText = _amountText(ingredient.amount, ingredient.unit);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                _displayName(ingredient.displayName, ingredient.originalName),
+                style: const TextStyle(
+                  color: AppColor.ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  height: 1.3,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+            if (amountText != null) ...<Widget>[
+              const SizedBox(width: AppSpace.sm),
+              Text(
+                amountText,
+                style: const TextStyle(
+                  color: AppColor.ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+            const SizedBox(width: AppSpace.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.sm,
+                vertical: 3,
+              ),
+              decoration: BoxDecoration(
+                color: gradeBg,
+                borderRadius: BorderRadius.circular(AppRadius.full),
+              ),
+              child: Text(
+                gradeLabel,
+                style: TextStyle(
+                  color: gradeFg,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (fillValue != null) ...<Widget>[
+          const SizedBox(height: AppSpace.sm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            child: LinearProgressIndicator(
+              value: fillValue,
+              minHeight: 6,
+              backgroundColor: AppColor.sunken,
+              valueColor: AlwaysStoppedAnimation<Color>(fillColor),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 성분명 — 원문명이 다르면 병기, 같거나 없으면 표시명만.
+  static String _displayName(String displayName, String? original) {
+    final String display = displayName.trim();
+    final String? originalName = original?.trim();
+    if (originalName == null || originalName.isEmpty) return display;
+    if (display.isEmpty) return originalName;
+    if (originalName.toLowerCase() == display.toLowerCase()) return display;
+    if (display.contains(originalName)) return display;
+    return '$display ($originalName)';
+  }
+
+  /// 함량값(예: '25 mcg') — 함량이 없으면 null(값·바 숨김).
+  static String? _amountText(double? amount, String? unit) {
+    if (amount == null) return null;
+    final String value = amount == amount.roundToDouble()
+        ? amount.toStringAsFixed(0)
+        : amount.toString();
+    final String trimmedUnit = unit?.trim() ?? '';
+    return trimmedUnit.isEmpty ? value : '$value $trimmedUnit';
+  }
+}
+
 class _SupplementInfoCard extends StatelessWidget {
   const _SupplementInfoCard({
     required this.icon,
@@ -4430,6 +4945,7 @@ class _SupplementInfoCard extends StatelessWidget {
     this.bodyWidget,
     required this.missingMessage,
     required this.onEdit,
+    this.trailingCount,
   }) : assert(body != null || bodyWidget != null);
 
   final IconData icon;
@@ -4438,6 +4954,9 @@ class _SupplementInfoCard extends StatelessWidget {
   final Widget? bodyWidget;
   final String? missingMessage;
   final VoidCallback? onEdit;
+
+  /// 제목 우측 경량 카운트 라벨('성분 N개' 등). null 이면 미노출.
+  final String? trailingCount;
 
   @override
   Widget build(BuildContext context) {
@@ -4455,16 +4974,16 @@ class _SupplementInfoCard extends StatelessWidget {
           Row(
             children: <Widget>[
               Container(
-                width: 40,
-                height: 40,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   color: AppColor.brand.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(11),
                 ),
-                child: Icon(icon, color: AppColor.brand, size: 22),
+                child: Icon(icon, color: AppColor.brand, size: 20),
               ),
               const SizedBox(width: AppSpace.sm),
-              Expanded(
+              Flexible(
                 child: Text(
                   title,
                   style: const TextStyle(
@@ -4475,6 +4994,19 @@ class _SupplementInfoCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (trailingCount != null) ...<Widget>[
+                const SizedBox(width: AppSpace.sm),
+                Text(
+                  trailingCount!,
+                  style: const TextStyle(
+                    color: AppColor.inkTertiary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+              const Spacer(),
               IconButton(
                 tooltip: '$title 수정',
                 onPressed: onEdit,
@@ -4499,7 +5031,7 @@ class _SupplementInfoCard extends StatelessWidget {
             Text(
               missingMessage!,
               style: const TextStyle(
-                color: Color(0xFFD87900),
+                color: AppColor.review,
                 fontSize: 13,
                 height: 1.4,
                 fontWeight: FontWeight.w800,
