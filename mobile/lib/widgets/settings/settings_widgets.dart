@@ -72,9 +72,10 @@ class SettingsRow extends StatelessWidget {
     required this.iconBg,
     required this.iconColor,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     this.onTap,
     this.trailing,
+    this.titleColor,
     super.key,
   });
 
@@ -90,14 +91,17 @@ class SettingsRow extends StatelessWidget {
   /// 제목.
   final String title;
 
-  /// 부제.
-  final String subtitle;
+  /// 부제. null 이면 부제 줄을 렌더하지 않는다.
+  final String? subtitle;
 
   /// 탭 콜백. null 이면 정적 행(chevron 없음).
   final VoidCallback? onTap;
 
   /// chevron 대신 표시할 우측 위젯 (상태 칩 등).
   final Widget? trailing;
+
+  /// 제목 색 (danger 톤 로그아웃 등). null 이면 기본 ink.
+  final Color? titleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -125,24 +129,30 @@ class SettingsRow extends StatelessWidget {
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0,
+                    color: titleColor,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: AppText.caption.copyWith(
-                    color: AppColor.inkTertiary,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
+                if (subtitle != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle!,
+                    style: AppText.caption.copyWith(
+                      color: AppColor.inkTertiary,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
           if (trailing != null)
             trailing!
           else if (onTap != null)
-            const Icon(Icons.chevron_right_rounded, color: AppColor.inkTertiary),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColor.inkTertiary,
+            ),
         ],
       ),
     );

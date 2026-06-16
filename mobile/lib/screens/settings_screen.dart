@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -104,10 +105,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  '서비스 정보',
-                  style: AppText.title.copyWith(fontSize: 20),
-                ),
+                Text('서비스 정보', style: AppText.title.copyWith(fontSize: 20)),
                 const SizedBox(height: AppSpace.md),
                 Text(
                   '레몬에이드는 만성질환을 가진 분들이 식단·영양제·활동을 쉽게 '
@@ -211,6 +209,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     AppSpace.xl + 80,
                   ),
                   children: [
+                    // 1. 내 건강
                     const SectionLabel('내 건강'),
                     SettingsCard(
                       children: [
@@ -244,20 +243,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const SectionLabel('알림'),
+                    // 2. 기기 연동 (신규) — 건강 데이터 라우트/백엔드 미구현이라
+                    // 탭 시 "준비 중" 안내만(날조 금지).
+                    const SectionLabel('기기 연동'),
                     SettingsCard(
                       children: [
                         SettingsRow(
-                          icon: Icons.medication_rounded,
+                          icon: Icons.watch_rounded,
                           iconBg: AppColor.brandSoft,
                           iconColor: AppColor.brandDeep,
-                          title: '복약 알림',
-                          subtitle: '시간·요일을 맞춰 알려드려요',
-                          onTap: () => context.go(
-                            '/shell/settings/medication-reminders',
-                          ),
+                          title: '갤럭시 워치 연동',
+                          subtitle: '걸음·심박·활동량 자동 기록',
+                          trailing: const _StatusChip(label: '미연동'),
+                          onTap: _showComingSoon,
                         ),
-                        const SettingsDivider(),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    // 3. 알림
+                    const SectionLabel('알림'),
+                    SettingsCard(
+                      children: [
                         SettingsRow(
                           icon: Icons.notifications_rounded,
                           iconBg: AppColor.brandSoft,
@@ -271,6 +277,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
+                    // 4. 테마 색상 (메인 하단 → 여기로 이동)
+                    const SectionLabel('테마 색상'),
+                    Consumer(
+                      builder:
+                          (BuildContext context, WidgetRef ref, Widget? child) {
+                            final BrandTheme current = ref.watch(
+                              brandThemeProvider,
+                            );
+                            return SettingsCard(
+                              children: [
+                                _ThemeSwatchRow(
+                                  current: current,
+                                  onSelect: (BrandTheme t) => ref
+                                      .read(brandThemeProvider.notifier)
+                                      .select(t),
+                                ),
+                              ],
+                            );
+                          },
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    // 5. 계정
                     const SectionLabel('계정'),
                     SettingsCard(
                       children: [
@@ -300,55 +328,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               : 'OCR 이미지 · 민감 건강 분석 동의 필요',
                           onTap: () => context.go('/shell/settings/policies'),
                         ),
-                        const SizedBox(height: AppSpace.md),
-                        _ConsentStatusCard(
-                          consentState: widget.controller.consentState,
-                          busy: widget.controller.busy,
-                          onGrant: widget.controller.grantMinimumConsents,
-                          onReload: widget.controller.bootstrap,
+                        const SettingsDivider(),
+                        SettingsRow(
+                          icon: Icons.download_rounded,
+                          iconBg: const Color(0xFFEDEFF3),
+                          iconColor: AppColor.inkSecondary,
+                          title: '데이터 내보내기',
+                          subtitle: '내 기록을 파일로 받아볼 수 있어요',
+                          onTap: _showComingSoon,
                         ),
-                        const SizedBox(height: AppSpace.md),
-                        _TokenAccessCard(
-                          controller: _tokenController,
-                          errorText: _tokenError,
-                          session: widget.session,
-                          onSave: _saveToken,
-                          onClear: widget.session.bearerToken == null
-                              ? null
-                              : widget.session.clearBearerToken,
-                        ),
+                        // ── dev 전용: 동의 상태 카드 + JWT 토큰 카드 ──
+                        // release 동의는 policies 화면이 담당하므로 메인 카드는
+                        // 디버그/dev 빌드에서만 노출(가이드 08 컨텍스트 유지).
+                        if (!kReleaseMode) ...[
+                          const SizedBox(height: AppSpace.md),
+                          _ConsentStatusCard(
+                            consentState: widget.controller.consentState,
+                            busy: widget.controller.busy,
+                            onGrant: widget.controller.grantMinimumConsents,
+                            onReload: widget.controller.bootstrap,
+                          ),
+                          const SizedBox(height: AppSpace.md),
+                          _TokenAccessCard(
+                            controller: _tokenController,
+                            errorText: _tokenError,
+                            session: widget.session,
+                            onSave: _saveToken,
+                            onClear: widget.session.bearerToken == null
+                                ? null
+                                : widget.session.clearBearerToken,
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: AppSpace.lg),
-                    const SectionLabel('OCR 테스트'),
-                    const SettingsCard(
-                      children: [
-                        SettingsRow(
-                          icon: Icons.camera_alt_rounded,
-                          iconBg: AppColor.brandSoft,
-                          iconColor: AppColor.brandDeep,
-                          title: '촬영 환경',
-                          subtitle: 'Android Studio AVD와 live flag 사용',
-                        ),
-                        SettingsDivider(),
-                        SettingsRow(
-                          icon: Icons.photo_library_rounded,
-                          iconBg: AppColor.successSoft,
-                          iconColor: AppColor.success,
-                          title: '갤러리 입력',
-                          subtitle: '선택 이미지는 앱 캐시에 복사 후 OCR 업로드',
-                        ),
-                        SettingsDivider(),
-                        SettingsRow(
-                          icon: Icons.psychology_rounded,
-                          iconBg: AppColor.warningSoft,
-                          iconColor: AppColor.warning,
-                          title: '로컬 LLM 설명',
-                          subtitle: 'Ollama 사용 여부는 백엔드 설정을 따름',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpace.lg),
+                    // 6. 안내
                     const SectionLabel('안내'),
                     SettingsCard(
                       children: [
@@ -359,6 +373,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           title: '서비스 정보',
                           subtitle: '앱 소개와 의료 면책 안내',
                           onTap: () => _showServiceInfoSheet(context),
+                        ),
+                        const SettingsDivider(),
+                        SettingsRow(
+                          icon: Icons.help_outline_rounded,
+                          iconBg: const Color(0xFFEDEFF3),
+                          iconColor: AppColor.inkSecondary,
+                          title: '도움말·문의',
+                          subtitle: '궁금한 점을 알려주세요',
+                          onTap: _showComingSoon,
                         ),
                         const SettingsDivider(),
                         SettingsRow(
@@ -380,28 +403,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ],
                     ),
+                    // ── dev 전용: OCR 테스트 더미 행 ──
+                    if (!kReleaseMode) ...[
+                      const SizedBox(height: AppSpace.lg),
+                      const SectionLabel('OCR 테스트'),
+                      const SettingsCard(
+                        children: [
+                          SettingsRow(
+                            icon: Icons.camera_alt_rounded,
+                            iconBg: AppColor.brandSoft,
+                            iconColor: AppColor.brandDeep,
+                            title: '촬영 환경',
+                            subtitle: 'Android Studio AVD와 live flag 사용',
+                          ),
+                          SettingsDivider(),
+                          SettingsRow(
+                            icon: Icons.photo_library_rounded,
+                            iconBg: AppColor.successSoft,
+                            iconColor: AppColor.success,
+                            title: '갤러리 입력',
+                            subtitle: '선택 이미지는 앱 캐시에 복사 후 OCR 업로드',
+                          ),
+                          SettingsDivider(),
+                          SettingsRow(
+                            icon: Icons.psychology_rounded,
+                            iconBg: AppColor.warningSoft,
+                            iconColor: AppColor.warning,
+                            title: '로컬 LLM 설명',
+                            subtitle: 'Ollama 사용 여부는 백엔드 설정을 따름',
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: AppSpace.lg),
-                    const SectionLabel('테마 색상'),
-                    Consumer(
-                      builder: (
-                        BuildContext context,
-                        WidgetRef ref,
-                        Widget? child,
-                      ) {
-                        final BrandTheme current =
-                            ref.watch(brandThemeProvider);
-                        return SettingsCard(
-                          children: [
-                            _ThemeSwatchRow(
-                              current: current,
-                              onSelect: (BrandTheme t) =>
-                                  ref
-                                      .read(brandThemeProvider.notifier)
-                                      .select(t),
-                            ),
-                          ],
-                        );
-                      },
+                    // 7. 로그아웃 (단독, danger 톤)
+                    SettingsCard(
+                      children: [
+                        SettingsRow(
+                          icon: Icons.logout_rounded,
+                          iconBg: AppColor.dangerSoft,
+                          iconColor: AppColor.danger,
+                          title: '로그아웃',
+                          subtitle: '이 기기에서 로그아웃해요',
+                          titleColor: AppColor.danger,
+                          onTap: widget.session.clearBearerToken,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSpace.lg),
                     Center(
@@ -424,6 +471,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// 백엔드 라우트가 아직 없는 항목의 안전한 안내(날조 금지 — 가짜 호출 X).
+  ///
+  /// 워치 연동·데이터 내보내기·도움말 문의 등은 라우트/채널이 정해지지
+  /// 않아(백엔드 공백) SnackBar 로 "준비 중" 안내만 한다.
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(const SnackBar(content: Text('아직 준비 중이에요')));
+  }
+
   Future<void> _saveToken() async {
     setState(() {
       _tokenError = null;
@@ -437,6 +494,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _tokenError = '토큰을 입력해주세요.';
       });
     }
+  }
+}
+
+/// 기기 연동 상태 칩 (예: '미연동'). 중립 톤(section 배경 + 3차 잉크).
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColor.section,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        label,
+        style: AppText.micro.copyWith(
+          color: AppColor.inkTertiary,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      ),
+    );
   }
 }
 
@@ -654,10 +737,7 @@ class _ProfileHeader extends StatelessWidget {
 /// 옐로/퍼플/그린/블루 스와치 4개를 가로로 나열한다.
 /// 선택된 항목은 검정 외곽선 + 체크 아이콘으로 표시.
 class _ThemeSwatchRow extends StatelessWidget {
-  const _ThemeSwatchRow({
-    required this.current,
-    required this.onSelect,
-  });
+  const _ThemeSwatchRow({required this.current, required this.onSelect});
 
   final BrandTheme current;
   final ValueChanged<BrandTheme> onSelect;
@@ -707,9 +787,7 @@ class _ThemeSwatchRow extends StatelessWidget {
                       color: t.color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: selected
-                            ? AppColor.ink
-                            : Colors.transparent,
+                        color: selected ? AppColor.ink : Colors.transparent,
                         width: 2.5,
                       ),
                     ),

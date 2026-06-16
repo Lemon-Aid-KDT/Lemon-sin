@@ -88,9 +88,7 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
           ),
         ),
       ),
-      body: SafeArea(
-        child: _done ? _buildDone() : _buildForm(),
-      ),
+      body: SafeArea(child: _done ? _buildDone() : _buildForm()),
     );
   }
 
@@ -158,12 +156,8 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
               const SizedBox(height: AppSpace.md),
               CheckboxListTile(
                 value: _confirmed,
-                onChanged: (bool? v) =>
-                    setState(() => _confirmed = v ?? false),
-                title: Text(
-                  '안내 사항을 확인했고, 탈퇴에 동의해요',
-                  style: AppText.body,
-                ),
+                onChanged: (bool? v) => setState(() => _confirmed = v ?? false),
+                title: Text('안내 사항을 확인했고, 탈퇴에 동의해요', style: AppText.body),
                 activeColor: AppColor.brand,
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
@@ -172,7 +166,12 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.all(AppSpace.page),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.page,
+            AppSpace.page,
+            AppSpace.page,
+            AppSpace.sm,
+          ),
           child: SizedBox(
             height: 52,
             child: AppPrimaryButton(
@@ -181,6 +180,26 @@ class _WithdrawScreenState extends ConsumerState<WithdrawScreen> {
               loading: _submitting,
               enabled: _confirmed,
               onPressed: (_confirmed && !_submitting) ? _withdraw : null,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.page,
+            0,
+            AppSpace.page,
+            AppSpace.lg,
+          ),
+          child: TextButton(
+            onPressed: _submitting
+                ? null
+                : () => Navigator.of(context).maybePop(),
+            child: Text(
+              '계속 사용할게요',
+              style: AppText.subtitle.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColor.inkSecondary,
+              ),
             ),
           ),
         ),

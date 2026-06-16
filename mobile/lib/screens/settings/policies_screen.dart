@@ -12,12 +12,19 @@ import '../../features/privacy/privacy_repository.dart';
 import '../../utils/design_tokens_v2.dart';
 import '../../widgets/settings/settings_widgets.dart';
 
-/// 약관·정책 정적 항목.
-const List<String> _kPolicyItems = <String>[
-  '서비스 이용약관',
-  '개인정보 처리방침',
-  '민감정보 처리 동의 안내',
-  '오픈소스 라이선스',
+/// 약관·정책 정적 항목 (제목 + 구분 아이콘).
+class _PolicyItem {
+  const _PolicyItem(this.title, this.icon);
+
+  final String title;
+  final IconData icon;
+}
+
+const List<_PolicyItem> _kPolicyItems = <_PolicyItem>[
+  _PolicyItem('서비스 이용약관', Icons.description_outlined),
+  _PolicyItem('개인정보 처리방침', Icons.lock_outline),
+  _PolicyItem('민감정보(건강) 처리 동의', Icons.medical_services_rounded),
+  _PolicyItem('오픈소스 라이선스', Icons.code_rounded),
 ];
 
 /// 약관·정책 + 동의 관리 화면.
@@ -104,11 +111,10 @@ class _PoliciesScreenState extends ConsumerState<PoliciesScreen> {
               children: <Widget>[
                 for (int i = 0; i < _kPolicyItems.length; i += 1) ...<Widget>[
                   SettingsRow(
-                    icon: Icons.description_outlined,
+                    icon: _kPolicyItems[i].icon,
                     iconBg: const Color(0xFFEDEFF3),
                     iconColor: AppColor.inkSecondary,
-                    title: _kPolicyItems[i],
-                    subtitle: '내용 보기',
+                    title: _kPolicyItems[i].title,
                     onTap: () {},
                   ),
                   if (i < _kPolicyItems.length - 1) const SettingsDivider(),
@@ -125,12 +131,15 @@ class _PoliciesScreenState extends ConsumerState<PoliciesScreen> {
             else
               SettingsCard(
                 children: <Widget>[
-                  for (int i = 0;
-                      i < UserConsentType.values.length;
-                      i += 1) ...<Widget>[
+                  for (
+                    int i = 0;
+                    i < UserConsentType.values.length;
+                    i += 1
+                  ) ...<Widget>[
                     _ConsentToggleRow(
                       type: UserConsentType.values[i],
-                      granted: _granted[UserConsentType.values[i].code] ?? false,
+                      granted:
+                          _granted[UserConsentType.values[i].code] ?? false,
                       busy: _busyCode == UserConsentType.values[i].code,
                       onChanged: (bool v) =>
                           _toggleConsent(UserConsentType.values[i], v),
@@ -140,6 +149,17 @@ class _PoliciesScreenState extends ConsumerState<PoliciesScreen> {
                   ],
                 ],
               ),
+            const SizedBox(height: AppSpace.xl),
+            Center(
+              child: Text(
+                'Lemon Aid · 버전 1.0.0 (최신)',
+                style: AppText.caption.copyWith(
+                  color: AppColor.inkTertiary,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
           ],
         ),
       ),
