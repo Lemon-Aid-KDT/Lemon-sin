@@ -8,6 +8,7 @@ import 'app_controller.dart';
 import 'app_providers.dart';
 import 'core/config/app_config.dart';
 import 'core/storage/local_prefs.dart';
+import 'features/auth/login_screen.dart';
 import 'features/auth/signup_wizard/profile_setup_wizard_screen.dart';
 import 'features/auth/token_session.dart';
 import 'features/consent/consent_gate_sheet.dart';
@@ -109,6 +110,14 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
       ),
       GoRoute(
         path: '/login',
+        builder: (BuildContext context, GoRouterState state) {
+          return const LoginScreen();
+        },
+      ),
+      // dev 전용 — JWT 붙여넣기 + dev bypass 진입(릴리즈 보안 가드 대상).
+      // 로그인 화면의 '로그인' 버튼이 비릴리즈에서 이 경로로 보낸다.
+      GoRoute(
+        path: '/login/dev',
         builder: (BuildContext context, GoRouterState state) {
           return const _BearerTokenLoginScreen();
         },
