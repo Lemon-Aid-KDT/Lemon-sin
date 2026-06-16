@@ -34,6 +34,7 @@ import '../features/analysis_trend/analysis_trend_repository.dart';
 import '../features/dashboard/home_models.dart';
 import '../shared/score_label_colors.dart';
 import '../utils/design_tokens_v2.dart';
+import '../utils/mascot_poses.dart';
 import '../widgets/common/medical_disclaimer.dart';
 import '../widgets/common/pressable.dart';
 
@@ -735,7 +736,8 @@ class _LemonBotCta extends StatelessWidget {
         ),
         child: Row(
           children: <Widget>[
-            const Text('🍋', style: TextStyle(fontSize: 18)),
+            // Figma 800:23 — 레몬봇 마스코트 캐릭터(돋보기 포즈). 이모지 아님.
+            Image.asset(MascotPose.find.asset, width: 24, height: 24),
             const SizedBox(width: AppSpace.sm),
             Expanded(
               child: Text(
