@@ -701,7 +701,7 @@ class _GaugeWithMascot extends StatelessWidget {
     return LayoutBuilder(
       builder: (ctx, box) {
         final w = box.maxWidth;
-        final h = w * 0.52;
+        final h = w * 0.56;
         return SizedBox(
           width: w,
           height: h + 8,
@@ -751,9 +751,10 @@ class _HalfGaugePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height);
-    final radius = size.width / 2 - 14;
+    final radius = size.width / 2 - 18;
     final rect = Rect.fromCircle(center: center, radius: radius);
-    const stroke = 18.0;
+    // figma 268:24 — 굵은 골드 아크(반지름 대비 두껍게).
+    const stroke = 32.0;
 
     // 트랙 — 옅은 노랑 (figma 268:24 굵은 골드 아크 톤)
     final trackPaint = Paint()
