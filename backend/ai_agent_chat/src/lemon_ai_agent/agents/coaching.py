@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from lemon_ai_agent.nutrient_names import nutrient_ko
 from lemon_ai_agent.schemas import (
     CoachingRecommendation,
     FindingLevel,
@@ -8,10 +9,10 @@ from lemon_ai_agent.schemas import (
 )
 
 FOOD_FIRST_SUGGESTIONS = {
-    "protein": "Add protein-rich foods such as tofu, eggs, fish, or chicken.",
-    "fiber": "Add fiber-rich foods such as vegetables, beans, oats, or seaweed.",
-    "vitamin d": "Consider vitamin D-rich foods such as eggs or fortified foods.",
-    "magnesium": "Add magnesium-rich foods such as nuts, beans, or leafy vegetables.",
+    "protein": "두부, 달걀, 생선, 닭고기처럼 단백질이 풍부한 음식을 더해보세요.",
+    "fiber": "채소, 콩, 귀리, 미역처럼 식이섬유가 풍부한 음식을 더해보세요.",
+    "vitamin d": "달걀이나 강화식품처럼 비타민 D가 들어 있는 음식을 챙겨보세요.",
+    "magnesium": "견과류, 콩, 잎채소처럼 마그네슘이 풍부한 음식을 더해보세요.",
 }
 
 SUPPLEMENT_INGREDIENT_ALLOWED = {
@@ -35,9 +36,10 @@ class CoachingAgent:
 
         for finding in findings:
             nutrient_key = finding.nutrient.lower()
+            nutrient_label = nutrient_ko(finding.nutrient)
             repeat_count = memory_patterns.get(nutrient_key, 0)
             repeat_prefix = (
-                f" This pattern has appeared {repeat_count} times in recent confirmed records."
+                f" 최근 확인된 기록에서 이 패턴이 {repeat_count}번 나타났어요."
                 if repeat_count >= REPEATED_PATTERN_THRESHOLD
                 else ""
             )
@@ -45,7 +47,7 @@ class CoachingAgent:
                 recommendations.append(
                     CoachingRecommendation(
                         category="reduce",
-                        title=f"Reduce {finding.nutrient}",
+                        title=f"{nutrient_label} 섭취 줄여보기",
                         rationale=f"{finding.message}{repeat_prefix}",
                         priority=min(
                             10,
@@ -58,12 +60,12 @@ class CoachingAgent:
             elif finding.level == FindingLevel.LOW:
                 food_text = FOOD_FIRST_SUGGESTIONS.get(
                     nutrient_key,
-                    f"Add foods that provide {finding.nutrient}.",
+                    f"{nutrient_label} 함량이 높은 음식을 더해보세요.",
                 )
                 recommendations.append(
                     CoachingRecommendation(
                         category="add_food",
-                        title=f"Add {finding.nutrient} from food first",
+                        title=f"{nutrient_label}, 먼저 음식으로 채워보기",
                         rationale=f"{finding.message} {food_text}{repeat_prefix}",
                         priority=min(10, 7 + min(repeat_count, 2)),
                     )
@@ -72,11 +74,11 @@ class CoachingAgent:
                     recommendations.append(
                         CoachingRecommendation(
                             category="consider_ingredient",
-                            title=f"Consider {finding.nutrient} ingredient support",
+                            title=f"{nutrient_label} 영양제로 보충 고려하기",
                             rationale=(
-                                "If food intake is difficult, consider this ingredient "
-                                "with professional review when medication or chronic "
-                                "condition context exists."
+                                "음식만으로 채우기 어렵다면, 복용 중인 약이나 만성질환이 "
+                                "있을 때는 의사·약사와 상담한 뒤 영양제 보충을 "
+                                "고려해보세요."
                             ),
                             priority=5,
                             requires_professional_consult=bool(
@@ -89,8 +91,8 @@ class CoachingAgent:
             recommendations.append(
                 CoachingRecommendation(
                     category="mission",
-                    title="Follow a small meal-management mission today",
-                    rationale="Recent trend signals need attention: "
+                    title="오늘은 가벼운 식단 관리 미션 하나 해보기",
+                    rationale="최근 추이에서 살펴볼 점이 있어요: "
                     + " / ".join(context.health_trend_notes),
                     priority=6,
                 )

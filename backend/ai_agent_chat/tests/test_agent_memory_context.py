@@ -50,8 +50,8 @@ def test_repeated_memory_pattern_prioritizes_matching_recommendation() -> None:
     output = DailyHealthAgentAppAdapter().run(request)
 
     assert "agent_memory" in output.used_tools
-    assert output.recommendations[0].title == "Add protein from food first"
-    assert "appeared 3 times" in output.recommendations[0].rationale
+    assert output.recommendations[0].title == "단백질, 먼저 음식으로 채워보기"
+    assert "3번 나타났어요" in output.recommendations[0].rationale
 
 
 def test_memory_pattern_accepts_canonicalized_nutrient_key() -> None:
@@ -97,9 +97,9 @@ def test_memory_pattern_accepts_canonicalized_nutrient_key() -> None:
     vitamin_d = next(
         item
         for item in output.recommendations
-        if item.title == "Add vitamin d from food first"
+        if item.title == "비타민 D, 먼저 음식으로 채워보기"
     )
-    assert "appeared 2 times" in vitamin_d.rationale
+    assert "2번 나타났어요" in vitamin_d.rationale
     assert vitamin_d.priority == 9
 
 

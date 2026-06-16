@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from lemon_ai_agent.nutrient_names import nutrient_ko
 from lemon_ai_agent.schemas import (
     DailyIntake,
     FindingLevel,
@@ -63,7 +64,7 @@ class NutritionEngine:
                         unit=amount.unit,
                         ratio_to_target=None,
                         level=FindingLevel.ADEQUATE,
-                        message="Reference range is not configured.",
+                        message="기준 범위가 설정되어 있지 않아요.",
                     )
                 )
                 continue
@@ -156,13 +157,14 @@ class NutritionEngine:
         return FindingLevel.ADEQUATE
 
     def _message(self, nutrient: str, level: FindingLevel, ratio: float | None) -> str:
+        label = nutrient_ko(nutrient)
         if ratio is None:
-            return f"{nutrient} could not be compared with a target."
+            return f"{label} 섭취량을 목표와 비교하기 어려워요."
         pct = round(ratio * 100)
         if level == FindingLevel.LOW:
-            return f"{nutrient} intake is about {pct}% of the target."
+            return f"{label} 섭취량이 목표의 약 {pct}% 수준이에요."
         if level == FindingLevel.HIGH:
-            return f"{nutrient} intake is above the target range."
+            return f"{label} 섭취량이 목표 범위보다 높아요."
         if level == FindingLevel.RISKY:
-            return f"{nutrient} intake is above the configured upper limit."
-        return f"{nutrient} intake is within the target range."
+            return f"{label} 섭취량이 설정된 상한보다 높아요."
+        return f"{label} 섭취량이 목표 범위 안에 있어요."
