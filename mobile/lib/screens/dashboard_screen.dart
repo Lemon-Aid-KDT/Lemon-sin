@@ -66,9 +66,13 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   // 선택된 날짜 — 메인이면 항상 오늘, 기록 모드면 recordDate 부터.
   late DateTime _selectedDate;
+  // _selectedDate 가 '오늘'을 따라가는 중인지 (사용자가 과거 날짜를 고르면 false).
+  // 앱이 자정을 넘겨 다시 활성화되면 오늘로 롤오버해 영양제/복약 체크를 초기화한다.
+  bool _followingToday = true;
   // 헤더 strip 이 보여주는 주 (그 주의 시작일 = 일요일, 캘린더와 통일)
   late DateTime _focusedMonday;
   // 영양제 체크 토글 — 선택 날짜 기준 LocalPrefs 영속 (자정 넘어가면 새 날짜 키).
@@ -87,12 +91,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     final base = widget.recordDate ?? now;
     _selectedDate = DateTime(base.year, base.month, base.day);
     _focusedMonday = _mondayOf(_selectedDate);
+    // 메인(오늘) 진입은 날짜 자동 롤오버 대상, 기록 모드(특정 날짜)는 고정.
+    _followingToday = widget.recordDate == null;
     _loadChecksForSelectedDate();
     _loadTargetKcal();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 앱이 다시 활성화될 때, 오늘을 따라가는 중이고 자정을 넘겨 날짜가 지났으면
+    // 오늘로 롤오버한다 → 새 날짜의 (빈) 체크 상태를 읽어 복용 체크가 초기화된다.
+    if (state != AppLifecycleState.resumed || !_followingToday) return;
+    final DateTime today = DateTime.now();
+    if (_sameDay(_selectedDate, today)) return;
+    setState(() {
+      _selectedDate = DateTime(today.year, today.month, today.day);
+      _focusedMonday = _mondayOf(_selectedDate);
+      _loadChecksForSelectedDate();
+    });
   }
 
   /// 목표 kcal 을 백엔드 값으로 주입한다 (가이드 02 ④-13 — 클라이언트 계산 금지).
@@ -159,6 +187,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _selectedDate = picked;
       _focusedMonday = _mondayOf(picked);
+      // 과거 날짜를 직접 고르면 오늘 자동 롤오버를 멈춘다(오늘 선택 시 재개).
+      _followingToday = _sameDay(picked, DateTime.now());
       // 날짜가 바뀌면 그 날짜의 체크 상태를 다시 읽는다 (자정 롤오버 포함).
       _loadChecksForSelectedDate();
     });
@@ -180,6 +210,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _selectedDate = DateTime(now.year, now.month, now.day);
       _focusedMonday = _mondayOf(now);
+      _followingToday = true;
       _loadChecksForSelectedDate();
     });
   }

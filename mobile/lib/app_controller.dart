@@ -236,6 +236,11 @@ class AppController extends ChangeNotifier {
   SupplementAnalysisPreview? _analysisPreview;
   SupplementMultiImageAnalysisPreview? _multiImageAnalysisPreview;
   MealImageAnalysisPreview? _mealAnalysisPreview;
+  // 분석 결과 화면에서 사용자가 첨부/촬영한 원본 이미지를 다시 보여주기 위한 로컬
+  // 파일 경로. 분석 시작 시 채워지고 모드 전환·초기화 시 비운다(Figma: 결과에 원본
+  // 이미지 노출). 백엔드는 원본 이미지를 보관/반환하지 않으므로 클라이언트가 보관한다.
+  List<String> _supplementImagePaths = const <String>[];
+  String? _mealImagePath;
   ComprehensiveDietAnalysis? _comprehensiveDietAnalysis;
   MealRecordResponse? _lastRegisteredMeal;
   UserSupplementResponse? _lastRegisteredSupplement;
@@ -340,6 +345,14 @@ class AppController extends ChangeNotifier {
 
   /// Current meal image analysis preview.
   MealImageAnalysisPreview? get mealAnalysisPreview => _mealAnalysisPreview;
+
+  /// Local file paths of the supplement images the user attached/captured for the
+  /// current analysis, so the result screen can re-show the original image.
+  List<String> get supplementImagePaths => _supplementImagePaths;
+
+  /// Local file path of the meal image the user attached/captured for the current
+  /// analysis, so the result screen can re-show the original image.
+  String? get mealImagePath => _mealImagePath;
 
   /// Latest comprehensive diet analysis (C-hybrid result surface), if loaded.
   ///
@@ -638,6 +651,8 @@ class AppController extends ChangeNotifier {
       _analysisPreview = selection.preview;
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
+      _supplementImagePaths = <String>[imagePath];
+      _mealImagePath = null;
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
@@ -672,6 +687,9 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
+      _supplementImagePaths =
+          images.map((SupplementImageUpload image) => image.path).toList();
+      _mealImagePath = null;
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
@@ -782,6 +800,8 @@ class AppController extends ChangeNotifier {
       );
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
+      _mealImagePath = imagePath;
+      _supplementImagePaths = const <String>[];
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
@@ -1142,6 +1162,8 @@ class AppController extends ChangeNotifier {
       _analysisPreview = selection.preview;
       _multiImageAnalysisPreview = null;
       _mealAnalysisPreview = null;
+      _supplementImagePaths = <String>[imagePath];
+      _mealImagePath = null;
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
@@ -1181,6 +1203,9 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
+      _supplementImagePaths =
+          images.map((SupplementImageUpload image) => image.path).toList();
+      _mealImagePath = null;
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
@@ -1207,6 +1232,8 @@ class AppController extends ChangeNotifier {
       if (!_isCurrentAnalysisJob(serial)) return;
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
+      _mealImagePath = imagePath;
+      _supplementImagePaths = const <String>[];
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
       _lastRegisteredMeal = null;
@@ -1315,19 +1342,24 @@ class AppController extends ChangeNotifier {
     final List<_SupplementAnalysisAttempt> successful = attempts
         .where((_SupplementAnalysisAttempt attempt) => attempt.succeeded)
         .toList(growable: false);
-    // Surface a backend rate limit (HTTP 429) ahead of an empty/unusable
-    // preview: a rate-limited scan must tell the user to retry, not silently
-    // render the "can't read the label" fallback as if analysis had run.
-    final ApiError? rateLimited = attempts
+    // Surface a backend retryable-capacity error (HTTP 429 rate limit or HTTP 503
+    // inference-pool saturation) ahead of an empty/unusable preview: such a scan
+    // must tell the user to retry, not silently render the "can't read the label"
+    // fallback as if analysis had run. The backend sheds excess concurrent scans
+    // with 503 inference_capacity_exceeded to protect the single local model.
+    final ApiError? retryable = attempts
         .map((_SupplementAnalysisAttempt attempt) => attempt.error)
         .whereType<ApiError>()
         .where(
           (ApiError error) =>
-              error.statusCode == 429 || error.code == 'rate_limited',
+              error.statusCode == 429 ||
+              error.statusCode == 503 ||
+              error.code == 'rate_limited' ||
+              error.code == 'inference_capacity_exceeded',
         )
         .firstOrNull;
     if (successful.isEmpty) {
-      if (rateLimited != null) throw rateLimited;
+      if (retryable != null) throw retryable;
       final Object? firstError = attempts
           .map((_SupplementAnalysisAttempt attempt) => attempt.error)
           .whereType<Object>()
@@ -1348,8 +1380,8 @@ class AppController extends ChangeNotifier {
       ).compareTo(_providerPriority(right.provider));
     });
     final _SupplementAnalysisAttempt best = successful.first;
-    if (rateLimited != null && !_isUsableSupplementPreview(best.preview!)) {
-      throw rateLimited;
+    if (retryable != null && !_isUsableSupplementPreview(best.preview!)) {
+      throw retryable;
     }
     return best;
   }

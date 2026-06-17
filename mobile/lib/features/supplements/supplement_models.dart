@@ -613,6 +613,7 @@ class SupplementAnalysisPreview {
     required this.status,
     required this.parsedProduct,
     required this.ingredientCandidates,
+    this.suggestedCategoryKeys = const <String>[],
     required this.layoutAvailable,
     required this.layoutFallbackReason,
     required this.labelSections,
@@ -649,6 +650,10 @@ class SupplementAnalysisPreview {
 
   /// Candidate ingredients requiring user review.
   final List<SupplementIngredientCandidate> ingredientCandidates;
+
+  /// Curated category keys derived from the recognized ingredient names,
+  /// used to pre-select the category dropdown on the confirmation screen.
+  final List<String> suggestedCategoryKeys;
 
   /// Whether coordinate-derived layout sections are available.
   final bool layoutAvailable;
@@ -761,6 +766,10 @@ class SupplementAnalysisPreview {
           .whereType<Map<String, dynamic>>()
           .map(SupplementIngredientCandidate.fromJson)
           .toList(growable: false),
+      suggestedCategoryKeys: readOptionalStringList(
+        json,
+        'suggested_category_keys',
+      ),
       layoutAvailable: json['layout_available'] == true,
       layoutFallbackReason: readOptionalString(json, 'layout_fallback_reason'),
       labelSections: readOptionalList(json, 'label_sections')

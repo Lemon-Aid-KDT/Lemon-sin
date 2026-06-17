@@ -1,6 +1,7 @@
 // screens/analysis_result_screen.dart — 17 Pro UIUX analysis result surface.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -96,6 +97,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   // 유지(드롭다운 미노출 — 백엔드 카탈로그 부재 시 조용히 강하).
   List<SupplementCategory> _supplementCategories = const <SupplementCategory>[];
   String? _selectedCategoryKey;
+  // 분류 자동 선택을 분석 건당 1회만 적용하기 위한 가드. 카탈로그 로드와 프리뷰
+  // 표시 순서가 비결정적이라 build()에서 재시도하되, 한번 적용하면 사용자가 바꾼
+  // 선택을 덮어쓰지 않는다.
+  String? _categoryAutoSelectedAnalysisId;
 
   bool get _isMeal => widget.mode == 'meal';
 
@@ -197,6 +202,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         controller?.mealAnalysisPreview;
     if (preview != null) {
       _seedCorrectionFields(preview);
+      _maybeAutoSelectCategory(preview);
     }
     if (mealPreview != null) {
       _seedMealCorrectionFields(mealPreview);
@@ -229,6 +235,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
                     _StatusBanner(error: error),
                     const SizedBox(height: AppSpace.md),
                   ],
+                  ..._analyzedImageHeader(controller),
                   if (!_isMeal && supplementGroups.length > 1) ...<Widget>[
                     _SupplementPreviewTabs(
                       groups: supplementGroups,
@@ -1544,7 +1551,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   }
 
   String _ingredientAmountText(double? amount, String? unit) {
-    if (amount == null) return '함량 확인 필요';
+    // 함량 칸이 좁아 긴 문구는 줄바꿈된다 → 짧게(칼럼 한 줄에 맞춤).
+    if (amount == null) return '확인 필요';
     final String amountText = _formatEditableAmount(amount);
     final String? normalizedUnit = _nonEmpty(unit);
     if (normalizedUnit == null) return amountText;
@@ -2033,11 +2041,58 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return confirmed;
   }
 
+  /// 분석 결과 상단에 사용자가 첨부/촬영한 원본 이미지를 다시 보여준다(Figma 참고).
+  /// 음식은 mealImagePath, 영양제는 대표(첫) supplementImagePaths 를 사용한다. 경로가
+  /// 없거나 로컬 파일이 사라졌으면 아무것도 그리지 않는다(미허위 — 가짜 이미지 금지).
+  List<Widget> _analyzedImageHeader(AppController? controller) {
+    if (controller == null) return const <Widget>[];
+    final String? path = _isMeal
+        ? controller.mealImagePath
+        : (controller.supplementImagePaths.isEmpty
+              ? null
+              : controller.supplementImagePaths.first);
+    if (path == null) return const <Widget>[];
+    final File file = File(path);
+    if (!file.existsSync()) return const <Widget>[];
+    return <Widget>[
+      _AnalyzedImageCard(file: file),
+      const SizedBox(height: AppSpace.md),
+    ];
+  }
+
+  /// 인식된 성분명 기반으로 백엔드가 제안한 분류(suggestedCategoryKeys)를 카탈로그와
+  /// 대조해 분석 건당 1회 자동 선택한다. 단일 매칭일 때만 적용해 종합비타민 등 다중
+  /// 분류 제품의 오선택을 피하고, 사용자가 직접 바꾼 선택은 덮어쓰지 않는다. 카탈로그
+  /// 로드와 프리뷰 표시 순서가 비결정적이라 카탈로그가 빈 동안은 표시하고 재시도한다.
+  void _maybeAutoSelectCategory(SupplementAnalysisPreview preview) {
+    if (_categoryAutoSelectedAnalysisId == preview.analysisId) return;
+    if (_supplementCategories.isEmpty) return;
+    if (_selectedCategoryKey != null) {
+      _categoryAutoSelectedAnalysisId = preview.analysisId;
+      return;
+    }
+    final Set<String> catalogKeys = _supplementCategories
+        .map((SupplementCategory category) => category.categoryKey)
+        .toSet();
+    final List<String> matches = preview.suggestedCategoryKeys
+        .where(catalogKeys.contains)
+        .toList(growable: false);
+    _categoryAutoSelectedAnalysisId = preview.analysisId;
+    if (matches.length == 1) {
+      _selectedCategoryKey = matches.first;
+    }
+  }
+
   void _seedCorrectionFields(SupplementAnalysisPreview preview) {
     if (_seededAnalysisId == preview.analysisId) return;
     _seedingCorrectionFields = true;
     try {
       _seededAnalysisId = preview.analysisId;
+      // 새 분석 건이 들어오면 분류 자동 선택을 초기화해, 이전 스캔의 선택이
+      // 남지 않고 _maybeAutoSelectCategory가 이번 건의 제안으로 다시 채우게 한다.
+      // (같은 분석 건 재빌드 시에는 이 블록을 건너뛰므로 사용자 선택은 보존된다.)
+      _selectedCategoryKey = null;
+      _categoryAutoSelectedAnalysisId = null;
       _productNameController.text = preview.parsedProduct.productName ?? '';
       _manufacturerController.text = preview.parsedProduct.manufacturer ?? '';
       SupplementIngredientCandidate? firstCandidate;
@@ -2083,9 +2138,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final List<MealFoodCandidate> candidates = preview.foodCandidates;
     final int? initialIndex = candidates.isEmpty ? null : 0;
     _selectedMealCandidateIndex = initialIndex;
-    _mealPortionAmount = clampPortion(
-      initialIndex == null ? 1 : (candidates[initialIndex].portionAmount ?? 1),
-    );
+    // 후보의 kcal/탄단지는 백엔드가 추정한 1회 섭취분(portion_amount 그램)에 대한
+    // 값이다. portion_amount(예: 359 g)는 인분 수가 아니라 무게이므로 섭취량 배율로
+    // 쓰면 안 된다 — 감지된 분량을 그대로 1인분으로 두고, 사용자가 토글로 조절한다.
+    _mealPortionAmount = 1;
     _applySelectedCandidateToFields(preview);
   }
 
@@ -2120,9 +2176,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     if (index < 0 || index >= preview.foodCandidates.length) return;
     setState(() {
       _selectedMealCandidateIndex = index;
-      _mealPortionAmount = clampPortion(
-        preview.foodCandidates[index].portionAmount ?? 1,
-      );
+      // 후보 macros는 감지된 분량(portion_amount 그램) 기준 1인분 값 — 인분 배율은 1.
+      _mealPortionAmount = 1;
       _applySelectedCandidateToFields(preview);
     });
   }
@@ -3414,6 +3469,10 @@ class _IngredientAmountCell extends StatelessWidget {
             ),
             child: Text(
               text,
+              // 함량 칸이 좁아도 알약 텍스트는 한 줄 유지 (줄바꿈 방지).
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: AppColor.ink,
                 fontSize: 14,
@@ -4293,6 +4352,32 @@ class _PortionSegmentChip extends StatelessWidget {
   }
 }
 
+/// 분석한 원본 이미지를 라운드 카드로 보여준다(Figma: 결과 화면 상단에 첨부/촬영
+/// 이미지 노출, 직접 입력 화면과 동일한 스타일). 로드 실패 시 영역을 접는다.
+class _AnalyzedImageCard extends StatelessWidget {
+  const _AnalyzedImageCard({required this.file});
+
+  final File file;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: AspectRatio(
+        aspectRatio: 16 / 10,
+        child: Image.file(
+          file,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder:
+              (BuildContext context, Object error, StackTrace? stack) =>
+                  const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+}
+
 /// 예상 영양소 카드(figma 06 심화) — 선택 후보의 예상 열량·탄단지를 읽기 전용
 /// 표시한다. D2 준수: 매크로는 그램 값으로만 표기하고 신뢰도/기준치 %는 노출하지
 /// 않는다. 섭취량(인분)에 비례해 스케일하며, 값이 없는 행은 숨긴다(미허위).
@@ -4305,12 +4390,10 @@ class _PredictedNutrientCard extends StatelessWidget {
   final MealFoodCandidate candidate;
   final double portionAmount;
 
-  /// 후보 기준 섭취량(없거나 0 이하면 1인분 가정) 대비 현재 섭취량 배율.
-  double get _scale {
-    final double base = candidate.portionAmount ?? 1;
-    if (base <= 0) return portionAmount <= 0 ? 1 : portionAmount;
-    return portionAmount / base;
-  }
+  /// 섭취량(인분) 배율. 후보의 kcal/탄단지는 백엔드가 추정한 분량(portion_amount
+  /// 그램)에 대한 1인분 값이므로, 그 값에 사용자가 고른 인분 수를 곱한다.
+  /// (portion_amount 는 무게라서 배율 분모로 쓰지 않는다.)
+  double get _scale => portionAmount <= 0 ? 1 : portionAmount;
 
   double? _scaled(double? value) => value == null ? null : value * _scale;
 
