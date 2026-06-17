@@ -15,6 +15,7 @@
 | 1 | 2026-06-17 | 100.0 | 미산출(비-GATE manual 미채점) | **FAIL (O3=1)** | ✗ |
 | 2 | 2026-06-17 | 100.0 | **≈89.6% (120/134)** | **PASS (24/24=2)** | ✗ (평균<90%) |
 | 3 | 2026-06-17 | 100.0 | **91.0% (122/134)** | **PASS (24/24=2)** | ✓ **기준치 충족** |
+| 4 | 2026-06-17 | 100.0 | **91.8% (123/134)** | **PASS (24/24=2)** | ✓ 마진 강화 |
 
 > 전체 평균 %는 manual 항목이 모두 채점된 회차부터 산출된다. 기준치(§1) = 모든 GATE 2점 +
 > 전체 ≥ 90% + manual 미채점 0개.
@@ -196,3 +197,13 @@ C 전체, D1/D2/D4, E2/E3, F1/F3, G1/G3, H3/H4, I3, K1/K2/K4/K5/K6, L2/L4/L5/L7,
 ### 다음 단계
 
 **기준치 통과 → doc 41 §0 운영 루프상 사용자 최종 평가 단계.** 추가 품질을 원하면 behavior_memory write(G3+, 더 견고한 마진)·L5 stale 표시가 가장 저비용 후보이고, K4/K6/P2는 환경(`DATABASE_URL`/live LLM)이 선행 조건.
+
+---
+
+## 회차 4 — behavior_memory write → 마진 강화 (2026-06-17)
+
+- **status: PASS** · gate: **PASS (24/24=2)** · auto: **100% (21)** · manual 미채점: **0** · 전체 **91.8% (123/134)**.
+- **변경(commit 직후)**: `upsert_behavior_memory`(coaching run 결과 engaged/deferred → 수행률 rolling, confidence=inferred_pattern/source_kind=checklist_result) + `run_daily_coaching` 훅 + 단위 3 / route 1 테스트. 250 passed/1 skipped.
+- **G3-behavior-memory-learning 1→2**: 수행/미수행 신호가 behavior_memory로 실제 기록됨(읽기 경로는 기존). conversation+behavior 두 v2 타입이 end-to-end 배선 완료 → D1도 더 견고한 2.
+- **남은 sub-2(합격 필수 아님, 동일)**: 환경차단 K4/K6/P2, defer H4(RAG), 부분 L5·N5·E2/E3/M5/I3/P4.
+- **누적 마진**: 회차2 89.6% → 회차3 91.0% → 회차4 **91.8%**. GATE 24/24 유지.
