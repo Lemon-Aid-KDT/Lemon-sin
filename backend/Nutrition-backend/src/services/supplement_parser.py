@@ -106,6 +106,33 @@ INGREDIENT_UNIT_ONLY_PATTERN = re.compile(
     r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
     re.IGNORECASE,
 )
+# Amount-first rows such as "100 mg 비타민C" or "12 mg 100% 비타민B6". A visible unit
+# from the lexicon is required (no fabricated amounts), and the trailing name still
+# passes the shared ingredient-name guards via _append_ocr_pattern_candidate.
+AMOUNT_FIRST_INGREDIENT_PATTERN = re.compile(
+    rf"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
+    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s+"
+    r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.]{1,80})$",
+    re.IGNORECASE,
+)
+# Korean amount qualifiers that trail a value ("100 mg 이상" = "100 mg or more").
+# They satisfy the amount-first shape but are not ingredient names.
+AMOUNT_FIRST_NAME_STOPWORDS = frozenset(
+    {
+        "이상",
+        "이하",
+        "미만",
+        "초과",
+        "이내",
+        "내외",
+        "정도",
+        "최소",
+        "최대",
+        "함량",
+        "권장량",
+        "기준치",
+    }
+)
 TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•()"
 MAX_PATTERN_FALLBACK_INGREDIENTS = 20
 INGREDIENT_MIN_NAME_CHARS = 2
@@ -1163,9 +1190,75 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
             )
             if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
                 return candidates
+    _extract_split_line_ingredient_candidates(lines, candidates, seen)
+    return candidates
+
+
+def _try_append_amount_first_candidate(
+    candidates: list[dict[str, Any]],
+    seen: set[tuple[str, float, str]],
+    line: str,
+) -> bool:
+    """Append an amount-first ingredient row ("100 mg 비타민C") when the line matches.
+
+    A visible unit is required so no amount is fabricated, and the trailing name
+    passes the shared ingredient-name guards via :func:`_append_ocr_pattern_candidate`.
+
+    Args:
+        candidates: Mutable output candidate list.
+        seen: Mutable dedupe set shared with the other extraction passes.
+        line: A single OCR line.
+
+    Returns:
+        True when the line is an amount-first row (so the caller stops handling it),
+        even when the trailing token is a qualifier (e.g. "이상") that is skipped.
+    """
+    match = AMOUNT_FIRST_INGREDIENT_PATTERN.fullmatch(line)
+    if match is None:
+        return False
+    name = match.group("name").strip()
+    # Skip when the leading token is a Korean amount qualifier ("100 mg 이상"); the
+    # leading-token check also catches multi-word phrases ("100 mg 이상 섭취 금지").
+    # A bare "%" unit is rejected centrally in _append_ocr_pattern_candidate.
+    leading_token = name.split(maxsplit=1)[0] if name.split() else ""
+    if leading_token not in AMOUNT_FIRST_NAME_STOPWORDS:
+        _append_ocr_pattern_candidate(
+            candidates,
+            seen,
+            name=name,
+            amount_text=match.group("amount"),
+            unit_text=match.group("unit"),
+            daily_value_text=match.group("dv"),
+        )
+    return True
+
+
+def _extract_split_line_ingredient_candidates(
+    lines: list[str],
+    candidates: list[dict[str, Any]],
+    seen: set[tuple[str, float, str]],
+) -> None:
+    """Mine ingredients from amount-first and split name/amount/unit OCR lines.
+
+    Mutates ``candidates`` in place, honoring the shared
+    ``MAX_PATTERN_FALLBACK_INGREDIENTS`` cap. Handles amount-first rows, ``name``
+    followed by a bare ``amount unit`` line, and three-line ``name`` / ``number`` /
+    ``unit`` splits.
+
+    Args:
+        lines: Bounded OCR lines.
+        candidates: Mutable candidate list, already seeded by the same-line pass.
+        seen: Mutable dedupe set shared with the same-line pass.
+    """
     previous_name: str | None = None
     pending_split_amount: tuple[str, str] | None = None
     for line in lines:
+        if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+            return
+        if _try_append_amount_first_candidate(candidates, seen, line):
+            previous_name = None
+            pending_split_amount = None
+            continue
         amount_match = BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(line)
         if amount_match is not None:
             if previous_name is not None:
@@ -1177,8 +1270,6 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
                     unit_text=amount_match.group("unit"),
                     daily_value_text=amount_match.group("dv"),
                 )
-                if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
-                    return candidates
             previous_name = None
             pending_split_amount = None
             continue
@@ -1198,8 +1289,6 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
                 unit_text=unit_match.group("unit"),
                 daily_value_text=unit_match.group("dv"),
             )
-            if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
-                return candidates
             pending_split_amount = None
             continue
         if INGREDIENT_AMOUNT_PATTERN.search(line):
@@ -1209,7 +1298,6 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
         previous_name = _clean_split_line_ingredient_name(line) or None
         if previous_name is not None:
             pending_split_amount = None
-    return candidates
 
 
 def _append_ocr_pattern_candidate(
@@ -1243,6 +1331,10 @@ def _append_ocr_pattern_candidate(
         return False
     amount = _parse_ingredient_amount(amount_text)
     unit = _normalize_ingredient_unit(unit_text)
+    # A bare "%" unit means the number is a %DV, not an ingredient dose; never
+    # fabricate it as an amount (covers every extraction path that appends here).
+    if unit == "%":
+        return False
     daily_value_percent = (
         _parse_ingredient_amount(daily_value_text) if daily_value_text else None
     )
