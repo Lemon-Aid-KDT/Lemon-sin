@@ -1,42 +1,41 @@
-# KDRIs 2025 데이터 마운트 제안 (Item ③) — 2026-06-17
+# KDRIs 2025 데이터셋 적용 (Item ③) — 2026-06-17
 
-> 상태: **제안서만 / 미적용**. `docker-compose.yml`은 사용자 foreign WIP(미커밋 flip 편집 동거)라 직접 수정하지 않음. 아래 패치를 사용자가 직접 적용.
+> 상태: **✅ 적용 + 라이브 검증 완료** (로컬 docker 스택).
+> 핵심 정정: KDRIs 2025 데이터는 **이미 이미지에 baked** 되어 있어 별도 볼륨 마운트가 불필요했음. 런타임 `KDRIS_DATA_VERSION=2025` 지정만으로 전환됨.
 
 ## 현재 상태 (실측)
-- `GET /api/v1/supplements/recommendations/latest` → **HTTP 200 정상**. (과거 "상호작용 카드 500 = KDRIs 누락" 메모는 **stale**.)
-- KDRIs는 번들된 **2020-sample** 데이터셋으로 동작 중.
-  - config 기본값(`backend/Nutrition-backend/src/config.py`): `kdris_data_version="2020-sample"`, `allow_sample_kdris=True`, `kdris_data_path=None`, `kdris_manifest_path=None`.
-  - 컨테이너에 `KDRIS_*` env 없음 → 위 기본값 사용.
-- 따라서 이 변경은 **"500 수정"이 아니라 샘플 → 공식 2025 KDRIs 업그레이드**(프로덕션 준비)임.
+- `GET /api/v1/supplements/recommendations/latest` → **HTTP 200**, `reference_version: 2025` (이전 `2020-sample`).
+- 데이터셋 컨텍스트: `dataset_status=official_2025_approved`, `dataset_version=2025`, `source_manifest_version=2.0`. 참조 **1795행** 로드.
 
-## 데이터 위치 (확인됨)
-- `data/nutrition_reference/kdris/kdris_2025.csv`
-- `data/nutrition_reference/kdris/kdris_source_manifest.json`
-- ⚠️ repo 루트 `data/` 는 build context(`./backend`) **밖** → Dockerfile COPY 불가 → **볼륨 마운트**로 주입.
+## 정정: 데이터는 이미 baked 됨 (마운트 불필요)
+처음엔 "repo `data/` 가 build context(`./backend`) 밖이라 볼륨 마운트가 필요"로 판단했으나, 실제로는:
+- 데이터가 build context **안**에 존재(커밋됨): `backend/Nutrition-backend/data/nutrition_reference/kdris/{kdris_2025.csv, kdris_source_manifest.json, kdris_metadata.json}`.
+- `backend/Dockerfile` 이 이미 COPY: `COPY Nutrition-backend ./Nutrition-backend` (line 45) + `COPY Nutrition-backend/data/nutrition_reference ./data/nutrition_reference` (line 46).
+- 런타임 `resolve_nutrition_reference_root()` (config.py) 가 컨테이너에서 baked 경로(`/app/Nutrition-backend/data/nutrition_reference/kdris`)를 자동 resolve.
 
-## 패치 (`docker-compose.yml` 의 `backend` 서비스)
+→ 따라서 **버전만 2025로 지정**하면 baked 2025 데이터를 사용. 볼륨 마운트·경로 override·호스트 사본 전부 불필요.
+
+## 적용 내용 (`docker-compose.yml` `backend` 서비스 environment — 로컬 ops, 미커밋)
 ```yaml
-  backend:
-    volumes:
-      - lemon-aid-paddle-cache:/home/lemon/.paddlex
-      - lemon-aid-hf-cache:/home/lemon/.cache/huggingface
-      - ./data/nutrition_reference/kdris:/app/data/kdris:ro            # 추가
     environment:
       # ...기존 env...
-      KDRIS_DATA_VERSION: ${KDRIS_DATA_VERSION:-2025}                                          # 추가
-      KDRIS_DATA_PATH: ${KDRIS_DATA_PATH:-/app/data/kdris/kdris_2025.csv}                      # 추가
-      KDRIS_MANIFEST_PATH: ${KDRIS_MANIFEST_PATH:-/app/data/kdris/kdris_source_manifest.json}  # 추가
-      ALLOW_SAMPLE_KDRIS: ${ALLOW_SAMPLE_KDRIS:-false}    # 추가(선택; 2025 정상 로드 확인 후에만 false)
+      KDRIS_DATA_VERSION: "2025"
+      ALLOW_SAMPLE_KDRIS: "false"
+```
+- **재빌드 불필요** — env만이라 `docker compose up -d --no-deps backend` recreate 로 적용.
+
+## 검증 명령
+```bash
+docker exec -w /app/Nutrition-backend lemon-aid-backend-1 python -c \
+  "from src.nutrition.kdris import load_kdris_references, get_kdris_dataset_context; \
+   print(get_kdris_dataset_context()); print(len(load_kdris_references()))"
+# {'dataset_status': 'official_2025_approved', 'dataset_version': '2025', 'source_manifest_version': '2.0'}
+# 1795
+curl -s http://127.0.0.1:8000/api/v1/supplements/recommendations/latest \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['reference_version'])"   # 2025
 ```
 
-## 적용 절차 (재빌드 불필요 — env+볼륨만)
-1. 위 패치 적용.
-2. `docker compose up -d --no-deps backend` 로 컨테이너 recreate (이미지 재빌드 X).
-3. 검증: `curl -s http://127.0.0.1:8000/api/v1/supplements/recommendations/latest | python3 -c "import sys,json;print(json.load(sys.stdin)['reference_version'])"` → `2020-sample` 이 아닌 **`2025` 계열**로 바뀌는지 확인.
-4. 2025가 정상 로드되는 것을 확인한 뒤에만 `ALLOW_SAMPLE_KDRIS=false` 유지 (로드 실패 시 fail-fast 하므로).
-
-## 롤백
-- 추가한 volume/env 3~4줄 제거 후 `docker compose up -d --no-deps backend` recreate → 다시 2020-sample 로 복귀.
-
-## 참고
-- Items ①(실천 리스트 한국어화)·②(당뇨 자동로드)는 2026-06-17 재빌드로 **이미 라이브 배포·검증 완료**. ③만 본 제안서로 남김.
+## 비고
+- `docker-compose.yml`은 사용자 flip 편집(lemon_app DATABASE_URL 등)과 함께 **미커밋 로컬 ops 설정**. 위 KDRIs 2개 env 는 repo `.env`(`KDRIS_DATA_VERSION="2025"`, `ALLOW_SAMPLE_KDRIS="false"`)와 일치.
+- Docker 컨테이너가 **커밋된 형태로** 기본 2025를 쓰게 하려면 정석은 `config.py` 기본값 `kdris_data_version` 을 `"2020-sample"`→`"2025"` 로 변경하는 것. 단 config.py 는 foreign WIP + 전 환경/테스트 영향이라 본 작업에서는 미변경(제품 결정 필요).
+- (구버전 이력) 외장드라이브 공백경로 VirtioFS bind-mount 버그로 한때 `~/lemonaid-kdris` 사본을 마운트했으나, baked 데이터 사용으로 전환하며 마운트·사본 모두 제거함.
