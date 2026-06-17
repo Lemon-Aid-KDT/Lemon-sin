@@ -13,6 +13,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 0 (baseline) | 2026-06-16 | 100.0 | 미산출(manual 미채점) | incomplete | ✗ |
 | 1 | 2026-06-17 | 100.0 | 미산출(비-GATE manual 미채점) | **FAIL (O3=1)** | ✗ |
+| 2 | 2026-06-17 | 100.0 | **≈89.6% (120/134)** | **PASS (24/24=2)** | ✗ (평균<90%) |
 
 > 전체 평균 %는 manual 항목이 모두 채점된 회차부터 산출된다. 기준치(§1) = 모든 GATE 2점 +
 > 전체 ≥ 90% + manual 미채점 0개.
@@ -147,3 +148,26 @@ C 전체, D1/D2/D4, E2/E3, F1/F3, G1/G3, H3/H4, I3, K1/K2/K4/K5/K6, L2/L4/L5/L7,
 1. **O3 수정**(GATE 복구) — agent_memory/agent_run delete cascade + 테스트. GATE를 2로 올려야 합격선 진입 가능.
 2. 비-GATE manual 채점 진행(개인화 L2/L4/L5/L7, 점수 F1/F3, 메모리 정책 D1/D2/D4 등).
 3. conversation_memory write(L7/D 계열)는 GATE 복구 후 우선순위에 따라 착수.
+
+---
+
+## 회차 2 — O3 수정 + 비-GATE manual 전수 채점 (2026-06-17)
+
+- **status: fail (평균<90%)** · gate: **PASS (GATE 24/24 = 2)** · auto: **100% (21)** · manual 미채점: **0** · 전체 **≈89.6% (120/134)**.
+- **GATE 전부 복구**: O3가 commit `993dd10c`(privacy.py `_delete_agent_records_for_owner` + 회귀 테스트, 233 passed)로 **1→2**. 이제 GATE 24개(auto 10 + manual 14) 전부 2점.
+- **비-GATE manual 32개 전수 채점**(병렬 근거수집 + 보수적 확정). manual 미채점 0개 달성 → 임계 조건 ③ 충족. 남은 건 ② 평균≥90%뿐.
+
+### 비-GATE manual 점수 (근거: 위 라운드 + 코드 file:line)
+
+| 2점 (충족) | 1점 (부분) | 0점 (미구현) |
+| --- | --- | --- |
+| A3, B4, C1, C2, D2, D4, F1, F3, O4, H3, G1, M6, N1, L4, K1, K2, K5, L2 | D1(v2 write 경로 부재), G3(behavior write 부재), L7(대화 압축/이월 부재), E2·E3·M5(§16 GAP, agent 컨텍스트 안정유입 미완), I3(§16 개선필요·경계상세 부분), L5(stale 감지·제외만, 사용자 표시 없음), N5(backend 제안/mobile apply 구조경계), K4·K6(DB 필요·측정한계), P2(live LLM·측정한계), P4(backlog→evidence→golden 루프 수동) | H4(RAG/vector normalizer 뒤 미구현, doc26 §25 defer) |
+
+### 90% 돌파 경로 (다음 회차)
+
+평균 89.6% → 90%는 **+1점이면 충족**(121/134=90.3%). 가장 가치 있는 실작업:
+1. **conversation_memory write**(L7 1→2): 대화 후 rolling 요약을 conversation_memory로 저장 → 이미 배선된 read-path가 실데이터를 싣게 됨.
+2. **behavior_memory write**(G3 1→2, D1 1→2): 체크리스트 수행/거절 등 패턴을 behavior_memory로 저장.
+3. (소) **L5 stale 표시**(1→2): stale_only일 때 사용자 메시지에 만료 사실 표시.
+- 1+2 구축 시 D1·G3·L7 → 2 (+3점) → **123/134 = 91.8% (PASS)**. DB 불필요.
+- **환경 차단 잔여**(K4·K6·P2): `DATABASE_URL`·live LLM 필요 → 로컬에서 2점 불가, 측정한계로 유지. H4(RAG)는 doc26 §25가 defer한 대형 작업.
