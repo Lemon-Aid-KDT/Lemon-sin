@@ -137,6 +137,24 @@ TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•()"
 MAX_PATTERN_FALLBACK_INGREDIENTS = 20
 INGREDIENT_MIN_NAME_CHARS = 2
 INGREDIENT_MAX_NAME_CHARS = 80
+# CFU counts carry a Korean myriad counter (억/조/만) or English magnitude
+# (billion/million) between the number and the CFU unit ("100억 CFU"), which the
+# standard amount grammar misses. 100억 = 10^10 exceeds the amount field bound, so
+# the magnitude is preserved in the unit ("억 CFU") rather than multiplied out.
+_CFU_MAGNITUDE = r"억|조|만|billion|million"
+_CFU_UNIT = r"cfu|씨에프유"
+CFU_MAGNITUDE_NAME_FIRST_PATTERN = re.compile(
+    r"^\s*(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.]{1,80}?)\s*"
+    r"(?P<amount>\d+(?:[,.]\d+)?)\s*"
+    rf"(?P<mag>{_CFU_MAGNITUDE})\s*(?:{_CFU_UNIT})(?:\s.*)?$",
+    re.IGNORECASE,
+)
+CFU_MAGNITUDE_AMOUNT_FIRST_PATTERN = re.compile(
+    r"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
+    rf"(?P<mag>{_CFU_MAGNITUDE})\s*(?:{_CFU_UNIT})\s+"
+    r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.]{1,80})\s*$",
+    re.IGNORECASE,
+)
 PACKAGING_QUANTITY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"^(?:g|mg|kg|ml|l)\s*(?:x\s*)?\d*\s*(?:포|정|캡슐|개입)?\s*\(?$",
@@ -1233,6 +1251,42 @@ def _try_append_amount_first_candidate(
     return True
 
 
+def _try_append_cfu_magnitude_candidate(
+    candidates: list[dict[str, Any]],
+    seen: set[tuple[str, float, str]],
+    line: str,
+) -> bool:
+    """Append a CFU ingredient whose count uses a myriad counter or magnitude word.
+
+    Handles "유산균 100억 CFU" (name-first) and "100억 CFU 유산균" (amount-first). The
+    magnitude (억/조/billion) is kept in the unit string ("억 CFU") because the absolute
+    count (e.g. 10^10) exceeds the amount field bound and the label shows no separate
+    plain amount; the name passes the shared guards via _append_ocr_pattern_candidate.
+
+    Args:
+        candidates: Mutable output candidate list.
+        seen: Mutable dedupe set shared with the other extraction passes.
+        line: A single OCR line.
+
+    Returns:
+        True when the line is a CFU magnitude row (so the caller stops handling it).
+    """
+    for pattern in (CFU_MAGNITUDE_NAME_FIRST_PATTERN, CFU_MAGNITUDE_AMOUNT_FIRST_PATTERN):
+        match = pattern.match(line)
+        if match is None:
+            continue
+        _append_ocr_pattern_candidate(
+            candidates,
+            seen,
+            name=match.group("name"),
+            amount_text=match.group("amount"),
+            unit_text=f"{match.group('mag')} CFU",
+            daily_value_text=None,
+        )
+        return True
+    return False
+
+
 def _extract_split_line_ingredient_candidates(
     lines: list[str],
     candidates: list[dict[str, Any]],
@@ -1255,6 +1309,10 @@ def _extract_split_line_ingredient_candidates(
     for line in lines:
         if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
             return
+        if _try_append_cfu_magnitude_candidate(candidates, seen, line):
+            previous_name = None
+            pending_split_amount = None
+            continue
         if _try_append_amount_first_candidate(candidates, seen, line):
             previous_name = None
             pending_split_amount = None
@@ -1721,6 +1779,14 @@ def _normalize_ingredient_unit(value: str) -> str:
         return "IU"
     if stripped.casefold() in {"cfu", "씨에프유"}:
         return "CFU"
+    cfu_compound = re.fullmatch(
+        rf"(?P<mag>{_CFU_MAGNITUDE})\s*(?:{_CFU_UNIT})", stripped, re.IGNORECASE
+    )
+    if cfu_compound is not None:
+        magnitude = cfu_compound.group("mag")
+        # Korean myriad counters keep their glyph; English magnitudes lower-case.
+        magnitude = magnitude if re.search(r"[가-힣]", magnitude) else magnitude.casefold()
+        return f"{magnitude} CFU"
     return stripped.casefold() if stripped != "%" else "%"
 
 

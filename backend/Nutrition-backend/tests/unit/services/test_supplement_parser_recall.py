@@ -151,3 +151,66 @@ def test_amount_first_multiword_qualifier_phrase_is_not_an_ingredient() -> None:
     # A multi-word phrase starting with a qualifier must be skipped (leading-token guard).
     assert _names("100 mg 이상 섭취 금지") == []
     assert "이상 비타민C" not in _names("100 mg 이상 비타민C")
+
+
+# --- CFU magnitude counters (억/조/billion) ----------------------------------
+# "100억 CFU" puts a Korean myriad counter (or English magnitude) between the count
+# and the CFU unit, which the standard amount grammar misses. 100억 = 10^10 exceeds
+# the amount field bound (le=1_000_000), so the magnitude is kept in the unit
+# ("억 CFU") rather than multiplied out — nothing is fabricated.
+
+
+def test_cfu_amount_first_korean_myriad_counter() -> None:
+    candidate = _by_name("100억 CFU 유산균", "유산균")
+    assert candidate is not None
+    assert candidate["amount"] == 100
+    assert candidate["unit"] == "억 CFU"
+
+
+def test_cfu_name_first_korean_myriad_counter() -> None:
+    candidate = _by_name("유산균 100억 CFU", "유산균")
+    assert candidate is not None
+    assert candidate["amount"] == 100
+    assert candidate["unit"] == "억 CFU"
+
+
+def test_cfu_jo_counter() -> None:
+    candidate = _by_name("프로바이오틱스 5조 CFU", "프로바이오틱스")
+    assert candidate is not None
+    assert candidate["amount"] == 5
+    assert candidate["unit"] == "조 CFU"
+
+
+def test_cfu_english_billion_magnitude() -> None:
+    candidate = _by_name("프로바이오틱스 10 billion CFU", "프로바이오틱스")
+    assert candidate is not None
+    assert candidate["amount"] == 10
+    assert candidate["unit"] == "billion CFU"
+
+
+def test_cfu_thousands_separated_count() -> None:
+    candidate = _by_name("유산균 1,000억 CFU", "유산균")
+    assert candidate is not None
+    assert candidate["amount"] == 1000
+    assert candidate["unit"] == "억 CFU"
+
+
+def test_cfu_name_first_with_trailing_text() -> None:
+    candidate = _by_name("유산균 100억 CFU 함유", "유산균")
+    assert candidate is not None
+    assert candidate["amount"] == 100
+    assert candidate["unit"] == "억 CFU"
+
+
+def test_plain_cfu_without_magnitude_still_works() -> None:
+    # Regression: "유산균 100 CFU" (no magnitude) is already handled by the grammar.
+    candidate = _by_name("유산균 100 CFU", "유산균")
+    assert candidate is not None
+    assert candidate["amount"] == 100
+    assert candidate["unit"] == "CFU"
+
+
+def test_cfu_magnitude_requires_the_cfu_unit() -> None:
+    # "10억 원 할인" (10억 won discount) has a myriad counter but no CFU -> not mined.
+    assert _names("10억 원 할인 이벤트") == []
+    assert _names("30억 마리 유산균") == []
