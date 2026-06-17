@@ -551,8 +551,27 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = Field(default=True)
     rate_limit_analyze_per_minute: int = Field(default=12, ge=1, le=600)
     rate_limit_analyze_burst: int = Field(default=6, ge=1, le=600)
-    inference_max_concurrency: int = Field(default=4, ge=1, le=64)
+    # Lowered 4 -> 2: the single resident local Ollama model (qwen3.5:9b on a 24GB
+    # unified-memory host) degrades to empty/truncated structured output when several
+    # parses run at once. This caps admitted concurrent inference requests so excess
+    # callers get a fast retryable 503 instead of blocking behind the serialized parse
+    # (ollama_parse_max_concurrency) past the 120s mobile upload timeout.
+    inference_max_concurrency: int = Field(default=2, ge=1, le=64)
     inference_acquire_timeout_sec: float = Field(default=20.0, ge=0.1, le=120.0)
+    # Serialize the local Ollama structured-parse call so concurrent supplement scans
+    # never split the single resident model's batch/KV-cache, which yields empty parses
+    # (0 ingredients). 1 = strict serialization; raise only if the host runs
+    # OLLAMA_NUM_PARALLEL>1. NOTE: in-process only — it cannot serialize the separate
+    # ai_agent_chat coaching process that shares the same Ollama host; that
+    # cross-process contention is mitigated only by the bounded retry below.
+    ollama_parse_max_concurrency: int = Field(default=1, ge=1, le=8)
+    # Bounded retry for the parse when it errors or returns 0 ingredients despite
+    # non-trivial OCR text (transient degradation, e.g. cross-process Ollama load).
+    # 2 = one retry. Each attempt is capped to the wall-clock left in
+    # ollama_parse_total_budget_sec, so the whole parse (queue wait + attempts +
+    # backoff) stays under the 120s mobile upload timeout once upstream OCR is counted.
+    ollama_parse_max_attempts: int = Field(default=2, ge=1, le=3)
+    ollama_parse_total_budget_sec: float = Field(default=95.0, ge=10.0, le=115.0)
     supplement_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     supplement_ocr_text_max_chars: int = Field(default=12_000, ge=100, le=50_000)
     supplement_parser_algorithm_version: str = Field(

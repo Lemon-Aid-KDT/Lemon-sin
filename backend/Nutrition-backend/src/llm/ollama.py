@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
+import time
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from src.config import Settings
-from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_parser import (
+    SupplementParserIngredientCandidate,
+    SupplementParserProduct,
+    SupplementStructuredParseResult,
+)
+
+logger = logging.getLogger(__name__)
 
 LOCAL_OLLAMA_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 DEVELOPMENT_CONTAINER_OLLAMA_HOSTS = frozenset({"host.docker.internal"})
@@ -191,6 +201,128 @@ class _AsyncHTTPClient(_AsyncPostClient, _AsyncGetClient, Protocol):
     """Async HTTP client protocol with the methods used by Ollama integration."""
 
 
+# Fixed backoff between bounded parse retries. Short because the retry must fit the
+# parse budget (see ollama_parse_total_budget_sec) under the 120s mobile timeout.
+_PARSE_RETRY_BACKOFF_SEC = 0.7
+# Minimum stripped OCR length that makes a 0-ingredient parse look like a transient
+# degradation worth one retry rather than a genuinely empty/unreadable label.
+_MIN_SUBSTANTIAL_OCR_CHARS = 8
+# Don't start a(nother) parse attempt with less than this many seconds left in the
+# budget — too little time to produce a useful result, and attempting risks
+# overrunning the mobile timeout.
+_MIN_PARSE_REMAINING_SEC = 5.0
+# Cap on salvaged ingredient candidates, matching the schema's list bound so a
+# rebuilt salvage payload re-validates.
+_MAX_SALVAGED_CANDIDATES = 80
+
+
+def _salvage_parse_result(
+    normalized_content: Any, error: ValidationError
+) -> SupplementStructuredParseResult:
+    """Recover a usable result when strict whole-object validation fails.
+
+    Ollama's schema-guided generation enforces JSON structure/types but not the
+    Pydantic field constraints (string max-length, numeric range, the ``source``
+    enum), so a single out-of-bounds field can fail validation for the entire
+    object — which previously discarded every extracted ingredient and showed the
+    user an empty "re-check needed" result. Instead, keep the product and the
+    individually-valid ingredient candidates and drop only the optional, non
+    load-bearing review sections (precautions, evidence, claims, layout).
+
+    Args:
+        normalized_content: Parser payload after :func:`_normalize_structured_parse_payload`.
+        error: The validation error from the strict whole-object validation.
+
+    Returns:
+        A validated result built from the salvageable fields.
+
+    Raises:
+        OllamaStructuredOutputError: If nothing salvageable can be validated.
+    """
+    locations = [".".join(str(part) for part in err.get("loc", ())) for err in error.errors()[:5]]
+    logger.warning(
+        "Supplement parse validation failed (%d error(s) at %s); salvaging valid ingredients.",
+        len(error.errors()),
+        locations,
+    )
+    salvaged: dict[str, Any] = {}
+    if isinstance(normalized_content, Mapping):
+        raw_product = normalized_content.get("parsed_product")
+        if isinstance(raw_product, Mapping) and _model_validates(
+            SupplementParserProduct, raw_product
+        ):
+            salvaged["parsed_product"] = dict(raw_product)
+        candidates: list[dict[str, Any]] = []
+        raw_candidates = normalized_content.get("ingredient_candidates")
+        if isinstance(raw_candidates, list):
+            for item in raw_candidates:
+                if len(candidates) >= _MAX_SALVAGED_CANDIDATES:
+                    break
+                if isinstance(item, Mapping) and _model_validates(
+                    SupplementParserIngredientCandidate, item
+                ):
+                    candidates.append(dict(item))
+        salvaged["ingredient_candidates"] = candidates
+    try:
+        return SupplementStructuredParseResult.model_validate_json(
+            json.dumps(salvaged, ensure_ascii=False)
+        )
+    except (TypeError, ValueError, ValidationError) as exc:
+        raise OllamaStructuredOutputError(
+            "Ollama structured supplement output failed schema validation."
+        ) from exc
+
+
+def _model_validates(model: type[BaseModel], data: Any) -> bool:
+    """Return whether ``data`` validates against ``model`` (JSON-mode semantics)."""
+    try:
+        model.model_validate_json(json.dumps(data, ensure_ascii=False))
+    except (TypeError, ValueError, ValidationError):
+        return False
+    return True
+
+
+def _monotonic() -> float:
+    """Return a monotonic timestamp for parse budgeting.
+
+    Wrapped so tests can patch this seam in isolation without monkeypatching the
+    global ``time.monotonic`` (which the asyncio event loop also relies on).
+
+    Returns:
+        Seconds from an arbitrary monotonic origin.
+    """
+    return time.monotonic()
+
+
+# Per-event-loop serialization gate for the local Ollama structured-parse call. A
+# single resident model (qwen3.5:9b) returns empty/truncated JSON when several
+# generations run at once, so parses queue through this semaphore (size =
+# settings.ollama_parse_max_concurrency, default 1). Keyed by the running loop via a
+# WeakKeyDictionary so each event loop (one per test, one per uvicorn process) gets
+# its own semaphore and entries auto-evict when a loop is garbage-collected.
+_PARSE_SEMAPHORES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _get_parse_semaphore(limit: int) -> asyncio.Semaphore:
+    """Return the structured-parse semaphore bound to the running event loop.
+
+    Args:
+        limit: Maximum concurrent parse calls (clamped to >=1). Sized on first use
+            per loop; later calls reuse the existing semaphore for that loop.
+
+    Returns:
+        The event-loop-bound semaphore that serializes local Ollama parse calls.
+    """
+    loop = asyncio.get_running_loop()
+    semaphore = _PARSE_SEMAPHORES.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(max(1, limit))
+        _PARSE_SEMAPHORES[loop] = semaphore
+    return semaphore
+
+
 class OllamaConfigurationError(RuntimeError):
     """Raised when Ollama runtime settings violate the local-LLM policy."""
 
@@ -350,19 +482,93 @@ class OllamaSupplementParser:
         """
         _validate_local_ollama_settings(self.settings)
         payload = _build_chat_payload(ocr_text, self.settings)
-        response_data = await self._post_chat(payload)
+        ocr_is_substantial = len(ocr_text.strip()) >= _MIN_SUBSTANTIAL_OCR_CHARS
+        max_attempts = max(1, self.settings.ollama_parse_max_attempts)
+        total_budget = self.settings.ollama_parse_total_budget_sec
+        started = _monotonic()
+        last_result: SupplementStructuredParseResult | None = None
+        last_exc: OllamaClientError | OllamaStructuredOutputError | None = None
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                await asyncio.sleep(_PARSE_RETRY_BACKOFF_SEC)
+            # Budget guard: bound this attempt by the wall-clock left in the parse
+            # budget, which sits under the 120s mobile upload timeout once upstream
+            # OCR time is accounted for. Queue/semaphore wait counts toward elapsed,
+            # so a contended request gets less headroom and never overruns.
+            remaining = total_budget - (_monotonic() - started)
+            if remaining <= _MIN_PARSE_REMAINING_SEC:
+                break
+            try:
+                result = await asyncio.wait_for(self._parse_attempt(payload), timeout=remaining)
+            except TimeoutError:
+                last_exc = OllamaClientError("Local Ollama parse exceeded its time budget.")
+                break
+            except (OllamaClientError, OllamaStructuredOutputError) as exc:
+                last_exc = exc
+                if attempt + 1 < max_attempts:
+                    logger.info("Retrying local Ollama parse after %s.", exc.__class__.__name__)
+                continue
+            last_result = result
+            # A valid-but-empty parse on substantial OCR text is the transient
+            # contention symptom — retry once. Genuinely empty/unreadable labels
+            # (no substantial OCR text) return as-is without burning the budget.
+            if result.ingredient_candidates or not ocr_is_substantial:
+                return result
+            if attempt + 1 < max_attempts:
+                logger.info("Retrying local Ollama parse after an empty result on substantial OCR.")
+        if last_result is not None:
+            return last_result
+        raise last_exc or OllamaStructuredOutputError(
+            "Ollama structured supplement output failed schema validation."
+        )
+
+    async def _parse_attempt(self, payload: Mapping[str, Any]) -> SupplementStructuredParseResult:
+        """Run one serialized parse generation and validate its JSON.
+
+        The local Ollama generation is held under a per-event-loop semaphore so
+        concurrent scans never split the single resident model's batch/KV-cache
+        (the empty-output failure mode). JSON normalization and schema validation
+        run after the lock is released, since they are CPU-only.
+
+        Args:
+            payload: Prebuilt Ollama Chat API payload.
+
+        Returns:
+            Validated structured supplement parse result.
+
+        Raises:
+            OllamaClientError: If the request fails or returns no content.
+            OllamaStructuredOutputError: If content fails schema validation.
+        """
+        async with _get_parse_semaphore(self.settings.ollama_parse_max_concurrency):
+            response_data = await self._post_chat(payload)
         content = _extract_message_content(response_data)
         try:
             parsed_content = _load_structured_message_json(content)
-            normalized_content = _normalize_structured_parse_payload(parsed_content)
+        except (TypeError, ValueError) as exc:
+            # Malformed/truncated JSON (e.g. the generation was cut off). The schema
+            # grammar guarantees well-formed JSON in practice, so this usually means
+            # the output exceeded the budget — log the length (no PII) and surface it.
+            logger.warning(
+                "Ollama parse produced non-JSON output (%s, content_len=%d).",
+                exc.__class__.__name__,
+                len(content),
+            )
+            raise OllamaStructuredOutputError(
+                "Ollama structured supplement output was not valid JSON."
+            ) from exc
+        normalized_content = _normalize_structured_parse_payload(parsed_content)
+        try:
             # Validate with JSON-mode semantics after dropping unsafe/unknown fields.
             return SupplementStructuredParseResult.model_validate_json(
                 json.dumps(normalized_content, ensure_ascii=False)
             )
-        except (TypeError, ValueError, ValidationError) as exc:
-            raise OllamaStructuredOutputError(
-                "Ollama structured supplement output failed schema validation."
-            ) from exc
+        except ValidationError as exc:
+            # Ollama's schema-guided generation enforces JSON structure/types but not
+            # Pydantic constraints (string max-length, value ranges, the `source`
+            # enum), so one out-of-bounds field can fail whole-object validation.
+            # Salvage the individually-valid ingredients instead of dropping them all.
+            return _salvage_parse_result(normalized_content, exc)
 
     async def _post_chat(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         """Submit a Chat API request to Ollama.

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from typing import Any
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from src.config import Settings
 from src.llm.ollama import (
     MAX_OLLAMA_OCR_PROMPT_CHARS,
@@ -17,8 +19,10 @@ from src.llm.ollama import (
     OllamaConfigurationError,
     OllamaStructuredOutputError,
     OllamaSupplementParser,
+    _salvage_parse_result,
     check_ollama_readiness,
 )
+from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 
 
 class _FakeResponse:
@@ -263,15 +267,21 @@ async def test_ollama_parser_bounds_long_ocr_text_in_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ollama_parser_rejects_schema_invalid_content() -> None:
-    """Verify invalid model output is rejected after the Ollama call."""
+async def test_ollama_parser_salvages_schema_invalid_content_to_empty() -> None:
+    """Verify structurally-invalid output salvages to an empty result, not a crash.
+
+    Constraint failures no longer discard the whole parse: with no salvageable
+    candidates the parser returns an empty result (the caller then shows the
+    "re-check needed" state) instead of raising.
+    """
     fake_client = _FakeHTTPClient({"message": {"content": '{"unexpected": true}'}})
 
-    with pytest.raises(OllamaStructuredOutputError):
-        await OllamaSupplementParser(
-            _settings(),
-            http_client=fake_client,
-        ).parse_supplement_ocr_text("비타민 D")
+    result = await OllamaSupplementParser(
+        _settings(),
+        http_client=fake_client,
+    ).parse_supplement_ocr_text("비타민 D")
+
+    assert result.ingredient_candidates == []
 
 
 @pytest.mark.asyncio
@@ -587,3 +597,305 @@ async def test_check_ollama_readiness_handles_unavailable_api() -> None:
     assert readiness.ready is False
     assert readiness.model_present is False
     assert readiness.error_code == "ollama_unavailable"
+
+
+_NONEMPTY_PARSE_CONTENT = json.dumps(
+    {
+        "ingredient_candidates": [
+            {
+                "display_name": "비타민 D",
+                "original_name": "Vitamin D",
+                "amount": 25,
+                "unit": "ug",
+                "confidence": 0.9,
+                "source": "ollama_structured",
+            }
+        ]
+    },
+    ensure_ascii=False,
+)
+_EMPTY_PARSE_CONTENT = json.dumps({"ingredient_candidates": []}, ensure_ascii=False)
+_SUBSTANTIAL_OCR = "비타민 D 25 ug\n아연 10 mg\n원재료명: 비타민D, 아연"
+
+
+class _ConcurrencyRecordingClient:
+    """Fake client that records the peak concurrency observed at the post boundary."""
+
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.active = 0
+        self.max_active = 0
+        self.calls = 0
+
+    async def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        self.calls += 1
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(0.05)
+        finally:
+            self.active -= 1
+        return _FakeResponse({"message": {"content": self.content}})
+
+    async def get(self, url: str, *, timeout: float) -> _FakeResponse:
+        del url, timeout
+        return _FakeResponse({"models": []})
+
+
+class _FlakyEmptyThenFullClient:
+    """Fake client returning an empty parse first, then a populated one."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        self.calls += 1
+        content = _EMPTY_PARSE_CONTENT if self.calls == 1 else _NONEMPTY_PARSE_CONTENT
+        return _FakeResponse({"message": {"content": content}})
+
+    async def get(self, url: str, *, timeout: float) -> _FakeResponse:
+        del url, timeout
+        return _FakeResponse({"models": []})
+
+
+@pytest.mark.asyncio
+async def test_parse_serializes_concurrent_calls_through_semaphore() -> None:
+    """Verify concurrent parses are serialized to one model call at a time."""
+    settings = _settings()
+    client = _ConcurrencyRecordingClient(_NONEMPTY_PARSE_CONTENT)
+
+    results = await asyncio.gather(
+        *(
+            OllamaSupplementParser(settings, http_client=client).parse_supplement_ocr_text(
+                _SUBSTANTIAL_OCR
+            )
+            for _ in range(6)
+        )
+    )
+
+    assert client.max_active == 1
+    assert client.calls == 6
+    assert all(len(result.ingredient_candidates) == 1 for result in results)
+
+
+@pytest.mark.asyncio
+async def test_parse_retries_empty_result_on_substantial_ocr() -> None:
+    """Verify a 0-ingredient parse on substantial OCR text is retried once."""
+    settings = _settings()
+    client = _FlakyEmptyThenFullClient()
+
+    result = await OllamaSupplementParser(
+        settings,
+        http_client=client,
+    ).parse_supplement_ocr_text(_SUBSTANTIAL_OCR)
+
+    assert client.calls == 2
+    assert len(result.ingredient_candidates) == 1
+
+
+@pytest.mark.asyncio
+async def test_parse_does_not_retry_empty_on_trivial_ocr() -> None:
+    """Verify a 0-ingredient parse on trivial OCR text is not retried."""
+    settings = _settings()
+    client = _FlakyEmptyThenFullClient()
+
+    result = await OllamaSupplementParser(
+        settings,
+        http_client=client,
+    ).parse_supplement_ocr_text("  ")
+
+    assert client.calls == 1
+    assert result.ingredient_candidates == []
+
+
+class _AlwaysEmptyClient:
+    """Fake client that always returns an empty parse."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        self.calls += 1
+        return _FakeResponse({"message": {"content": _EMPTY_PARSE_CONTENT}})
+
+    async def get(self, url: str, *, timeout: float) -> _FakeResponse:
+        del url, timeout
+        return _FakeResponse({"models": []})
+
+
+class _RaiseThenSucceedClient:
+    """Fake client that raises a transport error first, then returns a full parse."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        self.calls += 1
+        if self.calls == 1:
+            raise httpx.ConnectError("fake transport failure")
+        return _FakeResponse({"message": {"content": _NONEMPTY_PARSE_CONTENT}})
+
+    async def get(self, url: str, *, timeout: float) -> _FakeResponse:
+        del url, timeout
+        return _FakeResponse({"models": []})
+
+
+class _AlwaysRaiseClient:
+    """Fake client that always raises a transport error."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        self.calls += 1
+        raise httpx.ConnectError("fake transport failure")
+
+    async def get(self, url: str, *, timeout: float) -> _FakeResponse:
+        del url, timeout
+        return _FakeResponse({"models": []})
+
+
+@pytest.mark.asyncio
+async def test_parse_skips_retry_when_budget_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the retry is declined when the time budget would be overrun."""
+    settings = _settings().model_copy(update={"ollama_parse_total_budget_sec": 10.0})
+    client = _AlwaysEmptyClient()
+    # started=0 (call 1); attempt 0 sees remaining=10 (call 2); attempt 1 sees
+    # elapsed=6 -> remaining=4 < floor (call 3) and breaks before any second post.
+    times = [0.0, 0.0, 6.0]
+    state = {"i": 0}
+
+    def fake_monotonic() -> float:
+        value = times[min(state["i"], len(times) - 1)]
+        state["i"] += 1
+        return value
+
+    monkeypatch.setattr("src.llm.ollama._monotonic", fake_monotonic)
+
+    result = await OllamaSupplementParser(
+        settings,
+        http_client=client,
+    ).parse_supplement_ocr_text(_SUBSTANTIAL_OCR)
+
+    assert client.calls == 1
+    assert result.ingredient_candidates == []
+
+
+@pytest.mark.asyncio
+async def test_parse_retries_after_transport_error() -> None:
+    """Verify a transient transport error triggers a retry that then succeeds."""
+    settings = _settings()
+    client = _RaiseThenSucceedClient()
+
+    result = await OllamaSupplementParser(
+        settings,
+        http_client=client,
+    ).parse_supplement_ocr_text(_SUBSTANTIAL_OCR)
+
+    assert client.calls == 2
+    assert len(result.ingredient_candidates) == 1
+
+
+@pytest.mark.asyncio
+async def test_parse_returns_last_empty_after_attempts_exhausted() -> None:
+    """Verify an always-empty parse returns the empty result after all attempts."""
+    settings = _settings()
+    client = _AlwaysEmptyClient()
+
+    result = await OllamaSupplementParser(
+        settings,
+        http_client=client,
+    ).parse_supplement_ocr_text(_SUBSTANTIAL_OCR)
+
+    assert client.calls == settings.ollama_parse_max_attempts
+    assert result.ingredient_candidates == []
+
+
+@pytest.mark.asyncio
+async def test_parse_raises_after_all_attempts_error() -> None:
+    """Verify the last error is raised when every attempt fails."""
+    settings = _settings()
+    client = _AlwaysRaiseClient()
+
+    with pytest.raises(OllamaClientError):
+        await OllamaSupplementParser(
+            settings,
+            http_client=client,
+        ).parse_supplement_ocr_text(_SUBSTANTIAL_OCR)
+
+    assert client.calls == settings.ollama_parse_max_attempts
+
+
+_VALID_SALVAGE_CANDIDATE = {
+    "display_name": "비타민 B6",
+    "original_name": "Vitamin B6",
+    "amount": 10.5,
+    "unit": "mg",
+    "daily_value_percent": 618.0,
+    "confidence": 0.0,
+    "source": "ollama_structured",
+}
+# display_name exceeds the schema's 120-char cap -> whole-object validation fails.
+_OVERLENGTH_SALVAGE_CANDIDATE = {
+    "display_name": "X" * 200,
+    "confidence": 0.0,
+    "source": "ollama_structured",
+}
+_OVERLENGTH_RESPONSE_CONTENT = json.dumps(
+    {"ingredient_candidates": [_VALID_SALVAGE_CANDIDATE, _OVERLENGTH_SALVAGE_CANDIDATE]},
+    ensure_ascii=False,
+)
+
+
+def test_salvage_parse_result_keeps_valid_drops_invalid_candidate() -> None:
+    """Verify salvage keeps individually-valid candidates and drops the bad one."""
+    norm = {
+        "parsed_product": {},
+        "ingredient_candidates": [_VALID_SALVAGE_CANDIDATE, _OVERLENGTH_SALVAGE_CANDIDATE],
+    }
+    try:
+        SupplementStructuredParseResult.model_validate_json(json.dumps(norm, ensure_ascii=False))
+        raise AssertionError("expected the over-length candidate to fail validation")
+    except ValidationError as error:
+        result = _salvage_parse_result(norm, error)
+    assert len(result.ingredient_candidates) == 1
+    assert result.ingredient_candidates[0].display_name == "비타민 B6"
+
+
+class _OverlengthCandidateClient:
+    """Fake client returning one valid + one over-length ingredient candidate."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        self.calls += 1
+        return _FakeResponse({"message": {"content": _OVERLENGTH_RESPONSE_CONTENT}})
+
+    async def get(self, url: str, *, timeout: float) -> _FakeResponse:
+        del url, timeout
+        return _FakeResponse({"models": []})
+
+
+@pytest.mark.asyncio
+async def test_parse_salvages_valid_candidate_when_one_overflows() -> None:
+    """Verify the parser returns the salvageable ingredient instead of empty."""
+    settings = _settings()
+    client = _OverlengthCandidateClient()
+
+    result = await OllamaSupplementParser(
+        settings,
+        http_client=client,
+    ).parse_supplement_ocr_text(_SUBSTANTIAL_OCR)
+
+    assert client.calls == 1
+    assert len(result.ingredient_candidates) == 1
+    assert result.ingredient_candidates[0].display_name == "비타민 B6"
