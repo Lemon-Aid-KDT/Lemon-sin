@@ -389,6 +389,33 @@ def test_daily_coaching_injects_memory_and_records_confirmed_result(
     assert run_output.status == "completed"
 
 
+def test_daily_coaching_writes_behavior_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify run_daily_coaching records a behavior_memory engagement signal."""
+    captured: dict[str, object] = {}
+
+    async def _capture_behavior(*_args: object, **kwargs: object) -> None:
+        captured["behavior"] = {"outcome": kwargs.get("outcome"), "focus": kwargs.get("focus")}
+
+    async def _noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "upsert_daily_coaching_memory", _noop)
+    monkeypatch.setattr(ai_agent, "record_agent_run", _noop)
+    monkeypatch.setattr(ai_agent, "upsert_behavior_memory", _capture_behavior)
+
+    response = _client().post("/api/v1/ai-agent/daily-coaching", json=_payload())
+
+    assert response.status_code == status.HTTP_200_OK
+    behavior = captured.get("behavior")
+    assert behavior is not None
+    assert behavior["outcome"] == "engaged"
+
+
 def test_daily_coaching_uses_sglang_provider_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -588,6 +615,46 @@ def test_daily_coaching_activity_context_omits_raw_sensitive_fields(
     assert "blood_pressure" not in body_text
     assert "120/80" not in body_text
     assert "sleep" not in body_text
+
+
+def test_chat_route_writes_conversation_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify run_chatbot rolls the turn into conversation_memory (weak signal)."""
+    captured: dict[str, object] = {}
+
+    async def _capture_conversation_memory(
+        _session: object,
+        _user: object,
+        _settings: object,
+        *,
+        user_message: str,
+        answerability: str,
+        category: str,
+    ) -> None:
+        captured["conversation_memory"] = {
+            "user_message": user_message,
+            "answerability": answerability,
+            "category": category,
+        }
+
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "upsert_conversation_memory", _capture_conversation_memory)
+
+    response = _client(settings=settings).post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    written = captured.get("conversation_memory")
+    assert written is not None
+    assert written["user_message"] == "오늘 기록을 보고 먼저 확인할 점을 알려줘."
+    assert written["answerability"]
+    assert written["category"]
 
 
 def test_chat_route_uses_sglang_provider_and_agent_memory(

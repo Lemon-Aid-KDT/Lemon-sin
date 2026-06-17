@@ -13,6 +13,7 @@ from lemon_ai_agent.chat_session import (
 from lemon_ai_agent.chat_session import (
     ChatTurn as AgentChatTurn,
 )
+from lemon_ai_agent.knowledge import analyze_chat_intent
 from lemon_ai_agent.llm import LocalLLMClient, OllamaClient, SGLangClient
 from lemon_ai_agent.schemas import ReferenceRange
 from lemon_ai_agent.user_health_context import ContextResolver
@@ -40,6 +41,8 @@ from src.security.scopes import ApiScope
 from src.services.agent_memory import (
     load_agent_memory_context,
     record_agent_run,
+    upsert_behavior_memory,
+    upsert_conversation_memory,
     upsert_daily_coaching_memory,
 )
 from src.services.app_health_analysis import (
@@ -309,6 +312,18 @@ async def run_daily_coaching(
                 getattr(llm_client, "model", None) if output.provider != "deterministic" else None
             ),
         )
+    behavior_outcome = (
+        "engaged"
+        if output.status != "preview" and output.approval_status == "confirmed"
+        else "deferred"
+    )
+    await upsert_behavior_memory(
+        session,
+        current_user,
+        settings,
+        outcome=behavior_outcome,
+        focus=output.findings[0].nutrient if output.findings else "",
+    )
     await record_sensitive_audit_event(
         session,
         current_user,
@@ -489,6 +504,14 @@ async def run_chatbot(
                 "provider": chatbot_response.provider,
                 "requires_user_approval": chatbot_response.requires_user_approval,
             },
+        )
+        await upsert_conversation_memory(
+            session,
+            current_user,
+            settings,
+            user_message=request.message,
+            answerability=chatbot_response.answerability,
+            category=analyze_chat_intent(request.message).category,
         )
         analysis_contract = build_analysis_response_contract(
             context["user_health_context_snapshot"]

@@ -36,6 +36,12 @@ AGENT_MEMORY_TYPES = (
 MAX_PATTERN_COUNT = 99
 RECENT_FINDING_LIMIT = 20
 SUMMARY_LIST_LIMIT = 20
+CONVERSATION_TURN_LIMIT = 8
+CONVERSATION_TOPIC_MAX_CHARS = 80
+CONVERSATION_SUMMARY_MAX_CHARS = 480
+BEHAVIOR_OUTCOME_LIMIT = 12
+BEHAVIOR_FOCUS_MAX_CHARS = 60
+BEHAVIOR_OUTCOMES = ("engaged", "deferred")
 FORBIDDEN_MEMORY_KEYS = {
     "authorization",
     "full_prompt",
@@ -162,6 +168,90 @@ async def upsert_agent_memory_record(
         }
     )
     memory.source_counters = _increment_counter(memory.source_counters, source_kind)
+    memory.last_source_created_at = _utc_now()
+    memory.algorithm_version = AGENT_MEMORY_ALGORITHM_VERSION
+    await _commit_if_possible(session)
+    return memory
+
+
+async def upsert_conversation_memory(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    settings: Settings,
+    *,
+    user_message: str,
+    answerability: str,
+    category: str,
+) -> AgentMemory | None:
+    """Roll one chat turn into a compact conversation_memory weak signal.
+
+    The conversation summary is a low-strength reference (confidence ``summary``,
+    source_kind ``chat_summary``): only a short, sanitized topic snippet per turn
+    is kept, never the raw transcript. Older turns drop out of the rolling window
+    so the memory stays bounded.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        settings: Application settings holding the privacy hash secret.
+        user_message: The latest user chat message.
+        answerability: The answerability class of the produced response.
+        category: The classified question category.
+
+    Returns:
+        The upserted ``AgentMemory`` row, or ``None`` when the message is blank or
+        the session does not support persistence.
+    """
+    topic = _conversation_topic(user_message)
+    if not topic:
+        return None
+    if not hasattr(session, "scalar") or not hasattr(session, "add"):
+        return None
+
+    memory = await _get_or_create_memory(session, user, settings, CONVERSATION_MEMORY_TYPE)
+    summary = _merge_conversation_summary(memory.summary_json, topic, answerability, category)
+    memory.summary_json = _sanitize_memory_value(summary)
+    memory.source_counters = _increment_counter(memory.source_counters, "chat_summary")
+    memory.last_source_created_at = _utc_now()
+    memory.algorithm_version = AGENT_MEMORY_ALGORITHM_VERSION
+    await _commit_if_possible(session)
+    return memory
+
+
+async def upsert_behavior_memory(
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    settings: Settings,
+    *,
+    outcome: str,
+    focus: str = "",
+) -> AgentMemory | None:
+    """Roll one coaching engagement signal into behavior_memory.
+
+    Tracks a weak, inferred engagement pattern (confidence ``inferred_pattern``,
+    source_kind ``checklist_result``): how often the user acted on coaching
+    (``engaged``) versus deferred it (``deferred``). No raw transcript is stored.
+
+    Args:
+        session: Request-scoped async database session.
+        user: Authenticated owner.
+        settings: Application settings holding the privacy hash secret.
+        outcome: ``engaged`` (completed and confirmed) or ``deferred``.
+        focus: Short topic/nutrient label the coaching was about.
+
+    Returns:
+        The upserted ``AgentMemory`` row, or ``None`` for an unknown outcome or a
+        session that does not support persistence.
+    """
+    if outcome not in BEHAVIOR_OUTCOMES:
+        return None
+    if not hasattr(session, "scalar") or not hasattr(session, "add"):
+        return None
+
+    memory = await _get_or_create_memory(session, user, settings, BEHAVIOR_MEMORY_TYPE)
+    summary = _merge_behavior_summary(memory.summary_json, outcome, focus)
+    memory.summary_json = _sanitize_memory_value(summary)
+    memory.source_counters = _increment_counter(memory.source_counters, "checklist_result")
     memory.last_source_created_at = _utc_now()
     memory.algorithm_version = AGENT_MEMORY_ALGORITHM_VERSION
     await _commit_if_possible(session)
@@ -319,6 +409,94 @@ def _merge_daily_coaching_summary(
         "repeated_nutrient_patterns": patterns,
         "recent_findings": recent_findings[-RECENT_FINDING_LIMIT:],
         "health_caution_tags": health_caution_tags[:SUMMARY_LIST_LIMIT],
+    }
+
+
+def _conversation_topic(user_message: str) -> str:
+    """Return a short, whitespace-collapsed topic snippet for one chat turn.
+
+    Args:
+        user_message: The raw user chat message.
+
+    Returns:
+        A trimmed snippet (max ``CONVERSATION_TOPIC_MAX_CHARS`` chars), or an empty
+        string when the message has no usable content.
+    """
+    if not isinstance(user_message, str):
+        return ""
+    collapsed = " ".join(user_message.strip().split())
+    return collapsed[:CONVERSATION_TOPIC_MAX_CHARS]
+
+
+def _merge_conversation_summary(
+    existing: dict[str, Any],
+    topic: str,
+    answerability: str,
+    category: str,
+) -> dict[str, Any]:
+    """Append the latest chat turn to a bounded rolling conversation summary.
+
+    Args:
+        existing: The current ``conversation_memory`` ``summary_json``.
+        topic: Sanitized topic snippet for the latest turn.
+        answerability: Answerability class of the latest response.
+        category: Classified question category of the latest turn.
+
+    Returns:
+        The merged ``summary_json`` with a rebuilt rolling summary string and a
+        bounded ``recent_turns`` list (oldest dropped past the window).
+    """
+    summary = _with_schema_version(existing)
+    recent_turns = list(summary.get("recent_turns", []))
+    recent_turns.append({"category": category, "answerability": answerability, "topic": topic})
+    recent_turns = recent_turns[-CONVERSATION_TURN_LIMIT:]
+    rolling = "; ".join(
+        f"[{turn.get('category', '')}] {turn.get('topic', '')}" for turn in recent_turns
+    )
+    return {
+        **summary,
+        "memory_type": CONVERSATION_MEMORY_TYPE,
+        "summary": rolling[:CONVERSATION_SUMMARY_MAX_CHARS],
+        "confidence": "summary",
+        "source_kind": "chat_summary",
+        "recent_turns": recent_turns,
+    }
+
+
+def _merge_behavior_summary(
+    existing: dict[str, Any],
+    outcome: str,
+    focus: str,
+) -> dict[str, Any]:
+    """Accumulate a coaching engagement outcome into a bounded behavior summary.
+
+    Args:
+        existing: The current ``behavior_memory`` ``summary_json``.
+        outcome: ``engaged`` or ``deferred``.
+        focus: Short topic/nutrient label for the latest outcome.
+
+    Returns:
+        The merged ``summary_json`` with updated engaged/deferred counts, an
+        engagement-rate summary string, and a bounded ``recent_outcomes`` list.
+    """
+    summary = _with_schema_version(existing)
+    counts = dict(summary.get("outcome_counts", {}))
+    counts[outcome] = _increment_pattern_count(counts.get(outcome, 0))
+    recent = list(summary.get("recent_outcomes", []))
+    recent.append({"outcome": outcome, "focus": focus[:BEHAVIOR_FOCUS_MAX_CHARS]})
+    recent = recent[-BEHAVIOR_OUTCOME_LIMIT:]
+    engaged = int(counts.get("engaged", 0))
+    deferred = int(counts.get("deferred", 0))
+    total = engaged + deferred
+    rate = round(engaged / total, 2) if total else 0.0
+    return {
+        **summary,
+        "memory_type": BEHAVIOR_MEMORY_TYPE,
+        "summary": f"수행 {engaged} / 미수행 {deferred} (수행률 {rate})",
+        "confidence": "inferred_pattern",
+        "source_kind": "checklist_result",
+        "outcome_counts": counts,
+        "recent_outcomes": recent,
     }
 
 

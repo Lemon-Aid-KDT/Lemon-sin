@@ -692,6 +692,7 @@ def test_chatbot_db_backed_fallback_uses_answer_card_source_basis() -> None:
     assert response.sources == [
         {
             "source_id": "nih-ods-magnesium",
+            "source_title": "nih-ods-magnesium",
             "source_family": "supplement_reference",
             "review_status": "reviewed",
             "version_label": "2026-05 DB reviewed source",
