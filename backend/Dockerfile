@@ -20,6 +20,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates \
         curl \
+        gosu \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
@@ -47,19 +48,24 @@ COPY Nutrition-backend/data/nutrition_reference ./data/nutrition_reference
 COPY Food-backend ./Food-backend
 COPY ai_agent_chat ./ai_agent_chat
 COPY scripts ./scripts
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN if [ "${PRELOAD_PADDLEOCR}" = "true" ]; then \
         LOCAL_OCR_LANGUAGE="${PRELOAD_PADDLEOCR_LANGUAGE}" python scripts/preload_paddleocr.py; \
     fi \
     && mkdir -p /home/lemon/.paddlex \
     && mkdir -p /home/lemon/.config/Ultralytics \
+    && mkdir -p /home/lemon/.cache/huggingface/hub \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh \
     && chown -R lemon:lemon /app /home/lemon /opt/venv
 
-USER lemon
-
+# No USER directive: the container starts as root so docker-entrypoint.sh can fix
+# ownership of the root-owned model-cache named volumes (lemon-aid-hf-cache,
+# lemon-aid-paddle-cache), then drops to the unprivileged lemon user via gosu.
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
