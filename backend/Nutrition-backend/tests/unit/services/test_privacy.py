@@ -16,6 +16,7 @@ from src.config import Settings
 from src.db.tx import REQUEST_MANAGED_TX
 from src.learning.object_storage import LearningObjectStorageError
 from src.media.object_storage import MediaObjectReference, MediaObjectStorageError
+from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import (
     BodyProfileSnapshot,
@@ -32,6 +33,7 @@ from src.models.db.medical import (
     PatientMedication,
     PatientStatusSnapshot,
 )
+from src.models.db.medical_source import MedicalSource
 from src.models.db.privacy import AuditLog, ConsentRecord, DeletionRequest
 from src.models.db.regulated import RegulatedDocument
 from src.models.db.retraining import AnnotationTask, LearningDatasetItem
@@ -814,6 +816,8 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows(
     assert annotation_task.review_notes_code is None
     assert annotation_task.reviewer_hash is None
     assert deletion_request.deleted_counts == {
+        "agent_memory": 0,
+        "agent_runs": 0,
         "annotation_tasks_cancelled": 1,
         "analysis_results": 1,
         "consent_records": 1,
@@ -851,6 +855,66 @@ async def test_delete_all_user_data_includes_p1_health_and_supplement_rows(
     serialized_metadata = str(fake_session.added[1].event_metadata)
     assert media_object.object_ref not in serialized_metadata
     assert "owner_subject_hash" not in serialized_metadata
+
+
+@pytest.mark.asyncio
+async def test_delete_all_user_data_includes_agent_memory_and_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Owner-scoped agent memory + runs are deleted; shared medical sources preserved."""
+    owner_hash = "a" * 64
+    agent_memory = AgentMemory(
+        owner_subject_hash=owner_hash,
+        memory_type="profile_memory",
+        summary_json={"summary": "x"},
+        source_counters={},
+        algorithm_version="agent-memory-summary-v1.0.0",
+    )
+    agent_run = AgentRun(
+        request_id="req-1",
+        owner_subject_hash=owner_hash,
+        agent_name="daily_health_agent",
+        status="completed",
+        approval_status="confirmed",
+        provider="deterministic",
+    )
+    medical_source = MedicalSource(
+        id="nih-ods-magnesium",
+        source_family="supplement_reference",
+        publisher="NIH ODS",
+        title="NIH ODS Magnesium",
+        canonical_url="https://ods.od.nih.gov/",
+        jurisdiction="us",
+        source_type="guideline",
+        default_review_status="reviewed",
+        owner="medical_reviewer",
+    )
+    fake_session = _FakeDeletionSession(
+        {
+            AgentMemory: [agent_memory],
+            AgentRun: [agent_run],
+            MedicalSource: [medical_source],
+        }
+    )
+    fake_media_store = _FakeMediaObjectStore()
+    monkeypatch.setattr(
+        "src.services.privacy.build_media_object_store",
+        lambda _settings: fake_media_store,
+    )
+    settings = Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
+
+    deletion_request = await create_delete_all_user_data_request(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _request(),
+        settings,
+    )
+
+    assert agent_memory in fake_session.deleted
+    assert agent_run in fake_session.deleted
+    assert medical_source not in fake_session.deleted
+    assert deletion_request.deleted_counts["agent_memory"] == 1
+    assert deletion_request.deleted_counts["agent_runs"] == 1
 
 
 @pytest.mark.asyncio

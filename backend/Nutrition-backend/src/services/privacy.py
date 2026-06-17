@@ -21,6 +21,7 @@ from src.learning.factory import build_learning_object_store
 from src.learning.pipeline import delete_learning_artifacts_for_owner
 from src.media.factory import build_media_object_store
 from src.media.object_storage import MediaObjectReference, MediaObjectStorageError, MediaObjectStore
+from src.models.db.agent_memory import AgentMemory, AgentRun
 from src.models.db.analysis_result import AnalysisResult
 from src.models.db.health import (
     BodyProfileSnapshot,
@@ -846,7 +847,39 @@ async def _medical_deletion_records_for_owner(
     }
 
 
-async def create_delete_all_user_data_request(
+async def _delete_agent_records_for_owner(
+    session: AsyncSession,
+    owner_subject_hash: str,
+) -> dict[str, int]:
+    """Delete owner-scoped agent memory and run rows.
+
+    Shared, non-owner-scoped registries such as ``medical_sources`` are never
+    touched because they are not queried here.
+
+    Args:
+        session: Request-scoped async database session.
+        owner_subject_hash: HMAC of the authenticated owner subject.
+
+    Returns:
+        Deleted row counts keyed by ``agent_memory`` and ``agent_runs``.
+    """
+    agent_memory_records = await _scalar_records(
+        session,
+        select(AgentMemory).where(AgentMemory.owner_subject_hash == owner_subject_hash),
+    )
+    agent_run_records = await _scalar_records(
+        session,
+        select(AgentRun).where(AgentRun.owner_subject_hash == owner_subject_hash),
+    )
+    await _delete_records(session, agent_memory_records)
+    await _delete_records(session, agent_run_records)
+    return {
+        "agent_memory": len(agent_memory_records),
+        "agent_runs": len(agent_run_records),
+    }
+
+
+async def create_delete_all_user_data_request(  # noqa: PLR0915
     session: AsyncSession,
     user: AuthenticatedUser,
     request: Request,
@@ -955,6 +988,9 @@ async def create_delete_all_user_data_request(
             session,
             select(ConsentRecord).where(ConsentRecord.owner_subject == owner_subject),
         )
+        agent_deleted_counts = await _delete_agent_records_for_owner(
+            session, owner_subject_hash
+        )
         learning_deleted_counts = await delete_learning_artifacts_for_owner(
             session=session,
             owner_subject_hash=owner_subject_hash,
@@ -988,6 +1024,7 @@ async def create_delete_all_user_data_request(
         await _delete_records(session, consent_records)
 
         deletion_request.deleted_counts = {
+            **agent_deleted_counts,
             "analysis_results": len(analysis_records),
             "consent_records": len(consent_records),
             "health_daily_summaries": len(health_daily_summaries),
