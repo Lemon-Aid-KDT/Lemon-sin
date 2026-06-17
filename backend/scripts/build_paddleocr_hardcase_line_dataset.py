@@ -24,8 +24,9 @@ import argparse
 import json
 import random
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -43,6 +44,7 @@ DEFAULT_LINE_HEIGHT = 52
 DEFAULT_CANVAS_PAD_X_RANGE = (8, 18)
 DEFAULT_CANVAS_PAD_Y_RANGE = (5, 12)
 DEFAULT_ROTATE_DEGREES = 1.8
+DEFAULT_ROTATE_PROBABILITY = 0.35
 TAB_OR_NEWLINE = re.compile(r"[\t\r\n]")
 
 
@@ -267,7 +269,7 @@ def _render_line(text: str, rng: random.Random) -> Image.Image:
     draw = ImageDraw.Draw(image)
     ink = rng.randint(0, 35)
     draw.text((pad_x - bbox[0], pad_y - bbox[1]), text, font=font, fill=(ink, ink, ink))
-    if rng.random() < 0.35:
+    if rng.random() < DEFAULT_ROTATE_PROBABILITY:
         angle = rng.uniform(-DEFAULT_ROTATE_DEGREES, DEFAULT_ROTATE_DEGREES)
         image = image.rotate(angle, expand=True, fillcolor=(shade, shade, shade))
     return image
