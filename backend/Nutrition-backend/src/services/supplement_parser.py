@@ -83,7 +83,9 @@ LAYOUT_SECTION_TYPE_MAP = {
     "functionality": "functional_info",
     "storage_method": "storage_method",
 }
-INGREDIENT_UNIT_PATTERN = r"mg|㎎|g|mcg|μg|ug|㎍|iu|IU|%"
+INGREDIENT_UNIT_PATTERN = (
+    r"mg|㎎|밀리그램|g|그램|mcg|μg|µg|ug|㎍|마이크로그램|iu|i\.u\.|IU|아이유|cfu|CFU|씨에프유|%"
+)
 INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
     r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
@@ -95,6 +97,12 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
 )
 BARE_INGREDIENT_AMOUNT_PATTERN = re.compile(
     rf"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
+    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
+    re.IGNORECASE,
+)
+BARE_INGREDIENT_NUMBER_PATTERN = re.compile(r"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*$")
+INGREDIENT_UNIT_ONLY_PATTERN = re.compile(
+    rf"^\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
     r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
     re.IGNORECASE,
 )
@@ -1156,6 +1164,7 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
             if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
                 return candidates
     previous_name: str | None = None
+    pending_split_amount: tuple[str, str] | None = None
     for line in lines:
         amount_match = BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(line)
         if amount_match is not None:
@@ -1171,11 +1180,35 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
                 if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
                     return candidates
             previous_name = None
+            pending_split_amount = None
+            continue
+        number_match = BARE_INGREDIENT_NUMBER_PATTERN.fullmatch(line)
+        if number_match is not None and previous_name is not None:
+            pending_split_amount = (previous_name, number_match.group("amount"))
+            previous_name = None
+            continue
+        unit_match = INGREDIENT_UNIT_ONLY_PATTERN.fullmatch(line)
+        if unit_match is not None and pending_split_amount is not None:
+            pending_name, pending_amount = pending_split_amount
+            _append_ocr_pattern_candidate(
+                candidates,
+                seen,
+                name=pending_name,
+                amount_text=pending_amount,
+                unit_text=unit_match.group("unit"),
+                daily_value_text=unit_match.group("dv"),
+            )
+            if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+                return candidates
+            pending_split_amount = None
             continue
         if INGREDIENT_AMOUNT_PATTERN.search(line):
             previous_name = None
+            pending_split_amount = None
             continue
         previous_name = _clean_split_line_ingredient_name(line) or None
+        if previous_name is not None:
+            pending_split_amount = None
     return candidates
 
 
@@ -1477,6 +1510,7 @@ def _strip_ingredient_heading_prefix(value: str) -> str:
     cleaned = value.strip()
     patterns = (
         r"^(?:nutrition facts|supplement facts)\s*[:\uff1a|·•-]*\s*",
+        r"^(?:active\s+ingredients?|other\s+ingredients?|ingredients?)\s*[:\uff1a|·•-]*\s*",
         r"^(?:영양\s*정보|영양\s*기능\s*정보|기능\s*정보)\s*[:\uff1a|·•-]*\s*",
         r"^(?:원재료명|원료명)\s*(?:및\s*함량)?\s*[:\uff1a|·•-]*\s*",
         r"^(?:1일\s*)?(?:섭취량|섭취\s*방법)\s*[:\uff1a|·•-]*\s*",
@@ -1504,8 +1538,19 @@ def _looks_like_non_ingredient_heading(value: str) -> bool:
         "supplement facts",
         "영양 정보",
         "영양정보",
+        "영양성분기준치",
+        "영양 성분 기준치",
         "영양 기능 정보",
         "영양기능정보",
+        "daily value",
+        "daily values",
+        "% daily value",
+        "%dv",
+        "active ingredient",
+        "active ingredients",
+        "other ingredient",
+        "other ingredients",
+        "ingredients",
         "섭취 방법",
         "섭취방법",
         "주의 사항",
@@ -1556,7 +1601,13 @@ def _parse_ingredient_amount(value: str) -> int | float:
     Returns:
         Integer when exact, otherwise float.
     """
-    numeric_value = float(value.replace(",", ""))
+    # PaddleOCR occasionally confuses numeric glyphs in tight facts tables.
+    # Normalize only characters that are visually used as digits inside an
+    # already amount-matched token; the regex gate prevents arbitrary words from
+    # reaching this parser.
+    numeric_value = float(
+        value.translate(str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1"})).replace(",", "")
+    )
     return int(numeric_value) if numeric_value.is_integer() else numeric_value
 
 
@@ -1570,12 +1621,14 @@ def _normalize_ingredient_unit(value: str) -> str:
         Normalized unit string.
     """
     stripped = value.strip()
-    if stripped == "㎎":
+    if stripped in {"㎎", "밀리그램"}:
         return "mg"
-    if stripped in {"μg", "㎍"} or stripped.casefold() in {"mcg", "ug"}:
+    if stripped in {"μg", "µg", "㎍"} or stripped.casefold() in {"mcg", "ug", "마이크로그램"}:
         return "ug"
-    if stripped.casefold() == "iu":
+    if stripped.casefold() in {"iu", "i.u.", "아이유"}:
         return "IU"
+    if stripped.casefold() in {"cfu", "씨에프유"}:
+        return "CFU"
     return stripped.casefold() if stripped != "%" else "%"
 
 
