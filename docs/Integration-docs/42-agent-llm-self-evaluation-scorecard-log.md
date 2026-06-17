@@ -14,6 +14,7 @@
 | 0 (baseline) | 2026-06-16 | 100.0 | 미산출(manual 미채점) | incomplete | ✗ |
 | 1 | 2026-06-17 | 100.0 | 미산출(비-GATE manual 미채점) | **FAIL (O3=1)** | ✗ |
 | 2 | 2026-06-17 | 100.0 | **≈89.6% (120/134)** | **PASS (24/24=2)** | ✗ (평균<90%) |
+| 3 | 2026-06-17 | 100.0 | **91.0% (122/134)** | **PASS (24/24=2)** | ✓ **기준치 충족** |
 
 > 전체 평균 %는 manual 항목이 모두 채점된 회차부터 산출된다. 기준치(§1) = 모든 GATE 2점 +
 > 전체 ≥ 90% + manual 미채점 0개.
@@ -171,3 +172,27 @@ C 전체, D1/D2/D4, E2/E3, F1/F3, G1/G3, H3/H4, I3, K1/K2/K4/K5/K6, L2/L4/L5/L7,
 3. (소) **L5 stale 표시**(1→2): stale_only일 때 사용자 메시지에 만료 사실 표시.
 - 1+2 구축 시 D1·G3·L7 → 2 (+3점) → **123/134 = 91.8% (PASS)**. DB 불필요.
 - **환경 차단 잔여**(K4·K6·P2): `DATABASE_URL`·live LLM 필요 → 로컬에서 2점 불가, 측정한계로 유지. H4(RAG)는 doc26 §25가 defer한 대형 작업.
+
+---
+
+## 회차 3 — conversation_memory write → 기준치 충족 (2026-06-17)
+
+- **status: PASS** · gate: **PASS (24/24=2)** · auto: **100% (21)** · manual 미채점: **0** · 전체 **91.0% (122/134)**.
+- **임계 3조건 모두 충족**: ① 모든 GATE = 2 ✓ ② 전체 평균 91.0% ≥ 90% ✓ ③ manual 미채점 0개 ✓.
+
+### 이번 회차 변경 (commit `6a68b74c`)
+
+`upsert_conversation_memory`(rolling 요약, confidence=summary/source_kind=chat_summary, raw 미저장, `CONVERSATION_TURN_LIMIT` 바운드) + `run_chatbot` 훅 + 단위 3 / route 1 테스트. 246 passed/1 skipped, ruff/compile clean.
+
+- **D1-memory-models 1→2**: v2 타입(conversation_memory)의 **production write 경로가 실재**(회차 2의 "v2 write 경로 부재" 갭 해소). 모델 4종 + 갱신정책(upsert_agent_memory_record + upsert_conversation_memory) 존재·실사용.
+- **L7-multiturn-carryover 1→2**: 대화 턴 요약이 conversation_memory로 저장→다음 턴 prompt에 표출되는 write+read 경로가 실재·테스트됨(이전 턴 이월). (교차 턴 모호 entity 해소는 entity_normalization 기반으로 더 얇은 부분.)
+
+### 기준치 충족했으나 남은 sub-2 (다음 품질 향상 후보, 합격에 필수 아님)
+
+- **환경 차단**(로컬 2점 불가): `K4`/`K6`(Supabase `DATABASE_URL` live smoke), `P2`(live LLM). → 사용자가 DB/LLM 제공 시 측정·승격.
+- **defer 대형**: `H4`(RAG/vector, doc26 §25 defer).
+- **부분(추가 작업 시 2점)**: `G3`(behavior_memory write), `L5`(stale 사용자 표시), `N5`(approved action apply 계약), `E2`/`E3`(알고리즘→agent 컨텍스트 안정유입), `M5`(실천안 adaptive 강화), `I3`(boundary 상세), `P4`(backlog→evidence→golden 루프 자동화).
+
+### 다음 단계
+
+**기준치 통과 → doc 41 §0 운영 루프상 사용자 최종 평가 단계.** 추가 품질을 원하면 behavior_memory write(G3+, 더 견고한 마진)·L5 stale 표시가 가장 저비용 후보이고, K4/K6/P2는 환경(`DATABASE_URL`/live LLM)이 선행 조건.
