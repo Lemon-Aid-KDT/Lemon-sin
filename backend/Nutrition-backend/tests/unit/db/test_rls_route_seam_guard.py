@@ -19,6 +19,8 @@ left four supplement CRUD routes unmigrated until the live flip exposed them.
 
 from __future__ import annotations
 
+import inspect
+
 from fastapi.dependencies.utils import get_flat_dependant
 from fastapi.routing import APIRoute
 from src.db.dependencies import get_async_session, get_rls_context_session
@@ -116,5 +118,39 @@ def test_formerly_unmigrated_supplement_routes_sit_on_get_rls_context_session() 
     assert not missing, (
         "These owner routes must depend on get_rls_context_session (per-request GUC + "
         "out-of-band audit) or they fail closed under the lemon_app FORCE-RLS flip: "
+        + ", ".join(missing)
+    )
+
+
+def _endpoint_by_name() -> dict[str, object]:
+    """Map each route's endpoint name to its (unwrapped) endpoint callable."""
+    app = create_app()
+    endpoints: dict[str, object] = {}
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            endpoints[route.endpoint.__name__] = inspect.unwrap(route.endpoint)
+    return endpoints
+
+
+def test_in_body_cm_routes_actually_wrap_their_body() -> None:
+    """Allowlisted routes must really reference an RLS CM in their body, not just claim it.
+
+    ``_IN_BODY_RLS_CM_ROUTES`` is a human assertion that a ``get_async_session`` route
+    wraps its body in ``rls_request_transaction`` / ``rls_request_transaction_allow_inner_commit``.
+    Without this check, refactoring the wrapper out of an allowlisted route would still
+    pass the guard (false negative) and ship a flip-unsafe route. Assert the source of
+    each allowlisted endpoint references the CM (the substring also covers the
+    ``_allow_inner_commit`` variant).
+    """
+    endpoints = _endpoint_by_name()
+    missing = sorted(
+        name
+        for name in _IN_BODY_RLS_CM_ROUTES
+        if name in endpoints and "rls_request_transaction" not in inspect.getsource(endpoints[name])
+    )
+    assert not missing, (
+        "These allowlisted routes no longer reference an RLS context manager in their "
+        "body (rls_request_transaction*), so they are flip-unsafe despite being "
+        "allowlisted; restore the wrapper or migrate to get_rls_context_session: "
         + ", ".join(missing)
     )
