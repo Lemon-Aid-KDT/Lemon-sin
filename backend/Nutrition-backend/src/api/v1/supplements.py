@@ -110,6 +110,7 @@ from src.security.scopes import ApiScope
 from src.security.subjects import build_owner_subject
 from src.services.health_profile import get_latest_body_profile_snapshot
 from src.services.medical_records import get_current_medical_context_summary
+from src.services.nutrient_category_map import category_keys_for_ingredient_texts
 from src.services.privacy import (
     AuditOutcome,
     ConsentRequiredError,
@@ -650,6 +651,12 @@ def _build_merged_multi_image_preview(
         update={
             "parsed_product": _select_parsed_product(previews),
             "ingredient_candidates": merged.ingredients or base.ingredient_candidates,
+            "suggested_category_keys": list(
+                category_keys_for_ingredient_texts(
+                    candidate.display_name
+                    for candidate in (merged.ingredients or base.ingredient_candidates)
+                )
+            ),
             "layout_available": bool(merged.label_sections) or base.layout_available,
             "label_sections": merged.label_sections,
             "intake_method": intake_method,

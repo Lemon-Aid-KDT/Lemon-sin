@@ -44,6 +44,7 @@ from src.models.schemas.supplement_image import (
 )
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.nutrient_category_map import category_keys_for_ingredient_texts
 from src.utils.image_safety import (
     ImageSafetyError,
     safe_load_with_bomb_guard,
@@ -214,6 +215,16 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
         SupplementPreviewLabelSection.model_validate(item)
         for item in _dict_items(parsed_snapshot.get("label_sections"))
     ]
+    ingredient_items = list(_dict_items(parsed_snapshot.get("ingredient_candidates")))
+    # Deterministically suggest curated categories from the recognized ingredient
+    # names so the confirmation UI can pre-select a category without a vision model.
+    candidate_names = [
+        str(item.get("display_name") or item.get("original_name") or "").strip()
+        for item in ingredient_items
+    ]
+    suggested_category_keys = list(
+        category_keys_for_ingredient_texts(name for name in candidate_names if name)
+    )
     return SupplementAnalysisPreview(
         analysis_id=record.id,
         status=SupplementAnalysisStatus(record.status),
@@ -221,9 +232,9 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
             _dict_or_empty(parsed_snapshot.get("parsed_product"))
         ),
         ingredient_candidates=[
-            SupplementIngredientCandidate.model_validate(item)
-            for item in _dict_items(parsed_snapshot.get("ingredient_candidates"))
+            SupplementIngredientCandidate.model_validate(item) for item in ingredient_items
         ],
+        suggested_category_keys=suggested_category_keys,
         matched_product_candidates=[
             MatchedSupplementCandidate.model_validate(item)
             for item in _dict_items(match_snapshot.get("matched_product_candidates"))

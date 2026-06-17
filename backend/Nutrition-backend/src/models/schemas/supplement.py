@@ -476,6 +476,9 @@ class SupplementAnalysisPreview(BaseModel):
         status: Preview status.
         parsed_product: Product-level parsed fields.
         ingredient_candidates: Ingredient candidates requiring user review.
+        suggested_category_keys: Curated category keys deterministically derived from the
+            recognized ingredient names, ordered for UI pre-selection (empty when no
+            ingredient maps to a known category).
         matched_product_candidates: Product reference matches.
         barcode_lookup: Optional official barcode lookup result.
         layout_available: Whether deterministic section layout is available.
@@ -507,6 +510,7 @@ class SupplementAnalysisPreview(BaseModel):
     status: SupplementAnalysisStatus
     parsed_product: SupplementParsedProduct
     ingredient_candidates: list[SupplementIngredientCandidate]
+    suggested_category_keys: list[str] = Field(default_factory=list)
     matched_product_candidates: list[MatchedSupplementCandidate] = Field(default_factory=list)
     barcode_lookup: SupplementBarcodeLookupResponse | None = None
     layout_available: bool = False

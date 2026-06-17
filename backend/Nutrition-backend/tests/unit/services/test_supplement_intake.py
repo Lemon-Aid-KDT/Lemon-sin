@@ -418,3 +418,39 @@ def test_supplement_analysis_run_to_preview_omits_intake_metadata() -> None:
         "intake_method",
         "precautions",
     ]
+
+
+def test_supplement_analysis_run_to_preview_suggests_categories_from_ingredients() -> None:
+    """Verify the preview derives curated category suggestions from ingredient names."""
+    record = _existing_run("b" * 64)
+    record.parsed_snapshot = {
+        "parsed_product": {},
+        "ingredient_candidates": [
+            {"display_name": "루테인", "confidence": 0.0, "source": "ollama_structured"},
+            {"display_name": "지아잔틴", "confidence": 0.0, "source": "ollama_structured"},
+            {
+                "display_name": "헤마토코쿠스추출물",
+                "confidence": 0.0,
+                "source": "ollama_structured",
+            },
+        ],
+    }
+
+    preview = supplement_analysis_run_to_preview(record)
+
+    assert "루테인_눈" in preview.suggested_category_keys
+
+
+def test_supplement_analysis_run_to_preview_suggests_no_category_without_match() -> None:
+    """Verify the suggestion list is empty when no ingredient maps to a category."""
+    record = _existing_run("c" * 64)
+    record.parsed_snapshot = {
+        "parsed_product": {},
+        "ingredient_candidates": [
+            {"display_name": "qzx-filler-000", "confidence": 0.0, "source": "ollama_structured"},
+        ],
+    }
+
+    preview = supplement_analysis_run_to_preview(record)
+
+    assert preview.suggested_category_keys == []
