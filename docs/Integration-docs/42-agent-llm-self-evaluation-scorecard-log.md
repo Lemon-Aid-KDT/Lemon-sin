@@ -17,6 +17,7 @@
 | 3 | 2026-06-17 | 100.0 | **91.0% (122/134)** | **PASS (24/24=2)** | ✓ **기준치 충족** |
 | 4 | 2026-06-17 | 100.0 | **91.8% (123/134)** | **PASS (24/24=2)** | ✓ 마진 강화 |
 | 5 | 2026-06-17 | 100.0 | **93.3% (125/134)** | **PASS (24/24=2)** | ✓ live K4+P2 |
+| 6 | 2026-06-17 | 100.0 | **94.0% (126/134)** | **PASS (24/24=2)** | ✓ live K6 |
 
 > 전체 평균 %는 manual 항목이 모두 채점된 회차부터 산출된다. 기준치(§1) = 모든 GATE 2점 +
 > 전체 ≥ 90% + manual 미채점 0개.
@@ -221,5 +222,14 @@ C 전체, D1/D2/D4, E2/E3, F1/F3, G1/G3, H3/H4, I3, K1/K2/K4/K5/K6, L2/L4/L5/L7,
 
 ### 남은 sub-2 (합격 필수 아님)
 
-- **K6-db-user-record-e2e (1)**: 가짜 사용자 food record seed→`load_recent_user_food_record_context`(RLS)→답변 grounding 스모크. DB는 떠 있으나 RLS owner 컨텍스트 + seed 스크립트 신규 작성 필요(L6 auto가 SQL 제외 경로를 이미 증명 중).
 - **defer**: H4(RAG, doc26 §25). **부분**: L5·N5·E2/E3/M5/I3/P4.
+
+---
+
+## 회차 6 — K6 실제 DB seed→RLS load→reflect 스모크 → K6 승격 (2026-06-17)
+
+- **status: PASS** · gate: **PASS (24/24=2)** · auto: **100% (21)** · manual 미채점: **0** · 전체 **94.0% (126/134)**.
+- **K6-db-user-record-e2e 1→2**: 신규 `scripts/smoke_user_food_record_e2e.py` — 동일 Docker Postgres에 `lemon_app`(FORCE RLS)로 `rls_request_transaction_allow_inner_commit`로 owner GUC 설정 → `FoodRecord(display_items=["라면"])` seed → 실제 `load_recent_user_food_record_context`(SQL SELECT)가 반환 → `answer_reflects_record: true`. L6(auto)가 제외하던 **SQL 왕복 + RLS**까지 실제로 증명. ruff/compile clean.
+- **누적 마진**: 89.6 → 91.0 → 91.8 → 93.3 → **94.0%**. GATE 24/24 유지.
+- **남은 sub-2**(합격 필수 아님): defer H4(RAG, doc26 §25); 부분 L5·N5·E2/E3/M5/I3/P4(소규모 추가 작업 시 승격 가능).
+- **환경 정리**: live 항목(K4/K6/P2)은 Docker Postgres + Ollama 가동 시 재현. smoke 컨테이너 `lemon-smoke-pg`는 작업 후 `docker rm -f` 권장.
