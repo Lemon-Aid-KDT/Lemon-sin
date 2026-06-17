@@ -590,6 +590,46 @@ def test_daily_coaching_activity_context_omits_raw_sensitive_fields(
     assert "sleep" not in body_text
 
 
+def test_chat_route_writes_conversation_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify run_chatbot rolls the turn into conversation_memory (weak signal)."""
+    captured: dict[str, object] = {}
+
+    async def _capture_conversation_memory(
+        _session: object,
+        _user: object,
+        _settings: object,
+        *,
+        user_message: str,
+        answerability: str,
+        category: str,
+    ) -> None:
+        captured["conversation_memory"] = {
+            "user_message": user_message,
+            "answerability": answerability,
+            "category": category,
+        }
+
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "upsert_conversation_memory", _capture_conversation_memory)
+
+    response = _client(settings=settings).post(
+        "/api/v1/ai-agent/chat",
+        json=_chat_payload(),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    written = captured.get("conversation_memory")
+    assert written is not None
+    assert written["user_message"] == "오늘 기록을 보고 먼저 확인할 점을 알려줘."
+    assert written["answerability"]
+    assert written["category"]
+
+
 def test_chat_route_uses_sglang_provider_and_agent_memory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

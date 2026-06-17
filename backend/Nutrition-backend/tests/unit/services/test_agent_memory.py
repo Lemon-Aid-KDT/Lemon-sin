@@ -15,6 +15,8 @@ from src.models.db.supplement import UserSupplement, UserSupplementIngredient
 from src.security.auth import AuthenticatedUser
 from src.services.agent_memory import (
     AGENT_MEMORY_TYPES,
+    CONVERSATION_MEMORY_TYPE,
+    CONVERSATION_TURN_LIMIT,
     DAILY_COACHING_MEMORY_TYPE,
     NUTRITION_ANALYSIS_MEMORY_TYPE,
     PROFILE_MEMORY_TYPE,
@@ -24,6 +26,7 @@ from src.services.agent_memory import (
     load_agent_memory_context,
     record_agent_run,
     upsert_agent_memory_record,
+    upsert_conversation_memory,
     upsert_daily_coaching_memory,
     upsert_nutrition_analysis_memory,
     upsert_supplement_memory,
@@ -127,6 +130,85 @@ def test_agent_memory_type_contract_lists_four_v2_types() -> None:
         "safety_memory",
     )
     assert DAILY_COACHING_MEMORY_TYPE not in AGENT_MEMORY_TYPES
+
+
+def test_upsert_conversation_memory_stores_rolling_summary() -> None:
+    """First chat turn creates a conversation_memory weak-signal summary."""
+    session = _FakeSession()
+
+    memory = asyncio.run(
+        upsert_conversation_memory(
+            session,
+            _user(),
+            _settings(),
+            user_message="혈압약 먹는데 마그네슘 같이 먹어도 돼?",
+            answerability="answerable_with_caution",
+            category="medication_supplement_caution",
+        )
+    )
+
+    assert memory is not None
+    assert memory.memory_type == CONVERSATION_MEMORY_TYPE
+    assert memory.summary_json["confidence"] == "summary"
+    assert memory.summary_json["source_kind"] == "chat_summary"
+    assert "medication_supplement_caution" in memory.summary_json["summary"]
+    assert len(memory.summary_json["recent_turns"]) == 1
+    assert "raw_transcript" not in memory.summary_json
+
+
+def test_upsert_conversation_memory_rolls_and_caps_recent_turns() -> None:
+    """Repeated turns accumulate but stay bounded; the oldest turn is dropped."""
+    existing_turns = [
+        {"category": "general", "answerability": "answerable", "topic": f"old-{i}"}
+        for i in range(CONVERSATION_TURN_LIMIT)
+    ]
+    existing = _memory_record(
+        CONVERSATION_MEMORY_TYPE,
+        {
+            "schema_version": "agent-memory-summary-v1",
+            "memory_type": CONVERSATION_MEMORY_TYPE,
+            "summary": "seed",
+            "confidence": "summary",
+            "source_kind": "chat_summary",
+            "recent_turns": existing_turns,
+        },
+    )
+    session = _FakeSession([existing])
+
+    memory = asyncio.run(
+        upsert_conversation_memory(
+            session,
+            _user(),
+            _settings(),
+            user_message="새 질문입니다",
+            answerability="answerable",
+            category="nutrition_general",
+        )
+    )
+
+    assert memory is not None
+    turns = memory.summary_json["recent_turns"]
+    assert len(turns) == CONVERSATION_TURN_LIMIT
+    assert turns[-1]["category"] == "nutrition_general"
+    assert all(turn["topic"] != "old-0" for turn in turns)
+
+
+def test_upsert_conversation_memory_skips_blank_message() -> None:
+    """A blank user message does not create a conversation memory row."""
+    session = _FakeSession()
+
+    memory = asyncio.run(
+        upsert_conversation_memory(
+            session,
+            _user(),
+            _settings(),
+            user_message="   ",
+            answerability="answerable",
+            category="general",
+        )
+    )
+
+    assert memory is None
 
 
 def test_upsert_agent_memory_record_stores_sanitized_v2_summary() -> None:
