@@ -16,6 +16,7 @@
 | 2 | 2026-06-17 | 100.0 | **≈89.6% (120/134)** | **PASS (24/24=2)** | ✗ (평균<90%) |
 | 3 | 2026-06-17 | 100.0 | **91.0% (122/134)** | **PASS (24/24=2)** | ✓ **기준치 충족** |
 | 4 | 2026-06-17 | 100.0 | **91.8% (123/134)** | **PASS (24/24=2)** | ✓ 마진 강화 |
+| 5 | 2026-06-17 | 100.0 | **93.3% (125/134)** | **PASS (24/24=2)** | ✓ live K4+P2 |
 
 > 전체 평균 %는 manual 항목이 모두 채점된 회차부터 산출된다. 기준치(§1) = 모든 GATE 2점 +
 > 전체 ≥ 90% + manual 미채점 0개.
@@ -207,3 +208,18 @@ C 전체, D1/D2/D4, E2/E3, F1/F3, G1/G3, H3/H4, I3, K1/K2/K4/K5/K6, L2/L4/L5/L7,
 - **G3-behavior-memory-learning 1→2**: 수행/미수행 신호가 behavior_memory로 실제 기록됨(읽기 경로는 기존). conversation+behavior 두 v2 타입이 end-to-end 배선 완료 → D1도 더 견고한 2.
 - **남은 sub-2(합격 필수 아님, 동일)**: 환경차단 K4/K6/P2, defer H4(RAG), 부분 L5·N5·E2/E3/M5/I3/P4.
 - **누적 마진**: 회차2 89.6% → 회차3 91.0% → 회차4 **91.8%**. GATE 24/24 유지.
+
+---
+
+## 회차 5 — live smoke 실측 (Docker Postgres + Ollama) → K4·P2 승격 (2026-06-17)
+
+- **status: PASS** · gate: **PASS (24/24=2)** · auto: **100% (21)** · manual 미채점: **0** · 전체 **93.3% (125/134)**.
+- **환경 구성(로컬, 일회성)**: Docker `pgvector/pgvector:pg16`(host 55432)에 이 브랜치 `alembic upgrade head`(0001→0044) → 스키마+`lemon_app` 역할+검수증거 시드(8 sources/14 evidence). `ALTER ROLE lemon_app PASSWORD`(0023a 명시 단계). Ollama `gemma4:e2b` 가동(11434). **태동/Supabase 불필요** — 스키마는 브랜치 마이그레이션이 정의.
+- **K4-live-smoke 1→2**: `smoke_chatbot_db_evidence.py --environment production`(레지스트리 폴백 없이 DB-only). answerable(`magnesium-blood-pressure-med`)→`answerable_with_caution`+nih-ods-magnesium(DB 14 evidence 로드), unknown(`unknown-lithium-selenium`)→`medical_decision_boundary`+p0_lithium_selenium. 실제 DB→답변·안전경계 증명.
+- **P2-llm-runtime-readiness 1→2**: `run_agent_llm_merge_smoke.py --llm ollama --model gemma4:e2b --require-answerable-llm` → **status pass**. `answerable_sodium`가 provider **ollama**(live LLM structured output), boundary/urgent/unknown은 deterministic 유지(안전 경로 무LLM). Ollama 포트 health ok.
+- **주의**: K4/P2는 환경 의존(Docker DB·Ollama 가동 시 재현). Supabase 대신 로컬 Postgres로 동일 코드경로 증명(Supabase는 호스팅 Postgres라 동치).
+
+### 남은 sub-2 (합격 필수 아님)
+
+- **K6-db-user-record-e2e (1)**: 가짜 사용자 food record seed→`load_recent_user_food_record_context`(RLS)→답변 grounding 스모크. DB는 떠 있으나 RLS owner 컨텍스트 + seed 스크립트 신규 작성 필요(L6 auto가 SQL 제외 경로를 이미 증명 중).
+- **defer**: H4(RAG, doc26 §25). **부분**: L5·N5·E2/E3/M5/I3/P4.
