@@ -15,6 +15,7 @@ from src.models.db.supplement import UserSupplement, UserSupplementIngredient
 from src.security.auth import AuthenticatedUser
 from src.services.agent_memory import (
     AGENT_MEMORY_TYPES,
+    BEHAVIOR_MEMORY_TYPE,
     CONVERSATION_MEMORY_TYPE,
     CONVERSATION_TURN_LIMIT,
     DAILY_COACHING_MEMORY_TYPE,
@@ -26,6 +27,7 @@ from src.services.agent_memory import (
     load_agent_memory_context,
     record_agent_run,
     upsert_agent_memory_record,
+    upsert_behavior_memory,
     upsert_conversation_memory,
     upsert_daily_coaching_memory,
     upsert_nutrition_analysis_memory,
@@ -205,6 +207,78 @@ def test_upsert_conversation_memory_skips_blank_message() -> None:
             user_message="   ",
             answerability="answerable",
             category="general",
+        )
+    )
+
+    assert memory is None
+
+
+def test_upsert_behavior_memory_records_engaged_outcome() -> None:
+    """An engaged coaching outcome is written as a behavior_memory weak pattern."""
+    session = _FakeSession()
+
+    memory = asyncio.run(
+        upsert_behavior_memory(
+            session,
+            _user(),
+            _settings(),
+            outcome="engaged",
+            focus="Vitamin-D",
+        )
+    )
+
+    assert memory is not None
+    assert memory.memory_type == BEHAVIOR_MEMORY_TYPE
+    assert memory.summary_json["confidence"] == "inferred_pattern"
+    assert memory.summary_json["source_kind"] == "checklist_result"
+    assert memory.summary_json["outcome_counts"]["engaged"] == 1
+    assert "수행률" in memory.summary_json["summary"]
+
+
+def test_upsert_behavior_memory_rolls_engagement_rate() -> None:
+    """Repeated outcomes accumulate engaged/deferred counts."""
+    existing = _memory_record(
+        BEHAVIOR_MEMORY_TYPE,
+        {
+            "schema_version": "agent-memory-summary-v1",
+            "memory_type": BEHAVIOR_MEMORY_TYPE,
+            "summary": "seed",
+            "confidence": "inferred_pattern",
+            "source_kind": "checklist_result",
+            "outcome_counts": {"engaged": 2, "deferred": 1},
+            "recent_outcomes": [],
+        },
+    )
+    session = _FakeSession([existing])
+
+    memory = asyncio.run(
+        upsert_behavior_memory(
+            session,
+            _user(),
+            _settings(),
+            outcome="deferred",
+            focus="sodium",
+        )
+    )
+
+    assert memory is not None
+    counts = memory.summary_json["outcome_counts"]
+    assert counts["engaged"] == 2
+    assert counts["deferred"] == 2
+    assert memory.summary_json["recent_outcomes"][-1]["outcome"] == "deferred"
+
+
+def test_upsert_behavior_memory_rejects_unknown_outcome() -> None:
+    """An unrecognized outcome does not create a behavior memory row."""
+    session = _FakeSession()
+
+    memory = asyncio.run(
+        upsert_behavior_memory(
+            session,
+            _user(),
+            _settings(),
+            outcome="bogus",
+            focus="",
         )
     )
 

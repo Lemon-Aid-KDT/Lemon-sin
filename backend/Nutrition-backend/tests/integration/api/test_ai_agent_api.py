@@ -389,6 +389,33 @@ def test_daily_coaching_injects_memory_and_records_confirmed_result(
     assert run_output.status == "completed"
 
 
+def test_daily_coaching_writes_behavior_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify run_daily_coaching records a behavior_memory engagement signal."""
+    captured: dict[str, object] = {}
+
+    async def _capture_behavior(*_args: object, **kwargs: object) -> None:
+        captured["behavior"] = {"outcome": kwargs.get("outcome"), "focus": kwargs.get("focus")}
+
+    async def _noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
+    monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
+    monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
+    monkeypatch.setattr(ai_agent, "upsert_daily_coaching_memory", _noop)
+    monkeypatch.setattr(ai_agent, "record_agent_run", _noop)
+    monkeypatch.setattr(ai_agent, "upsert_behavior_memory", _capture_behavior)
+
+    response = _client().post("/api/v1/ai-agent/daily-coaching", json=_payload())
+
+    assert response.status_code == status.HTTP_200_OK
+    behavior = captured.get("behavior")
+    assert behavior is not None
+    assert behavior["outcome"] == "engaged"
+
+
 def test_daily_coaching_uses_sglang_provider_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

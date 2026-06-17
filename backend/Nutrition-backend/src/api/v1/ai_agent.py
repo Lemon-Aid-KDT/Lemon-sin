@@ -41,6 +41,7 @@ from src.security.scopes import ApiScope
 from src.services.agent_memory import (
     load_agent_memory_context,
     record_agent_run,
+    upsert_behavior_memory,
     upsert_conversation_memory,
     upsert_daily_coaching_memory,
 )
@@ -311,6 +312,18 @@ async def run_daily_coaching(
                 getattr(llm_client, "model", None) if output.provider != "deterministic" else None
             ),
         )
+    behavior_outcome = (
+        "engaged"
+        if output.status != "preview" and output.approval_status == "confirmed"
+        else "deferred"
+    )
+    await upsert_behavior_memory(
+        session,
+        current_user,
+        settings,
+        outcome=behavior_outcome,
+        focus=output.findings[0].nutrient if output.findings else "",
+    )
     await record_sensitive_audit_event(
         session,
         current_user,
