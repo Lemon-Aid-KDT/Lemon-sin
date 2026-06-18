@@ -20,7 +20,6 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates \
         curl \
-        gosu \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
@@ -40,6 +39,12 @@ RUN pip install --upgrade pip \
         pip install --index-url "${TORCH_INDEX_URL}" "torch>=2.2" "torchvision>=0.17" \
         && pip install "ultralytics>=8.1" "transformers<5" "numpy"; \
     fi
+
+# Install gosu in its own layer AFTER the cached pip install so adding it does not
+# invalidate the expensive torch/paddle/ocr layers; used by docker-entrypoint.sh.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y gosu \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY alembic.ini ./
 COPY alembic ./alembic
