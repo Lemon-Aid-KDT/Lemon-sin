@@ -207,14 +207,18 @@ abstract class LemonAidRepository {
     throw UnimplementedError();
   }
 
-  /// Uploads a one-product batch as a SINGLE request to the fusion route so the
-  /// backend OCRs every image, fuses the text, and parses once into one result.
+  /// Analyzes an image batch in a SINGLE /analyze-multi request.
+  ///
+  /// [mergeStrategy] selects the backend behavior: 'single_product' fuses every
+  /// image into one result; 'distinct_products' treats each image as its own
+  /// supplement (one preview per image, rendered as separate tabs).
   ///
   /// Defaults to the per-image session flow ([analyzeSupplementImages]) so impls
-  /// that do not need one-shot fusion keep working unchanged.
+  /// that do not need the one-request route keep working unchanged.
   Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImagesOneShot(
     List<SupplementImageUpload> images, {
     String ocrProvider = 'configured',
+    String mergeStrategy = 'single_product',
   }) {
     return analyzeSupplementImages(images, ocrProvider: ocrProvider);
   }
@@ -644,6 +648,7 @@ class BackendLemonAidRepository implements LemonAidRepository {
   Future<SupplementMultiImageAnalysisPreview> analyzeSupplementImagesOneShot(
     List<SupplementImageUpload> images, {
     String ocrProvider = 'configured',
+    String mergeStrategy = 'single_product',
   }) async {
     if (images.isEmpty) {
       throw ArgumentError.value(
@@ -665,7 +670,7 @@ class BackendLemonAidRepository implements LemonAidRepository {
       ],
       fields: <String, String>{
         'ocr_provider': selectedOcrProvider,
-        'merge_strategy': 'single_product',
+        'merge_strategy': mergeStrategy,
         'image_roles_json': jsonEncode(roles),
       },
       expectedStatusCodes: const <int>{202},

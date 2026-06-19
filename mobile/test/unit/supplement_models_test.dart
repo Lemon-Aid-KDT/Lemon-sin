@@ -313,6 +313,46 @@ void main() {
       '00000000-0000-0000-0000-000000000002',
     );
     expect(response.primaryPreview?.imageRole, 'mixed');
+    // result_mode defaults to single_product when absent (backward compatible).
+    expect(response.resultMode, 'single_product');
+    expect(response.isDistinctProducts, false);
+  });
+
+  test('parses distinct_products multi-image preview as separate products', () {
+    final SupplementMultiImageAnalysisPreview response =
+        SupplementMultiImageAnalysisPreview.fromJson(<String, dynamic>{
+          'analysis_group_id': 'multi-distinct-001',
+          'image_count': 2,
+          'previews': <Map<String, dynamic>>[
+            _minimalPreview(
+              analysisId: '00000000-0000-0000-0000-0000000000a1',
+              imageRole: 'front_label',
+              hasIngredient: true,
+            ),
+            _minimalPreview(
+              analysisId: '00000000-0000-0000-0000-0000000000a2',
+              imageRole: 'front_label',
+              hasIngredient: true,
+            ),
+          ],
+          'missing_required_sections': <String>[],
+          'action_required': 'review_required',
+          'pipeline_metadata': <String, dynamic>{
+            'intake_completed': true,
+            'image_count': 2,
+            'raw_image_stored': false,
+            'raw_ocr_text_stored': false,
+          },
+          'expires_at': '2026-05-15T00:00:00Z',
+          'result_mode': 'distinct_products',
+        });
+
+    expect(response.resultMode, 'distinct_products');
+    expect(response.isDistinctProducts, true);
+    expect(response.mergedPreview, isNull);
+    expect(response.previews.length, 2);
+    // With no merged preview, primaryPreview still resolves (first reviewable).
+    expect(response.primaryPreview, isNotNull);
   });
 
   test('parses supplement impact preview response', () {

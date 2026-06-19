@@ -586,6 +586,20 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           _buildSupplementReviewGroup(multiPreviews, 0),
         ];
       }
+      // distinct_products: the user explicitly chose separate supplements and the
+      // backend confirms via result_mode — render exactly one tab per image and
+      // skip the OCR-identity merge heuristics that would otherwise collapse
+      // facts-only photos (no product name) back into a single result.
+      if (multiPreview?.isDistinctProducts ?? false) {
+        return <_SupplementReviewGroup>[
+          for (int index = 0; index < multiPreviews.length; index++)
+            _SupplementReviewGroup(
+              label: _supplementPreviewLabel(multiPreviews[index], index),
+              preview: multiPreviews[index],
+              sourcePreviews: <SupplementAnalysisPreview>[multiPreviews[index]],
+            ),
+        ];
+      }
       if (mergedPreview != null &&
           _shouldUseMergedSupplementPreview(mergedPreview, multiPreviews)) {
         return <_SupplementReviewGroup>[

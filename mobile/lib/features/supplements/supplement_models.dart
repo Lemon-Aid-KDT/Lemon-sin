@@ -526,6 +526,7 @@ class SupplementMultiImageAnalysisPreview {
     required this.actionRequired,
     required this.pipelineMetadata,
     required this.expiresAt,
+    this.resultMode = 'single_product',
   });
 
   /// Ephemeral backend group id for the uploaded batch.
@@ -551,6 +552,13 @@ class SupplementMultiImageAnalysisPreview {
 
   /// Earliest preview expiration time when provided by the backend.
   final DateTime? expiresAt;
+
+  /// How the batch was analyzed: 'single_product' (one merged preview) or
+  /// 'distinct_products' (each preview is its own supplement → one tab each).
+  final String resultMode;
+
+  /// Whether each image is a distinct supplement reviewed in a separate tab.
+  bool get isDistinctProducts => resultMode == 'distinct_products';
 
   /// Parses a backend multi-image analysis preview.
   factory SupplementMultiImageAnalysisPreview.fromJson(
@@ -581,6 +589,7 @@ class SupplementMultiImageAnalysisPreview {
       expiresAt: readOptionalString(json, 'expires_at') == null
           ? null
           : DateTime.parse(readString(json, 'expires_at')),
+      resultMode: readOptionalString(json, 'result_mode') ?? 'single_product',
     );
   }
 

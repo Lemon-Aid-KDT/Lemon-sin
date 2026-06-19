@@ -1297,18 +1297,17 @@ class AppController extends ChangeNotifier {
     final List<_SupplementAnalysisAttempt> attempts = await Future.wait(
       providers.map((String provider) async {
         try {
-          // One product photographed across several images → fuse server-side in
-          // one request; otherwise keep the per-image session flow.
+          // Both modes use the single /analyze-multi request: single_product fuses
+          // the images into one result; distinct_products keeps each image as its
+          // own supplement so the result screen renders one tab per product.
           final SupplementMultiImageAnalysisPreview multiPreview =
-              await (singleProduct
-                  ? _repository.analyzeSupplementImagesOneShot(
-                      images,
-                      ocrProvider: provider,
-                    )
-                  : _repository.analyzeSupplementImages(
-                      images,
-                      ocrProvider: provider,
-                    ));
+              await _repository.analyzeSupplementImagesOneShot(
+                images,
+                ocrProvider: provider,
+                mergeStrategy: singleProduct
+                    ? 'single_product'
+                    : 'distinct_products',
+              );
           final SupplementAnalysisPreview? preview =
               multiPreview.primaryPreview;
           if (preview == null) {
