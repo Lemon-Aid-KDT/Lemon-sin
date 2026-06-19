@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import re
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.db.tx import persist_scope
-from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaSupplementParser
+from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaChatClient, OllamaSupplementParser
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.label_layout import LabelLayout, LabelSection
 from src.models.schemas.supplement import (
@@ -33,6 +34,7 @@ from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.text_normalizer import normalize_ocr_text as normalize_provider_ocr_text
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.supplement_label_localizer import localize_snapshot_to_korean
 from src.services.supplement_text_sanitizer import (
     sanitize_ingredient_name,
     sanitize_manufacturer,
@@ -410,24 +412,64 @@ async def parse_supplement_analysis_ocr_text(
         ) from exc
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
+    snapshot = _build_parsed_snapshot(
+        parse_result=parse_result,
+        previous_snapshot=record.parsed_snapshot,
+        ocr_confidence=normalized_confidence,
+        ocr_provider=normalized_provider,
+        ocr_layout=ocr_layout,
+        settings=settings,
+    )
+    # KR-market display: translate any English precaution/intake/functional-claim text
+    # to Korean (the source label may be English). Only with the real local LLM parser
+    # (skipped when a parser is injected for tests) and best-effort, so a translation
+    # failure or timeout never blocks confirmation.
+    if parser is None:
+        snapshot = await _localize_supplement_snapshot(snapshot, settings)
+
     async with persist_scope(session):
         record.ocr_provider = normalized_provider
         record.ocr_confidence = normalized_confidence
         record.ocr_text_hash = text_hash
-        record.parsed_snapshot = _build_parsed_snapshot(
-            parse_result=parse_result,
-            previous_snapshot=record.parsed_snapshot,
-            ocr_confidence=normalized_confidence,
-            ocr_provider=normalized_provider,
-            ocr_layout=ocr_layout,
-            settings=settings,
-        )
+        record.parsed_snapshot = snapshot
         record.warnings = _build_warning_list(parse_result.warnings, normalized_provider)
         record.algorithm_version = settings.supplement_parser_algorithm_version
         record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
 
     await session.refresh(record)
     return SupplementParserStoreResult(record=record, parse_result=parse_result)
+
+
+_LOCALIZATION_BUDGET_SEC = 12.0
+
+
+async def _localize_supplement_snapshot(
+    snapshot: dict[str, Any], settings: Settings
+) -> dict[str, Any]:
+    """Best-effort Korean localization of user-facing label sections (KR-market display).
+
+    Uses the same local Ollama model as the structured parser to translate any English
+    precaution / intake / functional-claim text to Korean. Bounded by a short budget;
+    any failure or timeout returns the snapshot unchanged.
+
+    Args:
+        snapshot: Built parsed snapshot.
+        settings: Runtime settings (Ollama host/model).
+
+    Returns:
+        The snapshot with localized section text, or the original on no-op/failure.
+    """
+    try:
+        client = OllamaChatClient(settings)
+        return await asyncio.wait_for(
+            localize_snapshot_to_korean(
+                snapshot, chat=client.post_chat, model=settings.ollama_model
+            ),
+            timeout=_LOCALIZATION_BUDGET_SEC,
+        )
+    except Exception:
+        # Localization is a display nicety; never let it block or fail parsing.
+        return snapshot
 
 
 def normalize_ocr_text(ocr_text: str, max_chars: int) -> str:
