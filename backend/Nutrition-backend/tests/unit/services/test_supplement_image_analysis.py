@@ -2305,7 +2305,12 @@ def test_merge_vision_amounts_fills_null_amount_by_name_and_sets_category() -> N
     """Verify the additive merge fills a null amount by name and sets an unset category."""
     snapshot: dict[str, object] = {
         "ingredient_candidates": [
-            {"display_name": "마그네슘", "original_name": "Magnesium", "amount": None, "unit": None},
+            {
+                "display_name": "마그네슘",
+                "original_name": "Magnesium",
+                "amount": None,
+                "unit": None,
+            },
         ],
     }
 
@@ -2316,6 +2321,7 @@ def test_merge_vision_amounts_fills_null_amount_by_name_and_sets_category() -> N
             ingredients=[{"name": "magnesium", "amount": 400, "unit": "mg"}],
         ),
         frozenset({"마그네슘", "비타민D"}),
+        "마그네슘 Magnesium 400 mg",
     )
 
     assert outcome.attempted is True
@@ -2343,6 +2349,7 @@ def test_merge_vision_amounts_never_overwrites_existing_amount_or_category() -> 
             ingredients=[{"name": "vitamin d", "amount": 9999, "unit": "iu"}],
         ),
         frozenset({"마그네슘", "비타민D"}),
+        "",
     )
 
     assert outcome.attempted is True
@@ -2362,10 +2369,39 @@ def test_merge_vision_amounts_ignores_category_outside_allowed_list() -> None:
         snapshot,
         _vision_extraction(product_category_key="존재하지않는카테고리"),
         frozenset({"마그네슘", "비타민D"}),
+        "",
     )
 
     assert outcome.category_applied is False
     assert "product_category_key" not in snapshot
+
+
+def test_merge_vision_amounts_drops_amount_not_grounded_in_ocr() -> None:
+    """Verify a vision amount absent from the OCR text is dropped (never guessed)."""
+    snapshot: dict[str, object] = {
+        "ingredient_candidates": [
+            {
+                "display_name": "마그네슘",
+                "original_name": "Magnesium",
+                "amount": None,
+                "unit": None,
+            },
+        ],
+    }
+
+    outcome = _merge_vision_amounts_into_snapshot(
+        snapshot,
+        _vision_extraction(
+            ingredients=[{"name": "magnesium", "amount": 400, "unit": "mg"}],
+        ),
+        frozenset({"마그네슘", "비타민D"}),
+        "원재료명: 마그네슘",  # OCR text has no "400 mg" → amount is not grounded
+    )
+
+    assert outcome.amounts_filled == 0
+    candidate = snapshot["ingredient_candidates"][0]
+    assert candidate["amount"] is None
+    assert candidate["unit"] is None
 
 
 @pytest.mark.asyncio
@@ -2390,7 +2426,11 @@ async def test_analyze_supplement_image_merges_vision_extraction_into_snapshot(
             "warnings": [],
         }
     )
-    fake_ocr = _FakeOCRAdapter("원재료명: 마그네슘", confidence=0.91)
+    # The amount is printed on the label (so it is span-groundable) but the parser
+    # left the candidate's amount null (no pairable ingredient name beside it). The
+    # vision pass attributes "400 mg" to magnesium and the grounding check confirms
+    # the number actually appears in the OCR text before filling.
+    fake_ocr = _FakeOCRAdapter("표시 성분 함량 400 mg", confidence=0.91)
     fake_parser = _FakeParser(parse_result)
 
     async def _fake_extract_structured(

@@ -81,6 +81,7 @@ from src.services.supplement_parser import (
     SupplementParserInputError,
     parse_supplement_analysis_ocr_text,
 )
+from src.services.supplement_span_grounding import is_amount_grounded
 from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard, strip_image_metadata
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
 from src.vision.preprocessing import (
@@ -495,6 +496,7 @@ async def analyze_supplement_image(
             image_bytes=image_bytes,
             image_metadata=image_metadata,
             label_region=vision_region,
+            ocr_text=ocr_result.text if ocr_result else "",
             parser_used=parsed_record is not None,
             settings=settings,
         ),
@@ -941,6 +943,7 @@ def _merge_vision_amounts_into_snapshot(
     parsed_snapshot: dict[str, Any],
     extraction: OllamaVisionStructuredExtractionResult,
     allowed_categories: frozenset[str],
+    ocr_text: str,
 ) -> _VisionExtractionOutcome:
     """Additively fill null amounts and set an unset category from vision output.
 
@@ -949,10 +952,16 @@ def _merge_vision_amounts_into_snapshot(
     carry a non-empty ``product_category_key``. Vision amounts are matched to parsed
     candidates by normalized name against both the display and original names.
 
+    A vision amount fills a null candidate only when it is span-grounded in the OCR
+    text (Lever 4 "never guess amount"): a JSON schema constrains the vision output's
+    shape, not its truth, and the model can omit or invent a number, so an amount
+    that does not appear in the OCR text is dropped (the candidate stays null).
+
     Args:
         parsed_snapshot: Parsed snapshot dict mutated in place.
         extraction: Schema-validated transcription-only vision extraction.
         allowed_categories: Closed allow-list of category keys.
+        ocr_text: OCR text the vision amounts must be grounded in.
 
     Returns:
         Diagnostic outcome describing what (if anything) was applied.
@@ -982,6 +991,11 @@ def _merge_vision_amounts_into_snapshot(
                     match = vision_by_name[name_key]
                     break
             if match is None or match.amount is None:
+                continue
+            # Span-grounding guardrail: only fill an amount the vision model proposes
+            # when it actually appears in the OCR text. An ungrounded (possibly
+            # invented) amount is dropped so it can never reach the review UX.
+            if not is_amount_grounded(match.amount, match.unit, ocr_text):
                 continue
             candidate["amount"] = match.amount
             if match.unit and not candidate.get("unit"):
@@ -1013,6 +1027,7 @@ async def _merge_vision_structured_extraction_if_allowed(
     image_bytes: bytes | None,
     image_metadata: ValidatedSupplementImage,
     label_region: BoundingBox | None,
+    ocr_text: str,
     parser_used: bool,
     settings: Settings,
 ) -> tuple[SupplementAnalysisRun, _VisionExtractionOutcome]:
@@ -1030,6 +1045,7 @@ async def _merge_vision_structured_extraction_if_allowed(
         image_bytes: Validated image bytes, if loaded for adapter use.
         image_metadata: Validated image metadata.
         label_region: Optional YOLO ROI passed to the vision model.
+        ocr_text: OCR text the merged vision amounts must be grounded in.
         parser_used: Whether structured parsing produced a snapshot to enrich.
         settings: Runtime settings (multimodal flags, vision model, temperature).
 
@@ -1077,6 +1093,7 @@ async def _merge_vision_structured_extraction_if_allowed(
         working_snapshot,
         extraction,
         frozenset(allowed_categories),
+        ocr_text,
     )
     if not outcome.category_applied and outcome.amounts_filled == 0:
         return record, outcome
@@ -1116,6 +1133,7 @@ async def _merge_vision_structured_extraction_for_ocr_only_results_if_allowed(
             image_bytes=ocr_only.image_bytes,
             image_metadata=ocr_only.image_metadata,
             label_region=ocr_only.vision_region,
+            ocr_text=ocr_only.ocr_result.text if ocr_only.ocr_result else "",
             parser_used=parser_used,
             settings=settings,
         )
