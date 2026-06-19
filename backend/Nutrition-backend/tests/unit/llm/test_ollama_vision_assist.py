@@ -21,6 +21,7 @@ from src.llm.ollama import (
 from src.llm.ollama_vision import (
     OLLAMA_VISION_ASSIST_PROVIDER,
     OllamaVisionAssistAdapter,
+    OllamaVisionStructuredExtractionResult,
     check_ollama_vision_readiness,
 )
 from src.ocr.base import OCRImageInput
@@ -452,6 +453,116 @@ async def test_check_ollama_vision_readiness_probe_fails_closed() -> None:
     assert readiness.ready is False
     assert readiness.model_present is True
     assert readiness.error_code == "vision_probe_failed"
+
+
+def _extraction_response_content() -> str:
+    """Return a schema-valid structured extraction response body.
+
+    Returns:
+        JSON response content.
+    """
+    return json.dumps(
+        {
+            "product_category_key": "비타민D",
+            "ingredients": [
+                {"name": "비타민 D", "amount": 25, "unit": "ug"},
+                {"name": "마그네슘", "amount": None, "unit": None},
+            ],
+            "low_confidence_fields": ["serving_size"],
+            "warnings": ["라벨 일부가 흐립니다."],
+        },
+        ensure_ascii=False,
+    )
+
+
+def test_vision_structured_extraction_result_parses_good_json() -> None:
+    """Verify the extraction schema validates a clean transcription payload."""
+    result = OllamaVisionStructuredExtractionResult.model_validate_json(
+        _extraction_response_content()
+    )
+
+    assert result.product_category_key == "비타민D"
+    assert len(result.ingredients) == 2
+    assert result.ingredients[0].name == "비타민 D"
+    assert result.ingredients[0].amount == 25
+    assert result.ingredients[0].unit == "ug"
+    assert result.ingredients[1].amount is None
+    assert result.ingredients[1].unit is None
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_extract_structured_posts_payload_and_parses() -> None:
+    """Verify extract_structured sends a local structured request and parses it."""
+    fake_client = _FakeHTTPClient({"message": {"content": _extraction_response_content()}})
+    chat_client = OllamaChatClient(_settings(), http_client=fake_client)
+    adapter = OllamaVisionAssistAdapter(_settings(), client=chat_client)
+
+    result = await adapter.extract_structured(
+        _ocr_image_input(
+            BoundingBox(x=2, y=1, width=4, height=3, confidence=0.9, label="supplement_facts")
+        ),
+        ["비타민D", "마그네슘"],
+    )
+
+    assert result.product_category_key == "비타민D"
+    assert result.ingredients[0].amount == 25
+    assert fake_client.post_url == "http://127.0.0.1:11434/api/chat"
+    assert fake_client.request_json is not None
+    assert fake_client.request_json["model"] == "gemma4:e4b"
+    assert fake_client.request_json["stream"] is False
+    assert fake_client.request_json["think"] is False
+    assert fake_client.request_json["format"]["type"] == "object"
+    user_message = fake_client.request_json["messages"][1]
+    assert "비타민D" in user_message["content"]
+    assert "마그네슘" in user_message["content"]
+    assert "medical advice" not in user_message["content"].casefold()
+    assert "images" in user_message
+    decoded = base64.b64decode(user_message["images"][0])
+    with Image.open(BytesIO(decoded)) as image:
+        assert image.size == (4, 3)
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_extract_structured_tolerates_fenced_json() -> None:
+    """Verify a markdown-fenced extraction payload still validates."""
+    fenced = f"```json\n{_extraction_response_content()}\n```"
+    fake_client = _FakeHTTPClient({"message": {"content": fenced}})
+    chat_client = OllamaChatClient(_settings(), http_client=fake_client)
+    adapter = OllamaVisionAssistAdapter(_settings(), client=chat_client)
+
+    result = await adapter.extract_structured(_ocr_image_input(), ["비타민D"])
+
+    assert result.product_category_key == "비타민D"
+    assert result.ingredients[0].name == "비타민 D"
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_extract_structured_rejects_schema_invalid_content() -> None:
+    """Verify extraction output must match the structured schema."""
+    fake_client = _FakeHTTPClient({"message": {"content": '{"medical_advice": "take more"}'}})
+    chat_client = OllamaChatClient(_settings(), http_client=fake_client)
+
+    with pytest.raises(OllamaStructuredOutputError):
+        await OllamaVisionAssistAdapter(_settings(), client=chat_client).extract_structured(
+            _ocr_image_input(),
+            ["비타민D"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_extract_structured_rejects_when_flag_disabled() -> None:
+    """Verify image bytes are not sent when the multimodal flag is disabled."""
+    fake_client = _FakeHTTPClient({"message": {"content": _extraction_response_content()}})
+    settings = _settings(enable_multimodal_llm=False)
+    chat_client = OllamaChatClient(settings, http_client=fake_client)
+
+    with pytest.raises(OllamaConfigurationError):
+        await OllamaVisionAssistAdapter(settings, client=chat_client).extract_structured(
+            _ocr_image_input(),
+            ["비타민D"],
+        )
+
+    assert fake_client.request_json is None
 
 
 @pytest.mark.asyncio

@@ -115,6 +115,27 @@ INGREDIENT_KEYWORD_TO_CATEGORY_KEY: tuple[tuple[str, str], ...] = (
 )
 
 
+def allowed_supplement_category_keys() -> tuple[str, ...]:
+    """Return the deduplicated set of mappable supplement ``category_key`` values.
+
+    The values of :data:`NUTRIENT_BASE_TO_CATEGORY_KEY` and
+    :data:`INGREDIENT_KEYWORD_TO_CATEGORY_KEY` together enumerate every category
+    key this codebase can derive from a nutrient code or ingredient text. They are
+    used as the closed allow-list for the local Gemma vision label transcription
+    pass so the model can only choose an existing curated category, never invent
+    one. First-seen order is preserved for stable prompts and tests.
+
+    Returns:
+        First-seen-ordered, deduplicated tuple of allowed category keys.
+    """
+    seen: dict[str, None] = {}
+    for key in NUTRIENT_BASE_TO_CATEGORY_KEY.values():
+        seen.setdefault(key, None)
+    for _, key in INGREDIENT_KEYWORD_TO_CATEGORY_KEY:
+        seen.setdefault(key, None)
+    return tuple(seen)
+
+
 def _strip_unit(code: str) -> str:
     """Return a nutrient code with its trailing KDRIs unit suffix removed."""
     return _UNIT_SUFFIX_RE.sub("", code.strip().lower())

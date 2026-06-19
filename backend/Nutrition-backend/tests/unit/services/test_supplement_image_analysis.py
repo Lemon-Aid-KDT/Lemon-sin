@@ -19,7 +19,10 @@ from src.learning.object_storage import (
     LearningImageObjectStore,
     StoredLearningImage,
 )
-from src.llm.ollama_vision import OllamaVisionTextVerificationResult
+from src.llm.ollama_vision import (
+    OllamaVisionStructuredExtractionResult,
+    OllamaVisionTextVerificationResult,
+)
 from src.models.db.learning import LearningImageObject
 from src.models.db.retraining import AnnotationTask
 from src.models.db.supplement import SupplementAnalysisRun
@@ -46,6 +49,7 @@ from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
     SupplementLearningArtifactsInput,
     SupplementLearningEmbeddingInput,
+    _merge_vision_amounts_into_snapshot,
     analyze_supplement_image,
     store_supplement_learning_artifacts,
     store_supplement_learning_embedding_job,
@@ -2271,3 +2275,203 @@ async def test_analyze_fused_supplement_images_emits_per_image_learning_artifact
     }
     assert per_image_texts == {"ALPHAONE Vitamin C", "BRAVOTWO 1000 mg"}
     assert all(a.image_bytes for a in result.learning_artifacts_per_image)
+
+
+def _vision_extraction(
+    *,
+    product_category_key: str | None = None,
+    ingredients: list[dict[str, object]] | None = None,
+) -> OllamaVisionStructuredExtractionResult:
+    """Return a structured vision extraction fixture.
+
+    Args:
+        product_category_key: Allowed-list category key the model returned.
+        ingredients: Transcribed ingredient name/amount/unit rows.
+
+    Returns:
+        Validated structured extraction result.
+    """
+    return OllamaVisionStructuredExtractionResult.model_validate(
+        {
+            "product_category_key": product_category_key,
+            "ingredients": ingredients or [],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+
+
+def test_merge_vision_amounts_fills_null_amount_by_name_and_sets_category() -> None:
+    """Verify the additive merge fills a null amount by name and sets an unset category."""
+    snapshot: dict[str, object] = {
+        "ingredient_candidates": [
+            {"display_name": "마그네슘", "original_name": "Magnesium", "amount": None, "unit": None},
+        ],
+    }
+
+    outcome = _merge_vision_amounts_into_snapshot(
+        snapshot,
+        _vision_extraction(
+            product_category_key="마그네슘",
+            ingredients=[{"name": "magnesium", "amount": 400, "unit": "mg"}],
+        ),
+        frozenset({"마그네슘", "비타민D"}),
+    )
+
+    assert outcome.attempted is True
+    assert outcome.amounts_filled == 1
+    assert outcome.category_applied is True
+    candidate = snapshot["ingredient_candidates"][0]
+    assert candidate["amount"] == 400
+    assert candidate["unit"] == "mg"
+    assert snapshot["product_category_key"] == "마그네슘"
+
+
+def test_merge_vision_amounts_never_overwrites_existing_amount_or_category() -> None:
+    """Verify the merge leaves a non-null amount and an existing category untouched."""
+    snapshot: dict[str, object] = {
+        "product_category_key": "비타민D",
+        "ingredient_candidates": [
+            {"display_name": "비타민 D", "original_name": "Vitamin D", "amount": 25, "unit": "ug"},
+        ],
+    }
+
+    outcome = _merge_vision_amounts_into_snapshot(
+        snapshot,
+        _vision_extraction(
+            product_category_key="마그네슘",
+            ingredients=[{"name": "vitamin d", "amount": 9999, "unit": "iu"}],
+        ),
+        frozenset({"마그네슘", "비타민D"}),
+    )
+
+    assert outcome.attempted is True
+    assert outcome.amounts_filled == 0
+    assert outcome.category_applied is False
+    candidate = snapshot["ingredient_candidates"][0]
+    assert candidate["amount"] == 25
+    assert candidate["unit"] == "ug"
+    assert snapshot["product_category_key"] == "비타민D"
+
+
+def test_merge_vision_amounts_ignores_category_outside_allowed_list() -> None:
+    """Verify a vision category not in the allow-list is never applied."""
+    snapshot: dict[str, object] = {"ingredient_candidates": []}
+
+    outcome = _merge_vision_amounts_into_snapshot(
+        snapshot,
+        _vision_extraction(product_category_key="존재하지않는카테고리"),
+        frozenset({"마그네슘", "비타민D"}),
+    )
+
+    assert outcome.category_applied is False
+    assert "product_category_key" not in snapshot
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_merges_vision_extraction_into_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the orchestrator runs the vision pass and records the merge outcome."""
+    fake_session = _FakePipelineSession()
+    # Parser yields a name-only candidate (amount None) and no category.
+    parse_result = SupplementStructuredParseResult.model_validate(
+        {
+            "parsed_product": {"product_name": "마그네슘 400"},
+            "ingredient_candidates": [
+                {
+                    "display_name": "마그네슘",
+                    "original_name": "Magnesium",
+                    "amount": None,
+                    "confidence": 0.6,
+                }
+            ],
+            "low_confidence_fields": [],
+            "warnings": [],
+        }
+    )
+    fake_ocr = _FakeOCRAdapter("원재료명: 마그네슘", confidence=0.91)
+    fake_parser = _FakeParser(parse_result)
+
+    async def _fake_extract_structured(
+        _self: object,
+        image: OCRImageInput,
+        allowed_categories: list[str],
+    ) -> OllamaVisionStructuredExtractionResult:
+        assert image.mime_type == "image/png"
+        assert "마그네슘" in allowed_categories
+        return _vision_extraction(
+            product_category_key="마그네슘",
+            ingredients=[{"name": "마그네슘", "amount": 400, "unit": "mg"}],
+        )
+
+    monkeypatch.setattr(
+        supplement_image_analysis.OllamaVisionAssistAdapter,
+        "extract_structured",
+        _fake_extract_structured,
+    )
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_supplement_label_vision_extraction=True,
+            ollama_vision_model="gemma4:e4b",
+        ),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    candidate = result.record.parsed_snapshot["ingredient_candidates"][0]
+    assert candidate["amount"] == 400
+    assert candidate["unit"] == "mg"
+    assert result.record.parsed_snapshot["product_category_key"] == "마그네슘"
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.pipeline_metadata.vision_extraction_attempted is True
+    assert preview.pipeline_metadata.vision_category_applied is True
+    assert preview.pipeline_metadata.vision_amounts_filled == 1
+
+
+@pytest.mark.asyncio
+async def test_analyze_supplement_image_swallows_vision_extraction_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify a vision-pass failure never breaks analysis (best-effort)."""
+    fake_session = _FakePipelineSession()
+    fake_ocr = _FakeOCRAdapter(" 비타민 D 1000\n비타민 D 25 ug ", confidence=0.91)
+    fake_parser = _FakeParser(_parse_result())
+
+    async def _boom(
+        _self: object,
+        _image: OCRImageInput,
+        _allowed_categories: list[str],
+    ) -> OllamaVisionStructuredExtractionResult:
+        raise RuntimeError("vision host unreachable")
+
+    monkeypatch.setattr(
+        supplement_image_analysis.OllamaVisionAssistAdapter,
+        "extract_structured",
+        _boom,
+    )
+
+    result = await analyze_supplement_image(
+        cast(AsyncSession, fake_session),
+        _user(),
+        _upload(_png_bytes()),
+        None,
+        Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            enable_multimodal_llm=True,
+            enable_supplement_label_vision_extraction=True,
+            ollama_vision_model="gemma4:e4b",
+        ),
+        adapters=SupplementImageAnalysisAdapters(ocr=fake_ocr, parser=fake_parser),
+    )
+
+    assert result.parser_used is True
+    preview = supplement_analysis_run_to_preview(result.record)
+    assert preview.pipeline_metadata.vision_extraction_attempted is False
+    assert preview.pipeline_metadata.vision_amounts_filled == 0

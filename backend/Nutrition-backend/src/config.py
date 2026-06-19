@@ -321,6 +321,9 @@ class Settings(BaseSettings):
         sensitive_document_original_image_retention_seconds: Seconds raw regulated document images
             may be retained before deletion. The default 0 means request-memory only.
         ocr_roi_preprocessing_policy: Whether detected ROI metadata should crop primary OCR input.
+        ocr_roi_crop_padding_ratio: Fractional padding applied around YOLO OCR crops.
+        ocr_roi_crop_min_padding_px: Minimum pixel padding applied around YOLO OCR crops.
+        ocr_roi_crop_max_padding_px: Maximum pixel padding applied around YOLO OCR crops.
         multimodal_ocr_assist_policy: Policy controlling when local vision LLM fallback may run.
         enable_multimodal_verification: Whether local vision verification can sample OCR outputs.
         multimodal_verification_sample_rate: Fraction of accepted OCR outputs to verify.
@@ -616,6 +619,16 @@ class Settings(BaseSettings):
         default=False,
         description="Ollama 멀티모달(예: Gemma 4) 보조 채널 활성화. docs/17 §9 게이트 #1 필요.",
     )
+    enable_supplement_label_vision_extraction: bool = Field(
+        default=False,
+        description=(
+            "영양제 라벨 함량/분류용 로컬 비전 구조화 추출(Gemma 4) 머지 활성화. 기본값 False. "
+            "텍스트 파서(qwen)와 비전 모델을 한 요청에서 번갈아 호출하면 단일 GPU 호스트에서 "
+            "모델 스왑(요청당 ~2회 reload, ~10s씩)이 발생해 60s 모바일 타임아웃을 넘기고, "
+            "e4b 비전은 한글 함량 transcription 정확도가 낮다. 분류는 성분명 기반 코드 매핑으로 "
+            "대체했으므로 더 강한 비전 모델이 검증되기 전까지 off로 유지한다."
+        ),
+    )
     enable_vision_classifier: bool = Field(
         default=False,
         description="라벨 영역 검출용 YOLO 어댑터 활성화. docs/17 §9 게이트 #2 필요.",
@@ -635,6 +648,30 @@ class Settings(BaseSettings):
     ] = Field(
         default="disabled",
         description="YOLO ROI를 primary OCR 입력에 적용하는 정책. 기본값 disabled.",
+    )
+    ocr_roi_crop_padding_ratio: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=0.50,
+        description=(
+            "YOLO ROI crop에 적용할 box-relative padding 비율. Detector box가 "
+            "성분표 경계를 타이트하게 잡아 성분명/함량 열이 잘리는 것을 줄인다."
+        ),
+    )
+    ocr_roi_crop_min_padding_px: int = Field(
+        default=16,
+        ge=0,
+        le=256,
+        description=(
+            "YOLO ROI crop padding의 최소 픽셀값. 작은 section box에서도 OCR "
+            "글자 가장자리가 잘리지 않도록 보수적인 여백을 보장한다."
+        ),
+    )
+    ocr_roi_crop_max_padding_px: int = Field(
+        default=96,
+        ge=0,
+        le=1024,
+        description="YOLO ROI crop padding의 최대 픽셀값. 큰 box에서 과도한 full-image화를 막는다.",
     )
     multimodal_ocr_assist_policy: Literal[
         "disabled",
@@ -825,21 +862,23 @@ class Settings(BaseSettings):
             "PaddleOCR default 0.6). Override via LOCAL_OCR_TEXT_DET_BOX_THRESH."
         ),
     )
-    # Adopted default 2.5 (team decision 2026-06-16). The held-out A100 adaptive
-    # run kept b128_20260615 and selected unclip25 as the best ingredient-recall
-    # detector expansion among measured candidates:
-    # outputs/generated/ocr-eval/2026-06-16-a100-v2-clean-b128-export/
-    # adaptive-b128-b64-unclip25-a100/adaptive-structured-summary.json.
+    # Adopted candidate default 3.0 (team decision 2026-06-17). The latest
+    # held-out b128 detector sweep kept the current recognizer and showed
+    # unclip30 as the better micro/ingredient-recall runtime candidate among
+    # measured unclip25/30/35 options. This is still a runtime candidate, not a
+    # production gate pass; structured ROI/full fallback metrics remain the
+    # promotion authority.
     # PaddleOCR's upstream default is 2.0; set LOCAL_OCR_TEXT_DET_UNCLIP_RATIO
     # to None/another value to override in controlled experiments.
     local_ocr_text_det_unclip_ratio: float | None = Field(
-        default=2.5,
+        default=3.0,
         gt=0.0,
         le=10.0,
         description=(
             "PaddleOCR predict() text_det_unclip_ratio override (text region "
-            "expansion coefficient). Adopted default 2.5 from held-out A100 "
-            "structured gate measurements; upstream PaddleOCR default is 2.0."
+            "expansion coefficient). Adopted runtime candidate default 3.0 from "
+            "held-out A100 structured gate measurements; upstream PaddleOCR "
+            "default is 2.0."
         ),
     )
     paddle_disable_model_source_check: bool = Field(

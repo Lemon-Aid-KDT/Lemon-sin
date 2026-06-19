@@ -180,9 +180,12 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.meal_food_classifier_gate_confidence == 0.10
     assert settings.meal_food_classifier_max_px == 896
     assert settings.ocr_roi_preprocessing_policy == "disabled"
+    assert settings.ocr_roi_crop_padding_ratio == 0.08
+    assert settings.ocr_roi_crop_min_padding_px == 16
+    assert settings.ocr_roi_crop_max_padding_px == 96
     assert settings.enable_local_ocr is True
     assert settings.local_ocr_secondary_text_recognition_model_dir is None
-    assert settings.local_ocr_text_det_unclip_ratio == 2.5
+    assert settings.local_ocr_text_det_unclip_ratio == 3.0
     assert settings.local_ocr_provider == "paddleocr"
     assert settings.local_ocr_language == "korean"
     assert settings.local_ocr_device is None

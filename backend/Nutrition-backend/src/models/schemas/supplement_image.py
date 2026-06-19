@@ -40,6 +40,12 @@ class SupplementImagePipelineMetadata(BaseModel):
         missing_required_sections: Required label sections still missing from evidence.
         raw_image_stored: Whether raw image bytes were retained.
         raw_ocr_text_stored: Whether raw OCR text was retained.
+        vision_extraction_attempted: Whether the local Gemma vision transcription
+            pass was attempted to fill ingredient amounts / set a category.
+        vision_category_applied: Whether the vision pass set an otherwise-unset
+            product category key.
+        vision_amounts_filled: Number of ingredient candidates whose null amount was
+            filled from the vision transcription pass.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -61,6 +67,9 @@ class SupplementImagePipelineMetadata(BaseModel):
     missing_required_sections: list[str] = Field(default_factory=list, max_length=10)
     raw_image_stored: bool = False
     raw_ocr_text_stored: bool = False
+    vision_extraction_attempted: bool = False
+    vision_category_applied: bool = False
+    vision_amounts_filled: int = Field(default=0, ge=0, le=60)
 
 
 def bucket_ocr_confidence(

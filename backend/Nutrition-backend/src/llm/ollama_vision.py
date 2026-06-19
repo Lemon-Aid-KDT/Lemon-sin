@@ -40,7 +40,19 @@ medical advice. Mark missing critical sections when product name, supplement
 facts, intake method, or precautions are absent from the visible image. Return
 only JSON matching the supplied schema.
 """.strip()
+OLLAMA_VISION_EXTRACT_SYSTEM_PROMPT = """
+You are a local supplement label transcription component. Read ONLY values that are
+visibly printed on the supplement label image. Transcribe each ingredient's name with
+its printed amount and unit exactly as shown in the supplement facts or ingredient
+table; if an amount or unit is not visibly printed for an ingredient, use null. Choose
+product_category_key ONLY from the provided allowed list, based solely on the visibly
+printed product name/ingredients; if none clearly applies, return null. Do NOT infer
+hidden values, do NOT recommend dosage, do NOT add health, disease, efficacy, or
+medical claims or advice. Return only JSON matching the supplied schema.
+""".strip()
 MAX_VERIFICATION_OCR_TEXT_CHARS = 4_000
+MAX_VISION_EXTRACTION_INGREDIENTS = 60
+MAX_VISION_EXTRACTION_CATEGORIES = 60
 VISION_READINESS_PROBE_IMAGE_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
@@ -127,6 +139,64 @@ class OllamaVisionTextVerificationResult(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("matched_fragments", "missing_fragments", "warnings")
+    @classmethod
+    def _normalize_string_list(cls, values: list[str]) -> list[str]:
+        """Normalize model-produced string lists and remove duplicates.
+
+        Args:
+            values: Candidate string values.
+
+        Returns:
+            Trimmed non-empty strings in first-seen order.
+        """
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            stripped = value.strip()
+            if not stripped or stripped in seen:
+                continue
+            normalized.append(stripped)
+            seen.add(stripped)
+        return normalized
+
+
+class OllamaVisionIngredient(BaseModel):
+    """One ingredient transcribed from a supplement label image.
+
+    Attributes:
+        name: Ingredient name visibly printed on the label.
+        amount: Printed amount per serving, or null when not visibly printed.
+        unit: Printed amount unit, or null when not visibly printed.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=200)
+    amount: float | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, max_length=32)
+
+
+class OllamaVisionStructuredExtractionResult(BaseModel):
+    """Validated transcription-only structured extraction from a label image.
+
+    Attributes:
+        product_category_key: Allowed-list category key, or null when none applies.
+        ingredients: Visibly printed ingredient names with printed amount/unit.
+        low_confidence_fields: Candidate fields requiring user review.
+        warnings: Non-medical warnings to surface in preview metadata.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    product_category_key: str | None = Field(default=None, max_length=64)
+    ingredients: list[OllamaVisionIngredient] = Field(
+        default_factory=list,
+        max_length=MAX_VISION_EXTRACTION_INGREDIENTS,
+    )
+    low_confidence_fields: list[str] = Field(default_factory=list, max_length=20)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("low_confidence_fields", "warnings")
     @classmethod
     def _normalize_string_list(cls, values: list[str]) -> list[str]:
         """Normalize model-produced string lists and remove duplicates.
@@ -236,6 +306,46 @@ class OllamaVisionAssistAdapter(OCRAdapter):
         response_data = await self.client.post_chat(payload)
         content = extract_ollama_message_content(response_data)
         return _parse_vision_verification_result(content)
+
+    async def extract_structured(
+        self,
+        image: OCRImageInput,
+        allowed_categories: list[str],
+    ) -> OllamaVisionStructuredExtractionResult:
+        """Transcribe ingredient amounts and a category key from a label image.
+
+        This is a transcription-only pass: it reads only values visibly printed on
+        the image and returns them as structured JSON so the caller can additively
+        fill ingredient amounts the OCR text never carried and set a category key
+        from the supplied allow-list. It never infers hidden values or adds advice.
+
+        Args:
+            image: Validated image input. If ``label_region`` is present, only that
+                crop is sent to the local vision model.
+            allowed_categories: Closed allow-list of category keys the model may
+                choose ``product_category_key`` from.
+
+        Returns:
+            Schema-validated structured extraction result.
+
+        Raises:
+            OllamaConfigurationError: If the feature flag or local model is invalid.
+            OllamaClientError: If the local Ollama API call fails.
+            OllamaStructuredOutputError: If model output fails schema validation.
+        """
+        _validate_vision_settings(self.settings)
+        image_payload, source_region = _build_image_payload(image)
+        schema = OllamaVisionStructuredExtractionResult.model_json_schema()
+        payload = _build_vision_extraction_payload(
+            image_payload=image_payload,
+            source_region=source_region,
+            allowed_categories=allowed_categories,
+            schema=schema,
+            settings=self.settings,
+        )
+        response_data = await self.client.post_chat(payload)
+        content = extract_ollama_message_content(response_data)
+        return _parse_vision_extraction_result(content)
 
 
 async def check_ollama_vision_readiness(
@@ -485,6 +595,56 @@ def _build_vision_verification_payload(
     }
 
 
+def _build_vision_extraction_payload(
+    *,
+    image_payload: str,
+    source_region: Literal["full_image", "yolo_roi"],
+    allowed_categories: list[str],
+    schema: dict[str, object],
+    settings: Settings,
+) -> dict[str, object]:
+    """Build an Ollama Chat API payload for transcription-only label extraction.
+
+    Args:
+        image_payload: Base64-encoded image bytes.
+        source_region: Source marker for the submitted image.
+        allowed_categories: Closed allow-list of category keys the model may use.
+        schema: JSON Schema for structured output.
+        settings: Runtime settings.
+
+    Returns:
+        JSON payload for ``POST /api/chat``.
+    """
+    bounded_categories = [
+        category.strip()
+        for category in allowed_categories[:MAX_VISION_EXTRACTION_CATEGORIES]
+        if category and category.strip()
+    ]
+    user_prompt = (
+        "Transcribe only values visibly printed on this supplement image. "
+        f"The submitted image source is {source_region}. "
+        "For each ingredient in the supplement facts or ingredient table, transcribe "
+        "its printed name, amount, and unit; use null when an amount or unit is not "
+        "visibly printed. Do not infer hidden values, dosage, benefits, risks, or advice.\n\n"
+        "Choose product_category_key only from this allowed list (or null if none "
+        "clearly applies):\n"
+        f"{json.dumps(bounded_categories, ensure_ascii=False)}\n\n"
+        "Return JSON that conforms to this JSON Schema:\n"
+        f"{json.dumps(schema, ensure_ascii=False)}"
+    )
+    return {
+        "model": settings.ollama_vision_model,
+        "messages": [
+            {"role": "system", "content": OLLAMA_VISION_EXTRACT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt, "images": [image_payload]},
+        ],
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "options": {"temperature": settings.ollama_vision_temperature},
+    }
+
+
 def _vision_json_candidates(content: str) -> list[str]:
     """Return JSON-object candidates from raw model content.
 
@@ -570,6 +730,34 @@ def _parse_vision_verification_result(content: str) -> OllamaVisionTextVerificat
             last_error = exc
     raise OllamaStructuredOutputError(
         "Ollama vision verification output failed schema validation."
+    ) from last_error
+
+
+def _parse_vision_extraction_result(content: str) -> OllamaVisionStructuredExtractionResult:
+    """Validate structured extraction output, tolerating markdown fences and prose.
+
+    Args:
+        content: Raw assistant message content.
+
+    Returns:
+        Schema-validated structured extraction result.
+
+    Raises:
+        OllamaStructuredOutputError: If no candidate passes schema validation.
+    """
+    candidates = _vision_json_candidates(content)
+    if not candidates:
+        raise OllamaStructuredOutputError(
+            "Ollama vision extraction returned empty content."
+        )
+    last_error: ValidationError | None = None
+    for candidate in candidates:
+        try:
+            return OllamaVisionStructuredExtractionResult.model_validate_json(candidate)
+        except ValidationError as exc:
+            last_error = exc
+    raise OllamaStructuredOutputError(
+        "Ollama vision extraction output failed schema validation."
     ) from last_error
 
 

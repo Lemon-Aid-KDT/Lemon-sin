@@ -44,7 +44,12 @@ from src.llm.ollama import (
     OllamaConfigurationError,
     OllamaStructuredOutputError,
 )
-from src.llm.ollama_vision import OllamaVisionTextVerificationResult
+from src.llm.ollama_vision import (
+    OllamaVisionAssistAdapter,
+    OllamaVisionIngredient,
+    OllamaVisionStructuredExtractionResult,
+    OllamaVisionTextVerificationResult,
+)
 from src.models.db.learning import LearningImageObject
 from src.models.db.retraining import AnnotationTask
 from src.models.db.supplement import SupplementAnalysisRun
@@ -62,6 +67,7 @@ from src.ocr.base import OCRAdapter, OCRError, OCRImageInput, OCRPage, OCRResult
 from src.parsing.layout_parser import parse_label_layout
 from src.security.auth import AuthenticatedUser
 from src.security.privacy import hash_actor_subject
+from src.services.nutrient_category_map import allowed_supplement_category_keys
 from src.services.supplement_intake import (
     SupplementImageValidationError,
     SupplementIntakeStoreResult,
@@ -75,11 +81,12 @@ from src.services.supplement_parser import (
     SupplementParserInputError,
     parse_supplement_analysis_ocr_text,
 )
-from src.utils.image_safety import ImageSafetyError, strip_image_metadata
+from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard, strip_image_metadata
 from src.vision.base import BoundingBox, VisionAdapter, VisionError
 from src.vision.preprocessing import (
     VisionPreprocessingError,
     crop_image_to_bounding_box,
+    expand_bounding_box,
     select_best_label_region,
 )
 from src.vision.taxonomy import label_priority
@@ -310,6 +317,26 @@ class _SupplementFactsGuidance:
     action_required: str
 
 
+@dataclass(frozen=True)
+class _VisionExtractionOutcome:
+    """Diagnostic outcome of the additive local vision transcription merge.
+
+    Attributes:
+        attempted: Whether the local Gemma vision transcription pass was attempted.
+        category_applied: Whether the pass set an otherwise-unset category key.
+        amounts_filled: Number of ingredient candidates whose null amount was filled.
+    """
+
+    attempted: bool = False
+    category_applied: bool = False
+    amounts_filled: int = 0
+
+
+# Empty (not-attempted) vision-merge outcome used when the gate is closed or the
+# pass is skipped, so the pipeline-metadata flags default to a clean no-op state.
+_VISION_EXTRACTION_SKIPPED = _VisionExtractionOutcome()
+
+
 async def analyze_supplement_image(
     session: AsyncSession,
     user: AuthenticatedUser,
@@ -461,6 +488,20 @@ async def analyze_supplement_image(
             result_record,
             facts_guidance,
         )
+    result_record, vision_outcome = await _within_optional_budget(
+        _merge_vision_structured_extraction_if_allowed(
+            session=session,
+            record=result_record,
+            image_bytes=image_bytes,
+            image_metadata=image_metadata,
+            label_region=vision_region,
+            parser_used=parsed_record is not None,
+            settings=settings,
+        ),
+        budget_sec=optional_budget,
+        fallback=(result_record, _VISION_EXTRACTION_SKIPPED),
+        label="vision_structured_extraction",
+    )
     pipeline_metadata = _build_pipeline_metadata(
         record=result_record,
         vision_region=vision_region,
@@ -470,6 +511,7 @@ async def analyze_supplement_image(
         warning_codes=warning_codes,
         parser_used=parsed_record is not None,
         settings=settings,
+        vision_outcome=vision_outcome,
     )
     if _should_store_pipeline_metadata(result_record, pipeline_metadata, vision_regions):
         result_record = await _store_pipeline_metadata(
@@ -806,6 +848,23 @@ async def analyze_fused_supplement_images(
     vision_region = representative.vision_region if representative else None
     vision_regions = representative.vision_regions if representative else ()
     ocr_attempted = any(result.ocr_attempted for result in ocr_only_results)
+    # Additive vision transcription over every uploaded product image. A single
+    # supplement label is often split across facts/directions/warnings photos, so
+    # using only the first image can miss the evidence needed to fill amounts or
+    # category. Bytes stay request-local and the helper remains best-effort.
+    optional_budget = settings.analyze_optional_stage_budget_sec
+    result_record, vision_outcome = await _within_optional_budget(
+        _merge_vision_structured_extraction_for_ocr_only_results_if_allowed(
+            session=session,
+            record=result_record,
+            ocr_only_results=ocr_only_results,
+            parser_used=parsed_record is not None,
+            settings=settings,
+        ),
+        budget_sec=optional_budget,
+        fallback=(result_record, _VISION_EXTRACTION_SKIPPED),
+        label="vision_structured_extraction_fused",
+    )
     pipeline_metadata = _build_pipeline_metadata(
         record=result_record,
         vision_region=vision_region,
@@ -815,6 +874,7 @@ async def analyze_fused_supplement_images(
         warning_codes=warning_codes,
         parser_used=parsed_record is not None,
         settings=settings,
+        vision_outcome=vision_outcome,
     )
     if _should_store_pipeline_metadata(result_record, pipeline_metadata, vision_regions):
         result_record = await _store_pipeline_metadata(
@@ -863,6 +923,226 @@ async def analyze_fused_supplement_images(
     )
 
 
+def _normalize_ingredient_match_key(value: object) -> str:
+    """Normalize an ingredient name for case/space-insensitive matching.
+
+    Args:
+        value: Candidate name value from a parsed candidate or vision ingredient.
+
+    Returns:
+        Lowercased, whitespace-collapsed match key, or an empty string.
+    """
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.strip().casefold().split())
+
+
+def _merge_vision_amounts_into_snapshot(
+    parsed_snapshot: dict[str, Any],
+    extraction: OllamaVisionStructuredExtractionResult,
+    allowed_categories: frozenset[str],
+) -> _VisionExtractionOutcome:
+    """Additively fill null amounts and set an unset category from vision output.
+
+    The merge never overwrites existing good data: a non-null ingredient amount is
+    left untouched, and the category is set only when the snapshot does not already
+    carry a non-empty ``product_category_key``. Vision amounts are matched to parsed
+    candidates by normalized name against both the display and original names.
+
+    Args:
+        parsed_snapshot: Parsed snapshot dict mutated in place.
+        extraction: Schema-validated transcription-only vision extraction.
+        allowed_categories: Closed allow-list of category keys.
+
+    Returns:
+        Diagnostic outcome describing what (if anything) was applied.
+    """
+    # Index only amount-bearing vision ingredients by normalized name; the merge
+    # never copies a null vision amount over a parsed candidate.
+    vision_by_name: dict[str, OllamaVisionIngredient] = {}
+    for ingredient in extraction.ingredients:
+        if ingredient.amount is None:
+            continue
+        name_key = _normalize_ingredient_match_key(ingredient.name)
+        if name_key and name_key not in vision_by_name:
+            vision_by_name[name_key] = ingredient
+
+    amounts_filled = 0
+    candidates = parsed_snapshot.get("ingredient_candidates")
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if not isinstance(candidate, dict) or candidate.get("amount") is not None:
+                continue
+            match: OllamaVisionIngredient | None = None
+            for name_key in (
+                _normalize_ingredient_match_key(candidate.get("display_name")),
+                _normalize_ingredient_match_key(candidate.get("original_name")),
+            ):
+                if name_key and name_key in vision_by_name:
+                    match = vision_by_name[name_key]
+                    break
+            if match is None or match.amount is None:
+                continue
+            candidate["amount"] = match.amount
+            if match.unit and not candidate.get("unit"):
+                candidate["unit"] = match.unit
+            amounts_filled += 1
+
+    category_applied = False
+    existing_category = parsed_snapshot.get("product_category_key")
+    has_existing_category = isinstance(existing_category, str) and bool(existing_category.strip())
+    if (
+        not has_existing_category
+        and extraction.product_category_key is not None
+        and extraction.product_category_key in allowed_categories
+    ):
+        parsed_snapshot["product_category_key"] = extraction.product_category_key
+        category_applied = True
+
+    return _VisionExtractionOutcome(
+        attempted=True,
+        category_applied=category_applied,
+        amounts_filled=amounts_filled,
+    )
+
+
+async def _merge_vision_structured_extraction_if_allowed(
+    *,
+    session: AsyncSession,
+    record: SupplementAnalysisRun,
+    image_bytes: bytes | None,
+    image_metadata: ValidatedSupplementImage,
+    label_region: BoundingBox | None,
+    parser_used: bool,
+    settings: Settings,
+) -> tuple[SupplementAnalysisRun, _VisionExtractionOutcome]:
+    """Run a best-effort local vision transcription and merge it additively.
+
+    Gated on the existing local multimodal flags. The vision pass transcribes only
+    visibly-printed ingredient amounts and a category key from the allow-list, then
+    fills parsed candidates whose amount is null and sets the category when unset.
+    Any vision failure (configuration, transport, schema, timeout) is swallowed so
+    the analysis is never broken by this enrichment.
+
+    Args:
+        session: Request-scoped async database session.
+        record: Parsed analysis row whose snapshot is enriched in place.
+        image_bytes: Validated image bytes, if loaded for adapter use.
+        image_metadata: Validated image metadata.
+        label_region: Optional YOLO ROI passed to the vision model.
+        parser_used: Whether structured parsing produced a snapshot to enrich.
+        settings: Runtime settings (multimodal flags, vision model, temperature).
+
+    Returns:
+        The (possibly refreshed) record and the diagnostic merge outcome.
+    """
+    if not parser_used or image_bytes is None:
+        return record, _VISION_EXTRACTION_SKIPPED
+    if (
+        not settings.enable_supplement_label_vision_extraction
+        or not settings.enable_multimodal_llm
+        or not settings.ollama_vision_model
+    ):
+        return record, _VISION_EXTRACTION_SKIPPED
+    parsed_snapshot = record.parsed_snapshot if isinstance(record.parsed_snapshot, dict) else None
+    if parsed_snapshot is None:
+        return record, _VISION_EXTRACTION_SKIPPED
+
+    allowed_categories = list(allowed_supplement_category_keys())
+    try:
+        extraction = await OllamaVisionAssistAdapter(settings).extract_structured(
+            OCRImageInput(
+                image_bytes=image_bytes,
+                mime_type=image_metadata.mime_type,
+                width=image_metadata.width,
+                height=image_metadata.height,
+                label_region=label_region,
+            ),
+            allowed_categories,
+        )
+    except Exception as exc:
+        # Best-effort enrichment: swallow every failure class the vision pass can
+        # raise (OllamaConfigurationError / OllamaClientError /
+        # OllamaStructuredOutputError / OCRError / TimeoutError and any other) so a
+        # vision miss never breaks analysis. Diagnostic only — the logged value is
+        # the exception class name (no raw OCR text / image payload / secrets).
+        logger.warning(
+            "Local vision structured extraction failed (%s); skipping additive merge.",
+            exc.__class__.__name__,
+        )
+        return record, _VISION_EXTRACTION_SKIPPED
+
+    working_snapshot = dict(parsed_snapshot)
+    outcome = _merge_vision_amounts_into_snapshot(
+        working_snapshot,
+        extraction,
+        frozenset(allowed_categories),
+    )
+    if not outcome.category_applied and outcome.amounts_filled == 0:
+        return record, outcome
+
+    async with persist_scope(session):
+        record.parsed_snapshot = working_snapshot
+    await session.refresh(record)
+    return record, outcome
+
+
+async def _merge_vision_structured_extraction_for_ocr_only_results_if_allowed(
+    *,
+    session: AsyncSession,
+    record: SupplementAnalysisRun,
+    ocr_only_results: list[SupplementOCROnlyResult],
+    parser_used: bool,
+    settings: Settings,
+) -> tuple[SupplementAnalysisRun, _VisionExtractionOutcome]:
+    """Run additive local vision extraction for a fused multi-image preview.
+
+    Args:
+        session: Request-scoped async database session.
+        record: Parsed fused analysis row whose snapshot may be enriched.
+        ocr_only_results: Per-image OCR-phase outputs with request-local bytes.
+        parser_used: Whether structured parsing produced a snapshot to enrich.
+        settings: Runtime settings (multimodal flags, vision model, temperature).
+
+    Returns:
+        The latest record and a combined diagnostic outcome.
+    """
+    combined = _VISION_EXTRACTION_SKIPPED
+    current_record = record
+    for ocr_only in ocr_only_results:
+        current_record, outcome = await _merge_vision_structured_extraction_if_allowed(
+            session=session,
+            record=current_record,
+            image_bytes=ocr_only.image_bytes,
+            image_metadata=ocr_only.image_metadata,
+            label_region=ocr_only.vision_region,
+            parser_used=parser_used,
+            settings=settings,
+        )
+        combined = _combine_vision_extraction_outcomes(combined, outcome)
+    return current_record, combined
+
+
+def _combine_vision_extraction_outcomes(
+    first: _VisionExtractionOutcome,
+    second: _VisionExtractionOutcome,
+) -> _VisionExtractionOutcome:
+    """Combine per-image local vision merge diagnostics.
+
+    Args:
+        first: Existing accumulated outcome.
+        second: New per-image outcome.
+
+    Returns:
+        Aggregated outcome for pipeline metadata.
+    """
+    return _VisionExtractionOutcome(
+        attempted=first.attempted or second.attempted,
+        category_applied=first.category_applied or second.category_applied,
+        amounts_filled=first.amounts_filled + second.amounts_filled,
+    )
+
+
 def _build_pipeline_metadata(
     *,
     record: SupplementAnalysisRun,
@@ -873,6 +1153,7 @@ def _build_pipeline_metadata(
     warning_codes: tuple[str, ...],
     parser_used: bool,
     settings: Settings,
+    vision_outcome: _VisionExtractionOutcome = _VISION_EXTRACTION_SKIPPED,
 ) -> SupplementImagePipelineMetadata:
     """Build sanitized OCR/YOLO/parser metadata for preview response diagnostics.
 
@@ -885,6 +1166,7 @@ def _build_pipeline_metadata(
         warning_codes: Safe warning codes accumulated during OCR/parser stages.
         parser_used: Whether structured text parsing ran.
         settings: Runtime settings that determine skipped versus warning states.
+        vision_outcome: Diagnostic outcome of the additive vision transcription merge.
 
     Returns:
         Non-sensitive pipeline metadata without raw image, OCR, or provider payloads.
@@ -928,6 +1210,9 @@ def _build_pipeline_metadata(
         ),
         raw_image_stored=False,
         raw_ocr_text_stored=False,
+        vision_extraction_attempted=vision_outcome.attempted,
+        vision_category_applied=vision_outcome.category_applied,
+        vision_amounts_filled=vision_outcome.amounts_filled,
     )
 
 
@@ -1923,7 +2208,12 @@ def _prepare_primary_ocr_image_input(
         return original_input, None, None
 
     try:
-        cropped_bytes = crop_image_to_bounding_box(image_bytes, label_region)
+        crop_region = _effective_primary_ocr_crop_region(
+            image_bytes=image_bytes,
+            label_region=label_region,
+            settings=settings,
+        )
+        cropped_bytes = crop_image_to_bounding_box(image_bytes, crop_region)
     except VisionPreprocessingError:
         return original_input, OCR_ROI_CROP_UNAVAILABLE_CODE, OCR_ROI_CROP_UNAVAILABLE_WARNING
 
@@ -1931,13 +2221,60 @@ def _prepare_primary_ocr_image_input(
         OCRImageInput(
             image_bytes=cropped_bytes,
             mime_type="image/png",
-            width=label_region.width,
-            height=label_region.height,
+            width=crop_region.width,
+            height=crop_region.height,
             label_region=None,
         ),
         None,
         None,
     )
+
+
+def _effective_primary_ocr_crop_region(
+    *,
+    image_bytes: bytes,
+    label_region: BoundingBox,
+    settings: Settings,
+) -> BoundingBox:
+    """Return the ROI crop box used for primary OCR.
+
+    Padding helps real supplement labels because detector boxes often clip table
+    columns. When a tiny or edge-touching ROI would expand to the full image,
+    though, the crop stops being ROI-scoped. In that case use the detector box
+    itself so the pipeline preserves ROI-first behavior and still sends a full
+    image fallback as the secondary OCR input.
+
+    Args:
+        image_bytes: Validated source image bytes.
+        label_region: Detector-provided ROI box.
+        settings: Runtime settings containing OCR crop padding controls.
+
+    Returns:
+        The effective crop region to encode as primary OCR input.
+
+    Raises:
+        VisionPreprocessingError: If the image cannot be decoded or the box/padding
+            values are invalid.
+    """
+    try:
+        decoded = safe_load_with_bomb_guard(image_bytes)
+    except ImageSafetyError as exc:
+        raise VisionPreprocessingError("Image cannot be decoded for OCR ROI crop.") from exc
+
+    with decoded as image:
+        image_width, image_height = image.size
+
+    expanded_region = expand_bounding_box(
+        label_region,
+        image_width=image_width,
+        image_height=image_height,
+        padding_ratio=settings.ocr_roi_crop_padding_ratio,
+        min_padding_px=settings.ocr_roi_crop_min_padding_px,
+        max_padding_px=settings.ocr_roi_crop_max_padding_px,
+    )
+    if expanded_region.width >= image_width and expanded_region.height >= image_height:
+        return label_region
+    return expanded_region
 
 
 async def _extract_multimodal_ocr_if_allowed(
