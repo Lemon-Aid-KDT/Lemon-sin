@@ -490,23 +490,34 @@ def _build_multi_image_response(
     *,
     analysis_group_id: str,
     previews: list[SupplementAnalysisPreview],
+    merge_strategy: Literal["single_product", "distinct_products"] = "single_product",
 ) -> SupplementMultiImageAnalysisPreview:
     """Build a sanitized aggregate response for a multi-image batch.
 
     Args:
         analysis_group_id: Ephemeral group identifier.
         previews: Per-image analysis previews.
+        merge_strategy: ``single_product`` fuses every image into one
+            ``merged_preview``; ``distinct_products`` keeps each image as its own
+            product (no merged preview) so the client renders one tab per preview.
 
     Returns:
         Batch-level multi-image preview.
     """
     missing_sections = _aggregate_missing_sections(previews)
     pipeline_metadata = _aggregate_pipeline_metadata(previews, missing_sections)
-    merged_preview = _build_merged_multi_image_preview(
-        analysis_group_id=analysis_group_id,
-        previews=previews,
-        missing_sections=missing_sections,
-        pipeline_metadata=pipeline_metadata,
+    # distinct_products: each image is a different supplement, so do not fabricate a
+    # cross-product merged preview — the client renders one tab per entry in previews.
+    # single_product: keep fusing the batch into one merged preview as before.
+    merged_preview = (
+        None
+        if merge_strategy == "distinct_products"
+        else _build_merged_multi_image_preview(
+            analysis_group_id=analysis_group_id,
+            previews=previews,
+            missing_sections=missing_sections,
+            pipeline_metadata=pipeline_metadata,
+        )
     )
     return SupplementMultiImageAnalysisPreview(
         analysis_group_id=analysis_group_id,
@@ -519,6 +530,7 @@ def _build_multi_image_response(
         ),
         pipeline_metadata=pipeline_metadata,
         expires_at=min((preview.expires_at for preview in previews), default=None),
+        result_mode=merge_strategy,
     )
 
 
@@ -1984,6 +1996,7 @@ async def analyze_supplement_label_multi(
         response = _build_multi_image_response(
             analysis_group_id=analysis_group_id,
             previews=previews,
+            merge_strategy=merge_strategy,
         )
         # In-transaction success audit → out-of-band writer (see route 1 note).
         await record_sensitive_audit_event(

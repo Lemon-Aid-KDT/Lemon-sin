@@ -710,6 +710,7 @@ def test_analyze_supplement_label_multi_single_product_fuses_to_one_run(
     body = response.json()
     assert len(body["previews"]) == 1
     assert body["merged_preview"] is not None
+    assert body["result_mode"] == "single_product"
     assert body["merged_preview"]["parsed_product"]["product_name"] == "비타민 D 1000"
     # Privacy: no raw OCR text exposed anywhere in the response.
     assert "ocr_text" not in body["merged_preview"]
@@ -751,6 +752,10 @@ def test_analyze_supplement_label_multi_distinct_products_keeps_per_image(
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert len(fake_session.added_analyses) == 2
+    body = response.json()
+    assert body["result_mode"] == "distinct_products"
+    assert body["merged_preview"] is None
+    assert len(body["previews"]) == 2
 
 
 def test_analyze_supplement_label_multi_single_product_falls_through_when_fusion_disabled(

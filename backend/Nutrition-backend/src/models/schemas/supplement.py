@@ -554,6 +554,10 @@ class SupplementMultiImageAnalysisPreview(BaseModel):
         action_required: Batch-level next action before relying on the preview.
         pipeline_metadata: Sanitized aggregate OCR/YOLO/parser metadata.
         expires_at: Earliest per-image preview expiration time.
+        result_mode: How the batch was analyzed — ``single_product`` fuses every
+            image into one ``merged_preview``; ``distinct_products`` treats each
+            image as a separate supplement (``merged_preview`` is None and every
+            entry in ``previews`` is its own product, rendered as a separate tab).
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -566,6 +570,7 @@ class SupplementMultiImageAnalysisPreview(BaseModel):
     action_required: SupplementImageRiskActionRequired = "review_required"
     pipeline_metadata: SupplementImagePipelineMetadata
     expires_at: datetime | None = None
+    result_mode: Literal["single_product", "distinct_products"] = "single_product"
 
 
 class SupplementAnalysisSessionResponse(BaseModel):
