@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
@@ -623,6 +624,38 @@ async def test_create_meal_image_preview_uses_food_dino_classifier_candidate() -
     serialized_records = str(result.meal_record.__dict__) + str(result.analysis_run.__dict__)
     assert "provider_payload" not in serialized_records
     assert "image_bytes" not in serialized_records
+
+
+@pytest.mark.asyncio
+async def test_create_meal_image_preview_ignores_blank_classifier_nutrition_values() -> None:
+    """Verify blank optional nutrition strings do not abort food image analysis."""
+    fake_session = _FakeStoreSession()
+    classification = _food_classification()
+    nutrition = dict(classification.nutrition or {})
+    nutrition["sugar_g"] = ""
+    classifier = _FakeFoodClassifier(replace(classification, nutrition=nutrition))
+
+    result = await create_meal_image_analysis_preview(
+        session=cast(AsyncSession, fake_session),
+        user=_user(),
+        image_metadata=_image_metadata(),
+        meal_type=MealType.LUNCH,
+        eaten_at=None,
+        client_request_id="client-blank-nutrition",
+        settings=_settings(enable_food_dino_classifier=True),
+        food_classifier=classifier,
+    )
+
+    assert result.analysis_run.nutrition_estimate_snapshot["status"] == (
+        "detected_review_required"
+    )
+    # The blank classifier nutrition string is coerced to None and dropped from
+    # the snapshot rather than aborting analysis with a 500.
+    item_nutrition = result.analysis_run.nutrition_estimate_snapshot["items"][0][
+        "nutrition"
+    ]
+    assert "sugar_g" not in item_nutrition
+    assert item_nutrition["kcal"] is not None
 
 
 @pytest.mark.asyncio

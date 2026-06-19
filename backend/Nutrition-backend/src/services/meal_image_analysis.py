@@ -1620,16 +1620,31 @@ def _decimal_or_none(value: float | None) -> Decimal | None:
     return Decimal(str(value)) if value is not None else None
 
 
-def _float_or_none(value: Decimal | float | int | None) -> float | None:
-    """Convert a persisted numeric value to float for API responses.
+def _float_or_none(value: object) -> float | None:
+    """Convert optional numeric-like values to float for API responses.
 
     Args:
-        value: Optional numeric value.
+        value: Optional numeric value or provider/catalog text value.
 
     Returns:
-        Float value or None.
+        Float value or None when the input is absent, blank, or non-numeric.
     """
-    return float(value) if value is not None else None
+    if value is None:
+        return None
+    if isinstance(value, Decimal | int | float):
+        return float(value)
+    if isinstance(value, str):
+        normalized = value.strip().replace(",", "")
+        if not normalized:
+            return None
+        try:
+            return float(normalized)
+        except ValueError:
+            return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _dict_or_empty(value: Any) -> dict[str, object]:
