@@ -69,7 +69,9 @@ services:
       PERSIST_DAILY_HEALTH_SCORE: ${PERSIST_DAILY_HEALTH_SCORE:-true}
       LLM_PROVIDER: ollama
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
+      # Single model for both text generation and vision (same as
+      # OLLAMA_VISION_MODEL) so the local GPU never swaps models per request.
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-gemma4:e4b}
       OLLAMA_TIMEOUT_SEC: ${OLLAMA_TIMEOUT_SEC:-60}
       ALLOW_EXTERNAL_LLM: "false"
