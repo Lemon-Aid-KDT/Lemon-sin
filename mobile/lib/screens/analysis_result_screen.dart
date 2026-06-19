@@ -573,17 +573,17 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       final bool mergeAsSingleSupplement =
           controller?.lastSupplementBatchIsSingleProduct ?? true;
       if (mergeAsSingleSupplement) {
-        if (mergedPreview != null && mergedPreview.hasReviewContent) {
-          return <_SupplementReviewGroup>[
-            _SupplementReviewGroup(
-              label: _supplementPreviewLabel(mergedPreview, 0),
-              preview: mergedPreview,
-              sourcePreviews: multiPreviews,
-            ),
-          ];
-        }
+        // The user photographed one product from several angles and wants to
+        // review EACH photo's own extraction. Render one result per image
+        // (gallery-driven) instead of collapsing the photos into a single merged
+        // result, so selecting a photo also switches the shown analysis result.
         return <_SupplementReviewGroup>[
-          _buildSupplementReviewGroup(multiPreviews, 0),
+          for (int index = 0; index < multiPreviews.length; index++)
+            _SupplementReviewGroup(
+              label: _supplementPreviewLabel(multiPreviews[index], index),
+              preview: multiPreviews[index],
+              sourcePreviews: <SupplementAnalysisPreview>[multiPreviews[index]],
+            ),
         ];
       }
       // distinct_products: the user explicitly chose separate supplements and the
@@ -1206,10 +1206,16 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   /// 섹션 검출기가 아직 학습 전이라 구조화 성분이 비더라도, OCR 자체는 글자를
   /// 읽어낸 경우가 있다. 그때 막다른 안내 대신 읽어온 글자를 보여주기 위한 판별.
   bool _hasRecognizedIngredientText(SupplementAnalysisPreview preview) {
-    return preview.labelSections.any(
+    final bool hasSectionText = preview.labelSections.any(
       (SupplementPreviewLabelSection section) =>
           _ingredientTextSectionTypes.contains(section.sectionType) &&
           _nonEmpty(section.textBundle) != null,
+    );
+    if (hasSectionText) return true;
+    return preview.evidenceSpans.any(
+      (SupplementPreviewEvidenceSpan span) =>
+          _ingredientTextSectionTypes.contains(span.sectionType) &&
+          _nonEmpty(span.textExcerpt) != null,
     );
   }
 
@@ -1226,6 +1232,18 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         cards.add(const SizedBox(height: AppSpace.sm));
       }
       cards.add(_recognizedTextCard(_recognizedSectionHeading(section), text));
+    }
+    if (cards.isEmpty) {
+      for (final SupplementPreviewEvidenceSpan span in preview.evidenceSpans) {
+        if (cards.length >= 2) break;
+        if (!_ingredientTextSectionTypes.contains(span.sectionType)) continue;
+        final String? text = _nonEmpty(span.textExcerpt);
+        if (text == null) continue;
+        if (cards.isNotEmpty) {
+          cards.add(const SizedBox(height: AppSpace.sm));
+        }
+        cards.add(_recognizedTextCard(_sectionLabel(span.sectionType), text));
+      }
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1566,7 +1584,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   String _ingredientAmountText(double? amount, String? unit) {
     // 함량 칸이 좁아 긴 문구는 줄바꿈된다 → 짧게(칼럼 한 줄에 맞춤).
-    if (amount == null) return '확인 필요';
+    if (amount == null) return '함량 확인 필요';
     final String amountText = _formatEditableAmount(amount);
     final String? normalizedUnit = _nonEmpty(unit);
     if (normalizedUnit == null) return amountText;
@@ -2056,20 +2074,40 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   }
 
   /// 분석 결과 상단에 사용자가 첨부/촬영한 원본 이미지를 다시 보여준다(Figma 참고).
-  /// 음식은 mealImagePath, 영양제는 대표(첫) supplementImagePaths 를 사용한다. 경로가
-  /// 없거나 로컬 파일이 사라졌으면 아무것도 그리지 않는다(미허위 — 가짜 이미지 금지).
+  /// 음식은 mealImagePath, 영양제는 업로드한 모든 supplementImagePaths 를 사용한다.
+  /// 경로가 없거나 로컬 파일이 사라졌으면 아무것도 그리지 않는다(미허위 — 가짜 이미지 금지).
   List<Widget> _analyzedImageHeader(AppController? controller) {
     if (controller == null) return const <Widget>[];
-    final String? path = _isMeal
-        ? controller.mealImagePath
-        : (controller.supplementImagePaths.isEmpty
-              ? null
-              : controller.supplementImagePaths.first);
-    if (path == null) return const <Widget>[];
-    final File file = File(path);
-    if (!file.existsSync()) return const <Widget>[];
+    if (_isMeal) {
+      final String? path = controller.mealImagePath;
+      if (path == null) return const <Widget>[];
+      final File file = File(path);
+      if (!file.existsSync()) return const <Widget>[];
+      return <Widget>[
+        _AnalyzedImageCard(file: file),
+        const SizedBox(height: AppSpace.md),
+      ];
+    }
+    final List<File> files = controller.supplementImagePaths
+        .map(File.new)
+        .where((File file) => file.existsSync())
+        .toList(growable: false);
+    if (files.isEmpty) return const <Widget>[];
     return <Widget>[
-      _AnalyzedImageCard(file: file),
+      _AnalyzedSupplementImageGallery(
+        files: files,
+        selectedIndex: _selectedSupplementPreviewIndex,
+        onSelected: (int index) {
+          if (index == _selectedSupplementPreviewIndex) return;
+          // Selecting a photo also moves the analysis result to that image's
+          // per-image preview; clear the seed marker so the correction fields
+          // re-seed from the newly selected preview.
+          setState(() {
+            _selectedSupplementPreviewIndex = index;
+            _seededAnalysisId = null;
+          });
+        },
+      ),
       const SizedBox(height: AppSpace.md),
     ];
   }
@@ -2374,32 +2412,128 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   List<_OcrTextRowData> _ocrTextRows(SupplementAnalysisPreview preview) {
     final List<_OcrTextRowData> rows = <_OcrTextRowData>[];
+    final Set<String> seen = <String>{};
+
+    void addRow({
+      required String section,
+      required String source,
+      required String text,
+      String confidence = '-',
+    }) {
+      final String? normalizedText = _nonEmpty(text);
+      if (normalizedText == null) return;
+      final String key = normalizedText.toLowerCase();
+      if (!seen.add(key)) return;
+      rows.add(
+        _OcrTextRowData(
+          section: section,
+          source: source,
+          text: normalizedText,
+          confidence: confidence,
+        ),
+      );
+    }
+
     for (final SupplementPreviewEvidenceSpan span in preview.evidenceSpans) {
       final String? text = _nonEmpty(span.textExcerpt);
       if (text == null) continue;
-      rows.add(
-        _OcrTextRowData(
-          section: _sectionLabel(span.sectionType),
-          source: span.sourceType.toUpperCase(),
-          text: text,
-          confidence: _confidenceLabel(span.confidence),
-        ),
+      addRow(
+        section: _sectionLabel(span.sectionType),
+        source: span.sourceType.toUpperCase(),
+        text: text,
+        confidence: _confidenceLabel(span.confidence),
       );
     }
-    if (rows.isNotEmpty) return rows;
     for (final SupplementPreviewLabelSection section in preview.labelSections) {
       final String? text = _nonEmpty(section.textBundle);
       if (text == null) continue;
-      rows.add(
-        _OcrTextRowData(
-          section: _sectionLabel(section.sectionType),
-          source: 'SECTION',
-          text: text,
-          confidence: _confidenceLabel(section.confidence),
-        ),
+      addRow(
+        section: _sectionLabel(section.sectionType),
+        source: 'SECTION',
+        text: text,
+        confidence: _confidenceLabel(section.confidence),
       );
     }
+    if (rows.isNotEmpty) return rows;
+
+    final SupplementParsedProduct product = preview.parsedProduct;
+    final String? productName = _nonEmpty(product.productName);
+    if (productName != null) {
+      addRow(section: '제품명', source: 'PARSED', text: productName);
+    }
+    final String? manufacturer = _nonEmpty(product.manufacturer);
+    if (manufacturer != null) {
+      addRow(section: '제조사', source: 'PARSED', text: manufacturer);
+    }
+    for (final SupplementIngredientCandidate ingredient
+        in preview.ingredientCandidates) {
+      final String? text = _ingredientCandidateOcrText(ingredient);
+      if (text == null) continue;
+      addRow(
+        section: '성분표',
+        source: ingredient.source.toUpperCase(),
+        text: text,
+        confidence: _confidenceLabel(ingredient.confidence),
+      );
+    }
+    final String? intakeMethod = _nonEmpty(preview.intakeMethod.text);
+    if (intakeMethod != null) {
+      addRow(
+        section: '섭취 방법',
+        source: 'PARSED',
+        text: intakeMethod,
+        confidence: _confidenceLabel(preview.intakeMethod.confidence),
+      );
+    }
+    for (final SupplementPreviewPrecaution precaution in preview.precautions) {
+      addRow(
+        section: '주의사항',
+        source: 'PARSED',
+        text: precaution.text,
+        confidence: _confidenceLabel(precaution.confidence),
+      );
+    }
+    for (final SupplementPreviewFunctionalClaim claim
+        in preview.functionalClaims) {
+      addRow(
+        section: '기능성',
+        source: 'PARSED',
+        text: claim.text,
+        confidence: _confidenceLabel(claim.confidence),
+      );
+    }
+    if (rows.isEmpty) {
+      final SupplementImagePipelineMetadata metadata = preview.pipelineMetadata;
+      final String statusText = metadata.ocrTextPresent
+          ? 'OCR 결과가 구조화 단계로 전달됐지만 원문은 저장하지 않도록 설정되어 있어요. 카드에 표시된 추출값을 확인해주세요.'
+          : 'OCR이 읽을 수 있는 텍스트를 만들지 못했어요. 라벨 영역을 더 크게 촬영하거나 OCR/ROI 설정을 확인해주세요.';
+      addRow(section: 'OCR 상태', source: 'PIPELINE', text: statusText);
+    }
     return rows;
+  }
+
+  static String? _ingredientCandidateOcrText(
+    SupplementIngredientCandidate ingredient,
+  ) {
+    final String? displayName = _nonEmpty(ingredient.displayName);
+    if (displayName == null) return null;
+    final String? originalName = _nonEmpty(ingredient.originalName);
+    final String? amountText = ingredient.amount == null
+        ? null
+        : _formatEditableAmount(ingredient.amount!);
+    final String? unit = _nonEmpty(ingredient.unit);
+    final String nameText = originalName == null || originalName == displayName
+        ? displayName
+        : '$displayName ($originalName)';
+    final String? amountWithUnit = amountText == null
+        ? null
+        : unit == null
+        ? amountText
+        : '$amountText $unit';
+    final String? dailyValue = ingredient.dailyValuePercent == null
+        ? null
+        : '${_formatEditableAmount(ingredient.dailyValuePercent!)}% DV';
+    return <String>[nameText, ?amountWithUnit, ?dailyValue].join(' · ');
   }
 
   void _setIngredientDraftSelected(int index, bool selected) {
@@ -4392,6 +4526,283 @@ class _AnalyzedImageCard extends StatelessWidget {
   }
 }
 
+/// 영양제 한 제품을 여러 장으로 촬영했을 때 모든 원본 이미지를 함께 보여준다.
+/// 한 제품의 여러 라벨 사진은 각각 OCR 증거가 다르므로, 첫 장만 고정 노출하지
+/// 않고 사용자가 큰 미리보기에서 직접 넘겨 확인할 수 있게 한다.
+class _AnalyzedSupplementImageGallery extends StatefulWidget {
+  const _AnalyzedSupplementImageGallery({
+    required this.files,
+    this.selectedIndex = 0,
+    this.onSelected,
+  });
+
+  final List<File> files;
+
+  /// Parent-controlled selected image index, kept in sync with the analysis
+  /// result so selecting a photo also switches the shown result (and vice versa).
+  final int selectedIndex;
+
+  /// Reports a user-initiated image selection (swipe or thumbnail tap) upward.
+  final ValueChanged<int>? onSelected;
+
+  @override
+  State<_AnalyzedSupplementImageGallery> createState() =>
+      _AnalyzedSupplementImageGalleryState();
+}
+
+class _AnalyzedSupplementImageGalleryState
+    extends State<_AnalyzedSupplementImageGallery> {
+  late final PageController _pageController;
+  int _selectedIndex = 0;
+
+  int get _clampedWidgetIndex {
+    if (widget.files.isEmpty) return 0;
+    final int last = widget.files.length - 1;
+    if (widget.selectedIndex < 0) return 0;
+    if (widget.selectedIndex > last) return last;
+    return widget.selectedIndex;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = _clampedWidgetIndex;
+    _pageController = PageController(initialPage: _selectedIndex);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnalyzedSupplementImageGallery oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.files.isEmpty) {
+      _selectedIndex = 0;
+      return;
+    }
+    // Reverse sync: the parent moved the selected index (e.g. result/tab change)
+    // → animate the gallery so the shown photo matches the result.
+    final int target = _clampedWidgetIndex;
+    if (widget.selectedIndex != oldWidget.selectedIndex &&
+        target != _selectedIndex) {
+      _selectedIndex = target;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        _pageController.animateToPage(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+    // Clamp when the image list shrinks.
+    if (_selectedIndex >= widget.files.length) {
+      _selectedIndex = widget.files.length - 1;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        _pageController.jumpToPage(_selectedIndex);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<File> files = widget.files;
+    if (files.isEmpty) return const SizedBox.shrink();
+    if (files.length == 1) {
+      return _AnalyzedImageCard(file: files.first);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Stack(
+          children: <Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              child: AspectRatio(
+                aspectRatio: 16 / 10,
+                child: PageView.builder(
+                  key: const ValueKey<String>('supplement-image-page-view'),
+                  controller: _pageController,
+                  itemCount: files.length,
+                  onPageChanged: (int index) {
+                    setState(() {
+                      _selectedIndex = index;
+                    });
+                    widget.onSelected?.call(index);
+                  },
+                  itemBuilder: (BuildContext context, int index) {
+                    return Image.file(
+                      files[index],
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      errorBuilder:
+                          (
+                            BuildContext context,
+                            Object error,
+                            StackTrace? stack,
+                          ) => const SizedBox.shrink(),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              right: AppSpace.sm,
+              bottom: AppSpace.sm,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.58),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm,
+                    vertical: 5,
+                  ),
+                  child: Text(
+                    '${_selectedIndex + 1}/${files.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpace.sm),
+        SizedBox(
+          height: 86,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: files.length,
+            separatorBuilder: (BuildContext context, int index) =>
+                const SizedBox(width: AppSpace.xs),
+            itemBuilder: (BuildContext context, int index) {
+              return _AnalyzedImageThumbnail(
+                file: files[index],
+                index: index,
+                total: files.length,
+                selected: index == _selectedIndex,
+                onTap: () => _selectImage(index),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _selectImage(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+    widget.onSelected?.call(index);
+    if (!_pageController.hasClients) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+}
+
+class _AnalyzedImageThumbnail extends StatelessWidget {
+  const _AnalyzedImageThumbnail({
+    required this.file,
+    required this.index,
+    required this.total,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final File file;
+  final int index;
+  final int total;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '영양제 라벨 사진 ${index + 1}/$total',
+      image: true,
+      selected: selected,
+      button: true,
+      child: GestureDetector(
+        key: ValueKey<String>('supplement-image-thumbnail-$index'),
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.md + 2),
+            border: Border.all(
+              color: selected ? AppColor.brand : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              child: Stack(
+                children: <Widget>[
+                  SizedBox(
+                    width: 76,
+                    height: 86,
+                    child: Image.file(
+                      file,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      errorBuilder:
+                          (
+                            BuildContext context,
+                            Object error,
+                            StackTrace? stack,
+                          ) => const SizedBox.shrink(),
+                    ),
+                  ),
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 예상 영양소 카드(figma 06 심화) — 선택 후보의 예상 열량·탄단지를 읽기 전용
 /// 표시한다. D2 준수: 매크로는 그램 값으로만 표기하고 신뢰도/기준치 %는 노출하지
 /// 않는다. 섭취량(인분)에 비례해 스케일하며, 값이 없는 행은 숨긴다(미허위).
@@ -5076,14 +5487,20 @@ class _SupplementInfoCard extends StatelessWidget {
                 child: Icon(icon, color: AppColor.brand, size: 20),
               ),
               const SizedBox(width: AppSpace.sm),
-              Flexible(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: AppColor.ink,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(
+                      color: AppColor.ink,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                    ),
                   ),
                 ),
               ),
@@ -5099,7 +5516,7 @@ class _SupplementInfoCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const Spacer(),
+              const SizedBox(width: AppSpace.xs),
               IconButton(
                 tooltip: '$title 수정',
                 onPressed: onEdit,

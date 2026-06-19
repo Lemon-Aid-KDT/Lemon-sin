@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -474,7 +476,8 @@ void main() {
       expect(find.text('성분 직접 입력'), findsOneWidget);
       expect(find.text('제품명이 보이게 한 장 더 촬영해주세요'), findsOneWidget);
       expect(find.text('성분표가 보이게 한 장 더 촬영해주세요'), findsOneWidget);
-      expect(find.text('성분명과 함량을 확인할 수 없어요.'), findsOneWidget);
+      expect(find.text('읽어온 라벨 글자예요. 직접 확인하고 성분을 추가해주세요.'), findsOneWidget);
+      expect(find.text('성분명과 함량을 확인할 수 없어요.'), findsNothing);
 
       await tester.tap(find.byTooltip('영양제명 수정'));
       await tester.pumpAndSettle();
@@ -775,6 +778,45 @@ void main() {
     expect(find.text('Omega-3'), findsOneWidget);
     expect(find.text('1000 mg'), findsOneWidget);
   });
+
+  testWidgets(
+    'single-product batch keeps one result per photo (gallery-driven)',
+    (WidgetTester tester) async {
+      final _ReviewRepository repository = _ReviewRepository();
+      final AppController controller = AppController(repository: repository);
+      // sameSupplementBatch: true was previously collapsed into ONE merged
+      // result; now each photo keeps its own per-image result so selecting a
+      // photo (gallery or tab) also switches the shown analysis result.
+      await controller.analyzeImages(const <SupplementImageUpload>[
+        SupplementImageUpload(path: '/tmp/supplement-a.jpg'),
+        SupplementImageUpload(path: '/tmp/supplement-b.jpg'),
+      ], sameSupplementBatch: true);
+
+      await tester.pumpWidget(
+        MaterialApp(home: AnalysisResultScreen(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-1')),
+        findsOneWidget,
+      );
+      // Per-image: the second photo's ingredient is not shown until selected.
+      expect(find.text('Omega-3'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('supplement-preview-tab-1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Omega-3'), findsOneWidget);
+      expect(find.text('1000 mg'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'groups front and facts photos into supplement-level result tabs',
@@ -1336,6 +1378,19 @@ class _ReviewRepository implements LemonAidRepository {
 
   @override
   Future<void> deleteAnalysisResult(String resultId) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MealRecordResponse> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteMealRecord(String mealId) async {
     throw UnimplementedError();
   }
 
