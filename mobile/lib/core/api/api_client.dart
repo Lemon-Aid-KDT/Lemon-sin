@@ -81,6 +81,7 @@ class ApiClient {
   ///   path: API path below `/api/v1`.
   ///   body: Optional JSON object body.
   ///   expectedStatusCodes: Status codes considered successful.
+  ///   timeout: Optional per-request timeout for long-running endpoints.
   ///
   /// Returns:
   ///   Decoded JSON object.
@@ -92,6 +93,7 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? body,
     Set<int> expectedStatusCodes = const <int>{200, 201},
+    Duration? timeout,
   }) async {
     final Map<String, String> headers = _headers();
     Object? encodedBody;
@@ -102,7 +104,7 @@ class ApiClient {
 
     final http.Response response = await _withTimeout(
       _httpClient.post(_uri(path), headers: headers, body: encodedBody),
-      _requestTimeout,
+      timeout ?? _requestTimeout,
     );
     return _decodeObject(response, expectedStatusCodes: expectedStatusCodes);
   }

@@ -262,6 +262,8 @@ abstract class LemonAidRepository {
 
 /// Backend-backed repository for the current Nutrition API contract.
 class BackendLemonAidRepository implements LemonAidRepository {
+  static const Duration _localLlmExplanationTimeout = Duration(seconds: 90);
+
   /// Creates a backend repository.
   ///
   /// Args:
@@ -786,6 +788,7 @@ class BackendLemonAidRepository implements LemonAidRepository {
         'use_local_llm': useLocalLlm,
       },
       expectedStatusCodes: const <int>{200},
+      timeout: useLocalLlm ? _localLlmExplanationTimeout : null,
     );
     return SupplementRecommendationExplainResponse.fromJson(json);
   }
@@ -808,6 +811,7 @@ class BackendLemonAidRepository implements LemonAidRepository {
       '/supplements/analyses/$encodedAnalysisId/explain',
       body: <String, dynamic>{'locale': 'ko-KR', 'use_local_llm': useLocalLlm},
       expectedStatusCodes: const <int>{200},
+      timeout: useLocalLlm ? _localLlmExplanationTimeout : null,
     );
     return SupplementRecommendationExplainResponse.fromJson(json);
   }
