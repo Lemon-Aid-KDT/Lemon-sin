@@ -19,6 +19,11 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+try:  # importable both as a script (backend/scripts on path) and as scripts.<mod>
+    from eval_statistics import metric_decision
+except ImportError:  # pragma: no cover - import-path shim for package context
+    from scripts.eval_statistics import metric_decision
+
 SCHEMA_VERSION = "supplement-structured-extraction-target-gate-v1"
 SUPPORTED_EVAL_SCHEMA_VERSIONS = frozenset({"supplement-structured-extraction-eval-summary-v1"})
 TARGET_PROVIDER = "paddleocr_local"
@@ -81,10 +86,35 @@ def build_structured_extraction_gate(
     }
     reached = all(checks.values())
     blockers = [name for name, ok in checks.items() if not ok]
+
+    # Step-0 statistical discipline: a metric is only CERTIFIED at its threshold
+    # when the 95% Wilson lower bound clears it. At small fixture counts a point
+    # estimate above threshold can still have a lower bound well below it, so
+    # ``structured_target_reached`` (point-based) is kept for backward compatibility
+    # while ``certified_target_reached`` is the honest gate.
+    decisions = {
+        "field_match_ratio_macro": metric_decision(
+            "field_match_ratio_macro", float(macro), fixture_count, float(target_threshold)
+        ),
+        "field_match_ratio_micro": metric_decision(
+            "field_match_ratio_micro", float(micro), fixture_count, float(target_threshold)
+        ),
+        "ingredient_recall": metric_decision(
+            "ingredient_recall", float(ing_recall), fixture_count, float(min_ingredient_recall)
+        ),
+    }
+    certified_checks = {
+        "field_match_macro_certified": decisions["field_match_ratio_macro"].certified,
+        "field_match_micro_certified": decisions["field_match_ratio_micro"].certified,
+        "ingredient_recall_certified": decisions["ingredient_recall"].certified,
+    }
+    certified = reached and all(certified_checks.values())
+
     return {
         "schema_version": SCHEMA_VERSION,
         "status": STATUS_TARGET_REACHED if reached else STATUS_CONTINUE,
         "structured_target_reached": reached,
+        "certified_target_reached": certified,
         "continue_extraction_improvement": not reached,
         "provider": summary.get("provider"),
         "eval_split": eval_split,
@@ -96,8 +126,18 @@ def build_structured_extraction_gate(
             "field_match_ratio_micro": str(micro),
             "ingredient_recall": str(ing_recall),
         },
+        "metric_lower_bounds_95": {
+            name: round(decision.lower_bound, 4) for name, decision in decisions.items()
+        },
         "checks": checks,
+        "certified_checks": certified_checks,
         "blocker_codes": blockers,
+        "statistical_note": (
+            "certified_target_reached requires the 95% Wilson LOWER bound to clear the "
+            "threshold (Step-0 rule); field_match_ratio_macro is a mean of per-product "
+            "ratios so its Wilson interval is a conservative binomial approximation. "
+            "Compare two strategies with eval_statistics.paired_mcnemar on the same fixtures."
+        ),
     }
 
 
@@ -118,7 +158,12 @@ def main() -> int:
             min_fixture_count=a.min_fixtures,
         )
     except StructuredGateError as exc:
-        print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "error", "error": str(exc)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"schema_version": SCHEMA_VERSION, "status": "error", "error": str(exc)},
+                ensure_ascii=False,
+            )
+        )
         return 1
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
