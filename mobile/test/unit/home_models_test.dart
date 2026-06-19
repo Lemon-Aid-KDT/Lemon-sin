@@ -173,6 +173,76 @@ void main() {
       expect(meal.eatenAt, isNotNull);
     });
 
+    test('reads kcal/macros from a totals-nested confirmed summary', () {
+      // 백엔드 confirmed meal 요약 실제 구조: 합계가 totals 하위에 중첩된다.
+      final HomeMealsResult result = HomeMealsResult.fromJson(<String, dynamic>{
+        'results': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'meal-totals',
+            'status': 'confirmed',
+            'meal_type': 'lunch',
+            'food_items': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'display_name': '초밥',
+                'kcal': 549.98,
+                'carb_g': 81.55,
+                'protein_g': 33.53,
+                'fat_g': 7.85,
+                'sodium_mg': 1186.73,
+              },
+            ],
+            'nutrition_summary': <String, dynamic>{
+              'status': 'user_confirmed',
+              'items_count': 1,
+              'totals': <String, dynamic>{
+                'kcal': 549.98,
+                'carb_g': 81.55,
+                'protein_g': 33.53,
+                'fat_g': 7.85,
+                'sodium_mg': 1186.73,
+              },
+            },
+          },
+        ],
+      });
+
+      final HomeMeal meal = result.results.first;
+      expect(meal.primaryName, '초밥');
+      expect(meal.nutrition.kcal, 549.98);
+      expect(meal.nutrition.carbG, 81.55);
+      expect(meal.nutrition.proteinG, 33.53);
+      expect(meal.nutrition.fatG, 7.85);
+    });
+
+    test('falls back to food items when a confirmed summary has empty totals', () {
+      // 요약 객체는 있으나 totals가 비어 kcal을 못 읽어도 0으로 표기되면 안 된다.
+      final HomeMealsResult result = HomeMealsResult.fromJson(<String, dynamic>{
+        'results': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'meal-empty-totals',
+            'status': 'confirmed',
+            'meal_type': 'dinner',
+            'food_items': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'display_name': '샐러드',
+                'kcal': 150,
+                'carb_g': 10,
+              },
+            ],
+            'nutrition_summary': <String, dynamic>{
+              'status': 'user_confirmed',
+              'items_count': 1,
+              'totals': <String, dynamic>{},
+            },
+          },
+        ],
+      });
+
+      final HomeMeal meal = result.results.first;
+      expect(meal.nutrition.kcal, 150);
+      expect(meal.nutrition.carbG, 10);
+    });
+
     test('falls back to summing food items when summary is absent', () {
       final HomeMealsResult result = HomeMealsResult.fromJson(<String, dynamic>{
         'results': <Map<String, dynamic>>[

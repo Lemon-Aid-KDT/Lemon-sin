@@ -177,15 +177,21 @@ class HomeMeal {
     final Map<String, dynamic>? summary = _optionalMap(
       json['nutrition_summary'],
     );
+    // 서버 요약(totals)을 우선 쓰되, 요약에 유효한 kcal이 없으면 음식 항목 합계로
+    // 폴백한다 — 요약 구조 불일치/누락이 끼니 kcal을 0으로 만들지 않도록 한다.
+    final HomeMealNutrition fromItems = HomeMealNutrition.fromFoodItems(items);
+    final HomeMealNutrition? fromSummary = summary != null
+        ? HomeMealNutrition.fromJson(summary)
+        : null;
+    final HomeMealNutrition nutrition =
+        (fromSummary != null && fromSummary.kcal > 0) ? fromSummary : fromItems;
     return HomeMeal(
       id: (json['id'] as Object?)?.toString() ?? '',
       status: (json['status'] as Object?)?.toString() ?? 'unknown',
       mealType: (json['meal_type'] as Object?)?.toString() ?? 'unknown',
       eatenAt: _optionalDateTime(json['eaten_at']),
       foodItems: items,
-      nutrition: summary != null
-          ? HomeMealNutrition.fromJson(summary)
-          : HomeMealNutrition.fromFoodItems(items),
+      nutrition: nutrition,
     );
   }
 }
@@ -258,23 +264,32 @@ class HomeMealNutrition {
     fatG: 0,
   );
 
-  /// nutrition_summary 객체를 파싱한다 (필드명은 흔한 변형을 모두 시도).
+  /// nutrition_summary 객체를 파싱한다.
+  ///
+  /// 백엔드 confirmed meal 요약은 `{status, items_count, totals:{kcal,carb_g,...}}`
+  /// 구조라 합계가 `totals` 하위에 들어있다. `totals`를 우선 사용하고, 평탄
+  /// (top-level) 구조도 하위 호환으로 지원한다.
   factory HomeMealNutrition.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> source = _optionalMap(json['totals']) ?? json;
     return HomeMealNutrition(
       kcal:
-          _firstNumber(json, const <String>['kcal', 'total_kcal', 'energy_kcal']) ??
+          _firstNumber(source, const <String>[
+            'kcal',
+            'total_kcal',
+            'energy_kcal',
+          ]) ??
           0,
       carbG:
-          _firstNumber(json, const <String>[
+          _firstNumber(source, const <String>[
             'carb_g',
             'total_carb_g',
             'carbohydrate_g',
           ]) ??
           0,
       proteinG:
-          _firstNumber(json, const <String>['protein_g', 'total_protein_g']) ??
+          _firstNumber(source, const <String>['protein_g', 'total_protein_g']) ??
           0,
-      fatG: _firstNumber(json, const <String>['fat_g', 'total_fat_g']) ?? 0,
+      fatG: _firstNumber(source, const <String>['fat_g', 'total_fat_g']) ?? 0,
     );
   }
 
