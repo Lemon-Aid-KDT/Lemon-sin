@@ -22,6 +22,7 @@ from src.services.supplement_parser import (
     SupplementAnalysisNotFoundError,
     SupplementParserConflictError,
     SupplementParserInputError,
+    _extract_ocr_pattern_ingredient_candidates,
     hash_ocr_text,
     normalize_ocr_text,
     parse_supplement_analysis_ocr_text,
@@ -80,6 +81,36 @@ class _FakeParserSession:
         return self.record
 
     async def commit(self) -> None:
+        """Record legacy persist_scope commits without touching a database."""
+        self.committed = True
+        self.commits += 1
+
+    async def refresh(self, record: SupplementAnalysisRun) -> None:
+        """Record refresh calls without touching a database."""
+        self.refreshed = record
+
+
+def test_ocr_pattern_fallback_accepts_spaced_unit_glyphs() -> None:
+    """Verify OCR-spaced unit tokens still produce bounded ingredient candidates."""
+    candidates = _extract_ocr_pattern_ingredient_candidates(
+        "\n".join(
+            [
+                "Vitamin C 100 m g",
+                "Folate 400 m c g",
+                "Vitamin D 1000 I U",
+            ]
+        )
+    )
+
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    assert by_name["Vitamin C"]["amount"] == 100
+    assert by_name["Vitamin C"]["unit"] == "mg"
+    assert by_name["Folate"]["amount"] == 400
+    assert by_name["Folate"]["unit"] == "ug"
+    assert by_name["Vitamin D"]["amount"] == 1000
+    assert by_name["Vitamin D"]["unit"] == "IU"
+
+    async def commit(self) -> None:
         """Record a fake commit.
 
         Returns:
@@ -98,6 +129,56 @@ class _FakeParserSession:
             None.
         """
         self.refreshed = cast(SupplementAnalysisRun, record)
+
+
+def test_ocr_pattern_fallback_accepts_table_rows_and_parenthesized_sources() -> None:
+    """Verify supplement-facts row delimiters preserve ingredient amounts."""
+    candidates = _extract_ocr_pattern_ingredient_candidates(
+        "\n".join(
+            [
+                "Magnesium (as magnesium glycinate) | 200 mg | 48%",
+                "마그네슘 (Magnesium) : 100 mg 24%",
+                "Vitamin B6 · 12 mg · 706%",
+            ]
+        )
+    )
+
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    assert by_name["Magnesium (as magnesium glycinate)"]["amount"] == 200
+    assert by_name["Magnesium (as magnesium glycinate)"]["unit"] == "mg"
+    assert by_name["Magnesium (as magnesium glycinate)"]["daily_value_percent"] == 48
+    assert by_name["마그네슘 (Magnesium)"]["amount"] == 100
+    assert by_name["Vitamin B6"]["amount"] == 12
+
+
+def test_ocr_pattern_fallback_pairs_split_facts_table_cells() -> None:
+    """Verify name/amount/%DV cells split by OCR still preserve visible values."""
+    candidates = _extract_ocr_pattern_ingredient_candidates(
+        "\n".join(
+            [
+                "Supplement Facts",
+                "Vitamin B6",
+                "Amount Per Serving",
+                "10.5 mg",
+                "618%",
+                "Magnesium",
+                "450",
+                "mg",
+                "107%",
+                "Serving Size",
+                "2 capsules",
+            ]
+        )
+    )
+
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    assert by_name["Vitamin B6"]["amount"] == 10.5
+    assert by_name["Vitamin B6"]["unit"] == "mg"
+    assert by_name["Vitamin B6"]["daily_value_percent"] == 618
+    assert by_name["Magnesium"]["amount"] == 450
+    assert by_name["Magnesium"]["unit"] == "mg"
+    assert by_name["Magnesium"]["daily_value_percent"] == 107
+    assert "Serving Size" not in by_name
 
 
 def _settings() -> Settings:
@@ -517,6 +598,53 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
     assert preview.functional_claims[0].text == "뼈 건강에 도움"
     assert preview.evidence_spans[0].span_id == "span-1"
     assert preview.missing_required_sections == []
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_keeps_bounded_ocr_preview_when_parser_empty() -> None:
+    """Verify visible OCR lines remain reviewable when structured parsing fails.
+
+    The mobile OCR text modal reads bounded ``label_sections`` /
+    ``evidence_spans`` instead of raw OCR. This fallback prevents successfully
+    recognized OCR text from disappearing when the parser cannot map it into a
+    product or ingredient table.
+    """
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "=== [이미지 1 · supplement_facts] ===",
+                "Supplement Facts",
+                "Vitamin C 1000 mg 111%",
+                "Zinc 15 mg 136%",
+                "=== [이미지 2 · directions] ===",
+                "Suggested use: Take 1 capsule daily.",
+            ]
+        ),
+        "clova_ocr",
+        0.74,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    assert "ocr_text" not in record.parsed_snapshot
+    assert record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
+    assert record.parsed_snapshot["layout_available"] is True
+    assert record.parsed_snapshot["label_sections"][0]["section_type"] == "supplement_facts"
+    assert record.parsed_snapshot["label_sections"][0]["requires_review"] is True
+    assert "Vitamin C 1000 mg 111%" in record.parsed_snapshot["label_sections"][0]["text_bundle"]
+    assert record.parsed_snapshot["evidence_spans"][0]["source_type"] == "ocr_text_preview"
+    assert len(record.parsed_snapshot["evidence_spans"][0]["text_excerpt"]) <= 240
+    assert "ocr_text_preview_fallback_requires_review" in record.warnings
+
+    preview = supplement_analysis_run_to_preview(record)
+    assert preview.label_sections[0].heading_text == "이미지 1 · supplement_facts"
+    assert preview.evidence_spans[0].text_excerpt.startswith("Supplement Facts")
 
 
 @pytest.mark.asyncio
@@ -952,6 +1080,77 @@ async def test_parse_supplement_analysis_ocr_text_mines_ingredient_declaration_n
     # before the declaration merge; the declaration warning is the right signal.)
     assert "ingredient_declaration_names_only_requires_review" in record.warnings
     assert "ingredient_candidates" in record.parsed_snapshot["low_confidence_fields"]
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_merges_split_name_amount_unit_lines() -> None:
+    """Verify OCR split as ingredient/name, amount, unit lines still carries amounts."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "비타민 C\n100\nmg 167%\n아연\n8\nmg",
+        "paddleocr_local",
+        0.93,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    by_name = {
+        candidate["display_name"]: candidate
+        for candidate in record.parsed_snapshot["ingredient_candidates"]
+    }
+
+    assert by_name["비타민 C"]["amount"] == 100
+    assert by_name["비타민 C"]["unit"] == "mg"
+    assert by_name["비타민 C"]["daily_value_percent"] == 167
+    assert by_name["아연"]["amount"] == 8
+    assert by_name["아연"]["unit"] == "mg"
+    assert all(candidate["source"] == "ocr_pattern_fallback" for candidate in by_name.values())
+    assert "ocr_pattern_fallback_requires_review" in record.warnings
+    assert "ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_supplement_analysis_ocr_text_accepts_korean_unit_variants() -> None:
+    """Verify facts-table unit aliases are normalized from visible OCR text."""
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(
+            [
+                "Other Ingredients Vitamin B12 500 마이크로그램",
+                "유산균 10 씨에프유",
+                "비타민 D 1000 아이유",
+            ]
+        ),
+        "paddleocr_local",
+        0.93,
+        _settings(),
+        parser=_FakeParser(_empty_parse_result()),
+    )
+
+    by_name = {
+        candidate["display_name"]: candidate
+        for candidate in record.parsed_snapshot["ingredient_candidates"]
+    }
+
+    assert by_name["Vitamin B12"]["amount"] == 500
+    assert by_name["Vitamin B12"]["unit"] == "ug"
+    assert by_name["유산균"]["amount"] == 10
+    assert by_name["유산균"]["unit"] == "CFU"
+    assert by_name["비타민 D"]["amount"] == 1000
+    assert by_name["비타민 D"]["unit"] == "IU"
+    assert "Other Ingredients" not in by_name
+    assert "ocr_pattern_fallback_requires_review" in record.warnings
     assert "ocr_text" not in record.parsed_snapshot
 
 

@@ -71,8 +71,12 @@ LAYOUT_PRECAUTION_FALLBACK_WARNING = "layout_precaution_fallback_requires_review
 OCR_TEXT_SECTION_FALLBACK_CONFIDENCE = 0.55
 OCR_TEXT_SECTION_FALLBACK_WARNING_INTAKE = "ocr_intake_method_fallback_requires_review"
 OCR_TEXT_SECTION_FALLBACK_WARNING_PRECAUTION = "ocr_precaution_fallback_requires_review"
+OCR_TEXT_PREVIEW_FALLBACK_WARNING = "ocr_text_preview_fallback_requires_review"
 OCR_TEXT_SECTION_FALLBACK_MAX_PRECAUTIONS = 12
 OCR_TEXT_SECTION_FALLBACK_TEXT_MAX_CHARS = 500
+OCR_TEXT_PREVIEW_FALLBACK_MAX_SECTIONS = 6
+OCR_TEXT_PREVIEW_FALLBACK_MAX_LINES_PER_SECTION = 80
+FUSED_OCR_IMAGE_MARKER_PATTERN = re.compile(r"^=+\s*\[(?P<label>[^\]]{1,120})\]\s*=+$")
 LAYOUT_SECTION_TYPE_MAP = {
     "daily_intake": "intake_method",
     "nutrition_function_info": "supplement_facts",
@@ -84,7 +88,8 @@ LAYOUT_SECTION_TYPE_MAP = {
     "storage_method": "storage_method",
 }
 INGREDIENT_UNIT_PATTERN = (
-    r"mg|㎎|밀리그램|g|그램|mcg|μg|µg|ug|㎍|마이크로그램|iu|i\.u\.|IU|아이유|cfu|CFU|씨에프유|%"
+    r"mg|m\s*g|㎎|밀리그램|g|그램|mcg|m\s*c\s*g|μg|µg|ug|u\s*g|㎍|마이크로그램|"
+    r"iu|i\s*u|i\.u\.|IU|아이유|cfu|CFU|씨에프유|%"
 )
 INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
@@ -95,12 +100,28 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"(?=$|[\s,;:)\uff09\]]|[^\w])",
     re.IGNORECASE,
 )
+INGREDIENT_TABLE_ROW_PATTERN = re.compile(
+    r"(?P<name>[A-Za-z가-힣][A-Za-z가-힣0-9\s()/+\-.,]{1,80}?)"
+    r"\s*(?:[|｜:：·•]|\s{2,})\s*"  # noqa: RUF001
+    r"(?P<amount>\d+(?:[,.]\d+)?)\s*"
+    rf"(?P<unit>{INGREDIENT_UNIT_PATTERN})"
+    # Two-column OCR often preserves a visual separator before the %DV column:
+    # "Vitamin C | 100 mg | 111%". The separator is evidence, not syntax to store.
+    r"(?:\s*(?:[|｜]\s*)?(?P<dv>\d+(?:[,.]\d+)?)\s*%)?"  # noqa: RUF001
+    r"(?=$|[\s,;:)\uff09\]]|[^\w])",
+    re.IGNORECASE,
+)
 BARE_INGREDIENT_AMOUNT_PATTERN = re.compile(
     rf"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
     r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
     re.IGNORECASE,
 )
 BARE_INGREDIENT_NUMBER_PATTERN = re.compile(r"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*$")
+BARE_DAILY_VALUE_PERCENT_PATTERN = re.compile(
+    r"^\s*(?:[|｜·•:/-]\s*)?(?P<dv>\d+(?:[,.]\d+)?)\s*%\s*"
+    r"(?:(?:daily\s*value|dv|영양성분\s*기준치|기준치)\b)?\s*$",
+    re.IGNORECASE,
+)
 INGREDIENT_UNIT_ONLY_PATTERN = re.compile(
     rf"^\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
     r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
@@ -134,6 +155,7 @@ AMOUNT_FIRST_NAME_STOPWORDS = frozenset(
     }
 )
 TRAILING_INGREDIENT_PUNCTUATION = " -_/.,:\uff1a|·•()"
+TRAILING_INGREDIENT_EDGE_PUNCTUATION = " -_/.,:\uff1a|·•"
 MAX_PATTERN_FALLBACK_INGREDIENTS = 20
 INGREDIENT_MIN_NAME_CHARS = 2
 INGREDIENT_MAX_NAME_CHARS = 80
@@ -798,11 +820,224 @@ def _merge_ocr_text_section_fallbacks(
         low_confidence_fields = _append_unique_string(low_confidence_fields, "precautions")
         updated = True
 
+    if (
+        not _has_structured_preview_content(snapshot)
+        and not _list_of_mappings(snapshot.get("label_sections"))
+        and not _list_of_mappings(snapshot.get("evidence_spans"))
+    ):
+        fallback_sections, fallback_spans = _build_ocr_text_preview_fallbacks(ocr_text)
+        if fallback_sections:
+            snapshot["label_sections"] = [
+                section.model_dump(exclude_none=True) for section in fallback_sections
+            ]
+            snapshot["evidence_spans"] = [
+                span.model_dump(exclude_none=True) for span in fallback_spans
+            ]
+            warnings = _append_unique_string(warnings, OCR_TEXT_PREVIEW_FALLBACK_WARNING)
+            low_confidence_fields = _append_unique_string(low_confidence_fields, "label_sections")
+            updated = True
+
     if not updated:
         return parse_result
     snapshot["warnings"] = warnings
     snapshot["low_confidence_fields"] = low_confidence_fields
     return SupplementStructuredParseResult.model_validate(snapshot)
+
+
+def _has_structured_preview_content(snapshot: dict[str, Any]) -> bool:
+    """Return whether the parser already produced reviewable structured fields.
+
+    Args:
+        snapshot: Parser snapshot dict before fallback mutation.
+
+    Returns:
+        True when the parser already produced a product identity or product
+        match that makes a fallback OCR preview unnecessary. Ingredient,
+        intake, precaution, or claim fragments alone are not enough to suppress
+        the bounded OCR-text preview because the mobile "text view" still needs
+        section/evidence rows to explain what OCR actually read.
+    """
+    product = snapshot.get("parsed_product")
+    if isinstance(product, dict):
+        for key in ("product_name", "manufacturer", "brand_name"):
+            value = product.get(key)
+            if isinstance(value, str) and value.strip():
+                return True
+
+    if _list_of_mappings(snapshot.get("matched_product_candidates")):
+        return True
+
+    return False
+
+
+def _build_ocr_text_preview_fallbacks(
+    ocr_text: str,
+) -> tuple[list[SupplementPreviewLabelSection], list[SupplementPreviewEvidenceSpan]]:
+    """Build bounded review sections from visible OCR lines when parsing fails.
+
+    This does not store the provider payload or unbounded raw OCR. It only
+    promotes a small section/evidence preview so the mobile user can verify
+    whether OCR actually read the label and decide what to reshoot or correct.
+
+    Args:
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Review-required label sections and matching evidence spans.
+    """
+    sections: list[SupplementPreviewLabelSection] = []
+    evidence_spans: list[SupplementPreviewEvidenceSpan] = []
+    for index, (heading, lines) in enumerate(_ocr_text_preview_chunks(ocr_text), start=1):
+        sanitized_lines = _sanitize_ocr_preview_lines(lines, index)
+        if not sanitized_lines:
+            continue
+        text_bundle = "\n".join(sanitized_lines)[:LAYOUT_TEXT_BUNDLE_MAX_CHARS]
+        text_bundle = sanitize_preview_text(
+            text_bundle,
+            "ocr_text_preview.text_bundle",
+        ).value
+        if not text_bundle:
+            continue
+        heading_text = sanitize_preview_text(
+            heading or "인식된 OCR 텍스트",
+            "ocr_text_preview.heading_text",
+        ).value
+        section_type = _classify_ocr_text_preview_section(heading, sanitized_lines)
+        section_id = f"ocr-text-section-{index:03d}"
+        span_id = f"ocr-text-span-{index:03d}"
+        sections.append(
+            SupplementPreviewLabelSection.model_validate(
+                {
+                    "section_id": section_id,
+                    "section_type": section_type,
+                    "heading_text": heading_text,
+                    "text_bundle": text_bundle,
+                    "confidence": OCR_TEXT_SECTION_FALLBACK_CONFIDENCE,
+                    "requires_review": True,
+                    "evidence_refs": [span_id],
+                }
+            )
+        )
+        evidence_excerpt = sanitize_preview_text(
+            text_bundle[:LAYOUT_EVIDENCE_EXCERPT_MAX_CHARS],
+            "ocr_text_preview.evidence_excerpt",
+        ).value
+        if evidence_excerpt:
+            evidence_spans.append(
+                SupplementPreviewEvidenceSpan.model_validate(
+                    {
+                        "span_id": span_id,
+                        "source_type": "ocr_text_preview",
+                        "section_type": section_type,
+                        "text_excerpt": evidence_excerpt,
+                        "page_index": index - 1,
+                        "cell_ref": section_id,
+                        "confidence": OCR_TEXT_SECTION_FALLBACK_CONFIDENCE,
+                    }
+                )
+            )
+    return sections, evidence_spans
+
+
+def _ocr_text_preview_chunks(ocr_text: str) -> list[tuple[str | None, list[str]]]:
+    """Split fused multi-image OCR text into bounded image/section chunks.
+
+    Args:
+        ocr_text: Normalized OCR text held only in request memory.
+
+    Returns:
+        Ordered heading/line chunks, capped to the mobile preview schema.
+    """
+    chunks: list[tuple[str | None, list[str]]] = []
+    current_heading: str | None = None
+    current_lines: list[str] = []
+
+    for line in _ocr_lines(ocr_text):
+        marker_match = FUSED_OCR_IMAGE_MARKER_PATTERN.fullmatch(line)
+        if marker_match is not None:
+            if current_lines:
+                chunks.append((current_heading, current_lines))
+            current_heading = marker_match.group("label").strip()
+            current_lines = []
+            continue
+        current_lines.append(line)
+
+    if current_lines:
+        chunks.append((current_heading, current_lines))
+    if not chunks:
+        lines = _ocr_lines(ocr_text)
+        if lines:
+            chunks.append((None, lines))
+    return chunks[:OCR_TEXT_PREVIEW_FALLBACK_MAX_SECTIONS]
+
+
+def _sanitize_ocr_preview_lines(lines: list[str], section_index: int) -> list[str]:
+    """Return sanitized OCR lines for a single preview section.
+
+    Args:
+        lines: OCR lines belonging to one image/section chunk.
+        section_index: One-based section index used for sanitizer field labels.
+
+    Returns:
+        Sanitized lines capped by count and aggregate preview size.
+    """
+    sanitized: list[str] = []
+    total_chars = 0
+    for line_index, line in enumerate(
+        lines[:OCR_TEXT_PREVIEW_FALLBACK_MAX_LINES_PER_SECTION],
+        start=1,
+    ):
+        text = _sanitize_ocr_section_line(
+            line,
+            f"ocr_text_preview.section_{section_index:03d}.line_{line_index:03d}",
+        )
+        if not text:
+            continue
+        sanitized.append(text)
+        total_chars += len(text) + 1
+        if total_chars >= LAYOUT_TEXT_BUNDLE_MAX_CHARS:
+            break
+    return sanitized
+
+
+def _classify_ocr_text_preview_section(heading: str | None, lines: list[str]) -> str:
+    """Classify a fallback OCR preview section by visible text cues.
+
+    Args:
+        heading: Optional fused image heading.
+        lines: Sanitized visible OCR lines.
+
+    Returns:
+        A schema-supported section type for mobile grouping.
+    """
+    haystack = " ".join([heading or "", *lines[:20]]).casefold()
+    if any(token in haystack for token in ("warning", "caution", "주의", "경고", "allergen")):
+        return "precautions"
+    if any(
+        token in haystack
+        for token in ("suggested use", "directions", "take ", "섭취", "복용", "1일")
+    ):
+        return "intake_method"
+    if any(
+        token in haystack
+        for token in ("other ingredients", "ingredients", "원재료", "원료명")
+    ):
+        return "ingredients"
+    if any(
+        token in haystack
+        for token in (
+            "supplement facts",
+            "nutrition facts",
+            "amount per serving",
+            "daily value",
+            "영양정보",
+            "영양성분",
+        )
+    ):
+        return "supplement_facts"
+    if any(INGREDIENT_AMOUNT_PATTERN.search(line) for line in lines):
+        return "supplement_facts"
+    return "unknown"
 
 
 def _extract_ocr_intake_method(ocr_text: str) -> SupplementPreviewIntakeMethod | None:
@@ -1197,19 +1432,161 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
     seen: set[tuple[str, float, str]] = set()
     lines = _ocr_lines(ocr_text)
     for line in lines:
-        for match in INGREDIENT_AMOUNT_PATTERN.finditer(line):
+        for pattern in (INGREDIENT_TABLE_ROW_PATTERN, INGREDIENT_AMOUNT_PATTERN):
+            for match in pattern.finditer(line):
+                _append_ocr_pattern_candidate(
+                    candidates,
+                    seen,
+                    name=match.group("name"),
+                    amount_text=match.group("amount"),
+                    unit_text=match.group("unit"),
+                    daily_value_text=match.group("dv"),
+                )
+                if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+                    return candidates
+    _extract_nearby_table_ingredient_candidates(lines, candidates, seen)
+    if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+        return candidates
+    _extract_split_line_ingredient_candidates(lines, candidates, seen)
+    return candidates
+
+
+def _extract_nearby_table_ingredient_candidates(
+    lines: list[str],
+    candidates: list[dict[str, Any]],
+    seen: set[tuple[str, float, str]],
+) -> None:
+    """Recover ingredient rows split across neighboring OCR table cells.
+
+    The fallback is intentionally conservative: it requires a visible ingredient
+    name line and a visible amount+unit nearby, optionally followed by a visible
+    %DV line. It never infers an amount from GT or from the ingredient name.
+
+    Args:
+        lines: Bounded OCR lines.
+        candidates: Mutable candidate list, already seeded by same-line rows.
+        seen: Mutable dedupe set shared with other extraction passes.
+    """
+    for name_index, line in enumerate(lines):
+        if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+            return
+        name = _clean_split_line_ingredient_name(line)
+        if not name:
+            continue
+        if _append_nearby_amount_for_name(lines, name_index, name, candidates, seen):
+            continue
+
+    for amount_index, line in enumerate(lines):
+        if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
+            return
+        amount_match = BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(line)
+        if amount_match is None:
+            continue
+        name = _nearest_name_for_amount(lines, amount_index)
+        if not name:
+            continue
+        _append_ocr_pattern_candidate(
+            candidates,
+            seen,
+            name=name,
+            amount_text=amount_match.group("amount"),
+            unit_text=amount_match.group("unit"),
+            daily_value_text=amount_match.group("dv") or _daily_value_text_after(lines, amount_index),
+        )
+
+
+def _append_nearby_amount_for_name(
+    lines: list[str],
+    name_index: int,
+    name: str,
+    candidates: list[dict[str, Any]],
+    seen: set[tuple[str, float, str]],
+) -> bool:
+    """Append the nearest visible amount for a split table-row name.
+
+    Args:
+        lines: OCR lines.
+        name_index: Index of the visible ingredient name line.
+        name: Cleaned ingredient name.
+        candidates: Mutable candidate list.
+        seen: Mutable dedupe set.
+
+    Returns:
+        True when a visible amount/unit was paired with ``name``.
+    """
+    scan_end = min(len(lines), name_index + 7)
+    for amount_index in range(name_index + 1, scan_end):
+        amount_match = BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(lines[amount_index])
+        if amount_match is not None:
             _append_ocr_pattern_candidate(
                 candidates,
                 seen,
-                name=match.group("name"),
-                amount_text=match.group("amount"),
-                unit_text=match.group("unit"),
-                daily_value_text=match.group("dv"),
+                name=name,
+                amount_text=amount_match.group("amount"),
+                unit_text=amount_match.group("unit"),
+                daily_value_text=amount_match.group("dv")
+                or _daily_value_text_after(lines, amount_index),
             )
-            if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
-                return candidates
-    _extract_split_line_ingredient_candidates(lines, candidates, seen)
-    return candidates
+            return True
+
+        number_match = BARE_INGREDIENT_NUMBER_PATTERN.fullmatch(lines[amount_index])
+        if number_match is None:
+            continue
+        for unit_index in range(amount_index + 1, min(len(lines), amount_index + 4)):
+            unit_match = INGREDIENT_UNIT_ONLY_PATTERN.fullmatch(lines[unit_index])
+            if unit_match is None:
+                continue
+            _append_ocr_pattern_candidate(
+                candidates,
+                seen,
+                name=name,
+                amount_text=number_match.group("amount"),
+                unit_text=unit_match.group("unit"),
+                daily_value_text=unit_match.group("dv") or _daily_value_text_after(lines, unit_index),
+            )
+            return True
+    return False
+
+
+def _daily_value_text_after(lines: list[str], index: int) -> str | None:
+    """Return a visible %DV token following an amount line.
+
+    Args:
+        lines: OCR lines.
+        index: Amount or unit line index.
+
+    Returns:
+        The visible percent number, or ``None`` when absent.
+    """
+    for next_index in range(index + 1, min(len(lines), index + 4)):
+        match = BARE_DAILY_VALUE_PERCENT_PATTERN.fullmatch(lines[next_index])
+        if match is not None:
+            return match.group("dv")
+    return None
+
+
+def _nearest_name_for_amount(lines: list[str], amount_index: int) -> str:
+    """Find the nearest safe visible name around an amount/unit line.
+
+    Args:
+        lines: OCR lines.
+        amount_index: Index containing a visible amount and unit.
+
+    Returns:
+        Cleaned nearby ingredient name, or an empty string.
+    """
+    for distance in range(1, 7):
+        previous_index = amount_index - distance
+        if previous_index >= 0:
+            previous_name = _clean_split_line_ingredient_name(lines[previous_index])
+            if previous_name:
+                return previous_name
+        next_index = amount_index + distance
+        if next_index < len(lines):
+            next_name = _clean_split_line_ingredient_name(lines[next_index])
+            if next_name:
+                return next_name
+    return ""
 
 
 def _try_append_amount_first_candidate(
@@ -1606,7 +1983,7 @@ def _clean_ingredient_name(value: str) -> str:
     """
     cleaned = re.sub(r"^[^A-Za-z가-힣]+", "", value)
     cleaned = _strip_ingredient_heading_prefix(cleaned)
-    cleaned = re.sub(r"[:\uff1a|·•]+$", "", cleaned).strip(TRAILING_INGREDIENT_PUNCTUATION)
+    cleaned = re.sub(r"[:\uff1a|·•]+$", "", cleaned).strip(TRAILING_INGREDIENT_EDGE_PUNCTUATION)
     cleaned = " ".join(cleaned.split())
     if not (INGREDIENT_MIN_NAME_CHARS <= len(cleaned) <= INGREDIENT_MAX_NAME_CHARS):
         return ""
@@ -1771,13 +2148,14 @@ def _normalize_ingredient_unit(value: str) -> str:
         Normalized unit string.
     """
     stripped = value.strip()
-    if stripped in {"㎎", "밀리그램"}:
+    compact = re.sub(r"[\s.]+", "", stripped.casefold())
+    if stripped in {"㎎", "밀리그램"} or compact == "mg":
         return "mg"
-    if stripped in {"μg", "µg", "㎍"} or stripped.casefold() in {"mcg", "ug", "마이크로그램"}:
+    if stripped in {"μg", "µg", "㎍"} or compact in {"mcg", "ug", "마이크로그램"}:
         return "ug"
-    if stripped.casefold() in {"iu", "i.u.", "아이유"}:
+    if compact in {"iu", "아이유"}:
         return "IU"
-    if stripped.casefold() in {"cfu", "씨에프유"}:
+    if compact in {"cfu", "씨에프유"}:
         return "CFU"
     cfu_compound = re.fullmatch(
         rf"(?P<mag>{_CFU_MAGNITUDE})\s*(?:{_CFU_UNIT})", stripped, re.IGNORECASE
