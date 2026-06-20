@@ -1273,6 +1273,9 @@ async def _submit_async_single_analysis(
         ocr_provider=ocr_provider,
     )
     request_snapshot = _capture_request_metadata(http_request)
+    # Stable, non-null idempotency key so the worker reuses this pre-created run
+    # rather than creating a separate one when the client omits client_request_id.
+    effective_client_request_id = client_request_id or f"async-{uuid4()}"
     async with rls_request_transaction(session, current_user, settings):
         await _require_supplement_analyze_consents(
             session=session,
@@ -1293,7 +1296,7 @@ async def _submit_async_single_analysis(
                 session=session,
                 user=current_user,
                 image_metadata=metadata,
-                client_request_id=client_request_id,
+                client_request_id=effective_client_request_id,
                 settings=settings,
                 initial_status=SupplementAnalysisStatus.PROCESSING,
             )
@@ -1357,7 +1360,7 @@ async def _submit_async_single_analysis(
     if spawn_worker:
         captured = CapturedImage(
             analysis_id=analysis_id,
-            client_request_id=client_request_id,
+            client_request_id=effective_client_request_id,
             image_bytes=image_bytes,
             content_type=image.content_type,
             filename=image.filename or "supplement-label",
@@ -2053,6 +2056,12 @@ async def _submit_async_multi_analysis(
     )
     request_snapshot = _capture_request_metadata(http_request)
     analysis_group_id = f"multi-{uuid4()}"
+    # The worker reuses each pre-created run via its per-image idempotency key, so
+    # the key must be stable and non-null even when the client omits
+    # client_request_id (the group id is per-request unique). Without this the
+    # worker's intake derives a null key and creates separate rows, orphaning the
+    # processing rows this submit returned for polling.
+    effective_client_request_id = client_request_id or analysis_group_id
     captured_images: list[CapturedImage] = []
     analysis_ids: list[UUID] = []
     expirations: list[datetime] = []
@@ -2073,7 +2082,9 @@ async def _submit_async_multi_analysis(
         try:
             for index, image in enumerate(images):
                 metadata, image_bytes = await _capture_validated_image(image, settings)
-                per_image_request_id = _multi_image_client_request_id(client_request_id, index)
+                per_image_request_id = _multi_image_client_request_id(
+                    effective_client_request_id, index
+                )
                 intake = await create_supplement_analysis_intake(
                     session=session,
                     user=current_user,

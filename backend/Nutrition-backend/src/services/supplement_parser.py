@@ -524,7 +524,10 @@ def _validate_parseable_record(record: SupplementAnalysisRun, ocr_text_hash: str
     """
     if record.expires_at <= datetime.now(UTC):
         raise SupplementAnalysisExpiredError("Supplement analysis preview has expired.")
-    if record.status != SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value:
+    if record.status not in (
+        SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value,
+        SupplementAnalysisStatus.PROCESSING.value,
+    ):
         raise SupplementAnalysisStateError("Supplement analysis preview is not parseable.")
     if record.ocr_text_hash is not None and record.ocr_text_hash != ocr_text_hash:
         raise SupplementParserConflictError("Supplement analysis preview already has OCR text.")
