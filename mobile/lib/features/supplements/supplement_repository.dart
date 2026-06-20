@@ -272,10 +272,15 @@ class BackendLemonAidRepository implements LemonAidRepository {
   /// `processing` envelope and the client polls the analysis status until it is
   /// ready/failed, instead of holding one long upload open (the ~140s
   /// multi-image pipeline blew past the 120s upload timeout).
+  ///
+  /// The local pipeline is now PaddleOCR dual-recognition (~12s) + on-device
+  /// gemma parse/vision (~26s) ≈ 40s/image, which stacks for multi-image and
+  /// can add a one-off ~10s gemma cold-load after idle. The budget is therefore
+  /// generous so a legitimate multi-image run is not aborted as "지연".
   static const Duration _supplementAnalysisPollInterval = Duration(seconds: 2);
   static const Duration _supplementAnalysisPollMaxInterval =
       Duration(seconds: 4);
-  static const Duration _supplementAnalysisPollTimeout = Duration(seconds: 180);
+  static const Duration _supplementAnalysisPollTimeout = Duration(seconds: 300);
 
   /// Creates a backend repository.
   ///
