@@ -741,23 +741,34 @@ class BackendLemonAidRepository implements LemonAidRepository {
     Duration interval = _supplementAnalysisPollInterval;
     while (true) {
       await Future<void>.delayed(interval);
-      final Map<String, dynamic> status = await _apiClient.getJson(statusPath);
-      final String state = (status['status'] as String?) ?? 'processing';
-      if (state == 'failed') {
-        final Map<String, dynamic>? error =
-            status['error'] as Map<String, dynamic>?;
-        throw ApiError(
-          statusCode: 422,
-          code: error?['code'] as String?,
-          message:
-              (error?['message'] as String?) ??
-              '분석을 완료하지 못했어요. 다시 시도해주세요.',
-        );
+      Map<String, dynamic>? status;
+      try {
+        status = await _apiClient.getJson(statusPath);
+      } on Exception catch (_) {
+        // Transient poll failure (connectivity / timeout / 5xx). The backend keeps
+        // processing the run independently, so a dropped poll is harmless: retry on
+        // the next tick until the overall budget elapses, instead of surfacing a
+        // "could not connect" failure mid-analysis.
+        status = null;
       }
-      if (state != 'processing') {
-        final Object? preview = status['preview'];
-        if (preview is Map<String, dynamic>) {
-          return parsePreview(preview);
+      if (status != null) {
+        final String state = (status['status'] as String?) ?? 'processing';
+        if (state == 'failed') {
+          final Map<String, dynamic>? error =
+              status['error'] as Map<String, dynamic>?;
+          throw ApiError(
+            statusCode: 422,
+            code: error?['code'] as String?,
+            message:
+                (error?['message'] as String?) ??
+                '분석을 완료하지 못했어요. 다시 시도해주세요.',
+          );
+        }
+        if (state != 'processing') {
+          final Object? preview = status['preview'];
+          if (preview is Map<String, dynamic>) {
+            return parsePreview(preview);
+          }
         }
       }
       if (DateTime.now().isAfter(deadline)) {
