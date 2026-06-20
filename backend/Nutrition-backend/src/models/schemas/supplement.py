@@ -61,12 +61,14 @@ class SupplementAnalysisStatus(StrEnum):
     """Supplement analysis contract states.
 
     Attributes:
+        PROCESSING: Analysis is running asynchronously and is not yet ready to review.
         REQUIRES_CONFIRMATION: Preview must be reviewed by the user before storage.
         CONFIRMED: Preview was confirmed into a user supplement.
         EXPIRED: Preview can no longer be confirmed.
         FAILED: Preview analysis failed before confirmation.
     """
 
+    PROCESSING = "processing"
     REQUIRES_CONFIRMATION = "requires_confirmation"
     CONFIRMED = "confirmed"
     EXPIRED = "expired"
@@ -571,6 +573,91 @@ class SupplementMultiImageAnalysisPreview(BaseModel):
     pipeline_metadata: SupplementImagePipelineMetadata
     expires_at: datetime | None = None
     result_mode: Literal["single_product", "distinct_products"] = "single_product"
+
+
+class SupplementAnalysisError(BaseModel):
+    """Safe coded error for a failed asynchronous supplement analysis.
+
+    Attributes:
+        code: Stable error code (e.g. ``analysis_failed`` or ``analysis_timeout``).
+            Never raw exception text, OCR text, or PII.
+        message: Safe user-facing message without raw provider payloads.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    code: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=240)
+
+
+class SupplementAnalysisAccepted(BaseModel):
+    """202 response for an accepted asynchronous single-image analysis.
+
+    Attributes:
+        analysis_id: Identifier of the pre-created analysis run to poll.
+        status: Lifecycle status at submission time (``processing``).
+        poll_url: Relative URL the client polls for the final preview.
+        expires_at: Time after which the preview should not be confirmed.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_id: UUID
+    status: SupplementAnalysisStatus
+    poll_url: str = Field(min_length=1, max_length=240)
+    expires_at: datetime
+
+
+class SupplementMultiImageAnalysisAccepted(BaseModel):
+    """202 response for an accepted asynchronous multi-image analysis batch.
+
+    Attributes:
+        analysis_group_id: Ephemeral group identifier for the uploaded image batch.
+        analysis_ids: Per-image analysis run identifiers tied to the group.
+        status: Lifecycle status at submission time (``processing``).
+        poll_url: Relative URL the client polls for the final batch preview.
+        expires_at: Earliest per-image preview expiration time.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    analysis_group_id: str = Field(min_length=1, max_length=120)
+    analysis_ids: list[UUID] = Field(min_length=1, max_length=20)
+    status: SupplementAnalysisStatus
+    poll_url: str = Field(min_length=1, max_length=240)
+    expires_at: datetime
+
+
+class SupplementAnalysisStatusResponse(BaseModel):
+    """Poll body for an asynchronous single-image supplement analysis.
+
+    Attributes:
+        status: Current analysis lifecycle status.
+        preview: Confirmation preview, present only when the run is ready.
+        error: Safe coded error, present only when the run failed.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: SupplementAnalysisStatus
+    preview: SupplementAnalysisPreview | None = None
+    error: SupplementAnalysisError | None = None
+
+
+class SupplementMultiImageAnalysisStatusResponse(BaseModel):
+    """Poll body for an asynchronous multi-image supplement analysis batch.
+
+    Attributes:
+        status: Aggregate analysis lifecycle status for the batch.
+        preview: Aggregate batch preview, present only when the batch is ready.
+        error: Safe coded error, present only when any run in the batch failed.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: SupplementAnalysisStatus
+    preview: SupplementMultiImageAnalysisPreview | None = None
+    error: SupplementAnalysisError | None = None
 
 
 class SupplementAnalysisSessionResponse(BaseModel):

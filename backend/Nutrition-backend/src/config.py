@@ -590,6 +590,16 @@ class Settings(BaseSettings):
     # per-image distinct path until real multi-image label verification passes.
     # Flip to True (env override) to exercise the fusion path.
     supplement_one_shot_fusion_enabled: bool = Field(default=False)
+    # Async supplement analyze: when enabled, POST /supplements/analyze(-multi) creates
+    # the run row(s) in 'processing' status, returns 202 immediately, and runs the heavy
+    # OCR/parse/vision pipeline in an in-process background task that flips the run to
+    # 'requires_confirmation'/'failed'. The mobile client then polls the analysis by id.
+    # Dark-launched (default False): the endpoints stay fully synchronous until flipped.
+    supplement_analyze_async_enabled: bool = Field(default=False)
+    # A run left in 'processing' longer than this is considered stale (the worker died,
+    # e.g. on a deploy/restart) and is reported as failed by the poll endpoint so the
+    # client is never wedged. Comfortably above the measured worst-case pipeline (~143s).
+    supplement_analyze_worker_deadline_sec: int = Field(default=300, ge=30, le=900)
     regulated_document_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     sensitive_document_original_image_retention_seconds: int = Field(default=0, ge=0, le=3600)
 

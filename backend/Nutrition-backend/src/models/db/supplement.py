@@ -251,7 +251,7 @@ class SupplementAnalysisRun(TimestampMixin, Base):
             name="uq_supplement_analysis_runs_owner_client_request",
         ),
         CheckConstraint(
-            "status IN ('requires_confirmation', 'confirmed', 'expired', 'failed')",
+            "status IN ('processing', 'requires_confirmation', 'confirmed', 'expired', 'failed')",
             name="status_allowed",
         ),
         CheckConstraint(

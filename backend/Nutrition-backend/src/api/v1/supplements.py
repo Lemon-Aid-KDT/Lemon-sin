@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -67,11 +68,17 @@ from src.llm.ollama import (
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import (
+    SupplementAnalysisAccepted,
+    SupplementAnalysisError,
     SupplementAnalysisPreview,
     SupplementAnalysisSessionResponse,
+    SupplementAnalysisStatus,
+    SupplementAnalysisStatusResponse,
     SupplementBarcodeLookupRequest,
     SupplementBarcodeLookupResponse,
+    SupplementMultiImageAnalysisAccepted,
     SupplementMultiImageAnalysisPreview,
+    SupplementMultiImageAnalysisStatusResponse,
     UserSupplementCreate,
     UserSupplementListResponse,
     UserSupplementResponse,
@@ -117,6 +124,12 @@ from src.services.privacy import (
     record_sensitive_audit_event,
     require_user_consent,
 )
+from src.services.supplement_analysis_worker import (
+    CapturedImage,
+    CapturedRequest,
+    run_multi_supplement_analysis_job,
+    run_single_supplement_analysis_job,
+)
 from src.services.supplement_barcode_lookup import (
     BarcodeLookupServiceResult,
     SupplementBarcodeLookupService,
@@ -140,6 +153,9 @@ from src.services.supplement_image_analysis import (
 from src.services.supplement_intake import (
     SupplementImageValidationError,
     SupplementIntakeConflictError,
+    ValidatedSupplementImage,
+    create_supplement_analysis_intake,
+    read_and_validate_supplement_image,
     supplement_analysis_run_to_preview,
 )
 from src.services.supplement_parser import (
@@ -198,6 +214,72 @@ MULTI_IMAGE_ROLE_VALUES = frozenset(
         "mixed",
     }
 )
+SUPPLEMENT_ANALYSIS_POLL_PATH = "/api/v1/supplements/analyses"
+
+# Strong refs to in-flight async-analysis worker tasks. asyncio.create_task keeps
+# only a weak reference, so without this set a fire-and-forget worker can be GC'd
+# mid-run. Each task removes itself on completion (see _spawn_analysis_worker).
+_ANALYSIS_WORKER_TASKS: set[asyncio.Task[None]] = set()
+
+
+def _capture_request_metadata(http_request: Request) -> CapturedRequest:
+    """Snapshot request network metadata for the detached worker's audits.
+
+    The ``Request`` is gone once the 202 response is sent, but out-of-band audits
+    still need the client IP, user-agent, and request-id to hash. Capture only
+    those.
+
+    Args:
+        http_request: Current FastAPI request.
+
+    Returns:
+        Request metadata snapshot safe to retain across the response boundary.
+    """
+    raw_headers = {
+        key: http_request.headers[key]
+        for key in ("user-agent", "x-request-id")
+        if key in http_request.headers
+    }
+    client_host = http_request.client.host if http_request.client else None
+    return CapturedRequest.from_request(client_host, raw_headers)
+
+
+def _spawn_analysis_worker(coro: Any) -> None:
+    """Schedule a detached analysis worker task with a strong reference.
+
+    Args:
+        coro: Worker coroutine (``run_single_*`` / ``run_multi_*``) to run.
+    """
+    task = asyncio.create_task(coro)
+    _ANALYSIS_WORKER_TASKS.add(task)
+    task.add_done_callback(_ANALYSIS_WORKER_TASKS.discard)
+
+
+async def _capture_validated_image(
+    image: UploadFile,
+    settings: Settings,
+) -> tuple[ValidatedSupplementImage, bytes]:
+    """Validate an upload and return its metadata plus retained bytes.
+
+    The ``UploadFile`` is consumed once the request returns, so the validated
+    bytes are read into memory for the detached worker. Reuses
+    ``read_and_validate_supplement_image`` for identical validation semantics,
+    then seeks back to re-read the raw bytes.
+
+    Args:
+        image: Uploaded supplement label image.
+        settings: Runtime settings containing upload limits.
+
+    Returns:
+        Validated metadata and the raw uploaded bytes.
+
+    Raises:
+        SupplementImageValidationError: If the upload fails intake validation.
+    """
+    metadata = await read_and_validate_supplement_image(image, settings)
+    await image.seek(0)
+    image_bytes = await image.read()
+    return metadata, image_bytes
 
 
 def _supplement_http_error(status_code: int, *, code: str, message: str) -> HTTPException:
@@ -1084,9 +1166,228 @@ async def _require_sensitive_health_consent(
         ) from exc
 
 
+async def _require_supplement_analyze_consents(
+    *,
+    session: AsyncSession,
+    current_user: AuthenticatedUser,
+    http_request: Request,
+    settings: Settings,
+    ocr_provider: SupplementOCRProviderSelector,
+    blocked_action: str,
+) -> None:
+    """Enforce OCR (and conditional external-OCR) consent for image analysis.
+
+    Shared by the async-submit paths; mirrors the synchronous routes' consent
+    loop, the blocked-audit emission, and the 403 shape. Must run inside the
+    request-owned RLS transaction so the blocked audit goes out-of-band.
+
+    Args:
+        session: Owner-scoped request-managed session.
+        current_user: Authenticated owner.
+        http_request: Current FastAPI request.
+        settings: Application settings.
+        ocr_provider: Request-selected OCR provider.
+        blocked_action: Audit action name when the non-external consent is missing.
+
+    Raises:
+        HTTPException: 403 when a required consent grant is missing.
+    """
+    required_consents = _required_supplement_analyze_consents(settings, ocr_provider)
+    missing_consents: list[ConsentType] = []
+    last_consent_error: ConsentRequiredError | None = None
+    for consent_type in required_consents:
+        try:
+            await require_user_consent(session, current_user, consent_type)
+        except ConsentRequiredError as exc:
+            missing_consents.append(consent_type)
+            last_consent_error = exc
+    if not missing_consents:
+        return
+    missing_values = [consent.value for consent in missing_consents]
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action=(
+            "supplement_external_ocr_blocked"
+            if ConsentType.EXTERNAL_OCR_PROCESSING in missing_consents
+            else blocked_action
+        ),
+        resource_type="supplement_analysis_run",
+        resource_id=None,
+        outcome="blocked",
+        request=http_request,
+        settings=settings,
+        event_metadata={"missing_consents": missing_values},
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "consent_required",
+            "message": str(last_consent_error),
+            "required_consents": missing_values,
+        },
+    ) from last_consent_error
+
+
+async def _submit_async_single_analysis(
+    *,
+    http_request: Request,
+    current_user: AuthenticatedUser,
+    image: UploadFile,
+    session: AsyncSession,
+    settings: Settings,
+    adapters: SupplementImageAnalysisAdapters,
+    ocr_provider: SupplementOCRProviderSelector,
+    client_request_id: str | None,
+) -> SupplementAnalysisAccepted:
+    """Accept a single-image analysis: pre-create the run and spawn the worker.
+
+    Performs the synchronous validations that must return immediate errors
+    (consent, image read+validate, idempotency conflict) inside a short
+    request-owned RLS transaction, creates the run in ``processing`` status via
+    ``create_supplement_analysis_intake(initial_status=PROCESSING)``, captures the
+    image bytes, then schedules :func:`run_single_supplement_analysis_job` and
+    returns 202. A reused (already-processing/terminal) row does NOT spawn a
+    duplicate worker — its current status is returned as-is.
+
+    Args:
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        image: Uploaded supplement label image.
+        session: Request-scoped async session from ``get_async_session``.
+        settings: Application settings.
+        adapters: Default OCR/parser/vision adapters.
+        ocr_provider: Request-selected OCR provider.
+        client_request_id: Optional client idempotency key.
+
+    Returns:
+        202 accepted envelope pointing at the poll URL.
+
+    Raises:
+        HTTPException: 403 (consent), 409 (idempotency conflict), or the image
+            validation status code (413/415/422).
+    """
+    selected_adapters = _select_supplement_image_analysis_adapters(
+        settings=settings,
+        configured_adapters=adapters,
+        ocr_provider=ocr_provider,
+    )
+    request_snapshot = _capture_request_metadata(http_request)
+    async with rls_request_transaction(session, current_user, settings):
+        await _require_supplement_analyze_consents(
+            session=session,
+            current_user=current_user,
+            http_request=http_request,
+            settings=settings,
+            ocr_provider=ocr_provider,
+            blocked_action="supplement_image_intake_blocked",
+        )
+        learning_consents = await _collect_learning_consents_if_enabled(
+            session,
+            current_user,
+            settings,
+        )
+        try:
+            metadata, image_bytes = await _capture_validated_image(image, settings)
+            intake = await create_supplement_analysis_intake(
+                session=session,
+                user=current_user,
+                image_metadata=metadata,
+                client_request_id=client_request_id,
+                settings=settings,
+                initial_status=SupplementAnalysisStatus.PROCESSING,
+            )
+        except SupplementImageValidationError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_intake_rejected",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"validation_code": exc.code},
+            )
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+        except SupplementIntakeConflictError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_intake_conflict",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"client_request_id_present": bool(client_request_id)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "idempotency_conflict", "message": str(exc)},
+            ) from exc
+
+        record = intake.record
+        analysis_id = record.id
+        expires_at = record.expires_at
+        current_status = SupplementAnalysisStatus(record.status)
+        spawn_worker = not intake.reused_existing
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_intake_accepted",
+            resource_type="supplement_analysis_run",
+            resource_id=str(analysis_id),
+            outcome="success",
+            request=http_request,
+            settings=settings,
+            event_metadata={
+                "client_request_id_present": bool(client_request_id),
+                "image_mime_type": metadata.mime_type,
+                "image_size_bytes": metadata.size_bytes,
+                "reused_existing": intake.reused_existing,
+                "worker_scheduled": spawn_worker,
+                "async_worker": True,
+            },
+        )
+
+    if spawn_worker:
+        captured = CapturedImage(
+            analysis_id=analysis_id,
+            client_request_id=client_request_id,
+            image_bytes=image_bytes,
+            content_type=image.content_type,
+            filename=image.filename or "supplement-label",
+        )
+        _spawn_analysis_worker(
+            run_single_supplement_analysis_job(
+                analysis_id=analysis_id,
+                captured=captured,
+                user=current_user,
+                settings=settings,
+                adapters=selected_adapters,
+                http_request=request_snapshot,
+                learning_consents=learning_consents,
+            )
+        )
+    return SupplementAnalysisAccepted(
+        analysis_id=analysis_id,
+        status=current_status,
+        poll_url=f"{SUPPLEMENT_ANALYSIS_POLL_PATH}/{analysis_id}",
+        expires_at=expires_at,
+    )
+
+
 @router.post(
     "/analyze",
-    response_model=SupplementAnalysisPreviewWithRecommendation,
+    # response_model is None because this route returns a union: the accepted
+    # envelope (SupplementAnalysisAccepted) when supplement_analyze_async_enabled
+    # is on, or the full preview (SupplementAnalysisPreviewWithRecommendation) on
+    # the synchronous path. Each branch returns its own validated Pydantic model.
+    response_model=None,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         **SUPPLEMENT_AUTH_RESPONSES,
@@ -1138,7 +1439,7 @@ async def analyze_supplement_label(
         bool,
         Query(description="When with_recommendation, attempt local Ollama wording refinement."),
     ] = False,
-) -> SupplementAnalysisPreviewWithRecommendation:
+) -> SupplementAnalysisPreviewWithRecommendation | SupplementAnalysisAccepted:
     """Create a supplement label preview that must be confirmed by the user.
 
     Args:
@@ -1158,6 +1459,20 @@ async def analyze_supplement_label(
     Raises:
         HTTPException: If consent is missing, image validation fails, or idempotency conflicts.
     """
+    if settings.supplement_analyze_async_enabled:
+        # Async path (flag ON): create the run row in `processing`, hand the
+        # pipeline to an in-process worker, and return 202 immediately so the
+        # heavy OCR/parse never blocks the request past the mobile upload timeout.
+        return await _submit_async_single_analysis(
+            http_request=http_request,
+            current_user=current_user,
+            image=image,
+            session=session,
+            settings=settings,
+            adapters=adapters,
+            ocr_provider=ocr_provider,
+            client_request_id=client_request_id,
+        )
     selected_adapters = _select_supplement_image_analysis_adapters(
         settings=settings,
         configured_adapters=adapters,
@@ -1691,9 +2006,183 @@ async def upload_supplement_analysis_session_image(
     return response
 
 
+async def _submit_async_multi_analysis(
+    *,
+    http_request: Request,
+    current_user: AuthenticatedUser,
+    images: list[UploadFile],
+    roles: list[str],
+    session: AsyncSession,
+    settings: Settings,
+    adapters: SupplementImageAnalysisAdapters,
+    ocr_provider: SupplementOCRProviderSelector,
+    client_request_id: str | None,
+    merge_strategy: Literal["single_product", "distinct_products"],
+) -> SupplementMultiImageAnalysisAccepted:
+    """Accept a multi-image batch: pre-create the runs and spawn the worker.
+
+    Validates consent, reads+validates every image, and creates one
+    ``processing`` run per image (pre-annotated with the generated
+    ``analysis_group_id`` so the group poll can find them) inside a short
+    request-owned RLS transaction, then schedules
+    :func:`run_multi_supplement_analysis_job` and returns 202.
+
+    Args:
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        images: Uploaded supplement label images.
+        roles: Validated per-image role labels.
+        session: Request-scoped async session from ``get_async_session``.
+        settings: Application settings.
+        adapters: Default OCR/parser/vision adapters.
+        ocr_provider: Request-selected OCR provider.
+        client_request_id: Optional batch idempotency hint.
+        merge_strategy: ``single_product`` or ``distinct_products``.
+
+    Returns:
+        202 accepted batch envelope pointing at the group poll URL.
+
+    Raises:
+        HTTPException: 403 (consent), 409 (idempotency conflict), or the image
+            validation status code (413/415/422).
+    """
+    selected_adapters = _select_supplement_image_analysis_adapters(
+        settings=settings,
+        configured_adapters=adapters,
+        ocr_provider=ocr_provider,
+    )
+    request_snapshot = _capture_request_metadata(http_request)
+    analysis_group_id = f"multi-{uuid4()}"
+    captured_images: list[CapturedImage] = []
+    analysis_ids: list[UUID] = []
+    expirations: list[datetime] = []
+    async with rls_request_transaction(session, current_user, settings):
+        await _require_supplement_analyze_consents(
+            session=session,
+            current_user=current_user,
+            http_request=http_request,
+            settings=settings,
+            ocr_provider=ocr_provider,
+            blocked_action="supplement_image_multi_intake_blocked",
+        )
+        learning_consents = await _collect_learning_consents_if_enabled(
+            session,
+            current_user,
+            settings,
+        )
+        try:
+            for index, image in enumerate(images):
+                metadata, image_bytes = await _capture_validated_image(image, settings)
+                per_image_request_id = _multi_image_client_request_id(client_request_id, index)
+                intake = await create_supplement_analysis_intake(
+                    session=session,
+                    user=current_user,
+                    image_metadata=metadata,
+                    client_request_id=per_image_request_id,
+                    settings=settings,
+                    initial_status=SupplementAnalysisStatus.PROCESSING,
+                )
+                # Pre-annotate the group id so the group poll finds the still-
+                # processing rows before the worker writes the parsed snapshot.
+                await _annotate_multi_image_record(
+                    session,
+                    intake.record,
+                    image_role=roles[index],
+                    analysis_group_id=analysis_group_id,
+                    image_count=len(images),
+                )
+                analysis_ids.append(intake.record.id)
+                expirations.append(intake.record.expires_at)
+                captured_images.append(
+                    CapturedImage(
+                        analysis_id=intake.record.id,
+                        client_request_id=per_image_request_id,
+                        image_bytes=image_bytes,
+                        content_type=image.content_type,
+                        filename=image.filename or "supplement-label",
+                        image_role=roles[index],
+                    )
+                )
+        except SupplementImageValidationError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_multi_intake_rejected",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"validation_code": exc.code},
+            )
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+        except SupplementIntakeConflictError as exc:
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="supplement_image_multi_intake_conflict",
+                resource_type="supplement_analysis_run",
+                resource_id=None,
+                outcome="blocked",
+                request=http_request,
+                settings=settings,
+                event_metadata={"client_request_id_present": bool(client_request_id)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "idempotency_conflict", "message": str(exc)},
+            ) from exc
+
+        await record_sensitive_audit_event(
+            session,
+            current_user,
+            action="supplement_image_multi_intake_accepted",
+            resource_type="supplement_analysis_run",
+            resource_id=None,
+            outcome="success",
+            request=http_request,
+            settings=settings,
+            event_metadata={
+                "image_count": len(images),
+                "merge_strategy": merge_strategy,
+                "raw_image_stored": False,
+                "raw_ocr_text_stored": False,
+                "async_worker": True,
+            },
+        )
+
+    _spawn_analysis_worker(
+        run_multi_supplement_analysis_job(
+            analysis_group_id=analysis_group_id,
+            captured_images=captured_images,
+            image_roles=roles,
+            merge_strategy=merge_strategy,
+            user=current_user,
+            settings=settings,
+            adapters=selected_adapters,
+            http_request=request_snapshot,
+            learning_consents=learning_consents,
+        )
+    )
+    return SupplementMultiImageAnalysisAccepted(
+        analysis_group_id=analysis_group_id,
+        analysis_ids=analysis_ids,
+        status=SupplementAnalysisStatus.PROCESSING,
+        poll_url=f"{SUPPLEMENT_ANALYSIS_POLL_PATH}/group/{analysis_group_id}",
+        expires_at=min(expirations),
+    )
+
+
 @router.post(
     "/analyze-multi",
-    response_model=SupplementMultiImageAnalysisPreview,
+    # response_model is None because this route returns a union: the accepted
+    # batch envelope (SupplementMultiImageAnalysisAccepted) when async is enabled,
+    # or the full batch preview (SupplementMultiImageAnalysisPreview) on the
+    # synchronous path. Each branch returns its own validated Pydantic model.
+    response_model=None,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         **SUPPLEMENT_AUTH_RESPONSES,
@@ -1733,7 +2222,7 @@ async def analyze_supplement_label_multi(
     merge_strategy: Annotated[
         Literal["single_product", "distinct_products"], Form()
     ] = "distinct_products",
-) -> SupplementMultiImageAnalysisPreview:
+) -> SupplementMultiImageAnalysisPreview | SupplementMultiImageAnalysisAccepted:
     """Create per-image previews for a multi-photo supplement label batch.
 
     Args:
@@ -1756,6 +2245,21 @@ async def analyze_supplement_label_multi(
         HTTPException: If consent, image validation, role validation, or idempotency fails.
     """
     roles = _validate_multi_image_roles(len(images), image_roles, image_roles_json)
+    if settings.supplement_analyze_async_enabled:
+        # Async path (flag ON): pre-create every per-image run in `processing`,
+        # hand the batch to an in-process worker, and return 202 immediately.
+        return await _submit_async_multi_analysis(
+            http_request=http_request,
+            current_user=current_user,
+            images=images,
+            roles=roles,
+            session=session,
+            settings=settings,
+            adapters=adapters,
+            ocr_provider=ocr_provider,
+            client_request_id=client_request_id,
+            merge_strategy=merge_strategy,
+        )
     selected_adapters = _select_supplement_image_analysis_adapters(
         settings=settings,
         configured_adapters=adapters,
@@ -2019,6 +2523,188 @@ async def analyze_supplement_label_multi(
             },
         )
     return response
+
+
+def _analysis_run_is_stale(record: SupplementAnalysisRun, settings: Settings) -> bool:
+    """Return whether a still-processing run has exceeded the worker deadline.
+
+    A run left in ``processing`` past ``updated_at + worker_deadline`` means the
+    in-process worker died (process restart / crash) without flipping the row, so
+    the poll treats it as a timeout rather than polling forever.
+
+    Args:
+        record: Supplement analysis run row.
+        settings: Application settings supplying the worker deadline.
+
+    Returns:
+        True when the processing run is older than the worker deadline.
+    """
+    if record.status != SupplementAnalysisStatus.PROCESSING.value:
+        return False
+    deadline = timedelta(seconds=settings.supplement_analyze_worker_deadline_sec)
+    return datetime.now(UTC) - record.updated_at > deadline
+
+
+def _failed_analysis_error(record: SupplementAnalysisRun) -> SupplementAnalysisError:
+    """Build a safe coded error for a failed run from its warnings.
+
+    Never surfaces raw exception text — only a bounded coded warning string if the
+    worker recorded one, otherwise the generic ``analysis_failed`` code.
+
+    Args:
+        record: Failed supplement analysis run row.
+
+    Returns:
+        Safe coded analysis error.
+    """
+    warnings = [warning for warning in (record.warnings or []) if isinstance(warning, str)]
+    code = warnings[0] if warnings else "analysis_failed"
+    return SupplementAnalysisError(
+        code=code[:80],
+        message="Supplement label analysis could not be completed. Please try again.",
+    )
+
+
+@router.get(
+    "/analyses/{analysis_id}",
+    response_model=SupplementAnalysisStatusResponse,
+    responses={
+        **COMMON_SUPPLEMENT_RESPONSES,
+        404: {"description": "Supplement analysis run was not found."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_READ,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def poll_supplement_analysis(
+    analysis_id: Annotated[UUID, Path(description="Async analysis run id to poll.")],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_read)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementAnalysisStatusResponse:
+    """Poll the status (and, when ready, the preview) of an async analysis run.
+
+    Owner-isolated read (RLS): a different subject cannot read another owner's run
+    — the GUC-scoped session returns no row and the route answers 404. A
+    still-processing run past the worker deadline is reported as a coded timeout.
+
+    Args:
+        analysis_id: Async analysis run id to poll.
+        current_user: Authenticated owner (read scope only).
+        session: Owner-scoped read session with RLS GUCs set.
+        settings: Application settings supplying the worker deadline.
+
+    Returns:
+        Poll body: processing, failed (with safe error), or the ready preview.
+
+    Raises:
+        HTTPException: 404 when the run is not owned by the caller or missing.
+    """
+    record = await session.get(SupplementAnalysisRun, analysis_id)
+    if record is None or record.owner_subject != build_owner_subject(current_user):
+        raise _supplement_http_error(
+            status.HTTP_404_NOT_FOUND,
+            code="analysis_not_found",
+            message="Supplement analysis run was not found.",
+        )
+    if _analysis_run_is_stale(record, settings):
+        return SupplementAnalysisStatusResponse(
+            status=SupplementAnalysisStatus.FAILED,
+            error=SupplementAnalysisError(
+                code="analysis_timeout",
+                message="Supplement label analysis timed out. Please try again.",
+            ),
+        )
+    status_value = SupplementAnalysisStatus(record.status)
+    if status_value == SupplementAnalysisStatus.PROCESSING:
+        return SupplementAnalysisStatusResponse(status=status_value)
+    if status_value == SupplementAnalysisStatus.FAILED:
+        return SupplementAnalysisStatusResponse(
+            status=status_value,
+            error=_failed_analysis_error(record),
+        )
+    return SupplementAnalysisStatusResponse(
+        status=status_value,
+        preview=supplement_analysis_run_to_preview(record),
+    )
+
+
+@router.get(
+    "/analyses/group/{analysis_group_id}",
+    response_model=SupplementMultiImageAnalysisStatusResponse,
+    responses={
+        **COMMON_SUPPLEMENT_RESPONSES,
+        404: {"description": "Multi-image analysis group was not found."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.SUPPLEMENT_READ,),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def poll_supplement_analysis_group(
+    analysis_group_id: Annotated[
+        str,
+        Path(max_length=120, description="Async multi-image analysis group id to poll."),
+    ],
+    current_user: Annotated[AuthenticatedUser, Depends(require_supplement_read)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SupplementMultiImageAnalysisStatusResponse:
+    """Poll the aggregate status (and, when ready, the preview) of an async batch.
+
+    Loads every owner run annotated with ``analysis_group_id`` (RLS-isolated, so
+    another owner sees an empty group → 404). Aggregates: failed if any run failed
+    or timed out, processing if any run is still processing, otherwise ready with
+    the batch preview built by :func:`_build_multi_image_response`.
+
+    Args:
+        analysis_group_id: Async multi-image analysis group id to poll.
+        current_user: Authenticated owner (read scope only).
+        session: Owner-scoped read session with RLS GUCs set.
+        settings: Application settings supplying the worker deadline.
+
+    Returns:
+        Aggregate poll body: processing, failed (with safe error), or ready batch.
+
+    Raises:
+        HTTPException: 404 when the group has no runs owned by the caller.
+    """
+    records = await _load_multi_image_analysis_runs(
+        session,
+        owner_subject=build_owner_subject(current_user),
+        analysis_group_id=analysis_group_id,
+    )
+    if not records:
+        raise _supplement_http_error(
+            status.HTTP_404_NOT_FOUND,
+            code="analysis_group_not_found",
+            message="Multi-image analysis group was not found.",
+        )
+    if any(
+        record.status == SupplementAnalysisStatus.FAILED.value
+        or _analysis_run_is_stale(record, settings)
+        for record in records
+    ):
+        return SupplementMultiImageAnalysisStatusResponse(
+            status=SupplementAnalysisStatus.FAILED,
+            error=SupplementAnalysisError(
+                code="analysis_failed",
+                message="Supplement label analysis could not be completed. Please try again.",
+            ),
+        )
+    if any(record.status == SupplementAnalysisStatus.PROCESSING.value for record in records):
+        return SupplementMultiImageAnalysisStatusResponse(
+            status=SupplementAnalysisStatus.PROCESSING,
+        )
+    previews = [supplement_analysis_run_to_preview(record) for record in records]
+    return SupplementMultiImageAnalysisStatusResponse(
+        status=SupplementAnalysisStatus.REQUIRES_CONFIRMATION,
+        preview=_build_multi_image_response(
+            analysis_group_id=analysis_group_id,
+            previews=previews,
+        ),
+    )
 
 
 @router.post(

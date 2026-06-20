@@ -346,6 +346,7 @@ async def create_supplement_analysis_intake(
     image_metadata: ValidatedSupplementImage,
     client_request_id: str | None,
     settings: Settings,
+    initial_status: SupplementAnalysisStatus = SupplementAnalysisStatus.REQUIRES_CONFIRMATION,
 ) -> SupplementIntakeStoreResult:
     """Persist an intake-only supplement analysis preview for the current owner.
 
@@ -355,6 +356,10 @@ async def create_supplement_analysis_intake(
         image_metadata: Validated image metadata.
         client_request_id: Optional client idempotency key.
         settings: Runtime settings containing preview TTL.
+        initial_status: Lifecycle status stamped on a *newly created* row. Sync
+            callers keep the default ``REQUIRES_CONFIRMATION``; the async submit
+            passes ``PROCESSING`` so the worker can later flip the row to ready.
+            On idempotency reuse the existing row's status is left untouched.
 
     Returns:
         Stored preview row and idempotency reuse flag.
@@ -392,7 +397,7 @@ async def create_supplement_analysis_intake(
             record = SupplementAnalysisRun(
                 owner_subject=owner_subject,
                 client_request_id=normalized_client_request_id,
-                status=SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value,
+                status=initial_status.value,
                 image_sha256=image_metadata.sha256,
                 image_mime_type=image_metadata.mime_type,
                 image_size_bytes=image_metadata.size_bytes,
