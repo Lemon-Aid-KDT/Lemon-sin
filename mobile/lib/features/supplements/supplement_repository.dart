@@ -268,6 +268,15 @@ abstract class LemonAidRepository {
 class BackendLemonAidRepository implements LemonAidRepository {
   static const Duration _localLlmExplanationTimeout = Duration(seconds: 90);
 
+  /// Async supplement-analyze polling cadence. The submit returns 202 with a
+  /// `processing` envelope and the client polls the analysis status until it is
+  /// ready/failed, instead of holding one long upload open (the ~140s
+  /// multi-image pipeline blew past the 120s upload timeout).
+  static const Duration _supplementAnalysisPollInterval = Duration(seconds: 2);
+  static const Duration _supplementAnalysisPollMaxInterval =
+      Duration(seconds: 4);
+  static const Duration _supplementAnalysisPollTimeout = Duration(seconds: 180);
+
   /// Creates a backend repository.
   ///
   /// Args:
@@ -527,6 +536,9 @@ class BackendLemonAidRepository implements LemonAidRepository {
         'ocr_provider': selectedOcrProvider,
       },
     );
+    if (_isAsyncAnalysisEnvelope(json)) {
+      return _pollSupplementSingleAnalysis(json['analysis_id'] as String);
+    }
     return SupplementAnalysisPreview.fromJson(json);
   }
 
@@ -675,7 +687,94 @@ class BackendLemonAidRepository implements LemonAidRepository {
       },
       expectedStatusCodes: const <int>{202},
     );
+    if (_isAsyncAnalysisEnvelope(json)) {
+      return _pollSupplementMultiImageAnalysis(
+        json['analysis_group_id'] as String,
+      );
+    }
     return SupplementMultiImageAnalysisPreview.fromJson(json);
+  }
+
+  /// Whether a 202 analyze response is an async "processing" envelope (the
+  /// backend's `supplement_analyze_async_enabled` path) rather than a finished
+  /// preview. The envelope carries `status: 'processing'`; a synchronous preview
+  /// carries a terminal status and the parsed analysis fields.
+  bool _isAsyncAnalysisEnvelope(Map<String, dynamic> json) {
+    return json['status'] == 'processing';
+  }
+
+  /// Polls a single-image async analysis until it is ready, then returns the
+  /// preview. Throws an [ApiError] on a failed run or once the poll budget is
+  /// exhausted (the backend keeps the run, so the user can retry).
+  Future<SupplementAnalysisPreview> _pollSupplementSingleAnalysis(
+    String analysisId,
+  ) {
+    return _pollSupplementAnalysis<SupplementAnalysisPreview>(
+      statusPath: '/supplements/analyses/$analysisId',
+      parsePreview: SupplementAnalysisPreview.fromJson,
+    );
+  }
+
+  /// Polls a multi-image async analysis group until every image is ready, then
+  /// returns the merged batch preview.
+  Future<SupplementMultiImageAnalysisPreview> _pollSupplementMultiImageAnalysis(
+    String analysisGroupId,
+  ) {
+    return _pollSupplementAnalysis<SupplementMultiImageAnalysisPreview>(
+      statusPath: '/supplements/analyses/group/$analysisGroupId',
+      parsePreview: SupplementMultiImageAnalysisPreview.fromJson,
+    );
+  }
+
+  /// Polls an async analysis status route until it reaches a terminal state.
+  ///
+  /// Returns the parsed preview when the run is ready; throws an [ApiError] when
+  /// the run failed or the overall budget ([_supplementAnalysisPollTimeout]) is
+  /// exhausted. The interval backs off from [_supplementAnalysisPollInterval] to
+  /// [_supplementAnalysisPollMaxInterval]. The backend keeps processing
+  /// independently, so a transient poll failure simply retries on the next tick.
+  Future<T> _pollSupplementAnalysis<T>({
+    required String statusPath,
+    required T Function(Map<String, dynamic>) parsePreview,
+  }) async {
+    final DateTime deadline = DateTime.now().add(_supplementAnalysisPollTimeout);
+    Duration interval = _supplementAnalysisPollInterval;
+    while (true) {
+      await Future<void>.delayed(interval);
+      final Map<String, dynamic> status = await _apiClient.getJson(statusPath);
+      final String state = (status['status'] as String?) ?? 'processing';
+      if (state == 'failed') {
+        final Map<String, dynamic>? error =
+            status['error'] as Map<String, dynamic>?;
+        throw ApiError(
+          statusCode: 422,
+          code: error?['code'] as String?,
+          message:
+              (error?['message'] as String?) ??
+              '분석을 완료하지 못했어요. 다시 시도해주세요.',
+        );
+      }
+      if (state != 'processing') {
+        final Object? preview = status['preview'];
+        if (preview is Map<String, dynamic>) {
+          return parsePreview(preview);
+        }
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        throw ApiError(
+          statusCode: 408,
+          code: 'analysis_timeout',
+          message:
+              '서버 응답이 지연되고 있어요. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+        );
+      }
+      if (interval < _supplementAnalysisPollMaxInterval) {
+        final Duration doubled = interval * 2;
+        interval = doubled > _supplementAnalysisPollMaxInterval
+            ? _supplementAnalysisPollMaxInterval
+            : doubled;
+      }
+    }
   }
 
   @override
