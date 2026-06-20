@@ -2709,11 +2709,25 @@ async def poll_supplement_analysis_group(
             status=SupplementAnalysisStatus.PROCESSING,
         )
     previews = [supplement_analysis_run_to_preview(record) for record in records]
+    # Recover the batch merge_strategy the submit persisted on each row so the
+    # aggregate response carries the right result_mode (and a merged_preview only
+    # for single_product). Prefer distinct_products if any row is flagged distinct,
+    # and default to single_product for legacy rows without the field.
+    merge_strategy: Literal["single_product", "distinct_products"] = (
+        "distinct_products"
+        if any(
+            isinstance(record.parsed_snapshot, dict)
+            and record.parsed_snapshot.get("multi_image_merge_strategy") == "distinct_products"
+            for record in records
+        )
+        else "single_product"
+    )
     return SupplementMultiImageAnalysisStatusResponse(
         status=SupplementAnalysisStatus.REQUIRES_CONFIRMATION,
         preview=_build_multi_image_response(
             analysis_group_id=analysis_group_id,
             previews=previews,
+            merge_strategy=merge_strategy,
         ),
     )
 

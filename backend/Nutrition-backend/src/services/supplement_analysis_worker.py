@@ -39,7 +39,6 @@ from src.security.subjects import build_owner_subject
 from src.services.privacy import record_sensitive_audit_event
 from src.services.supplement_image_analysis import (
     SupplementImageAnalysisAdapters,
-    analyze_fused_supplement_images,
     analyze_supplement_image,
     store_supplement_learning_artifacts,
 )
@@ -211,6 +210,7 @@ async def _annotate_group_membership(
     analysis_group_id: str,
     image_role: str,
     image_count: int,
+    merge_strategy: str,
 ) -> None:
     """Persist multi-image batch metadata so the group poll can find the row.
 
@@ -231,6 +231,7 @@ async def _annotate_group_membership(
         parsed_snapshot = dict(record.parsed_snapshot or {})
         parsed_snapshot["image_role"] = image_role
         parsed_snapshot["multi_image_group_id"] = analysis_group_id
+        parsed_snapshot["multi_image_merge_strategy"] = merge_strategy
         pipeline_metadata = dict(parsed_snapshot.get("pipeline_metadata") or {})
         pipeline_metadata["image_count"] = image_count
         pipeline_metadata["image_role"] = image_role
@@ -454,13 +455,15 @@ async def run_multi_supplement_analysis_job(
 ) -> None:
     """Run the multi-image pipeline for a batch of pre-created ``processing`` rows.
 
-    Mirrors the route's branch: for ``single_product`` + one-shot fusion it runs
-    ``analyze_fused_supplement_images`` over the rebuilt uploads; otherwise it
-    runs ``analyze_supplement_image`` per image. Each produced row is annotated
-    with the ``analysis_group_id`` (so the group poll can find it) and flipped to
-    ``requires_confirmation`` inside the pipeline transaction. On ANY error every
-    still-``processing`` row in the batch is flipped to ``failed``. Detached task:
-    never re-raises. Learning is scheduled post-commit (best-effort).
+    Runs ``analyze_supplement_image`` per image, reusing each pre-created row
+    (always per-image, since the submit pre-creates one row per image; the
+    single_product merge is reconstructed at poll time, not via the one-shot
+    fusion row which would orphan the pre-created rows). Each row is annotated with
+    the ``analysis_group_id`` and ``merge_strategy`` (so the group poll can find it
+    and set the response result_mode) and flipped to ``requires_confirmation``
+    inside the pipeline transaction. On ANY error every still-``processing`` row in
+    the batch is flipped to ``failed``. Detached task: never re-raises. Learning is
+    scheduled post-commit (best-effort).
 
     Args:
         analysis_group_id: Ephemeral batch group id generated at submit time.
@@ -481,83 +484,49 @@ async def run_multi_supplement_analysis_job(
     try:
         async with factory() as session, session.begin():
             await _open_owner_rls_session(session=session, user=user, settings=settings)
-            if merge_strategy == "single_product" and settings.supplement_one_shot_fusion_enabled:
-                fused_result = await analyze_fused_supplement_images(
+            # The async submit pre-creates one 'processing' row per image, so the
+            # worker always processes per-image and reuses those rows. (The one-shot
+            # fusion path builds its own single row, which would orphan the
+            # pre-created rows and conflict on idempotency; the single_product merge
+            # is instead reconstructed at poll time from the per-image previews.) The
+            # merge_strategy is persisted on each row so the group poll can set the
+            # response result_mode / merged_preview correctly.
+            for index, captured in enumerate(captured_images):
+                result = await analyze_supplement_image(
                     session=session,
                     user=user,
-                    images=[reconstruct_upload_file(item) for item in captured_images],
-                    image_roles=image_roles,
-                    client_request_id=captured_images[0].client_request_id,
+                    image=reconstruct_upload_file(captured),
+                    client_request_id=captured.client_request_id,
                     settings=settings,
                     adapters=adapters,
                     learning_consents=learning_consents,
                 )
-                learning_artifacts_to_store.extend(fused_result.learning_artifacts_per_image)
+                if result.learning_artifacts is not None:
+                    learning_artifacts_to_store.append(result.learning_artifacts)
                 await _annotate_group_membership(
                     session=session,
-                    record=fused_result.record,
+                    record=result.record,
                     analysis_group_id=analysis_group_id,
-                    image_role="mixed",
+                    image_role=(image_roles[index] if index < len(image_roles) else "unknown"),
                     image_count=image_count,
+                    merge_strategy=merge_strategy,
                 )
                 async with persist_scope(session):
-                    fused_result.record.status = (
-                        SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
-                    )
+                    result.record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
                 await _record_ocr_provider_audit(
                     session=session,
                     user=user,
                     settings=settings,
                     http_request=http_request,
-                    record_id=fused_result.record.id,
-                    ocr_attempted=fused_result.ocr_attempted,
-                    warning_codes=fused_result.ocr_warning_codes,
-                    ocr_provider=(
-                        fused_result.ocr_result.provider if fused_result.ocr_result else None
-                    ),
+                    record_id=result.record.id,
+                    ocr_attempted=result.ocr_attempted,
+                    warning_codes=result.ocr_warning_codes,
+                    ocr_provider=(result.ocr_result.provider if result.ocr_result else None),
                     ocr_confidence_present=(
-                        fused_result.ocr_result.confidence is not None
-                        if fused_result.ocr_result
-                        else False
+                        result.ocr_result.confidence is not None if result.ocr_result else False
                     ),
-                    merge_strategy="single_product",
+                    merge_strategy=None,
                 )
-            else:
-                for index, captured in enumerate(captured_images):
-                    result = await analyze_supplement_image(
-                        session=session,
-                        user=user,
-                        image=reconstruct_upload_file(captured),
-                        client_request_id=captured.client_request_id,
-                        settings=settings,
-                        adapters=adapters,
-                        learning_consents=learning_consents,
-                    )
-                    if result.learning_artifacts is not None:
-                        learning_artifacts_to_store.append(result.learning_artifacts)
-                    await _annotate_group_membership(
-                        session=session,
-                        record=result.record,
-                        analysis_group_id=analysis_group_id,
-                        image_role=(image_roles[index] if index < len(image_roles) else "unknown"),
-                        image_count=image_count,
-                    )
-                    async with persist_scope(session):
-                        result.record.status = SupplementAnalysisStatus.REQUIRES_CONFIRMATION.value
-                    await _record_ocr_provider_audit(
-                        session=session,
-                        user=user,
-                        settings=settings,
-                        http_request=http_request,
-                        record_id=result.record.id,
-                        ocr_attempted=result.ocr_attempted,
-                        warning_codes=result.ocr_warning_codes,
-                        ocr_provider=(result.ocr_result.provider if result.ocr_result else None),
-                        ocr_confidence_present=(
-                            result.ocr_result.confidence is not None if result.ocr_result else False
-                        ),
-                        merge_strategy=None,
-                    )
             await record_sensitive_audit_event(
                 session,
                 user,
