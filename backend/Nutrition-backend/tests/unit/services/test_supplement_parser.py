@@ -151,6 +151,83 @@ def test_ocr_pattern_fallback_accepts_table_rows_and_parenthesized_sources() -> 
     assert by_name["Vitamin B6"]["amount"] == 12
 
 
+def test_ocr_pattern_fallback_pairs_unit_before_amount_columns() -> None:
+    """Pair vertical column cells that print the unit before the number.
+
+    Mirrors the existing amount-then-unit split for the reverse order found on
+    rotated / column labels (``name`` / ``unit`` / ``number``).
+    """
+    candidates = _extract_ocr_pattern_ingredient_candidates(
+        "\n".join(["마그네슘", "mg", "200"])
+    )
+
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    assert by_name["마그네슘"]["amount"] == 200
+    assert by_name["마그네슘"]["unit"] == "mg"
+
+
+def test_ocr_pattern_fallback_fuses_split_salt_continuation_name() -> None:
+    """Fuse an OCR-split salt name into one ingredient before pairing.
+
+    ``Magnesium`` / ``Citrate`` on separate lines must produce a single
+    ``Magnesium Citrate`` candidate, not a truncated ``Magnesium``.
+    """
+    candidates = _extract_ocr_pattern_ingredient_candidates(
+        "\n".join(["Magnesium", "Citrate", "200mg"])
+    )
+
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    assert "Magnesium Citrate" in by_name
+    assert by_name["Magnesium Citrate"]["amount"] == 200
+    assert by_name["Magnesium Citrate"]["unit"] == "mg"
+
+
+def test_ocr_pattern_fallback_never_fuses_two_standalone_ingredients() -> None:
+    """Adjacent standalone ingredient names must never fuse into a phantom row.
+
+    Covers the precision cases that distinguish a salt continuation (fused) from a
+    second ingredient (kept separate): English names, Korean names absent from any
+    nutrient lexicon, and the stacked 2-column read order (names then amounts).
+    Only a salt/form word may continue a name, so none of these fuse.
+    """
+    english = {
+        candidate["display_name"]
+        for candidate in _extract_ocr_pattern_ingredient_candidates(
+            "\n".join(["Calcium", "Magnesium", "200mg"])
+        )
+    }
+    assert "Calcium Magnesium" not in english
+
+    korean = {
+        candidate["display_name"]
+        for candidate in _extract_ocr_pattern_ingredient_candidates(
+            "\n".join(["아연", "셀레늄", "200mg"])
+        )
+    }
+    assert "아연 셀레늄" not in korean
+
+    stacked = {
+        candidate["display_name"]
+        for candidate in _extract_ocr_pattern_ingredient_candidates(
+            "\n".join(["셀레늄", "엽산", "비오틴", "55mcg", "400mcg", "30mcg"])
+        )
+    }
+    assert "셀레늄 엽산 비오틴" not in stacked
+    assert "셀레늄 엽산" not in stacked
+
+
+def test_ocr_pattern_fallback_does_not_fuse_names_across_amounts() -> None:
+    """A value line between two names blocks fusion and keeps both distinct."""
+    candidates = _extract_ocr_pattern_ingredient_candidates(
+        "\n".join(["Calcium", "500mg", "Zinc", "15mg"])
+    )
+
+    by_name = {candidate["display_name"]: candidate for candidate in candidates}
+    assert by_name["Calcium"]["amount"] == 500
+    assert by_name["Zinc"]["amount"] == 15
+    assert "Calcium Zinc" not in by_name
+
+
 def test_ocr_pattern_fallback_pairs_split_facts_table_cells() -> None:
     """Verify name/amount/%DV cells split by OCR still preserve visible values."""
     candidates = _extract_ocr_pattern_ingredient_candidates(

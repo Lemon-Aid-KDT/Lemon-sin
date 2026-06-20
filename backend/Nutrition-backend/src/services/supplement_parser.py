@@ -1464,6 +1464,127 @@ def _merge_declaration_candidates(
     return declaration_added
 
 
+# Name-fragment fusion bounds (port of the eval section-name-window recall
+# recovery). OCR sometimes splits a COMPOUND ingredient name across adjacent
+# lines (``Magnesium`` / ``Citrate``). To avoid ever merging two distinct
+# ingredients, fusion only appends a known salt/form continuation word
+# (``_SALT_FORM_CONTINUATION_WORDS``) onto a base name — never a second
+# standalone name. Bounds keep fused names short and the window small.
+_MIN_NAME_FUSION_FRAGMENTS = 2
+_MAX_NAME_FRAGMENT_CHARS = 14
+_MAX_NAME_FUSION_WINDOW = 4
+_MAX_FUSED_NAME_CHARS = 48
+
+# Salt / chelate / form words that trail a base ingredient name when OCR splits a
+# compound name across lines. A fragment is fused only if it is one of these, so a
+# fragment that is itself a plausible standalone ingredient (Calcium, 셀레늄,
+# Folate ...) is never treated as a continuation and two real rows never merge.
+_SALT_FORM_CONTINUATION_WORDS = frozenset(
+    # Curated word list kept compact; a list literal would explode to one word
+    # per line under the formatter, so SIM905 is suppressed on the line below.
+    "citrate oxide carbonate gluconate glycinate bisglycinate malate picolinate "  # noqa: SIM905
+    "chloride sulfate sulphate stearate aspartate lactate fumarate orotate "
+    "taurate ascorbate phosphate acetate hydrochloride hcl chelate monohydrate "
+    "hydroxide selenite selenate molybdate succinate pidolate".split()
+)
+
+
+def _looks_like_salt_continuation(fragment: str) -> bool:
+    """Return whether a fragment is a salt / form word continuing a base name.
+
+    Only such fragments are fused onto a preceding ingredient name, so two real
+    adjacent ingredients are never merged into one phantom row.
+
+    Args:
+        fragment: A cleaned, short OCR line.
+
+    Returns:
+        True when any latin token of the fragment is a known salt/form word.
+    """
+    return any(
+        token in _SALT_FORM_CONTINUATION_WORDS
+        for token in re.findall(r"[a-z]+", fragment.lower())
+    )
+
+
+def _line_carries_amount_signal(line: str) -> bool:
+    """Return whether a line carries any amount / number / unit token.
+
+    Used by name-fragment fusion to stop at value lines, so fusion never spans an
+    amount and can never invent one.
+
+    Args:
+        line: A single OCR line.
+
+    Returns:
+        True when the line holds an amount, a bare number, or a unit token.
+    """
+    return bool(
+        BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(line)
+        or BARE_INGREDIENT_NUMBER_PATTERN.fullmatch(line)
+        or INGREDIENT_UNIT_ONLY_PATTERN.fullmatch(line)
+        or INGREDIENT_AMOUNT_PATTERN.search(line)
+    )
+
+
+def _fuse_adjacent_name_fragment_lines(lines: list[str]) -> list[str]:
+    """Fuse a split compound ingredient name onto its base line.
+
+    Recovers OCR splits such as ``Magnesium`` / ``Citrate`` so downstream
+    name+amount pairing sees the complete name and no stray fragment line.
+    Conservative by design: an anchor must be a short name that is NOT itself a
+    salt/form word, and every appended fragment must be a known salt/form
+    continuation (``_looks_like_salt_continuation``) — so two distinct standalone
+    ingredients are never merged. It never fuses across a value line, so it can
+    neither invent nor move an amount.
+
+    Args:
+        lines: Bounded OCR lines.
+
+    Returns:
+        Lines with split compound names fused; all other lines unchanged.
+    """
+    fused: list[str] = []
+    index = 0
+    line_count = len(lines)
+    while index < line_count:
+        stripped = lines[index].strip()
+        if (
+            stripped
+            and len(stripped) <= _MAX_NAME_FRAGMENT_CHARS
+            and not _line_carries_amount_signal(stripped)
+            and _clean_split_line_ingredient_name(stripped)
+            # A salt/form word alone is a continuation, not a base ingredient name.
+            and not _looks_like_salt_continuation(stripped)
+        ):
+            parts = [stripped]
+            scan = index + 1
+            while scan < line_count and len(parts) < _MAX_NAME_FUSION_WINDOW:
+                candidate = lines[scan].strip()
+                if (
+                    not candidate
+                    or len(candidate) > _MAX_NAME_FRAGMENT_CHARS
+                    or _line_carries_amount_signal(candidate)
+                    or not _clean_split_line_ingredient_name(candidate)
+                    # Only a salt/form word continues a name; a standalone
+                    # ingredient (Calcium, 셀레늄, Folate ...) is never fused.
+                    or not _looks_like_salt_continuation(candidate)
+                ):
+                    break
+                parts.append(candidate)
+                scan += 1
+            if (
+                len(parts) >= _MIN_NAME_FUSION_FRAGMENTS
+                and len(" ".join(parts)) <= _MAX_FUSED_NAME_CHARS
+            ):
+                fused.append(" ".join(parts))
+                index = scan
+                continue
+        fused.append(lines[index])
+        index += 1
+    return fused
+
+
 def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, Any]]:
     """Extract review-required ingredients from explicit OCR amount patterns.
 
@@ -1475,7 +1596,7 @@ def _extract_ocr_pattern_ingredient_candidates(ocr_text: str) -> list[dict[str, 
     """
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, float, str]] = set()
-    lines = _ocr_lines(ocr_text)
+    lines = _fuse_adjacent_name_fragment_lines(_ocr_lines(ocr_text))
     for line in lines:
         for pattern in (INGREDIENT_TABLE_ROW_PATTERN, INGREDIENT_AMOUNT_PATTERN):
             for match in pattern.finditer(line):
@@ -1709,7 +1830,10 @@ def _try_append_cfu_magnitude_candidate(
     return False
 
 
-def _extract_split_line_ingredient_candidates(
+# A cohesive line-by-line state machine pairing name/amount/unit in both orders;
+# splitting it across helpers would thread mutable pairing state and hurt
+# readability, so the branch/statement caps are intentionally waived here.
+def _extract_split_line_ingredient_candidates(  # noqa: PLR0912, PLR0915
     lines: list[str],
     candidates: list[dict[str, Any]],
     seen: set[tuple[str, float, str]],
@@ -1728,16 +1852,24 @@ def _extract_split_line_ingredient_candidates(
     """
     previous_name: str | None = None
     pending_split_amount: tuple[str, str] | None = None
+    # ``pending_split_unit`` mirrors ``pending_split_amount`` for the reverse
+    # (unit-before-amount) line order found on vertical / column labels, where a
+    # bare unit precedes the number: ``name`` then ``mg`` then ``200``. Holds
+    # (name, unit) until the number arrives. Symmetric risk profile to
+    # ``pending_split_amount`` and reset at the same points.
+    pending_split_unit: tuple[str, str] | None = None
     for line in lines:
         if len(candidates) >= MAX_PATTERN_FALLBACK_INGREDIENTS:
             return
         if _try_append_cfu_magnitude_candidate(candidates, seen, line):
             previous_name = None
             pending_split_amount = None
+            pending_split_unit = None
             continue
         if _try_append_amount_first_candidate(candidates, seen, line):
             previous_name = None
             pending_split_amount = None
+            pending_split_unit = None
             continue
         amount_match = BARE_INGREDIENT_AMOUNT_PATTERN.fullmatch(line)
         if amount_match is not None:
@@ -1752,32 +1884,54 @@ def _extract_split_line_ingredient_candidates(
                 )
             previous_name = None
             pending_split_amount = None
+            pending_split_unit = None
             continue
         number_match = BARE_INGREDIENT_NUMBER_PATTERN.fullmatch(line)
-        if number_match is not None and previous_name is not None:
-            pending_split_amount = (previous_name, number_match.group("amount"))
-            previous_name = None
-            continue
+        if number_match is not None:
+            if previous_name is not None:
+                pending_split_amount = (previous_name, number_match.group("amount"))
+                previous_name = None
+                pending_split_unit = None
+                continue
+            if pending_split_unit is not None:
+                pending_name, pending_unit = pending_split_unit
+                _append_ocr_pattern_candidate(
+                    candidates,
+                    seen,
+                    name=pending_name,
+                    amount_text=number_match.group("amount"),
+                    unit_text=pending_unit,
+                    daily_value_text=None,
+                )
+                pending_split_unit = None
+                continue
         unit_match = INGREDIENT_UNIT_ONLY_PATTERN.fullmatch(line)
-        if unit_match is not None and pending_split_amount is not None:
-            pending_name, pending_amount = pending_split_amount
-            _append_ocr_pattern_candidate(
-                candidates,
-                seen,
-                name=pending_name,
-                amount_text=pending_amount,
-                unit_text=unit_match.group("unit"),
-                daily_value_text=unit_match.group("dv"),
-            )
-            pending_split_amount = None
-            continue
+        if unit_match is not None:
+            if pending_split_amount is not None:
+                pending_name, pending_amount = pending_split_amount
+                _append_ocr_pattern_candidate(
+                    candidates,
+                    seen,
+                    name=pending_name,
+                    amount_text=pending_amount,
+                    unit_text=unit_match.group("unit"),
+                    daily_value_text=unit_match.group("dv"),
+                )
+                pending_split_amount = None
+                continue
+            if previous_name is not None:
+                pending_split_unit = (previous_name, unit_match.group("unit"))
+                previous_name = None
+                continue
         if INGREDIENT_AMOUNT_PATTERN.search(line):
             previous_name = None
             pending_split_amount = None
+            pending_split_unit = None
             continue
         previous_name = _clean_split_line_ingredient_name(line) or None
         if previous_name is not None:
             pending_split_amount = None
+            pending_split_unit = None
 
 
 def _append_ocr_pattern_candidate(
