@@ -1345,6 +1345,7 @@ def _build_chat_payload(ocr_text: str, settings: Settings) -> dict[str, Any]:
         "stream": False,
         "think": False,
         "format": schema,
+        "keep_alive": settings.ollama_keep_alive_sec,
         "options": {"temperature": settings.ollama_temperature},
     }
 

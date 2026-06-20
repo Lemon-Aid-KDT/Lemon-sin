@@ -466,6 +466,10 @@ class Settings(BaseSettings):
     ollama_timeout_sec: int = Field(default=60, ge=1)
     ollama_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     ollama_vision_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    # Seconds to keep the gemma model resident between requests so an idle unload
+    # does not force a ~10s cold reload on the next analyze. -1 = keep loaded
+    # until evicted by another model (no idle unload).
+    ollama_keep_alive_sec: int = Field(default=-1)
     sglang_base_url: str = Field(default="http://127.0.0.1:30000/v1")
     sglang_model: str = Field(default="Qwen/Qwen2.5-0.5B-Instruct")
     sglang_api_key: SecretStr | None = Field(default=None)

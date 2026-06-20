@@ -464,6 +464,7 @@ async def _probe_ollama_vision_image_input(
         "stream": False,
         "think": False,
         "format": schema,
+        "keep_alive": settings.ollama_keep_alive_sec,
         "options": {"temperature": settings.ollama_vision_temperature},
     }
     response_data = await client.post_chat(payload)
@@ -545,6 +546,7 @@ def _build_vision_chat_payload(
         "stream": False,
         "think": False,
         "format": schema,
+        "keep_alive": settings.ollama_keep_alive_sec,
         "options": {"temperature": settings.ollama_vision_temperature},
     }
 
@@ -591,6 +593,7 @@ def _build_vision_verification_payload(
         "stream": False,
         "think": False,
         "format": schema,
+        "keep_alive": settings.ollama_keep_alive_sec,
         "options": {"temperature": settings.ollama_vision_temperature},
     }
 
@@ -641,6 +644,7 @@ def _build_vision_extraction_payload(
         "stream": False,
         "think": False,
         "format": schema,
+        "keep_alive": settings.ollama_keep_alive_sec,
         "options": {"temperature": settings.ollama_vision_temperature},
     }
 
