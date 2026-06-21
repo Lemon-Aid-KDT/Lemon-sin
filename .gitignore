@@ -316,6 +316,10 @@ data/food_images/raw/
 data/food_images/interim/
 data/food_images/processed/
 data/food_images/quarantine/
+# Dated raw food-image drops (test photos; keep out of the repo — use a data store).
+data/food_images/20*/
+# Simulator screenshots / screen recordings (binary capture artifacts, not source).
+data/Simulator Screenshot/
 *.pt
 runs/food_yolo/**
 !runs/food_yolo/
