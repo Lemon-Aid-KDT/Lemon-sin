@@ -124,6 +124,9 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.supplement_image_max_bytes == 5 * 1024 * 1024
     assert settings.supplement_image_max_pixels == 12_000_000
     assert settings.supplement_preview_ttl_minutes == 30
+    # Raw-OCR-text retention opt-in defaults OFF to keep the EXTERNAL_OCR_PROCESSING
+    # consent promise ("raw OCR text are not stored") accurate.
+    assert settings.store_raw_ocr_text is False
     assert settings.regulated_document_preview_ttl_minutes == 30
     assert settings.sensitive_document_original_image_retention_seconds == 0
     assert not settings.feature_hall_lite_weight_prediction

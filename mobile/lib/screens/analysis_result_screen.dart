@@ -2434,6 +2434,17 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       );
     }
 
+    // Full OCR source text first (present only when the backend opt-in
+    // store_raw_ocr_text is enabled), so the modal can show the raw source.
+    final String? rawOcrText = _nonEmpty(preview.rawOcrText);
+    if (rawOcrText != null) {
+      addRow(section: 'OCR 원문', source: 'RAW', text: rawOcrText);
+    }
+    // Count the RAW row separately so it does not short-circuit the structured
+    // fallback below — parsed product/ingredient rows must still render when the
+    // label produced no evidence spans or sections.
+    final int baseRowCount = rows.length;
+
     for (final SupplementPreviewEvidenceSpan span in preview.evidenceSpans) {
       final String? text = _nonEmpty(span.textExcerpt);
       if (text == null) continue;
@@ -2454,7 +2465,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         confidence: _confidenceLabel(section.confidence),
       );
     }
-    if (rows.isNotEmpty) return rows;
+    if (rows.length > baseRowCount) return rows;
 
     final SupplementParsedProduct product = preview.parsedProduct;
     final String? productName = _nonEmpty(product.productName);

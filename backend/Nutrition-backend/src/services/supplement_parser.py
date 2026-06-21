@@ -419,6 +419,7 @@ async def parse_supplement_analysis_ocr_text(
         ocr_provider=normalized_provider,
         ocr_layout=ocr_layout,
         settings=settings,
+        ocr_text=normalized_text,
     )
     # KR-market display: translate any English precaution/intake/functional-claim text
     # to Korean (the source label may be English). Only with the real local LLM parser
@@ -2491,6 +2492,7 @@ def _build_parsed_snapshot(
     ocr_provider: str,
     ocr_layout: LabelLayout | None,
     settings: Settings,
+    ocr_text: str = "",
 ) -> dict[str, Any]:
     """Build the sanitized JSON snapshot persisted for user confirmation.
 
@@ -2501,9 +2503,13 @@ def _build_parsed_snapshot(
         ocr_provider: OCR-like provider that produced the parser input.
         ocr_layout: Optional deterministic layout parsed from OCR coordinates.
         settings: Runtime settings used for model and algorithm metadata.
+        ocr_text: Normalized OCR text; retained at a top-level ``raw_ocr_text`` key
+            only when ``settings.store_raw_ocr_text`` is enabled (operator opt-in).
 
     Returns:
-        Sanitized parsed snapshot with no raw OCR text or model response.
+        Sanitized parsed snapshot. Includes a top-level ``raw_ocr_text`` only when the
+        store_raw_ocr_text opt-in is on; ``parser_metadata.raw_ocr_text_stored`` stays
+        False so the V2/V3 snapshot invariant and legacy upcast guard hold.
     """
     low_confidence_fields = _build_low_confidence_fields(
         parse_result.low_confidence_fields,
@@ -2557,6 +2563,12 @@ def _build_parsed_snapshot(
     intake = previous_snapshot.get("intake")
     if isinstance(intake, dict):
         snapshot["intake"] = intake
+    # Operator opt-in (store_raw_ocr_text, default off): retain the normalized OCR
+    # text at a top-level key so the "OCR 텍스트 전체" view can show the source. Kept
+    # OUT of parser_metadata so the V2/V3 snapshot privacy invariant
+    # (raw_ocr_text_stored Literal[False]) and the legacy upcast guard stay intact.
+    if settings.store_raw_ocr_text and ocr_text.strip():
+        snapshot["raw_ocr_text"] = ocr_text
     return snapshot
 
 

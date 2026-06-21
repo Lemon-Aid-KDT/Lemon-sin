@@ -501,6 +501,8 @@ class SupplementAnalysisPreview(BaseModel):
         source_type: Conservative source classification for the uploaded image.
         identity_conflict: Optional review-only barcode/label identity conflict.
         pipeline_metadata: Non-sensitive OCR/YOLO/parser metadata for smoke tests.
+        raw_ocr_text: Full normalized OCR source text, present only when the operator
+            opt-in ``store_raw_ocr_text`` is enabled (owner-scoped); otherwise None.
         low_confidence_fields: Field names that require extra user attention.
         warnings: Safe warnings for the preview screen.
         algorithm_version: Parsing contract version.
@@ -537,6 +539,9 @@ class SupplementAnalysisPreview(BaseModel):
     pipeline_metadata: SupplementImagePipelineMetadata = Field(
         default_factory=lambda: SupplementImagePipelineMetadata(intake_completed=True)
     )
+    # Present only when the operator opt-in ``store_raw_ocr_text`` is enabled; the
+    # normalized full OCR source text, surfaced for the "OCR 텍스트 전체" view.
+    raw_ocr_text: str | None = Field(default=None, max_length=50_000)
     low_confidence_fields: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     algorithm_version: str

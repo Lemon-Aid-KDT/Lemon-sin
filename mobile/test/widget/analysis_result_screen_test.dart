@@ -106,6 +106,77 @@ void main() {
     expect(find.textContaining('OCR Auto'), findsNothing);
   });
 
+  testWidgets('shows the raw OCR source row in the OCR text modal', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository repository = _ReviewRepository();
+    final AppController controller = AppController(
+      repository: _ReviewRepository(
+        preview: repository._preview(
+          rawOcrText: '비타민 D 1000 IU\n칼슘 200 mg',
+        ),
+      ),
+    );
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('supplement-candidate-summary')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('OCR 텍스트 전체'), findsOneWidget);
+    expect(find.text('OCR 원문'), findsOneWidget);
+    expect(find.textContaining('칼슘 200 mg'), findsWidgets);
+    await tester.tap(find.text('닫기'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keeps parsed rows alongside the RAW OCR row when no spans exist', (
+    WidgetTester tester,
+  ) async {
+    final _ReviewRepository repository = _ReviewRepository();
+    final AppController controller = AppController(
+      repository: _ReviewRepository(
+        preview: repository._preview(
+          rawOcrText: '비타민 D 1000 IU',
+          includeSupplementFactsSection: false,
+          includeIntakeSection: false,
+          includePrecautionsSection: false,
+        ),
+      ),
+    );
+    await controller.analyzeImage(
+      '/tmp/supplement-label.jpg',
+      ocrProvider: 'paddleocr',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisResultScreen(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('supplement-candidate-summary')),
+    );
+    await tester.pumpAndSettle();
+
+    // Both the RAW dump and the parsed ingredient fallback must render — the RAW
+    // row must not short-circuit the structured rows.
+    expect(find.text('OCR 텍스트 전체'), findsOneWidget);
+    expect(find.text('OCR 원문'), findsOneWidget);
+    expect(find.text('OCR_LLM_PREVIEW'), findsWidgets);
+    await tester.tap(find.text('닫기'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('opens ingredient detail when an ingredient row is tapped', (
     WidgetTester tester,
   ) async {
@@ -1556,6 +1627,7 @@ class _ReviewRepository implements LemonAidRepository {
     bool includePrecautionsSection = true,
     String imageRole = 'supplement_facts',
     List<String> missingRequiredSections = const <String>[],
+    String? rawOcrText,
   }) {
     final List<SupplementIngredientCandidate> ingredients =
         includeIngredientCandidates
@@ -1724,6 +1796,7 @@ class _ReviewRepository implements LemonAidRepository {
         rawImageStored: false,
         rawOcrTextStored: false,
       ),
+      rawOcrText: rawOcrText,
       lowConfidenceFields: const <String>[],
       warnings: const <String>[],
       algorithmVersion: 'test',

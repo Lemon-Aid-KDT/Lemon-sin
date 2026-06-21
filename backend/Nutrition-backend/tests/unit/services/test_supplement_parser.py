@@ -15,6 +15,7 @@ from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.label_layout import LabelLayout
 from src.models.schemas.supplement import SupplementAnalysisStatus
 from src.models.schemas.supplement_parser import SupplementStructuredParseResult
+from src.models.schemas.supplement_snapshot import upcast_legacy_parsed_snapshot
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_intake import supplement_analysis_run_to_preview
 from src.services.supplement_parser import (
@@ -22,6 +23,7 @@ from src.services.supplement_parser import (
     SupplementAnalysisNotFoundError,
     SupplementParserConflictError,
     SupplementParserInputError,
+    _build_parsed_snapshot,
     _extract_ocr_pattern_ingredient_candidates,
     hash_ocr_text,
     normalize_ocr_text,
@@ -264,7 +266,13 @@ def _settings() -> Settings:
     Returns:
         Settings object.
     """
-    return Settings(privacy_hash_secret=SecretStr("test-privacy-secret"))
+    # _env_file=None keeps these test settings hermetic — without it pydantic loads the
+    # repo-root .env (which may set STORE_RAW_OCR_TEXT=true), making default-OFF
+    # assertions flip with ambient operator config. Mirrors test_config.py.
+    return Settings(
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        _env_file=None,
+    )
 
 
 def _user() -> AuthenticatedUser:
@@ -1449,3 +1457,61 @@ def test_hash_ocr_text_depends_on_privacy_secret() -> None:
     assert first != second
     assert len(first) == 64
     assert len(second) == 64
+
+
+def test_build_parsed_snapshot_omits_raw_ocr_text_when_flag_off() -> None:
+    """Default off: the normalized OCR text is never persisted in the snapshot."""
+    snapshot = _build_parsed_snapshot(
+        parse_result=_parse_result(),
+        previous_snapshot={},
+        ocr_confidence=None,
+        ocr_provider="paddleocr",
+        ocr_layout=None,
+        settings=_settings(),
+        ocr_text="비타민 D 1000\n비타민 D 25μg",
+    )
+
+    assert "raw_ocr_text" not in snapshot
+    assert snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
+
+
+def test_build_parsed_snapshot_stores_raw_ocr_text_when_flag_on() -> None:
+    """Opt-in on: the OCR text is kept at a top-level key while parser_metadata's
+    privacy flag stays False so the snapshot invariants and upcast guard hold."""
+    ocr_text = "비타민 D 1000\n비타민 D 25μg 100%"
+    snapshot = _build_parsed_snapshot(
+        parse_result=_parse_result(),
+        previous_snapshot={},
+        ocr_confidence=None,
+        ocr_provider="paddleocr",
+        ocr_layout=None,
+        settings=Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            store_raw_ocr_text=True,
+        ),
+        ocr_text=ocr_text,
+    )
+
+    assert snapshot["raw_ocr_text"] == ocr_text
+    assert snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
+    # The legacy upcast guard only trips on parser_metadata.raw_ocr_text_stored, so a
+    # snapshot carrying the sibling top-level key must still upcast without raising.
+    upcast_legacy_parsed_snapshot(snapshot)
+
+
+def test_build_parsed_snapshot_skips_blank_raw_ocr_text_when_flag_on() -> None:
+    """Opt-in on but blank OCR text: nothing is stored (no empty key)."""
+    snapshot = _build_parsed_snapshot(
+        parse_result=_parse_result(),
+        previous_snapshot={},
+        ocr_confidence=None,
+        ocr_provider="paddleocr",
+        ocr_layout=None,
+        settings=Settings(
+            privacy_hash_secret=SecretStr("test-privacy-secret"),
+            store_raw_ocr_text=True,
+        ),
+        ocr_text="   ",
+    )
+
+    assert "raw_ocr_text" not in snapshot

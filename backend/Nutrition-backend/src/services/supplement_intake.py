@@ -275,6 +275,7 @@ def supplement_analysis_run_to_preview(record: SupplementAnalysisRun) -> Supplem
         source_type=_optional_string(parsed_snapshot.get("source_type")) or "uploaded_image",
         low_confidence_fields=list(_string_items(parsed_snapshot.get("low_confidence_fields"))),
         pipeline_metadata=_build_pipeline_metadata(record, parsed_snapshot),
+        raw_ocr_text=_optional_string(parsed_snapshot.get("raw_ocr_text")),
         warnings=list(_string_items(record.warnings)),
         algorithm_version=record.algorithm_version,
         source_manifest_version=record.source_manifest_version,
@@ -323,6 +324,11 @@ def _build_pipeline_metadata(
     if isinstance(raw_metadata, dict):
         metadata.update(raw_metadata)
         metadata["ocr_provider"] = metadata.get("ocr_provider") or record.ocr_provider
+    # Derive AFTER merging persisted metadata: the image-analysis pipeline-metadata
+    # builder hardcodes raw_ocr_text_stored=False, so a persisted value would otherwise
+    # clobber the truth. Deriving here is the authoritative signal of whether the gated
+    # raw OCR text was actually retained in this owner-scoped snapshot.
+    metadata["raw_ocr_text_stored"] = bool(parsed_snapshot.get("raw_ocr_text"))
     return SupplementImagePipelineMetadata.model_validate(metadata)
 
 

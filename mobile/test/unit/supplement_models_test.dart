@@ -236,6 +236,35 @@ void main() {
     expect(request.toJson()['evidence_refs'], <String>['span-001', 'span-002']);
   });
 
+  test('parses raw OCR text from the top-level field when present', () {
+    final SupplementAnalysisPreview preview =
+        SupplementAnalysisPreview.fromJson(<String, dynamic>{
+          'analysis_id': '00000000-0000-0000-0000-000000000009',
+          'status': 'requires_confirmation',
+          'parsed_product': <String, dynamic>{},
+          'ingredient_candidates': <Map<String, dynamic>>[],
+          'algorithm_version': 'test',
+          'expires_at': '2026-05-15T00:00:00Z',
+          'raw_ocr_text': '비타민 D 1000\n비타민 D 25ug',
+        });
+
+    expect(preview.rawOcrText, '비타민 D 1000\n비타민 D 25ug');
+  });
+
+  test('leaves raw OCR text null when the field is absent', () {
+    final SupplementAnalysisPreview preview =
+        SupplementAnalysisPreview.fromJson(<String, dynamic>{
+          'analysis_id': '00000000-0000-0000-0000-000000000009',
+          'status': 'requires_confirmation',
+          'parsed_product': <String, dynamic>{},
+          'ingredient_candidates': <Map<String, dynamic>>[],
+          'algorithm_version': 'test',
+          'expires_at': '2026-05-15T00:00:00Z',
+        });
+
+    expect(preview.rawOcrText, isNull);
+  });
+
   test('parses supplement analysis session response', () {
     final SupplementAnalysisSession session =
         SupplementAnalysisSession.fromJson(<String, dynamic>{

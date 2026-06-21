@@ -641,6 +641,7 @@ class SupplementAnalysisPreview {
     required this.sourceType,
     required this.identityConflict,
     this.pipelineMetadata = SupplementImagePipelineMetadata.intakeOnly,
+    this.rawOcrText,
     required this.lowConfidenceFields,
     required this.warnings,
     required this.algorithmVersion,
@@ -717,6 +718,10 @@ class SupplementAnalysisPreview {
 
   /// Non-sensitive OCR, YOLO, and parser pipeline metadata.
   final SupplementImagePipelineMetadata pipelineMetadata;
+
+  /// Full OCR source text, present only when the backend opt-in
+  /// `store_raw_ocr_text` is enabled; otherwise null.
+  final String? rawOcrText;
 
   /// Field names that need extra attention.
   final List<String> lowConfidenceFields;
@@ -832,6 +837,7 @@ class SupplementAnalysisPreview {
           : SupplementImagePipelineMetadata.fromJson(
               readObject(json, 'pipeline_metadata'),
             ),
+      rawOcrText: readOptionalString(json, 'raw_ocr_text'),
       lowConfidenceFields: readOptionalStringList(
         json,
         'low_confidence_fields',

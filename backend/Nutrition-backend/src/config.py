@@ -581,6 +581,12 @@ class Settings(BaseSettings):
     ollama_parse_total_budget_sec: float = Field(default=95.0, ge=10.0, le=115.0)
     supplement_preview_ttl_minutes: int = Field(default=30, ge=1, le=1440)
     supplement_ocr_text_max_chars: int = Field(default=12_000, ge=100, le=50_000)
+    # Operator opt-in: when True, the normalized full OCR text is retained at a
+    # top-level `raw_ocr_text` key in the owner-scoped supplement analysis snapshot so
+    # the "OCR 텍스트 전체" view can show the source text. Default False keeps the
+    # EXTERNAL_OCR_PROCESSING consent promise ("raw OCR text are not stored") accurate;
+    # enabling in production requires updating that consent text + bumping its version.
+    store_raw_ocr_text: bool = Field(default=False)
     supplement_parser_algorithm_version: str = Field(
         default="supplement-ollama-parser-v1.0.0",
         min_length=1,

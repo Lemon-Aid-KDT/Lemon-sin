@@ -454,3 +454,32 @@ def test_supplement_analysis_run_to_preview_suggests_no_category_without_match()
     preview = supplement_analysis_run_to_preview(record)
 
     assert preview.suggested_category_keys == []
+
+
+def test_supplement_analysis_run_to_preview_surfaces_stored_raw_ocr_text() -> None:
+    """When the gated snapshot carries raw_ocr_text, the preview exposes it and the
+    diagnostic pipeline flag reflects the actual retention."""
+    record = _existing_run("d" * 64)
+    record.parsed_snapshot = {
+        "parsed_product": {},
+        "ingredient_candidates": [],
+        "raw_ocr_text": "비타민 D 1000\n비타민 D 25μg",
+        # A persisted pipeline_metadata that hardcodes the flag False must NOT clobber
+        # the authoritative derive (regression guard for the metadata.update overwrite).
+        "pipeline_metadata": {"raw_ocr_text_stored": False, "ocr_status": "success"},
+    }
+
+    preview = supplement_analysis_run_to_preview(record)
+
+    assert preview.raw_ocr_text == "비타민 D 1000\n비타민 D 25μg"
+    assert preview.pipeline_metadata.raw_ocr_text_stored is True
+
+
+def test_supplement_analysis_run_to_preview_omits_absent_raw_ocr_text() -> None:
+    """Default off (no snapshot key): the preview field is None and the flag False."""
+    record = _existing_run("e" * 64)
+
+    preview = supplement_analysis_run_to_preview(record)
+
+    assert preview.raw_ocr_text is None
+    assert preview.pipeline_metadata.raw_ocr_text_stored is False
