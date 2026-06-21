@@ -126,6 +126,27 @@ class MealConfirmationRequest(BaseModel):
     user_confirmed: Literal[True] = True
 
 
+class MealRecordUpdateRequest(BaseModel):
+    """Request to edit a confirmed meal record.
+
+    Attributes:
+        food_items: Replacement user-confirmed food rows. When omitted, food
+            rows are kept unchanged.
+        meal_type: Optional edited meal bucket.
+        eaten_at: Optional edited meal timestamp.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    food_items: list[MealFoodItemInput] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=40,
+    )
+    meal_type: MealType | None = None
+    eaten_at: datetime | None = None
+
+
 class MealFoodItemResponse(BaseModel):
     """Persisted current-user food item response.
 

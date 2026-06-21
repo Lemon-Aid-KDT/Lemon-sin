@@ -15,6 +15,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -37,6 +38,7 @@ from src.models.schemas.meal import (
     MealImageAnalysisPreview,
     MealRecordListResponse,
     MealRecordResponse,
+    MealRecordUpdateRequest,
     MealType,
 )
 from src.models.schemas.privacy import ConsentType
@@ -52,11 +54,13 @@ from src.services.meal_image_analysis import (
     MealPreviewStateError,
     confirm_meal_record_from_preview,
     create_meal_image_analysis_preview,
+    delete_user_meal_record,
     get_user_meal_record,
     list_user_meal_records,
     meal_confirmation_to_response,
     meal_image_analysis_to_preview,
     read_and_validate_meal_image,
+    update_user_meal_record,
 )
 from src.services.privacy import (
     ConsentRequiredError,
@@ -384,6 +388,139 @@ async def list_meal_records(
         },
     )
     return response
+
+
+@router.patch(
+    "/{meal_id}",
+    response_model=MealRecordResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        **MEAL_AUTH_RESPONSES,
+        404: {"description": "Confirmed meal was not found for the current user."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_WRITE,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def update_confirmed_meal(
+    meal_id: UUID,
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_write)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    request: Annotated[
+        MealRecordUpdateRequest,
+        Body(description="User-edited food rows or meal bucket metadata."),
+    ],
+) -> MealRecordResponse:
+    """Edit a current-user confirmed meal record.
+
+    Args:
+        meal_id: Confirmed meal identifier.
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+        request: Replacement confirmed fields.
+
+    Returns:
+        Updated meal record without raw image data.
+
+    Raises:
+        HTTPException: If the meal is absent for the current user.
+    """
+    try:
+        response = await update_user_meal_record(
+            session=session,
+            user=current_user,
+            meal_id=meal_id,
+            request=request,
+        )
+    except MealPreviewNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "meal_not_found", "message": str(exc)},
+        ) from exc
+
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="meal_updated",
+        resource_type="meal_record",
+        resource_id=str(meal_id),
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={
+            "food_items_replaced": request.food_items is not None,
+            "meal_type_updated": request.meal_type is not None,
+            "eaten_at_updated": request.eaten_at is not None,
+        },
+    )
+    return response
+
+
+@router.delete(
+    "/{meal_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        **MEAL_AUTH_RESPONSES,
+        404: {"description": "Confirmed meal was not found for the current user."},
+    },
+    openapi_extra=route_contract(
+        scopes=(ApiScope.MEAL_WRITE,),
+        consents=(),
+        contract_status=P1_2_INTAKE_READY_STATUS,
+    ),
+)
+async def delete_confirmed_meal(
+    meal_id: UUID,
+    http_request: Request,
+    current_user: Annotated[AuthenticatedUser, Depends(require_meal_write)],
+    session: Annotated[AsyncSession, Depends(get_rls_context_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    """Soft-delete a current-user confirmed meal record.
+
+    Args:
+        meal_id: Confirmed meal identifier.
+        http_request: Current FastAPI request.
+        current_user: Authenticated owner.
+        session: Request-scoped async database session.
+        settings: Application settings.
+
+    Returns:
+        Empty 204 response.
+
+    Raises:
+        HTTPException: If the meal is absent for the current user.
+    """
+    try:
+        await delete_user_meal_record(
+            session=session,
+            user=current_user,
+            meal_id=meal_id,
+        )
+    except MealPreviewNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "meal_not_found", "message": str(exc)},
+        ) from exc
+
+    await record_sensitive_audit_event(
+        session,
+        current_user,
+        action="meal_deleted",
+        resource_type="meal_record",
+        resource_id=str(meal_id),
+        outcome="success",
+        request=http_request,
+        settings=settings,
+        event_metadata={},
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

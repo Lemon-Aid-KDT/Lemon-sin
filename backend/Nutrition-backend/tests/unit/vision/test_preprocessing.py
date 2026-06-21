@@ -11,6 +11,7 @@ from src.vision.preprocessing import (
     VisionPreprocessingError,
     clamp_bounding_box,
     crop_image_to_bounding_box,
+    expand_bounding_box,
     select_best_label_region,
 )
 
@@ -103,6 +104,41 @@ def test_crop_image_to_bounding_box_returns_cropped_image() -> None:
 
     with Image.open(BytesIO(cropped)) as image:
         assert image.size == (4, 3)
+
+
+def test_crop_image_to_bounding_box_applies_bounded_padding() -> None:
+    """Verify OCR ROI padding adds context while staying inside the source image."""
+    cropped = crop_image_to_bounding_box(
+        _png_bytes(),
+        BoundingBox(x=2, y=1, width=4, height=3, confidence=0.9),
+        padding_ratio=0.25,
+        min_padding_px=1,
+        max_padding_px=2,
+    )
+
+    with Image.open(BytesIO(cropped)) as image:
+        assert image.size == (6, 5)
+
+
+def test_expand_bounding_box_clamps_padding_to_image_bounds() -> None:
+    """Verify padded detector boxes are clipped instead of losing OCR edge text."""
+    expanded = expand_bounding_box(
+        BoundingBox(x=1, y=1, width=4, height=3, confidence=0.9, label="ingredient_amounts"),
+        image_width=10,
+        image_height=8,
+        padding_ratio=0.5,
+        min_padding_px=2,
+        max_padding_px=4,
+    )
+
+    assert expanded == BoundingBox(
+        x=0,
+        y=0,
+        width=7,
+        height=6,
+        confidence=0.9,
+        label="ingredient_amounts",
+    )
 
 
 def test_crop_image_to_bounding_box_rejects_out_of_bounds_region() -> None:

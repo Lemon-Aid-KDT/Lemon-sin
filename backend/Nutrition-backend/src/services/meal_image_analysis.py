@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
@@ -37,6 +37,7 @@ from src.models.schemas.meal import (
     MealImageAnalysisPreview,
     MealRecordListResponse,
     MealRecordResponse,
+    MealRecordUpdateRequest,
     MealType,
 )
 from src.models.schemas.taxonomy import FoodCatalogItemReference
@@ -702,6 +703,113 @@ async def get_user_meal_record(
         food_items,
         catalog_item_refs=catalog_refs,
     )
+
+
+async def update_user_meal_record(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    meal_id: UUID,
+    request: MealRecordUpdateRequest,
+) -> MealRecordResponse:
+    """Edit one confirmed current-user meal record.
+
+    Args:
+        session: Request-scoped database session.
+        user: Authenticated owner.
+        meal_id: Confirmed meal record identifier.
+        request: Replacement food rows and optional meal metadata edits.
+
+    Returns:
+        Updated current-user meal record response.
+
+    Raises:
+        MealPreviewNotFoundError: If the meal is absent, soft-deleted, or not confirmed.
+    """
+    meal_record = await session.scalar(
+        select(MealRecord).where(
+            MealRecord.id == meal_id,
+            MealRecord.owner_subject == build_owner_subject(user),
+            MealRecord.deleted_at.is_(None),
+            MealRecord.status == MealAnalysisStatus.CONFIRMED.value,
+        )
+    )
+    if meal_record is None:
+        raise MealPreviewNotFoundError("Confirmed meal record was not found.")
+
+    replacement_items: list[MealFoodItem] | None = None
+    catalog_item_refs: dict[UUID, FoodCatalogItemReference] | None = None
+    if request.food_items is not None:
+        catalog_item_refs = await _validate_food_catalog_item_inputs(
+            session,
+            request.food_items,
+        )
+        replacement_items = [
+            _meal_food_item_from_input(meal_record.id, item, sort_order=index)
+            for index, item in enumerate(request.food_items)
+        ]
+
+    async with persist_scope(session):
+        if request.meal_type is not None:
+            meal_record.meal_type = request.meal_type.value
+        if request.eaten_at is not None:
+            meal_record.eaten_at = _normalize_eaten_at(request.eaten_at)
+        if replacement_items is not None and request.food_items is not None:
+            await session.execute(
+                delete(MealFoodItem).where(MealFoodItem.meal_id == meal_record.id)
+            )
+            meal_record.nutrition_summary = _confirmed_nutrition_summary(
+                request.food_items,
+            )
+            meal_record.confidence = _mean_confidence(request.food_items)
+            for item in replacement_items:
+                session.add(item)
+
+    await session.refresh(meal_record)
+    if replacement_items is None:
+        food_items_by_meal = await _load_food_items_for_meals(session, [meal_record.id])
+        food_items = food_items_by_meal.get(meal_record.id, [])
+        catalog_item_refs = await _load_catalog_refs_for_food_items(session, food_items)
+    else:
+        food_items = replacement_items
+
+    return meal_record_to_response(
+        meal_record,
+        food_items,
+        catalog_item_refs=catalog_item_refs,
+    )
+
+
+async def delete_user_meal_record(
+    *,
+    session: AsyncSession,
+    user: AuthenticatedUser,
+    meal_id: UUID,
+) -> None:
+    """Soft-delete one confirmed current-user meal record.
+
+    Args:
+        session: Request-scoped database session.
+        user: Authenticated owner.
+        meal_id: Confirmed meal record identifier.
+
+    Raises:
+        MealPreviewNotFoundError: If the meal is absent, already deleted, or unconfirmed.
+    """
+    meal_record = await session.scalar(
+        select(MealRecord).where(
+            MealRecord.id == meal_id,
+            MealRecord.owner_subject == build_owner_subject(user),
+            MealRecord.deleted_at.is_(None),
+            MealRecord.status == MealAnalysisStatus.CONFIRMED.value,
+        )
+    )
+    if meal_record is None:
+        raise MealPreviewNotFoundError("Confirmed meal record was not found.")
+
+    async with persist_scope(session):
+        meal_record.status = "deleted"
+        meal_record.deleted_at = datetime.now(UTC)
 
 
 def meal_confirmation_to_response(
