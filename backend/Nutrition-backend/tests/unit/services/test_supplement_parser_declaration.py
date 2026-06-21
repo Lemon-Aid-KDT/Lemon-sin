@@ -110,6 +110,35 @@ class TestExtractIngredientDeclarationCandidates:
         assert inositol["unit"] is None
         assert inositol["daily_value_percent"] == 88.8889
 
+    def test_extracts_wrapped_names_after_declaration_heading(self) -> None:
+        """OCR often splits the declaration heading and names across lines."""
+        candidates = _extract_ingredient_declaration_candidates(
+            "원재료명:\n비타민 C\n구연산\n젤라틴\n섭취 방법\n1일 1회"
+        )
+        names = {str(c["display_name"]) for c in candidates}
+
+        assert "비타민 C" in names
+        assert "구연산" in names
+        assert "젤라틴" not in names
+        assert "섭취 방법" not in names
+        for candidate in candidates:
+            assert candidate["amount"] is None
+            assert candidate["unit"] is None
+            assert candidate["source"] == INGREDIENT_DECLARATION_SOURCE
+
+    def test_extracts_wrapped_declared_percent_before_next_section(self) -> None:
+        """A wrapped declaration percent is retained, but the next section is not."""
+        candidates = _extract_ingredient_declaration_candidates(
+            "원재료명 및 함량:\n이노시톨 88.8889%\n구연산\n주의사항\n임산부 상담"
+        )
+        names = {str(c["display_name"]) for c in candidates}
+        inositol = next(c for c in candidates if c["display_name"] == "이노시톨")
+
+        assert names == {"이노시톨", "구연산"}
+        assert inositol["amount"] is None
+        assert inositol["unit"] is None
+        assert inositol["daily_value_percent"] == 88.8889
+
     def test_requires_declaration_header(self) -> None:
         # Marketing copy / facts rows without a 원재료명 header yield no
         # declaration candidates (the amount-pattern path handles facts rows).

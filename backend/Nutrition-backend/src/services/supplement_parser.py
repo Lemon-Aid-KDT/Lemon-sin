@@ -261,6 +261,16 @@ INGREDIENT_DECLARATION_TRAILING_AMOUNT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAX_DECLARATION_INGREDIENTS = 40
+MAX_DECLARATION_CONTINUATION_LINES = 8
+DECLARATION_CONTINUATION_STOP_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"nutrition\s*facts|supplement\s*facts|amount\s*per\s*serving|serving\s*size|"
+    r"suggested\s+use|directions?|warnings?|cautions?|consult|"
+    r"영양\s*정보|영양\s*성분|기능\s*정보|섭취\s*방법|복용\s*방법|주의\s*사항|"
+    r"주의|경고|보관|제조원|판매원|유통\s*기한"
+    r")\b",
+    re.IGNORECASE,
+)
 # Inactive excipients / capsule-coating materials that the LLM sometimes lists as
 # ingredients. Matched by exact normalized name only (never substring) so genuine
 # active nutrients are never dropped.
@@ -2076,11 +2086,7 @@ def _extract_ingredient_declaration_candidates(ocr_text: str) -> list[dict[str, 
     """
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for line in _ocr_lines(ocr_text):
-        header = INGREDIENT_DECLARATION_HEADER_PATTERN.match(line)
-        if header is None:
-            continue
-        declaration_body = line[header.end() :]
+    for declaration_body in _declaration_bodies_from_ocr_lines(_ocr_lines(ocr_text)):
         for name, percent in _split_ingredient_declaration(declaration_body):
             cleaned = _clean_declaration_ingredient_name(name)
             if not cleaned:
@@ -2116,6 +2122,91 @@ def _extract_ingredient_declaration_candidates(ocr_text: str) -> list[dict[str, 
             if len(candidates) >= MAX_DECLARATION_INGREDIENTS:
                 return candidates
     return candidates
+
+
+def _declaration_bodies_from_ocr_lines(lines: list[str]) -> list[str]:
+    """Return declaration bodies after 원재료명/원료명/성분명 headings.
+
+    OCR frequently emits the declaration heading and the ingredient names on
+    separate lines. The previous one-line parser missed those names even though
+    they were visible in OCR. This helper keeps the safety boundary intact: it
+    starts only from an explicit declaration heading and stops at visible section
+    headings such as 섭취 방법, 주의사항, or Supplement Facts.
+
+    Args:
+        lines: Bounded OCR lines.
+
+    Returns:
+        Declaration body strings. Multi-line bodies are joined with commas so
+        each OCR line remains an independent candidate token.
+    """
+    bodies: list[str] = []
+    for index, line in enumerate(lines):
+        header = INGREDIENT_DECLARATION_HEADER_PATTERN.match(line)
+        if header is None:
+            continue
+        parts: list[str] = []
+        inline_body = line[header.end() :].strip()
+        if inline_body:
+            parts.append(inline_body)
+        parts.extend(_collect_declaration_continuation_lines(lines, index + 1))
+        if parts:
+            bodies.append(", ".join(parts))
+    return bodies
+
+
+def _collect_declaration_continuation_lines(lines: list[str], start_index: int) -> list[str]:
+    """Collect visible ingredient-declaration continuation lines.
+
+    Args:
+        lines: Bounded OCR lines.
+        start_index: First line after a declaration heading.
+
+    Returns:
+        Safe continuation lines, capped to avoid swallowing unrelated label text.
+    """
+    continuation: list[str] = []
+    for line in lines[start_index : start_index + MAX_DECLARATION_CONTINUATION_LINES]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if INGREDIENT_DECLARATION_HEADER_PATTERN.match(stripped):
+            break
+        if _is_declaration_continuation_stop_line(stripped):
+            break
+        continuation.append(stripped)
+    return continuation
+
+
+def _is_declaration_continuation_stop_line(line: str) -> bool:
+    """Return whether a line marks the end of an ingredient declaration block."""
+    if DECLARATION_CONTINUATION_STOP_PATTERN.search(line):
+        return True
+    normalized = _ingredient_name_key(line)
+    if not normalized:
+        return True
+    stop_tokens = (
+        "nutrition facts",
+        "supplement facts",
+        "amount per serving",
+        "serving size",
+        "suggested use",
+        "directions",
+        "warning",
+        "caution",
+        "consult",
+        "영양 정보",
+        "영양정보",
+        "영양 성분",
+        "영양성분",
+        "섭취 방법",
+        "섭취방법",
+        "복용 방법",
+        "복용방법",
+        "주의 사항",
+        "주의사항",
+    )
+    return any(token in normalized for token in stop_tokens)
 
 
 def _split_ingredient_declaration(text: str) -> list[tuple[str, float | None]]:
