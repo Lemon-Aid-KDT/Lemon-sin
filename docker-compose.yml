@@ -89,6 +89,13 @@ services:
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-gemma4:e4b}
       OLLAMA_TIMEOUT_SEC: ${OLLAMA_TIMEOUT_SEC:-60}
       ALLOW_EXTERNAL_LLM: "false"
+      # Chatbot RAG: ground chatbot answers in the LLM-WIKI corpus, already ingested
+      # into pgvector (wiki_chunk_embeddings, bge-m3 1024-dim; 12,480 chunks). Vector
+      # mode is REQUIRED here — the wiki Markdown files are not mounted in the
+      # container, so a lexical file scan finds nothing; only the DB embeddings exist.
+      # The query is embedded via Ollama bge-m3 (pulled), matching the indexed model.
+      ENABLE_WIKI_VECTOR_RAG: ${ENABLE_WIKI_VECTOR_RAG:-true}
+      LLM_WIKI_RETRIEVAL_MODE: ${LLM_WIKI_RETRIEVAL_MODE:-vector}
       ENABLE_SUPPLEMENT_LABEL_VISION_EXTRACTION: ${ENABLE_SUPPLEMENT_LABEL_VISION_EXTRACTION:-false}
       # Async supplement analyze: POST returns 202 + in-process worker + mobile
       # polling, so multi-image latency no longer blows the mobile upload timeout.
