@@ -34,6 +34,7 @@ class LocalPrefs {
   static const String _medicationRemindersKey = 'medication_reminders';
   static const String _notificationSettingsKey = 'notification_settings';
   static const String _firstLaunchKey = 'app.first_launch';
+  static const String _profileCareModeKey = 'profile.care_mode';
   static const String _profilePurposesKey = 'profile.purposes';
   static const String _profileConcernsKey = 'profile.concerns';
   static const String _onboardingSeenKey = 'app.onboarding_seen';
@@ -183,6 +184,25 @@ class LocalPrefs {
   // 백엔드 공백: profile-snapshots 에 목적/관심사 필드가 없어 로컬에만 저장한다
   // (가이드 01 2단계, 날조 금지). 선택값은 안정적인 옵션 id 목록으로 보관한다.
 
+  /// 저장된 관리 모드 id(`wellness`/`chronic`)를 읽는다.
+  ///
+  /// 과거 버전에는 이 키가 없었으므로 null 이면 화면에서 목적/관심사 선택값으로
+  /// 보수적으로 추론한다.
+  String? profileCareMode() {
+    final String? value = _prefs.getString(_profileCareModeKey);
+    if (value == null || value.trim().isEmpty) return null;
+    return value.trim();
+  }
+
+  /// 관리 모드 id를 저장한다. 빈 값이면 키를 제거한다.
+  Future<void> setProfileCareMode(String? mode) {
+    final String trimmed = mode?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return _prefs.remove(_profileCareModeKey);
+    }
+    return _prefs.setString(_profileCareModeKey, trimmed);
+  }
+
   /// 저장된 가입 목적 id 목록 (없으면 빈 목록).
   List<String> profilePurposes() => _readOrderedList(_profilePurposesKey);
 
@@ -223,9 +243,7 @@ class LocalPrefs {
     if (raw == null || raw.trim().isEmpty) return <Map<String, dynamic>>[];
     final Object? decoded = jsonDecode(raw);
     if (decoded is! List<Object?>) return <Map<String, dynamic>>[];
-    return decoded
-        .whereType<Map<String, dynamic>>()
-        .toList(growable: false);
+    return decoded.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
   /// 복약 알림 JSON 객체 목록을 저장한다.

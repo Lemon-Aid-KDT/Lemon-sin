@@ -230,6 +230,19 @@ class _FakeRepository implements LemonAidRepository {
   }
 
   @override
+  Future<MealRecordResponse> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteMealRecord(String mealId) async {
+    throw UnimplementedError();
+  }
+
+  @override
   void close() {}
 
   @override

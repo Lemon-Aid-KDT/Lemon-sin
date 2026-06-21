@@ -30,6 +30,7 @@ void main() {
     await pump(tester, prefs);
 
     expect(find.text('가입 목적'), findsOneWidget);
+    expect(find.text('관리 모드'), findsOneWidget);
     expect(find.text('건강 고민'), findsOneWidget);
     expect(find.text('영양제 섭취 관리'), findsOneWidget);
     expect(find.text('피로감'), findsOneWidget);
@@ -43,13 +44,15 @@ void main() {
 
     expect(prefs.profilePurposes(), <String>['supplement']);
     expect(prefs.profileConcerns(), <String>['fatigue']);
-    expect(find.text('관심사를 저장했어요'), findsOneWidget);
+    expect(prefs.profileCareMode(), 'wellness');
+    expect(find.text('관심 목적을 저장했어요'), findsOneWidget);
   });
 
   testWidgets('prefills existing selections so a no-op save keeps them', (
     WidgetTester tester,
   ) async {
     final LocalPrefs prefs = await freshPrefs();
+    await prefs.setProfileCareMode('chronic');
     await prefs.setProfilePurposes(<String>['diet']);
     await prefs.setProfileConcerns(<String>['bp']);
 
@@ -59,5 +62,26 @@ void main() {
 
     expect(prefs.profilePurposes(), <String>['diet']);
     expect(prefs.profileConcerns(), <String>['bp']);
+    expect(prefs.profileCareMode(), 'chronic');
+  });
+
+  testWidgets('chronic care mode stores chronic purpose and condition', (
+    WidgetTester tester,
+  ) async {
+    final LocalPrefs prefs = await freshPrefs();
+    await pump(tester, prefs);
+
+    await tester.tap(find.text('만성질환·복약 동반 관리'));
+    await tester.pump();
+    expect(find.text('만성질환·복약 관련 관리 항목'), findsOneWidget);
+
+    await tester.tap(find.text('당뇨'));
+    await tester.pump();
+    await tester.tap(find.text('저장하기'));
+    await tester.pump();
+
+    expect(prefs.profileCareMode(), 'chronic');
+    expect(prefs.profilePurposes(), contains('chronic'));
+    expect(prefs.profileConcerns(), contains('diabetes'));
   });
 }

@@ -23,6 +23,7 @@ import 'screens/camera_screen.dart' as source_camera;
 import 'screens/daily_records_screen.dart' as source_records;
 import 'screens/chat_screen.dart' as source_chat;
 import 'screens/dashboard_screen.dart' as source_dashboard;
+import 'screens/meal_management_screen.dart' as source_meal_management;
 import 'screens/score_screen.dart' as source_score;
 import 'screens/settings_screen.dart' as source_settings;
 import 'screens/settings/health_profile_screen.dart';
@@ -32,6 +33,8 @@ import 'screens/settings/policies_screen.dart';
 import 'screens/settings/profile_edit_screen.dart';
 import 'screens/settings/withdraw_screen.dart';
 import 'screens/splash_screen.dart' as source_splash;
+import 'screens/supplement_management_screen.dart'
+    as source_supplement_management;
 import 'shared/theme/brand_theme_controller.dart';
 import 'shared/theme/lemon_design_tokens.dart';
 import 'utils/brand_palette.dart';
@@ -243,6 +246,40 @@ final Provider<GoRouter> _routerProvider = Provider<GoRouter>((Ref ref) {
                             ) {
                               return source_analysis.AnalysisResultScreen(
                                 mode: mode,
+                                controller: ref.watch(appControllerProvider),
+                              );
+                            },
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'supplements',
+                    builder: (BuildContext context, GoRouterState state) {
+                      return Consumer(
+                        builder:
+                            (
+                              BuildContext context,
+                              WidgetRef ref,
+                              Widget? child,
+                            ) {
+                              return source_supplement_management.SupplementManagementScreen(
+                                controller: ref.watch(appControllerProvider),
+                              );
+                            },
+                      );
+                    },
+                  ),
+                  GoRoute(
+                    path: 'meals',
+                    builder: (BuildContext context, GoRouterState state) {
+                      return Consumer(
+                        builder:
+                            (
+                              BuildContext context,
+                              WidgetRef ref,
+                              Widget? child,
+                            ) {
+                              return source_meal_management.MealManagementScreen(
                                 controller: ref.watch(appControllerProvider),
                               );
                             },

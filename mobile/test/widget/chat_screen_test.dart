@@ -20,7 +20,7 @@ const List<String> _bannedTerms = <String>['진단', '처방', '치료', '효능
 /// Fake chat repository returning a queue of canned responses.
 class _FakeChatRepository extends ChatRepository {
   _FakeChatRepository(this._responses)
-      : super(apiClient: ApiClient(baseUrl: 'https://example.test/api/v1'));
+    : super(apiClient: ApiClient(baseUrl: 'https://example.test/api/v1'));
 
   final List<ChatbotResponse> _responses;
   int _index = 0;
@@ -177,10 +177,7 @@ void main() {
       expect(find.text('좋음'), findsOneWidget);
       expect(find.text('잘하고 있어요'), findsOneWidget);
       expect(find.text('이런 점을 살펴보면 좋아요'), findsOneWidget);
-      expect(
-        find.text('건강 참고용이며 의료 행위를 대신하지 않아요.'),
-        findsOneWidget,
-      );
+      expect(find.text('건강 참고용이며 의료 행위를 대신하지 않아요.'), findsOneWidget);
       // Checklist candidate is shown (display-only).
       expect(find.text('국물·소스 섭취 확인하기'), findsOneWidget);
       expect(find.text('오늘 실천에 추가해볼까요?'), findsOneWidget);
@@ -210,10 +207,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('분석 결과 정리'), findsOneWidget);
-      expect(
-        find.text('기록을 조금 더 채우면 분석해드릴게요.'),
-        findsOneWidget,
-      );
+      expect(find.text('기록을 조금 더 채우면 분석해드릴게요.'), findsOneWidget);
       expect(find.textContaining('식사 기록'), findsOneWidget);
       // No fabricated score: the grade chips must be absent.
       expect(find.text('좋음'), findsNothing);
@@ -224,32 +218,31 @@ void main() {
     },
   );
 
-  testWidgets(
-    'does not render the analysis card for an ordinary chat answer',
-    (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: ChatScreen(
-              repository: _FakeChatRepository(<ChatbotResponse>[
-                _plainAnswerResponse(),
-              ]),
-            ),
+  testWidgets('does not render the analysis card for an ordinary chat answer', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ChatScreen(
+            repository: _FakeChatRepository(<ChatbotResponse>[
+              _plainAnswerResponse(),
+            ]),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), '비타민 D 알려줘');
-      await tester.testTextInput.receiveAction(TextInputAction.send);
-      await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '비타민 D 알려줘');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
 
-      expect(find.text('비타민 D는 햇빛으로도 만들어져요.'), findsOneWidget);
-      // Snapshot rides along but the card stays hidden on non-approval turns.
-      expect(find.text('분석 결과 정리'), findsNothing);
-      expect(find.text('80'), findsNothing);
-    },
-  );
+    expect(find.text('비타민 D는 햇빛으로도 만들어져요.'), findsOneWidget);
+    // Snapshot rides along but the card stays hidden on non-approval turns.
+    expect(find.text('분석 결과 정리'), findsNothing);
+    expect(find.text('80'), findsNothing);
+  });
 
   testWidgets('standing compliance disclaimer is always visible above input', (
     WidgetTester tester,
@@ -272,8 +265,7 @@ void main() {
 
 // 컴플라이언스 표준 면책은 금칙어를 부정형으로 포함하므로(상시 면책 라인),
 // 정확히 이 문장일 때만 스캔에서 제외한다 — 부분 일치 허용 금지.
-const String _allowedStandingDisclaimer =
-    '레몬봇 안내는 일반 참고용이에요. 진단을 대신하지 않아요.';
+const String _allowedStandingDisclaimer = '레몬봇 안내는 일반 참고용이에요. 진단을 대신하지 않아요.';
 
 void _expectNoBannedTermsOrPercent(WidgetTester tester) {
   final Iterable<Text> texts = tester.widgetList<Text>(find.byType(Text));
@@ -524,6 +516,19 @@ class _ChatDraftRepository implements LemonAidRepository {
 
   @override
   Future<void> deleteAnalysisResult(String resultId) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MealRecordResponse> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteMealRecord(String mealId) async {
     throw UnimplementedError();
   }
 

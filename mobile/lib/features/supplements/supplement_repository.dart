@@ -159,6 +159,19 @@ abstract class LemonAidRepository {
     MealConfirmationRequest request,
   );
 
+  /// Updates a confirmed meal record.
+  Future<MealRecordResponse> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) {
+    throw UnimplementedError();
+  }
+
+  /// Soft-deletes a confirmed meal record.
+  Future<void> deleteMealRecord(String mealId) {
+    throw UnimplementedError();
+  }
+
   /// Requests a comprehensive diet analysis (C-hybrid result surface).
   ///
   /// Args:
@@ -588,6 +601,43 @@ class BackendLemonAidRepository implements LemonAidRepository {
       expectedStatusCodes: const <int>{200},
     );
     return MealRecordResponse.fromJson(json);
+  }
+
+  @override
+  Future<MealRecordResponse> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    final String normalizedMealId = mealId.trim();
+    if (normalizedMealId.isEmpty) {
+      throw ArgumentError.value(mealId, 'mealId', 'Meal id is required');
+    }
+    if (!_kUuidPattern.hasMatch(normalizedMealId)) {
+      throw ArgumentError.value(mealId, 'mealId', 'Meal id must be a UUID');
+    }
+    final String encodedMealId = Uri.encodeComponent(normalizedMealId);
+    final Map<String, dynamic> body =
+        Map<String, dynamic>.from(request.toJson())
+          ..remove('analysis_id')
+          ..remove('user_confirmed');
+    final Map<String, dynamic> json = await _apiClient.patchJson(
+      '/meals/$encodedMealId',
+      body: body,
+      expectedStatusCodes: const <int>{200},
+    );
+    return MealRecordResponse.fromJson(json);
+  }
+
+  @override
+  Future<void> deleteMealRecord(String mealId) async {
+    final String normalizedMealId = mealId.trim();
+    if (normalizedMealId.isEmpty) {
+      throw ArgumentError.value(mealId, 'mealId', 'Meal id is required');
+    }
+    if (!_kUuidPattern.hasMatch(normalizedMealId)) {
+      throw ArgumentError.value(mealId, 'mealId', 'Meal id must be a UUID');
+    }
+    await _apiClient.delete('/meals/${Uri.encodeComponent(normalizedMealId)}');
   }
 
   @override

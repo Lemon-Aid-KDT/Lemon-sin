@@ -121,9 +121,9 @@ class HomeMealsResult {
   /// GET /meals 응답을 파싱한다.
   factory HomeMealsResult.fromJson(Map<String, dynamic> json) {
     return HomeMealsResult(
-      results: _objectList(json['results'])
-          .map(HomeMeal.fromJson)
-          .toList(growable: false),
+      results: _objectList(
+        json['results'],
+      ).map(HomeMeal.fromJson).toList(growable: false),
       limit: _optionalIntLenient(json['limit']) ?? 0,
       offset: _optionalIntLenient(json['offset']) ?? 0,
     );
@@ -171,9 +171,9 @@ class HomeMeal {
 
   /// /meals 응답의 단일 항목을 파싱한다.
   factory HomeMeal.fromJson(Map<String, dynamic> json) {
-    final List<HomeFoodItem> items = _objectList(json['food_items'])
-        .map(HomeFoodItem.fromJson)
-        .toList(growable: false);
+    final List<HomeFoodItem> items = _objectList(
+      json['food_items'],
+    ).map(HomeFoodItem.fromJson).toList(growable: false);
     final Map<String, dynamic>? summary = _optionalMap(
       json['nutrition_summary'],
     );
@@ -205,6 +205,7 @@ class HomeFoodItem {
     required this.carbG,
     required this.proteinG,
     required this.fatG,
+    this.sodiumMg = 0,
   });
 
   /// 표시명.
@@ -222,6 +223,9 @@ class HomeFoodItem {
   /// 지방(g).
   final double fatG;
 
+  /// 나트륨(mg).
+  final double sodiumMg;
+
   /// 음식 항목을 파싱한다.
   factory HomeFoodItem.fromJson(Map<String, dynamic> json) {
     return HomeFoodItem(
@@ -230,6 +234,7 @@ class HomeFoodItem {
       carbG: _optionalDoubleLenient(json['carb_g']) ?? 0,
       proteinG: _optionalDoubleLenient(json['protein_g']) ?? 0,
       fatG: _optionalDoubleLenient(json['fat_g']) ?? 0,
+      sodiumMg: _optionalDoubleLenient(json['sodium_mg']) ?? 0,
     );
   }
 }
@@ -264,7 +269,7 @@ class HomeMealNutrition {
     fatG: 0,
   );
 
-  /// nutrition_summary 객체를 파싱한다.
+  /// nutrition_summary 객체를 파싱한다 (필드명은 흔한 변형을 모두 시도).
   ///
   /// 백엔드 confirmed meal 요약은 `{status, items_count, totals:{kcal,carb_g,...}}`
   /// 구조라 합계가 `totals` 하위에 들어있다. `totals`를 우선 사용하고, 평탄
@@ -352,9 +357,9 @@ class HomeSupplementsResult {
   /// GET /supplements 응답을 파싱한다.
   factory HomeSupplementsResult.fromJson(Map<String, dynamic> json) {
     return HomeSupplementsResult(
-      results: _objectList(json['results'])
-          .map(HomeSupplement.fromJson)
-          .toList(growable: false),
+      results: _objectList(
+        json['results'],
+      ).map(HomeSupplement.fromJson).toList(growable: false),
       limit: _optionalIntLenient(json['limit']) ?? 0,
       offset: _optionalIntLenient(json['offset']) ?? 0,
     );
@@ -529,9 +534,9 @@ class HomeMedicationsResult {
   /// GET /me/medications 응답을 파싱한다.
   factory HomeMedicationsResult.fromJson(Map<String, dynamic> json) {
     return HomeMedicationsResult(
-      items: _objectList(json['items'])
-          .map(HomeMedication.fromJson)
-          .toList(growable: false),
+      items: _objectList(
+        json['items'],
+      ).map(HomeMedication.fromJson).toList(growable: false),
     );
   }
 }
@@ -567,8 +572,7 @@ class HomeMedication {
   final bool isActive;
 
   /// medication_class 코드의 한국어 표시명. 미지정/미지 코드는 null.
-  String? get medicationClassLabel =>
-      kMedicationClassLabels[medicationClass];
+  String? get medicationClassLabel => kMedicationClassLabels[medicationClass];
 
   /// condition_tags 코드를 한국어 표시명으로 매핑 (미지 코드는 코드 원문 유지).
   List<String> get conditionTagLabels => conditionTags

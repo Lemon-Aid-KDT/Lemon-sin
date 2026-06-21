@@ -149,7 +149,11 @@ Future<void> _pump(
 }
 
 // 날짜 칩 → 데이트 피커에서 일자를 고른다 (기본 MaterialLocalizations = 영문 OK).
-Future<void> _pickPastDay(WidgetTester tester, String chipLabel, String day) async {
+Future<void> _pickPastDay(
+  WidgetTester tester,
+  String chipLabel,
+  String day,
+) async {
   await tester.tap(find.text(chipLabel));
   await tester.pumpAndSettle();
   await tester.tap(find.text(day));
@@ -327,23 +331,16 @@ void main() {
       tester,
       controller: controller,
       coaching: _coachingRepository(
-        handler: (http.Request request) async => _jsonResponse(
-          <String, dynamic>{
-            ..._coachingResponse(),
-            'safety_warnings': <String>[
-              '영양제와 약을 함께 드시는 경우 전문가와 상담해 주세요.',
-            ],
-          },
-          200,
-        ),
+        handler: (http.Request request) async =>
+            _jsonResponse(<String, dynamic>{
+              ..._coachingResponse(),
+              'safety_warnings': <String>['영양제와 약을 함께 드시는 경우 전문가와 상담해 주세요.'],
+            }, 200),
       ),
     );
 
     // 서버 문구 그대로 — 프론트 가공 금지 (가이드 06 §4.2-4).
-    expect(
-      find.text('영양제와 약을 함께 드시는 경우 전문가와 상담해 주세요.'),
-      findsOneWidget,
-    );
+    expect(find.text('영양제와 약을 함께 드시는 경우 전문가와 상담해 주세요.'), findsOneWidget);
   });
 
   testWidgets('checked practice restores from storage and persists on toggle', (
@@ -361,9 +358,7 @@ void main() {
       now: () => DateTime(2026, 6, 28, 10),
     );
 
-    final Text restored = tester.widget<Text>(
-      find.text('저녁에 단백질 반찬 추가하기'),
-    );
+    final Text restored = tester.widget<Text>(find.text('저녁에 단백질 반찬 추가하기'));
     expect(restored.style?.decoration, TextDecoration.lineThrough);
 
     // 토글 해제가 저장소에 반영된다.
@@ -428,10 +423,7 @@ void main() {
 
     await _pickPastDay(tester, '6월 28일 (일)', '25');
 
-    expect(
-      find.text('지난 날짜의 점수는 준비 중이에요. 실천 기록만 보여드려요.'),
-      findsOneWidget,
-    );
+    expect(find.text('지난 날짜의 점수는 준비 중이에요. 실천 기록만 보여드려요.'), findsOneWidget);
 
     // 과거 보기 화면 전체 — 금칙어·신뢰도 % 가드 (가이드 06 ⑦ 신규 문구 2종 포함).
     _expectNoForbiddenCopy(tester);
@@ -705,6 +697,19 @@ class _ScoreRepository implements LemonAidRepository {
 
   @override
   Future<void> deleteAnalysisResult(String resultId) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MealRecordResponse> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteMealRecord(String mealId) async {
     throw UnimplementedError();
   }
 

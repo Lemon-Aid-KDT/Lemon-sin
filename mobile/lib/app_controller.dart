@@ -479,15 +479,8 @@ class AppController extends ChangeNotifier {
     _homeMedicationsFailed = false;
     notifyListeners();
 
-    final DateTime now = DateTime.now();
-    final DateTime weekStart = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(const Duration(days: 6));
-
     await Future.wait<void>(<Future<void>>[
-      _loadMealsBlock(weekStart),
+      _refreshMealsBlockForHome(),
       _loadSupplementsBlock(),
       _loadImpactBlock(),
       _loadMedicationsBlock(),
@@ -495,6 +488,19 @@ class AppController extends ChangeNotifier {
 
     _homeDataLoading = false;
     notifyListeners();
+  }
+
+  DateTime _homeMealsFrom(DateTime now) {
+    return DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 6));
+  }
+
+  Future<void> _refreshMealsBlockForHome() async {
+    _homeMealsFailed = false;
+    await _loadMealsBlock(_homeMealsFrom(DateTime.now()));
   }
 
   Future<void> _loadMealsBlock(DateTime from) async {
@@ -687,8 +693,9 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
-      _supplementImagePaths =
-          images.map((SupplementImageUpload image) => image.path).toList();
+      _supplementImagePaths = images
+          .map((SupplementImageUpload image) => image.path)
+          .toList();
       _mealImagePath = null;
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
@@ -760,7 +767,13 @@ class AppController extends ChangeNotifier {
       return;
     }
     final int serial = _beginAnalysisJob('meal');
-    unawaited(_finishMealImageAnalysis(serial, imagePath));
+    unawaited(
+      _finishMealImageAnalysis(
+        serial,
+        imagePath,
+        mealType: _mealTypeForClock(DateTime.now()),
+      ),
+    );
   }
 
   /// Marks the current completion notification as read.
@@ -794,9 +807,12 @@ class AppController extends ChangeNotifier {
     String mealType = 'unknown',
   }) async {
     await _run(() async {
+      final String resolvedMealType = mealType == 'unknown'
+          ? _mealTypeForClock(DateTime.now())
+          : mealType;
       _mealAnalysisPreview = await _repository.analyzeMealImage(
         imagePath,
-        mealType: mealType,
+        mealType: resolvedMealType,
       );
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;
@@ -899,7 +915,31 @@ class AppController extends ChangeNotifier {
       _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
+      await _refreshMealsBlockForHome();
       _notice = 'Meal record saved and dashboard refreshed.';
+    });
+  }
+
+  /// Updates a saved meal record and refreshes home meal state.
+  Future<void> updateMealRecord(
+    String mealId,
+    MealConfirmationRequest request,
+  ) async {
+    await _run(() async {
+      _lastRegisteredMeal = await _repository.updateMealRecord(mealId, request);
+      _dashboardSummary = await _repository.fetchDashboardSummary();
+      await _refreshMealsBlockForHome();
+      _notice = '식단 기록이 수정됐어요.';
+    });
+  }
+
+  /// Deletes a saved meal record and refreshes home meal state.
+  Future<void> deleteMealRecord(String mealId) async {
+    await _run(() async {
+      await _repository.deleteMealRecord(mealId);
+      _dashboardSummary = await _repository.fetchDashboardSummary();
+      await _refreshMealsBlockForHome();
+      _notice = '식단 기록이 삭제됐어요.';
     });
   }
 
@@ -960,6 +1000,8 @@ class AppController extends ChangeNotifier {
       _comprehensiveDietAnalysis = null;
       _pendingChatExplanationDraft = null;
       _dashboardSummary = await _repository.fetchDashboardSummary();
+      _homeSupplementsFailed = false;
+      await _loadSupplementsBlock();
       _notice = 'Supplement registered and dashboard refreshed.';
       if (refreshImpact || explainWithLocalLlm) {
         await _refreshPostRegistrationInsights(
@@ -1203,8 +1245,9 @@ class AppController extends ChangeNotifier {
       _multiImageAnalysisPreview = selection.multiPreview;
       _analysisPreview = selection.preview;
       _mealAnalysisPreview = null;
-      _supplementImagePaths =
-          images.map((SupplementImageUpload image) => image.path).toList();
+      _supplementImagePaths = images
+          .map((SupplementImageUpload image) => image.path)
+          .toList();
       _mealImagePath = null;
       _lastRegisteredSupplement = null;
       _lastRegisteredSupplementRequest = null;
@@ -1226,9 +1269,24 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _finishMealImageAnalysis(int serial, String imagePath) async {
+  String _mealTypeForClock(DateTime value) {
+    final int hour = value.toLocal().hour;
+    if (hour >= 5 && hour < 11) return 'breakfast';
+    if (hour >= 11 && hour < 16) return 'lunch';
+    if (hour >= 16 && hour < 21) return 'dinner';
+    return 'snack';
+  }
+
+  Future<void> _finishMealImageAnalysis(
+    int serial,
+    String imagePath, {
+    required String mealType,
+  }) async {
     try {
-      _mealAnalysisPreview = await _repository.analyzeMealImage(imagePath);
+      _mealAnalysisPreview = await _repository.analyzeMealImage(
+        imagePath,
+        mealType: mealType,
+      );
       if (!_isCurrentAnalysisJob(serial)) return;
       _analysisPreview = null;
       _multiImageAnalysisPreview = null;

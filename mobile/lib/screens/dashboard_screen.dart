@@ -233,6 +233,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     context.go('/shell/camera?mode=$mode');
   }
 
+  void _openSupplementManager() {
+    context.go('/shell/home/supplements');
+  }
+
+  void _openMealManager() {
+    context.go('/shell/home/meals');
+  }
+
   void _toggleSupplement(String id) {
     setState(() {
       if (_checkedSupplementIds.contains(id)) {
@@ -409,7 +417,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             _MealManagementCard(
               meals: dayMeals,
               failed: _controller.homeMealsFailed,
-              onRecord: () => _openCamera('meal'),
+              onManage: _openMealManager,
+              onCameraAdd: () => _openCamera('meal'),
             ),
             _MedicationCard(
               medications: _controller.homeMedications.activeItems,
@@ -424,7 +433,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               checkedIds: _checkedSupplementIds,
               failed: _controller.homeSupplementsFailed,
               onToggle: _toggleSupplement,
-              onAdd: () => _openCamera('supplement'),
+              onAdd: _openSupplementManager,
               onDelete: _confirmDeleteSupplement,
             ),
             const _MedicalDisclaimer(),
@@ -1487,11 +1496,13 @@ class _RiskRow extends StatelessWidget {
 class _MealManagementCard extends StatelessWidget {
   final List<HomeMeal> meals;
   final bool failed;
-  final VoidCallback onRecord;
+  final VoidCallback onManage;
+  final VoidCallback onCameraAdd;
   const _MealManagementCard({
     required this.meals,
     required this.failed,
-    required this.onRecord,
+    required this.onManage,
+    required this.onCameraAdd,
   });
 
   // Figma 268:24 — 아침/점심/저녁은 개별 카드, 간식은 하단 '+ 간식 추가' 버튼.
@@ -1502,11 +1513,10 @@ class _MealManagementCard extends StatelessWidget {
         MapEntry('dinner', '저녁'),
       ];
 
-  HomeMeal? _firstFor(String mealType) {
-    for (final HomeMeal meal in meals) {
-      if (meal.mealType == mealType) return meal;
-    }
-    return null;
+  List<HomeMeal> _recordsFor(String mealType) {
+    return meals
+        .where((HomeMeal meal) => meal.mealType == mealType)
+        .toList(growable: false);
   }
 
   @override
@@ -1519,28 +1529,28 @@ class _MealManagementCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('식단 관리', style: AppText.subtitle),
-            _AddCircleButton(onTap: onRecord),
+            _AddCircleButton(onTap: onManage),
           ],
         ),
         const SizedBox(height: AppSpace.md),
         if (failed)
           StatusStateView(
             variant: StatusStateVariant.syncFailed,
-            onPrimary: onRecord,
+            onPrimary: onCameraAdd,
           )
         else ...[
           for (int i = 0; i < _mainSlots.length; i++) ...[
             _ItemCard(
-              onTap: onRecord,
+              onTap: onManage,
               child: _MealSlotRow(
                 slotKey: _mainSlots[i].key,
                 label: _mainSlots[i].value,
-                meal: _firstFor(_mainSlots[i].key),
+                meals: _recordsFor(_mainSlots[i].key),
               ),
             ),
             const SizedBox(height: AppSpace.sm + 2),
           ],
-          _SectionAddButton(label: '간식 추가', onTap: onRecord),
+          _SectionAddButton(label: '간식 추가', onTap: onManage),
         ],
       ],
     );
@@ -1550,11 +1560,11 @@ class _MealManagementCard extends StatelessWidget {
 class _MealSlotRow extends StatelessWidget {
   final String slotKey;
   final String label;
-  final HomeMeal? meal;
+  final List<HomeMeal> meals;
   const _MealSlotRow({
     required this.slotKey,
     required this.label,
-    required this.meal,
+    required this.meals,
   });
 
   // 끼니별 리딩 아이콘 + 색 (Figma — 아침/점심 웜, 저녁 쿨/라벤더).
@@ -1572,7 +1582,26 @@ class _MealSlotRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final HomeMeal? recorded = meal;
+    final bool hasRecords = meals.isNotEmpty;
+    final int itemCount = meals.fold<int>(
+      0,
+      (int count, HomeMeal meal) =>
+          count + (meal.foodItems.isEmpty ? 1 : meal.foodItems.length),
+    );
+    final double kcal = meals.fold<double>(
+      0,
+      (double total, HomeMeal meal) => total + meal.nutrition.kcal,
+    );
+    final List<String> names = <String>[
+      for (final HomeMeal meal in meals)
+        for (final HomeFoodItem item in meal.foodItems)
+          if (item.displayName.trim().isNotEmpty) item.displayName.trim(),
+    ];
+    final String summary = names.isEmpty
+        ? '기록됨'
+        : names.length <= 2
+        ? names.join(', ')
+        : '${names.take(2).join(', ')} 외 ${names.length - 2}개';
     final lead = _lead;
     return Row(
       children: [
@@ -1590,7 +1619,7 @@ class _MealSlotRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              recorded == null
+              !hasRecords
                   ? Text(
                       '아직 기록 전',
                       style: AppText.caption.copyWith(
@@ -1598,7 +1627,7 @@ class _MealSlotRow extends StatelessWidget {
                       ),
                     )
                   : Text(
-                      recorded.primaryName ?? '기록됨',
+                      '$itemCount개 기록 · $summary',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppText.caption.copyWith(
@@ -1609,7 +1638,7 @@ class _MealSlotRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpace.sm),
-        if (recorded == null)
+        if (!hasRecords)
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1628,7 +1657,7 @@ class _MealSlotRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '${recorded.nutrition.kcal.round()} kcal',
+                '${kcal.round()} kcal',
                 style: AppText.caption.copyWith(
                   color: AppColor.inkSecondary,
                   fontWeight: FontWeight.w700,

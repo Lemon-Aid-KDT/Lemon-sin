@@ -9,6 +9,7 @@ import '../app_providers.dart';
 import '../core/storage/local_prefs.dart';
 import '../features/auth/token_session.dart';
 import '../features/consent/consent_models.dart';
+import '../features/profile/profile_interests_screen.dart';
 import '../features/profile/profile_models.dart';
 import '../shared/theme/brand_theme_controller.dart';
 import '../utils/brand_palette.dart';
@@ -44,6 +45,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String? _displayName;
   String? _profileSummary;
+  String? _interestSummary;
   int? _daysWithApp;
 
   @override
@@ -70,8 +72,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _displayName = name;
       _profileSummary = snapshot?.summaryLine();
+      _interestSummary = prefs == null ? null : profileInterestsSummary(prefs);
       _daysWithApp = days;
     });
+  }
+
+  Future<void> _openProfileInterests(BuildContext context) async {
+    await context.push('/shell/settings/profile-interests');
+    if (!mounted) return;
+    await _loadProfileHeader();
   }
 
   /// 앱 버전 — 설정 푸터와 서비스 정보 시트가 공유한다.
@@ -224,12 +233,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               context.go('/shell/settings/health-profile'),
                         ),
                         const SettingsDivider(),
-                        const SettingsRow(
+                        SettingsRow(
                           icon: Icons.flag_rounded,
                           iconBg: Color(0xFFE8EDFF),
                           iconColor: Color(0xFF4D7BFF),
                           title: '관심 목적',
-                          subtitle: '당뇨 · 혈압 · 체중 관리',
+                          subtitle: _interestSummary ?? '관리 목적을 설정해주세요',
+                          onTap: () => _openProfileInterests(context),
                         ),
                         const SettingsDivider(),
                         SettingsRow(

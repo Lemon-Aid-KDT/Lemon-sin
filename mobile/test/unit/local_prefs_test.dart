@@ -17,10 +17,7 @@ void main() {
 
       // Re-create from the same mock store to prove persistence, not memory.
       final LocalPrefs reopened = await LocalPrefs.create();
-      expect(
-        reopened.supplementCheckedIds(day),
-        <String>{'sup-1', 'sup-2'},
-      );
+      expect(reopened.supplementCheckedIds(day), <String>{'sup-1', 'sup-2'});
     });
 
     test('round-trips medication checked ids for a date', () async {
@@ -122,6 +119,23 @@ void main() {
     });
   });
 
+  group('LocalPrefs profile care mode', () {
+    test('saves and clears profile care mode', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final LocalPrefs prefs = await LocalPrefs.create();
+
+      expect(prefs.profileCareMode(), isNull);
+
+      await prefs.setProfileCareMode('chronic');
+      final LocalPrefs reopened = await LocalPrefs.create();
+      expect(reopened.profileCareMode(), 'chronic');
+
+      await reopened.setProfileCareMode('');
+      final LocalPrefs cleared = await LocalPrefs.create();
+      expect(cleared.profileCareMode(), isNull);
+    });
+  });
+
   group('LocalPrefs first-launch (가입 경과일)', () {
     test('seeds first-launch date once and keeps it stable', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -155,17 +169,19 @@ void main() {
       expect(prefs.daysWithApp(DateTime(2026, 6, 5)), 1);
     });
 
-    test('inclusive count is timezone-stable across a DST-crossing span',
-        () async {
-      // 2/1 → 5/1 은 89일 차이(포함 90일)다. 봄철 DST 구간을 지나는 이 구간을
-      // 로컬 자정끼리 빼면 inDays 가 한 칸 적게 잘려 89가 나오지만, UTC 정규화
-      // 덕에 어느 지역/CI 에서도 90으로 고정된다(회귀 가드).
-      SharedPreferences.setMockInitialValues(<String, Object>{});
-      final LocalPrefs prefs = await LocalPrefs.create(
-        now: DateTime(2026, 2, 1),
-      );
-      expect(prefs.daysWithApp(DateTime(2026, 5, 1)), 90);
-    });
+    test(
+      'inclusive count is timezone-stable across a DST-crossing span',
+      () async {
+        // 2/1 → 5/1 은 89일 차이(포함 90일)다. 봄철 DST 구간을 지나는 이 구간을
+        // 로컬 자정끼리 빼면 inDays 가 한 칸 적게 잘려 89가 나오지만, UTC 정규화
+        // 덕에 어느 지역/CI 에서도 90으로 고정된다(회귀 가드).
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final LocalPrefs prefs = await LocalPrefs.create(
+          now: DateTime(2026, 2, 1),
+        );
+        expect(prefs.daysWithApp(DateTime(2026, 5, 1)), 90);
+      },
+    );
 
     test('returns null days when no first-launch date is stored', () async {
       // create() 가 시드하므로, 시드 없는 상태를 흉내내려면 직접 래핑한다.

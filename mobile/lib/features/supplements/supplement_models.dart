@@ -17,6 +17,213 @@ Map<String, Object?> _readOptionalJsonMap(
   throw FormatException('Expected optional object field "$key".');
 }
 
+Map<String, dynamic>? _jsonMapFromValue(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map<Object?, Object?>) return Map<String, dynamic>.from(value);
+  return null;
+}
+
+Map<String, dynamic> _firstJsonMap(Iterable<Object?> values) {
+  for (final Object? value in values) {
+    final Map<String, dynamic>? map = _jsonMapFromValue(value);
+    if (map != null) return map;
+  }
+  return const <String, dynamic>{};
+}
+
+List<Map<String, dynamic>> _jsonMapListFromValue(Object? value) {
+  if (value is! List) return const <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> rows = <Map<String, dynamic>>[];
+  for (final Object? row in value) {
+    final Map<String, dynamic>? map = _jsonMapFromValue(row);
+    if (map != null) rows.add(map);
+  }
+  return rows;
+}
+
+List<Map<String, dynamic>> _firstJsonMapList(Iterable<Object?> values) {
+  for (final Object? value in values) {
+    final List<Map<String, dynamic>> rows = _jsonMapListFromValue(value);
+    if (rows.isNotEmpty) return rows;
+  }
+  return const <Map<String, dynamic>>[];
+}
+
+String? _firstNonEmptyString(Map<String, dynamic> json, List<String> keys) {
+  for (final String key in keys) {
+    final Object? value = json[key];
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+  }
+  return null;
+}
+
+double? _optionalDoubleFromAny(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
+
+String _stableFallbackId(String prefix, int index) => '$prefix-${index + 1}';
+
+Map<String, dynamic>? _normalizeIngredientCandidateRow(
+  Map<String, dynamic> row,
+) {
+  final String? displayName = _firstNonEmptyString(row, const <String>[
+    'display_name',
+    'name',
+    'nutrient_name',
+    'ingredient_name',
+    'original_name',
+  ]);
+  if (displayName == null) return null;
+  return <String, dynamic>{
+    ...row,
+    'display_name': displayName,
+    'original_name': _firstNonEmptyString(row, const <String>[
+      'original_name',
+      'visible_name',
+      'raw_name',
+      'name',
+    ]),
+    'nutrient_code': _firstNonEmptyString(row, const <String>[
+      'nutrient_code',
+      'code',
+    ]),
+    'amount': _optionalDoubleFromAny(row['amount']),
+    'unit': _firstNonEmptyString(row, const <String>['unit', 'amount_unit']),
+    'confidence': _optionalDoubleFromAny(row['confidence']) ?? 0.55,
+    'source':
+        _firstNonEmptyString(row, const <String>['source']) ??
+        'ocr_structured_fallback',
+    'daily_value_percent': _optionalDoubleFromAny(row['daily_value_percent']),
+  };
+}
+
+List<SupplementIngredientCandidate> _parseIngredientCandidates(
+  List<Map<String, dynamic>> rows,
+) {
+  final List<SupplementIngredientCandidate> out =
+      <SupplementIngredientCandidate>[];
+  for (final Map<String, dynamic> row in rows) {
+    final Map<String, dynamic>? normalized = _normalizeIngredientCandidateRow(
+      row,
+    );
+    if (normalized == null) continue;
+    out.add(SupplementIngredientCandidate.fromJson(normalized));
+  }
+  return out;
+}
+
+Map<String, dynamic>? _normalizeLabelSectionRow(
+  Map<String, dynamic> row,
+  int index,
+) {
+  final String? textBundle = _firstNonEmptyString(row, const <String>[
+    'text_bundle',
+    'text',
+    'text_excerpt',
+    'ocr_text',
+  ]);
+  final String sectionType =
+      _firstNonEmptyString(row, const <String>[
+        'section_type',
+        'type',
+        'label',
+      ]) ??
+      'unknown';
+  if (textBundle == null && sectionType == 'unknown') return null;
+  return <String, dynamic>{
+    ...row,
+    'section_id':
+        _firstNonEmptyString(row, const <String>['section_id', 'id']) ??
+        _stableFallbackId('section', index),
+    'section_type': sectionType,
+    'heading_text': _firstNonEmptyString(row, const <String>[
+      'heading_text',
+      'heading',
+      'title',
+    ]),
+    'text_bundle': textBundle,
+    'confidence': _optionalDoubleFromAny(row['confidence']),
+    'requires_review': row['requires_review'] == true,
+    'evidence_refs': row['evidence_refs'] is List ? row['evidence_refs'] : null,
+  };
+}
+
+List<SupplementPreviewLabelSection> _parseLabelSections(
+  List<Map<String, dynamic>> rows,
+) {
+  final List<SupplementPreviewLabelSection> out =
+      <SupplementPreviewLabelSection>[];
+  for (int i = 0; i < rows.length; i++) {
+    final Map<String, dynamic>? normalized = _normalizeLabelSectionRow(
+      rows[i],
+      i,
+    );
+    if (normalized == null) continue;
+    out.add(SupplementPreviewLabelSection.fromJson(normalized));
+  }
+  return out;
+}
+
+Map<String, dynamic>? _normalizeEvidenceSpanRow(
+  Map<String, dynamic> row,
+  int index,
+) {
+  final String? textExcerpt = _firstNonEmptyString(row, const <String>[
+    'text_excerpt',
+    'text_bundle',
+    'text',
+    'ocr_text',
+  ]);
+  if (textExcerpt == null) return null;
+  return <String, dynamic>{
+    ...row,
+    'span_id':
+        _firstNonEmptyString(row, const <String>['span_id', 'id']) ??
+        _stableFallbackId('span', index),
+    'source_type':
+        _firstNonEmptyString(row, const <String>['source_type', 'source']) ??
+        'ocr',
+    'section_type':
+        _firstNonEmptyString(row, const <String>[
+          'section_type',
+          'type',
+          'label',
+        ]) ??
+        'unknown',
+    'text_excerpt': textExcerpt,
+    'page_index': row['page_index'],
+    'cell_ref': _firstNonEmptyString(row, const <String>['cell_ref']),
+    'confidence': _optionalDoubleFromAny(row['confidence']),
+  };
+}
+
+List<SupplementPreviewEvidenceSpan> _parseEvidenceSpans(
+  List<Map<String, dynamic>> rows,
+) {
+  final List<SupplementPreviewEvidenceSpan> out =
+      <SupplementPreviewEvidenceSpan>[];
+  for (int i = 0; i < rows.length; i++) {
+    final Map<String, dynamic>? normalized = _normalizeEvidenceSpanRow(
+      rows[i],
+      i,
+    );
+    if (normalized == null) continue;
+    out.add(SupplementPreviewEvidenceSpan.fromJson(normalized));
+  }
+  return out;
+}
+
+DateTime _parsePreviewExpiresAt(Map<String, dynamic> json) {
+  final String? value = _firstNonEmptyString(json, const <String>[
+    'expires_at',
+  ]);
+  if (value == null) return DateTime.now().add(const Duration(hours: 1));
+  return DateTime.parse(value);
+}
+
 /// One locally selected supplement image and its intended label role.
 class SupplementImageUpload {
   /// Creates a local supplement image upload descriptor.
@@ -770,26 +977,49 @@ class SupplementAnalysisPreview {
 
   /// Parses a backend supplement analysis preview.
   factory SupplementAnalysisPreview.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> parsedSnapshot = _firstJsonMap(<Object?>[
+      json['parsed_snapshot'],
+      json['snapshot'],
+    ]);
+    final Map<String, dynamic> parsedProductJson = _firstJsonMap(<Object?>[
+      json['parsed_product'],
+      parsedSnapshot['parsed_product'],
+      parsedSnapshot['product'],
+    ]);
+    final List<Map<String, dynamic>> ingredientRows =
+        _firstJsonMapList(<Object?>[
+          json['ingredient_candidates'],
+          parsedSnapshot['ingredient_candidates'],
+          json['ingredients'],
+          parsedSnapshot['ingredients'],
+        ]);
+    final List<Map<String, dynamic>> labelSectionRows =
+        _firstJsonMapList(<Object?>[
+          json['label_sections'],
+          parsedSnapshot['label_sections'],
+          parsedSnapshot['sections'],
+        ]);
+    final List<Map<String, dynamic>> evidenceRows = _firstJsonMapList(<Object?>[
+      json['evidence_spans'],
+      parsedSnapshot['evidence_spans'],
+      parsedSnapshot['evidence'],
+    ]);
+    final List<String> missingRequiredSections = <String>{
+      ...readOptionalStringList(json, 'missing_required_sections'),
+      ...readOptionalStringList(parsedSnapshot, 'missing_required_sections'),
+    }.toList(growable: false);
     return SupplementAnalysisPreview(
       analysisId: readString(json, 'analysis_id'),
       status: readString(json, 'status'),
-      parsedProduct: SupplementParsedProduct.fromJson(
-        readObject(json, 'parsed_product'),
-      ),
-      ingredientCandidates: readList(json, 'ingredient_candidates')
-          .whereType<Map<String, dynamic>>()
-          .map(SupplementIngredientCandidate.fromJson)
-          .toList(growable: false),
+      parsedProduct: SupplementParsedProduct.fromJson(parsedProductJson),
+      ingredientCandidates: _parseIngredientCandidates(ingredientRows),
       suggestedCategoryKeys: readOptionalStringList(
         json,
         'suggested_category_keys',
       ),
       layoutAvailable: json['layout_available'] == true,
       layoutFallbackReason: readOptionalString(json, 'layout_fallback_reason'),
-      labelSections: readOptionalList(json, 'label_sections')
-          .whereType<Map<String, dynamic>>()
-          .map(SupplementPreviewLabelSection.fromJson)
-          .toList(growable: false),
+      labelSections: _parseLabelSections(labelSectionRows),
       intakeMethod: readOptionalObject(json, 'intake_method') == null
           ? SupplementPreviewIntakeMethod.empty
           : SupplementPreviewIntakeMethod.fromJson(
@@ -803,10 +1033,7 @@ class SupplementAnalysisPreview {
           .whereType<Map<String, dynamic>>()
           .map(SupplementPreviewFunctionalClaim.fromJson)
           .toList(growable: false),
-      evidenceSpans: readOptionalList(json, 'evidence_spans')
-          .whereType<Map<String, dynamic>>()
-          .map(SupplementPreviewEvidenceSpan.fromJson)
-          .toList(growable: false),
+      evidenceSpans: _parseEvidenceSpans(evidenceRows),
       imageQualityReport:
           readOptionalObject(json, 'image_quality_report') == null
           ? null
@@ -820,10 +1047,7 @@ class SupplementAnalysisPreview {
           .map(SupplementDetectedProductRegion.fromJson)
           .toList(growable: false),
       selectedRegionId: readOptionalString(json, 'selected_region_id'),
-      missingRequiredSections: readOptionalStringList(
-        json,
-        'missing_required_sections',
-      ),
+      missingRequiredSections: missingRequiredSections,
       imageRole: readOptionalString(json, 'image_role') ?? 'unknown',
       multiImageGroupId: readOptionalString(json, 'multi_image_group_id'),
       sourceType: readOptionalString(json, 'source_type') ?? 'uploaded_image',
@@ -848,7 +1072,7 @@ class SupplementAnalysisPreview {
         json,
         'source_manifest_version',
       ),
-      expiresAt: DateTime.parse(readString(json, 'expires_at')),
+      expiresAt: _parsePreviewExpiresAt(json),
     );
   }
 
