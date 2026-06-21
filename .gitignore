@@ -320,6 +320,10 @@ data/food_images/quarantine/
 data/food_images/20*/
 # Simulator screenshots / screen recordings (binary capture artifacts, not source).
 data/Simulator Screenshot/
+# Standalone food-classifier handoff copy — preserved locally for reference but kept
+# out of git. The app loads the tracked backend/Food-backend/src/classifier instead;
+# this is a divergent duplicate, not part of the service build.
+backend/food_image_analysis/
 *.pt
 runs/food_yolo/**
 !runs/food_yolo/
