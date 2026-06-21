@@ -91,15 +91,109 @@ async def test_best_effort_keeps_original_on_chat_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_best_effort_keeps_original_on_count_mismatch() -> None:
+async def test_batch_count_mismatch_falls_back_to_per_item_translation() -> None:
+    # When the batched call returns the wrong count, each section is retried on its
+    # own (one text per call is reliable) instead of leaving everything in English.
     snapshot = {
         "precautions": [
             {"text": "Consult your physician."},
             {"text": "Keep out of reach of children."},
         ],
     }
-    out = await localize_snapshot_to_korean(
-        snapshot, chat=_chat_returning(["하나만 번역"]), model="m"
-    )
+
+    async def _chat(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        content = payload["messages"][0]["content"]
+        if "\n2. " in content:  # multi-text batch → return a wrong (short) count
+            return {"message": {"content": json.dumps({"translations": ["하나만"]})}}
+        return {"message": {"content": json.dumps({"translations": ["번역됨"]})}}
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert len(out["precautions"]) == 2
+    assert out["precautions"][0]["text"] == "번역됨"
+    assert out["precautions"][1]["text"] == "번역됨"
+
+
+@pytest.mark.asyncio
+async def test_per_item_fallback_keeps_original_when_an_item_still_fails() -> None:
+    # If even the per-item retry yields nothing usable, that item keeps its original.
+    snapshot = {
+        "precautions": [
+            {"text": "Consult your physician."},
+            {"text": "Keep out of reach of children."},
+        ],
+    }
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        return {"message": {"content": "not json"}}  # always unusable
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
     assert out["precautions"][0]["text"] == "Consult your physician."
     assert out["precautions"][1]["text"] == "Keep out of reach of children."
+
+
+@pytest.mark.asyncio
+async def test_coalesces_word_fragmented_precautions_before_translating() -> None:
+    # Word-level OCR boxes split one precaution into single-word items; they are
+    # merged into a single item and translated as one coherent Korean sentence.
+    snapshot = {
+        "precautions": [
+            {"text": "Consult", "category": "medication", "severity": "caution"},
+            {"text": "pregnant"},
+            {"text": "nursing,"},
+            {"text": "medication,"},
+            {"text": "children."},
+        ],
+    }
+    captured: dict[str, Any] = {}
+
+    async def _chat(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        captured["content"] = payload["messages"][0]["content"]
+        return {
+            "message": {
+                "content": json.dumps(
+                    {
+                        "translations": [
+                            "임신, 수유 중이거나 약물 복용 중이거나 어린이는 전문가와 상담하세요."
+                        ]
+                    }
+                )
+            }
+        }
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert len(out["precautions"]) == 1
+    assert out["precautions"][0]["text"].startswith("임신")
+    assert out["precautions"][0]["category"] == "medication"  # first fragment's metadata kept
+    # The model received ONE joined text, not five numbered fragments.
+    assert "\n2. " not in captured["content"]
+    assert "Consult pregnant nursing, medication, children." in captured["content"]
+
+
+@pytest.mark.asyncio
+async def test_distinct_sentence_precautions_are_not_coalesced() -> None:
+    # Two complete (multi-word) precautions are translated separately, not merged.
+    snapshot = {
+        "precautions": [
+            {"text": "Consult your physician."},
+            {"text": "Keep out of reach of children."},
+        ],
+    }
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        return {
+            "message": {
+                "content": json.dumps(
+                    {
+                        "translations": [
+                            "의사와 상담하세요.",
+                            "어린이 손이 닿지 않는 곳에 보관하세요.",
+                        ]
+                    }
+                )
+            }
+        }
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert len(out["precautions"]) == 2
+    assert out["precautions"][0]["text"] == "의사와 상담하세요."
+    assert out["precautions"][1]["text"] == "어린이 손이 닿지 않는 곳에 보관하세요."

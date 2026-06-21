@@ -19,9 +19,12 @@ Design constraints:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Async callable performing one Ollama /api/chat request (e.g. OllamaChatClient.post_chat).
 ChatCallable = Callable[[Mapping[str, Any]], Awaitable[Mapping[str, Any]]]
@@ -35,6 +38,9 @@ _LIST_SECTION_KEYS = ("precautions", "functional_claims")
 # Minimum ASCII letters before a section is considered worth translating (skips units
 # like "mg"/"IU" and mostly-Korean text with a stray Latin token).
 _MIN_LATIN_LETTERS = 3
+
+# Minimum English single-word precaution fragments before they are coalesced into one.
+_MIN_PRECAUTION_FRAGMENTS = 2
 
 _PROMPT = (
     "다음은 영양제 라벨에서 추출한 사용자 표시용 문구들이다. 각 문구를 자연스럽고 정확한 "
@@ -146,6 +152,66 @@ def _set_text_at(snapshot: dict[str, Any], key: str, index: int | None, text: st
         snapshot[key][index]["text"] = text
 
 
+def _coalesce_english_precautions(snapshot: dict[str, Any]) -> bool:
+    """Merge English-dominant precaution fragments into one item. Mutates ``snapshot``.
+
+    Word-level OCR boxes can split a single precaution sentence ("Consult ...
+    pregnant, nursing, ... children.") into several one-word precaution items, which
+    then translate word-by-word into disjointed Korean. Joining the English fragments
+    into the first one's slot (preserving order and any non-English precautions) lets
+    the translation pass produce one coherent Korean sentence.
+
+    Returns:
+        True when two or more English fragments were merged.
+    """
+    precautions = snapshot.get("precautions")
+    if not isinstance(precautions, list) or len(precautions) < _MIN_PRECAUTION_FRAGMENTS:
+        return False
+    fragments = [
+        item
+        for item in precautions
+        if isinstance(item, dict)
+        and isinstance(item.get("text"), str)
+        and is_english_dominant(item["text"])
+        # Only single-token items — the word-level OCR boxes that split one sentence.
+        # Two complete (multi-word) precautions are left separate and translated as-is.
+        and len(item["text"].split()) == 1
+    ]
+    if len(fragments) < _MIN_PRECAUTION_FRAGMENTS:
+        return False
+    joined = " ".join(item["text"].strip() for item in fragments)
+    fragment_ids = {id(item) for item in fragments}
+    merged_item = {**fragments[0], "text": joined}
+    new_list: list[Any] = []
+    inserted = False
+    for item in precautions:
+        if id(item) in fragment_ids:
+            if not inserted:
+                new_list.append(merged_item)
+                inserted = True
+        else:
+            new_list.append(item)
+    snapshot["precautions"] = new_list
+    return True
+
+
+async def _translate_texts(texts: list[str], *, chat: ChatCallable, model: str) -> list[str] | None:
+    """Translate texts in one batched call; None when the response is unusable."""
+    if not texts:
+        return []
+    try:
+        data = await chat(build_translation_payload(texts, model))
+    except Exception:
+        logger.warning("Supplement localization chat call failed.", exc_info=True)
+        return None
+    translations = parse_translations(_message_content(data), len(texts))
+    if translations is None:
+        logger.warning(
+            "Supplement localization returned an unusable response for %d text(s).", len(texts)
+        )
+    return translations
+
+
 async def localize_snapshot_to_korean(
     snapshot: dict[str, Any],
     *,
@@ -155,9 +221,12 @@ async def localize_snapshot_to_korean(
     """Return a snapshot whose English display sections are translated to Korean.
 
     Translates ``precautions[].text``, ``intake_method.text`` and
-    ``functional_claims[].text`` when they are English-dominant. Best-effort: when
-    nothing needs translating the input snapshot is returned unchanged (no model
-    call); on any failure the original snapshot is returned.
+    ``functional_claims[].text`` when they are English-dominant. Fragmented English
+    precaution items (from word-level OCR boxes) are first coalesced into one item so
+    the result reads as a single Korean sentence. Best-effort: when nothing needs
+    translating the input snapshot is returned unchanged. If the batched call returns
+    an unusable response, each section is retried on its own so one bad item does not
+    leave everything in English; any item that still fails keeps its original text.
 
     Args:
         snapshot: Parsed snapshot dict (not mutated; a copy is returned on change).
@@ -167,20 +236,21 @@ async def localize_snapshot_to_korean(
     Returns:
         The snapshot with localized section text, or the original on no-op/failure.
     """
-    targets = _collect_targets(snapshot)
+    work = deepcopy(snapshot)
+    coalesced = _coalesce_english_precautions(work)
+    targets = _collect_targets(work)
     if not targets:
-        return snapshot
-    texts = [_text_at(snapshot, key, index) for key, index in targets]
-    try:
-        data = await chat(build_translation_payload(texts, model))
-    except Exception:
-        # Best-effort enrichment: a translation failure (config / transport / timeout)
-        # must never break analysis — keep the original (foreign-language) text.
-        return snapshot
-    translations = parse_translations(_message_content(data), len(texts))
+        return work if coalesced else snapshot
+    texts = [_text_at(work, key, index) for key, index in targets]
+    translations = await _translate_texts(texts, chat=chat, model=model)
     if translations is None:
-        return snapshot
-    localized = deepcopy(snapshot)
+        logger.info(
+            "Supplement localization falling back to per-item translation (%d text(s)).", len(texts)
+        )
+        translations = []
+        for text in texts:
+            single = await _translate_texts([text], chat=chat, model=model)
+            translations.append(single[0] if single else text)
     for (key, index), translated in zip(targets, translations, strict=True):
-        _set_text_at(localized, key, index, translated)
-    return localized
+        _set_text_at(work, key, index, translated)
+    return work

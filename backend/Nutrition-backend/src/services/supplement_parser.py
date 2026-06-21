@@ -491,7 +491,10 @@ async def parse_supplement_analysis_ocr_text(
     return SupplementParserStoreResult(record=record, parse_result=parse_result)
 
 
-_LOCALIZATION_BUDGET_SEC = 12.0
+# Async analysis is polled by the app (multi-minute budget), so allow a generous
+# window: the localization may translate one coalesced precaution plus a per-item
+# retry pass when the batched call returns an unusable response.
+_LOCALIZATION_BUDGET_SEC = 40.0
 
 
 async def _localize_supplement_snapshot(
@@ -518,8 +521,15 @@ async def _localize_supplement_snapshot(
             ),
             timeout=_LOCALIZATION_BUDGET_SEC,
         )
+    except TimeoutError:
+        logger.warning(
+            "Supplement localization exceeded the %ss budget; keeping original text.",
+            _LOCALIZATION_BUDGET_SEC,
+        )
+        return snapshot
     except Exception:
         # Localization is a display nicety; never let it block or fail parsing.
+        logger.warning("Supplement localization failed; keeping original text.", exc_info=True)
         return snapshot
 
 
