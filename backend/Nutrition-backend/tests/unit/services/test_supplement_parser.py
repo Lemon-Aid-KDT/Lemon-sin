@@ -1459,8 +1459,8 @@ def test_hash_ocr_text_depends_on_privacy_secret() -> None:
     assert len(second) == 64
 
 
-def test_build_parsed_snapshot_omits_raw_ocr_text_when_flag_off() -> None:
-    """Default off: the normalized OCR text is never persisted in the snapshot."""
+def test_build_parsed_snapshot_omits_raw_ocr_text_when_not_retained() -> None:
+    """Default (retain off): the normalized OCR text is never persisted."""
     snapshot = _build_parsed_snapshot(
         parse_result=_parse_result(),
         previous_snapshot={},
@@ -1469,14 +1469,15 @@ def test_build_parsed_snapshot_omits_raw_ocr_text_when_flag_off() -> None:
         ocr_layout=None,
         settings=_settings(),
         ocr_text="비타민 D 1000\n비타민 D 25μg",
+        retain_raw_ocr_text=False,
     )
 
     assert "raw_ocr_text" not in snapshot
     assert snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
 
 
-def test_build_parsed_snapshot_stores_raw_ocr_text_when_flag_on() -> None:
-    """Opt-in on: the OCR text is kept at a top-level key while parser_metadata's
+def test_build_parsed_snapshot_stores_raw_ocr_text_when_retained() -> None:
+    """Retain on: the OCR text is kept at a top-level key while parser_metadata's
     privacy flag stays False so the snapshot invariants and upcast guard hold."""
     ocr_text = "비타민 D 1000\n비타민 D 25μg 100%"
     snapshot = _build_parsed_snapshot(
@@ -1485,11 +1486,9 @@ def test_build_parsed_snapshot_stores_raw_ocr_text_when_flag_on() -> None:
         ocr_confidence=None,
         ocr_provider="paddleocr",
         ocr_layout=None,
-        settings=Settings(
-            privacy_hash_secret=SecretStr("test-privacy-secret"),
-            store_raw_ocr_text=True,
-        ),
+        settings=_settings(),
         ocr_text=ocr_text,
+        retain_raw_ocr_text=True,
     )
 
     assert snapshot["raw_ocr_text"] == ocr_text
@@ -1499,19 +1498,109 @@ def test_build_parsed_snapshot_stores_raw_ocr_text_when_flag_on() -> None:
     upcast_legacy_parsed_snapshot(snapshot)
 
 
-def test_build_parsed_snapshot_skips_blank_raw_ocr_text_when_flag_on() -> None:
-    """Opt-in on but blank OCR text: nothing is stored (no empty key)."""
+def test_build_parsed_snapshot_skips_blank_raw_ocr_text_when_retained() -> None:
+    """Retain on but blank OCR text: nothing is stored (no empty key)."""
     snapshot = _build_parsed_snapshot(
         parse_result=_parse_result(),
         previous_snapshot={},
         ocr_confidence=None,
         ocr_provider="paddleocr",
         ocr_layout=None,
-        settings=Settings(
-            privacy_hash_secret=SecretStr("test-privacy-secret"),
-            store_raw_ocr_text=True,
-        ),
+        settings=_settings(),
         ocr_text="   ",
+        retain_raw_ocr_text=True,
     )
 
     assert "raw_ocr_text" not in snapshot
+
+
+def _store_raw_settings() -> Settings:
+    """Settings with the operator opt-in flag on (consent still gates storage)."""
+    return Settings(
+        privacy_hash_secret=SecretStr("test-privacy-secret"),
+        _env_file=None,
+        store_raw_ocr_text=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_parse_stores_raw_ocr_text_when_flag_and_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flag on AND RAW_OCR_TEXT_RETENTION consent granted -> text retained."""
+
+    async def _granted(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    monkeypatch.setattr("src.services.supplement_parser.has_active_consent", _granted)
+    record = _analysis_run()
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, _FakeParserSession(record)),
+        _user(),
+        record.id,
+        "비타민 D 1000\n비타민 D 25 ug",
+        "paddleocr",
+        0.9,
+        _store_raw_settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    assert record.parsed_snapshot["raw_ocr_text"]
+    assert record.parsed_snapshot["parser_metadata"]["raw_ocr_text_stored"] is False
+
+
+@pytest.mark.asyncio
+async def test_parse_omits_raw_ocr_text_without_consent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flag on but consent absent -> text NOT retained (per-user opt-in honored)."""
+
+    async def _absent(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    monkeypatch.setattr("src.services.supplement_parser.has_active_consent", _absent)
+    record = _analysis_run()
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, _FakeParserSession(record)),
+        _user(),
+        record.id,
+        "비타민 D 1000\n비타민 D 25 ug",
+        "paddleocr",
+        0.9,
+        _store_raw_settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    assert "raw_ocr_text" not in record.parsed_snapshot
+
+
+@pytest.mark.asyncio
+async def test_parse_skips_consent_check_when_flag_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flag off -> consent is never queried and nothing is retained."""
+    called = False
+
+    async def _tracker(*_args: object, **_kwargs: object) -> bool:
+        nonlocal called
+        called = True
+        return True
+
+    monkeypatch.setattr("src.services.supplement_parser.has_active_consent", _tracker)
+    record = _analysis_run()
+
+    await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, _FakeParserSession(record)),
+        _user(),
+        record.id,
+        "비타민 D 1000\n비타민 D 25 ug",
+        "paddleocr",
+        0.9,
+        _settings(),
+        parser=_FakeParser(_parse_result()),
+    )
+
+    assert "raw_ocr_text" not in record.parsed_snapshot
+    assert called is False

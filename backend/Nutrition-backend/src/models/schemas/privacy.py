@@ -23,6 +23,7 @@ class ConsentType(StrEnum):
         LAB_RESULT_OCR_INTAKE: Consent for lab result document OCR intake.
         DATA_RETENTION: Consent for retaining user analysis history.
         IMAGE_LEARNING_DATASET: Separate opt-in for pseudonymized image reuse in learning datasets.
+        RAW_OCR_TEXT_RETENTION: Separate opt-in to temporarily retain OCR source text for review.
     """
 
     SENSITIVE_HEALTH_ANALYSIS = "sensitive_health_analysis"
@@ -34,6 +35,7 @@ class ConsentType(StrEnum):
     LAB_RESULT_OCR_INTAKE = "lab_result_ocr_intake"
     DATA_RETENTION = "data_retention"
     IMAGE_LEARNING_DATASET = "image_learning_dataset"
+    RAW_OCR_TEXT_RETENTION = "raw_ocr_text_retention"
 
 
 class ConsentStatus(BaseModel):

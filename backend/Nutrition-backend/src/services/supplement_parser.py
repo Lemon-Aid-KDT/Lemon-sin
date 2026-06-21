@@ -22,6 +22,7 @@ from src.db.tx import persist_scope
 from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaChatClient, OllamaSupplementParser
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.label_layout import LabelLayout, LabelSection
+from src.models.schemas.privacy import ConsentType
 from src.models.schemas.supplement import (
     SupplementAnalysisStatus,
     SupplementMissingRequiredSection,
@@ -34,6 +35,7 @@ from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.text_normalizer import normalize_ocr_text as normalize_provider_ocr_text
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.privacy import has_active_consent
 from src.services.supplement_label_localizer import localize_snapshot_to_korean
 from src.services.supplement_text_sanitizer import (
     sanitize_ingredient_name,
@@ -357,8 +359,10 @@ async def parse_supplement_analysis_ocr_text(
         session: Request-scoped async database session.
         user: Authenticated owner.
         analysis_id: Supplement analysis preview identifier.
-        ocr_text: Raw OCR text. It is normalized, hashed, sent only to local Ollama,
-            and never stored as raw text.
+        ocr_text: Raw OCR text. It is normalized, hashed, and sent only to local Ollama.
+            The normalized text is retained (top-level ``raw_ocr_text`` in the
+            owner-scoped snapshot) only when ``store_raw_ocr_text`` is on AND the user
+            granted the ``RAW_OCR_TEXT_RETENTION`` consent; otherwise never stored.
         ocr_provider: OCR provider label.
         ocr_confidence: Optional OCR confidence from 0.0 to 1.0.
         settings: Runtime settings.
@@ -412,6 +416,11 @@ async def parse_supplement_analysis_ocr_text(
         ) from exc
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
 
+    # Retain the OCR source text only under BOTH the operator opt-in flag AND the user's
+    # per-user RAW_OCR_TEXT_RETENTION consent (optional consent — never blocks analysis).
+    retain_raw_ocr_text = settings.store_raw_ocr_text and await has_active_consent(
+        session, user, ConsentType.RAW_OCR_TEXT_RETENTION
+    )
     snapshot = _build_parsed_snapshot(
         parse_result=parse_result,
         previous_snapshot=record.parsed_snapshot,
@@ -420,6 +429,7 @@ async def parse_supplement_analysis_ocr_text(
         ocr_layout=ocr_layout,
         settings=settings,
         ocr_text=normalized_text,
+        retain_raw_ocr_text=retain_raw_ocr_text,
     )
     # KR-market display: translate any English precaution/intake/functional-claim text
     # to Korean (the source label may be English). Only with the real local LLM parser
@@ -2493,6 +2503,7 @@ def _build_parsed_snapshot(
     ocr_layout: LabelLayout | None,
     settings: Settings,
     ocr_text: str = "",
+    retain_raw_ocr_text: bool = False,
 ) -> dict[str, Any]:
     """Build the sanitized JSON snapshot persisted for user confirmation.
 
@@ -2504,11 +2515,13 @@ def _build_parsed_snapshot(
         ocr_layout: Optional deterministic layout parsed from OCR coordinates.
         settings: Runtime settings used for model and algorithm metadata.
         ocr_text: Normalized OCR text; retained at a top-level ``raw_ocr_text`` key
-            only when ``settings.store_raw_ocr_text`` is enabled (operator opt-in).
+            only when ``retain_raw_ocr_text`` is True.
+        retain_raw_ocr_text: Combined gate from the caller — the operator opt-in flag
+            ``store_raw_ocr_text`` AND the user's ``RAW_OCR_TEXT_RETENTION`` consent.
 
     Returns:
-        Sanitized parsed snapshot. Includes a top-level ``raw_ocr_text`` only when the
-        store_raw_ocr_text opt-in is on; ``parser_metadata.raw_ocr_text_stored`` stays
+        Sanitized parsed snapshot. Includes a top-level ``raw_ocr_text`` only when
+        ``retain_raw_ocr_text`` is True; ``parser_metadata.raw_ocr_text_stored`` stays
         False so the V2/V3 snapshot invariant and legacy upcast guard hold.
     """
     low_confidence_fields = _build_low_confidence_fields(
@@ -2563,11 +2576,12 @@ def _build_parsed_snapshot(
     intake = previous_snapshot.get("intake")
     if isinstance(intake, dict):
         snapshot["intake"] = intake
-    # Operator opt-in (store_raw_ocr_text, default off): retain the normalized OCR
-    # text at a top-level key so the "OCR 텍스트 전체" view can show the source. Kept
-    # OUT of parser_metadata so the V2/V3 snapshot privacy invariant
-    # (raw_ocr_text_stored Literal[False]) and the legacy upcast guard stay intact.
-    if settings.store_raw_ocr_text and ocr_text.strip():
+    # Operator opt-in (store_raw_ocr_text) AND per-user RAW_OCR_TEXT_RETENTION consent,
+    # combined by the caller into retain_raw_ocr_text: retain the normalized OCR text at
+    # a top-level key so the "OCR 텍스트 전체" view can show the source. Kept OUT of
+    # parser_metadata so the V2/V3 snapshot privacy invariant (raw_ocr_text_stored
+    # Literal[False]) and the legacy upcast guard stay intact.
+    if retain_raw_ocr_text and ocr_text.strip():
         snapshot["raw_ocr_text"] = ocr_text
     return snapshot
 

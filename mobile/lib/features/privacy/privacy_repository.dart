@@ -12,7 +12,7 @@
 
 import '../../core/api/api_client.dart';
 
-/// 사용자가 설정에서 다루는 동의 5종.
+/// 사용자가 설정에서 다루는 동의 6종.
 ///
 /// 백엔드 ConsentType 9종 중 사용자 노출 대상만 선별(가이드 (f)).
 enum UserConsentType {
@@ -29,7 +29,10 @@ enum UserConsentType {
   foodImageProcessing('food_image_processing', '음식 이미지 처리'),
 
   /// 데이터 보관.
-  dataRetention('data_retention', '데이터 보관');
+  dataRetention('data_retention', '데이터 보관'),
+
+  /// OCR 원문(텍스트) 임시 보관 — "OCR 텍스트 전체"에서 원문 확인용.
+  rawOcrTextRetention('raw_ocr_text_retention', 'OCR 원문 보관');
 
   const UserConsentType(this.code, this.label);
 

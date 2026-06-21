@@ -1,7 +1,7 @@
 // screens/settings/policies_screen.dart — 약관·정책 + 동의 관리 (figma 957:108)
 //
 // 가이드 08 (f) step 30. 약관·개인정보 처리방침 정적 목록 + 동의 관리(사용자
-// 노출 5종 토글). grant=POST, revoke=DELETE /me/privacy/consents/{type}.
+// 노출 6종 토글). grant=POST, revoke=DELETE /me/privacy/consents/{type}.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

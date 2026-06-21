@@ -126,6 +126,17 @@ ACTIVE_CONSENT_POLICIES: dict[ConsentType, ConsentPolicyDefinition] = {
             "for model evaluation or learning datasets."
         ),
     ),
+    ConsentType.RAW_OCR_TEXT_RETENTION: ConsentPolicyDefinition(
+        consent_type=ConsentType.RAW_OCR_TEXT_RETENTION,
+        version="2026-06-21",
+        title="OCR source text retention",
+        required=False,
+        content_hash=_policy_hash(
+            "Separate opt-in to temporarily retain the recognized OCR source text from "
+            "your supplement label. It is kept owner-scoped, only in the short-lived "
+            "analysis preview, so you can review the original text during analysis."
+        ),
+    ),
 }
 
 

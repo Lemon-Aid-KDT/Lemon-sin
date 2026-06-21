@@ -324,6 +324,15 @@ def test_external_ocr_processing_policy_is_active() -> None:
     assert len(policy.content_hash) == 64
 
 
+def test_raw_ocr_text_retention_policy_is_active_and_optional() -> None:
+    """Verify the dedicated OCR-source-retention consent is an optional opt-in."""
+    policy = ACTIVE_CONSENT_POLICIES[ConsentType.RAW_OCR_TEXT_RETENTION]
+
+    assert policy.consent_type == ConsentType.RAW_OCR_TEXT_RETENTION
+    assert policy.required is False
+    assert len(policy.content_hash) == 64
+
+
 @pytest.mark.asyncio
 async def test_revoke_image_learning_consent_deletes_learning_artifacts(
     monkeypatch: pytest.MonkeyPatch,
