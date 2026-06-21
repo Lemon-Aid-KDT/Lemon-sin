@@ -251,7 +251,7 @@ class _IdentityCard extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  ingredient.displayName,
+                  _displayName(ingredient),
                   style: const TextStyle(
                     fontFamily: 'Pretendard',
                     color: AppColor.ink,
@@ -285,13 +285,18 @@ class _IdentityCard extends StatelessWidget {
     );
   }
 
-  String? _classification(SupplementIngredientCandidate ingredient) {
+  /// 성분명 — 영문 원문이 다르면 '한글(영문)'으로 병기, 같거나 없으면 표시명만.
+  String _displayName(SupplementIngredientCandidate ingredient) {
+    final String display = ingredient.displayName.trim();
     final String? original = ingredient.originalName?.trim();
-    if (original != null &&
-        original.isNotEmpty &&
-        original.toLowerCase() != ingredient.displayName.trim().toLowerCase()) {
-      return '원문: $original';
-    }
+    if (original == null || original.isEmpty) return display;
+    if (display.isEmpty) return original;
+    if (original.toLowerCase() == display.toLowerCase()) return display;
+    if (display.contains(original)) return display;
+    return '$display ($original)';
+  }
+
+  String? _classification(SupplementIngredientCandidate ingredient) {
     final String? code = ingredient.nutrientCode?.trim();
     if (code != null && code.isNotEmpty) {
       return '영양소 코드 · $code';

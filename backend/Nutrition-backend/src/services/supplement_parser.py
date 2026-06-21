@@ -35,6 +35,7 @@ from src.models.schemas.supplement_parser import SupplementStructuredParseResult
 from src.ocr.text_normalizer import normalize_ocr_text as normalize_provider_ocr_text
 from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
+from src.services.nutrient_display_name_localizer import localize_ingredient_display_names
 from src.services.privacy import has_active_consent
 from src.services.supplement_label_localizer import localize_snapshot_to_korean
 from src.services.supplement_text_sanitizer import (
@@ -437,6 +438,9 @@ async def parse_supplement_analysis_ocr_text(
     # failure or timeout never blocks confirmation.
     if parser is None:
         snapshot = await _localize_supplement_snapshot(snapshot, settings)
+        # Deterministic KR-market display: rewrite English ingredient names to their
+        # standard Korean names (English source preserved for the 한글(영문) render).
+        snapshot = localize_ingredient_display_names(snapshot)
 
     async with persist_scope(session):
         record.ocr_provider = normalized_provider
