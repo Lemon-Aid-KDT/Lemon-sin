@@ -39,9 +39,12 @@ _MAX_PROMPT_CITATIONS = 4
 # Per-citation excerpt length in the prompt. Generation dominates latency, but a
 # smaller prompt still trims input-processing time on the local GPU.
 _MAX_EXCERPT_CHARS = 400
-# Ceiling on the synthesized answer length. A chat reply is a few sentences; without
-# a cap the local model can run long and exceed the mobile chat request timeout.
-_MAX_ANSWER_TOKENS = 600
+# Generous ceiling on TOTAL generated tokens (the local model emits internal
+# reasoning before the JSON answer). A tight cap (e.g. 600) truncates mid-reasoning
+# and returns EMPTY content with done_reason=length, so this is only a runaway
+# backstop — answer brevity (and thus latency) is driven by the "3~5문장" prompt
+# instruction, which already cut a grounded reply from ~29s to ~17s.
+_MAX_ANSWER_TOKENS = 1500
 
 # ---------------------------------------------------------------------------
 # Post-generation safety screen
