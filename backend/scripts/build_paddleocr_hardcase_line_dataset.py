@@ -46,6 +46,7 @@ DEFAULT_CANVAS_PAD_Y_RANGE = (5, 12)
 DEFAULT_ROTATE_DEGREES = 1.8
 DEFAULT_ROTATE_PROBABILITY = 0.35
 TAB_OR_NEWLINE = re.compile(r"[\t\r\n]")
+PLACEHOLDER_TEXT_VALUES = {"", "null", "none", "n/a", "na", "-", "미상", "확인불가", "확인 불가"}
 
 
 class HardcaseDatasetError(RuntimeError):
@@ -123,6 +124,11 @@ def _is_holdout_or_test(manifest: dict[str, Any]) -> bool:
     return str(manifest.get("eval_split") or "").strip().lower() in {"holdout", "test"}
 
 
+def _eval_split(manifest: dict[str, Any]) -> str:
+    """Return normalized source split from a hardcase manifest."""
+    return str(manifest.get("eval_split") or "").strip().lower()
+
+
 def _safe_text(value: object) -> str | None:
     """Return a single-line label text value or None.
 
@@ -135,7 +141,7 @@ def _safe_text(value: object) -> str | None:
     if value is None:
         return None
     text = " ".join(str(value).split()).strip()
-    if not text or TAB_OR_NEWLINE.search(text):
+    if not text or text.casefold() in PLACEHOLDER_TEXT_VALUES or TAB_OR_NEWLINE.search(text):
         return None
     return text
 
@@ -323,7 +329,9 @@ def _write_dict(output_dir: Path, labels: list[str]) -> int:
         Dictionary row count.
     """
     chars = sorted({char for label in labels for char in label if char != " "})
-    (output_dir / "dict.txt").write_text("\n".join(chars) + ("\n" if chars else ""), encoding="utf-8")
+    (output_dir / "dict.txt").write_text(
+        "\n".join(chars) + ("\n" if chars else ""), encoding="utf-8"
+    )
     return len(chars)
 
 
@@ -336,6 +344,7 @@ def build_hardcase_line_dataset(
     val_ratio: float,
     seed: int,
     acknowledge_holdout_leakage: bool,
+    require_train_source: bool = False,
 ) -> dict[str, Any]:
     """Build a diagnostic hard-case line crop dataset.
 
@@ -347,6 +356,8 @@ def build_hardcase_line_dataset(
         val_ratio: Fraction of labels assigned to validation.
         seed: RNG seed.
         acknowledge_holdout_leakage: Required when source manifest is holdout/test.
+        require_train_source: Require ``eval_split=train`` for promotion-eligible
+            hard-case recognizer datasets.
 
     Returns:
         Count-only summary.
@@ -355,7 +366,12 @@ def build_hardcase_line_dataset(
         HardcaseDatasetError: If inputs are unsafe or no labels can be built.
     """
     manifest = _load_json(hardcase_manifest_path)
+    source_eval_split = _eval_split(manifest)
     protected_eval_split = _is_holdout_or_test(manifest)
+    if require_train_source and source_eval_split != "train":
+        raise HardcaseDatasetError(
+            "hardcase source must have eval_split=train when --require-train-source is used."
+        )
     if protected_eval_split and not acknowledge_holdout_leakage:
         raise HardcaseDatasetError(
             "hardcase source is holdout/test; pass --acknowledge-holdout-leakage "
@@ -365,7 +381,9 @@ def build_hardcase_line_dataset(
         raise HardcaseDatasetError("output directory already exists.")
 
     target_ids = set(_hardcase_fixture_ids(manifest))
-    labels, matched_fixture_count = _labels_for_rows(_read_jsonl(ground_truth_jsonl_path), target_ids)
+    labels, matched_fixture_count = _labels_for_rows(
+        _read_jsonl(ground_truth_jsonl_path), target_ids
+    )
     if not labels:
         raise HardcaseDatasetError("no hardcase labels were found in ground truth.")
 
@@ -405,7 +423,9 @@ def build_hardcase_line_dataset(
         "dict_rows": dict_rows,
         "synthetic_line_crops": True,
         "holdout_leakage_acknowledged": bool(acknowledge_holdout_leakage),
-        "production_gate_eligible": not protected_eval_split,
+        "train_source_required": bool(require_train_source),
+        "production_gate_eligible": not protected_eval_split
+        and (not require_train_source or source_eval_split == "train"),
         "raw_ocr_text_stored": False,
         "provider_payload_stored": False,
         "label_text_printed": False,
@@ -428,6 +448,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--val-ratio", default=0.1, type=float)
     parser.add_argument("--seed", default=20260616, type=int)
     parser.add_argument("--acknowledge-holdout-leakage", action="store_true")
+    parser.add_argument(
+        "--require-train-source",
+        action="store_true",
+        help="Fail unless the hardcase manifest declares eval_split=train.",
+    )
     return parser.parse_args(argv)
 
 
@@ -443,6 +468,7 @@ def main(argv: list[str] | None = None) -> int:
             val_ratio=args.val_ratio,
             seed=args.seed,
             acknowledge_holdout_leakage=args.acknowledge_holdout_leakage,
+            require_train_source=args.require_train_source,
         )
     except HardcaseDatasetError as exc:
         print(json.dumps({"status": "failed", "reason": str(exc)}, ensure_ascii=False))

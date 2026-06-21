@@ -54,20 +54,38 @@ class SweepConfig:
         det_box_thresh: Optional PaddleOCR text detection box threshold.
         det_thresh: Optional PaddleOCR text detection pixel threshold.
         det_unclip_ratio: Optional PaddleOCR text detection expansion ratio.
+        max_side: Optional config-specific detection side limit.
     """
 
     name: str
     det_box_thresh: float | None = None
     det_thresh: float | None = None
     det_unclip_ratio: float | None = None
+    max_side: int | None = None
 
 
 DETECTOR_SWEEP = (
     SweepConfig(name="baseline"),
+    SweepConfig(name="box03", det_box_thresh=0.3),
     SweepConfig(name="box04", det_box_thresh=0.4),
+    SweepConfig(name="thresh015", det_thresh=0.15),
     SweepConfig(name="thresh02", det_thresh=0.2),
     SweepConfig(name="unclip25", det_unclip_ratio=2.5),
-    SweepConfig(name="combined_thresh02_box04_unclip25", det_thresh=0.2, det_box_thresh=0.4, det_unclip_ratio=2.5),
+    SweepConfig(name="unclip30", det_unclip_ratio=3.0),
+    SweepConfig(name="unclip35", det_unclip_ratio=3.5),
+    SweepConfig(name="unclip25_side4096", det_unclip_ratio=2.5, max_side=4096),
+    SweepConfig(
+        name="combined_thresh02_box04_unclip25",
+        det_thresh=0.2,
+        det_box_thresh=0.4,
+        det_unclip_ratio=2.5,
+    ),
+    SweepConfig(
+        name="combined_thresh015_box03_unclip30",
+        det_thresh=0.15,
+        det_box_thresh=0.3,
+        det_unclip_ratio=3.0,
+    ),
 )
 QUICK_SWEEP = (
     SweepConfig(name="baseline"),
@@ -114,18 +132,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     """Write a JSON artifact with stable formatting."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     """Write observation rows without raw OCR text."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8"
+    )
 
 
 def _load_split_rows(splits: Path) -> list[dict[str, Any]]:
     """Load benchmark split rows from JSONL."""
-    return [json.loads(line) for line in splits.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in splits.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def _selected_configs(preset: str, config_names: str | None = None) -> tuple[SweepConfig, ...]:
@@ -149,7 +173,9 @@ def _selected_configs(preset: str, config_names: str | None = None) -> tuple[Swe
     return QUICK_SWEEP if preset == "quick" else DETECTOR_SWEEP
 
 
-def _redacted_eval_payload(eval_payload: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _redacted_eval_payload(
+    eval_payload: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Split redacted eval JSON from provider-shaped observations."""
     payload = dict(eval_payload)
     observations = payload.pop("observations")
@@ -208,12 +234,13 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
     started_all = time.monotonic()
     for config in configs:
         started = time.monotonic()
+        effective_max_side = config.max_side or max_side
         eval_payload = evaluate(
             bundle_dir=args.bundle_dir,
             limit=args.limit,
             det_model=det_model,
             rec_model=rec_model,
-            max_side=max_side,
+            max_side=effective_max_side,
             det_box_thresh=config.det_box_thresh,
             det_thresh=config.det_thresh,
             det_unclip_ratio=config.det_unclip_ratio,
@@ -250,6 +277,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
                 "det_box_thresh": config.det_box_thresh,
                 "det_thresh": config.det_thresh,
                 "det_unclip_ratio": config.det_unclip_ratio,
+                "max_side": effective_max_side,
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "eval_json": str(eval_path.relative_to(args.output_dir)),
                 "summary_json": str(summary_path.relative_to(args.output_dir)),
@@ -288,7 +316,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         summary = run_sweep(args)
     except (FileNotFoundError, ValueError) as exc:
-        print(json.dumps({"schema_version": SCHEMA_VERSION, "status": "error", "error": str(exc)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"schema_version": SCHEMA_VERSION, "status": "error", "error": str(exc)},
+                ensure_ascii=False,
+            )
+        )
         return 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
     _write_json(args.output_dir / "sweep-summary.json", summary)

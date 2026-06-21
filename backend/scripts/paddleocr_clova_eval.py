@@ -50,6 +50,7 @@ from rapidfuzz.distance import LCSseq
 MAX_METRIC_CHARS = 12000
 TARGET_PROVIDER = "paddleocr_local"
 FIELD_MATCH_THRESHOLD = 85.0  # rapidfuzz partial_ratio (0-100) for field presence.
+INGREDIENT_ALIAS_CONFUSION_MIN_CHARS = 5
 POST_PASS_NONE = "none"
 POST_PASS_INGREDIENT_ALIAS_AMOUNT_UNIT = "ingredient_alias_amount_unit"
 POST_PASS_CHOICES = (POST_PASS_NONE, POST_PASS_INGREDIENT_ALIAS_AMOUNT_UNIT)
@@ -59,43 +60,152 @@ INGREDIENT_ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
     ("vitamin d", "vitamin d3", "cholecalciferol", "비타민 d", "비타민 d3", "콜레칼시페롤"),
     ("vitamin b1", "thiamine", "티아민", "비타민 b1"),
     ("vitamin b2", "riboflavin", "리보플라빈", "비타민 b2"),
-    ("vitamin b6", "pyridoxine", "피리독신", "비타민 b6"),
+    (
+        "vitamin b6",
+        "pyridoxine",
+        "pyridoxine hcl",
+        "pyridoxine hydrochloride",
+        "피리독신",
+        "피리독신 염산염",
+        "비타민 b6",
+    ),
     ("vitamin b12", "cyanocobalamin", "methylcobalamin", "코발라민", "비타민 b12"),
-    ("niacin", "nicotinic acid", "나이아신", "니코틴산"),
+    (
+        "niacin",
+        "niacinamide",
+        "nicotinamide",
+        "nicotinic acid",
+        "나이아신",
+        "나이아신아마이드",
+        "니코틴아마이드",
+        "니코틴산",
+    ),
+    (
+        "pantothenic acid",
+        "calcium pantothenate",
+        "vitamin b5",
+        "판토텐산",
+        "판토텐산칼슘",
+        "비타민 b5",
+    ),
     ("folate", "folic acid", "엽산"),
     ("biotin", "비오틴"),
-    ("calcium", "칼슘"),
-    ("magnesium", "마그네슘"),
+    ("choline", "choline bitartrate", "콜린", "콜린 비타르트레이트"),
+    ("inositol", "이노시톨"),
+    (
+        "vitamin k",
+        "vitamin k1",
+        "vitamin k2",
+        "menaquinone",
+        "phytonadione",
+        "비타민 k",
+        "비타민 k1",
+        "비타민 k2",
+    ),
+    ("vitamin e", "tocopherol", "tocopheryl", "d-alpha tocopherol", "비타민 e", "토코페롤"),
+    ("calcium", "calcium carbonate", "calcium citrate", "칼슘", "탄산칼슘", "구연산칼슘"),
+    (
+        "magnesium",
+        "magnesium oxide",
+        "magnesium citrate",
+        "마그네슘",
+        "산화마그네슘",
+        "구연산마그네슘",
+    ),
     ("zinc", "아연"),
     ("iron", "ferrous", "철", "철분"),
     ("iodine", "iodide", "요오드"),
     ("selenium", "셀레늄"),
+    ("chromium", "크롬"),
+    ("copper", "구리"),
+    ("manganese", "망간"),
+    ("molybdenum", "몰리브덴"),
+    ("boron", "borate", "붕소"),
+    ("phosphorus", "phosphate", "인", "인산염"),
+    ("potassium", "칼륨"),
+    ("sodium", "나트륨"),
+    ("chloride", "염화물"),
+    ("silica", "silicon", "규소", "실리카"),
     ("omega-3", "omega 3", "epa", "dha", "오메가 3", "오메가3"),
     ("coq10", "coenzyme q10", "코큐텐", "코엔자임 q10"),
     ("lutein", "루테인"),
     ("zeaxanthin", "지아잔틴"),
+    ("beta carotene", "beta-carotene", "베타카로틴"),
+    ("lycopene", "라이코펜"),
+    ("astaxanthin", "아스타잔틴"),
     ("probiotics", "lactobacillus", "bifidobacterium", "유산균", "프로바이오틱스"),
     ("collagen", "콜라겐"),
+    ("hyaluronic acid", "sodium hyaluronate", "히알루론산", "히알루론산나트륨"),
     ("glucosamine", "글루코사민"),
     ("msm", "methylsulfonylmethane", "식이유황"),
     ("milk thistle", "silymarin", "밀크씨슬", "실리마린"),
     ("ginseng", "홍삼", "인삼"),
+    ("turmeric", "curcumin", "강황", "커큐민"),
+    ("cranberry", "크랜베리"),
+    ("quercetin", "퀘르세틴"),
+    ("bromelain", "브로멜라인"),
+    ("melatonin", "멜라토닌"),
+    ("gaba", "gamma aminobutyric acid", "감마아미노부티르산", "가바"),
+    ("l-theanine", "theanine", "테아닌"),
+    ("taurine", "타우린"),
+    ("maca", "마카"),
+    ("arginine", "l-arginine", "아르기닌"),
+    ("citrulline", "l-citrulline", "시트룰린"),
+    ("lysine", "l-lysine", "라이신"),
+    ("creatine", "크레아틴"),
+    ("saw palmetto", "쏘팔메토", "쏘팔메토열매"),
+    ("boswellia", "boswellic acid", "보스웰리아"),
+    ("sunflower seed", "sunflower seeds", "해바라기씨"),
+    (
+        "magnesium glycinate",
+        "magnesium lysinate glycinate",
+        "마그네슘 글리시네이트",
+        "글리시네이트 마그네슘",
+    ),
+    ("zinc picolinate", "아연 피콜리네이트"),
+    ("gelatin", "gelatin capsule", "capsule gelatin", "젤라틴", "젤라틴 캡슐"),
+    (
+        "cellulose",
+        "vegetable cellulose",
+        "microcrystalline cellulose",
+        "hypromellose",
+        "hpmc",
+        "셀룰로오스",
+        "식물성 셀룰로오스",
+        "히프로멜로오스",
+    ),
+    ("rice flour", "rice powder", "쌀가루", "쌀 분말"),
+    ("stearic acid", "magnesium stearate", "스테아린산", "스테아린산마그네슘"),
+    ("silicon dioxide", "silica", "이산화규소", "실리카"),
+    ("maltodextrin", "말토덱스트린"),
+    ("glycerin", "glycerol", "글리세린"),
+    ("soybean oil", "soy oil", "대두유", "콩기름"),
 )
 
 UNIT_ALIASES: dict[str, tuple[str, ...]] = {
-    "mg": ("mg", "㎎", "밀리그램"),
-    "g": ("g", "그램"),
-    "mcg": ("mcg", "ug", "μg", "µg", "㎍", "마이크로그램"),
-    "iu": ("iu", "i.u.", "아이유"),
+    "mg": ("mg", "㎎", "밀리그램", "milligram", "milligrams"),
+    "g": ("g", "그램", "gram", "grams"),
+    "mcg": ("mcg", "ug", "μg", "µg", "㎍", "마이크로그램", "microgram", "micrograms"),
+    "iu": ("iu", "i.u.", "아이유", "international unit", "international units"),
     "cfu": ("cfu", "씨에프유"),
     "%": ("%", "퍼센트"),
 }
 
 AMOUNT_UNIT_PATTERN = re.compile(
     r"(?P<amount>\d+(?:[.,]\d+)?)\s*"
-    r"(?P<unit>mg|㎎|밀리그램|g|그램|mcg|ug|μg|µg|㎍|마이크로그램|iu|i\.u\.|아이유|cfu|씨에프유|%)",
+    r"(?P<unit>mg|㎎|밀리그램|milligrams?|g|그램|grams?|"
+    r"mcg|ug|μg|µg|㎍|마이크로그램|micrograms?|"
+    r"iu|i\.u\.|아이유|international units?|cfu|씨에프유|%)",
     re.IGNORECASE,
 )
+OCR_CONFUSED_AMOUNT_UNIT_PATTERN = re.compile(
+    r"(?P<amount>[0-9OoIl.,]+)\s*"
+    r"(?P<unit>mg|㎎|밀리그램|milligrams?|g|그램|grams?|"
+    r"mcg|ug|μg|µg|㎍|마이크로그램|micrograms?|"
+    r"iu|i\.u\.|아이유|international units?|cfu|씨에프유|%)",
+    re.IGNORECASE,
+)
+PLACEHOLDER_TEXT_VALUES = {"", "null", "none", "n/a", "na", "-", "미상", "확인불가", "확인 불가"}
 
 PROFILES: dict[str, dict[str, Any]] = {
     "mobile": {
@@ -125,6 +235,12 @@ def _normalize_for_metric(text: str) -> str:
     return "".join(char for char in normalized if char.isalnum())
 
 
+def _is_placeholder_text(value: str) -> bool:
+    """Return whether a reviewed value is an explicit non-answer placeholder."""
+    normalized = " ".join(value.split()).strip().casefold()
+    return normalized in PLACEHOLDER_TEXT_VALUES
+
+
 def _metric_float(value: Decimal) -> float:
     """Return a 4-decimal float from a Decimal metric (mirrors the backend metric)."""
     return float(value.quantize(Decimal("0.0001")))
@@ -148,7 +264,9 @@ def _text_extraction_metrics(reference: str, hypothesis: str) -> dict[str, Any] 
     if len(reference_chars) > MAX_METRIC_CHARS or len(hypothesis_chars) > MAX_METRIC_CHARS:
         return None
     matched = LCSseq.similarity(reference_chars, hypothesis_chars)
-    precision = Decimal(matched) / Decimal(len(hypothesis_chars)) if hypothesis_chars else Decimal(0)
+    precision = (
+        Decimal(matched) / Decimal(len(hypothesis_chars)) if hypothesis_chars else Decimal(0)
+    )
     recall = Decimal(matched) / Decimal(len(reference_chars))
     denom = precision + recall
     f1 = (Decimal(2) * precision * recall / denom) if denom else Decimal(0)
@@ -164,7 +282,7 @@ def _text_extraction_metrics(reference: str, hypothesis: str) -> dict[str, Any] 
 
 def _append_text(parts: list[str], value: Any) -> None:
     """Append one scalar expected value to the reference text parts."""
-    if isinstance(value, str) and value.strip():
+    if isinstance(value, str) and value.strip() and not _is_placeholder_text(value):
         parts.append(value.strip())
     elif isinstance(value, int | float) and not isinstance(value, bool):
         parts.append(str(value))
@@ -219,20 +337,60 @@ def _field_units(expected: dict[str, Any]) -> list[str]:
         if not isinstance(ingredient, dict):
             continue
         name = ingredient.get("display_name")
-        if isinstance(name, str) and name.strip():
+        if isinstance(name, str) and name.strip() and not _is_placeholder_text(name):
             units.append(name.strip())
         amount_unit = " ".join(
             str(ingredient[k])
             for k in ("amount", "unit")
             if ingredient.get(k) not in (None, "")
+            and not (isinstance(ingredient.get(k), str) and _is_placeholder_text(ingredient.get(k)))
         )
         if amount_unit.strip():
             units.append(amount_unit.strip())
     intake = expected.get("intake_method")
     intake_text = intake.get("text") if isinstance(intake, dict) else intake
-    if isinstance(intake_text, str) and intake_text.strip():
+    if (
+        isinstance(intake_text, str)
+        and intake_text.strip()
+        and not _is_placeholder_text(intake_text)
+    ):
         units.append(intake_text.strip())
     return units
+
+
+def _alias_candidates(value: str) -> list[str]:
+    """Return deterministic bilingual candidates for one expected text value."""
+    value_norm = _normalize_for_metric(value)
+    candidates = [value]
+    for aliases in INGREDIENT_ALIAS_GROUPS:
+        alias_norms = [_normalize_for_metric(alias) for alias in aliases]
+        if any(alias_norm and alias_norm == value_norm for alias_norm in alias_norms):
+            candidates.extend(aliases)
+    return list(dict.fromkeys(candidates))
+
+
+def _amount_unit_candidates(value: str) -> list[str]:
+    """Return equivalent amount/unit spellings for one expected field unit."""
+    match = AMOUNT_UNIT_PATTERN.search(unicodedata.normalize("NFKC", value))
+    if not match:
+        return [value]
+    amount = _canonical_amount(match.group("amount"))
+    canonical_unit = _canonical_unit(match.group("unit"))
+    if canonical_unit is None:
+        return [value]
+    candidates = [value]
+    for unit_alias in UNIT_ALIASES[canonical_unit]:
+        candidates.append(f"{amount} {unit_alias}")
+        candidates.append(f"{amount}{unit_alias}")
+    return list(dict.fromkeys(candidates))
+
+
+def _field_unit_candidates(unit: str) -> list[str]:
+    """Return alias and amount-unit candidates without increasing the denominator."""
+    candidates: list[str] = []
+    for alias_candidate in _alias_candidates(unit):
+        candidates.extend(_amount_unit_candidates(alias_candidate))
+    return list(dict.fromkeys(candidates))
 
 
 def _field_match_ratio(units: list[str], hypothesis_norm: str) -> tuple[int, int]:
@@ -251,24 +409,75 @@ def _field_match_ratio(units: list[str], hypothesis_norm: str) -> tuple[int, int
     total = 0
     matched = 0
     for unit in units:
-        unit_norm = _normalize_for_metric(unit)
-        if not unit_norm:
+        candidates = [
+            _normalize_for_metric(candidate)
+            for candidate in _field_unit_candidates(unit)
+            if _normalize_for_metric(candidate)
+        ]
+        if not candidates:
             continue
         total += 1
-        if hypothesis_norm and fuzz.partial_ratio(unit_norm, hypothesis_norm) >= FIELD_MATCH_THRESHOLD:
+        if hypothesis_norm and any(
+            fuzz.partial_ratio(candidate_norm, hypothesis_norm) >= FIELD_MATCH_THRESHOLD
+            for candidate_norm in candidates
+        ):
             matched += 1
     return matched, total
 
 
 def _ingredient_recall(expected: dict[str, Any], hypothesis_norm: str) -> tuple[int, int]:
     """Return ``(found, total)`` GT ingredient display-names present (substring)."""
-    names = [
-        _normalize_for_metric(str(item["display_name"]))
-        for item in expected.get("ingredients", []) or []
-        if isinstance(item, dict) and item.get("display_name")
-    ]
-    found = sum(1 for name in names if name and name in hypothesis_norm)
-    return found, len(names)
+    candidate_groups: list[list[str]] = []
+    for item in expected.get("ingredients", []) or []:
+        if not isinstance(item, dict):
+            continue
+        raw_names = [
+            value
+            for value in (item.get("display_name"), item.get("original_name"))
+            if isinstance(value, str) and value.strip() and not _is_placeholder_text(value)
+        ]
+        if not raw_names:
+            continue
+        candidates: list[str] = []
+        for raw_name in raw_names:
+            candidates.extend(
+                _normalize_for_metric(candidate) for candidate in _alias_candidates(raw_name)
+            )
+        candidate_groups.append(
+            list(dict.fromkeys(candidate for candidate in candidates if candidate))
+        )
+    found = sum(
+        1
+        for candidates in candidate_groups
+        if _ingredient_candidates_visible(candidates, hypothesis_norm)
+    )
+    return found, len(candidate_groups)
+
+
+def _ingredient_candidates_visible(candidates: list[str], hypothesis_norm: str) -> bool:
+    """Return whether any normalized ingredient candidate is visibly present.
+
+    Args:
+        candidates: Metric-normalized aliases for one GT ingredient.
+        hypothesis_norm: Metric-normalized OCR hypothesis text.
+
+    Returns:
+        True for exact substring visibility, or for long aliases after bounded
+        OCR glyph-confusion cleanup. This keeps short aliases exact to avoid
+        broad false positives.
+    """
+    if not hypothesis_norm:
+        return False
+    hypothesis_confusion_norm = _normalize_alias_ocr_confusions(hypothesis_norm)
+    for candidate in candidates:
+        if candidate in hypothesis_norm:
+            return True
+        if (
+            len(candidate) >= INGREDIENT_ALIAS_CONFUSION_MIN_CHARS
+            and _normalize_alias_ocr_confusions(candidate) in hypothesis_confusion_norm
+        ):
+            return True
+    return False
 
 
 def _canonical_unit(unit: str) -> str | None:
@@ -285,16 +494,24 @@ def _canonical_unit(unit: str) -> str | None:
     aliases = {
         "mg": "mg",
         "밀리그램": "mg",
+        "milligram": "mg",
+        "milligrams": "mg",
         "g": "g",
         "그램": "g",
+        "gram": "g",
+        "grams": "g",
         "mcg": "mcg",
         "ug": "mcg",
         "μg": "mcg",
         "µg": "mcg",
         "마이크로그램": "mcg",
+        "microgram": "mcg",
+        "micrograms": "mcg",
         "iu": "iu",
         "i.u.": "iu",
         "아이유": "iu",
+        "international unit": "iu",
+        "international units": "iu",
         "cfu": "cfu",
         "씨에프유": "cfu",
         "%": "%",
@@ -305,8 +522,50 @@ def _canonical_unit(unit: str) -> str | None:
 
 def _canonical_amount(amount: str) -> str:
     """Normalize OCR amount text without changing its numeric value."""
-    normalized = amount.replace(",", "").strip()
+    translation = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1"})
+    normalized = amount.translate(translation).replace(",", "").strip()
     return normalized[:-2] if normalized.endswith(".0") else normalized
+
+
+def _normalize_alias_ocr_confusions(value: str) -> str:
+    """Normalize bounded OCR glyph confusions for ingredient alias visibility checks.
+
+    Args:
+        value: Already metric-normalized alias or OCR text.
+
+    Returns:
+        A normalized string where common recognition confusions collapse to the
+        same token. This is intentionally exact-match oriented, not fuzzy scoring.
+    """
+    normalized = value.translate(str.maketrans({"0": "o", "1": "i", "l": "i"}))
+    return normalized.replace("rn", "m")
+
+
+def _alias_group_visible_in_hypothesis(
+    normalized_aliases: list[tuple[str, str]], text_norm: str
+) -> bool:
+    """Return whether an alias group is visibly present after bounded OCR cleanup.
+
+    Args:
+        normalized_aliases: ``(display_alias, normalized_alias)`` pairs from one
+            canonical alias group.
+        text_norm: Normalized OCR hypothesis text.
+
+    Returns:
+        True when an alias is exactly visible, or when a long alias is visible
+        after deterministic glyph-confusion normalization.
+    """
+    text_confusion_norm = _normalize_alias_ocr_confusions(text_norm)
+    for _, alias_norm in normalized_aliases:
+        if not alias_norm:
+            continue
+        if alias_norm in text_norm:
+            return True
+        if len(alias_norm) >= INGREDIENT_ALIAS_CONFUSION_MIN_CHARS and (
+            _normalize_alias_ocr_confusions(alias_norm) in text_confusion_norm
+        ):
+            return True
+    return False
 
 
 def _postprocess_hypothesis_text(text: str, *, mode: str) -> tuple[str, bool]:
@@ -314,9 +573,11 @@ def _postprocess_hypothesis_text(text: str, *, mode: str) -> tuple[str, bool]:
 
     This post-pass never invents ingredients from the expected label. It only adds
     canonical Korean/English aliases or unit variants when one alias/amount-unit
-    form is already visible in the OCR hypothesis. The goal is to make the
-    structured metric robust to bilingual supplement labels and equivalent unit
-    spellings while preserving a no-raw-text artifact policy.
+    form is already visible in the OCR hypothesis. Long ingredient aliases also
+    allow deterministic glyph-confusion normalization to absorb common OCR errors
+    without loosening short-token matching. The goal is to make the structured
+    metric robust to bilingual supplement labels and equivalent unit spellings
+    while preserving a no-raw-text artifact policy.
 
     Args:
         text: Raw joined OCR hypothesis.
@@ -337,11 +598,11 @@ def _postprocess_hypothesis_text(text: str, *, mode: str) -> tuple[str, bool]:
     text_norm = _normalize_for_metric(text)
     for aliases in INGREDIENT_ALIAS_GROUPS:
         normalized_aliases = [(alias, _normalize_for_metric(alias)) for alias in aliases]
-        if any(alias_norm and alias_norm in text_norm for _, alias_norm in normalized_aliases):
+        if _alias_group_visible_in_hypothesis(normalized_aliases, text_norm):
             additions.extend(alias for alias, _ in normalized_aliases)
 
     normalized_text = unicodedata.normalize("NFKC", text)
-    for match in AMOUNT_UNIT_PATTERN.finditer(normalized_text):
+    for match in OCR_CONFUSED_AMOUNT_UNIT_PATTERN.finditer(normalized_text):
         amount = _canonical_amount(match.group("amount"))
         canonical_unit = _canonical_unit(match.group("unit"))
         if canonical_unit is None:
@@ -361,6 +622,7 @@ def _build_ocr(
     det_model: str,
     rec_model: str,
     max_side: int,
+    device: str | None = None,
     det_box_thresh: float | None = None,
     det_thresh: float | None = None,
     det_unclip_ratio: float | None = None,
@@ -378,9 +640,11 @@ def _build_ocr(
         det_model: PaddleOCR detection model name.
         rec_model: PaddleOCR recognition model name.
         max_side: Max image side length before detection (memory bound).
+        device: Optional PaddleOCR runtime device such as ``gpu:0`` or ``cpu``.
         det_box_thresh: Optional detection box score threshold.
         det_thresh: Optional detection pixel binarization threshold.
         det_unclip_ratio: Optional detection box expansion ratio.
+        rec_model_dir: Optional fine-tuned recognition inference model directory.
 
     Returns:
         A configured PaddleOCR pipeline.
@@ -396,6 +660,8 @@ def _build_ocr(
         det_kwargs["text_det_unclip_ratio"] = det_unclip_ratio
     if rec_model_dir is not None:
         det_kwargs["text_recognition_model_dir"] = rec_model_dir
+    if device is not None:
+        det_kwargs["device"] = device
     return PaddleOCR(
         lang="korean",
         use_textline_orientation=False,
@@ -426,6 +692,7 @@ def evaluate(  # noqa: PLR0915
     det_model: str,
     rec_model: str,
     max_side: int,
+    device: str | None = None,
     det_box_thresh: float | None = None,
     det_thresh: float | None = None,
     det_unclip_ratio: float | None = None,
@@ -440,9 +707,11 @@ def evaluate(  # noqa: PLR0915
         det_model: PaddleOCR detection model name.
         rec_model: PaddleOCR recognition model name.
         max_side: Max image side length before detection (memory bound).
+        device: Optional PaddleOCR runtime device such as ``gpu:0`` or ``cpu``.
         det_box_thresh: Optional detection box score threshold.
         det_thresh: Optional detection pixel binarization threshold.
         det_unclip_ratio: Optional detection box expansion ratio.
+        rec_model_dir: Optional fine-tuned recognition inference model directory.
         post_pass: Optional deterministic hypothesis post-pass.
 
     Returns:
@@ -451,9 +720,7 @@ def evaluate(  # noqa: PLR0915
     """
     todo = bundle_dir / "ground-truth.todo.jsonl"
     rows = [
-        json.loads(line)
-        for line in todo.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in todo.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     ready = [
         r
@@ -466,6 +733,7 @@ def evaluate(  # noqa: PLR0915
         det_model=det_model,
         rec_model=rec_model,
         max_side=max_side,
+        device=device,
         det_box_thresh=det_box_thresh,
         det_thresh=det_thresh,
         det_unclip_ratio=det_unclip_ratio,
@@ -473,7 +741,11 @@ def evaluate(  # noqa: PLR0915
     )
     per_image: list[dict[str, Any]] = []
     observations: list[dict[str, Any]] = []
-    sums = {"normalized_text_precision": 0.0, "normalized_text_recall": 0.0, "normalized_text_f1": 0.0}
+    sums = {
+        "normalized_text_precision": 0.0,
+        "normalized_text_recall": 0.0,
+        "normalized_text_f1": 0.0,
+    }
     field_ratio_sum = 0.0
     field_matched_total = 0
     field_unit_total = 0
@@ -567,10 +839,16 @@ def evaluate(  # noqa: PLR0915
         "skipped_images": skipped,
         "failed_images": failed,
         "field_match_ratio_macro": round(field_ratio_sum / scored, 4) if scored else 0.0,
-        "field_match_ratio_micro": round(field_matched_total / field_unit_total, 4) if field_unit_total else 0.0,
+        "field_match_ratio_micro": (
+            round(field_matched_total / field_unit_total, 4) if field_unit_total else 0.0
+        ),
         "field_matched_total": [field_matched_total, field_unit_total],
-        "mean_normalized_text_precision": round(sums["normalized_text_precision"] / scored, 4) if scored else 0.0,
-        "mean_normalized_text_recall": round(sums["normalized_text_recall"] / scored, 4) if scored else 0.0,
+        "mean_normalized_text_precision": (
+            round(sums["normalized_text_precision"] / scored, 4) if scored else 0.0
+        ),
+        "mean_normalized_text_recall": (
+            round(sums["normalized_text_recall"] / scored, 4) if scored else 0.0
+        ),
         "mean_normalized_text_f1": round(sums["normalized_text_f1"] / scored, 4) if scored else 0.0,
         "ingredient_recall": round(recall_found / recall_total, 4) if recall_total else 0.0,
         "ingredient_found_total": [recall_found, recall_total],
@@ -598,6 +876,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Local PaddleOCR inference model dir for a fine-tuned recognizer (e.g. best_accuracy/inference).",
     )
     parser.add_argument("--max-side", type=int, default=None, help="Override the profile max side.")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Optional PaddleOCR runtime device, for example gpu:0 on A100 or cpu.",
+    )
     parser.add_argument(
         "--det-box-thresh",
         type=float,
@@ -638,7 +921,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.apply:
         print(
             json.dumps(
-                {"apply_requested": False, "profile": args.profile, "det": det_model, "rec": rec_model}
+                {
+                    "apply_requested": False,
+                    "profile": args.profile,
+                    "det": det_model,
+                    "rec": rec_model,
+                    "device": args.device,
+                }
             )
         )
         return 0
@@ -648,6 +937,7 @@ def main(argv: list[str] | None = None) -> int:
         det_model=det_model,
         rec_model=rec_model,
         max_side=max_side,
+        device=args.device,
         det_box_thresh=args.det_box_thresh,
         det_thresh=args.det_thresh,
         det_unclip_ratio=args.det_unclip_ratio,

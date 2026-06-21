@@ -262,7 +262,7 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
             local_ocr_text_det_limit_type="max",
             local_ocr_text_det_thresh=0.2,
             local_ocr_text_det_box_thresh=0.5,
-            local_ocr_text_det_unclip_ratio=2.5,
+            local_ocr_text_det_unclip_ratio=3.0,
             local_ocr_text_rec_score_thresh=0.15,
         ),
         predictor=predictor,
@@ -276,7 +276,7 @@ async def test_paddle_adapter_forwards_predict_tuning_kwargs() -> None:
         "text_det_limit_type": "max",
         "text_det_thresh": 0.2,
         "text_det_box_thresh": 0.5,
-        "text_det_unclip_ratio": 2.5,
+        "text_det_unclip_ratio": 3.0,
         "text_rec_score_thresh": 0.15,
     }
 
@@ -329,7 +329,7 @@ async def test_paddle_adapter_forwards_adopted_box_thresh_default() -> None:
 
 @pytest.mark.asyncio
 async def test_paddle_adapter_forwards_adopted_unclip_ratio_default() -> None:
-    """Verify the adopted unclip_ratio default (2.5) is forwarded when left unset."""
+    """Verify the adopted unclip_ratio default (3.0) is forwarded when left unset."""
     predictor = _FakePaddlePredictor([{"rec_texts": ["엽산"], "rec_scores": [0.9]}])
     adapter = PaddleOCRAdapter(
         Settings(
@@ -342,7 +342,7 @@ async def test_paddle_adapter_forwards_adopted_unclip_ratio_default() -> None:
 
     await adapter.extract_text(_image_input())
 
-    assert predictor.received_kwargs["text_det_unclip_ratio"] == 2.5
+    assert predictor.received_kwargs["text_det_unclip_ratio"] == 3.0
 
 
 @pytest.mark.asyncio
