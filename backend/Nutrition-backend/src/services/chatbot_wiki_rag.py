@@ -35,7 +35,13 @@ logger = logging.getLogger(__name__)
 
 # Top citations injected into the grounding prompt. Bounded so the prompt stays
 # small and the model can attend to every "참고 자료 [N]" block.
-_MAX_PROMPT_CITATIONS = 5
+_MAX_PROMPT_CITATIONS = 4
+# Per-citation excerpt length in the prompt. Generation dominates latency, but a
+# smaller prompt still trims input-processing time on the local GPU.
+_MAX_EXCERPT_CHARS = 400
+# Ceiling on the synthesized answer length. A chat reply is a few sentences; without
+# a cap the local model can run long and exceed the mobile chat request timeout.
+_MAX_ANSWER_TOKENS = 600
 
 # ---------------------------------------------------------------------------
 # Post-generation safety screen
@@ -257,13 +263,14 @@ def _build_chat_payload(
         "사용한 참고 자료의 1-기반 번호들>]}. 참고 자료가 질문과 관련 있으면 그 내용을 근거로 "
         "답하고 사용한 번호를 used_sources에 담는다. 참고 자료가 무관하거나 비어 있으면 일반적인 "
         "정보로 간단히 답하고 used_sources는 빈 배열([])로 두며, 일반 정보이며 정확한 내용은 "
-        "전문가 상담을 권한다고 덧붙인다. 진단·처방·복약 중단/변경 권고는 하지 않는다."
+        "전문가 상담을 권한다고 덧붙인다. 진단·처방·복약 중단/변경 권고는 하지 않는다. "
+        "answer는 핵심만 간결하게 3~5문장으로 작성한다."
     )
     return {
         "model": settings.ollama_model,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0},
+        "options": {"temperature": 0, "num_predict": _MAX_ANSWER_TOKENS},
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -285,7 +292,7 @@ def _format_references(citations: list[LlmWikiCitation]) -> str:
     blocks: list[str] = []
     for index, citation in enumerate(citations, start=1):
         title = citation.heading or citation.title
-        blocks.append(f"참고 자료 [{index}] {title}\n{citation.excerpt}")
+        blocks.append(f"참고 자료 [{index}] {title}\n{citation.excerpt[:_MAX_EXCERPT_CHARS]}")
     return "\n\n".join(blocks)
 
 

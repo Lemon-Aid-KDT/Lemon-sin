@@ -30,6 +30,10 @@ class ChatRepository {
   /// Backend caps message length at 4000 characters.
   static const int _maxMessageLength = 4000;
 
+  /// Chat synthesis runs a local-LLM RAG pass (wiki retrieval + Gemma), which is
+  /// far slower than a normal request, so it overrides the default 30s timeout.
+  static const Duration _chatTimeout = Duration(seconds: 90);
+
   final ApiClient _apiClient;
   final Random _random = Random();
 
@@ -80,6 +84,7 @@ class ChatRepository {
     final Map<String, dynamic> json = await _apiClient.postJson(
       _chatPath,
       body: body,
+      timeout: _chatTimeout,
     );
     return ChatbotResponse.fromJson(json);
   }
