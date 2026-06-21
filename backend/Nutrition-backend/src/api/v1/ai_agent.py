@@ -55,6 +55,7 @@ from src.services.chatbot_unknown_backlog import (
     build_unknown_knowledge_event,
     record_unknown_knowledge_event,
 )
+from src.services.chatbot_wiki_rag import answer_with_wiki_rag
 from src.services.food_records import load_recent_user_food_record_context
 from src.services.medical_source_readiness import build_medical_source_readiness_from_db
 from src.services.privacy import (
@@ -458,16 +459,6 @@ async def run_chatbot(
                 context=context,
             )
         )
-        if chatbot_response.answerability == "unknown_no_reviewed_source":
-            record_unknown_knowledge_event(
-                session,
-                build_unknown_knowledge_event(
-                    message=request.message,
-                    answerability=chatbot_response.answerability,
-                    retrieval_warnings=chatbot_response.safety_warnings,
-                ),
-            )
-
         used_tools = list(
             dict.fromkeys(
                 [
@@ -477,6 +468,55 @@ async def run_chatbot(
                 ]
             )
         )
+        analysis_contract = build_analysis_response_contract(
+            context["user_health_context_snapshot"]
+        )
+        if chatbot_response.answerability == "unknown_no_reviewed_source":
+            record_unknown_knowledge_event(
+                session,
+                build_unknown_knowledge_event(
+                    message=request.message,
+                    answerability=chatbot_response.answerability,
+                    retrieval_warnings=chatbot_response.safety_warnings,
+                ),
+            )
+            rag = await answer_with_wiki_rag(
+                request.message,
+                settings=settings,
+                user_context_summary=str(context.get("daily_coaching_summary", "")),
+            )
+            await record_sensitive_audit_event(
+                session,
+                current_user,
+                action="ai_agent_chat_completed",
+                resource_type="ai_agent_chat",
+                resource_id=chatbot_response.request_id,
+                outcome="success",
+                request=http_request,
+                settings=settings,
+                event_metadata={
+                    "provider": rag.provider,
+                    "requires_user_approval": False,
+                },
+            )
+            return ChatbotApiResponse(
+                request_id=chatbot_response.request_id,
+                message=rag.message,
+                provider=rag.provider,
+                used_tools=list(dict.fromkeys([*used_tools, *rag.used_tools])),
+                safety_warnings=rag.safety_warnings,
+                source_families=["lemon_wiki"] if rag.sources else [],
+                answerability=rag.answerability,
+                sources=_public_chatbot_sources(rag.sources),
+                requires_user_approval=False,
+                ctas=_merge_ctas(getattr(chatbot_response, "ctas", []), analysis_contract["ctas"]),
+                analysis_snapshot=analysis_contract["analysis_snapshot"],
+                today_analysis=analysis_contract["today_analysis"],
+                smart_analysis=analysis_contract["smart_analysis"],
+                checklist_candidates=analysis_contract["checklist_candidates"],
+                approval_preview=analysis_contract["approval_preview"],
+            )
+
         await record_sensitive_audit_event(
             session,
             current_user,
@@ -490,9 +530,6 @@ async def run_chatbot(
                 "provider": chatbot_response.provider,
                 "requires_user_approval": chatbot_response.requires_user_approval,
             },
-        )
-        analysis_contract = build_analysis_response_contract(
-            context["user_health_context_snapshot"]
         )
         return ChatbotApiResponse(
             request_id=chatbot_response.request_id,

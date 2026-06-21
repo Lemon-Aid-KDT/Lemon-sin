@@ -14,6 +14,7 @@ from src.api.v1 import ai_agent
 from src.config import Settings, get_settings
 from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
+from src.services.chatbot_wiki_rag import WikiRagAnswer
 from src.services.privacy import ConsentRequiredError
 
 
@@ -1648,10 +1649,10 @@ def test_chat_route_medical_wiki_answerable_sources_are_deduped_and_public(
     assert "provider_payload" not in str(body)
 
 
-def test_chat_route_medical_wiki_unknown_sources_stay_empty_and_raw_free(
+def test_chat_route_unknown_falls_back_to_wiki_rag_and_records_backlog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify unknown route responses expose no sources and do not echo raw questions."""
+    """Verify the unknown branch records the backlog and serves the wiki-RAG answer."""
 
     class _UnknownSourceChatbotAgent:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -1670,12 +1671,26 @@ def test_chat_route_medical_wiki_unknown_sources_stay_empty_and_raw_free(
     async def _fake_retriever(*_args: object, **_kwargs: object) -> object:
         return object()
 
+    rag_calls: list[str] = []
+
+    async def _fake_wiki_rag(message: str, **_kwargs: object) -> WikiRagAnswer:
+        rag_calls.append(message)
+        return WikiRagAnswer(
+            message="WIKI-RAG로 합성한 일반 안내 답변입니다.",
+            sources=[],
+            answerability="answered_from_wiki",
+            safety_warnings=["전문가 상담 권고 안내문."],
+            provider="gemma_wiki_rag",
+            used_tools=["llm_wiki_rag"],
+        )
+
     backlog_events: list[object] = []
     raw_question = "RAW_UNREVIEWED_SUPPLEMENT_QUESTION"
 
     monkeypatch.setattr(ai_agent, "ChatbotAgent", _UnknownSourceChatbotAgent)
     monkeypatch.setattr(ai_agent, "build_chatbot_medical_knowledge_retriever", _fake_retriever)
     monkeypatch.setattr(ai_agent, "_build_llm_client", lambda _settings: None)
+    monkeypatch.setattr(ai_agent, "answer_with_wiki_rag", _fake_wiki_rag)
     monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
     monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
     monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
@@ -1692,17 +1707,21 @@ def test_chat_route_medical_wiki_unknown_sources_stay_empty_and_raw_free(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert body["answerability"] == "unknown_no_reviewed_source"
+    assert body["answerability"] == "answered_from_wiki"
+    assert body["provider"] == "gemma_wiki_rag"
+    assert body["message"] == "WIKI-RAG로 합성한 일반 안내 답변입니다."
+    assert "llm_wiki_rag" in body["used_tools"]
     assert body["sources"] == []
     assert raw_question not in str(body)
+    assert rag_calls == [raw_question]
     assert len(backlog_events) == 1
     assert raw_question not in str(backlog_events[0].__dict__)
 
 
-def test_chat_route_unknown_question_fails_closed_without_llm(
+def test_chat_route_unknown_question_does_not_use_generic_sglang_llm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify uncovered medical knowledge does not fall through to generic LLM answers."""
+    """Verify uncovered knowledge skips the generic SGLang LLM and uses the wiki-RAG path."""
     captured: dict[str, int] = {"generate_calls": 0}
     backlog_events: list[object] = []
 
@@ -1727,6 +1746,16 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
                 model="fake",
             )
 
+    async def _fake_wiki_rag(_message: str, **_kwargs: object) -> WikiRagAnswer:
+        return WikiRagAnswer(
+            message="일반 정보 안내입니다. 정확한 내용은 전문가와 상담해 주세요.",
+            sources=[],
+            answerability="general_fallback",
+            safety_warnings=["전문가 상담 권고 안내문."],
+            provider="gemma_wiki_rag",
+            used_tools=["llm_wiki_rag"],
+        )
+
     settings = Settings(
         _env_file=None,
         llm_provider="sglang",
@@ -1734,6 +1763,7 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
         sglang_model="Qwen/Qwen2.5-0.5B-Instruct",
     )
     monkeypatch.setattr(ai_agent, "SGLangClient", _FakeSGLangClient)
+    monkeypatch.setattr(ai_agent, "answer_with_wiki_rag", _fake_wiki_rag)
     monkeypatch.setattr(ai_agent, "require_user_consent", _allow_consent)
     monkeypatch.setattr(ai_agent, "record_sensitive_audit_event", _record_noop_audit)
     monkeypatch.setattr(ai_agent, "load_agent_memory_context", _memory_context)
@@ -1749,10 +1779,11 @@ def test_chat_route_unknown_question_fails_closed_without_llm(
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert body["provider"] == "deterministic"
-    assert body["answerability"] == "unknown_no_reviewed_source"
+    assert body["provider"] == "gemma_wiki_rag"
+    assert body["answerability"] == "general_fallback"
+    assert body["message"] == "일반 정보 안내입니다. 정확한 내용은 전문가와 상담해 주세요."
     assert body["sources"] == []
-    assert "현재 검수된 지식 안에서 답할 수 없습니다" in body["message"]
+    # The generic, uncited SGLang answer is never surfaced for unknown questions.
     assert "타우린은 리튬과 함께 먹어도 됩니다" not in body["message"]
     assert captured["generate_calls"] == 0
     assert len(backlog_events) == 1
