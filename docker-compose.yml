@@ -61,6 +61,20 @@ services:
       DATABASE_URL: postgresql+asyncpg://lemon_app:lemon_app@db:5432/lemon  # pragma: allowlist secret
       AUDIT_DATABASE_URL: postgresql+asyncpg://lemon:lemon@db:5432/lemon  # pragma: allowlist secret
       LEARNING_DATABASE_URL: postgresql+asyncpg://lemon:lemon@db:5432/lemon  # pragma: allowlist secret
+      # KDRIs: 번들 2020-sample 대신 공식 2025 데이터셋 사용.
+      # 데이터는 이미지에 baked 됨 (Dockerfile: COPY Nutrition-backend/data/nutrition_reference);
+      # 기본 경로가 baked 위치(/app/data/nutrition_reference/kdris)로 resolve 되므로
+      # 별도 path override·볼륨 마운트 불필요 — 버전만 지정.
+      KDRIS_DATA_VERSION: "2025"
+      ALLOW_SAMPLE_KDRIS: "false"
+      # 영양제 다중 이미지(앞면+영양·기능정보면) 1요청 융합 파싱 활성화: 앞면의 성분명과
+      # 정보면의 함량을 한 번에 OCR→파싱해 함량(#4)이 채워지도록 한다(모바일은 이미
+      # merge_strategy=single_product 전송). 분류(#5)는 인식된 성분명 기반 코드 매핑으로
+      # 자동 제안된다(응답 suggested_category_keys). 라벨 함량/분류용 로컬 비전(Gemma4)
+      # 머지는 단일 GPU 모델 스왑(qwen↔gemma4, 요청당 ~62s)과 e4b의 한글 함량 미인식
+      # 때문에 enable_supplement_label_vision_extraction 기본 off로 비활성.
+      SUPPLEMENT_ONE_SHOT_FUSION_ENABLED: "true"
+      ANALYZE_OPTIONAL_STAGE_BUDGET_SEC: "20"
       REDIS_URL: redis://redis:6379/0
       ALLOWED_HOSTS: '["localhost","127.0.0.1","testserver","0.0.0.0","10.0.2.2"]'
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-[]}
@@ -75,6 +89,13 @@ services:
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-gemma4:e4b}
       OLLAMA_TIMEOUT_SEC: ${OLLAMA_TIMEOUT_SEC:-60}
       ALLOW_EXTERNAL_LLM: "false"
+      ENABLE_SUPPLEMENT_LABEL_VISION_EXTRACTION: ${ENABLE_SUPPLEMENT_LABEL_VISION_EXTRACTION:-false}
+      # Async supplement analyze: POST returns 202 + in-process worker + mobile
+      # polling, so multi-image latency no longer blows the mobile upload timeout.
+      SUPPLEMENT_ANALYZE_ASYNC_ENABLED: ${SUPPLEMENT_ANALYZE_ASYNC_ENABLED:-false}
+      # Retain the full OCR source text (owner-scoped) so the "OCR 텍스트 전체" view can
+      # show it. Default false keeps the EXTERNAL_OCR_PROCESSING consent promise accurate.
+      STORE_RAW_OCR_TEXT: ${STORE_RAW_OCR_TEXT:-false}
       # OCR provider: current phase is CLOVA-only while PaddleOCR is retrained, so the
       # fallback defaults select CLOVA + disable local OCR (override via .env for
       # paddleocr/google_vision). CLOVA_OCR_API_URL/SECRET still come from .env — without
@@ -88,9 +109,10 @@ services:
       LOCAL_OCR_PREPROCESS_MODE: ${LOCAL_OCR_PREPROCESS_MODE:-autocontrast}
       LOCAL_OCR_TEXT_DET_LIMIT_TYPE: ${LOCAL_OCR_TEXT_DET_LIMIT_TYPE:-max}
       LOCAL_OCR_TEXT_DET_LIMIT_SIDE_LEN: ${LOCAL_OCR_TEXT_DET_LIMIT_SIDE_LEN:-3072}
-      LOCAL_OCR_TEXT_DET_UNCLIP_RATIO: ${LOCAL_OCR_TEXT_DET_UNCLIP_RATIO:-2.5}
+      LOCAL_OCR_TEXT_DET_UNCLIP_RATIO: ${LOCAL_OCR_TEXT_DET_UNCLIP_RATIO:-3.0}
       LOCAL_OCR_CONFIDENCE_THRESHOLD: ${LOCAL_OCR_CONFIDENCE_THRESHOLD:-0.75}
       OCR_SECONDARY_MERGE_POLICY: ${OCR_SECONDARY_MERGE_POLICY:-disabled}
+      OCR_ENSEMBLE_VERIFICATION_MODE: ${OCR_ENSEMBLE_VERIFICATION_MODE:-inherit_sample}
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "true"
       ALLOW_EXTERNAL_OCR: ${ALLOW_EXTERNAL_OCR:-true}
       ENABLE_CLOVA_OCR: ${ENABLE_CLOVA_OCR:-true}
@@ -108,6 +130,9 @@ services:
       ENABLE_VISION_CLASSIFIER: ${ENABLE_VISION_CLASSIFIER:-false}
       VISION_CLASSIFIER_MODEL: ${VISION_CLASSIFIER_MODEL:-yolov8n.pt}
       OCR_ROI_PREPROCESSING_POLICY: ${OCR_ROI_PREPROCESSING_POLICY:-disabled}
+      OCR_ROI_CROP_PADDING_RATIO: ${OCR_ROI_CROP_PADDING_RATIO:-0.08}
+      OCR_ROI_CROP_MIN_PADDING_PX: ${OCR_ROI_CROP_MIN_PADDING_PX:-16}
+      OCR_ROI_CROP_MAX_PADDING_PX: ${OCR_ROI_CROP_MAX_PADDING_PX:-160}
       ENABLE_FOOD_YOLO_DETECTOR: ${ENABLE_FOOD_YOLO_DETECTOR:-false}
       MEAL_YOLO_MODEL_PATH: ${MEAL_YOLO_MODEL_PATH:-/app/Food-backend/best.pt}
       MEAL_YOLO_MODEL_LABEL: ${MEAL_YOLO_MODEL_LABEL:-food_yolo_local}
