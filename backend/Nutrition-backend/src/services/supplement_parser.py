@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -19,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.db.tx import persist_scope
-from src.llm.ollama import SUPPLEMENT_PARSER_SOURCE, OllamaChatClient, OllamaSupplementParser
+from src.llm.ollama import (
+    SUPPLEMENT_PARSER_SOURCE,
+    OllamaChatClient,
+    OllamaClientError,
+    OllamaStructuredOutputError,
+    OllamaSupplementParser,
+)
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.label_layout import LabelLayout, LabelSection
 from src.models.schemas.privacy import ConsentType
@@ -48,10 +55,15 @@ from src.services.supplement_text_sanitizer import (
     sanitize_unit,
 )
 
+logger = logging.getLogger(__name__)
+
 SUPPLEMENT_PARSER_CONFIRMATION_WARNING = (
     "Structured OCR parsing is a preview. Review and confirm every field before saving."
 )
 OCR_PATTERN_FALLBACK_WARNING = "ocr_pattern_fallback_requires_review"
+# Emitted when the local LLM parser fails (non-JSON output or unreachable) and the
+# deterministic OCR fallbacks are used to recover candidates instead of aborting.
+LLM_PARSE_FALLBACK_WARNING = "llm_parse_failed_fallback_requires_review"
 OCR_PATTERN_FALLBACK_SOURCE = "ocr_pattern_fallback"
 # Name-only candidates mined from the Korean 원재료명 / 원료명 declaration list.
 # They never carry a trustworthy amount/unit, so the UI must confirm amounts.
@@ -408,7 +420,20 @@ async def parse_supplement_analysis_ocr_text(
     _validate_parseable_record(record, text_hash)
 
     active_parser = parser or OllamaSupplementParser(settings)
-    parse_result = await active_parser.parse_supplement_ocr_text(normalized_text)
+    try:
+        parse_result = await active_parser.parse_supplement_ocr_text(normalized_text)
+    except (OllamaStructuredOutputError, OllamaClientError) as exc:
+        # The local LLM produced unusable output (e.g. non-JSON on a dense label) or
+        # was unreachable. Aborting here strands the user with an empty result
+        # (previously HTTP 502 / an intake-only preview). Instead degrade to an empty
+        # structured result and let the deterministic OCR fallbacks below recover
+        # ingredient candidates from the OCR text; the failure is surfaced as a review
+        # warning so the preview UI flags it.
+        logger.warning(
+            "Supplement LLM parse failed (%s); using deterministic OCR fallbacks.",
+            type(exc).__name__,
+        )
+        parse_result = SupplementStructuredParseResult(warnings=[LLM_PARSE_FALLBACK_WARNING])
     _validate_parser_result(parse_result, settings.supplement_parser_max_ingredients)
     try:
         # The deterministic OCR fallbacks below append candidates on top of the
@@ -1415,38 +1440,104 @@ def _preview_text_key(value: str) -> str:
     return " ".join(unicodedata.normalize("NFC", value).casefold().split())
 
 
+@dataclass(frozen=True)
+class _FallbackAmountIndex:
+    """Fallback OCR-pattern candidates indexed for amount enrichment.
+
+    Attributes:
+        by_full: First fallback per full name key.
+        by_base: First fallback per base name key (form/source qualifier stripped).
+        base_counts: Number of fallbacks sharing each base key.
+        name_only_base_counts: Number of name-only existing candidates sharing each
+            base key, used to gate base matching to the unambiguous 1:1 case.
+    """
+
+    by_full: dict[str, dict[str, Any]]
+    by_base: dict[str, dict[str, Any]]
+    base_counts: dict[str, int]
+    name_only_base_counts: dict[str, int]
+
+
+def _build_fallback_amount_index(
+    existing_candidates: list[dict[str, Any]],
+    fallback_candidates: list[dict[str, Any]],
+) -> _FallbackAmountIndex:
+    """Index fallback candidates by full and base name for amount enrichment."""
+    by_full: dict[str, dict[str, Any]] = {}
+    by_base: dict[str, dict[str, Any]] = {}
+    base_counts: dict[str, int] = {}
+    for candidate in fallback_candidates:
+        for key in _ingredient_candidate_name_keys(candidate):
+            by_full.setdefault(key, candidate)
+        for base in _ingredient_candidate_base_keys(candidate):
+            by_base.setdefault(base, candidate)
+            base_counts[base] = base_counts.get(base, 0) + 1
+
+    name_only_base_counts: dict[str, int] = {}
+    for candidate in existing_candidates:
+        if candidate.get("amount") is not None:
+            continue
+        for base in _ingredient_candidate_base_keys(candidate):
+            name_only_base_counts[base] = name_only_base_counts.get(base, 0) + 1
+
+    return _FallbackAmountIndex(by_full, by_base, base_counts, name_only_base_counts)
+
+
+def _select_fallback_for_candidate(
+    candidate: dict[str, Any],
+    index: _FallbackAmountIndex,
+    consumed_ids: set[int],
+) -> dict[str, Any] | None:
+    """Return the fallback to enrich a name-only candidate, or None.
+
+    Prefers an exact full-name match, then an unambiguous base-name match (exactly
+    one name-only candidate and one fallback share the base). Already-consumed
+    fallbacks are skipped so one OCR amount enriches at most one candidate.
+    """
+    for key in _ingredient_candidate_name_keys(candidate):
+        full = index.by_full.get(key)
+        if full is not None and id(full) not in consumed_ids:
+            return full
+    for base in _ingredient_candidate_base_keys(candidate):
+        if index.base_counts.get(base) != 1 or index.name_only_base_counts.get(base) != 1:
+            continue
+        base_match = index.by_base.get(base)
+        if base_match is not None and id(base_match) not in consumed_ids:
+            return base_match
+    return None
+
+
 def _enrich_missing_amounts_from_fallbacks(
     existing_candidates: list[dict[str, Any]],
     fallback_candidates: list[dict[str, Any]],
 ) -> bool:
     """Fill amount/unit on name-only candidates from name-matched OCR patterns.
 
-    Existing candidates that already carry an amount are left untouched. Matching
-    is by normalized name, so an amount-bearing OCR pattern enriches a name-only
-    LLM candidate instead of producing a duplicate row.
+    Matching prefers an exact full-name match, then an unambiguous base-name match
+    (a trailing form/source qualifier stripped — see ``_ingredient_base_name_key`` —
+    so a name-only ``Zinc (zinc mono-L-methionine, aspartate)`` matches the OCR
+    pattern ``Zinc``). A base match fires only when exactly one name-only candidate
+    AND exactly one fallback share that base, so a single OCR amount is never
+    broadcast across two distinct chemical forms (e.g. two Vitamin A forms). Each
+    fallback enriches at most one candidate and is then removed from
+    ``fallback_candidates`` so the caller's add-new pass does not re-append it as a
+    duplicate. Existing candidates that already carry an amount are left untouched.
 
     Args:
         existing_candidates: Candidate list mutated in place.
-        fallback_candidates: Amount-bearing OCR pattern candidates.
+        fallback_candidates: Amount-bearing OCR pattern candidates; entries consumed
+            by enrichment are removed in place.
 
     Returns:
         True when at least one candidate was enriched.
     """
-    fallback_by_name: dict[str, dict[str, Any]] = {}
-    for candidate in fallback_candidates:
-        name_key = _ingredient_name_key(str(candidate.get("display_name") or ""))
-        if name_key and name_key not in fallback_by_name:
-            fallback_by_name[name_key] = candidate
-
+    index = _build_fallback_amount_index(existing_candidates, fallback_candidates)
+    consumed_ids: set[int] = set()
     enriched = False
     for candidate in existing_candidates:
         if candidate.get("amount") is not None:
             continue
-        match: dict[str, Any] | None = None
-        for name_key in _ingredient_candidate_name_keys(candidate):
-            match = fallback_by_name.get(name_key)
-            if match is not None:
-                break
+        match = _select_fallback_for_candidate(candidate, index, consumed_ids)
         if match is None:
             continue
         candidate["amount"] = match.get("amount")
@@ -1457,7 +1548,13 @@ def _enrich_missing_amounts_from_fallbacks(
             and match.get("daily_value_percent") is not None
         ):
             candidate["daily_value_percent"] = match.get("daily_value_percent")
+        consumed_ids.add(id(match))
         enriched = True
+
+    if consumed_ids:
+        fallback_candidates[:] = [
+            candidate for candidate in fallback_candidates if id(candidate) not in consumed_ids
+        ]
     return enriched
 
 
@@ -2490,19 +2587,43 @@ def _ingredient_candidate_key(candidate: dict[str, Any]) -> tuple[str, float | N
 
 
 def _ingredient_candidate_name_keys(candidate: dict[str, Any]) -> set[str]:
-    """Return display/original name keys for candidate deduplication.
+    """Return display/original full name keys for candidate deduplication.
 
     Args:
         candidate: Ingredient candidate mapping.
 
     Returns:
-        Non-empty normalized names from both user-facing and OCR-original fields.
+        Non-empty normalized full names from both user-facing and OCR-original fields.
     """
     keys: set[str] = set()
     for field in ("display_name", "original_name"):
         name_key = _ingredient_name_key(str(candidate.get(field) or ""))
         if name_key:
             keys.add(name_key)
+    return keys
+
+
+def _ingredient_candidate_base_keys(candidate: dict[str, Any]) -> set[str]:
+    """Return base-name keys (trailing form/source qualifier stripped) for a candidate.
+
+    Used only by amount enrichment to match a name-only candidate carrying the full
+    parenthetical form ("Zinc (zinc mono-L-methionine, aspartate)") with the plain OCR
+    pattern name ("Zinc"). Kept separate from ``_ingredient_candidate_name_keys`` and
+    the strict ``_ingredient_candidate_key`` so base-name collisions never widen the
+    identity key or the add-new dedupe (which would drop a genuinely distinct
+    same-base amount the LLM missed).
+
+    Args:
+        candidate: Ingredient candidate mapping.
+
+    Returns:
+        Non-empty base names from the user-facing and OCR-original fields.
+    """
+    keys: set[str] = set()
+    for field in ("display_name", "original_name"):
+        base_key = _ingredient_base_name_key(str(candidate.get(field) or ""))
+        if base_key:
+            keys.add(base_key)
     return keys
 
 
@@ -2516,6 +2637,25 @@ def _ingredient_name_key(value: str) -> str:
     candidate could be appended as a duplicate of an amount-bearing candidate.
     """
     return " ".join(unicodedata.normalize("NFC", value).casefold().split())
+
+
+# Trailing form/source qualifier appended to a nutrient name, e.g.
+# "Zinc (zinc mono-L-methionine, aspartate)" or "Vitamin B6 (as pyridoxine HCl)".
+# The leading base name is the canonical nutrient identity for match/dedupe.
+_INGREDIENT_NAME_QUALIFIER_PATTERN = re.compile(r"\s*[(（【\[].*$")  # noqa: RUF001
+
+
+def _ingredient_base_name_key(value: str) -> str:
+    """Return the base ingredient name key with a trailing form qualifier removed.
+
+    Strips a trailing parenthetical/bracketed qualifier (form or source) so the
+    base nutrient name matches across sources — e.g. a name-only LLM candidate
+    "Zinc (zinc mono-L-methionine, aspartate)" matches the amount-bearing OCR
+    pattern candidate "Zinc". Returns "" when stripping would leave nothing (e.g.
+    a leading-parenthesis fragment), so callers never add an empty key.
+    """
+    stripped = _INGREDIENT_NAME_QUALIFIER_PATTERN.sub("", value)
+    return _ingredient_name_key(stripped)
 
 
 def _is_excipient_name(value: str) -> bool:

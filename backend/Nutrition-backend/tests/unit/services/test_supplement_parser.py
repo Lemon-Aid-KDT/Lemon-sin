@@ -11,6 +11,7 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
+from src.llm.ollama import OllamaClientError, OllamaStructuredOutputError
 from src.models.db.supplement import SupplementAnalysisRun
 from src.models.schemas.label_layout import LabelLayout
 from src.models.schemas.supplement import SupplementAnalysisStatus
@@ -19,6 +20,7 @@ from src.models.schemas.supplement_snapshot import upcast_legacy_parsed_snapshot
 from src.security.auth import AuthenticatedUser
 from src.services.supplement_intake import supplement_analysis_run_to_preview
 from src.services.supplement_parser import (
+    LLM_PARSE_FALLBACK_WARNING,
     SupplementAnalysisExpiredError,
     SupplementAnalysisNotFoundError,
     SupplementParserConflictError,
@@ -52,6 +54,29 @@ class _FakeParser:
         """
         self.received_text = ocr_text
         return self.result
+
+
+class _RaisingParser:
+    """Fake parser adapter that raises, to exercise the LLM-failure degrade path."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.received_text: str | None = None
+
+    async def parse_supplement_ocr_text(
+        self,
+        ocr_text: str,
+    ) -> SupplementStructuredParseResult:
+        """Capture OCR text then raise the configured error.
+
+        Args:
+            ocr_text: OCR text passed by the service.
+
+        Raises:
+            Exception: The configured parser failure.
+        """
+        self.received_text = ocr_text
+        raise self.error
 
 
 class _FakeParserSession:
@@ -730,6 +755,50 @@ async def test_parse_supplement_analysis_ocr_text_keeps_bounded_ocr_preview_when
     preview = supplement_analysis_run_to_preview(record)
     assert preview.label_sections[0].heading_text == "이미지 1 · supplement_facts"
     assert preview.evidence_spans[0].text_excerpt.startswith("Supplement Facts")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        OllamaStructuredOutputError("Ollama parse produced non-JSON output."),
+        OllamaClientError("Ollama request failed."),
+    ],
+)
+async def test_parse_supplement_analysis_recovers_candidates_when_llm_parse_fails(
+    error: Exception,
+) -> None:
+    """Verify a failed LLM parse degrades to deterministic OCR fallbacks.
+
+    A non-JSON / unreachable local LLM response previously aborted the whole
+    analysis (HTTP 502 / an empty preview). The deterministic OCR amount-pattern
+    fallback must still recover a single-ingredient label like ``Ubiquinol 200 mg``
+    instead of stranding the user with an empty result, and the failure is surfaced
+    as a review warning so the preview UI flags it.
+    """
+    record = _analysis_run()
+    fake_session = _FakeParserSession(record)
+    parser = _RaisingParser(error)
+
+    result = await parse_supplement_analysis_ocr_text(
+        cast(AsyncSession, fake_session),
+        _user(),
+        record.id,
+        "\n".join(["Supplement Facts", "Ubiquinol 200 mg"]),
+        "clova_ocr",
+        0.88,
+        _settings(),
+        parser=parser,
+    )
+
+    assert parser.received_text is not None
+    candidates = record.parsed_snapshot["ingredient_candidates"]
+    ubiquinol = next(c for c in candidates if c["display_name"] == "Ubiquinol")
+    assert ubiquinol["amount"] == 200
+    assert ubiquinol["unit"] == "mg"
+    assert ubiquinol["source"] == "ocr_pattern_fallback"
+    assert LLM_PARSE_FALLBACK_WARNING in record.warnings
+    assert result.record is record
 
 
 @pytest.mark.asyncio
