@@ -2256,7 +2256,14 @@ async def analyze_supplement_label_multi(
         HTTPException: If consent, image validation, role validation, or idempotency fails.
     """
     roles = _validate_multi_image_roles(len(images), image_roles, image_roles_json)
-    if settings.supplement_analyze_async_enabled:
+    # One-shot single-product fusion runs synchronously: it OCRs every image and parses
+    # ONCE into a SINGLE run so 3 photos of one product become one supplement. The async
+    # per-image worker has no fusion mode, so route single_product through the sync fusion
+    # path below; distinct_products still uses the async per-image worker.
+    use_one_shot_fusion = (
+        merge_strategy == "single_product" and settings.supplement_one_shot_fusion_enabled
+    )
+    if settings.supplement_analyze_async_enabled and not use_one_shot_fusion:
         # Async path (flag ON): pre-create every per-image run in `processing`,
         # hand the batch to an in-process worker, and return 202 immediately.
         return await _submit_async_multi_analysis(

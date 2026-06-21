@@ -22,10 +22,10 @@ class ApiClient {
     String? devGatewayToken,
     http.Client? httpClient,
     Duration requestTimeout = const Duration(seconds: 30),
-    // 영양제/식단 분석은 OCR+LLM 파이프라인이 동기라 수십 초 걸릴 수 있어
-    // 업로드 타임아웃을 넉넉히 둔다(서버 지연 시 조기 실패 방지). 백엔드
-    // latency 근본 완화는 ENABLE_MULTIMODAL_VERIFICATION=false + Ollama 등.
-    Duration uploadTimeout = const Duration(seconds: 120),
+    // 영양제/식단 분석은 OCR+LLM 파이프라인이 동기라 수십 초 걸릴 수 있고, 영양제
+    // 다중 사진 "한 영양제 묶음"(one-shot fusion)은 이미지마다 OCR 후 한 번에 파싱해
+    // 더 오래 걸린다(3장 ~100s+). 업로드 타임아웃을 넉넉히 둬 조기 실패를 막는다.
+    Duration uploadTimeout = const Duration(seconds: 240),
     int maxUploadBytes = _defaultMaxUploadBytes,
   }) : _baseUrl = _normalizeBaseUrl(baseUrl),
        _bearerToken = bearerToken,
@@ -105,6 +105,38 @@ class ApiClient {
     final http.Response response = await _withTimeout(
       _httpClient.post(_uri(path), headers: headers, body: encodedBody),
       timeout ?? _requestTimeout,
+    );
+    return _decodeObject(response, expectedStatusCodes: expectedStatusCodes);
+  }
+
+  /// Sends a PATCH request with an optional JSON object body.
+  ///
+  /// Args:
+  ///   path: API path below `/api/v1`.
+  ///   body: Optional JSON object body.
+  ///   expectedStatusCodes: Status codes considered successful.
+  ///
+  /// Returns:
+  ///   Decoded JSON object.
+  ///
+  /// Raises:
+  ///   ApiError: If the backend returns an unexpected status code.
+  ///   FormatException: If the success body is not a JSON object.
+  Future<Map<String, dynamic>> patchJson(
+    String path, {
+    Map<String, dynamic>? body,
+    Set<int> expectedStatusCodes = const <int>{200},
+  }) async {
+    final Map<String, String> headers = _headers();
+    Object? encodedBody;
+    if (body != null) {
+      headers['Content-Type'] = 'application/json; charset=UTF-8';
+      encodedBody = jsonEncode(body);
+    }
+
+    final http.Response response = await _withTimeout(
+      _httpClient.patch(_uri(path), headers: headers, body: encodedBody),
+      _requestTimeout,
     );
     return _decodeObject(response, expectedStatusCodes: expectedStatusCodes);
   }

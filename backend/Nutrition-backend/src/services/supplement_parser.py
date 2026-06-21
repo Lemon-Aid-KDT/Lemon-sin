@@ -37,6 +37,7 @@ from src.security.auth import AuthenticatedUser
 from src.security.subjects import build_owner_subject
 from src.services.nutrient_display_name_localizer import localize_ingredient_display_names
 from src.services.privacy import has_active_consent
+from src.services.supplement_candidate_filter import filter_non_ingredient_ocr_fallback_candidates
 from src.services.supplement_label_localizer import localize_snapshot_to_korean
 from src.services.supplement_text_sanitizer import (
     sanitize_ingredient_name,
@@ -765,6 +766,9 @@ def _merge_ocr_pattern_fallbacks(
         Parser result with bounded fallback candidates merged in.
     """
     fallback_candidates = _extract_ocr_pattern_ingredient_candidates(ocr_text)
+    # Drop non-ingredient OCR fragments (nutrition-facts headers, units, short noise)
+    # the pattern fallback mines from dense tables before they reach the snapshot.
+    fallback_candidates = filter_non_ingredient_ocr_fallback_candidates(fallback_candidates)
     # These candidates are appended after _sanitize_parser_result runs, so content-
     # sanitize them here (before enrich + add) or injection / HTML / SQL / URL /
     # control-char payloads in the OCR text would bypass the filter the LLM path
