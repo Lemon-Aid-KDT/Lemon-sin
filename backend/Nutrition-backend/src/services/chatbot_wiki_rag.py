@@ -168,8 +168,9 @@ async def answer_with_wiki_rag(
     Args:
         message: The user's question (already past the safety boundary policies).
         settings: Runtime settings (WIKI retrieval + local Ollama controls).
-        user_context_summary: Short, sanitized user health context for tone only;
-            never used as a source of medical facts.
+        user_context_summary: Short, sanitized summary of the user's medications,
+            supplements, and conditions, used to personalize interaction/duplication
+            notes. Never a diagnosis source; the model is told to defer to experts.
 
     Returns:
         A :class:`WikiRagAnswer` with a user-facing message, public sources, and
@@ -244,7 +245,7 @@ def _build_chat_payload(
     Args:
         message: The user's question.
         citations: Retrieved wiki citations (top-N) to ground the answer.
-        user_context_summary: Short sanitized health context for tone only.
+        user_context_summary: Short sanitized summary of the user's meds/supplements/conditions.
         settings: Runtime settings providing the model tag.
 
     Returns:
@@ -252,7 +253,7 @@ def _build_chat_payload(
     """
     references = _format_references(citations)
     context_line = (
-        f"사용자 참고 정보(말투 참고용, 사실 출처 아님): {user_context_summary}\n\n"
+        f"사용자 건강 정보(복용 약·영양제·만성질환): {user_context_summary}\n\n"
         if user_context_summary.strip()
         else ""
     )
@@ -267,7 +268,9 @@ def _build_chat_payload(
         "답하고 사용한 번호를 used_sources에 담는다. 참고 자료가 무관하거나 비어 있으면 일반적인 "
         "정보로 간단히 답하고 used_sources는 빈 배열([])로 두며, 일반 정보이며 정확한 내용은 "
         "전문가 상담을 권한다고 덧붙인다. 진단·처방·복약 중단/변경 권고는 하지 않는다. "
-        "answer는 핵심만 간결하게 3~5문장으로 작성한다."
+        "사용자 건강 정보가 있으면 복용 중인 약·영양제와의 상호작용이나 중복 섭취 가능성을 "
+        "함께 짚어주되, 단정하지 말고 확인이 필요하면 전문가 상담을 권한다. "
+        "answer는 핵심만 간결하게 5문장 이내로 작성한다."
     )
     return {
         "model": settings.ollama_model,

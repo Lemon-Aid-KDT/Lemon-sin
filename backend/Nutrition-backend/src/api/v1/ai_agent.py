@@ -221,6 +221,42 @@ def _memory_summary_for_chat(memory_context: dict[str, object]) -> str:
     return "최근 데일리 코칭 메모리를 참고했습니다."
 
 
+def _user_health_summary_for_rag(snapshot: dict[str, Any]) -> str:
+    """Summarize the user's meds, supplements, and conditions for the wiki RAG.
+
+    Drawn from the privacy-safe health context snapshot so the chatbot can consider
+    interactions / duplication for the user's actual regimen (e.g. flag a supplement
+    against their diabetes medication). Returns "" when nothing is on record.
+    """
+    if not isinstance(snapshot, dict):
+        return ""
+    profile = snapshot.get("user_profile_summary")
+    profile = profile if isinstance(profile, dict) else {}
+    conditions = [
+        c for c in profile.get("chronic_conditions", []) if isinstance(c, str) and c.strip()
+    ]
+    medications = [m for m in profile.get("medications", []) if isinstance(m, str) and m.strip()]
+    supplements_snapshot = snapshot.get("active_supplement_snapshot")
+    supplements_snapshot = supplements_snapshot if isinstance(supplements_snapshot, dict) else {}
+    supplements: list[str] = []
+    registered = supplements_snapshot.get("registered_supplements")
+    if isinstance(registered, list):
+        for item in registered:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("display_name") or item.get("product_name") or item.get("name")
+            if isinstance(name, str) and name.strip():
+                supplements.append(name.strip())
+    parts: list[str] = []
+    if conditions:
+        parts.append("만성질환: " + ", ".join(dict.fromkeys(conditions)))
+    if medications:
+        parts.append("복용 중인 약: " + ", ".join(dict.fromkeys(medications)))
+    if supplements:
+        parts.append("복용 중인 영양제: " + ", ".join(dict.fromkeys(supplements)))
+    return " / ".join(parts)
+
+
 async def _production_medical_source_gate(
     session: AsyncSession,
     settings: Settings,
@@ -483,7 +519,9 @@ async def run_chatbot(
             rag = await answer_with_wiki_rag(
                 request.message,
                 settings=settings,
-                user_context_summary=str(context.get("daily_coaching_summary", "")),
+                user_context_summary=_user_health_summary_for_rag(
+                    context["user_health_context_snapshot"]
+                ),
             )
             await record_sensitive_audit_event(
                 session,

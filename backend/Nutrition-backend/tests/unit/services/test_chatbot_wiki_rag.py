@@ -10,6 +10,7 @@ from src.config import Settings
 from src.services import chatbot_wiki_rag
 from src.services.chatbot_wiki_rag import (
     WikiRagAnswer,
+    _build_chat_payload,
     _citation_to_public_source,
     answer_with_wiki_rag,
 )
@@ -215,6 +216,23 @@ async def test_safe_answer_passes_safety_screen_unchanged(
     assert "비타민 C는 항산화 작용" in answer.message
     assert answer.answerability == "answered_from_wiki"
     assert len(answer.sources) == 1
+
+
+def test_user_health_summary_is_injected_as_health_context() -> None:
+    """The user's meds/supplements reach the prompt as actionable health context."""
+    payload = _build_chat_payload(
+        message="비타민 C 먹어도 돼?",
+        citations=[],
+        user_context_summary="복용 중인 약: 메트포르민 / 복용 중인 영양제: 아연",
+        settings=_settings(),
+    )
+
+    user_content = payload["messages"][1]["content"]
+    assert "메트포르민" in user_content
+    assert "아연" in user_content
+    # Framed as the user's health info (not the old "말투 참고용" tone label).
+    assert "사용자 건강 정보" in user_content
+    assert "상호작용" in user_content  # interaction guidance present
 
 
 def test_citation_to_public_source_only_allowed_fields() -> None:
