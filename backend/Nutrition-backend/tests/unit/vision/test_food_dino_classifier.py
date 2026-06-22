@@ -79,3 +79,78 @@ def test_clip_filter_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
     assert kwargs["enable_food_filter"] is False
     assert kwargs["food_filter_threshold"] == 0.5
     assert kwargs["food_filter_model_id"] == "openai/clip-vit-base-patch16"
+
+
+@pytest.fixture(autouse=True)
+def _clear_shared_classifiers() -> Any:
+    """Isolate the process-shared classifier cache between tests."""
+    food_dino_classifier._SHARED_CLASSIFIERS.clear()
+    yield
+    food_dino_classifier._SHARED_CLASSIFIERS.clear()
+
+
+def test_get_shared_food_dino_classifier_caches_by_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        food_dino_classifier, "_load_food_classifier_module", lambda _dir: _FakeModule
+    )
+    first = food_dino_classifier.get_shared_food_dino_classifier(
+        module_dir="/u", **_SHARED_FACTORY_KWARGS
+    )
+    second = food_dino_classifier.get_shared_food_dino_classifier(
+        module_dir="/u", **_SHARED_FACTORY_KWARGS
+    )
+    assert first is second  # same config -> one shared, pre-loaded instance
+    other = food_dino_classifier.get_shared_food_dino_classifier(
+        module_dir="/u", **{**_SHARED_FACTORY_KWARGS, "model_label": "different"}
+    )
+    assert other is not first  # different config -> distinct instance
+
+
+def test_get_shared_food_dino_classifier_is_fail_open_on_load_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(_dir: Any) -> None:
+        raise food_dino_classifier.VisionError("module unavailable")
+
+    monkeypatch.setattr(food_dino_classifier, "_load_food_classifier_module", _raise)
+    # Eager load fails, but the factory must not raise into the request path.
+    instance = food_dino_classifier.get_shared_food_dino_classifier(
+        module_dir="/u", **_SHARED_FACTORY_KWARGS
+    )
+    assert isinstance(instance, FoodDinoClassifier)
+    # Cached so the failing load is attempted once, not rebuilt per request.
+    again = food_dino_classifier.get_shared_food_dino_classifier(
+        module_dir="/u", **_SHARED_FACTORY_KWARGS
+    )
+    assert again is instance
+
+
+def test_warmup_runs_dummy_classify_only_when_filter_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        food_dino_classifier, "_load_food_classifier_module", lambda _dir: _FakeModule
+    )
+    enabled = _adapter(enable_food_filter=True)
+    enabled_calls: list[bytes] = []
+    monkeypatch.setattr(enabled, "classify_food", enabled_calls.append)
+    enabled.warmup()
+    assert len(enabled_calls) == 1  # filter on -> one dummy classify warms the CLIP filter
+
+    disabled = _adapter()
+    disabled_calls: list[bytes] = []
+    monkeypatch.setattr(disabled, "classify_food", disabled_calls.append)
+    disabled.warmup()
+    assert disabled_calls == []  # filter off -> no dummy classify
+
+
+_SHARED_FACTORY_KWARGS: dict[str, Any] = {
+    "exp16b_model_path": "/x/best.pt",
+    "probe_path": "/x/probe.pt",
+    "nutrition_csv_path": "/x/n.csv",
+    "model_label": "food_dino_exp16b",
+    "detector_confidence": 0.1,
+    "max_px": 896,
+}

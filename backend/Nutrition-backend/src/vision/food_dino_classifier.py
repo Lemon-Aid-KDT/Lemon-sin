@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import util
@@ -13,6 +17,8 @@ from PIL import Image, UnidentifiedImageError
 from src.utils.image_safety import ImageSafetyError, safe_load_with_bomb_guard
 from src.vision.base import BoundingBox, VisionError
 from src.vision.preprocessing import VisionPreprocessingError, clamp_bounding_box
+
+logger = logging.getLogger(__name__)
 
 XYXY_COORDINATE_COUNT = 4
 
@@ -102,10 +108,18 @@ class FoodDinoClassifier:
         """
         image, image_width, image_height = _decode_image(image_bytes)
         classifier = self._load_classifier()
+        started = time.perf_counter()
         try:
             raw_result = classifier.analyze(image)
         except Exception as exc:
             raise VisionError("Food DINO classifier prediction failed.") from exc
+        # PII-free latency signal (duration + flag only) so the CLIP stage cost is
+        # observable in logs before/after enabling the non-food filter.
+        logger.info(
+            "food_classify total_ms=%d filter_enabled=%s",
+            int((time.perf_counter() - started) * 1000),
+            self.enable_food_filter,
+        )
         if raw_result is None:
             return None
         if not isinstance(raw_result, dict):
@@ -162,6 +176,33 @@ class FoodDinoClassifier:
             raise VisionError("Food DINO classifier could not be loaded.") from exc
         return self._classifier
 
+    def ensure_loaded(self) -> None:
+        """Eagerly load the YOLO gate + DINOv3 models (idempotent).
+
+        Raises:
+            VisionError: If the team module or model weights cannot be loaded.
+        """
+        self._load_classifier()
+
+    def warmup(self) -> None:
+        """Load every model now so the first request does not pay the cost.
+
+        Loads YOLO + DINOv3; when the CLIP non-food filter is enabled, also runs one
+        throwaway classification on a blank image so the lazy ~600MB CLIP filter is
+        built here (at startup) rather than on a user request. Best-effort — the
+        request path still fails open if a model cannot load.
+        """
+        self.ensure_loaded()
+        if not self.enable_food_filter:
+            return
+        buffer = io.BytesIO()
+        Image.new("RGB", (32, 32)).save(buffer, format="JPEG")
+        try:
+            self.classify_food(buffer.getvalue())
+        except VisionError:
+            # A blank image legitimately yields no food; building the CLIP filter is the goal.
+            return
+
 
 def food_classifier_model_label(configured_label: str, probe_path: str | None) -> str | None:
     """Return a sanitized classifier model label for API metadata.
@@ -177,6 +218,80 @@ def food_classifier_model_label(configured_label: str, probe_path: str | None) -
         return None
     safe_label = configured_label.strip() or "food_dino_classifier"
     return f"{safe_label}:{Path(probe_path).name}"
+
+
+_SHARED_LOCK = threading.Lock()
+_SHARED_CLASSIFIERS: dict[tuple[object, ...], FoodDinoClassifier] = {}
+
+
+def get_shared_food_dino_classifier(
+    *,
+    module_dir: str,
+    exp16b_model_path: str,
+    probe_path: str,
+    nutrition_csv_path: str,
+    model_label: str,
+    detector_confidence: float,
+    max_px: int,
+    enable_food_filter: bool = False,
+    food_filter_threshold: float = 0.5,
+    food_filter_model_id: str = "openai/clip-vit-base-patch16",
+) -> FoodDinoClassifier:
+    """Return a process-shared classifier, loaded once, keyed on its configuration.
+
+    The meal pipeline otherwise builds a fresh classifier per request, reloading
+    YOLO+DINOv3 (and the ~600MB CLIP filter) every time. Caching one instance per
+    configuration — built and eagerly loaded under a lock — means the heavy models load
+    once per process. Eager load failures are swallowed (the instance is still cached and
+    retries lazily on use, where the meal service already fails open), so this never
+    raises into the request path. Tests inject their own classifier via the
+    ``food_classifier`` parameter and bypass this entirely.
+
+    Args:
+        Mirror :class:`FoodDinoClassifier`.
+
+    Returns:
+        The shared classifier instance for this configuration.
+    """
+    key: tuple[object, ...] = (
+        module_dir,
+        exp16b_model_path,
+        probe_path,
+        nutrition_csv_path,
+        model_label,
+        round(detector_confidence, 4),
+        max_px,
+        enable_food_filter,
+        round(food_filter_threshold, 4),
+        food_filter_model_id,
+    )
+    instance = _SHARED_CLASSIFIERS.get(key)
+    if instance is not None:
+        return instance
+    with _SHARED_LOCK:
+        instance = _SHARED_CLASSIFIERS.get(key)
+        if instance is None:
+            instance = FoodDinoClassifier(
+                module_dir=module_dir,
+                exp16b_model_path=exp16b_model_path,
+                probe_path=probe_path,
+                nutrition_csv_path=nutrition_csv_path,
+                model_label=model_label,
+                detector_confidence=detector_confidence,
+                max_px=max_px,
+                enable_food_filter=enable_food_filter,
+                food_filter_threshold=food_filter_threshold,
+                food_filter_model_id=food_filter_model_id,
+            )
+            try:
+                instance.ensure_loaded()
+            except VisionError:
+                logger.warning(
+                    "Shared food classifier eager load failed; retrying lazily per request.",
+                    exc_info=True,
+                )
+            _SHARED_CLASSIFIERS[key] = instance
+    return instance
 
 
 def _load_food_classifier_module(module_dir: Path) -> _FoodClassifierModule:

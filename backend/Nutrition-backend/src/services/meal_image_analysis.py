@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from io import BytesIO
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+import anyio
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import delete, desc, select
@@ -59,8 +61,8 @@ from src.utils.image_safety import (
 from src.vision.base import VisionError
 from src.vision.food_dino_classifier import (
     FoodClassification,
-    FoodDinoClassifier,
     food_classifier_model_label,
+    get_shared_food_dino_classifier,
 )
 from src.vision.food_yolo import FoodDetection, FoodYoloDetector, food_model_label
 
@@ -367,11 +369,17 @@ async def create_meal_image_analysis_preview(
         owner_subject,
         settings.privacy_hash_secret,
     )
-    inference = _run_food_image_inference_if_enabled(
-        image_metadata=image_metadata,
-        settings=settings,
-        food_detector=food_detector,
-        food_classifier=food_classifier,
+    # Vision inference (YOLO gate + DINOv3 + optional CLIP filter) is synchronous and
+    # CPU-bound. Run it in a worker thread so one meal upload does not block the event
+    # loop (and every other request in this worker) for the full inference duration.
+    inference = await anyio.to_thread.run_sync(
+        functools.partial(
+            _run_food_image_inference_if_enabled,
+            image_metadata=image_metadata,
+            settings=settings,
+            food_detector=food_detector,
+            food_classifier=food_classifier,
+        )
     )
     detected_items_snapshot = _food_candidates_to_snapshot(
         inference.detections,
@@ -968,7 +976,7 @@ def _classify_food_candidate_if_enabled(
             warning_codes=FOOD_IMAGE_CLASSIFIER_UNAVAILABLE_WARNING_CODES,
         )
 
-    classifier = food_classifier or FoodDinoClassifier(
+    classifier = food_classifier or get_shared_food_dino_classifier(
         module_dir=settings.meal_food_classifier_module_dir,
         exp16b_model_path=settings.meal_food_classifier_exp16b_model_path or "",
         probe_path=settings.meal_food_classifier_probe_path or "",

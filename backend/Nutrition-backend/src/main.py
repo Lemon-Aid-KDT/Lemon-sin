@@ -7,6 +7,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -21,8 +22,44 @@ from src.ocr.factory import OCRConfigurationError, build_supplement_ocr_adapter
 from src.readiness import ReadinessResponse, build_readiness_response
 from src.utils.image_safety import configure_pillow_limits
 from src.utils.logger import setup_logging
+from src.vision.food_dino_classifier import (
+    food_classifier_model_label,
+    get_shared_food_dino_classifier,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _warm_food_classifier(settings: Settings) -> None:
+    """Preload the food classifier (and CLIP non-food filter) at startup.
+
+    Builds the process-shared classifier and loads its models now so the heavy
+    first-load (YOLO + DINOv3, and the ~600MB CLIP filter when enabled) does not land
+    on a user request. Best-effort: callers wrap this so a load failure never crashes
+    startup, and the request path still fails open to "no classifier".
+
+    Args:
+        settings: Runtime settings.
+    """
+    label = food_classifier_model_label(
+        settings.meal_food_classifier_model_label,
+        settings.meal_food_classifier_probe_path,
+    )
+    if label is None:
+        return
+    classifier = get_shared_food_dino_classifier(
+        module_dir=settings.meal_food_classifier_module_dir,
+        exp16b_model_path=settings.meal_food_classifier_exp16b_model_path or "",
+        probe_path=settings.meal_food_classifier_probe_path or "",
+        nutrition_csv_path=settings.meal_food_classifier_nutrition_csv_path or "",
+        model_label=label,
+        detector_confidence=settings.meal_food_classifier_gate_confidence,
+        max_px=settings.meal_food_classifier_max_px,
+        enable_food_filter=settings.enable_food_clip_filter,
+        food_filter_threshold=settings.food_clip_filter_threshold,
+        food_filter_model_id=settings.food_clip_filter_model_id,
+    )
+    classifier.warmup()
 
 
 @asynccontextmanager
@@ -55,6 +92,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         build_supplement_ocr_adapter(settings)
     except OCRConfigurationError as exc:
         raise RuntimeError(f"OCR provider configuration is invalid at startup: {exc}") from exc
+    # Preload the food classifier (+ CLIP non-food filter when enabled) at boot so the
+    # heavy first-load (YOLO + DINOv3 + ~600MB CLIP) is not paid on a user request and
+    # does not stall the worker. Fail-open: a model-load failure must NOT crash startup;
+    # the request path already degrades to "no classifier".
+    if settings.enable_food_dino_classifier:
+        try:
+            await anyio.to_thread.run_sync(_warm_food_classifier, settings)
+            logger.info(
+                "Food classifier warm-up complete (clip_filter=%s).",
+                settings.enable_food_clip_filter,
+            )
+        except Exception:  # never crash startup; the request path fails open
+            logger.warning(
+                "Food classifier warm-up failed; first request will load lazily.",
+                exc_info=True,
+            )
     # TODO: Phase 2에서 Redis/LLM adapter readiness check를 분리한다.
     try:
         yield
