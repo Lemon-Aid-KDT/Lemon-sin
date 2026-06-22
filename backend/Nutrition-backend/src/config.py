@@ -1010,6 +1010,26 @@ class Settings(BaseSettings):
         le=2048,
         description="DINOv3 분류 전 이미지 축소 상한. 팀 handoff 모듈 기본값.",
     )
+    enable_food_clip_filter: bool = Field(
+        default=False,
+        description=(
+            "식단 분류 파이프라인에 CLIP 비음식 zero-shot 필터를 추가한다. YOLO 게이트와 "
+            "DINOv3 분류 사이에서 사람·빈 식기·소스 종지 등 YOLO 오탐을 컷한다. 기본 false이며 "
+            "enable_food_dino_classifier가 활성일 때만 의미가 있다. ⚠️ 활성화 시 요청당 CLIP(CPU) "
+            "추가 추론 + 최초 1회 ~600MB 모델 로드가 동기 경로에 더해진다(모바일 타임아웃 민감). "
+            "프로덕션 적용 전 지연 측정·warm-up 권장."
+        ),
+    )
+    food_clip_filter_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="CLIP 음식 확률 임계값. 미만이면 비음식으로 컷(재촬영 안내).",
+    )
+    food_clip_filter_model_id: str = Field(
+        default="openai/clip-vit-base-patch16",
+        description="CLIP zero-shot 음식/비음식 필터 모델 ID(HuggingFace).",
+    )
     label_studio_url: str = Field(
         default="http://localhost:8080",
         description="Label Studio 기본 URL. YOLO section annotation API 연동에 사용.",

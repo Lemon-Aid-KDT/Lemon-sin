@@ -976,6 +976,9 @@ def _classify_food_candidate_if_enabled(
         model_label=classifier_model,
         detector_confidence=settings.meal_food_classifier_gate_confidence,
         max_px=settings.meal_food_classifier_max_px,
+        enable_food_filter=settings.enable_food_clip_filter,
+        food_filter_threshold=settings.food_clip_filter_threshold,
+        food_filter_model_id=settings.food_clip_filter_model_id,
     )
     try:
         classification = classifier.classify_food(image_metadata.normalized_bytes)

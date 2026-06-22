@@ -153,6 +153,9 @@ services:
       MEAL_FOOD_CLASSIFIER_MODEL_LABEL: ${MEAL_FOOD_CLASSIFIER_MODEL_LABEL:-food_dino_exp16b}
       MEAL_FOOD_CLASSIFIER_GATE_CONFIDENCE: ${MEAL_FOOD_CLASSIFIER_GATE_CONFIDENCE:-0.10}
       MEAL_FOOD_CLASSIFIER_MAX_PX: ${MEAL_FOOD_CLASSIFIER_MAX_PX:-896}
+      ENABLE_FOOD_CLIP_FILTER: ${ENABLE_FOOD_CLIP_FILTER:-false}
+      FOOD_CLIP_FILTER_THRESHOLD: ${FOOD_CLIP_FILTER_THRESHOLD:-0.5}
+      FOOD_CLIP_FILTER_MODEL_ID: ${FOOD_CLIP_FILTER_MODEL_ID:-openai/clip-vit-base-patch16}
       # HF_TOKEN is required for gated DINOv3 food classifier weights after accepting
       # the model license on Hugging Face. Keep it server-only and never expose it to
       # Flutter/frontend bundles.

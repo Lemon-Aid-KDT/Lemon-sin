@@ -23,6 +23,8 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +32,8 @@ import torch
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel
 from ultralytics import YOLO
+
+logger = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parent
 FOOD_BACKEND_ROOT = HERE.parents[2]
@@ -59,6 +63,50 @@ def kr(name: str) -> str:
     return KR_NAME.get(name, name)
 
 
+def _load_clip_food_filter_class():
+    """Load ``CLIPFoodFilter`` from the sibling ``food_filter.py``.
+
+    ``food_classifier.py`` is imported via a file-location spec, so its directory is not
+    on ``sys.path``; load the sibling module explicitly by path.
+    """
+    ff_path = HERE / "food_filter.py"
+    spec = importlib.util.spec_from_file_location("lemon_food_filter", ff_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"food_filter.py를 불러올 수 없습니다: {ff_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CLIPFoodFilter
+
+
+def _crop_box(im: Image.Image, box: list[float]) -> Image.Image | None:
+    """Return a bounds-clamped crop for a ``[x1, y1, x2, y2]`` box, or None if degenerate."""
+    width, height = im.size
+    x1, y1, x2, y2 = (round(float(v)) for v in box)
+    x1 = max(0, min(x1, width))
+    y1 = max(0, min(y1, height))
+    x2 = max(0, min(x2, width))
+    y2 = max(0, min(y2, height))
+    if x2 <= x1 or y2 <= y1:
+        return None  # degenerate / out-of-order box → skip the filter (fail-open)
+    return im.crop((x1, y1, x2, y2))
+
+
+def _is_nonfood_crop(food_filter, im: Image.Image, box: list[float], threshold: float) -> bool:
+    """Return True when CLIP judges the YOLO box crop to be non-food.
+
+    Fail-open: any crop/inference error returns False (treat as food) so the optional
+    filter can never block an otherwise-valid food classification.
+    """
+    try:
+        crop = _crop_box(im, box)
+        if crop is None:
+            return False
+        return not food_filter.is_food(crop, threshold=threshold)
+    except Exception:  # best-effort: an optional filter must never block classification
+        logger.warning("CLIP food filter inference failed; skipping non-food check.", exc_info=True)
+        return False
+
+
 class FoodClassifier:
     """단일요리 음식 분류기 (exp16b 게이트 + DINOv3 분류 + 영양).
 
@@ -73,7 +121,10 @@ class FoodClassifier:
     def __init__(self, exp16b_path: str | Path = DEFAULT_EXP16B,
                  probe_path: str | Path = DEFAULT_PROBE,
                  nutrition_csv: str | Path = DEFAULT_NUTRITION,
-                 det_conf: float = 0.10, max_px: int = 896) -> None:
+                 det_conf: float = 0.10, max_px: int = 896,
+                 enable_food_filter: bool = False,
+                 food_filter_threshold: float = 0.5,
+                 food_filter_model_id: str = "openai/clip-vit-base-patch16") -> None:
         """모델·프로브·영양표를 로드한다.
 
         Args:
@@ -82,6 +133,10 @@ class FoodClassifier:
             nutrition_csv: 40종 영양표(100g 기준) CSV.
             det_conf: 음식 유무 신뢰도 임계값(미만이면 "음식 없음").
             max_px: 분류 전 축소 상한(DINOv3 내부 224라 무손실).
+            enable_food_filter: True면 YOLO 게이트와 DINOv3 분류 사이에 CLIP 비음식
+                필터를 적용한다(YOLO 오탐 컷오프). 기본 False(기존 동작 유지).
+            food_filter_threshold: CLIP 음식 확률 임계값(미만이면 비음식으로 컷).
+            food_filter_model_id: CLIP zero-shot 필터 모델 ID.
 
         Raises:
             FileNotFoundError: exp16b 또는 프로브 파일이 없는 경우.
@@ -102,6 +157,11 @@ class FoodClassifier:
         self.lin.load_state_dict(ckpt["state_dict"])
         self.lin.eval()
         self.nutrition = self._load_nutrition(nutrition_csv)
+        self.enable_food_filter = enable_food_filter
+        self.food_filter_threshold = food_filter_threshold
+        self.food_filter_model_id = food_filter_model_id
+        # Lazy CLIP filter, tri-state: None=not loaded, False=load failed (no retry), instance=ready.
+        self._food_filter: object | None = None
 
     @staticmethod
     def _load_nutrition(path: str | Path) -> dict[str, dict[str, str]]:
@@ -134,6 +194,24 @@ class FoodClassifier:
         i = int(prob.argmax())
         return self.classes[i], float(prob[i])
 
+    def _get_food_filter(self):
+        """Lazily build the CLIP non-food filter; return None if disabled/unavailable."""
+        if not self.enable_food_filter:
+            return None
+        if self._food_filter is None:
+            try:
+                clip_filter_cls = _load_clip_food_filter_class()
+                self._food_filter = clip_filter_cls(model_id=self.food_filter_model_id)
+                logger.info(
+                    "CLIP non-food filter enabled (threshold=%.2f).", self.food_filter_threshold
+                )
+            except Exception:  # optional filter; degrade to no filtering on any load error
+                logger.warning(
+                    "CLIP food filter could not load; non-food check disabled.", exc_info=True
+                )
+                self._food_filter = False
+        return self._food_filter or None
+
     def analyze(self, im: Image.Image) -> dict | None:
         """단일요리 사진을 분석한다.
 
@@ -148,6 +226,11 @@ class FoodClassifier:
         box = self._detect_food(im)
         if box is None:
             return None  # 음식 미탐지 → "다시 찍어주세요"
+        food_filter = self._get_food_filter()
+        if food_filter is not None and _is_nonfood_crop(
+            food_filter, im, box, self.food_filter_threshold
+        ):
+            return None  # YOLO 게이트는 통과했으나 CLIP 비음식 판정 → "다시 찍어주세요"
         name, conf = self._classify(im)  # 전체 이미지 분류 (크롭 X)
         return {"name_en": name, "name_ko": kr(name), "conf": conf, "box": box,
                 "nutrition": self.nutrition.get(name)}

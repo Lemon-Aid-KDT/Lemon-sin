@@ -57,6 +57,9 @@ class FoodDinoClassifier:
         model_label: str,
         detector_confidence: float,
         max_px: int,
+        enable_food_filter: bool = False,
+        food_filter_threshold: float = 0.5,
+        food_filter_model_id: str = "openai/clip-vit-base-patch16",
     ) -> None:
         """Initialize the adapter without loading heavy ML dependencies.
 
@@ -68,6 +71,10 @@ class FoodDinoClassifier:
             model_label: Sanitized classifier label exposed in metadata.
             detector_confidence: Food gate confidence threshold passed to the team classifier.
             max_px: Maximum image side length passed to the team classifier.
+            enable_food_filter: Enable the CLIP non-food filter between the YOLO gate
+                and DINOv3 classification (off by default).
+            food_filter_threshold: CLIP food-probability cutoff for the filter.
+            food_filter_model_id: HuggingFace CLIP model id for the filter.
         """
         self.module_dir = Path(module_dir)
         self.exp16b_model_path = exp16b_model_path
@@ -76,6 +83,9 @@ class FoodDinoClassifier:
         self.model_label = model_label
         self.detector_confidence = detector_confidence
         self.max_px = max_px
+        self.enable_food_filter = enable_food_filter
+        self.food_filter_threshold = food_filter_threshold
+        self.food_filter_model_id = food_filter_model_id
         self._classifier: Any | None = None
 
     def classify_food(self, image_bytes: bytes) -> FoodClassification | None:
@@ -144,6 +154,9 @@ class FoodDinoClassifier:
                 nutrition_csv=self.nutrition_csv_path,
                 det_conf=self.detector_confidence,
                 max_px=self.max_px,
+                enable_food_filter=self.enable_food_filter,
+                food_filter_threshold=self.food_filter_threshold,
+                food_filter_model_id=self.food_filter_model_id,
             )
         except Exception as exc:
             raise VisionError("Food DINO classifier could not be loaded.") from exc
