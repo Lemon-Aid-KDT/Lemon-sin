@@ -208,14 +208,15 @@ async def test_ollama_parser_posts_json_schema_and_validates_content() -> None:
         ensure_ascii=False,
     )
     fake_client = _FakeHTTPClient({"message": {"content": response_content}})
+    settings = _settings(ollama_temperature=0)
 
     result = await OllamaSupplementParser(
-        _settings(ollama_temperature=0),
+        settings,
         http_client=fake_client,
     ).parse_supplement_ocr_text("비타민 D 1000\n1정당 비타민 D 25 ug")
 
     assert fake_client.post_url == "http://127.0.0.1:11434/api/chat"
-    assert fake_client.post_timeout == 60
+    assert fake_client.post_timeout == settings.ollama_timeout_sec
     assert fake_client.request_json is not None
     assert fake_client.request_json["model"] == "gemma4:e4b"
     assert fake_client.request_json["stream"] is False
@@ -522,7 +523,7 @@ async def test_check_ollama_readiness_reports_ready_for_installed_model() -> Non
     assert readiness.error_code is None
     assert readiness.model_names == ("qwen3.5:9b", "gemma4:e4b")
     assert fake_client.get_url == "http://127.0.0.1:11434/api/tags"
-    assert fake_client.get_timeout == 60
+    assert fake_client.get_timeout == settings.ollama_timeout_sec
 
 
 @pytest.mark.asyncio
