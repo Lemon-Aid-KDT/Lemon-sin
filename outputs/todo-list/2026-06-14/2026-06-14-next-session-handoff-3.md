@@ -72,7 +72,7 @@
   ```bash
   cd backend
   export TEST_DATABASE_URL="$(PYTHONPATH=Nutrition-backend .venv/bin/python -c 'from src.config import get_settings; print(get_settings().database_url)')"
-  export TEST_RLS_APP_DATABASE_URL="$(printf '%s' "$TEST_DATABASE_URL" | sed -E 's#://[^@]+@#://lemon_app:lemon_app_local_rls_verify@#')"
+  export TEST_RLS_APP_DATABASE_URL="$(printf '%s' "$TEST_DATABASE_URL" | sed -E 's#://[^@]+@#://lemon_app:lemon_app_local_rls_verify@#')"  # pragma: allowlist secret
   .venv/bin/python -m pytest Nutrition-backend/tests/integration/db/test_food_records_stage2.py Nutrition-backend/tests/integration/db/test_persist_scope_own_mode.py Nutrition-backend/tests/integration/db/test_rls_owner_isolation.py Nutrition-backend/tests/integration/db/test_ambient_audit_stage2.py -q --no-cov
   ```
 

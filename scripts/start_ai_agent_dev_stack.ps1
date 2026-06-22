@@ -50,7 +50,7 @@ $env:ALLOWED_ORIGINS = "[`"$FlutterWebOrigin`",`"http://127.0.0.1:52100`"]"
 $env:LLM_PROVIDER = "sglang"
 $env:SGLANG_BASE_URL = $SglangBaseUrl
 $env:SGLANG_MODEL = $SglangModel
-$env:SGLANG_API_KEY = "EMPTY"
+$env:SGLANG_API_KEY = "EMPTY"  # pragma: allowlist secret
 $env:ALLOW_EXTERNAL_LLM = "false"
 $env:LOG_LEVEL = "INFO"
 

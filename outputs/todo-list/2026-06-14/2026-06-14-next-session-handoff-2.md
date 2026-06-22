@@ -66,7 +66,7 @@
 ```bash
 cd backend
 export TEST_DATABASE_URL="$(PYTHONPATH=Nutrition-backend .venv/bin/python -c 'from src.config import get_settings; print(get_settings().database_url)')"
-export TEST_RLS_APP_DATABASE_URL="$(printf '%s' "$TEST_DATABASE_URL" | sed -E 's#://[^@]+@#://lemon_app:lemon_app_local_rls_verify@#')"
+export TEST_RLS_APP_DATABASE_URL="$(printf '%s' "$TEST_DATABASE_URL" | sed -E 's#://[^@]+@#://lemon_app:lemon_app_local_rls_verify@#')"  # pragma: allowlist secret
 .venv/bin/python -m pytest Nutrition-backend/tests/integration/db/test_rls_owner_isolation.py Nutrition-backend/tests/integration/db/test_ambient_audit_stage2.py -q
 ```
 (supabase 로컬 스택 기동 + lemon_app 비번 설정 상태에서. 미설정 시 skip.)

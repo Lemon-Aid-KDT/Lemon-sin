@@ -51,7 +51,7 @@ participate(get_rls_context_session) 모드서 이 mid-commit이 GUC 드롭 → 
   ADMIN_URL="$(PYTHONPATH=Nutrition-backend .venv/bin/python -c 'from src.config import get_settings; print(get_settings().database_url)')"
   # ALTER ROLE lemon_app PASSWORD 'lemon_app_local_rls_verify' (admin 엔진으로)
   export TEST_DATABASE_URL="$ADMIN_URL"
-  export TEST_RLS_APP_DATABASE_URL="$(printf '%s' "$ADMIN_URL" | sed -E 's#://[^@]+@#://lemon_app:lemon_app_local_rls_verify@#')"
+  export TEST_RLS_APP_DATABASE_URL="$(printf '%s' "$ADMIN_URL" | sed -E 's#://[^@]+@#://lemon_app:lemon_app_local_rls_verify@#')"  # pragma: allowlist secret
   # pytest 실행 후 ALTER ROLE lemon_app PASSWORD NULL 정리
   ```
   `get_settings().database_url` = supabase_db(DB=postgres, superuser). 0023b/0023c RLS+FORCE 적용됨. lemon_app NOSUPERUSER/NOBYPASSRLS. ⚠️ out-of-band audit 쓰는 Stage-2는 `_stage2_engines` finally에 `dispose_engine()` 추가(모듈-레벨 엔진 event-loop 충돌 방지) — 6b의 `test_privacy_consent_stage2.py` 참고.

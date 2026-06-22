@@ -91,14 +91,21 @@ jobs:
   security:
     name: Security (gitleaks + detect-secrets)
     runs-on: ubuntu-latest
+    env:
+      # gitleaks-action@v2 requires a paid license key for org-owned repos. Gate the
+      # step on the secret so it runs when the org provisions GITLEAKS_LICENSE and is
+      # skipped (not failed) otherwise — detect-secrets below remains the blocking gate.
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: gitleaks
+        if: env.GITLEAKS_LICENSE != ''
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
