@@ -26,6 +26,24 @@ from fastapi.routing import APIRoute
 from src.db.dependencies import get_async_session, get_rls_context_session
 from src.main import create_app
 
+
+def _is_dependency(call: object, reference: object) -> bool:
+    """Match a route dependency to a reference callable by stable name coordinates.
+
+    ``is`` identity is fragile under CI import layouts where the same module can be
+    imported under two sys.path roots (e.g. ``src.db.dependencies`` resolved twice),
+    yielding distinct function objects for identical source — which silently makes
+    every route look like it dropped the dependency. Comparing ``__qualname__`` plus
+    the module tail is identity-immune without weakening the guard.
+    """
+    if call is reference:
+        return True
+    module_tail = ".".join(reference.__module__.rsplit(".", 2)[-2:])
+    return getattr(call, "__qualname__", None) == reference.__qualname__ and (
+        getattr(call, "__module__", "") or ""
+    ).endswith(module_tail)
+
+
 # Routes that intentionally keep ``get_async_session`` because they own their RLS
 # transaction *in the route body* (rls_request_transaction /
 # rls_request_transaction_allow_inner_commit). Adding a route here is a conscious
@@ -75,7 +93,7 @@ def _routes_using_get_async_session() -> list[str]:
         if not isinstance(route, APIRoute):
             continue
         flat = get_flat_dependant(route.dependant)
-        if any(dep.call is get_async_session for dep in flat.dependencies):
+        if any(_is_dependency(dep.call, get_async_session) for dep in flat.dependencies):
             methods = ",".join(sorted(route.methods or set()))
             offenders.append(f"{route.endpoint.__name__} ({methods} {route.path})")
     return offenders
@@ -113,7 +131,7 @@ def test_formerly_unmigrated_supplement_routes_sit_on_get_rls_context_session() 
     missing = sorted(
         name
         for name in _RLS_DEP_REQUIRED_ROUTES
-        if get_rls_context_session not in deps.get(name, set())
+        if not any(_is_dependency(dep, get_rls_context_session) for dep in deps.get(name, set()))
     )
     assert not missing, (
         "These owner routes must depend on get_rls_context_session (per-request GUC + "
