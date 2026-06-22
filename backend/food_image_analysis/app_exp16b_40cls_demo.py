@@ -115,6 +115,25 @@ def load_model() -> YOLO:
     return YOLO(str(MODEL_PATH))
 
 
+@st.cache_resource
+def load_clip_filter():  # noqa: ANN201  # CLIPFoodFilter (지연 import)
+    """CLIP 음식/비음식 필터를 1회 로드한다.
+
+    박스 crop이 진짜 음식인지 zero-shot 판별해 비음식 박스(사람·소품·풍경 등)를
+    제거한다. 진짜 비음식 214장 측정: 거부율 68%→91%, 음식 recall −4%p
+    (conf만 0.30으로 올리면 recall −18%p라 CLIP이 우수).
+
+    Returns:
+        CLIPFoodFilter 인스턴스 (openai/clip-vit-base-patch16, 첫 실행 시 다운로드).
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from food_filter import CLIPFoodFilter
+
+    return CLIPFoodFilter()
+
+
 @st.cache_data
 def load_deploy_config() -> dict:
     """배포 설정(지원 40클래스 인덱스/이름, 미지원 목록)을 로드한다."""
@@ -224,6 +243,10 @@ with st.sidebar:
     st.caption("0.10 권장 — 실사용(wild) 보고 수치 기준. 음식 위치 탐지율 96.3%(712/739).")
     nms_iou = st.slider("중복 박스 병합 IoU", 0.3, 0.95, 0.5, 0.05)
     st.caption("한 음식에 박스가 여러 개 겹치면 최고 신뢰도 1개로 합칩니다")
+    use_clip = st.checkbox("🧠 비음식 필터 (CLIP)", value=True)
+    clip_th = st.slider("CLIP 음식 임계값", 0.05, 0.6, 0.25, 0.05,
+                        help="박스가 음식일 확률이 이 값 미만이면 비음식으로 보고 제거")
+    st.caption("CLIP이 박스가 진짜 음식인지 판별 → 사람·소품·풍경 등 비음식 박스 제거 (거부율 68%→91%)")
     st.divider()
     with st.expander(f"✅ 지원 음식 {len(SUPPORTED_IDX)}종 보기"):
         for nm in cfg["supported_class_names"]:
@@ -259,6 +282,25 @@ res = model.predict(img_bgr, conf=conf_th, classes=SUPPORTED_IDX, verbose=False)
 if len(res.boxes) > 1:
     keep = agnostic_nms_keep(res, nms_iou)
     res.boxes = res.boxes[torch.tensor(keep, device=res.boxes.cls.device)]
+
+# 비음식 필터(CLIP): 각 박스 crop이 진짜 음식인지 판별해 비음식 박스 제거
+if use_clip and len(res.boxes) > 0:
+    flt = load_clip_filter()
+    rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    xyxy = res.boxes.xyxy.cpu().numpy()
+    crops: list[Image.Image] = []
+    valid: list[int] = []
+    for bi, (x1, y1, x2, y2) in enumerate(xyxy):
+        ix1, iy1, ix2, iy2 = int(x1), int(y1), int(x2), int(y2)
+        if ix2 - ix1 >= 4 and iy2 - iy1 >= 4:
+            crops.append(Image.fromarray(rgb[iy1:iy2, ix1:ix2]))
+            valid.append(bi)
+    keep_clip = (
+        [valid[k] for k, m in enumerate(flt.filter(crops, threshold=clip_th)[0]) if m]
+        if crops else []
+    )
+    res.boxes = res.boxes[torch.tensor(keep_clip, dtype=torch.long, device=res.boxes.cls.device)]
+
 n_boxes = len(res.boxes)
 
 col_img, col_info = st.columns([3, 2])
