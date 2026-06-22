@@ -197,3 +197,109 @@ async def test_distinct_sentence_precautions_are_not_coalesced() -> None:
     assert len(out["precautions"]) == 2
     assert out["precautions"][0]["text"] == "의사와 상담하세요."
     assert out["precautions"][1]["text"] == "어린이 손이 닿지 않는 곳에 보관하세요."
+
+
+@pytest.mark.asyncio
+async def test_coalesces_korean_word_fragmented_precautions() -> None:
+    # CLOVA word-boxes split a Korean caution into single-token items; they merge into
+    # one coherent line. Korean is not English-dominant, so NO translation call is made.
+    snapshot = {
+        "precautions": [
+            {"text": "어린이,", "category": "children", "severity": "caution"},
+            {"text": "임산부,"},
+            {"text": "주의하십시오"},
+        ],
+    }
+    calls = 0
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {"message": {"content": json.dumps({"translations": []})}}
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert len(out["precautions"]) == 1
+    assert out["precautions"][0]["text"] == "어린이, 임산부, 주의하십시오"
+    assert out["precautions"][0]["category"] == "children"  # first fragment metadata kept
+    assert calls == 0  # already Korean → no model round-trip
+    assert len(snapshot["precautions"]) == 3  # input snapshot untouched
+
+
+@pytest.mark.asyncio
+async def test_korean_complete_precautions_are_not_coalesced() -> None:
+    # Multi-word Korean cautions are complete sentences; left as separate items.
+    snapshot = {
+        "precautions": [
+            {"text": "어린이 손이 닿지 않는 곳에 보관하십시오."},
+            {"text": "직사광선을 피해 보관하십시오."},
+        ],
+    }
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        raise AssertionError("Korean text must not trigger a translation call")
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert len(out["precautions"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_distinct_short_korean_cautions_are_not_merged() -> None:
+    # Space-free but COMPLETE short cautions are sentence-final, so each is its own run
+    # and they must NOT collapse into one garbled item (adversarial review HIGH finding).
+    snapshot = {
+        "precautions": [
+            {"text": "냉장보관하십시오."},
+            {"text": "직사광선을피하십시오."},
+        ],
+    }
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        raise AssertionError("Korean text must not trigger a translation call")
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert [p["text"] for p in out["precautions"]] == [
+        "냉장보관하십시오.",
+        "직사광선을피하십시오.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_complete_caution_after_fragment_run_is_not_swept_in() -> None:
+    # The leading fragment run merges; a trailing standalone complete caution stays
+    # separate instead of being absorbed (adversarial review MEDIUM finding).
+    snapshot = {
+        "precautions": [
+            {"text": "어린이,"},
+            {"text": "임산부,"},
+            {"text": "주의하십시오"},
+            {"text": "냉장보관하십시오."},
+        ],
+    }
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        raise AssertionError("Korean text must not trigger a translation call")
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert [p["text"] for p in out["precautions"]] == [
+        "어린이, 임산부, 주의하십시오",
+        "냉장보관하십시오.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_merged_fragment_run_escalates_to_strongest_severity() -> None:
+    # A merged run inherits the strongest severity, not just the first fragment's.
+    snapshot = {
+        "precautions": [
+            {"text": "어린이,", "severity": "caution"},
+            {"text": "위험하니,", "severity": "warning"},
+            {"text": "주의하십시오"},
+        ],
+    }
+
+    async def _chat(_payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        raise AssertionError("Korean text must not trigger a translation call")
+
+    out = await localize_snapshot_to_korean(snapshot, chat=_chat, model="m")
+    assert len(out["precautions"]) == 1
+    assert out["precautions"][0]["severity"] == "warning"

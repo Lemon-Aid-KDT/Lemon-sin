@@ -39,8 +39,19 @@ _LIST_SECTION_KEYS = ("precautions", "functional_claims")
 # like "mg"/"IU" and mostly-Korean text with a stray Latin token).
 _MIN_LATIN_LETTERS = 3
 
-# Minimum English single-word precaution fragments before they are coalesced into one.
+# Minimum single-word precaution fragments (English or Korean) before they are
+# coalesced into one item.
 _MIN_PRECAUTION_FRAGMENTS = 2
+
+# A Korean (non-Latin) single word-box only counts as a fragment candidate when it is
+# this short; the run / sentence-final logic below decides what actually merges. Korean
+# OCR word-boxes ("어린이,", "주의하십시오") are short.
+_MAX_KOREAN_FRAGMENT_CHARS = 16
+
+# A fragment ending with one of these closes a broken-sentence run, so a following
+# complete caution starts its own run instead of being swept into the merge.
+_SENTENCE_FINAL_PUNCT = (".", "。", "!", "?")
+_KOREAN_SENTENCE_FINAL_SUFFIXES = ("다", "요", "오")
 
 _PROMPT = (
     "다음은 영양제 라벨에서 추출한 사용자 표시용 문구들이다. 각 문구를 자연스럽고 정확한 "
@@ -152,47 +163,103 @@ def _set_text_at(snapshot: dict[str, Any], key: str, index: int | None, text: st
         snapshot[key][index]["text"] = text
 
 
-def _coalesce_english_precautions(snapshot: dict[str, Any]) -> bool:
-    """Merge English-dominant precaution fragments into one item. Mutates ``snapshot``.
+def _is_precaution_fragment(text: str) -> bool:
+    """Return whether a precaution item looks like one OCR word-box fragment.
 
-    Word-level OCR boxes can split a single precaution sentence ("Consult ...
-    pregnant, nursing, ... children.") into several one-word precaution items, which
-    then translate word-by-word into disjointed Korean. Joining the English fragments
-    into the first one's slot (preserving order and any non-English precautions) lets
-    the translation pass produce one coherent Korean sentence.
+    A fragment is a single whitespace-delimited token: an English word-box
+    ("Consult", "children.") or a short Korean word-box ("어린이,", "주의하십시오")
+    that OCR split out of one caution sentence. Multi-word items are treated as
+    complete cautions and are never merged.
+    """
+    stripped = text.strip()
+    if not stripped or len(stripped.split()) != 1:
+        return False
+    if is_english_dominant(stripped):
+        return True
+    has_hangul = any(_HANGUL_START <= char <= _HANGUL_END for char in stripped)
+    return has_hangul and len(stripped) <= _MAX_KOREAN_FRAGMENT_CHARS
+
+
+def _is_sentence_final(text: str) -> bool:
+    """Return whether a fragment ends a sentence (and so closes a run).
+
+    A complete short caution ("냉장보관하십시오.") ends a sentence; a true interior
+    fragment ("어린이," / "임산부,") does not. Closing the run here keeps a standalone
+    complete caution from being swept into a neighboring broken sentence.
+    """
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    return stripped.endswith(_SENTENCE_FINAL_PUNCT) or stripped.endswith(
+        _KOREAN_SENTENCE_FINAL_SUFFIXES
+    )
+
+
+def _merge_fragment_run(run: list[dict[str, Any]]) -> dict[str, Any]:
+    """Join one run of same-sentence fragments, escalating to the strongest severity."""
+    joined = " ".join(item["text"].strip() for item in run)
+    merged = {**run[0], "text": joined}
+    rank = {"warning": 2, "caution": 1}
+    strongest = max(
+        (item.get("severity") for item in run),
+        key=lambda severity: rank.get(severity, 0),
+        default=None,
+    )
+    if strongest is not None and rank.get(strongest, 0) > rank.get(run[0].get("severity"), 0):
+        merged["severity"] = strongest
+    return merged
+
+
+def _coalesce_precaution_fragments(snapshot: dict[str, Any]) -> bool:
+    """Merge word-box precaution fragments (English or Korean) into one item.
+
+    Word-level OCR boxes can split a single precaution sentence into several
+    single-token items — English ("Consult" / "pregnant," / ... / "children.") or
+    Korean ("어린이," / "임산부," / "...주의하십시오") — which then render as disjointed
+    fragments (or translate word-by-word). Joining them into the first fragment's slot
+    (preserving order and any complete, multi-word precautions) yields one coherent
+    sentence. Mutates ``snapshot``.
 
     Returns:
-        True when two or more English fragments were merged.
+        True when two or more fragments were merged.
     """
     precautions = snapshot.get("precautions")
     if not isinstance(precautions, list) or len(precautions) < _MIN_PRECAUTION_FRAGMENTS:
         return False
-    fragments = [
-        item
-        for item in precautions
-        if isinstance(item, dict)
-        and isinstance(item.get("text"), str)
-        and is_english_dominant(item["text"])
-        # Only single-token items — the word-level OCR boxes that split one sentence.
-        # Two complete (multi-word) precautions are left separate and translated as-is.
-        and len(item["text"].split()) == 1
-    ]
-    if len(fragments) < _MIN_PRECAUTION_FRAGMENTS:
-        return False
-    joined = " ".join(item["text"].strip() for item in fragments)
-    fragment_ids = {id(item) for item in fragments}
-    merged_item = {**fragments[0], "text": joined}
+
     new_list: list[Any] = []
-    inserted = False
-    for item in precautions:
-        if id(item) in fragment_ids:
-            if not inserted:
-                new_list.append(merged_item)
-                inserted = True
+    run: list[dict[str, Any]] = []
+    changed = False
+
+    def _flush() -> None:
+        nonlocal changed
+        if len(run) >= _MIN_PRECAUTION_FRAGMENTS:
+            new_list.append(_merge_fragment_run(run))
+            changed = True
         else:
+            new_list.extend(run)
+        run.clear()
+
+    for item in precautions:
+        is_fragment = (
+            isinstance(item, dict)
+            and isinstance(item.get("text"), str)
+            and _is_precaution_fragment(item["text"])
+        )
+        if not is_fragment:
+            _flush()
             new_list.append(item)
-    snapshot["precautions"] = new_list
-    return True
+            continue
+        run.append(item)
+        # A sentence-final piece ends the broken sentence; close the run so a following
+        # complete caution starts its own run and is never swept into this one.
+        if _is_sentence_final(item["text"]):
+            _flush()
+    _flush()
+
+    if changed:
+        snapshot["precautions"] = new_list
+    return changed
 
 
 async def _translate_texts(texts: list[str], *, chat: ChatCallable, model: str) -> list[str] | None:
@@ -221,9 +288,9 @@ async def localize_snapshot_to_korean(
     """Return a snapshot whose English display sections are translated to Korean.
 
     Translates ``precautions[].text``, ``intake_method.text`` and
-    ``functional_claims[].text`` when they are English-dominant. Fragmented English
-    precaution items (from word-level OCR boxes) are first coalesced into one item so
-    the result reads as a single Korean sentence. Best-effort: when nothing needs
+    ``functional_claims[].text`` when they are English-dominant. Fragmented precaution
+    items (English or Korean, from word-level OCR boxes) are first coalesced into one
+    item so the result reads as a single sentence. Best-effort: when nothing needs
     translating the input snapshot is returned unchanged. If the batched call returns
     an unusable response, each section is retried on its own so one bad item does not
     leave everything in English; any item that still fails keeps its original text.
@@ -237,7 +304,7 @@ async def localize_snapshot_to_korean(
         The snapshot with localized section text, or the original on no-op/failure.
     """
     work = deepcopy(snapshot)
-    coalesced = _coalesce_english_precautions(work)
+    coalesced = _coalesce_precaution_fragments(work)
     targets = _collect_targets(work)
     if not targets:
         return work if coalesced else snapshot

@@ -52,8 +52,11 @@ Return one JSON object.
 - Ignore package counts ("30정", "180g") unless attached to a named row.
 - Required sections are product_name, supplement_facts, intake_method, precautions.
 - label_sections, intake_method, functional_claims: as seen
-- precautions: each visible caution/warning sentence as an array item; do not
-  summarize or rewrite beyond OCR cleanup.
+- precautions: ONE array item per distinct caution/warning sentence. Keep DISTINCT
+  cautions as separate items; only join pieces that OCR split out of the SAME sentence
+  (e.g. "어린이," / "임산부," / "...주의하십시오" -> one item) and reassemble them as
+  printed on the label. Never emit isolated word fragments, never merge unrelated
+  cautions, and do not invent words or summarize away meaning.
 - evidence_spans: short excerpts, never full OCR text
 - missing_required_sections, low_confidence_fields, warnings: brief
 - The OCR may contain several image fragments separated by markers like
