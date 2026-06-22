@@ -118,6 +118,48 @@ ChatbotResponse _plainAnswerResponse() {
   });
 }
 
+ChatbotResponse _wikiSourcesResponse() {
+  return ChatbotResponse.fromJson(<String, dynamic>{
+    'request_id': 'r-wiki',
+    'message': '아스코르브산은 식사로도 충분히 얻을 수 있어요.',
+    'provider': 'gemma_wiki_rag',
+    'used_tools': <String>['llm_wiki_rag'],
+    'answerability': 'answered_from_wiki',
+    'source_families': <String>['lemon_wiki'],
+    'sources': <Map<String, dynamic>>[
+      // Backend sends `source_title` (heading); the "1.2 " section number is
+      // stripped for the chip and the raw `source_id` path is never shown.
+      <String, dynamic>{
+        'source_id':
+            'raw/references/2026-06-05-chronic-hepatitis-bc-cancer-research.md',
+        'source_title': '1.2 비타민 C',
+        'source_family': 'lemon_wiki',
+        'review_status': 'reference',
+      },
+      // A heading containing '/' must be kept (not mistaken for a file path).
+      <String, dynamic>{
+        'source_id': 'raw/references/2026-06-05-copd-intake-research.md',
+        'source_title': '비타민C (Vitamin C / ascorbic acid)',
+        'source_family': 'lemon_wiki',
+        'review_status': 'reference',
+      },
+      // A very long heading must ellipsize within the chip, never overflow.
+      <String, dynamic>{
+        'source_id': 'wiki/concepts/water-soluble-vitamin-supplements.md',
+        'source_title':
+            '수용성 비타민 보충제와 만성 질환 관리에 관한 아주 길고 긴 참고 섹션 제목 예시이며 '
+            '추가 설명 텍스트가 계속 이어져서 한 줄을 훌쩍 넘기는 경우를 검증하기 위한 문자열입니다',
+        'source_family': 'lemon_wiki',
+        'review_status': 'reference',
+      },
+    ],
+    'approval_preview': <String, dynamic>{
+      'approval_state': 'not_required',
+      'side_effects': <String>[],
+    },
+  });
+}
+
 void main() {
   testWidgets('consumes supplement explanation draft as chat messages', (
     WidgetTester tester,
@@ -260,6 +302,38 @@ void main() {
 
     // figma S-11 773:23 — 입력창 위 상시 면책 (컴플라이언스 §14).
     expect(find.text(_allowedStandingDisclaimer), findsOneWidget);
+  });
+
+  testWidgets('renders wiki source chips cleanly without RenderFlex overflow', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ChatScreen(
+            repository: _FakeChatRepository(<ChatbotResponse>[
+              _wikiSourcesResponse(),
+            ]),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '비타민 C 먹어도 돼?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+
+    // The original bug: a long source row overflowed to the right. The chip now
+    // clamps + ellipsizes, so no layout overflow exception is thrown.
+    expect(tester.takeException(), isNull);
+    // Heading shows with the "1.2 " section number stripped.
+    expect(find.text('비타민 C'), findsOneWidget);
+    // A heading containing '/' is preserved, not treated as a path.
+    expect(find.text('비타민C (Vitamin C / ascorbic acid)'), findsOneWidget);
+    // The raw file path must never surface as a chip label.
+    expect(find.textContaining('raw/references/'), findsNothing);
+    expect(find.text('근거'), findsOneWidget);
   });
 }
 

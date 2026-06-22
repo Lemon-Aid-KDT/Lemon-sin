@@ -774,35 +774,53 @@ class _SourceChips extends StatelessWidget {
             for (final ChatbotSource source in visible)
               GestureDetector(
                 onTap: () => _showSourceSheet(context, source),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpace.sm,
-                    vertical: 6,
+                child: ConstrainedBox(
+                  // Cap each chip below the parent Wrap width so a long label
+                  // ellipsizes instead of overflowing the row (RenderFlex fix).
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.72,
                   ),
-                  decoration: BoxDecoration(
-                    color: AppColor.section,
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                    border: Border.all(color: AppColor.border, width: 1),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        source.label,
-                        style: const TextStyle(
-                          color: AppColor.inkSecondary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.sm,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColor.section,
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                      border: Border.all(color: AppColor.border, width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.menu_book_rounded,
+                          size: 12,
+                          color: AppColor.inkTertiary,
                         ),
-                      ),
-                      const SizedBox(width: 2),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 13,
-                        color: AppColor.inkTertiary,
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            source.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: const TextStyle(
+                              color: AppColor.inkSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 13,
+                          color: AppColor.inkTertiary,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -815,8 +833,8 @@ class _SourceChips extends StatelessWidget {
 
 // 출처 상세 바텀시트 — 제목/출처군/식별자/URL(복사 전용) + 안내 캡션.
 void _showSourceSheet(BuildContext context, ChatbotSource source) {
-  final String title = source.title.trim();
-  final String family = source.sourceFamily.trim();
+  final String title = source.label;
+  final String family = source.familyLabel;
   final String id = source.sourceId.trim();
   final String url = source.sourceUrl.trim();
   showModalBottomSheet<void>(

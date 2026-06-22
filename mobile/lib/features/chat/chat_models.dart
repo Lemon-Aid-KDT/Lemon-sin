@@ -297,8 +297,20 @@ class ChatbotSource {
 
   /// Parses a source from a decoded JSON object.
   factory ChatbotSource.fromJson(Map<String, dynamic> json) {
+    String pick(List<String> keys) {
+      for (final String key in keys) {
+        final Object? value = json[key];
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim();
+        }
+      }
+      return '';
+    }
+
     return ChatbotSource(
-      title: json['title'] as String? ?? '',
+      // Backend emits `source_title` (section heading or document title); some
+      // payloads use `title`. Reading the wrong key surfaced the raw file path.
+      title: pick(<String>['source_title', 'title']),
       sourceId: json['source_id'] as String? ?? '',
       sourceFamily: json['source_family'] as String? ?? '',
       sourceUrl: json['source_url'] as String? ?? '',
@@ -317,15 +329,61 @@ class ChatbotSource {
   /// Source URL when present.
   final String sourceUrl;
 
-  /// Best-effort short label for an inline source chip.
+  /// Friendly source-family name for display.
+  String get familyLabel {
+    switch (sourceFamily.trim()) {
+      case 'lemon_wiki':
+        return '레몬 위키';
+      case '':
+        return '참고 자료';
+      default:
+        return sourceFamily.trim();
+    }
+  }
+
+  /// Short, clean label for an inline source chip.
+  ///
+  /// Strips section numbering ("1.2 ") and leading symbols from the heading and
+  /// never returns a raw file path, so the chip stays compact and readable.
   String get label {
-    if (title.trim().isNotEmpty) {
-      return title.trim();
+    final String cleaned = _cleanTitle(title);
+    if (cleaned.isNotEmpty) {
+      return cleaned;
     }
-    if (sourceId.trim().isNotEmpty) {
-      return sourceId.trim();
+    final String fromPath = _humanizePath(sourceId);
+    if (fromPath.isNotEmpty) {
+      return fromPath;
     }
-    return sourceFamily.trim();
+    return familyLabel;
+  }
+
+  static String _cleanTitle(String raw) {
+    final String t = raw.trim();
+    final bool pathLike = t.toLowerCase().endsWith('.md') ||
+        RegExp(r'^[A-Za-z0-9._/-]+$').hasMatch(t);
+    if (t.isEmpty || pathLike) {
+      return '';
+    }
+    return t
+        .replaceFirst(RegExp(r'^\d+(\.\d+)*\s*'), '')
+        .replaceFirst(RegExp(r'^[^가-힣A-Za-z0-9(]+'), '')
+        .trim();
+  }
+
+  static String _humanizePath(String id) {
+    String s = id.trim();
+    if (s.isEmpty) {
+      return '';
+    }
+    final int slash = s.lastIndexOf('/');
+    if (slash >= 0) {
+      s = s.substring(slash + 1);
+    }
+    return s
+        .replaceFirst(RegExp(r'\.md$', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^\d{4}-\d{2}-\d{2}-'), '')
+        .replaceAll(RegExp(r'[-_]+'), ' ')
+        .trim();
   }
 }
 
