@@ -22,6 +22,13 @@ LOCAL_PATH_MARKERS = (
     "/private/",
     "/Users/",
     "/Volumes/",
+    # Linux operator/CI roots so absolute-path rejection is OS-agnostic (pytest
+    # tmp_path is /tmp/... on Linux but /private|/Users/... on macOS).
+    "/tmp/",
+    "/home/",
+    "/root/",
+    "/mnt/",
+    "/opt/",
     "file://",
     "\\Users\\",
     "\\Volumes\\",
