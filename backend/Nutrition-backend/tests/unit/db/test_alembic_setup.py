@@ -16,7 +16,7 @@ def test_alembic_script_directory_loads_initial_revision() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0044_normalize_check_constraint_names"]
+    assert script.get_heads() == ["0046_merge_40class_dyslipidemia"]
 
 
 def test_alembic_script_directory_loads_outside_backend_cwd(
@@ -27,7 +27,7 @@ def test_alembic_script_directory_loads_outside_backend_cwd(
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["0044_normalize_check_constraint_names"]
+    assert script.get_heads() == ["0046_merge_40class_dyslipidemia"]
 
 
 def test_alembic_env_widens_revision_id_capacity() -> None:
@@ -208,10 +208,7 @@ def test_learning_review_metadata_migration_stores_only_sanitized_snapshot() -> 
 def test_user_supplement_precaution_snapshot_migration_is_sanitized() -> None:
     """Verify precaution snapshots store only confirmed text arrays."""
     migration_path = (
-        BACKEND_ROOT
-        / "alembic"
-        / "versions"
-        / "0024_add_user_supplement_precaution_snapshot.py"
+        BACKEND_ROOT / "alembic" / "versions" / "0024_add_user_supplement_precaution_snapshot.py"
     )
     migration = migration_path.read_text(encoding="utf-8")
 
@@ -225,10 +222,7 @@ def test_user_supplement_precaution_snapshot_migration_is_sanitized() -> None:
 def test_supplement_food_taxonomy_migration_is_sanitized() -> None:
     """Verify taxonomy catalog tables do not introduce raw payload storage."""
     migration_path = (
-        BACKEND_ROOT
-        / "alembic"
-        / "versions"
-        / "0025_create_supplement_food_taxonomy_tables.py"
+        BACKEND_ROOT / "alembic" / "versions" / "0025_create_supplement_food_taxonomy_tables.py"
     )
     migration = migration_path.read_text(encoding="utf-8")
 
@@ -573,8 +567,7 @@ def test_check_constraint_source_migrations_use_bare_tokens_and_definition_drop(
     evidence = (versions / "0019_add_user_supplement_evidence_refs.py").read_text(encoding="utf-8")
     assert 'op.create_check_constraint(\n        "evidence_refs_array",' in evidence
     assert (
-        '_drop_check_by_definition("user_supplements", "jsonb_typeof(evidence_refs)")'
-        in evidence
+        '_drop_check_by_definition("user_supplements", "jsonb_typeof(evidence_refs)")' in evidence
     )
 
     dvp = (versions / "0021_add_ingredient_daily_value_percent.py").read_text(encoding="utf-8")
@@ -582,9 +575,9 @@ def test_check_constraint_source_migrations_use_bare_tokens_and_definition_drop(
     assert "_drop_check_by_definition(" in dvp
     assert "daily_value_percent IS NULL" in dvp
 
-    precaution = (
-        versions / "0024_add_user_supplement_precaution_snapshot.py"
-    ).read_text(encoding="utf-8")
+    precaution = (versions / "0024_add_user_supplement_precaution_snapshot.py").read_text(
+        encoding="utf-8"
+    )
     assert 'op.create_check_constraint(\n        "precaution_snapshot_array",' in precaution
     assert (
         '_drop_check_by_definition("user_supplements", "jsonb_typeof(precaution_snapshot)")'
