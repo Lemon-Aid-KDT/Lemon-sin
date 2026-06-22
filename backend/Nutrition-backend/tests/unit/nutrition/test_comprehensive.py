@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
+from src.config import get_settings
 from src.models.schemas.supplement_comprehensive import ComprehensiveAnalysisRequest
 from src.nutrition.comprehensive import compute_comprehensive
 
 FORBIDDEN_USER_TERMS = ("진단", "치료", "처방", "복용량 변경", "효능")
+
+
+@pytest.fixture(autouse=True)
+def _pin_kdris_2025(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Pin comprehensive analysis to the official 2025 KDRIs.
+
+    Production requires ``KDRIS_DATA_VERSION=2025``; the 2020-sample fixture omits
+    some upper limits (e.g. magnesium), so without pinning these tests would depend
+    on the ambient default and be non-hermetic — green locally (.env sets 2025) but
+    red on CI defaults (2020-sample). Mirrors test_kdris_analysis.py: the cached
+    Settings singleton must be reset so the env override actually takes effect.
+    """
+    monkeypatch.setenv("KDRIS_DATA_VERSION", "2025")
+    monkeypatch.setenv("KDRIS_DATA_PATH", "data/nutrition_reference/kdris/kdris_2025.csv")
+    monkeypatch.setenv("ALLOW_SAMPLE_KDRIS", "false")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def _complete_kdris_ingredients(*, vitamin_c_mg: float) -> list[dict[str, object]]:
