@@ -4,8 +4,10 @@ OCR 으로 추출된 ingredient + 사용자 프로필을 받아 KDRIs 권장량/
 만성질환 매트릭스(`chronic_disease_supplement_matrix.json`)와 교차하여 5-card
 UI 의 5종 카드를 모두 채울 수 있는 데이터를 계산한다.
 
-MVP 단계에서는 KDRIs 룩업을 inline static dict 로 처리하고, 추후 정식 KDRIs
-모듈(`src/nutrition/kdris.py`)과 통합한다.
+KDRIs 권장량/상한은 정식 KDRIs 모듈(`src/nutrition/kdris.py`)에서 조회하여
+`KDRIS_DATA_VERSION`(2020 샘플 / 2025 공식)에 따라 버전 스위치된 값을 사용한다.
+공식 데이터셋에 스칼라 기준이 없는 영양소(예: 오메가-3)는 인라인 baseline으로
+안전하게 폴백한다.
 
 Reference:
     docs/Nutrition-docs/09-data-catalog.md (KDRIs)
@@ -14,6 +16,7 @@ Reference:
 
 from __future__ import annotations
 
+import logging
 from typing import Literal, TypedDict
 
 from src.models.schemas.chronic_disease_matrix import ChronicCondition
@@ -31,10 +34,13 @@ from src.models.schemas.supplement_comprehensive import (
     WellnessGoal,
     WellnessGoalTarget,
 )
+from src.nutrition.kdris import lookup_kdris_reference
 from src.utils.chronic_disease_matrix import (
     category_to_conditions,
     load_matrix,
 )
+
+logger = logging.getLogger(__name__)
 
 ALGORITHM_VERSION = "comprehensive-v1"
 """5-card 산출 로직 버전 (회귀 추적용)."""
@@ -134,8 +140,9 @@ class _KdrisEntry:
         self.upper_limit = upper_limit
 
 
-# MVP: 핵심 영양소만 inline 등록. 추후 KDRIs 2020 풀 룩업으로 교체.
-# 일반 성인 (19~64세) 기준값.
+# 분석기가 다루는 핵심 영양소 13종의 baseline (일반 성인 19~64세 기준).
+# 우선순위는 `kdris.py`의 버전 스위치된 공식 값이며, 이 테이블은 공식 데이터셋에
+# 스칼라 기준이 없을 때(예: 오메가-3)의 폴백으로만 사용한다.
 _KDRIS_TABLE: dict[str, _KdrisEntry] = {
     "vitamin_a_ug": _KdrisEntry("비타민 A", "ug", 750, 3000),
     "vitamin_b1_mg": _KdrisEntry("비타민 B1", "mg", 1.2, 1000),
@@ -151,6 +158,74 @@ _KDRIS_TABLE: dict[str, _KdrisEntry] = {
     "zinc_mg": _KdrisEntry("아연", "mg", 10, 35),
     "omega3_mg": _KdrisEntry("오메가-3", "mg", 1000, 3000),
 }
+
+
+# KDRIs 2025 CSV는 비타민 B1을 `thiamin_mg` 코드로 보관한다. 그 외 12개 코드는 1:1 일치.
+_KDRIS_CODE_ALIAS: dict[str, str] = {"vitamin_b1_mg": "thiamin_mg"}
+
+
+def _resolve_kdris_entry(code: str, user: UserProfileInput) -> _KdrisEntry:
+    """버전 스위치된 공식 KDRIs 모듈에서 단일 영양소 기준값을 해석한다.
+
+    `src/nutrition/kdris.py`(KDRIS_DATA_VERSION 적용)에서 사용자 연령·성별·임신
+    상태에 맞는 기준값을 조회한다. 공식 데이터셋에 스칼라 기준이 없는 영양소
+    (예: 오메가-3 — KDRIs는 EPA+DHA/ALA로 분리)나 조회 실패 시에는 인라인
+    baseline으로 안전하게 폴백한다.
+
+    Args:
+        code: 분석기 내부 nutrient_code.
+        user: 조회 기준이 되는 사용자 프로필.
+
+    Returns:
+        해석된 KDRIs 항목. 표시명·단위는 분석기 baseline을 유지하고 권장량/상한만
+        공식 값으로 대체한다.
+    """
+    inline = _KDRIS_TABLE[code]
+    pregnancy_status = "pregnant" if user.is_pregnant else "none"
+    try:
+        reference = lookup_kdris_reference(
+            nutrient_code=_KDRIS_CODE_ALIAS.get(code, code),
+            age=user.age,
+            sex=user.sex,
+            pregnancy_status=pregnancy_status,
+        )
+    except Exception:  # pragma: no cover - 데이터셋 로드 실패는 baseline으로 폴백
+        logger.warning("KDRIs lookup failed for %s; using inline baseline.", code, exc_info=True)
+        return inline
+    if reference is None or reference.reference_amount is None:
+        return inline
+    # 코드 접미사(mg/ug)가 단위를 결정한다. KDRIs 한정자("ug RAE", "mg alpha-TE",
+    # "mg supplemental")는 접두가 같아 스케일이 동일하므로 단위 변환 없이 사용하고,
+    # 접두가 다르면(데이터 드리프트) baseline으로 폴백한다.
+    if not (reference.reference_unit or "").startswith(inline.unit):
+        return inline
+    # 상한(UL): KDRIs UL이 없으면 0(과다 카드에서 제외). 마그네슘 등 일부 영양소의 KDRIs
+    # UL은 "보충제 한정(mg supplemental)"이지만 분석기는 인라인과 동일하게 총섭취량과
+    # 비교한다(기존 동작 보존 — 보충제 출처별 분리는 unit_converter.py:98 TODO에서 추적).
+    if reference.ul_amount is None:
+        upper_limit = 0.0
+    elif (reference.ul_unit or "").startswith(inline.unit):
+        upper_limit = reference.ul_amount
+    else:
+        upper_limit = inline.upper_limit
+    return _KdrisEntry(
+        display_name=inline.display_name,
+        unit=inline.unit,
+        recommended=reference.reference_amount,
+        upper_limit=upper_limit,
+    )
+
+
+def _resolve_kdris_entries(user: UserProfileInput) -> dict[str, _KdrisEntry]:
+    """분석기가 다루는 13개 영양소 기준값을 요청당 1회 해석한다.
+
+    Args:
+        user: 조회 기준이 되는 사용자 프로필.
+
+    Returns:
+        nutrient_code 키 → 해석된 KDRIs 항목 매핑.
+    """
+    return {code: _resolve_kdris_entry(code, user) for code in _KDRIS_TABLE}
 
 
 def _compute_intake_by_code(
@@ -185,18 +260,20 @@ def _compute_intake_by_code(
 def _compute_deficient(
     intake_by_code: dict[str, tuple[float, str, str]],
     user: UserProfileInput,
+    kdris_entries: dict[str, _KdrisEntry],
 ) -> list[DeficientNutrient]:
     """KDRIs 권장량 대비 부족 영양소를 산출한다.
 
     Args:
         intake_by_code: nutrient_code 키 → (총 섭취량, 단위, 표시명) 매핑.
         user: 흡연 등 생활습관 기준 보정을 적용할 사용자 프로필.
+        kdris_entries: 프로필별로 해석된 KDRIs 기준값 매핑.
 
     Returns:
         부족 비율 기준으로 정렬된 부족 영양소 목록.
     """
     deficient: list[DeficientNutrient] = []
-    for code, kdris in _KDRIS_TABLE.items():
+    for code, kdris in kdris_entries.items():
         current, _unit, display = intake_by_code.get(code, (0.0, kdris.unit, kdris.display_name))
         recommended = _recommended_intake_for_user(kdris, nutrient_code=code, user=user)
         if current >= recommended:
@@ -242,11 +319,20 @@ def _recommended_intake_for_user(
 
 def _compute_excessive(
     intake_by_code: dict[str, tuple[float, str, str]],
+    kdris_entries: dict[str, _KdrisEntry],
 ) -> list[ExcessiveNutrient]:
-    """KDRIs 상한 대비 과다 섭취 영양소를 산출한다."""
+    """KDRIs 상한 대비 과다 섭취 영양소를 산출한다.
+
+    Args:
+        intake_by_code: nutrient_code 키 → (총 섭취량, 단위, 표시명) 매핑.
+        kdris_entries: 프로필별로 해석된 KDRIs 기준값 매핑.
+
+    Returns:
+        과다 비율 기준으로 정렬된 과다 섭취 영양소 목록.
+    """
     excessive: list[ExcessiveNutrient] = []
     for code, (current, _unit, display) in intake_by_code.items():
-        kdris = _KDRIS_TABLE.get(code)
+        kdris = kdris_entries.get(code)
         if kdris is None or kdris.upper_limit <= 0:
             continue
         if current <= kdris.upper_limit:
@@ -1204,8 +1290,9 @@ def compute_comprehensive(
     if request.user_profile.smoking_status in _CURRENT_SMOKING_STATUSES:
         warnings.append("smoker_vitamin_c_reference_iom_plus_35mg")
 
-    deficient = _compute_deficient(intake_by_code, request.user_profile)
-    excessive = _compute_excessive(intake_by_code)
+    kdris_entries = _resolve_kdris_entries(request.user_profile)
+    deficient = _compute_deficient(intake_by_code, request.user_profile, kdris_entries)
+    excessive = _compute_excessive(intake_by_code, kdris_entries)
     cautions = _compute_cautions(request.ingredients, request.user_profile)
     indications, purpose_targets = _compute_chronic_indications_and_targets(
         request.ingredients,

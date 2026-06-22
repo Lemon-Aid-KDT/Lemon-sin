@@ -250,6 +250,51 @@ class TestComputeComprehensive:
         mg_entry = next(e for e in result.excessive_nutrients if e.nutrient_code == "magnesium_mg")
         assert mg_entry.excess_ratio == pytest.approx(1000 / 350, abs=0.02)
 
+    def test_water_soluble_vitamin_without_kdris_upper_limit_is_not_excessive(self) -> None:
+        """공식 KDRIs에 상한이 없는 수용성 비타민(B1=thiamin)은 과다로 분류하지 않는다.
+
+        KDRIs 모듈 조회가 실제로 작동함을 검증한다: 분석기 코드 `vitamin_b1_mg`는
+        CSV의 `thiamin_mg`로 alias 되며, thiamin은 KDRIs 상한이 없으므로 인라인
+        baseline의 임시 상한(1000mg)을 적용하지 않는다.
+        """
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Vitamin B1",
+                        "nutrient_code": "vitamin_b1_mg",
+                        "amount": 5000,
+                        "unit": "mg",
+                    },
+                ],
+            )
+        )
+        assert all(e.nutrient_code != "vitamin_b1_mg" for e in result.excessive_nutrients)
+
+    def test_omega3_without_kdris_reference_falls_back_to_inline_upper_limit(self) -> None:
+        """KDRIs에 단일 기준이 없는 오메가-3는 인라인 baseline 상한(3000mg)으로 폴백한다.
+
+        KDRIs는 오메가-3를 EPA+DHA/ALA로 분리해 단일 스칼라 기준이 없으므로, 분석기는
+        인라인 baseline 상한을 사용해야 하며 5000mg 입력은 과다로 분류된다.
+        """
+        result = compute_comprehensive(
+            _make_request(
+                ingredients=[
+                    {
+                        "display_name": "Omega-3",
+                        "nutrient_code": "omega3_mg",
+                        "amount": 5000,
+                        "unit": "mg",
+                    },
+                ],
+            )
+        )
+        omega3 = next(
+            (e for e in result.excessive_nutrients if e.nutrient_code == "omega3_mg"), None
+        )
+        assert omega3 is not None
+        assert omega3.upper_limit == 3000
+
     def test_unknown_ingredient_does_not_crash(self) -> None:
         """nutrient_code 가 없는 ingredient 도 안전하게 처리된다."""
         result = compute_comprehensive(
