@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../ui_kits/mobile/mobile-kit.css">
+<style>
+  body {
+    margin: 0; padding: 0; height: 440px; overflow: hidden;
+    background: linear-gradient(135deg, #FFFDF6, #FFF0B0);
+    display: grid; grid-template-columns: 1.05fr 0.95fr;
+    align-items: stretch;
+    color: var(--ink-900);
+    font-family: var(--font-body);
+  }
+  .meta { padding: 28px 22px; }
+  .meta h3 { margin: 0 0 8px; font: 800 26px/1.1 var(--font-display);
+              letter-spacing: -0.01em; color: var(--ink-900); }
+  .meta h3 .accent { color: var(--leaf-500); }
+  .meta p { margin: 0 0 14px; color: var(--ink-700);
+             font: var(--t-body-sm); line-height: 1.55; }
+  .meta ul { margin: 0; padding-left: 18px; color: var(--ink-700);
+             font: var(--t-body-sm); }
+  .meta li { margin-bottom: 4px; }
+  .meta .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 999px;
+    background: var(--lemon-100); color: var(--lemon-600);
+    font: var(--t-caption); letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 14px;
+    border: 1px solid var(--lemon-200);
+  }
+
+  .phone {
+    width: 232px; height: 412px;
+    margin: 14px auto;
+    border-radius: 36px;
+    background: var(--canvas);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 36px 60px rgba(214,158,0,0.30),
+                0 0 0 6px #1B1300,
+                0 0 0 7px rgba(255,255,255,0.04);
+  }
+  .phone .island {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 84px; height: 24px; border-radius: 12px; background: #000; z-index: 5;
+  }
+  .phone .time {
+    position: absolute; top: 12px; left: 18px; z-index: 4;
+    font: 700 12px/1 -apple-system; color: #000;
+  }
+  .phone .battery {
+    position: absolute; top: 12px; right: 18px; z-index: 4;
+    width: 18px; height: 10px; border-radius: 2px;
+    border: 1px solid rgba(0,0,0,0.5);
+    box-shadow: 12px 0 0 -3px rgba(0,0,0,0.35) inset;
+  }
+  .phone .home-bar {
+    position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+    width: 100px; height: 4px; border-radius: 100px; background: rgba(0,0,0,0.25);
+    z-index: 70;
+  }
+
+  /* Override gallery class metrics for this small scale */
+  .phone .lm-gallery { font-size: 11px; }
+  .phone .lm-gallery .top { padding: 32px 12px 8px; font-size: 11px; }
+  .phone .lm-gallery .top .left,
+  .phone .lm-gallery .top .right { font-size: 12px; }
+  .phone .lm-gallery .top .title { font-size: 12px; font-weight: 700; }
+  .phone .lm-gallery .source-row { padding: 6px 10px; }
+  .phone .lm-gallery .source-row .picker { font-size: 11px; }
+  .phone .lm-gallery .source-row .mode-toggle .m { padding: 4px 8px; font-size: 10px; }
+  .phone .lm-gallery .grid { gap: 2px; padding: 2px; }
+  .phone .lm-gallery .cell .badge { width: 16px; height: 16px; top: 4px; right: 4px;
+                                      font-size: 9px; border-width: 1px; }
+  .phone .lm-gallery .cell.live::before { font-size: 7px; padding: 2px 3px;
+                                            bottom: 4px; left: 4px; }
+  .phone .lm-gallery .cell .placeholder { font-size: 9px; padding: 4px; }
+  .phone .lm-gallery .footer { padding: 8px 10px 18px; }
+  .phone .lm-gallery .footer .btn-pri { padding: 10px; font-size: 12px; }
+</style></head>
+<body>
+  <div class="meta">
+    <span class="badge">iOS · PHOTOS PICKER</span>
+    <h3>갤러리에서<br><span class="accent">한 번에 여러 장</span> 골라보세요.</h3>
+    <p>iOS Photos 시트 그대로의 그리드와 선택 번호 배지. 영양제 라벨 ·
+      식단 사진 · 미리 찍어둔 약 봉투를 한 번에 처리합니다.</p>
+    <ul>
+      <li>2-px 간격 · 3-column 정사각 그리드</li>
+      <li>단일 · 다중 모드 토글 (우측)</li>
+      <li>선택 시 노란 테두리 + 번호 배지 (다중) · 체크 (단일)</li>
+      <li>LIVE 사진은 좌측 하단 배지 표시</li>
+      <li>하단 frosted CTA: "N장 분석 시작"</li>
+    </ul>
+  </div>
+
+  <div>
+    <div class="phone">
+      <div class="island"></div>
+      <span class="time">9:41</span>
+      <span class="battery"></span>
+
+      <div class="lm-gallery" style="position: absolute; inset: 0;">
+        <header class="top">
+          <span class="left">취소</span>
+          <span class="title">사진 선택</span>
+          <span class="right enabled">추가 (3)</span>
+        </header>
+
+        <div class="source-row">
+          <span class="picker">
+            최근 항목
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+          <div class="mode-toggle">
+            <span class="m">단일</span>
+            <span class="m active">다중</span>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="cell selected">
+            <div class="placeholder" style="background: linear-gradient(135deg, #FFE680, #FFB400);">
+              <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><rect x="22" y="20" width="56" height="62" rx="6" fill="rgba(255,255,255,0.92)"/><rect x="28" y="30" width="44" height="3" rx="1.5" fill="#1B1300" opacity="0.65"/><rect x="28" y="38" width="34" height="2" rx="1" fill="#1B1300" opacity="0.35"/><text x="50" y="62" text-anchor="middle" fill="#1B1300" font-weight="700" font-size="9">오메가-3</text><rect x="28" y="68" width="44" height="3" rx="1.5" fill="#FFCE00"/></svg>
+            </div>
+            <span class="badge">1</span>
+          </div>
+          <div class="cell">
+            <div class="placeholder" style="background: linear-gradient(135deg, #FFF4B0, #E89C00);">
+              <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><rect x="22" y="20" width="56" height="62" rx="6" fill="rgba(255,255,255,0.92)"/><rect x="28" y="30" width="44" height="3" rx="1.5" fill="#1B1300" opacity="0.65"/><text x="50" y="62" text-anchor="middle" fill="#1B1300" font-weight="700" font-size="9">비타민 D</text><rect x="28" y="68" width="44" height="3" rx="1.5" fill="#FFCE00"/></svg>
+            </div>
+            <span class="badge"></span>
+          </div>
+          <div class="cell live selected">
+            <img src="../assets/mascot/tablet-frames/00-idle.png" alt="">
+            <span class="badge">2</span>
+          </div>
+          <div class="cell">
+            <div class="placeholder" style="background: linear-gradient(135deg, #D7F3DC, #6FCB73);">
+              <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><rect x="22" y="20" width="56" height="62" rx="6" fill="rgba(255,255,255,0.92)"/><rect x="28" y="30" width="44" height="3" rx="1.5" fill="#1B1300" opacity="0.65"/><text x="50" y="62" text-anchor="middle" fill="#1B1300" font-weight="700" font-size="9">마그네슘</text><rect x="28" y="68" width="44" height="3" rx="1.5" fill="#6FCB73"/></svg>
+            </div>
+            <span class="badge"></span>
+          </div>
+          <div class="cell selected">
+            <div class="placeholder" style="background: linear-gradient(135deg, #FFE2AE, #E78A3A);">닭가슴살<br/>샐러드</div>
+            <span class="badge">3</span>
+          </div>
+          <div class="cell">
+            <div class="placeholder" style="background: linear-gradient(135deg, #F4E6BE, #C49443);">현미밥</div>
+            <span class="badge"></span>
+          </div>
+          <div class="cell">
+            <div class="placeholder" style="background: linear-gradient(135deg, #FFF8C7, #FFCE00);">
+              <svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><rect x="22" y="20" width="56" height="62" rx="6" fill="rgba(255,255,255,0.92)"/><text x="50" y="62" text-anchor="middle" fill="#1B1300" font-weight="700" font-size="8">프로바이오틱</text><rect x="28" y="68" width="44" height="3" rx="1.5" fill="#FFCE00"/></svg>
+            </div>
+            <span class="badge"></span>
+          </div>
+          <div class="cell">
+            <img src="../assets/mascot/gold-poster.png" alt="">
+            <span class="badge"></span>
+          </div>
+          <div class="cell">
+            <div class="placeholder" style="background: linear-gradient(135deg, #F1E1B8, #A67B3E);">오트밀</div>
+            <span class="badge"></span>
+          </div>
+        </div>
+
+        <footer class="footer">
+          <button class="btn-pri">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/></svg>
+            3장 분석 시작
+          </button>
+        </footer>
+      </div>
+      <span class="home-bar"></span>
+    </div>
+  </div>
+</body></html>

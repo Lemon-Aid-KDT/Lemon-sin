@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img">
+  <title>Lemon-Aid 휴식 잠 layered</title>
+  <g id="01_background">
+    <rect width="1024" height="1024" rx="220" fill="#FFFFFF"/>
+  </g>
+  <g id="02_shadow">
+    <ellipse cx="512" cy="835" rx="250" ry="68" fill="#B88900" opacity="0.22"/>
+  </g>
+  <g id="03_mascot_cutout">
+    <image href="04_resting_transparent_1024.png" x="0" y="0" width="1024" height="1024" preserveAspectRatio="xMidYMid meet"/>
+  </g>
+</svg>

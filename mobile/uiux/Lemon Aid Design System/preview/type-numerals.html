@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .num-card { background: var(--paper); border: 1px solid var(--ink-100);
+              border-radius: 20px; padding: 18px 16px; }
+  .num-card .lbl { margin-bottom: 8px; }
+  .num   { font: 800 64px/0.95 var(--font-display); letter-spacing: -0.03em;
+           font-variant-numeric: tabular-nums; color: var(--ink-900); }
+  .num .unit { font: 600 18px/1 var(--font-body); color: var(--ink-500);
+               margin-left: 6px; vertical-align: 4px; }
+  .num.good   { color: var(--leaf-600); }
+  .num.warn   { color: var(--review); }
+  .num.danger { color: var(--danger); }
+  .delta { font: var(--t-label); color: var(--leaf-600); margin-top: 2px;
+           display: flex; align-items: center; gap: 4px; }
+  .delta.down { color: var(--danger); }
+  .delta svg { width: 12px; height: 12px; }
+</style></head>
+<body class="preview" style="height: 220px;">
+  <div class="num-card">
+    <div class="lbl">식단관리 점수</div>
+    <div class="num good">82<span class="unit">/100</span></div>
+    <div class="delta">
+      <svg viewBox="0 0 12 12" fill="currentColor"><path d="M6 2l4 6H2z"/></svg>
+      +4 vs. 어제
+    </div>
+  </div>
+  <div class="num-card">
+    <div class="lbl">단백질 부족</div>
+    <div class="num warn">12<span class="unit">g</span></div>
+    <div class="delta down">
+      <svg viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L2 4h8z"/></svg>
+      권장량의 78%
+    </div>
+  </div>
+  <div class="num-card">
+    <div class="lbl">중복 성분</div>
+    <div class="num danger">2<span class="unit">건</span></div>
+    <div class="delta down">
+      <svg viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="2"/></svg>
+      Vit C · Zn
+    </div>
+  </div>
+</body></html>

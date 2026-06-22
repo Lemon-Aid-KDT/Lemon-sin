@@ -1,0 +1,46 @@
+{
+  "project": "Lemon-Aid Mascot App Icon Rebuild Assets",
+  "format_note": "원본 캐릭터가 래스터 이미지이므로 SVG/AI 호환 파일은 PNG 기반의 편집용 래스터 임베드 구조입니다. 순수 벡터 드로잉은 아닙니다.",
+  "poses": {
+    "01_tablet": {
+      "name_ko": "태블릿 사용",
+      "transparent_png": "00_master_png_transparent/01_tablet_태블릿_사용_transparent_1024.png",
+      "ios_ipados_folder": "01_iOS_iPadOS/01_tablet",
+      "android_folder": "02_Android/01_tablet",
+      "web_pwa_folder": "03_Web_PWA/01_tablet",
+      "svg_folder": "04_SVG/01_tablet",
+      "ai_compatible_folder": "05_AI_Illustrator_Compatible/01_tablet",
+      "layers_folder": "06_layers/01_tablet"
+    },
+    "02_hello": {
+      "name_ko": "인사",
+      "transparent_png": "00_master_png_transparent/02_hello_인사_transparent_1024.png",
+      "ios_ipados_folder": "01_iOS_iPadOS/02_hello",
+      "android_folder": "02_Android/02_hello",
+      "web_pwa_folder": "03_Web_PWA/02_hello",
+      "svg_folder": "04_SVG/02_hello",
+      "ai_compatible_folder": "05_AI_Illustrator_Compatible/02_hello",
+      "layers_folder": "06_layers/02_hello"
+    },
+    "03_search": {
+      "name_ko": "돋보기 탐색",
+      "transparent_png": "00_master_png_transparent/03_search_돋보기_탐색_transparent_1024.png",
+      "ios_ipados_folder": "01_iOS_iPadOS/03_search",
+      "android_folder": "02_Android/03_search",
+      "web_pwa_folder": "03_Web_PWA/03_search",
+      "svg_folder": "04_SVG/03_search",
+      "ai_compatible_folder": "05_AI_Illustrator_Compatible/03_search",
+      "layers_folder": "06_layers/03_search"
+    },
+    "04_resting": {
+      "name_ko": "휴식 잠",
+      "transparent_png": "00_master_png_transparent/04_resting_휴식_잠_transparent_1024.png",
+      "ios_ipados_folder": "01_iOS_iPadOS/04_resting",
+      "android_folder": "02_Android/04_resting",
+      "web_pwa_folder": "03_Web_PWA/04_resting",
+      "svg_folder": "04_SVG/04_resting",
+      "ai_compatible_folder": "05_AI_Illustrator_Compatible/04_resting",
+      "layers_folder": "06_layers/04_resting"
+    }
+  }
+}

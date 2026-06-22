@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { display: grid; gap: 14px; }
+  .grid-sem { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .cell {
+    border-radius: 16px;
+    padding: 14px 14px 12px;
+    display: flex; flex-direction: column; gap: 10px; min-height: 158px;
+    position: relative; overflow: hidden;
+  }
+  .cell .label { font: var(--t-label); display: flex; align-items: center; gap: 6px; }
+  .cell .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .cell .swatch-strip { height: 8px; border-radius: 4px; margin-top: auto; }
+  .cell .name { font: var(--t-h4); }
+  .cell .use { font: var(--t-body-sm); }
+</style></head>
+<body class="preview compact" style="height: 220px;">
+  <div class="cell" style="background: var(--success-soft); color: var(--leaf-700);">
+    <div class="label"><span class="dot" style="background: var(--success);"></span>SUCCESS</div>
+    <div class="name">성장 · 완료</div>
+    <div class="use">목표 달성, 등록 완료, 적정 섭취량.</div>
+    <div class="swatch-strip" style="background: var(--success);"></div>
+  </div>
+  <div class="cell" style="background: var(--info-soft); color: #155A78;">
+    <div class="label"><span class="dot" style="background: var(--info);"></span>INFO</div>
+    <div class="name">데이터 · 동기화</div>
+    <div class="use">HealthKit 연결, 새 데이터 안내.</div>
+    <div class="swatch-strip" style="background: var(--info);"></div>
+  </div>
+  <div class="cell" style="background: var(--review-soft); color: #6B3F00;">
+    <div class="label"><span class="dot" style="background: var(--review);"></span>REVIEW</div>
+    <div class="name">확인 필요</div>
+    <div class="use">OCR 확신도 낮음, 사용자 검토 필요.</div>
+    <div class="swatch-strip" style="background: var(--review);"></div>
+  </div>
+  <div class="cell" style="background: var(--warning-soft); color: #7A4200;">
+    <div class="label"><span class="dot" style="background: var(--warning);"></span>WARNING</div>
+    <div class="name">주의 · 과다</div>
+    <div class="use">권장량 초과, 중복 성분 감지.</div>
+    <div class="swatch-strip" style="background: var(--warning);"></div>
+  </div>
+  <div class="cell" style="background: var(--danger-soft); color: #8B1F18;">
+    <div class="label"><span class="dot" style="background: var(--danger);"></span>DANGER</div>
+    <div class="name">위험 · 차단</div>
+    <div class="use">의약품 상호작용, 등록 차단.</div>
+    <div class="swatch-strip" style="background: var(--danger);"></div>
+  </div>
+</body></html>

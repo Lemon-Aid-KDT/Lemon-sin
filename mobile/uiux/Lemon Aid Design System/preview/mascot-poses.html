@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="preview-base.css">
+<style>
+  body { background: linear-gradient(140deg, #FFFDF6, #FFF8C7 70%, #FFE9B0);
+         display: grid; grid-template-columns: 240px 1fr; gap: 18px;
+         height: 300px; align-items: center; }
+  .hero img { height: 280px; display: block; margin: 0 auto;
+              filter: drop-shadow(0 18px 22px rgba(214,158,0,0.30)); }
+  .meta { display: grid; gap: 8px; padding-right: 6px; }
+  .pose-row { display: flex; gap: 14px; align-items: flex-end; }
+  .pose { background: rgba(255,255,255,0.55);
+          border: 1px solid rgba(255,255,255,0.9);
+          border-radius: 18px;
+          padding: 8px 8px 6px;
+          flex: 1;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px); }
+  .pose img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+  .pose .label { display: block; text-align: center; font: var(--t-caption);
+                 color: var(--ink-700); margin-top: 2px; }
+  .tag-line { font: 700 24px/1.1 var(--font-display); color: var(--ink-900);
+              letter-spacing: -0.01em; }
+  .tag-line .lemon { color: var(--lemon-500); }
+  .tag-line .aid   { color: var(--leaf-500); }
+</style></head>
+<body class="preview compact">
+  <div class="hero">
+    <img src="../assets/mascot/tablet-frames/03-leaf-complete.png" alt="Lemon Aid mascot">
+  </div>
+  <div class="meta">
+    <div class="tag-line">도움이 되는, 당신의 <span class="lemon">Lemon</span>-<span class="aid">Aid</span>.</div>
+    <p style="margin: 0; color: var(--ink-700);">
+      유광 3D 리퀴드-글래스 레몬 캐릭터. 머리 위 잎사귀가 성장하면서 분석 완료 상태를 표현합니다.
+    </p>
+    <div class="pose-row">
+      <div class="pose"><img src="../assets/mascot/tablet-frames/00-idle.png"><span class="label">idle</span></div>
+      <div class="pose"><img src="../assets/mascot/tablet-frames/02-charged.png"><span class="label">분석중</span></div>
+      <div class="pose"><img src="../assets/mascot/tablet-frames/03-leaf-complete.png"><span class="label">완료</span></div>
+    </div>
+  </div>
+</body></html>

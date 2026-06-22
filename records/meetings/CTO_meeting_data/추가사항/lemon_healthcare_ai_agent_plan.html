@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>레몬헬스케어 AI 영양·복약 Agent 기획서</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8f4;
+      --surface: #ffffff;
+      --surface-soft: #eef6f1;
+      --ink: #17211d;
+      --muted: #62706a;
+      --line: #dbe5de;
+      --green: #187a56;
+      --green-dark: #0d5e43;
+      --mint: #dff3e8;
+      --lemon: #f2cf45;
+      --amber-soft: #fff6cf;
+      --blue-soft: #e9f2ff;
+      --red-soft: #fff0ee;
+      --shadow: 0 14px 36px rgba(23, 33, 29, 0.08);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+      line-height: 1.72;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      min-height: 100vh;
+    }
+
+    .hero {
+      background:
+        linear-gradient(90deg, rgba(24, 122, 86, 0.95), rgba(13, 94, 67, 0.92)),
+        repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 18px);
+      color: #ffffff;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    }
+
+    .hero-inner {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 56px 0 34px;
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 4.2rem);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .hero-copy {
+      max-width: 820px;
+      margin: 22px 0 0;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 1.08rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 30px;
+    }
+
+    .signal {
+      min-height: 118px;
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .signal strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #fff8d7;
+      font-size: 0.92rem;
+    }
+
+    .signal span {
+      display: block;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 28px;
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 34px 0 64px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .toc-title {
+      margin: 0 0 12px;
+      font-size: 0.86rem;
+      font-weight: 800;
+      color: var(--green-dark);
+    }
+
+    .toc a {
+      display: block;
+      padding: 7px 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+      border-top: 1px solid transparent;
+    }
+
+    .toc a:hover,
+    .toc a:focus {
+      color: var(--green-dark);
+    }
+
+    main {
+      min-width: 0;
+    }
+
+    section {
+      scroll-margin-top: 22px;
+      margin-bottom: 18px;
+      padding: 30px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      color: var(--green-dark);
+      font-size: 1.42rem;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      color: #26342e;
+      font-size: 1.08rem;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    ul,
+    ol {
+      margin: 10px 0 0;
+      padding-left: 1.35rem;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: #eef2ef;
+      color: #234139;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.94em;
+    }
+
+    .quote {
+      margin: 18px 0;
+      padding: 18px 20px;
+      border-left: 5px solid var(--lemon);
+      border-radius: var(--radius);
+      background: var(--amber-soft);
+      font-weight: 800;
+      color: #332d12;
+    }
+
+    .summary-band {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .note {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-soft);
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--green-dark);
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .feature {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfcfb;
+      font-weight: 700;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+      counter-reset: flow;
+      margin-top: 14px;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfcfb;
+    }
+
+    .flow-step::before {
+      counter-increment: flow;
+      content: counter(flow);
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--green);
+      color: #ffffff;
+      font-weight: 800;
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+    .agent {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfcfb;
+    }
+
+    .agent h3 {
+      margin-top: 0;
+      color: var(--green-dark);
+    }
+
+    .two-column {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .include {
+      border-top: 4px solid var(--green);
+      background: var(--surface-soft);
+    }
+
+    .exclude {
+      border-top: 4px solid #c65b4b;
+      background: var(--red-soft);
+    }
+
+    .data-box {
+      background: var(--blue-soft);
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .week {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfcfb;
+    }
+
+    .week strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--green-dark);
+    }
+
+    .safe {
+      background: #fffaf0;
+      border-color: #eadb9f;
+    }
+
+    .final-message {
+      background: #173a31;
+      color: #ffffff;
+    }
+
+    .final-message h2 {
+      color: #fff8d7;
+    }
+
+    .final-message p {
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    @media (max-width: 920px) {
+      .hero-grid,
+      .layout,
+      .summary-band,
+      .agent-grid,
+      .two-column,
+      .timeline {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+        max-height: none;
+      }
+
+      section {
+        padding: 24px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .hero-inner,
+      .layout {
+        width: min(100% - 24px, 1180px);
+      }
+
+      .hero-inner {
+        padding-top: 36px;
+      }
+
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      section {
+        padding: 20px;
+      }
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .hero {
+        background: #ffffff;
+        color: #000000;
+      }
+
+      .hero-copy,
+      .signal span,
+      .eyebrow {
+        color: #222222;
+      }
+
+      .layout {
+        display: block;
+        width: 100%;
+        padding: 0;
+      }
+
+      .toc {
+        display: none;
+      }
+
+      section {
+        break-inside: avoid;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-inner">
+        <p class="eyebrow">Lemon Aid Agent 기획서</p>
+        <h1>레몬헬스케어 AI 영양·복약 Agent</h1>
+        <p class="hero-copy">
+          병원성 데이터와 건강 데이터를 이해하는 AI Agent가 만성질환자의 음식, 영양제, 복약, 식단관리 수준을 개인화해주는 건강관리 MVP.
+        </p>
+        <div class="hero-grid" aria-label="핵심 요약">
+          <div class="signal">
+            <strong>서비스 정체성</strong>
+            <span>내 병원 기록과 생활 데이터를 기억하는 만성질환자용 AI 영양·복약 관리 Agent</span>
+          </div>
+          <div class="signal">
+            <strong>MVP 방향</strong>
+            <span>음식·영양제 분석을 출발점으로 병원성 데이터와 생활 데이터를 연결한 개인화 관리를 실증</span>
+          </div>
+          <div class="signal">
+            <strong>영양제 과제 #1</strong>
+            <span>복용 중인 영양제를 권장 기준, 부족·과다 가능성, 목적별 관리 방향과 연결</span>
+          </div>
+          <div class="signal">
+            <strong>음식 과제 #2</strong>
+            <span>음식·식단 섭취 영양소를 활동 정보와 결합해 부족 영양소, 체중 변화, 활동 권고로 확장</span>
+          </div>
+          <div class="signal">
+            <strong>식단관리 평가</strong>
+            <span>끼니별·하루별 점수로 질환 기준에 맞는 식단 조절 수준과 개선 방향을 설명</span>
+          </div>
+          <div class="signal">
+            <strong>응모권 참여</strong>
+            <span>점수가 아니라 음식·영양제 사진 기록 참여 여부를 기준으로 응모권을 자동 누적</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="toc" aria-label="문서 목차">
+        <p class="toc-title">목차</p>
+        <a href="#definition">1. 기획 한 줄 정의</a>
+        <a href="#what">2. 우리가 기획하는 것</a>
+        <a href="#goal">3. 목표 해석</a>
+        <a href="#task">4. 과제 해석</a>
+        <a href="#problem">5. 문제 정의</a>
+        <a href="#concept">6. 서비스 컨셉</a>
+        <a href="#flow">7. MVP 핵심 흐름</a>
+        <a href="#agents">8. Agent 범위</a>
+        <a href="#reference">9. 건강의신 적용 방향</a>
+        <a href="#data">10. 데이터 활용</a>
+        <a href="#memory">11. Agent 요약 기억</a>
+        <a href="#health">12. 건강 데이터 연동</a>
+        <a href="#chatbot">13. 챗봇 기능 범위</a>
+        <a href="#safety">14. 법적·의료적 안전선</a>
+        <a href="#mvp">15. 2개월 MVP 범위</a>
+        <a href="#roadmap">16. 개발 로드맵</a>
+        <a href="#final">17. 최종 메시지</a>
+      </aside>
+
+      <main>
+        <section id="definition">
+          <h2>1. 기획 한 줄 정의</h2>
+          <p>병원성 데이터와 건강 데이터를 이해하는 AI Agent가 만성질환자의 음식, 영양제, 복약, 식단관리 수준을 개인화해주는 건강관리 MVP를 기획한다.</p>
+          <p>우리는 건강의신과 직접 연동하지 않는다. 대신 건강의신에 적용 가능한 독립형 참조 앱을 만들어, 레몬헬스케어가 향후 실제 서비스에 반영할 수 있는 방향을 제안한다.</p>
+        </section>
+
+        <section id="what">
+          <h2>2. 우리가 기획하는 것</h2>
+          <p>우리가 기획하는 것은 단순 음식 분석 앱이나 영양제 정보 앱이 아니다.</p>
+          <p>핵심은 만성질환자의 병원성 데이터, 복약 정보, 음식·영양제 섭취 기록, 건강 데이터를 AI Agent가 함께 이해하고, 사용자에게 맞는 식단관리 판단과 실천 피드백을 제공하는 서비스다.</p>
+          <div class="quote">내 병원 기록과 생활 데이터를 기억하는 만성질환자용 AI 영양·복약 관리 Agent</div>
+          <p>이 서비스는 사용자가 음식이나 영양제를 촬영하면 AI가 분석하고, 그 결과를 사용자의 질환 정보, 검사값, 복약 정보, 건강 데이터와 함께 해석한다. 이후 Agent는 부족 영양소, 과다 섭취 가능성, 주의가 필요한 성분, 식단 조절 수준과 영양제 관리 상태를 설명한다.</p>
+        </section>
+
+        <section id="goal">
+          <h2>3. 레몬헬스케어 목표 해석</h2>
+          <p>레몬헬스케어의 목표는 개인 헬스 시계열 데이터를 활용한 생애 전 주기 개인화 헬스케어 서비스다.</p>
+          <p>PPT에서 제시된 목표는 음식, 식단, 활동, 병원 진료 정보, 실시간 바이탈, 유전자 등 다양한 개인 데이터를 시계열로 쌓고, 이를 기반으로 개인화된 건강관리 서비스를 제공하는 것이다.</p>
+          <p>우리 프로젝트는 이 목표 전체를 2개월 안에 구현하는 것이 아니다. 대신 음식·영양제 분석과 만성질환자 개인화 관리를 중심으로, 레몬헬스케어가 목표로 하는 개인화 헬스케어 방향을 작게 실증하는 MVP다.</p>
+        </section>
+
+        <section id="task">
+          <h2>4. 과제 해석</h2>
+          <p>레몬헬스케어가 제시한 과제는 크게 영양제 분석과 음식·식단 분석으로 나뉜다.</p>
+          <div class="two-column">
+            <div class="note include">
+              <strong>과제 #1. 영양제</strong>
+              <p>복용 중인 영양제를 기반으로 개인별 섭취 영양소, 권장 섭취 영양소 기준, 부족 영양소 추천, 영양소 섭취량 권고, 목적별 특화 분석을 제공한다.</p>
+            </div>
+            <div class="note">
+              <strong>과제 #2. 음식</strong>
+              <p>음식과 식단을 기반으로 섭취 영양소를 분석하고, 활동 정보와 결합해 체중 변화 예측, 활동 권고, 부족 영양소 추천으로 확장한다.</p>
+            </div>
+          </div>
+          <p>우리는 이를 단순 AI 모델 개발 과제로 보지 않는다. 이 과제는 레몬헬스케어의 병원 데이터 기반 개인화 헬스케어 목표에 도달하기 위한 Agent형 서비스 실증 과제로 해석한다.</p>
+          <p>따라서 음식과 영양제 분석은 각각 독립된 출발점이고, 최종 방향은 두 섭취 데이터를 병원성 데이터와 생활 데이터에 연결한 만성질환자 관리 서비스다.</p>
+        </section>
+
+        <section id="problem">
+          <h2>5. 문제 정의</h2>
+          <p>만성질환자는 병원 검사, 복약, 식단, 영양제, 활동 데이터를 따로 관리한다.</p>
+          <ul>
+            <li>내가 먹는 음식과 영양제가 내 질환 상태에 맞는지 알기 어렵다.</li>
+            <li>복용 중인 약과 영양제를 함께 고려하기 어렵다.</li>
+            <li>병원 검사 수치와 일상 생활 데이터를 연결해서 관리하기 어렵다.</li>
+            <li>건강관리 앱은 많지만 병원 기록을 이해하는 개인화 서비스는 부족하다.</li>
+            <li>분석 결과가 실제 식단관리 피드백, 알림, 꾸준한 기록 동기로 이어지지 않는다.</li>
+          </ul>
+        </section>
+
+        <section id="concept">
+          <h2>6. 서비스 컨셉</h2>
+          <p>가칭 서비스명은 <code>Lemon Aid Agent</code>로 둔다.</p>
+          <div class="feature-grid">
+            <div class="feature">음식 이미지 분석</div>
+            <div class="feature">영양제 제품명·라벨·성분표 이미지/OCR 분석</div>
+            <div class="feature">사용자 수정 입력</div>
+            <div class="feature">Kaggle 기반 병원성 데이터 개인화</div>
+            <div class="feature">HealthKit/Health Connect 건강 데이터 연동</div>
+            <div class="feature">음식과 영양제 섭취 영양소 통합 분석</div>
+            <div class="feature">부족·과다·주의 성분 분석</div>
+            <div class="feature">목적별 영양제 관리 방향 제시</div>
+            <div class="feature">끼니별/하루별 식단관리 점수와 개선 피드백</div>
+            <div class="feature">챗봇 설명</div>
+            <div class="feature">사용자 요청 기반 복약/식단 알림 등록</div>
+            <div class="feature">사용자 요청 기반 진료 일정 캘린더 등록</div>
+            <div class="feature">사진 기록 참여 기반 응모권 이벤트 구조</div>
+            <div class="feature">질환 기준 식단관리 평가</div>
+          </div>
+        </section>
+
+        <section id="flow">
+          <h2>7. MVP 핵심 흐름</h2>
+          <div class="flow">
+            <div class="flow-step">사용자가 기본 프로필과 만성질환 정보를 확인한다.</div>
+            <div class="flow-step">Kaggle 기반 검사값, 질환, 복약 데이터가 사용자 상태로 구성된다.</div>
+            <div class="flow-step">사용자가 음식 또는 영양제를 촬영한다.</div>
+            <div class="flow-step">AI가 음식명, 섭취량, 영양소, 영양제 성분을 분석한다.</div>
+            <div class="flow-step">사용자가 인식 결과를 수정한다.</div>
+            <div class="flow-step">Agent가 병원성 데이터, 복약 정보, 건강 데이터를 함께 참고한다.</div>
+            <div class="flow-step">Agent가 부족 영양소, 과다 가능성, 주의 가능성을 판단한다.</div>
+            <div class="flow-step">챗봇이 결과를 쉬운 말로 설명한다.</div>
+            <div class="flow-step">사용자가 자연어로 알림이나 진료 일정 등록을 요청한다.</div>
+            <div class="flow-step">Agent가 날짜, 시간, 반복 조건을 확인한 뒤 복약 알림, 식단 기록 알림, 진료 일정 캘린더 등록을 실행한다.</div>
+            <div class="flow-step">음식·영양제 사진 기록 참여 상태에 따라 응모권이 자동으로 누적된다. 식단관리 점수는 응모권 지급 조건이 아니라 개선 피드백에 사용한다.</div>
+          </div>
+          <h3>영양제 분석 보완 흐름</h3>
+          <div class="flow">
+            <div class="flow-step">사용자가 복용 중인 영양제 제품명, 라벨, 성분표를 촬영한다.</div>
+            <div class="flow-step">AI가 제품명, 성분명, 함량, 1회 섭취량, 권장 섭취 횟수를 OCR로 분석한다.</div>
+            <div class="flow-step">사용자가 실제 섭취량, 섭취 빈도, 복용 시간을 수정·확인한다.</div>
+            <div class="flow-step">Agent가 영양제 성분을 영양소 단위로 환산하고 음식 섭취 영양소와 합산한다.</div>
+            <div class="flow-step">Agent가 개인별 권장 기준, 질환 정보, 검사값, 복약 정보를 함께 참고한다.</div>
+            <div class="flow-step">Agent가 부족 영양소, 과다 섭취 가능성, 중복 성분, 주의가 필요한 성분을 설명한다.</div>
+            <div class="flow-step">Agent가 눈건강, 간기능, 피로회복 같은 목적별 관리 방향을 제시하되, 특정 제품 구매 추천은 하지 않는다.</div>
+          </div>
+        </section>
+
+        <section id="agents">
+          <h2>8. Agent 범위</h2>
+          <p>2개월 MVP에서는 Agent 범위를 4개로 제한한다.</p>
+          <div class="agent-grid">
+            <article class="agent">
+              <h3>8.1 음식·영양제 분석 Agent</h3>
+              <p>음식 사진과 영양제 사진을 분석하고, 사용자의 수정 입력을 반영한다. 이 Agent의 책임은 이미지/OCR 인식과 영양소 산출까지이며, 질환 기준 해석과 점수화는 식단관리 평가 Agent가 담당한다.</p>
+              <strong>음식 분석 역할</strong>
+              <ul>
+                <li>음식명 추정</li>
+                <li>섭취량 입력 보정</li>
+                <li>영양소 계산</li>
+                <li>식단관리 평가에 필요한 영양소 데이터 산출</li>
+              </ul>
+              <strong>영양제 분석 역할</strong>
+              <ul>
+                <li>영양제 제품명/OCR 분석</li>
+                <li>성분표 분석</li>
+                <li>1회 섭취량과 섭취 빈도 기반 1일 섭취량 환산</li>
+                <li>음식 섭취 영양소와 영양제 섭취 영양소 합산</li>
+                <li>사용자 수정 입력 반영</li>
+              </ul>
+            </article>
+            <article class="agent">
+              <h3>8.2 병원데이터 개인화 Agent</h3>
+              <p>질환 태그, 검사값, 복약 정보를 참고해 분석 결과를 개인화할 기준을 제공한다.</p>
+              <ul>
+                <li>만성질환 정보 확인</li>
+                <li>검사 수치 참고</li>
+                <li>복약 정보 참고</li>
+                <li>개인별 관리 기준 생성</li>
+                <li>식단관리 평가 Agent가 사용할 질환별 주의 기준 제공</li>
+              </ul>
+            </article>
+            <article class="agent">
+              <h3>8.3 챗봇 설명·실행 Agent</h3>
+              <p>사용자와 대화하는 입구 역할을 한다. 의료 판단자가 아니라, 분석 결과를 설명하고 사용자의 명시적 요청을 알림·캘린더 같은 실행 기능으로 연결한다.</p>
+              <ul>
+                <li>분석 결과를 쉬운 말로 설명</li>
+                <li>부족·과다·주의 이유 설명</li>
+                <li>식단 기록 실행</li>
+                <li>사용자 요청 기반 복약 알림 등록</li>
+                <li>사용자 요청 기반 식단 기록 알림 등록</li>
+                <li>사용자 요청 기반 진료 일정 캘린더 등록</li>
+              </ul>
+            </article>
+            <article class="agent">
+              <h3>8.4 식단관리 평가 Agent</h3>
+              <p>음식·영양제 사진 촬영 자체는 출석처럼 채워지는 기록 기능으로 처리한다. 이 Agent는 촬영 여부를 판단하거나 이벤트를 운영하지 않고, 분석 Agent가 산출한 영양 데이터를 질환 기준으로 해석해 사용자가 식단을 얼마나 잘 조절했는지와 영양제를 얼마나 잘 관리했는지 피드백한다.</p>
+              <p>식단관리 점수는 응모권 지급 조건이 아니라 사용자 피드백 지표로 사용한다. 점수가 낮은 날에도 사용자가 음식·영양제 사진 기록을 완료했다면 응모권은 받을 수 있고, Agent는 낮은 점수의 원인과 다음 식사에서 개선할 방향을 설명한다.</p>
+              <ul>
+                <li>질환별 주의 영양소 기준과 식단 기록 비교</li>
+                <li>끼니별/하루별 식단관리 점수 산정</li>
+                <li>부족·과다·주의 성분 설명</li>
+                <li>좋은 선택과 개선이 필요한 음식 설명</li>
+                <li>영양제 섭취 빈도와 중복·과다 가능성 평가</li>
+                <li>눈건강, 간기능, 피로회복 등 목적별 영양제 관리 방향 설명</li>
+                <li>점수가 낮은 끼니의 원인과 개선 방향 설명</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section id="reference">
+          <h2>9. 건강의신 적용 가능 방향과 제외 범위</h2>
+          <p>이 문서는 건강의신의 기존 이벤트나 미션 구조를 복제하는 기획서가 아니다. 음식·영양제 사진 기록, 식단관리 피드백, 응모권 참여 구조가 건강의신에 적용될 수 있는 독립형 참조 모델을 제안한다.</p>
+          <div class="two-column">
+            <div class="note include">
+              <strong>가져올 것</strong>
+              <ul>
+                <li>건강 데이터 기반 관리</li>
+                <li>사용자가 매일 음식·영양제 사진 기록을 채우는 참여 UX</li>
+                <li>꾸준한 기록을 유도하는 응모권 참여 구조</li>
+                <li>만성질환자도 쉽게 사용할 수 있는 UX 방향</li>
+              </ul>
+            </div>
+            <div class="note exclude">
+              <strong>제외할 것</strong>
+              <ul>
+                <li>건강의신 기존 이벤트</li>
+                <li>건강의신 기존 미션 구조</li>
+                <li>건강의신 실제 API 연동</li>
+                <li>보험청구 기능</li>
+                <li>포인트 정책</li>
+                <li>기존 앱 전체 기능 복제</li>
+              </ul>
+            </div>
+          </div>
+          <h3>응모권 이벤트 구조</h3>
+          <ul>
+            <li>하루 음식·영양제 사진 기록 완료 시 응모권 1개를 지급한다.</li>
+            <li>1주일 연속 기록 완료 시 추가 응모권 1개를 지급한다.</li>
+            <li>1개월 전체 기록 완료 시 추가 응모권 3개를 지급한다.</li>
+            <li>예시 보상은 1등 1명 2박 3일 숙박권, 2등 3명 국내 호텔 숙박권, 3등 10명 건강식품 5만원권으로 둔다.</li>
+            <li>응모권은 Agent가 생성하거나 점수로 제한하는 과제가 아니라 사진 기록 참여 여부를 바탕으로 자동 누적되는 참여 장치다.</li>
+            <li>식단관리 점수는 응모권 지급 조건이 아니라 사용자가 자신의 식단을 이해하고 개선하기 위한 피드백 지표로 사용한다.</li>
+          </ul>
+        </section>
+
+        <section id="data">
+          <h2>10. 데이터 활용 방향</h2>
+          <p>실제 병원 연동은 불가능하므로 MVP에서는 Kaggle 데이터와 사용자 입력을 조합한다.</p>
+          <div class="note data-box">
+            <strong>사용 데이터</strong>
+            <ul>
+              <li>만성질환/검사값 데이터</li>
+              <li>복약 데이터</li>
+              <li>식단/영양 데이터</li>
+              <li>사용자 기본 정보</li>
+              <li>음식 이미지</li>
+              <li>영양제 이미지</li>
+              <li>HealthKit/Health Connect 기반 걸음수, 체중, 심박 데이터</li>
+              <li>혈압은 가능하면 연동하고, 불가능하면 수동 입력으로 보완한다.</li>
+              <li>영양제 제품명, 라벨 이미지, 성분표, 1회 섭취량, 섭취 빈도, 복용 시간, 목적 태그</li>
+            </ul>
+          </div>
+          <p>Kaggle 데이터는 실제 병원 데이터가 아니다. 다만 레몬헬스케어가 병원 연동 데이터를 활용할 수 있다는 강점을 고려해, 실제 서비스 적용 시 병원 데이터가 들어갈 자리를 시연용으로 대체하는 역할을 한다.</p>
+          <p>영양제 데이터는 음식 섭취 영양소와 분리해서 보관하되, 개인별 판단 시에는 두 데이터를 합산해 총 섭취량을 계산한다. 목적 태그는 눈건강, 간기능, 피로회복처럼 사용자가 영양제를 먹는 이유를 설명하는 보조 정보로 사용한다.</p>
+        </section>
+
+        <section id="memory">
+          <h2>11. Agent 요약 기억</h2>
+          <p>Agent는 전체 원본 데이터를 모두 저장하는 방식이 아니라, 개인화에 필요한 핵심 정보만 요약 기억한다.</p>
+          <ul>
+            <li>최근 검사값 요약</li>
+            <li>만성질환 태그</li>
+            <li>복약 정보 요약</li>
+            <li>음식/영양제 기록 요약</li>
+            <li>건강 데이터 요약</li>
+            <li>식단관리 점수</li>
+            <li>영양제 섭취 달성 이력</li>
+            <li>응모권 누적 이력</li>
+            <li>최근 주의사항</li>
+          </ul>
+          <p>이 구조를 통해 사용자는 매번 처음부터 설명하지 않아도 되고, Agent는 사용자의 상태 변화를 반영해 더 개인화된 관리 판단을 제공할 수 있다.</p>
+        </section>
+
+        <section id="health">
+          <h2>12. 건강 데이터 연동</h2>
+          <div class="summary-band">
+            <div class="note include">
+              <strong>우선 연동 대상</strong>
+              <ul>
+                <li>걸음수</li>
+                <li>체중</li>
+                <li>심박</li>
+              </ul>
+            </div>
+            <div class="note">
+              <strong>가능하면 연동할 대상</strong>
+              <ul>
+                <li>혈압</li>
+              </ul>
+            </div>
+          </div>
+          <p>iOS는 HealthKit, Android는 Health Connect 연동을 고려한다. 혈압은 모든 기기에서 자동 수집되는 데이터가 아니므로, 연동이 불가능한 경우 수동 입력으로 보완한다.</p>
+          <p>건강 데이터는 진단 목적이 아니라 Agent의 식단관리 평가와 생활 상태 해석을 보조하는 참고 데이터로 사용한다.</p>
+        </section>
+
+        <section id="chatbot">
+          <h2>13. 챗봇 기능 범위</h2>
+          <p>챗봇은 설명형과 실행형을 함께 제공한다.</p>
+          <div class="two-column">
+            <div class="note include">
+              <strong>포함 기능</strong>
+              <ul>
+                <li>분석 결과 설명</li>
+                <li>부족/과다/주의 이유 설명</li>
+                <li>식단 기록</li>
+                <li>사용자 요청 기반 복약 알림 등록</li>
+                <li>사용자 요청 기반 식단 기록 알림 등록</li>
+                <li>사용자 요청 기반 진료 일정 캘린더 등록</li>
+              </ul>
+            </div>
+            <div class="note exclude">
+              <strong>제외 기능</strong>
+              <ul>
+                <li>의료 진단</li>
+                <li>처방</li>
+                <li>복용 가능 여부 단정</li>
+                <li>약물-영양제 상호작용 확정 판단</li>
+                <li>응급 판단</li>
+                <li>자유 의료 상담</li>
+              </ul>
+            </div>
+          </div>
+          <h3>사용 예시</h3>
+          <ul>
+            <li>"매일 아침 8시에 혈압약 알림 맞춰줘"라고 요청하면 복약 알림을 등록한다.</li>
+            <li>"다음 진료가 6월 3일 오후 2시야. 캘린더에 넣어줘"라고 요청하면 진료 일정을 등록한다.</li>
+            <li>"이 영양제 계속 먹어도 돼?"라고 질문하면 복용 가능 여부를 단정하지 않고, 성분 중복·과다 가능성과 전문가 상담 필요성을 설명한다.</li>
+            <li>챗봇 대화 중 정기 진료나 전문가 상담을 안내하더라도, 실제 일정 등록은 사용자가 요청하거나 확인했을 때만 실행한다.</li>
+          </ul>
+        </section>
+
+        <section id="safety" class="safe">
+          <h2>14. 법적·의료적 안전선</h2>
+          <p>이 서비스는 진단·치료 서비스가 아니라 웰니스 기반 건강관리 보조 서비스로 정의한다.</p>
+          <h3>표현 기준</h3>
+          <ul>
+            <li>"복용해도 됩니다"라고 단정하지 않는다.</li>
+            <li>"주의가 필요할 수 있습니다"라고 표현한다.</li>
+            <li>"전문가 상담을 권장합니다"라고 안내한다.</li>
+            <li>질병 악화나 치료 효과를 단정하지 않는다.</li>
+            <li>AI 판단은 참고용이며 최종 판단은 의료진과 상의하도록 한다.</li>
+            <li>복약 알림 등록은 사용자의 기존 복약 정보를 기반으로 한 일정 관리 기능이며, 복용 가능 여부 판단이나 처방 변경 기능이 아니다.</li>
+            <li>진료 일정 캘린더 등록은 일정 관리 기능이며, 의료 진단이나 치료 결정을 대신하지 않는다.</li>
+            <li>영양제 분석은 성분 중복, 과다 가능성, 부족 가능성을 안내하는 관리 보조 기능이며, 특정 제품 구매 추천이나 복용 가능 여부 확정 판단을 제공하지 않는다.</li>
+          </ul>
+          <h3>민감정보 보호 고려사항</h3>
+          <ul>
+            <li>별도 동의</li>
+            <li>최소 수집</li>
+            <li>사용 목적 고지</li>
+            <li>데이터 삭제 기능</li>
+            <li>동의 철회 기능</li>
+            <li>민감정보 보호 조치</li>
+          </ul>
+        </section>
+
+        <section id="mvp">
+          <h2>15. 2개월 MVP 범위</h2>
+          <div class="two-column">
+            <div class="note include">
+              <strong>포함</strong>
+              <ul>
+                <li>독립형 참조 앱</li>
+                <li>음식 이미지 분석</li>
+                <li>영양제 제품명·라벨·성분표 이미지/OCR 분석</li>
+                <li>사용자 수정 입력</li>
+                <li>병원성 데이터 기반 개인화</li>
+                <li>건강 데이터 연동</li>
+                <li>챗봇 설명</li>
+                <li>사용자 요청 기반 알림 등록</li>
+                <li>사용자 요청 기반 캘린더 등록</li>
+                <li>질환 기준 식단관리 평가</li>
+                <li>사진 기록 참여 기반 응모권 이벤트 구조</li>
+              </ul>
+            </div>
+            <div class="note exclude">
+              <strong>제외</strong>
+              <ul>
+                <li>건강의신 실제 연동</li>
+                <li>건강의신 기존 이벤트/미션 구조</li>
+                <li>실제 병원 데이터 연동</li>
+                <li>가족케어</li>
+                <li>보호자 알림</li>
+                <li>실시간 위험 모니터링</li>
+                <li>진료기록 요약 차트</li>
+                <li>제품 추천</li>
+                <li>약물-영양제 상호작용 확정 판단</li>
+                <li>의료 진단/처방</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="roadmap">
+          <h2>16. 2개월 개발 로드맵</h2>
+          <div class="timeline">
+            <div class="week">
+              <strong>1~2주차</strong>
+              <ul>
+                <li>Kaggle 데이터셋 선정</li>
+                <li>서비스 플로우 정리</li>
+                <li>화면 구조 설계</li>
+                <li>Agent 판단 기준 초안 작성</li>
+              </ul>
+            </div>
+            <div class="week">
+              <strong>3~4주차</strong>
+              <ul>
+                <li>음식 이미지 분석 구현</li>
+                <li>영양제 제품명·라벨·성분표 이미지/OCR 분석 구현</li>
+                <li>사용자 수정 입력 구현</li>
+                <li>영양제 1일 섭취량 환산 및 음식 섭취 영양소와 합산 구현</li>
+                <li>부족·과다·주의 분석 로직 구현</li>
+              </ul>
+            </div>
+            <div class="week">
+              <strong>5~6주차</strong>
+              <ul>
+                <li>챗봇 구현</li>
+                <li>Agent 요약 기억 구현</li>
+                <li>사용자 요청 기반 알림 등록 구현</li>
+                <li>사용자 요청 기반 캘린더 등록 구현</li>
+                <li>건강 데이터 연동 구현</li>
+                <li>식단관리 평가 Agent 구현</li>
+                <li>응모권 누적 규칙 구현</li>
+              </ul>
+            </div>
+            <div class="week">
+              <strong>7~8주차</strong>
+              <ul>
+                <li>시연 시나리오 구성</li>
+                <li>만성질환자 샘플 케이스 테스트</li>
+                <li>법적 표현 검토</li>
+                <li>발표자료 정리</li>
+                <li>멘토 피드백 반영</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="final" class="final-message">
+          <h2>17. 최종 메시지</h2>
+          <p>우리 프로젝트는 음식과 영양제 분석을 출발점으로 한다.</p>
+          <p>하지만 최종적으로는 만성질환자의 병원성 데이터, 복약 정보, 식단, 건강 데이터를 연결해 개인화된 식단관리 판단과 영양제 관리 피드백을 제공하는 AI Agent 서비스를 제안한다.</p>
+          <p>이는 레몬헬스케어가 목표로 하는 생애 전 주기 개인화 헬스케어로 가기 위한 작은 MVP이자, 건강의신에 적용 가능한 서비스 참조 모델이다.</p>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
