@@ -126,6 +126,8 @@ outputs/oneshot-fusion-verification/
 data/nutrition_reference/crawling-image/
 data/nutrition_reference/sample-image/
 data/nutrition_reference/image-data/
+# Local demo / screen-recording videos (multi-100MB; never commit — keep in external storage).
+data/최종시연영상/
 outputs/generated/supplement-learning/**/images/
 outputs/generated/supplement-learning/**/private-fixtures/
 outputs/generated/supplement-learning/**/review-pii-screening-materialized-images/
@@ -163,6 +165,7 @@ outputs/generated/supplement-learning/**/*.pdparams
 outputs/generated/supplement-learning/**/*.states
 # Large PaddleOCR/YOLO model checkpoint snapshots (multi-100MB zips; external storage/LFS only).
 outputs/generated/supplement-learning/**/a100-paddleocr-best-snapshots/
+outputs/generated/supplement-learning/**/a100-paddleocr-best-models/
 outputs/generated/supplement-learning/**/*.zip
 # Python 3.12 PaddleOCR/PaddleX training venv (multi-GB; companion to .venv/).
 .venv-paddle/
