@@ -18,12 +18,17 @@ class _FakeFoodClassifier:
     """Records the kwargs the adapter constructs it with."""
 
     last_kwargs: ClassVar[dict[str, Any]] = {}
+    filter_builds: ClassVar[int] = 0
 
     def __init__(self, **kwargs: Any) -> None:
         _FakeFoodClassifier.last_kwargs = dict(kwargs)
 
     def analyze(self, _image: Any) -> None:
         return None
+
+    def _get_food_filter(self) -> None:
+        # Mirrors the team module's lazy CLIP-filter builder so warm-up can be asserted.
+        _FakeFoodClassifier.filter_builds += 1
 
 
 class _FakeModule:
@@ -127,23 +132,21 @@ def test_get_shared_food_dino_classifier_is_fail_open_on_load_error(
     assert again is instance
 
 
-def test_warmup_runs_dummy_classify_only_when_filter_enabled(
+def test_warmup_builds_clip_filter_only_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         food_dino_classifier, "_load_food_classifier_module", lambda _dir: _FakeModule
     )
-    enabled = _adapter(enable_food_filter=True)
-    enabled_calls: list[bytes] = []
-    monkeypatch.setattr(enabled, "classify_food", enabled_calls.append)
-    enabled.warmup()
-    assert len(enabled_calls) == 1  # filter on -> one dummy classify warms the CLIP filter
+    # A blank dummy image would be rejected by the YOLO gate before analyze() reaches the
+    # filter, so warm-up must build the CLIP filter directly via _get_food_filter.
+    _FakeFoodClassifier.filter_builds = 0
+    _adapter(enable_food_filter=True).warmup()
+    assert _FakeFoodClassifier.filter_builds == 1  # filter on -> CLIP filter built at warm-up
 
-    disabled = _adapter()
-    disabled_calls: list[bytes] = []
-    monkeypatch.setattr(disabled, "classify_food", disabled_calls.append)
-    disabled.warmup()
-    assert disabled_calls == []  # filter off -> no dummy classify
+    _FakeFoodClassifier.filter_builds = 0
+    _adapter().warmup()
+    assert _FakeFoodClassifier.filter_builds == 0  # filter off -> not built
 
 
 _SHARED_FACTORY_KWARGS: dict[str, Any] = {

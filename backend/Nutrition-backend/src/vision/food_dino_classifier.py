@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import logging
 import threading
 import time
@@ -187,21 +186,19 @@ class FoodDinoClassifier:
     def warmup(self) -> None:
         """Load every model now so the first request does not pay the cost.
 
-        Loads YOLO + DINOv3; when the CLIP non-food filter is enabled, also runs one
-        throwaway classification on a blank image so the lazy ~600MB CLIP filter is
-        built here (at startup) rather than on a user request. Best-effort — the
-        request path still fails open if a model cannot load.
+        Loads YOLO + DINOv3; when the CLIP non-food filter is enabled, eagerly builds
+        the lazy ~600MB CLIP filter too. A throwaway image cannot warm the filter — the
+        YOLO gate rejects it before ``analyze`` reaches the filter — so the team module's
+        lazy filter build is triggered directly. Best-effort: the team build is itself
+        fail-open, and the request path still degrades to "no classifier" on any failure.
         """
-        self.ensure_loaded()
+        classifier = self._load_classifier()
         if not self.enable_food_filter:
             return
-        buffer = io.BytesIO()
-        Image.new("RGB", (32, 32)).save(buffer, format="JPEG")
-        try:
-            self.classify_food(buffer.getvalue())
-        except VisionError:
-            # A blank image legitimately yields no food; building the CLIP filter is the goal.
-            return
+        # ``_get_food_filter`` is the team module's lazy, fail-open CLIP builder.
+        build_clip_filter = getattr(classifier, "_get_food_filter", None)
+        if callable(build_clip_filter):
+            build_clip_filter()
 
 
 def food_classifier_model_label(configured_label: str, probe_path: str | None) -> str | None:
