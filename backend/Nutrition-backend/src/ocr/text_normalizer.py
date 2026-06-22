@@ -35,11 +35,9 @@ GREEK_MU: Final[str] = "μ"
 _UNIT_RULES: Final[list[tuple[re.Pattern[str], str]]] = [
     # 1. micro sign → greek mu (간단 치환)
     # 별도 처리 — 정규식 아닌 직접 replace.
-
     # 2. 숫자 뒤 단위 자리의 ASCII u → μ
     #    "1000ug" / "10 ug" / "10ug RAE" 같은 경우만 잡고 "August" 같은 단어는 건드리지 않음.
     (re.compile(r"(\d+\s*)u(g)(?=\s*(?:RAE|DFE|NE|TE|\b))", re.IGNORECASE), r"\1μ\2"),
-
     # 3. 단위 사이 공백 보장 — μg{RAE|DFE} → μg \1
     (re.compile(r"(μg)\s*(RAE|DFE)\b", re.IGNORECASE), r"\1 \2"),
     # 4. mg NE 사이 공백 보장

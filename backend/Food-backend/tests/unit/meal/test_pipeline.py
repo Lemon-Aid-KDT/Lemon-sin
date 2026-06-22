@@ -287,9 +287,7 @@ class TestRecognizeFromFixtureKey:
     async def test_meal_type_preserved(self) -> None:
         """meal_type 인자가 그대로 결과에 반영."""
         pipeline = _build_real_pipeline()
-        meal = await pipeline.recognize_from_fixture_key(
-            BIBIMBAP_SOLO_KEY, meal_type="dinner"
-        )
+        meal = await pipeline.recognize_from_fixture_key(BIBIMBAP_SOLO_KEY, meal_type="dinner")
         assert meal.meal_type == "dinner"
 
     async def test_items_include_yolo_food(self) -> None:
@@ -334,9 +332,7 @@ class TestRecognizeFromFixtureKey:
 class TestGcvAliasBridge:
     """aliases mapping으로 GCV와 YOLO를 같은 food_code로 묶는 경로."""
 
-    async def test_matched_gcv_label_adds_google_vision_source(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_matched_gcv_label_adds_google_vision_source(self, tmp_path: Path) -> None:
         """custom fixture에 GCV 영문 라벨만 → aliases bridge로 매칭."""
         fixture_data = {
             "clean.jpg": {

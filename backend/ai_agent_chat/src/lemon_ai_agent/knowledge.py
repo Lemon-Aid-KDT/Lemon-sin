@@ -307,7 +307,10 @@ REVIEWED_MEDICAL_SOURCE_REGISTRY: tuple[ReviewedMedicalSource, ...] = (
             ("knee_osteoarthritis", "무릎관절염"),
             ("exercise", "운동"),
             ("weight_loss", "체중 감소"),
-            ("reading_prescription_and_medication_leaflet", "처방전과 약설명서 읽는 방법! 알려드리겠습니다!"),
+            (
+                "reading_prescription_and_medication_leaflet",
+                "처방전과 약설명서 읽는 방법! 알려드리겠습니다!",
+            ),
             ("supplements", "영양제"),
             ("obesity", "비만"),
             ("pediatric_obesity", "소아 비만"),
@@ -876,9 +879,7 @@ DAILY_SUMMARY_POLICY = AnswerPolicy(
         "chronic_condition",
     ),
     contract=RESPONSE_CONTRACTS["nutrition_analysis"],
-    reasons=(
-        "daily coaching summary uses computed nutrition, supplement, and condition context",
-    ),
+    reasons=("daily coaching summary uses computed nutrition, supplement, and condition context",),
 )
 
 _EMERGENCY_KEYWORDS = (
@@ -1047,8 +1048,14 @@ _P0_INTERACTION_BOUNDARY_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], 
         ("오메가", "omega", "은행잎", "ginkgo", "비타민 e", "vitamin e"),
     ),
     (("maoi", "모노아민산화효소"), ("티라민", "tyramine")),
-    (("흡연", "흡연자", "smoker", "smoking"), ("베타카로틴", "beta carotene", "beta-carotene", "비타민 a", "vitamin a")),
-    (("음주", "술", "alcohol", "drinking"), ("비타민 a", "vitamin a", "아세트아미노펜", "acetaminophen", "타이레놀", "tylenol")),
+    (
+        ("흡연", "흡연자", "smoker", "smoking"),
+        ("베타카로틴", "beta carotene", "beta-carotene", "비타민 a", "vitamin a"),
+    ),
+    (
+        ("음주", "술", "alcohol", "drinking"),
+        ("비타민 a", "vitamin a", "아세트아미노펜", "acetaminophen", "타이레놀", "tylenol"),
+    ),
     (("세인트존스워트", "세인트 존스 워트", "st john", "st. john"), ("항우울제", "ssri", "snri")),
     (
         ("자몽", "자몽주스", "grapefruit"),
@@ -1057,7 +1064,16 @@ _P0_INTERACTION_BOUNDARY_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], 
     (("칼륨", "potassium"), ("저염소금", "low sodium salt", "salt substitute")),
     (
         ("니트로글리세린", "협심증", "nitrate", "nitroglycerin"),
-        ("pde5", "발기부전약", "발기부전 약", "발기부전 치료제", "비아그라", "시알리스", "실데나필", "타다라필"),
+        (
+            "pde5",
+            "발기부전약",
+            "발기부전 약",
+            "발기부전 치료제",
+            "비아그라",
+            "시알리스",
+            "실데나필",
+            "타다라필",
+        ),
     ),
     (
         ("ssri", "snri", "항우울제"),
@@ -1334,14 +1350,40 @@ _P0_INTERACTION_BOUNDARY_GROUPS = (
     *_P0_INTERACTION_BOUNDARY_GROUPS,
     (("\uc640\ud30c\ub9b0",), ("\ube44\ud0c0\ubbfc k", "\ube44\ud0c0\ubbfck")),
     (("\uac11\uc0c1\uc120\uc57d",), ("\uce7c\uc298", "\ucca0\ubd84")),
-    (("\uba54\ud2b8\ud3ec\ub974\ubbfc",), ("\ube44\ud0c0\ubbfc b12", "\ube44\ud0c0\ubbfcb12", "b12")),
-    (("\ud56d\uc751\uace0\uc81c", "\uc640\ud30c\ub9b0"), ("\uc624\uba54\uac003", "\uc740\ud589\uc78e", "\ube44\ud0c0\ubbfc e")),
+    (
+        ("\uba54\ud2b8\ud3ec\ub974\ubbfc",),
+        ("\ube44\ud0c0\ubbfc b12", "\ube44\ud0c0\ubbfcb12", "b12"),
+    ),
+    (
+        ("\ud56d\uc751\uace0\uc81c", "\uc640\ud30c\ub9b0"),
+        ("\uc624\uba54\uac003", "\uc740\ud589\uc78e", "\ube44\ud0c0\ubbfc e"),
+    ),
     (("\uc138\uc778\ud2b8\uc874\uc2a4\uc6cc\ud2b8",), ("\uc6b0\uc6b8\uc99d\uc57d", "ssri", "snri")),
-    (("\uc790\ubabd", "\uc790\ubabd\uc8fc\uc2a4"), ("\uc2a4\ud0c0\ud2f4", "\uace0\uc9c0\ud608\uc99d \uc57d", "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d")),
+    (
+        ("\uc790\ubabd", "\uc790\ubabd\uc8fc\uc2a4"),
+        (
+            "\uc2a4\ud0c0\ud2f4",
+            "\uace0\uc9c0\ud608\uc99d \uc57d",
+            "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d",
+        ),
+    ),
     (("\uce7c\ub968",), ("\uc800\uc5fc\uc18c\uae08",)),
-    (("\ub2c8\ud2b8\ub85c\uae00\ub9ac\uc138\ub9b0", "\ud611\uc2ec\uc99d"), ("\ubc1c\uae30\ubd80\uc804\uc57d", "\ube44\uc544\uadf8\ub77c", "\uc2dc\uc54c\ub9ac\uc2a4")),
-    (("ssri", "snri", "\uc6b0\uc6b8\uc99d\uc57d"), ("5-htp", "\ud2b8\ub9bd\ud1a0\ud310", "\uc138\uc778\ud2b8\uc874\uc2a4\uc6cc\ud2b8")),
-    (("\uc2a4\ud0c0\ud2f4", "\uace0\uc9c0\ud608\uc99d \uc57d", "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d"), ("\ud64d\uad6d",)),
+    (
+        ("\ub2c8\ud2b8\ub85c\uae00\ub9ac\uc138\ub9b0", "\ud611\uc2ec\uc99d"),
+        ("\ubc1c\uae30\ubd80\uc804\uc57d", "\ube44\uc544\uadf8\ub77c", "\uc2dc\uc54c\ub9ac\uc2a4"),
+    ),
+    (
+        ("ssri", "snri", "\uc6b0\uc6b8\uc99d\uc57d"),
+        ("5-htp", "\ud2b8\ub9bd\ud1a0\ud310", "\uc138\uc778\ud2b8\uc874\uc2a4\uc6cc\ud2b8"),
+    ),
+    (
+        (
+            "\uc2a4\ud0c0\ud2f4",
+            "\uace0\uc9c0\ud608\uc99d \uc57d",
+            "\ucf5c\ub808\uc2a4\ud14c\ub864\uc57d",
+        ),
+        ("\ud64d\uad6d",),
+    ),
     (("\ub9ac\ud2ac", "lithium"), ("\uc140\ub808\ub284", "selenium")),
 )
 
@@ -1591,12 +1633,7 @@ def _extend_profile_medication_details(
 
 
 def contract_summary(contract: ResponseContract) -> str:
-    return (
-        "Sections: "
-        + " / ".join(contract.sections)
-        + "\nRules: "
-        + "; ".join(contract.rules)
-    )
+    return "Sections: " + " / ".join(contract.sections) + "\nRules: " + "; ".join(contract.rules)
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
@@ -1690,7 +1727,9 @@ def _related_conditions(
     conditions: list[Condition] = []
     if _contains_any(text, ("\ub2f9\ub1e8", "\ud608\ub2f9", "diabetes", "glucose")):
         conditions.append("diabetes")
-    if _contains_any(text, ("\uace0\ud608\uc555", "\ud608\uc555", "hypertension", "blood pressure")):
+    if _contains_any(
+        text, ("\uace0\ud608\uc555", "\ud608\uc555", "hypertension", "blood pressure")
+    ):
         conditions.append("hypertension")
     if _contains_any(text, ("\ucf69\ud325", "\uc2e0\uc7a5", "kidney", "renal")):
         conditions.append("kidney_disease")
@@ -1759,9 +1798,8 @@ def _profile_condition_is_relevant(
             ),
         ):
             return True
-        return (
-            primary_intent == "meal"
-            and _contains_any(text, ("나트륨", "소금", "짠", "국물", "라면", "찌개", "가공식품"))
+        return primary_intent == "meal" and _contains_any(
+            text, ("나트륨", "소금", "짠", "국물", "라면", "찌개", "가공식품")
         )
     if condition == "kidney_disease":
         if primary_intent in {"meal", "supplement"} and _contains_any(
@@ -1778,9 +1816,8 @@ def _profile_condition_is_relevant(
             ),
         ):
             return True
-        return (
-            primary_intent in {"meal", "supplement"}
-            and _contains_any(text, ("나트륨", "소금", "짠", "단백질", "영양제", "채소", "과일", "칼륨"))
+        return primary_intent in {"meal", "supplement"} and _contains_any(
+            text, ("나트륨", "소금", "짠", "단백질", "영양제", "채소", "과일", "칼륨")
         )
     return False
 
@@ -1815,18 +1852,18 @@ def _knowledge_item_matches_intent(
     ):
         return False
     return (
-        analysis.category == "medication_supplement_caution"
-        and item.intent == "supplement"
-    ) or (
-        item.intent == analysis.primary_intent
-    ) or (
-        analysis.category == "chronic_condition_context"
-        and item.condition in analysis.related_conditions
-    ) or (
-        analysis.primary_intent == "meal"
-        and item.intent in {"exercise", "sleep"}
-        and item.condition is None
-        and "diabetes" in analysis.related_conditions
+        (analysis.category == "medication_supplement_caution" and item.intent == "supplement")
+        or (item.intent == analysis.primary_intent)
+        or (
+            analysis.category == "chronic_condition_context"
+            and item.condition in analysis.related_conditions
+        )
+        or (
+            analysis.primary_intent == "meal"
+            and item.intent in {"exercise", "sleep"}
+            and item.condition is None
+            and "diabetes" in analysis.related_conditions
+        )
     )
 
 

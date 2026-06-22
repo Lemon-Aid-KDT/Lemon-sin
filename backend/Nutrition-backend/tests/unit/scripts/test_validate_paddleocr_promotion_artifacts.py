@@ -49,7 +49,9 @@ def _plan(*, task: str = "recognition") -> dict[str, Any]:
     }
 
 
-def _finetune_eval(*, task: str = "recognition", status: str = "metrics_verified") -> dict[str, Any]:
+def _finetune_eval(
+    *, task: str = "recognition", status: str = "metrics_verified"
+) -> dict[str, Any]:
     """Build a fine-tuned eval fixture.
 
     Args:
@@ -71,7 +73,9 @@ def _finetune_eval(*, task: str = "recognition", status: str = "metrics_verified
     }
 
 
-def _baseline_eval(*, task: str = "recognition", status: str = "metrics_verified") -> dict[str, Any]:
+def _baseline_eval(
+    *, task: str = "recognition", status: str = "metrics_verified"
+) -> dict[str, Any]:
     """Build a baseline eval fixture.
 
     Args:
@@ -169,8 +173,7 @@ def _write_artifacts(tmp_path: Path, **overrides: dict[str, Any]) -> dict[str, P
     }
     payloads.update(overrides)
     return {
-        key: _write_json(tmp_path / f"{key}.json", payload)
-        for key, payload in payloads.items()
+        key: _write_json(tmp_path / f"{key}.json", payload) for key, payload in payloads.items()
     }
 
 

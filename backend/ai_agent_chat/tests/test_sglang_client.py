@@ -17,9 +17,7 @@ class _FakeResponse:
         return None
 
     def read(self) -> bytes:
-        return json.dumps({"choices": [{"message": {"content": "structured ok"}}]}).encode(
-            "utf-8"
-        )
+        return json.dumps({"choices": [{"message": {"content": "structured ok"}}]}).encode("utf-8")
 
 
 def test_sglang_client_posts_openai_chat_completion_with_json_schema(

@@ -89,8 +89,7 @@ class AgentTraceSpan:
 
 
 class AgentTraceRecorder(Protocol):
-    def record(self, span: AgentTraceSpan) -> None:
-        ...
+    def record(self, span: AgentTraceSpan) -> None: ...
 
 
 @dataclass
@@ -207,13 +206,10 @@ def build_runtime_metrics_report(
             boundary_counts[boundary_code] += 1
 
         warning_codes = {
-            warning_code
-            for span in request_spans
-            for warning_code in span.warning_codes
+            warning_code for span in request_spans for warning_code in span.warning_codes
         }
         if any(_is_llm_polish_fallback_warning(code) for code in warning_codes) or any(
-            span.span_name == "llm_polish" and not span.passed
-            for span in request_spans
+            span.span_name == "llm_polish" and not span.passed for span in request_spans
         ):
             llm_polish_fallback_request_ids.add(request_id)
 
@@ -226,8 +222,7 @@ def build_runtime_metrics_report(
         "request_count": request_count,
         "answerability_unknown_rate": _rate(unknown_count, request_count),
         "boundary_rate_by_code": {
-            code: _rate(count, request_count)
-            for code, count in sorted(boundary_counts.items())
+            code: _rate(count, request_count) for code, count in sorted(boundary_counts.items())
         },
         "llm_polish_fallback_rate": _rate(
             len(llm_polish_fallback_request_ids),
@@ -252,13 +247,9 @@ def evaluate_runtime_metric_alerts(
         thresholds.answerability_unknown_rate
     ):
         alert_codes.append("answerability_unknown_rate_high")
-    if _metric_float(report, "llm_polish_fallback_rate") > (
-        thresholds.llm_polish_fallback_rate
-    ):
+    if _metric_float(report, "llm_polish_fallback_rate") > (thresholds.llm_polish_fallback_rate):
         alert_codes.append("llm_polish_fallback_rate_high")
-    if _metric_float(report, "retrieval_no_match_rate") > (
-        thresholds.retrieval_no_match_rate
-    ):
+    if _metric_float(report, "retrieval_no_match_rate") > (thresholds.retrieval_no_match_rate):
         alert_codes.append("retrieval_no_match_rate_high")
     if _metric_int(report, "unsafe_polish_fallback_count") >= (
         thresholds.unsafe_polish_fallback_count

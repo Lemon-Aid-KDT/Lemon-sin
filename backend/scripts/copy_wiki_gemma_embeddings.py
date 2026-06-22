@@ -65,9 +65,7 @@ async def copy_gemma(*, source_dsn: str, target_dsn: str, model: str) -> dict:
         by_hash: dict[str, tuple[str, int]] = {}
         for row in source_rows:
             # Identical content -> identical embedding; first occurrence wins.
-            by_hash.setdefault(
-                row["content_hash"], (row["embedding"], row["embedding_dimensions"])
-            )
+            by_hash.setdefault(row["content_hash"], (row["embedding"], row["embedding_dimensions"]))
         target_chunks = await tgt.fetch(
             f"""
             select c.id as id, c.content_hash as content_hash

@@ -10,10 +10,7 @@ from lemon_ai_agent.chat_session import ChatbotRequest
 from lemon_ai_agent.medical_wiki_claims import MedicalWikiReviewedClaimRetriever
 
 MEDICAL_WIKI_MANIFEST = (
-    Path(__file__).resolve().parents[4]
-    / "MEDICAL-WIKI"
-    / "manifest"
-    / "reviewed_claims.jsonl"
+    Path(__file__).resolve().parents[4] / "MEDICAL-WIKI" / "manifest" / "reviewed_claims.jsonl"
 )
 MEDICAL_WIKI_EVAL_INPUTS = (
     Path(__file__).resolve().parents[4]
@@ -184,9 +181,7 @@ def test_all_medical_wiki_boundary_eval_cases_bypass_llm_and_preserve_sources() 
 
         required_source_ids = {str(source_id) for source_id in case["source_ids"]}
         response_source_ids = {
-            str(source["source_id"])
-            for source in response.sources
-            if source.get("source_id")
+            str(source["source_id"]) for source in response.sources if source.get("source_id")
         }
         assert response.provider == "deterministic", case["test_id"]
         assert response.answerability == case["expected_answerability"], case["test_id"]

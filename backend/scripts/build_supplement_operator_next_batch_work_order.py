@@ -174,9 +174,7 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
     pending_row_count = _non_negative_int(progress_row.get("pending_row_count"))
     invalid_row_count = _non_negative_int(progress_row.get("invalid_row_count"))
     missing_row_count = _non_negative_int(progress_row.get("missing_row_count"))
-    stage_next_operator_action = _safe_token(
-        str(stage.get("next_operator_action") or "unknown")
-    )
+    stage_next_operator_action = _safe_token(str(stage.get("next_operator_action") or "unknown"))
     operator_next_action = _operator_next_action(
         queue_key=queue_key,
         blank_row_count=blank_row_count,
@@ -214,9 +212,7 @@ def build_next_batch_work_order(*, input_paths: Mapping[str, Path]) -> dict[str,
         "contact_sheet_dir_name": _optional_safe_filename(
             workpack_row.get("contact_sheet_dir_name")
         ),
-        "contact_sheet_file_names": _safe_string_list(
-            workpack_row.get("contact_sheet_file_names")
-        ),
+        "contact_sheet_file_names": _safe_string_list(workpack_row.get("contact_sheet_file_names")),
         "contact_sheet_reviewable_row_count": _optional_non_negative_int(
             workpack_row.get("contact_sheet_reviewable_row_count")
         ),
@@ -275,9 +271,7 @@ def build_work_order_markdown(summary: Mapping[str, Any]) -> str:
     gates = _markdown_bullets(summary.get("post_completion_gates"))
     reason_counts = _markdown_mapping(summary.get("reason_counts"))
     triage = _triage_markdown(summary.get("triage_summary"))
-    batch_review_line = _optional_batch_review_markdown_line(
-        summary.get("batch_review_file_name")
-    )
+    batch_review_line = _optional_batch_review_markdown_line(summary.get("batch_review_file_name"))
     markdown = "\n".join(
         [
             "# Supplement Operator Review Next Batch Work Order",
@@ -827,9 +821,11 @@ def _safe_row_hints(value: Any) -> list[dict[str, Any]]:
             {
                 "row_index": _positive_int(item.get("row_index")),
                 "priority": _safe_token(str(item.get("priority") or "")),
-                "reason_codes": _safe_string_list(reason_codes)
-                if reason_codes is not None
-                else [_safe_token(str(reason_code or ""))],
+                "reason_codes": (
+                    _safe_string_list(reason_codes)
+                    if reason_codes is not None
+                    else [_safe_token(str(reason_code or ""))]
+                ),
             }
         )
     return hints
@@ -847,9 +843,7 @@ def _row_hints_markdown(value: Any) -> str:
     hints = _safe_row_hints(value)
     if not hints:
         return "- none"
-    return "\n".join(
-        f"- row `{hint['row_index']}`: `{hint['priority']}`" for hint in hints[:5]
-    )
+    return "\n".join(f"- row `{hint['row_index']}`: `{hint['priority']}`" for hint in hints[:5])
 
 
 def _safe_filename(value: str) -> str:

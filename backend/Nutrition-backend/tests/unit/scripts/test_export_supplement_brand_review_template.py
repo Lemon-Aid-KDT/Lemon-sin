@@ -73,7 +73,9 @@ def test_export_brand_review_template_filters_brand_candidates(tmp_path: Path) -
     assert all(row["schema_version"] == exporter.ROW_SCHEMA_VERSION for row in rows)
     assert all(row["approved_for_db_write"] is False for row in rows)
     assert all(row["operator_decision_required"] is True for row in rows)
-    assert all(row["decision_stub"]["schema_version"] == exporter.DECISION_SCHEMA_VERSION for row in rows)
+    assert all(
+        row["decision_stub"]["schema_version"] == exporter.DECISION_SCHEMA_VERSION for row in rows
+    )
 
 
 def test_export_brand_review_template_omits_product_literals_and_paths(tmp_path: Path) -> None:

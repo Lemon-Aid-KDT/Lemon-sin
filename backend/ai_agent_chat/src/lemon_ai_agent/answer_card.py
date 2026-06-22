@@ -247,7 +247,9 @@ class MedicalKnowledgeRetriever:
                 retrieval_status="found",
             )
 
-        if selected_items and all(self._normalizer.has_stale_source(item) for item in selected_items):
+        if selected_items and all(
+            self._normalizer.has_stale_source(item) for item in selected_items
+        ):
             return KnowledgeRetrievalResult(
                 cards=(),
                 knowledge_items=(),
@@ -301,9 +303,9 @@ class EvidenceRecordMedicalKnowledgeRetriever:
                     record,
                     answerability=answerability,
                     intent=analysis.primary_intent,
-                    condition=analysis.related_conditions[0]
-                    if analysis.related_conditions
-                    else None,
+                    condition=(
+                        analysis.related_conditions[0] if analysis.related_conditions else None
+                    ),
                 )
             )
             is not None
@@ -324,8 +326,7 @@ class EvidenceRecordMedicalKnowledgeRetriever:
                 return fallback_result
 
         if selected_records and all(
-            record.source_review_status != "reviewed"
-            or record.evidence_review_status != "reviewed"
+            record.source_review_status != "reviewed" or record.evidence_review_status != "reviewed"
             for record in selected_records
         ):
             return KnowledgeRetrievalResult(
@@ -451,7 +452,10 @@ def _supplement_item_matches_question(
 ) -> bool:
     if item.intent != "supplement":
         return True
-    if _is_supplement_effect_claim_question(normalized_question) and item.topic == "supplement_label_check":
+    if (
+        _is_supplement_effect_claim_question(normalized_question)
+        and item.topic == "supplement_label_check"
+    ):
         return False
     if item.topic == "magnesium_supplement_caution":
         return "마그네슘" in normalized_question or "magnesium" in normalized_question
@@ -537,12 +541,37 @@ def _topic_keyword_matches(topic: str, normalized_question: str) -> bool:
         "general_health_record_review": ("기록", "식사 기록", "활동 기록", "건강 기록"),
         "supplement_label_check": ("영양제", "건강기능식품", "라벨", "성분", "supplement", "label"),
         "magnesium_supplement_caution": ("마그네슘", "magnesium"),
-        "dyslipidemia_saturated_fat_reduction": ("고지혈증", "콜레스테롤", "ldl", "포화지방", "dyslipidemia", "cholesterol"),
-        "dyslipidemia_omega3_fish_sources": ("고지혈증", "콜레스테롤", "오메가3", "등푸른 생선", "omega3", "dyslipidemia"),
-        "triglyceride_sugar_alcohol_reduction": ("중성지방", "당분", "알코올", "triglyceride", "술"),
+        "dyslipidemia_saturated_fat_reduction": (
+            "고지혈증",
+            "콜레스테롤",
+            "ldl",
+            "포화지방",
+            "dyslipidemia",
+            "cholesterol",
+        ),
+        "dyslipidemia_omega3_fish_sources": (
+            "고지혈증",
+            "콜레스테롤",
+            "오메가3",
+            "등푸른 생선",
+            "omega3",
+            "dyslipidemia",
+        ),
+        "triglyceride_sugar_alcohol_reduction": (
+            "중성지방",
+            "당분",
+            "알코올",
+            "triglyceride",
+            "술",
+        ),
         "weight_management_plate_composition": ("체중", "식단", "다이어트", "weight management"),
         "weight_management_meal_timing": ("체중", "야식", "식사 간격", "다이어트"),
-        "weight_management_record_pattern_review": ("체중 기록", "체중", "기록 활용", "weight management"),
+        "weight_management_record_pattern_review": (
+            "체중 기록",
+            "체중",
+            "기록 활용",
+            "weight management",
+        ),
     }
     actual_korean_keywords: dict[str, tuple[str, ...]] = {
         "diabetes_plate_method": ("당뇨", "혈당", "탄수화물", "초콜릿", "밥", "과식"),
@@ -586,15 +615,15 @@ def _meal_record_matches_question(
     analysis: ChatIntentAnalysis,
 ) -> bool:
     if "sodium" in topic or "나트륨" in topic:
-        return any(
-            term in normalized_question
-            for term in ("나트륨", "소금", "sodium", "salt")
-        )
+        return any(term in normalized_question for term in ("나트륨", "소금", "sodium", "salt"))
     return "meal" in topic or any(condition in topic for condition in analysis.related_conditions)
 
 
 def _supplement_record_matches_question(topic: str, normalized_question: str) -> bool:
-    if _is_supplement_effect_claim_question(normalized_question) and topic == "supplement_label_check":
+    if (
+        _is_supplement_effect_claim_question(normalized_question)
+        and topic == "supplement_label_check"
+    ):
         return False
     if topic == "magnesium_supplement_caution":
         return "마그네슘" in normalized_question or "magnesium" in normalized_question

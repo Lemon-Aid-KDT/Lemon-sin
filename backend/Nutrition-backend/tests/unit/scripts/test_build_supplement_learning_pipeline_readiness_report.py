@@ -502,9 +502,7 @@ def test_report_tracks_ocr_ground_truth_preflight_as_pending_evidence(
     assert stage["status"] == "blocked_invalid_artifact"
     assert stage["present_pending_roles"] == ["ocr_ground_truth_preflight"]
     assert artifact["artifact_warning"] == "ocr_ground_truth_preflight_not_ready"
-    assert "ocr_ground_truth_preflight:not_ready_for_benchmark_build" in stage[
-        "blocker_codes"
-    ]
+    assert "ocr_ground_truth_preflight:not_ready_for_benchmark_build" in stage["blocker_codes"]
 
 
 def test_report_marks_pii_review_bundle_as_operator_pending(tmp_path: Path) -> None:
@@ -754,8 +752,7 @@ def test_report_blocks_category_seed_apply_preflight_when_product_writes_planned
         in stage["blocker_codes"]
     )
     assert (
-        "category_seed_dry_run:planned_product_upsert_count_must_be_zero"
-        in stage["blocker_codes"]
+        "category_seed_dry_run:planned_product_upsert_count_must_be_zero" in stage["blocker_codes"]
     )
     assert (
         "category_seed_dry_run:planned_product_category_upsert_count_must_be_zero"
@@ -863,13 +860,9 @@ def test_report_accepts_category_seed_cleanup_preflight_for_extra_active_categor
     assert stage["status"] == "blocked_invalid_artifact"
     assert "category_seed:extra_active_category_count_not_zero" in stage["blocker_codes"]
     assert not any(
-        blocker.startswith("category_seed_cleanup_preflight:")
-        for blocker in stage["blocker_codes"]
+        blocker.startswith("category_seed_cleanup_preflight:") for blocker in stage["blocker_codes"]
     )
-    assert (
-        "category_seed_cleanup_apply:missing_manual_cleanup_dry_run"
-        in stage["blocker_codes"]
-    )
+    assert "category_seed_cleanup_apply:missing_manual_cleanup_dry_run" in stage["blocker_codes"]
     assert cleanup["cleanup_required"] is True
     assert cleanup["cleanup_requires_manual_approval"] is True
     assert cleanup["db_write_performed"] is False
@@ -913,12 +906,10 @@ def test_report_accepts_category_seed_cleanup_dry_run_for_extra_active_categorie
     assert stage["status"] == "blocked_invalid_artifact"
     assert "category_seed:extra_active_category_count_not_zero" in stage["blocker_codes"]
     assert not any(
-        blocker.startswith("category_seed_cleanup_preflight:")
-        for blocker in stage["blocker_codes"]
+        blocker.startswith("category_seed_cleanup_preflight:") for blocker in stage["blocker_codes"]
     )
     assert not any(
-        blocker.startswith("category_seed_cleanup_apply:")
-        for blocker in stage["blocker_codes"]
+        blocker.startswith("category_seed_cleanup_apply:") for blocker in stage["blocker_codes"]
     )
     assert cleanup_apply["planned_category_deactivation_count"] == 10
     assert cleanup_apply["db_write_performed"] is False
@@ -1076,9 +1067,7 @@ def test_report_marks_post_completion_plan_as_shared_pending_evidence(
     assert _stage(report, "yolo_section_annotation")["present_pending_roles"] == [
         "operator_post_completion_command_plan"
     ]
-    assert plan["schema_versions"] == [
-        "supplement-operator-post-completion-command-plan-v1"
-    ]
+    assert plan["schema_versions"] == ["supplement-operator-post-completion-command-plan-v1"]
 
 
 def test_report_marks_ocr_ground_truth_bundle_as_operator_pending(tmp_path: Path) -> None:
@@ -1183,9 +1172,7 @@ def test_report_blocks_teacher_ocr_eval_until_benchmark_split_exists(
 
     assert stage["status"] == "blocked_invalid_artifact"
     assert stage["missing_required_roles"] == ["benchmark_split_summary"]
-    assert "benchmark_split_summary:missing_before_teacher_ocr_eval" in stage[
-        "blocker_codes"
-    ]
+    assert "benchmark_split_summary:missing_before_teacher_ocr_eval" in stage["blocker_codes"]
 
 
 def test_report_explains_teacher_ocr_blocked_by_ocr_benchmark_gate(
@@ -1265,12 +1252,8 @@ def test_report_blocks_teacher_ocr_eval_when_benchmark_split_leaks_products(
     )
 
     assert stage["status"] == "blocked_invalid_artifact"
-    assert "benchmark_split_summary:leakage_check_not_passed" in stage[
-        "blocker_codes"
-    ]
-    assert "benchmark_split_summary:not_ready_for_holdout_eval" in stage[
-        "blocker_codes"
-    ]
+    assert "benchmark_split_summary:leakage_check_not_passed" in stage["blocker_codes"]
+    assert "benchmark_split_summary:not_ready_for_holdout_eval" in stage["blocker_codes"]
     assert "benchmark_split_summary:holdout_split_missing" in stage["blocker_codes"]
     assert split["artifact_warning"] == "benchmark_split_leakage_check_not_passed"
 
@@ -1590,9 +1573,10 @@ def test_invalid_semantic_artifacts_block_relevant_stage(tmp_path: Path) -> None
     assert verification["product_import_manifest_present"] is False
     assert verification["blocked_reason_codes"] == ["missing_required:approved_product_import"]
     assert _stage(report, "paddleocr_metric_gate")["status"] == "blocked_invalid_artifact"
-    assert "paddleocr_baseline_gate:not_allowed" in _stage(
-        report, "paddleocr_metric_gate"
-    )["blocker_codes"]
+    assert (
+        "paddleocr_baseline_gate:not_allowed"
+        in _stage(report, "paddleocr_metric_gate")["blocker_codes"]
+    )
 
 
 def test_product_verification_blocks_when_reviewed_manifest_does_not_match_db(
@@ -1632,9 +1616,7 @@ def test_product_verification_blocks_when_reviewed_manifest_does_not_match_db(
     stage = _stage(report, "taxonomy_db_import_verification")
 
     assert stage["status"] == "blocked_invalid_artifact"
-    assert stage["blocker_codes"] == [
-        "taxonomy_db_verification:missing_product_category_mapping"
-    ]
+    assert stage["blocker_codes"] == ["taxonomy_db_verification:missing_product_category_mapping"]
 
 
 def test_cli_rejects_unsafe_payload_and_writes_redacted_error(

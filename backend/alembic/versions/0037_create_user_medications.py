@@ -89,12 +89,10 @@ def upgrade() -> None:
         ["owner_subject_hash", "normalized_name"],
         unique=False,
     )
-    op.execute(
-        """
+    op.execute("""
         COMMENT ON TABLE user_medications IS
             'User-confirmed medication names for chatbot context. Structured fields only.';
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

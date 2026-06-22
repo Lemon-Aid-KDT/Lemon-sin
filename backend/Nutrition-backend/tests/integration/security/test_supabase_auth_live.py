@@ -32,7 +32,6 @@ import uuid
 
 import pytest
 from fastapi import HTTPException
-
 from src.config import Settings
 from src.security.auth import JWTVerifier
 from src.security.subjects import build_owner_subject
@@ -55,7 +54,7 @@ def _mint_access_token() -> str:
     assert AUTH_URL is not None
     email = f"supabase-auth-it-{uuid.uuid4()}@example.com"
     body = json.dumps({"email": email, "password": "Test-passw0rd-123"}).encode()
-    request = urllib.request.Request(  # noqa: S310 - local dev URL from env
+    request = urllib.request.Request(
         f"{AUTH_URL}/signup",
         data=body,
         headers={
@@ -66,7 +65,7 @@ def _mint_access_token() -> str:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=10) as response:
             payload = json.loads(response.read())
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
         pytest.skip(f"local Supabase signup unavailable: {exc}")

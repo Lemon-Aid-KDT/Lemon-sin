@@ -114,9 +114,12 @@ def test_build_bundle_writes_html_csv_decisions_and_summary(tmp_path: Path) -> N
     assert (output_dir / review_bundle.HTML_INDEX_NAME).exists()
     assert (output_dir / review_bundle.CSV_NAME).exists()
     assert (output_dir / review_bundle.README_NAME).exists()
-    assert json.loads((output_dir / review_bundle.SUMMARY_NAME).read_text(encoding="utf-8"))[
-        "source_run_id"
-    ] == "brand-bundle-test"
+    assert (
+        json.loads((output_dir / review_bundle.SUMMARY_NAME).read_text(encoding="utf-8"))[
+            "source_run_id"
+        ]
+        == "brand-bundle-test"
+    )
 
     csv_text = (output_dir / review_bundle.CSV_NAME).read_text(encoding="utf-8")
     html_text = (output_dir / review_bundle.HTML_INDEX_NAME).read_text(encoding="utf-8")
@@ -195,7 +198,9 @@ def test_cli_writes_redacted_summary(
 
     printed = capsys.readouterr().out
     printed_summary = json.loads(printed)
-    saved_summary = json.loads((output_dir / review_bundle.SUMMARY_NAME).read_text(encoding="utf-8"))
+    saved_summary = json.loads(
+        (output_dir / review_bundle.SUMMARY_NAME).read_text(encoding="utf-8")
+    )
 
     assert printed_summary["source_run_id"] == "brand-cli-test"
     assert saved_summary["reviewable_row_count"] == 1

@@ -119,7 +119,9 @@ def build_review_bundle(
         raise ValueError("limit must be nonnegative.")
     template_path = template_path.expanduser().resolve()
     rows = _read_template_rows(template_path)
-    review_rows, skip_reasons = _reviewable_rows(rows, source_base=template_path.parent, limit=limit)
+    review_rows, skip_reasons = _reviewable_rows(
+        rows, source_base=template_path.parent, limit=limit
+    )
     ground_truth_rows = [_ground_truth_template_row(row) for row in review_rows]
     html_text = _html_index(review_rows)
     readme_text = _readme_text()
@@ -151,8 +153,7 @@ def build_review_bundle(
     (output_dir / HTML_INDEX_NAME).write_text(html_text, encoding="utf-8")
     (output_dir / GROUND_TRUTH_TEMPLATE_NAME).write_text(
         "".join(
-            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
-            for row in ground_truth_rows
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in ground_truth_rows
         ),
         encoding="utf-8",
     )
@@ -336,7 +337,9 @@ def _html_card(row: dict[str, Any], *, index: int) -> str:
     """
     image_path = _safe_relative_image_path(str(row.get("image_path")))
     fixture_id = benchmark._safe_required_token(row.get("fixture_id"), field_name="fixture_id")
-    category_key = benchmark._safe_required_token(row.get("category_key"), field_name="category_key")
+    category_key = benchmark._safe_required_token(
+        row.get("category_key"), field_name="category_key"
+    )
     source_ref = benchmark._safe_required_token(row.get("source_ref"), field_name="source_ref")
     size_bytes = benchmark._safe_nonnegative_int(row.get("image_size_bytes"))
     allowed_sections = [

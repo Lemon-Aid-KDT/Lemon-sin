@@ -157,7 +157,9 @@ def extract_reviewed_pii_decisions(
             decision_counts["blank"] += 1
             continue
         applier._validate_decision(decision)
-        decision_value = applier._required_safe_token(decision.get("decision"), field_name="decision")
+        decision_value = applier._required_safe_token(
+            decision.get("decision"), field_name="decision"
+        )
         decision_counts[decision_value] += 1
         if decision_value == "cleared_no_personal_data":
             cleared_count += 1
@@ -214,9 +216,7 @@ def _reject_unsafe_output(*, rows: list[dict[str, Any]], summary: dict[str, Any]
         rows: Reviewed decision rows.
         summary: Redacted summary payload.
     """
-    checked_summary = {
-        key: value for key, value in summary.items() if key != "source_doc_urls"
-    }
+    checked_summary = {key: value for key, value in summary.items() if key != "source_doc_urls"}
     applier._reject_unsafe_payload({"rows": rows, "summary": checked_summary})
 
 

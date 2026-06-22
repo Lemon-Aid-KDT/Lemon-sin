@@ -35,8 +35,6 @@ import uuid
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from starlette.requests import Request
-
 from src.config import get_settings
 from src.db.rls_context import set_request_rls_context
 from src.db.tx import REQUEST_MANAGED_TX
@@ -44,6 +42,7 @@ from src.security.auth import AuthenticatedUser
 from src.security.privacy import hash_actor_subject
 from src.security.subjects import build_owner_subject
 from src.services import privacy
+from starlette.requests import Request
 
 ADMIN_URL = os.getenv("TEST_DATABASE_URL")
 APP_URL = os.getenv("TEST_RLS_APP_DATABASE_URL")
@@ -113,10 +112,7 @@ async def test_stage2_audit_survives_rollback_and_owner_write_is_isolated(
             # Isolation: the owner sees its own just-written row...
             seen_own = (
                 await session.execute(
-                    text(
-                        f"SELECT count(*) FROM {_OWNER_TABLE} "
-                        "WHERE algorithm_version = :alg"
-                    ),
+                    text(f"SELECT count(*) FROM {_OWNER_TABLE} " "WHERE algorithm_version = :alg"),
                     {"alg": alg},
                 )
             ).scalar_one()
@@ -127,10 +123,7 @@ async def test_stage2_audit_survives_rollback_and_owner_write_is_isolated(
             )
             seen_other = (
                 await session.execute(
-                    text(
-                        f"SELECT count(*) FROM {_OWNER_TABLE} "
-                        "WHERE algorithm_version = :alg"
-                    ),
+                    text(f"SELECT count(*) FROM {_OWNER_TABLE} " "WHERE algorithm_version = :alg"),
                     {"alg": alg},
                 )
             ).scalar_one()
@@ -166,10 +159,7 @@ async def test_stage2_audit_survives_rollback_and_owner_write_is_isolated(
             # ...while the rolled-back owner-table write left nothing behind.
             row_count = (
                 await conn.execute(
-                    text(
-                        f"SELECT count(*) FROM {_OWNER_TABLE} "
-                        "WHERE algorithm_version = :alg"
-                    ),
+                    text(f"SELECT count(*) FROM {_OWNER_TABLE} " "WHERE algorithm_version = :alg"),
                     {"alg": alg},
                 )
             ).scalar_one()

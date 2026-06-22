@@ -194,10 +194,15 @@ def apply_pii_screening_decisions(
     """
     candidate_rows = _read_candidate_rows(candidate_manifest)
     decisions = _read_decision_rows(decisions_path)
-    candidate_ids = {_required_safe_token(row.get("fixture_id"), field_name="fixture_id") for row in candidate_rows}
+    candidate_ids = {
+        _required_safe_token(row.get("fixture_id"), field_name="fixture_id")
+        for row in candidate_rows
+    }
     unmatched_ids = sorted(set(decisions) - candidate_ids)
     if unmatched_ids and not allow_unmatched_decisions:
-        raise ValueError(f"PII decision fixture_id is not in candidate manifest: {unmatched_ids[0]}")
+        raise ValueError(
+            f"PII decision fixture_id is not in candidate manifest: {unmatched_ids[0]}"
+        )
 
     output_rows: list[dict[str, Any]] = []
     decision_counts: Counter[str] = Counter()
@@ -235,7 +240,9 @@ def apply_pii_screening_decisions(
         "decision_counts": dict(sorted(decision_counts.items())),
         "skip_reason_counts": dict(sorted(skip_counts.items())),
         "cleared_row_count": sum(1 for row in output_rows if _candidate_is_teacher_allowed(row)),
-        "teacher_ocr_allowed_rows": sum(1 for row in output_rows if row.get("teacher_ocr_allowed") is True),
+        "teacher_ocr_allowed_rows": sum(
+            1 for row in output_rows if row.get("teacher_ocr_allowed") is True
+        ),
         "external_transfer_allowed_rows": sum(
             1 for row in output_rows if row.get("external_transfer_allowed") is True
         ),
@@ -326,7 +333,10 @@ def _read_candidate_rows(path: Path) -> list[dict[str, Any]]:
         if fixture_id in seen:
             raise ValueError(f"Duplicate supplement OCR candidate fixture_id: {fixture_id}")
         seen.add(fixture_id)
-        if row.get("external_transfer_allowed") is True and row.get("contains_personal_data") is not False:
+        if (
+            row.get("external_transfer_allowed") is True
+            and row.get("contains_personal_data") is not False
+        ):
             raise ValueError("External transfer requires contains_personal_data=false.")
     return rows
 

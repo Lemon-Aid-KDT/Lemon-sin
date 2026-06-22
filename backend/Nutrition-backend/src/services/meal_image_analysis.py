@@ -1731,7 +1731,7 @@ def _decimal_or_none(value: float | None) -> Decimal | None:
     return Decimal(str(value)) if value is not None else None
 
 
-def _float_or_none(value: object) -> float | None:
+def _float_or_none(value: object) -> float | None:  # noqa: PLR0911
     """Convert optional numeric-like values to float for API responses.
 
     Args:

@@ -180,8 +180,7 @@ async def test_stage2_meal_preview_and_confirm_are_owner_isolated_and_persist() 
                 # Owner sees the meal, its analysis run, and the confirmed food item.
                 assert await _count_where(session, "meal_records", "id", meal_id) == 1
                 assert (
-                    await _count_where(session, "food_image_analysis_runs", "meal_id", meal_id)
-                    == 1
+                    await _count_where(session, "food_image_analysis_runs", "meal_id", meal_id) == 1
                 )
                 assert await _count_where(session, "meal_food_items", "meal_id", meal_id) == 1
 
@@ -191,8 +190,7 @@ async def test_stage2_meal_preview_and_confirm_are_owner_isolated_and_persist() 
                 )
                 assert await _count_where(session, "meal_records", "id", meal_id) == 0
                 assert (
-                    await _count_where(session, "food_image_analysis_runs", "meal_id", meal_id)
-                    == 0
+                    await _count_where(session, "food_image_analysis_runs", "meal_id", meal_id) == 0
                 )
                 assert await _count_where(session, "meal_food_items", "meal_id", meal_id) == 0
 

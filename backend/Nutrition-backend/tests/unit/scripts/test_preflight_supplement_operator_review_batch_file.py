@@ -198,7 +198,9 @@ def _input_paths(
         "batch_file": _write_jsonl(tmp_path / "brand_product_review-001.jsonl", rows),
     }
     if review_csv_rows is not None:
-        paths["batch_review_csv"] = _write_csv(tmp_path / "brand_product_review-001.review.csv", review_csv_rows)
+        paths["batch_review_csv"] = _write_csv(
+            tmp_path / "brand_product_review-001.review.csv", review_csv_rows
+        )
     return paths
 
 

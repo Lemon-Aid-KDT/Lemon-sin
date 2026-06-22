@@ -221,7 +221,9 @@ def _hyperparam_snapshot_from_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     hyperparams = plan.get("hyperparams")
     paddleocr = plan.get("paddleocr")
     if not isinstance(hyperparams, Mapping) or not isinstance(paddleocr, Mapping):
-        raise PaddleOCRFinetuneRegistrationError("Fine-tune plan hyperparameter blocks are invalid.")
+        raise PaddleOCRFinetuneRegistrationError(
+            "Fine-tune plan hyperparameter blocks are invalid."
+        )
     return {
         "plan_schema_version": PLAN_SCHEMA_VERSION,
         "task": _string_field(plan, "task"),
@@ -268,7 +270,11 @@ def _numeric_field(mapping: Mapping[str, Any], key: str) -> int | float:
         PaddleOCRFinetuneRegistrationError: If the field is missing or invalid.
     """
     value = mapping.get(key)
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(float(value)):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not math.isfinite(float(value))
+    ):
         raise PaddleOCRFinetuneRegistrationError("Fine-tune plan has invalid numeric metadata.")
     return value
 

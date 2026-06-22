@@ -27,13 +27,20 @@ from typing import Any
 
 DETAIL_DIR_NAME = "상세페이지"
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
-MIME_BY_SUFFIX = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+MIME_BY_SUFFIX = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
 CANDIDATE_SCHEMA_VERSION = "supplement-detail-page-yolo-annotation-candidate-v1"
 
 
 def _product_hash(product_dir: Path, crawl_root: Path) -> str:
     """Return sha256 of the product dir path relative to the crawl root."""
-    return hashlib.sha256(product_dir.resolve().relative_to(crawl_root.resolve()).as_posix().encode()).hexdigest()
+    return hashlib.sha256(
+        product_dir.resolve().relative_to(crawl_root.resolve()).as_posix().encode()
+    ).hexdigest()
 
 
 def _detail_dir(product_dir: Path) -> Path | None:
@@ -106,36 +113,52 @@ def build(*, crawl_root: Path, manifests: list[Path], output: Path) -> None:
             if ref_hash in seen:
                 continue
             seen.add(ref_hash)
-            rows.append({
-                "schema_version": CANDIDATE_SCHEMA_VERSION,
-                "candidate_purpose": "supplement_section_bbox_annotation",
-                "source_kind": "detail_page",
-                "annotation_task_type": "supplement_roi_box",
-                "contains_personal_data": False,
-                "local_processing_allowed": True,
-                "custom_section_model_required": True,
-                "coco_pretrained_allowed_for_final_labels": False,
-                "fixture_id": rec["candidate_id"],
-                "source_ref": f"crawling-image:{h[:32]}-i{idx}",
-                "image_ref_hash": ref_hash,
-                "image_sha256": rec["image_sha256"],
-                "image_mime_type": MIME_BY_SUFFIX.get(path.suffix.lower(), "image/jpeg"),
-                "category_key": _category_key(rec.get("category")),
-                "v2_split": rec.get("v2_split"),
-            })
+            rows.append(
+                {
+                    "schema_version": CANDIDATE_SCHEMA_VERSION,
+                    "candidate_purpose": "supplement_section_bbox_annotation",
+                    "source_kind": "detail_page",
+                    "annotation_task_type": "supplement_roi_box",
+                    "contains_personal_data": False,
+                    "local_processing_allowed": True,
+                    "custom_section_model_required": True,
+                    "coco_pretrained_allowed_for_final_labels": False,
+                    "fixture_id": rec["candidate_id"],
+                    "source_ref": f"crawling-image:{h[:32]}-i{idx}",
+                    "image_ref_hash": ref_hash,
+                    "image_sha256": rec["image_sha256"],
+                    "image_mime_type": MIME_BY_SUFFIX.get(path.suffix.lower(), "image/jpeg"),
+                    "category_key": _category_key(rec.get("category")),
+                    "v2_split": rec.get("v2_split"),
+                }
+            )
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as fh:
         for r in rows:
             fh.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(json.dumps({"input_candidates": total, "resolved_annotation_candidates": len(rows), "sha_mismatch": sha_mismatch}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "input_candidates": total,
+                "resolved_annotation_candidates": len(rows),
+                "sha_mismatch": sha_mismatch,
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 def main() -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--crawl-root", required=True, type=Path)
-    ap.add_argument("--candidate-manifest", required=True, type=Path, action="append",
-                    help="v2 candidate manifest (repeatable).")
+    ap.add_argument(
+        "--candidate-manifest",
+        required=True,
+        type=Path,
+        action="append",
+        help="v2 candidate manifest (repeatable).",
+    )
     ap.add_argument("--output", required=True, type=Path)
     a = ap.parse_args()
     build(crawl_root=a.crawl_root, manifests=a.candidate_manifest, output=a.output)

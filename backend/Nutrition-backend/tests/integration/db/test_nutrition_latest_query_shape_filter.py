@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
 from src.models.db.analysis_result import AnalysisResult
 from src.security.auth import AuthenticatedUser
 from src.services.nutrition_diagnosis import get_latest_nutrition_analysis_result
@@ -32,9 +31,11 @@ async def test_latest_nutrition_query_skips_chat_snapshot_rows() -> None:
     """Verify the latest-nutrition query returns the pipeline row, not a newer chat snapshot."""
     assert TEST_DATABASE_URL is not None
     engine = create_async_engine(TEST_DATABASE_URL, pool_pre_ping=True)
-    user = AuthenticatedUser(subject=f"shape-filter-regression-{uuid.uuid4()}", issuer="test-issuer")
+    user = AuthenticatedUser(
+        subject=f"shape-filter-regression-{uuid.uuid4()}", issuer="test-issuer"
+    )
     owner = f"{user.issuer}::{user.subject}"
-    base_time = datetime.now(timezone.utc)
+    base_time = datetime.now(UTC)
 
     try:
         sessionmaker = async_sessionmaker(engine, expire_on_commit=False)

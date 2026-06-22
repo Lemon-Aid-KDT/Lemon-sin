@@ -265,7 +265,9 @@ def _scan_materialized_dataset(*, dataset_dir: Path, task: str) -> dict[str, Any
         image_count += split_count
         label_files.append(relative_label_path.as_posix())
     if split_counts.get("train", 0) <= 0:
-        raise PaddleOCRFinetunePlanError("PaddleOCR training labels require at least one train row.")
+        raise PaddleOCRFinetunePlanError(
+            "PaddleOCR training labels require at least one train row."
+        )
     return {
         "task": task,
         "split_counts": split_counts,
@@ -334,7 +336,9 @@ def _validate_relative_image_ref(image_ref: Path) -> None:
     """
     ref_text = image_ref.as_posix()
     if image_ref.is_absolute() or ".." in image_ref.parts or "://" in ref_text:
-        raise PaddleOCRFinetunePlanError("PaddleOCR label image refs must be private relative paths.")
+        raise PaddleOCRFinetunePlanError(
+            "PaddleOCR label image refs must be private relative paths."
+        )
 
 
 def _validate_detection_payload(label_payload: str) -> None:

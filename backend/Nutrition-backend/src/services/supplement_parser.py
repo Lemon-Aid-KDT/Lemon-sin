@@ -114,8 +114,7 @@ INGREDIENT_AMOUNT_PATTERN = re.compile(
     r"\s*(?P<amount>\d+(?:[,.]\d+)?)\s*"
     rf"(?P<unit>{INGREDIENT_UNIT_PATTERN})"
     # Optional trailing %DV (영양성분기준치) after a real unit, e.g. "1000 mg 100%".
-    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?"
-    r"(?=$|[\s,;:)\uff09\]]|[^\w])",
+    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?" r"(?=$|[\s,;:)\uff09\]]|[^\w])",
     re.IGNORECASE,
 )
 INGREDIENT_TABLE_ROW_PATTERN = re.compile(
@@ -136,13 +135,12 @@ BARE_INGREDIENT_AMOUNT_PATTERN = re.compile(
 )
 BARE_INGREDIENT_NUMBER_PATTERN = re.compile(r"^\s*(?P<amount>\d+(?:[,.]\d+)?)\s*$")
 BARE_DAILY_VALUE_PERCENT_PATTERN = re.compile(
-    r"^\s*(?:[|｜·•:/-]\s*)?(?P<dv>\d+(?:[,.]\d+)?)\s*%\s*"
+    r"^\s*(?:[|｜·•:/-]\s*)?(?P<dv>\d+(?:[,.]\d+)?)\s*%\s*"  # noqa: RUF001 - OCR fullwidth bar
     r"(?:(?:daily\s*value|dv|영양성분\s*기준치|기준치)\b)?\s*$",
     re.IGNORECASE,
 )
 INGREDIENT_UNIT_ONLY_PATTERN = re.compile(
-    rf"^\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})"
-    r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
+    rf"^\s*(?P<unit>{INGREDIENT_UNIT_PATTERN})" r"(?:\s*(?P<dv>\d+(?:[,.]\d+)?)\s*%)?\s*$",
     re.IGNORECASE,
 )
 # Amount-first rows such as "100 mg 비타민C" or "12 mg 100% 비타민B6". A visible unit
@@ -653,9 +651,9 @@ def _sanitize_parser_result(
         if not name_res.value:
             warnings.extend(name_res.warnings)
             continue
-        if _looks_like_non_ingredient_heading(name_res.value) or _looks_like_packaging_quantity_token(
+        if _looks_like_non_ingredient_heading(
             name_res.value
-        ):
+        ) or _looks_like_packaging_quantity_token(name_res.value):
             warnings.append(NON_INGREDIENT_HEADING_FILTERED_WARNING)
             continue
         if _looks_like_intake_instruction_text(name_res.value):
@@ -973,10 +971,7 @@ def _has_structured_preview_content(snapshot: dict[str, Any]) -> bool:
             if isinstance(value, str) and value.strip():
                 return True
 
-    if _list_of_mappings(snapshot.get("matched_product_candidates")):
-        return True
-
-    return False
+    return bool(_list_of_mappings(snapshot.get("matched_product_candidates")))
 
 
 def _build_ocr_text_preview_fallbacks(
@@ -1127,10 +1122,7 @@ def _classify_ocr_text_preview_section(heading: str | None, lines: list[str]) ->
         for token in ("suggested use", "directions", "take ", "섭취", "복용", "1일")
     ):
         return "intake_method"
-    if any(
-        token in haystack
-        for token in ("other ingredients", "ingredients", "원재료", "원료명")
-    ):
+    if any(token in haystack for token in ("other ingredients", "ingredients", "원재료", "원료명")):
         return "ingredients"
     if any(
         token in haystack
@@ -1280,10 +1272,7 @@ def _merge_layout_precaution_fallbacks(
             except ValueError:
                 continue
             existing_text_keys.add(text_key)
-            if (
-                len(parse_result.precautions) + len(derived)
-                >= LAYOUT_PRECAUTION_FALLBACK_MAX_ITEMS
-            ):
+            if len(parse_result.precautions) + len(derived) >= LAYOUT_PRECAUTION_FALLBACK_MAX_ITEMS:
                 break
 
     if not derived:
@@ -1428,7 +1417,9 @@ def _layout_precaution_category(value: str) -> str:
         return "pregnancy"
     if any(token in normalized for token in ("allergy", "allergen", "알레르")):
         return "allergy"
-    if any(token in normalized for token in ("medication", "blood clot", "medicine", "약물", "의약품")):
+    if any(
+        token in normalized for token in ("medication", "blood clot", "medicine", "약물", "의약품")
+    ):
         return "medication"
     if any(token in normalized for token in ("children", "child", "어린이", "소아", "유아")):
         return "children"
@@ -1638,8 +1629,7 @@ def _looks_like_salt_continuation(fragment: str) -> bool:
         True when any latin token of the fragment is a known salt/form word.
     """
     return any(
-        token in _SALT_FORM_CONTINUATION_WORDS
-        for token in re.findall(r"[a-z]+", fragment.lower())
+        token in _SALT_FORM_CONTINUATION_WORDS for token in re.findall(r"[a-z]+", fragment.lower())
     )
 
 
@@ -1793,7 +1783,8 @@ def _extract_nearby_table_ingredient_candidates(
             name=name,
             amount_text=amount_match.group("amount"),
             unit_text=amount_match.group("unit"),
-            daily_value_text=amount_match.group("dv") or _daily_value_text_after(lines, amount_index),
+            daily_value_text=amount_match.group("dv")
+            or _daily_value_text_after(lines, amount_index),
         )
 
 
@@ -1844,7 +1835,8 @@ def _append_nearby_amount_for_name(
                 name=name,
                 amount_text=number_match.group("amount"),
                 unit_text=unit_match.group("unit"),
-                daily_value_text=unit_match.group("dv") or _daily_value_text_after(lines, unit_index),
+                daily_value_text=unit_match.group("dv")
+                or _daily_value_text_after(lines, unit_index),
             )
             return True
     return False
@@ -2105,9 +2097,7 @@ def _append_ocr_pattern_candidate(
     # fabricate it as an amount (covers every extraction path that appends here).
     if unit == "%":
         return False
-    daily_value_percent = (
-        _parse_ingredient_amount(daily_value_text) if daily_value_text else None
-    )
+    daily_value_percent = _parse_ingredient_amount(daily_value_text) if daily_value_text else None
     key = (_ingredient_name_key(cleaned_name), amount, unit)
     if key in seen:
         return False

@@ -60,9 +60,7 @@ def test_ai_agent_chat_package_exports_runtime_metrics_contract() -> None:
     )
 
     assert report["answerability_unknown_rate"] == 1.0
-    assert evaluate_runtime_metric_alerts(report) == (
-        "answerability_unknown_rate_high",
-    )
+    assert evaluate_runtime_metric_alerts(report) == ("answerability_unknown_rate_high",)
     assert StructuredLogRuntimeMetricsReporter().__class__.__name__ == (
         "StructuredLogRuntimeMetricsReporter"
     )

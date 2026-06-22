@@ -252,8 +252,12 @@ def _approved_import_row(
         if decision.get(key) is not True:
             raise ValueError(f"Approved brand decision requires attestation: {key}")
 
-    product_dir_hash = _required_sha256(candidate.get("product_dir_hash"), field_name="product_dir_hash")
-    source_product_id = _safe_source_product_id(candidate.get("source_product_id"), product_dir_hash)
+    product_dir_hash = _required_sha256(
+        candidate.get("product_dir_hash"), field_name="product_dir_hash"
+    )
+    source_product_id = _safe_source_product_id(
+        candidate.get("source_product_id"), product_dir_hash
+    )
     manufacturer = _required_review_text(
         decision.get("reviewed_manufacturer"),
         field_name="reviewed_manufacturer",
@@ -293,7 +297,9 @@ def _approved_import_row(
                 field_name="source_folder_hash",
             ),
             "reviewed_by_hash": staging.audit._sha256_text(reviewer_id),
-            "reviewed_at": _required_safe_token(decision.get("reviewed_at"), field_name="reviewed_at"),
+            "reviewed_at": _required_safe_token(
+                decision.get("reviewed_at"), field_name="reviewed_at"
+            ),
             "review_decision": "approve",
             "review_reason_codes": _safe_reason_codes(decision.get("reason_codes")),
             "image_count": _safe_nonnegative_int(candidate.get("image_count")),

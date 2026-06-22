@@ -75,7 +75,9 @@ def _pii_payload(
         "ready_for_partial_apply": ready,
         "ready_for_strict_apply": ready,
         "ready_for_requested_apply": ready,
-        "next_operator_action": "run_pii_screening_apply" if ready else "complete_operator_pii_review",
+        "next_operator_action": (
+            "run_pii_screening_apply" if ready else "complete_operator_pii_review"
+        ),
         "db_write_performed": False,
         "ocr_provider_call_performed": False,
         "paddleocr_training_performed": False,
@@ -267,7 +269,9 @@ def test_ocr_benchmark_gate_blocks_when_no_teacher_safe_rows(tmp_path: Path) -> 
     """Verify strict PII completion still blocks if no row is teacher-safe."""
     pii_path = _write_json(
         tmp_path / "pii.json",
-        _pii_payload(ready=True, cleared_count=0, blocked_count=215, blank_count=0, pending_count=0),
+        _pii_payload(
+            ready=True, cleared_count=0, blocked_count=215, blank_count=0, pending_count=0
+        ),
     )
 
     summary = gate.build_ocr_benchmark_gate(pii_preflight_path=pii_path)

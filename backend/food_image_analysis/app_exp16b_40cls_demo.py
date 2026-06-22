@@ -38,32 +38,73 @@ MODEL_PATH = Path(
     os.environ.get(
         "EXP16B_WEIGHTS",  # best.pt를 다른 위치에 둔 경우 환경변수로 지정
         str(
-            ROOT / "runs" / "food_yolo"
-            / "exp16b_taxo50_aihubreal_pc1_s42_b16_w8_cache_disk_det_true" / "weights" / "best.pt"
+            ROOT
+            / "runs"
+            / "food_yolo"
+            / "exp16b_taxo50_aihubreal_pc1_s42_b16_w8_cache_disk_det_true"
+            / "weights"
+            / "best.pt"
         ),
     )
 )
-DEPLOY_CONFIG = ROOT / "docs" / "deliverables" / "model-handoff-exp16b" / "exp16b_deploy_config.json"
+DEPLOY_CONFIG = (
+    ROOT / "docs" / "deliverables" / "model-handoff-exp16b" / "exp16b_deploy_config.json"
+)
 NUTRITION_CSV = ROOT / "data" / "food_images" / "manifests" / "class_nutrition_taxo59.csv"
 TEST_DIR = ROOT / "data" / "food_images" / "raw" / "test_data"
 
 # --- 영문 클래스 -> 한글 표시명 ---
 KR_NAME: dict[str, str] = {
-    "barbecue-ribs": "갈비", "black-bean-noodles": "짜장면", "braised-chicken": "찜닭",
-    "braised-pork-hock": "족발", "bread": "빵", "bulgogi": "불고기", "cake": "케이크",
-    "cold-noodles": "냉면", "curry": "카레", "dim-sum": "딤섬(찐만두)", "dumplings": "만두",
-    "fish-cake": "어묵", "fried-chicken": "후라이드치킨", "fried-food-platter": "튀김(모둠)",
-    "fried-rice": "볶음밥", "grilled-beef": "소고기구이", "grilled-fish": "생선구이",
-    "grilled-pork-belly": "삼겹살", "hamburger": "햄버거", "korean-blood-sausage": "순대",
-    "mixed-rice-bowl": "비빔밥", "pasta": "파스타", "pizza": "피자", "raw-fish": "회", "rice-bowl": "덮밥",
-    "rice-porridge": "죽", "rice-soup": "국밥", "salad": "샐러드", "sandwich": "샌드위치",
-    "savory-pancake": "전/부침개", "seaweed-rice-roll": "김밥", "shrimp-dish": "새우요리",
-    "spicy-mixed-noodles": "비빔국수", "squid-dish": "오징어요리", "sushi": "초밥", "takoyaki": "타코야키",
-    "udon": "우동", "western-cream-soup": "양식수프",
-    "japanese-ramen": "일본라멘", "korean-ramyeon-red": "라면", "tteokbokki-red": "떡볶이",
-    "pork-cutlet-dry": "돈가스", "seafood-spicy-tang": "해물매운탕", "seafood-clear-tang": "해물맑은탕",
-    "seafood-jjim": "해물찜", "kalguksu": "칼국수", "rice-noodle-soup": "쌀국수",
-    "jjigae-red": "빨간찌개", "doenjang-jjigae": "된장찌개", "jjamppong": "짬뽕",
+    "barbecue-ribs": "갈비",
+    "black-bean-noodles": "짜장면",
+    "braised-chicken": "찜닭",
+    "braised-pork-hock": "족발",
+    "bread": "빵",
+    "bulgogi": "불고기",
+    "cake": "케이크",
+    "cold-noodles": "냉면",
+    "curry": "카레",
+    "dim-sum": "딤섬(찐만두)",
+    "dumplings": "만두",
+    "fish-cake": "어묵",
+    "fried-chicken": "후라이드치킨",
+    "fried-food-platter": "튀김(모둠)",
+    "fried-rice": "볶음밥",
+    "grilled-beef": "소고기구이",
+    "grilled-fish": "생선구이",
+    "grilled-pork-belly": "삼겹살",
+    "hamburger": "햄버거",
+    "korean-blood-sausage": "순대",
+    "mixed-rice-bowl": "비빔밥",
+    "pasta": "파스타",
+    "pizza": "피자",
+    "raw-fish": "회",
+    "rice-bowl": "덮밥",
+    "rice-porridge": "죽",
+    "rice-soup": "국밥",
+    "salad": "샐러드",
+    "sandwich": "샌드위치",
+    "savory-pancake": "전/부침개",
+    "seaweed-rice-roll": "김밥",
+    "shrimp-dish": "새우요리",
+    "spicy-mixed-noodles": "비빔국수",
+    "squid-dish": "오징어요리",
+    "sushi": "초밥",
+    "takoyaki": "타코야키",
+    "udon": "우동",
+    "western-cream-soup": "양식수프",
+    "japanese-ramen": "일본라멘",
+    "korean-ramyeon-red": "라면",
+    "tteokbokki-red": "떡볶이",
+    "pork-cutlet-dry": "돈가스",
+    "seafood-spicy-tang": "해물매운탕",
+    "seafood-clear-tang": "해물맑은탕",
+    "seafood-jjim": "해물찜",
+    "kalguksu": "칼국수",
+    "rice-noodle-soup": "쌀국수",
+    "jjigae-red": "빨간찌개",
+    "doenjang-jjigae": "된장찌개",
+    "jjamppong": "짬뽕",
 }
 
 
@@ -154,7 +195,9 @@ def load_nutrition() -> dict[str, dict[str, float]]:
     return table
 
 
-def top5_candidates(model: YOLO, img_bgr: np.ndarray, classes: list[int]) -> list[tuple[str, float]]:
+def top5_candidates(
+    model: YOLO, img_bgr: np.ndarray, classes: list[int]
+) -> list[tuple[str, float]]:
     """저신뢰 임계값 + 지원 클래스 필터로 클래스별 최고 신뢰도 Top-5 후보를 추출한다.
 
     Args:
@@ -189,7 +232,9 @@ def nutrition_notes(n: dict[str, float]) -> list[str]:
     fat = n.get("fat_g", float("nan"))
     kcal = n.get("kcal_100g", float("nan"))
     if na == na and na >= 500:
-        notes.append(f"🧂 나트륨이 높은 편이에요 ({na:.0f}mg/100g) — 혈압 관리 중이라면 참고하세요.")
+        notes.append(
+            f"🧂 나트륨이 높은 편이에요 ({na:.0f}mg/100g) — 혈압 관리 중이라면 참고하세요."
+        )
     if sug == sug and sug >= 10:
         notes.append(f"🍬 당류가 높은 편이에요 ({sug:.0f}g/100g) — 혈당 관리에 참고하세요.")
     if fat == fat and fat >= 15:
@@ -244,9 +289,17 @@ with st.sidebar:
     nms_iou = st.slider("중복 박스 병합 IoU", 0.3, 0.95, 0.5, 0.05)
     st.caption("한 음식에 박스가 여러 개 겹치면 최고 신뢰도 1개로 합칩니다")
     use_clip = st.checkbox("🧠 비음식 필터 (CLIP)", value=True)
-    clip_th = st.slider("CLIP 음식 임계값", 0.05, 0.6, 0.25, 0.05,
-                        help="박스가 음식일 확률이 이 값 미만이면 비음식으로 보고 제거")
-    st.caption("CLIP이 박스가 진짜 음식인지 판별 → 사람·소품·풍경 등 비음식 박스 제거 (거부율 68%→91%)")
+    clip_th = st.slider(
+        "CLIP 음식 임계값",
+        0.05,
+        0.6,
+        0.25,
+        0.05,
+        help="박스가 음식일 확률이 이 값 미만이면 비음식으로 보고 제거",
+    )
+    st.caption(
+        "CLIP이 박스가 진짜 음식인지 판별 → 사람·소품·풍경 등 비음식 박스 제거 (거부율 68%→91%)"
+    )
     st.divider()
     with st.expander(f"✅ 지원 음식 {len(SUPPORTED_IDX)}종 보기"):
         for nm in cfg["supported_class_names"]:
@@ -254,7 +307,9 @@ with st.sidebar:
     with st.expander(f"🚧 미지원 {len(EXCLUDED)}종 (실데이터 보강 후 추가 예정)"):
         for nm in EXCLUDED:
             st.write(f"- {kr(nm)} (`{nm}`)")
-        st.caption("미지원 음식은 결과에 나오지 않으며, 인식 불가 또는 비슷한 지원 음식으로 표시될 수 있어요.")
+        st.caption(
+            "미지원 음식은 결과에 나오지 않으며, 인식 불가 또는 비슷한 지원 음식으로 표시될 수 있어요."
+        )
     st.divider()
     st.subheader("📂 test_data에서 선택")
     test_imgs = sorted([p.name for p in TEST_DIR.glob("*.jpg")]) if TEST_DIR.exists() else []
@@ -297,7 +352,8 @@ if use_clip and len(res.boxes) > 0:
             valid.append(bi)
     keep_clip = (
         [valid[k] for k, m in enumerate(flt.filter(crops, threshold=clip_th)[0]) if m]
-        if crops else []
+        if crops
+        else []
     )
     res.boxes = res.boxes[torch.tensor(keep_clip, dtype=torch.long, device=res.boxes.cls.device)]
 
@@ -315,7 +371,11 @@ with col_img:
         )
         st.stop()
     annotated = res.plot()  # BGR, 박스+라벨
-    st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), caption=f"{src_label} — {n_boxes}개 탐지", width="stretch")
+    st.image(
+        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+        caption=f"{src_label} — {n_boxes}개 탐지",
+        width="stretch",
+    )
 
 with col_info:
     confs = res.boxes.conf.tolist()
@@ -353,7 +413,9 @@ selected_cls = st.selectbox(
     format_func=lambda c: f"{kr(c)}  ({c})",
 )
 if selected_cls != best_cls:
-    st.info(f"✏️ 사용자가 **{kr(selected_cls)}**(으)로 선택 — 모델 예측({kr(best_cls)})과 다릅니다.")
+    st.info(
+        f"✏️ 사용자가 **{kr(selected_cls)}**(으)로 선택 — 모델 예측({kr(best_cls)})과 다릅니다."
+    )
 
 # 영양소 정보 (선택 음식 기준)
 st.subheader(f"🥗 영양소 정보 — {kr(selected_cls)}")

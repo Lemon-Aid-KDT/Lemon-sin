@@ -133,13 +133,28 @@ def _assert_pii_ocr_command_chain(commands: list[str]) -> None:
         commands: Generated shell commands.
     """
     assert "backend/scripts/build_supplement_ocr_benchmark_manifest.py" in commands[10]
-    assert "--ground-truth outputs/generated/supplement-learning/2026-06-04/operator-review/ocr-ground-truth-review-bundle/ground-truth.todo.jsonl" in commands[10]
+    assert (
+        "--ground-truth outputs/generated/supplement-learning/2026-06-04/operator-review/ocr-ground-truth-review-bundle/ground-truth.todo.jsonl"
+        in commands[10]
+    )
     assert "backend/scripts/assign_paddleocr_benchmark_splits.py" in commands[11]
     assert "backend/scripts/gate_supplement_ocr_benchmark.py" in commands[12]
-    assert "--ground-truth-bundle-summary outputs/generated/supplement-learning/2026-06-04/operator-review/ocr-ground-truth-review-bundle/summary.json" in commands[12]
-    assert "--ground-truth-preflight outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/ocr-ground-truth-preflight.json" in commands[12]
-    assert "--benchmark-summary outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/ocr-benchmark-manifest.summary.json" in commands[12]
-    assert "--benchmark-split-summary outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/ocr-benchmark-manifest.split.summary.json" in commands[12]
+    assert (
+        "--ground-truth-bundle-summary outputs/generated/supplement-learning/2026-06-04/operator-review/ocr-ground-truth-review-bundle/summary.json"
+        in commands[12]
+    )
+    assert (
+        "--ground-truth-preflight outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/ocr-ground-truth-preflight.json"
+        in commands[12]
+    )
+    assert (
+        "--benchmark-summary outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/ocr-benchmark-manifest.summary.json"
+        in commands[12]
+    )
+    assert (
+        "--benchmark-split-summary outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/ocr-benchmark-manifest.split.summary.json"
+        in commands[12]
+    )
     assert "--require-ready-for-teacher-ocr-eval" in commands[12]
     assert "backend/scripts/collect_supplement_ocr_observations.py" in commands[13]
     assert "--providers clova_ocr,google_vision_document,paddleocr_local" in commands[13]
@@ -148,7 +163,10 @@ def _assert_pii_ocr_command_chain(commands: list[str]) -> None:
     assert "backend/scripts/build_paddleocr_text_extraction_eval_summary.py" in commands[16]
     assert "--privacy-review-cleared" in commands[16]
     assert "backend/scripts/gate_paddleocr_text_extraction_target.py" in commands[-1]
-    assert "--eval-summary outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/paddleocr-text-extraction-eval-summary.json" in commands[-1]
+    assert (
+        "--eval-summary outputs/generated/supplement-learning/2026-06-04/operator-review/reconciled/paddleocr-text-extraction-eval-summary.json"
+        in commands[-1]
+    )
 
 
 def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path) -> None:
@@ -187,22 +205,49 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
     assert commands[0].startswith(
         "backend/.venv/bin/python backend/scripts/preflight_supplement_brand_review_contact_sheet.py"
     )
-    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[0]
-    assert "--contact-sheet-summary outputs/generated/supplement-learning/2026-06-04/operator-review/brand-detail-contact-sheet-001/brand-detail-contact-sheet.summary.json" in commands[0]
-    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.contact-sheet-preflight.json" in commands[0]
-    assert "--markdown-output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.contact-sheet-preflight.md" in commands[0]
+    assert (
+        "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv"
+        in commands[0]
+    )
+    assert (
+        "--contact-sheet-summary outputs/generated/supplement-learning/2026-06-04/operator-review/brand-detail-contact-sheet-001/brand-detail-contact-sheet.summary.json"
+        in commands[0]
+    )
+    assert (
+        "--output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.contact-sheet-preflight.json"
+        in commands[0]
+    )
+    assert (
+        "--markdown-output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.contact-sheet-preflight.md"
+        in commands[0]
+    )
     assert "--require-all-rows-with-thumbnails" in commands[0]
     assert commands[1].startswith(
         "backend/.venv/bin/python backend/scripts/build_supplement_brand_review_batch_triage.py"
     )
-    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[1]
-    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.triage.json" in commands[1]
-    assert "--markdown-output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.triage.md" in commands[1]
+    assert (
+        "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv"
+        in commands[1]
+    )
+    assert (
+        "--output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.triage.json"
+        in commands[1]
+    )
+    assert (
+        "--markdown-output outputs/generated/supplement-learning/2026-06-04/operator-review/brand_product_review-001.triage.md"
+        in commands[1]
+    )
     assert commands[2].startswith(
         "backend/.venv/bin/python backend/scripts/apply_supplement_brand_batch_review_csv_decisions.py"
     )
-    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[2]
-    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[2]
+    assert (
+        "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv"
+        in commands[2]
+    )
+    assert (
+        "--output outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl"
+        in commands[2]
+    )
     assert "--require-all-reviewed" in commands[2]
     assert payload["commands"][2]["gate_policy"] == "require_all_reviewed_no_source_overwrite"
     assert payload["commands"][0]["execution_state"] == "runnable_now"
@@ -215,9 +260,18 @@ def test_command_checklist_generates_repo_relative_brand_commands(tmp_path: Path
         "backend/.venv/bin/python backend/scripts/preflight_supplement_operator_review_batch_file.py"
     )
     assert "--batch-key brand_product_review:001" in commands[3]
-    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[3]
-    assert "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv" in commands[3]
-    assert "--batch-file-override brand_product_review:001 outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl" in commands[4]
+    assert (
+        "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl"
+        in commands[3]
+    )
+    assert (
+        "--batch-review-csv outputs/generated/supplement-learning/2026-06-04/operator-review/batches/brand_product_review-001.review.csv"
+        in commands[3]
+    )
+    assert (
+        "--batch-file-override brand_product_review:001 outputs/generated/supplement-learning/2026-06-04/operator-review/batches-applied/brand_product_review-001.jsonl"
+        in commands[4]
+    )
     assert "backend/scripts/apply_supplement_brand_review_decisions.py" in commands[-1]
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
@@ -251,8 +305,14 @@ def test_command_checklist_uses_latest_existing_taxonomy_staging(
     commands = [row["command"] for row in payload["commands"]]
 
     command_blob = "\n".join(commands)
-    assert "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl" in command_blob
-    assert "outputs/todo-list/2026-06-05/2026-06-05-supplement-taxonomy-db-staging.jsonl" not in command_blob
+    assert (
+        "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl"
+        in command_blob
+    )
+    assert (
+        "outputs/todo-list/2026-06-05/2026-06-05-supplement-taxonomy-db-staging.jsonl"
+        not in command_blob
+    )
 
 
 def test_command_checklist_explicit_taxonomy_staging_overrides_todo_fallback(
@@ -290,7 +350,10 @@ def test_command_checklist_explicit_taxonomy_staging_overrides_todo_fallback(
         "outputs/generated/supplement-learning/2026-06-05/supplement-taxonomy-db-staging.jsonl"
         in command_blob
     )
-    assert "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl" not in command_blob
+    assert (
+        "outputs/todo-list/2026-06-04/2026-06-04-supplement-taxonomy-db-staging.jsonl"
+        not in command_blob
+    )
 
 
 def test_command_checklist_generates_repo_relative_pii_commands(tmp_path: Path) -> None:
@@ -333,8 +396,14 @@ def test_command_checklist_generates_repo_relative_pii_commands(tmp_path: Path) 
         "backend/.venv/bin/python backend/scripts/build_supplement_operator_review_batch_triage.py"
     )
     assert "--queue-key review_pii_screening" in commands[0]
-    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches/review_pii_screening-001.jsonl" in commands[0]
-    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/review_pii_screening-001.triage.json" in commands[0]
+    assert (
+        "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches/review_pii_screening-001.jsonl"
+        in commands[0]
+    )
+    assert (
+        "--output outputs/generated/supplement-learning/2026-06-04/operator-review/review_pii_screening-001.triage.json"
+        in commands[0]
+    )
     assert "backend/scripts/extract_supplement_pii_reviewed_decisions.py" in commands[4]
     assert (
         "--candidate-manifest outputs/generated/supplement-learning/2026-06-04/operator-review/supplement-review-ocr-ground-truth-candidates.jsonl"
@@ -348,7 +417,10 @@ def test_command_checklist_generates_repo_relative_pii_commands(tmp_path: Path) 
     assert "--source-root data/nutrition_reference/crawling-image" in commands[7]
     assert "backend/scripts/build_supplement_ocr_ground_truth_review_bundle.py" in commands[8]
     assert "backend/scripts/preflight_supplement_ocr_ground_truth_manifest.py" in commands[9]
-    assert "--ground-truth outputs/generated/supplement-learning/2026-06-04/operator-review/ocr-ground-truth-review-bundle/ground-truth.todo.jsonl" in commands[9]
+    assert (
+        "--ground-truth outputs/generated/supplement-learning/2026-06-04/operator-review/ocr-ground-truth-review-bundle/ground-truth.todo.jsonl"
+        in commands[9]
+    )
     assert "--required-expected-section allergen_warnings" in commands[9]
     _assert_pii_ocr_command_chain(commands)
     assert "--require-all-reviewed" in commands[5]
@@ -490,8 +562,14 @@ def test_command_checklist_generates_repo_relative_yolo_commands(tmp_path: Path)
         "backend/.venv/bin/python backend/scripts/build_supplement_operator_review_batch_triage.py"
     )
     assert "--queue-key yolo_section_annotation" in commands[0]
-    assert "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches/yolo_section_annotation-001.jsonl" in commands[0]
-    assert "--output outputs/generated/supplement-learning/2026-06-04/operator-review/yolo_section_annotation-001.triage.json" in commands[0]
+    assert (
+        "--batch-file outputs/generated/supplement-learning/2026-06-04/operator-review/batches/yolo_section_annotation-001.jsonl"
+        in commands[0]
+    )
+    assert (
+        "--output outputs/generated/supplement-learning/2026-06-04/operator-review/yolo_section_annotation-001.triage.json"
+        in commands[0]
+    )
     assert "backend/scripts/extract_supplement_yolo_reviewed_annotations.py" in commands[4]
     assert "backend/scripts/materialize_supplement_section_yolo_dataset.py" in commands[7]
     assert "backend/scripts/gate_supplement_yolo_section_dataset.py" in commands[-1]

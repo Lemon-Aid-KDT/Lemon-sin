@@ -69,9 +69,7 @@ def test_plan_blocks_pending_brand_batch_and_lists_brand_gates(tmp_path: Path) -
     """Verify pending brand review batches expose only blocked post-completion steps."""
     work_order_path = _write_work_order(tmp_path / "work-order.json", _work_order_payload())
 
-    plan = planner.build_post_completion_command_plan(
-        input_paths={"work_order": work_order_path}
-    )
+    plan = planner.build_post_completion_command_plan(input_paths={"work_order": work_order_path})
 
     assert plan["post_completion_execution_allowed"] is False
     assert plan["operator_required_before_execution"] is True
@@ -114,9 +112,7 @@ def test_plan_allows_complete_pii_batch_without_teacher_ocr_call(tmp_path: Path)
         ),
     )
 
-    plan = planner.build_post_completion_command_plan(
-        input_paths={"work_order": work_order_path}
-    )
+    plan = planner.build_post_completion_command_plan(input_paths={"work_order": work_order_path})
 
     assert plan["post_completion_execution_allowed"] is True
     assert plan["operator_required_before_execution"] is False
@@ -156,19 +152,33 @@ def test_plan_allows_complete_pii_batch_without_teacher_ocr_call(tmp_path: Path)
     assert script_keys.index("collect_supplement_ocr_observations") < script_keys.index(
         "merge_paddleocr_text_observations_into_benchmark"
     )
-    assert script_keys.index("merge_paddleocr_text_observations_into_benchmark") < script_keys.index(
-        "preflight_paddleocr_text_target_chain"
-    )
+    assert script_keys.index(
+        "merge_paddleocr_text_observations_into_benchmark"
+    ) < script_keys.index("preflight_paddleocr_text_target_chain")
     assert script_keys.index("preflight_paddleocr_text_target_chain") < script_keys.index(
         "build_paddleocr_text_extraction_eval_summary"
     )
     assert script_keys.index("build_paddleocr_text_extraction_eval_summary") < script_keys.index(
         "gate_paddleocr_text_extraction_target"
     )
-    template_step = next(step for step in plan["steps"] if step["script_key"] == "export_supplement_ocr_ground_truth_template")
-    bundle_step = next(step for step in plan["steps"] if step["script_key"] == "build_supplement_ocr_ground_truth_review_bundle")
-    gate_step = next(step for step in plan["steps"] if step["script_key"] == "gate_supplement_ocr_benchmark")
-    target_gate_step = next(step for step in plan["steps"] if step["script_key"] == "gate_paddleocr_text_extraction_target")
+    template_step = next(
+        step
+        for step in plan["steps"]
+        if step["script_key"] == "export_supplement_ocr_ground_truth_template"
+    )
+    bundle_step = next(
+        step
+        for step in plan["steps"]
+        if step["script_key"] == "build_supplement_ocr_ground_truth_review_bundle"
+    )
+    gate_step = next(
+        step for step in plan["steps"] if step["script_key"] == "gate_supplement_ocr_benchmark"
+    )
+    target_gate_step = next(
+        step
+        for step in plan["steps"]
+        if step["script_key"] == "gate_paddleocr_text_extraction_target"
+    )
     assert "teacher_safe_ocr_candidates" in template_step["input_roles"]
     assert "private_ground_truth_image_fixtures" in template_step["output_roles"]
     assert "human_reviewed_ground_truth" in bundle_step["output_roles"]
@@ -192,9 +202,7 @@ def test_plan_rejects_raw_or_path_like_work_order_payload(tmp_path: Path) -> Non
     work_order_path = _write_work_order(tmp_path / "work-order.json", payload)
 
     with pytest.raises(planner.PostCompletionPlanError, match="Unsafe key"):
-        planner.build_post_completion_command_plan(
-            input_paths={"work_order": work_order_path}
-        )
+        planner.build_post_completion_command_plan(input_paths={"work_order": work_order_path})
 
 
 def test_post_completion_plan_cli_writes_json_and_markdown(tmp_path: Path) -> None:

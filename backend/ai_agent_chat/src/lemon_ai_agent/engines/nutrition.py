@@ -131,9 +131,7 @@ class NutritionEngine:
             return None
         return self._from_mcg(source_mcg, target_unit)
 
-    def _to_mcg(
-        self, nutrient_name: str, amount: float, source_unit: str
-    ) -> float | None:
+    def _to_mcg(self, nutrient_name: str, amount: float, source_unit: str) -> float | None:
         if source_unit in UNIT_TO_MCG:
             return amount * UNIT_TO_MCG[source_unit]
         if nutrient_name == "vitamin d" and source_unit == "iu":

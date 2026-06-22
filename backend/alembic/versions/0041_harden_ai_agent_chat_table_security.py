@@ -102,9 +102,7 @@ def upgrade() -> None:
         _revoke_api_roles(table_name)
 
     for table_name in (*HASHED_OWNER_TABLES, *PLAINTEXT_OWNER_TABLES, *SERVICE_RW_TABLES):
-        op.execute(
-            f"GRANT SELECT, INSERT, UPDATE, DELETE ON public.{table_name} TO {APP_ROLE}"
-        )
+        op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON public.{table_name} TO {APP_ROLE}")
     for table_name in CATALOG_TABLES:
         op.execute(f"GRANT SELECT ON public.{table_name} TO {APP_ROLE}")
 

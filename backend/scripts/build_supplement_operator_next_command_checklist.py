@@ -276,9 +276,7 @@ def main(argv: list[str] | None = None) -> None:
         args.markdown_output.expanduser().resolve() if args.markdown_output is not None else None
     )
     taxonomy_staging = (
-        args.taxonomy_staging.expanduser().resolve()
-        if args.taxonomy_staging is not None
-        else None
+        args.taxonomy_staging.expanduser().resolve() if args.taxonomy_staging is not None else None
     )
     batch_override_dir = (
         args.batch_override_dir.expanduser().resolve()
@@ -391,13 +389,9 @@ def build_command_checklist(
         "preserved_batch_override_count": len(preserved_batch_overrides),
         "preserved_batch_override_names": dict(sorted(preserved_batch_overrides.items())),
         "blocked_until": _blocked_until(queue_key),
-        "post_completion_execution_allowed_now": post_plan.get(
-            "post_completion_execution_allowed"
-        )
+        "post_completion_execution_allowed_now": post_plan.get("post_completion_execution_allowed")
         is True,
-        "post_completion_blocker_codes": _safe_string_list(
-            post_plan.get("blocked_reason_codes")
-        ),
+        "post_completion_blocker_codes": _safe_string_list(post_plan.get("blocked_reason_codes")),
         "input_names": {key: path.name for key, path in sorted(input_paths.items())},
         "input_path_fingerprints": {
             key: _path_fingerprint(path) for key, path in sorted(input_paths.items())
@@ -504,7 +498,9 @@ def _command_paths(
     """
     reconciled_dir = operator_dir / "reconciled"
     applied_batch_dir = operator_dir / "batches-applied"
-    review_csv_name = batch_review_file_name or f"{batch_file_name.removesuffix('.jsonl')}.review.csv"
+    review_csv_name = (
+        batch_review_file_name or f"{batch_file_name.removesuffix('.jsonl')}.review.csv"
+    )
     batch_stem = batch_file_name.removesuffix(".jsonl")
     batch_suffix = _batch_suffix(batch_file_name)
     taxonomy_staging_path = taxonomy_staging or _taxonomy_staging_path(todo_dir)
@@ -516,8 +512,12 @@ def _command_paths(
         "batch_plan": _rel(repo_root, operator_dir / "operator-review-batch-plan.json"),
         "source_batch_file": _rel(repo_root, operator_dir / "batches" / batch_file_name),
         "batch_review_csv": _rel(repo_root, operator_dir / "batches" / review_csv_name),
-        "batch_triage_json": _rel(repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.json"),
-        "batch_triage_md": _rel(repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.md"),
+        "batch_triage_json": _rel(
+            repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.json"
+        ),
+        "batch_triage_md": _rel(
+            repo_root, operator_dir / f"{batch_file_name.removesuffix('.jsonl')}.triage.md"
+        ),
         "brand_contact_sheet_summary": _rel(
             repo_root,
             operator_dir
@@ -533,33 +533,63 @@ def _command_paths(
             operator_dir / f"{batch_stem}.contact-sheet-preflight.md",
         ),
         "applied_batch_file": _rel(repo_root, applied_batch_dir / batch_file_name),
-        "applied_batch_summary": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.summary.json"),
+        "applied_batch_summary": _rel(
+            repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.summary.json"
+        ),
         "applied_batch_md": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.csv-apply.md"),
-        "applied_batch_preflight_json": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.preflight.json"),
-        "applied_batch_preflight_md": _rel(repo_root, applied_batch_dir / f"{batch_file_name}.preflight.md"),
+        "applied_batch_preflight_json": _rel(
+            repo_root, applied_batch_dir / f"{batch_file_name}.preflight.json"
+        ),
+        "applied_batch_preflight_md": _rel(
+            repo_root, applied_batch_dir / f"{batch_file_name}.preflight.md"
+        ),
         "batch_file": _rel(repo_root, operator_dir / "batches" / batch_file_name),
-        "batch_preflight_json": _rel(repo_root, operator_dir / "batches" / f"{batch_file_name}.preflight.json"),
-        "batch_preflight_md": _rel(repo_root, operator_dir / "batches" / f"{batch_file_name}.preflight.md"),
-        "brand_decisions": _rel(repo_root, operator_dir / "brand-product-review-bundle" / "decisions.todo.jsonl"),
-        "pii_decisions": _rel(repo_root, operator_dir / "review-pii-screening-bundle" / "decisions.todo.jsonl"),
-        "yolo_annotations": _rel(repo_root, operator_dir / "yolo-section-annotation-bundle" / "annotation.todo.jsonl"),
+        "batch_preflight_json": _rel(
+            repo_root, operator_dir / "batches" / f"{batch_file_name}.preflight.json"
+        ),
+        "batch_preflight_md": _rel(
+            repo_root, operator_dir / "batches" / f"{batch_file_name}.preflight.md"
+        ),
+        "brand_decisions": _rel(
+            repo_root, operator_dir / "brand-product-review-bundle" / "decisions.todo.jsonl"
+        ),
+        "pii_decisions": _rel(
+            repo_root, operator_dir / "review-pii-screening-bundle" / "decisions.todo.jsonl"
+        ),
+        "yolo_annotations": _rel(
+            repo_root, operator_dir / "yolo-section-annotation-bundle" / "annotation.todo.jsonl"
+        ),
         "batch_dir": _rel(repo_root, operator_dir / "batches"),
         "reconciled_dir": _rel(repo_root, reconciled_dir),
         "reconcile_summary": _rel(repo_root, reconciled_dir / "reconcile.summary.json"),
         "reconcile_md": _rel(repo_root, reconciled_dir / "reconcile.summary.md"),
-        "reconciled_brand": _rel(repo_root, reconciled_dir / "brand_product_review.reconciled.jsonl"),
+        "reconciled_brand": _rel(
+            repo_root, reconciled_dir / "brand_product_review.reconciled.jsonl"
+        ),
         "reconciled_pii": _rel(repo_root, reconciled_dir / "review_pii_screening.reconciled.jsonl"),
-        "reconciled_yolo": _rel(repo_root, reconciled_dir / "yolo_section_annotation.reconciled.jsonl"),
+        "reconciled_yolo": _rel(
+            repo_root, reconciled_dir / "yolo_section_annotation.reconciled.jsonl"
+        ),
         "progress_json": _rel(repo_root, reconciled_dir / "operator-review-batch-progress.json"),
         "progress_md": _rel(repo_root, reconciled_dir / "operator-review-batch-progress.md"),
         "taxonomy_staging": taxonomy_staging_rel,
-        "reviewed_brand": _rel(repo_root, reconciled_dir / "brand-product-reviewed.decisions.jsonl"),
-        "reviewed_brand_summary": _rel(repo_root, reconciled_dir / "brand-product-reviewed.summary.json"),
-        "brand_preflight_json": _rel(repo_root, reconciled_dir / "brand-product-review-preflight.json"),
+        "reviewed_brand": _rel(
+            repo_root, reconciled_dir / "brand-product-reviewed.decisions.jsonl"
+        ),
+        "reviewed_brand_summary": _rel(
+            repo_root, reconciled_dir / "brand-product-reviewed.summary.json"
+        ),
+        "brand_preflight_json": _rel(
+            repo_root, reconciled_dir / "brand-product-review-preflight.json"
+        ),
         "brand_gate_json": _rel(repo_root, reconciled_dir / "brand-db-import-gate.json"),
         "brand_gate_md": _rel(repo_root, reconciled_dir / "brand-db-import-gate.md"),
-        "approved_manifest": _rel(repo_root, reconciled_dir / "approved-product-import-manifest.jsonl"),
-        "approved_manifest_summary": _rel(repo_root, reconciled_dir / "approved-product-import-manifest.summary.json"),
+        "approved_manifest": _rel(
+            repo_root, reconciled_dir / "approved-product-import-manifest.jsonl"
+        ),
+        "approved_manifest_summary": _rel(
+            repo_root, reconciled_dir / "approved-product-import-manifest.summary.json"
+        ),
         "ocr_candidate_manifest": _rel(
             repo_root,
             operator_dir / "supplement-review-ocr-ground-truth-candidates.jsonl",
@@ -601,7 +631,9 @@ def _command_paths(
         "reviewed_pii_summary": _rel(repo_root, reconciled_dir / "pii-reviewed.summary.json"),
         "pii_preflight_json": _rel(repo_root, reconciled_dir / "pii-review-preflight.json"),
         "pii_apply_output": _rel(repo_root, reconciled_dir / "teacher-safe-ocr-candidates.jsonl"),
-        "pii_apply_summary": _rel(repo_root, reconciled_dir / "teacher-safe-ocr-candidates.summary.json"),
+        "pii_apply_summary": _rel(
+            repo_root, reconciled_dir / "teacher-safe-ocr-candidates.summary.json"
+        ),
         "ocr_benchmark_gate_json": _rel(repo_root, reconciled_dir / "ocr-benchmark-gate.json"),
         "ocr_benchmark_gate_md": _rel(repo_root, reconciled_dir / "ocr-benchmark-gate.md"),
         "ocr_benchmark_manifest": _rel(repo_root, reconciled_dir / "ocr-benchmark-manifest.jsonl"),
@@ -660,11 +692,21 @@ def _command_paths(
         "reviewed_yolo_summary": _rel(repo_root, reconciled_dir / "yolo-reviewed.summary.json"),
         "yolo_preflight_json": _rel(repo_root, reconciled_dir / "yolo-annotation-preflight.json"),
         "yolo_export_manifest": _rel(repo_root, reconciled_dir / "yolo-section-export.json"),
-        "yolo_promotion_summary": _rel(repo_root, reconciled_dir / "yolo-section-export.summary.json"),
-        "yolo_dataset_yaml": _rel(repo_root, reconciled_dir / "yolo-section-dataset" / "dataset.yaml"),
-        "yolo_materialize_summary": _rel(repo_root, reconciled_dir / "yolo-section-dataset.materialize.json"),
-        "yolo_validation_summary": _rel(repo_root, reconciled_dir / "yolo-section-dataset.validation.json"),
-        "yolo_dataset_gate_json": _rel(repo_root, reconciled_dir / "yolo-section-dataset-gate.json"),
+        "yolo_promotion_summary": _rel(
+            repo_root, reconciled_dir / "yolo-section-export.summary.json"
+        ),
+        "yolo_dataset_yaml": _rel(
+            repo_root, reconciled_dir / "yolo-section-dataset" / "dataset.yaml"
+        ),
+        "yolo_materialize_summary": _rel(
+            repo_root, reconciled_dir / "yolo-section-dataset.materialize.json"
+        ),
+        "yolo_validation_summary": _rel(
+            repo_root, reconciled_dir / "yolo-section-dataset.validation.json"
+        ),
+        "yolo_dataset_gate_json": _rel(
+            repo_root, reconciled_dir / "yolo-section-dataset-gate.json"
+        ),
         "yolo_dataset_gate_md": _rel(repo_root, reconciled_dir / "yolo-section-dataset-gate.md"),
     }
 
@@ -970,7 +1012,9 @@ def _brand_review_csv_triage_commands(
     ]
 
 
-def _operator_jsonl_triage_commands(*, queue_key: str, paths: Mapping[str, str]) -> list[dict[str, Any]]:
+def _operator_jsonl_triage_commands(
+    *, queue_key: str, paths: Mapping[str, str]
+) -> list[dict[str, Any]]:
     """Return the PII/YOLO JSONL batch triage command.
 
     Args:
@@ -1038,7 +1082,9 @@ def _brand_review_csv_apply_commands(
     ]
 
 
-def _brand_product_commands(*, paths: Mapping[str, str], start_order: int = 4) -> list[dict[str, Any]]:
+def _brand_product_commands(
+    *, paths: Mapping[str, str], start_order: int = 4
+) -> list[dict[str, Any]]:
     """Return brand/product review post-edit commands.
 
     Args:
@@ -1300,7 +1346,9 @@ def _review_pii_commands(*, paths: Mapping[str, str], start_order: int = 4) -> l
     ]
 
 
-def _yolo_section_commands(*, paths: Mapping[str, str], start_order: int = 4) -> list[dict[str, Any]]:
+def _yolo_section_commands(
+    *, paths: Mapping[str, str], start_order: int = 4
+) -> list[dict[str, Any]]:
     """Return YOLO section-annotation post-edit commands.
 
     Args:

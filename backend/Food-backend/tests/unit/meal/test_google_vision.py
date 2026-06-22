@@ -86,9 +86,7 @@ class TestMockLoading:
         with pytest.raises(MealParseError):
             MockGoogleVisionMealHintAdapter(bad)
 
-    def test_object_bbox_wrong_length_raises_meal_parse_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_object_bbox_wrong_length_raises_meal_parse_error(self, tmp_path: Path) -> None:
         """object hint의 bbox_xyxy 길이가 4가 아니면 init 시 MealParseError로 변환된다.
 
         regression: bbox 길이를 detect 시점이 아닌 fixture 로드 시점에서 차단한다.

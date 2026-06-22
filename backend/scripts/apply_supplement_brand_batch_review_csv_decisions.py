@@ -431,9 +431,7 @@ def _approval_attestations_from_args(args: argparse.Namespace) -> dict[str, bool
         Attestation mapping.
     """
     return {
-        "attest_brand_product_review_completed": bool(
-            args.attest_brand_product_review_completed
-        ),
+        "attest_brand_product_review_completed": bool(args.attest_brand_product_review_completed),
         "attest_not_using_product_folder_literal_as_manufacturer": bool(
             args.attest_not_using_product_folder_literal_as_manufacturer
         ),

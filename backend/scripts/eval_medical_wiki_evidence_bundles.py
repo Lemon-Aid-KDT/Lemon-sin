@@ -101,9 +101,7 @@ def run_eval(
             "answer_renderer_with_boundary_anchor",
             0,
         ),
-        "deterministic_provider": sum(
-            1 for row in results if row["provider"] == "deterministic"
-        ),
+        "deterministic_provider": sum(1 for row in results if row["provider"] == "deterministic"),
         "forbidden_marker_hits": sum(1 for row in results if row["raw_marker_hits"]),
         "unsafe_pattern_hits": sum(1 for row in results if row["unsafe_hits"]),
     }
@@ -124,12 +122,12 @@ def _run_case(
         )
     )
     response_source_ids = [
-        str(source.get("source_id", ""))
-        for source in response.sources
-        if source.get("source_id")
+        str(source.get("source_id", "")) for source in response.sources if source.get("source_id")
     ]
     missing_source_ids = [
-        source_id for source_id in fixture.expected_source_ids if source_id not in response_source_ids
+        source_id
+        for source_id in fixture.expected_source_ids
+        if source_id not in response_source_ids
     ]
     raw_marker_hits = _forbidden_marker_hits(response.message)
     unsafe_hits = _unsafe_hits(response.message)
@@ -137,9 +135,8 @@ def _run_case(
         fixture.expected_renderer_route,
         response.answerability,
     )
-    blocked_actions_preserved = (
-        bool(result.cards)
-        and set(fixture.blocked_actions).issubset(set(result.cards[0].must_not_say))
+    blocked_actions_preserved = bool(result.cards) and set(fixture.blocked_actions).issubset(
+        set(result.cards[0].must_not_say)
     )
     has_section_grounding = any(
         any(snippet.startswith("reviewed_section:") for snippet in card.grounding_snippet_ids)
@@ -222,4 +219,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

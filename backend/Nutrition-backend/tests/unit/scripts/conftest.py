@@ -6,7 +6,6 @@ import os
 from collections.abc import Iterator
 
 import pytest
-
 from src.config import get_settings
 
 

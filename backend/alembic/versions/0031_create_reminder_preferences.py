@@ -32,8 +32,18 @@ def upgrade() -> None:
         sa.Column("message", sa.String(length=240), nullable=False),
         sa.Column("preference_metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("disabled_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             (
                 "category IN ("

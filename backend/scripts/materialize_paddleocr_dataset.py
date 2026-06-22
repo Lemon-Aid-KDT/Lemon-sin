@@ -504,7 +504,12 @@ def _validate_private_source_ref(source_ref: str) -> None:
     Raises:
         PaddleOCRMaterializationError: If the ref is URL/path-like.
     """
-    if "://" in source_ref or source_ref.startswith("/") or "\\" in source_ref or ".." in source_ref:
+    if (
+        "://" in source_ref
+        or source_ref.startswith("/")
+        or "\\" in source_ref
+        or ".." in source_ref
+    ):
         raise PaddleOCRMaterializationError("source_ref must be a private token.")
 
 

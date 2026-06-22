@@ -40,9 +40,7 @@ def test_build_rows_uses_taxonomy_staging_category_key_contract(tmp_path: Path) 
         tmp_path: Pytest temporary directory.
     """
     root = tmp_path / "crawling-image"
-    (root / "[관절_MSM_콘드로 이친]" / "Sample Brand Product_123456").mkdir(
-        parents=True
-    )
+    (root / "[관절_MSM_콘드로 이친]" / "Sample Brand Product_123456").mkdir(parents=True)
 
     rows = importer.build_rows(root)
 
@@ -122,17 +120,20 @@ def test_main_apply_uses_env_file_without_printing_database_url(
     monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
     monkeypatch.setattr(importer, "apply_rows", _fake_apply_rows)
 
-    assert importer.main(
-        [
-            "--root",
-            str(root),
-            "--env-file",
-            str(env_file),
-            "--summary",
-            str(summary_path),
-            "--apply",
-        ]
-    ) == 0
+    assert (
+        importer.main(
+            [
+                "--root",
+                str(root),
+                "--env-file",
+                str(env_file),
+                "--summary",
+                str(summary_path),
+                "--apply",
+            ]
+        )
+        == 0
+    )
 
     output = capsys.readouterr().out
     summary_text = summary_path.read_text(encoding="utf-8")

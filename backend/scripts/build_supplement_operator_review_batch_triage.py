@@ -165,9 +165,8 @@ def build_operator_review_batch_triage(
         "status_counts": dict(sorted(status_counts.items())),
         "priority_counts": dict(sorted(priority_counts.items())),
         "reason_counts": dict(sorted(reason_counts.items())),
-        "row_hints_truncated": len(row_hints) < sum(
-            1 for item in row_summaries if item["priority"] != "p4_reviewed"
-        ),
+        "row_hints_truncated": len(row_hints)
+        < sum(1 for item in row_summaries if item["priority"] != "p4_reviewed"),
         "row_hints": row_hints,
         "operator_next_steps": _operator_next_steps(
             queue_key=safe_queue_key,
@@ -479,7 +478,11 @@ def _reject_public_payload(value: Any) -> None:
         progress._reject_unsafe_payload(value)
     except ValueError as exc:
         raise OperatorReviewBatchTriageError(str(exc)) from exc
-    dumped = json.dumps(value, ensure_ascii=False, sort_keys=True) if not isinstance(value, str) else value
+    dumped = (
+        json.dumps(value, ensure_ascii=False, sort_keys=True)
+        if not isinstance(value, str)
+        else value
+    )
     if any(marker in dumped for marker in PUBLIC_FORBIDDEN_MARKERS):
         raise OperatorReviewBatchTriageError("Public triage payload contains private row fields.")
 

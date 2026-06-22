@@ -80,9 +80,7 @@ class DailyHealthAgent:
             checked_recommendations.append((recommendation, check))
 
         safe_recommendations = [
-            recommendation
-            for recommendation, check in checked_recommendations
-            if check.allowed
+            recommendation for recommendation, check in checked_recommendations if check.allowed
         ]
         actions = self._action_agent.propose_actions(safe_recommendations)
         trace = self._build_trace(
@@ -114,8 +112,7 @@ class DailyHealthAgent:
         return sum(
             1
             for source in intake.sources
-            if source.source_type in {"food_ocr", "supplement_ocr"}
-            and not source.user_confirmed
+            if source.source_type in {"food_ocr", "supplement_ocr"} and not source.user_confirmed
         )
 
     def _build_trace(

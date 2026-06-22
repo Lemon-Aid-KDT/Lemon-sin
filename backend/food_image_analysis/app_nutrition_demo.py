@@ -36,22 +36,65 @@ TEST_DIR = Path(r"C:\Lemon-sin\data\food_images\raw\test_data")
 
 # --- 영문 클래스 -> 한글 표시명 (59클래스) ---
 KR_NAME: dict[str, str] = {
-    "barbecue-ribs": "갈비", "black-bean-noodles": "짜장면", "braised-chicken": "찜닭",
-    "braised-pork-hock": "족발", "bread": "빵", "bulgogi": "불고기", "cake": "케이크",
-    "cold-noodles": "냉면", "curry": "카레", "dim-sum": "딤섬(찐만두)", "dumplings": "만두",
-    "fish-cake": "어묵", "fried-chicken": "후라이드치킨", "fried-food-platter": "튀김(모둠)",
-    "fried-rice": "볶음밥", "grilled-beef": "소고기구이", "grilled-fish": "생선구이",
-    "grilled-pork-belly": "삼겹살", "hamburger": "햄버거", "hot-pot": "전골", "korean-blood-sausage": "순대",
-    "mixed-rice-bowl": "비빔밥", "pasta": "파스타", "pizza": "피자", "raw-fish": "회", "rice-bowl": "덮밥",
-    "rice-porridge": "죽", "rice-soup": "국밥", "salad": "샐러드", "sandwich": "샌드위치",
-    "savory-pancake": "전/부침개", "seaweed-rice-roll": "김밥", "shrimp-dish": "새우요리",
-    "spicy-mixed-noodles": "비빔국수", "squid-dish": "오징어요리", "sushi": "초밥", "takoyaki": "타코야키",
-    "udon": "우동", "korean-clear-soup": "맑은국", "korean-red-soup": "빨간국", "western-cream-soup": "양식수프",
-    "japanese-ramen": "일본라멘", "korean-ramyeon-red": "라면", "cold-ramen": "냉라멘", "tteokbokki-red": "떡볶이",
-    "tteokbokki-cream-rose": "로제떡볶이", "tteokbokki-jajang": "짜장떡볶이", "pork-cutlet-dry": "돈가스",
-    "pork-cutlet-sauced": "소스돈가스", "seafood-spicy-tang": "해물매운탕", "seafood-clear-tang": "해물맑은탕",
-    "seafood-jjim": "해물찜", "kalguksu": "칼국수", "rice-noodle-soup": "쌀국수", "noodle-plain": "국수",
-    "jjigae-red": "빨간찌개", "doenjang-jjigae": "된장찌개", "jjamppong": "짬뽕", "nagasaki-champon": "나가사끼짬뽕",
+    "barbecue-ribs": "갈비",
+    "black-bean-noodles": "짜장면",
+    "braised-chicken": "찜닭",
+    "braised-pork-hock": "족발",
+    "bread": "빵",
+    "bulgogi": "불고기",
+    "cake": "케이크",
+    "cold-noodles": "냉면",
+    "curry": "카레",
+    "dim-sum": "딤섬(찐만두)",
+    "dumplings": "만두",
+    "fish-cake": "어묵",
+    "fried-chicken": "후라이드치킨",
+    "fried-food-platter": "튀김(모둠)",
+    "fried-rice": "볶음밥",
+    "grilled-beef": "소고기구이",
+    "grilled-fish": "생선구이",
+    "grilled-pork-belly": "삼겹살",
+    "hamburger": "햄버거",
+    "hot-pot": "전골",
+    "korean-blood-sausage": "순대",
+    "mixed-rice-bowl": "비빔밥",
+    "pasta": "파스타",
+    "pizza": "피자",
+    "raw-fish": "회",
+    "rice-bowl": "덮밥",
+    "rice-porridge": "죽",
+    "rice-soup": "국밥",
+    "salad": "샐러드",
+    "sandwich": "샌드위치",
+    "savory-pancake": "전/부침개",
+    "seaweed-rice-roll": "김밥",
+    "shrimp-dish": "새우요리",
+    "spicy-mixed-noodles": "비빔국수",
+    "squid-dish": "오징어요리",
+    "sushi": "초밥",
+    "takoyaki": "타코야키",
+    "udon": "우동",
+    "korean-clear-soup": "맑은국",
+    "korean-red-soup": "빨간국",
+    "western-cream-soup": "양식수프",
+    "japanese-ramen": "일본라멘",
+    "korean-ramyeon-red": "라면",
+    "cold-ramen": "냉라멘",
+    "tteokbokki-red": "떡볶이",
+    "tteokbokki-cream-rose": "로제떡볶이",
+    "tteokbokki-jajang": "짜장떡볶이",
+    "pork-cutlet-dry": "돈가스",
+    "pork-cutlet-sauced": "소스돈가스",
+    "seafood-spicy-tang": "해물매운탕",
+    "seafood-clear-tang": "해물맑은탕",
+    "seafood-jjim": "해물찜",
+    "kalguksu": "칼국수",
+    "rice-noodle-soup": "쌀국수",
+    "noodle-plain": "국수",
+    "jjigae-red": "빨간찌개",
+    "doenjang-jjigae": "된장찌개",
+    "jjamppong": "짬뽕",
+    "nagasaki-champon": "나가사끼짬뽕",
 }
 
 
@@ -154,7 +197,9 @@ def nutrition_notes(n: dict[str, float]) -> list[str]:
     fat = n.get("fat_g", float("nan"))
     kcal = n.get("kcal_100g", float("nan"))
     if na == na and na >= 500:
-        notes.append(f"🧂 나트륨이 높은 편이에요 ({na:.0f}mg/100g) — 혈압 관리 중이라면 참고하세요.")
+        notes.append(
+            f"🧂 나트륨이 높은 편이에요 ({na:.0f}mg/100g) — 혈압 관리 중이라면 참고하세요."
+        )
     if sug == sug and sug >= 10:
         notes.append(f"🍬 당류가 높은 편이에요 ({sug:.0f}g/100g) — 혈당 관리에 참고하세요.")
     if fat == fat and fat >= 15:
@@ -180,9 +225,7 @@ def macro_ratio(n: dict[str, float]) -> tuple[float, float, float]:
 # ============================ UI ============================
 st.set_page_config(page_title="음식 분류 + 영양소 데모", page_icon="🍱", layout="wide")
 st.title("🍱 음식 분류 + 영양소 정보 데모")
-st.caption(
-    f"모델: YOLO26s · taxo59(59클래스) · exp12  |  영양소: AIHub 100g 기준 클래스 평균"
-)
+st.caption(f"모델: YOLO26s · taxo59(59클래스) · exp12  |  영양소: AIHub 100g 기준 클래스 평균")
 
 model = load_model()
 nutrition = load_nutrition()
@@ -195,7 +238,9 @@ with st.sidebar:
     _mt = _dt.datetime.fromtimestamp(MODEL_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     st.caption(f"📦 모델: `{MODEL_PATH.parent.parent.name}`\n\nbest.pt 수정: {_mt}")
     conf_th = st.slider("탐지 신뢰도 임계값", 0.02, 0.9, 0.10, 0.01)
-    st.caption("exp12 기준 0.10 권장 — test_data 음식 15/16·not_food 3/3. (0.08은 not_food 1건(salad) 오탐, 음식 1건은 maxconf 0.03이라 임계 무관 미검출)")
+    st.caption(
+        "exp12 기준 0.10 권장 — test_data 음식 15/16·not_food 3/3. (0.08은 not_food 1건(salad) 오탐, 음식 1건은 maxconf 0.03이라 임계 무관 미검출)"
+    )
     nms_iou = st.slider("중복 박스 병합 IoU", 0.3, 0.95, 0.5, 0.05)
     st.caption("한 음식에 박스가 여러 개 겹치면 최고 신뢰도 1개로 합칩니다 (낮을수록 적극 병합)")
     st.divider()
@@ -232,12 +277,18 @@ col_img, col_info = st.columns([3, 2])
 with col_img:
     if n_boxes == 0:
         # 음식 미탐지 -> 안내 (not_food 등)
-        st.image(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), caption=src_label, use_container_width=True)
+        st.image(
+            cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), caption=src_label, use_container_width=True
+        )
         st.error("## 🚫 음식이 없습니다. 다시 찍어주세요.")
         st.caption("음식 객체가 탐지되지 않았어요. 음식이 화면에 잘 보이게 다시 촬영해 주세요.")
         st.stop()
     annotated = res.plot()  # BGR, 박스+라벨
-    st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), caption=f"{src_label} — {n_boxes}개 탐지", use_container_width=True)
+    st.image(
+        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+        caption=f"{src_label} — {n_boxes}개 탐지",
+        use_container_width=True,
+    )
 
 with col_info:
     # 대표(최고 신뢰도) 탐지
@@ -277,7 +328,9 @@ selected_cls = st.selectbox(
     format_func=lambda c: f"{kr(c)}  ({c})",
 )
 if selected_cls != best_cls:
-    st.info(f"✏️ 사용자가 **{kr(selected_cls)}**(으)로 선택 — 모델 예측({kr(best_cls)})과 다릅니다.")
+    st.info(
+        f"✏️ 사용자가 **{kr(selected_cls)}**(으)로 선택 — 모델 예측({kr(best_cls)})과 다릅니다."
+    )
 
 # 영양소 정보 (선택 음식 기준)
 st.subheader(f"🥗 영양소 정보 — {kr(selected_cls)}")

@@ -188,7 +188,9 @@ def test_analysis_factory_wires_distinct_paddle_secondary_merge_when_primary() -
 
     assert isinstance(adapters.ocr, PaddleOCRAdapter)
     assert isinstance(adapters.secondary_merge_ocr, PaddleOCRAdapter)
-    assert adapters.secondary_merge_ocr._settings.local_ocr_text_recognition_model_dir == secondary_dir
+    assert (
+        adapters.secondary_merge_ocr._settings.local_ocr_text_recognition_model_dir == secondary_dir
+    )
 
 
 def test_analysis_factory_builds_yolo_adapter_when_gate_enabled() -> None:

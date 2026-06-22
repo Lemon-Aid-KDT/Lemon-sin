@@ -195,9 +195,9 @@ async def run_cli(argv: list[str] | None = None) -> int:
     try:
         summary = await import_food_taxo59_catalog(
             csv_path=args.csv.expanduser().resolve(),
-            manifest_path=args.manifest.expanduser().resolve()
-            if args.manifest is not None
-            else None,
+            manifest_path=(
+                args.manifest.expanduser().resolve() if args.manifest is not None else None
+            ),
             apply_changes=bool(args.apply),
         )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -461,9 +461,7 @@ def _nutrition_reference(row: dict[str, str]) -> dict[str, Any]:
         "basis": "per_100g_class_average",
         "serving_g": _json_decimal(serving_g),
         "per_100g": {key: _json_decimal(value) for key, value in nutrients_100g.items()},
-        "per_serving_estimate": {
-            key: _json_decimal(value) for key, value in per_serving.items()
-        },
+        "per_serving_estimate": {key: _json_decimal(value) for key, value in per_serving.items()},
         "precision_note": "demo_class_average_not_medical_or_prescriptive",
     }
 

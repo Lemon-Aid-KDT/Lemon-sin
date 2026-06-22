@@ -531,10 +531,7 @@ def test_supplement_constraints_and_indexes_are_defined() -> None:
     assert "ck_supplement_categories_category_key_nonempty" in category_constraint_names
     assert "uq_supplement_products_source_provider_product_id" in product_constraint_names
     assert "ck_supplement_products_source_provider_nonempty" in product_constraint_names
-    assert (
-        "uq_supplement_product_categories_product_category"
-        in product_category_constraint_names
-    )
+    assert "uq_supplement_product_categories_product_category" in product_category_constraint_names
     assert "ck_supplement_product_categories_confidence_range" in (
         product_category_constraint_names
     )

@@ -241,9 +241,7 @@ class TestUnusualFoodNames:
 class TestRdaMatchingFailurePreservation:
     """RDA 매칭 실패 음식도 RecognizedMeal에 보존 (항목 버리지 않음)."""
 
-    async def test_unknown_food_item_kept_in_recognized_meal(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unknown_food_item_kept_in_recognized_meal(self, tmp_path: Path) -> None:
         """alias에 없는 음식도 pipeline은 RecognizedMealItem으로 반환."""
         fx = _write_fixture(
             tmp_path,
@@ -343,9 +341,7 @@ class TestEmptyFixture:
             ("음식·요리",),  # 가운데 점
         ],
     )
-    async def test_various_name_formats_parametrized(
-        self, name_ko: str, tmp_path: Path
-    ) -> None:
+    async def test_various_name_formats_parametrized(self, name_ko: str, tmp_path: Path) -> None:
         """다양한 음식명 포맷도 pipeline에서 안전 처리."""
         fx = _write_fixture(
             tmp_path,

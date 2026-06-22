@@ -21,11 +21,13 @@ from typing import List
 try:
     import torch
 except ImportError:
-    print("[ERROR] torch 필요"); sys.exit(1)
+    print("[ERROR] torch 필요")
+    sys.exit(1)
 try:
     from transformers import CLIPProcessor, CLIPModel
 except ImportError:
-    print("[ERROR] transformers 필요: pip install transformers"); sys.exit(1)
+    print("[ERROR] transformers 필요: pip install transformers")
+    sys.exit(1)
 
 
 # 다국어 + Korean food 친화 프롬프트
@@ -88,17 +90,20 @@ NOT_FOOD_PROMPTS = [
 class CLIPFoodFilter:
     """CLIP 으로 음식/비음식 zero-shot 판별."""
 
-    def __init__(self,
-                 model_id: str = "openai/clip-vit-base-patch16",
-                 device: str = "auto",
-                 food_prompts: List[str] = None,
-                 not_food_prompts: List[str] = None):
+    def __init__(
+        self,
+        model_id: str = "openai/clip-vit-base-patch16",
+        device: str = "auto",
+        food_prompts: List[str] = None,
+        not_food_prompts: List[str] = None,
+    ):
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = device
 
         print(f"[CLIP] 로드 중: {model_id} ({device}) ...")
         import time
+
         t0 = time.time()
         self.model = CLIPModel.from_pretrained(model_id).to(device).eval()
         self.processor = CLIPProcessor.from_pretrained(model_id)
@@ -110,8 +115,7 @@ class CLIPFoodFilter:
         # 텍스트 임베딩 미리 계산 (한 번만)
         with torch.no_grad():
             all_texts = self.food_prompts + self.not_food_prompts
-            inputs = self.processor(text=all_texts, return_tensors="pt",
-                                     padding=True).to(device)
+            inputs = self.processor(text=all_texts, return_tensors="pt", padding=True).to(device)
             txt_emb = self.model.get_text_features(**inputs)
             txt_emb = txt_emb / txt_emb.norm(dim=-1, keepdim=True)
             self.text_embed = txt_emb
@@ -123,8 +127,9 @@ class CLIPFoodFilter:
         """이미지(PIL) 리스트 → 음식 확률(0~1) 리스트."""
         if not images:
             return []
-        inputs = self.processor(images=list(images), return_tensors="pt",
-                                 padding=True).to(self.device)
+        inputs = self.processor(images=list(images), return_tensors="pt", padding=True).to(
+            self.device
+        )
         img_emb = self.model.get_image_features(**inputs)
         img_emb = img_emb / img_emb.norm(dim=-1, keepdim=True)
 
@@ -132,8 +137,8 @@ class CLIPFoodFilter:
         sims = img_emb @ self.text_embed.T
 
         # 음식 그룹 vs 비음식 그룹 각각 max
-        food_max = sims[:, :self.n_food].max(dim=1).values
-        nonfood_max = sims[:, self.n_food:].max(dim=1).values
+        food_max = sims[:, : self.n_food].max(dim=1).values
+        nonfood_max = sims[:, self.n_food :].max(dim=1).values
 
         # softmax 로 음식 확률 변환 (temperature 100 = CLIP 표준)
         stacked = torch.stack([food_max, nonfood_max], dim=1)
@@ -156,8 +161,7 @@ class CLIPFoodFilter:
             img_emb = img_emb / img_emb.norm(dim=-1, keepdim=True)
             sims = (img_emb @ self.text_embed.T).squeeze(0).cpu().numpy()
         all_prompts = self.food_prompts + self.not_food_prompts
-        out = sorted(zip(all_prompts, sims.tolist()),
-                     key=lambda x: -x[1])
+        out = sorted(zip(all_prompts, sims.tolist()), key=lambda x: -x[1])
         return out
 
 
@@ -165,6 +169,7 @@ if __name__ == "__main__":
     # 간단 테스트
     import argparse
     from PIL import Image
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", required=True)
     ap.add_argument("--threshold", type=float, default=0.5)

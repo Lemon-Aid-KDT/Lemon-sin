@@ -230,9 +230,7 @@ async def test_verify_taxonomy_db_import_reports_missing_mapping(tmp_path: Path)
     assert summary["db_import_verified"] is False
     assert summary["status"] == "not_verified_missing_db_rows"
     assert summary["missing_product_category_count"] == 1
-    assert summary["blocked_reason_codes"] == [
-        "missing_db_rows:supplement_product_categories"
-    ]
+    assert summary["blocked_reason_codes"] == ["missing_db_rows:supplement_product_categories"]
     assert len(summary["missing_product_category_key_hashes"]) == 1
     dumped = json.dumps(summary, ensure_ascii=False)
     assert "source_product_id" not in dumped
@@ -443,9 +441,7 @@ async def test_verify_taxonomy_db_import_cli_loads_env_file_without_printing_dat
     stdout = capsys.readouterr().out
     summary_text = summary_path.read_text(encoding="utf-8")
     assert exit_code == 0
-    assert seen_database_url == [
-        "postgresql+asyncpg://example:secret@example.invalid/db"
-    ]
+    assert seen_database_url == ["postgresql+asyncpg://example:secret@example.invalid/db"]
     assert "secret" not in stdout
     assert "example.invalid" not in stdout
     assert "secret" not in summary_text

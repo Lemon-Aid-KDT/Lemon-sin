@@ -309,12 +309,14 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
     audit = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
-        "overall_status": "complete_verified"
-        if objective_completion_allowed
-        else _overall_status(
-            pending_count=pending,
-            blocked_count=blocked,
-            operator_review_gate=operator_review_gate,
+        "overall_status": (
+            "complete_verified"
+            if objective_completion_allowed
+            else _overall_status(
+                pending_count=pending,
+                blocked_count=blocked,
+                operator_review_gate=operator_review_gate,
+            )
         ),
         "objective_completion_allowed": objective_completion_allowed,
         "requirement_count": len(requirements),
@@ -329,13 +331,9 @@ def build_completion_audit(*, input_paths: Mapping[str, Path]) -> dict[str, Any]
             next_work_order.get("blank_row_count")
         ),
         "total_blank_row_count": _non_negative_int(progress.get("total_blank_row_count")),
-        "post_completion_execution_allowed": post_plan.get(
-            "post_completion_execution_allowed"
-        )
+        "post_completion_execution_allowed": post_plan.get("post_completion_execution_allowed")
         is True,
-        "post_completion_blocker_codes": _safe_string_list(
-            post_plan.get("blocked_reason_codes")
-        ),
+        "post_completion_blocker_codes": _safe_string_list(post_plan.get("blocked_reason_codes")),
         "operator_next_action": _safe_string(
             next_work_order.get("operator_next_action")
             or next_work_order.get("stage_next_operator_action")
@@ -465,7 +463,9 @@ def _requirement_summary(
             "requirement_key": requirement_key,
             "title": _safe_string(spec.get("title")),
             "objective_mapping": _safe_string(spec.get("objective_mapping")),
-            "status": "verified" if not teacher_gate["blocker_codes"] else "blocked_invalid_artifact",
+            "status": (
+                "verified" if not teacher_gate["blocker_codes"] else "blocked_invalid_artifact"
+            ),
             "stage_keys": [],
             "evidence": [
                 "unsafe input flags are false",
@@ -473,9 +473,11 @@ def _requirement_summary(
                 *teacher_gate["evidence"],
             ],
             "blocker_codes": teacher_gate["blocker_codes"],
-            "next_action": "continue_using_redacted_summaries_only"
-            if not teacher_gate["blocker_codes"]
-            else "regenerate_fail_closed_teacher_ocr_command_plan",
+            "next_action": (
+                "continue_using_redacted_summaries_only"
+                if not teacher_gate["blocker_codes"]
+                else "regenerate_fail_closed_teacher_ocr_command_plan"
+            ),
         }
     if requirement_key == "paddleocr_training_loop_ready":
         early_stop = artifact_by_role.get("paddleocr_accuracy_stop_gate")
@@ -507,11 +509,7 @@ def _requirement_summary(
         taxonomy_staging=taxonomy_staging,
     )
     blockers = sorted(
-        {
-            code
-            for stage in stages
-            for code in _safe_string_list(stage.get("blocker_codes"))
-        }
+        {code for stage in stages for code in _safe_string_list(stage.get("blocker_codes"))}
     )
     if requirement_key == "paddleocr_training_loop_ready":
         early_stop = artifact_by_role.get("paddleocr_accuracy_stop_gate")
@@ -716,10 +714,8 @@ def _teacher_ocr_plan_sequence_evidence(post_plan: Mapping[str, Any]) -> dict[st
     ):
         blockers.append("teacher_ocr_provider_opt_in_policy_missing")
     evidence = [
-        "teacher_ocr_plan_sequence="
-        + ("verified" if not blockers else "blocked"),
-        "teacher_ocr_plan_gate_inputs="
-        + ("verified" if not missing_gate_inputs else "missing"),
+        "teacher_ocr_plan_sequence=" + ("verified" if not blockers else "blocked"),
+        "teacher_ocr_plan_gate_inputs=" + ("verified" if not missing_gate_inputs else "missing"),
         "teacher_ocr_plan_provider_opt_in="
         + str(
             gate_policy_by_script.get("collect_supplement_ocr_observations")
@@ -764,9 +760,7 @@ def _teacher_ocr_checklist_gate_evidence(
         if not script_key or script_key in script_indices:
             continue
         script_indices[script_key] = index
-        command_by_script[script_key] = _command_text_for_internal_validation(
-            row.get("command")
-        )
+        command_by_script[script_key] = _command_text_for_internal_validation(row.get("command"))
         gate_policy_by_script[script_key] = _safe_string(row.get("gate_policy"))
     blockers: list[str] = []
     required_order = (
@@ -805,8 +799,7 @@ def _teacher_ocr_checklist_gate_evidence(
     ):
         blockers.append("teacher_ocr_command_provider_opt_in_policy_missing")
     evidence = [
-        "teacher_ocr_command_sequence="
-        + ("verified" if not blockers else "blocked"),
+        "teacher_ocr_command_sequence=" + ("verified" if not blockers else "blocked"),
         "teacher_ocr_command_ready_required="
         + str("--require-ready-for-teacher-ocr-eval" in gate_command).lower(),
         "teacher_ocr_command_provider_opt_in="
@@ -911,9 +904,11 @@ def _operator_review_completion_gate(
         "total_invalid_row_count": total_invalid_rows,
         "total_missing_row_count": total_missing_rows,
         "blocker_codes": blocker_codes,
-        "next_action": "run_post_completion_commands"
-        if completion_allowed
-        else "complete_all_operator_review_batches_before_completion",
+        "next_action": (
+            "run_post_completion_commands"
+            if completion_allowed
+            else "complete_all_operator_review_batches_before_completion"
+        ),
     }
 
 

@@ -415,8 +415,12 @@ def _queue_complete(*, progress: Mapping[str, Any], queue_key: str) -> bool:
     Returns:
         True when the queue has at least one batch and all are complete.
     """
-    queue_batches = [batch for batch in _progress_batches(progress) if batch.get("queue_key") == queue_key]
-    return bool(queue_batches) and all(batch.get("batch_status") == "complete" for batch in queue_batches)
+    queue_batches = [
+        batch for batch in _progress_batches(progress) if batch.get("queue_key") == queue_key
+    ]
+    return bool(queue_batches) and all(
+        batch.get("batch_status") == "complete" for batch in queue_batches
+    )
 
 
 def _progress_batches(progress: Mapping[str, Any]) -> list[Mapping[str, Any]]:

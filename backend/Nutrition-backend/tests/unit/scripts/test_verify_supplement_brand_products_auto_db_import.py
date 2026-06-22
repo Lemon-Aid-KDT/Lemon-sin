@@ -75,11 +75,13 @@ async def test_verify_auto_brand_products_reports_stale_mapping_hash_only(
     rows = auto_import.build_rows(root)
     repository = _FakeAutoBrandProductRepository.from_rows(
         rows,
-        extra_mappings={(
-            auto_import.SOURCE_PROVIDER,
-            str(rows[0]["source_product_id"]),
-            "legacy-extra",
-        )},
+        extra_mappings={
+            (
+                auto_import.SOURCE_PROVIDER,
+                str(rows[0]["source_product_id"]),
+                "legacy-extra",
+            )
+        },
     )
 
     summary = await verifier.verify_auto_brand_product_db_import(
@@ -120,9 +122,7 @@ async def test_verify_auto_brand_products_reports_missing_mapping_hash_only(
     assert summary["status"] == "not_verified_missing_db_rows"
     assert summary["db_import_verified"] is False
     assert summary["missing_product_category_count"] == 2
-    assert summary["blocked_reason_codes"] == [
-        "missing_db_rows:supplement_product_categories"
-    ]
+    assert summary["blocked_reason_codes"] == ["missing_db_rows:supplement_product_categories"]
     assert len(summary["missing_product_category_key_hashes"]) == 2
     dumped = json.dumps(summary, ensure_ascii=False)
     assert "source_product_id" not in dumped

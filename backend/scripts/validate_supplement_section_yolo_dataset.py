@@ -265,7 +265,9 @@ def _validate_split(
         raise DatasetContractError(f"{split_name} label directory does not exist.")
 
     images = sorted(
-        path for path in image_root.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        path
+        for path in image_root.iterdir()
+        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
     )
     if not images:
         raise DatasetContractError(f"{split_name} split does not contain images.")
@@ -415,7 +417,9 @@ def _parse_simple_yaml(text: str) -> dict[str, object]:
     return values
 
 
-def _parse_names_block(lines: list[str], start_index: int) -> tuple[dict[int, str] | list[str], int]:
+def _parse_names_block(
+    lines: list[str], start_index: int
+) -> tuple[dict[int, str] | list[str], int]:
     """Parse an indented ``names`` block.
 
     Args:

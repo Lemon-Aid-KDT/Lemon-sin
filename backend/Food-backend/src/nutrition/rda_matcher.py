@@ -135,9 +135,7 @@ class AmountNutritionEstimate(BaseModel):
     def _check_serving_count(self) -> AmountNutritionEstimate:
         """serving_count가 명시되면 양수여야 한다."""
         if self.serving_count is not None and self.serving_count <= 0:
-            raise ValueError(
-                f"serving_count must be > 0 when provided, got {self.serving_count}"
-            )
+            raise ValueError(f"serving_count must be > 0 when provided, got {self.serving_count}")
         return self
 
 
@@ -290,9 +288,7 @@ class RdaMatcher:
             if serving_count <= 0:
                 raise ValueError(f"serving_count must be > 0, got {serving_count}")
             if profile.default_serving_g <= 0:
-                raise ValueError(
-                    "profile.default_serving_g must be > 0 to use serving_count"
-                )
+                raise ValueError("profile.default_serving_g must be > 0 to use serving_count")
             actual_g = profile.default_serving_g * serving_count
             recorded_serving = serving_count
 
@@ -324,9 +320,7 @@ def _load_aliases(path: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for k, v in data.items():
         if not isinstance(v, str):
-            raise MealParseError(
-                f"alias value for '{k}' must be str, got {type(v).__name__}"
-            )
+            raise MealParseError(f"alias value for '{k}' must be str, got {type(v).__name__}")
         result[str(k)] = v
     return result
 
@@ -409,24 +403,15 @@ def _build_highlights_cautions(
     """
     highlights: list[str] = []
     cautions: list[str] = []
-    if (
-        nutrients_per_100g.get("protein_g", 0.0)
-        >= _PROTEIN_HIGHLIGHT_THRESHOLD_PER_100G
-    ):
+    if nutrients_per_100g.get("protein_g", 0.0) >= _PROTEIN_HIGHLIGHT_THRESHOLD_PER_100G:
         highlights.append("단백질이 풍부해요")
     if nutrients_per_100g.get("fiber_g", 0.0) >= _FIBER_HIGHLIGHT_THRESHOLD_PER_100G:
         highlights.append("식이섬유가 풍부해요")
-    if (
-        nutrients_per_100g.get("calcium_mg", 0.0)
-        >= _CALCIUM_HIGHLIGHT_THRESHOLD_PER_100G
-    ):
+    if nutrients_per_100g.get("calcium_mg", 0.0) >= _CALCIUM_HIGHLIGHT_THRESHOLD_PER_100G:
         highlights.append("칼슘이 풍부해요")
     if nutrients_per_100g.get("iron_mg", 0.0) >= _IRON_HIGHLIGHT_THRESHOLD_PER_100G:
         highlights.append("철분이 풍부해요")
-    if (
-        nutrients_per_100g.get("vitamin_c_mg", 0.0)
-        >= _VITAMIN_C_HIGHLIGHT_THRESHOLD_PER_100G
-    ):
+    if nutrients_per_100g.get("vitamin_c_mg", 0.0) >= _VITAMIN_C_HIGHLIGHT_THRESHOLD_PER_100G:
         highlights.append("비타민 C가 풍부해요")
     if nutrients_per_100g.get("sodium_mg", 0.0) >= _SODIUM_CAUTION_THRESHOLD_PER_100G:
         cautions.append("나트륨 함량이 다소 높아요")

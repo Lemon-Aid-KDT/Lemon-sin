@@ -403,9 +403,7 @@ async def _resolve_chosen_category(
             category_id=None,
         )
     except TaxonomyFilterNotFoundError as exc:
-        raise SupplementRegistrationValidationError(
-            "선택한 영양제 분류를 찾을 수 없어요."
-        ) from exc
+        raise SupplementRegistrationValidationError("선택한 영양제 분류를 찾을 수 없어요.") from exc
 
 
 def _category_summary(category: SupplementCategory) -> SupplementCategorySummary:
@@ -458,9 +456,7 @@ def _effective_categories(
     degrades gracefully without losing the stored key.
     """
     chosen = (
-        chosen_by_key.get(supplement.category_key)
-        if supplement.category_key is not None
-        else None
+        chosen_by_key.get(supplement.category_key) if supplement.category_key is not None else None
     )
     if chosen is not None:
         return [chosen]
@@ -803,9 +799,7 @@ def build_active_supplement_snapshot(
                         "amount": ingredient.amount,
                         "unit": ingredient.unit,
                         "analysis_use": (
-                            "standard_nutrient"
-                            if ingredient.nutrient_code
-                            else "label_only"
+                            "standard_nutrient" if ingredient.nutrient_code else "label_only"
                         ),
                         "source": ingredient.source,
                     }

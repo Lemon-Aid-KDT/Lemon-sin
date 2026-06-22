@@ -194,13 +194,17 @@ def build_paddleocr_text_metric_manifest(
             skip_reasons["expected_text_missing"] += 1
             continue
         text_source_counts[text_source] += 1
-        scored_observations = _scored_observations(row=row, provider=provider, reference_text=reference_text)
+        scored_observations = _scored_observations(
+            row=row, provider=provider, reference_text=reference_text
+        )
         if not scored_observations:
             skip_reasons["provider_observation_missing"] += 1
             continue
         for observation in scored_observations:
             observation_counts[str(observation["provider"])] += 1
-        row_leakage_check = leakage_check_passed and row.get("leakage_check_passed", True) is not False
+        row_leakage_check = (
+            leakage_check_passed and row.get("leakage_check_passed", True) is not False
+        )
         output_rows.append(
             {
                 "schema_version": ROW_SCHEMA_VERSION,

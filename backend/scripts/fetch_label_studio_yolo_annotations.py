@@ -171,10 +171,14 @@ def _run_converter(*, export_path: Path, template: Path, output: Path) -> int:
     """
     return subprocess.run(
         [
-            sys.executable, str(CONVERTER),
-            "--label-studio-export", str(export_path),
-            "--template", str(template),
-            "--output", str(output),
+            sys.executable,
+            str(CONVERTER),
+            "--label-studio-export",
+            str(export_path),
+            "--template",
+            str(template),
+            "--output",
+            str(output),
             "--apply",
         ],
         check=False,
@@ -185,7 +189,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--template", type=Path, required=True, help="Annotation template JSONL.")
     parser.add_argument("--output", type=Path, required=True, help="Converted annotation JSONL.")
-    parser.add_argument("--export-out", type=Path, default=None, help="Where to save the raw export.")
+    parser.add_argument(
+        "--export-out", type=Path, default=None, help="Where to save the raw export."
+    )
     parser.add_argument("--project-id", type=int, default=None)
     parser.add_argument("--url", default=None, help="Override LABEL_STUDIO_URL.")
     parser.add_argument("--token", default=None, help="Override LABEL_STUDIO_API_TOKEN.")

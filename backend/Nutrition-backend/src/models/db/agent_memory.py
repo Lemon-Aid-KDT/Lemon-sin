@@ -71,7 +71,9 @@ class AgentRun(TimestampMixin, Base):
         CheckConstraint("cost_usd >= 0", name="agent_runs_cost_usd_nonnegative"),
         Index("ix_agent_runs_owner_created_at", "owner_subject_hash", "created_at"),
         Index("ix_agent_runs_request_id", "request_id"),
-        Index("ix_agent_runs_owner_agent_created_at", "owner_subject_hash", "agent_name", "created_at"),
+        Index(
+            "ix_agent_runs_owner_agent_created_at", "owner_subject_hash", "agent_name", "created_at"
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)

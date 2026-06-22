@@ -58,7 +58,9 @@ class ReminderPreferenceCreate(BaseModel):
         """Reject diagnosis, treatment, prescription, and sales language."""
         lowered = value.lower()
         if any(term in lowered for term in FORBIDDEN_REMINDER_TERMS):
-            raise ValueError("Reminder text must avoid diagnosis, treatment, or prescription language.")
+            raise ValueError(
+                "Reminder text must avoid diagnosis, treatment, or prescription language."
+            )
         return value
 
 
@@ -92,7 +94,9 @@ class ReminderPreferenceUpdate(BaseModel):
             return None
         lowered = value.lower()
         if any(term in lowered for term in FORBIDDEN_REMINDER_TERMS):
-            raise ValueError("Reminder text must avoid diagnosis, treatment, or prescription language.")
+            raise ValueError(
+                "Reminder text must avoid diagnosis, treatment, or prescription language."
+            )
         return value
 
 

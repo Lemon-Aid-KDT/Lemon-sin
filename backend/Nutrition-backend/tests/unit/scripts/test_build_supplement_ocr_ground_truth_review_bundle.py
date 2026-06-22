@@ -239,7 +239,9 @@ def test_cli_writes_redacted_summary(
 
     printed = capsys.readouterr().out
     printed_summary = json.loads(printed)
-    saved_summary = json.loads((output_dir / review_bundle.SUMMARY_NAME).read_text(encoding="utf-8"))
+    saved_summary = json.loads(
+        (output_dir / review_bundle.SUMMARY_NAME).read_text(encoding="utf-8")
+    )
 
     assert printed_summary["source_run_id"] == "gt-cli-test"
     assert saved_summary["reviewable_row_count"] == 1

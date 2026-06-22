@@ -272,7 +272,9 @@ def _meal_wiki_query(meal: MealRecordResponse) -> str:
                     item.catalog_item.course_code,
                 )
             )
-    tokens.extend(str(value) for value in _bounded_nutrition_summary(meal.nutrition_summary).values())
+    tokens.extend(
+        str(value) for value in _bounded_nutrition_summary(meal.nutrition_summary).values()
+    )
     return " ".join(token.strip() for token in tokens if token and token.strip())[:1600]
 
 
@@ -344,9 +346,10 @@ def _deterministic_meal_guidance(
                 message="음식 후보가 비어 있어 직접 입력이나 재촬영이 필요합니다.",
             )
         )
-    if _numeric(summary.get("sodium_mg")) and (
-        _numeric(summary.get("sodium_mg")) or 0
-    ) > HIGH_SODIUM_MEAL_MG:
+    if (
+        _numeric(summary.get("sodium_mg"))
+        and (_numeric(summary.get("sodium_mg")) or 0) > HIGH_SODIUM_MEAL_MG
+    ):
         guidance.append(
             MealExplanationGuidance(
                 label="주의",

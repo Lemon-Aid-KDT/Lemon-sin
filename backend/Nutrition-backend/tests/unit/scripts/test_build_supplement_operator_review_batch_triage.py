@@ -51,18 +51,20 @@ def _pii_row(
     return {
         "schema_version": "supplement-review-pii-screening-decision-v1",
         "fixture_id": fixture_id,
-        "pii_screening_decision": decision
-        if decision is not None
-        else {
-            "decision": "",
-            "reviewer_id": "",
-            "reviewed_at": "",
-            "reason_codes": [],
-            "attest_local_screening_completed": False,
-            "attest_no_personal_data_visible": False,
-            "attest_no_raw_text_copied": False,
-            "attest_teacher_ocr_transfer_allowed": False,
-        },
+        "pii_screening_decision": (
+            decision
+            if decision is not None
+            else {
+                "decision": "",
+                "reviewer_id": "",
+                "reviewed_at": "",
+                "reason_codes": [],
+                "attest_local_screening_completed": False,
+                "attest_no_personal_data_visible": False,
+                "attest_no_raw_text_copied": False,
+                "attest_teacher_ocr_transfer_allowed": False,
+            }
+        ),
     }
 
 

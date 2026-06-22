@@ -121,8 +121,7 @@ def build_private_image_tracking_report(
     normalized_extensions = _normalize_extensions(image_extensions)
     repo_root = repo_root.expanduser().resolve()
     protected_paths = [
-        _repo_relative_path(repo_root=repo_root, path=path.expanduser().resolve())
-        for path in paths
+        _repo_relative_path(repo_root=repo_root, path=path.expanduser().resolve()) for path in paths
     ]
     if tracked_files is None:
         tracked_files = _git_tracked_files(repo_root=repo_root, protected_paths=protected_paths)
@@ -239,7 +238,11 @@ def _normalize_extensions(values: tuple[str, ...]) -> tuple[str, ...]:
     Raises:
         PrivateImageTrackingError: If no suffixes are supplied.
     """
-    normalized = tuple(sorted({value.lower() if value.startswith(".") else f".{value.lower()}" for value in values}))
+    normalized = tuple(
+        sorted(
+            {value.lower() if value.startswith(".") else f".{value.lower()}" for value in values}
+        )
+    )
     if not normalized:
         raise PrivateImageTrackingError("At least one image extension is required.")
     return normalized

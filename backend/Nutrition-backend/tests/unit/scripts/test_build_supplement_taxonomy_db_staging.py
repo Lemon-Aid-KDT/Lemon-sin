@@ -38,9 +38,7 @@ def test_build_taxonomy_staging_rows_separates_seedable_categories_and_review_br
     rows = staging.build_taxonomy_staging_rows(root=root, source_run_id="taxonomy-test")
 
     category_rows = [row for row in rows if row["row_type"] == staging.ROW_TYPE_CATEGORY]
-    brand_rows = [
-        row for row in rows if row["row_type"] == staging.ROW_TYPE_BRAND_CANDIDATE
-    ]
+    brand_rows = [row for row in rows if row["row_type"] == staging.ROW_TYPE_BRAND_CANDIDATE]
     assert len(category_rows) == 2
     assert len(brand_rows) == 2
     assert {row["category_key"] for row in category_rows} == {"비타민c", "오메가3"}

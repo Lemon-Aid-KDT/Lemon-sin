@@ -119,9 +119,7 @@ class TestFallback:
     def test_image_area_none_uses_default_serving(self) -> None:
         """image_area=None (bbox 있어도) → fallback."""
         estimator = PortionEstimator()
-        result = estimator.estimate_item(
-            _item(), bbox=SMALL_RATIO_BBOX, image_area=None
-        )
+        result = estimator.estimate_item(_item(), bbox=SMALL_RATIO_BBOX, image_area=None)
         assert result.estimated_grams == DEFAULT_SERVING
         assert result.estimated_amount == AMOUNT_MEDIUM
         assert result.portion_confidence == FALLBACK_CONFIDENCE
@@ -171,9 +169,7 @@ class TestInvalidDefaultServing:
         """default_serving_g=0 → ValueError (fallback 경로)."""
         estimator = PortionEstimator()
         with pytest.raises(ValueError, match="default_serving_g"):
-            estimator.estimate_item(
-                _item(), bbox=None, image_area=None, default_serving_g=0.0
-            )
+            estimator.estimate_item(_item(), bbox=None, image_area=None, default_serving_g=0.0)
 
     def test_default_serving_negative_raises_in_bbox_path(self) -> None:
         """default_serving_g<0 → ValueError (bbox 보정 경로)."""
@@ -203,9 +199,7 @@ class TestRatioBands:
     def test_small_ratio_uses_multiplier_07(self) -> None:
         """ratio<0.15 → x0.7, '소량 추정', conf 0.6."""
         estimator = PortionEstimator()
-        result = estimator.estimate_item(
-            _item(), bbox=SMALL_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(_item(), bbox=SMALL_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.estimated_grams == pytest.approx(EXPECTED_SMALL_GRAMS)
         assert result.estimated_amount == AMOUNT_SMALL
         assert result.portion_confidence == BBOX_CONFIDENCE
@@ -213,9 +207,7 @@ class TestRatioBands:
     def test_boundary_015_is_medium(self) -> None:
         """ratio==0.15 → '1인분 추정' (lower boundary inclusive)."""
         estimator = PortionEstimator()
-        result = estimator.estimate_item(
-            _item(), bbox=BOUNDARY_LOW_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(_item(), bbox=BOUNDARY_LOW_BBOX, image_area=IMAGE_AREA)
         assert result.estimated_grams == pytest.approx(EXPECTED_MEDIUM_GRAMS)
         assert result.estimated_amount == AMOUNT_MEDIUM
         assert result.portion_confidence == BBOX_CONFIDENCE
@@ -230,18 +222,14 @@ class TestRatioBands:
     def test_boundary_045_is_medium(self) -> None:
         """ratio==0.45 → '1인분 추정' (upper boundary inclusive)."""
         estimator = PortionEstimator()
-        result = estimator.estimate_item(
-            _item(), bbox=BOUNDARY_HIGH_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(_item(), bbox=BOUNDARY_HIGH_BBOX, image_area=IMAGE_AREA)
         assert result.estimated_grams == pytest.approx(EXPECTED_MEDIUM_GRAMS)
         assert result.estimated_amount == AMOUNT_MEDIUM
 
     def test_large_ratio_uses_multiplier_12(self) -> None:
         """ratio>0.45 → x1.2, '많음 추정', conf 0.6."""
         estimator = PortionEstimator()
-        result = estimator.estimate_item(
-            _item(), bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(_item(), bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.estimated_grams == pytest.approx(EXPECTED_LARGE_GRAMS)
         assert result.estimated_amount == AMOUNT_LARGE
         assert result.portion_confidence == BBOX_CONFIDENCE
@@ -261,18 +249,14 @@ class TestPreservedFields:
         """food_code=None도 그대로 None."""
         estimator = PortionEstimator()
         item = _item(food_code=None)
-        result = estimator.estimate_item(
-            item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.food_code is None
 
     def test_confidence_preserved(self) -> None:
         """confidence는 변경되지 않는다."""
         estimator = PortionEstimator()
         item = _item(confidence=ITEM_CONFIDENCE)
-        result = estimator.estimate_item(
-            item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.confidence == ITEM_CONFIDENCE
 
     def test_sources_preserved(self) -> None:
@@ -280,18 +264,14 @@ class TestPreservedFields:
         estimator = PortionEstimator()
         sources: list[DetectionSource] = ["yolo_v8", "google_vision"]
         item = _item(sources=sources)
-        result = estimator.estimate_item(
-            item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.sources == sources
 
     def test_needs_user_review_preserved(self) -> None:
         """needs_user_review는 변경되지 않는다."""
         estimator = PortionEstimator()
         item = _item(needs_user_review=True)
-        result = estimator.estimate_item(
-            item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.needs_user_review is True
 
     def test_alternatives_preserved(self) -> None:
@@ -304,9 +284,7 @@ class TestPreservedFields:
             source="yolo_v8",
         )
         item = _item(alternatives=[alt])
-        result = estimator.estimate_item(
-            item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA
-        )
+        result = estimator.estimate_item(item, bbox=LARGE_RATIO_BBOX, image_area=IMAGE_AREA)
         assert result.alternatives == [alt]
 
 
@@ -346,9 +324,7 @@ class TestEstimateItems:
         estimator = PortionEstimator()
         item = _item("공기밥")
         det = _yolo_det("공기밥", SMALL_RATIO_BBOX)
-        results = estimator.estimate_items(
-            [item], detections=[det], image_area=IMAGE_AREA
-        )
+        results = estimator.estimate_items([item], detections=[det], image_area=IMAGE_AREA)
         assert len(results) == 1
         # SMALL_RATIO_BBOX → '소량 추정', x0.7
         assert results[0].estimated_amount == AMOUNT_SMALL
@@ -359,9 +335,7 @@ class TestEstimateItems:
         estimator = PortionEstimator()
         item = _item("공기밥")
         det = _yolo_det("김치찌개", SMALL_RATIO_BBOX)  # 다른 이름
-        results = estimator.estimate_items(
-            [item], detections=[det], image_area=IMAGE_AREA
-        )
+        results = estimator.estimate_items([item], detections=[det], image_area=IMAGE_AREA)
         assert results[0].estimated_grams == DEFAULT_SERVING
         assert results[0].estimated_amount == AMOUNT_MEDIUM
         assert results[0].portion_confidence == FALLBACK_CONFIDENCE
@@ -372,9 +346,7 @@ class TestEstimateItems:
         item = _item("공기밥")
         det1 = _yolo_det("공기밥", SMALL_RATIO_BBOX)  # ratio 0.01 → 소량
         det2 = _yolo_det("공기밥", LARGE_RATIO_BBOX)  # ratio 0.50 → 많음
-        results = estimator.estimate_items(
-            [item], detections=[det1, det2], image_area=IMAGE_AREA
-        )
+        results = estimator.estimate_items([item], detections=[det1, det2], image_area=IMAGE_AREA)
         # 첫 번째 det1의 bbox로 → 소량
         assert results[0].estimated_amount == AMOUNT_SMALL
 
@@ -389,9 +361,7 @@ class TestEstimateItems:
         )
         item = _item("공기밥", alternatives=[alt])
         det = _yolo_det("공기밥", SMALL_RATIO_BBOX)
-        results = estimator.estimate_items(
-            [item], detections=[det], image_area=IMAGE_AREA
-        )
+        results = estimator.estimate_items([item], detections=[det], image_area=IMAGE_AREA)
         assert results[0].alternatives == [alt]
 
     def test_image_area_none_all_fallback(self) -> None:
@@ -409,9 +379,7 @@ class TestEstimateItems:
         estimator = PortionEstimator()
         item = _item("공기밥")
         det = _yolo_det("공기밥", bbox=None)  # GCV label hint 시뮬레이션
-        results = estimator.estimate_items(
-            [item], detections=[det], image_area=IMAGE_AREA
-        )
+        results = estimator.estimate_items([item], detections=[det], image_area=IMAGE_AREA)
         assert results[0].estimated_grams == DEFAULT_SERVING
         assert results[0].portion_confidence == FALLBACK_CONFIDENCE
 

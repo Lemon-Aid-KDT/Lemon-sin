@@ -181,9 +181,8 @@ def build_brand_review_batch_triage(
         "reason_counts": dict(sorted(reason_counts.items())),
         "duplicate_candidate_cluster_count": sum(1 for size in cluster_sizes.values() if size > 1),
         "duplicate_candidate_row_count": sum(size for size in cluster_sizes.values() if size > 1),
-        "row_hints_truncated": len(row_hints) < sum(
-            1 for item in row_summaries if item["priority"] != "p4_reviewed"
-        ),
+        "row_hints_truncated": len(row_hints)
+        < sum(1 for item in row_summaries if item["priority"] != "p4_reviewed"),
         "row_hints": row_hints,
         "operator_next_steps": _operator_next_steps(reason_counts=reason_counts),
         "automatic_decision_performed": False,
@@ -275,7 +274,8 @@ def _row_triage(
     """
     decision = _cell(row, "decision").casefold()
     reviewed_fields_filled = any(
-        _cell(row, key) for key in ("reviewed_manufacturer", "reviewed_product_name", "reason_codes")
+        _cell(row, key)
+        for key in ("reviewed_manufacturer", "reviewed_product_name", "reason_codes")
     )
     reason_codes: list[str] = []
     if not decision:
@@ -293,7 +293,10 @@ def _row_triage(
         reason_codes.append("no_detail_page_images")
     if image_count == 0:
         reason_codes.append("no_image_evidence")
-    cluster_key = (_safe_optional_token(_cell(row, "category_key")), _safe_optional_token(_cell(row, "brand_candidate_key")))
+    cluster_key = (
+        _safe_optional_token(_cell(row, "category_key")),
+        _safe_optional_token(_cell(row, "brand_candidate_key")),
+    )
     if all(cluster_key) and cluster_sizes.get(cluster_key, 0) > 1:
         reason_codes.append("duplicate_candidate_in_batch")
     reason_codes.extend(_candidate_quality_reason_codes(row))
@@ -475,7 +478,9 @@ def _reject_unsafe_csv_row(row: Mapping[str, str | None]) -> None:
     """
     for value in row.values():
         if value and any(marker in value for marker in batch_csv.applier.LOCAL_PATH_OR_URL_MARKERS):
-            raise BrandReviewBatchTriageError("Unsafe local path or URL marker found in review CSV.")
+            raise BrandReviewBatchTriageError(
+                "Unsafe local path or URL marker found in review CSV."
+            )
 
 
 def _reject_public_payload(value: Any) -> None:
@@ -488,7 +493,11 @@ def _reject_public_payload(value: Any) -> None:
         batch_csv._reject_unsafe_payload(value)
     except ValueError as exc:
         raise BrandReviewBatchTriageError(str(exc)) from exc
-    dumped = json.dumps(value, ensure_ascii=False, sort_keys=True) if not isinstance(value, str) else value
+    dumped = (
+        json.dumps(value, ensure_ascii=False, sort_keys=True)
+        if not isinstance(value, str)
+        else value
+    )
     forbidden_markers = (
         "brand_candidate_display_name",
         "reviewed_manufacturer",
@@ -496,7 +505,9 @@ def _reject_public_payload(value: Any) -> None:
         "source_product_id",
     )
     if any(marker in dumped for marker in forbidden_markers):
-        raise BrandReviewBatchTriageError("Public triage payload contains operator review text fields.")
+        raise BrandReviewBatchTriageError(
+            "Public triage payload contains operator review text fields."
+        )
 
 
 def _cell(row: Mapping[str, str], key: str) -> str:

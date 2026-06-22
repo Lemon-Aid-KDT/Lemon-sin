@@ -74,9 +74,7 @@ class _GcvEntryRaw(BaseModel):
     gcv_hints: _GcvHintsRaw = Field(default_factory=_GcvHintsRaw)
 
 
-_FIXTURE_ADAPTER: TypeAdapter[dict[str, _GcvEntryRaw]] = TypeAdapter(
-    dict[str, _GcvEntryRaw]
-)
+_FIXTURE_ADAPTER: TypeAdapter[dict[str, _GcvEntryRaw]] = TypeAdapter(dict[str, _GcvEntryRaw])
 """fixture JSON 루트 타입 검증 adapter."""
 
 
@@ -164,9 +162,7 @@ class MockGoogleVisionMealHintAdapter(GoogleVisionMealHintAdapter):
         except OSError as e:
             raise MealParseError(f"fixture file not readable: {fixture_path}") from e
         try:
-            self._fixtures: dict[str, _GcvEntryRaw] = _FIXTURE_ADAPTER.validate_json(
-                raw
-            )
+            self._fixtures: dict[str, _GcvEntryRaw] = _FIXTURE_ADAPTER.validate_json(raw)
         except ValidationError as e:
             raise MealParseError(f"fixture JSON invalid: {fixture_path}") from e
 

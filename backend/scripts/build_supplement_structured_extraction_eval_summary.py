@@ -61,13 +61,23 @@ def build_summary(
     field_total = sum(int(e.get("field_total", 0)) for e in rows)
     ing_found = sum(int(e.get("ingredient_found", 0)) for e in rows)
     ing_total = sum(int(e.get("ingredient_total", 0)) for e in rows)
-    macro = sum(float(e.get("field_match_ratio", 0.0)) for e in rows) / fixture_count if fixture_count else 0.0
+    macro = (
+        sum(float(e.get("field_match_ratio", 0.0)) for e in rows) / fixture_count
+        if fixture_count
+        else 0.0
+    )
     micro = field_matched / field_total if field_total else 0.0
     ing_recall = ing_found / ing_total if ing_total else 0.0
     # failure-mode counts (diagnostic; aligns with the v2 hard-case taxonomy)
     field_zero = sum(1 for e in rows if float(e.get("field_match_ratio", 0.0)) == 0.0)
-    field_lt50 = sum(1 for e in rows if float(e.get("field_match_ratio", 0.0)) < FIELD_HALF_THRESHOLD)
-    ing_all_missed = sum(1 for e in rows if int(e.get("ingredient_total", 0)) > 0 and int(e.get("ingredient_found", 0)) == 0)
+    field_lt50 = sum(
+        1 for e in rows if float(e.get("field_match_ratio", 0.0)) < FIELD_HALF_THRESHOLD
+    )
+    ing_all_missed = sum(
+        1
+        for e in rows
+        if int(e.get("ingredient_total", 0)) > 0 and int(e.get("ingredient_found", 0)) == 0
+    )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -96,7 +106,9 @@ def build_summary(
 def main() -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--eval-json", required=True, type=Path, help="paddleocr_clova_eval output JSON.")
+    ap.add_argument(
+        "--eval-json", required=True, type=Path, help="paddleocr_clova_eval output JSON."
+    )
     ap.add_argument("--splits", required=True, type=Path, help="Benchmark split assignment JSONL.")
     ap.add_argument("--eval-split", default="holdout")
     ap.add_argument("--provider", default="paddleocr_local")
@@ -106,10 +118,18 @@ def main() -> None:
     a = ap.parse_args()
 
     eval_json = json.loads(a.eval_json.read_text(encoding="utf-8"))
-    rows = [json.loads(line) for line in a.splits.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in a.splits.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     summary = build_summary(
-        eval_json=eval_json, split_rows=rows, eval_split=a.eval_split, provider=a.provider,
-        leakage_check_passed=a.leakage_check_passed, privacy_review_cleared=a.privacy_review_cleared,
+        eval_json=eval_json,
+        split_rows=rows,
+        eval_split=a.eval_split,
+        provider=a.provider,
+        leakage_check_passed=a.leakage_check_passed,
+        privacy_review_cleared=a.privacy_review_cleared,
     )
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

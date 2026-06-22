@@ -90,19 +90,26 @@ def upgrade() -> None:
         sa.Column("embedding", PGVectorType(GEMMA_EMBEDDING_DIMENSIONS), nullable=False),
         sa.Column("embedding_model", sa.String(length=120), nullable=False),
         sa.Column("embedding_dimensions", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint(
             "embedding_dimensions > 0",
             name=op.f("ck_wiki_chunk_embeddings_gemma_embedding_dimensions_positive"),
         ),
         sa.ForeignKeyConstraint(
-            ["chunk_id"], ["wiki_chunks.id"],
-            name=op.f("fk_wiki_chunk_embeddings_gemma_chunk_id_wiki_chunks"), ondelete="CASCADE",
+            ["chunk_id"],
+            ["wiki_chunks.id"],
+            name=op.f("fk_wiki_chunk_embeddings_gemma_chunk_id_wiki_chunks"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_wiki_chunk_embeddings_gemma")),
         sa.UniqueConstraint(
-            "chunk_id", "embedding_model",
+            "chunk_id",
+            "embedding_model",
             name=op.f("uq_wiki_chunk_embeddings_gemma_chunk_model"),
         ),
     )

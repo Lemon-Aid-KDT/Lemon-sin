@@ -9,16 +9,13 @@ monkeypatched so the control flow is asserted in isolation.
 from __future__ import annotations
 
 import pytest
-
 from src.db.tx import REQUEST_MANAGED_TX
 from src.services import privacy
 
 
 class _FakeSession:
     def __init__(self, *, request_managed: bool = False) -> None:
-        self.info: dict[str, object] = (
-            {REQUEST_MANAGED_TX: True} if request_managed else {}
-        )
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
         self.calls: list[str] = []
 
     def add(self, _obj: object) -> None:

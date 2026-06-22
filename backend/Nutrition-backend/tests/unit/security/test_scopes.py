@@ -55,8 +55,7 @@ async def test_meal_read_scope_is_distinct_from_meal_write_scope() -> None:
     assert exc_info.value.status_code == 403
     assert exc_info.value.headers == {
         "WWW-Authenticate": (
-            'Bearer realm="lemon-healthcare", '
-            'error="insufficient_scope", scope="meal:read"'
+            'Bearer realm="lemon-healthcare", ' 'error="insufficient_scope", scope="meal:read"'
         )
     }
 

@@ -892,17 +892,13 @@ def _medical_context_summary(
     return {
         "available": True,
         "condition_count": medical_context_summary.condition_count,
-        "canonical_condition_codes": list(
-            medical_context_summary.canonical_condition_codes[:8]
-        ),
+        "canonical_condition_codes": list(medical_context_summary.canonical_condition_codes[:8]),
         "uncategorized_condition_count": medical_context_summary.uncategorized_condition_count,
         "active_medication_count": medical_context_summary.active_medication_count,
         "medication_review_categories": list(
             medical_context_summary.medication_review_categories[:8]
         ),
-        "uncategorized_medication_count": (
-            medical_context_summary.uncategorized_medication_count
-        ),
+        "uncategorized_medication_count": (medical_context_summary.uncategorized_medication_count),
         "raw_medical_text_included": False,
     }
 
@@ -943,7 +939,9 @@ def _append_profile_context_bullets(
     if profile_context.get("available"):
         bullets.append(_profile_context_bullet(profile_context))
         if _has_profile_precaution_overlap(context):
-            bullets.append("개인 상태와 라벨 주의 문구가 겹칠 수 있어 전문가 상담 여부를 확인하세요.")
+            bullets.append(
+                "개인 상태와 라벨 주의 문구가 겹칠 수 있어 전문가 상담 여부를 확인하세요."
+            )
         return
     if context.get("profile_context_requested"):
         bullets.append("개인 프로필이 없어 일반 라벨 확인 기준으로만 설명합니다.")
@@ -1011,16 +1009,20 @@ def _medical_context_bullet(medical_context: Mapping[str, Any]) -> str:
     """
     condition_count = _bounded_int(medical_context.get("condition_count"))
     medication_count = _bounded_int(medical_context.get("active_medication_count"))
-    category_count = len(_safe_string_list(
-        medical_context.get("medication_review_categories"),
-        max_items=8,
-        limit=80,
-    ))
-    condition_code_count = len(_safe_string_list(
-        medical_context.get("canonical_condition_codes"),
-        max_items=8,
-        limit=80,
-    ))
+    category_count = len(
+        _safe_string_list(
+            medical_context.get("medication_review_categories"),
+            max_items=8,
+            limit=80,
+        )
+    )
+    condition_code_count = len(
+        _safe_string_list(
+            medical_context.get("canonical_condition_codes"),
+            max_items=8,
+            limit=80,
+        )
+    )
     detail_parts: list[str] = []
     if condition_count:
         detail_parts.append(f"질환 {condition_count}개")

@@ -338,9 +338,7 @@ def _summary(
         "test_minimum_met": split_counts["test"] >= min_test_fixtures,
     }
     status = (
-        "ready_for_holdout_eval"
-        if all(checks.values())
-        else "assigned_but_eval_minimum_not_met"
+        "ready_for_holdout_eval" if all(checks.values()) else "assigned_but_eval_minimum_not_met"
     )
     return {
         "schema_version": SCHEMA_VERSION,
@@ -350,9 +348,7 @@ def _summary(
         "row_count": len(rows),
         "product_group_count": len(groups),
         "split_counts": {split: split_counts.get(split, 0) for split in SPLITS},
-        "product_group_split_counts": {
-            split: group_split_counts.get(split, 0) for split in SPLITS
-        },
+        "product_group_split_counts": {split: group_split_counts.get(split, 0) for split in SPLITS},
         "holdout_ratio": round(holdout_ratio, 6),
         "test_ratio": round(test_ratio, 6),
         "train_ratio": round(1 - holdout_ratio - test_ratio, 6),

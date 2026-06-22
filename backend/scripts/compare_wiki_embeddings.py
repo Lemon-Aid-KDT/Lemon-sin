@@ -60,9 +60,9 @@ def _embed(query: str, *, ollama_url: str, target: WikiEmbeddingTarget) -> list[
         ValueError: If the embedding dimension does not match the target.
         RuntimeError: If the embeddings request fails.
     """
-    payload = json.dumps(
-        {"model": target.model, "prompt": target.format_query(query)}
-    ).encode("utf-8")
+    payload = json.dumps({"model": target.model, "prompt": target.format_query(query)}).encode(
+        "utf-8"
+    )
     req = urllib.request.Request(
         f"{ollama_url}/api/embeddings",
         data=payload,
@@ -117,7 +117,9 @@ async def _search(
         ORDER BY e.embedding OPERATOR(extensions.<=>) $1::extensions.vector ASC
         LIMIT $3
         """,
-        embedding_literal, target.model, top_k,
+        embedding_literal,
+        target.model,
+        top_k,
     )
     return [
         {
@@ -263,7 +265,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
     parser.add_argument(
-        "--query", action="append", default=None,
+        "--query",
+        action="append",
+        default=None,
         help="Override the representative query set (repeatable).",
     )
     parser.add_argument("--summary", type=Path, default=None)

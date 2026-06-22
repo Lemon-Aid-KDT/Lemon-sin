@@ -165,7 +165,11 @@ def preflight_operator_review_batch_file(
         "batch_file_name": batch_file.name,
         **review_csv_summary,
         "source_editable_file_name": _safe_filename(
-            str(batch.get("editable_file_name") or batch.get("source_editable_file_name") or "unknown.jsonl")
+            str(
+                batch.get("editable_file_name")
+                or batch.get("source_editable_file_name")
+                or "unknown.jsonl"
+            )
         ),
         "row_index_start": start,
         "row_index_end": end,
@@ -287,7 +291,9 @@ def _review_csv_summary(
             "batch_review_csv_matches_batch": False,
         }
     if queue_key != "brand_product_review":
-        raise BatchFilePreflightError("Batch review CSV is only supported for brand review batches.")
+        raise BatchFilePreflightError(
+            "Batch review CSV is only supported for brand review batches."
+        )
     csv_fixture_ids = _read_review_csv_fixture_ids(review_csv_path)
     batch_fixture_ids = [_safe_fixture_id(row.get("fixture_id")) for row in rows]
     if csv_fixture_ids != batch_fixture_ids:
@@ -464,8 +470,11 @@ def _safe_filename(value: str) -> str:
         Safe file name.
     """
     cleaned = value.strip()
-    if not cleaned or "/" in cleaned or "\\" in cleaned or any(
-        marker in cleaned for marker in progress.LOCAL_PATH_MARKERS
+    if (
+        not cleaned
+        or "/" in cleaned
+        or "\\" in cleaned
+        or any(marker in cleaned for marker in progress.LOCAL_PATH_MARKERS)
     ):
         raise BatchFilePreflightError("Unsafe file name.")
     return cleaned[:120]

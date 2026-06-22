@@ -126,10 +126,7 @@ class UserHealthContextSnapshot:
         if not isinstance(sanitized, dict):
             return cls.empty()
         return cls(
-            **{
-                field_name: _as_dict(sanitized.get(field_name))
-                for field_name in _SNAPSHOT_FIELDS
-            }
+            **{field_name: _as_dict(sanitized.get(field_name)) for field_name in _SNAPSHOT_FIELDS}
         )
 
     def to_safe_context(self) -> dict[str, Any]:
@@ -172,7 +169,10 @@ class ContextResolver:
                 reason="empty_user_health_context_snapshot",
             )
 
-        if _asks_for_specific_food_record(normalized_question) and not snapshot.has_recent_food_records():
+        if (
+            _asks_for_specific_food_record(normalized_question)
+            and not snapshot.has_recent_food_records()
+        ):
             return ContextResolution(
                 status="needs_structured_lookup",
                 safe_context=_profile_only_context(snapshot),
@@ -198,17 +198,15 @@ def build_user_health_context_snapshot_from_app_records(
     meal_food_items_by_meal_id: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
     food_nutrition_by_catalog_item_id: Mapping[str, Mapping[str, Any]] | None = None,
     food_nutrition_by_class_en: Mapping[str, Mapping[str, Any]] | None = None,
-    food_image_analysis_runs_by_meal_id: Mapping[
-        str, Iterable[Mapping[str, Any]]
-    ] | None = None,
+    food_image_analysis_runs_by_meal_id: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
     supplements: Iterable[Mapping[str, Any]] = (),
-    user_supplement_ingredients_by_supplement_id: Mapping[
-        str, Iterable[Mapping[str, Any]]
-    ] | None = None,
+    user_supplement_ingredients_by_supplement_id: (
+        Mapping[str, Iterable[Mapping[str, Any]]] | None
+    ) = None,
     supplement_products_by_id: Mapping[str, Mapping[str, Any]] | None = None,
-    supplement_product_ingredients_by_product_id: Mapping[
-        str, Iterable[Mapping[str, Any]]
-    ] | None = None,
+    supplement_product_ingredients_by_product_id: (
+        Mapping[str, Iterable[Mapping[str, Any]]] | None
+    ) = None,
     medical_conditions: Iterable[Mapping[str, Any]] = (),
     medications: Iterable[Mapping[str, Any]] = (),
     patient_status_snapshots: Iterable[Mapping[str, Any]] = (),
@@ -318,9 +316,7 @@ def _recent_food_snapshot(
     checklist_items: list[str] = []
     for meal in _newest_active_rows(meal_records, limit=_MAX_RECENT_FOOD_RECORDS):
         meal_id = _clean_identifier(meal.get("id") or meal.get("meal_id"))
-        food_items = tuple(
-            _iter_active_rows(meal_food_items_by_meal_id.get(meal_id, ()))
-        )
+        food_items = tuple(_iter_active_rows(meal_food_items_by_meal_id.get(meal_id, ())))
         analysis_runs = tuple(
             _iter_active_rows(food_image_analysis_runs_by_meal_id.get(meal_id, ()))
         )
@@ -335,18 +331,12 @@ def _recent_food_snapshot(
             for item in food_items
         ]
         food_item_snapshots = [item for item in food_item_snapshots if item]
-        analysis_run_snapshots = [
-            _food_analysis_run_snapshot(run) for run in analysis_runs
-        ]
+        analysis_run_snapshots = [_food_analysis_run_snapshot(run) for run in analysis_runs]
         analysis_run_snapshots = [run for run in analysis_run_snapshots if run]
         nutrient_axes = _unique_strings(
             (
                 *_nutrient_axes_from_mapping(_as_dict(meal.get("nutrition_summary"))),
-                *(
-                    axis
-                    for item in food_items
-                    for axis in _nutrient_axes_from_mapping(item)
-                ),
+                *(axis for item in food_items for axis in _nutrient_axes_from_mapping(item)),
                 *(
                     axis
                     for run in analysis_run_snapshots
@@ -386,13 +376,9 @@ def _recent_food_snapshot(
 def _active_supplement_snapshot(
     supplements: Iterable[Mapping[str, Any]],
     *,
-    user_supplement_ingredients_by_supplement_id: Mapping[
-        str, Iterable[Mapping[str, Any]]
-    ],
+    user_supplement_ingredients_by_supplement_id: Mapping[str, Iterable[Mapping[str, Any]]],
     supplement_products_by_id: Mapping[str, Mapping[str, Any]],
-    supplement_product_ingredients_by_product_id: Mapping[
-        str, Iterable[Mapping[str, Any]]
-    ],
+    supplement_product_ingredients_by_product_id: Mapping[str, Iterable[Mapping[str, Any]]],
 ) -> dict[str, Any]:
     registered: list[dict[str, Any]] = []
     for supplement in _iter_active_rows(supplements):
@@ -499,9 +485,7 @@ def _copy_present(
     keys: tuple[str, ...],
 ) -> dict[str, Any]:
     return {
-        key: source[key]
-        for key in keys
-        if key in source and source[key] not in (None, "", [], {})
+        key: source[key] for key in keys if key in source and source[key] not in (None, "", [], {})
     }
 
 
@@ -516,7 +500,15 @@ def _iter_active_rows(rows: Iterable[Mapping[str, Any]]) -> Iterable[Mapping[str
         status = _clean_string(
             row.get("status") or row.get("active_status") or row.get("clinical_status")
         )
-        if status in {"archived", "deleted", "expired", "failed", "inactive", "resolved", "stopped"}:
+        if status in {
+            "archived",
+            "deleted",
+            "expired",
+            "failed",
+            "inactive",
+            "resolved",
+            "stopped",
+        }:
             continue
         yield row
 
@@ -527,9 +519,7 @@ def _newest_active_rows(
     limit: int,
 ) -> tuple[Mapping[str, Any], ...]:
     active_rows = tuple(_iter_active_rows(rows))
-    return tuple(
-        sorted(active_rows, key=_row_recency_key, reverse=True)[:limit]
-    )
+    return tuple(sorted(active_rows, key=_row_recency_key, reverse=True)[:limit])
 
 
 def _row_recency_key(row: Mapping[str, Any]) -> str:
@@ -654,9 +644,7 @@ def _food_analysis_run_snapshot(run: Mapping[str, Any]) -> dict[str, Any]:
             "warning_codes",
         ),
     )
-    nutrition_estimate = _nutrition_summary(
-        _as_dict(run.get("nutrition_estimate_snapshot"))
-    )
+    nutrition_estimate = _nutrition_summary(_as_dict(run.get("nutrition_estimate_snapshot")))
     if nutrition_estimate:
         snapshot["nutrition_estimate_snapshot"] = nutrition_estimate
     return snapshot

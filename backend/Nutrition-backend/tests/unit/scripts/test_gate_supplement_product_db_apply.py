@@ -74,9 +74,9 @@ def _dry_run(*, products: int = 12, require_products: bool = True) -> dict[str, 
         "planned_category_upsert_count": 43,
         "planned_product_upsert_count": products,
         "planned_product_category_upsert_count": products,
-        "product_import_manifest_name": "approved-product-import.current.jsonl"
-        if products
-        else None,
+        "product_import_manifest_name": (
+            "approved-product-import.current.jsonl" if products else None
+        ),
         "product_import_manifest_sha256": "a" * 64 if products else None,
         "apply_requested": False,
         "require_approved_products": require_products,
@@ -131,9 +131,7 @@ def _target_preflight(*, ready: bool = True) -> dict[str, Any]:
     """
     return {
         "schema_version": "supplement-category-seed-db-target-preflight-v1",
-        "status": "ready_for_local_category_seed_apply"
-        if ready
-        else "blocked_by_db_target_safety",
+        "status": "ready_for_local_category_seed_apply" if ready else "blocked_by_db_target_safety",
         "category_seed_db_apply_target_allowed": ready,
         "database_host_class": "local" if ready else "remote_or_unknown",
         "db_connection_opened": False,
@@ -237,9 +235,7 @@ def test_product_db_apply_gate_allows_extra_active_categories(tmp_path: Path) ->
     verify = _category_verify(verified=False, missing=0)
     verify["blocked_reason_codes"] = ["extra_db_rows:supplement_categories"]
 
-    summary = gate.build_product_db_apply_gate(
-        input_paths=_input_paths(tmp_path, verify=verify)
-    )
+    summary = gate.build_product_db_apply_gate(input_paths=_input_paths(tmp_path, verify=verify))
 
     assert summary["status"] == "ready_for_reviewed_product_db_apply"
     assert summary["product_db_apply_allowed"] is True

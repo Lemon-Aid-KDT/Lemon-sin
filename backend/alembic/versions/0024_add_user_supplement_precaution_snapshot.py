@@ -34,8 +34,7 @@ def _drop_check_by_definition(table: str, definition_needle: str) -> None:
     resolved name goes through ``format(... %I ...)``.
     """
     needle = definition_needle.replace("'", "''")
-    op.execute(
-        f"""
+    op.execute(f"""
         DO $$
         DECLARE
             v_name text;
@@ -55,8 +54,7 @@ def _drop_check_by_definition(table: str, definition_needle: str) -> None:
                 );
             END IF;
         END $$;
-        """
-    )
+        """)
 
 
 def upgrade() -> None:

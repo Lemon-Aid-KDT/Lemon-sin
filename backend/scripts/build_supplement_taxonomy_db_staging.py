@@ -204,9 +204,7 @@ def build_summary(*, rows: list[dict[str, Any]], root: Path) -> dict[str, Any]:
         "category_seed_row_count": len(category_rows),
         "brand_candidate_row_count": len(brand_rows),
         "review_required_row_count": sum(1 for row in rows if row["requires_human_review"]),
-        "approved_for_db_write_row_count": sum(
-            1 for row in rows if row["approved_for_db_write"]
-        ),
+        "approved_for_db_write_row_count": sum(1 for row in rows if row["approved_for_db_write"]),
         "category_key_counts": dict(sorted(category_counts.items())),
         "top_brand_candidate_counts": audit._top_counter(brand_counts, limit=50),
         "issue_counts": dict(sorted(issue_counts.items())),

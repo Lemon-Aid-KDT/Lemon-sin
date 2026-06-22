@@ -87,7 +87,9 @@ def _decision(
             "reviewed_at": "2026-06-03T12:00:00Z",
             "reviewed_manufacturer": manufacturer,
             "reviewed_product_name": product_name,
-            "reason_codes": ["reviewed_label_or_catalog"] if decision == "approve" else ["unclear_brand"],
+            "reason_codes": (
+                ["reviewed_label_or_catalog"] if decision == "approve" else ["unclear_brand"]
+            ),
             "attest_brand_product_review_completed": decision == "approve",
             "attest_not_using_product_folder_literal_as_manufacturer": decision == "approve",
             "attest_product_name_reviewed_from_label_or_safe_catalog": decision == "approve",
@@ -136,7 +138,9 @@ def test_apply_brand_review_decisions_emits_approved_product_import_row(
     assert row["category_mapping"]["db_target_table"] == "supplement_product_categories"
     assert row["approved_for_db_write"] is True
     assert row["db_write_performed"] is False
-    assert row["source_payload"]["source_payload_policy"] == "hashes_counts_and_review_metadata_only"
+    assert (
+        row["source_payload"]["source_payload_policy"] == "hashes_counts_and_review_metadata_only"
+    )
     assert "reviewed_by_hash" in row["source_payload"]
     assert summary["approved_import_row_count"] == 1
     assert summary["pending_count"] == 1

@@ -25,8 +25,7 @@ class OllamaClient:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": message.role, "content": message.content}
-                for message in request.messages
+                {"role": message.role, "content": message.content} for message in request.messages
             ],
             "stream": False,
             "think": False,

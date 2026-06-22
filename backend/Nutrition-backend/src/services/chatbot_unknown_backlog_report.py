@@ -88,7 +88,9 @@ def summarize_unknown_knowledge_events(
             retrieval_warnings=tuple(sorted(warnings[key])),
         )
         for key, count in buckets.items()
-        for status, category, primary_intent, missing_topic, needed_evidence_type, retrieval_status in [key]
+        for status, category, primary_intent, missing_topic, needed_evidence_type, retrieval_status in [
+            key
+        ]
     ]
     sorted_groups = sorted(
         groups,
@@ -190,10 +192,10 @@ def _triage_priority(group: UnknownKnowledgeBacklogGroup) -> str:
         or group.retrieval_status == "stale_only"
     ):
         return "P0"
-    if (
-        group.count >= REPEATED_UNKNOWN_GAP_THRESHOLD
-        or group.category in {"medication_supplement_caution", "drug_or_interaction"}
-    ):
+    if group.count >= REPEATED_UNKNOWN_GAP_THRESHOLD or group.category in {
+        "medication_supplement_caution",
+        "drug_or_interaction",
+    }:
         return "P1"
     return "P2"
 

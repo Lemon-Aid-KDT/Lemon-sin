@@ -786,7 +786,9 @@ def _reject_unsafe_payload(value: Any) -> None:
         for nested in value:
             _reject_unsafe_payload(nested)
     elif isinstance(value, str) and (
-        "://" in value or value.startswith("/") or any(marker in value for marker in LOCAL_PATH_MARKERS)
+        "://" in value
+        or value.startswith("/")
+        or any(marker in value for marker in LOCAL_PATH_MARKERS)
     ):
         raise PostCompletionPlanError("Unsafe string in post-completion plan payload.")
 
@@ -799,7 +801,9 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         payload: JSON payload.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _markdown_bullets(value: object) -> str:

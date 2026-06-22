@@ -242,9 +242,10 @@ async def validate_food_catalog_filters(
         course = await session.scalar(course_stmt)
         if course is None:
             raise TaxonomyFilterNotFoundError("Food course filter was not found.")
-    if food_catalog_item_id is not None and await load_food_catalog_item_reference(
-        session, food_catalog_item_id
-    ) is None:
+    if (
+        food_catalog_item_id is not None
+        and await load_food_catalog_item_reference(session, food_catalog_item_id) is None
+    ):
         raise TaxonomyFilterNotFoundError("Food catalog item filter was not found.")
 
 
@@ -281,9 +282,7 @@ async def load_food_catalog_item_references(
     ids = list(dict.fromkeys(food_catalog_item_ids))
     if not ids:
         return {}
-    result = await session.execute(
-        _active_food_catalog_select().where(FoodCatalogItem.id.in_(ids))
-    )
+    result = await session.execute(_active_food_catalog_select().where(FoodCatalogItem.id.in_(ids)))
     return {
         item.id: FoodCatalogItemReference(
             cuisine_code=cuisine_code,

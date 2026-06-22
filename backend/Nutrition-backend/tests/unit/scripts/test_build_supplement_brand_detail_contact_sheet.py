@@ -128,7 +128,9 @@ def test_build_contact_sheet_materializes_redacted_thumbnails(tmp_path: Path) ->
     assert summary["contact_rows"][0]["db_write_allowed"] is False
 
     html_text = (output_dir / contact_sheet.HTML_INDEX_NAME).read_text(encoding="utf-8")
-    saved_summary = json.loads((output_dir / contact_sheet.SUMMARY_NAME).read_text(encoding="utf-8"))
+    saved_summary = json.loads(
+        (output_dir / contact_sheet.SUMMARY_NAME).read_text(encoding="utf-8")
+    )
     thumbnail_names = summary["contact_rows"][0]["thumbnail_filenames"]
 
     assert len(thumbnail_names) == 2

@@ -256,13 +256,17 @@ def _template_row(
         "source_run_id": source_run_id,
         "fixture_id": _safe_required_token(candidate.get("fixture_id"), field_name="fixture_id"),
         "source_ref": _safe_required_token(candidate.get("source_ref"), field_name="source_ref"),
-        "image_ref_hash": _safe_sha256(candidate.get("image_ref_hash"), field_name="image_ref_hash"),
+        "image_ref_hash": _safe_sha256(
+            candidate.get("image_ref_hash"), field_name="image_ref_hash"
+        ),
         "image_sha256": _safe_sha256(candidate.get("image_sha256"), field_name="image_sha256"),
         "image_mime_type": _safe_mime_type(
             candidate.get("image_mime_type"),
             field_name="image_mime_type",
         ),
-        "category_key": _safe_required_token(candidate.get("category_key"), field_name="category_key"),
+        "category_key": _safe_required_token(
+            candidate.get("category_key"), field_name="category_key"
+        ),
         "source_kind": "detail_page",
         "annotation_task_type": "supplement_roi_box",
         "annotation_status": "pending_human_bbox_review",

@@ -39,7 +39,12 @@ def test_app_intake_maps_route_payload_to_internal_agent_objects() -> None:
                 }
             ],
             "health_trends": [
-                {"metric": "meal_score", "direction": "down", "severity": "watch", "summary": "down"}
+                {
+                    "metric": "meal_score",
+                    "direction": "down",
+                    "severity": "watch",
+                    "summary": "down",
+                }
             ],
             "reference_ranges": [{"nutrient": "sodium", "target": 2000, "unit": "mg"}],
         },

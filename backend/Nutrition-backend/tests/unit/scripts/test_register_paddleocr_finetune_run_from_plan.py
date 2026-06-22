@@ -122,9 +122,7 @@ def _plan(
             "model_family": model_family,
             "base_model": base_model,
             "dataset_version_id": dataset_id,
-            "artifact_ref": "models/paddleocr/drifted"
-            if inconsistent_artifact
-            else save_model_ref,
+            "artifact_ref": "models/paddleocr/drifted" if inconsistent_artifact else save_model_ref,
         },
     }
 

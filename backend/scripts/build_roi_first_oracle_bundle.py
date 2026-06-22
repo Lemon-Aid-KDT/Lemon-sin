@@ -59,15 +59,42 @@ def _image_for(bundle_dir: Path, fixture_id: str) -> Path | None:
     return matches[0] if matches else None
 
 
-async def build(*, bundle_dir: Path, splits: Path, eval_split: str, out_bundle: Path, apply: bool, limit: int | None) -> None:
+async def build(
+    *,
+    bundle_dir: Path,
+    splits: Path,
+    eval_split: str,
+    out_bundle: Path,
+    apply: bool,
+    limit: int | None,
+) -> None:
     """Crop held-out images to GT-section ROI (CLOVA oracle) into a mirrored bundle."""
     holdout = _holdout_fixtures(splits, eval_split)
-    todo_rows = [json.loads(line) for line in (bundle_dir / "ground-truth.todo.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    rows = [r for r in todo_rows
-            if r.get("fixture_id") in holdout
-            and r.get("ready_for_benchmark_after_review") is True
-            and isinstance(r.get("expected"), dict)]
-    print(json.dumps({"phase": "resolve", "eval_split": eval_split, "holdout_fixtures": len(holdout), "ready_rows": len(rows)}, ensure_ascii=False))
+    todo_rows = [
+        json.loads(line)
+        for line in (bundle_dir / "ground-truth.todo.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    rows = [
+        r
+        for r in todo_rows
+        if r.get("fixture_id") in holdout
+        and r.get("ready_for_benchmark_after_review") is True
+        and isinstance(r.get("expected"), dict)
+    ]
+    print(
+        json.dumps(
+            {
+                "phase": "resolve",
+                "eval_split": eval_split,
+                "holdout_fixtures": len(holdout),
+                "ready_rows": len(rows),
+            },
+            ensure_ascii=False,
+        )
+    )
     if not apply:
         print("DRY RUN: no CLOVA calls. Re-run with --apply.")
         return
@@ -86,7 +113,9 @@ async def build(*, bundle_dir: Path, splits: Path, eval_split: str, out_bundle: 
         if src is None:
             stats["failed"] += 1
             continue
-        gt_sections = {GT_TO_SECTION[k] for k, v in row["expected"].items() if k in GT_TO_SECTION and v} or {"ingredient_amounts"}
+        gt_sections = {
+            GT_TO_SECTION[k] for k, v in row["expected"].items() if k in GT_TO_SECTION and v
+        } or {"ingredient_amounts"}
         try:
             with Image.open(src) as raw:
                 rgb = raw.convert("RGB")
@@ -114,11 +143,18 @@ async def build(*, bundle_dir: Path, splits: Path, eval_split: str, out_bundle: 
     n = stats["cropped"] + stats["fallback_full"]
     summary = {
         "schema_version": "roi-first-oracle-bundle-summary-v1",
-        "eval_split": eval_split, "fixtures": n,
-        "cropped": stats["cropped"], "fallback_full_image": stats["fallback_full"], "failed": stats["failed"],
-        "mean_crop_area_ratio": round(stats["crop_area_ratio_sum"] / stats["cropped"], 4) if stats["cropped"] else None,
+        "eval_split": eval_split,
+        "fixtures": n,
+        "cropped": stats["cropped"],
+        "fallback_full_image": stats["fallback_full"],
+        "failed": stats["failed"],
+        "mean_crop_area_ratio": (
+            round(stats["crop_area_ratio_sum"] / stats["cropped"], 4) if stats["cropped"] else None
+        ),
     }
-    (out_bundle / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_bundle / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
@@ -134,8 +170,16 @@ def main() -> None:
     a = ap.parse_args()
     if a.apply and a.output_bundle.exists():
         shutil.rmtree(a.output_bundle)
-    asyncio.run(build(bundle_dir=a.bundle_dir, splits=a.splits, eval_split=a.eval_split,
-                      out_bundle=a.output_bundle, apply=a.apply, limit=a.limit))
+    asyncio.run(
+        build(
+            bundle_dir=a.bundle_dir,
+            splits=a.splits,
+            eval_split=a.eval_split,
+            out_bundle=a.output_bundle,
+            apply=a.apply,
+            limit=a.limit,
+        )
+    )
 
 
 if __name__ == "__main__":

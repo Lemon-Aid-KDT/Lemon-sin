@@ -34,12 +34,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove seeded dyslipidemia and weight management evidence records."""
     topics = "', '".join(row["topic"] for row in _evidence_rows())
-    op.execute(
-        f"""
+    op.execute(f"""
         DELETE FROM medical_evidence_items
         WHERE topic IN ('{topics}');
-        """
-    )
+        """)
 
 
 def _insert_evidence_sql(

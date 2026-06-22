@@ -244,13 +244,9 @@ def test_app_record_snapshot_builder_maps_team_db_rows_without_raw_payloads() ->
         "blood_pressure",
         "sodium",
     ]
-    assert safe_context["user_profile_summary"]["risk_flags"] == [
-        "hypertension_context"
-    ]
+    assert safe_context["user_profile_summary"]["risk_flags"] == ["hypertension_context"]
     assert safe_context["health_analysis_snapshot"]["readiness_level"] == "level_1_initial"
-    food_record = safe_context["recent_food_and_checklist_snapshot"][
-        "recent_food_records"
-    ][0]
+    food_record = safe_context["recent_food_and_checklist_snapshot"]["recent_food_records"][0]
     assert food_record["display_items"] == ["ramen"]
     assert food_record["rough_nutrient_axes"] == ["sodium", "energy"]
     assert safe_context["recent_food_and_checklist_snapshot"]["checklist_items"] == [
@@ -303,9 +299,7 @@ def test_app_record_snapshot_builder_limits_recent_food_records_newest_first() -
         for index in range(1, 13)
     ]
 
-    snapshot = build_user_health_context_snapshot_from_app_records(
-        meal_records=meal_records
-    )
+    snapshot = build_user_health_context_snapshot_from_app_records(meal_records=meal_records)
 
     records = snapshot.to_safe_context()["recent_food_and_checklist_snapshot"][
         "recent_food_records"
@@ -383,9 +377,7 @@ def test_app_record_snapshot_builder_ignores_deleted_or_stopped_rows() -> None:
 
     safe_context = snapshot.to_safe_context()
 
-    assert safe_context["recent_food_and_checklist_snapshot"][
-        "recent_food_records"
-    ] == []
+    assert safe_context["recent_food_and_checklist_snapshot"]["recent_food_records"] == []
     assert safe_context["active_supplement_snapshot"]["registered_supplements"] == []
     assert "user_profile_summary" not in safe_context
 
@@ -472,12 +464,8 @@ def test_app_record_snapshot_builder_maps_horangee02_db_contract_rows() -> None:
                 }
             ]
         },
-        medical_conditions=[
-            {"condition_text": "diabetes", "clinical_status": "active"}
-        ],
-        medications=[
-            {"medication_name_text": "metformin", "active_status": "active"}
-        ],
+        medical_conditions=[{"condition_text": "diabetes", "clinical_status": "active"}],
+        medications=[{"medication_name_text": "metformin", "active_status": "active"}],
         patient_status_snapshots=[
             {
                 "summary_type": "confirmed_record_summary",
@@ -491,9 +479,7 @@ def test_app_record_snapshot_builder_maps_horangee02_db_contract_rows() -> None:
 
     safe_context = snapshot.to_safe_context()
 
-    food_record = safe_context["recent_food_and_checklist_snapshot"][
-        "recent_food_records"
-    ][0]
+    food_record = safe_context["recent_food_and_checklist_snapshot"]["recent_food_records"][0]
     assert food_record["nutrition_summary"] == {
         "kcal": 610,
         "carb_g": 78,
@@ -534,9 +520,7 @@ def test_app_record_snapshot_builder_maps_horangee02_db_contract_rows() -> None:
     assert safe_context["health_analysis_snapshot"]["metric_summary"] == {
         "fasting_glucose_mg_dl": {"latest": 126}
     }
-    assert safe_context["health_analysis_snapshot"]["medication_summary"] == {
-        "active_count": 1
-    }
+    assert safe_context["health_analysis_snapshot"]["medication_summary"] == {"active_count": 1}
     assert "raw_provider_payload" not in str(safe_context)
     assert "raw_image_bytes" not in str(safe_context)
 
@@ -564,15 +548,11 @@ def test_app_record_snapshot_builder_excludes_inactive_horangee02_rows() -> None
         medical_conditions=[
             {"condition_text": "resolved condition", "clinical_status": "resolved"}
         ],
-        medications=[
-            {"medication_name_text": "inactive medication", "active_status": "stopped"}
-        ],
+        medications=[{"medication_name_text": "inactive medication", "active_status": "stopped"}],
     )
 
     safe_context = snapshot.to_safe_context()
 
-    assert safe_context["recent_food_and_checklist_snapshot"][
-        "recent_food_records"
-    ] == []
+    assert safe_context["recent_food_and_checklist_snapshot"]["recent_food_records"] == []
     assert safe_context["active_supplement_snapshot"]["registered_supplements"] == []
     assert "user_profile_summary" not in safe_context

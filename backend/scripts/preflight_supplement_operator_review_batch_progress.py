@@ -158,7 +158,9 @@ def preflight_operator_review_batch_progress(
     _require_schema(plan, BATCH_PLAN_SCHEMA)
     editable_rows = _load_editable_rows(input_paths)
     batch_rows = _batch_rows(plan)
-    batches = [_progress_for_batch(batch=batch, editable_rows=editable_rows) for batch in batch_rows]
+    batches = [
+        _progress_for_batch(batch=batch, editable_rows=editable_rows) for batch in batch_rows
+    ]
     complete_count = sum(1 for batch in batches if batch["batch_status"] == "complete")
     invalid_count = sum(1 for batch in batches if batch["batch_status"] == "invalid")
     pending_count = len(batches) - complete_count - invalid_count
@@ -180,12 +182,24 @@ def preflight_operator_review_batch_progress(
         "invalid_batch_count": invalid_count,
         "all_batches_complete": complete_count == len(batches) and invalid_count == 0,
         "next_incomplete_batch_key": _next_incomplete_batch_key(batches),
-        "total_expected_row_count": sum(_non_negative_int(batch.get("expected_row_count")) for batch in batches),
-        "total_valid_row_count": sum(_non_negative_int(batch.get("valid_row_count")) for batch in batches),
-        "total_blank_row_count": sum(_non_negative_int(batch.get("blank_row_count")) for batch in batches),
-        "total_pending_row_count": sum(_non_negative_int(batch.get("pending_row_count")) for batch in batches),
-        "total_invalid_row_count": sum(_non_negative_int(batch.get("invalid_row_count")) for batch in batches),
-        "total_missing_row_count": sum(_non_negative_int(batch.get("missing_row_count")) for batch in batches),
+        "total_expected_row_count": sum(
+            _non_negative_int(batch.get("expected_row_count")) for batch in batches
+        ),
+        "total_valid_row_count": sum(
+            _non_negative_int(batch.get("valid_row_count")) for batch in batches
+        ),
+        "total_blank_row_count": sum(
+            _non_negative_int(batch.get("blank_row_count")) for batch in batches
+        ),
+        "total_pending_row_count": sum(
+            _non_negative_int(batch.get("pending_row_count")) for batch in batches
+        ),
+        "total_invalid_row_count": sum(
+            _non_negative_int(batch.get("invalid_row_count")) for batch in batches
+        ),
+        "total_missing_row_count": sum(
+            _non_negative_int(batch.get("missing_row_count")) for batch in batches
+        ),
         "aggregate_reason_counts": dict(sorted(aggregate_reason_counts.items())),
         "batches": batches,
         "db_write_performed": False,
@@ -303,7 +317,10 @@ def _progress_for_batch(
     if rows is None:
         raise BatchProgressError("Editable file for a queued batch is missing.")
     expected_count = end - start + 1
-    statuses = [_status_for_index(queue_key=queue_key, rows=rows, row_index=index) for index in range(start, end + 1)]
+    statuses = [
+        _status_for_index(queue_key=queue_key, rows=rows, row_index=index)
+        for index in range(start, end + 1)
+    ]
     counts = _status_counts(statuses)
     status = _batch_status(
         expected_count=expected_count,

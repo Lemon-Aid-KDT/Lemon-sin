@@ -324,7 +324,9 @@ def _benchmark_row(
         "product_dir_hash": _safe_required_sha256(candidate.get("product_dir_hash")),
         "image_size_bytes": _safe_nonnegative_int(candidate.get("image_size_bytes")),
         "image_mime_type": _safe_optional_text(candidate.get("image_mime_type"), max_length=80),
-        "category_key": _safe_required_token(candidate.get("category_key"), field_name="category_key"),
+        "category_key": _safe_required_token(
+            candidate.get("category_key"), field_name="category_key"
+        ),
         "source_kind": "review",
         "expected": expected,
         "required_expected_sections": list(required_expected_sections),

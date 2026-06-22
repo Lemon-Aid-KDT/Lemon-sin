@@ -275,7 +275,8 @@ def build_ocr_benchmark_gate(
     benchmark_ready = (
         benchmark_summary is not None
         and benchmark_counts["benchmark_fixture_count"] > 0
-        and benchmark_counts["scoreable_fixture_count"] == benchmark_counts["benchmark_fixture_count"]
+        and benchmark_counts["scoreable_fixture_count"]
+        == benchmark_counts["benchmark_fixture_count"]
         and benchmark_required_sections_ready
     )
     split_summary = (

@@ -164,9 +164,7 @@ async def verify_supplement_taxonomy_db_import(
     Raises:
         ValueError: If manifests are malformed or product rows are required but absent.
     """
-    category_rows = importer._category_rows_by_key(
-        importer._read_jsonl_objects(taxonomy_staging)
-    )
+    category_rows = importer._category_rows_by_key(importer._read_jsonl_objects(taxonomy_staging))
     product_rows = (
         importer._read_product_import_rows(product_import_manifest)
         if product_import_manifest is not None
@@ -257,7 +255,9 @@ async def _verify_with_repository(
 
     missing_category_keys = sorted(set(category_keys) - set(present_category_keys))
     extra_active_category_keys = sorted(set(active_category_keys) - set(category_keys))
-    missing_product_source_keys = sorted(set(product_source_keys) - set(present_product_source_keys))
+    missing_product_source_keys = sorted(
+        set(product_source_keys) - set(present_product_source_keys)
+    )
     missing_product_category_keys = sorted(
         set(product_category_keys) - set(present_product_category_keys)
     )
@@ -274,9 +274,7 @@ async def _verify_with_repository(
     )
     category_import_verified = not missing_category_keys and not extra_active_category_keys
     product_import_verified = (
-        not missing_product_source_keys
-        and not missing_product_category_keys
-        and bool(product_rows)
+        not missing_product_source_keys and not missing_product_category_keys and bool(product_rows)
     )
     blocked_reason_codes = _verification_blocker_codes(
         product_import_manifest=product_import_manifest,
@@ -301,9 +299,7 @@ async def _verify_with_repository(
             product_import_manifest.name if product_import_manifest is not None else None
         ),
         "product_import_manifest_sha256": (
-            _sha256_file(product_import_manifest)
-            if product_import_manifest is not None
-            else None
+            _sha256_file(product_import_manifest) if product_import_manifest is not None else None
         ),
         "require_approved_products": require_approved_products,
         "product_import_manifest_present": product_import_manifest is not None,
@@ -320,9 +316,7 @@ async def _verify_with_repository(
         "missing_category_count": len(missing_category_keys),
         "missing_category_key_hashes": [_hash_text(key) for key in missing_category_keys],
         "extra_active_category_count": len(extra_active_category_keys),
-        "extra_active_category_key_hashes": [
-            _hash_text(key) for key in extra_active_category_keys
-        ],
+        "extra_active_category_key_hashes": [_hash_text(key) for key in extra_active_category_keys],
         "expected_product_count": len(product_source_keys),
         "matched_product_count": len(present_product_source_keys),
         "missing_product_count": len(missing_product_source_keys),
@@ -394,9 +388,7 @@ def _blocked_product_verification_summary(
             product_import_manifest.name if product_import_manifest is not None else None
         ),
         "product_import_manifest_sha256": (
-            _sha256_file(product_import_manifest)
-            if product_import_manifest is not None
-            else None
+            _sha256_file(product_import_manifest) if product_import_manifest is not None else None
         ),
         "require_approved_products": require_approved_products,
         "product_import_manifest_present": product_import_manifest is not None,

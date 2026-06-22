@@ -176,7 +176,9 @@ def build_review_bundle(
     benchmark._reject_unsafe_payload(summary)
     (output_dir / HTML_INDEX_NAME).write_text(html_text, encoding="utf-8")
     (output_dir / DECISION_TEMPLATE_NAME).write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in decision_rows),
+        "".join(
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in decision_rows
+        ),
         encoding="utf-8",
     )
     (output_dir / README_NAME).write_text(readme_text, encoding="utf-8")
@@ -297,7 +299,9 @@ def _decision_template_row(row: dict[str, Any]) -> dict[str, Any]:
     benchmark._reject_unsafe_payload(decision_stub)
     decision_row = {
         "schema_version": decision_stub.get("schema_version"),
-        "fixture_id": benchmark._safe_required_token(row.get("fixture_id"), field_name="fixture_id"),
+        "fixture_id": benchmark._safe_required_token(
+            row.get("fixture_id"), field_name="fixture_id"
+        ),
         "pii_screening_decision": dict(decision_stub.get("pii_screening_decision") or {}),
         "decision_guide": dict(DECISION_GUIDE),
         "reason_code_guide": dict(REASON_CODE_GUIDE),
@@ -380,7 +384,9 @@ def _html_card(row: dict[str, Any], *, index: int) -> str:
     """
     image_path = _safe_relative_image_path(str(row.get("image_path")))
     fixture_id = benchmark._safe_required_token(row.get("fixture_id"), field_name="fixture_id")
-    category_key = benchmark._safe_required_token(row.get("category_key"), field_name="category_key")
+    category_key = benchmark._safe_required_token(
+        row.get("category_key"), field_name="category_key"
+    )
     size_bytes = benchmark._safe_nonnegative_int(row.get("image_size_bytes"))
     mime_type = benchmark._safe_optional_text(row.get("image_mime_type"), max_length=80) or ""
     return f"""    <article>

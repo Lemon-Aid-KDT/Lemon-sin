@@ -229,9 +229,7 @@ async def test_cleanup_cli_loads_env_file_without_printing_database_url(
     stdout = capsys.readouterr().out
     summary_text = summary_path.read_text(encoding="utf-8")
     assert exit_code == 0
-    assert seen_database_url == [
-        "postgresql+asyncpg://example:secret@example.invalid/db"
-    ]
+    assert seen_database_url == ["postgresql+asyncpg://example:secret@example.invalid/db"]
     assert "secret" not in stdout
     assert "example.invalid" not in stdout
     assert "secret" not in summary_text

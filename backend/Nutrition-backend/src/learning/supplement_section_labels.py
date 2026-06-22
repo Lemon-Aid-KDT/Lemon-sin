@@ -206,9 +206,7 @@ def _validate_annotation_source(
     """Require one unambiguous retained image source for human review."""
     source_count = int(media_object_id is not None) + int(learning_image_object_id is not None)
     if source_count != 1:
-        raise SupplementSectionLabelCandidateError(
-            "Exactly one annotation source id is required."
-        )
+        raise SupplementSectionLabelCandidateError("Exactly one annotation source id is required.")
 
 
 def _section_boxes_by_page(section: LabelSection) -> list[LabelBox]:

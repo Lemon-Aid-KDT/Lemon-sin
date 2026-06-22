@@ -173,8 +173,7 @@ def _write_artifacts(tmp_path: Path, **overrides: dict[str, Any]) -> dict[str, P
     }
     payloads.update(overrides)
     return {
-        key: _write_json(tmp_path / f"{key}.json", payload)
-        for key, payload in payloads.items()
+        key: _write_json(tmp_path / f"{key}.json", payload) for key, payload in payloads.items()
     }
 
 

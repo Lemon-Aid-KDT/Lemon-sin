@@ -26,12 +26,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove seeded chatbot policy boundaries."""
     codes = "', '".join(row["boundary_code"] for row in _boundary_rows())
-    op.execute(
-        f"""
+    op.execute(f"""
         DELETE FROM medical_policy_boundaries
         WHERE boundary_code IN ('{codes}');
-        """
-    )
+        """)
 
 
 def _insert_boundary_sql(

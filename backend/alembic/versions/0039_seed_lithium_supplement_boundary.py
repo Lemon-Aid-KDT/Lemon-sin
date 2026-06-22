@@ -19,8 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Seed reviewed source/version metadata and the no-LLM boundary row."""
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO medical_sources (
             id, source_family, publisher, title, canonical_url, jurisdiction,
             source_type, default_review_status, owner
@@ -46,10 +45,8 @@ def upgrade() -> None:
             default_review_status = EXCLUDED.default_review_status,
             owner = EXCLUDED.owner,
             updated_at = now();
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         INSERT INTO medical_source_versions (
             id, source_id, version_label, published_at, reviewed_at, expires_at,
             review_status, reviewer, review_note
@@ -70,10 +67,8 @@ def upgrade() -> None:
             WHERE source_id = 'medlineplus-lithium'
               AND version_label = '2026-05 MVP source registry'
         );
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         INSERT INTO medical_policy_boundaries (
             id, boundary_code, topic, trigger_intent, response_status,
             required_warning_code, allowed_response_pattern,
@@ -104,28 +99,21 @@ def upgrade() -> None:
             WHERE boundary_code = 'p0_lithium_selenium_supplement'
               AND review_status = 'reviewed'
         );
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
     """Remove the lithium supplement boundary seed."""
-    op.execute(
-        """
+    op.execute("""
         DELETE FROM medical_policy_boundaries
         WHERE boundary_code = 'p0_lithium_selenium_supplement';
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         DELETE FROM medical_source_versions
         WHERE source_id = 'medlineplus-lithium'
           AND version_label = '2026-05 MVP source registry';
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         DELETE FROM medical_sources
         WHERE id = 'medlineplus-lithium';
-        """
-    )
+        """)

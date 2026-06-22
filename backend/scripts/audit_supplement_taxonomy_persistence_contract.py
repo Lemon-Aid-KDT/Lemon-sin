@@ -603,12 +603,17 @@ def _unsafe_storage_contract(
         unsafe_columns = sorted(set(table.c.keys()).intersection(UNSAFE_STORAGE_COLUMN_NAMES))
         if unsafe_columns:
             unsafe_columns_by_table[table_name] = [_safe_token(name) for name in unsafe_columns]
-    valid = not unsafe_columns_by_table and migration_contract.get("unsafe_raw_literals_absent") is True
+    valid = (
+        not unsafe_columns_by_table and migration_contract.get("unsafe_raw_literals_absent") is True
+    )
     return {
         "valid": valid,
-        "unsafe_table_column_count": sum(len(values) for values in unsafe_columns_by_table.values()),
+        "unsafe_table_column_count": sum(
+            len(values) for values in unsafe_columns_by_table.values()
+        ),
         "unsafe_columns_by_table": unsafe_columns_by_table,
-        "raw_migration_literals_absent": migration_contract.get("unsafe_raw_literals_absent") is True,
+        "raw_migration_literals_absent": migration_contract.get("unsafe_raw_literals_absent")
+        is True,
     }
 
 
@@ -639,7 +644,9 @@ def _blocked_reasons(
         Reason tokens.
     """
     reasons: list[str] = []
-    if any(row.get("all_required_columns_present") is not True for row in column_contracts.values()):
+    if any(
+        row.get("all_required_columns_present") is not True for row in column_contracts.values()
+    ):
         reasons.append("missing_required_model_columns")
     if any(
         row.get("all_required_constraints_present") is not True

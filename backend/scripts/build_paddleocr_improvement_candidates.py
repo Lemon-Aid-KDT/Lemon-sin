@@ -387,7 +387,9 @@ def _teacher_expected_match_count(row: dict[str, Any], expected_names: set[str])
         provider = observation.get("provider")
         if provider not in TEACHER_PROVIDERS:
             continue
-        observed_names = {fact["name"] for fact in _ingredient_facts(observation.get("parsed_ingredients"))}
+        observed_names = {
+            fact["name"] for fact in _ingredient_facts(observation.get("parsed_ingredients"))
+        }
         if expected_names.issubset(observed_names):
             count += 1
     return count
@@ -593,7 +595,9 @@ def _amount_unit_miss_count(
     for expected_fact in expected:
         if expected_fact["amount"] is None or expected_fact["unit"] is None:
             continue
-        if not any(_amount_unit_matches(expected_fact, observed_fact) for observed_fact in observed):
+        if not any(
+            _amount_unit_matches(expected_fact, observed_fact) for observed_fact in observed
+        ):
             count += 1
     return count
 

@@ -184,9 +184,7 @@ def test_ocr_pattern_fallback_pairs_unit_before_amount_columns() -> None:
     Mirrors the existing amount-then-unit split for the reverse order found on
     rotated / column labels (``name`` / ``unit`` / ``number``).
     """
-    candidates = _extract_ocr_pattern_ingredient_candidates(
-        "\n".join(["마그네슘", "mg", "200"])
-    )
+    candidates = _extract_ocr_pattern_ingredient_candidates("\n".join(["마그네슘", "mg", "200"]))
 
     by_name = {candidate["display_name"]: candidate for candidate in candidates}
     assert by_name["마그네슘"]["amount"] == 200
@@ -711,7 +709,9 @@ async def test_parse_supplement_analysis_ocr_text_updates_preview_without_raw_te
 
 
 @pytest.mark.asyncio
-async def test_parse_supplement_analysis_ocr_text_keeps_bounded_ocr_preview_when_parser_empty() -> None:
+async def test_parse_supplement_analysis_ocr_text_keeps_bounded_ocr_preview_when_parser_empty() -> (
+    None
+):
     """Verify visible OCR lines remain reviewable when structured parsing fails.
 
     The mobile OCR text modal reads bounded ``label_sections`` /
@@ -1087,9 +1087,7 @@ async def test_parse_supplement_analysis_ocr_text_pairs_split_name_and_amount_li
             "source": "ocr_pattern_fallback",
         },
     ]
-    assert "Serving Size" not in {
-        candidate["display_name"] for candidate in candidates
-    }
+    assert "Serving Size" not in {candidate["display_name"] for candidate in candidates}
 
 
 @pytest.mark.asyncio

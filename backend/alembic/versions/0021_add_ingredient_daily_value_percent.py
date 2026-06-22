@@ -38,8 +38,7 @@ def _drop_check_by_definition(table: str, definition_needle: str) -> None:
     resolved name goes through ``format(... %I ...)``.
     """
     needle = definition_needle.replace("'", "''")
-    op.execute(
-        f"""
+    op.execute(f"""
         DO $$
         DECLARE
             v_name text;
@@ -59,8 +58,7 @@ def _drop_check_by_definition(table: str, definition_needle: str) -> None:
                 );
             END IF;
         END $$;
-        """
-    )
+        """)
 
 
 def upgrade() -> None:
@@ -92,12 +90,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove the daily_value_percent columns from ingredient tables."""
-    _drop_check_by_definition(
-        "user_supplement_ingredients", "daily_value_percent IS NULL"
-    )
+    _drop_check_by_definition("user_supplement_ingredients", "daily_value_percent IS NULL")
     op.drop_column("user_supplement_ingredients", "daily_value_percent")
 
-    _drop_check_by_definition(
-        "supplement_product_ingredients", "daily_value_percent IS NULL"
-    )
+    _drop_check_by_definition("supplement_product_ingredients", "daily_value_percent IS NULL")
     op.drop_column("supplement_product_ingredients", "daily_value_percent")

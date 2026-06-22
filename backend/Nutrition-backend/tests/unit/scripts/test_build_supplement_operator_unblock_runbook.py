@@ -153,9 +153,7 @@ def _work_order_payload(*, complete: bool = False) -> dict[str, Any]:
         "batch_file_name": "" if complete else "brand_product_review-001.jsonl",
         "source_editable_file_name": "decisions.todo.jsonl",
         "blank_row_count": 0 if complete else 50,
-        "stage_next_operator_action": ""
-        if complete
-        else "complete_brand_product_human_review",
+        "stage_next_operator_action": "" if complete else "complete_brand_product_human_review",
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -252,20 +250,22 @@ def _completion_audit_payload(*, complete: bool = False) -> dict[str, Any]:
     ]
     return {
         "schema_version": runbook.COMPLETION_AUDIT_SCHEMA,
-        "overall_status": "complete_verified"
-        if complete
-        else "in_progress_blocked_by_missing_evidence",
+        "overall_status": (
+            "complete_verified" if complete else "in_progress_blocked_by_missing_evidence"
+        ),
         "objective_completion_allowed": complete,
         "verified_requirement_count": 12 if complete else 4,
         "pending_requirement_count": 0 if complete else 3,
         "blocked_requirement_count": 0 if complete else 5,
-        "incomplete_requirement_keys": []
-        if complete
-        else [
-            "brand_product_db_import",
-            "review_image_ground_truth_privacy_gate",
-            "detail_page_yolo_bbox_annotation",
-        ],
+        "incomplete_requirement_keys": (
+            []
+            if complete
+            else [
+                "brand_product_db_import",
+                "review_image_ground_truth_privacy_gate",
+                "detail_page_yolo_bbox_annotation",
+            ]
+        ),
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -424,7 +424,9 @@ def _write_inputs(
         Input path mapping.
     """
     inputs = {
-        "batch_progress": _write_json(tmp_path / "progress.json", _progress_payload(complete=complete)),
+        "batch_progress": _write_json(
+            tmp_path / "progress.json", _progress_payload(complete=complete)
+        ),
         "next_work_order": _write_json(
             tmp_path / "work-order.json",
             _work_order_payload(complete=complete),
@@ -547,12 +549,10 @@ def test_unblock_runbook_marks_stale_optional_brand_artifacts(
     _write_json(input_paths["completion_audit"], completion_audit)
 
     payload = runbook.build_operator_unblock_runbook(input_paths=input_paths)
-    brand_gate = {
-        row["gate_key"]: row for row in payload["gate_summaries"]
-    }["brand_db_import_gate"]
-    brand_triage = {
-        row["queue_key"]: row for row in payload["triage_summaries"]
-    }["brand_product_review"]
+    brand_gate = {row["gate_key"]: row for row in payload["gate_summaries"]}["brand_db_import_gate"]
+    brand_triage = {row["queue_key"]: row for row in payload["triage_summaries"]}[
+        "brand_product_review"
+    ]
 
     assert brand_gate["consistency_status"] == "stale_optional_artifact"
     assert brand_gate["consistency_warnings"] == [
@@ -629,9 +629,7 @@ def test_unblock_runbook_cli_writes_json_and_markdown(
     assert "p2_bbox_annotation_required" in markdown
     assert "blocked_by_pii_screening" in markdown
     assert all(row["consistency_status"] == "consistent" for row in payload["gate_summaries"])
-    assert all(
-        row["consistency_status"] == "consistent" for row in payload["triage_summaries"]
-    )
+    assert all(row["consistency_status"] == "consistent" for row in payload["triage_summaries"])
     assert payload["raw_ocr_text_stored"] is False
     for redacted_output in (stdout, json.dumps(payload, ensure_ascii=False), markdown):
         assert str(tmp_path) not in redacted_output

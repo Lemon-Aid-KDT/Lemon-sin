@@ -230,9 +230,7 @@ class TestNormalizationTo100g:
             ],
         )
         profile = matcher.match("비빔밥")
-        assert profile.nutrients_per_100g["kcal"] == pytest.approx(
-            EXPECTED_KCAL_PER_100G
-        )
+        assert profile.nutrients_per_100g["kcal"] == pytest.approx(EXPECTED_KCAL_PER_100G)
 
     def test_sodium_normalization(self) -> None:
         """비빔밥 820mg / 500g * 100 = 164 mg/100g."""
@@ -674,9 +672,7 @@ class TestEstimateForAmountValidation:
         """g와 인분 모두 명시 → ValueError."""
         matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])
         with pytest.raises(ValueError, match="not both"):
-            matcher.estimate_for_amount(
-                _sample_profile(), amount_g=100.0, serving_count=1.0
-            )
+            matcher.estimate_for_amount(_sample_profile(), amount_g=100.0, serving_count=1.0)
 
     def test_amount_g_zero_raises(self) -> None:
         matcher = RdaMatcher.from_rows(aliases={}, food_rows=[])

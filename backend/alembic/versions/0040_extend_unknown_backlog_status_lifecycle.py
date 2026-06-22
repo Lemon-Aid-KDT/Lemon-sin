@@ -32,8 +32,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Restore the previous compact status contract."""
-    op.execute(
-        """
+    op.execute("""
         UPDATE chatbot_unknown_knowledge_events
         SET status = CASE
             WHEN status = 'reviewing' THEN 'open'
@@ -42,8 +41,7 @@ def downgrade() -> None:
             ELSE status
         END
         WHERE status IN ('reviewing', 'promoted', 'deprecated');
-        """
-    )
+        """)
     op.drop_constraint(op.f(CONSTRAINT_NAME), TABLE_NAME, type_="check")
     op.create_check_constraint(
         op.f(CONSTRAINT_NAME),

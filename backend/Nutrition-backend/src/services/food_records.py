@@ -30,7 +30,11 @@ class FoodRecordNotFoundError(ValueError):
 
 
 FOOD_TAG_RULES: tuple[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
-    (("라면", "ramen"), ("sodium_high", "refined_carb", "soup_or_stew"), ("sodium_high", "carbohydrate_high")),
+    (
+        ("라면", "ramen"),
+        ("sodium_high", "refined_carb", "soup_or_stew"),
+        ("sodium_high", "carbohydrate_high"),
+    ),
     (("흰쌀밥", "쌀밥", "white rice"), ("carbohydrate_high",), ("carbohydrate_high",)),
     (("닭가슴살", "chicken breast"), ("protein_food",), ("protein_food",)),
 )
@@ -181,10 +185,7 @@ async def load_recent_user_food_record_context(
         settings,
         limit=limit,
     )
-    return [
-        build_food_record_snapshot(record, food_record_id=record.id)
-        for record in records
-    ]
+    return [build_food_record_snapshot(record, food_record_id=record.id) for record in records]
 
 
 async def update_food_record_service(

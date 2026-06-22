@@ -261,9 +261,7 @@ async def test_ollama_vision_assist_posts_base64_image_and_schema() -> None:
 @pytest.mark.asyncio
 async def test_ollama_vision_assist_verifies_ocr_text_with_schema() -> None:
     """Verify the adapter sends OCR text for local structured vision verification."""
-    fake_client = _FakeHTTPClient(
-        {"message": {"content": _verification_response_content()}}
-    )
+    fake_client = _FakeHTTPClient({"message": {"content": _verification_response_content()}})
     chat_client = OllamaChatClient(_settings(), http_client=fake_client)
     adapter = OllamaVisionAssistAdapter(_settings(), client=chat_client)
 

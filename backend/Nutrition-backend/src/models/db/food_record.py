@@ -34,7 +34,9 @@ class FoodRecord(TimestampMixin, Base):
             name=conv("ck_food_records_match_confidence_range"),
         ),
         Index("ix_food_records_owner_date", "owner_subject_hash", "recorded_date"),
-        Index("ix_food_records_owner_meal_date", "owner_subject_hash", "meal_type", "recorded_date"),
+        Index(
+            "ix_food_records_owner_meal_date", "owner_subject_hash", "meal_type", "recorded_date"
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -43,7 +45,9 @@ class FoodRecord(TimestampMixin, Base):
     meal_type: Mapped[str] = mapped_column(String(24), nullable=False)
     display_items: Mapped[list[str]] = mapped_column(postgresql.JSONB, nullable=False, default=list)
     amount_text: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    estimated_tags: Mapped[list[str]] = mapped_column(postgresql.JSONB, nullable=False, default=list)
+    estimated_tags: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB, nullable=False, default=list
+    )
     rough_nutrient_axes: Mapped[list[str]] = mapped_column(
         postgresql.JSONB,
         nullable=False,

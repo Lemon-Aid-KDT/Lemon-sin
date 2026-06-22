@@ -214,9 +214,7 @@ def test_brand_review_contact_sheet_preflight_requires_thumbnails(
 
     assert summary["status"] == "failed"
     assert summary["issue_counts"]["required_thumbnail_missing"] == 1
-    assert summary["row_hints"] == [
-        {"row_index": 2, "issue_codes": ["row_without_thumbnail"]}
-    ]
+    assert summary["row_hints"] == [{"row_index": 2, "issue_codes": ["row_without_thumbnail"]}]
 
 
 def test_brand_review_contact_sheet_preflight_rejects_unsafe_csv_values(

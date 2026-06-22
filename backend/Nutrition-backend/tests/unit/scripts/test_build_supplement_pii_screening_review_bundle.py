@@ -111,7 +111,9 @@ def test_build_bundle_writes_html_decisions_and_copies_images(tmp_path: Path) ->
     assert summary["image_copied_count"] == 1
     assert summary["external_transfer_allowed_rows"] == 0
     assert summary["teacher_ocr_allowed_rows"] == 0
-    assert (tmp_path / "bundle" / "images" / "review-ocr-gt-001.jpg").read_bytes() == b"local-review-image"
+    assert (
+        tmp_path / "bundle" / "images" / "review-ocr-gt-001.jpg"
+    ).read_bytes() == b"local-review-image"
     html_text = (tmp_path / "bundle" / review_bundle.HTML_INDEX_NAME).read_text(encoding="utf-8")
     assert 'src="images/review-ocr-gt-001.jpg"' in html_text
     assert "Decision Guide" in html_text
@@ -129,7 +131,9 @@ def test_build_bundle_writes_html_decisions_and_copies_images(tmp_path: Path) ->
     assert decision_rows[0]["pii_screening_decision"]["decision"] == ""
     assert "contains_personal_data" in decision_rows[0]["decision_guide"]
     assert "no_personal_data_visible" in decision_rows[0]["reason_code_guide"]
-    assert "attest_teacher_ocr_transfer_allowed" in decision_rows[0]["cleared_required_attestations"]
+    assert (
+        "attest_teacher_ocr_transfer_allowed" in decision_rows[0]["cleared_required_attestations"]
+    )
     readme_text = (tmp_path / "bundle" / review_bundle.README_NAME).read_text(encoding="utf-8")
     assert "## Decision Guide" in readme_text
     assert "Rows with `decision=cleared_no_personal_data`" in readme_text
@@ -157,7 +161,9 @@ def test_build_bundle_skips_unmaterialized_or_missing_images(tmp_path: Path) -> 
         "materialized_image_file_not_found": 1,
         "missing_materialized_image_path": 1,
     }
-    assert (tmp_path / "bundle" / review_bundle.DECISION_TEMPLATE_NAME).read_text(encoding="utf-8") == ""
+    assert (tmp_path / "bundle" / review_bundle.DECISION_TEMPLATE_NAME).read_text(
+        encoding="utf-8"
+    ) == ""
 
 
 def test_build_bundle_rejects_absolute_image_paths(tmp_path: Path) -> None:

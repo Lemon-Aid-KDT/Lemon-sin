@@ -45,9 +45,11 @@ def _batch(batch_key: str, queue_key: str, start: int, end: int) -> dict[str, An
     return {
         "batch_key": batch_key,
         "queue_key": queue_key,
-        "editable_file_name": "annotation.todo.jsonl"
-        if queue_key == "yolo_section_annotation"
-        else "decisions.todo.jsonl",
+        "editable_file_name": (
+            "annotation.todo.jsonl"
+            if queue_key == "yolo_section_annotation"
+            else "decisions.todo.jsonl"
+        ),
         "row_index_start": start,
         "row_index_end": end,
         "pending_row_count": end - start + 1,
@@ -112,8 +114,20 @@ def _export_summary() -> dict[str, Any]:
                 2,
                 batch_review_file_name="brand_product_review-001.review.csv",
             ),
-            _export_row("review_pii_screening:001", "review_pii_screening", "review_pii_screening-001.jsonl", 1, 1),
-            _export_row("yolo_section_annotation:001", "yolo_section_annotation", "yolo_section_annotation-001.jsonl", 1, 1),
+            _export_row(
+                "review_pii_screening:001",
+                "review_pii_screening",
+                "review_pii_screening-001.jsonl",
+                1,
+                1,
+            ),
+            _export_row(
+                "yolo_section_annotation:001",
+                "yolo_section_annotation",
+                "yolo_section_annotation-001.jsonl",
+                1,
+                1,
+            ),
         ],
         "batch_review_files": [
             {
@@ -164,9 +178,11 @@ def _export_row(
         "queue_key": queue_key,
         "batch_file_name": file_name,
         "batch_review_file_name": batch_review_file_name,
-        "source_editable_file_name": "annotation.todo.jsonl"
-        if queue_key == "yolo_section_annotation"
-        else "decisions.todo.jsonl",
+        "source_editable_file_name": (
+            "annotation.todo.jsonl"
+            if queue_key == "yolo_section_annotation"
+            else "decisions.todo.jsonl"
+        ),
         "row_index_start": start,
         "row_index_end": end,
         "exported_row_count": end - start + 1,
@@ -384,9 +400,7 @@ def test_build_operator_review_workpack_writes_batch_guides_and_index(
     pii_markdown = (output_dir / "review_pii_screening-001.md").read_text(encoding="utf-8")
     assert "reviewed-only extract" in pii_markdown
     assert "teacher OCR preview" in pii_markdown
-    yolo_markdown = (output_dir / "yolo_section_annotation-001.md").read_text(
-        encoding="utf-8"
-    )
+    yolo_markdown = (output_dir / "yolo_section_annotation-001.md").read_text(encoding="utf-8")
     _assert_visual_index_guidance(summary, pii_markdown, yolo_markdown)
     assert "reviewed-only extract" in yolo_markdown
     assert "YOLO dataset preview" in yolo_markdown

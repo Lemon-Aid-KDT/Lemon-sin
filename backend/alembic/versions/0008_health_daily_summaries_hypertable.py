@@ -39,8 +39,7 @@ def upgrade() -> None:
     available. Standard Postgres images therefore never error out — they
     just emit a NOTICE and continue.
     """
-    op.execute(
-        """
+    op.execute("""
         DO $$
         BEGIN
             IF EXISTS (
@@ -58,8 +57,7 @@ def upgrade() -> None:
             END IF;
         END
         $$;
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

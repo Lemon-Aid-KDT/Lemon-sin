@@ -32,9 +32,7 @@ REQUIRED_METRICS_BY_TASK = {
     "detection": ("precision", "recall", "hmean"),
     "recognition": ("acc", "norm_edit_dis"),
 }
-HIGHER_IS_BETTER_METRICS = frozenset(
-    {"precision", "recall", "hmean", "acc", "norm_edit_dis"}
-)
+HIGHER_IS_BETTER_METRICS = frozenset({"precision", "recall", "hmean", "acc", "norm_edit_dis"})
 METRIC_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 SECRET_LIKE_MARKERS = (
     "bearer ",

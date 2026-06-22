@@ -695,9 +695,7 @@ def _parse_vision_candidate_result(content: str) -> OllamaVisionTextCandidateRes
     """
     candidates = _vision_json_candidates(content)
     if not candidates:
-        raise OllamaStructuredOutputError(
-            "Ollama vision assist returned empty content."
-        )
+        raise OllamaStructuredOutputError("Ollama vision assist returned empty content.")
     last_error: ValidationError | None = None
     for candidate in candidates:
         try:
@@ -723,9 +721,7 @@ def _parse_vision_verification_result(content: str) -> OllamaVisionTextVerificat
     """
     candidates = _vision_json_candidates(content)
     if not candidates:
-        raise OllamaStructuredOutputError(
-            "Ollama vision verification returned empty content."
-        )
+        raise OllamaStructuredOutputError("Ollama vision verification returned empty content.")
     last_error: ValidationError | None = None
     for candidate in candidates:
         try:
@@ -751,9 +747,7 @@ def _parse_vision_extraction_result(content: str) -> OllamaVisionStructuredExtra
     """
     candidates = _vision_json_candidates(content)
     if not candidates:
-        raise OllamaStructuredOutputError(
-            "Ollama vision extraction returned empty content."
-        )
+        raise OllamaStructuredOutputError("Ollama vision extraction returned empty content.")
     last_error: ValidationError | None = None
     for candidate in candidates:
         try:

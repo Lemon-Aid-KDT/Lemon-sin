@@ -28,8 +28,7 @@ class OpenAICompatibleClient:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": message.role, "content": message.content}
-                for message in request.messages
+                {"role": message.role, "content": message.content} for message in request.messages
             ],
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,

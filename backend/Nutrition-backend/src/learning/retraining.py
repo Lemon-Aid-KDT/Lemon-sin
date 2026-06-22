@@ -666,11 +666,7 @@ def _canonical_supplement_section_label(raw_box: Mapping[str, Any]) -> str:
     Raises:
         RetrainingSecurityError: If the label is missing or not a section label.
     """
-    raw_label = (
-        raw_box.get("label")
-        or raw_box.get("class_name")
-        or raw_box.get("section_type")
-    )
+    raw_label = raw_box.get("label") or raw_box.get("class_name") or raw_box.get("section_type")
     if not isinstance(raw_label, str) or not raw_label.strip():
         raise RetrainingSecurityError("Supplement section boxes require a semantic label.")
     label = normalize_vision_label(raw_label)

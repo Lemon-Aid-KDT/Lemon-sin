@@ -101,7 +101,9 @@ def _input_paths(tmp_path: Path, *, dry_run: dict[str, Any] | None = None) -> di
         Input path mapping.
     """
     return {
-        "taxonomy_staging_summary": _write_json(tmp_path / "staging-summary.json", _staging_summary()),
+        "taxonomy_staging_summary": _write_json(
+            tmp_path / "staging-summary.json", _staging_summary()
+        ),
         "category_only_import_dry_run": _write_json(
             tmp_path / "dry-run.json",
             dry_run if dry_run is not None else _dry_run(),

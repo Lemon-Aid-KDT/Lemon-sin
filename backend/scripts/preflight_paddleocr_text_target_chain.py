@@ -173,7 +173,12 @@ def run_cli(argv: list[str] | None = None) -> int:
             eval_split=args.eval_split,
             min_fixture_count=args.min_fixtures,
         )
-    except (OSError, json.JSONDecodeError, PaddleOCRTextTargetChainPreflightError, ValueError) as exc:
+    except (
+        OSError,
+        json.JSONDecodeError,
+        PaddleOCRTextTargetChainPreflightError,
+        ValueError,
+    ) as exc:
         summary = _error_summary(error=exc, manifest_name=args.benchmark_manifest.name)
 
     _write_json(args.output, summary)
@@ -405,8 +410,8 @@ def _inspect_row(
     expected_human_reviewed = _expected_is_human_reviewed(expected)
     expected_has_text = _expected_has_reference_text(expected)
     observation = _provider_observation(row, provider) if in_eval_split else None
-    observation_has_metrics = (
-        observation is not None and _observation_has_complete_metrics(observation)
+    observation_has_metrics = observation is not None and _observation_has_complete_metrics(
+        observation
     )
     leakage_check_passed = in_eval_split and row.get("leakage_check_passed") is True
     unsafe_flags = _row_has_unsafe_payload_flags(row)
@@ -601,7 +606,10 @@ def _expected_has_structured_text_fallback(expected: Mapping[str, Any]) -> bool:
     ingredients = expected.get("ingredients")
     if isinstance(ingredients, list) and ingredients:
         return True
-    if any(isinstance(expected.get(key), str) and expected[key].strip() for key in ("product_name", "manufacturer")):
+    if any(
+        isinstance(expected.get(key), str) and expected[key].strip()
+        for key in ("product_name", "manufacturer")
+    ):
         return True
     for key in ("intake_method", "precautions", "functional_claims"):
         value = expected.get(key)

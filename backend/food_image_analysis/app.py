@@ -66,14 +66,16 @@ if uploaded:
         rows = []
         for box in boxes:
             cls_id = int(box.cls[0])
-            rows.append({
-                "클래스": model.names[cls_id],
-                "Confidence": f"{float(box.conf[0]):.3f}",
-                "x1": int(box.xyxy[0][0]),
-                "y1": int(box.xyxy[0][1]),
-                "x2": int(box.xyxy[0][2]),
-                "y2": int(box.xyxy[0][3]),
-            })
+            rows.append(
+                {
+                    "클래스": model.names[cls_id],
+                    "Confidence": f"{float(box.conf[0]):.3f}",
+                    "x1": int(box.xyxy[0][0]),
+                    "y1": int(box.xyxy[0][1]),
+                    "x2": int(box.xyxy[0][2]),
+                    "y2": int(box.xyxy[0][3]),
+                }
+            )
         rows.sort(key=lambda r: r["Confidence"], reverse=True)
         st.dataframe(rows, use_container_width=True)
     else:

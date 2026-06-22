@@ -172,8 +172,7 @@ def _values_match(
         if len(gt) != len(pred):
             return False
         return all(
-            exact_match(p, g, case_sensitive=case_sensitive)
-            for p, g in zip(pred, gt, strict=True)
+            exact_match(p, g, case_sensitive=case_sensitive) for p, g in zip(pred, gt, strict=True)
         )
     if isinstance(gt, str) and isinstance(pred, str):
         return exact_match(pred, gt, case_sensitive=case_sensitive)

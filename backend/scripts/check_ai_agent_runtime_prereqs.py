@@ -48,7 +48,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("docker command", _command_available("docker")),
         ("wsl command", _command_available("wsl")),
         ("conda executable", _conda_available()),
-        (f"PostgreSQL port {postgres_host}:{postgres_port}", _port_open(postgres_host, postgres_port)),
+        (
+            f"PostgreSQL port {postgres_host}:{postgres_port}",
+            _port_open(postgres_host, postgres_port),
+        ),
         (f"SGLang port {sglang_host}:{sglang_port}", _port_open(sglang_host, sglang_port)),
         (f"Ollama port {ollama_host}:{ollama_port}", _port_open(ollama_host, ollama_port)),
         ("sglang Python package", _module_available("sglang")),
@@ -91,10 +94,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.require_medical_sources,
     )
     if medical_source_failures:
-        print(
-            "Required medical sources are not ready: "
-            + ", ".join(medical_source_failures)
-        )
+        print("Required medical sources are not ready: " + ", ".join(medical_source_failures))
     ollama_failure = _ollama_readiness_failure(settings) if args.require_ollama else None
     if ollama_failure:
         print(f"Required Ollama runtime is not ready: ollama={ollama_failure}")

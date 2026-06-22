@@ -139,9 +139,13 @@ def build_review_bundle(
         raise ValueError("limit must be nonnegative.")
     template_path = template_path.expanduser().resolve()
     rows = _read_template_rows(template_path)
-    review_rows, skip_reasons = _reviewable_rows(rows, source_base=template_path.parent, limit=limit)
+    review_rows, skip_reasons = _reviewable_rows(
+        rows, source_base=template_path.parent, limit=limit
+    )
     annotation_rows = [_annotation_template_row(row) for row in review_rows]
-    label_studio_tasks = [_label_studio_task(row, index=index + 1) for index, row in enumerate(review_rows)]
+    label_studio_tasks = [
+        _label_studio_task(row, index=index + 1) for index, row in enumerate(review_rows)
+    ]
     html_text = _html_index(review_rows)
     readme_text = _readme_text()
     summary = _summary(
@@ -173,7 +177,9 @@ def build_review_bundle(
     template_export._reject_unsafe_payload(summary)
     (output_dir / HTML_INDEX_NAME).write_text(html_text, encoding="utf-8")
     (output_dir / ANNOTATION_TEMPLATE_NAME).write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in annotation_rows),
+        "".join(
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in annotation_rows
+        ),
         encoding="utf-8",
     )
     (output_dir / LABEL_STUDIO_TASKS_NAME).write_text(
@@ -206,7 +212,9 @@ def _read_template_rows(path: Path) -> list[dict[str, Any]]:
         template_export._reject_unsafe_payload(row)
         if row.get("schema_version") != EXPECTED_TEMPLATE_ROW_SCHEMA_VERSION:
             raise ValueError("Supplement YOLO bundle requires annotation template rows.")
-        fixture_id = template_export._safe_required_token(row.get("fixture_id"), field_name="fixture_id")
+        fixture_id = template_export._safe_required_token(
+            row.get("fixture_id"), field_name="fixture_id"
+        )
         if fixture_id in seen:
             raise ValueError(f"Duplicate supplement YOLO template fixture_id: {fixture_id}")
         seen.add(fixture_id)
@@ -320,7 +328,9 @@ def _label_studio_task(row: dict[str, Any], *, index: int) -> dict[str, Any]:
         Label Studio-style task object.
     """
     image_path = _safe_relative_image_path(str(row.get("image_path")))
-    fixture_id = template_export._safe_required_token(row.get("fixture_id"), field_name="fixture_id")
+    fixture_id = template_export._safe_required_token(
+        row.get("fixture_id"), field_name="fixture_id"
+    )
     labels = _allowed_labels(row)
     task = {
         "id": index,
@@ -413,8 +423,12 @@ def _html_card(row: dict[str, Any], *, index: int) -> str:
         HTML card.
     """
     image_path = _safe_relative_image_path(str(row.get("image_path")))
-    fixture_id = template_export._safe_required_token(row.get("fixture_id"), field_name="fixture_id")
-    category_key = template_export._safe_required_token(row.get("category_key"), field_name="category_key")
+    fixture_id = template_export._safe_required_token(
+        row.get("fixture_id"), field_name="fixture_id"
+    )
+    category_key = template_export._safe_required_token(
+        row.get("category_key"), field_name="category_key"
+    )
     labels = ", ".join(html.escape(label) for label in _allowed_labels(row))
     return f"""    <article>
       <h2>{index}. <code>{html.escape(fixture_id)}</code></h2>
@@ -542,8 +556,7 @@ def _allowed_labels(row: dict[str, Any]) -> list[str]:
     if not isinstance(labels, list) or not labels:
         raise ValueError("Supplement YOLO template rows require allowed_labels.")
     safe_labels = [
-        template_export._safe_required_token(label, field_name="allowed_label")
-        for label in labels
+        template_export._safe_required_token(label, field_name="allowed_label") for label in labels
     ]
     expected = set(template_export.SUPPLEMENT_SECTION_CLASS_NAMES)
     if set(safe_labels) - expected:

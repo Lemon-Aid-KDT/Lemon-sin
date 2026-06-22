@@ -80,7 +80,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional summary JSON path. Defaults to <output>.summary.json.",
     )
-    parser.add_argument("--default-split", choices=sorted(promoter.SUPPORTED_SPLITS), default="train")
+    parser.add_argument(
+        "--default-split", choices=sorted(promoter.SUPPORTED_SPLITS), default="train"
+    )
     return parser.parse_args(argv)
 
 

@@ -196,9 +196,7 @@ def build_readiness_response(settings: Settings) -> ReadinessResponse:
             classifier_enabled=settings.enable_vision_classifier,
             roi_preprocessing_policy=settings.ocr_roi_preprocessing_policy,
             supplement_yolo_contract=(
-                "section_roi_model_required"
-                if settings.enable_vision_classifier
-                else "disabled"
+                "section_roi_model_required" if settings.enable_vision_classifier else "disabled"
             ),
             supplement_yolo_allowed_labels=normalize_vision_label_set(
                 settings.vision_roi_allowed_classes

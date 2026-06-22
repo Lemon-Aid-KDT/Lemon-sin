@@ -78,9 +78,15 @@ def _batch_plan() -> dict[str, Any]:
         "pending_queue_count": 3,
         "total_pending_operator_action_count": 7,
         "batches": [
-            _batch("brand_product_review:001", "brand_product_review", "decisions.todo.jsonl", 1, 2),
-            _batch("brand_product_review:002", "brand_product_review", "decisions.todo.jsonl", 3, 3),
-            _batch("review_pii_screening:001", "review_pii_screening", "decisions.todo.jsonl", 1, 2),
+            _batch(
+                "brand_product_review:001", "brand_product_review", "decisions.todo.jsonl", 1, 2
+            ),
+            _batch(
+                "brand_product_review:002", "brand_product_review", "decisions.todo.jsonl", 3, 3
+            ),
+            _batch(
+                "review_pii_screening:001", "review_pii_screening", "decisions.todo.jsonl", 1, 2
+            ),
             _batch(
                 "yolo_section_annotation:001",
                 "yolo_section_annotation",

@@ -88,15 +88,27 @@ def upgrade() -> None:
         sa.Column("title", sa.String(length=300), nullable=False),
         sa.Column("category", sa.String(length=40), nullable=True),
         sa.Column("rel_path", sa.String(length=512), nullable=False),
-        sa.Column("tags", postgresql.JSONB(astext_type=sa.Text()), nullable=False,
-                  server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "tags",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
         sa.Column("source_manifest_version", sa.String(length=64), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint("slug <> ''", name=op.f("ck_wiki_documents_slug_nonempty")),
         sa.CheckConstraint("title <> ''", name=op.f("ck_wiki_documents_title_nonempty")),
         sa.CheckConstraint("rel_path <> ''", name=op.f("ck_wiki_documents_rel_path_nonempty")),
@@ -117,16 +129,24 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
         sa.Column("token_count", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint("content <> ''", name=op.f("ck_wiki_chunks_content_nonempty")),
         sa.CheckConstraint("chunk_index >= 0", name=op.f("ck_wiki_chunks_chunk_index_nonnegative")),
         sa.ForeignKeyConstraint(
-            ["document_id"], ["wiki_documents.id"],
-            name=op.f("fk_wiki_chunks_document_id_wiki_documents"), ondelete="CASCADE",
+            ["document_id"],
+            ["wiki_documents.id"],
+            name=op.f("fk_wiki_chunks_document_id_wiki_documents"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_wiki_chunks")),
-        sa.UniqueConstraint("document_id", "chunk_index", name=op.f("uq_wiki_chunks_document_chunk")),
+        sa.UniqueConstraint(
+            "document_id", "chunk_index", name=op.f("uq_wiki_chunks_document_chunk")
+        ),
     )
     op.create_index(op.f("ix_wiki_chunks_document_id"), "wiki_chunks", ["document_id"])
 
@@ -137,15 +157,21 @@ def upgrade() -> None:
         sa.Column("embedding", PGVectorType(WIKI_EMBEDDING_DIMENSIONS), nullable=False),
         sa.Column("embedding_model", sa.String(length=120), nullable=False),
         sa.Column("embedding_dimensions", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint(
             "embedding_dimensions > 0",
             name=op.f("ck_wiki_chunk_embeddings_embedding_dimensions_positive"),
         ),
         sa.ForeignKeyConstraint(
-            ["chunk_id"], ["wiki_chunks.id"],
-            name=op.f("fk_wiki_chunk_embeddings_chunk_id_wiki_chunks"), ondelete="CASCADE",
+            ["chunk_id"],
+            ["wiki_chunks.id"],
+            name=op.f("fk_wiki_chunk_embeddings_chunk_id_wiki_chunks"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_wiki_chunk_embeddings")),
         sa.UniqueConstraint(
@@ -165,15 +191,28 @@ def upgrade() -> None:
         sa.Column("entity_type", sa.String(length=40), nullable=False),
         sa.Column("entity_key", sa.String(length=120), nullable=False),
         sa.Column("wiki_slug", sa.String(length=200), nullable=False),
-        sa.Column("relation", sa.String(length=40), nullable=False,
-                  server_default=sa.text("'primary'")),
+        sa.Column(
+            "relation", sa.String(length=40), nullable=False, server_default=sa.text("'primary'")
+        ),
         sa.Column("source", sa.String(length=64), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
-        sa.CheckConstraint("entity_type <> ''", name=op.f("ck_entity_wiki_links_entity_type_nonempty")),
-        sa.CheckConstraint("entity_key <> ''", name=op.f("ck_entity_wiki_links_entity_key_nonempty")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.CheckConstraint(
+            "entity_type <> ''", name=op.f("ck_entity_wiki_links_entity_type_nonempty")
+        ),
+        sa.CheckConstraint(
+            "entity_key <> ''", name=op.f("ck_entity_wiki_links_entity_key_nonempty")
+        ),
         sa.CheckConstraint("wiki_slug <> ''", name=op.f("ck_entity_wiki_links_wiki_slug_nonempty")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_entity_wiki_links")),
         sa.UniqueConstraint(
@@ -184,7 +223,12 @@ def upgrade() -> None:
         op.f("ix_entity_wiki_links_entity"), "entity_wiki_links", ["entity_type", "entity_key"]
     )
 
-    for table_name in ("wiki_documents", "wiki_chunks", "wiki_chunk_embeddings", "entity_wiki_links"):
+    for table_name in (
+        "wiki_documents",
+        "wiki_chunks",
+        "wiki_chunk_embeddings",
+        "entity_wiki_links",
+    ):
         _create_catalog_read_policy(table_name)
 
 

@@ -415,9 +415,7 @@ def _write_batch_workpack(
         "queue_key": queue_key,
         "workpack_file_name": workpack_file_name,
         "batch_file_name": batch_exporter._safe_filename(str(export_row["batch_file_name"])),
-        "batch_review_file_name": _optional_safe_filename(
-            export_row.get("batch_review_file_name")
-        ),
+        "batch_review_file_name": _optional_safe_filename(export_row.get("batch_review_file_name")),
         "source_editable_file_name": batch_exporter._safe_filename(
             str(batch.get("editable_file_name") or "")
         ),
@@ -629,8 +627,7 @@ def _build_index_markdown(
                 queue=batch_exporter._safe_token(str(row["queue_key"])),
                 file=batch_exporter._safe_filename(str(row["workpack_file_name"])),
                 batch_file=batch_exporter._safe_filename(str(row["batch_file_name"])),
-                review_csv=_optional_safe_filename(row.get("batch_review_file_name"))
-                or "none",
+                review_csv=_optional_safe_filename(row.get("batch_review_file_name")) or "none",
                 start=batch_exporter._positive_int(row.get("row_index_start")),
                 end=batch_exporter._positive_int(row.get("row_index_end")),
                 count=batch_exporter._non_negative_int(row.get("pending_row_count")),
@@ -1121,9 +1118,7 @@ def _cli_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "status": "ok",
         "batch_count": batch_exporter._non_negative_int(summary.get("batch_count")),
-        "workpack_file_count": batch_exporter._non_negative_int(
-            summary.get("workpack_file_count")
-        ),
+        "workpack_file_count": batch_exporter._non_negative_int(summary.get("workpack_file_count")),
         "next_batch_key": summary.get("next_batch_key"),
         "source_rows_read": False,
         "source_image_read_performed": False,

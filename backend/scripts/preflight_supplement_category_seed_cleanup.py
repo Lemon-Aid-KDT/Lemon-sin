@@ -137,9 +137,7 @@ def build_category_seed_cleanup_preflight(
     Raises:
         ValueError: If inputs are empty, malformed, or unsafe.
     """
-    category_rows = importer._category_rows_by_key(
-        importer._read_jsonl_objects(taxonomy_staging)
-    )
+    category_rows = importer._category_rows_by_key(importer._read_jsonl_objects(taxonomy_staging))
     expected_keys = set(category_rows)
     active_keys = _read_active_category_dump(active_category_dump)
     missing_keys = sorted(expected_keys - active_keys)
@@ -151,7 +149,9 @@ def build_category_seed_cleanup_preflight(
     summary = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
-        "status": _status(exact_match=exact_match, missing_keys=missing_keys, extra_keys=extra_keys),
+        "status": _status(
+            exact_match=exact_match, missing_keys=missing_keys, extra_keys=extra_keys
+        ),
         "taxonomy_staging_name": taxonomy_staging.name,
         "taxonomy_staging_sha256": _sha256_file(taxonomy_staging),
         "active_category_dump_name": active_category_dump.name,
@@ -200,11 +200,7 @@ def _read_active_category_dump(path: Path) -> set[str]:
     Raises:
         ValueError: If the dump is empty or contains unsafe values.
     """
-    rows = {
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    }
+    rows = {line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
     if not rows:
         raise ValueError("active category dump is empty.")
     for row in rows:

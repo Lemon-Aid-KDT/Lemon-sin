@@ -141,7 +141,9 @@ async def build(
     """
     rows = [
         json.loads(line)
-        for line in (bundle_dir / "ground-truth.todo.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (bundle_dir / "ground-truth.todo.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
         if line.strip()
     ]
     split_by_id = _split_ids(splits_path)
@@ -151,9 +153,9 @@ async def build(
         if row.get("ready_for_benchmark_after_review") is True
         and split_by_id.get(str(row.get("fixture_id"))) in allow_splits
     ]
-    excluded_not_allowed = sum(1 for r in rows if r.get("ready_for_benchmark_after_review") is True) - len(
-        ready
-    )
+    excluded_not_allowed = sum(
+        1 for r in rows if r.get("ready_for_benchmark_after_review") is True
+    ) - len(ready)
     random.Random(seed).shuffle(ready)
     if limit is not None:
         ready = ready[:limit]
@@ -224,13 +226,17 @@ async def build(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle-dir", type=Path, required=True)
-    parser.add_argument("--splits", type=Path, required=True, help="Benchmark split assignment JSONL.")
+    parser.add_argument(
+        "--splits", type=Path, required=True, help="Benchmark split assignment JSONL."
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42, help="Seed for the train/val shuffle.")
     parser.add_argument(
-        "--include-test", action="store_true", help="Also train on the test split (default: train only)."
+        "--include-test",
+        action="store_true",
+        help="Also train on the test split (default: train only).",
     )
     parser.add_argument("--apply", action="store_true")
     return parser.parse_args(argv)

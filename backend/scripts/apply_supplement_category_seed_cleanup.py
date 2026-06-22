@@ -176,9 +176,7 @@ async def apply_category_seed_cleanup(
     Raises:
         CategorySeedCleanupError: If inputs are stale, unsafe, or not cleanup-only.
     """
-    category_rows = importer._category_rows_by_key(
-        importer._read_jsonl_objects(taxonomy_staging)
-    )
+    category_rows = importer._category_rows_by_key(importer._read_jsonl_objects(taxonomy_staging))
     expected_keys = set(category_rows)
     active_keys = preflight._read_active_category_dump(active_category_dump)
     missing_keys = sorted(expected_keys - active_keys)

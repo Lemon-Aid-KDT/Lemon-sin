@@ -1141,9 +1141,7 @@ async def test_revoke_learning_consent_records_failed_outcome_on_object_store_fa
         status="ready",
         consent_snapshot={"consents": []},
     )
-    fake_session = _FakeDeletionSession(
-        {LearningImageObject: [image_object]}, request_managed=True
-    )
+    fake_session = _FakeDeletionSession({LearningImageObject: [image_object]}, request_managed=True)
     fake_store = _FakeLearningObjectStore(fail=True)
     monkeypatch.setattr(
         "src.services.privacy.build_learning_object_store", lambda _settings: fake_store

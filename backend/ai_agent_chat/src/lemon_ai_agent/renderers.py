@@ -470,7 +470,9 @@ def _deterministic_response(
     message: str,
     warnings: list[str],
 ) -> ChatbotResponse:
-    sources = turn.sources if _has_medical_wiki_sources(turn) else _boundary_sources(turn) or turn.sources
+    sources = (
+        turn.sources if _has_medical_wiki_sources(turn) else _boundary_sources(turn) or turn.sources
+    )
     return ChatbotResponse(
         request_id=turn.request.request_id,
         message=message,

@@ -401,9 +401,7 @@ async def test_db_retrieval_entity_boost_reorders(
     boosted = result.citations[0]
     # Base 0.70 (1 - 0.30) plus the entity-link bonus (0.25).
     assert boosted.score == pytest.approx(0.95)
-    antioxidants = next(
-        c for c in result.citations if c.source_path == "concepts/antioxidants.md"
-    )
+    antioxidants = next(c for c in result.citations if c.source_path == "concepts/antioxidants.md")
     assert antioxidants.score == pytest.approx(0.90)
 
 
@@ -556,7 +554,9 @@ async def test_db_retrieval_routes_to_model_specific_table(
 
     assert result.citations[0].source_path == "entities/magnesium.md"
     vector_sql = next(
-        sql for sql in session.executed if "DISTINCT ON" not in sql and "entity_wiki_links" not in sql
+        sql
+        for sql in session.executed
+        if "DISTINCT ON" not in sql and "entity_wiki_links" not in sql
     )
     # The base bge-m3 table must not be queried when embeddinggemma is configured.
     assert "wiki_chunk_embeddings_gemma" in vector_sql

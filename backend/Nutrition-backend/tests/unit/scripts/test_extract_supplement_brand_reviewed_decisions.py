@@ -103,7 +103,9 @@ def _decision_row(
         "reviewed_at": "2026-06-04T12:00:00Z",
         "reviewed_manufacturer": manufacturer,
         "reviewed_product_name": product_name,
-        "reason_codes": ["reviewed_label_or_catalog"] if decision == "approve" else ["unclear_brand"],
+        "reason_codes": (
+            ["reviewed_label_or_catalog"] if decision == "approve" else ["unclear_brand"]
+        ),
         "attest_brand_product_review_completed": decision == "approve",
         "attest_not_using_product_folder_literal_as_manufacturer": decision == "approve",
         "attest_product_name_reviewed_from_label_or_safe_catalog": decision == "approve",

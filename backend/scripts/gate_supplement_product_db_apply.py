@@ -159,7 +159,9 @@ def build_product_db_apply_gate(*, input_paths: Mapping[str, Path]) -> dict[str,
     conditions = {
         "brand_gate_ready_for_manifest": brand_payload.get("status") == brand_gate.READY_STATUS,
         "brand_gate_allows_manifest": brand_payload.get("product_import_manifest_allowed") is True,
-        "brand_gate_does_not_allow_direct_db_apply": brand_payload.get("db_import_apply_allowed_now")
+        "brand_gate_does_not_allow_direct_db_apply": brand_payload.get(
+            "db_import_apply_allowed_now"
+        )
         is False,
         "brand_gate_allows_db_apply_after_dry_run": brand_payload.get(
             "db_import_apply_allowed_after_dry_run"

@@ -75,7 +75,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Planned source-map path. Defaults to <template>.source-map.json.",
     )
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--default-split", choices=sorted(promoter.SUPPORTED_SPLITS), default="train")
+    parser.add_argument(
+        "--default-split", choices=sorted(promoter.SUPPORTED_SPLITS), default="train"
+    )
     parser.add_argument("--limit", type=int, default=promoter.DEFAULT_MAX_ROWS)
     parser.add_argument("--require-all-reviewed", action="store_true")
     return parser.parse_args(argv)

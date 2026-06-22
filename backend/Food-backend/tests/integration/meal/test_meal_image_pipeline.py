@@ -98,9 +98,7 @@ class TestImageToProfileEndToEnd:
         profile = matcher.match_recognized_item(item)
         assert profile.food_code == "F003"
         expected_kcal_per_100g = 560.0 / 500.0 * 100.0
-        assert profile.nutrients_per_100g["kcal"] == pytest.approx(
-            expected_kcal_per_100g
-        )
+        assert profile.nutrients_per_100g["kcal"] == pytest.approx(expected_kcal_per_100g)
 
     async def test_food_code_present_for_known_foods(self) -> None:
         """real fixture의 음식은 real food_aliases.json에 모두 등록되어 있어 매칭 성공."""
@@ -134,9 +132,7 @@ class TestAmountEstimateFromImageProfile:
         matcher = _build_matcher()
         meal = await pipeline.recognize_from_fixture_key(BIBIMBAP_SOLO_KEY)
         profile = matcher.match_recognized_item(meal.items[0])
-        estimate = matcher.estimate_for_amount(
-            profile, serving_count=USER_SERVING_COUNT
-        )
+        estimate = matcher.estimate_for_amount(profile, serving_count=USER_SERVING_COUNT)
         expected_g = profile.default_serving_g * USER_SERVING_COUNT
         assert estimate.amount_g == pytest.approx(expected_g)
         assert estimate.serving_count == pytest.approx(USER_SERVING_COUNT)

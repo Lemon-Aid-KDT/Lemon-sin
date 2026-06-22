@@ -151,7 +151,9 @@ def merge_observations_into_benchmark(
         PaddleOCRObservationMergeError: If rows are unsafe or unmatched.
     """
     benchmark_rows = _read_jsonl(benchmark_manifest)
-    fixture_ids = {_safe_token(row.get("fixture_id"), field_name="fixture_id") for row in benchmark_rows}
+    fixture_ids = {
+        _safe_token(row.get("fixture_id"), field_name="fixture_id") for row in benchmark_rows
+    }
     observations_by_fixture: dict[str, list[dict[str, Any]]] = {}
     observation_count = 0
     unmatched_observation_count = 0
@@ -160,11 +162,15 @@ def merge_observations_into_benchmark(
     for observation_path in observation_paths:
         for observation in _read_jsonl(observation_path):
             _reject_unsafe_payload(observation)
-            fixture_id = _safe_token(observation.get("fixture_id"), field_name="observation.fixture_id")
+            fixture_id = _safe_token(
+                observation.get("fixture_id"), field_name="observation.fixture_id"
+            )
             if fixture_id not in fixture_ids:
                 unmatched_observation_count += 1
                 if not allow_unmatched_observations:
-                    raise PaddleOCRObservationMergeError("observation fixture_id not found in benchmark.")
+                    raise PaddleOCRObservationMergeError(
+                        "observation fixture_id not found in benchmark."
+                    )
                 continue
             provider = _safe_token(observation.get("provider"), field_name="observation.provider")
             provider_counts[provider] += 1

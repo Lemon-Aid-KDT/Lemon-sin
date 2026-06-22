@@ -37,7 +37,11 @@ def _split_map(manifests: list[Path]) -> dict[str, str]:
 def build(*, template: Path, manifests: list[Path], output: Path, default_split: str) -> None:
     """Attach v2 splits to promote-template rows and write the result."""
     split_by_fixture = _split_map(manifests)
-    rows = [json.loads(line) for line in template.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in template.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     counts: Counter[str] = Counter()
     matched = 0
     for row in rows:
@@ -50,20 +54,36 @@ def build(*, template: Path, manifests: list[Path], output: Path, default_split:
     with output.open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    print(json.dumps({"rows": len(rows), "split_map_matched": matched,
-                      "split_counts": dict(counts)}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"rows": len(rows), "split_map_matched": matched, "split_counts": dict(counts)},
+            ensure_ascii=False,
+        )
+    )
 
 
 def main() -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--template", required=True, type=Path, help="Promote-template JSONL (from extract).")
-    ap.add_argument("--candidate-manifest", required=True, type=Path, action="append",
-                    help="v2 candidate manifest with candidate_id + v2_split (repeatable).")
+    ap.add_argument(
+        "--template", required=True, type=Path, help="Promote-template JSONL (from extract)."
+    )
+    ap.add_argument(
+        "--candidate-manifest",
+        required=True,
+        type=Path,
+        action="append",
+        help="v2 candidate manifest with candidate_id + v2_split (repeatable).",
+    )
     ap.add_argument("--output", required=True, type=Path)
     ap.add_argument("--default-split", default="train", choices=sorted(SUPPORTED_SPLITS))
     a = ap.parse_args()
-    build(template=a.template, manifests=a.candidate_manifest, output=a.output, default_split=a.default_split)
+    build(
+        template=a.template,
+        manifests=a.candidate_manifest,
+        output=a.output,
+        default_split=a.default_split,
+    )
 
 
 if __name__ == "__main__":

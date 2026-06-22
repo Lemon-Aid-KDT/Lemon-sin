@@ -58,9 +58,7 @@ _INSERT = text(
 
 async def _set_subject(conn: AsyncConnection, subject: str) -> None:
     """Set the transaction-local owner-subject GUC the 0023b policies read."""
-    await conn.execute(
-        text("SELECT set_config('app.current_subject', :s, true)"), {"s": subject}
-    )
+    await conn.execute(text("SELECT set_config('app.current_subject', :s, true)"), {"s": subject})
 
 
 async def _owners_seen(conn: AsyncConnection, alg: str) -> set[str]:

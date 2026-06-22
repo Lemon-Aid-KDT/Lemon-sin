@@ -153,9 +153,7 @@ def test_build_candidates_skips_clean_paddleocr_result(tmp_path: Path) -> None:
                             {"display_name": "DHA", "amount": 120, "unit": "mg"},
                         ],
                         "intake_method": {"text": "Take 1 softgel daily with food."},
-                        "precautions": [
-                            {"text": "Consult a physician if pregnant or nursing."}
-                        ],
+                        "precautions": [{"text": "Consult a physician if pregnant or nursing."}],
                         "label_sections": [
                             {"section_type": "supplement_facts"},
                             {"section_type": "precautions"},
@@ -247,7 +245,9 @@ def test_build_candidates_rejects_absolute_image_path(tmp_path: Path) -> None:
         builder.build_paddleocr_improvement_candidates(benchmark_manifest=manifest)
 
 
-def test_main_writes_candidate_and_redacted_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_writes_candidate_and_redacted_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Verify CLI writes JSONL candidates and a summary."""
     manifest = tmp_path / "benchmark.jsonl"
     output = tmp_path / "out" / "candidates.jsonl"

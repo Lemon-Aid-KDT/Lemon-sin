@@ -809,7 +809,9 @@ def test_chatbot_structured_json_reattaches_deterministic_slots() -> None:
     assert "fake_boundary_claim_id" not in response.message
     assert "별문제 없으면 계속 드세요" not in response.message
     assert response.sources[0]["source_id"] == "nih-ods-magnesium"
-    assert response.sources[0]["source_url"] == "https://ods.od.nih.gov/factsheets/Magnesium-Consumer/"
+    assert (
+        response.sources[0]["source_url"] == "https://ods.od.nih.gov/factsheets/Magnesium-Consumer/"
+    )
 
 
 def test_chatbot_unsafe_structured_polish_falls_back_to_deterministic_draft() -> None:

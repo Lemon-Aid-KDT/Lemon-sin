@@ -34,7 +34,9 @@ def _write_fake_paddleocr_root(root: Path) -> Path:
     return root
 
 
-def _plan(*, task: str = "recognition", save_model_ref: str = "models/paddleocr/run") -> dict[str, Any]:
+def _plan(
+    *, task: str = "recognition", save_model_ref: str = "models/paddleocr/run"
+) -> dict[str, Any]:
     """Build a fine-tune plan fixture.
 
     Args:
@@ -46,7 +48,11 @@ def _plan(*, task: str = "recognition", save_model_ref: str = "models/paddleocr/
     """
     model_family = "paddleocr_rec" if task == "recognition" else "paddleocr_det"
     base_model = "PP-OCRv5-rec" if task == "recognition" else "PP-OCRv5-det"
-    config_ref = "configs/rec/supplement_rec.yml" if task == "recognition" else "configs/det/supplement_det.yml"
+    config_ref = (
+        "configs/rec/supplement_rec.yml"
+        if task == "recognition"
+        else "configs/det/supplement_det.yml"
+    )
     return {
         "schema_version": "paddleocr-finetune-run-plan-v1",
         "training_execution_performed": False,
@@ -370,7 +376,9 @@ def test_timeout_redacts_partial_eval_logs(
 def test_execute_rejects_failed_finetune_execution_result(tmp_path: Path) -> None:
     """Verify eval cannot run when training did not succeed."""
     plan_path = _write_json(tmp_path / "plan.json", _plan())
-    execution_path = _write_json(tmp_path / "train.json", _finetune_execution(process_status="failed"))
+    execution_path = _write_json(
+        tmp_path / "train.json", _finetune_execution(process_status="failed")
+    )
     paddleocr_root = _write_fake_paddleocr_root(tmp_path / "PaddleOCR")
 
     with pytest.raises(

@@ -92,7 +92,9 @@ PRESETS: dict[str, dict[str, Any]] = {
 def main() -> int:
     args = _parse_args()
     if not args.database_url:
-        print("ERROR: set DATABASE_URL or TEST_DATABASE_URL, or pass --database-url.", file=sys.stderr)
+        print(
+            "ERROR: set DATABASE_URL or TEST_DATABASE_URL, or pass --database-url.", file=sys.stderr
+        )
         return 2
 
     database_url = _normalize_database_url(args.database_url)
@@ -103,7 +105,9 @@ def main() -> int:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database-url", default=os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL"))
+    parser.add_argument(
+        "--database-url", default=os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    )
     parser.add_argument(
         "--preset",
         choices=sorted(PRESETS),

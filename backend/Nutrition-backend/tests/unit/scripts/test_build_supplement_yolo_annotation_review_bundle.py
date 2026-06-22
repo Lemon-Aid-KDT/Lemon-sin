@@ -130,7 +130,9 @@ def test_build_bundle_writes_html_annotation_template_and_label_studio_tasks(
     assert annotation_rows[0]["label_snapshot"]["boxes"] == []
     assert annotation_rows[0]["box_schema_example"] == yolo_bundle.BOX_SCHEMA_EXAMPLE
     assert annotation_rows[0]["section_label_guide"]["supplement_facts"].startswith("The full")
-    tasks = json.loads((output_dir / yolo_bundle.LABEL_STUDIO_TASKS_NAME).read_text(encoding="utf-8"))
+    tasks = json.loads(
+        (output_dir / yolo_bundle.LABEL_STUDIO_TASKS_NAME).read_text(encoding="utf-8")
+    )
     assert tasks[0]["data"]["image"] == "images/detail-yolo-001.webp"
     assert "supplement_facts" in tasks[0]["meta"]["allowed_labels"]
     assert tasks[0]["meta"]["box_schema_example"] == yolo_bundle.BOX_SCHEMA_EXAMPLE

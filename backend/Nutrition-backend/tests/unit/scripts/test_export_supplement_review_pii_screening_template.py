@@ -15,7 +15,9 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 candidate_builder = importlib.import_module("scripts.build_supplement_learning_candidate_manifests")
-template_exporter = importlib.import_module("scripts.export_supplement_review_pii_screening_template")
+template_exporter = importlib.import_module(
+    "scripts.export_supplement_review_pii_screening_template"
+)
 
 
 def _touch_image(path: Path, content: bytes = b"review-image") -> None:
@@ -43,7 +45,9 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     )
 
 
-def _candidate_rows(tmp_path: Path, *, pii_cleared: bool = False) -> tuple[Path, list[dict[str, Any]]]:
+def _candidate_rows(
+    tmp_path: Path, *, pii_cleared: bool = False
+) -> tuple[Path, list[dict[str, Any]]]:
     """Build supplement review OCR candidate rows.
 
     Args:
@@ -88,7 +92,9 @@ def test_export_pii_template_includes_pending_review_candidates(tmp_path: Path) 
     assert row["teacher_ocr_allowed"] is False
     assert row["operator_decision_required"] is True
     assert row["decision_stub"]["pii_screening_decision"]["decision"] == ""
-    assert row["decision_stub"]["pii_screening_decision"]["attest_no_personal_data_visible"] is False
+    assert (
+        row["decision_stub"]["pii_screening_decision"]["attest_no_personal_data_visible"] is False
+    )
 
 
 def test_export_pii_template_materializes_relative_private_image_path(

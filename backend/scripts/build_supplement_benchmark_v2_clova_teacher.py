@@ -46,7 +46,11 @@ def _resolve(crawl_root: Path, manifest: Path) -> tuple[list[dict[str, Any]], di
     Returns:
         ``(resolved, stats)`` where resolved items add a verified ``path``.
     """
-    records = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records = [
+        json.loads(line)
+        for line in manifest.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     by_hash: dict[str, list[dict[str, Any]]] = {}
     for r in records:
         by_hash.setdefault(r["product_dir_hash"], []).append(r)
@@ -66,7 +70,11 @@ def _resolve(crawl_root: Path, manifest: Path) -> tuple[list[dict[str, Any]], di
                 sha_mismatch += 1
                 continue
             resolved.append({**rec, "path": path})
-    stats = {"manifest_records": len(records), "resolved": len(resolved), "sha_mismatch": sha_mismatch}
+    stats = {
+        "manifest_records": len(records),
+        "resolved": len(resolved),
+        "sha_mismatch": sha_mismatch,
+    }
     return resolved, stats
 
 
@@ -128,7 +136,9 @@ def _structured_draft(boxes: list[tuple[str, tuple[int, int, int, int]]]) -> dic
     return draft
 
 
-async def _process(adapter: ClovaOCRAdapter, settings: Any, rec: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+async def _process(
+    adapter: ClovaOCRAdapter, settings: Any, rec: dict[str, Any], out_dir: Path
+) -> dict[str, Any]:
     """CLOVA-label one candidate and write teacher + drafts (gitignored)."""
     with Image.open(rec["path"]) as raw:
         rgb = raw.convert("RGB")
@@ -140,7 +150,8 @@ async def _process(adapter: ClovaOCRAdapter, settings: Any, rec: dict[str, Any],
         "candidate_id": rec["candidate_id"],
         "product_dir_hash": rec["product_dir_hash"],
         "image_index": rec["image_index"],
-        "width": width, "height": height,
+        "width": width,
+        "height": height,
         "field_count": len(boxes),
         "fields": [{"text": t, "box": list(b)} for t, b in boxes],
         "section_bboxes_yolo": section_lines,
@@ -151,10 +162,16 @@ async def _process(adapter: ClovaOCRAdapter, settings: Any, rec: dict[str, Any],
     (out_dir / "teacher" / f"{rec['candidate_id']}.json").write_text(
         json.dumps(payload, ensure_ascii=False), encoding="utf-8"
     )
-    return {"sections": list(draft.keys()), "section_box_count": len(section_lines), "field_count": len(boxes)}
+    return {
+        "sections": list(draft.keys()),
+        "section_box_count": len(section_lines),
+        "field_count": len(boxes),
+    }
 
 
-async def build(*, crawl_root: Path, manifest: Path, out_dir: Path, limit: int | None, apply: bool) -> None:
+async def build(
+    *, crawl_root: Path, manifest: Path, out_dir: Path, limit: int | None, apply: bool
+) -> None:
     """Resolve candidates and (with --apply) run the CLOVA teacher pass."""
     resolved, stats = _resolve(crawl_root, manifest)
     print(json.dumps({"phase": "resolve", **stats}, ensure_ascii=False))
@@ -178,16 +195,22 @@ async def build(*, crawl_root: Path, manifest: Path, out_dir: Path, limit: int |
         except Exception:  # per-image isolation
             done["failed"] += 1
         if (i + 1) % 25 == 0:
-            print(f"  CLOVA progress: {i + 1}/{len(resolved)} labeled={done['labeled']} failed={done['failed']}", flush=True)
+            print(
+                f"  CLOVA progress: {i + 1}/{len(resolved)} labeled={done['labeled']} failed={done['failed']}",
+                flush=True,
+            )
     summary = {
         "schema_version": "supplement-benchmark-v2-clova-teacher-summary-v1",
-        **stats, **done,
+        **stats,
+        **done,
         "section_coverage": dict(section_cov),
         "candidates_with_ingredient": section_cov.get("ingredient_amounts", 0),
         "candidates_with_intake": section_cov.get("intake_method", 0),
     }
     (out_dir).mkdir(parents=True, exist_ok=True)
-    (out_dir / "clova-teacher-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "clova-teacher-summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
@@ -200,7 +223,15 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--apply", action="store_true", help="Perform the paid CLOVA teacher pass.")
     a = ap.parse_args()
-    asyncio.run(build(crawl_root=a.crawl_root, manifest=a.manifest, out_dir=a.output_dir, limit=a.limit, apply=a.apply))
+    asyncio.run(
+        build(
+            crawl_root=a.crawl_root,
+            manifest=a.manifest,
+            out_dir=a.output_dir,
+            limit=a.limit,
+            apply=a.apply,
+        )
+    )
 
 
 if __name__ == "__main__":

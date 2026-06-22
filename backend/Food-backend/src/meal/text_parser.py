@@ -45,8 +45,7 @@ _AMOUNT_PATTERN = re.compile(
 """문자열 끝에 붙은 양 표현. 정량 환산 없이 원문 그대로 캡처."""
 
 _SEPARATOR_PATTERN = re.compile(
-    rf"\s*[,;{_IDEOGRAPHIC_COMMA}{_FULLWIDTH_COMMA}/]\s*"
-    r"|\s+와\s+|\s+과\s+|\s+그리고\s+"
+    rf"\s*[,;{_IDEOGRAPHIC_COMMA}{_FULLWIDTH_COMMA}/]\s*" r"|\s+와\s+|\s+과\s+|\s+그리고\s+"
 )
 """음식 항목 분리자.
 

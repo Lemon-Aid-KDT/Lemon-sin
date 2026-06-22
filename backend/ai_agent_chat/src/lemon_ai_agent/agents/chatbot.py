@@ -173,11 +173,15 @@ class ChatbotAgent:
             return boundary_response
         context_resolution_response = self._context_resolution_response(request)
         if context_resolution_response is not None:
-            self._record_response_trace(turn, context_resolution_response, "needs_more_info", warnings)
+            self._record_response_trace(
+                turn, context_resolution_response, "needs_more_info", warnings
+            )
             return context_resolution_response
         entity_resolution_response = self._entity_resolution_response_for_turn(turn, request)
         if entity_resolution_response is not None:
-            self._record_response_trace(turn, entity_resolution_response, "needs_more_info", warnings)
+            self._record_response_trace(
+                turn, entity_resolution_response, "needs_more_info", warnings
+            )
             return entity_resolution_response
         label_only_response = self._label_only_supplement_response(request, warnings)
         if label_only_response is not None:
@@ -332,11 +336,7 @@ class ChatbotAgent:
         )
 
     def _claim_ids_for_turn(self, turn: ChatTurnPlan) -> tuple[str, ...]:
-        claim_ids = [
-            card.linked_claim_id
-            for card in turn.answer_cards
-            if card.linked_claim_id
-        ]
+        claim_ids = [card.linked_claim_id for card in turn.answer_cards if card.linked_claim_id]
         return tuple(dict.fromkeys(claim_ids))
 
     def _source_ids_for_turn(self, turn: ChatTurnPlan) -> tuple[str, ...]:
@@ -909,10 +909,10 @@ class ChatbotAgent:
             return None
         if stripped.startswith("```"):
             lines = stripped.splitlines()
-            if (
-                len(lines) >= MIN_MARKDOWN_CODE_FENCE_LINES
-                and lines[0].strip().casefold() in {"```", "```json"}
-            ):
+            if len(lines) >= MIN_MARKDOWN_CODE_FENCE_LINES and lines[0].strip().casefold() in {
+                "```",
+                "```json",
+            }:
                 stripped = "\n".join(lines[1:-1]).strip()
         if stripped.startswith("{"):
             return stripped

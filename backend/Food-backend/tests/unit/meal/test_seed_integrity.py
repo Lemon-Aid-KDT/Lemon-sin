@@ -106,9 +106,7 @@ class TestKoreanFoodsCsv:
         }
         for row in korean_foods:
             missing = required - row.keys()
-            assert (
-                not missing
-            ), f"missing columns in row {row.get('food_code')}: {missing}"
+            assert not missing, f"missing columns in row {row.get('food_code')}: {missing}"
 
     def test_unit_size_positive(self, korean_foods: list[dict[str, str]]) -> None:
         """unit_size_g는 양수."""
@@ -138,16 +136,12 @@ class TestFoodAliasesJson:
 class TestCrossReference:
     """파일 간 cross-reference 정합성."""
 
-    def test_alias_values_all_in_csv(
-        self, aliases: dict[str, str], food_codes: set[str]
-    ) -> None:
+    def test_alias_values_all_in_csv(self, aliases: dict[str, str], food_codes: set[str]) -> None:
         """alias.json의 모든 food_code가 csv에 존재."""
         invalid = {k: v for k, v in aliases.items() if v not in food_codes}
         assert not invalid, f"존재하지 않는 food_code 참조: {invalid}"
 
-    def test_all_food_codes_referenced(
-        self, aliases: dict[str, str], food_codes: set[str]
-    ) -> None:
+    def test_all_food_codes_referenced(self, aliases: dict[str, str], food_codes: set[str]) -> None:
         """모든 food_code가 alias에서 최소 한 번 등장."""
         referenced = set(aliases.values())
         unreferenced = food_codes - referenced
@@ -217,9 +211,7 @@ class TestMockPredictionsShape:
             assert "detections" in pred, img_name
             assert "gcv_hints" in pred, img_name
 
-    def test_bbox_xyxy_ordered(
-        self, mock_predictions: dict[str, dict[str, object]]
-    ) -> None:
+    def test_bbox_xyxy_ordered(self, mock_predictions: dict[str, dict[str, object]]) -> None:
         """bbox_xyxy는 [x1, y1, x2, y2]이고 x1<x2, y1<y2."""
         for img_name, pred in mock_predictions.items():
             detections = pred["detections"]
@@ -227,9 +219,7 @@ class TestMockPredictionsShape:
             for d in detections:
                 assert isinstance(d, dict)
                 bbox = d["bbox_xyxy"]
-                assert (
-                    isinstance(bbox, list) and len(bbox) == BBOX_COORD_COUNT
-                ), img_name
+                assert isinstance(bbox, list) and len(bbox) == BBOX_COORD_COUNT, img_name
                 x1, y1, x2, y2 = bbox
                 assert x1 < x2 and y1 < y2, f"{img_name}: 잘못된 bbox 순서 {bbox}"
 

@@ -130,7 +130,9 @@ class _FakeTaxonomyRepository:
         key = str(row["category_key"])
         row_id = self.category_ids.setdefault(key, uuid4())
         self.category_rows.append(row)
-        action = importer.WRITE_ACTION_UPDATED if self.preexisting else importer.WRITE_ACTION_INSERTED
+        action = (
+            importer.WRITE_ACTION_UPDATED if self.preexisting else importer.WRITE_ACTION_INSERTED
+        )
         return action, row_id
 
     async def upsert_product(self, row: dict[str, object]) -> tuple[str, UUID]:
@@ -140,7 +142,9 @@ class _FakeTaxonomyRepository:
         key = (str(row["source_provider"]), str(row["source_product_id"]))
         row_id = self.product_ids.setdefault(key, uuid4())
         self.product_rows.append(row)
-        action = importer.WRITE_ACTION_UPDATED if self.preexisting else importer.WRITE_ACTION_INSERTED
+        action = (
+            importer.WRITE_ACTION_UPDATED if self.preexisting else importer.WRITE_ACTION_INSERTED
+        )
         return action, row_id
 
     async def upsert_product_category(
@@ -406,9 +410,7 @@ async def test_run_cli_loads_env_file_without_printing_database_url(
     stdout = capsys.readouterr().out
     summary_text = summary_path.read_text(encoding="utf-8")
     assert exit_code == 0
-    assert seen_database_url == [
-        "postgresql+asyncpg://example:secret@example.invalid/db"
-    ]
+    assert seen_database_url == ["postgresql+asyncpg://example:secret@example.invalid/db"]
     assert "secret" not in stdout
     assert "example.invalid" not in stdout
     assert "secret" not in summary_text

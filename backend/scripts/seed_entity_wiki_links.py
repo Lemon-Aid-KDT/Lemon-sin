@@ -98,17 +98,41 @@ def _build_links(category_keys: list[str], cuisine_codes: list[str]) -> list[dic
     for key in category_keys:
         slug = CATEGORY_WIKI_MAP.get(key)
         if slug:
-            links.append({"entity_type": "supplement_category", "entity_key": key,
-                          "wiki_slug": slug, "relation": "primary"})
-        links.append({"entity_type": "supplement_category", "entity_key": key,
-                      "wiki_slug": SUPPLEMENT_REFERENCE_HUB, "relation": "reference_hub"})
+            links.append(
+                {
+                    "entity_type": "supplement_category",
+                    "entity_key": key,
+                    "wiki_slug": slug,
+                    "relation": "primary",
+                }
+            )
+        links.append(
+            {
+                "entity_type": "supplement_category",
+                "entity_key": key,
+                "wiki_slug": SUPPLEMENT_REFERENCE_HUB,
+                "relation": "reference_hub",
+            }
+        )
     for code in cuisine_codes:
         slug = CUISINE_WIKI_MAP.get(code)
         if slug:
-            links.append({"entity_type": "food_cuisine", "entity_key": code,
-                          "wiki_slug": slug, "relation": "primary"})
-        links.append({"entity_type": "food_cuisine", "entity_key": code,
-                      "wiki_slug": FOOD_TAXONOMY_HUB, "relation": "reference_hub"})
+            links.append(
+                {
+                    "entity_type": "food_cuisine",
+                    "entity_key": code,
+                    "wiki_slug": slug,
+                    "relation": "primary",
+                }
+            )
+        links.append(
+            {
+                "entity_type": "food_cuisine",
+                "entity_key": code,
+                "wiki_slug": FOOD_TAXONOMY_HUB,
+                "relation": "reference_hub",
+            }
+        )
     return links
 
 
@@ -129,16 +153,19 @@ async def run(*, dsn: str, apply: bool) -> dict:
             )
         ]
         links = _build_links(category_keys, cuisine_codes)
-        known_slugs = {
-            r["slug"] for r in await conn.fetch("select slug from wiki_documents")
-        }
+        known_slugs = {r["slug"] for r in await conn.fetch("select slug from wiki_documents")}
         missing = sorted({lnk["wiki_slug"] for lnk in links if lnk["wiki_slug"] not in known_slugs})
         if apply:
             async with conn.transaction():
                 for lnk in links:
                     await conn.execute(
-                        UPSERT_SQL, uuid4(), lnk["entity_type"], lnk["entity_key"],
-                        lnk["wiki_slug"], lnk["relation"], SOURCE,
+                        UPSERT_SQL,
+                        uuid4(),
+                        lnk["entity_type"],
+                        lnk["entity_key"],
+                        lnk["wiki_slug"],
+                        lnk["relation"],
+                        SOURCE,
                     )
             total = await conn.fetchval("select count(*) from entity_wiki_links")
         else:
@@ -170,8 +197,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary:
         path = Path(args.summary)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                        encoding="utf-8")
+        path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 

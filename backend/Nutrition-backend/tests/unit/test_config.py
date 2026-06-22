@@ -174,7 +174,9 @@ def test_default_development_settings_load(  # noqa: PLR0915
     assert settings.meal_food_classifier_exp16b_model_path is not None
     assert settings.meal_food_classifier_exp16b_model_path.endswith("Food-backend/best.pt")
     assert settings.meal_food_classifier_probe_path is not None
-    assert settings.meal_food_classifier_probe_path.endswith("Food-backend/src/classifier/probe_head.pt")
+    assert settings.meal_food_classifier_probe_path.endswith(
+        "Food-backend/src/classifier/probe_head.pt"
+    )
     assert settings.meal_food_classifier_nutrition_csv_path is not None
     assert settings.meal_food_classifier_nutrition_csv_path.endswith(
         "Food-backend/src/classifier/nutrition/food_nutrition_40class.csv"

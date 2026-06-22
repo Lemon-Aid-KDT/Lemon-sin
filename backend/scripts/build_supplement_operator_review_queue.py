@@ -260,7 +260,9 @@ def build_operator_review_queue(*, input_paths: Mapping[str, Path]) -> dict[str,
         _queue_row(spec, payload=payloads[spec.input_key], stage_statuses=stage_statuses)
         for spec in QUEUE_SPECS
     ]
-    total_pending = sum(_non_negative_int(queue["pending_operator_action_count"]) for queue in queues)
+    total_pending = sum(
+        _non_negative_int(queue["pending_operator_action_count"]) for queue in queues
+    )
     ready_queue_count = sum(1 for queue in queues if queue["ready_for_next_step"] is True)
     queue_count = len(queues)
     summary = {
@@ -642,7 +644,9 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         payload: JSON payload.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _cli_summary(summary: Mapping[str, Any]) -> dict[str, Any]:

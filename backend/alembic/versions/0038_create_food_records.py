@@ -94,12 +94,10 @@ def upgrade() -> None:
         ["owner_subject_hash", "meal_type", "recorded_date"],
         unique=False,
     )
-    op.execute(
-        """
+    op.execute("""
         COMMENT ON TABLE food_records IS
             'User-confirmed food records for app context and chatbot grounding. No raw OCR or prompts.';
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

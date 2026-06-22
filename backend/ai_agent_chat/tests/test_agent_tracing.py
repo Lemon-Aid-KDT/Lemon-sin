@@ -216,9 +216,7 @@ def test_runtime_metrics_alerts_and_structured_log_stay_sanitized(
     )
     assert len(caplog.records) == 1
     assert caplog.records[0].levelno == logging.WARNING
-    payload = json.loads(
-        caplog.records[0].getMessage().removeprefix("agent_runtime_metrics ")
-    )
+    payload = json.loads(caplog.records[0].getMessage().removeprefix("agent_runtime_metrics "))
     assert payload == {
         "alert_codes": [
             "answerability_unknown_rate_high",

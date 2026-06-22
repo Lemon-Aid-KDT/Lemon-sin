@@ -46,7 +46,9 @@ LONG_PAGE_MIN_PX = 3000
 SPLIT_TRAIN_MAX_BUCKET = 70
 SPLIT_VAL_MAX_BUCKET = 85
 
-AMOUNT_RE = re.compile(r"\d+(?:[.,]\d+)?\s*(?:mg|g|mcg|㎍|㎎|iu|억|cfu|kcal|%|밀리그램|마이크로그램)", re.IGNORECASE)
+AMOUNT_RE = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:mg|g|mcg|㎍|㎎|iu|억|cfu|kcal|%|밀리그램|마이크로그램)", re.IGNORECASE
+)
 INGREDIENT_KW = ("성분", "원료", "함량", "영양성분", "영양정보", "원재료")
 INTAKE_KW = ("섭취", "복용", "섭취방법", "복용방법", "1일", "일일", "하루", "1회", "회분")
 FACTS_KW = ("영양성분", "영양정보", "기준치", "1일영양성분")
@@ -109,7 +111,12 @@ def _image_meta(path: Path) -> tuple[int, float, str]:
 
 
 def _ocr_proxy(
-    *, crawl_root: Path, eligible_hashes: set[str], max_images: int, cache_path: Path, limit: int | None
+    *,
+    crawl_root: Path,
+    eligible_hashes: set[str],
+    max_images: int,
+    cache_path: Path,
+    limit: int | None,
 ) -> dict[str, Any]:
     """Run the local OCR proxy over eligible products, caching per-product signals.
 
@@ -127,8 +134,12 @@ def _ocr_proxy(
     if cache_path.exists():
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
     ocr = pe._build_ocr(
-        det_model="PP-OCRv5_mobile_det", rec_model="korean_PP-OCRv5_mobile_rec",
-        max_side=2048, det_box_thresh=0.15, det_thresh=0.1, det_unclip_ratio=2.0,
+        det_model="PP-OCRv5_mobile_det",
+        rec_model="korean_PP-OCRv5_mobile_rec",
+        max_side=2048,
+        det_box_thresh=0.15,
+        det_thresh=0.1,
+        det_unclip_ratio=2.0,
     )
     processed = 0
     for product_dir in _iter_products(crawl_root):
@@ -142,8 +153,15 @@ def _ocr_proxy(
             try:
                 height, aspect, sha = _image_meta(ip)
                 text = pe._predict_text(ocr, ip)
-                images.append({"index": idx, "height": height, "aspect": aspect,
-                               "sha256": sha, "signals": _scan_signals(text)})
+                images.append(
+                    {
+                        "index": idx,
+                        "height": height,
+                        "aspect": aspect,
+                        "sha256": sha,
+                        "signals": _scan_signals(text),
+                    }
+                )
             except Exception:  # per-image isolation
                 continue
         cache[h] = {"category": product_dir.parent.name, "images": images}
@@ -158,7 +176,13 @@ def _ocr_proxy(
 
 def _relevance(sig: dict[str, Any]) -> int:
     """Score how likely an image carries the GT-relevant sections."""
-    return 2 * int(sig["ingredient"]) + 2 * int(sig["intake"]) + int(sig["facts"]) + int(sig["precautions"]) + int(sig["allergen"])
+    return (
+        2 * int(sig["ingredient"])
+        + 2 * int(sig["intake"])
+        + int(sig["facts"])
+        + int(sig["precautions"])
+        + int(sig["allergen"])
+    )
 
 
 def _select(cache: dict[str, Any], target_new: int) -> list[dict[str, Any]]:
@@ -181,7 +205,11 @@ def _select(cache: dict[str, Any], target_new: int) -> list[dict[str, Any]]:
         imgs = rec.get("images") or []
         if not imgs:
             continue
-        ranked = sorted(imgs, key=lambda im: (_relevance(im["signals"]), im["signals"]["char_count"], im["height"]), reverse=True)
+        ranked = sorted(
+            imgs,
+            key=lambda im: (_relevance(im["signals"]), im["signals"]["char_count"], im["height"]),
+            reverse=True,
+        )
         best = ranked[0]
         any_ing = any(im["signals"]["ingredient"] for im in imgs)
         any_int = any(im["signals"]["intake"] for im in imgs)
@@ -189,14 +217,32 @@ def _select(cache: dict[str, Any], target_new: int) -> list[dict[str, Any]]:
         int_img = next((im for im in imgs if im["signals"]["intake"]), None)
         fragmented = bool(ing_img and int_img and ing_img["index"] != int_img["index"])
         low_signal = not (any_ing or any_int)
-        primaries.append({"product_hash": h, "category": rec["category"], "image": best,
-                          "fragmented": fragmented, "low_signal": low_signal, "role": "primary"})
+        primaries.append(
+            {
+                "product_hash": h,
+                "category": rec["category"],
+                "image": best,
+                "fragmented": fragmented,
+                "low_signal": low_signal,
+                "role": "primary",
+            }
+        )
         if fragmented:
             other = int_img if best["index"] == ing_img["index"] else ing_img
-            secondaries.append({"product_hash": h, "category": rec["category"], "image": other,
-                                "fragmented": True, "low_signal": False, "role": "secondary"})
+            secondaries.append(
+                {
+                    "product_hash": h,
+                    "category": rec["category"],
+                    "image": other,
+                    "fragmented": True,
+                    "low_signal": False,
+                    "role": "secondary",
+                }
+            )
     # hardest secondaries first (separated-page cases, then long pages)
-    secondaries.sort(key=lambda c: (c["image"]["height"], c["image"]["signals"]["char_count"]), reverse=True)
+    secondaries.sort(
+        key=lambda c: (c["image"]["height"], c["image"]["signals"]["char_count"]), reverse=True
+    )
     need = max(0, target_new - len(primaries))
     return primaries + secondaries[:need]
 
@@ -239,26 +285,50 @@ def _record(cand: dict[str, Any]) -> dict[str, Any]:
         "v2_split": _split_bucket(cand["product_hash"]),
         "pool_role": "detector_roi_annotation",
         "annotation": {
-            "bbox": dict.fromkeys(("ingredient_amounts", "intake_method", "supplement_facts", "product_identity")),
-            "structured_gt": {"ingredient_amounts": [], "intake_method": [], "precautions": [], "allergen_warnings": []},
+            "bbox": dict.fromkeys(
+                ("ingredient_amounts", "intake_method", "supplement_facts", "product_identity")
+            ),
+            "structured_gt": {
+                "ingredient_amounts": [],
+                "intake_method": [],
+                "precautions": [],
+                "allergen_warnings": [],
+            },
             "status": "pending",
         },
     }
 
 
-def build(*, crawl_root: Path, splits: Path, inventory: Path, cache_path: Path,
-          manifest: Path, resolution_map: Path, plan: Path, target_new: int,
-          max_images: int, limit: int | None) -> None:
+def build(
+    *,
+    crawl_root: Path,
+    splits: Path,
+    inventory: Path,
+    cache_path: Path,
+    manifest: Path,
+    resolution_map: Path,
+    plan: Path,
+    target_new: int,
+    max_images: int,
+    limit: int | None,
+) -> None:
     """Run the proxy, select candidates, split, and emit manifest + map + plan."""
     inv = json.loads(inventory.read_text(encoding="utf-8"))
     eligible_hashes = {x["hash"] for x in inv["eligible"]}
-    frozen_rows = [json.loads(line) for line in splits.read_text(encoding="utf-8").splitlines() if line.strip()]
+    frozen_rows = [
+        json.loads(line) for line in splits.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     frozen_by_split: dict[str, int] = {}
     for r in frozen_rows:
         frozen_by_split[r["split"]] = frozen_by_split.get(r["split"], 0) + 1
 
-    cache = _ocr_proxy(crawl_root=crawl_root, eligible_hashes=eligible_hashes,
-                       max_images=max_images, cache_path=cache_path, limit=limit)
+    cache = _ocr_proxy(
+        crawl_root=crawl_root,
+        eligible_hashes=eligible_hashes,
+        max_images=max_images,
+        cache_path=cache_path,
+        limit=limit,
+    )
     selected = _select(cache, target_new)
     records = [_record(c) for c in selected]
 
@@ -267,16 +337,27 @@ def build(*, crawl_root: Path, splits: Path, inventory: Path, cache_path: Path,
         for rec in records:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     # operator-only resolution map (sha256 -> product hash + index); gitignored tree
-    res = {rec["image_sha256"]: {"product_dir_hash": rec["product_dir_hash"], "image_index": rec["image_index"]} for rec in records}
+    res = {
+        rec["image_sha256"]: {
+            "product_dir_hash": rec["product_dir_hash"],
+            "image_index": rec["image_index"],
+        }
+        for rec in records
+    }
     resolution_map.write_text(json.dumps(res, ensure_ascii=False, indent=0), encoding="utf-8")
 
     by_split = Counter(r["v2_split"] for r in records)
-    hard = Counter(k for r in records for k, v in r["hardness"].items() if v is True and k != "selection_role")
+    hard = Counter(
+        k for r in records for k, v in r["hardness"].items() if v is True and k != "selection_role"
+    )
     cats = Counter(r["category"] for r in records)
     stats = {
-        "frozen_v1_fixtures": len(frozen_rows), "frozen_v1_by_split": frozen_by_split,
-        "new_candidates": len(records), "v2_total": len(frozen_rows) + len(records),
-        "new_by_split": dict(by_split), "hardness_counts": dict(hard),
+        "frozen_v1_fixtures": len(frozen_rows),
+        "frozen_v1_by_split": frozen_by_split,
+        "new_candidates": len(records),
+        "v2_total": len(frozen_rows) + len(records),
+        "new_by_split": dict(by_split),
+        "hardness_counts": dict(hard),
         "distinct_new_products": len({r["product_dir_hash"] for r in records}),
         "category_coverage": len(cats),
     }
@@ -337,9 +418,18 @@ def main() -> None:
     ap.add_argument("--max-images-per-product", type=int, default=8)
     ap.add_argument("--limit", type=int, default=None)
     a = ap.parse_args()
-    build(crawl_root=a.crawl_root, splits=a.splits, inventory=a.inventory, cache_path=a.cache,
-          manifest=a.manifest, resolution_map=a.resolution_map, plan=a.plan,
-          target_new=a.target_new, max_images=a.max_images_per_product, limit=a.limit)
+    build(
+        crawl_root=a.crawl_root,
+        splits=a.splits,
+        inventory=a.inventory,
+        cache_path=a.cache,
+        manifest=a.manifest,
+        resolution_map=a.resolution_map,
+        plan=a.plan,
+        target_new=a.target_new,
+        max_images=a.max_images_per_product,
+        limit=a.limit,
+    )
 
 
 if __name__ == "__main__":

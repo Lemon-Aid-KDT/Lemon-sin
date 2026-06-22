@@ -202,7 +202,9 @@ async def verify_auto_brand_product_db_import(
     repo = repository
     if repo is None:
         if not dsn:
-            raise ValueError("DATABASE_URL_PLAIN or --dsn is required for read-only DB verification.")
+            raise ValueError(
+                "DATABASE_URL_PLAIN or --dsn is required for read-only DB verification."
+            )
         conn = await asyncpg.connect(dsn=dsn)
         try:
             repo = _AsyncpgAutoBrandProductVerificationRepository(conn=conn)
@@ -446,10 +448,7 @@ def _expected_product_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
     Returns:
         Source provider/product id pairs.
     """
-    return {
-        (str(row["source_provider"]), str(row["source_product_id"]))
-        for row in rows
-    }
+    return {(str(row["source_provider"]), str(row["source_product_id"])) for row in rows}
 
 
 def _expected_category_keys(rows: list[dict[str, Any]]) -> set[str]:
@@ -625,11 +624,7 @@ def _strip_env_value(value: str) -> str:
     Returns:
         Unquoted value.
     """
-    if (
-        len(value) >= MIN_QUOTED_VALUE_LENGTH
-        and value[0] == value[-1]
-        and value[0] in {"'", '"'}
-    ):
+    if len(value) >= MIN_QUOTED_VALUE_LENGTH and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
 

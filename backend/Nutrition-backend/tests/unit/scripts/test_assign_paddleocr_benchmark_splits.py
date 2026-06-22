@@ -81,8 +81,12 @@ def test_assign_splits_keeps_same_product_group_in_one_split(tmp_path: Path) -> 
     """Verify product-level grouping prevents train/eval leakage."""
     repeated_product_hash = _sha(10)
     rows = [
-        _benchmark_row(fixture_id="fixture-a", product_hash=repeated_product_hash, image_hash=_sha(1)),
-        _benchmark_row(fixture_id="fixture-b", product_hash=repeated_product_hash, image_hash=_sha(2)),
+        _benchmark_row(
+            fixture_id="fixture-a", product_hash=repeated_product_hash, image_hash=_sha(1)
+        ),
+        _benchmark_row(
+            fixture_id="fixture-b", product_hash=repeated_product_hash, image_hash=_sha(2)
+        ),
     ]
     rows.extend(
         _benchmark_row(
@@ -138,9 +142,9 @@ def test_assign_splits_is_deterministic_for_same_seed(tmp_path: Path) -> None:
     assert [(row["fixture_id"], row["split"]) for row in first] == [
         (row["fixture_id"], row["split"]) for row in second
     ]
-    assert first_summary["split_assignment_seed_hash"] == second_summary[
-        "split_assignment_seed_hash"
-    ]
+    assert (
+        first_summary["split_assignment_seed_hash"] == second_summary["split_assignment_seed_hash"]
+    )
 
 
 def test_assign_splits_rejects_rows_without_product_hash(tmp_path: Path) -> None:

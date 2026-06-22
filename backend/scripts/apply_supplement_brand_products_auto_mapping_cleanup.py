@@ -455,11 +455,7 @@ def _summary(
         "inactive_category_mapping_count": sum(
             1 for row in stale_rows if not row.category_is_active
         ),
-        "unexpected_category_mapping_count": sum(
-            1
-            for row in stale_rows
-            if row.category_is_active
-        ),
+        "unexpected_category_mapping_count": sum(1 for row in stale_rows if row.category_is_active),
         "stale_product_category_key_hashes": [_hash_mapping_key(row.key) for row in stale_rows],
         "cleanup_required": bool(stale_rows),
         "cleanup_plan": {

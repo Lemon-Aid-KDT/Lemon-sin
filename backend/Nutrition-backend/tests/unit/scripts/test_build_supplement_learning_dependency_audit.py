@@ -269,9 +269,7 @@ def _yolo_gate(*, ready: bool = False) -> dict[str, Any]:
     return {
         "schema_version": "supplement-yolo-section-dataset-gate-v1",
         "status": (
-            "ready_for_section_yolo_training_dataset"
-            if ready
-            else "blocked_by_annotation_review"
+            "ready_for_section_yolo_training_dataset" if ready else "blocked_by_annotation_review"
         ),
         "template_row_count": 205,
         "valid_accepted_row_count": 205 if ready else 0,
@@ -359,9 +357,13 @@ def test_dependency_audit_links_each_outcome_to_its_next_batch(tmp_path: Path) -
         "yolo_section_annotation:001",
     ]
     by_key = {row["outcome_key"]: row for row in summary["outcomes"]}
-    assert by_key["product_catalog_db_import"]["next_batch"]["batch_key"] == "brand_product_review:001"
+    assert (
+        by_key["product_catalog_db_import"]["next_batch"]["batch_key"] == "brand_product_review:001"
+    )
     assert by_key["ocr_teacher_benchmark"]["next_batch"]["batch_key"] == "review_pii_screening:001"
-    assert by_key["yolo_section_dataset"]["next_batch"]["batch_key"] == "yolo_section_annotation:001"
+    assert (
+        by_key["yolo_section_dataset"]["next_batch"]["batch_key"] == "yolo_section_annotation:001"
+    )
     assert by_key["yolo_section_dataset"]["gate_status"] == (
         "blocked_by_missing_yolo_section_dataset_gate"
     )

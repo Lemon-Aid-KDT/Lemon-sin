@@ -16,9 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 auto_import = importlib.import_module("scripts.import_supplement_brand_products_auto")
-cleanup = importlib.import_module(
-    "scripts.apply_supplement_brand_products_auto_mapping_cleanup"
-)
+cleanup = importlib.import_module("scripts.apply_supplement_brand_products_auto_mapping_cleanup")
 
 
 def _source_root(tmp_path: Path) -> Path:

@@ -31,7 +31,9 @@ def test_autofill_approves_high_confidence_catalog_rows(tmp_path: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
-    input_csv = _write_review_csv(tmp_path, [{"fixture_id": "brand_a", "source_product_id": "111111"}])
+    input_csv = _write_review_csv(
+        tmp_path, [{"fixture_id": "brand_a", "source_product_id": "111111"}]
+    )
     output_dir = tmp_path / "autofill"
 
     summary = autofill.autofill_brand_review_csvs(
@@ -73,7 +75,9 @@ def test_autofill_marks_low_confidence_rows_needs_review(tmp_path: Path) -> None
         + "\n",
         encoding="utf-8",
     )
-    input_csv = _write_review_csv(tmp_path, [{"fixture_id": "brand_b", "source_product_id": "222222"}])
+    input_csv = _write_review_csv(
+        tmp_path, [{"fixture_id": "brand_b", "source_product_id": "222222"}]
+    )
 
     summary = autofill.autofill_brand_review_csvs(
         crawling_root=root,
@@ -120,7 +124,9 @@ def test_autofill_marks_duplicate_source_ids_needs_review(tmp_path: Path) -> Non
         + "\n",
         encoding="utf-8",
     )
-    input_csv = _write_review_csv(tmp_path, [{"fixture_id": "brand_c", "source_product_id": "333333"}])
+    input_csv = _write_review_csv(
+        tmp_path, [{"fixture_id": "brand_c", "source_product_id": "333333"}]
+    )
 
     summary = autofill.autofill_brand_review_csvs(
         crawling_root=root,

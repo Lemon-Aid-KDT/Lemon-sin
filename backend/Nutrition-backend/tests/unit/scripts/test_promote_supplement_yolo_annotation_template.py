@@ -83,10 +83,7 @@ def _write_dataset_yaml(root: Path) -> Path:
                 "val: images/val",
                 f"nc: {len(SECTION_CLASS_NAMES)}",
                 "names:",
-                *[
-                    f"  {index}: {name}"
-                    for index, name in enumerate(SECTION_CLASS_NAMES)
-                ],
+                *[f"  {index}: {name}" for index, name in enumerate(SECTION_CLASS_NAMES)],
                 "",
             ]
         ),

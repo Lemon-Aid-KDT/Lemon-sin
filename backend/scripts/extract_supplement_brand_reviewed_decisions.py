@@ -158,7 +158,9 @@ def extract_reviewed_brand_decisions(
             decision_counts["blank"] += 1
             continue
         applier._validate_decision(decision)
-        decision_value = applier._required_safe_token(decision.get("decision"), field_name="decision")
+        decision_value = applier._required_safe_token(
+            decision.get("decision"), field_name="decision"
+        )
         decision_counts[decision_value] += 1
         rows.append(dict(row))
 

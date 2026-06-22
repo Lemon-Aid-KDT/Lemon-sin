@@ -105,8 +105,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional summary JSON path. Defaults to <ocr-output>.summary.json.",
     )
-    parser.add_argument("--max-review-per-category", type=int, default=DEFAULT_MAX_REVIEW_PER_CATEGORY)
-    parser.add_argument("--max-detail-per-category", type=int, default=DEFAULT_MAX_DETAIL_PER_CATEGORY)
+    parser.add_argument(
+        "--max-review-per-category", type=int, default=DEFAULT_MAX_REVIEW_PER_CATEGORY
+    )
+    parser.add_argument(
+        "--max-detail-per-category", type=int, default=DEFAULT_MAX_DETAIL_PER_CATEGORY
+    )
     parser.add_argument("--seed", type=int, default=20260603)
     parser.add_argument(
         "--review-personal-data-cleared",
@@ -383,9 +387,7 @@ def _ocr_candidate_row(
         else "pending_local_screening"
     )
     ground_truth_status = (
-        "pending_manual_transcription"
-        if review_personal_data_cleared
-        else "pending_pii_screening"
+        "pending_manual_transcription" if review_personal_data_cleared else "pending_pii_screening"
     )
     return {
         "schema_version": OCR_ROW_SCHEMA_VERSION,

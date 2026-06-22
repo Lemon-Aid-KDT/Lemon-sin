@@ -17,7 +17,9 @@ from lemon_ai_agent.answer_card import (
 from lemon_ai_agent.knowledge import ChatIntentAnalysis, SourceFamily, analyze_chat_intent
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[5]
-DEFAULT_REVIEWED_CLAIMS_PATH = WORKSPACE_ROOT / "MEDICAL-WIKI" / "manifest" / "reviewed_claims.jsonl"
+DEFAULT_REVIEWED_CLAIMS_PATH = (
+    WORKSPACE_ROOT / "MEDICAL-WIKI" / "manifest" / "reviewed_claims.jsonl"
+)
 MIN_STEM_LENGTH = 2
 
 STOPWORDS = {
@@ -228,9 +230,7 @@ class MedicalWikiReviewedClaimRetriever:
     def retrieve(self, analysis: ChatIntentAnalysis) -> KnowledgeRetrievalResult:
         ranked = self.rank_claims(analysis.normalized_question, top_k=self._top_k)
         selected_claims = tuple(
-            claim
-            for row in ranked
-            if (claim := self.claim_by_id(str(row["claim_id"]))) is not None
+            claim for row in ranked if (claim := self.claim_by_id(str(row["claim_id"]))) is not None
         )
         cards = tuple(
             card

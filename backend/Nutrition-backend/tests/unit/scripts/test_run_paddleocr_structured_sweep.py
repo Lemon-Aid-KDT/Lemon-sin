@@ -99,4 +99,6 @@ def test_run_sweep_writes_redacted_gate_artifacts(
     assert (output_dir / "structured-extraction-gate.baseline.json").is_file()
     assert (output_dir / "structured-extraction-summary.box04.json").is_file()
     assert "/private/model" not in json.dumps(result, ensure_ascii=False)
-    assert "/private/model" not in (output_dir / "paddleocr-eval.baseline.json").read_text(encoding="utf-8")
+    assert "/private/model" not in (output_dir / "paddleocr-eval.baseline.json").read_text(
+        encoding="utf-8"
+    )

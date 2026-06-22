@@ -41,8 +41,7 @@ def slot_values_are_preserved(
     """Return true when LLM-proposed slot values are a subset of deterministic values."""
     deterministic_text = " ".join(_normalize_slot_value(value) for value in deterministic_values)
     return all(
-        value in deterministic_text
-        for value in _normalized_candidate_slot_values(candidate_values)
+        value in deterministic_text for value in _normalized_candidate_slot_values(candidate_values)
     )
 
 

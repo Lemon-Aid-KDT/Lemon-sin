@@ -91,7 +91,9 @@ def main() -> int:
 
     _assert_response(consent.get("granted") is True, "consent grant failed")
     _assert_response(first.get("status") == "completed", "first coaching request did not complete")
-    _assert_response(second.get("status") == "completed", "second coaching request did not complete")
+    _assert_response(
+        second.get("status") == "completed", "second coaching request did not complete"
+    )
     _assert_response(
         "agent_memory" in second.get("used_tools", []),
         "second coaching request did not reload persisted agent_memory",
@@ -154,7 +156,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.getenv("SGLANG_BASE_URL", DEFAULT_SGLANG_BASE_URL),
     )
     parser.add_argument("--sglang-model", default=os.getenv("SGLANG_MODEL", DEFAULT_SGLANG_MODEL))
-    parser.add_argument("--database-url", default=os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL"))
+    parser.add_argument(
+        "--database-url", default=os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    )
     parser.add_argument("--timeout", type=float, default=45.0)
     parser.add_argument("--skip-db-upgrade", action="store_true")
     parser.add_argument(
@@ -203,13 +207,15 @@ def _summary_payload(
         "chat_provider": chat.get("provider"),
         "chat_used_tools": chat.get("used_tools", []),
         "chat_answerability": chat.get("answerability"),
-        "chat_source_count": len(chat.get("sources", []))
-        if isinstance(chat.get("sources"), list)
-        else 0,
+        "chat_source_count": (
+            len(chat.get("sources", [])) if isinstance(chat.get("sources"), list) else 0
+        ),
         "unknown_answerability": unknown_chat.get("answerability") if unknown_chat else None,
-        "unknown_source_count": len(unknown_chat.get("sources", []))
-        if unknown_chat and isinstance(unknown_chat.get("sources"), list)
-        else None,
+        "unknown_source_count": (
+            len(unknown_chat.get("sources", []))
+            if unknown_chat and isinstance(unknown_chat.get("sources"), list)
+            else None
+        ),
         "unknown_backlog_before": unknown_backlog_before,
         "unknown_backlog_after": unknown_backlog_after,
         "unknown_backlog_delta": unknown_backlog_delta,
@@ -261,8 +267,8 @@ def _missing_database_url_message() -> str:
         "For the Lemon Aid Supabase dev project, copy the database password from "
         "Supabase Dashboard and set a local-only value like:\n"
         "$env:DATABASE_URL="
-        f"\"postgresql+asyncpg://postgres.{SUPABASE_CHATBOT_PROJECT_REF}:<password>@"
-        f"{SUPABASE_CHATBOT_POOLER_HOST}:5432/postgres?ssl=require\"\n"
+        f'"postgresql+asyncpg://postgres.{SUPABASE_CHATBOT_PROJECT_REF}:<password>@'
+        f'{SUPABASE_CHATBOT_POOLER_HOST}:5432/postgres?ssl=require"\n'
         "Do not commit the real password or connection string."
     )
 
@@ -283,8 +289,7 @@ def _assert_reviewed_chatbot_response(chat: dict[str, Any]) -> None:
     unsafe_sources = [
         source
         for source in sources
-        if isinstance(source, dict)
-        and source.get("review_status") not in {None, "reviewed"}
+        if isinstance(source, dict) and source.get("review_status") not in {None, "reviewed"}
     ]
     _assert_response(not unsafe_sources, "chatbot smoke returned an unreviewed source")
 
@@ -293,7 +298,9 @@ async def _unknown_backlog_count(database_url: str) -> int:
     engine = create_async_engine(database_url)
     try:
         async with AsyncSession(engine) as session:
-            result = await session.execute(select(func.count()).select_from(MedicalUnknownKnowledgeEvent))
+            result = await session.execute(
+                select(func.count()).select_from(MedicalUnknownKnowledgeEvent)
+            )
             return int(result.scalar_one())
     finally:
         await engine.dispose()

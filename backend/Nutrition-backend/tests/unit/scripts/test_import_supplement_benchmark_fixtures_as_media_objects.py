@@ -154,6 +154,7 @@ def _benchmark_row(*, image_path: str, image_bytes: bytes) -> dict[str, object]:
         "image_path": image_path,
     }
 
+
 def _media_object(*, row_id: UUID, owner_hash: str, image_sha256: str) -> MediaObject:
     """Build an existing MediaObject fixture.
 
@@ -256,7 +257,9 @@ async def test_apply_creates_media_object_and_rewrites_manifest(
     assert media_object.object_ref.startswith("supplement/ocr-benchmark/")
     assert (local_media_root / media_object.object_ref).read_bytes() == image_bytes
 
-    rewritten = [json.loads(line) for line in output_manifest.read_text(encoding="utf-8").splitlines()]
+    rewritten = [
+        json.loads(line) for line in output_manifest.read_text(encoding="utf-8").splitlines()
+    ]
     assert rewritten[0]["source_ref"] == f"media:{media_object.id}"
     assert rewritten[0]["source_ref_kind"] == "media_object"
     assert rewritten[0]["media_object_registered"] is True
@@ -301,7 +304,9 @@ async def test_apply_reuses_existing_media_object_without_copy(
     assert summary["reused_media_count"] == 1
     assert summary["copied_object_count"] == 0
     assert session.added == []
-    rewritten = [json.loads(line) for line in output_manifest.read_text(encoding="utf-8").splitlines()]
+    rewritten = [
+        json.loads(line) for line in output_manifest.read_text(encoding="utf-8").splitlines()
+    ]
     assert rewritten[0]["source_ref"] == f"media:{existing_id}"
 
 

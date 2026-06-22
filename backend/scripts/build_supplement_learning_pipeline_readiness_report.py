@@ -185,9 +185,7 @@ ARTIFACT_SPECS: dict[str, ArtifactSpec] = {
     ),
     "auto_brand_product_db_verification": ArtifactSpec(
         role="auto_brand_product_db_verification",
-        expected_schema_versions=frozenset(
-            {"supplement-brand-products-auto-db-verification-v1"}
-        ),
+        expected_schema_versions=frozenset({"supplement-brand-products-auto-db-verification-v1"}),
         description="read-only DB verification for provisional auto brand product mappings",
     ),
     "learning_candidate_summary": ArtifactSpec(
@@ -304,7 +302,9 @@ ARTIFACT_SPECS: dict[str, ArtifactSpec] = {
     ),
     "paddleocr_annotation_tasks": ArtifactSpec(
         role="paddleocr_annotation_tasks",
-        expected_schema_versions=frozenset({"paddleocr-improvement-annotation-task-create-summary-v1"}),
+        expected_schema_versions=frozenset(
+            {"paddleocr-improvement-annotation-task-create-summary-v1"}
+        ),
         description="created OCR annotation tasks for PaddleOCR improvement",
     ),
     "paddleocr_dataset": ArtifactSpec(
@@ -361,9 +361,7 @@ ARTIFACT_SPECS: dict[str, ArtifactSpec] = {
     ),
     "operator_post_completion_command_plan": ArtifactSpec(
         role="operator_post_completion_command_plan",
-        expected_schema_versions=frozenset(
-            {"supplement-operator-post-completion-command-plan-v1"}
-        ),
+        expected_schema_versions=frozenset({"supplement-operator-post-completion-command-plan-v1"}),
         description="redacted queue-specific gate order after an operator batch is completed",
     ),
 }
@@ -610,8 +608,7 @@ def build_readiness_report(*, artifact_paths: Mapping[str, Path]) -> dict[str, A
         raise PipelineReadinessError("Unknown artifact role was provided.")
 
     artifacts = {
-        role: _load_artifact(role=role, path=path)
-        for role, path in sorted(artifact_paths.items())
+        role: _load_artifact(role=role, path=path) for role, path in sorted(artifact_paths.items())
     }
     stages = [_stage_readiness(stage, artifacts=artifacts) for stage in STAGE_SPECS]
     status_counts = _status_counts(stage["status"] for stage in stages)
@@ -1045,9 +1042,9 @@ def _paddleocr_accuracy_stop_state_flags(
             payload.get("privacy_review_cleared") is True
             or trust_checks.get("privacy_review_cleared") is True
         )
-        threshold_met = (
-            payload.get("text_extraction_accuracy_meets_95_percent") is True
-            or all(metric_checks.get(metric_name) is True for metric_name in PADDLEOCR_TEXT_REQUIRED_METRICS)
+        threshold_met = payload.get("text_extraction_accuracy_meets_95_percent") is True or all(
+            metric_checks.get(metric_name) is True
+            for metric_name in PADDLEOCR_TEXT_REQUIRED_METRICS
         )
         stop_allowed = (
             threshold_met
@@ -1068,9 +1065,7 @@ def _paddleocr_accuracy_stop_state_flags(
             flags["artifact_warning"] = "paddleocr_accuracy_stop_gate_not_allowed"
         return flags
     accuracy = _float_payload_field(payload, "text_extraction_accuracy")
-    threshold_met = (
-        accuracy is not None and accuracy >= PADDLEOCR_HUMAN_GT_EARLY_STOP_THRESHOLD
-    )
+    threshold_met = accuracy is not None and accuracy >= PADDLEOCR_HUMAN_GT_EARLY_STOP_THRESHOLD
     human_gt_compared = payload.get("human_ground_truth_compared") is True
     privacy_review_cleared = payload.get("privacy_review_cleared") is True
     stop_allowed = (
@@ -1681,11 +1676,7 @@ def _taxonomy_db_verification_blockers(
         blocker_codes = [
             code for code in blocker_codes if code != "missing_required:approved_product_import"
         ]
-    return [
-        f"taxonomy_db_verification:{code}"
-        for code in blocker_codes
-        if isinstance(code, str)
-    ]
+    return [f"taxonomy_db_verification:{code}" for code in blocker_codes if isinstance(code, str)]
 
 
 def _private_image_tracking_stage_blockers(

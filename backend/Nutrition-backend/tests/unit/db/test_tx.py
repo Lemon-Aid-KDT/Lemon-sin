@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from src.db.tx import REQUEST_MANAGED_TX, persist_scope, request_manages_transaction
 
 
@@ -13,9 +12,7 @@ class _FakeSession:
     """Records flush/commit/rollback calls and carries an info dict."""
 
     def __init__(self, *, request_managed: bool = False) -> None:
-        self.info: dict[str, object] = (
-            {REQUEST_MANAGED_TX: True} if request_managed else {}
-        )
+        self.info: dict[str, object] = {REQUEST_MANAGED_TX: True} if request_managed else {}
         self.calls: list[str] = []
 
     async def flush(self) -> None:

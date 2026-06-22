@@ -149,7 +149,13 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(_cli_summary(summary), ensure_ascii=False, sort_keys=True))
         if summary["status"] != "passed":
             raise SystemExit(1)
-    except (OSError, csv.Error, json.JSONDecodeError, BrandReviewContactSheetPreflightError, ValueError) as exc:
+    except (
+        OSError,
+        csv.Error,
+        json.JSONDecodeError,
+        BrandReviewContactSheetPreflightError,
+        ValueError,
+    ) as exc:
         failure = _failure_summary(input_paths=input_paths, output_path=output_path, error=exc)
         _write_json(output_path, failure)
         print(json.dumps(failure, ensure_ascii=False, sort_keys=True))
@@ -231,7 +237,9 @@ def preflight_brand_review_contact_sheet(
         "contact_row_count": len(contact_rows),
         "reviewable_row_count": _non_negative_int(contact_summary.get("reviewable_row_count")),
         "rows_with_thumbnails": _non_negative_int(contact_summary.get("rows_with_thumbnails")),
-        "rows_without_thumbnails": _non_negative_int(contact_summary.get("rows_without_thumbnails")),
+        "rows_without_thumbnails": _non_negative_int(
+            contact_summary.get("rows_without_thumbnails")
+        ),
         "thumbnail_count": _non_negative_int(contact_summary.get("thumbnail_count")),
         "require_all_rows_with_thumbnails": bool(require_all_rows_with_thumbnails),
         "issue_counts": dict(sorted(issue_counts.items())),
@@ -405,7 +413,9 @@ def _check_row_alignment(
         if _contact_row_index(row, fallback=0) != expected_index:
             issue_counts["contact_row_index_mismatch"] += 1
             row_issues[expected_index].add("contact_row_index_mismatch")
-    for row_index, (csv_id, contact_id) in enumerate(zip(csv_ids, contact_ids, strict=False), start=1):
+    for row_index, (csv_id, contact_id) in enumerate(
+        zip(csv_ids, contact_ids, strict=False), start=1
+    ):
         if csv_id != contact_id:
             issue_counts["fixture_order_mismatch"] += 1
             row_issues[row_index].add("fixture_order_mismatch")
@@ -511,7 +521,9 @@ def _read_csv_rows(path: Path) -> list[dict[str, str]]:
                 _reject_unsafe_csv_row(row)
                 rows.append({key: value or "" for key, value in row.items()})
     except OSError as exc:
-        raise BrandReviewContactSheetPreflightError("Batch review CSV is missing or unreadable.") from exc
+        raise BrandReviewContactSheetPreflightError(
+            "Batch review CSV is missing or unreadable."
+        ) from exc
     if not rows:
         raise BrandReviewContactSheetPreflightError("Batch review CSV is empty.")
     return rows
@@ -562,10 +574,14 @@ def _validate_csv_columns(fieldnames: list[str]) -> None:
     normalized = {field.strip() for field in fieldnames}
     missing = sorted(REQUIRED_CSV_COLUMNS - normalized)
     if missing:
-        raise BrandReviewContactSheetPreflightError("Batch review CSV is missing a required column.")
+        raise BrandReviewContactSheetPreflightError(
+            "Batch review CSV is missing a required column."
+        )
     for fieldname in fieldnames:
         if fieldname.strip().casefold() in UNSAFE_INPUT_KEYS:
-            raise BrandReviewContactSheetPreflightError("Unsafe raw/provider key found in review CSV.")
+            raise BrandReviewContactSheetPreflightError(
+                "Unsafe raw/provider key found in review CSV."
+            )
 
 
 def _reject_unsafe_csv_row(row: Mapping[str, str | None]) -> None:
@@ -575,7 +591,9 @@ def _reject_unsafe_csv_row(row: Mapping[str, str | None]) -> None:
         row: CSV row.
     """
     for value in row.values():
-        if value and any(marker in value for marker in csv_applier.applier.LOCAL_PATH_OR_URL_MARKERS):
+        if value and any(
+            marker in value for marker in csv_applier.applier.LOCAL_PATH_OR_URL_MARKERS
+        ):
             raise BrandReviewContactSheetPreflightError(
                 "Unsafe local path or URL marker found in review CSV."
             )
@@ -628,9 +646,15 @@ def _reject_public_payload(value: Any) -> None:
         csv_applier._reject_unsafe_payload(value)
     except ValueError as exc:
         raise BrandReviewContactSheetPreflightError(str(exc)) from exc
-    dumped = json.dumps(value, ensure_ascii=False, sort_keys=True) if not isinstance(value, str) else value
+    dumped = (
+        json.dumps(value, ensure_ascii=False, sort_keys=True)
+        if not isinstance(value, str)
+        else value
+    )
     if any(marker in dumped for marker in UNSAFE_PUBLIC_MARKERS):
-        raise BrandReviewContactSheetPreflightError("Public payload contains contact sheet row text.")
+        raise BrandReviewContactSheetPreflightError(
+            "Public payload contains contact sheet row text."
+        )
 
 
 def _duplicate_row_issues(values: Sequence[str]) -> dict[int, str]:

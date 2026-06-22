@@ -20,8 +20,14 @@ from typing import Any
 
 # Detector class order (src.learning.retraining.SUPPLEMENT_SECTION_CLASS_NAMES).
 CLASS_NAMES = (
-    "product_identity", "supplement_facts", "ingredient_amounts", "precautions",
-    "allergen_warning", "intake_method", "other_ingredients", "functional_claims",
+    "product_identity",
+    "supplement_facts",
+    "ingredient_amounts",
+    "precautions",
+    "allergen_warning",
+    "intake_method",
+    "other_ingredients",
+    "functional_claims",
 )
 MODEL_VERSION = "clova-teacher-bootstrap"
 YOLO_LINE_FIELDS = 5
@@ -51,11 +57,17 @@ def _yolo_to_ls(line: str, width: int, height: int) -> dict[str, Any] | None:
     if not 0 <= cls < len(CLASS_NAMES):
         return None
     return {
-        "from_name": "label", "to_name": "image", "type": "rectanglelabels",
-        "original_width": width, "original_height": height,
+        "from_name": "label",
+        "to_name": "image",
+        "type": "rectanglelabels",
+        "original_width": width,
+        "original_height": height,
         "value": {
-            "x": max(0.0, (cx - w / 2) * 100), "y": max(0.0, (cy - h / 2) * 100),
-            "width": w * 100, "height": h * 100, "rotation": 0,
+            "x": max(0.0, (cx - w / 2) * 100),
+            "y": max(0.0, (cy - h / 2) * 100),
+            "width": w * 100,
+            "height": h * 100,
+            "rotation": 0,
             "rectanglelabels": [CLASS_NAMES[cls]],
         },
     }
@@ -72,16 +84,28 @@ def build(*, bundle: Path, teacher_dirs: list[Path]) -> None:
         payload = teacher.get(fid)
         if not payload:
             continue
-        regions = [r for line in payload.get("section_bboxes_yolo", [])
-                   if (r := _yolo_to_ls(line, payload.get("width", 0), payload.get("height", 0)))]
+        regions = [
+            r
+            for line in payload.get("section_bboxes_yolo", [])
+            if (r := _yolo_to_ls(line, payload.get("width", 0), payload.get("height", 0)))
+        ]
         if not regions:
             continue
         task["predictions"] = [{"model_version": MODEL_VERSION, "result": regions}]
         injected += 1
         boxes += len(regions)
     tasks_path.write_text(json.dumps(tasks, ensure_ascii=False), encoding="utf-8")
-    print(json.dumps({"tasks": len(tasks), "tasks_with_predictions": injected,
-                      "predicted_boxes": boxes, "teacher_payloads": len(teacher)}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "tasks": len(tasks),
+                "tasks_with_predictions": injected,
+                "predicted_boxes": boxes,
+                "teacher_payloads": len(teacher),
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 def main() -> None:

@@ -165,7 +165,9 @@ def build_review_bundle(
     (output_dir / HTML_INDEX_NAME).write_text(html_text, encoding="utf-8")
     (output_dir / CSV_NAME).write_text(csv_text, encoding="utf-8")
     (output_dir / DECISION_TEMPLATE_NAME).write_text(
-        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in decision_rows),
+        "".join(
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in decision_rows
+        ),
         encoding="utf-8",
     )
     (output_dir / README_NAME).write_text(readme_text, encoding="utf-8")
@@ -194,7 +196,9 @@ def _read_template_rows(path: Path) -> list[dict[str, Any]]:
         template_export._reject_unsafe_payload(row)
         if row.get("schema_version") != EXPECTED_TEMPLATE_ROW_SCHEMA_VERSION:
             raise ValueError("Supplement brand bundle requires review template rows.")
-        fixture_id = template_export._required_safe_token(row.get("fixture_id"), field_name="fixture_id")
+        fixture_id = template_export._required_safe_token(
+            row.get("fixture_id"), field_name="fixture_id"
+        )
         if fixture_id in seen:
             raise ValueError(f"Duplicate supplement brand template fixture_id: {fixture_id}")
         seen.add(fixture_id)
@@ -244,7 +248,9 @@ def _decision_template_row(row: dict[str, Any]) -> dict[str, Any]:
     template_export._reject_unsafe_payload(decision_stub)
     return {
         "schema_version": decision_stub.get("schema_version"),
-        "fixture_id": template_export._required_safe_token(row.get("fixture_id"), field_name="fixture_id"),
+        "fixture_id": template_export._required_safe_token(
+            row.get("fixture_id"), field_name="fixture_id"
+        ),
         "brand_review_decision": dict(decision_stub.get("brand_review_decision") or {}),
     }
 
@@ -280,15 +286,24 @@ def _csv_row(row: dict[str, Any]) -> dict[str, Any]:
     brand = _brand_candidate(row)
     source_counts = _source_kind_counts(row)
     return {
-        "fixture_id": template_export._required_safe_token(row.get("fixture_id"), field_name="fixture_id"),
-        "category_key": template_export._required_safe_token(row.get("category_key"), field_name="category_key"),
-        "category_display_name": template_export._safe_display_text(row.get("category_display_name")),
-        "brand_candidate_display_name": template_export._safe_display_text(brand.get("display_name")),
+        "fixture_id": template_export._required_safe_token(
+            row.get("fixture_id"), field_name="fixture_id"
+        ),
+        "category_key": template_export._required_safe_token(
+            row.get("category_key"), field_name="category_key"
+        ),
+        "category_display_name": template_export._safe_display_text(
+            row.get("category_display_name")
+        ),
+        "brand_candidate_display_name": template_export._safe_display_text(
+            brand.get("display_name")
+        ),
         "brand_candidate_key": template_export._required_safe_token(
             brand.get("brand_key"),
             field_name="brand_candidate.brand_key",
         ),
-        "source_product_id": template_export._safe_optional_token(row.get("source_product_id")) or "",
+        "source_product_id": template_export._safe_optional_token(row.get("source_product_id"))
+        or "",
         "image_count": template_export._safe_nonnegative_int(row.get("image_count")),
         "detail_page_count": source_counts.get("detail_page", 0),
         "review_count": source_counts.get("review", 0),

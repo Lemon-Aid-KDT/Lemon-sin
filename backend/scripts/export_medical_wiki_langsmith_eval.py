@@ -93,9 +93,7 @@ def build_evidence_bundle_dataset(path: Path) -> list[dict[str, Any]]:
 
 def evaluate_export_rows(rows: list[dict[str, Any]]) -> dict[str, object]:
     hits = _forbidden_marker_hits(rows)
-    raw_fields_stored = any(
-        bool(row.get("metadata", {}).get("raw_fields_stored")) for row in rows
-    )
+    raw_fields_stored = any(bool(row.get("metadata", {}).get("raw_fields_stored")) for row in rows)
     upload_allowed_count = sum(
         1 for row in rows if bool(row.get("metadata", {}).get("upload_allowed"))
     )
@@ -151,8 +149,7 @@ def _evidence_bundle_row(row: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("EvidenceBundle fixture row is missing adapter contract")
     case_id = str(row.get("fixture_id", ""))
     source_ids = [
-        str(source_id)
-        for source_id in expected_contract.get("source_ids_must_be_preserved", [])
+        str(source_id) for source_id in expected_contract.get("source_ids_must_be_preserved", [])
     ]
     return {
         "dataset": "medical_wiki_evidence_bundle_eval",
@@ -163,15 +160,11 @@ def _evidence_bundle_row(row: dict[str, Any]) -> dict[str, Any]:
         },
         "reference_outputs": {
             "source_ids": source_ids,
-            "claim_ids": [
-                str(adapter_input.get("safety_anchor", {}).get("claim_id", ""))
-            ],
+            "claim_ids": [str(adapter_input.get("safety_anchor", {}).get("claim_id", ""))],
             "safety_anchor_claim_id": str(
                 adapter_input.get("safety_anchor", {}).get("claim_id", "")
             ),
-            "blocked_actions": [
-                str(item) for item in adapter_input.get("blocked_actions", [])
-            ],
+            "blocked_actions": [str(item) for item in adapter_input.get("blocked_actions", [])],
         },
         "metadata": {
             "upload_allowed": False,

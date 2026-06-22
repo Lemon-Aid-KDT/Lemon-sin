@@ -93,9 +93,11 @@ def _batch(batch_key: str, queue_key: str, start: int, end: int) -> dict[str, An
     return {
         "batch_key": batch_key,
         "queue_key": queue_key,
-        "editable_file_name": "annotation.todo.jsonl"
-        if queue_key == "yolo_section_annotation"
-        else "decisions.todo.jsonl",
+        "editable_file_name": (
+            "annotation.todo.jsonl"
+            if queue_key == "yolo_section_annotation"
+            else "decisions.todo.jsonl"
+        ),
         "row_index_start": start,
         "row_index_end": end,
         "pending_row_count": end - start + 1,
@@ -224,7 +226,11 @@ def _input_paths(tmp_path: Path) -> dict[str, Path]:
         "batch_plan": _write_json(tmp_path / "plan.json", _batch_plan()),
         "brand_decisions": _write_jsonl(
             tmp_path / "brand.jsonl",
-            [_brand_row("brand-secret-a"), _brand_row("brand-secret-b"), _brand_row("brand-secret-c")],
+            [
+                _brand_row("brand-secret-a"),
+                _brand_row("brand-secret-b"),
+                _brand_row("brand-secret-c"),
+            ],
         ),
         "pii_decisions": _write_jsonl(
             tmp_path / "pii.jsonl",
@@ -252,7 +258,10 @@ def _write_batch_files(tmp_path: Path) -> Path:
         [_brand_row("brand-secret-a"), _brand_row("brand-secret-b", "Reviewed Product B")],
     )
     _write_jsonl(batch_dir / "brand_product_review-002.jsonl", [_brand_row("brand-secret-c")])
-    _write_jsonl(batch_dir / "review_pii_screening-001.jsonl", [_pii_row("pii-secret-a"), _pii_row("pii-secret-b")])
+    _write_jsonl(
+        batch_dir / "review_pii_screening-001.jsonl",
+        [_pii_row("pii-secret-a"), _pii_row("pii-secret-b")],
+    )
     _write_jsonl(
         batch_dir / "yolo_section_annotation-001.jsonl",
         [_yolo_row("yolo-secret-a", accepted=True), _yolo_row("yolo-secret-b")],
@@ -358,7 +367,9 @@ def test_reconcile_rejects_unknown_batch_file_override(tmp_path: Path) -> None:
             input_paths=paths,
             batch_dir=batch_dir,
             output_dir=tmp_path / "reconciled",
-            batch_file_overrides={"brand_product_review:999": batch_dir / "brand_product_review-001.jsonl"},
+            batch_file_overrides={
+                "brand_product_review:999": batch_dir / "brand_product_review-001.jsonl"
+            },
         )
     except reconciler.BatchFileReconcileError as exc:
         assert "batch plan" in str(exc)

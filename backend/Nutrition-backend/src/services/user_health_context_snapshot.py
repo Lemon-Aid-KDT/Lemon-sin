@@ -213,10 +213,7 @@ def _sanitize_active_supplement_snapshot(value: Mapping[str, Any]) -> dict[str, 
         checked
         for checked in _mapping_items(value.get("checked_today"))
         if _is_confirmed_context_record(checked)
-        and (
-            not checked_supplement_ids
-            or checked.get("supplement_id") in checked_supplement_ids
-        )
+        and (not checked_supplement_ids or checked.get("supplement_id") in checked_supplement_ids)
     ]
     policy = _mapping_or_empty(value.get("policy"))
     return _drop_empty_values(
@@ -256,9 +253,7 @@ def _sanitize_supplement_ingredient(value: Mapping[str, Any]) -> dict[str, Any]:
 
 def _confirmed_food_records(value: Any) -> list[dict[str, Any]]:
     records = [
-        dict(record)
-        for record in _mapping_items(value)
-        if _is_confirmed_context_record(record)
+        dict(record) for record in _mapping_items(value) if _is_confirmed_context_record(record)
     ]
     return sorted(records, key=_record_recency_key, reverse=True)[:_MAX_RECENT_FOOD_RECORDS]
 

@@ -57,10 +57,7 @@ class AppIntakeModule:
             date=str(payload["date"]),
             sources=[self._build_source(item) for item in payload.get("sources", [])],
             foods=[self._build_food(item) for item in payload.get("foods", [])],
-            supplements=[
-                self._build_supplement(item)
-                for item in payload.get("supplements", [])
-            ],
+            supplements=[self._build_supplement(item) for item in payload.get("supplements", [])],
         )
 
     def _build_references(self, payload: dict[str, Any]) -> list[ReferenceRange]:
@@ -73,9 +70,7 @@ class AppIntakeModule:
                 target=float(item["target"]),
                 unit=str(item["unit"]),
                 upper_limit=(
-                    None
-                    if item.get("upper_limit") is None
-                    else float(item["upper_limit"])
+                    None if item.get("upper_limit") is None else float(item["upper_limit"])
                 ),
             )
             for item in payload.get("reference_ranges", [])
@@ -109,18 +104,14 @@ class AppIntakeModule:
             name=str(item["name"]),
             meal_type=item["meal_type"],
             serving_label=str(item.get("serving_label", "")),
-            nutrients=[
-                self._build_nutrient(nutrient)
-                for nutrient in item.get("nutrients", [])
-            ],
+            nutrients=[self._build_nutrient(nutrient) for nutrient in item.get("nutrients", [])],
         )
 
     def _build_supplement(self, item: dict[str, Any]) -> SupplementIntake:
         return SupplementIntake(
             product_name=str(item["product_name"]),
             ingredients=[
-                self._build_nutrient(ingredient)
-                for ingredient in item.get("ingredients", [])
+                self._build_nutrient(ingredient) for ingredient in item.get("ingredients", [])
             ],
             times_per_day=int(item.get("times_per_day", 1)),
         )

@@ -19,8 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Create a privacy-safe operational triage view for unknown events."""
-    op.execute(
-        """
+    op.execute("""
         CREATE OR REPLACE VIEW chatbot_unknown_knowledge_backlog_summary
         WITH (security_invoker = true) AS
         SELECT
@@ -42,14 +41,11 @@ def upgrade() -> None:
             COALESCE(missing_topic.value, 'unknown_topic'),
             e.needed_evidence_type,
             e.retrieval_status
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         COMMENT ON VIEW chatbot_unknown_knowledge_backlog_summary IS
             'Privacy-safe aggregate of chatbot unknown knowledge gaps. Contains structured topic metadata only.';
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

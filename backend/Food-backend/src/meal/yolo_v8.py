@@ -35,9 +35,7 @@ class _MockDetectionRaw(BaseModel):
 
     class_name_ko: str = Field(..., min_length=1)
     confidence: float = Field(..., ge=0.0, le=1.0)
-    bbox_xyxy: list[float] = Field(
-        ..., min_length=_BBOX_COORD_COUNT, max_length=_BBOX_COORD_COUNT
-    )
+    bbox_xyxy: list[float] = Field(..., min_length=_BBOX_COORD_COUNT, max_length=_BBOX_COORD_COUNT)
 
 
 class _MockEntryRaw(BaseModel):
@@ -51,9 +49,7 @@ class _MockEntryRaw(BaseModel):
     detections: list[_MockDetectionRaw] = Field(default_factory=list)
 
 
-_FIXTURE_ADAPTER: TypeAdapter[dict[str, _MockEntryRaw]] = TypeAdapter(
-    dict[str, _MockEntryRaw]
-)
+_FIXTURE_ADAPTER: TypeAdapter[dict[str, _MockEntryRaw]] = TypeAdapter(dict[str, _MockEntryRaw])
 """fixture JSON 루트 타입 검증 adapter."""
 
 
@@ -123,9 +119,7 @@ class MockYoloV8MealDetector(YoloV8MealDetector):
         except OSError as e:
             raise MealParseError(f"fixture file not readable: {fixture_path}") from e
         try:
-            self._fixtures: dict[str, _MockEntryRaw] = _FIXTURE_ADAPTER.validate_json(
-                raw
-            )
+            self._fixtures: dict[str, _MockEntryRaw] = _FIXTURE_ADAPTER.validate_json(raw)
         except ValidationError as e:
             raise MealParseError(f"fixture JSON invalid: {fixture_path}") from e
 

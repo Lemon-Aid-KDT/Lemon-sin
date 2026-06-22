@@ -138,7 +138,9 @@ def build_ground_truth_preflight(
         expected = benchmark._expected_from_decision(row)
         if not expected["ingredients"]:
             issue_counts["manual_ground_truth_missing_ingredients"] += 1
-        missing_sections = benchmark._missing_required_expected_sections(expected, required_sections)
+        missing_sections = benchmark._missing_required_expected_sections(
+            expected, required_sections
+        )
         if missing_sections:
             issue_counts["manual_ground_truth_missing_required_sections"] += 1
             missing_required_section_counts.update(missing_sections)
@@ -159,7 +161,9 @@ def build_ground_truth_preflight(
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "ground_truth_manifest_name": ground_truth_manifest.name,
-        "ground_truth_manifest_hash": benchmark._sha256_text(str(ground_truth_manifest.expanduser())),
+        "ground_truth_manifest_hash": benchmark._sha256_text(
+            str(ground_truth_manifest.expanduser())
+        ),
         "row_count": row_count,
         "human_reviewed_row_count": human_reviewed_row_count,
         "explicit_ready_flag_count": explicit_ready_flag_count,
@@ -351,7 +355,9 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     """
     benchmark._reject_unsafe_payload(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _cli_summary(summary: dict[str, Any]) -> dict[str, Any]:

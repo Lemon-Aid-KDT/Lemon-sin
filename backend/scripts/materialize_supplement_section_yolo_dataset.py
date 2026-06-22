@@ -126,8 +126,12 @@ def materialize_dataset(
             raise MaterializationError("Duplicate source item for one YOLO split.")
         seen_outputs.add(output_key)
 
-        image_destination = _image_destination(dataset.root, _split_image_dir(dataset, split), digest, source_image)
-        label_destination = _label_destination(dataset.root, _split_image_dir(dataset, split), digest)
+        image_destination = _image_destination(
+            dataset.root, _split_image_dir(dataset, split), digest, source_image
+        )
+        label_destination = _label_destination(
+            dataset.root, _split_image_dir(dataset, split), digest
+        )
         _write_image(image_source=source_image, image_destination=image_destination)
         _write_label_file(label_destination=label_destination, labels=_item_labels(item))
         split_counts[split] += 1
@@ -203,7 +207,9 @@ def _source_map_from_rows(raw_sources: list[object], *, base_dir: Path) -> dict[
             raise MaterializationError("source map rows must be objects.")
         source_ref = row.get("source_ref")
         image_path = row.get("image_path")
-        _add_source_mapping(sources, source_ref=source_ref, image_path=image_path, base_dir=base_dir)
+        _add_source_mapping(
+            sources, source_ref=source_ref, image_path=image_path, base_dir=base_dir
+        )
     return sources
 
 
@@ -219,7 +225,9 @@ def _source_map_from_mapping(payload: dict[str, Any], *, base_dir: Path) -> dict
     """
     sources: dict[str, Path] = {}
     for source_ref, image_path in payload.items():
-        _add_source_mapping(sources, source_ref=source_ref, image_path=image_path, base_dir=base_dir)
+        _add_source_mapping(
+            sources, source_ref=source_ref, image_path=image_path, base_dir=base_dir
+        )
     return sources
 
 
@@ -379,7 +387,11 @@ def _label_row(label: dict[str, Any]) -> str:
         YOLO ``class x_center y_center width height`` row.
     """
     class_id = label.get("class_id")
-    if isinstance(class_id, bool) or not isinstance(class_id, int) or not 0 <= class_id < len(SUPPLEMENT_SECTION_CLASS_NAMES):
+    if (
+        isinstance(class_id, bool)
+        or not isinstance(class_id, int)
+        or not 0 <= class_id < len(SUPPLEMENT_SECTION_CLASS_NAMES)
+    ):
         raise MaterializationError("YOLO label class_id is outside supplement section names.")
     coordinates = [_coordinate(label, key) for key in ("x_center", "y_center", "width", "height")]
     return " ".join([str(class_id), *coordinates])

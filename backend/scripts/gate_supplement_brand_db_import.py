@@ -93,7 +93,9 @@ def main(argv: list[str] | None = None) -> None:
             markdown_output.write_text(build_markdown(summary), encoding="utf-8")
         print(json.dumps(_cli_summary(summary), ensure_ascii=False, sort_keys=True))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        failure = _failure_summary(preflight_path=preflight_path, output_path=output_path, error=exc)
+        failure = _failure_summary(
+            preflight_path=preflight_path, output_path=output_path, error=exc
+        )
         _write_json(output_path, failure)
         print(json.dumps(failure, ensure_ascii=False, sort_keys=True))
         raise SystemExit(1) from None

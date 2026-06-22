@@ -70,10 +70,7 @@ class ChatAgent:
         result: DailyCoachingResult,
     ) -> LLMRequest:
         findings = "; ".join(
-            (
-                f"{finding.nutrient}: {finding.level.value}, "
-                f"{finding.total_amount}{finding.unit}"
-            )
+            (f"{finding.nutrient}: {finding.level.value}, " f"{finding.total_amount}{finding.unit}")
             for finding in result.findings[:3]
         )
         recommendations = "; ".join(

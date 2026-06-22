@@ -162,7 +162,11 @@ def expand_bounding_box(
     Raises:
         VisionPreprocessingError: If dimensions or padding values are invalid.
     """
-    if padding_ratio < 0 or min_padding_px < 0 or (max_padding_px is not None and max_padding_px < 0):
+    if (
+        padding_ratio < 0
+        or min_padding_px < 0
+        or (max_padding_px is not None and max_padding_px < 0)
+    ):
         raise VisionPreprocessingError("Bounding box padding values must be non-negative.")
     if max_padding_px is not None and max_padding_px < min_padding_px:
         raise VisionPreprocessingError("Maximum padding must be greater than minimum padding.")

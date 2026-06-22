@@ -83,13 +83,11 @@ class AgentRunRecord(BaseModel):
 
 
 class AgentRunLogger(Protocol):
-    def record(self, record: AgentRunRecord) -> None:
-        ...
+    def record(self, record: AgentRunRecord) -> None: ...
 
 
 class AgentMemoryWriter(Protocol):
-    def write(self, user_id: str, result: DailyCoachingResult) -> None:
-        ...
+    def write(self, user_id: str, result: DailyCoachingResult) -> None: ...
 
 
 class InMemoryAgentRunLogger:
@@ -152,16 +150,11 @@ class DailyHealthAgentAppAdapter:
                 latency_ms=self._elapsed_ms(started_at),
                 provider=self._chat_agent.last_provider,
             )
-            if (
-                result.approval_status == "confirmed"
-                and self._memory_writer is not None
-            ):
+            if result.approval_status == "confirmed" and self._memory_writer is not None:
                 try:
                     self._memory_writer.write(agent_input.user_id, result)
                 except Exception as exc:
-                    output.safety_warnings.append(
-                        f"agent_memory update skipped: {exc}"
-                    )
+                    output.safety_warnings.append(f"agent_memory update skipped: {exc}")
             if output.status != "preview":
                 self._record_run(output)
             return output
@@ -193,9 +186,7 @@ class DailyHealthAgentAppAdapter:
         provider: str,
     ) -> AgentOutput:
         status: AgentStatus = (
-            "preview"
-            if result.approval_status == "requires_confirmation"
-            else "completed"
+            "preview" if result.approval_status == "requires_confirmation" else "completed"
         )
         safety_warnings = list(result.safety_warnings)
         safe_message, message_warnings = self._safe_text(message)
@@ -228,9 +219,7 @@ class DailyHealthAgentAppAdapter:
                     title=title,
                     rationale=rationale,
                     priority=recommendation.priority,
-                    requires_professional_consult=(
-                        recommendation.requires_professional_consult
-                    ),
+                    requires_professional_consult=(recommendation.requires_professional_consult),
                 )
             )
 

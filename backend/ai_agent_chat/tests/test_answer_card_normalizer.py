@@ -21,9 +21,7 @@ from lemon_ai_agent.knowledge import (
 def test_answer_card_normalizer_converts_reviewed_seed_item() -> None:
     """Reviewed seed cards become source-traceable AnswerCards."""
     item = next(
-        item
-        for item in MEDICAL_KNOWLEDGE_ITEMS
-        if item.topic == "magnesium_supplement_caution"
+        item for item in MEDICAL_KNOWLEDGE_ITEMS if item.topic == "magnesium_supplement_caution"
     )
 
     card = AnswerCardNormalizer().from_medical_knowledge_item(
@@ -63,9 +61,7 @@ def test_answer_card_normalizer_rejects_draft_seed_item() -> None:
 def test_answer_card_normalizer_adapts_reviewed_kdris_seed_as_nutrition_source() -> None:
     """KDRIs approved project data is exposed to chatbot cards as reviewed nutrition evidence."""
     item = next(
-        item
-        for item in MEDICAL_KNOWLEDGE_ITEMS
-        if item.topic == "sodium_dinner_adjustment"
+        item for item in MEDICAL_KNOWLEDGE_ITEMS if item.topic == "sodium_dinner_adjustment"
     )
 
     card = AnswerCardNormalizer(today=date(2026, 5, 29)).from_medical_knowledge_item(
@@ -172,14 +168,14 @@ def test_answer_card_normalizer_rejects_stale_source(
 ) -> None:
     """Expired reviewed sources cannot become user-facing answer cards."""
     item = next(
-        item
-        for item in MEDICAL_KNOWLEDGE_ITEMS
-        if item.topic == "magnesium_supplement_caution"
+        item for item in MEDICAL_KNOWLEDGE_ITEMS if item.topic == "magnesium_supplement_caution"
     )
     expired_registry = tuple(
-        replace(source, review_expires_at="2026-05-28")
-        if source.source_id == "nih-ods-magnesium"
-        else source
+        (
+            replace(source, review_expires_at="2026-05-28")
+            if source.source_id == "nih-ods-magnesium"
+            else source
+        )
         for source in answer_card_module.REVIEWED_MEDICAL_SOURCE_REGISTRY
     )
     monkeypatch.setattr(
@@ -201,9 +197,11 @@ def test_retriever_reports_stale_only_when_matching_source_is_expired(
 ) -> None:
     """A matched but expired source is reported distinctly from no-match."""
     expired_registry = tuple(
-        replace(source, review_expires_at="2026-05-28")
-        if source.source_id == "nih-ods-magnesium"
-        else source
+        (
+            replace(source, review_expires_at="2026-05-28")
+            if source.source_id == "nih-ods-magnesium"
+            else source
+        )
         for source in answer_card_module.REVIEWED_MEDICAL_SOURCE_REGISTRY
     )
     monkeypatch.setattr(
@@ -501,8 +499,12 @@ def test_db_evidence_retriever_matches_dyslipidemia_topics() -> None:
         analyze_chat_intent("중성지방이 높으면 어떤 음식을 줄여야 해요?")
     )
 
-    assert any(card.topic == "dyslipidemia_saturated_fat_reduction" for card in sat_fat_result.cards)
-    assert any(card.topic == "triglyceride_sugar_alcohol_reduction" for card in triglyceride_result.cards)
+    assert any(
+        card.topic == "dyslipidemia_saturated_fat_reduction" for card in sat_fat_result.cards
+    )
+    assert any(
+        card.topic == "triglyceride_sugar_alcohol_reduction" for card in triglyceride_result.cards
+    )
 
 
 def test_db_evidence_retriever_matches_weight_management_topics() -> None:
@@ -533,10 +535,14 @@ def test_db_evidence_retriever_matches_weight_management_topics() -> None:
     )
 
     plate_result = retriever.retrieve(analyze_chat_intent("체중 관리 중에 식사를 어떻게 구성해요?"))
-    record_result = retriever.retrieve(analyze_chat_intent("체중 기록이랑 식사 기록을 어떻게 활용해요?"))
+    record_result = retriever.retrieve(
+        analyze_chat_intent("체중 기록이랑 식사 기록을 어떻게 활용해요?")
+    )
 
     assert any(card.topic == "weight_management_plate_composition" for card in plate_result.cards)
-    assert any(card.topic == "weight_management_record_pattern_review" for card in record_result.cards)
+    assert any(
+        card.topic == "weight_management_record_pattern_review" for card in record_result.cards
+    )
 
 
 def _db_record(

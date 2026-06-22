@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """단일요리 음식 분류기 — exp16b 게이트 + DINOv3 전체분류 + 영양 매핑.
 
 제품 방향: 사용자가 '음식 하나만 나오게' 촬영 → 단일요리 파이프라인.
@@ -20,6 +19,7 @@
     else:
         print(r["name_ko"], r["conf"], r["nutrition"]["kcal_100g"])
 """
+
 from __future__ import annotations
 
 import csv
@@ -27,7 +27,6 @@ import importlib.util
 import logging
 from pathlib import Path
 
-import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel
@@ -43,18 +42,46 @@ DEFAULT_NUTRITION = HERE / "nutrition" / "food_nutrition_40class.csv"
 
 # 영문 클래스 → 한글 표시명 (지원 40종)
 KR_NAME: dict[str, str] = {
-    "barbecue-ribs": "갈비", "black-bean-noodles": "짜장면", "braised-chicken": "찜닭",
-    "braised-pork-hock": "족발", "bread": "빵", "bulgogi": "불고기", "cake": "케이크",
-    "cold-noodles": "냉면", "curry": "카레", "dim-sum": "딤섬", "doenjang-jjigae": "된장찌개",
-    "fish-cake": "어묵", "fried-chicken": "후라이드치킨", "fried-food-platter": "튀김(모둠)",
-    "grilled-fish": "생선구이", "grilled-pork-belly": "삼겹살", "hamburger": "햄버거",
-    "japanese-ramen": "일본라멘", "jjigae-red": "빨간찌개", "kalguksu": "칼국수",
-    "korean-blood-sausage": "순대", "korean-ramyeon-red": "라면", "mixed-rice-bowl": "비빔밥",
-    "pasta": "파스타", "pizza": "피자", "pork-cutlet-dry": "돈가스", "raw-fish": "회",
-    "rice-noodle-soup": "쌀국수", "rice-porridge": "죽", "rice-soup": "국밥", "salad": "샐러드",
-    "sandwich": "샌드위치", "savory-pancake": "전/부침개", "seaweed-rice-roll": "김밥",
-    "spicy-mixed-noodles": "비빔국수", "sushi": "초밥", "takoyaki": "타코야키",
-    "tteokbokki-red": "떡볶이", "udon": "우동", "western-cream-soup": "양식수프",
+    "barbecue-ribs": "갈비",
+    "black-bean-noodles": "짜장면",
+    "braised-chicken": "찜닭",
+    "braised-pork-hock": "족발",
+    "bread": "빵",
+    "bulgogi": "불고기",
+    "cake": "케이크",
+    "cold-noodles": "냉면",
+    "curry": "카레",
+    "dim-sum": "딤섬",
+    "doenjang-jjigae": "된장찌개",
+    "fish-cake": "어묵",
+    "fried-chicken": "후라이드치킨",
+    "fried-food-platter": "튀김(모둠)",
+    "grilled-fish": "생선구이",
+    "grilled-pork-belly": "삼겹살",
+    "hamburger": "햄버거",
+    "japanese-ramen": "일본라멘",
+    "jjigae-red": "빨간찌개",
+    "kalguksu": "칼국수",
+    "korean-blood-sausage": "순대",
+    "korean-ramyeon-red": "라면",
+    "mixed-rice-bowl": "비빔밥",
+    "pasta": "파스타",
+    "pizza": "피자",
+    "pork-cutlet-dry": "돈가스",
+    "raw-fish": "회",
+    "rice-noodle-soup": "쌀국수",
+    "rice-porridge": "죽",
+    "rice-soup": "국밥",
+    "salad": "샐러드",
+    "sandwich": "샌드위치",
+    "savory-pancake": "전/부침개",
+    "seaweed-rice-roll": "김밥",
+    "spicy-mixed-noodles": "비빔국수",
+    "sushi": "초밥",
+    "takoyaki": "타코야키",
+    "tteokbokki-red": "떡볶이",
+    "udon": "우동",
+    "western-cream-soup": "양식수프",
 }
 
 
@@ -118,13 +145,17 @@ class FoodClassifier:
         nutrition: class_en → 영양 dict(100g 기준).
     """
 
-    def __init__(self, exp16b_path: str | Path = DEFAULT_EXP16B,
-                 probe_path: str | Path = DEFAULT_PROBE,
-                 nutrition_csv: str | Path = DEFAULT_NUTRITION,
-                 det_conf: float = 0.10, max_px: int = 896,
-                 enable_food_filter: bool = False,
-                 food_filter_threshold: float = 0.5,
-                 food_filter_model_id: str = "openai/clip-vit-base-patch16") -> None:
+    def __init__(
+        self,
+        exp16b_path: str | Path = DEFAULT_EXP16B,
+        probe_path: str | Path = DEFAULT_PROBE,
+        nutrition_csv: str | Path = DEFAULT_NUTRITION,
+        det_conf: float = 0.10,
+        max_px: int = 896,
+        enable_food_filter: bool = False,
+        food_filter_threshold: float = 0.5,
+        food_filter_model_id: str = "openai/clip-vit-base-patch16",
+    ) -> None:
         """모델·프로브·영양표를 로드한다.
 
         Args:
@@ -142,7 +173,9 @@ class FoodClassifier:
             FileNotFoundError: exp16b 또는 프로브 파일이 없는 경우.
         """
         if not Path(exp16b_path).exists():
-            raise FileNotFoundError(f"exp16b 없음: {exp16b_path} — 파일공유로 받아 해당 경로에 두세요.")
+            raise FileNotFoundError(
+                f"exp16b 없음: {exp16b_path} — 파일공유로 받아 해당 경로에 두세요."
+            )
         if not Path(probe_path).exists():
             raise FileNotFoundError(f"프로브 없음: {probe_path}")
         self.dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -232,5 +265,10 @@ class FoodClassifier:
         ):
             return None  # YOLO 게이트는 통과했으나 CLIP 비음식 판정 → "다시 찍어주세요"
         name, conf = self._classify(im)  # 전체 이미지 분류 (크롭 X)
-        return {"name_en": name, "name_ko": kr(name), "conf": conf, "box": box,
-                "nutrition": self.nutrition.get(name)}
+        return {
+            "name_en": name,
+            "name_ko": kr(name),
+            "conf": conf,
+            "box": box,
+            "nutrition": self.nutrition.get(name),
+        }

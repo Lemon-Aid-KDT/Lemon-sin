@@ -95,9 +95,7 @@ def test_memory_pattern_accepts_canonicalized_nutrient_key() -> None:
     output = DailyHealthAgentAppAdapter().run(request)
 
     vitamin_d = next(
-        item
-        for item in output.recommendations
-        if item.title == "Add vitamin d from food first"
+        item for item in output.recommendations if item.title == "Add vitamin d from food first"
     )
     assert "appeared 2 times" in vitamin_d.rationale
     assert vitamin_d.priority == 9
@@ -128,9 +126,7 @@ def test_app_intake_preserves_v2_memory_bundle_for_future_chat_context() -> None
                     ],
                     "behavior_memory": [],
                     "conversation_memory": [],
-                    "safety_memory": [
-                        {"summary_json": {"summary": "혈압약 복용을 언급함."}}
-                    ],
+                    "safety_memory": [{"summary_json": {"summary": "혈압약 복용을 언급함."}}],
                 },
             },
         },
@@ -144,9 +140,11 @@ def test_app_intake_preserves_v2_memory_bundle_for_future_chat_context() -> None
     plan = AppIntakeModule().parse(request)
 
     assert plan.agent_memory["summaries"][0]["memory_type"] == "daily_coaching"
-    assert plan.agent_memory["memory_bundle"]["profile_memory"][0]["summary_json"][
-        "summary"
-    ] == "두부를 선호함."
-    assert plan.agent_memory["memory_bundle"]["safety_memory"][0]["summary_json"][
-        "summary"
-    ] == "혈압약 복용을 언급함."
+    assert (
+        plan.agent_memory["memory_bundle"]["profile_memory"][0]["summary_json"]["summary"]
+        == "두부를 선호함."
+    )
+    assert (
+        plan.agent_memory["memory_bundle"]["safety_memory"][0]["summary_json"]["summary"]
+        == "혈압약 복용을 언급함."
+    )

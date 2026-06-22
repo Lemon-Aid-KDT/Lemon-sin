@@ -406,9 +406,7 @@ def _reject_unsafe_strings(value: Any) -> None:
     )
     if isinstance(value, str):
         if any(fragment in value for fragment in forbidden_fragments):
-            raise CategorySeedDbTargetPreflightError(
-                "Preflight payload contains an unsafe string."
-            )
+            raise CategorySeedDbTargetPreflightError("Preflight payload contains an unsafe string.")
     elif isinstance(value, Mapping):
         for child in value.values():
             _reject_unsafe_strings(child)
@@ -472,9 +470,7 @@ def _cli_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "status": summary["status"],
-        "category_seed_db_apply_target_allowed": summary[
-            "category_seed_db_apply_target_allowed"
-        ],
+        "category_seed_db_apply_target_allowed": summary["category_seed_db_apply_target_allowed"],
         "database_host_class": summary["database_host_class"],
         "runtime_environment": summary["runtime_environment"],
         "db_connection_opened": False,

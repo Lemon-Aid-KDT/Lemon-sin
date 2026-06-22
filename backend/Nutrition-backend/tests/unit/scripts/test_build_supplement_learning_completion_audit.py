@@ -126,9 +126,7 @@ def _progress_payload(*, total_blank_row_count: int = 808) -> dict[str, Any]:
         "pending_batch_count": 18 if total_blank_row_count else 0,
         "invalid_batch_count": 0,
         "all_batches_complete": total_blank_row_count == 0,
-        "next_incomplete_batch_key": "brand_product_review:001"
-        if total_blank_row_count
-        else "",
+        "next_incomplete_batch_key": "brand_product_review:001" if total_blank_row_count else "",
         "total_expected_row_count": 808,
         "total_valid_row_count": 0 if total_blank_row_count else 808,
         "total_blank_row_count": total_blank_row_count,
@@ -167,12 +165,16 @@ def _work_order_payload(*, blank_row_count: int = 50) -> dict[str, Any]:
         "pending_row_count": 0,
         "invalid_row_count": 0,
         "missing_row_count": 0,
-        "stage_next_operator_action": "complete_brand_product_human_review"
-        if blank_row_count
-        else "no_operator_action_required",
-        "operator_next_action": "complete_brand_product_human_review"
-        if blank_row_count
-        else "no_operator_action_required",
+        "stage_next_operator_action": (
+            "complete_brand_product_human_review"
+            if blank_row_count
+            else "no_operator_action_required"
+        ),
+        "operator_next_action": (
+            "complete_brand_product_human_review"
+            if blank_row_count
+            else "no_operator_action_required"
+        ),
         "db_write_performed": False,
         "external_provider_call_performed": False,
         "llm_call_performed": False,
@@ -437,9 +439,7 @@ def _all_required_verified_stage_statuses() -> dict[str, str]:
         Stage status mapping.
     """
     stage_keys = {
-        stage_key
-        for spec in audit.REQUIREMENT_SPECS
-        for stage_key in spec.get("stage_keys", ())
+        stage_key for spec in audit.REQUIREMENT_SPECS for stage_key in spec.get("stage_keys", ())
     }
     return dict.fromkeys(sorted(stage_keys), "verified")
 
@@ -483,54 +483,59 @@ def test_completion_audit_reports_current_blockers_without_paths(tmp_path: Path)
         for value in payload["input_path_hashes"].values()
     )
     assert requirements_by_key["source_structure_audited"]["status"] == "verified"
-    assert (
-        requirements_by_key["category_seed_db_apply_preflight_ready"]["status"] == "verified"
-    )
+    assert requirements_by_key["category_seed_db_apply_preflight_ready"]["status"] == "verified"
     assert requirements_by_key["category_seed_db_verified"]["status"] == "verified"
     assert requirements_by_key["private_image_tracking_guard"]["status"] == "verified"
     assert requirements_by_key["brand_product_db_import"]["status"] == "pending_operator_review"
-    assert "queue=brand_product_review" in requirements_by_key["brand_product_db_import"][
-        "evidence"
-    ]
-    assert "queue_next_batch=brand_product_review:001" in requirements_by_key[
-        "brand_product_db_import"
-    ]["evidence"]
-    assert "queue_blank_rows=388" in requirements_by_key["brand_product_db_import"][
-        "evidence"
-    ]
-    assert "queue=review_pii_screening" in requirements_by_key[
-        "review_image_ground_truth_privacy_gate"
-    ]["evidence"]
-    assert "queue_next_batch=review_pii_screening:001" in requirements_by_key[
-        "review_image_ground_truth_privacy_gate"
-    ]["evidence"]
-    assert "queue_blank_rows=215" in requirements_by_key[
-        "review_image_ground_truth_privacy_gate"
-    ]["evidence"]
-    assert "queue=yolo_section_annotation" in requirements_by_key[
-        "detail_page_yolo_bbox_annotation"
-    ]["evidence"]
-    assert "queue_next_batch=yolo_section_annotation:001" in requirements_by_key[
-        "detail_page_yolo_bbox_annotation"
-    ]["evidence"]
-    assert "queue_blank_rows=205" in requirements_by_key[
-        "detail_page_yolo_bbox_annotation"
-    ]["evidence"]
+    assert (
+        "queue=brand_product_review" in requirements_by_key["brand_product_db_import"]["evidence"]
+    )
+    assert (
+        "queue_next_batch=brand_product_review:001"
+        in requirements_by_key["brand_product_db_import"]["evidence"]
+    )
+    assert "queue_blank_rows=388" in requirements_by_key["brand_product_db_import"]["evidence"]
+    assert (
+        "queue=review_pii_screening"
+        in requirements_by_key["review_image_ground_truth_privacy_gate"]["evidence"]
+    )
+    assert (
+        "queue_next_batch=review_pii_screening:001"
+        in requirements_by_key["review_image_ground_truth_privacy_gate"]["evidence"]
+    )
+    assert (
+        "queue_blank_rows=215"
+        in requirements_by_key["review_image_ground_truth_privacy_gate"]["evidence"]
+    )
+    assert (
+        "queue=yolo_section_annotation"
+        in requirements_by_key["detail_page_yolo_bbox_annotation"]["evidence"]
+    )
+    assert (
+        "queue_next_batch=yolo_section_annotation:001"
+        in requirements_by_key["detail_page_yolo_bbox_annotation"]["evidence"]
+    )
+    assert (
+        "queue_blank_rows=205"
+        in requirements_by_key["detail_page_yolo_bbox_annotation"]["evidence"]
+    )
     assert requirements_by_key["manual_ocr_ground_truth"]["status"] == "blocked_missing_artifact"
     assert (
-        requirements_by_key["paddleocr_training_loop_ready"]["status"]
-        == "blocked_missing_artifact"
+        requirements_by_key["paddleocr_training_loop_ready"]["status"] == "blocked_missing_artifact"
     )
-    assert "paddleocr_text_target_chain_preflight_missing" in requirements_by_key[
-        "paddleocr_training_loop_ready"
-    ]["blocker_codes"]
+    assert (
+        "paddleocr_text_target_chain_preflight_missing"
+        in requirements_by_key["paddleocr_training_loop_ready"]["blocker_codes"]
+    )
     assert requirements_by_key["privacy_security_controls"]["status"] == "verified"
-    assert "teacher_ocr_plan_sequence=verified" in requirements_by_key[
-        "privacy_security_controls"
-    ]["evidence"]
-    assert "teacher_ocr_command_ready_required=true" in requirements_by_key[
-        "privacy_security_controls"
-    ]["evidence"]
+    assert (
+        "teacher_ocr_plan_sequence=verified"
+        in requirements_by_key["privacy_security_controls"]["evidence"]
+    )
+    assert (
+        "teacher_ocr_command_ready_required=true"
+        in requirements_by_key["privacy_security_controls"]["evidence"]
+    )
     assert str(tmp_path) not in serialized
     assert "/Volumes/" not in serialized
     assert "/Users/" not in serialized
@@ -591,14 +596,12 @@ def test_completion_audit_keeps_paddleocr_training_blocked_for_failed_stop_gate(
     input_paths = _write_audit_inputs(tmp_path, readiness=readiness)
 
     payload = audit.build_completion_audit(input_paths=input_paths)
-    paddleocr_requirement = {
-        row["requirement_key"]: row for row in payload["requirements"]
-    }["paddleocr_training_loop_ready"]
+    paddleocr_requirement = {row["requirement_key"]: row for row in payload["requirements"]}[
+        "paddleocr_training_loop_ready"
+    ]
 
     assert paddleocr_requirement["status"] == "blocked_missing_artifact"
-    assert "paddleocr_accuracy_stop_gate:not_allowed" in paddleocr_requirement[
-        "blocker_codes"
-    ]
+    assert "paddleocr_accuracy_stop_gate:not_allowed" in paddleocr_requirement["blocker_codes"]
     assert "text_extraction_accuracy_ge_95=false" in paddleocr_requirement["evidence"]
 
 
@@ -646,9 +649,10 @@ def test_completion_audit_blocks_verified_stages_with_blank_operator_rows(
         "blocked_operator_review_incomplete"
     )
     assert payload["operator_review_completion_gate"]["total_blank_row_count"] == 808
-    assert "operator_blank_rows_remaining" in payload["operator_review_completion_gate"][
-        "blocker_codes"
-    ]
+    assert (
+        "operator_blank_rows_remaining"
+        in payload["operator_review_completion_gate"]["blocker_codes"]
+    )
 
 
 def test_completion_audit_blocks_unsafe_teacher_ocr_command_order(
@@ -672,9 +676,9 @@ def test_completion_audit_blocks_unsafe_teacher_ocr_command_order(
     )
 
     payload = audit.build_completion_audit(input_paths=input_paths)
-    privacy_requirement = {
-        row["requirement_key"]: row for row in payload["requirements"]
-    }["privacy_security_controls"]
+    privacy_requirement = {row["requirement_key"]: row for row in payload["requirements"]}[
+        "privacy_security_controls"
+    ]
 
     assert privacy_requirement["status"] == "blocked_invalid_artifact"
     assert "teacher_ocr_command_gate_flag_missing_require-ready-for-teacher-ocr-eval" in (

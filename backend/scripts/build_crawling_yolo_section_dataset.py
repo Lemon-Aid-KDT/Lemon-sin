@@ -58,7 +58,9 @@ CLASS_NAMES = (
     "functional_claims",
 )
 CLASS_ID = {name: index for index, name in enumerate(CLASS_NAMES)}
-_AMOUNT_RE = re.compile(r"\d\s*(mg|g|mcg|㎍|µg|iu|억|cfu|kcal|kj|%|밀리그램|마이크로그램)", re.IGNORECASE)
+_AMOUNT_RE = re.compile(
+    r"\d\s*(mg|g|mcg|㎍|µg|iu|억|cfu|kcal|kj|%|밀리그램|마이크로그램)", re.IGNORECASE
+)
 
 
 def _norm(text: str) -> str:
@@ -127,7 +129,13 @@ def _write_dataset_yaml(output_dir: Path) -> None:
 
 
 async def _process_image(
-    *, adapter: ClovaOCRAdapter, settings: Any, image_path: Path, output_dir: Path, split: str, stem: str
+    *,
+    adapter: ClovaOCRAdapter,
+    settings: Any,
+    image_path: Path,
+    output_dir: Path,
+    split: str,
+    stem: str,
 ) -> tuple[str, list[str]]:
     """Label one detail image via CLOVA weak supervision and write YOLO files.
 
@@ -195,7 +203,11 @@ async def build(
         Count-only summary.
     """
     excluded = crawl._excluded_product_hashes(splits_path)
-    products = [p for p in crawl._iter_products(crawl_root) if crawl._product_hash(p, crawl_root) not in excluded]
+    products = [
+        p
+        for p in crawl._iter_products(crawl_root)
+        if crawl._product_hash(p, crawl_root) not in excluded
+    ]
     rng = random.Random(seed)
     rng.shuffle(products)
     if max_products is not None:
@@ -213,7 +225,13 @@ async def build(
         (output_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
 
     section_counts: dict[str, int] = dict.fromkeys(CLASS_NAMES, 0)
-    stats = {"products": 0, "images_labeled": 0, "images_no_section": 0, "failed_images": 0, "boxes": 0}
+    stats = {
+        "products": 0,
+        "images_labeled": 0,
+        "images_no_section": 0,
+        "failed_images": 0,
+        "boxes": 0,
+    }
     processed = 0
     for product_dir in products:
         product_hash = crawl._product_hash(product_dir, crawl_root)
@@ -225,8 +243,12 @@ async def build(
             processed += 1
             stem = f"{product_hash[:16]}_{stats['images_labeled']:05d}"
             status, sections = await _process_image(
-                adapter=adapter, settings=settings, image_path=image_path,
-                output_dir=output_dir, split=split, stem=stem,
+                adapter=adapter,
+                settings=settings,
+                image_path=image_path,
+                output_dir=output_dir,
+                split=split,
+                stem=stem,
             )
             if status == "labeled":
                 stats["images_labeled"] += 1
@@ -288,7 +310,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.apply:
         excluded = crawl._excluded_product_hashes(args.splits)
         eligible = [
-            p for p in crawl._iter_products(args.crawl_root) if crawl._product_hash(p, args.crawl_root) not in excluded
+            p
+            for p in crawl._iter_products(args.crawl_root)
+            if crawl._product_hash(p, args.crawl_root) not in excluded
         ]
         print(json.dumps({"apply_requested": False, "eligible_product_count": len(eligible)}))
         return 0

@@ -67,7 +67,10 @@ def _normalized_box(raw: dict[str, Any], allowed_labels: set[str]) -> dict[str, 
     x_center = x + width / 2.0
     y_center = y + height / 2.0
     for name, value in (
-        ("x_center", x_center), ("y_center", y_center), ("width", width), ("height", height)
+        ("x_center", x_center),
+        ("y_center", y_center),
+        ("width", width),
+        ("height", height),
     ):
         if not (-COORD_EPSILON <= value <= 1.0 + COORD_EPSILON):
             raise ValueError(f"{name}={value} outside the normalized [0, 1] range")

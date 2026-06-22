@@ -328,7 +328,9 @@ def _reconcile_one_batch(
         raise BatchFileReconcileError("Batch file row count does not match plan.")
     original_slice = original_rows[start - 1 : end]
     changed_count = sum(
-        1 for original, reviewed in zip(original_slice, batch_rows, strict=True) if _row_key(original) != _row_key(reviewed)
+        1
+        for original, reviewed in zip(original_slice, batch_rows, strict=True)
+        if _row_key(original) != _row_key(reviewed)
     )
     merged[queue_key][start - 1 : end] = batch_rows
     row = {
@@ -394,7 +396,9 @@ def _read_batch_rows(path: Path) -> list[dict[str, Any]]:
     try:
         content = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise BatchFileReconcileError("Required batch JSONL file is missing or unreadable.") from exc
+        raise BatchFileReconcileError(
+            "Required batch JSONL file is missing or unreadable."
+        ) from exc
     for line in content.splitlines():
         if not line.strip() or line.strip().startswith("#"):
             continue
@@ -546,8 +550,7 @@ def _validated_batch_file_overrides(
         BatchFileReconcileError: If an override does not map to a planned batch.
     """
     planned_batch_keys = {
-        batch_exporter._safe_token(str(batch.get("batch_key") or "unknown"))
-        for batch in batch_rows
+        batch_exporter._safe_token(str(batch.get("batch_key") or "unknown")) for batch in batch_rows
     }
     unknown_batch_keys = sorted(set(batch_file_overrides) - planned_batch_keys)
     if unknown_batch_keys:
@@ -572,7 +575,9 @@ def _reject_unsafe_editable_row(value: Any) -> None:
         for item in value:
             _reject_unsafe_editable_row(item)
         return
-    if isinstance(value, str) and any(marker in value for marker in batch_exporter.LOCAL_PATH_MARKERS):
+    if isinstance(value, str) and any(
+        marker in value for marker in batch_exporter.LOCAL_PATH_MARKERS
+    ):
         raise BatchFileReconcileError("Unsafe local path marker found in editable row.")
 
 

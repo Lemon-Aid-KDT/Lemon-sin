@@ -399,6 +399,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove rows seeded by this manifest version."""
     op.execute(
-        "DELETE FROM food_nutrition "
-        "WHERE source_manifest_version = 'food-nutrition-40class-v2';"
+        "DELETE FROM food_nutrition " "WHERE source_manifest_version = 'food-nutrition-40class-v2';"
     )

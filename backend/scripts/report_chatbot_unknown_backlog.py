@@ -31,15 +31,21 @@ def main() -> int:
     _load_env_file(args.env_file)
     database_url = args.database_url or os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not database_url:
-        print("ERROR: set DATABASE_URL or TEST_DATABASE_URL, or pass --database-url.", file=sys.stderr)
+        print(
+            "ERROR: set DATABASE_URL or TEST_DATABASE_URL, or pass --database-url.", file=sys.stderr
+        )
         return 2
 
     database_url = _normalize_database_url(database_url)
     payload = asyncio.run(_load_report(args=args, database_url=database_url))
-    rendered = _markdown_report(payload) if args.format == "markdown" else json.dumps(
-        payload,
-        ensure_ascii=False,
-        indent=2,
+    rendered = (
+        _markdown_report(payload)
+        if args.format == "markdown"
+        else json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+        )
     )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

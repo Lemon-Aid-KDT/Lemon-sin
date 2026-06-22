@@ -250,9 +250,7 @@ async def test_stage2_regulated_confirm_fanout_is_owner_isolated_and_persists() 
                 # Owner sees the parent document plus all three confirm-time child rows.
                 assert await _count_where(session, "regulated_documents", "id", document_id) == 1
                 assert (
-                    await _count_where(
-                        session, "prescription_items", "document_id", document_id
-                    )
+                    await _count_where(session, "prescription_items", "document_id", document_id)
                     == 1
                 )
                 assert (
@@ -274,9 +272,7 @@ async def test_stage2_regulated_confirm_fanout_is_owner_isolated_and_persists() 
                 )
                 assert await _count_where(session, "regulated_documents", "id", document_id) == 0
                 assert (
-                    await _count_where(
-                        session, "prescription_items", "document_id", document_id
-                    )
+                    await _count_where(session, "prescription_items", "document_id", document_id)
                     == 0
                 )
                 assert (

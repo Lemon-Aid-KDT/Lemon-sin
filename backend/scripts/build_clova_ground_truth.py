@@ -90,7 +90,9 @@ def _expected_from_parse(parsed: dict[str, Any]) -> dict[str, Any]:
     intake = parsed.get("intake_method") or {}
     precautions = [{"text": p["text"]} for p in parsed.get("precautions", []) if p.get("text")]
     functional = [
-        {"text": claim["text"]} for claim in parsed.get("functional_claims", []) if claim.get("text")
+        {"text": claim["text"]}
+        for claim in parsed.get("functional_claims", [])
+        if claim.get("text")
     ]
     label_sections = [
         {"section_type": section.get("section_type")}
@@ -108,7 +110,9 @@ def _expected_from_parse(parsed: dict[str, Any]) -> dict[str, Any]:
             "structured": intake.get("structured") or {"frequency": "", "time_of_day": []},
         },
         "precautions": precautions,
-        "allergen_warnings": _allergen_rows(parsed.get("precautions", []), parsed.get("label_sections", [])),
+        "allergen_warnings": _allergen_rows(
+            parsed.get("precautions", []), parsed.get("label_sections", [])
+        ),
         "functional_claims": functional,
         "label_sections": label_sections,
     }
@@ -172,7 +176,9 @@ async def build(
         try:
             rows.append(json.loads(line))
         except json.JSONDecodeError:
-            malformed_lines += 1  # per-line isolation: skip malformed rows (line content not stored)
+            malformed_lines += (
+                1  # per-line isolation: skip malformed rows (line content not stored)
+            )
     settings = get_settings()
     clova = ClovaOCRAdapter(settings)
     parser = OllamaSupplementParser(settings)
@@ -250,9 +256,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary:
         args.summary.parent.mkdir(parents=True, exist_ok=True)
         args.summary.write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
-    print(json.dumps({k: v for k, v in summary.items() if k != "failures"}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {k: v for k, v in summary.items() if k != "failures"}, ensure_ascii=False, indent=2
+        )
+    )
     if summary.get("failures"):
         print(f"failures: {len(summary['failures'])} (see summary file)")
     return 0

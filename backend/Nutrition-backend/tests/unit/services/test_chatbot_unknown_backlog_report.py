@@ -74,8 +74,14 @@ def test_unknown_backlog_report_sorts_repeated_gaps_first() -> None:
     """Verify repeated missing topics float to the top of the operator report."""
     events = [
         _event(missing_topics=["meal"], needed_evidence_type="nutrition_reference"),
-        _event(missing_topics=["supplement_drug_interaction"], needed_evidence_type="supplement_drug_interaction"),
-        _event(missing_topics=["supplement_drug_interaction"], needed_evidence_type="supplement_drug_interaction"),
+        _event(
+            missing_topics=["supplement_drug_interaction"],
+            needed_evidence_type="supplement_drug_interaction",
+        ),
+        _event(
+            missing_topics=["supplement_drug_interaction"],
+            needed_evidence_type="supplement_drug_interaction",
+        ),
     ]
 
     payload = unknown_backlog_report_payload(summarize_unknown_knowledge_events(events))

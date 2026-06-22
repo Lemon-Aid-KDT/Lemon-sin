@@ -41,8 +41,13 @@ async def copy_missing(*, source_dsn: str, target_dsn: str) -> dict:
         )
         missing_docs = [d for d in src_docs if d["slug"] not in target_slugs]
         if not missing_docs:
-            return {"missing_documents": 0, "copied_documents": 0, "copied_chunks": 0,
-                    "copied_embeddings": 0, "documents_in_target": len(target_slugs)}
+            return {
+                "missing_documents": 0,
+                "copied_documents": 0,
+                "copied_chunks": 0,
+                "copied_embeddings": 0,
+                "documents_in_target": len(target_slugs),
+            }
         doc_ids = [d["id"] for d in missing_docs]
         chunks = await src.fetch(
             "select id, document_id, heading, chunk_index, content, content_hash, token_count "
@@ -61,24 +66,54 @@ async def copy_missing(*, source_dsn: str, target_dsn: str) -> dict:
                 "insert into wiki_documents (id, slug, title, category, rel_path, tags, summary, "
                 "content_hash, source_manifest_version) "
                 "values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9) on conflict (slug) do nothing",
-                [(d["id"], d["slug"], d["title"], d["category"], d["rel_path"], d["tags"],
-                  d["summary"], d["content_hash"], d["source_manifest_version"]) for d in missing_docs],
+                [
+                    (
+                        d["id"],
+                        d["slug"],
+                        d["title"],
+                        d["category"],
+                        d["rel_path"],
+                        d["tags"],
+                        d["summary"],
+                        d["content_hash"],
+                        d["source_manifest_version"],
+                    )
+                    for d in missing_docs
+                ],
             )
             await _executemany_batched(
                 tgt,
                 "insert into wiki_chunks (id, document_id, heading, chunk_index, content, "
                 "content_hash, token_count) values ($1,$2,$3,$4,$5,$6,$7) "
                 "on conflict (id) do nothing",
-                [(c["id"], c["document_id"], c["heading"], c["chunk_index"], c["content"],
-                  c["content_hash"], c["token_count"]) for c in chunks],
+                [
+                    (
+                        c["id"],
+                        c["document_id"],
+                        c["heading"],
+                        c["chunk_index"],
+                        c["content"],
+                        c["content_hash"],
+                        c["token_count"],
+                    )
+                    for c in chunks
+                ],
             )
             await _executemany_batched(
                 tgt,
                 "insert into wiki_chunk_embeddings (id, chunk_id, embedding, embedding_model, "
                 "embedding_dimensions) values ($1,$2,$3::extensions.vector,$4,$5) "
                 "on conflict (id) do nothing",
-                [(e["id"], e["chunk_id"], e["embedding"], e["embedding_model"],
-                  e["embedding_dimensions"]) for e in embeddings],
+                [
+                    (
+                        e["id"],
+                        e["chunk_id"],
+                        e["embedding"],
+                        e["embedding_model"],
+                        e["embedding_dimensions"],
+                    )
+                    for e in embeddings
+                ],
             )
         return {
             "missing_documents": len(missing_docs),
@@ -86,7 +121,9 @@ async def copy_missing(*, source_dsn: str, target_dsn: str) -> dict:
             "copied_chunks": len(chunks),
             "copied_embeddings": len(embeddings),
             "documents_in_target": await tgt.fetchval("select count(*) from wiki_documents"),
-            "embeddings_in_target": await tgt.fetchval("select count(*) from wiki_chunk_embeddings"),
+            "embeddings_in_target": await tgt.fetchval(
+                "select count(*) from wiki_chunk_embeddings"
+            ),
         }
     finally:
         await src.close()
@@ -119,8 +156,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary:
         path = Path(args.summary)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                        encoding="utf-8")
+        path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 

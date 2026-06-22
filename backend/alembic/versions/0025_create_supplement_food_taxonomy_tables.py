@@ -225,7 +225,9 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint("source <> ''", name=op.f("ck_supplement_product_categories_source_nonempty")),
+        sa.CheckConstraint(
+            "source <> ''", name=op.f("ck_supplement_product_categories_source_nonempty")
+        ),
         sa.CheckConstraint(
             "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
             name=op.f("ck_supplement_product_categories_confidence_range"),

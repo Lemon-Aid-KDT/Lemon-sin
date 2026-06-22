@@ -19,8 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Seed the initial reviewed evidence coverage for DB-backed chatbot answers."""
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO medical_sources (
             id, source_family, publisher, title, canonical_url, jurisdiction,
             source_type, default_review_status, owner
@@ -77,10 +76,8 @@ def upgrade() -> None:
             default_review_status = EXCLUDED.default_review_status,
             owner = EXCLUDED.owner,
             updated_at = now();
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         INSERT INTO medical_source_versions (
             id, source_id, version_label, published_at, reviewed_at, expires_at,
             review_status, reviewer, review_note
@@ -145,8 +142,7 @@ def upgrade() -> None:
             WHERE existing.source_id = seed.source_id
               AND existing.version_label = seed.version_label
         );
-        """
-    )
+        """)
     for evidence in _evidence_rows():
         op.execute(_insert_evidence_sql(**evidence))
 
@@ -154,12 +150,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove seeded chatbot evidence records."""
     topics = "', '".join(row["topic"] for row in _evidence_rows())
-    op.execute(
-        f"""
+    op.execute(f"""
         DELETE FROM medical_evidence_items
         WHERE topic IN ('{topics}');
-        """
-    )
+        """)
 
 
 def _insert_evidence_sql(
@@ -304,7 +298,20 @@ def _evidence_rows() -> tuple[dict[str, object], ...]:
             "blocked_wording": "라면은 절대 먹지 마세요. 채소와 단백질을 드세요.",
             "applicability_note": "나트륨 저녁 식사 조정 질문",
             "caution_level": "info",
-            "specific_examples": ("오이", "양배추", "브로콜리", "버섯", "토마토", "시금치", "두부", "달걀", "생선구이", "닭가슴살", "살코기", "콩류"),
+            "specific_examples": (
+                "오이",
+                "양배추",
+                "브로콜리",
+                "버섯",
+                "토마토",
+                "시금치",
+                "두부",
+                "달걀",
+                "생선구이",
+                "닭가슴살",
+                "살코기",
+                "콩류",
+            ),
             "checklist": ("국물", "소스", "장류", "가공육", "김치류", "짠 반찬"),
             "caution_conditions": ("신장질환", "칼륨 제한", "심부전", "부종"),
             "must_not_say": ("라면은 절대 먹지 마세요", "채소와 단백질을 드세요"),
@@ -347,9 +354,22 @@ def _evidence_rows() -> tuple[dict[str, object], ...]:
             "applicability_note": "혈압약 등 복약 맥락의 마그네슘 보충제 질문",
             "caution_level": "professional_review",
             "specific_examples": ("견과류", "콩류", "통곡물", "녹색 잎채소"),
-            "checklist": ("제품 라벨", "함량", "혈압약 종류", "신장 기능", "어지러움", "설사", "복통"),
+            "checklist": (
+                "제품 라벨",
+                "함량",
+                "혈압약 종류",
+                "신장 기능",
+                "어지러움",
+                "설사",
+                "복통",
+            ),
             "caution_conditions": ("혈압약 복용", "신장 기능 저하", "이상 증상", "새 보충제 시작"),
-            "must_not_say": ("먹어도 됩니다", "안전합니다", "먹으면 안 됩니다", "복용량을 바꾸세요"),
+            "must_not_say": (
+                "먹어도 됩니다",
+                "안전합니다",
+                "먹으면 안 됩니다",
+                "복용량을 바꾸세요",
+            ),
         },
         {
             "evidence_id": "aaaaaaaa-0001-4000-8000-000000000010",

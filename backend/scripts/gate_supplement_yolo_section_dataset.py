@@ -196,7 +196,9 @@ def build_yolo_section_dataset_gate(
     Raises:
         YoloSectionDatasetGateError: If an input is unsafe or unsupported.
     """
-    annotation = _load_summary(annotation_preflight_path, expected_schema=ANNOTATION_PREFLIGHT_SCHEMA)
+    annotation = _load_summary(
+        annotation_preflight_path, expected_schema=ANNOTATION_PREFLIGHT_SCHEMA
+    )
     promotion_payload = (
         _load_summary(template_promotion_summary_path, expected_schema=PROMOTION_SCHEMA)
         if template_promotion_summary_path is not None
@@ -213,7 +215,9 @@ def build_yolo_section_dataset_gate(
         else None
     )
 
-    counts = _counts(annotation=annotation, promotion_payload=promotion_payload, materialized=materialized)
+    counts = _counts(
+        annotation=annotation, promotion_payload=promotion_payload, materialized=materialized
+    )
     strict_annotation_ready = _strict_annotation_ready(annotation, counts=counts)
     promotion_ready = _promotion_ready(
         annotation=annotation,
@@ -249,7 +253,8 @@ def build_yolo_section_dataset_gate(
         "status": status,
         "generated_at": datetime.now(UTC).isoformat(),
         "input_names": {
-            key: path.name if path is not None else None for key, path in sorted(input_paths.items())
+            key: path.name if path is not None else None
+            for key, path in sorted(input_paths.items())
         },
         "input_path_hashes": {
             key: _fingerprint_text(str(path.expanduser())) if path is not None else None
@@ -257,10 +262,9 @@ def build_yolo_section_dataset_gate(
         },
         **counts,
         "strict_annotation_review_requested": annotation.get("require_all_reviewed") is True,
-        "annotation_ready_for_strict_promotion": annotation.get("ready_for_strict_promotion") is True,
-        "annotation_ready_for_requested_promotion": annotation.get(
-            "ready_for_requested_promotion"
-        )
+        "annotation_ready_for_strict_promotion": annotation.get("ready_for_strict_promotion")
+        is True,
+        "annotation_ready_for_requested_promotion": annotation.get("ready_for_requested_promotion")
         is True,
         "strict_annotation_ready": strict_annotation_ready,
         "template_promotion_ready": promotion_ready,

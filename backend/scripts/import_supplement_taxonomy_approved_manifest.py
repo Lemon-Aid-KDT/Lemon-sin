@@ -667,9 +667,7 @@ def _preflight_summary(
             product_import_manifest.name if product_import_manifest is not None else None
         ),
         "product_import_manifest_sha256": (
-            _sha256_file(product_import_manifest)
-            if product_import_manifest is not None
-            else None
+            _sha256_file(product_import_manifest) if product_import_manifest is not None else None
         ),
         "category_seed_row_count": len(category_rows),
         "approved_product_import_row_count": len(product_rows),
@@ -1015,9 +1013,7 @@ def _reject_unsafe_payload(value: object) -> None:
         if raw_keys:
             raise ValueError(f"Payload contains forbidden raw field(s): {sorted(raw_keys)}")
         if literal_keys:
-            raise ValueError(
-                f"Payload contains forbidden literal field(s): {sorted(literal_keys)}"
-            )
+            raise ValueError(f"Payload contains forbidden literal field(s): {sorted(literal_keys)}")
         for child in value.values():
             _reject_unsafe_payload(child)
     elif isinstance(value, list | tuple):

@@ -76,9 +76,11 @@ def _build_plan(dataset_dir: Path, *, task: str) -> tuple[dict[str, object], dic
         task=task,
         dataset_version_id=uuid4(),
         base_model="PP-OCRv5-rec" if task == "recognition" else "PP-OCRv5-det",
-        config_ref="configs/rec/supplement_rec.yml"
-        if task == "recognition"
-        else "configs/det/supplement_det.yml",
+        config_ref=(
+            "configs/rec/supplement_rec.yml"
+            if task == "recognition"
+            else "configs/det/supplement_det.yml"
+        ),
         pretrained_model_ref="pretrain_models/ppocr/best_accuracy",
         save_model_ref="models/paddleocr/supplement-labels",
         epochs=3,

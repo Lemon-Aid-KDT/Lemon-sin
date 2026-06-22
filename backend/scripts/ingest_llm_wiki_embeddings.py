@@ -109,7 +109,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str | list[str]], str]:
             front[key] = [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
         else:
             front[key] = value.strip("'\"")
-    return front, text[match.end():]
+    return front, text[match.end() :]
 
 
 def _title(body: str, front: dict, slug: str) -> str:
@@ -190,9 +190,7 @@ def chunk_sections(body: str) -> list[tuple[str | None, str]]:
         buf = prefix
         paragraphs: list[str] = []
         for para in re.split(r"\n\s*\n", text):
-            paragraphs.extend(
-                _hard_wrap(para, wrap_limit) if len(para) > wrap_limit else [para]
-            )
+            paragraphs.extend(_hard_wrap(para, wrap_limit) if len(para) > wrap_limit else [para])
         for para in paragraphs:
             candidate = (buf + "\n\n" + para).strip() if buf.strip() else para
             if len(candidate) > MAX_CHUNK_CHARS and buf.strip():
@@ -323,8 +321,14 @@ async def _load_or_replace_document(
                (id, slug, title, category, rel_path, tags, summary, content_hash,
                 source_manifest_version)
                values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)""",
-            doc_id, slug, title[:300], (category or None) and category[:40], rel_path,
-            json.dumps(tags, ensure_ascii=False), _summary(body), content_hash,
+            doc_id,
+            slug,
+            title[:300],
+            (category or None) and category[:40],
+            rel_path,
+            json.dumps(tags, ensure_ascii=False),
+            _summary(body),
+            content_hash,
             SOURCE_MANIFEST_VERSION,
         )
         for index, (heading, content) in enumerate(chunks):
@@ -332,8 +336,13 @@ async def _load_or_replace_document(
                 """insert into wiki_chunks
                    (id, document_id, heading, chunk_index, content, content_hash, token_count)
                    values ($1,$2,$3,$4,$5,$6,$7)""",
-                uuid4(), doc_id, (heading or None) and heading[:300], index,
-                content, _sha256(content), len(content.split()),
+                uuid4(),
+                doc_id,
+                (heading or None) and heading[:300],
+                index,
+                content,
+                _sha256(content),
+                len(content.split()),
             )
         chunk_rows = await conn.fetch(
             "select id, content from wiki_chunks where document_id=$1 order by chunk_index",
@@ -383,7 +392,11 @@ async def _ensure_chunk_embeddings(
         )
         await conn.execute(
             insert_sql,
-            uuid4(), chunk["id"], _vector_literal(vector), target.model, target.dimensions,
+            uuid4(),
+            chunk["id"],
+            _vector_literal(vector),
+            target.model,
+            target.dimensions,
         )
         stats["embeddings_written"] += 1
 
@@ -417,8 +430,12 @@ async def ingest(
     stats: Counter[str] = Counter()
     # Prime reported keys so a zero count still appears in the summary.
     for key in (
-        "documents_written", "documents_unchanged", "skipped_empty",
-        "embeddings_written", "embeddings_existing", "failed_docs",
+        "documents_written",
+        "documents_unchanged",
+        "skipped_empty",
+        "embeddings_written",
+        "embeddings_existing",
+        "failed_docs",
     ):
         stats[key] = 0
     failures: list[dict[str, str]] = []
@@ -430,7 +447,12 @@ async def ingest(
                 front, body = parse_frontmatter(raw)
                 rel_path = path.relative_to(root).as_posix()
                 _doc_id, chunk_rows, status = await _load_or_replace_document(
-                    conn, slug=slug, raw=raw, body=body, front=front, rel_path=rel_path,
+                    conn,
+                    slug=slug,
+                    raw=raw,
+                    body=body,
+                    front=front,
+                    rel_path=rel_path,
                     rechunk_oversized=rechunk_oversized,
                 )
                 if status == "empty":
@@ -438,8 +460,11 @@ async def ingest(
                     continue
                 stats["documents_unchanged" if status == "unchanged" else "documents_written"] += 1
                 await _ensure_chunk_embeddings(
-                    conn, chunk_rows=list(chunk_rows), ollama_url=ollama_url,
-                    target=target, stats=stats,
+                    conn,
+                    chunk_rows=list(chunk_rows),
+                    ollama_url=ollama_url,
+                    target=target,
+                    stats=stats,
                 )
             except Exception as exc:
                 # Per-document isolation: failures are reported and retried on the
@@ -487,9 +512,7 @@ def _resolve_target(args: argparse.Namespace) -> WikiEmbeddingTarget:
                 f"ERROR: unknown model {args.model!r}; known: {', '.join(known_models())}. "
                 "Pass --table and --dimensions to ingest an unregistered model."
             ) from None
-        return WikiEmbeddingTarget(
-            model=args.model, table=args.table, dimensions=args.dimensions
-        )
+        return WikiEmbeddingTarget(model=args.model, table=args.table, dimensions=args.dimensions)
     table = args.table or base.table
     dimensions = args.dimensions if args.dimensions is not None else base.dimensions
     return WikiEmbeddingTarget(
@@ -516,7 +539,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--summary", type=Path, default=None)
     parser.add_argument(
-        "--rechunk-oversized", action="store_true",
+        "--rechunk-oversized",
+        action="store_true",
         help="Re-chunk unchanged docs whose stored chunks exceed the size cap.",
     )
     parser.add_argument("--apply", action="store_true")
@@ -545,7 +569,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     summary = asyncio.run(
         ingest(
-            dsn=args.dsn, root=root, ollama_url=args.ollama_url, target=target, limit=args.limit,
+            dsn=args.dsn,
+            root=root,
+            ollama_url=args.ollama_url,
+            target=target,
+            limit=args.limit,
             rechunk_oversized=args.rechunk_oversized,
         )
     )

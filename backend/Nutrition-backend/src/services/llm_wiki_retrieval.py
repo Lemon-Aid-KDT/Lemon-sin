@@ -488,9 +488,7 @@ async def _apply_entity_boost(
         slug = _slug_from_source_path(citation.source_path)
         present_slugs.add(slug)
         if slug in linked_slugs:
-            boosted.append(
-                replace(citation, score=round(citation.score + ENTITY_LINK_BONUS, 4))
-            )
+            boosted.append(replace(citation, score=round(citation.score + ENTITY_LINK_BONUS, 4)))
         else:
             boosted.append(citation)
 
@@ -517,9 +515,7 @@ async def _linked_slugs(session: AsyncSession, entity_keys: tuple[str, ...]) -> 
     Returns:
         Set of linked wiki slugs (possibly empty).
     """
-    statement = text(
-        "SELECT wiki_slug FROM entity_wiki_links WHERE entity_key = ANY(:keys)"
-    )
+    statement = text("SELECT wiki_slug FROM entity_wiki_links WHERE entity_key = ANY(:keys)")
     result = await session.execute(statement, {"keys": list(entity_keys)})
     return {row.wiki_slug for row in result.all()}
 
@@ -616,9 +612,7 @@ def _merge_lexical(
     for citation in vector_citations:
         seen.add(citation.source_path)
         if citation.source_path in lexical_by_path:
-            merged.append(
-                replace(citation, score=round(citation.score + HYBRID_LEXICAL_BONUS, 4))
-            )
+            merged.append(replace(citation, score=round(citation.score + HYBRID_LEXICAL_BONUS, 4)))
         else:
             merged.append(citation)
     max_lexical = max((c.score for c in lexical_citations), default=0.0) or 1.0
@@ -668,8 +662,7 @@ def _iter_markdown_files(root: Path) -> list[Path]:
     return sorted(
         path
         for path in root.rglob("*.md")
-        if path.is_file()
-        and not any(part.startswith(".") for part in path.relative_to(root).parts)
+        if path.is_file() and not any(part.startswith(".") for part in path.relative_to(root).parts)
     )
 
 

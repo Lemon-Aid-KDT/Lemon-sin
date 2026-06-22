@@ -409,9 +409,7 @@ def _success_summary(*, result: Mapping[str, Any]) -> dict[str, Any]:
         "stderr_line_count": result["stderr_line_count"],
         "stdout_digest_stored": result["stdout_sha256"] is not None,
         "stderr_digest_stored": result["stderr_sha256"] is not None,
-        "metrics_json_required_for_registration": result[
-            "metrics_json_required_for_registration"
-        ],
+        "metrics_json_required_for_registration": result["metrics_json_required_for_registration"],
         "command_printed": False,
         "paddleocr_root_printed": False,
         "stdout_raw_stored": False,

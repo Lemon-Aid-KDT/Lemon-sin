@@ -311,16 +311,10 @@ def _settings(
         supplement_image_max_bytes=supplement_image_max_bytes,
         supplement_image_max_pixels=supplement_image_max_pixels,
         enable_food_yolo_detector=enable_food_yolo_detector,
-        meal_yolo_model_path=(
-            "/app/Food-backend/best.pt"
-            if enable_food_yolo_detector
-            else None
-        ),
+        meal_yolo_model_path=("/app/Food-backend/best.pt" if enable_food_yolo_detector else None),
         enable_food_dino_classifier=enable_food_dino_classifier,
         meal_food_classifier_exp16b_model_path=(
-            "/app/Food-backend/best.pt"
-            if enable_food_dino_classifier
-            else None
+            "/app/Food-backend/best.pt" if enable_food_dino_classifier else None
         ),
     )
 
@@ -646,14 +640,10 @@ async def test_create_meal_image_preview_ignores_blank_classifier_nutrition_valu
         food_classifier=classifier,
     )
 
-    assert result.analysis_run.nutrition_estimate_snapshot["status"] == (
-        "detected_review_required"
-    )
+    assert result.analysis_run.nutrition_estimate_snapshot["status"] == ("detected_review_required")
     # The blank classifier nutrition string is coerced to None and dropped from
     # the snapshot rather than aborting analysis with a 500.
-    item_nutrition = result.analysis_run.nutrition_estimate_snapshot["items"][0][
-        "nutrition"
-    ]
+    item_nutrition = result.analysis_run.nutrition_estimate_snapshot["items"][0]["nutrition"]
     assert "sugar_g" not in item_nutrition
     assert item_nutrition["kcal"] is not None
 

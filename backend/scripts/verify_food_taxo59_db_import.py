@@ -115,18 +115,14 @@ async def verify_food_taxo59_db_import() -> dict[str, object]:
     """
     conn = await asyncpg.connect(_database_url())
     try:
-        food_nutrition_exists = bool(
-            await conn.fetchval(
-                """
+        food_nutrition_exists = bool(await conn.fetchval("""
                 SELECT EXISTS(
                     SELECT 1
                       FROM information_schema.tables
                      WHERE table_schema = 'public'
                        AND table_name = 'food_nutrition'
                 )
-                """
-            )
-        )
+                """))
         catalog_count = int(
             await conn.fetchval(
                 """

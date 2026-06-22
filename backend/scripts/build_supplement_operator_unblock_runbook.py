@@ -233,8 +233,7 @@ def build_operator_unblock_runbook(*, input_paths: Mapping[str, Path]) -> dict[s
             else next_work_order.get("blank_row_count")
         ),
         "operator_next_action": _safe_string(
-            audit.get("operator_next_action")
-            or next_work_order.get("stage_next_operator_action")
+            audit.get("operator_next_action") or next_work_order.get("stage_next_operator_action")
         ),
         "source_editable_file_name": _safe_string(next_work_order.get("source_editable_file_name")),
         "total_blank_row_count": _non_negative_int(progress.get("total_blank_row_count")),
@@ -646,9 +645,10 @@ def _gate_consistency(
     warnings: list[str] = []
     if gate_key == "brand_db_import_gate":
         brand_queue = queue_by_key.get("brand_product_review", {})
-        if requirement_statuses.get("brand_product_db_import") == "verified" and _safe_string(
-            payload.get("status")
-        ) == "blocked_by_operator_review":
+        if (
+            requirement_statuses.get("brand_product_db_import") == "verified"
+            and _safe_string(payload.get("status")) == "blocked_by_operator_review"
+        ):
             warnings.append("brand_gate_contradicts_verified_requirement")
         if _non_negative_int(brand_queue.get("blank_row_count")) == 0 and max(
             _non_negative_int(payload.get("blank_decision_count")),
@@ -1238,11 +1238,7 @@ def _bool_flags_text(value: Any) -> str:
     """
     if not isinstance(value, Mapping):
         return ""
-    flags = {
-        _safe_string(key): bool(flag)
-        for key, flag in value.items()
-        if _safe_string(key)
-    }
+    flags = {_safe_string(key): bool(flag) for key, flag in value.items() if _safe_string(key)}
     return ", ".join(f"{key}={str(flags[key]).lower()}" for key in sorted(flags))
 
 

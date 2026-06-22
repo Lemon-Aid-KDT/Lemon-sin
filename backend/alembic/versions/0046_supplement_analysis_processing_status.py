@@ -33,9 +33,7 @@ depends_on: str | Sequence[str] | None = None
 
 _CONSTRAINT = "ck_supplement_analysis_runs_status_allowed"
 _TABLE = "public.supplement_analysis_runs"
-_STATES_WITH_PROCESSING = (
-    "'processing', 'requires_confirmation', 'confirmed', 'expired', 'failed'"
-)
+_STATES_WITH_PROCESSING = "'processing', 'requires_confirmation', 'confirmed', 'expired', 'failed'"
 _STATES_WITHOUT_PROCESSING = "'requires_confirmation', 'confirmed', 'expired', 'failed'"
 
 

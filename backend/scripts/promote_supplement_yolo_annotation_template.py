@@ -589,7 +589,9 @@ def _summary(
     }
 
 
-def _failure_summary(*, template_path: Path, output_path: Path, error: BaseException) -> dict[str, Any]:
+def _failure_summary(
+    *, template_path: Path, output_path: Path, error: BaseException
+) -> dict[str, Any]:
     """Return a safe failure summary.
 
     Args:
@@ -663,7 +665,9 @@ def _reject_unsafe_payload(
         if "://" in value or value.startswith("/"):
             raise TemplatePromotionError("Template promotion payload contains a path or URL.")
         if any(marker in value for marker in LOCAL_PATH_MARKERS):
-            raise TemplatePromotionError("Template promotion payload contains a local path literal.")
+            raise TemplatePromotionError(
+                "Template promotion payload contains a local path literal."
+            )
 
 
 def _validate_private_token(value: object, *, field_name: str) -> None:
@@ -713,7 +717,9 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         payload: JSON object.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _sha256_file(path: Path) -> str:

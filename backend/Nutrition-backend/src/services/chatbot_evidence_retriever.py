@@ -153,8 +153,4 @@ def _source_family(value: object) -> SourceFamily:
 def _string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, Iterable) or isinstance(value, (str, bytes, dict)):
         return ()
-    return tuple(
-        str(item).strip()
-        for item in value
-        if str(item).strip()
-    )
+    return tuple(str(item).strip() for item in value if str(item).strip())
