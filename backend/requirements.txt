@@ -1,5 +1,9 @@
 # Core Web
-fastapi>=0.110,<0.140
+# Cap below 0.137: FastAPI 0.137 reworked include_router into a deferred
+# `_IncludedRouter`, so routes no longer surface as flat APIRoute objects on
+# app.routes and the RLS route-seam guard (which introspects create_app()) breaks.
+# The app runs on 0.138 too, but pin to the developed/tested line for determinism.
+fastapi>=0.110,<0.137
 uvicorn[standard]>=0.27,<0.35
 
 # Pydantic v2
